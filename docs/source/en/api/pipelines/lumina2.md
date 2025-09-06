@@ -80,8 +80,53 @@ image = pipe(
 image.save("lumina-gguf.png")
 ```
 
+## Lumina Accessory
+
+Lumina-Accessory is a multi-task instruction fine-tuning framework designed for the Lumina series. The official repository is from [Alpha-VLLM/Lumina-Accessory](https://github.com/Alpha-VLLM/Lumina-Accessory)
+
+```python
+import torch
+from diffusers import Lumina2AccessoryPipeline, Lumina2AccessoryTransformer2DModel
+from diffusers.utils import load_image
+
+ckpt_path = "https://huggingface.co/Alpha-VLLM/Lumina-Accessory/blob/main/consolidated.00-of-01.pth"
+transformer = Lumina2AccessoryTransformer2DModel.from_single_file(ckpt_path, torch_dtype=torch.bfloat16)
+pipe = Lumina2AccessoryPipeline.from_pretrained(
+    "Alpha-VLLM/Lumina-Image-2.0", transformer=transformer, torch_dtype=torch.bfloat16
+    )
+
+# Enable memory optimizations.
+pipe.enable_model_cpu_offload()
+
+img = load_image("https://github.com/Alpha-VLLM/Lumina-Accessory/blob/main/examples/case_1_condition.jpg?raw=true")
+prompt = "A classical oil painting of a young woman dressed in a modern DARK BLACK leather jacket."
+system_prompt = "You are an assistant designed to generate superior images with the highest degree of image-text alignment based on textual prompts and a partially masked image."
+image = pipe(
+        image=img,
+        prompt=prompt,
+        system_prompt=system_prompt,
+        width=img.size[0],
+        height=img.size[1],
+        negative_prompt=" ",
+        num_inference_steps=25,
+        num_images_per_prompt=1,
+        guidance_scale=4.0,
+        cfg_trunc_ratio=1.0,
+        cfg_normalization=True,
+        generator=torch.Generator().manual_seed(42),
+    ).images[0]
+image.save("lumina2_accessory_image_infliling.png")
+```
+
 ## Lumina2Pipeline
 
 [[autodoc]] Lumina2Pipeline
+  - all
+  - __call__
+
+
+## Lumina2AccessoryPipeline
+
+[[autodoc]] Lumina2AccessoryPipeline
   - all
   - __call__
