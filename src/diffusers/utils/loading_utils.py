@@ -3,6 +3,8 @@ import tempfile
 from typing import Any, Callable, List, Optional, Tuple, Union
 from urllib.parse import unquote, urlparse
 
+import librosa
+import numpy
 import PIL.Image
 import PIL.ImageOps
 import requests
@@ -136,6 +138,53 @@ def load_video(
         pil_images = convert_method(pil_images)
 
     return pil_images
+
+
+def load_audio(
+    audio: Union[str, numpy.ndarray], convert_method: Optional[Callable[[numpy.ndarray], numpy.ndarray]] = None
+) -> numpy.ndarray:
+    """
+    Loads `audio` to a numpy array.
+
+    Args:
+        audio (`str` or `numpy.ndarray`):
+            The audio to convert to the numpy array format.
+        convert_method (Callable[[numpy.ndarray], numpy.ndarray], *optional*):
+            A conversion method to apply to the audio after loading it. When set to `None` the audio will be converted
+            to a specific format.
+
+    Returns:
+        `numpy.ndarray`:
+            A Librosa audio object.
+        `int`:
+            The sample rate of the audio.
+    """
+    if isinstance(audio, str):
+        if audio.startswith("http://") or audio.startswith("https://"):
+            # Download audio from URL and load with librosa
+            response = requests.get(audio, stream=True, timeout=DIFFUSERS_REQUEST_TIMEOUT)
+            with tempfile.NamedTemporaryFile(delete=False) as temp_file:
+                for chunk in response.iter_content(chunk_size=8192):
+                    temp_file.write(chunk)
+                temp_audio_path = temp_file.name
+
+            audio, sample_rate = librosa.load(temp_audio_path, sr=16000)
+            os.remove(temp_audio_path)  # Clean up temporary file
+        elif os.path.isfile(audio):
+            audio, sample_rate = librosa.load(audio, sr=16000)
+        else:
+            raise ValueError(
+                f"Incorrect path or URL. URLs must start with `http://` or `https://`, and {audio} is not a valid path."
+            )
+    elif isinstance(audio, numpy.ndarray):
+        audio = audio
+        sample_rate = 16000  # Default sample rate for numpy arrays
+    else:
+        raise ValueError(
+            "Incorrect format used for the audio. Should be a URL linking to an audio, a local path, or a numpy array."
+        )
+
+    return audio, sample_rate
 
 
 # Taken from `transformers`.
