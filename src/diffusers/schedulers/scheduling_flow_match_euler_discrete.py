@@ -348,6 +348,12 @@ class FlowMatchEulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         self._step_index = None
         self._begin_index = None
 
+    def clone_for_request(self, num_inference_steps: int, device: Union[str, torch.device] = None, timesteps: Optional[List[int]] = None):
+        import copy
+        local = copy.deepcopy(self)
+        local.set_timesteps(num_inference_steps=num_inference_steps, device=device, timesteps=timesteps)
+        return local
+
     def index_for_timestep(self, timestep, schedule_timesteps=None):
         if schedule_timesteps is None:
             schedule_timesteps = self.timesteps

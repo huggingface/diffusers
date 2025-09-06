@@ -318,6 +318,12 @@ class EulerAncestralDiscreteScheduler(SchedulerMixin, ConfigMixin):
         self._begin_index = None
         self.sigmas = self.sigmas.to("cpu")  # to avoid too much CPU/GPU communication
 
+    def clone_for_request(self, num_inference_steps: int, device: Union[str, torch.device] = None):
+        import copy
+        local = copy.deepcopy(self)
+        local.set_timesteps(num_inference_steps=num_inference_steps, device=device)
+        return local
+
     # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler.index_for_timestep
     def index_for_timestep(self, timestep, schedule_timesteps=None):
         if schedule_timesteps is None:

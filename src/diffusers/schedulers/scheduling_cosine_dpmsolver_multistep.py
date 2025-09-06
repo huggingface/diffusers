@@ -241,6 +241,12 @@ class CosineDPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         # if a noise sampler is used, reinitialise it
         self.noise_sampler = None
 
+    def clone_for_request(self, num_inference_steps: int, device: Union[str, torch.device] = None):
+        import copy
+        local = copy.deepcopy(self)
+        local.set_timesteps(num_inference_steps=num_inference_steps, device=device)
+        return local
+
     # Copied from diffusers.schedulers.scheduling_edm_euler.EDMEulerScheduler._compute_karras_sigmas
     def _compute_karras_sigmas(self, ramp, sigma_min=None, sigma_max=None) -> torch.Tensor:
         """Constructs the noise schedule of Karras et al. (2022)."""

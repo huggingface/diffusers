@@ -243,6 +243,12 @@ class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
         self._begin_index = None
         self.sigmas = self.sigmas.to("cpu")  # to avoid too much CPU/GPU communication
 
+    def clone_for_request(self, num_inference_steps: int, device: Union[str, torch.device] = None, timesteps: Optional[List[int]] = None):
+        import copy
+        local = copy.deepcopy(self)
+        local.set_timesteps(num_inference_steps=num_inference_steps, device=device, timesteps=timesteps)
+        return local
+
     # Modified _convert_to_karras implementation that takes in ramp as argument
     def _convert_to_karras(self, ramp):
         """Constructs the noise schedule of Karras et al. (2022)."""

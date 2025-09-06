@@ -317,6 +317,13 @@ class DEISMultistepScheduler(SchedulerMixin, ConfigMixin):
         self._begin_index = None
         self.sigmas = self.sigmas.to("cpu")  # to avoid too much CPU/GPU communication
 
+
+    def clone_for_request(self, num_inference_steps: int, device: Union[str, torch.device] = None):
+        import copy
+        local = copy.deepcopy(self)
+        local.set_timesteps(num_inference_steps=num_inference_steps, device=device)
+        return local
+
     # Copied from diffusers.schedulers.scheduling_ddpm.DDPMScheduler._threshold_sample
     def _threshold_sample(self, sample: torch.Tensor) -> torch.Tensor:
         """

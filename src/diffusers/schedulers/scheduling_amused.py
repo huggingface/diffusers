@@ -7,6 +7,7 @@ import torch
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..utils import BaseOutput
 from .scheduling_utils import SchedulerMixin
+import copy
 
 
 def gumbel_noise(t, generator=None):
@@ -160,3 +161,8 @@ class AmusedScheduler(SchedulerMixin, ConfigMixin):
         masked_sample[mask_indices] = self.config.mask_token_id
 
         return masked_sample
+
+    def clone_for_request(self, num_inference_steps: int, temperature=(2, 0), device: Union[str, torch.device] = None):
+        local = copy.deepcopy(self)
+        local.set_timesteps(num_inference_steps=num_inference_steps, temperature=temperature, device=device)
+        return local

@@ -68,6 +68,8 @@ from ..utils import (
 )
 from ..utils.hub_utils import _check_legacy_sharding_variant_format, load_or_create_model_card, populate_model_card
 from ..utils.torch_utils import empty_device_cache, get_device, is_compiled_module
+import copy
+from types import SimpleNamespace
 
 
 if is_torch_npu_available():
@@ -175,6 +177,39 @@ class DeprecatedPipelineMixin:
 
         # Call the parent class's __init__ method
         super().__init__(*args, **kwargs)
+
+
+import copy
+from typing import Optional
+
+class RequestScopedPipeline:
+    def __init__(self, pipeline: "DiffusionPipeline"):
+        self._base = pipeline
+        self.unet = pipeline.unet
+        self.vae = pipeline.vae
+        self.text_encoder = getattr(pipeline, "text_encoder", None)
+        self.components = pipeline.components
+
+    def _make_local_scheduler(self, num_inference_steps: int, **clone_kwargs):
+        base_sched = self._base.scheduler
+        if hasattr(base_sched, "clone_for_request"):
+            return base_sched.clone_for_request(num_inference_steps=num_inference_steps, **clone_kwargs)
+        return copy.deepcopy(base_sched)
+
+    def generate(self, *args, num_inference_steps: int = 50, device: Optional[str] = None, **kwargs):
+
+        local_scheduler = self._make_local_scheduler(num_inference_steps, device=device)
+
+        local_pipe = copy.copy(self._base)
+        local_pipe.scheduler = local_scheduler
+
+        if hasattr(local_pipe, "model_cpu_offload_context"):
+            cm = getattr(local_pipe, "model_cpu_offload_context")
+            if callable(cm):
+                with cm():
+                    return local_pipe(*args, num_inference_steps=num_inference_steps, **kwargs)
+
+        return local_pipe(*args, num_inference_steps=num_inference_steps, **kwargs)
 
 
 class DiffusionPipeline(ConfigMixin, PushToHubMixin):

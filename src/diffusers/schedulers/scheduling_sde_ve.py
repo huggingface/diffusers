@@ -24,6 +24,7 @@ from ..configuration_utils import ConfigMixin, register_to_config
 from ..utils import BaseOutput
 from ..utils.torch_utils import randn_tensor
 from .scheduling_utils import SchedulerMixin, SchedulerOutput
+import copy
 
 
 @dataclass
@@ -121,6 +122,11 @@ class ScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
         sampling_eps = sampling_eps if sampling_eps is not None else self.config.sampling_eps
 
         self.timesteps = torch.linspace(1, sampling_eps, num_inference_steps, device=device)
+
+    def clone_for_request(self, num_inference_steps: int, sampling_eps: float = None, device: Union[str, torch.device] = None):
+        local = copy.deepcopy(self)
+        local.set_timesteps(num_inference_steps=num_inference_steps, sampling_eps=sampling_eps, device=device)
+        return local
 
     def set_sigmas(
         self, num_inference_steps: int, sigma_min: float = None, sigma_max: float = None, sampling_eps: float = None
