@@ -122,19 +122,19 @@ class WanAttnProcessor:
 
             def apply_rotary_emb(hidden_states: torch.Tensor, freqs: torch.Tensor):
                 # dtype = torch.float32 if hidden_states.device.type == "mps" else torch.float64
-                n = query.size(2)
+                n = hidden_states.size(2)
                 # loop over samples
                 output = []
-                for i in range(query.size(0)):
-                    s = query.size(1)
-                    x_i = torch.view_as_complex(query[i, :s].to(torch.float64).reshape(s, n, -1, 2))
+                for i in range(hidden_states.size(0)):
+                    s = hidden_states.size(1)
+                    x_i = torch.view_as_complex(hidden_states[i, :s].to(torch.float64).reshape(s, n, -1, 2))
                     freqs_i = freqs[i, :s]
                     # apply rotary embedding
                     x_i = torch.view_as_real(x_i * freqs_i).flatten(2)
                     x_i = torch.cat([x_i, hidden_states[i, s:]])
                     # append to collection
                     output.append(x_i)
-                return torch.stack(output).float()
+                return torch.stack(output).type_as(hidden_states)
 
             query = apply_rotary_emb(query, rotary_emb)
             key = apply_rotary_emb(key, rotary_emb)
@@ -407,7 +407,12 @@ class FramePackMotioner(nn.Module):
         self.proj_4x = nn.Conv3d(16, inner_dim, kernel_size=(4, 8, 8), stride=(4, 8, 8))
         self.zip_frame_buckets = torch.tensor(zip_frame_buckets, dtype=torch.long)
 
-        self.rope = WanS2VRotaryPosEmbed(inner_dim // num_attention_heads, patch_size=patch_size, max_seq_len=1024)
+        self.rope = WanS2VRotaryPosEmbed(
+            inner_dim // num_attention_heads,
+            patch_size=patch_size,
+            max_seq_len=1024,
+            num_attention_heads=num_attention_heads,
+        )
 
     def forward(self, motion_latents, add_last_motion=2):
         mot = []
@@ -555,6 +560,7 @@ class WanS2VRotaryPosEmbed(nn.Module):
         attention_head_dim: int,
         patch_size: Tuple[int, int, int],
         max_seq_len: int,
+        num_attention_heads: int,
         theta: float = 10000.0,
     ):
         super().__init__()
@@ -562,6 +568,7 @@ class WanS2VRotaryPosEmbed(nn.Module):
         self.attention_head_dim = attention_head_dim
         self.patch_size = patch_size
         self.max_seq_len = max_seq_len
+        self.num_attention_heads = num_attention_heads
 
         h_dim = w_dim = 2 * (attention_head_dim // 6)
         t_dim = attention_head_dim - h_dim - w_dim
@@ -606,9 +613,8 @@ class WanS2VRotaryPosEmbed(nn.Module):
 
             grids = [grid_sizes, image_grid_sizes]
             S = ppf * pph * ppw + image_latents.shape[3] // p_h * image_latents.shape[4] // p_w
-            num_heads = num_channels // self.attention_head_dim
         else:  # FramePack's RoPE
-            batch_size, S, num_heads, _ = hidden_states.shape
+            batch_size, S, _, _ = hidden_states.shape
             grids = grid_sizes
 
         split_sizes = [
@@ -621,9 +627,11 @@ class WanS2VRotaryPosEmbed(nn.Module):
 
         # Loop over samples
         output = torch.view_as_complex(
-            torch.zeros((batch_size, S, num_heads, self.attention_head_dim // 2, 2), device=hidden_states.device).to(
-                torch.float64
-            )
+            torch.zeros(
+                (batch_size, S, self.num_attention_heads,
+                 self.attention_head_dim // 2,
+                 2), device=hidden_states.device
+                ).to(torch.float64)
         )
         seq_bucket = [0]
         for g in grids:
@@ -854,7 +862,7 @@ class WanS2VTransformer3DModel(
         out_channels = out_channels or in_channels
 
         # 1. Patch & position embedding
-        self.rope = WanS2VRotaryPosEmbed(attention_head_dim, patch_size, rope_max_seq_len)
+        self.rope = WanS2VRotaryPosEmbed(attention_head_dim, patch_size, rope_max_seq_len, num_attention_heads)
         self.patch_embedding = nn.Conv3d(in_channels, inner_dim, kernel_size=patch_size, stride=patch_size)
 
         if enable_framepack:
@@ -972,7 +980,10 @@ class WanS2VTransformer3DModel(
             seq_lens = seq_lens + torch.tensor([r.size(1) for r in mot], dtype=torch.long)
             rope_embs = [torch.cat([u.unsqueeze(0), m], dim=1) for u, m in zip(rope_embs, mot_remb)]
             mask_input = [
-                torch.cat([m.unsqueeze(0), 2 * torch.ones([1, u.shape[2] - m.shape[2]], device=m.device, dtype=m.dtype)], dim=1)
+                torch.cat(
+                    [m, 2 * torch.ones([1, u.shape[1] - m.shape[1]], device=m.device, dtype=m.dtype)],
+                    dim=1,
+                )
                 for m, u in zip(mask_input, hidden_states)
             ]
         return hidden_states, seq_lens, rope_embs, mask_input
@@ -1000,12 +1011,8 @@ class WanS2VTransformer3DModel(
                 attn_hidden_states = self.audio_injector.injector_pre_norm_feat[audio_attn_id](input_hidden_states)
 
             residual_out = self.audio_injector.injector[audio_attn_id](
-                x=attn_hidden_states,
-                context=attn_audio_emb,
-                context_lens=torch.ones(
-                    attn_hidden_states.shape[0], dtype=torch.long, device=attn_hidden_states.device
-                )
-                * attn_audio_emb.shape[1],
+                attn_hidden_states,
+                attn_audio_emb,
             )
             residual_out = residual_out.unflatten(0, (-1, merged_audio_emb_num_frames)).flatten(1, 2)
             hidden_states[:, :original_sequence_length] = hidden_states[:, :original_sequence_length] + residual_out
@@ -1141,8 +1148,8 @@ class WanS2VTransformer3DModel(
             timestep_proj = [timestep_proj, 0]
 
         merged_audio_emb_num_frames = merged_audio_emb.shape[1]  # B F N C
-        attn_audio_emb = merged_audio_emb.flatten(0, 1)
-        audio_emb_global = audio_emb_global.flatten(0, 1)
+        attn_audio_emb = merged_audio_emb.flatten(0, 1).to(hidden_states.dtype)
+        audio_emb_global = audio_emb_global.flatten(0, 1).to(hidden_states.dtype)
 
         # 5. Transformer blocks
         if torch.is_grad_enabled() and self.gradient_checkpointing:
