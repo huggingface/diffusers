@@ -21,7 +21,9 @@ import os
 import re
 import shutil
 import sys
+import threading
 from pathlib import Path
+from types import ModuleType
 from typing import Dict, Optional, Union
 from urllib import request
 
@@ -31,12 +33,15 @@ from packaging import version
 
 from .. import __version__
 from . import DIFFUSERS_DYNAMIC_MODULE_NAME, HF_MODULES_CACHE, logging
+from .constants import DIFFUSERS_DISABLE_REMOTE_CODE
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 # See https://huggingface.co/datasets/diffusers/community-pipelines-mirror
 COMMUNITY_PIPELINES_MIRROR_ID = "diffusers/community-pipelines-mirror"
+TIME_OUT_REMOTE_CODE = int(os.getenv("DIFFUSERS_TIMEOUT_REMOTE_CODE", 15))
+_HF_REMOTE_CODE_LOCK = threading.Lock()
 
 
 def get_diffusers_versions():
@@ -154,33 +159,60 @@ def check_imports(filename):
     return get_relative_imports(filename)
 
 
-def get_class_in_module(class_name, module_path, pretrained_model_name_or_path=None):
+def resolve_trust_remote_code(trust_remote_code, model_name, has_remote_code):
+    trust_remote_code = trust_remote_code and not DIFFUSERS_DISABLE_REMOTE_CODE
+    if DIFFUSERS_DISABLE_REMOTE_CODE:
+        logger.warning(
+            "Downloading remote code is disabled globally via the DIFFUSERS_DISABLE_REMOTE_CODE environment variable. Ignoring `trust_remote_code`."
+        )
+
+    if has_remote_code and not trust_remote_code:
+        error_msg = f"The repository for {model_name} contains custom code. "
+        error_msg += (
+            "Downloading remote code is disabled globally via the DIFFUSERS_DISABLE_REMOTE_CODE environment variable."
+            if DIFFUSERS_DISABLE_REMOTE_CODE
+            else "Pass `trust_remote_code=True` to allow loading remote code modules."
+        )
+        raise ValueError(error_msg)
+
+    elif has_remote_code and trust_remote_code:
+        logger.warning(
+            f"`trust_remote_code` is enabled. Downloading code from {model_name}. Please ensure you trust the contents of this repository"
+        )
+
+    return trust_remote_code
+
+
+def get_class_in_module(class_name, module_path, force_reload=False):
     """
     Import a module on the cache directory for modules and extract a class from it.
     """
-    module_path = module_path.replace(os.path.sep, ".")
-    try:
-        module = importlib.import_module(module_path)
-    except ModuleNotFoundError as e:
-        # This can happen when the repo id contains ".", which Python's import machinery interprets as a directory
-        # separator. We do a bit of monkey patching to detect and fix this case.
-        if not (
-            pretrained_model_name_or_path is not None
-            and "." in pretrained_model_name_or_path
-            and module_path.startswith("diffusers_modules")
-            and pretrained_model_name_or_path.replace("/", "--") in module_path
-        ):
-            raise e  # We can't figure this one out, just reraise the original error
+    name = os.path.normpath(module_path)
+    if name.endswith(".py"):
+        name = name[:-3]
+    name = name.replace(os.path.sep, ".")
+    module_file: Path = Path(HF_MODULES_CACHE) / module_path
 
-        corrected_path = os.path.join(HF_MODULES_CACHE, module_path.replace(".", "/")) + ".py"
-        corrected_path = corrected_path.replace(
-            pretrained_model_name_or_path.replace("/", "--").replace(".", "/"),
-            pretrained_model_name_or_path.replace("/", "--"),
-        )
-        module = importlib.machinery.SourceFileLoader(module_path, corrected_path).load_module()
+    with _HF_REMOTE_CODE_LOCK:
+        if force_reload:
+            sys.modules.pop(name, None)
+            importlib.invalidate_caches()
+        cached_module: Optional[ModuleType] = sys.modules.get(name)
+        module_spec = importlib.util.spec_from_file_location(name, location=module_file)
+
+        module: ModuleType
+        if cached_module is None:
+            module = importlib.util.module_from_spec(module_spec)
+            # insert it into sys.modules before any loading begins
+            sys.modules[name] = module
+        else:
+            module = cached_module
+
+        module_spec.loader.exec_module(module)
 
     if class_name is None:
         return find_pipeline_class(module)
+
     return getattr(module, class_name)
 
 
@@ -259,8 +291,8 @@ def get_cached_module_file(
 
     <Tip>
 
-    You may pass a token in `token` if you are not logged in (`huggingface-cli login`) and want to use private or
-    [gated models](https://huggingface.co/docs/hub/models-gated#gated-models).
+    You may pass a token in `token` if you are not logged in (`hf auth login`) and want to use private or [gated
+    models](https://huggingface.co/docs/hub/models-gated#gated-models).
 
     </Tip>
 
@@ -446,8 +478,8 @@ def get_class_from_dynamic_module(
 
     <Tip>
 
-    You may pass a token in `token` if you are not logged in (`huggingface-cli login`) and want to use private or
-    [gated models](https://huggingface.co/docs/hub/models-gated#gated-models).
+    You may pass a token in `token` if you are not logged in (`hf auth login`) and want to use private or [gated
+    models](https://huggingface.co/docs/hub/models-gated#gated-models).
 
     </Tip>
 
@@ -472,4 +504,4 @@ def get_class_from_dynamic_module(
         revision=revision,
         local_files_only=local_files_only,
     )
-    return get_class_in_module(class_name, final_module.replace(".py", ""), pretrained_model_name_or_path)
+    return get_class_in_module(class_name, final_module)

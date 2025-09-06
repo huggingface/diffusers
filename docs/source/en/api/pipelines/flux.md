@@ -25,6 +25,8 @@ Original model checkpoints for Flux can be found [here](https://huggingface.co/b
 
 Flux can be quite expensive to run on consumer hardware devices. However, you can perform a suite of optimizations to run it faster and in a more memory-friendly manner. Check out [this section](https://huggingface.co/blog/sd3#memory-optimizations-for-sd3) for more details. Additionally, Flux can benefit from quantization for memory efficiency with a trade-off in inference latency. Refer to [this blog post](https://huggingface.co/blog/quanto-diffusers) to learn more.  For an exhaustive list of resources, check out [this gist](https://gist.github.com/sayakpaul/b664605caf0aa3bf8585ab109dd5ac9c).
 
+[Caching](../../optimization/cache) may also speed up inference by storing and reusing intermediate outputs.
+
 </Tip>
 
 Flux comes in the following variants:
@@ -313,6 +315,67 @@ image_ = torch.from_numpy(image_).to("cuda", dtype=torch.float32).unsqueeze(0).p
 if integrity_checker.test_image(image_):
     raise ValueError("Your image has been flagged. Choose another prompt/image or try again.")
 ```
+
+### Kontext Inpainting
+`FluxKontextInpaintPipeline` enables image modification within a fixed mask region. It currently supports both text-based conditioning and image-reference conditioning.
+<hfoptions id="kontext-inpaint">
+<hfoption id="text-only">
+
+
+```python
+import torch
+from diffusers import FluxKontextInpaintPipeline
+from diffusers.utils import load_image
+
+prompt = "Change the yellow dinosaur to green one"
+img_url = (
+    "https://github.com/ZenAI-Vietnam/Flux-Kontext-pipelines/blob/main/assets/dinosaur_input.jpeg?raw=true"
+)
+mask_url = (
+    "https://github.com/ZenAI-Vietnam/Flux-Kontext-pipelines/blob/main/assets/dinosaur_mask.png?raw=true"
+)
+
+source = load_image(img_url)
+mask = load_image(mask_url)
+
+pipe = FluxKontextInpaintPipeline.from_pretrained(
+    "black-forest-labs/FLUX.1-Kontext-dev", torch_dtype=torch.bfloat16
+)
+pipe.to("cuda")
+
+image = pipe(prompt=prompt, image=source, mask_image=mask, strength=1.0).images[0]
+image.save("kontext_inpainting_normal.png")
+```
+</hfoption>
+<hfoption id="image conditioning">
+
+```python
+import torch
+from diffusers import FluxKontextInpaintPipeline
+from diffusers.utils import load_image
+
+pipe = FluxKontextInpaintPipeline.from_pretrained(
+    "black-forest-labs/FLUX.1-Kontext-dev", torch_dtype=torch.bfloat16
+)
+pipe.to("cuda")
+
+prompt = "Replace this ball"
+img_url = "https://images.pexels.com/photos/39362/the-ball-stadion-football-the-pitch-39362.jpeg?auto=compress&cs=tinysrgb&dpr=1&w=500"
+mask_url = "https://github.com/ZenAI-Vietnam/Flux-Kontext-pipelines/blob/main/assets/ball_mask.png?raw=true"
+image_reference_url = "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTah3x6OL_ECMBaZ5ZlJJhNsyC-OSMLWAI-xw&s"
+
+source = load_image(img_url)
+mask = load_image(mask_url)
+image_reference = load_image(image_reference_url)
+
+mask = pipe.mask_processor.blur(mask, blur_factor=12)
+image = pipe(
+    prompt=prompt, image=source, mask_image=mask, image_reference=image_reference, strength=1.0
+).images[0]
+image.save("kontext_inpainting_ref.png")
+```
+</hfoption>
+</hfoptions>
 
 ## Combining Flux Turbo LoRAs with Flux Control, Fill, and Redux
 
@@ -642,5 +705,17 @@ image.save("flux-fp8-dev.png")
 ## FluxFillPipeline
 
 [[autodoc]] FluxFillPipeline
+	- all
+	- __call__
+
+## FluxKontextPipeline
+
+[[autodoc]] FluxKontextPipeline
+	- all
+	- __call__
+
+## FluxKontextInpaintPipeline
+
+[[autodoc]] FluxKontextInpaintPipeline
 	- all
 	- __call__

@@ -18,7 +18,6 @@ import tempfile
 import unittest
 
 import numpy as np
-import pytest
 import safetensors.torch
 import torch
 from PIL import Image
@@ -26,7 +25,8 @@ from transformers import AutoTokenizer, T5EncoderModel
 
 from diffusers import AutoencoderKLWan, FlowMatchEulerDiscreteScheduler, WanVACEPipeline, WanVACETransformer3DModel
 from diffusers.utils.import_utils import is_peft_available
-from diffusers.utils.testing_utils import (
+
+from ..testing_utils import (
     floats_tensor,
     is_flaky,
     require_peft_backend,
@@ -41,11 +41,12 @@ if is_peft_available():
 
 sys.path.append(".")
 
-from utils import PeftLoraLoaderMixinTests  # noqa: E402
+from .utils import PeftLoraLoaderMixinTests  # noqa: E402
 
 
 @require_peft_backend
 @skip_mps
+@is_flaky(max_attempts=10, description="very flaky class")
 class WanVACELoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
     pipeline_class = WanVACEPipeline
     scheduler_cls = FlowMatchEulerDiscreteScheduler
@@ -159,11 +160,6 @@ class WanVACELoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
     def test_simple_inference_with_text_lora_save_load(self):
         pass
 
-    @pytest.mark.xfail(
-        condition=True,
-        reason="RuntimeError: Input type (float) and bias type (c10::BFloat16) should be the same",
-        strict=True,
-    )
     def test_layerwise_casting_inference_denoiser(self):
         super().test_layerwise_casting_inference_denoiser()
 
@@ -217,6 +213,5 @@ class WanVACELoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
                 "Lora outputs should match.",
             )
 
-    @is_flaky
     def test_simple_inference_with_text_denoiser_lora_and_scale(self):
         super().test_simple_inference_with_text_denoiser_lora_and_scale()

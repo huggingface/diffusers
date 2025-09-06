@@ -30,14 +30,18 @@ sys.path.insert(1, git_repo_path)
 warnings.simplefilter(action="ignore", category=FutureWarning)
 
 
+def pytest_configure(config):
+    config.addinivalue_line("markers", "big_accelerator: marks tests as requiring big accelerator resources")
+
+
 def pytest_addoption(parser):
-    from diffusers.utils.testing_utils import pytest_addoption_shared
+    from .testing_utils import pytest_addoption_shared
 
     pytest_addoption_shared(parser)
 
 
 def pytest_terminal_summary(terminalreporter):
-    from diffusers.utils.testing_utils import pytest_terminal_summary_main
+    from .testing_utils import pytest_terminal_summary_main
 
     make_reports = terminalreporter.config.getoption("--make-reports")
     if make_reports:

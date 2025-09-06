@@ -21,8 +21,8 @@ from diffusers import (
 from diffusers.models.attention import FreeNoiseTransformerBlock
 from diffusers.utils import logging
 from diffusers.utils.import_utils import is_xformers_available
-from diffusers.utils.testing_utils import require_accelerator, torch_device
 
+from ...testing_utils import require_accelerator, torch_device
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_PARAMS
 from ..test_pipelines_common import (
     IPAdapterTesterMixin,
