@@ -161,7 +161,15 @@ def load_audio(
     """
     if isinstance(audio, str):
         if audio.startswith("http://") or audio.startswith("https://"):
-            audio = PIL.Image.open(requests.get(audio, stream=True, timeout=DIFFUSERS_REQUEST_TIMEOUT).raw)
+            # Download audio from URL and load with librosa
+            response = requests.get(audio, stream=True, timeout=DIFFUSERS_REQUEST_TIMEOUT)
+            with tempfile.NamedTemporaryFile(delete=False) as temp_file:
+                for chunk in response.iter_content(chunk_size=8192):
+                    temp_file.write(chunk)
+                temp_audio_path = temp_file.name
+
+            audio, sample_rate = librosa.load(temp_audio_path, sr=16000)
+            os.remove(temp_audio_path)  # Clean up temporary file
         elif os.path.isfile(audio):
             audio, sample_rate = librosa.load(audio, sr=16000)
         else:
@@ -170,9 +178,10 @@ def load_audio(
             )
     elif isinstance(audio, numpy.ndarray):
         audio = audio
+        sample_rate = 16000  # Default sample rate for numpy arrays
     else:
         raise ValueError(
-            "Incorrect format used for the audio. Should be a URL linking to an audio, a local path, or a PIL audio."
+            "Incorrect format used for the audio. Should be a URL linking to an audio, a local path, or a numpy array."
         )
 
     return audio, sample_rate
