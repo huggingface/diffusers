@@ -59,7 +59,7 @@ Recommended: create a virtualenv / conda environment.
 
 If using the `diffusers` fork via git, either:
 
-**A) Preinstall the fork first (if you want to avoid hatch direct references):**
+**A) Preinstall the fork first:**
 
 ```bash
 pip install "git+https://github.com/F4k3r22/diffusers-async.git@main"
@@ -110,9 +110,3 @@ Response example:
 
   * If the scheduler doesn't implement `clone_for_request` and `deepcopy` fails, we log and fallback — but prefer `retrieve_timesteps(..., return_scheduler=True)` to avoid mutating the shared scheduler.
 
-
-## Integration notes / performance tips
-
-* **Compile UNet**: try `pipe.unet = torch.compile(pipe.unet, mode="reduce-overhead")` — measure before enabling compile widely. If compile fails, compile only the UNet or use `mode="reduce-overhead"`.
-* **Offload**: use `pipeline.enable_model_cpu_offload()` where appropriate to reduce peak GPU memory.
-* **Quantization**: bitsandbytes quantization reduces memory but may require extra torch.compile flags (e.g., `torch._dynamo.config.capture_dynamic_output_shape_ops = True`).
