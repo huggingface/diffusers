@@ -823,6 +823,7 @@ class WanS2VTransformer3DModel(
     _no_split_modules = ["WanS2VTransformerBlock"]
     _keep_in_fp32_modules = ["time_embedder", "scale_shift_table", "norm1", "norm2", "norm3", "causal_audio_encoder"]
     _keys_to_ignore_on_load_unexpected = ["norm_added_q"]
+    _repeated_blocks = ["WanS2VTransformerBlock"]
 
     @register_to_config
     def __init__(
