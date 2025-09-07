@@ -29,6 +29,7 @@ else:
         "EDIT_BLOCKS",
         "EDIT_INPAINT_BLOCKS",
         "INPAINT_BLOCKS",
+        "IMAGE2IMAGE_BLOCKS",
         "TEXT2IMAGE_BLOCKS",
         "QwenImageAutoBlocks",
         "QwenImageEditAutoBlocks",
@@ -52,6 +53,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             EDIT_INPAINT_BLOCKS,
             INPAINT_BLOCKS,
             TEXT2IMAGE_BLOCKS,
+            IMAGE2IMAGE_BLOCKS,
             QwenImageAutoBlocks,
             QwenImageEditAutoBlocks,
         )
