@@ -883,7 +883,7 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 torch.float32,
                 device,
                 generator,
-                latents,
+                latents if r == 0 else None,
                 pose_video,
                 init_first_frame,
                 num_chunks,
