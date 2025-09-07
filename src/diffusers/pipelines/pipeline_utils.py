@@ -278,48 +278,68 @@ class RequestScopedPipeline:
         logger.debug(f"Autodetected mutable attrs to clone: {self._auto_detected_attrs}")
         return self._auto_detected_attrs
 
+    def _is_readonly_property(self, base_obj, attr_name: str) -> bool:
+        try:
+            cls = type(base_obj)
+            descriptor = getattr(cls, attr_name, None)
+            if isinstance(descriptor, property):
+                return descriptor.fset is None
+            if hasattr(descriptor, "__set__") is False and descriptor is not None:
+                return False
+        except Exception:
+            pass
+        return False
+
     def _clone_mutable_attrs(self, base, local):
         attrs_to_clone = list(self._mutable_attrs)
         attrs_to_clone.extend(self._autodetect_mutables())
 
+        EXCLUDE_ATTRS = {"components",}  # añade más si encuentras otros problemáticos
+
         for attr in attrs_to_clone:
+            if attr in EXCLUDE_ATTRS:
+                logger.debug(f"Skipping excluded attr '{attr}'")
+                continue
             if not hasattr(base, attr):
                 continue
-            try:
-                val = getattr(base, attr)
-            except Exception:
+            if self._is_readonly_property(base, attr):
+                logger.debug(f"Skipping read-only property '{attr}'")
                 continue
 
-            # shallow copy for common containers
-            if isinstance(val, dict):
-                try:
+            try:
+                val = getattr(base, attr)
+            except Exception as e:
+                logger.debug(f"Could not getattr('{attr}') on base pipeline: {e}")
+                continue
+
+            try:
+                if isinstance(val, dict):
                     setattr(local, attr, dict(val))
-                except Exception:
-                    setattr(local, attr, val)
-            elif isinstance(val, (list, tuple, set)):
-                try:
+                elif isinstance(val, (list, tuple, set)):
                     setattr(local, attr, list(val))
-                except Exception:
-                    setattr(local, attr, val)
-            elif isinstance(val, bytearray):
-                try:
+                elif isinstance(val, bytearray):
                     setattr(local, attr, bytearray(val))
-                except Exception:
-                    setattr(local, attr, val)
-            else:
-                try:
+                else:
+                    # small tensors or atomic values
                     if isinstance(val, torch.Tensor):
                         if val.numel() <= self._tensor_numel_threshold:
                             setattr(local, attr, val.clone())
                         else:
+                            # don't clone big tensors, keep reference
                             setattr(local, attr, val)
                     else:
                         try:
                             setattr(local, attr, copy.copy(val))
                         except Exception:
+                            # último recurso: asignar referencia
                             setattr(local, attr, val)
-                except Exception:
-                    setattr(local, attr, val)
+            except (AttributeError, TypeError) as e:
+                logger.debug(f"Skipping cloning attribute '{attr}' because it is not settable: {e}")
+                # continuar sin fallar
+                continue
+            except Exception as e:
+                logger.debug(f"Unexpected error cloning attribute '{attr}': {e}")
+                continue
 
 
     def generate(self, *args, num_inference_steps: int = 50, device: Optional[str] = None, **kwargs):
