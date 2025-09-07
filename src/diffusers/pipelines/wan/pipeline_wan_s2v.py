@@ -870,10 +870,6 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         num_channels_latents = self.vae.config.z_dim
         image = self.video_processor.preprocess(image, height=height, width=width).to(device, dtype=torch.float32)
 
-        # 6. Denoising loop
-        num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
-        self._num_timesteps = len(timesteps)
-
         all_latents = []
         for r in range(num_chunks):
             latents_outputs = self.prepare_latents(
@@ -912,6 +908,9 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                                                                      subfolder="scheduler")
             self.scheduler.set_timesteps(num_inference_steps, device=device)
             timesteps = self.scheduler.timesteps
+            
+            num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
+            self._num_timesteps = len(timesteps)
 
             with self.progress_bar(total=num_inference_steps) as progress_bar:
                 for i, t in enumerate(timesteps):
