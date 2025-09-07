@@ -521,6 +521,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             DiffusionPipeline,
             ImagePipelineOutput,
             StableDiffusionMixin,
+            RequestScopedPipeline
         )
 
     try:

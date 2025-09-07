@@ -521,6 +521,12 @@ class TCDScheduler(SchedulerMixin, ConfigMixin):
         self._step_index = None
         self._begin_index = None
 
+    def clone_for_request(self, num_inference_steps: int, device: Union[str, torch.device] = None, timesteps: Optional[List[int]] = None):
+        import copy
+        local = copy.deepcopy(self)
+        local.set_timesteps(num_inference_steps=num_inference_steps, device=device, timesteps=timesteps)
+        return local
+
     def step(
         self,
         model_output: torch.Tensor,

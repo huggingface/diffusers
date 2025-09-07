@@ -21,7 +21,8 @@ import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Union, get_args, get_origin
+from typing import Any, Callable, Dict, List, Optional, Union, get_args, get_origin, Iterable
+import copy
 
 import numpy as np
 import PIL.Image
@@ -179,34 +180,64 @@ class DeprecatedPipelineMixin:
         super().__init__(*args, **kwargs)
 
 
-import copy
-from typing import Optional
-
 class RequestScopedPipeline:
-    def __init__(self, pipeline: "DiffusionPipeline"):
+    DEFAULT_MUTABLE_ATTRS = [
+        "_all_hooks",
+        "_offload_device",
+        "_progress_bar_config",
+        "_progress_bar",
+        "_rng_state",
+        "_last_seed",
+    ]
+
+    def __init__(self, pipeline: "DiffusionPipeline", mutable_attrs: Optional[Iterable[str]] = None):
         self._base = pipeline
         self.unet = pipeline.unet
         self.vae = pipeline.vae
         self.text_encoder = getattr(pipeline, "text_encoder", None)
         self.components = pipeline.components
+        self._mutable_attrs = list(mutable_attrs) if mutable_attrs is not None else list(self.DEFAULT_MUTABLE_ATTRS)
 
     def _make_local_scheduler(self, num_inference_steps: int, **clone_kwargs):
         base_sched = self._base.scheduler
         if hasattr(base_sched, "clone_for_request"):
-            return base_sched.clone_for_request(num_inference_steps=num_inference_steps, **clone_kwargs)
+            try:
+                return base_sched.clone_for_request(num_inference_steps=num_inference_steps, **clone_kwargs)
+            except Exception as e:
+                logger.debug(f"clone_for_request failed: {e}, falling back to deepcopy()")
         return copy.deepcopy(base_sched)
+
+    def _clone_mutable_attrs(self, base, local):
+        for attr in self._mutable_attrs:
+            if hasattr(base, attr):
+                val = getattr(base, attr)
+                # safe shallow copy for common containers
+                if isinstance(val, dict):
+                    setattr(local, attr, dict(val))
+                elif isinstance(val, (list, tuple, set)):
+                    setattr(local, attr, list(val))
+                else:
+                    try:
+                        setattr(local, attr, copy.copy(val))
+                    except Exception:
+                        setattr(local, attr, val)
 
     def generate(self, *args, num_inference_steps: int = 50, device: Optional[str] = None, **kwargs):
 
         local_scheduler = self._make_local_scheduler(num_inference_steps, device=device)
 
         local_pipe = copy.copy(self._base)
-        local_pipe.scheduler = local_scheduler
 
-        if hasattr(local_pipe, "model_cpu_offload_context"):
-            cm = getattr(local_pipe, "model_cpu_offload_context")
-            if callable(cm):
+        local_pipe.scheduler = local_scheduler
+        self._clone_mutable_attrs(self._base, local_pipe)
+
+        cm = getattr(local_pipe, "model_cpu_offload_context", None)
+        if callable(cm):
+            try:
                 with cm():
+                    return local_pipe(*args, num_inference_steps=num_inference_steps, **kwargs)
+            except TypeError:
+                with cm:
                     return local_pipe(*args, num_inference_steps=num_inference_steps, **kwargs)
 
         return local_pipe(*args, num_inference_steps=num_inference_steps, **kwargs)
