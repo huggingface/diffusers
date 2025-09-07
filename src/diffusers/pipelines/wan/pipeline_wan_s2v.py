@@ -866,10 +866,6 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
 
         latent_motion_frames = (self.motion_frames + 3) // 4
 
-        # 4. Prepare timesteps
-        self.scheduler.set_timesteps(num_inference_steps, device=device)
-        timesteps = self.scheduler.timesteps
-
         # 5. Prepare latent variables
         num_channels_latents = self.vae.config.z_dim
         image = self.video_processor.preprocess(image, height=height, width=width).to(device, dtype=torch.float32)
@@ -910,6 +906,12 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 pose_latents = pose_latents.to(dtype=transformer_dtype, device=device)
                 audio_embeds_input = audio_embeds[..., left_idx:right_idx]
             motion_latents_input = motion_latents.to(transformer_dtype).clone()
+
+            # 4. Prepare timesteps
+            self.scheduler = UniPCMultistepScheduler.from_pretrained("tolgacangoz/Wan2.1-T2V-14B-Diffusers",
+                                                                     subfolder="scheduler")
+            self.scheduler.set_timesteps(num_inference_steps, device=device)
+            timesteps = self.scheduler.timesteps
 
             with self.progress_bar(total=num_inference_steps) as progress_bar:
                 for i, t in enumerate(timesteps):
