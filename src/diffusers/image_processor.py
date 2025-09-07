@@ -523,6 +523,9 @@ class VaeImageProcessor(ConfigMixin):
                 size=(height, width),
             )
             image = self.pt_to_numpy(image)
+        else:
+            raise ValueError(f"Unsupported image type: {type(image)}")
+
         return image
 
     def binarize(self, image: PIL.Image.Image) -> PIL.Image.Image:
@@ -957,6 +960,9 @@ class InpaintProcessor(ConfigMixin):
         # optionally apply the mask overlay
         if crops_coords is not None and (original_image is None or original_mask is None):
             raise ValueError("original_image and original_mask must be provided if crops_coords is provided")
+
+        elif crops_coords is not None and output_type != "pil":
+            raise ValueError("output_type must be 'pil' if crops_coords is provided")
 
         elif crops_coords is not None:
             image = [

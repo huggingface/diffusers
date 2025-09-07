@@ -19,13 +19,17 @@ from transformers import Qwen2_5_VLForConditionalGeneration, Qwen2Tokenizer, Qwe
 
 from ...configuration_utils import FrozenDict
 from ...guiders import ClassifierFreeGuidance
-from ...image_processor import InpaintProcessor, VaeImageProcessor
-from ...models import AutoencoderKLQwenImage
+from ...image_processor import InpaintProcessor, VaeImageProcessor, is_valid_image_imagelist, is_valid_image
+from ...models import AutoencoderKLQwenImage, QwenImageControlNetModel, QwenImageMultiControlNetModel
 from ...pipelines.qwenimage.pipeline_qwenimage_edit import calculate_dimensions
 from ...utils import logging
 from ..modular_pipeline import ModularPipelineBlocks, PipelineState, SequentialPipelineBlocks
 from ..modular_pipeline_utils import ComponentSpec, ConfigSpec, InputParam, OutputParam
 from .modular_pipeline import QwenImageModularPipeline
+
+from ...utils.torch_utils import unwrap_module
+
+import PIL
 
 
 logger = logging.get_logger(__name__)
@@ -142,16 +146,34 @@ def retrieve_latents(
 
 # Modified from diffusers.pipelines.qwenimage.pipeline_qwenimage.QwenImagePipeline._encode_vae_image
 def encode_vae_image(
-    image: torch.Tensor, vae: AutoencoderKLQwenImage, generator: torch.Generator, latent_channels: int = 16
+    image: torch.Tensor, 
+    vae: AutoencoderKLQwenImage, 
+    generator: torch.Generator, 
+    device: torch.device,
+    dtype: torch.dtype,
+    latent_channels: int = 16,
+    sample_mode: str = "argmax"
 ):
+    
+    if not isinstance(image, torch.Tensor):
+        raise ValueError(f"Expected image to be a tensor, got {type(image)}.")
+
+    # preprocessed image should be a 4D tensor: batch_size, num_channels, height, width
+    if image.dim() == 4:
+        image = image.unsqueeze(2)
+    elif image.dim() != 5:
+        raise ValueError(f"Expected image dims 4 or 5, got {image.dim()}.")
+    
+    image = image.to(device=device, dtype=dtype)
+    
     if isinstance(generator, list):
         image_latents = [
-            retrieve_latents(vae.encode(image[i : i + 1]), generator=generator[i], sample_mode="argmax")
+            retrieve_latents(vae.encode(image[i : i + 1]), generator=generator[i], sample_mode=sample_mode)
             for i in range(image.shape[0])
         ]
         image_latents = torch.cat(image_latents, dim=0)
     else:
-        image_latents = retrieve_latents(vae.encode(image), generator=generator, sample_mode="argmax")
+        image_latents = retrieve_latents(vae.encode(image), generator=generator, sample_mode=sample_mode)
     latents_mean = (
         torch.tensor(vae.config.latents_mean)
         .view(1, latent_channels, 1, 1, 1)
@@ -167,12 +189,25 @@ def encode_vae_image(
     return image_latents
 
 
-class QwenImageResizeStep(ModularPipelineBlocks):
+# YiYi TODO: 
+# 1. Check if this step need to be dynamic
+# 2. remove and let the proprocess step handle the optional resize
+class QwenImageResizeDynamicStep(ModularPipelineBlocks):
+
     model_name = "qwenimage"
+
+
+    def __init__(self, input_name: str = "image", output_name: str = "resized_image"):
+        if not isinstance(input_name, str) or not isinstance(output_name, str):
+            raise ValueError(f"input_name and output_name must be strings but are {type(input_name)} and {type(output_name)}")
+        self._image_input_name = input_name
+        self._resized_image_output_name = output_name
+        super().__init__()
 
     @property
     def description(self) -> str:
-        return "Image Resize step that resize the image to the target size."
+        return f"Image Resize step that resize the {self._image_input_name} to the target size provided by user."
+
 
     @property
     def expected_components(self) -> List[ComponentSpec]:
@@ -187,18 +222,40 @@ class QwenImageResizeStep(ModularPipelineBlocks):
 
     @property
     def inputs(self) -> List[InputParam]:
-        return [
-            InputParam(name="image", required=True, type_hint=torch.Tensor, description="The image to resize"),
-            InputParam(name="height"),
+        inputs = [
+            InputParam(name="height"), 
             InputParam(name="width"),
+            InputParam(self._image_input_name, required=True, type_hint=torch.Tensor, description="The image to resize")
         ]
+        return inputs
+
+    @property
+    def intermediate_outputs(self) -> List[OutputParam]:
+        return [
+            OutputParam(name=self._resized_image_output_name, type_hint=List[PIL.Image.Image], description="The resized images"),
+        ]
+
+    @staticmethod
+    def check_inputs(height, width, vae_scale_factor):
+
+        if height is not None and height % (vae_scale_factor * 2) != 0:
+            raise ValueError(f"Height must be divisible by {vae_scale_factor * 2} but is {height}")
+
+        if width is not None and width % (vae_scale_factor * 2) != 0:
+            raise ValueError(f"Width must be divisible by {vae_scale_factor * 2} but is {width}")
+
 
     @torch.no_grad()
     def __call__(self, components: QwenImageModularPipeline, state: PipelineState):
         block_state = self.get_block_state(state)
 
-        images = block_state.image
-        if not isinstance(images, list):
+        images = getattr(block_state, self._image_input_name)
+        self.check_inputs(block_state.height, block_state.width, components.vae_scale_factor)
+
+        if not is_valid_image_imagelist(images):
+            raise ValueError(f"Images must be image or list of images but are {type(images)}")
+
+        if is_valid_image(images):
             images = [images]
 
         height = block_state.height or components.default_height
@@ -208,17 +265,26 @@ class QwenImageResizeStep(ModularPipelineBlocks):
             components.image_resize_processor.resize(image, height=height, width=width) for image in images
         ]
 
-        block_state.image = resized_images
+        setattr(block_state, self._resized_image_output_name, resized_images)
         self.set_block_state(state, block_state)
         return components, state
 
 
-class QwenImageEditResizeStep(ModularPipelineBlocks):
+# YiYi TODO: Check if this step need to be dynamic
+class QwenImageEditResizeDynamicStep(ModularPipelineBlocks):
     model_name = "qwenimage"
+
+
+    def __init__(self, input_name: str = "image", output_name: str = "resized_image"):
+        if not isinstance(input_name, str) or not isinstance(output_name, str):
+            raise ValueError(f"input_name and output_name must be strings but are {type(input_name)} and {type(output_name)}")
+        self._image_input_name = input_name
+        self._resized_image_output_name = output_name
+        super().__init__()
 
     @property
     def description(self) -> str:
-        return "Image Resize step that resize the image to the target area while maintaining the aspect ratio."
+        return f"Image Resize step that resize the {self._image_input_name} to the target area (1024 * 1024) while maintaining the aspect ratio."
 
     @property
     def expected_components(self) -> List[ComponentSpec]:
@@ -234,15 +300,25 @@ class QwenImageEditResizeStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> List[InputParam]:
         return [
-            InputParam(name="image", required=True, type_hint=torch.Tensor, description="The image to resize"),
+            InputParam(name=self._image_input_name, required=True, type_hint=torch.Tensor, description="The image to resize"),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> List[OutputParam]:
+        return [
+            OutputParam(name=self._resized_image_output_name, type_hint=List[PIL.Image.Image], description="The resized images"),
         ]
 
     @torch.no_grad()
     def __call__(self, components: QwenImageModularPipeline, state: PipelineState):
         block_state = self.get_block_state(state)
 
-        images = block_state.image
-        if not isinstance(images, list):
+        images = getattr(block_state, self._image_input_name)
+        
+        if not is_valid_image_imagelist(images):
+            raise ValueError(f"Images must be image or list of images but are {type(images)}")
+
+        if is_valid_image(images):
             images = [images]
 
         image_width, image_height = images[0].size
@@ -253,7 +329,7 @@ class QwenImageEditResizeStep(ModularPipelineBlocks):
             for image in images
         ]
 
-        block_state.image = resized_images
+        setattr(block_state, self._resized_image_output_name, resized_images)
         self.set_block_state(state, block_state)
         return components, state
 
@@ -421,7 +497,7 @@ class QwenImageEditTextEncoderStep(ModularPipelineBlocks):
             InputParam(name="prompt", required=True, type_hint=str, description="The prompt to encode"),
             InputParam(name="negative_prompt", type_hint=str, description="The negative prompt to encode"),
             InputParam(
-                name="image",
+                name="resized_image",
                 required=True,
                 type_hint=torch.Tensor,
                 description="The image prompt to encode, should be resized using resize step",
@@ -481,7 +557,7 @@ class QwenImageEditTextEncoderStep(ModularPipelineBlocks):
             components.text_encoder,
             components.processor,
             prompt=block_state.prompt,
-            image=block_state.image,
+            image=block_state.resized_image,
             prompt_template_encode=components.config.prompt_template_encode,
             prompt_template_encode_start_idx=components.config.prompt_template_encode_start_idx,
             device=device,
@@ -493,7 +569,7 @@ class QwenImageEditTextEncoderStep(ModularPipelineBlocks):
                 components.text_encoder,
                 components.processor,
                 prompt=negative_prompt,
-                image=block_state.image,
+                image=block_state.resized_image,
                 prompt_template_encode=components.config.prompt_template_encode,
                 prompt_template_encode_start_idx=components.config.prompt_template_encode_start_idx,
                 device=device,
@@ -524,7 +600,7 @@ class QwenImageInpaintProcessImagesInputStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> List[InputParam]:
         return [
-            InputParam("image", required=True),
+            InputParam("resized_image", required=True),
             InputParam("mask_image", required=True),
             InputParam("padding_mask_crop"),
         ]
@@ -545,11 +621,11 @@ class QwenImageInpaintProcessImagesInputStep(ModularPipelineBlocks):
     def __call__(self, components: QwenImageModularPipeline, state: PipelineState):
         block_state = self.get_block_state(state)
 
-        width, height = block_state.image[0].size
+        width, height = block_state.resized_image[0].size
 
         block_state.processed_image, block_state.processed_mask_image, block_state.mask_overlay_kwargs = (
             components.image_mask_processor.preprocess(
-                image=block_state.image,
+                image=block_state.resized_image,
                 mask=block_state.mask_image,
                 height=height,
                 width=width,
@@ -561,72 +637,99 @@ class QwenImageInpaintProcessImagesInputStep(ModularPipelineBlocks):
         return components, state
 
 
+class QwenImageProcessImagesInputDynamicStep(ModularPipelineBlocks):
+    model_name = "qwenimage"
+
+    def __init__(self, input_name: str = "resized_image", output_name: str = "processed_image"):
+        if not isinstance(input_name, str) or not isinstance(output_name, str):
+            raise ValueError(f"input_name and output_name must be strings but are {type(input_name)} and {type(output_name)}")
+        self._image_input_name = input_name
+        self._processed_image_output_name = output_name
+        super().__init__()
+
+    @property
+    def description(self) -> str:
+        return "Image Preprocess step. Images need to be resized first using either the QwenImageResizeStep or QwenImageEditResizeStep."
+
+    @property
+    def expected_components(self) -> List[ComponentSpec]:
+        return [
+            ComponentSpec(
+                "image_processor",
+                VaeImageProcessor,
+                config=FrozenDict({"vae_scale_factor": 16}),
+                default_creation_method="from_config",
+            ),
+        ]
+
+    @property
+    def inputs(self) -> List[InputParam]:
+        return [
+            InputParam(self._image_input_name, required=True), # default to "resized_image"
+        ]
+
+    @property
+    def intermediate_outputs(self) -> List[OutputParam]:
+        return [
+            OutputParam(name=self._processed_image_output_name), # default to "processed_image"
+        ]
+
+    @torch.no_grad()
+    def __call__(self, components: QwenImageModularPipeline, state: PipelineState):
+        block_state = self.get_block_state(state)
+
+        resized_image = getattr(block_state, self._image_input_name)
+
+        width, height = resized_image[0].size
+
+        processed_image = (
+            components.image_processor.preprocess(
+                image=resized_image,
+                height=height,
+                width=width,
+            )
+        )
+
+        setattr(block_state, self._processed_image_output_name, processed_image)
+
+        self.set_block_state(state, block_state)
+        return components, state
+
+
 class QwenImageVaeEncoderDynamicStep(ModularPipelineBlocks):
     model_name = "qwenimage"
 
     def __init__(
         self,
-        input_name: str = "image",
+        input_name: str = "processed_image",
         output_name: str = "image_latents",
-        include_image_processor: bool = True,
-        **image_processor_kwargs,
     ):
         """Initialize a dynamic VAE encoder step for converting images to latent representations.
 
         Args:
-            input_name (str, optional): Name of the input image tensor. Defaults to "image".
-                Examples: "image", "control_image", "reference_image"
+            input_name (str, optional): Name of the input image tensor. Defaults to "processed_image".
+                Examples: "processed_image" or "processed_control_image"
             output_name (str, optional): Name of the output latent tensor. Defaults to "image_latents".
-                Examples: "image_latents", "control_image_latents", "reference_image_latents"
-            include_image_processor (bool, optional): Whether to include preprocessing step before encoding.
-                If True, will resize and preprocess the image. If False, expects preprocessed image. Defaults to True.
-            **image_processor_kwargs: Additional kwargs to configure the image processor.
-                Common options:
-                - vae_scale_factor (int): Scale factor for VAE compression. Defaults to 16.
-                - do_resize (bool): Whether to resize images. Defaults to True.
+                Examples: "image_latents" or "control_image_latents"
 
         Examples:
-            # Basic usage with default settings QwenImageVaeEncoderDynamicStep()
+            # Basic usage with default settings (includes image processor)
+            QwenImageVaeEncoderDynamicStep()
 
-            # Custom input/output names for control image QwenImageVaeEncoderDynamicStep(
-                input_name="control_image", output_name="control_image_latents"
+            # Custom input/output names for control image
+            QwenImageVaeEncoderDynamicStep(
+                input_name="processed_control_image", output_name="control_image_latents"
             )
-
-            # Without preprocessing (for already preprocessed images)
-            QwenImageVaeEncoderDynamicStep(include_image_processor=False)
-
-            # With custom processor configuration QwenImageVaeEncoderDynamicStep(vae_scale_factor=8)
         """
-        if not include_image_processor and len(image_processor_kwargs) > 0:
-            logger.warning(
-                f"these kwargs will be ignored: {image_processor_kwargs} since image_processor is not used in this block"
-            )
-
         self._image_input_name = input_name
         self._image_latents_output_name = output_name
-        self._include_image_processor = include_image_processor
-        self._image_processor_kwargs = image_processor_kwargs
         super().__init__()
 
     @property
     def description(self) -> str:
-        # Dynamic configuration info
-        preprocessor_info = ""
-        if self._include_image_processor:
-            processor_config = f"vae_scale_factor: {self._image_processor_kwargs.get('vae_scale_factor', 16)}"
-            if self._image_processor_kwargs:
-                additional_configs = [
-                    f"{k}: {v}" for k, v in self._image_processor_kwargs.items() if k != "vae_scale_factor"
-                ]
-                if additional_configs:
-                    processor_config += f", {', '.join(additional_configs)}"
-            preprocessor_info = f" (includes preprocessor with config: {processor_config})"
-        else:
-            preprocessor_info = " (no preprocessor)"
 
         return (
-            f"Dynamic VAE Encoder step that converts {self._image_input_name} into latent representations {self._image_latents_output_name}.\n\n"
-            f"Configuration: {preprocessor_info}\n\n"
+            f"Dynamic VAE Encoder step that converts {self._image_input_name} into latent representations {self._image_latents_output_name}.\n"
         )
 
     @property
@@ -634,17 +737,6 @@ class QwenImageVaeEncoderDynamicStep(ModularPipelineBlocks):
         components = [
             ComponentSpec("vae", AutoencoderKLQwenImage),
         ]
-        if self._include_image_processor:
-            image_processor_config = {"vae_scale_factor": 16}
-            image_processor_config.update(self._image_processor_kwargs)
-            components.append(
-                ComponentSpec(
-                    f"{self._image_input_name}_processor",
-                    VaeImageProcessor,
-                    config=FrozenDict(image_processor_config),
-                    default_creation_method="from_config",
-                )
-            )
         return components
 
     @property
@@ -653,9 +745,6 @@ class QwenImageVaeEncoderDynamicStep(ModularPipelineBlocks):
             InputParam(self._image_input_name, required=True),
             InputParam("generator"),
         ]
-        if self._include_image_processor:
-            inputs.append(InputParam("height"))
-            inputs.append(InputParam("width"))
         return inputs
 
     @property
@@ -668,14 +757,6 @@ class QwenImageVaeEncoderDynamicStep(ModularPipelineBlocks):
             )
         ]
 
-    @staticmethod
-    def check_inputs(height, width, vae_scale_factor):
-        if height is not None and height % (vae_scale_factor * 2) != 0:
-            raise ValueError(f"Height must be divisible by {vae_scale_factor * 2} but is {height}")
-
-        if width is not None and width % (vae_scale_factor * 2) != 0:
-            raise ValueError(f"Width must be divisible by {vae_scale_factor * 2} but is {width}")
-
     @torch.no_grad()
     def __call__(self, components: QwenImageModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
@@ -685,29 +766,13 @@ class QwenImageVaeEncoderDynamicStep(ModularPipelineBlocks):
 
         image = getattr(block_state, self._image_input_name)
 
-        if self._include_image_processor:
-            image_processor = getattr(components, f"{self._image_input_name}_processor")
-            self.check_inputs(block_state.height, block_state.width, components.vae_scale_factor)
-
-            if not image_processor.config.do_resize and (
-                block_state.height is not None or block_state.width is not None
-            ):
-                logger.warning(
-                    "height and width are provided but image_processor.config.do_resize is False, these will be ignored"
-                )
-
-            height = block_state.height or components.default_height
-            width = block_state.width or components.default_width
-            image = image_processor.preprocess(image, height=height, width=width)
-
-        image = image.unsqueeze(2)
-        image = image.to(device=device, dtype=dtype)
-
         # Encode image into latents
         image_latents = encode_vae_image(
             image=image,
             vae=components.vae,
             generator=block_state.generator,
+            device=device,
+            dtype=dtype,
             latent_channels=components.num_channels_latents,
         )
 
@@ -718,89 +783,116 @@ class QwenImageVaeEncoderDynamicStep(ModularPipelineBlocks):
         return components, state
 
 
-class QwenImageInpaintVaeEncoderStep(SequentialPipelineBlocks):
+
+class QwenImageControlNetVaeEncoderStep(ModularPipelineBlocks):
     model_name = "qwenimage"
 
-    """This step is used for processing image and mask inputs forinpainting tasks. It:
-        - Processes and updates `image` and `mask_image`.
-        - Creates `image_latents`.
-
-    Components:
-        image_processor (`InpaintProcessor`) vae (`AutoencoderKLQwenImage`)
-
-    Inputs:
-        image (`None`) mask_image (`None`) height (`None`) width (`None`) padding_mask_crop (`None`, optional)
-        generator (`None`, optional):
-
-    New Outputs:
-        processed_image (`Tensor`):
-            The processed image
-        processed_mask_image (`Tensor`):
-            The processed mask_imagge
-        mask_overlay_kwargs (`Dict`):
-            The kwargs for the postprocess step to apply the mask overlay
-        image_latents (`Tensor`):
-            The latents representing the reference image
-    """
-
-    block_classes = [
-        QwenImageResizeStep,
-        QwenImageInpaintProcessImagesInputStep,
-        QwenImageVaeEncoderDynamicStep(
-            input_name="processed_image", output_name="image_latents", include_image_processor=False
-        ),  # encode
-    ]
-
-    block_names = ["resize", "preprocess", "encode"]
 
     @property
     def description(self) -> str:
+
         return (
-            "This step is used for processing image and mask inputs for inpainting tasks. It:\n"
-            " - Resizes the image to the target size, based on `height` and `width`.\n"
-            " - Processes and updates `image` and `mask_image`.\n"
-            " - Creates `image_latents`."
+            f"VAE Encoder step that converts `control_image` into latent representations control_image_latents.\n"
         )
-
-
-class QwenImageEditInpaintVaeEncoderStep(SequentialPipelineBlocks):
-    model_name = "qwenimage"
-
-    """This step is used for processing image and mask inputs forinpainting tasks. It:
-        - Processes and updates `image` and `mask_image`.
-        - Creates `image_latents`.
-
-    Components:
-        image_processor (`InpaintProcessor`) vae (`AutoencoderKLQwenImage`)
-
-    Inputs:
-        image (`None`) mask_image (`None`) padding_mask_crop (`None`, optional) generator (`None`, optional)
-
-    New Outputs:
-        processed_image (`Tensor`):
-            The processed image
-        processed_mask_image (`Tensor`):
-            The processed mask_imagge
-        mask_overlay_kwargs (`Dict`):
-            The kwargs for the postprocess step to apply the mask overlay
-        image_latents (`Tensor`):
-            The latents representing the reference image
-    """
-
-    block_classes = [
-        QwenImageInpaintProcessImagesInputStep,
-        QwenImageVaeEncoderDynamicStep(
-            input_name="processed_image", output_name="image_latents", include_image_processor=False
-        ),  # encode
-    ]
-
-    block_names = ["preprocess", "encode"]
 
     @property
-    def description(self) -> str:
-        return (
-            "This step is used for processing image and mask inputs for inpainting tasks. It:\n"
-            " - Processes and updates `image` and `mask_image`.\n"
-            " - Creates `image_latents`."
-            " Note: This step expects the image that has already been resized using the `QwenImageEditResizeStep` block."
-        )
+    def expected_components(self) -> List[ComponentSpec]:
+        components = [
+            ComponentSpec("vae", AutoencoderKLQwenImage),
+            ComponentSpec("controlnet", QwenImageControlNetModel),
+            ComponentSpec(
+                "control_image_processor",
+                VaeImageProcessor,
+                config=FrozenDict({"vae_scale_factor": 16}),
+                default_creation_method="from_config",
+            ),
+        ]
+        return components
+
+    @property
+    def inputs(self) -> List[InputParam]:
+        inputs = [
+            InputParam("control_image", required=True),
+            InputParam("height"),
+            InputParam("width"),
+            InputParam("generator"),
+        ]
+        return inputs
+
+    @property
+    def intermediate_outputs(self) -> List[OutputParam]:
+        return [
+            OutputParam(
+                "control_image_latents",
+                type_hint=torch.Tensor,
+                description="The latents representing the control image",
+            )
+        ]
+
+    @staticmethod
+    def check_inputs(height, width, vae_scale_factor):
+
+        if height is not None and height % (vae_scale_factor * 2) != 0:
+            raise ValueError(f"Height must be divisible by {vae_scale_factor * 2} but is {height}")
+
+        if width is not None and width % (vae_scale_factor * 2) != 0:
+            raise ValueError(f"Width must be divisible by {vae_scale_factor * 2} but is {width}")
+
+    @torch.no_grad()
+    def __call__(self, components: QwenImageModularPipeline, state: PipelineState) -> PipelineState:
+        block_state = self.get_block_state(state)
+
+        self.check_inputs(block_state.height, block_state.width, components.vae_scale_factor)
+
+        device = components._execution_device
+        dtype = components.vae.dtype
+
+        height = block_state.height or components.default_height
+        width = block_state.width or components.default_width
+
+        controlnet = unwrap_module(components.controlnet)
+        if isinstance(controlnet, QwenImageMultiControlNetModel) and not isinstance(block_state.control_image, list):
+            block_state.control_image = [block_state.control_image]
+
+        if isinstance(controlnet, QwenImageMultiControlNetModel):
+            block_state.control_image_latents = []
+            for control_image_ in block_state.control_image:
+                control_image_ = components.control_image_processor.preprocess(
+                    image=control_image_,
+                    height=height,
+                    width=width,
+                )
+
+                control_image_latents_ =encode_vae_image(
+                    image=control_image_,
+                    vae=components.vae,
+                    generator=block_state.generator,
+                    device=device,
+                    dtype=dtype,
+                    latent_channels=components.num_channels_latents,
+                    sample_mode="sample",
+                )
+                block_state.control_image_latents.append(control_image_latents_)
+        
+        elif isinstance(controlnet, QwenImageControlNetModel):
+            control_image = components.control_image_processor.preprocess(
+                image=block_state.control_image,
+                height=height,
+                width=width,
+            )
+            block_state.control_image_latents = encode_vae_image(
+                image=control_image,
+                vae=components.vae,
+                generator=block_state.generator,
+                device=device,
+                dtype=dtype,
+                latent_channels=components.num_channels_latents,
+                sample_mode="sample",
+            )
+
+        else:
+            raise ValueError(f"Expected controlnet to be a QwenImageControlNetModel or QwenImageMultiControlNetModel, got {type(controlnet)}")
+
+        self.set_block_state(state, block_state)
+
+        return components, state
