@@ -188,47 +188,155 @@ class RequestScopedPipeline:
         "_progress_bar",
         "_rng_state",
         "_last_seed",
+        "latents",
     ]
 
-    def __init__(self, pipeline: "DiffusionPipeline", mutable_attrs: Optional[Iterable[str]] = None):
+    def __init__(
+        self,
+        pipeline: Any,
+        mutable_attrs: Optional[Iterable[str]] = None,
+        auto_detect_mutables: bool = True,
+        tensor_numel_threshold: int = 1_000_000,
+    ):
         self._base = pipeline
-        self.unet = pipeline.unet
-        self.vae = pipeline.vae
+        self.unet = getattr(pipeline, "unet", None)
+        self.vae = getattr(pipeline, "vae", None)
         self.text_encoder = getattr(pipeline, "text_encoder", None)
-        self.components = pipeline.components
+        self.components = getattr(pipeline, "components", None)
+
         self._mutable_attrs = list(mutable_attrs) if mutable_attrs is not None else list(self.DEFAULT_MUTABLE_ATTRS)
 
-    def _make_local_scheduler(self, num_inference_steps: int, **clone_kwargs):
-        base_sched = self._base.scheduler
+        self._auto_detect_mutables = bool(auto_detect_mutables)
+        self._tensor_numel_threshold = int(tensor_numel_threshold)
+
+        self._auto_detected_attrs: List[str] = []
+
+    def _make_local_scheduler(self, num_inference_steps: int, device: Optional[str] = None, **clone_kwargs):
+        base_sched = getattr(self._base, "scheduler", None)
+        if base_sched is None:
+            return None
+
         if hasattr(base_sched, "clone_for_request"):
             try:
-                return base_sched.clone_for_request(num_inference_steps=num_inference_steps, **clone_kwargs)
+                return base_sched.clone_for_request(num_inference_steps=num_inference_steps, device=device, **clone_kwargs)
             except Exception as e:
-                logger.debug(f"clone_for_request failed: {e}, falling back to deepcopy()")
-        return copy.deepcopy(base_sched)
+                logger.debug(f"clone_for_request failed: {e}; falling back to deepcopy()")
+
+        try:
+            return copy.deepcopy(base_sched)
+        except Exception as e:
+            logger.warning(f"Deepcopy of scheduler failed: {e}. Returning original scheduler (*risky*).")
+            return base_sched  
+
+    def _autodetect_mutables(self, max_attrs: int = 40):
+        if not self._auto_detect_mutables:
+            return []
+
+        if self._auto_detected_attrs:
+            return self._auto_detected_attrs
+
+        candidates: List[str] = []
+        seen = set()
+        for name in dir(self._base):
+            if name.startswith("__"):
+                continue
+            if name in self._mutable_attrs:
+                continue
+            if name in ("to", "save_pretrained", "from_pretrained"):
+                continue
+            try:
+                val = getattr(self._base, name)
+            except Exception:
+                continue
+
+            import types
+
+            # skip callables and modules
+            if callable(val) or isinstance(val, (types.ModuleType, types.FunctionType, types.MethodType)):
+                continue
+
+            # containers -> candidate
+            if isinstance(val, (dict, list, set, tuple, bytearray)):
+                candidates.append(name)
+                seen.add(name)
+            else:
+                # try Tensor detection
+                try:
+                    if isinstance(val, torch.Tensor):
+                        if val.numel() <= self._tensor_numel_threshold:
+                            candidates.append(name)
+                            seen.add(name)
+                        else:
+                            logger.debug(f"Ignoring large tensor attr '{name}', numel={val.numel()}")
+                except Exception:
+                    continue
+
+            if len(candidates) >= max_attrs:
+                break
+
+        self._auto_detected_attrs = candidates
+        logger.debug(f"Autodetected mutable attrs to clone: {self._auto_detected_attrs}")
+        return self._auto_detected_attrs
 
     def _clone_mutable_attrs(self, base, local):
-        for attr in self._mutable_attrs:
-            if hasattr(base, attr):
+        attrs_to_clone = list(self._mutable_attrs)
+        attrs_to_clone.extend(self._autodetect_mutables())
+
+        for attr in attrs_to_clone:
+            if not hasattr(base, attr):
+                continue
+            try:
                 val = getattr(base, attr)
-                # safe shallow copy for common containers
-                if isinstance(val, dict):
+            except Exception:
+                continue
+
+            # shallow copy for common containers
+            if isinstance(val, dict):
+                try:
                     setattr(local, attr, dict(val))
-                elif isinstance(val, (list, tuple, set)):
+                except Exception:
+                    setattr(local, attr, val)
+            elif isinstance(val, (list, tuple, set)):
+                try:
                     setattr(local, attr, list(val))
-                else:
-                    try:
-                        setattr(local, attr, copy.copy(val))
-                    except Exception:
-                        setattr(local, attr, val)
+                except Exception:
+                    setattr(local, attr, val)
+            elif isinstance(val, bytearray):
+                try:
+                    setattr(local, attr, bytearray(val))
+                except Exception:
+                    setattr(local, attr, val)
+            else:
+                try:
+                    if isinstance(val, torch.Tensor):
+                        if val.numel() <= self._tensor_numel_threshold:
+                            setattr(local, attr, val.clone())
+                        else:
+                            setattr(local, attr, val)
+                    else:
+                        try:
+                            setattr(local, attr, copy.copy(val))
+                        except Exception:
+                            setattr(local, attr, val)
+                except Exception:
+                    setattr(local, attr, val)
+
 
     def generate(self, *args, num_inference_steps: int = 50, device: Optional[str] = None, **kwargs):
+        local_scheduler = self._make_local_scheduler(num_inference_steps=num_inference_steps, device=device)
 
-        local_scheduler = self._make_local_scheduler(num_inference_steps, device=device)
+        try:
+            local_pipe = copy.copy(self._base)
+        except Exception as e:
+            logger.warning(f"copy.copy(self._base) failed: {e}. Falling back to deepcopy (may increase memory).")
+            local_pipe = copy.deepcopy(self._base)
+        if local_scheduler is not None:
+            try:
+                setattr(local_pipe, "scheduler", local_scheduler)
+            except Exception:
+                logger.warning("Could not set scheduler on local pipe; proceeding without replacing scheduler.")
 
-        local_pipe = copy.copy(self._base)
 
-        local_pipe.scheduler = local_scheduler
         self._clone_mutable_attrs(self._base, local_pipe)
 
         cm = getattr(local_pipe, "model_cpu_offload_context", None)
@@ -237,8 +345,12 @@ class RequestScopedPipeline:
                 with cm():
                     return local_pipe(*args, num_inference_steps=num_inference_steps, **kwargs)
             except TypeError:
-                with cm:
-                    return local_pipe(*args, num_inference_steps=num_inference_steps, **kwargs)
+                # puede ser que cm sea un context manager ya instanciado en vez de callable
+                try:
+                    with cm:
+                        return local_pipe(*args, num_inference_steps=num_inference_steps, **kwargs)
+                except Exception as e:
+                    logger.debug(f"model_cpu_offload_context usage failed: {e}. Proceeding without it.")
 
         return local_pipe(*args, num_inference_steps=num_inference_steps, **kwargs)
 
