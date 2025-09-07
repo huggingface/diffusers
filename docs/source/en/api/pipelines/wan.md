@@ -283,7 +283,7 @@ prompt = "CG animation style, a small blue bird takes off from the ground, flapp
 
 output = pipe(
     image=first_frame, audio=audio, sampling_rate=sampling_rate,
-    prompt=prompt, height=height, width=width, guidance_scale=5.0, num_frames_per_chunk=81,
+    prompt=prompt, height=height, width=width, num_frames_per_chunk=81,
     #pose_video=pose_video
 ).frames[0]
 export_to_video(output, "output.mp4", fps=16)

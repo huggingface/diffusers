@@ -507,9 +507,9 @@ class WanTimeTextAudioPoseEmbedding(nn.Module):
         time_proj_dim: int,
         text_embed_dim: int,
         audio_embed_dim: int,
-        enable_adain: bool = True,
-        pose_embed_dim: Optional[int] = None,
-        patch_size: Optional[Tuple[int]] = None,
+        pose_embed_dim: int,
+        patch_size: Tuple[int],
+        enable_adain: bool,
     ):
         super().__init__()
 
@@ -522,9 +522,7 @@ class WanTimeTextAudioPoseEmbedding(nn.Module):
             dim=audio_embed_dim, out_dim=dim, num_audio_token=4, need_global=enable_adain
         )
 
-        self.pose_embedder = None
-        if pose_embed_dim is not None:
-            self.pose_embedder = nn.Conv3d(pose_embed_dim, dim, kernel_size=patch_size, stride=patch_size)
+        self.pose_embedder = nn.Conv3d(pose_embed_dim, dim, kernel_size=patch_size, stride=patch_size)
 
     def forward(
         self,
@@ -548,8 +546,7 @@ class WanTimeTextAudioPoseEmbedding(nn.Module):
 
         audio_hidden_states = self.causal_audio_encoder(audio_hidden_states)
 
-        if self.pose_embedder is not None:
-            pose_hidden_states = self.pose_embedder(pose_hidden_states)
+        pose_hidden_states = self.pose_embedder(pose_hidden_states)
 
         return temb, timestep_proj, encoder_hidden_states, audio_hidden_states, pose_hidden_states
 
