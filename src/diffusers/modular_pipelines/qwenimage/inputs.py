@@ -24,13 +24,42 @@ from ...models import QwenImageMultiControlNetModel
 from ...utils.torch_utils import unwrap_module
 
 
-def repeat_tensor_to_final_batch_size(
+def repeat_tensor_to_batch_size(
     input_name: str, 
     input_tensor: torch.Tensor, 
     batch_size: int,
     num_images_per_prompt: int = 1, 
 ) -> torch.Tensor:
+    """Repeat tensor elements to match the final batch size.
     
+    This function expands a tensor's batch dimension to match the final batch size
+    (batch_size * num_images_per_prompt) by repeating each element along dimension 0.
+    
+    The input tensor must have batch size 1 or batch_size. The function will:
+    - If batch size is 1: repeat each element (batch_size * num_images_per_prompt) times
+    - If batch size equals batch_size: repeat each element num_images_per_prompt times
+    
+    Args:
+        input_name (str): Name of the input tensor (used for error messages)
+        input_tensor (torch.Tensor): The tensor to repeat. Must have batch size 1 or batch_size.
+        batch_size (int): The base batch size (number of prompts)
+        num_images_per_prompt (int, optional): Number of images to generate per prompt. Defaults to 1.
+        
+    Returns:
+        torch.Tensor: The repeated tensor with final batch size (batch_size * num_images_per_prompt)
+        
+    Raises:
+        ValueError: If input_tensor is not a torch.Tensor or has invalid batch size
+        
+    Examples:
+        tensor = torch.tensor([[1, 2, 3]])  # shape: [1, 3]
+        repeated = repeat_tensor_to_batch_size("image", tensor, batch_size=2, num_images_per_prompt=2)
+        repeated  # tensor([[1, 2, 3], [1, 2, 3], [1, 2, 3], [1, 2, 3]]) - shape: [4, 3]
+        
+        tensor = torch.tensor([[1, 2, 3], [4, 5, 6]])  # shape: [2, 3]
+        repeated = repeat_tensor_to_batch_size("image", tensor, batch_size=2, num_images_per_prompt=2)
+        repeated  # tensor([[1, 2, 3], [1, 2, 3], [4, 5, 6], [4, 5, 6]]) - shape: [4, 3]
+    """
     # make sure input is a tensor
     if not isinstance(input_tensor, torch.Tensor):
         raise ValueError(f"`{input_name}` must be a tensor")
@@ -49,8 +78,25 @@ def repeat_tensor_to_final_batch_size(
     return input_tensor
 
 
-def calculate_image_dimension_from_latents(latents: torch.Tensor, vae_scale_factor: int) -> Tuple[int, int]:
-
+def calculate_dimension_from_latents(latents: torch.Tensor, vae_scale_factor: int) -> Tuple[int, int]:
+    """Calculate image dimensions from latent tensor dimensions.
+    
+    This function converts latent space dimensions to image space dimensions by
+    multiplying the latent height and width by the VAE scale factor.
+    
+    Args:
+        latents (torch.Tensor): The latent tensor. Must have 4 or 5 dimensions.
+            Expected shapes: [batch, channels, height, width] or [batch, channels, frames, height, width]
+        vae_scale_factor (int): The scale factor used by the VAE to compress images.
+            Typically 8 for most VAEs (image is 8x larger than latents in each dimension)
+            
+    Returns:
+        Tuple[int, int]: The calculated image dimensions as (height, width)
+        
+    Raises:
+        ValueError: If latents tensor doesn't have 4 or 5 dimensions
+        
+    """
     # make sure the latents are not packed
     if latents.ndim != 4 and latents.ndim != 5:
         raise ValueError(f"unpacked latents must have 4 or 5 dimensions, but got {latents.ndim}")
@@ -59,7 +105,6 @@ def calculate_image_dimension_from_latents(latents: torch.Tensor, vae_scale_fact
 
     height = latent_height * vae_scale_factor
     width = latent_width * vae_scale_factor
-
 
     return height, width
 
@@ -181,142 +226,71 @@ class QwenImageTextInputsStep(ModularPipelineBlocks):
         return components, state
 
 
-# YiYi TODO: combine this and the image input step
-class QwenImageBatchInputsDynamicStep(ModularPipelineBlocks):
-
+class QwenImageInputsDynamicStep(ModularPipelineBlocks):
     model_name = "qwenimage"
 
     def __init__(
         self, 
-        batch_inputs: List[str] = [], 
+        image_latent_inputs: List[str] = ["image_latents"],
+        additional_batch_inputs: List[str] = [], 
         ):
-        """Initialize a configurable step that expands batch dimensions for additional conditional inputs.
+        """Initialize a configurable step that standardizes the inputs for the denoising step. It:\n"
 
-        This step adjusts batch dimensions for additional conditional inputs to match the final batch size
-        (batch_size * num_images_per_prompt). It should be placed after the default text input processing step
-        when you have additional inputs that need batch size alignment.
+        This step handles multiple common tasks to prepare inputs for the denoising step:
+        1. For encoded image latents, use it update height/width if None, patchifies, and expands batch size
+        2. For additional_batch_inputs: Only expands batch dimensions to match final batch size
 
-        This is a dynamic block that allows you to configure which additional inputs to process.
-
-        Args:
-            batch_inputs (List[str], optional): Names of additional conditional input tensors to adjust batch size.
-                These tensors will have their batch dimensions adjusted to match the final batch size. Can be a single
-                string or list of strings. Defaults to []. Examples: ["image_latents"], ["control_image_latents",
-                "reference_image"]
-
-        Examples:
-            # Configure to expand batch dimension for `image_latents`
-            QwenImageBatchInputsDynamicStep(batch_inputs=["image_latents"])
-            
-            # Configure to expand batch dimension for multiple inputs
-            QwenImageBatchInputsDynamicStep(batch_inputs=["image_latents", "control_image_latents"])
-        """
-        if not isinstance(batch_inputs, list):
-            batch_inputs = [batch_inputs]
-
-        self._batch_inputs = batch_inputs
-        super().__init__()
-
-    @property
-    def description(self) -> str:
-        # Functionality section
-        summary_section = (
-            "Input processing step that expands batch dimensions for additional conditional inputs.\n"
-            "This step ensures all specified inputs have consistent batch sizes for the rest of the pipeline."
-        )
-
-        # Batch alignment inputs info
-        inputs_info = ""
-        if self._batch_inputs:
-            inputs_info = f"\n\nInputs to process: {self._batch_inputs}"
-
-        # Placement guidance
-        placement_section = "\n\nThis block should be placed after all the encoders and the text input step."
-
-        return summary_section + inputs_info + placement_section
-
-    @property
-    def inputs(self) -> List[InputParam]:
-        inputs = [
-            InputParam(name="num_images_per_prompt", default=1),
-            InputParam(name="batch_size", required=True),
-        ]
-        for input_name in self._batch_inputs:
-            inputs.append(InputParam(name=input_name))
-
-        return inputs
-
-    
-    def __call__(self, components: QwenImageModularPipeline, state: PipelineState) -> PipelineState:
-        block_state = self.get_block_state(state)
-
-
-        # optionally, expand additional inputs to match the batch size of prompts
-
-        for input_name in self._batch_inputs:
-            input_tensor = getattr(block_state, input_name)
-
-            if input_tensor is None:
-                continue
-
-            input_tensor = repeat_tensor_to_final_batch_size(
-                input_name=input_name,
-                input_tensor=input_tensor,
-                num_images_per_prompt=block_state.num_images_per_prompt,
-                batch_size=block_state.batch_size,
-            )
-
-            setattr(block_state, input_name, input_tensor)
-
-        self.set_block_state(state, block_state)
-
-        return components, state
-
-
-class QwenImageImageInputsDynamicStep(ModularPipelineBlocks):
-    model_name = "qwenimage"
-
-    def __init__(self, image_latent_inputs: List[str] = ["image_latents"]):
-        """Initialize a configurable step that processes image latent inputs.
-
-        This step handles two main tasks:
-        1. Updates height/width if they are None (calculated from specified image latent dimensions)
-        2. Patchifies the specified image latents for the transformer model
-
-        This is a dynamic block that allows you to configure which image latent inputs to process. By default, it will process `image_latents`.
+        This is a dynamic block that allows you to configure which inputs to process.
 
         Args:
             image_latent_inputs (List[str], optional): Names of image latent tensors to process.
-                These tensors will be used to determine height/width if not provided, and will be patchified.
+                These will be used to determine height/width, patchified, and batch-expanded.
                 Can be a single string or list of strings. Defaults to ["image_latents"]. 
                 Examples: ["image_latents"], ["control_image_latents"]
+            additional_batch_inputs (List[str], optional): Names of additional conditional input tensors to expand batch size.
+                These tensors will only have their batch dimensions adjusted to match the final batch size.
+                Can be a single string or list of strings. Defaults to []. 
+                Examples: ["processed_mask_image"]
 
         Examples:
-            # Configure to process `image_latents`
-            QwenImageImageInputsDynamicStep(image_latent_inputs=["image_latents"])
+            # Configure to process image_latents (default behavior)
+            QwenImageInputsDynamicStep()
             
-            # Configure to process multiple inputs
-            QwenImageImageInputsDynamicStep(image_latent_inputs=["image_latents", "control_image_latents"])
+            # Configure to process multiple image latent inputs
+            QwenImageInputsDynamicStep(image_latent_inputs=["image_latents", "control_image_latents"])
+            
+            # Configure to process image latents and additional batch inputs
+            QwenImageInputsDynamicStep(
+                image_latent_inputs=["image_latents"], 
+                additional_batch_inputs=["processed_mask_image"]
+            )
         """
         if not isinstance(image_latent_inputs, list):
             image_latent_inputs = [image_latent_inputs]
+        if not isinstance(additional_batch_inputs, list):
+            additional_batch_inputs = [additional_batch_inputs]
 
         self._image_latent_inputs = image_latent_inputs
+        self._additional_batch_inputs = additional_batch_inputs
         super().__init__()
 
     @property
     def description(self) -> str:
         # Functionality section
         summary_section = (
-            "Image latent processing step that:\n"
-            "  1. Updates `height` and `width` if they are None (calculated from image latent dimensions)\n"
-            "  2. Patchifies the image latents for the transformer model"
+            "Input processing step that:\n"
+            "  1. For image latent inputs: Updates height/width if None, patchifies latents, and expands batch size\n"
+            "  2. For additional batch inputs: Expands batch dimensions to match final batch size"
         )
 
-        # Image latent inputs info
+        # Inputs info
         inputs_info = ""
-        if self._image_latent_inputs:
-            inputs_info = f"\n\nConfigured to process image latents: {self._image_latent_inputs}"
+        if self._image_latent_inputs or self._additional_batch_inputs:
+            inputs_info = "\n\nConfigured inputs:"
+            if self._image_latent_inputs:
+                inputs_info += f"\n  - Image latent inputs: {self._image_latent_inputs}"
+            if self._additional_batch_inputs:
+                inputs_info += f"\n  - Additional batch inputs: {self._additional_batch_inputs}"
 
         # Placement guidance
         placement_section = "\n\nThis block should be placed after the encoder steps and the text input step."
@@ -325,11 +299,20 @@ class QwenImageImageInputsDynamicStep(ModularPipelineBlocks):
 
     @property
     def inputs(self) -> List[InputParam]:
+        inputs = [
+            InputParam(name="num_images_per_prompt", default=1),
+            InputParam(name="batch_size", required=True),
+            InputParam(name="height"), 
+            InputParam(name="width")
+        ]
 
-        inputs = [InputParam(name="height"), InputParam(name="width")]
-
+        # Add image latent inputs
         for image_latent_input_name in self._image_latent_inputs:
             inputs.append(InputParam(name=image_latent_input_name))
+
+        # Add additional batch inputs
+        for input_name in self._additional_batch_inputs:
+            inputs.append(InputParam(name=input_name))
 
         return inputs
 
@@ -339,29 +322,50 @@ class QwenImageImageInputsDynamicStep(ModularPipelineBlocks):
             ComponentSpec("pachifier", QwenImagePachifier, default_creation_method="from_config"),
         ]
 
-
-    
     def __call__(self, components: QwenImageModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
 
+        # Process image latent inputs (height/width calculation, patchify, and batch expansion)
         for image_latent_input_name in self._image_latent_inputs:
-
             image_latent_tensor = getattr(block_state, image_latent_input_name)
             if image_latent_tensor is None:
                 continue
 
-            height, width = calculate_image_dimension_from_latents(image_latent_tensor, components.vae_scale_factor)
-
-            # update height and width based on image latent dimensions if not provided
+            # 1. Calculate height/width from latents
+            height, width = calculate_dimension_from_latents(image_latent_tensor, components.vae_scale_factor)
             block_state.height = block_state.height or height
             block_state.width = block_state.width or width
 
-            # pack the image latent tensor
+            # 2. Patchify the image latent tensor
             image_latent_tensor = components.pachifier.pack_latents(image_latent_tensor)
+
+            # 3. Expand batch size
+            image_latent_tensor = repeat_tensor_to_batch_size(
+                input_name=image_latent_input_name,
+                input_tensor=image_latent_tensor,
+                num_images_per_prompt=block_state.num_images_per_prompt,
+                batch_size=block_state.batch_size,
+            )
+
             setattr(block_state, image_latent_input_name, image_latent_tensor)
 
-        self.set_block_state(state, block_state)
+        # Process additional batch inputs (only batch expansion)
+        for input_name in self._additional_batch_inputs:
+            input_tensor = getattr(block_state, input_name)
+            if input_tensor is None:
+                continue
 
+            # Only expand batch size
+            input_tensor = repeat_tensor_to_batch_size(
+                input_name=input_name,
+                input_tensor=input_tensor,
+                num_images_per_prompt=block_state.num_images_per_prompt,
+                batch_size=block_state.batch_size,
+            )
+
+            setattr(block_state, input_name, input_tensor)
+
+        self.set_block_state(state, block_state)
         return components, state
 
 
@@ -394,7 +398,7 @@ class QwenImageControlNetInputsStep(ModularPipelineBlocks):
             for i, control_image_latents_ in enumerate(block_state.control_image_latents):
 
                 # 1. update height/width if not provided
-                height, width = calculate_image_dimension_from_latents(control_image_latents_, components.vae_scale_factor)
+                height, width = calculate_dimension_from_latents(control_image_latents_, components.vae_scale_factor)
                 block_state.height = block_state.height or height
                 block_state.width = block_state.width or width
 
@@ -402,7 +406,7 @@ class QwenImageControlNetInputsStep(ModularPipelineBlocks):
                 control_image_latents_ = components.pachifier.pack_latents(control_image_latents_)
 
                 # 3. repeat to match the batch size
-                control_image_latents_ = repeat_tensor_to_final_batch_size(
+                control_image_latents_ = repeat_tensor_to_batch_size(
                     input_name=f"control_image_latents[{i}]",
                     input_tensor=control_image_latents_,
                     num_images_per_prompt=block_state.num_images_per_prompt,
@@ -415,7 +419,7 @@ class QwenImageControlNetInputsStep(ModularPipelineBlocks):
         
         else:
             # 1. update height/width if not provided
-            height, width = calculate_image_dimension_from_latents(block_state.control_image_latents, components.vae_scale_factor)
+            height, width = calculate_dimension_from_latents(block_state.control_image_latents, components.vae_scale_factor)
             block_state.height = block_state.height or height
             block_state.width = block_state.width or width
 
@@ -423,7 +427,7 @@ class QwenImageControlNetInputsStep(ModularPipelineBlocks):
             block_state.control_image_latents = components.pachifier.pack_latents(block_state.control_image_latents)
             
             # 3. repeat to match the batch size
-            block_state.control_image_latents = repeat_tensor_to_final_batch_size(
+            block_state.control_image_latents = repeat_tensor_to_batch_size(
                 input_name="control_image_latents",
                 input_tensor=block_state.control_image_latents,
                 num_images_per_prompt=block_state.num_images_per_prompt,

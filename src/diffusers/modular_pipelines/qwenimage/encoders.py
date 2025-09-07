@@ -189,87 +189,6 @@ def encode_vae_image(
     return image_latents
 
 
-# YiYi TODO: 
-# 1. Check if this step need to be dynamic
-# 2. remove and let the proprocess step handle the optional resize
-class QwenImageResizeDynamicStep(ModularPipelineBlocks):
-
-    model_name = "qwenimage"
-
-
-    def __init__(self, input_name: str = "image", output_name: str = "resized_image"):
-        if not isinstance(input_name, str) or not isinstance(output_name, str):
-            raise ValueError(f"input_name and output_name must be strings but are {type(input_name)} and {type(output_name)}")
-        self._image_input_name = input_name
-        self._resized_image_output_name = output_name
-        super().__init__()
-
-    @property
-    def description(self) -> str:
-        return f"Image Resize step that resize the {self._image_input_name} to the target size provided by user."
-
-
-    @property
-    def expected_components(self) -> List[ComponentSpec]:
-        return [
-            ComponentSpec(
-                "image_resize_processor",
-                VaeImageProcessor,
-                config=FrozenDict({"vae_scale_factor": 16}),
-                default_creation_method="from_config",
-            ),
-        ]
-
-    @property
-    def inputs(self) -> List[InputParam]:
-        inputs = [
-            InputParam(name="height"), 
-            InputParam(name="width"),
-            InputParam(self._image_input_name, required=True, type_hint=torch.Tensor, description="The image to resize")
-        ]
-        return inputs
-
-    @property
-    def intermediate_outputs(self) -> List[OutputParam]:
-        return [
-            OutputParam(name=self._resized_image_output_name, type_hint=List[PIL.Image.Image], description="The resized images"),
-        ]
-
-    @staticmethod
-    def check_inputs(height, width, vae_scale_factor):
-
-        if height is not None and height % (vae_scale_factor * 2) != 0:
-            raise ValueError(f"Height must be divisible by {vae_scale_factor * 2} but is {height}")
-
-        if width is not None and width % (vae_scale_factor * 2) != 0:
-            raise ValueError(f"Width must be divisible by {vae_scale_factor * 2} but is {width}")
-
-
-    @torch.no_grad()
-    def __call__(self, components: QwenImageModularPipeline, state: PipelineState):
-        block_state = self.get_block_state(state)
-
-        images = getattr(block_state, self._image_input_name)
-        self.check_inputs(block_state.height, block_state.width, components.vae_scale_factor)
-
-        if not is_valid_image_imagelist(images):
-            raise ValueError(f"Images must be image or list of images but are {type(images)}")
-
-        if is_valid_image(images):
-            images = [images]
-
-        height = block_state.height or components.default_height
-        width = block_state.width or components.default_width
-
-        resized_images = [
-            components.image_resize_processor.resize(image, height=height, width=width) for image in images
-        ]
-
-        setattr(block_state, self._resized_image_output_name, resized_images)
-        self.set_block_state(state, block_state)
-        return components, state
-
-
 # YiYi TODO: Check if this step need to be dynamic
 class QwenImageEditResizeDynamicStep(ModularPipelineBlocks):
     model_name = "qwenimage"
@@ -600,8 +519,11 @@ class QwenImageInpaintProcessImagesInputStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> List[InputParam]:
         return [
-            InputParam("resized_image", required=True),
             InputParam("mask_image", required=True),
+            InputParam("resized_image"),
+            InputParam("image"),
+            InputParam("height"),
+            InputParam("width"),
             InputParam("padding_mask_crop"),
         ]
 
@@ -617,15 +539,35 @@ class QwenImageInpaintProcessImagesInputStep(ModularPipelineBlocks):
             ),
         ]
 
+    @staticmethod
+    def check_inputs(height, width, vae_scale_factor):
+
+        if height is not None and height % (vae_scale_factor * 2) != 0:
+            raise ValueError(f"Height must be divisible by {vae_scale_factor * 2} but is {height}")
+
+        if width is not None and width % (vae_scale_factor * 2) != 0:
+            raise ValueError(f"Width must be divisible by {vae_scale_factor * 2} but is {width}")
+
+
     @torch.no_grad()
     def __call__(self, components: QwenImageModularPipeline, state: PipelineState):
         block_state = self.get_block_state(state)
 
-        width, height = block_state.resized_image[0].size
+        if block_state.resized_image is None and block_state.image is None:
+            raise ValueError("resized_image and image cannot be None at the same time")
+        
+        if block_state.resized_image is None:
+            image = block_state.image
+            self.check_inputs(height=block_state.height, width=block_state.width, vae_scale_factor=components.vae_scale_factor)
+            height = block_state.height or components.default_height
+            width = block_state.width or components.default_width
+        else:
+            width, height = block_state.resized_image[0].size
+            image = block_state.resized_image
 
         block_state.processed_image, block_state.processed_mask_image, block_state.mask_overlay_kwargs = (
             components.image_mask_processor.preprocess(
-                image=block_state.resized_image,
+                image=image,
                 mask=block_state.mask_image,
                 height=height,
                 width=width,
@@ -637,15 +579,8 @@ class QwenImageInpaintProcessImagesInputStep(ModularPipelineBlocks):
         return components, state
 
 
-class QwenImageProcessImagesInputDynamicStep(ModularPipelineBlocks):
+class QwenImageProcessImagesInputStep(ModularPipelineBlocks):
     model_name = "qwenimage"
-
-    def __init__(self, input_name: str = "resized_image", output_name: str = "processed_image"):
-        if not isinstance(input_name, str) or not isinstance(output_name, str):
-            raise ValueError(f"input_name and output_name must be strings but are {type(input_name)} and {type(output_name)}")
-        self._image_input_name = input_name
-        self._processed_image_output_name = output_name
-        super().__init__()
 
     @property
     def description(self) -> str:
@@ -665,32 +600,51 @@ class QwenImageProcessImagesInputDynamicStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> List[InputParam]:
         return [
-            InputParam(self._image_input_name, required=True), # default to "resized_image"
+            InputParam("resized_image"),
+            InputParam("image"),
+            InputParam("height"),
+            InputParam("width"),
         ]
 
     @property
     def intermediate_outputs(self) -> List[OutputParam]:
         return [
-            OutputParam(name=self._processed_image_output_name), # default to "processed_image"
+            OutputParam(name="processed_image"),
         ]
+
+
+    @staticmethod
+    def check_inputs(height, width, vae_scale_factor):
+
+        if height is not None and height % (vae_scale_factor * 2) != 0:
+            raise ValueError(f"Height must be divisible by {vae_scale_factor * 2} but is {height}")
+
+        if width is not None and width % (vae_scale_factor * 2) != 0:
+            raise ValueError(f"Width must be divisible by {vae_scale_factor * 2} but is {width}")
 
     @torch.no_grad()
     def __call__(self, components: QwenImageModularPipeline, state: PipelineState):
         block_state = self.get_block_state(state)
 
-        resized_image = getattr(block_state, self._image_input_name)
+        if block_state.resized_image is None and block_state.image is None:
+            raise ValueError("resized_image and image cannot be None at the same time")
+        
+        if block_state.resized_image is None:
+            image = block_state.image
+            self.check_inputs(height=block_state.height, width=block_state.width, vae_scale_factor=components.vae_scale_factor)
+            height = block_state.height or components.default_height
+            width = block_state.width or components.default_width
+        else:
+            width, height = block_state.resized_image[0].size
+            image = block_state.resized_image
 
-        width, height = resized_image[0].size
-
-        processed_image = (
+        block_state.processed_image = (
             components.image_processor.preprocess(
-                image=resized_image,
+                image=image,
                 height=height,
                 width=width,
             )
         )
-
-        setattr(block_state, self._processed_image_output_name, processed_image)
 
         self.set_block_state(state, block_state)
         return components, state
@@ -781,7 +735,6 @@ class QwenImageVaeEncoderDynamicStep(ModularPipelineBlocks):
         self.set_block_state(state, block_state)
 
         return components, state
-
 
 
 class QwenImageControlNetVaeEncoderStep(ModularPipelineBlocks):
