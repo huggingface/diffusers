@@ -1,0 +1,6 @@
+torch 
+torchvision 
+transformers 
+sentencepiece 
+fastapi 
+uvicorn 
