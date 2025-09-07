@@ -904,11 +904,12 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             motion_latents_input = motion_latents.to(transformer_dtype).clone()
 
             # 4. Prepare timesteps
-            self.scheduler = UniPCMultistepScheduler.from_pretrained("tolgacangoz/Wan2.2-S2V-14B-Diffusers",
-                                                                     subfolder="scheduler")
+            self.scheduler = UniPCMultistepScheduler.from_pretrained(
+                "tolgacangoz/Wan2.2-S2V-14B-Diffusers", subfolder="scheduler"
+            )
             self.scheduler.set_timesteps(num_inference_steps, device=device)
             timesteps = self.scheduler.timesteps
-            
+
             num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
             self._num_timesteps = len(timesteps)
 
