@@ -21,9 +21,9 @@ import torch
 from ...models import QwenImageControlNetModel, QwenImageMultiControlNetModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils.torch_utils import randn_tensor, unwrap_module
-from ..modular_pipeline import ModularPipelineBlocks, PipelineState, SequentialPipelineBlocks
+from ..modular_pipeline import ModularPipelineBlocks, PipelineState
 from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
-from .modular_pipeline import QwenImageEditModularPipeline, QwenImageModularPipeline, QwenImagePachifier
+from .modular_pipeline import QwenImageModularPipeline, QwenImagePachifier
 
 
 # Copied from diffusers.pipelines.qwenimage.pipeline_qwenimage.calculate_shift
@@ -197,7 +197,9 @@ class QwenImagePrepareLatentsStep(ModularPipelineBlocks):
                 f" size of {batch_size}. Make sure the batch size matches the length of the generators."
             )
 
-        block_state.latents = randn_tensor(shape, generator=block_state.generator, device=device, dtype=block_state.dtype)
+        block_state.latents = randn_tensor(
+            shape, generator=block_state.generator, device=device, dtype=block_state.dtype
+        )
         block_state.latents = components.pachifier.pack_latents(block_state.latents)
 
         self.set_block_state(state, block_state)
@@ -513,7 +515,9 @@ class QwenImageRoPEInputsStep(ModularPipelineBlocks):
 
     @property
     def description(self) -> str:
-        return "Step that prepares the RoPE inputs for the denoising process. Should be place after prepare_latents step"
+        return (
+            "Step that prepares the RoPE inputs for the denoising process. Should be place after prepare_latents step"
+        )
 
     @property
     def inputs(self) -> List[InputParam]:
@@ -585,7 +589,9 @@ class QwenImageEditRoPEInputsStep(ModularPipelineBlocks):
     def inputs(self) -> List[InputParam]:
         return [
             InputParam(name="batch_size", required=True),
-            InputParam(name="resized_image", required=True, type_hint=torch.Tensor, description="The resized image input"),
+            InputParam(
+                name="resized_image", required=True, type_hint=torch.Tensor, description="The resized image input"
+            ),
             InputParam(name="height", required=True),
             InputParam(name="width", required=True),
             InputParam(name="prompt_embeds_mask"),
@@ -618,7 +624,9 @@ class QwenImageEditRoPEInputsStep(ModularPipelineBlocks):
         block_state = self.get_block_state(state)
 
         # for edit, image size can be different from the target size (height/width)
-        image = block_state.resized_image[0] if isinstance(block_state.resized_image, list) else block_state.resized_image
+        image = (
+            block_state.resized_image[0] if isinstance(block_state.resized_image, list) else block_state.resized_image
+        )
         image_width, image_height = image.size
 
         block_state.img_shapes = [
@@ -703,7 +711,9 @@ class QwenImageControlNetBeforeDenoiserStep(ModularPipelineBlocks):
         elif not isinstance(block_state.control_guidance_start, list) and not isinstance(
             block_state.control_guidance_end, list
         ):
-            mult = len(block_state.control_image_latents) if isinstance(controlnet, QwenImageMultiControlNetModel) else 1
+            mult = (
+                len(block_state.control_image_latents) if isinstance(controlnet, QwenImageMultiControlNetModel) else 1
+            )
             block_state.control_guidance_start, block_state.control_guidance_end = (
                 mult * [block_state.control_guidance_start],
                 mult * [block_state.control_guidance_end],

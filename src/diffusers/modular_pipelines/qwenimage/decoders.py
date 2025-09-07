@@ -22,13 +22,12 @@ from ...configuration_utils import FrozenDict
 from ...image_processor import InpaintProcessor, VaeImageProcessor
 from ...models import AutoencoderKLQwenImage
 from ...utils import logging
-from ..modular_pipeline import ModularPipelineBlocks, PipelineState, SequentialPipelineBlocks
+from ..modular_pipeline import ModularPipelineBlocks, PipelineState
 from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
 from .modular_pipeline import QwenImageModularPipeline, QwenImagePachifier
 
 
 logger = logging.get_logger(__name__)
-
 
 
 class QwenImageDecoderStep(ModularPipelineBlocks):
@@ -180,7 +179,7 @@ class QwenImageInpaintProcessImagesOutputStep(ModularPipelineBlocks):
     def check_inputs(output_type, mask_overlay_kwargs):
         if output_type not in ["pil", "np", "pt"]:
             raise ValueError(f"Invalid output_type: {output_type}")
-        
+
         if mask_overlay_kwargs and output_type != "pil":
             raise ValueError("only support output_type 'pil' for mask overlay")
 

@@ -13,13 +13,12 @@
 # limitations under the License.
 
 
+from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import QwenImageLoraLoaderMixin
 from ..modular_pipeline import ModularPipeline
-from ...configuration_utils import ConfigMixin, register_to_config
 
 
 class QwenImagePachifier(ConfigMixin):
-
     """
     A class to pack and unpack latents for QwenImage.
     """
@@ -27,14 +26,13 @@ class QwenImagePachifier(ConfigMixin):
     config_name = "config.json"
 
     @register_to_config
-    def __init__(self,
+    def __init__(
+        self,
         patch_size: int = 2,
     ):
         super().__init__()
-    
-    
-    def pack_latents(self, latents):
 
+    def pack_latents(self, latents):
         if latents.ndim != 4 and latents.ndim != 5:
             raise ValueError(f"Latents must have 4 or 5 dimensions, but got {latents.ndim}")
 
@@ -43,22 +41,35 @@ class QwenImagePachifier(ConfigMixin):
 
         batch_size, num_channels_latents, num_latent_frames, latent_height, latent_width = latents.shape
         patch_size = self.config.patch_size
-        
-        if latent_height % patch_size != 0 or latent_width % patch_size != 0:
-            raise ValueError(f"Latent height and width must be divisible by {patch_size}, but got {latent_height} and {latent_width}")
 
-        latents = latents.view(batch_size, num_channels_latents, latent_height // patch_size, patch_size, latent_width // patch_size, patch_size)
-        latents = latents.permute(0, 2, 4, 1, 3, 5) # Batch_size, num_patches_height, num_patches_width, num_channels_latents, patch_size, patch_size
-        latents = latents.reshape(batch_size, (latent_height // patch_size) * (latent_width // patch_size), num_channels_latents * patch_size * patch_size)
+        if latent_height % patch_size != 0 or latent_width % patch_size != 0:
+            raise ValueError(
+                f"Latent height and width must be divisible by {patch_size}, but got {latent_height} and {latent_width}"
+            )
+
+        latents = latents.view(
+            batch_size,
+            num_channels_latents,
+            latent_height // patch_size,
+            patch_size,
+            latent_width // patch_size,
+            patch_size,
+        )
+        latents = latents.permute(
+            0, 2, 4, 1, 3, 5
+        )  # Batch_size, num_patches_height, num_patches_width, num_channels_latents, patch_size, patch_size
+        latents = latents.reshape(
+            batch_size,
+            (latent_height // patch_size) * (latent_width // patch_size),
+            num_channels_latents * patch_size * patch_size,
+        )
 
         return latents
-    
-    
+
     def unpack_latents(self, latents, height, width, vae_scale_factor=8):
-        
         if latents.ndim != 3:
             raise ValueError(f"Latents must have 3 dimensions, but got {latents.ndim}")
-        
+
         batch_size, num_patches, channels = latents.shape
         patch_size = self.config.patch_size
 
@@ -67,11 +78,18 @@ class QwenImagePachifier(ConfigMixin):
         height = patch_size * (int(height) // (vae_scale_factor * patch_size))
         width = patch_size * (int(width) // (vae_scale_factor * patch_size))
 
-        latents = latents.view(batch_size, height // patch_size, width //patch_size, channels // (patch_size * patch_size), patch_size, patch_size)
+        latents = latents.view(
+            batch_size,
+            height // patch_size,
+            width // patch_size,
+            channels // (patch_size * patch_size),
+            patch_size,
+            patch_size,
+        )
         latents = latents.permute(0, 3, 1, 4, 2, 5)
-        
+
         latents = latents.reshape(batch_size, channels // (patch_size * patch_size), 1, height, width)
-        
+
         return latents
 
 
