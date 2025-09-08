@@ -331,6 +331,7 @@ class FluxControlLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
         noise = floats_tensor((batch_size, num_channels) + sizes)
         input_ids = torch.randint(1, sequence_length, size=(batch_size, sequence_length), generator=generator)
 
+        np.random.seed(0)
         pipeline_inputs = {
             "prompt": "A painting of a squirrel eating a burger",
             "control_image": Image.fromarray(np.random.randint(0, 255, size=(32, 32, 3), dtype="uint8")),
