@@ -590,13 +590,15 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         else:
             pose_video = [-torch.ones([1, 3, num_frames_per_chunk, height, width])]
 
-        pose_condition = []
-        for cond in pose_video:
-            cond = torch.cat([cond[:, :, 0:1], cond], dim=2)
-            cond = cond.to(dtype=self.dtype, device=self._execution_device)
-            cond_lat = retrieve_latents(self.vae.encode(cond), sample_mode="argmax")[:, :, 1:]
-            cond_lat = (cond_lat - latents_mean) * latents_std
-            pose_condition.append(cond_lat)
+        # Vectorized processing: concatenate all chunks along batch dimension
+        all_poses = torch.cat([
+            torch.cat([cond[:, :, 0:1], cond], dim=2)
+            for cond in pose_video
+        ], dim=0)  # Shape: [num_chunks, 3, num_frames_per_chunk+1, height, width]
+
+        all_poses = all_poses.to(dtype=self.vae.dtype, device=self.vae.device)
+        pose_condition = retrieve_latents(self.vae.encode(all_poses), sample_mode="argmax")[:, :, 1:]
+        pose_condition = (pose_condition - latents_mean) * latents_std
 
         return pose_condition
 

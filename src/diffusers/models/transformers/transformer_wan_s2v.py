@@ -415,88 +415,81 @@ class FramePackMotioner(nn.Module):
         )
 
     def forward(self, motion_latents, add_last_motion=2):
-        mot = []
-        mot_remb = []
-        for motion_latent in motion_latents:
-            latent_height, latent_width = motion_latent.shape[2], motion_latent.shape[3]
-            padd_latent = torch.zeros(16, self.zip_frame_buckets.sum(), latent_height, latent_width).to(
-                device=motion_latent.device, dtype=motion_latent.dtype
-            )
-            overlap_frame = min(padd_latent.shape[1], motion_latent.shape[1])
-            if overlap_frame > 0:
-                padd_latent[:, -overlap_frame:] = motion_latent[:, -overlap_frame:]
+        latent_height, latent_width = motion_latents.shape[3], motion_latents.shape[4]
+        padd_latent = torch.zeros(motion_latents.shape[0], 16, self.zip_frame_buckets.sum(), latent_height, latent_width).to(
+            device=motion_latents.device, dtype=motion_latents.dtype)
+        overlap_frame = min(padd_latent.shape[2], motion_latents.shape[2])
+        if overlap_frame > 0:
+            padd_latent[:, :, -overlap_frame:] = motion_latents[:, :, -overlap_frame:]
 
-            if add_last_motion < 2 and self.drop_mode != "drop":
-                zero_end_frame = self.zip_frame_buckets[: len(self.zip_frame_buckets) - add_last_motion - 1].sum()
-                padd_latent[:, -zero_end_frame:] = 0
+        if add_last_motion < 2 and self.drop_mode != "drop":
+            zero_end_frame = self.zip_frame_buckets[: len(self.zip_frame_buckets) - add_last_motion - 1].sum()
+            padd_latent[:, :, -zero_end_frame:] = 0
 
-            padd_latent = padd_latent.unsqueeze(0)
-            clean_latents_4x, clean_latents_2x, clean_latents_post = padd_latent[
-                :, :, -self.zip_frame_buckets.sum() :, :, :
-            ].split(list(self.zip_frame_buckets)[::-1], dim=2)  # 16, 2, 1
+        clean_latents_4x, clean_latents_2x, clean_latents_post = padd_latent[
+            :, :, -self.zip_frame_buckets.sum() :, :, :
+        ].split(list(self.zip_frame_buckets)[::-1], dim=2)  # 16, 2, 1
 
-            # Patchify
-            clean_latents_post = self.proj(clean_latents_post).flatten(2).transpose(1, 2)
-            clean_latents_2x = self.proj_2x(clean_latents_2x).flatten(2).transpose(1, 2)
-            clean_latents_4x = self.proj_4x(clean_latents_4x).flatten(2).transpose(1, 2)
+        # Patchify
+        clean_latents_post = self.proj(clean_latents_post).flatten(2).transpose(1, 2)
+        clean_latents_2x = self.proj_2x(clean_latents_2x).flatten(2).transpose(1, 2)
+        clean_latents_4x = self.proj_4x(clean_latents_4x).flatten(2).transpose(1, 2)
 
-            if add_last_motion < 2 and self.drop_mode == "drop":
-                clean_latents_post = clean_latents_post[:, :0] if add_last_motion < 2 else clean_latents_post
-                clean_latents_2x = clean_latents_2x[:, :0] if add_last_motion < 1 else clean_latents_2x
+        if add_last_motion < 2 and self.drop_mode == "drop":
+            clean_latents_post = clean_latents_post[:, :0] if add_last_motion < 2 else clean_latents_post
+            clean_latents_2x = clean_latents_2x[:, :0] if add_last_motion < 1 else clean_latents_2x
 
-            motion_lat = torch.cat([clean_latents_post, clean_latents_2x, clean_latents_4x], dim=1)
+        motion_lat = torch.cat([clean_latents_post, clean_latents_2x, clean_latents_4x], dim=1)
 
-            # RoPE
-            start_time_id = -(self.zip_frame_buckets[:1].sum())
-            end_time_id = start_time_id + self.zip_frame_buckets[0]
-            grid_sizes = (
-                []
-                if add_last_motion < 2 and self.drop_mode == "drop"
-                else [
-                    [
-                        torch.tensor([start_time_id, 0, 0]).unsqueeze(0),
-                        torch.tensor([end_time_id, latent_height // 2, latent_width // 2]).unsqueeze(0),
-                        torch.tensor([self.zip_frame_buckets[0], latent_height // 2, latent_width // 2]).unsqueeze(0),
-                    ]
-                ]
-            )
-
-            start_time_id = -(self.zip_frame_buckets[:2].sum())
-            end_time_id = start_time_id + self.zip_frame_buckets[1] // 2
-            grid_sizes_2x = (
-                []
-                if add_last_motion < 1 and self.drop_mode == "drop"
-                else [
-                    [
-                        torch.tensor([start_time_id, 0, 0]).unsqueeze(0),
-                        torch.tensor([end_time_id, latent_height // 4, latent_width // 4]).unsqueeze(0),
-                        torch.tensor([self.zip_frame_buckets[1], latent_height // 2, latent_width // 2]).unsqueeze(0),
-                    ]
-                ]
-            )
-
-            start_time_id = -(self.zip_frame_buckets[:3].sum())
-            end_time_id = start_time_id + self.zip_frame_buckets[2] // 4
-            grid_sizes_4x = [
+        # RoPE
+        start_time_id = -(self.zip_frame_buckets[:1].sum())
+        end_time_id = start_time_id + self.zip_frame_buckets[0]
+        grid_sizes = (
+            []
+            if add_last_motion < 2 and self.drop_mode == "drop"
+            else [
                 [
                     torch.tensor([start_time_id, 0, 0]).unsqueeze(0),
-                    torch.tensor([end_time_id, latent_height // 8, latent_width // 8]).unsqueeze(0),
-                    torch.tensor([self.zip_frame_buckets[2], latent_height // 2, latent_width // 2]).unsqueeze(0),
+                    torch.tensor([end_time_id, latent_height // 2, latent_width // 2]).unsqueeze(0),
+                    torch.tensor([self.zip_frame_buckets[0], latent_height // 2, latent_width // 2]).unsqueeze(0),
                 ]
             ]
+        )
 
-            grid_sizes = grid_sizes + grid_sizes_2x + grid_sizes_4x
+        start_time_id = -(self.zip_frame_buckets[:2].sum())
+        end_time_id = start_time_id + self.zip_frame_buckets[1] // 2
+        grid_sizes_2x = (
+            []
+            if add_last_motion < 1 and self.drop_mode == "drop"
+            else [
+                [
+                    torch.tensor([start_time_id, 0, 0]).unsqueeze(0),
+                    torch.tensor([end_time_id, latent_height // 4, latent_width // 4]).unsqueeze(0),
+                    torch.tensor([self.zip_frame_buckets[1], latent_height // 2, latent_width // 2]).unsqueeze(0),
+                ]
+            ]
+        )
 
-            motion_rope_emb = self.rope(
-                motion_lat.detach().view(
-                    1, motion_lat.shape[1], self.num_attention_heads, self.inner_dim // self.num_attention_heads
-                ),
-                grid_sizes=grid_sizes,
-            )
+        start_time_id = -(self.zip_frame_buckets[:3].sum())
+        end_time_id = start_time_id + self.zip_frame_buckets[2] // 4
+        grid_sizes_4x = [
+            [
+                torch.tensor([start_time_id, 0, 0]).unsqueeze(0),
+                torch.tensor([end_time_id, latent_height // 8, latent_width // 8]).unsqueeze(0),
+                torch.tensor([self.zip_frame_buckets[2], latent_height // 2, latent_width // 2]).unsqueeze(0),
+            ]
+        ]
 
-            mot.append(motion_lat)
-            mot_remb.append(motion_rope_emb)
-        return mot, mot_remb
+        grid_sizes = grid_sizes + grid_sizes_2x + grid_sizes_4x
+
+        motion_rope_emb = self.rope(
+            motion_lat.detach().view(
+                motion_lat.shape[0], motion_lat.shape[1], self.num_attention_heads, self.inner_dim // self.num_attention_heads
+            ),
+            grid_sizes=grid_sizes,
+        )
+
+        return motion_lat, motion_rope_emb
 
 
 class WanTimeTextAudioPoseEmbedding(nn.Module):
@@ -972,16 +965,11 @@ class WanS2VTransformer3DModel(
             mot, mot_remb = self.process_motion(motion_latents, drop_motion_frames)
 
         if len(mot) > 0:
-            hidden_states = [torch.cat([u.unsqueeze(0), m], dim=1) for u, m in zip(hidden_states, mot)]
-            seq_lens = seq_lens + torch.tensor([r.size(1) for r in mot], dtype=torch.long)
-            rope_embs = [torch.cat([u.unsqueeze(0), m], dim=1) for u, m in zip(rope_embs, mot_remb)]
-            mask_input = [
-                torch.cat(
-                    [m, 2 * torch.ones([1, u.shape[1] - m.shape[1]], device=m.device, dtype=m.dtype)],
-                    dim=1,
-                )
-                for m, u in zip(mask_input, hidden_states)
-            ]
+            hidden_states = torch.cat([hidden_states, mot], dim=1)
+            seq_lens = seq_lens + torch.tensor([mot.shape[1]], dtype=torch.long)
+            rope_embs = torch.cat([rope_embs, mot_remb], dim=1)
+            mask_input = torch.cat([mask_input, 2 * torch.ones([1, hidden_states.shape[1] - mask_input.shape[1]],
+                                                               device=mask_input.device, dtype=mask_input.dtype)], dim=1)
         return hidden_states, seq_lens, rope_embs, mask_input
 
     def after_transformer_block(
