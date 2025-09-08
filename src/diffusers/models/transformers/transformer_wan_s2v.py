@@ -416,8 +416,11 @@ class FramePackMotioner(nn.Module):
 
     def forward(self, motion_latents, add_last_motion=2):
         latent_height, latent_width = motion_latents.shape[3], motion_latents.shape[4]
-        padd_latent = torch.zeros(motion_latents.shape[0], 16, self.zip_frame_buckets.sum(), latent_height, latent_width).to(
-            device=motion_latents.device, dtype=motion_latents.dtype)
+        padd_latent = torch.zeros(
+            (motion_latents.shape[0], 16, self.zip_frame_buckets.sum(), latent_height, latent_width),
+            device=motion_latents.device,
+            dtype=motion_latents.dtype,
+        )
         overlap_frame = min(padd_latent.shape[2], motion_latents.shape[2])
         if overlap_frame > 0:
             padd_latent[:, :, -overlap_frame:] = motion_latents[:, :, -overlap_frame:]
@@ -484,7 +487,10 @@ class FramePackMotioner(nn.Module):
 
         motion_rope_emb = self.rope(
             motion_lat.detach().view(
-                motion_lat.shape[0], motion_lat.shape[1], self.num_attention_heads, self.inner_dim // self.num_attention_heads
+                motion_lat.shape[0],
+                motion_lat.shape[1],
+                self.num_attention_heads,
+                self.inner_dim // self.num_attention_heads,
             ),
             grid_sizes=grid_sizes,
         )
@@ -514,7 +520,6 @@ class WanTimeTextAudioPoseEmbedding(nn.Module):
         self.causal_audio_encoder = CausalAudioEncoder(
             dim=audio_embed_dim, out_dim=dim, num_audio_token=4, need_global=enable_adain
         )
-
         self.pose_embedder = nn.Conv3d(pose_embed_dim, dim, kernel_size=patch_size, stride=patch_size)
 
     def forward(
@@ -618,8 +623,10 @@ class WanS2VRotaryPosEmbed(nn.Module):
         # Loop over samples
         output = torch.view_as_complex(
             torch.zeros(
-                (batch_size, S, self.num_attention_heads, self.attention_head_dim // 2, 2), device=hidden_states.device
-            ).to(torch.float64)
+                (batch_size, S, self.num_attention_heads, self.attention_head_dim // 2, 2),
+                device=hidden_states.device,
+                dtype=torch.float64,
+            )
         )
         seq_bucket = [0]
         for g in grids:
@@ -968,8 +975,18 @@ class WanS2VTransformer3DModel(
             hidden_states = torch.cat([hidden_states, mot], dim=1)
             seq_lens = seq_lens + torch.tensor([mot.shape[1]], dtype=torch.long)
             rope_embs = torch.cat([rope_embs, mot_remb], dim=1)
-            mask_input = torch.cat([mask_input, 2 * torch.ones([1, hidden_states.shape[1] - mask_input.shape[1]],
-                                                               device=mask_input.device, dtype=mask_input.dtype)], dim=1)
+            mask_input = torch.cat(
+                [
+                    mask_input,
+                    2
+                    * torch.ones(
+                        [1, hidden_states.shape[1] - mask_input.shape[1]],
+                        device=mask_input.device,
+                        dtype=mask_input.dtype,
+                    ),
+                ],
+                dim=1,
+            )
         return hidden_states, seq_lens, rope_embs, mask_input
 
     def after_transformer_block(

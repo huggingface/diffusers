@@ -516,7 +516,6 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         pose_video: Optional[List[Image.Image]] = None,
         init_first_frame: bool = False,
         num_chunks: int = 1,
-        sampling_fps: int = 16,
     ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, List[torch.Tensor]]]:
         num_latent_frames = (
             num_frames_per_chunk + 3 + self.motion_frames
@@ -584,19 +583,26 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
     ):
         if pose_video is not None:
             padding_frame_num = num_chunks * num_frames_per_chunk - pose_video.shape[2]
-            pose_video = torch.cat([pose_video, -torch.ones([1, 3, padding_frame_num, height, width])], dim=2)
+            pose_video = pose_video.to(dtype=self.vae.dtype, device=self.vae.device)
+            pose_video = torch.cat(
+                [
+                    pose_video,
+                    -torch.ones(
+                        [1, 3, padding_frame_num, height, width], dtype=self.vae.dtype, device=self.vae.device
+                    ),
+                ],
+                dim=2,
+            )
 
             pose_video = torch.chunk(pose_video, num_chunks, dim=2)
         else:
             pose_video = [-torch.ones([1, 3, num_frames_per_chunk, height, width])]
 
         # Vectorized processing: concatenate all chunks along batch dimension
-        all_poses = torch.cat([
-            torch.cat([cond[:, :, 0:1], cond], dim=2)
-            for cond in pose_video
-        ], dim=0)  # Shape: [num_chunks, 3, num_frames_per_chunk+1, height, width]
+        all_poses = torch.cat(
+            [torch.cat([cond[:, :, 0:1], cond], dim=2) for cond in pose_video], dim=0
+        )  # Shape: [num_chunks, 3, num_frames_per_chunk+1, height, width]
 
-        all_poses = all_poses.to(dtype=self.vae.dtype, device=self.vae.device)
         pose_condition = retrieve_latents(self.vae.encode(all_poses), sample_mode="argmax")[:, :, 1:]
         pose_condition = (pose_condition - latents_mean) * latents_std
 
@@ -820,7 +826,7 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             num_chunks = num_chunks_audio
         audio_embeds = audio_embeds.to(transformer_dtype)
 
-        latent_motion_frames = (self.motion_frames + 3) // 4
+        latent_motion_frames = (self.motion_frames + 3) // self.vae_scale_factor_temporal
 
         # 5. Prepare latent variables
         num_channels_latents = self.vae.config.z_dim
@@ -848,7 +854,6 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 pose_video,
                 init_first_frame,
                 num_chunks,
-                sampling_fps,
             )
 
             if r == 0:
