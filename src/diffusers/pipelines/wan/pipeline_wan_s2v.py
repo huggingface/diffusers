@@ -343,7 +343,7 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             batch_audio_eb.append(frame_audio_embed)
         audio_embed_bucket = torch.cat([c.unsqueeze(0) for c in batch_audio_eb], dim=0)
 
-        audio_embed_bucket = audio_embed_bucket.to(device, self.dtype)
+        audio_embed_bucket = audio_embed_bucket.to(device)
         audio_embed_bucket = audio_embed_bucket.unsqueeze(0)
         if len(audio_embed_bucket.shape) == 3:
             audio_embed_bucket = audio_embed_bucket.permute(0, 2, 1)
@@ -857,7 +857,7 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             with torch.no_grad():
                 left_idx = r * num_frames_per_chunk
                 right_idx = r * num_frames_per_chunk + num_frames_per_chunk
-                pose_latents = pose_condition[r] if pose_video else pose_condition[0] * 0
+                pose_latents = pose_condition[r] if pose_video is not None else pose_condition[0] * 0
                 pose_latents = pose_latents.to(dtype=transformer_dtype, device=device)
                 audio_embeds_input = audio_embeds[..., left_idx:right_idx]
             motion_latents_input = motion_latents.to(transformer_dtype).clone()

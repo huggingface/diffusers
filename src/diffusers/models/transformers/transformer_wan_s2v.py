@@ -186,9 +186,9 @@ class AdaLayerNorm(nn.Module):
 
     Parameters:
         embedding_dim (`int`): The size of each embedding vector.
-        output_dim (`int`, *optional*):
-        norm_elementwise_affine (`bool`, defaults to `False):
-        norm_eps (`bool`, defaults to `False`):
+        output_dim (`int`, *optional*): Output dimension for the layer.
+        norm_elementwise_affine (`bool`, defaults to `False`): Whether to use elementwise affine in LayerNorm.
+        norm_eps (`float`, defaults to `1e-5`): Epsilon value for LayerNorm.
     """
 
     def __init__(
