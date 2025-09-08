@@ -978,9 +978,8 @@ class WanS2VTransformer3DModel(
             mask_input = torch.cat(
                 [
                     mask_input,
-                    2
-                    * torch.ones(
-                        [1, hidden_states.shape[1] - mask_input.shape[1]],
+                    2 * torch.ones(
+                        [mask_input.shape[0], 1, hidden_states.shape[1] - mask_input.shape[1]],
                         device=mask_input.device,
                         dtype=mask_input.dtype,
                     ),
