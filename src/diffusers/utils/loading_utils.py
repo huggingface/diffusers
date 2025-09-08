@@ -59,6 +59,9 @@ def load_image(
 def load_video(
     video: str,
     convert_method: Optional[Callable[[List[PIL.Image.Image]], List[PIL.Image.Image]]] = None,
+    n_frames: Optional[int] = None,
+    target_fps: Optional[int] = None,
+    reverse: bool = False,
 ) -> List[PIL.Image.Image]:
     """
     Loads `video` to a list of PIL Image.
@@ -69,6 +72,13 @@ def load_video(
         convert_method (Callable[[List[PIL.Image.Image]], List[PIL.Image.Image]], *optional*):
             A conversion method to apply to the video after loading it. When set to `None` the images will be converted
             to "RGB".
+        n_frames (`int`, *optional*):
+            Number of frames to sample from the video. If None, all frames are loaded.
+        target_fps (`int`, *optional*):
+            Target sampling frame rate. If None, uses original frame rate.
+        reverse (`bool`, *optional*):
+            If True, samples frames starting from the beginning of the video; if False, samples frames starting from the end.
+            Defaults to False.
 
     Returns:
         `List[PIL.Image.Image]`:
@@ -127,9 +137,40 @@ def load_video(
             )
 
         with imageio.get_reader(video) as reader:
-            # Read all frames
-            for frame in reader:
-                pil_images.append(PIL.Image.fromarray(frame))
+            # Determine which frames to sample
+            if n_frames is not None and target_fps is not None:
+                # Get video metadata
+                total_frames = reader.count_frames()
+                original_fps = reader.get_meta_data().get('fps')
+                
+                # Calculate sampling interval based on target fps
+                interval = max(1, round(original_fps / target_fps))
+                required_span = (n_frames - 1) * interval
+
+                if reverse:
+                    start_frame = 0
+                else:
+                    start_frame = max(0, total_frames - required_span - 1)
+
+                # Generate sampling indices
+                sampled_indices = []
+                for i in range(n_frames):
+                    indice = start_frame + i * interval
+                    if indice >= total_frames:
+                        break
+                    sampled_indices.append(int(indice))
+
+                # Read specific frames
+                for idx in sampled_indices:
+                    try:
+                        frame = reader.get_data(idx)
+                        pil_images.append(PIL.Image.fromarray(frame))
+                    except IndexError:
+                        break
+            else:
+                # Read all frames
+                for frame in reader:
+                    pil_images.append(PIL.Image.fromarray(frame))
 
     if was_tempfile_created:
         os.remove(video_path)
