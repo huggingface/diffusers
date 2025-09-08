@@ -263,7 +263,6 @@ class QwenImagePrepareLatentsWithStrengthStep(ModularPipelineBlocks):
         if image_latents.ndim != 3:
             raise ValueError(f"`image_latents` must have 3 dimensions (patchified), but got {image_latents.ndim}")
 
-
     @torch.no_grad()
     def __call__(self, components: QwenImageModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
@@ -294,7 +293,7 @@ class QwenImageCreateMaskLatentsStep(ModularPipelineBlocks):
 
     @property
     def description(self) -> str:
-        return "Step that creates mask latents from preprocessed mask_image by interpolating to latent space. Output is not patchified."
+        return "Step that creates mask latents from preprocessed mask_image by interpolating to latent space."
 
     @property
     def expected_components(self) -> List[ComponentSpec]:
@@ -572,7 +571,7 @@ class QwenImageEditRoPEInputsStep(ModularPipelineBlocks):
 
     @property
     def description(self) -> str:
-        return "Step that prepares the RoPE inputs for the text-to-image generation process. This is used in QwenImage Edit. Should be place after prepare_latents step"
+        return "Step that prepares the RoPE inputs for denoising process. This is used in QwenImage Edit. Should be place after prepare_latents step"
 
     @property
     def inputs(self) -> List[InputParam]:

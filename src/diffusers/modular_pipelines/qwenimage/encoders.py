@@ -186,11 +186,22 @@ def encode_vae_image(
     return image_latents
 
 
-# YiYi TODO: Check if this step need to be dynamic
 class QwenImageEditResizeDynamicStep(ModularPipelineBlocks):
     model_name = "qwenimage"
 
     def __init__(self, input_name: str = "image", output_name: str = "resized_image"):
+        """Create a configurable step for resizing images to the target area (1024 * 1024) while maintaining the aspect ratio.
+
+        This block resizes an input image tensor and exposes the resized result
+        under configurable input and output names. Use this when you need to wire the
+        resize step to different image fields (e.g., "image", "control_image")
+
+        Args:
+            input_name (str, optional): Name of the image field to read from the
+                pipeline state. Defaults to "image".
+            output_name (str, optional): Name of the resized image field to write
+                back to the pipeline state. Defaults to "resized_image".
+        """
         if not isinstance(input_name, str) or not isinstance(output_name, str):
             raise ValueError(
                 f"input_name and output_name must be strings but are {type(input_name)} and {type(output_name)}"
@@ -505,7 +516,7 @@ class QwenImageInpaintProcessImagesInputStep(ModularPipelineBlocks):
 
     @property
     def description(self) -> str:
-        return "Image Preprocess step for inpainting task. This processes the image and mask inputs together. Images need to be resized first using either the QwenImageResizeStep or QwenImageEditResizeStep."
+        return "Image Preprocess step for inpainting task. This processes the image and mask inputs together. Images can be resized first using QwenImageEditResizeDynamicStep."
 
     @property
     def expected_components(self) -> List[ComponentSpec]:
@@ -586,7 +597,7 @@ class QwenImageProcessImagesInputStep(ModularPipelineBlocks):
 
     @property
     def description(self) -> str:
-        return "Image Preprocess step. Images need to be resized first using either the QwenImageResizeStep or QwenImageEditResizeStep."
+        return "Image Preprocess step. Images can be resized first using QwenImageEditResizeDynamicStep."
 
     @property
     def expected_components(self) -> List[ComponentSpec]:
@@ -658,7 +669,11 @@ class QwenImageVaeEncoderDynamicStep(ModularPipelineBlocks):
         input_name: str = "processed_image",
         output_name: str = "image_latents",
     ):
-        """Initialize a dynamic VAE encoder step for converting images to latent representations.
+        """Initialize a VAE encoder step for converting images to latent representations.
+
+        Both the input and output names are configurable so this block can be
+        configured to process to different image inputs (e.g., "processed_image" -> "image_latents",
+        "processed_control_image" -> "control_image_latents").
 
         Args:
             input_name (str, optional): Name of the input image tensor. Defaults to "processed_image".

@@ -25,6 +25,7 @@ else:
     _import_structure["modular_blocks"] = [
         "ALL_BLOCKS",
         "AUTO_BLOCKS",
+        "EDIT_AUTO_BLOCKS",
         "CONTROLNET_BLOCKS",
         "EDIT_BLOCKS",
         "EDIT_INPAINT_BLOCKS",
@@ -48,6 +49,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         )
         from .modular_blocks import (
             ALL_BLOCKS,
+            AUTO_BLOCKS,
+            EDIT_AUTO_BLOCKS,
             CONTROLNET_BLOCKS,
             EDIT_BLOCKS,
             EDIT_INPAINT_BLOCKS,

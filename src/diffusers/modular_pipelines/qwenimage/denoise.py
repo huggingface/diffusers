@@ -539,7 +539,7 @@ class QwenImageDenoiseStep(QwenImageDenoiseLoopWrapper):
             " - `QwenImageLoopBeforeDenoiser`\n"
             " - `QwenImageLoopDenoiser`\n"
             " - `QwenImageLoopAfterDenoiser`\n"
-            "This block supports text2img tasks."
+            "This block supports text2image and image2image tasks for QwenImage."
         )
 
 
@@ -563,7 +563,7 @@ class QwenImageInpaintDenoiseStep(QwenImageDenoiseLoopWrapper):
             " - `QwenImageLoopDenoiser`\n"
             " - `QwenImageLoopAfterDenoiser`\n"
             " - `QwenImageLoopAfterDenoiserInpaint`\n"
-            "This block supports inpainting tasks."
+            "This block supports inpainting tasks for QwenImage."
         )
 
 
@@ -587,7 +587,7 @@ class QwenImageControlNetDenoiseStep(QwenImageDenoiseLoopWrapper):
             " - `QwenImageLoopBeforeDenoiserControlNet`\n"
             " - `QwenImageLoopDenoiser`\n"
             " - `QwenImageLoopAfterDenoiser`\n"
-            "This block supports text2img tasks."
+            "This block supports text2img/img2img tasks with controlnet for QwenImage."
         )
 
 
@@ -619,7 +619,7 @@ class QwenImageInpaintControlNetDenoiseStep(QwenImageDenoiseLoopWrapper):
             " - `QwenImageLoopDenoiser`\n"
             " - `QwenImageLoopAfterDenoiser`\n"
             " - `QwenImageLoopAfterDenoiserInpaint`\n"
-            "This block supports inpainting tasks with controlnet."
+            "This block supports inpainting tasks with controlnet for QwenImage."
         )
 
 
@@ -641,7 +641,7 @@ class QwenImageEditDenoiseStep(QwenImageDenoiseLoopWrapper):
             " - `QwenImageEditLoopBeforeDenoiser`\n"
             " - `QwenImageEditLoopDenoiser`\n"
             " - `QwenImageLoopAfterDenoiser`\n"
-            "This block supports image-to-image tasks for QwenImage Edit."
+            "This block supports QwenImage Edit."
         )
 
 

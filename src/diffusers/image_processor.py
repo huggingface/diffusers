@@ -523,8 +523,6 @@ class VaeImageProcessor(ConfigMixin):
                 size=(height, width),
             )
             image = self.pt_to_numpy(image)
-        else:
-            raise ValueError(f"Unsupported image type: {type(image)}")
 
         return image
 
