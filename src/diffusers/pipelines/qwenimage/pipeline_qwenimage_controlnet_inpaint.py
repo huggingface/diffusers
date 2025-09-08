@@ -46,12 +46,19 @@ EXAMPLE_DOC_STRING = """
         >>> import torch
         >>> from diffusers.utils import load_image
         >>> from diffusers import QwenImageControlNetModel, QwenImageControlNetInpaintPipeline
+
         >>> base_model_path = "Qwen/Qwen-Image"
         >>> controlnet_model_path = "InstantX/Qwen-Image-ControlNet-Inpainting"
         >>> controlnet = QwenImageControlNetModel.from_pretrained(controlnet_model_path, torch_dtype=torch.bfloat16)
-        >>> pipe = QwenImageControlNetInpaintPipeline.from_pretrained(base_model_path, controlnet=controlnet, torch_dtype=torch.bfloat16).to("cuda")
-        >>> image = load_image("https://huggingface.co/InstantX/Qwen-Image-ControlNet-Inpainting/resolve/main/assets/images/image1.png")
-        >>> mask_image = load_image("https://huggingface.co/InstantX/Qwen-Image-ControlNet-Inpainting/resolve/main/assets/masks/mask1.png")
+        >>> pipe = QwenImageControlNetInpaintPipeline.from_pretrained(
+        ...     base_model_path, controlnet=controlnet, torch_dtype=torch.bfloat16
+        ... ).to("cuda")
+        >>> image = load_image(
+        ...     "https://huggingface.co/InstantX/Qwen-Image-ControlNet-Inpainting/resolve/main/assets/images/image1.png"
+        ... )
+        >>> mask_image = load_image(
+        ...     "https://huggingface.co/InstantX/Qwen-Image-ControlNet-Inpainting/resolve/main/assets/masks/mask1.png"
+        ... )
         >>> prompt = "一辆绿色的出租车行驶在路上"
         >>> result = pipe(
         ...     prompt=prompt,
@@ -80,6 +87,7 @@ def calculate_shift(
     mu = image_seq_len * m + b
     return mu
 
+
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.retrieve_latents
 def retrieve_latents(
     encoder_output: torch.Tensor, generator: Optional[torch.Generator] = None, sample_mode: str = "sample"
@@ -93,6 +101,7 @@ def retrieve_latents(
     else:
         raise AttributeError("Could not access latents of provided encoder_output")
 
+
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.retrieve_timesteps
 def retrieve_timesteps(
     scheduler,
@@ -105,6 +114,7 @@ def retrieve_timesteps(
     r"""
     Calls the scheduler's `set_timesteps` method and retrieves timesteps from the scheduler after the call. Handles
     custom timesteps. Any kwargs will be supplied to `scheduler.set_timesteps`.
+
     Args:
         scheduler (`SchedulerMixin`):
             The scheduler to get timesteps from.
@@ -154,6 +164,7 @@ def retrieve_timesteps(
 class QwenImageControlNetInpaintPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
     r"""
     The QwenImage pipeline for text-to-image generation.
+
     Args:
         transformer ([`QwenImageTransformer2DModel`]):
             Conditional Transformer (MMDiT) architecture to denoise the encoded image latents.
@@ -472,7 +483,7 @@ class QwenImageControlNetInpaintPipeline(DiffusionPipeline, QwenImageLoraLoaderM
             image = torch.cat([image] * 2)
 
         return image
-    
+
     # Copied from diffusers.pipelines.controlnet_sd3.pipeline_stable_diffusion_3_controlnet_inpainting.StableDiffusion3ControlNetPipeline.prepare_image_with_mask
     def prepare_image_with_mask(
         self,
@@ -501,7 +512,7 @@ class QwenImageControlNetInpaintPipeline(DiffusionPipeline, QwenImageLoraLoaderM
             repeat_by = num_images_per_prompt
 
         image = image.repeat_interleave(repeat_by, dim=0)
-        image = image.to(device=device, dtype=dtype) # (bsz, 3, height_ori, width_ori)
+        image = image.to(device=device, dtype=dtype)  # (bsz, 3, height_ori, width_ori)
 
         # Prepare mask
         if isinstance(mask, torch.Tensor):
@@ -509,37 +520,39 @@ class QwenImageControlNetInpaintPipeline(DiffusionPipeline, QwenImageLoraLoaderM
         else:
             mask = self.mask_processor.preprocess(mask, height=height, width=width)
         mask = mask.repeat_interleave(repeat_by, dim=0)
-        mask = mask.to(device=device, dtype=dtype) # (bsz, 1, height_ori, width_ori)
+        mask = mask.to(device=device, dtype=dtype)  # (bsz, 1, height_ori, width_ori)
 
         if image.ndim == 4:
             image = image.unsqueeze(2)
-        
+
         if mask.ndim == 4:
             mask = mask.unsqueeze(2)
 
         # Get masked image
         masked_image = image.clone()
-        masked_image[(mask > 0.5).repeat(1, 3, 1, 1, 1)] = -1 # (bsz, 3, 1, height_ori, width_ori)
-        
+        masked_image[(mask > 0.5).repeat(1, 3, 1, 1, 1)] = -1  # (bsz, 3, 1, height_ori, width_ori)
+
         self.vae_scale_factor = 2 ** len(self.vae.temperal_downsample)
         latents_mean = (torch.tensor(self.vae.config.latents_mean).view(1, self.vae.config.z_dim, 1, 1, 1)).to(device)
-        latents_std = 1.0 / torch.tensor(self.vae.config.latents_std).view(1, self.vae.config.z_dim, 1, 1, 1).to(device)
+        latents_std = 1.0 / torch.tensor(self.vae.config.latents_std).view(1, self.vae.config.z_dim, 1, 1, 1).to(
+            device
+        )
 
         # Encode to latents
         image_latents = self.vae.encode(masked_image.to(self.vae.dtype)).latent_dist.sample()
-        image_latents = (
-            image_latents - latents_mean
-        ) * latents_std
-        image_latents = image_latents.to(dtype) # torch.Size([1, 16, 1, height_ori//8, width_ori//8])
+        image_latents = (image_latents - latents_mean) * latents_std
+        image_latents = image_latents.to(dtype)  # torch.Size([1, 16, 1, height_ori//8, width_ori//8])
 
         mask = torch.nn.functional.interpolate(
             mask, size=(image_latents.shape[-3], image_latents.shape[-2], image_latents.shape[-1])
         )
-        mask = 1 - mask # torch.Size([1, 1, 1, height_ori//8, width_ori//8])
+        mask = 1 - mask  # torch.Size([1, 1, 1, height_ori//8, width_ori//8])
 
-        control_image = torch.cat([image_latents, mask], dim=1) # torch.Size([1, 16+1, 1, height_ori//8, width_ori//8])
+        control_image = torch.cat(
+            [image_latents, mask], dim=1
+        )  # torch.Size([1, 16+1, 1, height_ori//8, width_ori//8])
 
-        control_image = control_image.permute(0, 2, 1, 3, 4) # torch.Size([1, 1, 16+1, height_ori//8, width_ori//8])
+        control_image = control_image.permute(0, 2, 1, 3, 4)  # torch.Size([1, 1, 16+1, height_ori//8, width_ori//8])
 
         # pack
         control_image = self._pack_latents(
@@ -608,6 +621,7 @@ class QwenImageControlNetInpaintPipeline(DiffusionPipeline, QwenImageLoraLoaderM
     ):
         r"""
         Function invoked when calling the pipeline for generation.
+
         Args:
             prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds`.
@@ -670,8 +684,7 @@ class QwenImageControlNetInpaintPipeline(DiffusionPipeline, QwenImageLoraLoaderM
                 will be passed as `callback_kwargs` argument. You will only be able to include variables listed in the
                 `._callback_tensor_inputs` attribute of your pipeline class.
             max_sequence_length (`int` defaults to 512): Maximum sequence length to use with the `prompt`.
-        Examples:
-        Returns:
+        Examples: Returns:
             [`~pipelines.qwenimage.QwenImagePipelineOutput`] or `tuple`:
             [`~pipelines.qwenimage.QwenImagePipelineOutput`] if `return_dict` is True, otherwise a `tuple`. When
             returning a tuple, the first element is a list with the generated images.
@@ -839,7 +852,7 @@ class QwenImageControlNetInpaintPipeline(DiffusionPipeline, QwenImageLoraLoaderM
                     txt_seq_lens=prompt_embeds_mask.sum(dim=1).tolist(),
                     return_dict=False,
                 )
-                
+
                 with self.transformer.cache_context("cond"):
                     noise_pred = self.transformer(
                         hidden_states=latents,
