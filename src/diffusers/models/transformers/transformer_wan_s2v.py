@@ -979,12 +979,12 @@ class WanS2VTransformer3DModel(
                 [
                     mask_input,
                     2 * torch.ones(
-                        [mask_input.shape[0], 1, hidden_states.shape[1] - mask_input.shape[1]],
+                        [mask_input.shape[0], 1, hidden_states.shape[1] - mask_input.shape[2]],
                         device=mask_input.device,
                         dtype=mask_input.dtype,
                     ),
                 ],
-                dim=1,
+                dim=2,
             )
         return hidden_states, seq_lens, rope_embs, mask_input
 
@@ -1128,9 +1128,9 @@ class WanS2VTransformer3DModel(
             add_last_motion,
         )
 
-        hidden_states = torch.cat(hidden_states)
-        rotary_emb = torch.cat(rotary_emb)
-        mask_input = torch.cat(mask_input)
+        #hidden_states = torch.cat(hidden_states)
+        #rotary_emb = torch.cat(rotary_emb)
+        #mask_input = torch.cat(mask_input)
 
         hidden_states = hidden_states + self.trainable_condition_mask(mask_input).to(hidden_states.dtype)
 
