@@ -77,8 +77,8 @@ def load_video(
         target_fps (`int`, *optional*):
             Target sampling frame rate. If None, uses original frame rate.
         reverse (`bool`, *optional*):
-            If True, samples frames starting from the beginning of the video; if False, samples frames starting from the end.
-            Defaults to False.
+            If True, samples frames starting from the beginning of the video; if False, samples frames starting from
+            the end. Defaults to False.
 
     Returns:
         `List[PIL.Image.Image]`:
@@ -141,8 +141,8 @@ def load_video(
             if n_frames is not None and target_fps is not None:
                 # Get video metadata
                 total_frames = reader.count_frames()
-                original_fps = reader.get_meta_data().get('fps')
-                
+                original_fps = reader.get_meta_data().get("fps")
+
                 # Calculate sampling interval based on target fps
                 interval = max(1, round(original_fps / target_fps))
                 required_span = (n_frames - 1) * interval

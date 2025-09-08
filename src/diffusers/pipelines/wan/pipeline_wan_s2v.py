@@ -20,9 +20,7 @@ import numpy as np
 import regex as re
 import torch
 import torch.nn.functional as F
-from decord import VideoReader
 from PIL import Image
-from torchvision import transforms
 from transformers import AutoTokenizer, UMT5EncoderModel, Wav2Vec2ForCTC, Wav2Vec2Processor
 
 from ...audio_processor import PipelineAudioInput
@@ -567,7 +565,7 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             motion_pixels = torch.zeros([1, 3, self.motion_frames, height, width], dtype=self.vae.dtype, device=device)
             # Get pose condition input if needed
             pose_condition = self.load_pose_condition(
-                pose_video, num_chunks, num_frames_per_chunk, (height, width), sampling_fps, latents_mean, latents_std
+                pose_video, num_chunks, num_frames_per_chunk, height, width, latents_mean, latents_std
             )
             # Encode motion latents
             if init_first_frame:
@@ -581,15 +579,16 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         else:
             return latents
 
-    def load_pose_condition(self, pose_video, num_chunks, num_frames_per_chunk, size, latents_mean, latents_std):
-        HEIGHT, WIDTH = size
+    def load_pose_condition(
+        self, pose_video, num_chunks, num_frames_per_chunk, height, width, latents_mean, latents_std
+    ):
         if pose_video is not None:
             padding_frame_num = num_chunks * num_frames_per_chunk - pose_video.shape[2]
-            pose_video = torch.cat([pose_video, -torch.ones([1, 3, padding_frame_num, HEIGHT, WIDTH])], dim=2)
+            pose_video = torch.cat([pose_video, -torch.ones([1, 3, padding_frame_num, height, width])], dim=2)
 
             pose_video = torch.chunk(pose_video, num_chunks, dim=2)
         else:
-            pose_video = [-torch.ones([1, 3, num_frames_per_chunk, HEIGHT, WIDTH])]
+            pose_video = [-torch.ones([1, 3, num_frames_per_chunk, height, width])]
 
         pose_condition = []
         for cond in pose_video:
