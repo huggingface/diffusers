@@ -951,7 +951,7 @@ class WanS2VTransformer3DModel(
         flattern_mot, mot_remb = self.frame_packer(motion_latents, add_last_motion)
 
         if drop_motion_frames:
-            return [m[:, :0] for m in flattern_mot], [m[:, :0] for m in mot_remb]
+            return flattern_mot[:,:,:0], mot_remb[:,:,:0]
         else:
             return flattern_mot, mot_remb
 
