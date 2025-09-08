@@ -386,6 +386,10 @@ else:
         [
             "FluxAutoBlocks",
             "FluxModularPipeline",
+            "QwenImageAutoBlocks",
+            "QwenImageEditAutoBlocks",
+            "QwenImageEditModularPipeline",
+            "QwenImageModularPipeline",
             "StableDiffusionXLAutoBlocks",
             "StableDiffusionXLModularPipeline",
             "WanAutoBlocks",
@@ -1041,6 +1045,10 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .modular_pipelines import (
             FluxAutoBlocks,
             FluxModularPipeline,
+            QwenImageAutoBlocks,
+            QwenImageEditAutoBlocks,
+            QwenImageEditModularPipeline,
+            QwenImageModularPipeline,
             StableDiffusionXLAutoBlocks,
             StableDiffusionXLModularPipeline,
             WanAutoBlocks,
