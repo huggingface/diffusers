@@ -241,13 +241,6 @@ class QwenImagePrepareLatentsWithStrengthStep(ModularPipelineBlocks):
                 type_hint=torch.Tensor,
                 description="The timesteps to use for the denoising process. Can be generated in set_timesteps step.",
             ),
-            InputParam(
-                name="batch_size",
-                required=True,
-                type_hint=int,
-                description="Number of prompts, the final batch size of model inputs should be batch_size * num_images_per_prompt. Can be generated in expand textinput step.",
-            ),
-            InputParam(name="num_images_per_prompt", required=True),
         ]
 
     @property
@@ -262,30 +255,26 @@ class QwenImagePrepareLatentsWithStrengthStep(ModularPipelineBlocks):
 
     @staticmethod
     def check_inputs(image_latents, latents, batch_size):
-        if image_latents.shape[0] != batch_size:
+        if image_latents.shape[0] != latents.shape[0]:
             raise ValueError(
-                f"`image_latents` must have have batch size {batch_size}, but got {image_latents.shape[0]}"
+                f"`image_latents` must have have same batch size as `latents`, but got {image_latents.shape[0]} and {latents.shape[0]}"
             )
 
         if image_latents.ndim != 3:
             raise ValueError(f"`image_latents` must have 3 dimensions (patchified), but got {image_latents.ndim}")
 
-        if latents.shape[0] != batch_size:
-            raise ValueError(f"`latents` must have have batch size {batch_size}, but got {latents.shape[0]}")
 
     @torch.no_grad()
     def __call__(self, components: QwenImageModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
-        final_batch_size = block_state.batch_size * block_state.num_images_per_prompt
 
         self.check_inputs(
             image_latents=block_state.image_latents,
             latents=block_state.latents,
-            batch_size=final_batch_size,
         )
 
         # prepare latent timestep
-        latent_timestep = block_state.timesteps[:1].repeat(final_batch_size)
+        latent_timestep = block_state.timesteps[:1].repeat(block_state.latents.shape[0])
 
         # make copy of initial_noise
         block_state.initial_noise = block_state.latents
