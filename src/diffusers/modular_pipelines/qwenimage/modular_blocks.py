@@ -326,8 +326,8 @@ class QwenImageAutoInputStep(AutoPipelineBlocks):
     @property
     def description(self):
         return (
-            "Input step that prepare the inputs for the denoising step."
-            + "This is an auto pipeline block.\n"
+            "Input step that standardize the inputs for the denoising step, e.g. make sure inputs have consistent batch size, and patchified. \n"
+            " This is an auto pipeline block that works for text2image/inpaint/img2img tasks.\n"
             + " - `QwenImageInpaintInputStep` (inpaint) is used when `processed_mask_image` is provided.\n"
             + " - `QwenImageImg2ImgInputStep` (img2img) is used when `image_latents` is provided.\n"
             + " - `QwenImageTextInputsStep` (text2image) is used when both `processed_mask_image` and `image_latents` are not provided.\n"
@@ -505,7 +505,7 @@ class QwenImageAutoDecodeStep(AutoPipelineBlocks):
     def description(self):
         return (
             "Decode step that decode the latents into images. \n"
-            " This is an auto pipeline block that works for inpaint/text2image/img2img tasks.\n"
+            " This is an auto pipeline block that works for inpaint/text2image/img2img tasks, for both QwenImage and QwenImage-Edit.\n"
             + " - `QwenImageInpaintDecodeStep` (inpaint) is used when `mask` is provided.\n"
             + " - `QwenImageDecodeStep` (text2image/img2img) is used when `mask` is not provided.\n"
         )
@@ -791,7 +791,7 @@ class QwenImageEditAutoDenoiseStep(AutoPipelineBlocks):
     def description(self):
         return (
             "Denoise step that iteratively denoise the latents. \n"
-            + "This block supports edit (img2img) and edit inpaint tasks for QwenImage Edit."
+            + "This block supports edit (img2img) and edit inpaint tasks for QwenImage Edit. \n"
             + " - `QwenImageEditInpaintDenoiseStep` (inpaint) is used when `processed_mask_image` is provided.\n"
             + " - `QwenImageEditDenoiseStep` (img2img) is used when `image_latents` is provided.\n"
             + " - if `processed_mask_image` or `image_latents` is not provided, step will be skipped."
