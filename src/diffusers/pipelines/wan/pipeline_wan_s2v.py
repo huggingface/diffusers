@@ -581,31 +581,18 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         else:
             return latents
 
-    def load_pose_condition(
-        self, pose_video, num_chunks, num_frames_per_chunk, size, sampling_fps, latents_mean, latents_std
-    ):
+    def load_pose_condition(self, pose_video, num_chunks, num_frames_per_chunk, size, latents_mean, latents_std):
         HEIGHT, WIDTH = size
         if pose_video is not None:
-            pose_seq = self.read_last_n_frames(
-                pose_video, n_frames=num_frames_per_chunk * num_chunks, target_fps=sampling_fps, reverse=True
-            )
+            padding_frame_num = num_chunks * num_frames_per_chunk - pose_video.shape[2]
+            pose_video = torch.cat([pose_video, -torch.ones([1, 3, padding_frame_num, HEIGHT, WIDTH])], dim=2)
 
-            resize_opreat = transforms.Resize(min(HEIGHT, WIDTH))
-            crop_opreat = transforms.CenterCrop((HEIGHT, WIDTH))
-
-            cond_tensor = torch.from_numpy(pose_seq)
-            cond_tensor = cond_tensor.permute(0, 3, 1, 2) / 255.0 * 2 - 1.0
-            cond_tensor = crop_opreat(resize_opreat(cond_tensor)).permute(1, 0, 2, 3).unsqueeze(0)
-
-            padding_frame_num = num_chunks * num_frames_per_chunk - cond_tensor.shape[2]
-            cond_tensor = torch.cat([cond_tensor, -torch.ones([1, 3, padding_frame_num, HEIGHT, WIDTH])], dim=2)
-
-            cond_tensors = torch.chunk(cond_tensor, num_chunks, dim=2)
+            pose_video = torch.chunk(pose_video, num_chunks, dim=2)
         else:
-            cond_tensors = [-torch.ones([1, 3, num_frames_per_chunk, HEIGHT, WIDTH])]
+            pose_video = [-torch.ones([1, 3, num_frames_per_chunk, HEIGHT, WIDTH])]
 
         pose_condition = []
-        for cond in cond_tensors:
+        for cond in pose_video:
             cond = torch.cat([cond[:, :, 0:1], cond], dim=2)
             cond = cond.to(dtype=self.dtype, device=self._execution_device)
             cond_lat = retrieve_latents(self.vae.encode(cond), sample_mode="argmax")[:, :, 1:]
@@ -613,40 +600,6 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             pose_condition.append(cond_lat)
 
         return pose_condition
-
-    def read_last_n_frames(self, video_path, n_frames, target_fps=16, reverse=False):
-        """
-        Read the last `n_frames` from a video at the specified frame rate.
-
-        Parameters:
-            video_path (str): Path to the video file.
-            n_frames (int): Number of frames to read.
-            target_fps (int, optional): Target sampling frame rate. Defaults to 16.
-            reverse (bool, optional): Whether to read frames in reverse order.
-                                    If True, reads the first `n_frames` instead of the last ones.
-
-        Returns:
-            np.ndarray: A NumPy array of shape [n_frames, H, W, 3], representing the sampled video frames.
-        """
-        vr = VideoReader(video_path)
-        original_fps = vr.get_avg_fps()
-        total_frames = len(vr)
-
-        interval = max(1, round(original_fps / target_fps))
-
-        required_span = (n_frames - 1) * interval
-
-        start_frame = max(0, total_frames - required_span - 1) if not reverse else 0
-
-        sampled_indices = []
-        for i in range(n_frames):
-            indice = start_frame + i * interval
-            if indice >= total_frames:
-                break
-            else:
-                sampled_indices.append(indice)
-
-        return vr.get_batch(sampled_indices).asnumpy()
 
     @property
     def guidance_scale(self):
@@ -872,6 +825,11 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         num_channels_latents = self.vae.config.z_dim
         image = self.video_processor.preprocess(image, height=height, width=width).to(device, dtype=torch.float32)
 
+        if pose_video is not None:
+            pose_video = self.video_processor.preprocess_video(pose_video, height=height, width=width).to(
+                device, dtype=torch.float32
+            )
+
         all_latents = []
         for r in range(num_chunks):
             latents_outputs = self.prepare_latents(
@@ -900,7 +858,7 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             with torch.no_grad():
                 left_idx = r * num_frames_per_chunk
                 right_idx = r * num_frames_per_chunk + num_frames_per_chunk
-                pose_latents = pose_condition[r] if pose_video else pose_condition[0]
+                pose_latents = pose_condition[r] if pose_video else pose_condition[0] * 0
                 pose_latents = pose_latents.to(dtype=transformer_dtype, device=device)
                 audio_embeds_input = audio_embeds[..., left_idx:right_idx]
             motion_latents_input = motion_latents.to(transformer_dtype).clone()
