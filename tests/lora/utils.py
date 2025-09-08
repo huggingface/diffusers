@@ -2309,7 +2309,7 @@ class PeftLoraLoaderMixinTests:
         pipe = self.pipeline_class(**components).to(torch_device)
         _, _, inputs = self.get_dummy_inputs(with_generator=False)
 
-        output_no_lora = self.cached_non_lora_outputs(scheduler_cls.__name__)
+        output_no_lora = self.cached_non_lora_outputs[scheduler_cls.__name__]
         self.assertTrue(output_no_lora.shape == self.output_shape)
 
         pipe, _ = self.add_adapters_to_pipeline(
