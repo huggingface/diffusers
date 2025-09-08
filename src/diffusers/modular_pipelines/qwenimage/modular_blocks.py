@@ -414,6 +414,7 @@ class QwenImageImg2ImgBeforeDenoiseStep(SequentialPipelineBlocks):
     def description(self):
         return "Before denoise step that prepare the inputs (timesteps, latents, rope inputs etc.) for the denoise step for img2img task."
 
+
 # auto before_denoise step for text2image, inpaint, img2img tasks
 class QwenImageAutoBeforeDenoiseStep(AutoPipelineBlocks):
     block_classes = [

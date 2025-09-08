@@ -192,9 +192,9 @@ class QwenImageEditResizeDynamicStep(ModularPipelineBlocks):
     def __init__(self, input_name: str = "image", output_name: str = "resized_image"):
         """Create a configurable step for resizing images to the target area (1024 * 1024) while maintaining the aspect ratio.
 
-        This block resizes an input image tensor and exposes the resized result
-        under configurable input and output names. Use this when you need to wire the
-        resize step to different image fields (e.g., "image", "control_image")
+        This block resizes an input image tensor and exposes the resized result under configurable input and output
+        names. Use this when you need to wire the resize step to different image fields (e.g., "image",
+        "control_image")
 
         Args:
             input_name (str, optional): Name of the image field to read from the
@@ -671,9 +671,8 @@ class QwenImageVaeEncoderDynamicStep(ModularPipelineBlocks):
     ):
         """Initialize a VAE encoder step for converting images to latent representations.
 
-        Both the input and output names are configurable so this block can be
-        configured to process to different image inputs (e.g., "processed_image" -> "image_latents",
-        "processed_control_image" -> "control_image_latents").
+        Both the input and output names are configurable so this block can be configured to process to different image
+        inputs (e.g., "processed_image" -> "image_latents", "processed_control_image" -> "control_image_latents").
 
         Args:
             input_name (str, optional): Name of the input image tensor. Defaults to "processed_image".
