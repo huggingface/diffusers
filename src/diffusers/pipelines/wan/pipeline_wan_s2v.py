@@ -57,15 +57,11 @@ EXAMPLE_DOC_STRING = """
         >>> import numpy as np
         >>> from diffusers import AutoencoderKLWan, WanSpeechToVideoPipeline
         >>> from diffusers.utils import export_to_video, load_image, load_audio, load_video
-        >>> from transformers import Wav2Vec2ForCTC
 
         >>> # Available models: Wan-AI/Wan2.2-S2V-14B-Diffusers
         >>> model_id = "Wan-AI/Wan2.2-S2V-14B-Diffusers"
         >>> vae = AutoencoderKLWan.from_pretrained(model_id, subfolder="vae", torch_dtype=torch.float32)
-        >>> audio_encoder = Wav2Vec2ForCTC.from_pretrained(model_id, subfolder="audio_encoder", dtype=torch.float32)
-        >>> pipe = WanSpeechToVideoPipeline.from_pretrained(
-        ...     model_id, vae=vae, audio_encoder=audio_encoder, torch_dtype=torch.bfloat16
-        ... )
+        >>> pipe = WanSpeechToVideoPipeline.from_pretrained(model_id, vae=vae, torch_dtype=torch.bfloat16)
         >>> pipe.to("cuda")
 
         >>> first_frame = load_image(
@@ -89,6 +85,7 @@ EXAMPLE_DOC_STRING = """
         ...     "the background. High quality, ultrarealistic detail and breath-taking movie-like camera shot."
         ... )
         >>> negative_prompt = "Bright tones, overexposed, static, blurred details, subtitles, style, works, paintings, images, static, overall gray, worst quality, low quality, JPEG compression residue, ugly, incomplete, extra fingers, poorly drawn hands, poorly drawn faces, deformed, disfigured, misshapen limbs, fused fingers, still picture, messy background, three legs, many people in the background, walking backwards"
+        >>> audio = load_audio(...)
 
         >>> output = pipe(
         ...     prompt=prompt,
@@ -100,6 +97,7 @@ EXAMPLE_DOC_STRING = """
         ...     height=height,
         ...     width=width,
         ...     num_frames_per_chunk=81,
+        ...     guidance_scale=5.0,
         ... ).frames[0]
         >>> export_to_video(output, "output.mp4", fps=16)
         ```
@@ -905,13 +903,10 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 audio_embeds_input = audio_embeds[..., left_idx:right_idx]
             motion_latents_input = motion_latents.to(transformer_dtype).clone()
 
-            # 4. Prepare timesteps
-            self.scheduler = UniPCMultistepScheduler.from_pretrained(
-                "tolgacangoz/Wan2.2-S2V-14B-Diffusers", subfolder="scheduler"
-            )
+            # 4. Prepare timesteps by resetting scheduler in each chunk
             self.scheduler.set_timesteps(num_inference_steps, device=device)
             timesteps = self.scheduler.timesteps
-
+            
             num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
             self._num_timesteps = len(timesteps)
 

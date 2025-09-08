@@ -250,7 +250,7 @@ The example below demonstrates how to use the speech-to-video pipeline to genera
 <hfoption id="usage">
 
 ```python
-import numpy as np
+import numpy as np, math
 import torch
 from diffusers import AutoencoderKLWan, WanSpeechToVideoPipeline
 from diffusers.utils import export_to_video, load_image, load_audio, load_video
@@ -267,24 +267,81 @@ pipe.to("cuda")
 
 first_frame = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/flf2v_input_first_frame.png")
 audio, sampling_rate = load_audio("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/flf2v_input_last_frame.png")
-pose_video = load_video("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/flf2v_input_pose_video.mp4")
+#pose_path = E.g., download from "https://github.com/Wan-Video/Wan2.2/raw/refs/heads/main/examples/pose.mp4"
 
-def aspect_ratio_resize(image, pipe, max_area=720 * 1280):
-    aspect_ratio = image.height / image.width
-    mod_value = pipe.vae_scale_factor_spatial * pipe.transformer.config.patch_size[1]
-    height = round(np.sqrt(max_area * aspect_ratio)) // mod_value * mod_value
-    width = round(np.sqrt(max_area / aspect_ratio)) // mod_value * mod_value
+def get_size_less_than_area(height,
+                            width,
+                            target_area=1024 * 704,
+                            divisor=64):
+    if height * width <= target_area:
+        # If the original image area is already less than or equal to the target,
+        # no resizing is needed—just padding. Still need to ensure that the padded area doesn't exceed the target.
+        max_upper_area = target_area
+        min_scale = 0.1
+        max_scale = 1.0
+    else:
+        # Resize to fit within the target area and then pad to multiples of `divisor`
+        max_upper_area = target_area  # Maximum allowed total pixel count after padding
+        d = divisor - 1
+        b = d * (height + width)
+        a = height * width
+        c = d**2 - max_upper_area
+
+        # Calculate scale boundaries using quadratic equation
+        min_scale = (-b + math.sqrt(b**2 - 2 * a * c)) / (2 * a)  # Scale when maximum padding is applied
+        max_scale = math.sqrt(max_upper_area / (height * width))  # Scale without any padding
+
+    # We want to choose the largest possible scale such that the final padded area does not exceed max_upper_area
+    # Use binary search-like iteration to find this scale
+    find_it = False
+    for i in range(100):
+        scale = max_scale - (max_scale - min_scale) * i / 100
+        new_height, new_width = int(height * scale), int(width * scale)
+
+        # Pad to make dimensions divisible by 64
+        pad_height = (64 - new_height % 64) % 64
+        pad_width = (64 - new_width % 64) % 64
+        pad_top = pad_height // 2
+        pad_bottom = pad_height - pad_top
+        pad_left = pad_width // 2
+        pad_right = pad_width - pad_left
+
+        padded_height, padded_width = new_height + pad_height, new_width + pad_width
+
+        if padded_height * padded_width <= max_upper_area:
+            find_it = True
+            break
+
+    if find_it:
+        return padded_height, padded_width
+    else:
+        # Fallback: calculate target dimensions based on aspect ratio and divisor alignment
+        aspect_ratio = width / height
+        target_width = int(
+            (target_area * aspect_ratio)**0.5 // divisor * divisor)
+        target_height = int(
+            (target_area / aspect_ratio)**0.5 // divisor * divisor)
+
+        # Ensure the result is not larger than the original resolution
+        if target_width >= width or target_height >= height:
+            target_width = int(width // divisor * divisor)
+            target_height = int(height // divisor * divisor)
+
+        return target_height, target_width
+
+def aspect_ratio_resize(image, pipe, max_area):
+    height, width = get_size_less_than_area(image.size[1], image.size[0], target_area=max_area)
     image = image.resize((width, height))
     return image, height, width
 
-first_frame, height, width = aspect_ratio_resize(first_frame, pipe)
+first_frame, height, width = aspect_ratio_resize(first_frame, pipe, 480*832)
 
-prompt = "CG animation style, a small blue bird takes off from the ground, flapping its wings. The bird's feathers are delicate, with a unique pattern on its chest. The background shows a blue sky with white clouds under bright sunshine. The camera follows the bird upward, capturing its flight and the vastness of the sky from a close-up, low-angle perspective."
+prompt = "Einstein singing a song."
 
 output = pipe(
     image=first_frame, audio=audio, sampling_rate=sampling_rate,
     prompt=prompt, height=height, width=width, num_frames_per_chunk=81,
-    #pose_video=pose_video
+    #pose_video=pose_path
 ).frames[0]
 export_to_video(output, "output.mp4", fps=16)
 ```
