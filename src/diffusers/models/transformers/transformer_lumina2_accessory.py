@@ -132,9 +132,9 @@ class Lumina2AccessoryRotaryPosEmbed(nn.Module):
         for i, (cap_seq_len, seq_len) in enumerate(zip(l_effective_cap_len, seq_lengths)):
             # add caption position ids
             position_ids[i, :cap_seq_len, 0] = torch.arange(cap_seq_len, dtype=torch.int32, device=device)
-            position_ids[i, cap_seq_len:seq_len, 0] = cap_seq_len
 
             # add condition image position ids
+            position_ids[i, cap_seq_len:cond_image_seq_len, 0] = cap_seq_len
             cond_row_ids = (
                 torch.arange(post_patch_cond_height, dtype=torch.int32, device=device)
                 .view(-1, 1)
@@ -159,6 +159,8 @@ class Lumina2AccessoryRotaryPosEmbed(nn.Module):
                 )
 
             # add image position ids
+            position_ids[i, cap_seq_len + cond_image_seq_len : seq_len, 0] = cap_seq_len + 1
+
             row_ids = (
                 torch.arange(post_patch_height, dtype=torch.int32, device=device)
                 .view(-1, 1)
