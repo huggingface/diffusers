@@ -70,10 +70,11 @@ def _is_package_available(pkg_name: str, get_dist_name: bool = False) -> Tuple[b
                 # Fallback for Python < 3.10
                 for dist in importlib_metadata.distributions():
                     _top_level_declared = (dist.read_text("top_level.txt") or "").split()
-                    _infered_opt_names = {
+                    # Infer top-level package names from file structure
+                    _inferred_opt_names = {
                         f.parts[0] if len(f.parts) > 1 else inspect.getmodulename(f) for f in (dist.files or [])
                     } - {None}
-                    _top_level_inferred = filter(lambda name: "." not in name, _infered_opt_names)
+                    _top_level_inferred = filter(lambda name: "." not in name, _inferred_opt_names)
                     for pkg in _top_level_declared or _top_level_inferred:
                         _package_map[pkg].append(dist.metadata["Name"])
             except Exception as _:
@@ -119,7 +120,7 @@ if USE_SAFETENSORS in ENV_VARS_TRUE_AND_AUTO_VALUES:
     _safetensors_available, _safetensors_version = _is_package_available("safetensors")
 
 else:
-    logger.info("Disabling Safetensors because USE_TF is set")
+    logger.info("Disabling Safetensors because USE_SAFETENSORS is set")
     _safetensors_available = False
 
 _onnxruntime_version = "N/A"
@@ -225,6 +226,7 @@ _sageattention_available, _sageattention_version = _is_package_available("sageat
 _flash_attn_available, _flash_attn_version = _is_package_available("flash_attn")
 _flash_attn_3_available, _flash_attn_3_version = _is_package_available("flash_attn_3")
 _kornia_available, _kornia_version = _is_package_available("kornia")
+_nvidia_modelopt_available, _nvidia_modelopt_version = _is_package_available("modelopt", get_dist_name=True)
 
 
 def is_torch_available():
@@ -361,6 +363,10 @@ def is_torchao_available():
 
 def is_optimum_quanto_available():
     return _optimum_quanto_available
+
+
+def is_nvidia_modelopt_available():
+    return _nvidia_modelopt_available
 
 
 def is_timm_available():
@@ -827,6 +833,21 @@ def is_optimum_quanto_version(operation: str, version: str):
     if not _optimum_quanto_available:
         return False
     return compare_versions(parse(_optimum_quanto_version), operation, version)
+
+
+def is_nvidia_modelopt_version(operation: str, version: str):
+    """
+    Compares the current Nvidia ModelOpt version to a given reference with an operation.
+
+    Args:
+        operation (`str`):
+            A string representation of an operator, such as `">"` or `"<="`
+        version (`str`):
+            A version string
+    """
+    if not _nvidia_modelopt_available:
+        return False
+    return compare_versions(parse(_nvidia_modelopt_version), operation, version)
 
 
 def is_xformers_version(operation: str, version: str):

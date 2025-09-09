@@ -75,13 +75,13 @@ Guiders that are already saved on the Hub with a `modular_model_index.json` file
 }
 ```
 
-The guider is only created after calling [`~ModularPipeline.load_default_components`] based on the loading specification in `modular_model_index.json`.
+The guider is only created after calling [`~ModularPipeline.load_components`] based on the loading specification in `modular_model_index.json`.
 
 ```py
 t2i_pipeline = t2i_blocks.init_pipeline("YiYiXu/modular-doc-guider")
 # not created during init
 assert t2i_pipeline.guider is None
-t2i_pipeline.load_default_components()
+t2i_pipeline.load_components()
 # loaded as PAG guider
 t2i_pipeline.guider
 ```

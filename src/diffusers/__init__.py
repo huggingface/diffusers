@@ -1,4 +1,4 @@
-__version__ = "0.35.0.dev0"
+__version__ = "0.36.0.dev0"
 
 from typing import TYPE_CHECKING
 
@@ -13,6 +13,7 @@ from .utils import (
     is_k_diffusion_available,
     is_librosa_available,
     is_note_seq_available,
+    is_nvidia_modelopt_available,
     is_onnx_available,
     is_opencv_available,
     is_optimum_quanto_available,
@@ -112,6 +113,18 @@ else:
     _import_structure["quantizers.quantization_config"].append("QuantoConfig")
 
 try:
+    if not is_torch_available() and not is_accelerate_available() and not is_nvidia_modelopt_available():
+        raise OptionalDependencyNotAvailable()
+except OptionalDependencyNotAvailable:
+    from .utils import dummy_nvidia_modelopt_objects
+
+    _import_structure["utils.dummy_nvidia_modelopt_objects"] = [
+        name for name in dir(dummy_nvidia_modelopt_objects) if not name.startswith("_")
+    ]
+else:
+    _import_structure["quantizers.quantization_config"].append("NVIDIAModelOptConfig")
+
+try:
     if not is_onnx_available():
         raise OptionalDependencyNotAvailable()
 except OptionalDependencyNotAvailable:
@@ -181,6 +194,7 @@ else:
             "AutoencoderOobleck",
             "AutoencoderTiny",
             "AutoModel",
+            "BriaTransformer2DModel",
             "CacheMixin",
             "ChromaTransformer2DModel",
             "CogVideoXTransformer3DModel",
@@ -217,6 +231,8 @@ else:
             "OmniGenTransformer2DModel",
             "PixArtTransformer2DModel",
             "PriorTransformer",
+            "QwenImageControlNetModel",
+            "QwenImageMultiControlNetModel",
             "QwenImageTransformer2DModel",
             "SanaControlNetModel",
             "SanaTransformer2DModel",
@@ -369,6 +385,10 @@ else:
         [
             "FluxAutoBlocks",
             "FluxModularPipeline",
+            "QwenImageAutoBlocks",
+            "QwenImageEditAutoBlocks",
+            "QwenImageEditModularPipeline",
+            "QwenImageModularPipeline",
             "StableDiffusionXLAutoBlocks",
             "StableDiffusionXLModularPipeline",
             "WanAutoBlocks",
@@ -397,6 +417,7 @@ else:
             "AuraFlowPipeline",
             "BlipDiffusionControlNetPipeline",
             "BlipDiffusionPipeline",
+            "BriaPipeline",
             "ChromaImg2ImgPipeline",
             "ChromaPipeline",
             "CLIPImageProjection",
@@ -489,6 +510,9 @@ else:
             "PixArtAlphaPipeline",
             "PixArtSigmaPAGPipeline",
             "PixArtSigmaPipeline",
+            "QwenImageControlNetInpaintPipeline",
+            "QwenImageControlNetPipeline",
+            "QwenImageEditInpaintPipeline",
             "QwenImageEditPipeline",
             "QwenImageImg2ImgPipeline",
             "QwenImageInpaintPipeline",
@@ -790,6 +814,14 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .quantizers.quantization_config import QuantoConfig
 
     try:
+        if not is_nvidia_modelopt_available():
+            raise OptionalDependencyNotAvailable()
+    except OptionalDependencyNotAvailable:
+        from .utils.dummy_nvidia_modelopt_objects import *
+    else:
+        from .quantizers.quantization_config import NVIDIAModelOptConfig
+
+    try:
         if not is_onnx_available():
             raise OptionalDependencyNotAvailable()
     except OptionalDependencyNotAvailable:
@@ -846,6 +878,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AutoencoderOobleck,
             AutoencoderTiny,
             AutoModel,
+            BriaTransformer2DModel,
             CacheMixin,
             ChromaTransformer2DModel,
             CogVideoXTransformer3DModel,
@@ -882,6 +915,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             OmniGenTransformer2DModel,
             PixArtTransformer2DModel,
             PriorTransformer,
+            QwenImageControlNetModel,
+            QwenImageMultiControlNetModel,
             QwenImageTransformer2DModel,
             SanaControlNetModel,
             SanaTransformer2DModel,
@@ -1008,6 +1043,10 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .modular_pipelines import (
             FluxAutoBlocks,
             FluxModularPipeline,
+            QwenImageAutoBlocks,
+            QwenImageEditAutoBlocks,
+            QwenImageEditModularPipeline,
+            QwenImageModularPipeline,
             StableDiffusionXLAutoBlocks,
             StableDiffusionXLModularPipeline,
             WanAutoBlocks,
@@ -1032,6 +1071,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AudioLDM2UNet2DConditionModel,
             AudioLDMPipeline,
             AuraFlowPipeline,
+            BriaPipeline,
             ChromaImg2ImgPipeline,
             ChromaPipeline,
             CLIPImageProjection,
@@ -1124,6 +1164,9 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             PixArtAlphaPipeline,
             PixArtSigmaPAGPipeline,
             PixArtSigmaPipeline,
+            QwenImageControlNetInpaintPipeline,
+            QwenImageControlNetPipeline,
+            QwenImageEditInpaintPipeline,
             QwenImageEditPipeline,
             QwenImageImg2ImgPipeline,
             QwenImageInpaintPipeline,

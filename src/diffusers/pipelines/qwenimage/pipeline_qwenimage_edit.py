@@ -62,25 +62,6 @@ EXAMPLE_DOC_STRING = """
         >>> image.save("qwenimage_edit.png")
         ```
 """
-PREFERRED_QWENIMAGE_RESOLUTIONS = [
-    (672, 1568),
-    (688, 1504),
-    (720, 1456),
-    (752, 1392),
-    (800, 1328),
-    (832, 1248),
-    (880, 1184),
-    (944, 1104),
-    (1024, 1024),
-    (1104, 944),
-    (1184, 880),
-    (1248, 832),
-    (1328, 800),
-    (1392, 752),
-    (1456, 720),
-    (1504, 688),
-    (1568, 672),
-]
 
 
 # Copied from diffusers.pipelines.qwenimage.pipeline_qwenimage.calculate_shift
@@ -551,7 +532,7 @@ class QwenImageEditPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
         width: Optional[int] = None,
         num_inference_steps: int = 50,
         sigmas: Optional[List[float]] = None,
-        guidance_scale: float = 1.0,
+        guidance_scale: Optional[float] = None,
         num_images_per_prompt: int = 1,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.Tensor] = None,
@@ -565,12 +546,17 @@ class QwenImageEditPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
         callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
         max_sequence_length: int = 512,
-        _auto_resize: bool = True,
     ):
         r"""
         Function invoked when calling the pipeline for generation.
 
         Args:
+            image (`torch.Tensor`, `PIL.Image.Image`, `np.ndarray`, `List[torch.Tensor]`, `List[PIL.Image.Image]`, or `List[np.ndarray]`):
+                `Image`, numpy array or tensor representing an image batch to be used as the starting point. For both
+                numpy array and pytorch tensor, the expected value range is between `[0, 1]` If it's a tensor or a list
+                or tensors, the expected shape should be `(B, C, H, W)` or `(C, H, W)`. If it is a numpy array or a
+                list of arrays, the expected shape should be `(B, H, W, C)` or `(H, W, C)` It can also accept image
+                latents as `image`, but if passing latents directly it is not encoded again.
             prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds`.
                 instead.
@@ -579,7 +565,12 @@ class QwenImageEditPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
                 `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `true_cfg_scale` is
                 not greater than `1`).
             true_cfg_scale (`float`, *optional*, defaults to 1.0):
-                When > 1.0 and a provided `negative_prompt`, enables true classifier-free guidance.
+                true_cfg_scale (`float`, *optional*, defaults to 1.0): Guidance scale as defined in [Classifier-Free
+                Diffusion Guidance](https://huggingface.co/papers/2207.12598). `true_cfg_scale` is defined as `w` of
+                equation 2. of [Imagen Paper](https://huggingface.co/papers/2205.11487). Classifier-free guidance is
+                enabled by setting `true_cfg_scale > 1` and a provided `negative_prompt`. Higher guidance scale
+                encourages to generate images that are closely linked to the text `prompt`, usually at the expense of
+                lower image quality.
             height (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
                 The height in pixels of the generated image. This is set to 1024 by default for the best results.
             width (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
@@ -591,12 +582,16 @@ class QwenImageEditPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
                 Custom sigmas to use for the denoising process with schedulers which support a `sigmas` argument in
                 their `set_timesteps` method. If not defined, the default behavior when `num_inference_steps` is passed
                 will be used.
-            guidance_scale (`float`, *optional*, defaults to 3.5):
-                Guidance scale as defined in [Classifier-Free Diffusion
-                Guidance](https://huggingface.co/papers/2207.12598). `guidance_scale` is defined as `w` of equation 2.
-                of [Imagen Paper](https://huggingface.co/papers/2205.11487). Guidance scale is enabled by setting
-                `guidance_scale > 1`. Higher guidance scale encourages to generate images that are closely linked to
-                the text `prompt`, usually at the expense of lower image quality.
+            guidance_scale (`float`, *optional*, defaults to None):
+                A guidance scale value for guidance distilled models. Unlike the traditional classifier-free guidance
+                where the guidance scale is applied during inference through noise prediction rescaling, guidance
+                distilled models take the guidance scale directly as an input parameter during forward pass. Guidance
+                scale is enabled by setting `guidance_scale > 1`. Higher guidance scale encourages to generate images
+                that are closely linked to the text `prompt`, usually at the expense of lower image quality. This
+                parameter in the pipeline is there to support future guidance-distilled models when they come up. It is
+                ignored when not using guidance distilled models. To enable traditional classifier-free guidance,
+                please pass `true_cfg_scale > 1.0` and `negative_prompt` (even an empty negative prompt like " " should
+                enable classifier-free guidance computations).
             num_images_per_prompt (`int`, *optional*, defaults to 1):
                 The number of images to generate per prompt.
             generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
@@ -641,8 +636,7 @@ class QwenImageEditPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
             returning a tuple, the first element is a list with the generated images.
         """
         image_size = image[0].size if isinstance(image, list) else image.size
-        width, height = image_size
-        calculated_width, calculated_height, _ = calculate_dimensions(1024 * 1024, width / height)
+        calculated_width, calculated_height, _ = calculate_dimensions(1024 * 1024, image_size[0] / image_size[1])
         height = height or calculated_height
         width = width or calculated_width
 
@@ -680,23 +674,24 @@ class QwenImageEditPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
         device = self._execution_device
         # 3. Preprocess image
         if image is not None and not (isinstance(image, torch.Tensor) and image.size(1) == self.latent_channels):
-            img = image[0] if isinstance(image, list) else image
-            image_height, image_width = self.image_processor.get_default_height_width(img)
-            aspect_ratio = image_width / image_height
-            if _auto_resize:
-                _, image_width, image_height = min(
-                    (abs(aspect_ratio - w / h), w, h) for w, h in PREFERRED_QWENIMAGE_RESOLUTIONS
-                )
-            image_width = image_width // multiple_of * multiple_of
-            image_height = image_height // multiple_of * multiple_of
-            image = self.image_processor.resize(image, image_height, image_width)
+            image = self.image_processor.resize(image, calculated_height, calculated_width)
             prompt_image = image
-            image = self.image_processor.preprocess(image, image_height, image_width)
+            image = self.image_processor.preprocess(image, calculated_height, calculated_width)
             image = image.unsqueeze(2)
 
         has_neg_prompt = negative_prompt is not None or (
             negative_prompt_embeds is not None and negative_prompt_embeds_mask is not None
         )
+
+        if true_cfg_scale > 1 and not has_neg_prompt:
+            logger.warning(
+                f"true_cfg_scale is passed as {true_cfg_scale}, but classifier-free guidance is not enabled since no negative_prompt is provided."
+            )
+        elif true_cfg_scale <= 1 and has_neg_prompt:
+            logger.warning(
+                " negative_prompt is passed but classifier-free guidance is not enabled since true_cfg_scale <= 1"
+            )
+
         do_true_cfg = true_cfg_scale > 1 and has_neg_prompt
         prompt_embeds, prompt_embeds_mask = self.encode_prompt(
             image=prompt_image,
@@ -708,9 +703,6 @@ class QwenImageEditPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
             max_sequence_length=max_sequence_length,
         )
         if do_true_cfg:
-            # negative image is the same size as the original image, but all pixels are white
-            # negative_image = Image.new("RGB", (image.width, image.height), (255, 255, 255))
-
             negative_prompt_embeds, negative_prompt_embeds_mask = self.encode_prompt(
                 image=prompt_image,
                 prompt=negative_prompt,
@@ -737,7 +729,7 @@ class QwenImageEditPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
         img_shapes = [
             [
                 (1, height // self.vae_scale_factor // 2, width // self.vae_scale_factor // 2),
-                (1, image_height // self.vae_scale_factor // 2, image_width // self.vae_scale_factor // 2),
+                (1, calculated_height // self.vae_scale_factor // 2, calculated_width // self.vae_scale_factor // 2),
             ]
         ] * batch_size
 
@@ -762,10 +754,17 @@ class QwenImageEditPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
         self._num_timesteps = len(timesteps)
 
         # handle guidance
-        if self.transformer.config.guidance_embeds:
+        if self.transformer.config.guidance_embeds and guidance_scale is None:
+            raise ValueError("guidance_scale is required for guidance-distilled model.")
+        elif self.transformer.config.guidance_embeds:
             guidance = torch.full([1], guidance_scale, device=device, dtype=torch.float32)
             guidance = guidance.expand(latents.shape[0])
-        else:
+        elif not self.transformer.config.guidance_embeds and guidance_scale is not None:
+            logger.warning(
+                f"guidance_scale is passed as {guidance_scale}, but ignored since the model is not guidance-distilled."
+            )
+            guidance = None
+        elif not self.transformer.config.guidance_embeds and guidance_scale is None:
             guidance = None
 
         if self.attention_kwargs is None:
