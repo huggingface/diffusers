@@ -16,8 +16,10 @@ import os
 from typing import Optional, Union
 
 from huggingface_hub.utils import validate_hf_hub_args
+from typing_extensions import Self
 
 from ..configuration_utils import ConfigMixin
+from ..loaders import FromOriginalModelMixin
 from ..utils import logging
 
 
@@ -204,3 +206,8 @@ class AutoModel(ConfigMixin):
 
         kwargs = {**load_config_kwargs, **kwargs}
         return model_cls.from_pretrained(pretrained_model_or_path, **kwargs)
+
+    @classmethod
+    @validate_hf_hub_args
+    def from_single_file(cls, pretrained_model_link_or_path_or_dict: Optional[str] = None, **kwargs) -> Self:
+        return FromOriginalModelMixin.from_single_file(pretrained_model_link_or_path_or_dict, **kwargs)
