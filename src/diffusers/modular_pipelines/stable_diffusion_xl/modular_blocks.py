@@ -269,7 +269,7 @@ class StableDiffusionXLAutoBlocks(SequentialPipelineBlocks):
     block_names = [
         "text_encoder",
         "ip_adapter",
-        "image_encoder",
+        "vae_encoder",
         "before_denoise",
         "controlnet_input",
         "denoise",
@@ -321,7 +321,7 @@ TEXT2IMAGE_BLOCKS = InsertableDict(
 IMAGE2IMAGE_BLOCKS = InsertableDict(
     [
         ("text_encoder", StableDiffusionXLTextEncoderStep),
-        ("image_encoder", StableDiffusionXLVaeEncoderStep),
+        ("vae_encoder", StableDiffusionXLVaeEncoderStep),
         ("input", StableDiffusionXLInputStep),
         ("set_timesteps", StableDiffusionXLImg2ImgSetTimestepsStep),
         ("prepare_latents", StableDiffusionXLImg2ImgPrepareLatentsStep),
@@ -334,7 +334,7 @@ IMAGE2IMAGE_BLOCKS = InsertableDict(
 INPAINT_BLOCKS = InsertableDict(
     [
         ("text_encoder", StableDiffusionXLTextEncoderStep),
-        ("image_encoder", StableDiffusionXLInpaintVaeEncoderStep),
+        ("vae_encoder", StableDiffusionXLInpaintVaeEncoderStep),
         ("input", StableDiffusionXLInputStep),
         ("set_timesteps", StableDiffusionXLImg2ImgSetTimestepsStep),
         ("prepare_latents", StableDiffusionXLInpaintPrepareLatentsStep),
@@ -361,7 +361,7 @@ AUTO_BLOCKS = InsertableDict(
     [
         ("text_encoder", StableDiffusionXLTextEncoderStep),
         ("ip_adapter", StableDiffusionXLAutoIPAdapterStep),
-        ("image_encoder", StableDiffusionXLAutoVaeEncoderStep),
+        ("vae_encoder", StableDiffusionXLAutoVaeEncoderStep),
         ("before_denoise", StableDiffusionXLAutoBeforeDenoiseStep),
         ("controlnet_input", StableDiffusionXLAutoControlNetInputStep),
         ("denoise", StableDiffusionXLAutoDenoiseStep),

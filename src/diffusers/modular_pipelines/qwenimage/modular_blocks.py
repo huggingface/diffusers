@@ -699,7 +699,7 @@ class QwenImageEditAutoVaeEncoderStep(AutoPipelineBlocks):
 class QwenImageEditAutoInputStep(AutoPipelineBlocks):
     block_classes = [QwenImageInpaintInputStep, QwenImageEditInputStep]
     block_names = ["edit_inpaint", "edit"]
-    block_trigger_inputs = ["processed_mask_image", "image"]
+    block_trigger_inputs = ["processed_mask_image", "image_latents"]
 
     @property
     def description(self):
