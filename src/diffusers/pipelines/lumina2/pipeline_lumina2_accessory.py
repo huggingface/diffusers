@@ -207,7 +207,8 @@ class Lumina2AccessoryPipeline(DiffusionPipeline, Lumina2LoraLoaderMixin):
             transformer=transformer,
             scheduler=scheduler,
         )
-        self.vae_scale_factor = 8
+        self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1) if getattr(self, "vae", None) else 8
+        self.latent_channels = self.vae.config.latent_channels if getattr(self, "vae", None) else 16
         self.default_sample_size = (
             self.transformer.config.sample_size
             if hasattr(self, "transformer") and self.transformer is not None
@@ -530,7 +531,7 @@ class Lumina2AccessoryPipeline(DiffusionPipeline, Lumina2LoraLoaderMixin):
 
         if image is not None:
             image = image.to(device=device, dtype=dtype)
-            if image.shape[1] != self.transformer.config.in_channels:
+            if image.shape[1] != self.latent_channels:
                 image_latents = self._encode_vae_image(image=image, generator=generator)
             else:
                 image_latents = image
@@ -743,8 +744,7 @@ class Lumina2AccessoryPipeline(DiffusionPipeline, Lumina2LoraLoaderMixin):
             system_prompt=system_prompt,
         )
 
-        latent_channels = self.transformer.config.in_channels
-        if image is not None and not (isinstance(image, torch.Tensor) and image.size(1) == latent_channels):
+        if image is not None and not (isinstance(image, torch.Tensor) and image.size(1) == self.latent_channels):
             img = image[0] if isinstance(image, list) else image
             image_height, image_width = self.image_processor.get_default_height_width(img)
             image_width = image_width // multiple_of * multiple_of
@@ -753,10 +753,11 @@ class Lumina2AccessoryPipeline(DiffusionPipeline, Lumina2LoraLoaderMixin):
             image = self.image_processor.preprocess(image, image_height, image_width)
 
         # 4. Prepare latents.
+        num_channels_latents = self.transformer.config.in_channels
         latents, image_latents = self.prepare_latents(
             image,
             batch_size * num_images_per_prompt,
-            latent_channels,
+            num_channels_latents,
             height,
             width,
             prompt_embeds.dtype,
