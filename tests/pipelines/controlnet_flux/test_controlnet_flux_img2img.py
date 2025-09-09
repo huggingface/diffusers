@@ -11,11 +11,11 @@ from diffusers import (
     FluxControlNetModel,
     FluxTransformer2DModel,
 )
-from diffusers.utils.testing_utils import (
-    torch_device,
-)
 from diffusers.utils.torch_utils import randn_tensor
 
+from ...testing_utils import (
+    torch_device,
+)
 from ..test_pipelines_common import PipelineTesterMixin, check_qkv_fused_layers_exist
 
 

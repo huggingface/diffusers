@@ -223,7 +223,7 @@ from diffusers.image_processor import VaeImageProcessor
 import torch 
 
 vae = AutoencoderKL.from_pretrained(ckpt_id, subfolder="vae", torch_dtype=torch.bfloat16).to("cuda")
-vae_scale_factor = 2 ** (len(vae.config.block_out_channels))
+vae_scale_factor = 2 ** (len(vae.config.block_out_channels) - 1)
 image_processor = VaeImageProcessor(vae_scale_factor=vae_scale_factor)
 
 with torch.no_grad():
