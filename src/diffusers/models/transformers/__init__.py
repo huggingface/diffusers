@@ -13,6 +13,7 @@ if is_torch_available():
     from .pixart_transformer_2d import PixArtTransformer2DModel
     from .prior_transformer import PriorTransformer
     from .sana_transformer import SanaTransformer2DModel
+    from .transformer_sana_video import SanaVideoTransformer3DModel
     from .stable_audio_transformer import StableAudioDiTModel
     from .t5_film_transformer import T5FilmDecoder
     from .transformer_2d import Transformer2DModel

@@ -79,6 +79,7 @@ if is_torch_available():
     _import_structure["transformers.pixart_transformer_2d"] = ["PixArtTransformer2DModel"]
     _import_structure["transformers.prior_transformer"] = ["PriorTransformer"]
     _import_structure["transformers.sana_transformer"] = ["SanaTransformer2DModel"]
+    _import_structure["transformers.transformer_sana_video"] = ["SanaVideoTransformer3DModel"]
     _import_structure["transformers.stable_audio_transformer"] = ["StableAudioDiTModel"]
     _import_structure["transformers.t5_film_transformer"] = ["T5FilmDecoder"]
     _import_structure["transformers.transformer_2d"] = ["Transformer2DModel"]
@@ -204,6 +205,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             PRXTransformer2DModel,
             QwenImageTransformer2DModel,
             SanaTransformer2DModel,
+            SanaVideoTransformer3DModel,
             SD3Transformer2DModel,
             SkyReelsV2Transformer3DModel,
             StableAudioDiTModel,
