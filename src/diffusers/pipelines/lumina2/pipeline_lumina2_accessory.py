@@ -856,8 +856,6 @@ class Lumina2AccessoryPipeline(DiffusionPipeline, Lumina2LoraLoaderMixin):
         if not output_type == "latent":
             latents = (latents / self.vae.config.scaling_factor) + self.vae.config.shift_factor
             image = self.vae.decode(latents, return_dict=False)[0]
-            raise ValueError(f"{latents.shape=}, {image.shape=}")
-            logger.debug(f"######### {image.shape=}")
             image = self.image_processor.postprocess(image, output_type=output_type)
         else:
             image = latents
