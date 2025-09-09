@@ -209,7 +209,7 @@ class ComponentSpec:
 
         # Get all loading fields in order
         loading_fields = cls.loading_fields()
-        result = {f: None for f in loading_fields}
+        result = dict.fromkeys(loading_fields)
 
         if load_id == "null":
             return result
@@ -618,7 +618,6 @@ def format_configs(configs, indent_level=4, max_line_length=115, add_empty_lines
 
 def make_doc_string(
     inputs,
-    intermediate_inputs,
     outputs,
     description="",
     class_name=None,
@@ -664,7 +663,7 @@ def make_doc_string(
         output += configs_str + "\n\n"
 
     # Add inputs section
-    output += format_input_params(inputs + intermediate_inputs, indent_level=2)
+    output += format_input_params(inputs, indent_level=2)
 
     # Add outputs section
     output += "\n\n"

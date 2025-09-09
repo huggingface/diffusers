@@ -26,6 +26,7 @@ from ..utils import (
     is_flash_attn_3_available,
     is_flash_attn_available,
     is_flash_attn_version,
+    is_kernels_available,
     is_sageattention_available,
     is_sageattention_version,
     is_torch_npu_available,
@@ -35,7 +36,7 @@ from ..utils import (
     is_xformers_available,
     is_xformers_version,
 )
-from ..utils.constants import DIFFUSERS_ATTN_BACKEND, DIFFUSERS_ATTN_CHECKS
+from ..utils.constants import DIFFUSERS_ATTN_BACKEND, DIFFUSERS_ATTN_CHECKS, DIFFUSERS_ENABLE_HUB_KERNELS
 
 
 _REQUIRED_FLASH_VERSION = "2.6.3"
@@ -67,6 +68,17 @@ else:
     flash_attn_3_func = None
     flash_attn_3_varlen_func = None
 
+if DIFFUSERS_ENABLE_HUB_KERNELS:
+    if not is_kernels_available():
+        raise ImportError(
+            "To use FA3 kernel for your hardware from the Hub, the `kernels` library must be installed. Install with `pip install kernels`."
+        )
+    from ..utils.kernels_utils import _get_fa3_from_hub
+
+    flash_attn_interface_hub = _get_fa3_from_hub()
+    flash_attn_3_func_hub = flash_attn_interface_hub.flash_attn_func
+else:
+    flash_attn_3_func_hub = None
 
 if _CAN_USE_SAGE_ATTN:
     from sageattention import (
@@ -110,6 +122,27 @@ if _CAN_USE_XFORMERS_ATTN:
 else:
     xops = None
 
+# Version guard for PyTorch compatibility - custom_op was added in PyTorch 2.4
+if torch.__version__ >= "2.4.0":
+    _custom_op = torch.library.custom_op
+    _register_fake = torch.library.register_fake
+else:
+
+    def custom_op_no_op(name, fn=None, /, *, mutates_args, device_types=None, schema=None):
+        def wrap(func):
+            return func
+
+        return wrap if fn is None else fn
+
+    def register_fake_no_op(op, fn=None, /, *, lib=None, _stacklevel=1):
+        def wrap(func):
+            return func
+
+        return wrap if fn is None else fn
+
+    _custom_op = custom_op_no_op
+    _register_fake = register_fake_no_op
+
 
 logger = get_logger(__name__)  # pylint: disable=invalid-name
 
@@ -132,6 +165,8 @@ class AttentionBackendName(str, Enum):
     FLASH_VARLEN = "flash_varlen"
     _FLASH_3 = "_flash_3"
     _FLASH_VARLEN_3 = "_flash_varlen_3"
+    _FLASH_3_HUB = "_flash_3_hub"
+    # _FLASH_VARLEN_3_HUB = "_flash_varlen_3_hub"  # not supported yet.
 
     # PyTorch native
     FLEX = "flex"
@@ -330,6 +365,17 @@ def _check_attention_backend_requirements(backend: AttentionBackendName) -> None
                 f"Flash Attention 3 backend '{backend.value}' is not usable because of missing package or the version is too old. Please build FA3 beta release from source."
             )
 
+    # TODO: add support Hub variant of FA3 varlen later
+    elif backend in [AttentionBackendName._FLASH_3_HUB]:
+        if not DIFFUSERS_ENABLE_HUB_KERNELS:
+            raise RuntimeError(
+                f"Flash Attention 3 Hub backend '{backend.value}' is not usable because the `DIFFUSERS_ENABLE_HUB_KERNELS` env var isn't set. Please set it like `export DIFFUSERS_ENABLE_HUB_KERNELS=yes`."
+            )
+        if not is_kernels_available():
+            raise RuntimeError(
+                f"Flash Attention 3 Hub backend '{backend.value}' is not usable because the `kernels` package isn't available. Please install it with `pip install kernels`."
+            )
+
     elif backend in [
         AttentionBackendName.SAGE,
         AttentionBackendName.SAGE_VARLEN,
@@ -473,12 +519,11 @@ def _flex_attention_causal_mask_mod(batch_idx, head_idx, q_idx, kv_idx):
 
 # ===== torch op registrations =====
 # Registrations are required for fullgraph tracing compatibility
-
-
-# TODO: library.custom_op and register_fake probably need version guards?
 # TODO: this is only required because the beta release FA3 does not have it. There is a PR adding
 # this but it was never merged: https://github.com/Dao-AILab/flash-attention/pull/1590
-@torch.library.custom_op("flash_attn_3::_flash_attn_forward", mutates_args=(), device_types="cuda")
+
+
+@_custom_op("flash_attn_3::_flash_attn_forward", mutates_args=(), device_types="cuda")
 def _wrapped_flash_attn_3_original(
     query: torch.Tensor, key: torch.Tensor, value: torch.Tensor
 ) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -487,7 +532,7 @@ def _wrapped_flash_attn_3_original(
     return out, lse
 
 
-@torch.library.register_fake("flash_attn_3::_flash_attn_forward")
+@_register_fake("flash_attn_3::_flash_attn_forward")
 def _(query: torch.Tensor, key: torch.Tensor, value: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
     batch_size, seq_len, num_heads, head_dim = query.shape
     lse_shape = (batch_size, seq_len, num_heads)
@@ -635,6 +680,44 @@ def _flash_attention_3(
         sm_margin=0,
     )
     return (out, lse) if return_attn_probs else out
+
+
+@_AttentionBackendRegistry.register(
+    AttentionBackendName._FLASH_3_HUB,
+    constraints=[_check_device, _check_qkv_dtype_bf16_or_fp16, _check_shape],
+)
+def _flash_attention_3_hub(
+    query: torch.Tensor,
+    key: torch.Tensor,
+    value: torch.Tensor,
+    scale: Optional[float] = None,
+    is_causal: bool = False,
+    window_size: Tuple[int, int] = (-1, -1),
+    softcap: float = 0.0,
+    deterministic: bool = False,
+    return_attn_probs: bool = False,
+) -> torch.Tensor:
+    out = flash_attn_3_func_hub(
+        q=query,
+        k=key,
+        v=value,
+        softmax_scale=scale,
+        causal=is_causal,
+        qv=None,
+        q_descale=None,
+        k_descale=None,
+        v_descale=None,
+        window_size=window_size,
+        softcap=softcap,
+        num_splits=1,
+        pack_gqa=None,
+        deterministic=deterministic,
+        sm_margin=0,
+        return_attn_probs=return_attn_probs,
+    )
+    # When `return_attn_probs` is True, the above returns a tuple of
+    # actual outputs and lse.
+    return (out[0], out[1]) if return_attn_probs else out
 
 
 @_AttentionBackendRegistry.register(
@@ -935,20 +1018,23 @@ def _native_npu_attention(
     dropout_p: float = 0.0,
     scale: Optional[float] = None,
 ) -> torch.Tensor:
-    return npu_fusion_attention(
+    query, key, value = (x.transpose(1, 2).contiguous() for x in (query, key, value))
+    out = npu_fusion_attention(
         query,
         key,
         value,
-        query.size(2),  # num_heads
-        input_layout="BSND",
+        query.size(1),  # num_heads
+        input_layout="BNSD",
         pse=None,
         scale=1.0 / math.sqrt(query.shape[-1]) if scale is None else scale,
         pre_tockens=65536,
-        next_tokens=65536,
+        next_tockens=65536,
         keep_prob=1.0 - dropout_p,
         sync=False,
         inner_precise=0,
     )[0]
+    out = out.transpose(1, 2).contiguous()
+    return out
 
 
 # Reference: https://github.com/pytorch/xla/blob/06c5533de6588f6b90aa1655d9850bcf733b90b4/torch_xla/experimental/custom_kernel.py#L853
