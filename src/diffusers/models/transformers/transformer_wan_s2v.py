@@ -1112,7 +1112,7 @@ class WanS2VTransformer3DModel(
         # However, at this point, only the first two (noisy and image latents) are marked;
         # the marking of motion latent will be implemented inside `inject_motion`.
         mask_input = torch.zeros([1, hidden_states.shape[1]], dtype=torch.long, device=hidden_states.device)
-        mask_input[:, :, original_sequence_length:] = 1
+        mask_input[:, original_sequence_length:] = 1
 
         hidden_states, sequence_length, rotary_emb, mask_input = self.inject_motion(
             hidden_states,
