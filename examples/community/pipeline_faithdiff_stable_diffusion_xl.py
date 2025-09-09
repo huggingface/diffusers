@@ -1705,7 +1705,7 @@ class FaithDiffStableDiffusionXLPipeline(
         compute decoding and encoding in several steps. This is useful for saving a large amount of memory and to allow
         processing larger images.
         """
-        depr_message = "Calling `enable_vae_tiling()` on a `DiffusionPipeline` is deprecated and this method will be removed in a future version. Please use `pipe.vae.enable_tiling()`."
+        depr_message = f"Calling `enable_vae_tiling()` on a `{self.__class__.__name__}` is deprecated and this method will be removed in a future version. Please use `pipe.vae.enable_tiling()`."
         deprecate(
             "enable_vae_tiling",
             "0.40.0",
@@ -1719,7 +1719,7 @@ class FaithDiffStableDiffusionXLPipeline(
         Disable tiled VAE decoding. If `enable_vae_tiling` was previously enabled, this method will go back to
         computing decoding in one step.
         """
-        depr_message = "Calling `disable_vae_tiling()` on a `DiffusionPipeline` is deprecated and this method will be removed in a future version. Please use `pipe.vae.disable_tiling()`."
+        depr_message = "Calling `disable_vae_tiling()` on a `{self.__class__.__name__}` is deprecated and this method will be removed in a future version. Please use `pipe.vae.disable_tiling()`."
         deprecate(
             "disable_vae_tiling",
             "0.40.0",
