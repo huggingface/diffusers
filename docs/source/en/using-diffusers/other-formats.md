@@ -37,7 +37,7 @@ A single-file format stores *all* the model (UNet, transformer, text encoder) we
 - Greater compatibility with [ComfyUI](https://github.com/comfyanonymous/ComfyUI) or [Automatic1111](https://github.com/AUTOMATIC1111/stable-diffusion-webui).
 - Easier to download and share a single file.
 
-Use [`~loaders.FromSingleFileMixin.from_single_file`] to load a single file.
+Use [`~loaders.FromSingleFileMixin.from_single_file`] to load a single file. Pass `"cuda"` to the `device_map` argument to pre-allocate GPU memory and reduce model loading time (refer to the [parallel loading](../using-diffusers/loading#parallel-loading) docs for more details).
 
 ```py
 import torch
@@ -46,6 +46,7 @@ from diffusers import StableDiffusionXLPipeline
 pipeline = StableDiffusionXLPipeline.from_single_file(
     "https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0/blob/main/sd_xl_base_1.0.safetensors",
     torch_dtype=torch.float16,
+    device_map="cuda"
 )
 ```
 
@@ -62,6 +63,7 @@ pipeline = FluxPipeline.from_single_file(
     "black-forest-labs/FLUX.1-dev",
     transformer=transformer,
     torch_dtype=torch.bfloat16,
+    device_map="cuda"
 )
 ```
 
