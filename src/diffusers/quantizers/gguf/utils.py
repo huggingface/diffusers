@@ -428,13 +428,16 @@ def dequantize_blocks_Q2_K(blocks, block_size, type_size, dtype=None):
 def dequantize_blocks_BF16(blocks, block_size, type_size, dtype=None):
     return (blocks.view(torch.int16).to(torch.int32) << 16).view(torch.float32)
 
+
 # this part from calcuis (gguf.org)
 # more info: https://github.com/calcuis/gguf-connector/blob/main/src/gguf_connector/quant2c.py
+
 
 def dequantize_blocks_IQ4_NL(blocks, block_size, type_size, dtype=None):
     kvalues = torch.tensor(
         [-127, -104, -83, -65, -49, -35, -22, -10, 1, 13, 25, 38, 53, 69, 89, 113],
-        dtype=torch.float32, device=blocks.device
+        dtype=torch.float32,
+        device=blocks.device,
     )
     n_blocks = blocks.shape[0]
     d, qs = split_block_dims(blocks, 2)
@@ -449,19 +452,23 @@ def dequantize_blocks_IQ4_NL(blocks, block_size, type_size, dtype=None):
     qs = qs.squeeze(-1).to(dtype)
     return d * qs
 
+
 def dequantize_blocks_IQ4_XS(blocks, block_size, type_size, dtype=None):
     kvalues = torch.tensor(
         [-127, -104, -83, -65, -49, -35, -22, -10, 1, 13, 25, 38, 53, 69, 89, 113],
-        dtype=torch.float32, device=blocks.device
+        dtype=torch.float32,
+        device=blocks.device,
     )
     n_blocks = blocks.shape[0]
     d, scales_h, scales_l, qs = split_block_dims(blocks, 2, 2, QK_K // 64)
     d = d.view(torch.float16).to(dtype)
     scales_h = scales_h.view(torch.int16)
     scales_l = scales_l.reshape((n_blocks, -1, 1)) >> torch.tensor(
-        [0, 4], device=blocks.device, dtype=torch.uint8).reshape((1, 1, 2))
+        [0, 4], device=blocks.device, dtype=torch.uint8
+    ).reshape((1, 1, 2))
     scales_h = scales_h.reshape((n_blocks, 1, -1)) >> torch.tensor(
-        [2 * i for i in range(QK_K // 32)], device=blocks.device, dtype=torch.uint8).reshape((1, -1, 1))
+        [2 * i for i in range(QK_K // 32)], device=blocks.device, dtype=torch.uint8
+    ).reshape((1, -1, 1))
     scales_l = scales_l.reshape((n_blocks, -1)) & 0x0F
     scales_h = scales_h.reshape((n_blocks, -1)) & 0x03
     scales = (scales_l | (scales_h << 4)) - 32
@@ -474,6 +481,7 @@ def dequantize_blocks_IQ4_XS(blocks, block_size, type_size, dtype=None):
     qs = torch.gather(kvalues.expand(qs.shape[0], qs.shape[1], qs.shape[2], 16), 3, qs)
     qs = qs.squeeze(-1).to(dtype)
     return (dl * qs).reshape(n_blocks, -1)
+
 
 GGML_QUANT_SIZES = gguf.GGML_QUANT_SIZES
 dequantize_functions = {
