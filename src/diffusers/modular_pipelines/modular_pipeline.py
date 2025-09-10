@@ -56,6 +56,8 @@ MODULAR_PIPELINE_MAPPING = OrderedDict(
         ("stable-diffusion-xl", "StableDiffusionXLModularPipeline"),
         ("wan", "WanModularPipeline"),
         ("flux", "FluxModularPipeline"),
+        ("qwenimage", "QwenImageModularPipeline"),
+        ("qwenimage-edit", "QwenImageEditModularPipeline"),
     ]
 )
 
@@ -64,6 +66,8 @@ MODULAR_PIPELINE_BLOCKS_MAPPING = OrderedDict(
         ("StableDiffusionXLModularPipeline", "StableDiffusionXLAutoBlocks"),
         ("WanModularPipeline", "WanAutoBlocks"),
         ("FluxModularPipeline", "FluxAutoBlocks"),
+        ("QwenImageModularPipeline", "QwenImageAutoBlocks"),
+        ("QwenImageEditModularPipeline", "QwenImageEditAutoBlocks"),
     ]
 )
 
@@ -133,8 +137,8 @@ class PipelineState:
         Allow attribute access to intermediate values. If an attribute is not found in the object, look for it in the
         intermediates dict.
         """
-        if name in self.intermediates:
-            return self.intermediates[name]
+        if name in self.values:
+            return self.values[name]
         raise AttributeError(f"'{self.__class__.__name__}' object has no attribute '{name}'")
 
     def __repr__(self):
@@ -548,8 +552,11 @@ class AutoPipelineBlocks(ModularPipelineBlocks):
 
     def __init__(self):
         sub_blocks = InsertableDict()
-        for block_name, block_cls in zip(self.block_names, self.block_classes):
-            sub_blocks[block_name] = block_cls()
+        for block_name, block in zip(self.block_names, self.block_classes):
+            if inspect.isclass(block):
+                sub_blocks[block_name] = block()
+            else:
+                sub_blocks[block_name] = block
         self.sub_blocks = sub_blocks
         if not (len(self.block_classes) == len(self.block_names) == len(self.block_trigger_inputs)):
             raise ValueError(
@@ -830,7 +837,9 @@ class SequentialPipelineBlocks(ModularPipelineBlocks):
         return expected_configs
 
     @classmethod
-    def from_blocks_dict(cls, blocks_dict: Dict[str, Any]) -> "SequentialPipelineBlocks":
+    def from_blocks_dict(
+        cls, blocks_dict: Dict[str, Any], description: Optional[str] = None
+    ) -> "SequentialPipelineBlocks":
         """Creates a SequentialPipelineBlocks instance from a dictionary of blocks.
 
         Args:
@@ -852,12 +861,19 @@ class SequentialPipelineBlocks(ModularPipelineBlocks):
         instance.block_classes = [block.__class__ for block in sub_blocks.values()]
         instance.block_names = list(sub_blocks.keys())
         instance.sub_blocks = sub_blocks
+
+        if description is not None:
+            instance.description = description
+
         return instance
 
     def __init__(self):
         sub_blocks = InsertableDict()
-        for block_name, block_cls in zip(self.block_names, self.block_classes):
-            sub_blocks[block_name] = block_cls()
+        for block_name, block in zip(self.block_names, self.block_classes):
+            if inspect.isclass(block):
+                sub_blocks[block_name] = block()
+            else:
+                sub_blocks[block_name] = block
         self.sub_blocks = sub_blocks
 
     def _get_inputs(self):
@@ -1280,8 +1296,11 @@ class LoopSequentialPipelineBlocks(ModularPipelineBlocks):
 
     def __init__(self):
         sub_blocks = InsertableDict()
-        for block_name, block_cls in zip(self.block_names, self.block_classes):
-            sub_blocks[block_name] = block_cls()
+        for block_name, block in zip(self.block_names, self.block_classes):
+            if inspect.isclass(block):
+                sub_blocks[block_name] = block()
+            else:
+                sub_blocks[block_name] = block
         self.sub_blocks = sub_blocks
 
     @classmethod
