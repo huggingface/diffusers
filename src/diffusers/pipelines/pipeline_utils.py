@@ -23,6 +23,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Union, get_args, get_origin, Iterable
 import copy
+import threading
 
 import numpy as np
 import PIL.Image
@@ -180,6 +181,34 @@ class DeprecatedPipelineMixin:
         super().__init__(*args, **kwargs)
 
 
+
+class _TokenizerLockWrapper:
+    def __init__(self, tokenizer: Any, lock: threading.Lock):
+        self._tokenizer = tokenizer
+        self._lock = lock
+
+    def __call__(self, *args, **kwargs):
+        with self._lock:
+            return self._tokenizer(*args, **kwargs)
+
+    # common tokenizer methods some codepaths call
+    def encode(self, *args, **kwargs):
+        with self._lock:
+            return getattr(self._tokenizer, "encode")(*args, **kwargs)
+
+    def batch_encode_plus(self, *args, **kwargs):
+        with self._lock:
+            return getattr(self._tokenizer, "batch_encode_plus")(*args, **kwargs)
+
+    def encode_plus(self, *args, **kwargs):
+        with self._lock:
+            return getattr(self._tokenizer, "encode_plus")(*args, **kwargs)
+
+    # fallback: delegate any other attribute access to the original tokenizer
+    def __getattr__(self, name):
+        return getattr(self._tokenizer, name)
+
+
 class RequestScopedPipeline:
     DEFAULT_MUTABLE_ATTRS = [
         "_all_hooks",
@@ -197,6 +226,7 @@ class RequestScopedPipeline:
         mutable_attrs: Optional[Iterable[str]] = None,
         auto_detect_mutables: bool = True,
         tensor_numel_threshold: int = 1_000_000,
+        tokenizer_lock: Optional[threading.Lock] = None
     ):
         self._base = pipeline
         self.unet = getattr(pipeline, "unet", None)
@@ -205,6 +235,7 @@ class RequestScopedPipeline:
         self.components = getattr(pipeline, "components", None)
 
         self._mutable_attrs = list(mutable_attrs) if mutable_attrs is not None else list(self.DEFAULT_MUTABLE_ATTRS)
+        self._tokenizer_lock = tokenizer_lock if tokenizer_lock is not None else threading.Lock()
 
         self._auto_detect_mutables = bool(auto_detect_mutables)
         self._tensor_numel_threshold = int(tensor_numel_threshold)
@@ -294,7 +325,7 @@ class RequestScopedPipeline:
         attrs_to_clone = list(self._mutable_attrs)
         attrs_to_clone.extend(self._autodetect_mutables())
 
-        EXCLUDE_ATTRS = {"components",}  # añade más si encuentras otros problemáticos
+        EXCLUDE_ATTRS = {"components",}
 
         for attr in attrs_to_clone:
             if attr in EXCLUDE_ATTRS:
@@ -350,29 +381,109 @@ class RequestScopedPipeline:
         except Exception as e:
             logger.warning(f"copy.copy(self._base) failed: {e}. Falling back to deepcopy (may increase memory).")
             local_pipe = copy.deepcopy(self._base)
+
         if local_scheduler is not None:
             try:
                 setattr(local_pipe, "scheduler", local_scheduler)
             except Exception:
                 logger.warning("Could not set scheduler on local pipe; proceeding without replacing scheduler.")
 
-
         self._clone_mutable_attrs(self._base, local_pipe)
 
-        cm = getattr(local_pipe, "model_cpu_offload_context", None)
-        if callable(cm):
-            try:
-                with cm():
-                    return local_pipe(*args, num_inference_steps=num_inference_steps, **kwargs)
-            except TypeError:
-                # puede ser que cm sea un context manager ya instanciado en vez de callable
-                try:
-                    with cm:
-                        return local_pipe(*args, num_inference_steps=num_inference_steps, **kwargs)
-                except Exception as e:
-                    logger.debug(f"model_cpu_offload_context usage failed: {e}. Proceeding without it.")
+        # 4) wrap tokenizers on the local pipe with the lock wrapper
+        wrapped_tokenizers = {}  # name -> original_tokenizer
+        try:
+            # a) wrap direct tokenizer attributes (tokenizer, tokenizer_2, ...)
+            for name in dir(local_pipe):
+                if "tokenizer" in name and not name.startswith("_"):
+                    try:
+                        tok = getattr(local_pipe, name, None)
+                        if tok is None:
+                            continue
+                        # avoid double-wrapping
+                        if isinstance(tok, _TokenizerLockWrapper):
+                            continue
+                    # perform wrap
+                        originals_tok = tok
+                        try:
+                            setattr(local_pipe, name, _TokenizerLockWrapper(originals_tok, self._tokenizer_lock))
+                            wrapped_tokenizers[name] = originals_tok
+                        except Exception:
+                            logger.debug(f"Failed to wrap tokenizer attribute '{name}' with lock.")
+                    except Exception:
+                        # ignore attribute access errors
+                        continue
 
-        return local_pipe(*args, num_inference_steps=num_inference_steps, **kwargs)
+        # b) also check components mapping if present (common pattern)
+            comps = getattr(local_pipe, "components", None)
+            if isinstance(comps, dict):
+                for key, val in list(comps.items()):
+                    # only handle values that look like tokenizers
+                    if key and "tokenizer" in str(key).lower():
+                        try:
+                            if isinstance(val, _TokenizerLockWrapper):
+                                continue
+                            wrapped_name = f"components[{key}]"
+                            local_pipe.components[key] = _TokenizerLockWrapper(val, self._tokenizer_lock)
+                            wrapped_tokenizers[wrapped_name] = val
+                        except Exception:
+                            logger.debug(f"Failed to wrap components['{key}'] tokenizer with lock.")
+                    else:
+                    # sometimes tokenizers are stored as values with names that include 'tokenizer'
+                        try:
+                            if hasattr(val, "__class__") and "tokenizer" in val.__class__.__name__.lower():
+                                wrapped_name = f"components[{key}]"
+                                if isinstance(val, _TokenizerLockWrapper):
+                                    continue
+                                local_pipe.components[key] = _TokenizerLockWrapper(val, self._tokenizer_lock)
+                                wrapped_tokenizers[wrapped_name] = val
+                        except Exception:
+                            continue
+
+        except Exception as e:
+            logger.debug(f"Tokenizer wrapping step encountered an error: {e}")
+
+        # 5) run the pipeline, trying model_cpu_offload_context if available
+        result = None
+        cm = getattr(local_pipe, "model_cpu_offload_context", None)
+        try:
+            if callable(cm):
+                try:
+                    with cm():
+                        result = local_pipe(*args, num_inference_steps=num_inference_steps, **kwargs)
+                except TypeError:
+                    # cm might be a context manager instance rather than callable
+                    try:
+                        with cm:
+                            result = local_pipe(*args, num_inference_steps=num_inference_steps, **kwargs)
+                    except Exception as e:
+                        logger.debug(f"model_cpu_offload_context usage failed: {e}. Proceeding without it.")
+                        result = local_pipe(*args, num_inference_steps=num_inference_steps, **kwargs)
+            else:
+            # no offload context available — call directly
+                result = local_pipe(*args, num_inference_steps=num_inference_steps, **kwargs)
+
+            return result
+
+        finally:
+        # 6) restore any wrapped tokenizers on local_pipe (best-effort, local_pipe will be GC'd)
+            try:
+            # restore direct attrs
+                for name, orig in list(wrapped_tokenizers.items()):
+                    if name.startswith("components["):
+                    # components entry
+                        key = name[len("components["):-1]
+                        try:
+                            local_pipe.components[key] = orig
+                        except Exception:
+                            pass
+                    else:
+                        try:
+                            setattr(local_pipe, name, orig)
+                        except Exception:
+                            pass
+            except Exception as e:
+                logger.debug(f"Error restoring wrapped tokenizers: {e}")
 
 
 class DiffusionPipeline(ConfigMixin, PushToHubMixin):
