@@ -22,9 +22,9 @@ This guide covers general best practices for writing prompts and introduce a few
 
 A good prompt foundation should include the following elements.
 
-1. <span class="underline decoration-wavy decoration-blue-500 decoration-2 underline-offset-4">Subject</span> is what you want to generate an image or video of. It is the main focus and you should generally begin your prompt with the subject.
-2. <span class="underline decoration-wavy decoration-purple-500 decoration-2 underline-offset-4">Style</span> describes the medium or aesthetic of the image or video. What do you want it to look like?
-3. <span class="underline decoration-wavy decoration-green-500 decoration-2 underline-offset-4">Context</span> adds details to the image or video. For example, what is the subject doing and what is the setting and mood?
+1. <span class="underline decoration-sky-500 decoration-2 underline-offset-4">Subject</span> is what you want to generate an image or video of. It is the main focus and you should generally begin your prompt with the subject.
+2. <span class="underline decoration-pink-500 decoration-2 underline-offset-4">Style</span> describes the medium or aesthetic of the image or video. What do you want it to look like?
+3. <span class="underline decoration-green-500 decoration-2 underline-offset-4">Context</span> adds details to the image or video. For example, what is the subject doing and what is the setting and mood?
 
 Combine these elements into a structured narrative instead of a list of keywords. Modern models have powerful text encoders that have better language understanding. Start with a short prompt, and then iterate on it.
 
@@ -33,7 +33,7 @@ To generate an even better image, enhance the prompt with additional details suc
 <div class="flex gap-4">
   <div class="flex-1 text-center">
     <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/ok-prompt.png" class="w-full h-auto object-cover rounded-lg">
-    <figcaption class="mt-2 text-sm text-gray-500">A <span class="underline decoration-wavy decoration-blue-500 decoration-2 underline-offset-1">cute cat</span> <span class="underline decoration-wavy decoration-green-500 decoration-2 underline-offset-1">lounges on a leaf in a pool during a peaceful summer afternoon</span>, in <span class="underline decoration-wavy decoration-purple-500 decoration-2 underline-offset-1">lofi art style, illustration</span>.</figcaption>
+    <figcaption class="mt-2 text-sm text-gray-500">A <span class="underline decoration-sky-500 decoration-2 underline-offset-1">cute cat</span> <span class="underline decoration-pink-500 decoration-2 underline-offset-1">lounges on a leaf in a pool during a peaceful summer afternoon</span>, in <span class="underline decoration-green-500 decoration-2 underline-offset-1">lofi art style, illustration</span>.</figcaption>
   </div>
   <div class="flex-1 text-center">
     <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/better-prompt.png" class="w-full h-auto object-cover rounded-lg"/>
