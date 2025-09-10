@@ -950,6 +950,7 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         num_channels_latents = self.vae.config.z_dim
         image = self.video_processor.preprocess(image, height=height, width=width).to(device, dtype=torch.float32)
 
+        pose_video = None
         if pose_video_path_or_url is not None:
             pose_video = load_video(
                 pose_video_path_or_url,
