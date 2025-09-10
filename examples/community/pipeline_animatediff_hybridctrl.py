@@ -54,6 +54,55 @@ from diffusers.pipelines.animatediff.pipeline_output import AnimateDiffPipelineO
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 EXAMPLE_DOC_STRING = """
+    Examples:
+        ```py
+        >>> import torch
+        >>> from diffusers import AutoencoderKL, ControlNetModel, MotionAdapter
+        >>> from diffusers.pipelines import DiffusionPipeline
+        >>> from diffusers.schedulers import DPMSolverMultistepScheduler
+        >>> from PIL import Image
+
+        >>> motion_id = "wangfuyun/AnimateLCM"
+        >>> adapter = MotionAdapter.from_pretrained(motion_id)
+        >>> controlnet = ControlNetModel.from_pretrained("lllyasviel/sd-controlnet-depth", torch_dtype=torch.float16)
+        >>> vae = AutoencoderKL.from_pretrained("stabilityai/sd-vae-ft-mse", torch_dtype=torch.float16)
+
+        >>> model_id = "SG161222/Realistic_Vision_V5.1_noVAE"
+        >>> pipe = AnimateDiffHybridControlNetPipeline.from_pretrained(
+        ...     model_id,
+        ...     motion_adapter=adapter,
+        ...     controlnet=controlnet,
+        ...     vae=vae,
+        ...     custom_pipeline="pipeline_animatediff_controlnet",
+        ... ).to(device="cuda", dtype=torch.float16)
+        >>> pipe.scheduler = DPMSolverMultistepScheduler.from_pretrained(
+        ...     model_id, subfolder="scheduler", clip_sample=False, timestep_spacing="linspace", steps_offset=1, beta_schedule="linear",
+        ... )
+        >>> pipe.enable_vae_slicing()
+
+        >>> conditioning_frames = []
+        >>> condition_frame_indices = []
+        >>> for i in range(1, 16 + 1):
+        ...     conditioning_frames.append(Image.open(f"frame_{i}.png"))
+        ...     condition_frame_indices.append(i)
+
+        >>> prompt = "astronaut in space, dancing"
+        >>> negative_prompt = "bad quality, worst quality, jpeg artifacts, ugly"
+        >>> result = pipe(
+        ...     prompt=prompt,
+        ...     negative_prompt=negative_prompt,
+        ...     width=512,
+        ...     height=768,
+        ...     conditioning_frames=conditioning_frames,
+        ...     controlnet_frame_indices=condition_frame_indices,
+        ...     num_inference_steps=25,
+        ...     generator=torch.Generator().manual_seed(1337),
+        ...     controlnet_conditioning_scale=1.0,
+        ... )
+
+        >>> from diffusers.utils import export_to_gif
+        >>> export_to_gif(result.frames[0], "result.gif")
+        ```
 """
 
 class AnimateDiffHybridControlNetPipeline(
