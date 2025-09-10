@@ -191,22 +191,26 @@ class _TokenizerLockWrapper:
         with self._lock:
             return self._tokenizer(*args, **kwargs)
 
-    # common tokenizer methods some codepaths call
+    def __getattr__(self, name):
+        return getattr(self._tokenizer, name)
+
+    def __len__(self):
+        return len(self._tokenizer)
+
+    def __getitem__(self, item):
+        return self._tokenizer[item]
+
     def encode(self, *args, **kwargs):
         with self._lock:
-            return getattr(self._tokenizer, "encode")(*args, **kwargs)
+            return self._tokenizer.encode(*args, **kwargs)
 
     def batch_encode_plus(self, *args, **kwargs):
         with self._lock:
-            return getattr(self._tokenizer, "batch_encode_plus")(*args, **kwargs)
+            return self._tokenizer.batch_encode_plus(*args, **kwargs)
 
     def encode_plus(self, *args, **kwargs):
         with self._lock:
-            return getattr(self._tokenizer, "encode_plus")(*args, **kwargs)
-
-    # fallback: delegate any other attribute access to the original tokenizer
-    def __getattr__(self, name):
-        return getattr(self._tokenizer, name)
+            return self._tokenizer.encode_plus(*args, **kwargs)
 
 
 class RequestScopedPipeline:
