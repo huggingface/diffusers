@@ -10,35 +10,91 @@ an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express o
 specific language governing permissions and limitations under the License.
 -->
 
-# Prompt techniques
-
 [[open-in-colab]]
 
-Prompts are important because they describe what you want a diffusion model to generate. The best prompts are detailed, specific, and well-structured to help the model realize your vision. But crafting a great prompt takes time and effort and sometimes it may not be enough because language and words can be imprecise. This is where you need to boost your prompt with other techniques, such as prompt enhancing and prompt weighting, to get the results you want.
+# Prompting
 
-This guide will show you how you can use these prompt techniques to generate high-quality images with lower effort and adjust the weight of certain keywords in a prompt.
+Prompting describes what a model should generate. A good prompt should be detailed, specific, and structured in order to generate better images or videos.
 
-## Prompt engineering
+This guide covers general best practices for writing prompts and introduce a few prompt-enhancing techniques.
 
-> [!TIP]
-> This is not an exhaustive guide on prompt engineering, but it will help you understand the necessary parts of a good prompt. We encourage you to continue experimenting with different prompts and combine them in new ways to see what works best. As you write more prompts, you'll develop an intuition for what works and what doesn't!
+## Writing good prompts
 
-New diffusion models do a pretty good job of generating high-quality images from a basic prompt, but it is still important to create a well-written prompt to get the best results. Here are a few tips for writing a good prompt:
+A good prompt foundation should include the following elements.
 
-1. What is the image *medium*? Is it a photo, a painting, a 3D illustration, or something else?
-2. What is the image *subject*? Is it a person, animal, object, or scene?
-3. What *details* would you like to see in the image? This is where you can get really creative and have a lot of fun experimenting with different words to bring your image to life. For example, what is the lighting like? What is the vibe and aesthetic? What kind of art or illustration style are you looking for? The more specific and precise words you use, the better the model will understand what you want to generate.
+1. <span class="underline decoration-wavy decoration-blue-500 decoration-2 underline-offset-4">Subject</span> is what you want to generate an image or video of. It is the main focus and you should generally begin your prompt with the subject.
+2. <span class="underline decoration-wavy decoration-purple-500 decoration-2 underline-offset-4">Style</span> describes the medium or aesthetic of the image or video. What do you want it to look like?
+3. <span class="underline decoration-wavy decoration-green-500 decoration-2 underline-offset-4">Context</span> adds details to the image or video. For example, what is the subject doing and what is the setting and mood?
+
+Combine these elements into a structured narrative instead of a list of keywords. Modern models have powerful text encoders that have better language understanding. Start with a short prompt, and then iterate on it.
+
+To generate an even better image, enhance the prompt with additional details such as the vibe, specific visual details like lighting, and artistic details.
 
 <div class="flex gap-4">
-  <div>
-    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/plain-prompt.png"/>
-    <figcaption class="mt-2 text-center text-sm text-gray-500">"A photo of a banana-shaped couch in a living room"</figcaption>
+  <div class="flex-1 text-center">
+    <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/ok-prompt.png" class="w-full h-auto object-cover rounded-lg">
+    <figcaption class="mt-2 text-sm text-gray-500">A <span class="underline decoration-wavy decoration-blue-500 decoration-2 underline-offset-1">cute cat</span> <span class="underline decoration-wavy decoration-green-500 decoration-2 underline-offset-1">lounges on a leaf in a pool during a peaceful summer afternoon</span>, in <span class="underline decoration-wavy decoration-purple-500 decoration-2 underline-offset-1">lofi art style, illustration</span>.</figcaption>
   </div>
-  <div>
-    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/detail-prompt.png"/>
-    <figcaption class="mt-2 text-center text-sm text-gray-500">"A vibrant yellow banana-shaped couch sits in a cozy living room, its curve cradling a pile of colorful cushions. on the wooden floor, a patterned rug adds a touch of eclectic charm, and a potted plant sits in the corner, reaching towards the sunlight filtering through the windows"</figcaption>
+  <div class="flex-1 text-center">
+    <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/better-prompt.png" class="w-full h-auto object-cover rounded-lg"/>
+    <figcaption class="mt-2 text-sm text-gray-500">A cute cat lounges on a floating leaf in a sparkling pool during a peaceful summer afternoon. Clear reflections ripple across the water, with sunlight casting soft, smooth highlights. The illustration is detailed and polished, with elegant lines and harmonious colors, evoking a relaxing, serene, and whimsical lofi mood, anime-inspired and visually comforting.</figcaption>
   </div>
 </div>
+
+Try to be as specific and precise as possible and provide as much context as you can to help a model understand what to generate. For example, consider using specific photography or cinematographic terms such as lens type, focal lengths, camera angles and scene depths.
+
+## Prompt weighting
+
+Prompt weighting emphasizes and de-emphasizes certain words or concepts in a prompt to help a model focus. It works by scaling the attention score for a token by some value, allowing you to fine-tune how much influence a word or concept has.
+
+Diffusers supports prompt weighting through the `prompt_embeds` and `pooled_prompt_embeds` arguments. These arguments accept the scaled text embedding vector. To get these embeddings, we recommend using the [sd_embed](https://github.com/xhinker/sd_embed) library, which also supports longer prompts. Run the command below to install the sd_embed library.
+
+```py
+!uv pip install git+https://github.com/xhinker/sd_embed.git@main
+```
+
+To apply prompt weighting, format the text a numerical multiplier or parentheses (more parentheses increases weighting). Refer to the table below for some examples.
+
+| format | multiplier |
+|---|---|
+| `(cat)` | increase by 1.1x |
+| `((cat))` | increase by 1.21x |
+| `(cat:1.5)` | increase by 1.5x |
+| `(cat:0.5)` | decrease by 4x |
+
+Create a weighed prompt and pass it to the [get_weighted_text_embeddings_sdxl](https://github.com/xhinker/sd_embed/blob/4a47f71150a22942fa606fb741a1c971d95ba56f/src/sd_embed/embedding_funcs.py#L405) function to generate the embeddings.
+
+> [!TIP]
+> You could also pass negative prompts to `negative_prompt_embeds` and `negative_pooled_prompt_embeds`.
+
+```py
+import torch
+from diffusers import DiffusionPipeline
+from sd_embed.embedding_funcs import get_weighted_text_embeddings_sdxl
+
+pipeline = DiffusionPipeline.from_pretrained(
+  "Lykon/dreamshaper-xl-1-0", torch_dtype=torch.bfloat16, device_map="cuda"
+)
+prompt="""
+A (cute cat:1.4) lounges on a (floating leaf:1.2) in a (sparkling pool:1.1) during a peaceful summer afternoon.
+Gentle ripples reflect pastel skies, while (sunlight:1.1) casts soft highlights. The illustration is smooth and polished
+with elegant, sketchy lines and subtle gradients, evoking a ((whimsical, nostalgic, dreamy lofi atmosphere:2.0)), 
+(anime-inspired:1.6), calming, comforting, and visually serene.
+"""
+(prompt_embeds, _, pooled_prompt_embeds, *_) = get_weighted_text_embeddings_sdxl(pipeline, prompt=prompt)
+```
+
+Pass the embeddings to the `prompt_embeds` and `pooled_prompt_embeds` arguments to generate an image.
+
+```py
+pipeline(prompt_embeds=prompt_embeds, pooled_prompt_embeds=pooled_prompt_embeds).images[0]
+```
+
+<div class="flex justify-center">
+  <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/prompt-embed-sdxl.png"/>
+</div>
+
+Prompt weighting is also supported for adapters like [Textual inversion](./textual_inversion_inference) and [DreamBooth](./dreambooth).
 
 ## Prompt enhancing with GPT2
 
@@ -209,224 +265,4 @@ image
     <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/enhanced-prompt.png"/>
     <figcaption class="mt-2 text-center text-sm text-gray-500">"cinematic film still of a cat basking in the sun on a roof in Turkey, highly detailed, high budget hollywood movie, cinemascope, moody, epic, gorgeous, film grain"</figcaption>
   </div>
-</div>
-
-## Prompt weighting
-
-Prompt weighting provides a way to emphasize or de-emphasize certain parts of a prompt, allowing for more control over the generated image. A prompt can include several concepts, which gets turned into contextualized text embeddings. The embeddings are used by the model to condition its cross-attention layers to generate an image (read the Stable Diffusion [blog post](https://huggingface.co/blog/stable_diffusion) to learn more about how it works).
-
-Prompt weighting works by increasing or decreasing the scale of the text embedding vector that corresponds to its concept in the prompt because you may not necessarily want the model to focus on all concepts equally. The easiest way to prepare the prompt embeddings is to use [Stable Diffusion Long Prompt Weighted Embedding](https://github.com/xhinker/sd_embed) (sd_embed). Once you have the prompt-weighted embeddings, you can pass them to any pipeline that has a [prompt_embeds](https://huggingface.co/docs/diffusers/en/api/pipelines/stable_diffusion/text2img#diffusers.StableDiffusionPipeline.__call__.prompt_embeds) (and optionally [negative_prompt_embeds](https://huggingface.co/docs/diffusers/en/api/pipelines/stable_diffusion/text2img#diffusers.StableDiffusionPipeline.__call__.negative_prompt_embeds)) parameter, such as [`StableDiffusionPipeline`], [`StableDiffusionControlNetPipeline`], and [`StableDiffusionXLPipeline`].
-
-> [!TIP]
-> If your favorite pipeline doesn't have a `prompt_embeds` parameter, please open an [issue](https://github.com/huggingface/diffusers/issues/new/choose) so we can add it!
-
-This guide will show you how to weight your prompts with sd_embed.
-
-Before you begin, make sure you have the latest version of sd_embed installed:
-
-```bash
-pip install git+https://github.com/xhinker/sd_embed.git@main
-```
-
-For this example, let's use [`StableDiffusionXLPipeline`].
-
-```py
-from diffusers import StableDiffusionXLPipeline, UniPCMultistepScheduler
-import torch
-
-pipe = StableDiffusionXLPipeline.from_pretrained("Lykon/dreamshaper-xl-1-0", torch_dtype=torch.float16)
-pipe.scheduler = UniPCMultistepScheduler.from_config(pipe.scheduler.config)
-pipe.to("cuda")
-```
-
-To upweight or downweight a concept, surround the text with parentheses. More parentheses applies a heavier weight on the text. You can also append a numerical multiplier to the text to indicate how much you want to increase or decrease its weights by.
-
-| format | multiplier |
-|---|---|
-| `(hippo)` | increase by 1.1x |
-| `((hippo))` | increase by 1.21x |
-| `(hippo:1.5)` | increase by 1.5x |
-| `(hippo:0.5)` | decrease by 4x |
-
-Create a prompt and use a combination of parentheses and numerical multipliers to upweight various text.
-
-```py
-from sd_embed.embedding_funcs import get_weighted_text_embeddings_sdxl
-
-prompt = """A whimsical and creative image depicting a hybrid creature that is a mix of a waffle and a hippopotamus. 
-This imaginative creature features the distinctive, bulky body of a hippo, 
-but with a texture and appearance resembling a golden-brown, crispy waffle. 
-The creature might have elements like waffle squares across its skin and a syrup-like sheen. 
-It's set in a surreal environment that playfully combines a natural water habitat of a hippo with elements of a breakfast table setting, 
-possibly including oversized utensils or plates in the background. 
-The image should evoke a sense of playful absurdity and culinary fantasy.
-"""
-
-neg_prompt = """\
-skin spots,acnes,skin blemishes,age spot,(ugly:1.2),(duplicate:1.2),(morbid:1.21),(mutilated:1.2),\
-(tranny:1.2),mutated hands,(poorly drawn hands:1.5),blurry,(bad anatomy:1.2),(bad proportions:1.3),\
-extra limbs,(disfigured:1.2),(missing arms:1.2),(extra legs:1.2),(fused fingers:1.5),\
-(too many fingers:1.5),(unclear eyes:1.2),lowers,bad hands,missing fingers,extra digit,\
-bad hands,missing fingers,(extra arms and legs),(worst quality:2),(low quality:2),\
-(normal quality:2),lowres,((monochrome)),((grayscale))
-"""
-```
-
-Use the `get_weighted_text_embeddings_sdxl` function to generate the prompt embeddings and the negative prompt embeddings. It'll also generated the pooled and negative pooled prompt embeddings since you're using the SDXL model.
-
-> [!TIP]
-> You can safely ignore the error message below about the token index length exceeding the models maximum sequence length. All your tokens will be used in the embedding process.
->
-> ```
-> Token indices sequence length is longer than the specified maximum sequence length for this model
-> ```
-
-```py
-( 
-  prompt_embeds,
-  prompt_neg_embeds,
-  pooled_prompt_embeds,
-  negative_pooled_prompt_embeds
-) = get_weighted_text_embeddings_sdxl(
-    pipe,
-    prompt=prompt,
-    neg_prompt=neg_prompt
-)
-
-image = pipe(
-    prompt_embeds=prompt_embeds,
-    negative_prompt_embeds=prompt_neg_embeds,
-    pooled_prompt_embeds=pooled_prompt_embeds,
-    negative_pooled_prompt_embeds=negative_pooled_prompt_embeds,
-    num_inference_steps=30,
-    height=1024,
-    width=1024 + 512,
-    guidance_scale=4.0,
-    generator=torch.Generator("cuda").manual_seed(2)
-).images[0]
-image
-```
-
-<div class="flex justify-center">
-  <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/sd_embed_sdxl.png"/>
-</div>
-
-> [!TIP]
-> Refer to the [sd_embed](https://github.com/xhinker/sd_embed) repository for additional details about long prompt weighting for FLUX.1, Stable Cascade, and Stable Diffusion 1.5.
-
-### Textual inversion
-
-[Textual inversion](../training/text_inversion) is a technique for learning a specific concept from some images which you can use to generate new images conditioned on that concept.
-
-Create a pipeline and use the [`~loaders.TextualInversionLoaderMixin.load_textual_inversion`] function to load the textual inversion embeddings (feel free to browse the [Stable Diffusion Conceptualizer](https://huggingface.co/spaces/sd-concepts-library/stable-diffusion-conceptualizer) for 100+ trained concepts):
-
-```py
-import torch
-from diffusers import StableDiffusionPipeline
-
-pipe = StableDiffusionPipeline.from_pretrained(
-  "stable-diffusion-v1-5/stable-diffusion-v1-5",
-  torch_dtype=torch.float16,
-).to("cuda")
-pipe.load_textual_inversion("sd-concepts-library/midjourney-style")
-```
-
-Add the `<midjourney-style>` text to the prompt to trigger the textual inversion.
-
-```py
-from sd_embed.embedding_funcs import get_weighted_text_embeddings_sd15
-
-prompt = """<midjourney-style> A whimsical and creative image depicting a hybrid creature that is a mix of a waffle and a hippopotamus. 
-This imaginative creature features the distinctive, bulky body of a hippo, 
-but with a texture and appearance resembling a golden-brown, crispy waffle. 
-The creature might have elements like waffle squares across its skin and a syrup-like sheen. 
-It's set in a surreal environment that playfully combines a natural water habitat of a hippo with elements of a breakfast table setting, 
-possibly including oversized utensils or plates in the background. 
-The image should evoke a sense of playful absurdity and culinary fantasy.
-"""
-
-neg_prompt = """\
-skin spots,acnes,skin blemishes,age spot,(ugly:1.2),(duplicate:1.2),(morbid:1.21),(mutilated:1.2),\
-(tranny:1.2),mutated hands,(poorly drawn hands:1.5),blurry,(bad anatomy:1.2),(bad proportions:1.3),\
-extra limbs,(disfigured:1.2),(missing arms:1.2),(extra legs:1.2),(fused fingers:1.5),\
-(too many fingers:1.5),(unclear eyes:1.2),lowers,bad hands,missing fingers,extra digit,\
-bad hands,missing fingers,(extra arms and legs),(worst quality:2),(low quality:2),\
-(normal quality:2),lowres,((monochrome)),((grayscale))
-"""
-```
-
-Use the `get_weighted_text_embeddings_sd15` function to generate the prompt embeddings and the negative prompt embeddings.
-
-```py
-( 
-  prompt_embeds,
-  prompt_neg_embeds,
-) = get_weighted_text_embeddings_sd15(
-    pipe,
-    prompt=prompt,
-    neg_prompt=neg_prompt
-)
-
-image = pipe(
-    prompt_embeds=prompt_embeds,
-    negative_prompt_embeds=prompt_neg_embeds,
-    height=768,
-    width=896,
-    guidance_scale=4.0,
-    generator=torch.Generator("cuda").manual_seed(2)
-).images[0]
-image
-```
-
-<div class="flex justify-center">
-  <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/sd_embed_textual_inversion.png"/>
-</div>
-
-### DreamBooth
-
-[DreamBooth](../training/dreambooth) is a technique for generating contextualized images of a subject given just a few images of the subject to train on. It is similar to textual inversion, but DreamBooth trains the full model whereas textual inversion only fine-tunes the text embeddings. This means you should use [`~DiffusionPipeline.from_pretrained`] to load the DreamBooth model (feel free to browse the [Stable Diffusion Dreambooth Concepts Library](https://huggingface.co/sd-dreambooth-library) for 100+ trained models):
-
-```py
-import torch
-from diffusers import DiffusionPipeline, UniPCMultistepScheduler
-
-pipe = DiffusionPipeline.from_pretrained("sd-dreambooth-library/dndcoverart-v1", torch_dtype=torch.float16).to("cuda")
-pipe.scheduler = UniPCMultistepScheduler.from_config(pipe.scheduler.config)
-```
-
-Depending on the model you use, you'll need to incorporate the model's unique identifier into your prompt. For example, the `dndcoverart-v1` model uses the identifier `dndcoverart`:
-
-```py
-from sd_embed.embedding_funcs import get_weighted_text_embeddings_sd15
-
-prompt = """dndcoverart of A whimsical and creative image depicting a hybrid creature that is a mix of a waffle and a hippopotamus. 
-This imaginative creature features the distinctive, bulky body of a hippo, 
-but with a texture and appearance resembling a golden-brown, crispy waffle. 
-The creature might have elements like waffle squares across its skin and a syrup-like sheen. 
-It's set in a surreal environment that playfully combines a natural water habitat of a hippo with elements of a breakfast table setting, 
-possibly including oversized utensils or plates in the background. 
-The image should evoke a sense of playful absurdity and culinary fantasy.
-"""
-
-neg_prompt = """\
-skin spots,acnes,skin blemishes,age spot,(ugly:1.2),(duplicate:1.2),(morbid:1.21),(mutilated:1.2),\
-(tranny:1.2),mutated hands,(poorly drawn hands:1.5),blurry,(bad anatomy:1.2),(bad proportions:1.3),\
-extra limbs,(disfigured:1.2),(missing arms:1.2),(extra legs:1.2),(fused fingers:1.5),\
-(too many fingers:1.5),(unclear eyes:1.2),lowers,bad hands,missing fingers,extra digit,\
-bad hands,missing fingers,(extra arms and legs),(worst quality:2),(low quality:2),\
-(normal quality:2),lowres,((monochrome)),((grayscale))
-"""
-
-(
-    prompt_embeds
-    , prompt_neg_embeds
-) = get_weighted_text_embeddings_sd15(
-    pipe
-    , prompt = prompt
-    , neg_prompt = neg_prompt
-)
-```
-
-<div class="flex justify-center">
-  <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/sd_embed_dreambooth.png"/>
 </div>
