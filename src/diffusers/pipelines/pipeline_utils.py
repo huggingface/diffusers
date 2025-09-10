@@ -181,48 +181,9 @@ class DeprecatedPipelineMixin:
         super().__init__(*args, **kwargs)
 
 
-
-class _TokenizerLockWrapper:
-    def __init__(self, tokenizer, lock):
-        self._tokenizer = tokenizer
-        self._lock = lock
-
-    def __call__(self, *args, **kwargs):
-        with self._lock:
-            return self._tokenizer(*args, **kwargs)
-
-    def encode(self, *args, **kwargs):
-        with self._lock:
-            return getattr(self._tokenizer, "encode")(*args, **kwargs)
-
-    def batch_encode_plus(self, *args, **kwargs):
-        with self._lock:
-            return getattr(self._tokenizer, "batch_encode_plus")(*args, **kwargs)
-
-    def encode_plus(self, *args, **kwargs):
-        with self._lock:
-            return getattr(self._tokenizer, "encode_plus")(*args, **kwargs)
-
-    def __getattr__(self, name):
-        return getattr(self._tokenizer, name)
-
-    def __int__(self):
-        return getattr(self._tokenizer, "vocab_size", 0)
-
-    def __lt__(self, other):
-        try: return int(self) < int(other)
-        except Exception: return NotImplemented
-    def __le__(self, other):
-        try: return int(self) <= int(other)
-        except Exception: return NotImplemented
-    def __gt__(self, other):
-        try: return int(self) > int(other)
-        except Exception: return NotImplemented
-    def __ge__(self, other):
-        try: return int(self) >= int(other)
-        except Exception: return NotImplemented
-
-
+def safe_tokenize(tokenizer, *args, lock, **kwargs):
+    with lock:
+        return tokenizer(*args, **kwargs)
 
 
 class RequestScopedPipeline:
@@ -407,59 +368,31 @@ class RequestScopedPipeline:
         self._clone_mutable_attrs(self._base, local_pipe)
 
         # 4) wrap tokenizers on the local pipe with the lock wrapper
-        wrapped_tokenizers = {}  # name -> original_tokenizer
+        tokenizer_wrappers = {}  # name -> original_tokenizer
         try:
             # a) wrap direct tokenizer attributes (tokenizer, tokenizer_2, ...)
             for name in dir(local_pipe):
                 if "tokenizer" in name and not name.startswith("_"):
-                    try:
-                        tok = getattr(local_pipe, name, None)
-                        if tok is None:
-                            continue
-                        # avoid double-wrapping
-                        if isinstance(tok, _TokenizerLockWrapper):
-                            continue
-                    # perform wrap
-                        originals_tok = tok
-                        try:
-                            setattr(local_pipe, name, _TokenizerLockWrapper(originals_tok, self._tokenizer_lock))
-                            wrapped_tokenizers[name] = originals_tok
-                        except Exception:
-                            logger.debug(f"Failed to wrap tokenizer attribute '{name}' with lock.")
-                    except Exception:
-                        # ignore attribute access errors
-                        continue
+                    tok = getattr(local_pipe, name, None)
+                    if tok is not None:
+                        tokenizer_wrappers[name] = tok
+                        setattr(
+                        local_pipe,
+                        name,
+                        lambda *args, tok=tok, **kwargs: safe_tokenize(tok, *args, lock=self._tokenizer_lock, **kwargs)
+                        )
 
-        # b) also check components mapping if present (common pattern)
-            comps = getattr(local_pipe, "components", None)
-            if isinstance(comps, dict):
-                for key, val in list(comps.items()):
-                    # only handle values that look like tokenizers
-                    if key and "tokenizer" in str(key).lower():
-                        try:
-                            if isinstance(val, _TokenizerLockWrapper):
-                                continue
-                            wrapped_name = f"components[{key}]"
-                            local_pipe.components[key] = _TokenizerLockWrapper(val, self._tokenizer_lock)
-                            wrapped_tokenizers[wrapped_name] = val
-                        except Exception:
-                            logger.debug(f"Failed to wrap components['{key}'] tokenizer with lock.")
-                    else:
-                    # sometimes tokenizers are stored as values with names that include 'tokenizer'
-                        try:
-                            if hasattr(val, "__class__") and "tokenizer" in val.__class__.__name__.lower():
-                                wrapped_name = f"components[{key}]"
-                                if isinstance(val, _TokenizerLockWrapper):
-                                    continue
-                                local_pipe.components[key] = _TokenizerLockWrapper(val, self._tokenizer_lock)
-                                wrapped_tokenizers[wrapped_name] = val
-                        except Exception:
-                            continue
+            if hasattr(local_pipe, "components") and isinstance(local_pipe.components, dict):
+                for key, val in local_pipe.components.items():
+                    if val is None:
+                        continue
+                    if "tokenizer" in str(key).lower() or "tokenizer" in val.__class__.__name__.lower():
+                        tokenizer_wrappers[f"components[{key}]"] = val
+                    local_pipe.components[key] = lambda *args, tok=val, **kwargs: safe_tokenize(tok, *args, lock=self._tokenizer_lock, **kwargs)
 
         except Exception as e:
             logger.debug(f"Tokenizer wrapping step encountered an error: {e}")
 
-        # 5) run the pipeline, trying model_cpu_offload_context if available
         result = None
         cm = getattr(local_pipe, "model_cpu_offload_context", None)
         try:
@@ -482,22 +415,13 @@ class RequestScopedPipeline:
             return result
 
         finally:
-        # 6) restore any wrapped tokenizers on local_pipe (best-effort, local_pipe will be GC'd)
             try:
-            # restore direct attrs
-                for name, orig in list(wrapped_tokenizers.items()):
+                for name, tok in tokenizer_wrappers.items():
                     if name.startswith("components["):
-                    # components entry
                         key = name[len("components["):-1]
-                        try:
-                            local_pipe.components[key] = orig
-                        except Exception:
-                            pass
+                        local_pipe.components[key] = tok
                     else:
-                        try:
-                            setattr(local_pipe, name, orig)
-                        except Exception:
-                            pass
+                        setattr(local_pipe, name, tok)
             except Exception as e:
                 logger.debug(f"Error restoring wrapped tokenizers: {e}")
 
