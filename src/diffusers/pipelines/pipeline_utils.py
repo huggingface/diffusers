@@ -183,11 +183,10 @@ class DeprecatedPipelineMixin:
 
 
 class _TokenizerLockWrapper:
-    def __init__(self, tokenizer: Any, lock: threading.Lock):
+    def __init__(self, tokenizer, lock):
         self._tokenizer = tokenizer
         self._lock = lock
 
-    # --- callables that must be protected by the lock ---
     def __call__(self, *args, **kwargs):
         with self._lock:
             return self._tokenizer(*args, **kwargs)
@@ -204,90 +203,25 @@ class _TokenizerLockWrapper:
         with self._lock:
             return getattr(self._tokenizer, "encode_plus")(*args, **kwargs)
 
-    # --- attribute delegation for everything else ---
     def __getattr__(self, name):
-        # Called only if attribute is not found on this wrapper;
-        # delegate to the real tokenizer
         return getattr(self._tokenizer, name)
 
-    def __repr__(self):
-        return f"<TokenizerLockWrapper for {repr(self._tokenizer)}>"
-
-    def __str__(self):
-        return str(self._tokenizer)
-
-    def __len__(self):
-        try:
-            return len(self._tokenizer)
-        except Exception:
-            return 0
-
-    def __iter__(self):
-        return iter(self._tokenizer)
-
-    def __contains__(self, item):
-        try:
-            return item in self._tokenizer
-        except Exception:
-            return False
-
-    def __getitem__(self, key):
-        return self._tokenizer[key]
-
-    # --- numeric / comparison support (crucial to fix your TypeError) ---
-    def _as_int(self) -> int:
-        """
-        Best-effort integer representation for comparisons:
-        prefer vocab_size, then model_max_length-like attributes, then len(tokenizer), else 0.
-        """
-        for attr in ("vocab_size", "vocab_size_base", "model_max_length", "max_len_single_sentence", "max_len"):
-            val = getattr(self._tokenizer, attr, None)
-            if isinstance(val, int):
-                return val
-        try:
-            return int(len(self._tokenizer))
-        except Exception:
-            return 0
-
     def __int__(self):
-        return self._as_int()
+        return getattr(self._tokenizer, "vocab_size", 0)
 
-    def __index__(self):
-        return self._as_int()
-
-    # rich comparisons - delegate to integer representation when compared with numbers
     def __lt__(self, other):
-        try:
-            return self._as_int() < int(other)
-        except Exception:
-            return NotImplemented
-
+        try: return int(self) < int(other)
+        except Exception: return NotImplemented
     def __le__(self, other):
-        try:
-            return self._as_int() <= int(other)
-        except Exception:
-            return NotImplemented
-
+        try: return int(self) <= int(other)
+        except Exception: return NotImplemented
     def __gt__(self, other):
-        try:
-            return self._as_int() > int(other)
-        except Exception:
-            return NotImplemented
-
+        try: return int(self) > int(other)
+        except Exception: return NotImplemented
     def __ge__(self, other):
-        try:
-            return self._as_int() >= int(other)
-        except Exception:
-            return NotImplemented
+        try: return int(self) >= int(other)
+        except Exception: return NotImplemented
 
-    def __eq__(self, other):
-        # equality: unwrap if other is also wrapper
-        if isinstance(other, _TokenizerLockWrapper):
-            return getattr(self._tokenizer, "__eq__", lambda o: self._tokenizer == o)(other._tokenizer)
-        return getattr(self._tokenizer, "__eq__", lambda o: self._tokenizer == o)(other)
-
-    def __ne__(self, other):
-        return not self.__eq__(other)
 
 
 
