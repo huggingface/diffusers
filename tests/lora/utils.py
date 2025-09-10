@@ -138,7 +138,8 @@ class PeftLoraLoaderMixinTests:
     def get_base_pipe_outs(self):
         cached_base_pipe_outs = getattr(type(self), "cached_base_pipe_outs", {})
         all_scheduler_names = [scheduler_cls.__name__ for scheduler_cls in self.scheduler_classes]
-        if cached_base_pipe_outs is not None and all(k in cached_base_pipe_outs for k in all_scheduler_names):
+        # Check if all required schedulers are already cached
+        if cached_base_pipe_outs and all(k in cached_base_pipe_outs for k in all_scheduler_names):
             return
 
         cached_base_pipe_outs = cached_base_pipe_outs or {}
@@ -163,7 +164,11 @@ class PeftLoraLoaderMixinTests:
         """
         Returns the cached base pipeline output for the given scheduler.
         Properly handles accessing the class-level cache.
+        Ensures cache is populated if it hasn't been already.
         """
+        # Ensure cache is populated
+        self.get_base_pipe_outs()
+        
         cached_base_pipe_outs = getattr(type(self), "cached_base_pipe_outs", {})
         return cached_base_pipe_outs[scheduler_cls.__name__]
 
