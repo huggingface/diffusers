@@ -132,6 +132,7 @@ _deps = [
     "gguf>=0.10.0",
     "torchao>=0.7.0",
     "bitsandbytes>=0.43.3",
+    "nvidia_modelopt[hf]>=0.33.1",
     "regex!=2019.12.17",
     "requests",
     "tensorboard",
@@ -244,6 +245,7 @@ extras["bitsandbytes"] = deps_list("bitsandbytes", "accelerate")
 extras["gguf"] = deps_list("gguf", "accelerate")
 extras["optimum_quanto"] = deps_list("optimum_quanto", "accelerate")
 extras["torchao"] = deps_list("torchao", "accelerate")
+extras["nvidia_modelopt"] = deps_list("nvidia_modelopt[hf]")
 
 if os.name == "nt":  # windows
     extras["flax"] = []  # jax is not supported on windows
@@ -269,7 +271,7 @@ version_range_max = max(sys.version_info[1], 10) + 1
 
 setup(
     name="diffusers",
-    version="0.35.0.dev0",  # expected format is one of x.y.z.dev0, or x.y.z.rc1 or x.y.z (no to dashes, yes to dots)
+    version="0.36.0.dev0",  # expected format is one of x.y.z.dev0, or x.y.z.rc1 or x.y.z (no to dashes, yes to dots)
     description="State-of-the-art diffusion in PyTorch and JAX.",
     long_description=open("README.md", "r", encoding="utf-8").read(),
     long_description_content_type="text/markdown",

@@ -9,7 +9,8 @@ import torch
 import diffusers
 from diffusers import ComponentsManager, ModularPipeline, ModularPipelineBlocks
 from diffusers.utils import logging
-from diffusers.utils.testing_utils import (
+
+from ..testing_utils import (
     backend_empty_cache,
     numpy_cosine_similarity_distance,
     require_accelerator,
@@ -139,7 +140,6 @@ class ModularPipelineTesterMixin:
     def test_pipeline_call_signature(self):
         pipe = self.get_pipeline()
         input_parameters = pipe.blocks.input_names
-        intermediate_parameters = pipe.blocks.intermediate_input_names
         optional_parameters = pipe.default_call_parameters
 
         def _check_for_parameters(parameters, expected_parameters, param_type):
@@ -149,7 +149,6 @@ class ModularPipelineTesterMixin:
             )
 
         _check_for_parameters(self.params, input_parameters, "input")
-        _check_for_parameters(self.intermediate_params, intermediate_parameters, "intermediate")
         _check_for_parameters(self.optional_params, optional_parameters, "optional")
 
     def test_inference_batch_consistent(self, batch_sizes=[2], batch_generator=True):
@@ -345,7 +344,7 @@ class ModularPipelineTesterMixin:
         with tempfile.TemporaryDirectory() as tmpdirname:
             base_pipe.save_pretrained(tmpdirname)
             pipe = ModularPipeline.from_pretrained(tmpdirname).to(torch_device)
-            pipe.load_default_components(torch_dtype=torch.float32)
+            pipe.load_components(torch_dtype=torch.float32)
             pipe.to(torch_device)
 
         pipes.append(pipe)

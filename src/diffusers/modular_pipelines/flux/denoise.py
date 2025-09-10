@@ -22,7 +22,7 @@ from ...utils import logging
 from ..modular_pipeline import (
     BlockState,
     LoopSequentialPipelineBlocks,
-    PipelineBlock,
+    ModularPipelineBlocks,
     PipelineState,
 )
 from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
@@ -32,7 +32,7 @@ from .modular_pipeline import FluxModularPipeline
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-class FluxLoopDenoiser(PipelineBlock):
+class FluxLoopDenoiser(ModularPipelineBlocks):
     model_name = "flux"
 
     @property
@@ -49,11 +49,8 @@ class FluxLoopDenoiser(PipelineBlock):
 
     @property
     def inputs(self) -> List[Tuple[str, Any]]:
-        return [InputParam("joint_attention_kwargs")]
-
-    @property
-    def intermediate_inputs(self) -> List[str]:
         return [
+            InputParam("joint_attention_kwargs"),
             InputParam(
                 "latents",
                 required=True,
@@ -113,7 +110,7 @@ class FluxLoopDenoiser(PipelineBlock):
         return components, block_state
 
 
-class FluxLoopAfterDenoiser(PipelineBlock):
+class FluxLoopAfterDenoiser(ModularPipelineBlocks):
     model_name = "flux"
 
     @property
@@ -175,7 +172,7 @@ class FluxDenoiseLoopWrapper(LoopSequentialPipelineBlocks):
         ]
 
     @property
-    def loop_intermediate_inputs(self) -> List[InputParam]:
+    def loop_inputs(self) -> List[InputParam]:
         return [
             InputParam(
                 "timesteps",
@@ -223,7 +220,7 @@ class FluxDenoiseStep(FluxDenoiseLoopWrapper):
         return (
             "Denoise step that iteratively denoise the latents. \n"
             "Its loop logic is defined in `FluxDenoiseLoopWrapper.__call__` method \n"
-            "At each iteration, it runs blocks defined in `sub_blocks` sequencially:\n"
+            "At each iteration, it runs blocks defined in `sub_blocks` sequentially:\n"
             " - `FluxLoopDenoiser`\n"
             " - `FluxLoopAfterDenoiser`\n"
             "This block supports both text2image and img2img tasks."

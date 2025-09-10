@@ -7,8 +7,14 @@ from ..utils import (
     get_objects_from_module,
     is_torch_available,
     is_transformers_available,
+    logging,
 )
 
+
+logger = logging.get_logger(__name__)
+logger.warning(
+    "Modular Diffusers is currently an experimental feature under active development. The API is subject to breaking changes in future releases."
+)
 
 # These modules contain pipelines from multiple libraries/frameworks
 _dummy_objects = {}
@@ -25,7 +31,6 @@ else:
     _import_structure["modular_pipeline"] = [
         "ModularPipelineBlocks",
         "ModularPipeline",
-        "PipelineBlock",
         "AutoPipelineBlocks",
         "SequentialPipelineBlocks",
         "LoopSequentialPipelineBlocks",
@@ -42,6 +47,12 @@ else:
     _import_structure["stable_diffusion_xl"] = ["StableDiffusionXLAutoBlocks", "StableDiffusionXLModularPipeline"]
     _import_structure["wan"] = ["WanAutoBlocks", "WanModularPipeline"]
     _import_structure["flux"] = ["FluxAutoBlocks", "FluxModularPipeline"]
+    _import_structure["qwenimage"] = [
+        "QwenImageAutoBlocks",
+        "QwenImageModularPipeline",
+        "QwenImageEditModularPipeline",
+        "QwenImageEditAutoBlocks",
+    ]
     _import_structure["components_manager"] = ["ComponentsManager"]
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
@@ -59,21 +70,17 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             LoopSequentialPipelineBlocks,
             ModularPipeline,
             ModularPipelineBlocks,
-            PipelineBlock,
             PipelineState,
             SequentialPipelineBlocks,
         )
-        from .modular_pipeline_utils import (
-            ComponentSpec,
-            ConfigSpec,
-            InputParam,
-            InsertableDict,
-            OutputParam,
+        from .modular_pipeline_utils import ComponentSpec, ConfigSpec, InputParam, InsertableDict, OutputParam
+        from .qwenimage import (
+            QwenImageAutoBlocks,
+            QwenImageEditAutoBlocks,
+            QwenImageEditModularPipeline,
+            QwenImageModularPipeline,
         )
-        from .stable_diffusion_xl import (
-            StableDiffusionXLAutoBlocks,
-            StableDiffusionXLModularPipeline,
-        )
+        from .stable_diffusion_xl import StableDiffusionXLAutoBlocks, StableDiffusionXLModularPipeline
         from .wan import WanAutoBlocks, WanModularPipeline
 else:
     import sys

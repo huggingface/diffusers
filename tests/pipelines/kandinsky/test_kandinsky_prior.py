@@ -28,8 +28,8 @@ from transformers import (
 )
 
 from diffusers import KandinskyPriorPipeline, PriorTransformer, UnCLIPScheduler
-from diffusers.utils.testing_utils import enable_full_determinism, skip_mps, torch_device
 
+from ...testing_utils import enable_full_determinism, skip_mps, torch_device
 from ..test_pipelines_common import PipelineTesterMixin
 
 

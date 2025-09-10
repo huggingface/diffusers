@@ -25,7 +25,7 @@ from ...utils import logging
 from ..modular_pipeline import (
     BlockState,
     LoopSequentialPipelineBlocks,
-    PipelineBlock,
+    ModularPipelineBlocks,
     PipelineState,
 )
 from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
@@ -37,7 +37,7 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 # YiYi experimenting composible denoise loop
 # loop step (1): prepare latent input for denoiser
-class StableDiffusionXLLoopBeforeDenoiser(PipelineBlock):
+class StableDiffusionXLLoopBeforeDenoiser(ModularPipelineBlocks):
     model_name = "stable-diffusion-xl"
 
     @property
@@ -55,7 +55,7 @@ class StableDiffusionXLLoopBeforeDenoiser(PipelineBlock):
         )
 
     @property
-    def intermediate_inputs(self) -> List[str]:
+    def inputs(self) -> List[str]:
         return [
             InputParam(
                 "latents",
@@ -73,7 +73,7 @@ class StableDiffusionXLLoopBeforeDenoiser(PipelineBlock):
 
 
 # loop step (1): prepare latent input for denoiser (with inpainting)
-class StableDiffusionXLInpaintLoopBeforeDenoiser(PipelineBlock):
+class StableDiffusionXLInpaintLoopBeforeDenoiser(ModularPipelineBlocks):
     model_name = "stable-diffusion-xl"
 
     @property
@@ -91,7 +91,7 @@ class StableDiffusionXLInpaintLoopBeforeDenoiser(PipelineBlock):
         )
 
     @property
-    def intermediate_inputs(self) -> List[str]:
+    def inputs(self) -> List[str]:
         return [
             InputParam(
                 "latents",
@@ -144,7 +144,7 @@ class StableDiffusionXLInpaintLoopBeforeDenoiser(PipelineBlock):
 
 
 # loop step (2): denoise the latents with guidance
-class StableDiffusionXLLoopDenoiser(PipelineBlock):
+class StableDiffusionXLLoopDenoiser(ModularPipelineBlocks):
     model_name = "stable-diffusion-xl"
 
     @property
@@ -171,11 +171,6 @@ class StableDiffusionXLLoopDenoiser(PipelineBlock):
     def inputs(self) -> List[Tuple[str, Any]]:
         return [
             InputParam("cross_attention_kwargs"),
-        ]
-
-    @property
-    def intermediate_inputs(self) -> List[str]:
-        return [
             InputParam(
                 "num_inference_steps",
                 required=True,
@@ -243,13 +238,13 @@ class StableDiffusionXLLoopDenoiser(PipelineBlock):
             components.guider.cleanup_models(components.unet)
 
         # Perform guidance
-        block_state.noise_pred, block_state.scheduler_step_kwargs = components.guider(guider_state)
+        block_state.noise_pred = components.guider(guider_state)[0]
 
         return components, block_state
 
 
 # loop step (2): denoise the latents with guidance (with controlnet)
-class StableDiffusionXLControlNetLoopDenoiser(PipelineBlock):
+class StableDiffusionXLControlNetLoopDenoiser(ModularPipelineBlocks):
     model_name = "stable-diffusion-xl"
 
     @property
@@ -277,11 +272,6 @@ class StableDiffusionXLControlNetLoopDenoiser(PipelineBlock):
     def inputs(self) -> List[Tuple[str, Any]]:
         return [
             InputParam("cross_attention_kwargs"),
-        ]
-
-    @property
-    def intermediate_inputs(self) -> List[str]:
-        return [
             InputParam(
                 "controlnet_cond",
                 required=True,
@@ -443,13 +433,13 @@ class StableDiffusionXLControlNetLoopDenoiser(PipelineBlock):
             components.guider.cleanup_models(components.unet)
 
         # Perform guidance
-        block_state.noise_pred, block_state.scheduler_step_kwargs = components.guider(guider_state)
+        block_state.noise_pred = components.guider(guider_state)[0]
 
         return components, block_state
 
 
 # loop step (3): scheduler step to update latents
-class StableDiffusionXLLoopAfterDenoiser(PipelineBlock):
+class StableDiffusionXLLoopAfterDenoiser(ModularPipelineBlocks):
     model_name = "stable-diffusion-xl"
 
     @property
@@ -470,11 +460,6 @@ class StableDiffusionXLLoopAfterDenoiser(PipelineBlock):
     def inputs(self) -> List[Tuple[str, Any]]:
         return [
             InputParam("eta", default=0.0),
-        ]
-
-    @property
-    def intermediate_inputs(self) -> List[str]:
-        return [
             InputParam("generator"),
         ]
 
@@ -507,7 +492,6 @@ class StableDiffusionXLLoopAfterDenoiser(PipelineBlock):
             t,
             block_state.latents,
             **block_state.extra_step_kwargs,
-            **block_state.scheduler_step_kwargs,
             return_dict=False,
         )[0]
 
@@ -520,7 +504,7 @@ class StableDiffusionXLLoopAfterDenoiser(PipelineBlock):
 
 
 # loop step (3): scheduler step to update latents (with inpainting)
-class StableDiffusionXLInpaintLoopAfterDenoiser(PipelineBlock):
+class StableDiffusionXLInpaintLoopAfterDenoiser(ModularPipelineBlocks):
     model_name = "stable-diffusion-xl"
 
     @property
@@ -542,11 +526,6 @@ class StableDiffusionXLInpaintLoopAfterDenoiser(PipelineBlock):
     def inputs(self) -> List[Tuple[str, Any]]:
         return [
             InputParam("eta", default=0.0),
-        ]
-
-    @property
-    def intermediate_inputs(self) -> List[str]:
-        return [
             InputParam("generator"),
             InputParam(
                 "timesteps",
@@ -610,7 +589,6 @@ class StableDiffusionXLInpaintLoopAfterDenoiser(PipelineBlock):
             t,
             block_state.latents,
             **block_state.extra_step_kwargs,
-            **block_state.scheduler_step_kwargs,
             return_dict=False,
         )[0]
 
@@ -660,7 +638,7 @@ class StableDiffusionXLDenoiseLoopWrapper(LoopSequentialPipelineBlocks):
         ]
 
     @property
-    def loop_intermediate_inputs(self) -> List[InputParam]:
+    def loop_inputs(self) -> List[InputParam]:
         return [
             InputParam(
                 "timesteps",
@@ -717,7 +695,7 @@ class StableDiffusionXLDenoiseStep(StableDiffusionXLDenoiseLoopWrapper):
         return (
             "Denoise step that iteratively denoise the latents. \n"
             "Its loop logic is defined in `StableDiffusionXLDenoiseLoopWrapper.__call__` method \n"
-            "At each iteration, it runs blocks defined in `sub_blocks` sequencially:\n"
+            "At each iteration, it runs blocks defined in `sub_blocks` sequentially:\n"
             " - `StableDiffusionXLLoopBeforeDenoiser`\n"
             " - `StableDiffusionXLLoopDenoiser`\n"
             " - `StableDiffusionXLLoopAfterDenoiser`\n"
@@ -739,7 +717,7 @@ class StableDiffusionXLControlNetDenoiseStep(StableDiffusionXLDenoiseLoopWrapper
         return (
             "Denoise step that iteratively denoise the latents with controlnet. \n"
             "Its loop logic is defined in  `StableDiffusionXLDenoiseLoopWrapper.__call__` method \n"
-            "At each iteration, it runs blocks defined in `sub_blocks` sequencially:\n"
+            "At each iteration, it runs blocks defined in `sub_blocks` sequentially:\n"
             " - `StableDiffusionXLLoopBeforeDenoiser`\n"
             " - `StableDiffusionXLControlNetLoopDenoiser`\n"
             " - `StableDiffusionXLLoopAfterDenoiser`\n"
@@ -761,7 +739,7 @@ class StableDiffusionXLInpaintDenoiseStep(StableDiffusionXLDenoiseLoopWrapper):
         return (
             "Denoise step that iteratively denoise the latents(for inpainting task only). \n"
             "Its loop logic is defined in `StableDiffusionXLDenoiseLoopWrapper.__call__` method \n"
-            "At each iteration, it runs blocks defined in `sub_blocks` sequencially:\n"
+            "At each iteration, it runs blocks defined in `sub_blocks` sequentially:\n"
             " - `StableDiffusionXLInpaintLoopBeforeDenoiser`\n"
             " - `StableDiffusionXLLoopDenoiser`\n"
             " - `StableDiffusionXLInpaintLoopAfterDenoiser`\n"
@@ -783,7 +761,7 @@ class StableDiffusionXLInpaintControlNetDenoiseStep(StableDiffusionXLDenoiseLoop
         return (
             "Denoise step that iteratively denoise the latents(for inpainting task only) with controlnet. \n"
             "Its loop logic is defined in `StableDiffusionXLDenoiseLoopWrapper.__call__` method \n"
-            "At each iteration, it runs blocks defined in `sub_blocks` sequencially:\n"
+            "At each iteration, it runs blocks defined in `sub_blocks` sequentially:\n"
             " - `StableDiffusionXLInpaintLoopBeforeDenoiser`\n"
             " - `StableDiffusionXLControlNetLoopDenoiser`\n"
             " - `StableDiffusionXLInpaintLoopAfterDenoiser`\n"

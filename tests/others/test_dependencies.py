@@ -39,6 +39,8 @@ class DependencyTester(unittest.TestCase):
                         backend = "invisible-watermark"
                     elif backend == "opencv":
                         backend = "opencv-python"
+                    elif backend == "nvidia_modelopt":
+                        backend = "nvidia_modelopt[hf]"
                     assert backend in deps, f"{backend} is not in the deps table!"
 
     def test_pipeline_imports(self):

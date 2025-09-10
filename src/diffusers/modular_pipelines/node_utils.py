@@ -384,14 +384,14 @@ class ModularNode(ConfigMixin):
         # pass or create a default param dict for each input
         # e.g. for prompt,
         #       prompt = {
-        #               "name": "text_input", # the name of the input in node defination, could be different from the input name in diffusers
+        #               "name": "text_input", # the name of the input in node definition, could be different from the input name in diffusers
         #               "label": "Prompt",
         #               "type": "string",
         #               "default": "a bear sitting in a chair drinking a milkshake",
         #               "display": "textarea"}
         # if type is not specified, it'll be a "custom" param of its own type
         # e.g. you can pass ModularNode(scheduler = {name :"scheduler"})
-        #  it will get this spec in node defination {"scheduler": {"label": "Scheduler", "type": "scheduler", "display": "input"}}
+        #  it will get this spec in node definition {"scheduler": {"label": "Scheduler", "type": "scheduler", "display": "input"}}
         #  name can be a dict, in that case, it is part of a "dict" input in mellon nodes, e.g. text_encoder= {name: {"text_encoders": "text_encoder"}}
         inputs = self.blocks.inputs + self.blocks.intermediate_inputs
         for inp in inputs:

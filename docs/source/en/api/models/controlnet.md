@@ -40,11 +40,3 @@ pipe = StableDiffusionControlNetPipeline.from_single_file(url, controlnet=contro
 ## ControlNetOutput
 
 [[autodoc]] models.controlnets.controlnet.ControlNetOutput
-
-## FlaxControlNetModel
-
-[[autodoc]] FlaxControlNetModel
-
-## FlaxControlNetOutput
-
-[[autodoc]] models.controlnets.controlnet_flax.FlaxControlNetOutput
