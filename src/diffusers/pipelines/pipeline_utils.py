@@ -504,6 +504,11 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             os.environ["PT_HPU_MAX_COMPOUND_OP_SIZE"] = "1"
             logger.debug("Environment variable set: PT_HPU_MAX_COMPOUND_OP_SIZE=1")
 
+            if dtype in (torch.bfloat16, None) and kwargs.pop("sdp_on_bf16", True):
+                if hasattr(torch._C, "_set_math_sdp_allow_fp16_bf16_reduction"):
+                    torch._C._set_math_sdp_allow_fp16_bf16_reduction(True)
+                    logger.warning(f"Enabled SDP with BF16 precision on HPU. To disable, please use `.to('hpu', sdp_on_bf16=False)`")
+
         module_names, _ = self._get_signature_keys(self)
         modules = [getattr(self, n, None) for n in module_names]
         modules = [m for m in modules if isinstance(m, torch.nn.Module)]
