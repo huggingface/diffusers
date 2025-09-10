@@ -244,7 +244,7 @@ export_to_video(output, "output.mp4", fps=16)
 
 *Current state-of-the-art (SOTA) methods for audio-driven character animation demonstrate promising performance for scenarios primarily involving speech and singing. However, they often fall short in more complex film and television productions, which demand sophisticated elements such as nuanced character interactions, realistic body movements, and dynamic camera work. To address this long-standing challenge of achieving film-level character animation, we propose an audio-driven model, which we refere to as Wan-S2V, built upon Wan. Our model achieves significantly enhanced expressiveness and fidelity in cinematic contexts compared to existing approaches. We conducted extensive experiments, benchmarking our method against cutting-edge models such as Hunyuan-Avatar and Omnihuman. The experimental results consistently demonstrate that our approach significantly outperforms these existing solutions. Additionally, we explore the versatility of our method through its applications in long-form video generation and precise video lip-sync editing.*
 
-The example below demonstrates how to use the speech-to-video pipeline to generate a video using a text description, a starting frame, and an audio.
+The example below demonstrates how to use the speech-to-video pipeline to generate a video using a text description, a starting frame, an audio, and a pose video.
 
 <hfoptions id="S2V usage">
 <hfoption id="usage">
@@ -255,6 +255,9 @@ import torch
 from diffusers import AutoencoderKLWan, WanSpeechToVideoPipeline
 from diffusers.utils import export_to_video, load_image, load_audio, load_video
 from transformers import Wav2Vec2ForCTC
+import requests
+from PIL import Image
+from io import BytesIO
 
 
 model_id = "Wan-AI/Wan2.2-S2V-14B-Diffusers"
@@ -265,9 +268,13 @@ pipe = WanSpeechToVideoPipeline.from_pretrained(
 )
 pipe.to("cuda")
 
-first_frame = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/flf2v_input_first_frame.png")
-audio, sampling_rate = load_audio("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/flf2v_input_last_frame.png")
-#pose_path = E.g., download from "https://github.com/Wan-Video/Wan2.2/raw/refs/heads/main/examples/pose.mp4"
+headers = {"User-Agent": "Mozilla/5.0"}
+url = "https://upload.wikimedia.org/wikipedia/commons/4/46/Albert_Einstein_sticks_his_tongue.jpg"
+resp = requests.get(url, headers=headers, timeout=30)
+image = Image.open(BytesIO(resp.content))
+
+audio, sampling_rate = load_audio("https://github.com/Wan-Video/Wan2.2/raw/refs/heads/main/examples/Five%20Hundred%20Miles.MP3")
+#pose_video_path_or_url = "https://github.com/Wan-Video/Wan2.2/raw/refs/heads/main/examples/pose.mp4"
 
 def get_size_less_than_area(height,
                             width,
@@ -334,14 +341,14 @@ def aspect_ratio_resize(image, pipe, max_area):
     image = image.resize((width, height))
     return image, height, width
 
-first_frame, height, width = aspect_ratio_resize(first_frame, pipe, 480*832)
+image, height, width = aspect_ratio_resize(first_frame, pipe, 480*832)
 
 prompt = "Einstein singing a song."
 
 output = pipe(
-    image=first_frame, audio=audio, sampling_rate=sampling_rate,
-    prompt=prompt, height=height, width=width, num_frames_per_chunk=81,
-    #pose_video=pose_path
+    prompt=prompt, image=image, audio=audio, sampling_rate=sampling_rate,
+    height=height, width=width, num_frames_per_chunk=81,
+    #pose_video_path_or_url=pose_video_path_or_url,
 ).frames[0]
 export_to_video(output, "output.mp4", fps=16)
 ```

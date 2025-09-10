@@ -29,7 +29,7 @@ from ...image_processor import PipelineImageInput
 from ...loaders import WanLoraLoaderMixin
 from ...models import AutoencoderKLWan, WanS2VTransformer3DModel
 from ...schedulers import UniPCMultistepScheduler
-from ...utils import is_ftfy_available, is_torch_xla_available, logging, replace_example_docstring
+from ...utils import is_ftfy_available, is_torch_xla_available, load_video, logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from ...video_processor import VideoProcessor
 from ..pipeline_utils import DiffusionPipeline
@@ -51,53 +51,108 @@ if is_ftfy_available():
 EXAMPLE_DOC_STRING = """
     Examples:
         ```python
+        >>> import numpy as np, math, requests
         >>> import torch
-        >>> import numpy as np
         >>> from diffusers import AutoencoderKLWan, WanSpeechToVideoPipeline
-        >>> from diffusers.utils import export_to_video, load_image, load_audio, load_video
+        >>> from diffusers.utils import export_to_video, load_audio
         >>> from transformers import Wav2Vec2ForCTC
+        >>> from PIL import Image
+        >>> from io import BytesIO
 
-        >>> # Available models: Wan-AI/Wan2.2-S2V-14B-Diffusers
         >>> model_id = "Wan-AI/Wan2.2-S2V-14B-Diffusers"
-        >>> vae = AutoencoderKLWan.from_pretrained(model_id, subfolder="vae", torch_dtype=torch.float32)
         >>> audio_encoder = Wav2Vec2ForCTC.from_pretrained(model_id, subfolder="audio_encoder", dtype=torch.float32)
+        >>> vae = AutoencoderKLWan.from_pretrained(model_id, subfolder="vae", torch_dtype=torch.float32)
         >>> pipe = WanSpeechToVideoPipeline.from_pretrained(
         ...     model_id, vae=vae, audio_encoder=audio_encoder, torch_dtype=torch.bfloat16
         ... )
         >>> pipe.to("cuda")
 
-        >>> first_frame = load_image(
-        ...     "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/flf2v_input_first_frame.png"
-        ... )
-        >>> audio, sampling_rate = load_audio(
-        ...     "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/flf2v_input_last_frame.png"
-        ... )
-        >>> pose_video = load_video(
-        ...     "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/flf2v_input_pose_video.mp4"
-        ... )
+        >>> headers = {"User-Agent": "Mozilla/5.0"}
+        >>> url = "https://upload.wikimedia.org/wikipedia/commons/4/46/Albert_Einstein_sticks_his_tongue.jpg"
+        >>> resp = requests.get(url, headers=headers, timeout=30)
+        >>> image = Image.open(BytesIO(resp.content))
 
-        >>> max_area = 480 * 832
-        >>> aspect_ratio = image.height / image.width
-        >>> mod_value = pipe.vae_scale_factor_spatial * pipe.transformer.config.patch_size[1]
-        >>> height = round(np.sqrt(max_area * aspect_ratio)) // mod_value * mod_value
-        >>> width = round(np.sqrt(max_area / aspect_ratio)) // mod_value * mod_value
-        >>> image = image.resize((width, height))
-        >>> prompt = (
-        ...     "An astronaut hatching from an egg, on the surface of the moon, the darkness and depth of space realised in "
-        ...     "the background. High quality, ultrarealistic detail and breath-taking movie-like camera shot."
+        >>> audio, sampling_rate = load_audio(
+        ...     "https://github.com/Wan-Video/Wan2.2/raw/refs/heads/main/examples/Five%20Hundred%20Miles.MP3"
         ... )
-        >>> negative_prompt = "Bright tones, overexposed, static, blurred details, subtitles, style, works, paintings, images, static, overall gray, worst quality, low quality, JPEG compression residue, ugly, incomplete, extra fingers, poorly drawn hands, poorly drawn faces, deformed, disfigured, misshapen limbs, fused fingers, still picture, messy background, three legs, many people in the background, walking backwards"
+        >>> # pose_video_path_or_url = "https://github.com/Wan-Video/Wan2.2/raw/refs/heads/main/examples/pose.mp4"
+
+
+        >>> def get_size_less_than_area(height, width, target_area=1024 * 704, divisor=64):
+        ...     if height * width <= target_area:
+        ...         # If the original image area is already less than or equal to the target,
+        ...         # no resizing is needed—just padding. Still need to ensure that the padded area doesn't exceed the target.
+        ...         max_upper_area = target_area
+        ...         min_scale = 0.1
+        ...         max_scale = 1.0
+        ...     else:
+        ...         # Resize to fit within the target area and then pad to multiples of `divisor`
+        ...         max_upper_area = target_area  # Maximum allowed total pixel count after padding
+        ...         d = divisor - 1
+        ...         b = d * (height + width)
+        ...         a = height * width
+        ...         c = d**2 - max_upper_area
+
+        ...         # Calculate scale boundaries using quadratic equation
+        ...         min_scale = (-b + math.sqrt(b**2 - 2 * a * c)) / (2 * a)  # Scale when maximum padding is applied
+        ...         max_scale = math.sqrt(max_upper_area / (height * width))  # Scale without any padding
+
+        ...     # We want to choose the largest possible scale such that the final padded area does not exceed max_upper_area
+        ...     # Use binary search-like iteration to find this scale
+        ...     find_it = False
+        ...     for i in range(100):
+        ...         scale = max_scale - (max_scale - min_scale) * i / 100
+        ...         new_height, new_width = int(height * scale), int(width * scale)
+
+        ...         # Pad to make dimensions divisible by 64
+        ...         pad_height = (64 - new_height % 64) % 64
+        ...         pad_width = (64 - new_width % 64) % 64
+        ...         pad_top = pad_height // 2
+        ...         pad_bottom = pad_height - pad_top
+        ...         pad_left = pad_width // 2
+        ...         pad_right = pad_width - pad_left
+
+        ...         padded_height, padded_width = new_height + pad_height, new_width + pad_width
+
+        ...         if padded_height * padded_width <= max_upper_area:
+        ...             find_it = True
+        ...             break
+
+        ...     if find_it:
+        ...         return padded_height, padded_width
+        ...     else:
+        ...         # Fallback: calculate target dimensions based on aspect ratio and divisor alignment
+        ...         aspect_ratio = width / height
+        ...         target_width = int((target_area * aspect_ratio) ** 0.5 // divisor * divisor)
+        ...         target_height = int((target_area / aspect_ratio) ** 0.5 // divisor * divisor)
+
+        ...         # Ensure the result is not larger than the original resolution
+        ...         if target_width >= width or target_height >= height:
+        ...             target_width = int(width // divisor * divisor)
+        ...             target_height = int(height // divisor * divisor)
+
+        ...         return target_height, target_width
+
+
+        >>> def aspect_ratio_resize(image, pipe, max_area):
+        ...     height, width = get_size_less_than_area(image.size[1], image.size[0], target_area=max_area)
+        ...     image = image.resize((width, height))
+        ...     return image, height, width
+
+
+        >>> image, height, width = aspect_ratio_resize(first_frame, pipe, 480 * 832)
+
+        >>> prompt = "Einstein singing a song."
 
         >>> output = pipe(
         ...     prompt=prompt,
         ...     image=image,
         ...     audio=audio,
         ...     sampling_rate=sampling_rate,
-        ...     # pose_video=pose_video,
-        ...     negative_prompt=negative_prompt,
         ...     height=height,
         ...     width=width,
         ...     num_frames_per_chunk=81,
+        ...     # pose_video_path_or_url=pose_video_path_or_url,
         ... ).frames[0]
         >>> export_to_video(output, "output.mp4", fps=16)
         ```
@@ -596,7 +651,9 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
 
             pose_video = torch.chunk(pose_video, num_chunks, dim=2)
         else:
-            pose_video = [-torch.ones([1, 3, num_frames_per_chunk, height, width], dtype=self.vae.dtype, device=self.vae.device)]
+            pose_video = [
+                -torch.ones([1, 3, num_frames_per_chunk, height, width], dtype=self.vae.dtype, device=self.vae.device)
+            ]
 
         # Vectorized processing: concatenate all chunks along batch dimension
         all_poses = torch.cat(
@@ -641,7 +698,7 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         sampling_rate: int,
         prompt: Union[str, List[str]],
         negative_prompt: Union[str, List[str]] = None,
-        pose_video: Optional[List[Image.Image]] = None,
+        pose_video_path_or_url: Optional[str] = None,
         height: int = 480,
         width: int = 832,
         num_frames_per_chunk: int = 81,
@@ -683,8 +740,8 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 The prompt or prompts not to guide the image generation. If not defined, one has to pass
                 `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
                 less than `1`).
-            pose_video (`List[Image.Image]`, *optional*):
-                A list of PIL images representing the pose video to condition the generation on.
+            pose_video_path_or_url (`str` or `List[str]`, *optional*):
+                The path or URL to the pose video to condition the generation on.
             height (`int`, defaults to `480`):
                 The height of the generated video.
             width (`int`, defaults to `832`):
@@ -832,7 +889,13 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         num_channels_latents = self.vae.config.z_dim
         image = self.video_processor.preprocess(image, height=height, width=width).to(device, dtype=torch.float32)
 
-        if pose_video is not None:
+        if pose_video_path_or_url is not None:
+            pose_video = load_video(
+                pose_video_path_or_url,
+                n_frames=num_frames_per_chunk * num_chunks,
+                target_fps=sampling_fps,
+                reverse=True,
+            )
             pose_video = self.video_processor.preprocess_video(pose_video, height=height, width=width).to(
                 device, dtype=torch.float32
             )
