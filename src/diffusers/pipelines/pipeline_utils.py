@@ -349,6 +349,24 @@ class RequestScopedPipeline:
                 logger.debug(f"Unexpected error cloning attribute '{attr}': {e}")
                 continue
 
+    def _is_tokenizer_component(self, component) -> bool:
+        """Determina si un componente es un tokenizador basándose en métodos y atributos comunes."""
+        if component is None:
+            return False
+        
+        # Verificar métodos comunes de tokenizadores
+        tokenizer_methods = ['encode', 'decode', 'tokenize', '__call__']
+        has_tokenizer_methods = any(hasattr(component, method) for method in tokenizer_methods)
+        
+        # Verificar nombre de clase
+        class_name = component.__class__.__name__.lower()
+        has_tokenizer_in_name = 'tokenizer' in class_name
+        
+        # Verificar atributos comunes de tokenizadores
+        tokenizer_attrs = ['vocab_size', 'pad_token', 'eos_token', 'bos_token']
+        has_tokenizer_attrs = any(hasattr(component, attr) for attr in tokenizer_attrs)
+        
+        return has_tokenizer_methods and (has_tokenizer_in_name or has_tokenizer_attrs)
 
     def generate(self, *args, num_inference_steps: int = 50, device: Optional[str] = None, **kwargs):
         local_scheduler = self._make_local_scheduler(num_inference_steps=num_inference_steps, device=device)
@@ -374,21 +392,27 @@ class RequestScopedPipeline:
             for name in dir(local_pipe):
                 if "tokenizer" in name and not name.startswith("_"):
                     tok = getattr(local_pipe, name, None)
-                    if tok is not None:
+                    if tok is not None and self._is_tokenizer_component(tok):
                         tokenizer_wrappers[name] = tok
                         setattr(
-                        local_pipe,
-                        name,
-                        lambda *args, tok=tok, **kwargs: safe_tokenize(tok, *args, lock=self._tokenizer_lock, **kwargs)
+                            local_pipe,
+                            name,
+                            lambda *args, tok=tok, **kwargs: safe_tokenize(tok, *args, lock=self._tokenizer_lock, **kwargs)
                         )
 
+            # b) wrap tokenizers in components dict - CORRECCIÓN CRÍTICA
             if hasattr(local_pipe, "components") and isinstance(local_pipe.components, dict):
                 for key, val in local_pipe.components.items():
                     if val is None:
                         continue
-                    if "tokenizer" in str(key).lower() or "tokenizer" in val.__class__.__name__.lower():
+                    
+                    # Solo envolver si realmente ES un tokenizador
+                    if self._is_tokenizer_component(val):
                         tokenizer_wrappers[f"components[{key}]"] = val
-                    local_pipe.components[key] = lambda *args, tok=val, **kwargs: safe_tokenize(tok, *args, lock=self._tokenizer_lock, **kwargs)
+                        # Crear una nueva función lambda que capture correctamente 'val'
+                        local_pipe.components[key] = lambda *args, tokenizer=val, **kwargs: safe_tokenize(
+                            tokenizer, *args, lock=self._tokenizer_lock, **kwargs
+                        )
 
         except Exception as e:
             logger.debug(f"Tokenizer wrapping step encountered an error: {e}")
@@ -409,13 +433,14 @@ class RequestScopedPipeline:
                         logger.debug(f"model_cpu_offload_context usage failed: {e}. Proceeding without it.")
                         result = local_pipe(*args, num_inference_steps=num_inference_steps, **kwargs)
             else:
-            # no offload context available — call directly
+                # no offload context available — call directly
                 result = local_pipe(*args, num_inference_steps=num_inference_steps, **kwargs)
 
             return result
 
         finally:
             try:
+                # Restaurar los tokenizadores originales
                 for name, tok in tokenizer_wrappers.items():
                     if name.startswith("components["):
                         key = name[len("components["):-1]
@@ -425,7 +450,7 @@ class RequestScopedPipeline:
             except Exception as e:
                 logger.debug(f"Error restoring wrapped tokenizers: {e}")
 
-
+            
 class DiffusionPipeline(ConfigMixin, PushToHubMixin):
     r"""
     Base class for all pipelines.
