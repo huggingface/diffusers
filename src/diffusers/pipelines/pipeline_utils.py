@@ -1436,33 +1436,23 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 f"The following modules are not present in pipeline: {', '.join(unknown)}. Ignore if this is expected."
             )
 
+        group_offload_kwargs = {
+            "onload_device": onload_device,
+            "offload_device": offload_device,
+            "offload_type": offload_type,
+            "num_blocks_per_group": num_blocks_per_group,
+            "non_blocking": non_blocking,
+            "use_stream": use_stream,
+            "record_stream": record_stream,
+            "low_cpu_mem_usage": low_cpu_mem_usage,
+            "offload_to_disk_path": offload_to_disk_path,
+        }
         for name, component in self.components.items():
             if name not in exclude_modules and isinstance(component, torch.nn.Module):
                 if hasattr(component, "enable_group_offload"):
-                    component.enable_group_offload(
-                        onload_device=onload_device,
-                        offload_device=offload_device,
-                        offload_type=offload_type,
-                        num_blocks_per_group=num_blocks_per_group,
-                        non_blocking=non_blocking,
-                        use_stream=use_stream,
-                        record_stream=record_stream,
-                        low_cpu_mem_usage=low_cpu_mem_usage,
-                        offload_to_disk_path=offload_to_disk_path,
-                    )
+                    component.enable_group_offload(**group_offload_kwargs)
                 else:
-                    apply_group_offloading(
-                        module=component,
-                        onload_device=onload_device,
-                        offload_device=offload_device,
-                        offload_type=offload_type,
-                        num_blocks_per_group=num_blocks_per_group,
-                        non_blocking=non_blocking,
-                        use_stream=use_stream,
-                        record_stream=record_stream,
-                        low_cpu_mem_usage=low_cpu_mem_usage,
-                        offload_to_disk_path=offload_to_disk_path,
-                    )
+                    apply_group_offloading(module=component, **group_offload_kwargs)
 
         if exclude_modules:
             for module_name in exclude_modules:
