@@ -37,12 +37,6 @@ _import_structure = {
     "configuration_utils": ["ConfigMixin"],
     "guiders": [],
     "hooks": [],
-    "image_processor": [
-        "IPAdapterMaskProcessor",
-        "PixArtImageProcessor",
-        "VaeImageProcessor",
-        "VaeImageProcessorLDM3D",
-    ],
     "loaders": ["FromOriginalModelMixin"],
     "models": [],
     "modular_pipelines": [],
@@ -68,7 +62,6 @@ _import_structure = {
         "is_unidecode_available",
         "logging",
     ],
-    "video_processor": ["VideoProcessor"],
 }
 
 try:
@@ -794,14 +787,7 @@ else:
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     from .configuration_utils import ConfigMixin
-    from .image_processor import (
-        IPAdapterMaskProcessor,
-        PixArtImageProcessor,
-        VaeImageProcessor,
-        VaeImageProcessorLDM3D,
-    )
     from .quantizers import PipelineQuantizationConfig
-    from .video_processor import VideoProcessor
 
     try:
         if not is_bitsandbytes_available():
