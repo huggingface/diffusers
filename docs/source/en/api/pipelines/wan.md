@@ -351,6 +351,66 @@ output = pipe(
     #pose_video_path_or_url=pose_video_path_or_url,
 ).frames[0]
 export_to_video(output, "output.mp4", fps=16)
+
+# Lastly, we need to merge the video and audio into a new video, with the duration set to
+# the shorter of the two and overwrite the original video file.
+
+import os, logging, subprocess, shutil
+
+def merge_video_audio(video_path: str, audio_path: str):
+    logging.basicConfig(level=logging.INFO)
+
+    if not os.path.exists(video_path):
+        raise FileNotFoundError(f"video file {video_path} does not exist")
+    if not os.path.exists(audio_path):
+        raise FileNotFoundError(f"audio file {audio_path} does not exist")
+
+    base, ext = os.path.splitext(video_path)
+    temp_output = f"{base}_temp{ext}"
+
+    try:
+        # Create ffmpeg command
+        command = [
+            'ffmpeg',
+            '-y',  # overwrite
+            '-i',
+            video_path,
+            '-i',
+            audio_path,
+            '-c:v',
+            'copy',  # copy video stream
+            '-c:a',
+            'aac',  # use AAC audio encoder
+            '-b:a',
+            '192k',  # set audio bitrate (optional)
+            '-map',
+            '0:v:0',  # select the first video stream
+            '-map',
+            '1:a:0',  # select the first audio stream
+            '-shortest',  # choose the shortest duration
+            temp_output
+        ]
+
+        # Execute the command
+        logging.info("Start merging video and audio...")
+        result = subprocess.run(
+            command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+
+        # Check result
+        if result.returncode != 0:
+            error_msg = f"FFmpeg execute failed: {result.stderr}"
+            logging.error(error_msg)
+            raise RuntimeError(error_msg)
+
+        shutil.move(temp_output, video_path)
+        logging.info(f"Merge completed, saved to {video_path}")
+
+    except Exception as e:
+        if os.path.exists(temp_output):
+            os.remove(temp_output)
+        logging.error(f"merge_video_audio failed with error: {e}")
+
+merge_video_audio("output.mp4", "audio.mp3")
 ```
 
 </hfoption>
