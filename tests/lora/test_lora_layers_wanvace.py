@@ -50,7 +50,6 @@ from .utils import PeftLoraLoaderMixinTests  # noqa: E402
 class WanVACELoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
     pipeline_class = WanVACEPipeline
     scheduler_cls = FlowMatchEulerDiscreteScheduler
-    scheduler_classes = [FlowMatchEulerDiscreteScheduler]
     scheduler_kwargs = {}
 
     transformer_kwargs = {

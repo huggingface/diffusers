@@ -39,7 +39,6 @@ from .utils import PeftLoraLoaderMixinTests, check_if_lora_correctly_set  # noqa
 class Lumina2LoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
     pipeline_class = Lumina2Pipeline
     scheduler_cls = FlowMatchEulerDiscreteScheduler
-    scheduler_classes = [FlowMatchEulerDiscreteScheduler]
     scheduler_kwargs = {}
 
     transformer_kwargs = {
