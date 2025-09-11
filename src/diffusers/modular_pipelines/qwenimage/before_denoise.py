@@ -612,7 +612,6 @@ class QwenImageEditRoPEInputsStep(ModularPipelineBlocks):
 
         # for edit, image size can be different from the target size (height/width)
 
-
         block_state.img_shapes = [
             [
                 (
@@ -620,7 +619,11 @@ class QwenImageEditRoPEInputsStep(ModularPipelineBlocks):
                     block_state.height // components.vae_scale_factor // 2,
                     block_state.width // components.vae_scale_factor // 2,
                 ),
-                (1, block_state.image_height // components.vae_scale_factor // 2, block_state.image_width // components.vae_scale_factor // 2),
+                (
+                    1,
+                    block_state.image_height // components.vae_scale_factor // 2,
+                    block_state.image_width // components.vae_scale_factor // 2,
+                ),
             ]
         ] * block_state.batch_size
 

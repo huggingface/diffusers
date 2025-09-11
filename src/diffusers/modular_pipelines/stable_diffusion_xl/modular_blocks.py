@@ -82,19 +82,17 @@ class StableDiffusionXLAutoIPAdapterStep(AutoPipelineBlocks):
 # before_denoise: text2img
 class StableDiffusionXLBeforeDenoiseStep(SequentialPipelineBlocks):
     block_classes = [
-        StableDiffusionXLInputStep,
         StableDiffusionXLSetTimestepsStep,
         StableDiffusionXLPrepareLatentsStep,
         StableDiffusionXLPrepareAdditionalConditioningStep,
     ]
-    block_names = ["input", "set_timesteps", "prepare_latents", "prepare_add_cond"]
+    block_names = ["set_timesteps", "prepare_latents", "prepare_add_cond"]
 
     @property
     def description(self):
         return (
             "Before denoise step that prepare the inputs for the denoise step.\n"
             + "This is a sequential pipeline blocks:\n"
-            + " - `StableDiffusionXLInputStep` is used to adjust the batch size of the model inputs\n"
             + " - `StableDiffusionXLSetTimestepsStep` is used to set the timesteps\n"
             + " - `StableDiffusionXLPrepareLatentsStep` is used to prepare the latents\n"
             + " - `StableDiffusionXLPrepareAdditionalConditioningStep` is used to prepare the additional conditioning\n"
@@ -104,19 +102,17 @@ class StableDiffusionXLBeforeDenoiseStep(SequentialPipelineBlocks):
 # before_denoise: img2img
 class StableDiffusionXLImg2ImgBeforeDenoiseStep(SequentialPipelineBlocks):
     block_classes = [
-        StableDiffusionXLInputStep,
         StableDiffusionXLImg2ImgSetTimestepsStep,
         StableDiffusionXLImg2ImgPrepareLatentsStep,
         StableDiffusionXLImg2ImgPrepareAdditionalConditioningStep,
     ]
-    block_names = ["input", "set_timesteps", "prepare_latents", "prepare_add_cond"]
+    block_names = ["set_timesteps", "prepare_latents", "prepare_add_cond"]
 
     @property
     def description(self):
         return (
             "Before denoise step that prepare the inputs for the denoise step for img2img task.\n"
             + "This is a sequential pipeline blocks:\n"
-            + " - `StableDiffusionXLInputStep` is used to adjust the batch size of the model inputs\n"
             + " - `StableDiffusionXLImg2ImgSetTimestepsStep` is used to set the timesteps\n"
             + " - `StableDiffusionXLImg2ImgPrepareLatentsStep` is used to prepare the latents\n"
             + " - `StableDiffusionXLImg2ImgPrepareAdditionalConditioningStep` is used to prepare the additional conditioning\n"
@@ -126,19 +122,17 @@ class StableDiffusionXLImg2ImgBeforeDenoiseStep(SequentialPipelineBlocks):
 # before_denoise: inpainting
 class StableDiffusionXLInpaintBeforeDenoiseStep(SequentialPipelineBlocks):
     block_classes = [
-        StableDiffusionXLInputStep,
         StableDiffusionXLImg2ImgSetTimestepsStep,
         StableDiffusionXLInpaintPrepareLatentsStep,
         StableDiffusionXLImg2ImgPrepareAdditionalConditioningStep,
     ]
-    block_names = ["input", "set_timesteps", "prepare_latents", "prepare_add_cond"]
+    block_names = ["set_timesteps", "prepare_latents", "prepare_add_cond"]
 
     @property
     def description(self):
         return (
             "Before denoise step that prepare the inputs for the denoise step for inpainting task.\n"
             + "This is a sequential pipeline blocks:\n"
-            + " - `StableDiffusionXLInputStep` is used to adjust the batch size of the model inputs\n"
             + " - `StableDiffusionXLImg2ImgSetTimestepsStep` is used to set the timesteps\n"
             + " - `StableDiffusionXLInpaintPrepareLatentsStep` is used to prepare the latents\n"
             + " - `StableDiffusionXLImg2ImgPrepareAdditionalConditioningStep` is used to prepare the additional conditioning\n"
@@ -255,23 +249,39 @@ class StableDiffusionXLAutoDecodeStep(AutoPipelineBlocks):
         )
 
 
+class StableDiffusionXLCoreDenoiseStep(SequentialPipelineBlocks):
+    block_classes = [
+        StableDiffusionXLInputStep,
+        StableDiffusionXLAutoBeforeDenoiseStep,
+        StableDiffusionXLAutoControlNetInputStep,
+        StableDiffusionXLAutoDenoiseStep,
+    ]
+    block_names = ["input", "before_denoise", "controlnet_input", "denoise"]
+
+    @property
+    def description(self):
+        return (
+            "Core step that performs the denoising process. \n"
+            + " - `StableDiffusionXLInputStep` (input) standardizes the inputs for the denoising step.\n"
+            + " - `StableDiffusionXLAutoBeforeDenoiseStep` (before_denoise) prepares the inputs for the denoising step.\n"
+            + " - `StableDiffusionXLAutoControlNetInputStep` (controlnet_input) prepares the controlnet input.\n"
+            + " - `StableDiffusionXLAutoDenoiseStep` (denoise) iteratively denoises the latents.\n"
+        )
+
+
 # ip-adapter, controlnet, text2img, img2img, inpainting
 class StableDiffusionXLAutoBlocks(SequentialPipelineBlocks):
     block_classes = [
         StableDiffusionXLTextEncoderStep,
         StableDiffusionXLAutoIPAdapterStep,
         StableDiffusionXLAutoVaeEncoderStep,
-        StableDiffusionXLAutoBeforeDenoiseStep,
-        StableDiffusionXLAutoControlNetInputStep,
-        StableDiffusionXLAutoDenoiseStep,
+        StableDiffusionXLCoreDenoiseStep,
         StableDiffusionXLAutoDecodeStep,
     ]
     block_names = [
         "text_encoder",
         "ip_adapter",
         "vae_encoder",
-        "before_denoise",
-        "controlnet_input",
         "denoise",
         "decoder",
     ]
@@ -362,9 +372,7 @@ AUTO_BLOCKS = InsertableDict(
         ("text_encoder", StableDiffusionXLTextEncoderStep),
         ("ip_adapter", StableDiffusionXLAutoIPAdapterStep),
         ("vae_encoder", StableDiffusionXLAutoVaeEncoderStep),
-        ("before_denoise", StableDiffusionXLAutoBeforeDenoiseStep),
-        ("controlnet_input", StableDiffusionXLAutoControlNetInputStep),
-        ("denoise", StableDiffusionXLAutoDenoiseStep),
+        ("denoise", StableDiffusionXLCoreDenoiseStep),
         ("decode", StableDiffusionXLAutoDecodeStep),
     ]
 )

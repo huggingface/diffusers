@@ -511,17 +511,37 @@ class QwenImageAutoDecodeStep(AutoPipelineBlocks):
         )
 
 
+class QwenImageCoreDenoiseStep(SequentialPipelineBlocks):
+    model_name = "qwenimage"
+    block_classes = [
+        QwenImageAutoInputStep,
+        QwenImageOptionalControlNetInputStep,
+        QwenImageAutoBeforeDenoiseStep,
+        QwenImageOptionalControlNetBeforeDenoiseStep,
+        QwenImageAutoDenoiseStep,
+    ]
+    block_names = ["input", "controlnet_input", "before_denoise", "controlnet_before_denoise", "denoise", "decode"]
+
+    @property
+    def description(self):
+        return (
+            "Core step that performs the denoising process. \n"
+            + " - `QwenImageAutoInputStep` (input) standardizes the inputs for the denoising step.\n"
+            + " - `QwenImageOptionalControlNetInputStep` (controlnet_input) prepares the controlnet input.\n"
+            + " - `QwenImageAutoBeforeDenoiseStep` (before_denoise) prepares the inputs for the denoising step.\n"
+            + " - `QwenImageOptionalControlNetBeforeDenoiseStep` (controlnet_before_denoise) prepares the controlnet input for the denoising step.\n"
+            + " - `QwenImageAutoDenoiseStep` (denoise) iteratively denoises the latents.\n"
+            + " - `QwenImageAutoDecodeStep` (decode) decodes the latents into images.\n"
+        )
+
+
 ## 1.10 QwenImage/auto block & presets
 AUTO_BLOCKS = InsertableDict(
     [
         ("text_encoder", QwenImageTextEncoderStep()),
         ("vae_encoder", QwenImageAutoVaeEncoderStep()),
         ("controlnet_vae_encoder", QwenImageOptionalControlNetVaeEncoderStep()),
-        ("input", QwenImageAutoInputStep()),
-        ("controlnet_input", QwenImageOptionalControlNetInputStep()),
-        ("before_denoise", QwenImageAutoBeforeDenoiseStep()),
-        ("controlnet_before_denoise", QwenImageOptionalControlNetBeforeDenoiseStep()),
-        ("denoise", QwenImageAutoDenoiseStep()),
+        ("denoise", QwenImageCoreDenoiseStep()),
         ("decode", QwenImageAutoDecodeStep()),
     ]
 )
@@ -800,13 +820,31 @@ class QwenImageEditAutoDenoiseStep(AutoPipelineBlocks):
 
 ## 2.7 QwenImage-Edit/auto blocks & presets
 
+
+class QwenImageEditCoreStep(SequentialPipelineBlocks):
+    model_name = "qwenimage-edit"
+    block_classes = [
+        QwenImageEditAutoInputStep,
+        QwenImageEditAutoBeforeDenoiseStep,
+        QwenImageEditAutoDenoiseStep,
+    ]
+    block_names = ["input", "before_denoise", "denoise"]
+
+    @property
+    def description(self):
+        return (
+            "Core step that performs the denoising process. \n"
+            + " - `QwenImageEditAutoInputStep` (input) standardizes the inputs for the denoising step.\n"
+            + " - `QwenImageEditAutoBeforeDenoiseStep` (before_denoise) prepares the inputs for the denoising step.\n"
+            + " - `QwenImageEditAutoDenoiseStep` (denoise) iteratively denoises the latents.\n"
+        )
+
+
 EDIT_AUTO_BLOCKS = InsertableDict(
     [
         ("text_encoder", QwenImageEditVLEncoderStep()),
         ("vae_encoder", QwenImageEditAutoVaeEncoderStep()),
-        ("input", QwenImageEditAutoInputStep()),
-        ("before_denoise", QwenImageEditAutoBeforeDenoiseStep()),
-        ("denoise", QwenImageEditAutoDenoiseStep()),
+        ("denoise", QwenImageEditCoreStep()),
         ("decode", QwenImageAutoDecodeStep()),
     ]
 )
