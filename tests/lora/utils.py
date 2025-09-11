@@ -167,7 +167,7 @@ class PeftLoraLoaderMixinTests:
         Returns the cached base pipeline output for the given scheduler.
         Cache is populated during setUp, so this just retrieves the value.
         """
-        return type(self).cached_base_pipe_outs[scheduler_cls.__name__]
+        return self.cached_base_pipe_outs[scheduler_cls.__name__]
 
     def get_dummy_components(self, scheduler_cls=None, use_dora=False, lora_alpha=None):
         if self.unet_kwargs and self.transformer_kwargs:
