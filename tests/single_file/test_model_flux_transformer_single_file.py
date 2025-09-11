@@ -69,3 +69,11 @@ class FluxTransformer2DModelSingleFileTests(unittest.TestCase):
             del model
             gc.collect()
             backend_empty_cache(torch_device)
+
+    def test_device_map_cuda(self):
+        backend_empty_cache(torch_device)
+        model = self.model_class.from_single_file(self.ckpt_path, device_map="cuda")
+
+        del model
+        gc.collect()
+        backend_empty_cache(torch_device)
