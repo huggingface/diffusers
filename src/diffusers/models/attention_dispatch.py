@@ -207,7 +207,6 @@ class _AttentionBackendRegistry:
     _supports_context_parallel = {}
     _active_backend = AttentionBackendName(DIFFUSERS_ATTN_BACKEND)
     _checks_enabled = DIFFUSERS_ATTN_CHECKS
-    _parallel_config: Optional["ContextParallelConfig"] = None
 
     @classmethod
     def register(
@@ -236,14 +235,9 @@ class _AttentionBackendRegistry:
         return list(cls._backends.keys())
 
     @classmethod
-    def _is_context_parallel_enabled(cls, backend: AttentionBackendName) -> bool:
-        if backend not in cls._supports_context_parallel:
-            raise ValueError(f"Backend {backend} is not registered.")
-        supports_context_parallel = cls._supports_context_parallel[backend]
-        is_degree_greater_than_1 = _AttentionBackendRegistry._parallel_config is not None and (
-            _AttentionBackendRegistry._parallel_config.ring_degree > 1
-            or _AttentionBackendRegistry._parallel_config.ulysses_degree > 1
-        )
+    def _is_context_parallel_enabled(cls, backend: AttentionBackendName, parallel_config: Optional["ContextParallelConfig"]) -> bool:
+        supports_context_parallel = backend in cls._supports_context_parallel
+        is_degree_greater_than_1 = parallel_config is not None and (parallel_config.ring_degree > 1 or parallel_config.ulysses_degree > 1)
         return supports_context_parallel and is_degree_greater_than_1
 
 
@@ -279,6 +273,7 @@ def dispatch_attention_fn(
     attention_kwargs: Optional[Dict[str, Any]] = None,
     *,
     backend: Optional[AttentionBackendName] = None,
+    parallel_config: Optional["ContextParallelConfig"] = None,
 ) -> torch.Tensor:
     attention_kwargs = attention_kwargs or {}
 
@@ -291,8 +286,8 @@ def dispatch_attention_fn(
         backend_fn = _AttentionBackendRegistry._backends.get(backend_name)
 
     if (
-        _AttentionBackendRegistry._parallel_config is not None
-        and not _AttentionBackendRegistry._is_context_parallel_enabled(backend_name)
+        parallel_config is not None
+        and not _AttentionBackendRegistry._is_context_parallel_enabled(backend_name, parallel_config)
     ):
         raise ValueError(
             f"Backend {backend_name} either does not support context parallelism or context parallelism "
@@ -308,6 +303,7 @@ def dispatch_attention_fn(
         "is_causal": is_causal,
         "scale": scale,
         **attention_kwargs,
+        "_parallel_config": parallel_config,
     }
     if is_torch_version(">=", "2.5.0"):
         kwargs["enable_gqa"] = enable_gqa
@@ -736,6 +732,7 @@ def _flash_attention_forward_op(
     enable_gqa: bool = False,
     return_lse: bool = False,
     _save_ctx: bool = True,
+    _parallel_config: Optional["ContextParallelConfig"] = None,
 ):
     if attn_mask is not None:
         raise ValueError("`attn_mask` is not yet supported for flash-attn 2.")
@@ -753,8 +750,7 @@ def _flash_attention_forward_op(
         scale = query.shape[-1] ** (-0.5)
 
     # flash-attn only returns LSE if dropout_p > 0. So, we need to workaround.
-    parallel_config = _AttentionBackendRegistry._parallel_config
-    if grad_enabled or (parallel_config is not None and parallel_config._world_size > 1):
+    if grad_enabled or (_parallel_config is not None and _parallel_config._world_size > 1):
         dropout_p = dropout_p if dropout_p > 0 else 1e-30
 
     with torch.set_grad_enabled(grad_enabled):
@@ -910,11 +906,11 @@ class TemplatedRingAttention(torch.autograd.Function):
         return_lse: bool,
         forward_op,
         backward_op,
+        _parallel_config: Optional["ContextParallelConfig"] = None,
     ):
-        parallel_config = _AttentionBackendRegistry._parallel_config
-        ring_mesh = parallel_config._ring_mesh
-        rank = parallel_config._ring_local_rank
-        world_size = parallel_config.ring_degree
+        ring_mesh = _parallel_config._ring_mesh
+        rank = _parallel_config._ring_local_rank
+        world_size = _parallel_config.ring_degree
         next_rank = (rank + 1) % world_size
         prev_out = prev_lse = None
 
@@ -922,6 +918,7 @@ class TemplatedRingAttention(torch.autograd.Function):
         ctx.backward_op = backward_op
         ctx.q_shape = query.shape
         ctx.kv_shape = key.shape
+        ctx._parallel_config = _parallel_config
 
         kv_buffer = torch.cat([key.flatten(), value.flatten()]).contiguous()
         kv_buffer = funcol.all_gather_tensor(kv_buffer, gather_dim=0, group=ring_mesh.get_group())
@@ -939,7 +936,7 @@ class TemplatedRingAttention(torch.autograd.Function):
                 ctx, query, key, value, attn_mask, dropout_p, is_causal, scale, enable_gqa, True, _save_ctx=i == 0
             )
 
-            if parallel_config.convert_to_fp32:
+            if _parallel_config.convert_to_fp32:
                 out = out.to(torch.float32)
                 lse = lse.to(torch.float32)
 
@@ -961,14 +958,13 @@ class TemplatedRingAttention(torch.autograd.Function):
         grad_out: torch.Tensor,
         *args,
     ):
-        parallel_config = _AttentionBackendRegistry._parallel_config
-        ring_mesh = parallel_config._ring_mesh
-        rank = parallel_config._ring_local_rank
-        world_size = parallel_config.ring_degree
+        ring_mesh = ctx._parallel_config._ring_mesh
+        rank = ctx._parallel_config._ring_local_rank
+        world_size = ctx._parallel_config.ring_degree
         next_rank = (rank + 1) % world_size
         next_ranks = list(range(1, world_size)) + [0]
 
-        accum_dtype = torch.float32 if parallel_config.convert_to_fp32 else grad_out.dtype
+        accum_dtype = torch.float32 if ctx._parallel_config.convert_to_fp32 else grad_out.dtype
         grad_query = torch.zeros(ctx.q_shape, dtype=accum_dtype, device=grad_out.device)
         grad_key = torch.zeros(ctx.kv_shape, dtype=accum_dtype, device=grad_out.device)
         grad_value = torch.zeros(ctx.kv_shape, dtype=accum_dtype, device=grad_out.device)
@@ -1023,14 +1019,15 @@ class TemplatedUlyssesAttention(torch.autograd.Function):
         return_lse: bool,
         forward_op,
         backward_op,
+        _parallel_config: Optional["ContextParallelConfig"] = None,
     ):
-        parallel_config = _AttentionBackendRegistry._parallel_config
-        ulysses_mesh = parallel_config._ulysses_mesh
-        world_size = parallel_config.ulysses_degree
+        ulysses_mesh = _parallel_config._ulysses_mesh
+        world_size = _parallel_config.ulysses_degree
         group = ulysses_mesh.get_group()
 
         ctx.forward_op = forward_op
         ctx.backward_op = backward_op
+        ctx._parallel_config = _parallel_config
 
         B, S_Q_LOCAL, H, D = query.shape
         _, S_KV_LOCAL, _, _ = key.shape
@@ -1066,9 +1063,8 @@ class TemplatedUlyssesAttention(torch.autograd.Function):
         grad_out: torch.Tensor,
         *args,
     ):
-        parallel_config = _AttentionBackendRegistry._parallel_config
-        ulysses_mesh = parallel_config._ulysses_mesh
-        world_size = parallel_config.ulysses_degree
+        ulysses_mesh = ctx._parallel_config._ulysses_mesh
+        world_size = ctx._parallel_config.ulysses_degree
         group = ulysses_mesh.get_group()
 
         B, S_LOCAL, H, D = grad_out.shape
@@ -1143,11 +1139,10 @@ def _flash_attention(
     is_causal: bool = False,
     scale: Optional[float] = None,
     return_lse: bool = False,
+    _parallel_config: Optional["ContextParallelConfig"] = None,
 ) -> torch.Tensor:
-    parallel_config = _AttentionBackendRegistry._parallel_config
-
     lse = None
-    if parallel_config is None:
+    if _parallel_config is None:
         out = flash_attn_func(
             q=query,
             k=key,
@@ -1192,6 +1187,7 @@ def _flash_varlen_attention(
     scale: Optional[float] = None,
     is_causal: bool = False,
     return_lse: bool = False,
+    _parallel_config: Optional["ContextParallelConfig"] = None,
 ) -> torch.Tensor:
     batch_size, seq_len_q, _, _ = query.shape
     _, seq_len_kv, _, _ = key.shape
@@ -1244,6 +1240,7 @@ def _flash_attention_3(
     scale: Optional[float] = None,
     is_causal: bool = False,
     return_lse: bool = False,
+    _parallel_config: Optional["ContextParallelConfig"] = None,
 ) -> torch.Tensor:
     out, lse = _wrapped_flash_attn_3(
         q=query,
@@ -1269,6 +1266,7 @@ def _flash_attention_3_hub(
     softcap: float = 0.0,
     deterministic: bool = False,
     return_attn_probs: bool = False,
+    _parallel_config: Optional["ContextParallelConfig"] = None,
 ) -> torch.Tensor:
     out = flash_attn_3_func_hub(
         q=query,
@@ -1305,6 +1303,7 @@ def _flash_varlen_attention_3(
     scale: Optional[float] = None,
     is_causal: bool = False,
     return_lse: bool = False,
+    _parallel_config: Optional["ContextParallelConfig"] = None,
 ) -> torch.Tensor:
     batch_size, seq_len_q, _, _ = query.shape
     _, seq_len_kv, _, _ = key.shape
@@ -1357,6 +1356,7 @@ def _native_flex_attention(
     scale: Optional[float] = None,
     enable_gqa: bool = False,
     return_lse: bool = False,
+    _parallel_config: Optional["ContextParallelConfig"] = None,
 ) -> torch.Tensor:
     # TODO: should we LRU cache the block mask creation?
     score_mod = None
@@ -1420,6 +1420,7 @@ def _native_attention(
     scale: Optional[float] = None,
     enable_gqa: bool = False,
     return_lse: bool = False,
+    _parallel_config: Optional["ContextParallelConfig"] = None,
 ) -> torch.Tensor:
     if return_lse:
         raise ValueError("Native attention backend does not support setting `return_lse=True`.")
@@ -1453,11 +1454,10 @@ def _native_cudnn_attention(
     scale: Optional[float] = None,
     enable_gqa: bool = False,
     return_lse: bool = False,
+    _parallel_config: Optional["ContextParallelConfig"] = None,
 ) -> torch.Tensor:
-    parallel_config = _AttentionBackendRegistry._parallel_config
-
     lse = None
-    if parallel_config is None and not return_lse:
+    if _parallel_config is None and not return_lse:
         query, key, value = (x.permute(0, 2, 1, 3).contiguous() for x in (query, key, value))
         with torch.nn.attention.sdpa_kernel(torch.nn.attention.SDPBackend.CUDNN_ATTENTION):
             out = torch.nn.functional.scaled_dot_product_attention(
@@ -1505,6 +1505,7 @@ def _native_efficient_attention(
     scale: Optional[float] = None,
     enable_gqa: bool = False,
     return_lse: bool = False,
+    _parallel_config: Optional["ContextParallelConfig"] = None,
 ) -> torch.Tensor:
     if return_lse:
         raise ValueError("Native efficient attention backend does not support setting `return_lse=True`.")
@@ -1537,6 +1538,7 @@ def _native_flash_attention(
     scale: Optional[float] = None,
     enable_gqa: bool = False,
     return_lse: bool = False,
+    _parallel_config: Optional["ContextParallelConfig"] = None,
 ) -> torch.Tensor:
     if return_lse:
         raise ValueError("Native flash attention backend does not support setting `return_lse=True`.")
@@ -1570,6 +1572,7 @@ def _native_math_attention(
     scale: Optional[float] = None,
     enable_gqa: bool = False,
     return_lse: bool = False,
+    _parallel_config: Optional["ContextParallelConfig"] = None,
 ) -> torch.Tensor:
     if return_lse:
         raise ValueError("Native math attention backend does not support setting `return_lse=True`.")
@@ -1600,6 +1603,7 @@ def _native_npu_attention(
     dropout_p: float = 0.0,
     scale: Optional[float] = None,
     return_lse: bool = False,
+    _parallel_config: Optional["ContextParallelConfig"] = None,
 ) -> torch.Tensor:
     if return_lse:
         raise ValueError("NPU attention backend does not support setting `return_lse=True`.")
@@ -1633,6 +1637,7 @@ def _native_xla_attention(
     value: torch.Tensor,
     is_causal: bool = False,
     return_lse: bool = False,
+    _parallel_config: Optional["ContextParallelConfig"] = None,
 ) -> torch.Tensor:
     if return_lse:
         raise ValueError("XLA attention backend does not support setting `return_lse=True`.")
@@ -1660,11 +1665,10 @@ def _sage_attention(
     is_causal: bool = False,
     scale: Optional[float] = None,
     return_lse: bool = False,
+    _parallel_config: Optional["ContextParallelConfig"] = None,
 ) -> torch.Tensor:
-    parallel_config = _AttentionBackendRegistry._parallel_config
-
     lse = None
-    if parallel_config is None:
+    if _parallel_config is None:
         out = sageattn(
             q=query,
             k=key,
@@ -1708,6 +1712,7 @@ def _sage_varlen_attention(
     is_causal: bool = False,
     scale: Optional[float] = None,
     return_lse: bool = False,
+    _parallel_config: Optional["ContextParallelConfig"] = None,
 ) -> torch.Tensor:
     if return_lse:
         raise ValueError("Sage varlen backend does not support setting `return_lse=True`.")
@@ -1761,6 +1766,7 @@ def _sage_qk_int8_pv_fp8_cuda_attention(
     is_causal: bool = False,
     scale: Optional[float] = None,
     return_lse: bool = False,
+    _parallel_config: Optional["ContextParallelConfig"] = None,
 ) -> torch.Tensor:
     return sageattn_qk_int8_pv_fp8_cuda(
         q=query,
@@ -1784,6 +1790,7 @@ def _sage_qk_int8_pv_fp8_cuda_sm90_attention(
     is_causal: bool = False,
     scale: Optional[float] = None,
     return_lse: bool = False,
+    _parallel_config: Optional["ContextParallelConfig"] = None,
 ) -> torch.Tensor:
     return sageattn_qk_int8_pv_fp8_cuda_sm90(
         q=query,
@@ -1807,6 +1814,7 @@ def _sage_qk_int8_pv_fp16_cuda_attention(
     is_causal: bool = False,
     scale: Optional[float] = None,
     return_lse: bool = False,
+    _parallel_config: Optional["ContextParallelConfig"] = None,
 ) -> torch.Tensor:
     return sageattn_qk_int8_pv_fp16_cuda(
         q=query,
@@ -1830,6 +1838,7 @@ def _sage_qk_int8_pv_fp16_triton_attention(
     is_causal: bool = False,
     scale: Optional[float] = None,
     return_lse: bool = False,
+    _parallel_config: Optional["ContextParallelConfig"] = None,
 ) -> torch.Tensor:
     return sageattn_qk_int8_pv_fp16_triton(
         q=query,
@@ -1856,6 +1865,7 @@ def _xformers_attention(
     scale: Optional[float] = None,
     enable_gqa: bool = False,
     return_lse: bool = False,
+    _parallel_config: Optional["ContextParallelConfig"] = None,
 ) -> torch.Tensor:
     if return_lse:
         raise ValueError("xformers attention backend does not support setting `return_lse=True`.")

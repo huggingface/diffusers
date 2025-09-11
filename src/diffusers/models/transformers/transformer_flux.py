@@ -74,6 +74,7 @@ def _get_qkv_projections(attn: "FluxAttention", hidden_states, encoder_hidden_st
 
 class FluxAttnProcessor:
     _attention_backend = None
+    _parallel_config = None
 
     def __init__(self):
         if not hasattr(F, "scaled_dot_product_attention"):
@@ -115,7 +116,7 @@ class FluxAttnProcessor:
             key = apply_rotary_emb(key, image_rotary_emb, sequence_dim=1)
 
         hidden_states = dispatch_attention_fn(
-            query, key, value, attn_mask=attention_mask, backend=self._attention_backend
+            query, key, value, attn_mask=attention_mask, backend=self._attention_backend, parallel_config=self._parallel_config
         )
         hidden_states = hidden_states.flatten(2, 3)
         hidden_states = hidden_states.to(query.dtype)
@@ -137,6 +138,7 @@ class FluxIPAdapterAttnProcessor(torch.nn.Module):
     """Flux Attention processor for IP-Adapter."""
 
     _attention_backend = None
+    _parallel_config = None
 
     def __init__(
         self, hidden_size: int, cross_attention_dim: int, num_tokens=(4,), scale=1.0, device=None, dtype=None
@@ -221,6 +223,7 @@ class FluxIPAdapterAttnProcessor(torch.nn.Module):
             dropout_p=0.0,
             is_causal=False,
             backend=self._attention_backend,
+            parallel_config=self._parallel_config,
         )
         hidden_states = hidden_states.flatten(2, 3)
         hidden_states = hidden_states.to(query.dtype)
@@ -253,6 +256,7 @@ class FluxIPAdapterAttnProcessor(torch.nn.Module):
                     dropout_p=0.0,
                     is_causal=False,
                     backend=self._attention_backend,
+                    parallel_config=self._parallel_config,
                 )
                 current_ip_hidden_states = current_ip_hidden_states.reshape(batch_size, -1, attn.heads * attn.head_dim)
                 current_ip_hidden_states = current_ip_hidden_states.to(ip_query.dtype)

@@ -623,8 +623,8 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
 
     def reset_attention_backend(self) -> None:
         """
-        Resets the attention backend for the model. Following calls to `forward` will use the environment default or
-        the torch native scaled dot product attention.
+        Resets the attention backend for the model. Following calls to `forward` will use the environment default, if
+        set, or the torch native scaled dot product attention.
         """
         from .attention import AttentionModuleMixin
         from .attention_processor import Attention, MochiAttention
@@ -1492,6 +1492,8 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         cp_plan: Optional[Dict[str, ContextParallelModelPlan]] = None,
     ):
         from ..hooks.context_parallel import apply_context_parallel
+        from .attention import AttentionModuleMixin
+        from .attention_processor import Attention, MochiAttention
 
         logger.warning(
             "`enable_parallelism` is an experimental feature. The API may change in the future and breaking changes may be introduced at any time without warning."
@@ -1540,6 +1542,15 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             apply_context_parallel(self, config.context_parallel_config, cp_plan)
 
         self._parallel_config = config
+
+        attention_classes = (Attention, MochiAttention, AttentionModuleMixin)
+        for module in self.modules():
+            if not isinstance(module, attention_classes):
+                continue
+            processor = module.processor
+            if processor is None or not hasattr(processor, "_parallel_config"):
+                continue
+            processor._parallel_config = processor._parallel_config
 
     @classmethod
     def _load_pretrained_model(

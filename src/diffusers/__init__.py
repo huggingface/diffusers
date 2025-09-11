@@ -261,7 +261,6 @@ else:
             "WanTransformer3DModel",
             "WanVACETransformer3DModel",
             "attention_backend",
-            "enable_parallelism",
         ]
     )
     _import_structure["modular_pipelines"].extend(
@@ -942,7 +941,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             WanTransformer3DModel,
             WanVACETransformer3DModel,
             attention_backend,
-            enable_parallelism,
         )
         from .modular_pipelines import ComponentsManager, ComponentSpec, ModularPipeline, ModularPipelineBlocks
         from .optimization import (

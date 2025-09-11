@@ -262,6 +262,7 @@ class QwenDoubleStreamAttnProcessor2_0:
     """
 
     _attention_backend = None
+    _parallel_config = None
 
     def __init__(self):
         if not hasattr(F, "scaled_dot_product_attention"):
@@ -335,6 +336,7 @@ class QwenDoubleStreamAttnProcessor2_0:
             dropout_p=0.0,
             is_causal=False,
             backend=self._attention_backend,
+            parallel_config=self._parallel_config,
         )
 
         # Reshape back

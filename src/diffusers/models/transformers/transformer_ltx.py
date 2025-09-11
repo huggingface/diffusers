@@ -52,6 +52,7 @@ class LTXVideoAttnProcessor:
     """
 
     _attention_backend = None
+    _parallel_config = None
 
     def __init__(self):
         if is_torch_version("<", "2.0"):
@@ -101,6 +102,7 @@ class LTXVideoAttnProcessor:
             dropout_p=0.0,
             is_causal=False,
             backend=self._attention_backend,
+            parallel_config=self._parallel_config,
         )
         hidden_states = hidden_states.flatten(2, 3)
         hidden_states = hidden_states.to(query.dtype)

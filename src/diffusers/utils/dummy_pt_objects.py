@@ -1507,10 +1507,6 @@ def attention_backend(*args, **kwargs):
     requires_backends(attention_backend, ["torch"])
 
 
-def enable_parallelism(*args, **kwargs):
-    requires_backends(enable_parallelism, ["torch"])
-
-
 class ComponentsManager(metaclass=DummyObject):
     _backends = ["torch"]
 
