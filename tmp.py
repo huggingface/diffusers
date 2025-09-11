@@ -5,28 +5,18 @@ from diffusers.utils import export_to_video
 
 
 def sana_video():
-    # pipe = SanaPipeline.from_pretrained(
-    #     "Efficient-Large-Model/SANA1.5_1.6B_1024px_diffusers",
-    #     torch_dtype=torch.bfloat16,
-    # )
 
-    model_id = "sana_video"
+    # model_id = "sana_video"
+    model_id = "sana_video_v2"
     # model_id = "sana_video_unipc"
-    pipe = SanaVideoPipeline.from_pretrained(
-        model_id,
-        vae=None,
-        torch_dtype=torch.bfloat16,
-    )
-    vae = AutoencoderKLWan.from_pretrained("Wan-AI/Wan2.1-T2V-14B-Diffusers", subfolder="vae", torch_dtype=torch.float32)
-    pipe.vae=vae
-    pipe.scheduler = UniPCMultistepScheduler.from_config(pipe.scheduler.config, flow_shift=5.0)
-
+    pipe = SanaVideoPipeline.from_pretrained(model_id, torch_dtype=torch.bfloat16)
+    # pipe.scheduler = UniPCMultistepScheduler.from_config(pipe.scheduler.config, flow_shift=5.0)
+    pipe.vae.to(torch.bfloat32)
     pipe.text_encoder.to(torch.bfloat16)
-
     pipe.to("cuda")
 
-    prompt = "A cat and a dog baking a cake together in a kitchen. The cat is carefully measuring flour, while the dog is stirring the batter with a wooden spoon. The kitchen is cozy, with sunlight streaming through the window."
-    negative_prompt = "Bright tones, overexposed, static, blurred details, subtitles, style, works, paintings, images, static, overall gray, worst quality, low quality, JPEG compression residue, ugly, incomplete, extra fingers, poorly drawn hands, poorly drawn faces, deformed, disfigured, misshapen limbs, fused fingers, still picture, messy background, three legs, many people in the background, walking backwards"
+    prompt = "Extreme close-up of a thoughtful, gray-haired professor in his 60s, sitting motionless in a Paris café, dressed in a wool coat and beret, pondering the universe. His subtle closed-mouth smile reveals an answer. Golden light, cinematic depth of field, Paris streets blurred in the background. Cinematic 35mm film."
+    negative_prompt = "A chaotic sequence with misshapen, deformed limbs in heavy motion blur, sudden disappearance, jump cuts, jerky movements, rapid shot changes, frames out of sync, inconsistent character shapes, temporal artifacts, jitter, and ghosting effects, creating a disorienting visual experience."
 
     video = pipe(
         prompt=prompt,
@@ -35,11 +25,11 @@ def sana_video():
         width=832,
         frames=81,
         guidance_scale=6,
-        num_inference_steps=30,
+        num_inference_steps=50,
         generator=torch.Generator(device="cuda").manual_seed(42),
     ).frames[0]
 
-    export_to_video(video, "sana.mp4", fps=16)
+    export_to_video(video, "sana_v2.mp4", fps=16)
 
 
 def profile_sana_video():
@@ -48,11 +38,10 @@ def profile_sana_video():
     model_id = "sana_video"
     pipe = SanaVideoPipeline.from_pretrained(
         model_id,
-        vae=None,
+        torch_dtype=torch.bfloat16,
     )
-    vae = AutoencoderKLWan.from_pretrained("Wan-AI/Wan2.1-T2V-14B-Diffusers", subfolder="vae", torch_dtype=torch.float32)
-    pipe.vae=vae
-    pipe.scheduler = UniPCMultistepScheduler.from_config(pipe.scheduler.config, flow_shift=5.0)
+    # pipe.scheduler = UniPCMultistepScheduler.from_config(pipe.scheduler.config, flow_shift=5.0)
+    pipe.vae.to(torch.float32)
     pipe.text_encoder.to(torch.bfloat16)
     pipe.to("cuda")
 
@@ -81,7 +70,7 @@ def profile_sana_video():
             width=832,
             frames=81,
             guidance_scale=6,
-            num_inference_steps=30,
+            num_inference_steps=50,
             generator=torch.Generator(device="cuda").manual_seed(42),
         ).frames[0]
 

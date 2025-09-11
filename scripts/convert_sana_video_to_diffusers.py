@@ -27,7 +27,8 @@ from diffusers.utils.import_utils import is_accelerate_available
 CTX = init_empty_weights if is_accelerate_available else nullcontext
 
 ckpt_ids = [
-    "Efficient-Large-Model/SanaVideo_willquant/checkpoints/model.pth"
+    # "Efficient-Large-Model/SanaVideo_willquant/checkpoints/model.pth"
+    "Efficient-Large-Model/SanaVideo_willquant_v2/checkpoints/model.pth"
 ]
 # https://github.com/NVlabs/Sana/blob/main/scripts/inference.py
 
@@ -66,42 +67,18 @@ def main(args):
     converted_state_dict["caption_projection.linear_2.weight"] = state_dict.pop("y_embedder.y_proj.fc2.weight")
     converted_state_dict["caption_projection.linear_2.bias"] = state_dict.pop("y_embedder.y_proj.fc2.bias")
 
-    # Handle different time embedding structure based on model type
-
-    if args.model_type in ["SanaVideo"]:
-        # For Sana Sprint, the time embedding structure is different
-        converted_state_dict["time_embed.timestep_embedder.linear_1.weight"] = state_dict.pop(
-            "t_embedder.mlp.0.weight"
-        )
-        converted_state_dict["time_embed.timestep_embedder.linear_1.bias"] = state_dict.pop("t_embedder.mlp.0.bias")
-        converted_state_dict["time_embed.timestep_embedder.linear_2.weight"] = state_dict.pop(
-            "t_embedder.mlp.2.weight"
-        )
-        converted_state_dict["time_embed.timestep_embedder.linear_2.bias"] = state_dict.pop("t_embedder.mlp.2.bias")
-
-        # Guidance embedder for Sana Sprint
-        converted_state_dict["time_embed.guidance_embedder.linear_1.weight"] = state_dict.pop(
-            "cfg_embedder.mlp.0.weight"
-        )
-        converted_state_dict["time_embed.guidance_embedder.linear_1.bias"] = state_dict.pop("cfg_embedder.mlp.0.bias")
-        converted_state_dict["time_embed.guidance_embedder.linear_2.weight"] = state_dict.pop(
-            "cfg_embedder.mlp.2.weight"
-        )
-        converted_state_dict["time_embed.guidance_embedder.linear_2.bias"] = state_dict.pop("cfg_embedder.mlp.2.bias")
-    else:
-        # Original Sana time embedding structure
-        converted_state_dict["time_embed.emb.timestep_embedder.linear_1.weight"] = state_dict.pop(
-            "t_embedder.mlp.0.weight"
-        )
-        converted_state_dict["time_embed.emb.timestep_embedder.linear_1.bias"] = state_dict.pop(
-            "t_embedder.mlp.0.bias"
-        )
-        converted_state_dict["time_embed.emb.timestep_embedder.linear_2.weight"] = state_dict.pop(
-            "t_embedder.mlp.2.weight"
-        )
-        converted_state_dict["time_embed.emb.timestep_embedder.linear_2.bias"] = state_dict.pop(
-            "t_embedder.mlp.2.bias"
-        )
+    converted_state_dict["time_embed.emb.timestep_embedder.linear_1.weight"] = state_dict.pop(
+        "t_embedder.mlp.0.weight"
+    )
+    converted_state_dict["time_embed.emb.timestep_embedder.linear_1.bias"] = state_dict.pop(
+        "t_embedder.mlp.0.bias"
+    )
+    converted_state_dict["time_embed.emb.timestep_embedder.linear_2.weight"] = state_dict.pop(
+        "t_embedder.mlp.2.weight"
+    )
+    converted_state_dict["time_embed.emb.timestep_embedder.linear_2.bias"] = state_dict.pop(
+        "t_embedder.mlp.2.bias"
+    )
 
     # Shared norm.
     converted_state_dict["time_embed.linear.weight"] = state_dict.pop("t_block.1.weight")
@@ -255,7 +232,6 @@ def main(args):
     else:
         print(colored(f"Saving the whole Pipeline containing {args.model_type}", "green", attrs=["bold"]))
         # VAE
-        # vae = AutoencoderDC.from_pretrained("mit-han-lab/dc-ae-f32c32-sana-1.1-diffusers", torch_dtype=torch.float32)
         vae = AutoencoderKLWan.from_pretrained("Wan-AI/Wan2.1-T2V-14B-Diffusers", subfolder="vae", torch_dtype=torch.float32)
 
         # Text Encoder
@@ -317,15 +293,10 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--model_type",
-        default="SanaMS_1600M_P1_D20",
+        default="SanaVideo",
         type=str,
         choices=[
-            "SanaMS_1600M_P1_D20",
-            "SanaMS_600M_P1_D28",
-            "SanaMS1.5_1600M_P1_D20",
-            "SanaMS1.5_4800M_P1_D60",
-            "SanaSprint_1600M_P1_D20",
-            "SanaSprint_600M_P1_D28",
+            "SanaVideo",
         ],
     )
     parser.add_argument(

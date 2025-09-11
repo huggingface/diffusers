@@ -25,7 +25,7 @@ from transformers import Gemma2PreTrainedModel, GemmaTokenizer, GemmaTokenizerFa
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...image_processor import PixArtImageProcessor
 from ...loaders import SanaLoraLoaderMixin
-from ...models import AutoencoderDC, SanaVideoTransformer3DModel
+from ...models import AutoencoderDC, AutoencoderKLWan, SanaVideoTransformer3DModel
 from ...schedulers import DPMSolverMultistepScheduler
 from ...video_processor import VideoProcessor
 from ...utils import (
@@ -82,17 +82,31 @@ EXAMPLE_DOC_STRING = """
     Examples:
         ```py
         >>> import torch
-        >>> from diffusers import SanaPipeline
-
-        >>> pipe = SanaPipeline.from_pretrained(
-        ...     "Efficient-Large-Model/Sana_1600M_1024px_BF16_diffusers", torch_dtype=torch.float32
+        >>> from diffusers import SanaVideoPipeline
+        >>> from diffusers.utils import export_to_video
+        >>> model_id = "sana_video"
+        >>> pipe = SanaVideoPipeline.from_pretrained(
+        ...    model_id,
         ... )
-        >>> pipe.to("cuda")
-        >>> pipe.text_encoder.to(torch.bfloat16)
-        >>> pipe.transformer = pipe.transformer.to(torch.bfloat16)
+        ... pipe.transformer.to(torch.bfloat16)
+        ... pipe.text_encoder.to(torch.bfloat16)
+        ... pipe.to("cuda")
 
-        >>> video = pipe(prompt='a cyberpunk cat with a neon sign that says "Sana"', frames=81)[0]
-        >>> # Save video frames or process as needed
+        >>> prompt = "A cat and a dog baking a cake together in a kitchen. The cat is carefully measuring flour, while the dog is stirring the batter with a wooden spoon. The kitchen is cozy, with sunlight streaming through the window."
+        >>> negative_prompt = "A chaotic sequence with misshapen, deformed limbs in heavy motion blur, sudden disappearance, jump cuts, jerky movements, rapid shot changes, frames out of sync, inconsistent character shapes, temporal artifacts, jitter, and ghosting effects, creating a disorienting visual experience."
+
+        >>> output = pipe(
+        ...    prompt=prompt,
+        ...    negative_prompt=negative_prompt,
+        ...    height=480,
+        ...    width=832,
+        ...    frames=81,
+        ...    guidance_scale=6,
+        ...    num_inference_steps=50,
+        ...    generator=torch.Generator(device="cuda").manual_seed(42),
+        ... ).frames[0]
+
+        >>> export_to_video(output, "sana-video-output.mp4", fps=16)
         ```
 """
 
@@ -188,7 +202,7 @@ class SanaVideoPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
         self,
         tokenizer: Union[GemmaTokenizer, GemmaTokenizerFast],
         text_encoder: Gemma2PreTrainedModel,
-        vae: AutoencoderDC,
+        vae: Union[AutoencoderDC, AutoencoderKLWan],
         transformer: SanaVideoTransformer3DModel,
         scheduler: DPMSolverMultistepScheduler,
     ):
