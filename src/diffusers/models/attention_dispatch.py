@@ -68,27 +68,32 @@ else:
     flash_attn_3_func = None
     flash_attn_3_varlen_func = None
 
-if DIFFUSERS_ENABLE_HUB_KERNELS:
-    if not is_kernels_available():
-        raise ImportError(
-            "To use FA3 kernel for your hardware from the Hub, the `kernels` library must be installed. Install with `pip install kernels`."
-        )
-    from ..utils.kernels_utils import _get_fa3_from_hub
+flash_attn_func_hub = None
+flash_attn_3_func_hub = None
 
-    flash_attn_interface_hub = _get_fa3_from_hub()
-    flash_attn_3_func_hub = flash_attn_interface_hub.flash_attn_func
-    flash_attn_3_func_hub = None
+try:
+    if DIFFUSERS_ENABLE_HUB_KERNELS:
+        if not is_kernels_available():
+            raise ImportError(
+                "To use FA3 kernel for your hardware from the Hub, the `kernels` library must be installed. Install with `pip install kernels`."
+            )
+        from ..utils.kernels_utils import _get_fa3_from_hub
 
-else:
-    if not is_kernels_available():
-        raise ImportError(
-            "To use FA kernel for your hardware from the Hub, the `kernels` library must be installed. Install with `pip install kernels`."
-        )
-    from ..utils.kernels_utils import _get_fa_from_hub
+        flash_attn_interface_hub = _get_fa3_from_hub()
+        flash_attn_3_func_hub = flash_attn_interface_hub.flash_attn_func
+        flash_attn_func_hub = flash_attn_3_func_hub  # point generic hub variable
+    else:
+        if not is_kernels_available():
+            raise ImportError(
+                "To use FA kernel for your hardware from the Hub, the `kernels` library must be installed. Install with `pip install kernels`."
+            )
+        from ..utils.kernels_utils import _get_fa_from_hub
 
-    flash_attn_interface_hub = _get_fa_from_hub()
-    flash_attn_func_hub = flash_attn_interface_hub.flash_attn_func
-    flash_attn_func_hub= None
+        flash_attn_interface_hub = _get_fa_from_hub()
+        flash_attn_func_hub = flash_attn_interface_hub.flash_attn_func
+except Exception:
+    # Keep variables as None if initialization fails
+    pass
 
 if _CAN_USE_SAGE_ATTN:
     from sageattention import (
