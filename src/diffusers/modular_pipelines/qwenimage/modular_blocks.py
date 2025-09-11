@@ -821,7 +821,7 @@ class QwenImageEditAutoDenoiseStep(AutoPipelineBlocks):
 ## 2.7 QwenImage-Edit/auto blocks & presets
 
 
-class QwenImageEditCoreStep(SequentialPipelineBlocks):
+class QwenImageEditCoreDenoiseStep(SequentialPipelineBlocks):
     model_name = "qwenimage-edit"
     block_classes = [
         QwenImageEditAutoInputStep,
@@ -844,7 +844,7 @@ EDIT_AUTO_BLOCKS = InsertableDict(
     [
         ("text_encoder", QwenImageEditVLEncoderStep()),
         ("vae_encoder", QwenImageEditAutoVaeEncoderStep()),
-        ("denoise", QwenImageEditCoreStep()),
+        ("denoise", QwenImageEditCoreDenoiseStep()),
         ("decode", QwenImageAutoDecodeStep()),
     ]
 )

@@ -283,7 +283,7 @@ class StableDiffusionXLAutoBlocks(SequentialPipelineBlocks):
         "ip_adapter",
         "vae_encoder",
         "denoise",
-        "decoder",
+        "decode",
     ]
 
     @property
