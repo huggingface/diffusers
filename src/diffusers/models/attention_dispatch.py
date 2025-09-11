@@ -77,8 +77,18 @@ if DIFFUSERS_ENABLE_HUB_KERNELS:
 
     flash_attn_interface_hub = _get_fa3_from_hub()
     flash_attn_3_func_hub = flash_attn_interface_hub.flash_attn_func
-else:
     flash_attn_3_func_hub = None
+
+else:
+    if not is_kernels_available():
+        raise ImportError(
+            "To use FA kernel for your hardware from the Hub, the `kernels` library must be installed. Install with `pip install kernels`."
+        )
+    from ..utils.kernels_utils import _get_fa_from_hub
+
+    flash_attn_interface_hub = _get_fa_from_hub()
+    flash_attn_func_hub = flash_attn_interface_hub.flash_attn_func
+    flash_attn_func_hub= None
 
 if _CAN_USE_SAGE_ATTN:
     from sageattention import (
@@ -167,6 +177,7 @@ class AttentionBackendName(str, Enum):
     _FLASH_VARLEN_3 = "_flash_varlen_3"
     _FLASH_3_HUB = "_flash_3_hub"
     # _FLASH_VARLEN_3_HUB = "_flash_varlen_3_hub"  # not supported yet.
+    _FLASH_HUB = "_flash_hub"
 
     # PyTorch native
     FLEX = "flex"
@@ -374,6 +385,16 @@ def _check_attention_backend_requirements(backend: AttentionBackendName) -> None
         if not is_kernels_available():
             raise RuntimeError(
                 f"Flash Attention 3 Hub backend '{backend.value}' is not usable because the `kernels` package isn't available. Please install it with `pip install kernels`."
+            )
+
+    elif backend in [AttentionBackendName._FLASH_HUB]:
+        if not DIFFUSERS_ENABLE_HUB_KERNELS:
+            raise RuntimeError(
+                f"Flash Attention Hub backend '{backend.value}' is not usable because the `DIFFUSERS_ENABLE_HUB_KERNELS` env var isn't set. Please set it like `export DIFFUSERS_ENABLE_HUB_KERNELS=yes`."
+            )
+        if not is_kernels_available():
+            raise RuntimeError(
+                f"Flash Attention Hub backend '{backend.value}' is not usable because the `kernels` package isn't available. Please install it with `pip install kernels`."
             )
 
     elif backend in [
@@ -718,6 +739,39 @@ def _flash_attention_3_hub(
     # When `return_attn_probs` is True, the above returns a tuple of
     # actual outputs and lse.
     return (out[0], out[1]) if return_attn_probs else out
+
+
+@_AttentionBackendRegistry.register(
+    AttentionBackendName._FLASH_HUB,
+    constraints=[_check_device, _check_qkv_dtype_bf16_or_fp16, _check_shape],
+)
+def _flash_attention_hub(
+    query: torch.Tensor,
+    key: torch.Tensor,
+    value: torch.Tensor,
+    dropout_p: float = 0.0,
+    scale: Optional[float] = None,
+    is_causal: bool = False,
+    window_size: Tuple[int, int] = (-1, -1),
+    softcap: float = 0.0,
+    alibi_slopes: Optional[torch.Tensor] = None,
+    deterministic: bool = False,
+    return_attn_probs: bool = False,
+) -> torch.Tensor:
+    out = flash_attn_func_hub(
+        q=query,
+        k=key,
+        v=value,
+        dropout_p=dropout_p,
+        softmax_scale=scale,
+        causal=is_causal,
+        window_size=window_size,
+        softcap=softcap,
+        alibi_slopes=alibi_slopes,
+        deterministic=deterministic,
+        return_attn_probs=return_attn_probs,
+    )
+    return out
 
 
 @_AttentionBackendRegistry.register(
