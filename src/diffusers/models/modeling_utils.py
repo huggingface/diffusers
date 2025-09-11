@@ -1550,7 +1550,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             processor = module.processor
             if processor is None or not hasattr(processor, "_parallel_config"):
                 continue
-            processor._parallel_config = processor._parallel_config
+            processor._parallel_config = config
 
     @classmethod
     def _load_pretrained_model(
