@@ -1,4 +1,4 @@
-# from https://github.com/F4k3r22/DiffusersServer/blob/main/DiffusersServer/create_server.py
+# create_server.py
 
 from .Pipelines import *
 from .serverasync import *

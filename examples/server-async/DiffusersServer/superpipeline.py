@@ -1,5 +1,3 @@
-# from https://github.com/F4k3r22/DiffusersServer/blob/main/DiffusersServer/superpipeline.py
-
 from diffusers.pipelines import *
 from diffusers  import *
 import torch

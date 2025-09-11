@@ -1,6 +1,4 @@
-# from https://github.com/F4k3r22/DiffusersServer/blob/main/DiffusersServer/serverasync.py
-
-from fastapi import FastAPI, HTTPException, status
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse  
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.concurrency import run_in_threadpool
@@ -22,6 +20,8 @@ import gc
 from typing import Optional, Dict, Any, Type
 from dataclasses import dataclass, field
 from typing import List
+from contextlib import asynccontextmanager
+import asyncio
 
 @dataclass
 class PresetModels:
@@ -114,11 +114,11 @@ class Utils:
 
 @dataclass
 class ServerConfigModels:
-    model: str = 'stabilityai/stable-diffusion-3-medium' 
+    model: str = 'stabilityai/stable-diffusion-3-medium'  
     type_models: str = 't2im' 
     custom_model : bool = False
     constructor_pipeline: Optional[Type] = None
-    custom_pipeline: Optional[Type] = None  
+    custom_pipeline: Optional[Type] = None 
     components: Optional[Dict[str, Any]] = None
     api_name: Optional[str] = 'custom_api'
     torch_dtype: Optional[torch.dtype] = None
@@ -126,7 +126,96 @@ class ServerConfigModels:
     port: int = 8500
 
 def create_app_fastapi(config: ServerConfigModels) -> FastAPI:
-    app = FastAPI()
+
+    server_config = config or ServerConfigModels()
+
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        logging.basicConfig(level=logging.INFO)
+        app.state.logger = logging.getLogger("diffusers-server")
+
+        app.state.total_requests = 0
+        app.state.active_inferences = 0
+        app.state.metrics_lock = asyncio.Lock()
+        app.state.metrics_task = None
+
+        app.state.utils_app = Utils(
+            host=server_config.host,
+            port=server_config.port,
+        )
+
+        async def metrics_loop():
+            try:
+                while True:
+                    async with app.state.metrics_lock:
+                        total = app.state.total_requests
+                        active = app.state.active_inferences
+                    app.state.logger.info(f"[METRICS] total_requests={total} active_inferences={active}")
+                    await asyncio.sleep(5)
+            except asyncio.CancelledError:
+                app.state.logger.info("Metrics loop cancelled")
+                raise
+
+        app.state.metrics_task = asyncio.create_task(metrics_loop())
+
+        try:
+            yield
+        finally:
+            # 🔻 shutdown
+            task = app.state.metrics_task
+            if task:
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+
+            try:
+                stop_fn = getattr(model_pipeline, "stop", None) or getattr(model_pipeline, "close", None)
+                if callable(stop_fn):
+                    await run_in_threadpool(stop_fn)
+            except Exception as e:
+                app.state.logger.warning(f"Error during pipeline shutdown: {e}")
+
+            app.state.logger.info("Lifespan shutdown complete")
+
+    
+
+    app = FastAPI(lifespan=lifespan)
+
+    logger = logging.getLogger("DiffusersServer.Pipelines")
+
+    if server_config.custom_model:
+        if server_config.constructor_pipeline is None:
+            raise ValueError("constructor_pipeline cannot be None - a valid pipeline constructor is required")
+
+        initializer = server_config.constructor_pipeline(
+            model_path=server_config.model,
+            pipeline=server_config.custom_pipeline,
+            torch_dtype=server_config.torch_dtype,
+            components=server_config.components,
+        )
+        model_pipeline = initializer.start()
+        request_pipe = None
+        pipeline_lock = threading.Lock()
+
+    else:
+        initializer = ModelPipelineInitializer(
+            model=server_config.model,
+            type_models=server_config.type_models,
+        )
+        model_pipeline = initializer.initialize_pipeline()
+        model_pipeline.start()
+
+        request_pipe = RequestScopedPipeline(model_pipeline.pipeline)
+        pipeline_lock = threading.Lock()
+
+    logger.info(f"Pipeline initialized and ready to receive requests (model ={server_config.model})")
+
+    app.state.MODEL_INITIALIZER = initializer
+    app.state.MODEL_PIPELINE = model_pipeline
+    app.state.REQUEST_PIPE = request_pipe
+    app.state.PIPELINE_LOCK = pipeline_lock
 
     class JSONBodyQueryAPI(BaseModel):
         model : str | None = None
@@ -135,54 +224,12 @@ def create_app_fastapi(config: ServerConfigModels) -> FastAPI:
         num_inference_steps : int = 28
         num_images_per_prompt : int = 1
 
-    logging.basicConfig(level=logging.INFO)
-    global logger
-    logger = logging.getLogger(__name__)
-
-    server_config = config or ServerConfigModels()
-    app.state.SERVER_CONFIG = server_config
-
-    global utils_app
-
-    utils_app = Utils(host=server_config.host, port=server_config.port)
-
-    logger.info(f"Inicializando pipeline para el modelo: {server_config.model}")
-    try:
-        if server_config.custom_model:
-            if server_config.constructor_pipeline is None:
-                raise ValueError("constructor_pipeline cannot be None - a valid pipeline constructor is required")
-            initializer = server_config.constructor_pipeline(
-                model_path=server_config.model,
-                pipeline=server_config.custom_pipeline,
-                torch_dtype=server_config.torch_dtype,
-                components=server_config.components,
-            )
-            model_pipeline = initializer.start()
-            app.state.CUSTOM_PIPELINE = server_config.custom_pipeline
-            app.state.MODEL_PIPELINE = model_pipeline
-            app.state.MODEL_INITIALIZER = initializer
-            logger.info(f"Pipeline personalizado inicializado. Tipo: {type(model_pipeline)}")
-        else:
-            initializer = ModelPipelineInitializer(
-                model=server_config.model,
-                type_models=server_config.type_models,
-            )
-            model_pipeline = initializer.initialize_pipeline()
-            model_pipeline.start()
-
-            app.state.REQUEST_PIPE = RequestScopedPipeline(model_pipeline.pipeline)
-
-            # Lock for concurrency
-            pipeline_lock = threading.Lock()
-
-            app.state.MODEL_PIPELINE = model_pipeline
-            app.state.PIPELINE_LOCK = pipeline_lock
-            app.state.MODEL_INITIALIZER = initializer
-
-        logger.info("Pipeline initialized and ready to receive requests")
-    except Exception as e:
-        logger.error(f"Error initializing pipeline: {e}")
-        raise
+    @app.middleware("http")
+    async def count_requests_middleware(request: Request, call_next):
+        async with app.state.metrics_lock:
+            app.state.total_requests += 1
+        response = await call_next(request)
+        return response
 
 
     @app.get("/")
@@ -196,14 +243,16 @@ def create_app_fastapi(config: ServerConfigModels) -> FastAPI:
         num_steps             = json.num_inference_steps
         num_images_per_prompt = json.num_images_per_prompt
 
-        wrapper     = app.state.MODEL_PIPELINE
+        wrapper     = app.state.MODEL_PIPELINE   
         initializer = app.state.MODEL_INITIALIZER
+
+        utils_app = app.state.utils_app
 
 
         if not wrapper or not wrapper.pipeline:
-            raise HTTPException(500, "Modelo no inicializado correctamente")
+            raise HTTPException(500, "Model not initialized correctly")
         if not prompt.strip():
-            raise HTTPException(400, "No se proporcionó prompt")
+            raise HTTPException(400, "No prompt provided")
 
         def make_generator():
             g = torch.Generator(device=initializer.device)
@@ -212,9 +261,6 @@ def create_app_fastapi(config: ServerConfigModels) -> FastAPI:
         req_pipe = app.state.REQUEST_PIPE
 
         def infer():
-            # This is called that because the RequestScoped Pipeline already internally 
-            # handles everything necessary for inference and only the 
-            # model pipeline needs to be passed, for example StableDiffusion3Pipeline
             gen = make_generator()
             return req_pipe.generate(
                 prompt=prompt,
@@ -226,14 +272,22 @@ def create_app_fastapi(config: ServerConfigModels) -> FastAPI:
             )
 
         try:
+            async with app.state.metrics_lock:
+                app.state.active_inferences += 1
+
             output = await run_in_threadpool(infer)
+
+            async with app.state.metrics_lock:
+                app.state.active_inferences = max(0, app.state.active_inferences - 1)
 
             urls = [utils_app.save_image(img) for img in output.images]
             return {"response": urls}
 
         except Exception as e:
-            logger.error(f"Error durante la inferencia: {e}")
-            raise HTTPException(500, f"Error en procesamiento: {e}")
+            async with app.state.metrics_lock:
+                app.state.active_inferences = max(0, app.state.active_inferences - 1)
+            logger.error(f"Error during inference: {e}")
+            raise HTTPException(500, f"Error in processing: {e}")
 
         finally:
             import gc; gc.collect()
@@ -243,6 +297,7 @@ def create_app_fastapi(config: ServerConfigModels) -> FastAPI:
 
     @app.get("/images/{filename}")
     async def serve_image(filename: str):
+        utils_app = app.state.utils_app
         file_path = os.path.join(utils_app.image_dir, filename)
         if not os.path.isfile(file_path):
             raise HTTPException(status_code=404, detail="Image not found")

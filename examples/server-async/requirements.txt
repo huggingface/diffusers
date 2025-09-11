@@ -4,3 +4,4 @@ transformers
 sentencepiece 
 fastapi 
 uvicorn 
+fifty
