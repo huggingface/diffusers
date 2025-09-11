@@ -7,7 +7,7 @@ from diffusers.utils import export_to_video
 def sana_video():
 
     # model_id = "sana_video"
-    model_id = "sana_video_v2"
+    model_id = "hf://Efficient-Large-Model/sana_video_v2"
     # model_id = "sana_video_unipc"
     pipe = SanaVideoPipeline.from_pretrained(model_id, torch_dtype=torch.bfloat16)
     # pipe.scheduler = UniPCMultistepScheduler.from_config(pipe.scheduler.config, flow_shift=5.0)
