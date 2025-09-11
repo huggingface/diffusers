@@ -34,7 +34,7 @@ from .utils import PeftLoraLoaderMixinTests  # noqa: E402
 
 
 @require_peft_backend
-class QwenImageLoRATests(PeftLoraLoaderMixinTests, unittest.TestCase):
+class QwenImageLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
     pipeline_class = QwenImagePipeline
     scheduler_cls = FlowMatchEulerDiscreteScheduler
     scheduler_classes = [FlowMatchEulerDiscreteScheduler]

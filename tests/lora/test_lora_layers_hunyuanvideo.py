@@ -48,7 +48,7 @@ from .utils import PeftLoraLoaderMixinTests  # noqa: E402
 
 @require_peft_backend
 @skip_mps
-class HunyuanVideoLoRATests(PeftLoraLoaderMixinTests, unittest.TestCase):
+class HunyuanVideoLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
     pipeline_class = HunyuanVideoPipeline
     scheduler_cls = FlowMatchEulerDiscreteScheduler
     scheduler_classes = [FlowMatchEulerDiscreteScheduler]

@@ -47,7 +47,7 @@ from .utils import PeftLoraLoaderMixinTests  # noqa: E402
 @require_peft_backend
 @skip_mps
 @is_flaky(max_attempts=10, description="very flaky class")
-class WanVACELoRATests(PeftLoraLoaderMixinTests, unittest.TestCase):
+class WanVACELoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
     pipeline_class = WanVACEPipeline
     scheduler_cls = FlowMatchEulerDiscreteScheduler
     scheduler_classes = [FlowMatchEulerDiscreteScheduler]

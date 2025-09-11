@@ -53,7 +53,7 @@ from .utils import PeftLoraLoaderMixinTests, check_if_lora_correctly_set  # noqa
 
 
 @require_peft_backend
-class FluxLoRATests(PeftLoraLoaderMixinTests, unittest.TestCase):
+class FluxLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
     pipeline_class = FluxPipeline
     scheduler_cls = FlowMatchEulerDiscreteScheduler()
     scheduler_kwargs = {}
@@ -280,7 +280,7 @@ class FluxLoRATests(PeftLoraLoaderMixinTests, unittest.TestCase):
         pass
 
 
-class FluxControlLoRATests(PeftLoraLoaderMixinTests, unittest.TestCase):
+class FluxControlLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
     pipeline_class = FluxControlPipeline
     scheduler_cls = FlowMatchEulerDiscreteScheduler()
     scheduler_kwargs = {}
