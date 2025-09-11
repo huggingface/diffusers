@@ -1922,7 +1922,7 @@ class PeftLoraLoaderMixinTests:
     def test_lora_B_bias(self):
         # Currently, this test is only relevant for Flux Control LoRA as we are not
         # aware of any other LoRA checkpoint that has its `lora_B` biases trained.
-        components, _, denoiser_lora_config = self.get_dummy_components(self.scheduler_classes[0])
+        components, _, denoiser_lora_config = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
         pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
@@ -1959,7 +1959,7 @@ class PeftLoraLoaderMixinTests:
         self.assertFalse(np.allclose(lora_bias_false_output, lora_bias_true_output, atol=1e-3, rtol=1e-3))
 
     def test_correct_lora_configs_with_different_ranks(self):
-        components, _, denoiser_lora_config = self.get_dummy_components(self.scheduler_classes[0])
+        components, _, denoiser_lora_config = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
         pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
@@ -2045,7 +2045,7 @@ class PeftLoraLoaderMixinTests:
                     self.assertEqual(submodule.bias.dtype, dtype_to_check)
 
         def initialize_pipeline(storage_dtype=None, compute_dtype=torch.float32):
-            components, text_lora_config, denoiser_lora_config = self.get_dummy_components(self.scheduler_classes[0])
+            components, text_lora_config, denoiser_lora_config = self.get_dummy_components()
             pipe = self.pipeline_class(**components)
             pipe = pipe.to(torch_device, dtype=compute_dtype)
             pipe.set_progress_bar_config(disable=None)
@@ -2112,7 +2112,7 @@ class PeftLoraLoaderMixinTests:
                     self.assertTrue(module._diffusers_hook.get_hook(_PEFT_AUTOCAST_DISABLE_HOOK) is not None)
 
         # 1. Test forward with add_adapter
-        components, _, denoiser_lora_config = self.get_dummy_components(self.scheduler_classes[0])
+        components, _, denoiser_lora_config = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
         pipe = pipe.to(torch_device, dtype=compute_dtype)
         pipe.set_progress_bar_config(disable=None)
@@ -2142,7 +2142,7 @@ class PeftLoraLoaderMixinTests:
             )
 
             self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_lora_weights.safetensors")))
-            components, _, _ = self.get_dummy_components(self.scheduler_classes[0])
+            components, _, _ = self.get_dummy_components()
             pipe = self.pipeline_class(**components)
             pipe = pipe.to(torch_device, dtype=compute_dtype)
             pipe.set_progress_bar_config(disable=None)
@@ -2303,7 +2303,7 @@ class PeftLoraLoaderMixinTests:
         onload_device = torch_device
         offload_device = torch.device("cpu")
 
-        components, text_lora_config, denoiser_lora_config = self.get_dummy_components(self.scheduler_classes[0])
+        components, text_lora_config, denoiser_lora_config = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
         pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
@@ -2320,7 +2320,7 @@ class PeftLoraLoaderMixinTests:
             )
             self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_lora_weights.safetensors")))
 
-            components, _, _ = self.get_dummy_components(self.scheduler_classes[0])
+            components, _, _ = self.get_dummy_components()
             pipe = self.pipeline_class(**components)
             pipe.set_progress_bar_config(disable=None)
             denoiser = pipe.transformer if self.unet_kwargs is None else pipe.unet
@@ -2372,7 +2372,7 @@ class PeftLoraLoaderMixinTests:
 
     @require_torch_accelerator
     def test_lora_loading_model_cpu_offload(self):
-        components, _, denoiser_lora_config = self.get_dummy_components(self.scheduler_classes[0])
+        components, _, denoiser_lora_config = self.get_dummy_components()
         _, _, inputs = self.get_dummy_inputs(with_generator=False)
         pipe = self.pipeline_class(**components)
         pipe = pipe.to(torch_device)
@@ -2391,7 +2391,7 @@ class PeftLoraLoaderMixinTests:
                 save_directory=tmpdirname, safe_serialization=True, **lora_state_dicts
             )
             # reinitialize the pipeline to mimic the inference workflow.
-            components, _, denoiser_lora_config = self.get_dummy_components(self.scheduler_classes[0])
+            components, _, denoiser_lora_config = self.get_dummy_components()
             pipe = self.pipeline_class(**components)
             pipe.enable_model_cpu_offload(device=torch_device)
             pipe.load_lora_weights(tmpdirname)
