@@ -15,7 +15,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import contextlib
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Dict, List, Literal, Optional, Tuple, Union
 
@@ -25,8 +24,7 @@ from ..utils import get_logger
 
 
 if TYPE_CHECKING:
-    from ..pipelines.pipeline_utils import DiffusionPipeline
-    from .modeling_utils import ModelMixin
+    pass
 
 
 logger = get_logger(__name__)  # pylint: disable=invalid-name

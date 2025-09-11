@@ -162,7 +162,12 @@ class BriaAttnProcessor:
             key = apply_rotary_emb(key, image_rotary_emb, sequence_dim=1)
 
         hidden_states = dispatch_attention_fn(
-            query, key, value, attn_mask=attention_mask, backend=self._attention_backend, parallel_config=self._parallel_config
+            query,
+            key,
+            value,
+            attn_mask=attention_mask,
+            backend=self._attention_backend,
+            parallel_config=self._parallel_config,
         )
         hidden_states = hidden_states.flatten(2, 3)
         hidden_states = hidden_states.to(query.dtype)
