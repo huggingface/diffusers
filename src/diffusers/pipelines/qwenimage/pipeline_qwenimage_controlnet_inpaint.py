@@ -1,4 +1,4 @@
-# Copyright 2025 Qwen-Image Team, InstantX Team and The HuggingFace Team. All rights reserved.
+# Copyright 2025 Qwen-Image Team, The InstantX Team and The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -45,58 +45,31 @@ EXAMPLE_DOC_STRING = """
         ```py
         >>> import torch
         >>> from diffusers.utils import load_image
-        >>> from diffusers import QwenImageControlNetModel, QwenImageMultiControlNetModel, QwenImageControlNetPipeline
+        >>> from diffusers import QwenImageControlNetModel, QwenImageControlNetInpaintPipeline
 
-        >>> # QwenImageControlNetModel
-        >>> controlnet = QwenImageControlNetModel.from_pretrained(
-        ...     "InstantX/Qwen-Image-ControlNet-Union", torch_dtype=torch.bfloat16
+        >>> base_model_path = "Qwen/Qwen-Image"
+        >>> controlnet_model_path = "InstantX/Qwen-Image-ControlNet-Inpainting"
+        >>> controlnet = QwenImageControlNetModel.from_pretrained(controlnet_model_path, torch_dtype=torch.bfloat16)
+        >>> pipe = QwenImageControlNetInpaintPipeline.from_pretrained(
+        ...     base_model_path, controlnet=controlnet, torch_dtype=torch.bfloat16
+        ... ).to("cuda")
+        >>> image = load_image(
+        ...     "https://huggingface.co/InstantX/Qwen-Image-ControlNet-Inpainting/resolve/main/assets/images/image1.png"
         ... )
-        >>> pipe = QwenImageControlNetPipeline.from_pretrained(
-        ...     "Qwen/Qwen-Image", controlnet=controlnet, torch_dtype=torch.bfloat16
+        >>> mask_image = load_image(
+        ...     "https://huggingface.co/InstantX/Qwen-Image-ControlNet-Inpainting/resolve/main/assets/masks/mask1.png"
         ... )
-        >>> pipe.to("cuda")
-        >>> prompt = "Aesthetics art, traditional asian pagoda, elaborate golden accents, sky blue and white color palette, swirling cloud pattern, digital illustration, east asian architecture, ornamental rooftop, intricate detailing on building, cultural representation."
-        >>> negative_prompt = " "
-        >>> control_image = load_image(
-        ...     "https://huggingface.co/InstantX/Qwen-Image-ControlNet-Union/resolve/main/conds/canny.png"
-        ... )
-        >>> # Depending on the variant being used, the pipeline call will slightly vary.
-        >>> # Refer to the pipeline documentation for more details.
-        >>> image = pipe(
-        ...     prompt,
-        ...     negative_prompt=negative_prompt,
-        ...     control_image=control_image,
+        >>> prompt = "一辆绿色的出租车行驶在路上"
+        >>> result = pipe(
+        ...     prompt=prompt,
+        ...     control_image=image,
+        ...     control_mask=mask_image,
         ...     controlnet_conditioning_scale=1.0,
-        ...     num_inference_steps=30,
+        ...     width=mask_image.size[0],
+        ...     height=mask_image.size[1],
         ...     true_cfg_scale=4.0,
         ... ).images[0]
-        >>> image.save("qwenimage_cn_union.png")
-
-        >>> # QwenImageMultiControlNetModel
-        >>> controlnet = QwenImageControlNetModel.from_pretrained(
-        ...     "InstantX/Qwen-Image-ControlNet-Union", torch_dtype=torch.bfloat16
-        ... )
-        >>> controlnet = QwenImageMultiControlNetModel([controlnet])
-        >>> pipe = QwenImageControlNetPipeline.from_pretrained(
-        ...     "Qwen/Qwen-Image", controlnet=controlnet, torch_dtype=torch.bfloat16
-        ... )
-        >>> pipe.to("cuda")
-        >>> prompt = "Aesthetics art, traditional asian pagoda, elaborate golden accents, sky blue and white color palette, swirling cloud pattern, digital illustration, east asian architecture, ornamental rooftop, intricate detailing on building, cultural representation."
-        >>> negative_prompt = " "
-        >>> control_image = load_image(
-        ...     "https://huggingface.co/InstantX/Qwen-Image-ControlNet-Union/resolve/main/conds/canny.png"
-        ... )
-        >>> # Depending on the variant being used, the pipeline call will slightly vary.
-        >>> # Refer to the pipeline documentation for more details.
-        >>> image = pipe(
-        ...     prompt,
-        ...     negative_prompt=negative_prompt,
-        ...     control_image=[control_image, control_image],
-        ...     controlnet_conditioning_scale=[0.5, 0.5],
-        ...     num_inference_steps=30,
-        ...     true_cfg_scale=4.0,
-        ... ).images[0]
-        >>> image.save("qwenimage_cn_union_multi.png")
+        >>> image.save("qwenimage_controlnet_inpaint.png")
         ```
 """
 
@@ -189,7 +162,7 @@ def retrieve_timesteps(
     return timesteps, num_inference_steps
 
 
-class QwenImageControlNetPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
+class QwenImageControlNetInpaintPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
     r"""
     The QwenImage pipeline for text-to-image generation.
 
@@ -218,7 +191,7 @@ class QwenImageControlNetPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
         text_encoder: Qwen2_5_VLForConditionalGeneration,
         tokenizer: Qwen2Tokenizer,
         transformer: QwenImageTransformer2DModel,
-        controlnet: Union[QwenImageControlNetModel, QwenImageMultiControlNetModel],
+        controlnet: QwenImageControlNetModel,
     ):
         super().__init__()
 
@@ -234,6 +207,15 @@ class QwenImageControlNetPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
         # QwenImage latents are turned into 2x2 patches and packed. This means the latent width and height has to be divisible
         # by the patch size. So the vae scale factor is multiplied by the patch size to account for this
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor * 2)
+
+        self.mask_processor = VaeImageProcessor(
+            vae_scale_factor=self.vae_scale_factor * 2,
+            do_resize=True,
+            do_convert_grayscale=True,
+            do_normalize=False,
+            do_binarize=True,
+        )
+
         self.tokenizer_max_length = 1024
         self.prompt_template_encode = "<|im_start|>system\nDescribe the image by detailing the color, shape, size, texture, quantity, text, spatial relationships of the objects and background:<|im_end|>\n<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n"
         self.prompt_template_encode_start_idx = 34
@@ -265,7 +247,7 @@ class QwenImageControlNetPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
         txt = [template.format(e) for e in prompt]
         txt_tokens = self.tokenizer(
             txt, max_length=self.tokenizer_max_length + drop_idx, padding=True, truncation=True, return_tensors="pt"
-        ).to(device)
+        ).to(self.device)
         encoder_hidden_states = self.text_encoder(
             input_ids=txt_tokens.input_ids,
             attention_mask=txt_tokens.attention_mask,
@@ -298,7 +280,6 @@ class QwenImageControlNetPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
         max_sequence_length: int = 1024,
     ):
         r"""
-
         Args:
             prompt (`str` or `List[str]`, *optional*):
                 prompt to be encoded
@@ -504,6 +485,89 @@ class QwenImageControlNetPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
 
         return image
 
+    def prepare_image_with_mask(
+        self,
+        image,
+        mask,
+        width,
+        height,
+        batch_size,
+        num_images_per_prompt,
+        device,
+        dtype,
+        do_classifier_free_guidance=False,
+        guess_mode=False,
+    ):
+        if isinstance(image, torch.Tensor):
+            pass
+        else:
+            image = self.image_processor.preprocess(image, height=height, width=width)
+
+        image_batch_size = image.shape[0]
+
+        if image_batch_size == 1:
+            repeat_by = batch_size
+        else:
+            # image batch size is the same as prompt batch size
+            repeat_by = num_images_per_prompt
+
+        image = image.repeat_interleave(repeat_by, dim=0)
+        image = image.to(device=device, dtype=dtype)  # (bsz, 3, height_ori, width_ori)
+
+        # Prepare mask
+        if isinstance(mask, torch.Tensor):
+            pass
+        else:
+            mask = self.mask_processor.preprocess(mask, height=height, width=width)
+        mask = mask.repeat_interleave(repeat_by, dim=0)
+        mask = mask.to(device=device, dtype=dtype)  # (bsz, 1, height_ori, width_ori)
+
+        if image.ndim == 4:
+            image = image.unsqueeze(2)
+
+        if mask.ndim == 4:
+            mask = mask.unsqueeze(2)
+
+        # Get masked image
+        masked_image = image.clone()
+        masked_image[(mask > 0.5).repeat(1, 3, 1, 1, 1)] = -1  # (bsz, 3, 1, height_ori, width_ori)
+
+        self.vae_scale_factor = 2 ** len(self.vae.temperal_downsample)
+        latents_mean = (torch.tensor(self.vae.config.latents_mean).view(1, self.vae.config.z_dim, 1, 1, 1)).to(device)
+        latents_std = 1.0 / torch.tensor(self.vae.config.latents_std).view(1, self.vae.config.z_dim, 1, 1, 1).to(
+            device
+        )
+
+        # Encode to latents
+        image_latents = self.vae.encode(masked_image.to(self.vae.dtype)).latent_dist.sample()
+        image_latents = (image_latents - latents_mean) * latents_std
+        image_latents = image_latents.to(dtype)  # torch.Size([1, 16, 1, height_ori//8, width_ori//8])
+
+        mask = torch.nn.functional.interpolate(
+            mask, size=(image_latents.shape[-3], image_latents.shape[-2], image_latents.shape[-1])
+        )
+        mask = 1 - mask  # torch.Size([1, 1, 1, height_ori//8, width_ori//8])
+
+        control_image = torch.cat(
+            [image_latents, mask], dim=1
+        )  # torch.Size([1, 16+1, 1, height_ori//8, width_ori//8])
+
+        control_image = control_image.permute(0, 2, 1, 3, 4)  # torch.Size([1, 1, 16+1, height_ori//8, width_ori//8])
+
+        # pack
+        control_image = self._pack_latents(
+            control_image,
+            batch_size=control_image.shape[0],
+            num_channels_latents=control_image.shape[2],
+            height=control_image.shape[3],
+            width=control_image.shape[4],
+        )
+
+        if do_classifier_free_guidance and not guess_mode:
+            control_image = torch.cat([control_image] * 2)
+
+        return control_image
+
     @property
     def guidance_scale(self):
         return self._guidance_scale
@@ -535,10 +599,11 @@ class QwenImageControlNetPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
         width: Optional[int] = None,
         num_inference_steps: int = 50,
         sigmas: Optional[List[float]] = None,
-        guidance_scale: Optional[float] = None,
+        guidance_scale: float = 1.0,
         control_guidance_start: Union[float, List[float]] = 0.0,
         control_guidance_end: Union[float, List[float]] = 1.0,
         control_image: PipelineImageInput = None,
+        control_mask: PipelineImageInput = None,
         controlnet_conditioning_scale: Union[float, List[float]] = 1.0,
         num_images_per_prompt: int = 1,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
@@ -566,12 +631,7 @@ class QwenImageControlNetPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
                 `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `true_cfg_scale` is
                 not greater than `1`).
             true_cfg_scale (`float`, *optional*, defaults to 1.0):
-                Guidance scale as defined in [Classifier-Free Diffusion
-                Guidance](https://huggingface.co/papers/2207.12598). `true_cfg_scale` is defined as `w` of equation 2.
-                of [Imagen Paper](https://huggingface.co/papers/2205.11487). Classifier-free guidance is enabled by
-                setting `true_cfg_scale > 1` and a provided `negative_prompt`. Higher guidance scale encourages to
-                generate images that are closely linked to the text `prompt`, usually at the expense of lower image
-                quality.
+                When > 1.0 and a provided `negative_prompt`, enables true classifier-free guidance.
             height (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
                 The height in pixels of the generated image. This is set to 1024 by default for the best results.
             width (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
@@ -583,16 +643,12 @@ class QwenImageControlNetPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
                 Custom sigmas to use for the denoising process with schedulers which support a `sigmas` argument in
                 their `set_timesteps` method. If not defined, the default behavior when `num_inference_steps` is passed
                 will be used.
-            guidance_scale (`float`, *optional*, defaults to None):
-                A guidance scale value for guidance distilled models. Unlike the traditional classifier-free guidance
-                where the guidance scale is applied during inference through noise prediction rescaling, guidance
-                distilled models take the guidance scale directly as an input parameter during forward pass. Guidance
-                scale is enabled by setting `guidance_scale > 1`. Higher guidance scale encourages to generate images
-                that are closely linked to the text `prompt`, usually at the expense of lower image quality. This
-                parameter in the pipeline is there to support future guidance-distilled models when they come up. It is
-                ignored when not using guidance distilled models. To enable traditional classifier-free guidance,
-                please pass `true_cfg_scale > 1.0` and `negative_prompt` (even an empty negative prompt like " " should
-                enable classifier-free guidance computations).
+            guidance_scale (`float`, *optional*, defaults to 3.5):
+                Guidance scale as defined in [Classifier-Free Diffusion
+                Guidance](https://huggingface.co/papers/2207.12598). `guidance_scale` is defined as `w` of equation 2.
+                of [Imagen Paper](https://huggingface.co/papers/2205.11487). Guidance scale is enabled by setting
+                `guidance_scale > 1`. Higher guidance scale encourages to generate images that are closely linked to
+                the text `prompt`, usually at the expense of lower image quality.
             num_images_per_prompt (`int`, *optional*, defaults to 1):
                 The number of images to generate per prompt.
             generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
@@ -683,16 +739,6 @@ class QwenImageControlNetPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
         has_neg_prompt = negative_prompt is not None or (
             negative_prompt_embeds is not None and negative_prompt_embeds_mask is not None
         )
-
-        if true_cfg_scale > 1 and not has_neg_prompt:
-            logger.warning(
-                f"true_cfg_scale is passed as {true_cfg_scale}, but classifier-free guidance is not enabled since no negative_prompt is provided."
-            )
-        elif true_cfg_scale <= 1 and has_neg_prompt:
-            logger.warning(
-                " negative_prompt is passed but classifier-free guidance is not enabled since true_cfg_scale <= 1"
-            )
-
         do_true_cfg = true_cfg_scale > 1 and has_neg_prompt
         prompt_embeds, prompt_embeds_mask = self.encode_prompt(
             prompt=prompt,
@@ -715,8 +761,9 @@ class QwenImageControlNetPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
         # 3. Prepare control image
         num_channels_latents = self.transformer.config.in_channels // 4
         if isinstance(self.controlnet, QwenImageControlNetModel):
-            control_image = self.prepare_image(
+            control_image = self.prepare_image_with_mask(
                 image=control_image,
+                mask=control_mask,
                 width=width,
                 height=height,
                 batch_size=batch_size * num_images_per_prompt,
@@ -724,79 +771,6 @@ class QwenImageControlNetPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
                 device=device,
                 dtype=self.vae.dtype,
             )
-            height, width = control_image.shape[-2:]
-
-            if control_image.ndim == 4:
-                control_image = control_image.unsqueeze(2)
-
-            # vae encode
-            self.vae_scale_factor = 2 ** len(self.vae.temperal_downsample)
-            latents_mean = (torch.tensor(self.vae.config.latents_mean).view(1, self.vae.config.z_dim, 1, 1, 1)).to(
-                device
-            )
-            latents_std = 1.0 / torch.tensor(self.vae.config.latents_std).view(1, self.vae.config.z_dim, 1, 1, 1).to(
-                device
-            )
-
-            control_image = retrieve_latents(self.vae.encode(control_image), generator=generator)
-            control_image = (control_image - latents_mean) * latents_std
-
-            control_image = control_image.permute(0, 2, 1, 3, 4)
-
-            # pack
-            control_image = self._pack_latents(
-                control_image,
-                batch_size=control_image.shape[0],
-                num_channels_latents=num_channels_latents,
-                height=control_image.shape[3],
-                width=control_image.shape[4],
-            ).to(dtype=prompt_embeds.dtype, device=device)
-
-        else:
-            if isinstance(self.controlnet, QwenImageMultiControlNetModel):
-                control_images = []
-                for control_image_ in control_image:
-                    control_image_ = self.prepare_image(
-                        image=control_image_,
-                        width=width,
-                        height=height,
-                        batch_size=batch_size * num_images_per_prompt,
-                        num_images_per_prompt=num_images_per_prompt,
-                        device=device,
-                        dtype=self.vae.dtype,
-                    )
-
-                    height, width = control_image_.shape[-2:]
-
-                    if control_image_.ndim == 4:
-                        control_image_ = control_image_.unsqueeze(2)
-
-                    # vae encode
-                    self.vae_scale_factor = 2 ** len(self.vae.temperal_downsample)
-                    latents_mean = (
-                        torch.tensor(self.vae.config.latents_mean).view(1, self.vae.config.z_dim, 1, 1, 1)
-                    ).to(device)
-                    latents_std = 1.0 / torch.tensor(self.vae.config.latents_std).view(
-                        1, self.vae.config.z_dim, 1, 1, 1
-                    ).to(device)
-
-                    control_image_ = retrieve_latents(self.vae.encode(control_image_), generator=generator)
-                    control_image_ = (control_image_ - latents_mean) * latents_std
-
-                    control_image_ = control_image_.permute(0, 2, 1, 3, 4)
-
-                    # pack
-                    control_image_ = self._pack_latents(
-                        control_image_,
-                        batch_size=control_image_.shape[0],
-                        num_channels_latents=num_channels_latents,
-                        height=control_image_.shape[3],
-                        width=control_image_.shape[4],
-                    ).to(dtype=prompt_embeds.dtype, device=device)
-
-                    control_images.append(control_image_)
-
-                control_image = control_images
 
         # 4. Prepare latent variables
         num_channels_latents = self.transformer.config.in_channels // 4
@@ -841,17 +815,10 @@ class QwenImageControlNetPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
             controlnet_keep.append(keeps[0] if isinstance(self.controlnet, QwenImageControlNetModel) else keeps)
 
         # handle guidance
-        if self.transformer.config.guidance_embeds and guidance_scale is None:
-            raise ValueError("guidance_scale is required for guidance-distilled model.")
-        elif self.transformer.config.guidance_embeds:
+        if self.transformer.config.guidance_embeds:
             guidance = torch.full([1], guidance_scale, device=device, dtype=torch.float32)
             guidance = guidance.expand(latents.shape[0])
-        elif not self.transformer.config.guidance_embeds and guidance_scale is not None:
-            logger.warning(
-                f"guidance_scale is passed as {guidance_scale}, but ignored since the model is not guidance-distilled."
-            )
-            guidance = None
-        elif not self.transformer.config.guidance_embeds and guidance_scale is None:
+        else:
             guidance = None
 
         if self.attention_kwargs is None:
@@ -879,7 +846,7 @@ class QwenImageControlNetPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
                 # controlnet
                 controlnet_block_samples = self.controlnet(
                     hidden_states=latents,
-                    controlnet_cond=control_image,
+                    controlnet_cond=control_image.to(dtype=latents.dtype, device=device),
                     conditioning_scale=cond_scale,
                     timestep=timestep / 1000,
                     encoder_hidden_states=prompt_embeds,
