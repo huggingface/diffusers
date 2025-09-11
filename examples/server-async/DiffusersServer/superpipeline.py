@@ -11,6 +11,14 @@ class SuperPipelinesT2Img:
                 pipeline: Type, 
                 torch_dtype = torch.bfloat16, 
                 components: Optional[Dict[str, Any]] = None,):
+        """
+        Clase para crear tus Pipelines personalizados para tu API custom
+        Args:
+            model_path: Ruta o nombre del modelo
+            pipeline: Clase del pipeline a utilizar
+            torch_dtype: Tipo de datos de PyTorch a utilizar
+            components: Diccionario de componentes personalizados
+        """
         self.model_path = model_path
         self.pipeline = pipeline
         self.torch_dtype = torch_dtype
