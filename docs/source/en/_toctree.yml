@@ -24,12 +24,14 @@
     title: Reproducibility
   - local: using-diffusers/schedulers
     title: Load schedulers and models
+  - local: using-diffusers/models
+    title: Models
   - local: using-diffusers/scheduler_features
     title: Scheduler features
   - local: using-diffusers/other-formats
     title: Model files and layouts
   - local: using-diffusers/push_to_hub
-    title: Push files to the Hub
+    title: Sharing pipelines and models
 
 - title: Adapters
   isExpanded: false
@@ -58,12 +60,6 @@
     title: Batch inference
   - local: training/distributed_inference
     title: Distributed inference
-  - local: using-diffusers/scheduler_features
-    title: Scheduler features
-  - local: using-diffusers/callback
-    title: Pipeline callbacks
-  - local: using-diffusers/image_quality
-    title: Controlling image quality
 
 - title: Inference optimization
   isExpanded: false
@@ -92,6 +88,8 @@
       title: xDiT
     - local: optimization/para_attn
       title: ParaAttention
+    - local: using-diffusers/image_quality
+      title: FreeU
 
 - title: Hybrid Inference
   isExpanded: false
