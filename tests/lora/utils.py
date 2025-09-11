@@ -132,13 +132,12 @@ class PeftLoraLoaderMixinTests:
     cached_non_lora_outputs = {}
 
     @pytest.fixture(scope="class", autouse=True)
-    def cache_non_lora_outputs(self):
+    def get_base_pipeline_outputs(self):
         """
         This fixture will be executed once per test class and will populate
         the cached_non_lora_outputs dictionary.
         """
         for scheduler_cls in self.scheduler_classes:
-            # Check if the output for this scheduler is already cached to avoid re-running
             if scheduler_cls.__name__ in self.cached_non_lora_outputs:
                 continue
 
