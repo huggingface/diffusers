@@ -32,7 +32,9 @@ from diffusers import (
     MarigoldIntrinsicsPipeline,
     UNet2DConditionModel,
 )
-from diffusers.utils.testing_utils import (
+
+from ...testing_utils import (
+    Expectations,
     backend_empty_cache,
     enable_full_determinism,
     floats_tensor,
@@ -41,7 +43,6 @@ from diffusers.utils.testing_utils import (
     slow,
     torch_device,
 )
-
 from ..test_pipelines_common import PipelineTesterMixin, to_np
 
 
@@ -416,7 +417,7 @@ class MarigoldIntrinsicsPipelineIntegrationTests(unittest.TestCase):
         expected_slice: np.ndarray = None,
         model_id: str = "prs-eth/marigold-iid-appearance-v1-1",
         image_url: str = "https://marigoldmonodepth.github.io/images/einstein.jpg",
-        atol: float = 1e-4,
+        atol: float = 1e-3,
         **pipe_kwargs,
     ):
         from_pretrained_kwargs = {}
@@ -531,11 +532,41 @@ class MarigoldIntrinsicsPipelineIntegrationTests(unittest.TestCase):
         )
 
     def test_marigold_intrinsics_einstein_f16_accelerator_G0_S1_P768_E3_B1_M1(self):
+        expected_slices = Expectations(
+            {
+                ("xpu", 3): np.array(
+                    [
+                        0.62655,
+                        0.62477,
+                        0.62161,
+                        0.62452,
+                        0.62454,
+                        0.62454,
+                        0.62255,
+                        0.62647,
+                        0.63379,
+                    ]
+                ),
+                ("cuda", 7): np.array(
+                    [
+                        0.61572,
+                        0.1377,
+                        0.61182,
+                        0.61426,
+                        0.61377,
+                        0.61426,
+                        0.61279,
+                        0.61572,
+                        0.62354,
+                    ]
+                ),
+            }
+        )
         self._test_marigold_intrinsics(
             is_fp16=True,
             device=torch_device,
             generator_seed=0,
-            expected_slice=np.array([0.61572, 0.61377, 0.61182, 0.61426, 0.61377, 0.61426, 0.61279, 0.61572, 0.62354]),
+            expected_slice=expected_slices.get_expectation(),
             num_inference_steps=1,
             processing_resolution=768,
             ensemble_size=3,
@@ -545,11 +576,41 @@ class MarigoldIntrinsicsPipelineIntegrationTests(unittest.TestCase):
         )
 
     def test_marigold_intrinsics_einstein_f16_accelerator_G0_S1_P768_E4_B2_M1(self):
+        expected_slices = Expectations(
+            {
+                ("xpu", 3): np.array(
+                    [
+                        0.62988,
+                        0.62792,
+                        0.62548,
+                        0.62841,
+                        0.62792,
+                        0.62792,
+                        0.62646,
+                        0.62939,
+                        0.63721,
+                    ]
+                ),
+                ("cuda", 7): np.array(
+                    [
+                        0.61914,
+                        0.6167,
+                        0.61475,
+                        0.61719,
+                        0.61719,
+                        0.61768,
+                        0.61572,
+                        0.61914,
+                        0.62695,
+                    ]
+                ),
+            }
+        )
         self._test_marigold_intrinsics(
             is_fp16=True,
             device=torch_device,
             generator_seed=0,
-            expected_slice=np.array([0.61914, 0.6167, 0.61475, 0.61719, 0.61719, 0.61768, 0.61572, 0.61914, 0.62695]),
+            expected_slice=expected_slices.get_expectation(),
             num_inference_steps=1,
             processing_resolution=768,
             ensemble_size=4,

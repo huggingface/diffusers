@@ -32,7 +32,8 @@ from diffusers import (
 )
 from diffusers.utils import logging
 from diffusers.utils.import_utils import is_peft_available
-from diffusers.utils.testing_utils import (
+
+from ..testing_utils import (
     CaptureLogger,
     check_if_dicts_are_equal,
     floats_tensor,
