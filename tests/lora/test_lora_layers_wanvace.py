@@ -165,9 +165,8 @@ class WanVACELoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
 
     @require_peft_version_greater("0.13.2")
     def test_lora_exclude_modules_wanvace(self):
-        scheduler_cls = self.scheduler_classes[0]
         exclude_module_name = "vace_blocks.0.proj_out"
-        components, text_lora_config, denoiser_lora_config = self.get_dummy_components(scheduler_cls)
+        components, text_lora_config, denoiser_lora_config = self.get_dummy_components()
         pipe = self.pipeline_class(**components).to(torch_device)
         _, _, inputs = self.get_dummy_inputs(with_generator=False)
 
