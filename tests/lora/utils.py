@@ -142,7 +142,6 @@ class PeftLoraLoaderMixinTests:
 
         all_scheduler_names = [scheduler_cls.__name__ for scheduler_cls in self.scheduler_classes]
         if cached_base_pipe_outs and all(k in cached_base_pipe_outs for k in all_scheduler_names):
-            __import__("ipdb").set_trace()
             return
 
         for scheduler_cls in self.scheduler_classes:
