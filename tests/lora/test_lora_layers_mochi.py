@@ -34,7 +34,7 @@ from .utils import PeftLoraLoaderMixinTests  # noqa: E402
 
 @require_peft_backend
 @skip_mps
-class MochiLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
+class MochiLoRATests(PeftLoraLoaderMixinTests, unittest.TestCase):
     pipeline_class = MochiPipeline
     scheduler_cls = FlowMatchEulerDiscreteScheduler
     scheduler_classes = [FlowMatchEulerDiscreteScheduler]

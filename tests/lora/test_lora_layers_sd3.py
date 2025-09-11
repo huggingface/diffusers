@@ -51,7 +51,7 @@ if is_accelerate_available():
 
 
 @require_peft_backend
-class SD3LoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
+class SD3LoRATests(PeftLoraLoaderMixinTests, unittest.TestCase):
     pipeline_class = StableDiffusion3Pipeline
     scheduler_cls = FlowMatchEulerDiscreteScheduler
     scheduler_kwargs = {}

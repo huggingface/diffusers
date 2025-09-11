@@ -34,7 +34,7 @@ from .utils import PeftLoraLoaderMixinTests  # noqa: E402
 
 
 @require_peft_backend
-class LTXVideoLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
+class LTXVideoLoRATests(PeftLoraLoaderMixinTests, unittest.TestCase):
     pipeline_class = LTXPipeline
     scheduler_cls = FlowMatchEulerDiscreteScheduler
     scheduler_classes = [FlowMatchEulerDiscreteScheduler]

@@ -39,7 +39,7 @@ from .utils import PeftLoraLoaderMixinTests  # noqa: E402
 
 @require_peft_backend
 @skip_mps
-class WanLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
+class WanLoRATests(PeftLoraLoaderMixinTests, unittest.TestCase):
     pipeline_class = WanPipeline
     scheduler_cls = FlowMatchEulerDiscreteScheduler
     scheduler_classes = [FlowMatchEulerDiscreteScheduler]
