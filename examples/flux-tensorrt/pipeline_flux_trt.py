@@ -19,6 +19,10 @@ from typing import Any, Callable, Dict, List, Optional, Union
 
 import numpy as np
 import torch
+from module.clip import CLIPModel
+from module.t5xxl import T5XXLModel
+from module.transformers import FluxTransformerModel
+from module.vae import VAEModel
 from transformers import (
     CLIPImageProcessor,
     CLIPTextModel,
@@ -28,10 +32,12 @@ from transformers import (
     T5TokenizerFast,
 )
 
+from diffusers import DiffusionPipeline
 from diffusers.image_processor import PipelineImageInput, VaeImageProcessor
 from diffusers.loaders import FluxIPAdapterMixin, FluxLoraLoaderMixin, FromSingleFileMixin, TextualInversionLoaderMixin
 from diffusers.models.autoencoders import AutoencoderKL
 from diffusers.models.transformers import FluxTransformer2DModel
+from diffusers.pipelines.flux.pipeline_output import FluxPipelineOutput
 from diffusers.schedulers import FlowMatchEulerDiscreteScheduler
 from diffusers.utils import (
     USE_PEFT_BACKEND,
@@ -42,13 +48,6 @@ from diffusers.utils import (
     unscale_lora_layers,
 )
 from diffusers.utils.torch_utils import randn_tensor
-from diffusers import DiffusionPipeline
-from diffusers.pipelines.flux.pipeline_output import FluxPipelineOutput
-
-from module.transformers import FluxTransformerModel
-from module.vae import VAEModel
-from module.t5xxl import T5XXLModel
-from module.clip import CLIPModel
 
 
 if is_torch_xla_available():
@@ -256,14 +255,14 @@ class FluxPipelineTRT(
 
     def preprocess_pipeline_components(
         self,
-        text_encoder = None,
-        text_encoder_2 = None,
-        transformer = None,
-        vae = None,
-        engine_text_encoder = None,
-        engine_text_encoder_2 = None,
-        engine_transformer = None,
-        engine_vae = None,     
+        text_encoder=None,
+        text_encoder_2=None,
+        transformer=None,
+        vae=None,
+        engine_text_encoder=None,
+        engine_text_encoder_2=None,
+        engine_transformer=None,
+        engine_vae=None,
     ):
         return (
             None if engine_text_encoder else text_encoder,
@@ -312,9 +311,7 @@ class FluxPipelineTRT(
             prompt_embeds = self.text_encoder_2(text_input_ids.to(device), output_hidden_states=False)[0]
             dtype = self.text_encoder_2.dtype
         else:
-            feed_dict = {
-                "input_ids": text_input_ids
-            }
+            feed_dict = {"input_ids": text_input_ids}
             outputs = self.engine_text_encoder_2.infer(feed_dict, self.engine_text_encoder_2.stream)
             prompt_embeds = outputs["text_embeddings"]
 
@@ -333,7 +330,7 @@ class FluxPipelineTRT(
         prompt: Union[str, List[str]],
         num_images_per_prompt: int = 1,
         device: Optional[torch.device] = None,
-        dtype: Optional[torch.dtype] = torch.bfloat16
+        dtype: Optional[torch.dtype] = torch.bfloat16,
     ):
         device = device or self._execution_device
 
@@ -367,9 +364,7 @@ class FluxPipelineTRT(
             prompt_embeds = prompt_embeds.pooler_output
             prompt_embeds = prompt_embeds.to(dtype=self.text_encoder.dtype, device=device)
         else:
-            feed_dict = {
-                "input_ids": text_input_ids
-            }
+            feed_dict = {"input_ids": text_input_ids}
             outputs = self.engine_text_encoder.infer(feed_dict, self.engine_text_encoder.stream)
             prompt_embeds = outputs["pooled_embeddings"]
             prompt_embeds = prompt_embeds.to(dtype=dtype, device=device)
@@ -902,7 +897,11 @@ class FluxPipelineTRT(
             )
 
         # 4. Prepare latent variables
-        num_channels_latents = self.transformer.config.in_channels // 4 if self.transformer is not None else self.engine_transformer.in_channels // 4
+        num_channels_latents = (
+            self.transformer.config.in_channels // 4
+            if self.transformer is not None
+            else self.engine_transformer.in_channels // 4
+        )
         latents, latent_image_ids = self.prepare_latents(
             batch_size * num_images_per_prompt,
             num_channels_latents,

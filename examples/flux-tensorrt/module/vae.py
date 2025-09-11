@@ -1,7 +1,8 @@
 from .engine import Engine
 
+
 class VAEModel(Engine):
-    def __init__(self, engine_path: str, stream = None, build = False):
+    def __init__(self, engine_path: str, stream=None, build=False):
         super().__init__(engine_path, stream)
         self.latent_channels = 16
         self.scaling_factor = 0.3611
@@ -19,7 +20,20 @@ class VAEModel(Engine):
             "images": (batch_size, 3, image_height, image_width),
         }
 
-    def get_input_profile(self, opt_batch_size=1, opt_image_height=1024, opt_image_width=1024, min_batch=1, max_batch=8, min_height=512, max_height=1280, min_width=512, max_width=1280, static_batch=True, dynamic_shape=True):
+    def get_input_profile(
+        self,
+        opt_batch_size=1,
+        opt_image_height=1024,
+        opt_image_width=1024,
+        min_batch=1,
+        max_batch=8,
+        min_height=512,
+        max_height=1280,
+        min_width=512,
+        max_width=1280,
+        static_batch=True,
+        dynamic_shape=True,
+    ):
         min_batch = opt_batch_size if static_batch else min_batch
         max_batch = opt_batch_size if static_batch else max_batch
 

@@ -1,13 +1,14 @@
-from module.transformers import FluxTransformerModel
 from module.clip import CLIPModel
 from module.t5xxl import T5XXLModel
+from module.transformers import FluxTransformerModel
 from module.vae import VAEModel
+
 
 models_config = {
     "transformer": (FluxTransformerModel, "onnx/transformer.opt/bf16/model.onnx"),
-    "clip":        (CLIPModel,          "onnx/clip.opt/model.onnx"),
-    "t5":          (T5XXLModel,         "onnx/t5.opt/model.onnx"),
-    "vae":         (VAEModel,           "onnx/vae.opt/model.onnx"),
+    "clip": (CLIPModel, "onnx/clip.opt/model.onnx"),
+    "t5": (T5XXLModel, "onnx/t5.opt/model.onnx"),
+    "vae": (VAEModel, "onnx/vae.opt/model.onnx"),
 }
 
 engines = {}

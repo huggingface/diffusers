@@ -1,12 +1,13 @@
 import gc
-from cuda import cudart
-import torch
-import tensorrt as trt
 import subprocess
-from collections import defaultdict
-from collections import OrderedDict
+from collections import OrderedDict, defaultdict
+
+import tensorrt as trt
+import torch
+from cuda import cudart
 from polygraphy.backend.common import bytes_from_path
 from polygraphy.backend.trt import engine_from_bytes
+
 
 trt_to_torch_dtype_dict = {
     trt.DataType.BOOL: torch.bool,
@@ -19,14 +20,15 @@ trt_to_torch_dtype_dict = {
     trt.DataType.BF16: torch.bfloat16,
 }
 
+
 class Engine:
-    def __init__(self, engine_path: str, stream = None):
+    def __init__(self, engine_path: str, stream=None):
         self.engine_path = engine_path
         self._binding_indices = {}
         self.stream = stream
         self.tensors = OrderedDict()
 
-    def load_engine(self,stream = None):
+    def load_engine(self, stream=None):
         self.engine_bytes_cpu = bytes_from_path(self.engine_path)
         self.engine = engine_from_bytes(self.engine_bytes_cpu)
         self.context = self.engine.create_execution_context()
@@ -71,7 +73,17 @@ class Engine:
     def get_shape_dict(self):
         pass
 
-    def check_dims(self, batch_size, image_height, image_width, compression_factor = 8, min_batch = 1, max_batch = 16, min_latent_shape = 16, max_latent_shape = 1024):
+    def check_dims(
+        self,
+        batch_size,
+        image_height,
+        image_width,
+        compression_factor=8,
+        min_batch=1,
+        max_batch=16,
+        min_latent_shape=16,
+        max_latent_shape=1024,
+    ):
         assert batch_size >= min_batch and batch_size <= max_batch
         latent_height = image_height // compression_factor
         latent_width = image_width // compression_factor
@@ -97,7 +109,7 @@ class Engine:
         verbose=False,
         weight_streaming=False,
         builder_optimization_level=3,
-        precision_constraints='none',
+        precision_constraints="none",
     ):
         print(f"Building TensorRT engine for {onnx_path}: {self.engine_path}")
 
@@ -119,21 +131,20 @@ class Engine:
         ]
 
         # Additional arguments
-        build_args.extend([
-            "--weight-streaming" if weight_streaming else "",
-            "--refittable" if enable_refit else "",
-            "--tactic-sources" if not enable_all_tactics else "",
-            "--onnx-flags native_instancenorm" if native_instancenorm else "",
-            f"--builder-optimization-level {builder_optimization_level}",
-            f"--precision-constraints {precision_constraints}",
-        ])
+        build_args.extend(
+            [
+                "--weight-streaming" if weight_streaming else "",
+                "--refittable" if enable_refit else "",
+                "--tactic-sources" if not enable_all_tactics else "",
+                "--onnx-flags native_instancenorm" if native_instancenorm else "",
+                f"--builder-optimization-level {builder_optimization_level}",
+                f"--precision-constraints {precision_constraints}",
+            ]
+        )
 
         # Timing cache
         if timing_cache:
-            build_args.extend([
-                f"--load-timing-cache {timing_cache}",
-                f"--save-timing-cache {timing_cache}"
-            ])
+            build_args.extend([f"--load-timing-cache {timing_cache}", f"--save-timing-cache {timing_cache}"])
 
         # Verbosity setting
         verbosity = "extra_verbose" if verbose else "error"
@@ -158,20 +169,31 @@ class Engine:
 
         # Filter out empty strings and join command
         build_args = [arg for arg in build_args if arg]
-        final_command = ' '.join(build_command + build_args)
+        final_command = " ".join(build_command + build_args)
 
         # Execute command with improved error handling
         try:
             print(f"Engine build command: {final_command}")
             subprocess.run(final_command, check=True, shell=True)
         except subprocess.CalledProcessError as exc:
-            error_msg = (
-                f"Failed to build TensorRT engine. Error details:\n"
-                f"Command: {exc.cmd}\n"
-            )
+            error_msg = f"Failed to build TensorRT engine. Error details:\nCommand: {exc.cmd}\n"
             raise RuntimeError(error_msg) from exc
-        
-    def get_minmax_dims(self, batch_size, image_height, image_width, static_batch, static_shape, compression_factor=8, min_batch=1, max_batch=8, min_image_shape=256, max_image_shape=1344, min_latent_shape=16, max_latent_shape=1024):
+
+    def get_minmax_dims(
+        self,
+        batch_size,
+        image_height,
+        image_width,
+        static_batch,
+        static_shape,
+        compression_factor=8,
+        min_batch=1,
+        max_batch=8,
+        min_image_shape=256,
+        max_image_shape=1344,
+        min_latent_shape=16,
+        max_latent_shape=1024,
+    ):
         min_batch = batch_size if static_batch else self.min_batch
         max_batch = batch_size if static_batch else self.max_batch
         latent_height = image_height // compression_factor
@@ -196,7 +218,3 @@ class Engine:
             min_latent_width,
             max_latent_width,
         )
-
-
-    
-

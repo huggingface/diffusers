@@ -1,12 +1,11 @@
-from pipeline_flux_trt import FluxPipelineTRT
-from cuda import cudart
 import torch
-
-from module.transformers import FluxTransformerModel 
-from module.vae import VAEModel
-from module.t5xxl import T5XXLModel
+from cuda import cudart
 from module.clip import CLIPModel
-import time
+from module.t5xxl import T5XXLModel
+from module.transformers import FluxTransformerModel
+from module.vae import VAEModel
+from pipeline_flux_trt import FluxPipelineTRT
+
 
 # Local path for each engine
 engine_transformer_path = "checkpoints_trt/transformer/engine.plan"
@@ -25,13 +24,13 @@ engine_clip = CLIPModel(engine_clip_path, stream)
 
 # Create pipeline
 pipeline = FluxPipelineTRT.from_pretrained(
-            "black-forest-labs/FLUX.1-dev", 
-            torch_dtype=torch.bfloat16, 
-            engine_transformer=engine_transformer,
-            engine_vae=engine_vae,
-            engine_text_encoder=engine_clip,
-            engine_text_encoder_2= engine_t5xxl,
-            )
+    "black-forest-labs/FLUX.1-dev",
+    torch_dtype=torch.bfloat16,
+    engine_transformer=engine_transformer,
+    engine_vae=engine_vae,
+    engine_text_encoder=engine_clip,
+    engine_text_encoder_2=engine_t5xxl,
+)
 pipeline.to("cuda")
 
 
