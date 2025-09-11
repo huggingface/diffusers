@@ -53,7 +53,7 @@ from .utils import PeftLoraLoaderMixinTests, check_if_lora_correctly_set  # noqa
 
 
 @require_peft_backend
-class FluxLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
+class FluxLoRATests(PeftLoraLoaderMixinTests, unittest.TestCase):
     pipeline_class = FluxPipeline
     scheduler_cls = FlowMatchEulerDiscreteScheduler()
     scheduler_kwargs = {}
@@ -123,7 +123,7 @@ class FluxLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
         pipe.set_progress_bar_config(disable=None)
         _, _, inputs = self.get_dummy_inputs(with_generator=False)
 
-        output_no_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
+        output_no_lora = self.get_base_pipeline_output(FlowMatchEulerDiscreteScheduler)
         self.assertTrue(output_no_lora.shape == self.output_shape)
 
         pipe.transformer.add_adapter(denoiser_lora_config)
@@ -171,7 +171,7 @@ class FluxLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
         pipe.set_progress_bar_config(disable=None)
         _, _, inputs = self.get_dummy_inputs(with_generator=False)
 
-        output_no_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
+        output_no_lora = self.get_base_pipeline_output(FlowMatchEulerDiscreteScheduler)
         self.assertTrue(output_no_lora.shape == self.output_shape)
 
         # Modify the config to have a layer which won't be present in the second LoRA we will load.
@@ -220,7 +220,7 @@ class FluxLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
         pipe.set_progress_bar_config(disable=None)
         _, _, inputs = self.get_dummy_inputs(with_generator=False)
 
-        output_no_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
+        output_no_lora = self.get_base_pipeline_output(FlowMatchEulerDiscreteScheduler)
         self.assertTrue(output_no_lora.shape == self.output_shape)
 
         # Modify the config to have a layer which won't be present in the first LoRA we will load.
@@ -280,7 +280,7 @@ class FluxLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
         pass
 
 
-class FluxControlLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
+class FluxControlLoRATests(PeftLoraLoaderMixinTests, unittest.TestCase):
     pipeline_class = FluxControlPipeline
     scheduler_cls = FlowMatchEulerDiscreteScheduler()
     scheduler_kwargs = {}
@@ -357,7 +357,7 @@ class FluxControlLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
         logger = logging.get_logger("diffusers.loaders.lora_pipeline")
         logger.setLevel(logging.INFO)
 
-        original_output = pipe(**inputs, generator=torch.manual_seed(0))[0]
+        original_output = self.get_base_pipeline_output(FlowMatchEulerDiscreteScheduler)
 
         for norm_layer in ["norm_q", "norm_k", "norm_added_q", "norm_added_k"]:
             norm_state_dict = {}
@@ -643,7 +643,7 @@ class FluxControlLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
         pipe.set_progress_bar_config(disable=None)
         _, _, inputs = self.get_dummy_inputs(with_generator=False)
 
-        original_output = pipe(**inputs, generator=torch.manual_seed(0))[0]
+        original_output = self.get_base_pipeline_output(FlowMatchEulerDiscreteScheduler)
 
         out_features, in_features = pipe.transformer.x_embedder.weight.shape
         rank = 4
