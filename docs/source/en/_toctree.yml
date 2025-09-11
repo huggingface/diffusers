@@ -68,6 +68,8 @@
     title: Accelerate inference
   - local: optimization/cache
     title: Caching
+  - local: optimization/attention_backends
+    title: Attention backends
   - local: optimization/memory
     title: Reduce memory usage
   - local: optimization/speed-memory-optims
