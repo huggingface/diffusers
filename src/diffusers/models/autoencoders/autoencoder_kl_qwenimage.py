@@ -1068,3 +1068,4 @@ class AutoencoderKLQwenImage(ModelMixin, ConfigMixin, FromOriginalModelMixin):
             z = posterior.mode()
         dec = self.decode(z, return_dict=return_dict)
         return dec
+
