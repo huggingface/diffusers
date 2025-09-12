@@ -1008,7 +1008,7 @@ if __name__ == "__main__":
             scheduler=scheduler,
             boundary_ratio=0.875,
         )
-    elif "VACE" in args.model_type:
+    elif "Wan-VACE" in args.model_type:
         pipe = WanVACEPipeline(
             transformer=transformer,
             text_encoder=text_encoder,
