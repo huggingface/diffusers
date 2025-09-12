@@ -786,7 +786,7 @@ class HiDreamImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, 
         attention_kwargs: Optional[Dict[str, Any]] = None,
         return_dict: bool = True,
         **kwargs,
-    ) -> Union[torch.Tensor, Transformer2DModelOutput]:
+    ) -> Union[Tuple[torch.Tensor], Transformer2DModelOutput]:
         encoder_hidden_states = kwargs.get("encoder_hidden_states", None)
 
         if encoder_hidden_states is not None:

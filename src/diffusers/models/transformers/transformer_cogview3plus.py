@@ -293,7 +293,7 @@ class CogView3PlusTransformer2DModel(ModelMixin, ConfigMixin):
         target_size: torch.Tensor,
         crop_coords: torch.Tensor,
         return_dict: bool = True,
-    ) -> Union[torch.Tensor, Transformer2DModelOutput]:
+    ) -> Union[Tuple[torch.Tensor], Transformer2DModelOutput]:
         """
         The [`CogView3PlusTransformer2DModel`] forward method.
 
