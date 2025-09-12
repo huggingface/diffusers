@@ -998,14 +998,6 @@ if __name__ == "__main__":
             image_encoder=image_encoder,
             image_processor=image_processor,
         )
-    elif "VACE" in args.model_type:
-        pipe = WanVACEPipeline(
-            transformer=transformer,
-            text_encoder=text_encoder,
-            tokenizer=tokenizer,
-            vae=vae,
-            scheduler=scheduler,
-        )
     elif "Wan2.2-VACE" in args.model_type:
         pipe = WanVACEPipeline(
             transformer=transformer,
@@ -1015,6 +1007,14 @@ if __name__ == "__main__":
             vae=vae,
             scheduler=scheduler,
             boundary_ratio=0.875,
+        )
+    elif "VACE" in args.model_type:
+        pipe = WanVACEPipeline(
+            transformer=transformer,
+            text_encoder=text_encoder,
+            tokenizer=tokenizer,
+            vae=vae,
+            scheduler=scheduler,
         )
     else:
         pipe = WanPipeline(
