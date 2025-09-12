@@ -27,6 +27,7 @@ from ...utils import is_torch_xla_available, logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
 from .pipeline_output import QwenImagePipelineOutput
+from .pipeline_qwen_utils import QwenImagePipelineMixin
 
 
 if is_torch_xla_available():
@@ -129,7 +130,7 @@ def retrieve_timesteps(
     return timesteps, num_inference_steps
 
 
-class QwenImagePipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
+class QwenImagePipeline(DiffusionPipeline, QwenImagePipelineMixin, QwenImageLoraLoaderMixin):
     r"""
     The QwenImage pipeline for text-to-image generation.
 
