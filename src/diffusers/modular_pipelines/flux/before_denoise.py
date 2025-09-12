@@ -454,6 +454,9 @@ class FluxImg2ImgSetTimestepsStep(ModularPipelineBlocks):
         block_state = self.get_block_state(state)
         block_state.device = components._execution_device
 
+        block_state.height = block_state.height or components.default_height
+        block_state.width = block_state.width or components.default_width
+
         scheduler = components.scheduler
         transformer = components.transformer
         batch_size = block_state.batch_size * block_state.num_images_per_prompt
@@ -659,8 +662,6 @@ class FluxImg2ImgPrepareLatentsStep(ModularPipelineBlocks):
     def __call__(self, components: FluxModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
 
-        block_state.height = block_state.height or components.default_height
-        block_state.width = block_state.width or components.default_width
         block_state.device = components._execution_device
         block_state.dtype = torch.bfloat16  # TODO: okay to hardcode this?
         block_state.num_channels_latents = components.num_channels_latents
