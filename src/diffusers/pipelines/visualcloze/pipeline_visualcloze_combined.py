@@ -22,11 +22,7 @@ from ...loaders import FluxLoraLoaderMixin, FromSingleFileMixin, TextualInversio
 from ...models.autoencoders import AutoencoderKL
 from ...models.transformers import FluxTransformer2DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
-from ...utils import (
-    is_torch_xla_available,
-    logging,
-    replace_example_docstring,
-)
+from ...utils import is_torch_xla_available, logging, replace_example_docstring
 from ..flux.pipeline_flux_fill import FluxFillPipeline as VisualClozeUpsamplingPipeline
 from ..flux.pipeline_output import FluxPipelineOutput
 from ..pipeline_utils import DiffusionPipeline
