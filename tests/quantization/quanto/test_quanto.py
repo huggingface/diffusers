@@ -13,7 +13,7 @@ from ...testing_utils import (
     nightly,
     numpy_cosine_similarity_distance,
     require_accelerate,
-    require_big_accelerator,
+    require_accelerator,
     require_torch_cuda_compatibility,
     torch_device,
 )
@@ -31,7 +31,7 @@ enable_full_determinism()
 
 
 @nightly
-@require_big_accelerator
+@require_accelerator
 @require_accelerate
 class QuantoBaseTesterMixin:
     model_id = None

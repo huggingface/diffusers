@@ -108,49 +108,26 @@ print(pipeline.transformer.dtype, pipeline.vae.dtype)
 
 The `device_map` argument determines individual model or pipeline placement on an accelerator like a GPU. It is especially helpful when there are multiple GPUs.
 
-Diffusers currently provides three options to `device_map`, `"cuda"`, `"balanced"` and `"auto"`. Refer to the table below to compare the three placement strategies.
+A pipeline supports two options for `device_map`, `"cuda"` and `"balanced"`. Refer to the table below to compare the placement strategies.
 
 | parameter | description |
 |---|---|
-| `"cuda"` | places model or pipeline on CUDA device |
-| `"balanced"` | evenly distributes model or pipeline on all GPUs |
-| `"auto"` | distribute model from fastest device first to slowest |
+| `"cuda"` | places pipeline on a supported accelerator device like CUDA |
+| `"balanced"` | evenly distributes pipeline on all GPUs |
 
 Use the `max_memory` argument in [`~DiffusionPipeline.from_pretrained`] to allocate a maximum amount of memory to use on each device. By default, Diffusers uses the maximum amount available.
-
-<hfoptions id="device_map">
-<hfoption id="pipeline">
 
 ```py
 import torch
 from diffusers import DiffusionPipeline
 
+max_memory = {0: "16GB", 1: "16GB"}
 pipeline = DiffusionPipeline.from_pretrained(
   "Qwen/Qwen-Image", 
   torch_dtype=torch.bfloat16,
   device_map="cuda",
 )
 ```
-
-</hfoption>
-<hfoption id="individual model">
-
-```py
-import torch
-from diffusers import AutoModel
-
-max_memory = {0: "16GB", 1: "16GB"}
-transformer = AutoModel.from_pretrained(
-    "Qwen/Qwen-Image", 
-    subfolder="transformer",
-    torch_dtype=torch.bfloat16
-    device_map="cuda",
-    max_memory=max_memory
-)
-```
-
-</hfoption>
-</hfoptions>
 
 The `hf_device_map` attribute allows you to access and view the `device_map`.
 
@@ -189,22 +166,18 @@ pipeline = DiffusionPipeline.from_pretrained(
 
 [`DiffusionPipeline`] is flexible and accommodates loading different models or schedulers. You can experiment with different schedulers to optimize for generation speed or quality, and you can replace models with more performant ones.
 
-The example below swaps the default scheduler to generate higher quality images and a more stable VAE version. Pass the `subfolder` argument in [`~HeunDiscreteScheduler.from_pretrained`] to load the scheduler to the correct subfolder.
+The example below uses a more stable VAE version.
 
 ```py
 import torch
-from diffusers import DiffusionPipeline, HeunDiscreteScheduler, AutoModel
+from diffusers import DiffusionPipeline, AutoModel
 
-scheduler = HeunDiscreteScheduler.from_pretrained(
-  "stabilityai/stable-diffusion-xl-base-1.0", subfolder="scheduler"
-)
 vae = AutoModel.from_pretrained(
   "madebyollin/sdxl-vae-fp16-fix", torch_dtype=torch.float16
 )
 
 pipeline = DiffusionPipeline.from_pretrained(
   "stabilityai/stable-diffusion-xl-base-1.0",
-  scheduler=scheduler,
   vae=vae,
   torch_dtype=torch.float16,
   device_map="cuda"
