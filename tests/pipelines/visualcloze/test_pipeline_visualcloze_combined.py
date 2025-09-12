@@ -10,14 +10,14 @@ from transformers import AutoTokenizer, CLIPTextConfig, CLIPTextModel, CLIPToken
 import diffusers
 from diffusers import AutoencoderKL, FlowMatchEulerDiscreteScheduler, FluxTransformer2DModel, VisualClozePipeline
 from diffusers.utils import logging
-from diffusers.utils.testing_utils import (
+
+from ...testing_utils import (
     CaptureLogger,
     enable_full_determinism,
     floats_tensor,
     require_accelerator,
     torch_device,
 )
-
 from ..test_pipelines_common import PipelineTesterMixin, to_np
 
 

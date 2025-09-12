@@ -19,7 +19,7 @@ import torch
 
 from ..configuration_utils import register_to_config
 from ..utils import is_kornia_available
-from .guider_utils import BaseGuidance, rescale_noise_cfg
+from .guider_utils import BaseGuidance, GuiderOutput, rescale_noise_cfg
 
 
 if TYPE_CHECKING:
@@ -61,7 +61,7 @@ def project(v0: torch.Tensor, v1: torch.Tensor, upcast_to_double: bool = True) -
 def build_image_from_pyramid(pyramid: List[torch.Tensor]) -> torch.Tensor:
     """
     Recovers the data space latents from the Laplacian pyramid frequency space. Implementation from the paper
-    (Algorihtm 2).
+    (Algorithm 2).
     """
     # pyramid shapes: [[B, C, H, W], [B, C, H/2, W/2], ...]
     img = pyramid[-1]
@@ -230,7 +230,7 @@ class FrequencyDecoupledGuidance(BaseGuidance):
             data_batches.append(data_batch)
         return data_batches
 
-    def forward(self, pred_cond: torch.Tensor, pred_uncond: Optional[torch.Tensor] = None) -> torch.Tensor:
+    def forward(self, pred_cond: torch.Tensor, pred_uncond: Optional[torch.Tensor] = None) -> GuiderOutput:
         pred = None
 
         if not self._is_fdg_enabled():
@@ -277,7 +277,7 @@ class FrequencyDecoupledGuidance(BaseGuidance):
             if self.guidance_rescale_space == "data" and self.guidance_rescale[0] > 0.0:
                 pred = rescale_noise_cfg(pred, pred_cond, self.guidance_rescale[0])
 
-        return pred, {}
+        return GuiderOutput(pred=pred, pred_cond=pred_cond, pred_uncond=pred_uncond)
 
     @property
     def is_conditional(self) -> bool:

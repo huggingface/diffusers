@@ -21,7 +21,8 @@ import torch
 from diffusers import (
     AutoencoderKL,
 )
-from diffusers.utils.testing_utils import (
+
+from ..testing_utils import (
     backend_empty_cache,
     enable_full_determinism,
     load_hf_numpy,

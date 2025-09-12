@@ -28,13 +28,13 @@ from diffusers import (
     UNet2DConditionModel,
 )
 from diffusers.utils.import_utils import is_xformers_available
-from diffusers.utils.testing_utils import (
+
+from ...testing_utils import (
     enable_full_determinism,
     floats_tensor,
     require_torch_accelerator,
     torch_device,
 )
-
 from ..pipeline_params import (
     IMAGE_TO_IMAGE_IMAGE_PARAMS,
     TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS,

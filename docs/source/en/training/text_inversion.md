@@ -14,7 +14,7 @@ specific language governing permissions and limitations under the License.
 
 [Textual Inversion](https://hf.co/papers/2208.01618) is a training technique for personalizing image generation models with just a few example images of what you want it to learn. This technique works by learning and updating the text embeddings (the new embeddings are tied to a special word you must use in the prompt) to match the example images you provide.
 
-If you're training on a GPU with limited vRAM, you should try enabling the `gradient_checkpointing` and `mixed_precision` parameters in the training command. You can also reduce your memory footprint by using memory-efficient attention with [xFormers](../optimization/xformers). JAX/Flax training is also supported for efficient training on TPUs and GPUs, but it doesn't support gradient checkpointing or xFormers. With the same configuration and setup as PyTorch, the Flax training script should be at least ~70% faster!
+If you're training on a GPU with limited vRAM, you should try enabling the `gradient_checkpointing` and `mixed_precision` parameters in the training command. You can also reduce your memory footprint by using memory-efficient attention with [xFormers](../optimization/xformers).
 
 This guide will explore the [textual_inversion.py](https://github.com/huggingface/diffusers/blob/main/examples/textual_inversion/textual_inversion.py) script to help you become more familiar with it, and how you can adapt it for your own use-case.
 
@@ -28,25 +28,10 @@ pip install .
 
 Navigate to the example folder with the training script and install the required dependencies for the script you're using:
 
-<hfoptions id="installation">
-<hfoption id="PyTorch">
-
 ```bash
 cd examples/textual_inversion
 pip install -r requirements.txt
 ```
-
-</hfoption>
-<hfoption id="Flax">
-
-```bash
-cd examples/textual_inversion
-pip install -r requirements_flax.txt
-```
-
-</hfoption>
-</hfoptions>
-
 <Tip>
 
 🤗 Accelerate is a library for helping you train on multiple GPUs/TPUs or with mixed-precision. It'll automatically configure your training setup based on your hardware and environment. Take a look at the 🤗 Accelerate [Quick tour](https://huggingface.co/docs/accelerate/quicktour) to learn more.
@@ -189,9 +174,6 @@ One more thing before you launch the script. If you're interested in following a
 --validation_steps=100
 ```
 
-<hfoptions id="training-inference">
-<hfoption id="PyTorch">
-
 ```bash
 export MODEL_NAME="stable-diffusion-v1-5/stable-diffusion-v1-5"
 export DATA_DIR="./cat"
@@ -214,35 +196,7 @@ accelerate launch textual_inversion.py \
   --push_to_hub
 ```
 
-</hfoption>
-<hfoption id="Flax">
-
-```bash
-export MODEL_NAME="duongna/stable-diffusion-v1-4-flax"
-export DATA_DIR="./cat"
-
-python textual_inversion_flax.py \
-  --pretrained_model_name_or_path=$MODEL_NAME \
-  --train_data_dir=$DATA_DIR \
-  --learnable_property="object" \
-  --placeholder_token="<cat-toy>" \
-  --initializer_token="toy" \
-  --resolution=512 \
-  --train_batch_size=1 \
-  --max_train_steps=3000 \
-  --learning_rate=5.0e-04 \
-  --scale_lr \
-  --output_dir="textual_inversion_cat" \
-  --push_to_hub
-```
-
-</hfoption>
-</hfoptions>
-
 After training is complete, you can use your newly trained model for inference like:
-
-<hfoptions id="training-inference">
-<hfoption id="PyTorch">
 
 ```py
 from diffusers import StableDiffusionPipeline
@@ -253,42 +207,6 @@ pipeline.load_textual_inversion("sd-concepts-library/cat-toy")
 image = pipeline("A <cat-toy> train", num_inference_steps=50).images[0]
 image.save("cat-train.png")
 ```
-
-</hfoption>
-<hfoption id="Flax">
-
-Flax doesn't support the [`~loaders.TextualInversionLoaderMixin.load_textual_inversion`] method, but the textual_inversion_flax.py script [saves](https://github.com/huggingface/diffusers/blob/c0f058265161178f2a88849e92b37ffdc81f1dcc/examples/textual_inversion/textual_inversion_flax.py#L636C2-L636C2) the learned embeddings as a part of the model after training. This means you can use the model for inference like any other Flax model:
-
-```py
-import jax
-import numpy as np
-from flax.jax_utils import replicate
-from flax.training.common_utils import shard
-from diffusers import FlaxStableDiffusionPipeline
-
-model_path = "path-to-your-trained-model"
-pipeline, params = FlaxStableDiffusionPipeline.from_pretrained(model_path, dtype=jax.numpy.bfloat16)
-
-prompt = "A <cat-toy> train"
-prng_seed = jax.random.PRNGKey(0)
-num_inference_steps = 50
-
-num_samples = jax.device_count()
-prompt = num_samples * [prompt]
-prompt_ids = pipeline.prepare_inputs(prompt)
-
-# shard inputs and rng
-params = replicate(params)
-prng_seed = jax.random.split(prng_seed, jax.device_count())
-prompt_ids = shard(prompt_ids)
-
-images = pipeline(prompt_ids, params, prng_seed, num_inference_steps, jit=True).images
-images = pipeline.numpy_to_pil(np.asarray(images.reshape((num_samples,) + images.shape[-3:])))
-image.save("cat-train.png")
-```
-
-</hfoption>
-</hfoptions>
 
 ## Next steps
 

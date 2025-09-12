@@ -754,7 +754,11 @@ class LoraBaseMixin:
         # Decompose weights into weights for denoiser and text encoders.
         _component_adapter_weights = {}
         for component in self._lora_loadable_modules:
-            model = getattr(self, component)
+            model = getattr(self, component, None)
+            # To guard for cases like Wan. In Wan2.1 and WanVace, we have a single denoiser.
+            # Whereas in Wan 2.2, we have two denoisers.
+            if model is None:
+                continue
 
             for adapter_name, weights in zip(adapter_names, adapter_weights):
                 if isinstance(weights, dict):

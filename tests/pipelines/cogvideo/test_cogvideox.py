@@ -21,7 +21,8 @@ import torch
 from transformers import AutoTokenizer, T5EncoderModel
 
 from diffusers import AutoencoderKLCogVideoX, CogVideoXPipeline, CogVideoXTransformer3DModel, DDIMScheduler
-from diffusers.utils.testing_utils import (
+
+from ...testing_utils import (
     backend_empty_cache,
     enable_full_determinism,
     numpy_cosine_similarity_distance,
@@ -29,7 +30,6 @@ from diffusers.utils.testing_utils import (
     slow,
     torch_device,
 )
-
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
 from ..test_pipelines_common import (
     FasterCacheTesterMixin,

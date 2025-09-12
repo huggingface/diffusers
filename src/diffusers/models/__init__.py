@@ -52,6 +52,10 @@ if is_torch_available():
         "HunyuanDiT2DControlNetModel",
         "HunyuanDiT2DMultiControlNetModel",
     ]
+    _import_structure["controlnets.controlnet_qwenimage"] = [
+        "QwenImageControlNetModel",
+        "QwenImageMultiControlNetModel",
+    ]
     _import_structure["controlnets.controlnet_sana"] = ["SanaControlNetModel"]
     _import_structure["controlnets.controlnet_sd3"] = ["SD3ControlNetModel", "SD3MultiControlNetModel"]
     _import_structure["controlnets.controlnet_sparsectrl"] = ["SparseControlNetModel"]
@@ -76,6 +80,7 @@ if is_torch_available():
     _import_structure["transformers.t5_film_transformer"] = ["T5FilmDecoder"]
     _import_structure["transformers.transformer_2d"] = ["Transformer2DModel"]
     _import_structure["transformers.transformer_allegro"] = ["AllegroTransformer3DModel"]
+    _import_structure["transformers.transformer_bria"] = ["BriaTransformer2DModel"]
     _import_structure["transformers.transformer_chroma"] = ["ChromaTransformer2DModel"]
     _import_structure["transformers.transformer_cogview3plus"] = ["CogView3PlusTransformer2DModel"]
     _import_structure["transformers.transformer_cogview4"] = ["CogView4Transformer2DModel"]
@@ -147,6 +152,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             HunyuanDiT2DMultiControlNetModel,
             MultiControlNetModel,
             MultiControlNetUnionModel,
+            QwenImageControlNetModel,
+            QwenImageMultiControlNetModel,
             SanaControlNetModel,
             SD3ControlNetModel,
             SD3MultiControlNetModel,
@@ -158,6 +165,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .transformers import (
             AllegroTransformer3DModel,
             AuraFlowTransformer2DModel,
+            BriaTransformer2DModel,
             ChromaTransformer2DModel,
             CogVideoXTransformer3DModel,
             CogView3PlusTransformer2DModel,

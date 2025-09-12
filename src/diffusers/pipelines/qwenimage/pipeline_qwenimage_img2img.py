@@ -9,7 +9,7 @@ from ...image_processor import PipelineImageInput, VaeImageProcessor
 from ...loaders import QwenImageLoraLoaderMixin
 from ...models import AutoencoderKLQwenImage, QwenImageTransformer2DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
-from ...utils import is_torch_xla_available, logging, replace_example_docstring
+from ...utils import deprecate, is_torch_xla_available, logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
 from .pipeline_output import QwenImagePipelineOutput
@@ -296,6 +296,9 @@ class QwenImageImg2ImgPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
         if prompt_embeds is None:
             prompt_embeds, prompt_embeds_mask = self._get_qwen_prompt_embeds(prompt, device)
 
+        prompt_embeds = prompt_embeds[:, :max_sequence_length]
+        prompt_embeds_mask = prompt_embeds_mask[:, :max_sequence_length]
+
         _, seq_len, _ = prompt_embeds.shape
         prompt_embeds = prompt_embeds.repeat(1, num_images_per_prompt, 1)
         prompt_embeds = prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
@@ -364,21 +367,6 @@ class QwenImageImg2ImgPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
             raise ValueError(f"`max_sequence_length` cannot be greater than 1024 but is {max_sequence_length}")
 
     @staticmethod
-    # Copied from diffusers.pipelines.qwenimage.pipeline_qwenimage.QwenImagePipeline._prepare_latent_image_ids
-    def _prepare_latent_image_ids(batch_size, height, width, device, dtype):
-        latent_image_ids = torch.zeros(height, width, 3)
-        latent_image_ids[..., 1] = latent_image_ids[..., 1] + torch.arange(height)[:, None]
-        latent_image_ids[..., 2] = latent_image_ids[..., 2] + torch.arange(width)[None, :]
-
-        latent_image_id_height, latent_image_id_width, latent_image_id_channels = latent_image_ids.shape
-
-        latent_image_ids = latent_image_ids.reshape(
-            latent_image_id_height * latent_image_id_width, latent_image_id_channels
-        )
-
-        return latent_image_ids.to(device=device, dtype=dtype)
-
-    @staticmethod
     # Copied from diffusers.pipelines.qwenimage.pipeline_qwenimage.QwenImagePipeline._pack_latents
     def _pack_latents(latents, batch_size, num_channels_latents, height, width):
         latents = latents.view(batch_size, num_channels_latents, height // 2, 2, width // 2, 2)
@@ -409,6 +397,12 @@ class QwenImageImg2ImgPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
         Enable sliced VAE decoding. When this option is enabled, the VAE will split the input tensor in slices to
         compute decoding in several steps. This is useful to save some memory and allow larger batch sizes.
         """
+        depr_message = f"Calling `enable_vae_slicing()` on a `{self.__class__.__name__}` is deprecated and this method will be removed in a future version. Please use `pipe.vae.enable_slicing()`."
+        deprecate(
+            "enable_vae_slicing",
+            "0.40.0",
+            depr_message,
+        )
         self.vae.enable_slicing()
 
     def disable_vae_slicing(self):
@@ -416,6 +410,12 @@ class QwenImageImg2ImgPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
         Disable sliced VAE decoding. If `enable_vae_slicing` was previously enabled, this method will go back to
         computing decoding in one step.
         """
+        depr_message = f"Calling `disable_vae_slicing()` on a `{self.__class__.__name__}` is deprecated and this method will be removed in a future version. Please use `pipe.vae.disable_slicing()`."
+        deprecate(
+            "disable_vae_slicing",
+            "0.40.0",
+            depr_message,
+        )
         self.vae.disable_slicing()
 
     def enable_vae_tiling(self):
@@ -424,6 +424,12 @@ class QwenImageImg2ImgPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
         compute decoding and encoding in several steps. This is useful for saving a large amount of memory and to allow
         processing larger images.
         """
+        depr_message = f"Calling `enable_vae_tiling()` on a `{self.__class__.__name__}` is deprecated and this method will be removed in a future version. Please use `pipe.vae.enable_tiling()`."
+        deprecate(
+            "enable_vae_tiling",
+            "0.40.0",
+            depr_message,
+        )
         self.vae.enable_tiling()
 
     def disable_vae_tiling(self):
@@ -431,6 +437,12 @@ class QwenImageImg2ImgPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
         Disable tiled VAE decoding. If `enable_vae_tiling` was previously enabled, this method will go back to
         computing decoding in one step.
         """
+        depr_message = f"Calling `disable_vae_tiling()` on a `{self.__class__.__name__}` is deprecated and this method will be removed in a future version. Please use `pipe.vae.disable_tiling()`."
+        deprecate(
+            "disable_vae_tiling",
+            "0.40.0",
+            depr_message,
+        )
         self.vae.disable_tiling()
 
     def prepare_latents(
@@ -465,8 +477,7 @@ class QwenImageImg2ImgPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
             raise ValueError(f"Expected image dims 4 or 5, got {image.dim()}.")
 
         if latents is not None:
-            latent_image_ids = self._prepare_latent_image_ids(batch_size, height // 2, width // 2, device, dtype)
-            return latents.to(device=device, dtype=dtype), latent_image_ids
+            return latents.to(device=device, dtype=dtype)
 
         image = image.to(device=device, dtype=dtype)
         if image.shape[1] != self.latent_channels:
@@ -489,9 +500,7 @@ class QwenImageImg2ImgPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
         latents = self.scheduler.scale_noise(image_latents, timestep, noise)
         latents = self._pack_latents(latents, batch_size, num_channels_latents, height, width)
 
-        latent_image_ids = self._prepare_latent_image_ids(batch_size, height // 2, width // 2, device, dtype)
-
-        return latents, latent_image_ids
+        return latents
 
     @property
     def guidance_scale(self):
@@ -526,7 +535,7 @@ class QwenImageImg2ImgPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
         strength: float = 0.6,
         num_inference_steps: int = 50,
         sigmas: Optional[List[float]] = None,
-        guidance_scale: float = 1.0,
+        guidance_scale: Optional[float] = None,
         num_images_per_prompt: int = 1,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.Tensor] = None,
@@ -559,7 +568,12 @@ class QwenImageImg2ImgPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
                 list of arrays, the expected shape should be `(B, H, W, C)` or `(H, W, C)` It can also accept image
                 latents as `image`, but if passing latents directly it is not encoded again.
             true_cfg_scale (`float`, *optional*, defaults to 1.0):
-                When > 1.0 and a provided `negative_prompt`, enables true classifier-free guidance.
+                Guidance scale as defined in [Classifier-Free Diffusion
+                Guidance](https://huggingface.co/papers/2207.12598). `true_cfg_scale` is defined as `w` of equation 2.
+                of [Imagen Paper](https://huggingface.co/papers/2205.11487). Classifier-free guidance is enabled by
+                setting `true_cfg_scale > 1` and a provided `negative_prompt`. Higher guidance scale encourages to
+                generate images that are closely linked to the text `prompt`, usually at the expense of lower image
+                quality.
             height (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
                 The height in pixels of the generated image. This is set to 1024 by default for the best results.
             width (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
@@ -577,12 +591,16 @@ class QwenImageImg2ImgPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
                 Custom sigmas to use for the denoising process with schedulers which support a `sigmas` argument in
                 their `set_timesteps` method. If not defined, the default behavior when `num_inference_steps` is passed
                 will be used.
-            guidance_scale (`float`, *optional*, defaults to 3.5):
-                Guidance scale as defined in [Classifier-Free Diffusion
-                Guidance](https://huggingface.co/papers/2207.12598). `guidance_scale` is defined as `w` of equation 2.
-                of [Imagen Paper](https://huggingface.co/papers/2205.11487). Guidance scale is enabled by setting
-                `guidance_scale > 1`. Higher guidance scale encourages to generate images that are closely linked to
-                the text `prompt`, usually at the expense of lower image quality.
+            guidance_scale (`float`, *optional*, defaults to None):
+                A guidance scale value for guidance distilled models. Unlike the traditional classifier-free guidance
+                where the guidance scale is applied during inference through noise prediction rescaling, guidance
+                distilled models take the guidance scale directly as an input parameter during forward pass. Guidance
+                scale is enabled by setting `guidance_scale > 1`. Higher guidance scale encourages to generate images
+                that are closely linked to the text `prompt`, usually at the expense of lower image quality. This
+                parameter in the pipeline is there to support future guidance-distilled models when they come up. It is
+                ignored when not using guidance distilled models. To enable traditional classifier-free guidance,
+                please pass `true_cfg_scale > 1.0` and `negative_prompt` (even an empty negative prompt like " " should
+                enable classifier-free guidance computations).
             num_images_per_prompt (`int`, *optional*, defaults to 1):
                 The number of images to generate per prompt.
             generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
@@ -667,6 +685,16 @@ class QwenImageImg2ImgPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
         has_neg_prompt = negative_prompt is not None or (
             negative_prompt_embeds is not None and negative_prompt_embeds_mask is not None
         )
+
+        if true_cfg_scale > 1 and not has_neg_prompt:
+            logger.warning(
+                f"true_cfg_scale is passed as {true_cfg_scale}, but classifier-free guidance is not enabled since no negative_prompt is provided."
+            )
+        elif true_cfg_scale <= 1 and has_neg_prompt:
+            logger.warning(
+                " negative_prompt is passed but classifier-free guidance is not enabled since true_cfg_scale <= 1"
+            )
+
         do_true_cfg = true_cfg_scale > 1 and has_neg_prompt
         prompt_embeds, prompt_embeds_mask = self.encode_prompt(
             prompt=prompt,
@@ -713,7 +741,7 @@ class QwenImageImg2ImgPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
 
         # 5. Prepare latent variables
         num_channels_latents = self.transformer.config.in_channels // 4
-        latents, latent_image_ids = self.prepare_latents(
+        latents = self.prepare_latents(
             init_image,
             latent_timestep,
             batch_size * num_images_per_prompt,
@@ -725,16 +753,23 @@ class QwenImageImg2ImgPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
             generator,
             latents,
         )
-        img_shapes = [(1, height // self.vae_scale_factor // 2, width // self.vae_scale_factor // 2)] * batch_size
+        img_shapes = [[(1, height // self.vae_scale_factor // 2, width // self.vae_scale_factor // 2)]] * batch_size
 
         num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
         self._num_timesteps = len(timesteps)
 
         # handle guidance
-        if self.transformer.config.guidance_embeds:
+        if self.transformer.config.guidance_embeds and guidance_scale is None:
+            raise ValueError("guidance_scale is required for guidance-distilled model.")
+        elif self.transformer.config.guidance_embeds:
             guidance = torch.full([1], guidance_scale, device=device, dtype=torch.float32)
             guidance = guidance.expand(latents.shape[0])
-        else:
+        elif not self.transformer.config.guidance_embeds and guidance_scale is not None:
+            logger.warning(
+                f"guidance_scale is passed as {guidance_scale}, but ignored since the model is not guidance-distilled."
+            )
+            guidance = None
+        elif not self.transformer.config.guidance_embeds and guidance_scale is None:
             guidance = None
 
         if self.attention_kwargs is None:

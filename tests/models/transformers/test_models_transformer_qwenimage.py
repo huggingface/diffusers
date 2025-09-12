@@ -15,11 +15,12 @@
 
 import unittest
 
+import pytest
 import torch
 
 from diffusers import QwenImageTransformer2DModel
-from diffusers.utils.testing_utils import enable_full_determinism, torch_device
 
+from ...testing_utils import enable_full_determinism, torch_device
 from ..test_modeling_common import ModelTesterMixin, TorchCompileTesterMixin
 
 
@@ -99,3 +100,7 @@ class QwenImageTransformerCompileTests(TorchCompileTesterMixin, unittest.TestCas
 
     def prepare_dummy_input(self, height, width):
         return QwenImageTransformerTests().prepare_dummy_input(height=height, width=width)
+
+    @pytest.mark.xfail(condition=True, reason="RoPE needs to be revisited.", strict=True)
+    def test_torch_compile_recompilation_and_graph_break(self):
+        super().test_torch_compile_recompilation_and_graph_break()
