@@ -774,7 +774,7 @@ def _flash_attention_hub(
         deterministic=deterministic,
         return_attn_probs=return_attn_probs,
     )
-    return out
+    return out(out[0], out[1]) if return_attn_probs else out
 
 
 @_AttentionBackendRegistry.register(
