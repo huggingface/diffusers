@@ -278,6 +278,29 @@ def get_transformer_config(model_type: str) -> Tuple[Dict[str, Any], ...]:
         }
         RENAME_DICT = VACE_TRANSFORMER_KEYS_RENAME_DICT
         SPECIAL_KEYS_REMAP = VACE_TRANSFORMER_SPECIAL_KEYS_REMAP
+    elif model_type == "Wan2.2-VACE-Fun-14B":
+        config = {
+            "model_id": "alibaba-pai/Wan2.2-VACE-Fun-A14B",
+            "diffusers_config": {
+                "added_kv_proj_dim": None,
+                "attention_head_dim": 128,
+                "cross_attn_norm": True,
+                "eps": 1e-06,
+                "ffn_dim": 13824,
+                "freq_dim": 256,
+                "in_channels": 16,
+                "num_attention_heads": 40,
+                "num_layers": 40,
+                "out_channels": 16,
+                "patch_size": [1, 2, 2],
+                "qk_norm": "rms_norm_across_heads",
+                "text_dim": 4096,
+                "vace_layers": [0, 5, 10, 15, 20, 25, 30, 35],
+                "vace_in_channels": 96,
+            },
+        }
+        RENAME_DICT = VACE_TRANSFORMER_KEYS_RENAME_DICT
+        SPECIAL_KEYS_REMAP = VACE_TRANSFORMER_SPECIAL_KEYS_REMAP
     elif model_type == "Wan2.2-I2V-14B-720p":
         config = {
             "model_id": "Wan-AI/Wan2.2-I2V-A14B",
@@ -975,7 +998,17 @@ if __name__ == "__main__":
             image_encoder=image_encoder,
             image_processor=image_processor,
         )
-    elif "VACE" in args.model_type:
+    elif "Wan2.2-VACE" in args.model_type:
+        pipe = WanVACEPipeline(
+            transformer=transformer,
+            transformer_2=transformer_2,
+            text_encoder=text_encoder,
+            tokenizer=tokenizer,
+            vae=vae,
+            scheduler=scheduler,
+            boundary_ratio=0.875,
+        )
+    elif "Wan-VACE" in args.model_type:
         pipe = WanVACEPipeline(
             transformer=transformer,
             text_encoder=text_encoder,
