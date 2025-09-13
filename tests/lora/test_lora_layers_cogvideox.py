@@ -21,7 +21,6 @@ from transformers import AutoTokenizer, T5EncoderModel
 
 from diffusers import (
     AutoencoderKLCogVideoX,
-    CogVideoXDDIMScheduler,
     CogVideoXDPMScheduler,
     CogVideoXPipeline,
     CogVideoXTransformer3DModel,
@@ -44,7 +43,6 @@ class CogVideoXLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
     pipeline_class = CogVideoXPipeline
     scheduler_cls = CogVideoXDPMScheduler
     scheduler_kwargs = {"timestep_spacing": "trailing"}
-    scheduler_classes = [CogVideoXDDIMScheduler, CogVideoXDPMScheduler]
 
     transformer_kwargs = {
         "num_attention_heads": 4,

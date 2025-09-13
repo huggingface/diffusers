@@ -31,9 +31,8 @@ from .utils import PeftLoraLoaderMixinTests  # noqa: E402
 @require_peft_backend
 class SanaLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
     pipeline_class = SanaPipeline
-    scheduler_cls = FlowMatchEulerDiscreteScheduler(shift=7.0)
-    scheduler_kwargs = {}
-    scheduler_classes = [FlowMatchEulerDiscreteScheduler]
+    scheduler_cls = FlowMatchEulerDiscreteScheduler
+    scheduler_kwargs = {"shift": 7.0}
     transformer_kwargs = {
         "patch_size": 1,
         "in_channels": 4,
