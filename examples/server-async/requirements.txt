@@ -5,3 +5,6 @@ sentencepiece
 fastapi 
 uvicorn 
 ftfy
+accelerate
+xformers
+protobuf

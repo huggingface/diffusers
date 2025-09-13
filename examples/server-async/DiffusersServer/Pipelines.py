@@ -42,7 +42,6 @@ class TextToImagePipelineSD3:
             torch.backends.cudnn.deterministic = False
             torch.backends.cudnn.allow_tf32 = True
         
-        
         if torch.cuda.is_available():
             model_path = self.model_path or "stabilityai/stable-diffusion-3.5-large"
             logger.info(f"Loading CUDA with model: {model_path}")
@@ -61,6 +60,14 @@ class TextToImagePipelineSD3:
             
             self.pipeline = self.pipeline.to(device=self.device)
             
+            if hasattr(self.pipeline, 'enable_vae_slicing'):
+                self.pipeline.enable_vae_slicing()
+                logger.info("VAE slicing enabled - will reduce memory spikes during decoding")
+            
+            if hasattr(self.pipeline, 'enable_vae_tiling'):
+                self.pipeline.enable_vae_tiling()
+                logger.info("VAE tiling enabled - will allow processing larger images")
+            
             if hasattr(self.pipeline, 'transformer') and self.pipeline.transformer is not None:
                 self.pipeline.transformer = self.pipeline.transformer.to(
                     memory_format=torch.channels_last
@@ -71,6 +78,15 @@ class TextToImagePipelineSD3:
                 self.pipeline.vae = self.pipeline.vae.to(
                     memory_format=torch.channels_last
                 )
+                
+                if hasattr(self.pipeline.vae, 'enable_slicing'):
+                    self.pipeline.vae.enable_slicing()
+                    logger.info("VAE slicing activated directly in the VAE")
+                
+                if hasattr(self.pipeline.vae, 'enable_tiling'):
+                    self.pipeline.vae.enable_tiling()
+                    logger.info("VAE tiling activated directly on the VAE")
+                
                 logger.info("VAE optimized with channels_last format")
             
             try:
@@ -79,9 +95,7 @@ class TextToImagePipelineSD3:
             except Exception as e:
                 logger.info(f"XFormers not available: {e}")
             
-            # --- Se descarta torch.compile pero se mantiene el resto ---
-            if torch.__version__ >= "2.0.0":
-                logger.info("Skipping torch.compile - running without compile optimizations by design")
+            logger.info("Skipping torch.compile - running without compile optimizations by design")
             
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
@@ -92,13 +106,18 @@ class TextToImagePipelineSD3:
             model_path = self.model_path or "stabilityai/stable-diffusion-3.5-medium"
             logger.info(f"Loading MPS for Mac M Series with model: {model_path}")
             self.device = "mps"
+            
             self.pipeline = StableDiffusion3Pipeline.from_pretrained(
                 model_path,
                 torch_dtype=torch.bfloat16,
                 use_safetensors=True,
                 low_cpu_mem_usage=True,
             ).to(device=self.device)
-
+            
+            if hasattr(self.pipeline, 'enable_vae_slicing'):
+                self.pipeline.enable_vae_slicing()
+                logger.info("VAE slicing enabled in MPS")
+            
             if hasattr(self.pipeline, 'transformer') and self.pipeline.transformer is not None:
                 self.pipeline.transformer = self.pipeline.transformer.to(
                     memory_format=torch.channels_last
@@ -108,14 +127,13 @@ class TextToImagePipelineSD3:
                 self.pipeline.vae = self.pipeline.vae.to(
                     memory_format=torch.channels_last
                 )
-            
                 
             logger.info("MPS pipeline optimized and ready")
             
         else:
             raise Exception("No CUDA or MPS device available")
         
-        # OPTIONAL WARMUP
+
         self._warmup()
         
         logger.info("Pipeline initialization completed successfully")
@@ -131,8 +149,13 @@ class TextToImagePipelineSD3:
                     width=512,
                     guidance_scale=1.0,
                 )
-            torch.cuda.empty_cache() if self.device == "cuda" else None
-            logger.info("Warmup completed")
+            
+            if self.device == "cuda":
+                torch.cuda.synchronize()
+                torch.cuda.empty_cache()
+            
+            gc.collect()
+            logger.info("Warmup completed with memory cleanup")
 
 class TextToImagePipelineFlux:
     def __init__(self, model_path: str | None = None, low_vram: bool = False):

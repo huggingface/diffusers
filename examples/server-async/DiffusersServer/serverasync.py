@@ -1,5 +1,3 @@
-# Voy a mudar todo el servidor a un servidor asincrono con FastAPI y Uvicorn
-# Mientras complete esto, el servidor actual sigue funcionando
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse  
 from fastapi.middleware.cors import CORSMiddleware
@@ -25,16 +23,6 @@ from typing import List
 from contextlib import asynccontextmanager
 import asyncio
 from PIL import Image
-
-"""
-The goal is to create image generation, editing, and variance endpoints compatible with the OpenAI client.
-
-APIs:
-
-POST /images/variations (create_variation)
-POST /images/edits (edit)
-POST /images/generations (generate)
-"""
 
 @dataclass
 class PresetModels:
@@ -93,111 +81,114 @@ class Utils:
         if not os.path.exists(self.video_dir):
             os.makedirs(self.video_dir)
 
-    def _tensor_to_pil_minimal(self, tensor: torch.Tensor) -> Image.Image:
-        """
-        Convertir tensor GPU->PIL minimizando copias:
-        - sincroniza GPU
-        - mueve a CPU non_blocking (requiere pinned memory para ser efectivo)
-        - hace contiguous una sola vez
-        - convierte a uint8 una sola vez
-        """
-        # Acepta [N,C,H,W] o [C,H,W]
-        t = tensor
-        if t.ndim == 4:
-            t = t[0]
+        from concurrent.futures import ThreadPoolExecutor
+        self.executor = ThreadPoolExecutor(max_workers=2)
 
-        # Asegurar que GPU terminó
-        if t.is_cuda:
-            torch.cuda.synchronize()
-
-        # Mover a CPU (non_blocking where possible) y hacer contiguous
-        cpu_t = t.detach().to("cpu", non_blocking=True).contiguous()
-
-        # Normalizar y convertir a uint8. Asumo rango [0,1]. Si tu pipeline devuelve [-1,1]
-        # usar: cpu_t = (cpu_t + 1) / 2
-        cpu_t = cpu_t.clamp(0, 1).mul(255).to(torch.uint8)
-
-        # reordenar a H,W,C y extraer numpy (una copia inevitable)
-        arr = cpu_t.permute(1, 2, 0).numpy()
-
-        pil = Image.fromarray(arr)
-
-        # cleanup variables intermedias (liberar memoria lo antes posible)
+    def _save_pil_image(self, pil_image: Image.Image, filepath: str):
         try:
-            del arr, cpu_t, t
-        except Exception:
-            pass
-
-        return pil
-
-    def save_image(self, image):
-        filename = "img" + str(uuid.uuid4()).split("-")[0] + ".png"
-        image_path = os.path.join(self.image_dir, filename)
-        logger.info(f"Saving image to {image_path}")
-
-        try:
-            # Si ya es PIL, guardar directo
-            if isinstance(image, Image.Image):
-                image.save(image_path, format="PNG", optimize=True)
-                # liberar referencia
-                del image
-            else:
-                # Si tiene método to (posible tensor o wrapper), intentar mover a cpu primero (seguro)
-                if hasattr(image, "to") and isinstance(image, torch.Tensor):
-                    # Convertir tensor -> PIL minimizando copias
-                    pil = self._tensor_to_pil_minimal(image)
-                    # Guardar con lock/serialización (see usage in endpoint)
-                    pil.save(image_path, format="PNG", optimize=True)
-                    del pil
-                else:
-                    # Fallback: si no es tensor ni PIL, intenta convertir via torchvision
-                    try:
-                        from torchvision import transforms
-                        to_pil = transforms.ToPILImage()
-                        pil = to_pil(image.squeeze(0).clamp(0, 1))
-                        pil.save(image_path, format="PNG", optimize=True)
-                        del pil
-                    except Exception as e:
-                        raise RuntimeError(f"Unsupported image object for saving: {e}")
-
-            # cleanup agresivo
-            gc.collect()
-            if torch.cuda.is_available():
-                # sincronizar y limpiar caches GPU para evitar buffers retenidos
-                try:
-                    torch.cuda.synchronize()
-                except Exception:
-                    pass
-                torch.cuda.empty_cache()
-
-            return os.path.join(self.service_url, "images", filename)
-
+            pil_image.save(filepath, format="PNG", optimize=True, compress_level=6)
         except Exception as e:
-            # intentar limpiar en caso de error
-            try:
-                del image
-            except Exception:
-                pass
-            gc.collect()
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
-            logger.error(f"Error saving image: {e}")
+            logger.error(f"Error saving PIL image: {e}")
             raise
+        finally:
+            if pil_image:
+                pil_image.close()
+                del pil_image
+    
+    def _tensor_to_pil_optimized(self, tensor: torch.Tensor) -> Image.Image:
 
-    def save_video(self, video, fps):
-        filename = "video" + str(uuid.uuid4()).split("-")[0] + ".mp4"
-        video_path = os.path.join(self.video_dir, filename)
-        export = export_to_video(video, video_path, fps=fps)
-        logger.info(f"Saving video to {video_path}")
-        return os.path.join(self.service_url, "video", filename)
+        with torch.no_grad():
+            tensor_cpu = tensor.detach().clone()
+            
+            if tensor_cpu.is_cuda:
+                tensor_cpu = tensor_cpu.cpu()
+                torch.cuda.synchronize()
+            
+            if tensor_cpu.dim() == 4:
+                tensor_cpu = tensor_cpu[0]
+            
+            tensor_cpu = tensor_cpu.clamp(0, 1).mul(255).byte()
+            
+            if tensor_cpu.shape[0] in [1, 3, 4]:  
+                tensor_cpu = tensor_cpu.permute(1, 2, 0)
+            
+            np_array = tensor_cpu.contiguous().numpy()
+
+            del tensor_cpu
+            
+            if np_array.shape[-1] == 1:
+                np_array = np_array.squeeze(-1)
+                mode = 'L'
+            elif np_array.shape[-1] == 3:
+                mode = 'RGB'
+            elif np_array.shape[-1] == 4:
+                mode = 'RGBA'
+            else:
+                raise ValueError(f"Unsupported number of channels: {np_array.shape[-1]}")
+            
+            pil_image = Image.fromarray(np_array, mode=mode)
+            
+            del np_array
+            
+            return pil_image
+    
+    async def save_image(self, image) -> str:
+        
+        image_id = str(uuid.uuid4()).split("-")[0]
+        filename = f"img{image_id}.png"
+        filepath = os.path.join(self.image_dir, filename)
+        url = os.path.join(self.service_url, "images", filename)
+        
+        loop = asyncio.get_event_loop()
+        
+        try:
+            if isinstance(image, Image.Image):
+                await loop.run_in_executor(
+                    self.executor,
+                    self._save_pil_image,
+                    image,
+                    filepath
+                )
+                
+            elif isinstance(image, torch.Tensor):
+                with torch.no_grad():
+                    pil_image = await loop.run_in_executor(
+                        None,
+                        self._tensor_to_pil_optimized,
+                        image
+                    )
+                    
+                    await loop.run_in_executor(
+                        self.executor,
+                        self._save_pil_image,
+                        pil_image,
+                        filepath
+                    )
+                    
+                    del pil_image
+                
+            else:
+                raise ValueError(f"Unsupported image type: {type(image)}")
+            
+            logger.debug(f"Image saved: {filename}")
+            return url
+            
+        except Exception as e:
+            logger.error(f"Error in save_image_optimized: {e}")
+            raise
+        finally:
+            gc.collect()
+    
+    def shutdown(self):
+        self.executor.shutdown(wait=True)
 
 @dataclass
 class ServerConfigModels:
-    model: str = 'stabilityai/stable-diffusion-3-medium'  # Valor predeterminado
-    type_models: str = 't2im'  # Solo hay t2im y t2v
+    model: str = 'stabilityai/stable-diffusion-3-medium'  
+    type_models: str = 't2im'  
     custom_model : bool = False
     constructor_pipeline: Optional[Type] = None
-    custom_pipeline: Optional[Type] = None  # Añadimos valor por defecto
+    custom_pipeline: Optional[Type] = None  
     components: Optional[Dict[str, Any]] = None
     api_name: Optional[str] = 'custom_api'
     torch_dtype: Optional[torch.dtype] = None
@@ -218,9 +209,6 @@ def create_app_fastapi(config: ServerConfigModels) -> FastAPI:
         app.state.metrics_lock = asyncio.Lock()
         app.state.metrics_task = None
 
-        # Guardar modelo ya inicializado
-
-        # Inicializar utils
         app.state.utils_app = Utils(
             host=server_config.host,
             port=server_config.port,
@@ -240,13 +228,11 @@ def create_app_fastapi(config: ServerConfigModels) -> FastAPI:
 
         app.state.metrics_task = asyncio.create_task(metrics_loop())
         from concurrent.futures import ThreadPoolExecutor
-
         app.state.SAVE_EXECUTOR = ThreadPoolExecutor(max_workers=1)
 
         try:
             yield
         finally:
-            # 🔻 shutdown
             task = app.state.metrics_task
             if task:
                 task.cancel()
@@ -255,7 +241,6 @@ def create_app_fastapi(config: ServerConfigModels) -> FastAPI:
                 except asyncio.CancelledError:
                     pass
 
-            # Intentar liberar pipeline si tiene stop/close
             try:
                 stop_fn = getattr(model_pipeline, "stop", None) or getattr(model_pipeline, "close", None)
                 if callable(stop_fn):
@@ -264,8 +249,6 @@ def create_app_fastapi(config: ServerConfigModels) -> FastAPI:
                 app.state.logger.warning(f"Error during pipeline shutdown: {e}")
 
             app.state.logger.info("Lifespan shutdown complete")
-
-    
 
     app = FastAPI(lifespan=lifespan)
 
@@ -296,7 +279,7 @@ def create_app_fastapi(config: ServerConfigModels) -> FastAPI:
         request_pipe = RequestScopedPipeline(model_pipeline.pipeline)
         pipeline_lock = threading.Lock()
 
-    logger.info(f"Pipeline inicializado y listo para recibir solicitudes (modelo={server_config.model})")
+    logger.info(f"Pipeline initialized and ready to receive requests (model ={server_config.model})")
 
     app.state.MODEL_INITIALIZER = initializer
     app.state.MODEL_PIPELINE = model_pipeline
@@ -335,9 +318,9 @@ def create_app_fastapi(config: ServerConfigModels) -> FastAPI:
         req_pipe    = app.state.REQUEST_PIPE
 
         if not wrapper or not wrapper.pipeline:
-            raise HTTPException(500, "Modelo no inicializado correctamente")
+            raise HTTPException(500, "Model not initialized correctly")
         if not prompt.strip():
-            raise HTTPException(400, "No se proporcionó prompt")
+            raise HTTPException(400, "No prompt provided")
 
         def make_generator():
             g = torch.Generator(device=initializer.device)
@@ -345,45 +328,56 @@ def create_app_fastapi(config: ServerConfigModels) -> FastAPI:
 
         def infer():
             gen = make_generator()
-            return req_pipe.generate(
-                prompt=prompt,
-                negative_prompt=negative_prompt,
-                generator=gen,
-                num_inference_steps=num_steps,
-                num_images_per_prompt=num_images_per_prompt,
-                device=initializer.device
-            )
+            
+            # Maybe this will improve some performance (I'll test it)
+            with torch.no_grad():
+                output = req_pipe.generate(
+                    prompt=prompt,
+                    negative_prompt=negative_prompt,
+                    generator=gen,
+                    num_inference_steps=num_steps,
+                    num_images_per_prompt=num_images_per_prompt,
+                    device=initializer.device
+                )
+            
+            return output
 
         try:
             async with app.state.metrics_lock:
                 app.state.active_inferences += 1
 
             output = await run_in_threadpool(infer)
-
-            saved_urls = []
-            loop = asyncio.get_running_loop()
-
+            
             images = getattr(output, "images", []) or []
-            for idx, img in enumerate(images):
+            
+            saved_urls = []
+            
+            for i, img in enumerate(images):
                 try:
-                    url = await loop.run_in_executor(app.state.SAVE_EXECUTOR, utils_app.save_image, img)
-                    saved_urls.append(url)
-                except Exception as e:
-                    logger.error(f"Error guardando imagen {idx}: {e}")
-                finally:
-                    try:
-                        del img
-                    except Exception:
-                        pass
-                    import gc
-                    gc.collect()
-                    if torch.cuda.is_available():
-                        try:
-                            torch.cuda.synchronize()
-                        except Exception:
-                            pass
-                        torch.cuda.empty_cache()
 
+                    url = await utils_app.save_image(img)
+                    saved_urls.append(url)
+                    
+                    if isinstance(img, Image.Image):
+                        img.close()
+                    del img
+                    
+                    if torch.cuda.is_available():
+                        torch.cuda.synchronize()
+                        
+                except Exception as e:
+                    logger.error(f"Error saving image {i}: {e}")
+                    continue
+            
+
+            del output, images
+            
+            if torch.cuda.is_available():
+                torch.cuda.synchronize()
+                torch.cuda.empty_cache()
+            
+            gc.collect()
+            
             async with app.state.metrics_lock:
                 app.state.active_inferences = max(0, app.state.active_inferences - 1)
 
@@ -392,14 +386,14 @@ def create_app_fastapi(config: ServerConfigModels) -> FastAPI:
         except Exception as e:
             async with app.state.metrics_lock:
                 app.state.active_inferences = max(0, app.state.active_inferences - 1)
-            logger.error(f"Error durante la inferencia: {e}")
-            raise HTTPException(500, f"Error en procesamiento: {e}")
+            logger.error(f"Error during inference: {e}")
+            raise HTTPException(500, f"Error in processing: {e}")
 
         finally:
-            import gc
-            gc.collect()
             if torch.cuda.is_available():
+                torch.cuda.synchronize()
                 torch.cuda.empty_cache()
+            gc.collect()
 
 
     @app.get("/images/{filename}")
