@@ -639,7 +639,9 @@ class QwenImageTransformer2DModel(
             if controlnet_block_samples is not None:
                 interval_control = len(self.transformer_blocks) / len(controlnet_block_samples)
                 interval_control = int(np.ceil(interval_control))
-                hidden_states = hidden_states + controlnet_block_samples[index_block // interval_control]
+                sample = controlnet_block_samples[index_block // interval_control]
+                sample_size = min(sample.size(1), hidden_states.size(1))
+                hidden_states[:, :sample_size] = hidden_states[:, :sample_size] + sample[:, :sample_size]
 
         # Use only the image part (hidden_states) from the dual-stream blocks
         hidden_states = self.norm_out(hidden_states, temb)
