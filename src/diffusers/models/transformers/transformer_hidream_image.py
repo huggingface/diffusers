@@ -55,7 +55,7 @@ class HiDreamImageTimestepEmbed(nn.Module):
         self.time_proj = Timesteps(num_channels=frequency_embedding_size, flip_sin_to_cos=True, downscale_freq_shift=0)
         self.timestep_embedder = TimestepEmbedding(in_channels=frequency_embedding_size, time_embed_dim=hidden_size)
 
-    def forward(self, timesteps: torch.Tensor, wdtype: Optional[torch.dtype] = None):
+    def forward(self, timesteps: torch.Tensor, wdtype: Optional[torch.dtype] = None) -> torch.Tensor:
         t_emb = self.time_proj(timesteps).to(dtype=wdtype)
         t_emb = self.timestep_embedder(t_emb)
         return t_emb
@@ -87,7 +87,7 @@ class HiDreamImagePatchEmbed(nn.Module):
         self.out_channels = out_channels
         self.proj = nn.Linear(in_channels * patch_size * patch_size, out_channels, bias=True)
 
-    def forward(self, latent):
+    def forward(self, latent) -> torch.Tensor:
         latent = self.proj(latent)
         return latent
 
@@ -534,7 +534,7 @@ class HiDreamImageTransformerBlock(nn.Module):
         encoder_hidden_states: Optional[torch.Tensor] = None,
         temb: Optional[torch.Tensor] = None,
         image_rotary_emb: torch.Tensor = None,
-    ) -> torch.Tensor:
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
         wtype = hidden_states.dtype
         (
             shift_msa_i,
@@ -592,7 +592,7 @@ class HiDreamBlock(nn.Module):
         encoder_hidden_states: Optional[torch.Tensor] = None,
         temb: Optional[torch.Tensor] = None,
         image_rotary_emb: torch.Tensor = None,
-    ) -> torch.Tensor:
+    ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
         return self.block(
             hidden_states=hidden_states,
             hidden_states_masks=hidden_states_masks,
@@ -786,7 +786,7 @@ class HiDreamImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, 
         attention_kwargs: Optional[Dict[str, Any]] = None,
         return_dict: bool = True,
         **kwargs,
-    ):
+    ) -> Union[Tuple[torch.Tensor], Transformer2DModelOutput]:
         encoder_hidden_states = kwargs.get("encoder_hidden_states", None)
 
         if encoder_hidden_states is not None:
