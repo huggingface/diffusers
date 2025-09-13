@@ -37,6 +37,8 @@ class WanModularPipeline(
     </Tip>
     """
 
+    default_blocks_name = "WanAutoBlocks"
+
     @property
     def default_height(self):
         return self.default_sample_height * self.vae_scale_factor_spatial

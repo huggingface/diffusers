@@ -104,6 +104,8 @@ class QwenImageModularPipeline(ModularPipeline, QwenImageLoraLoaderMixin):
     </Tip>
     """
 
+    default_blocks_name = "QwenImageAutoBlocks"
+
     @property
     def default_height(self):
         return self.default_sample_size * self.vae_scale_factor
@@ -157,6 +159,8 @@ class QwenImageEditModularPipeline(ModularPipeline, QwenImageLoraLoaderMixin):
 
     </Tip>
     """
+
+    default_blocks_name = "QwenImageEditAutoBlocks"
 
     # YiYi TODO: qwen edit should not provide default height/width, should be derived from the resized input image (after adjustment) produced by the resize step.
     @property

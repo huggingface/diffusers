@@ -258,25 +258,25 @@ class StableDiffusionXLTextEncoderStep(ModularPipelineBlocks):
             OutputParam(
                 "prompt_embeds",
                 type_hint=torch.Tensor,
-                kwargs_type="guider_input_fields",
+                kwargs_type="denoiser_input_fields",
                 description="text embeddings used to guide the image generation",
             ),
             OutputParam(
                 "negative_prompt_embeds",
                 type_hint=torch.Tensor,
-                kwargs_type="guider_input_fields",
+                kwargs_type="denoiser_input_fields",
                 description="negative text embeddings used to guide the image generation",
             ),
             OutputParam(
                 "pooled_prompt_embeds",
                 type_hint=torch.Tensor,
-                kwargs_type="guider_input_fields",
+                kwargs_type="denoiser_input_fields",
                 description="pooled text embeddings used to guide the image generation",
             ),
             OutputParam(
                 "negative_pooled_prompt_embeds",
                 type_hint=torch.Tensor,
-                kwargs_type="guider_input_fields",
+                kwargs_type="denoiser_input_fields",
                 description="negative pooled text embeddings used to guide the image generation",
             ),
         ]
