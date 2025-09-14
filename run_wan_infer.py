@@ -10,11 +10,11 @@ dtype = torch.bfloat16
 device = "cuda"
 
 model_id = "Wan-AI/Wan2.1-T2V-1.3B-Diffusers"
-vae = AutoencoderKLWan.from_pretrained(model_id, subfolder="vae", torch_dtype=torch.float32, cache_dir="/data2/onkar/video_diffusion_weights")
+vae = AutoencoderKLWan.from_pretrained("onkarsus13/qwen-wan-MM-3B", subfolder="vae", torch_dtype=torch.float32, cache_dir="/data2/onkar/video_diffusion_weights")
 pipe = WanPipeline.from_pretrained(model_id, vae=vae, torch_dtype=dtype, cache_dir="/data2/onkar/video_diffusion_weights")
 pipe.to(device)
 
-pipe.save_pretrained("/data2/onkar/video_diffusion_weights/qwen-wan-MM-3B")
+# pipe.save_pretrained("/data2/onkar/video_diffusion_weights/video_model")
 
 height = 720
 width = 1280
