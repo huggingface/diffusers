@@ -14,15 +14,13 @@
 All the components needed to create the inference server are in `DiffusersServer/`
 
 ```
-DiffusersServer/                 # the example server package
-├── __init__.py                   
+DiffusersServer/
+├── **init**.py
 ├── create_server.py             # helper script to build/run the app programmatically
 ├── Pipelines.py                 # pipeline loader classes (SD3, Flux, legacy SD, video)
-├── serverasync.py               # FastAPI app factory (create_app_fastapi)
-├── superpipeline.py             # optional custom pipeline glue code
+├── serverasync.py               # FastAPI app factory (create\_app\_fastapi)
 ├── uvicorn_diffu.py             # convenience script to start uvicorn with recommended flags
 ```
-
 
 ## What `diffusers-async` adds / Why we needed it
 
@@ -32,7 +30,8 @@ Core problem: a naive server that calls `pipe.__call__` concurrently can hit **r
 
 * **Request-scoped views**: `RequestScopedPipeline` creates a shallow copy of the pipeline per request so heavy weights (UNet, VAE, text encoder) remain shared and *are not duplicated*.
 * **Per-request mutable state**: stateful small objects (scheduler, RNG state, small lists/dicts, callbacks) are cloned per request. Where available we call `scheduler.clone_for_request(...)`, otherwise we fallback to safe `deepcopy` or other heuristics.
-* **`retrieve_timesteps(..., return_scheduler=True)`**: retro-compatible helper that returns `(timesteps, num_inference_steps, scheduler)` without mutating the shared scheduler. This is the safe path for getting a scheduler configured per-request.
+* **Tokenizer concurrency safety**: `RequestScopedPipeline` now manages an internal tokenizer lock. This ensures that Rust tokenizers are safe to use under concurrency — race condition errors like `Already borrowed` no longer occur.
+* **`retrieve_timesteps(..., return_scheduler=True)`**: fully retro-compatible helper that returns `(timesteps, num_inference_steps, scheduler)` without mutating the shared scheduler. For users not using `return_scheduler=True`, the behavior is identical to the original API.
 * **Robust attribute handling**: wrapper avoids writing to read-only properties (e.g., `components`) and auto-detects small mutable attributes to clone while avoiding duplication of large tensors.
 
 ## How the server works (high-level flow)
@@ -51,7 +50,6 @@ Core problem: a naive server that calls `pipe.__call__` concurrently can hit **r
 3. **Result**: inference completes, images are moved to CPU & saved (if requested), internal buffers freed (GC + `torch.cuda.empty_cache()`).
 4. Multiple requests can run in parallel while sharing heavy weights and isolating mutable state.
 
-
 ## How to set up and run the server
 
 ### 1) Install dependencies
@@ -65,7 +63,7 @@ If using the `diffusers` fork via git, either:
 ```bash
 pip install "git+https://github.com/F4k3r22/diffusers-async.git@main"
 pip install -r requirements.txt
-```
+````
 
 ### 2) Start the server
 
@@ -97,17 +95,14 @@ Response example:
 
 ## Troubleshooting (quick)
 
-* `Already borrowed` — tokenizers (Rust) error when used concurrently.
+* `Already borrowed` — previously a Rust tokenizer concurrency error.
+  ✅ This is now fixed: `RequestScopedPipeline` manages an internal tokenizer lock so race conditions no longer happen.
 
-  * Workarounds:
-
-    * Acquire a `Lock` around tokenization or around the pipeline call (serializes that part).
-    * Use the slow tokenizer (`converter_to_slow`) for concurrency tests.
-    * Patch only the tokenization method to use a lock instead of serializing entire forward.
 * `can't set attribute 'components'` — pipeline exposes read-only `components`.
 
   * The RequestScopedPipeline now detects read-only properties and skips setting them.
+
 * Scheduler issues:
 
   * If the scheduler doesn't implement `clone_for_request` and `deepcopy` fails, we log and fallback — but prefer `retrieve_timesteps(..., return_scheduler=True)` to avoid mutating the shared scheduler.
-
+  * ✅ Note: `retrieve_timesteps` is fully retro-compatible — if you don’t pass `return_scheduler=True`, the behavior is unchanged.
