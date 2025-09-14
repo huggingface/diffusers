@@ -193,24 +193,28 @@ jobs:
       run: |
         python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
         python -m uv pip install -e [quality,test,training]
+        python -m uv pip install peft@git+https://github.com/huggingface/peft.git
     - name: Environment
       run: |
         python utils/print_env.py
-    - name: Run torch compile tests on GPU
+    - name: Run torch hotswap + compile tests on GPU
       env:
         HF_TOKEN: ${{ secrets.DIFFUSERS_HF_HUB_READ_TOKEN }}
         RUN_COMPILE: yes
       run: |
         python -m pytest -n 1 --max-worker-restart=0 --dist=loadfile -s -v -k "compile" --make-reports=tests_torch_compile_cuda tests/
+        python -m pytest -n 1 --max-worker-restart=0 --dist=loadfile -s -v -k "hotswap" --make-reports=tests_torch_hotswap_cuda tests/
     - name: Failure short reports
       if: ${{ failure() }}
-      run: cat reports/tests_torch_compile_cuda_failures_short.txt
+      run: |
+        cat reports/tests_torch_compile_cuda_failures_short.txt
+        cat reports/tests_torch_hotswap_cuda_failures_short.txt
 
     - name: Test suite reports artifacts
       if: ${{ always() }}
       uses: actions/upload-artifact@v4
       with:
-        name: torch_compile_test_reports
+        name: torch_compile_hotswap_test_reports
         path: reports
 
   run_big_gpu_torch_tests:
