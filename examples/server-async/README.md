@@ -1,6 +1,7 @@
 # Asynchronous server and parallel execution of models
 
 > Example/demo server that keeps a single model in memory while safely running parallel inference requests by creating per-request lightweight views and cloning only small, stateful components (schedulers, RNG state, small mutable attrs). Works with StableDiffusion3/Flux pipelines and a custom `diffusers` fork.
+> We recommend running about 10 to 50 inferences in parallel to have a good performance of 25-30s to 1-1:30min on average
 
 ## ⚠️ IMPORTANT
 
