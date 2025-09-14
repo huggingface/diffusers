@@ -20,7 +20,8 @@ from diffusers import (
     WanVACETransformer3DModel,
 )
 from diffusers.utils import load_image
-from diffusers.utils.testing_utils import (
+
+from ...testing_utils import (
     Expectations,
     backend_empty_cache,
     backend_max_memory_allocated,
@@ -30,20 +31,76 @@ from diffusers.utils.testing_utils import (
     nightly,
     numpy_cosine_similarity_distance,
     require_accelerate,
+    require_accelerator,
     require_big_accelerator,
     require_gguf_version_greater_or_equal,
+    require_kernels_version_greater_or_equal,
     require_peft_backend,
     require_torch_version_greater,
     torch_device,
 )
-
 from ..test_torch_compile_utils import QuantCompileTests
 
 
 if is_gguf_available():
+    import gguf
+
     from diffusers.quantizers.gguf.utils import GGUFLinear, GGUFParameter
 
 enable_full_determinism()
+
+
+@nightly
+@require_accelerate
+@require_accelerator
+@require_gguf_version_greater_or_equal("0.10.0")
+@require_kernels_version_greater_or_equal("0.9.0")
+class GGUFCudaKernelsTests(unittest.TestCase):
+    def setUp(self):
+        gc.collect()
+        backend_empty_cache(torch_device)
+
+    def tearDown(self):
+        gc.collect()
+        backend_empty_cache(torch_device)
+
+    def test_cuda_kernels_vs_native(self):
+        if torch_device != "cuda":
+            self.skipTest("CUDA kernels test requires CUDA device")
+
+        from diffusers.quantizers.gguf.utils import GGUFLinear, can_use_cuda_kernels
+
+        if not can_use_cuda_kernels:
+            self.skipTest("CUDA kernels not available (compute capability < 7 or kernels not installed)")
+
+        test_quant_types = ["Q4_0", "Q4_K"]
+        test_shape = (1, 64, 512)  # batch, seq_len, hidden_dim
+        compute_dtype = torch.bfloat16
+
+        for quant_type in test_quant_types:
+            qtype = getattr(gguf.GGMLQuantizationType, quant_type)
+            in_features, out_features = 512, 512
+
+            torch.manual_seed(42)
+            float_weight = torch.randn(out_features, in_features, dtype=torch.float32)
+            quantized_data = gguf.quants.quantize(float_weight.numpy(), qtype)
+            weight_data = torch.from_numpy(quantized_data).to(device=torch_device)
+            weight = GGUFParameter(weight_data, quant_type=qtype)
+
+            x = torch.randn(test_shape, dtype=compute_dtype, device=torch_device)
+
+            linear = GGUFLinear(in_features, out_features, bias=True, compute_dtype=compute_dtype)
+            linear.weight = weight
+            linear.bias = nn.Parameter(torch.randn(out_features, dtype=compute_dtype))
+            linear = linear.to(torch_device)
+
+            with torch.no_grad():
+                output_native = linear.forward_native(x)
+                output_cuda = linear.forward_cuda(x)
+
+            assert torch.allclose(output_native, output_cuda, 1e-2), (
+                f"GGUF CUDA Kernel Output is different from Native Output for {quant_type}"
+            )
 
 
 @nightly
@@ -155,6 +212,7 @@ class GGUFSingleFileTesterMixin:
 
 class FluxGGUFSingleFileTests(GGUFSingleFileTesterMixin, unittest.TestCase):
     ckpt_path = "https://huggingface.co/city96/FLUX.1-dev-gguf/blob/main/flux1-dev-Q2_K.gguf"
+    diffusers_ckpt_path = "https://huggingface.co/sayakpaul/flux-diffusers-gguf/blob/main/model-Q4_0.gguf"
     torch_dtype = torch.bfloat16
     model_cls = FluxTransformer2DModel
     expected_memory_use_in_gb = 5
@@ -239,6 +297,16 @@ class FluxGGUFSingleFileTests(GGUFSingleFileTesterMixin, unittest.TestCase):
         max_diff = numpy_cosine_similarity_distance(expected_slice, output_slice)
         assert max_diff < 1e-4
 
+    def test_loading_gguf_diffusers_format(self):
+        model = self.model_cls.from_single_file(
+            self.diffusers_ckpt_path,
+            subfolder="transformer",
+            quantization_config=GGUFQuantizationConfig(compute_dtype=torch.bfloat16),
+            config="black-forest-labs/FLUX.1-dev",
+        )
+        model.to(torch_device)
+        model(**self.get_dummy_inputs())
+
 
 class SD35LargeGGUFSingleFileTests(GGUFSingleFileTesterMixin, unittest.TestCase):
     ckpt_path = "https://huggingface.co/city96/stable-diffusion-3.5-large-gguf/blob/main/sd3.5_large-Q4_0.gguf"
@@ -292,33 +360,33 @@ class SD35LargeGGUFSingleFileTests(GGUFSingleFileTesterMixin, unittest.TestCase)
             {
                 ("xpu", 3): np.array(
                     [
-                        0.16210938,
-                        0.2734375,
-                        0.27734375,
-                        0.109375,
-                        0.27148438,
-                        0.2578125,
-                        0.1015625,
-                        0.2578125,
-                        0.2578125,
-                        0.14453125,
-                        0.26953125,
-                        0.29492188,
-                        0.12890625,
-                        0.28710938,
-                        0.30078125,
-                        0.11132812,
-                        0.27734375,
-                        0.27929688,
-                        0.15625,
-                        0.31054688,
-                        0.296875,
-                        0.15234375,
-                        0.3203125,
-                        0.29492188,
-                        0.140625,
+                        0.1953125,
+                        0.3125,
+                        0.31445312,
+                        0.13085938,
+                        0.30664062,
+                        0.29296875,
+                        0.11523438,
+                        0.2890625,
+                        0.28320312,
+                        0.16601562,
                         0.3046875,
-                        0.28515625,
+                        0.328125,
+                        0.140625,
+                        0.31640625,
+                        0.32421875,
+                        0.12304688,
+                        0.3046875,
+                        0.3046875,
+                        0.17578125,
+                        0.3359375,
+                        0.3203125,
+                        0.16601562,
+                        0.34375,
+                        0.31640625,
+                        0.15429688,
+                        0.328125,
+                        0.31054688,
                     ]
                 ),
                 ("cuda", 7): np.array(
@@ -593,7 +661,7 @@ class WanGGUFTexttoVideoSingleFileTests(GGUFSingleFileTesterMixin, unittest.Test
 
     def get_dummy_inputs(self):
         return {
-            "hidden_states": torch.randn((1, 36, 2, 64, 64), generator=torch.Generator("cpu").manual_seed(0)).to(
+            "hidden_states": torch.randn((1, 16, 2, 64, 64), generator=torch.Generator("cpu").manual_seed(0)).to(
                 torch_device, self.torch_dtype
             ),
             "encoder_hidden_states": torch.randn(

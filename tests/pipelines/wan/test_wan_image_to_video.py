@@ -12,8 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import tempfile
 import unittest
 
+import numpy as np
 import torch
 from PIL import Image
 from transformers import (
@@ -25,8 +27,8 @@ from transformers import (
 )
 
 from diffusers import AutoencoderKLWan, FlowMatchEulerDiscreteScheduler, WanImageToVideoPipeline, WanTransformer3DModel
-from diffusers.utils.testing_utils import enable_full_determinism
 
+from ...testing_utils import enable_full_determinism, torch_device
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
 from ..test_pipelines_common import PipelineTesterMixin
 
@@ -87,23 +89,6 @@ class WanImageToVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         )
 
         torch.manual_seed(0)
-        transformer_2 = WanTransformer3DModel(
-            patch_size=(1, 2, 2),
-            num_attention_heads=2,
-            attention_head_dim=12,
-            in_channels=36,
-            out_channels=16,
-            text_dim=32,
-            freq_dim=256,
-            ffn_dim=32,
-            num_layers=2,
-            cross_attn_norm=True,
-            qk_norm="rms_norm_across_heads",
-            rope_max_seq_len=32,
-            image_dim=4,
-        )
-
-        torch.manual_seed(0)
         image_encoder_config = CLIPVisionConfig(
             hidden_size=4,
             projection_dim=4,
@@ -126,7 +111,7 @@ class WanImageToVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "tokenizer": tokenizer,
             "image_encoder": image_encoder,
             "image_processor": image_processor,
-            "transformer_2": transformer_2,
+            "transformer_2": None,
         }
         return components
 
@@ -182,11 +167,44 @@ class WanImageToVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     def test_inference_batch_single_identical(self):
         pass
 
-    @unittest.skip(
-        "TODO: refactor this test: one component can be optional for certain checkpoints but not for others"
-    )
-    def test_save_load_optional_components(self):
-        pass
+    # _optional_components include transformer, transformer_2 and image_encoder, image_processor, but only transformer_2 is optional for wan2.1 i2v pipeline
+    def test_save_load_optional_components(self, expected_max_difference=1e-4):
+        optional_component = "transformer_2"
+
+        components = self.get_dummy_components()
+        components[optional_component] = None
+        pipe = self.pipeline_class(**components)
+        for component in pipe.components.values():
+            if hasattr(component, "set_default_attn_processor"):
+                component.set_default_attn_processor()
+        pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        generator_device = "cpu"
+        inputs = self.get_dummy_inputs(generator_device)
+        torch.manual_seed(0)
+        output = pipe(**inputs)[0]
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            pipe.save_pretrained(tmpdir, safe_serialization=False)
+            pipe_loaded = self.pipeline_class.from_pretrained(tmpdir)
+            for component in pipe_loaded.components.values():
+                if hasattr(component, "set_default_attn_processor"):
+                    component.set_default_attn_processor()
+            pipe_loaded.to(torch_device)
+            pipe_loaded.set_progress_bar_config(disable=None)
+
+        self.assertTrue(
+            getattr(pipe_loaded, optional_component) is None,
+            f"`{optional_component}` did not stay set to None after loading.",
+        )
+
+        inputs = self.get_dummy_inputs(generator_device)
+        torch.manual_seed(0)
+        output_loaded = pipe_loaded(**inputs)[0]
+
+        max_diff = np.abs(output.detach().cpu().numpy() - output_loaded.detach().cpu().numpy()).max()
+        self.assertLess(max_diff, expected_max_difference)
 
 
 class WanFLFToVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
@@ -243,24 +261,6 @@ class WanFLFToVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         )
 
         torch.manual_seed(0)
-        transformer_2 = WanTransformer3DModel(
-            patch_size=(1, 2, 2),
-            num_attention_heads=2,
-            attention_head_dim=12,
-            in_channels=36,
-            out_channels=16,
-            text_dim=32,
-            freq_dim=256,
-            ffn_dim=32,
-            num_layers=2,
-            cross_attn_norm=True,
-            qk_norm="rms_norm_across_heads",
-            rope_max_seq_len=32,
-            image_dim=4,
-            pos_embed_seq_len=2 * (4 * 4 + 1),
-        )
-
-        torch.manual_seed(0)
         image_encoder_config = CLIPVisionConfig(
             hidden_size=4,
             projection_dim=4,
@@ -283,7 +283,7 @@ class WanFLFToVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "tokenizer": tokenizer,
             "image_encoder": image_encoder,
             "image_processor": image_processor,
-            "transformer_2": transformer_2,
+            "transformer_2": None,
         }
         return components
 
@@ -341,8 +341,41 @@ class WanFLFToVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     def test_inference_batch_single_identical(self):
         pass
 
-    @unittest.skip(
-        "TODO: refactor this test: one component can be optional for certain checkpoints but not for others"
-    )
-    def test_save_load_optional_components(self):
-        pass
+    # _optional_components include transformer, transformer_2 and image_encoder, image_processor, but only transformer_2 is optional for wan2.1 FLFT2V pipeline
+    def test_save_load_optional_components(self, expected_max_difference=1e-4):
+        optional_component = "transformer_2"
+
+        components = self.get_dummy_components()
+        components[optional_component] = None
+        pipe = self.pipeline_class(**components)
+        for component in pipe.components.values():
+            if hasattr(component, "set_default_attn_processor"):
+                component.set_default_attn_processor()
+        pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        generator_device = "cpu"
+        inputs = self.get_dummy_inputs(generator_device)
+        torch.manual_seed(0)
+        output = pipe(**inputs)[0]
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            pipe.save_pretrained(tmpdir, safe_serialization=False)
+            pipe_loaded = self.pipeline_class.from_pretrained(tmpdir)
+            for component in pipe_loaded.components.values():
+                if hasattr(component, "set_default_attn_processor"):
+                    component.set_default_attn_processor()
+            pipe_loaded.to(torch_device)
+            pipe_loaded.set_progress_bar_config(disable=None)
+
+        self.assertTrue(
+            getattr(pipe_loaded, optional_component) is None,
+            f"`{optional_component}` did not stay set to None after loading.",
+        )
+
+        inputs = self.get_dummy_inputs(generator_device)
+        torch.manual_seed(0)
+        output_loaded = pipe_loaded(**inputs)[0]
+
+        max_diff = np.abs(output.detach().cpu().numpy() - output_loaded.detach().cpu().numpy()).max()
+        self.assertLess(max_diff, expected_max_difference)
