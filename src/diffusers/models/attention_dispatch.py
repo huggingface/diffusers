@@ -27,6 +27,8 @@ from ..utils import (
     is_flash_attn_available,
     is_flash_attn_version,
     is_kernels_available,
+    is_magi_attn_available,
+    is_magi_attn_version,
     is_sageattention_available,
     is_sageattention_version,
     is_torch_npu_available,
@@ -44,6 +46,7 @@ _REQUIRED_SAGE_VERSION = "2.1.1"
 _REQUIRED_FLEX_VERSION = "2.5.0"
 _REQUIRED_XLA_VERSION = "2.2"
 _REQUIRED_XFORMERS_VERSION = "0.0.29"
+_REQUIRED_MAGI_VERSION = "1.0.3"
 
 _CAN_USE_FLASH_ATTN = is_flash_attn_available() and is_flash_attn_version(">=", _REQUIRED_FLASH_VERSION)
 _CAN_USE_FLASH_ATTN_3 = is_flash_attn_3_available()
@@ -52,7 +55,7 @@ _CAN_USE_FLEX_ATTN = is_torch_version(">=", _REQUIRED_FLEX_VERSION)
 _CAN_USE_NPU_ATTN = is_torch_npu_available()
 _CAN_USE_XLA_ATTN = is_torch_xla_available() and is_torch_xla_version(">=", _REQUIRED_XLA_VERSION)
 _CAN_USE_XFORMERS_ATTN = is_xformers_available() and is_xformers_version(">=", _REQUIRED_XFORMERS_VERSION)
-
+_CAN_USE_MAGI_ATTN = is_magi_attn_available() and is_magi_attn_version(">=", _REQUIRED_MAGI_VERSION)
 
 if _CAN_USE_FLASH_ATTN:
     from flash_attn import flash_attn_func, flash_attn_varlen_func
@@ -121,6 +124,11 @@ if _CAN_USE_XFORMERS_ATTN:
     import xformers.ops as xops
 else:
     xops = None
+
+if _CAN_USE_MAGI_ATTN:
+    from magi_attention.functional import flex_flash_attn_func
+else:
+    flex_flash_attn_func = None
 
 # Version guard for PyTorch compatibility - custom_op was added in PyTorch 2.4
 if torch.__version__ >= "2.4.0":
@@ -191,6 +199,9 @@ class AttentionBackendName(str, Enum):
 
     # `xformers`
     XFORMERS = "xformers"
+
+    # `magi-attention`
+    MAGI = "magi"
 
 
 class _AttentionBackendRegistry:
@@ -411,6 +422,11 @@ def _check_attention_backend_requirements(backend: AttentionBackendName) -> None
         if not _CAN_USE_XFORMERS_ATTN:
             raise RuntimeError(
                 f"Xformers Attention backend '{backend.value}' is not usable because of missing package or the version is too old. Please install `xformers>={_REQUIRED_XFORMERS_VERSION}`."
+            )
+    elif backend == AttentionBackendName.MAGI:
+        if not _CAN_USE_MAGI_ATTN:
+            raise RuntimeError(
+                f"Magi Attention backend '{backend.value}' is not usable because of missing package or the version is too old. Please install `magi-attention>={_REQUIRED_MAGI_VERSION}`."
             )
 
 
@@ -1300,5 +1316,75 @@ def _xformers_attention(
 
     if enable_gqa:
         out = out.flatten(2, 3)
+
+    return out
+
+
+@_AttentionBackendRegistry.register(
+    AttentionBackendName.MAGI,
+    constraints=[_check_device, _check_qkv_dtype_bf16_or_fp16, _check_shape],
+)
+def _magi_attention(
+    query: torch.Tensor,
+    key: torch.Tensor,
+    value: torch.Tensor,
+    q_ranges: torch.Tensor,
+    k_ranges: torch.Tensor,
+    max_seqlen_q: int,
+    max_seqlen_k: int,
+    attn_type_map: torch.Tensor | None = None,
+    softmax_scale: float | None = None,
+    softcap: float = 0.0,
+    deterministic: bool = False,
+    sm_margin: int = 0,
+    disable_fwd_atomic_reduction: bool = False,
+    auto_range_merge: bool = False,
+    ref_block_size: tuple[int, int] | None = None,
+) -> torch.Tensor:
+    batch_size, seq_len_q, _, _ = query.shape
+    _, seq_len_kv, _, _ = key.shape
+
+    if attn_mask is not None:
+        attn_mask = _normalize_attn_mask(attn_mask, batch_size, seq_len_kv)
+
+    if any(x is None for x in (cu_seqlens_q, cu_seqlens_k, max_seqlen_q, max_seqlen_k)):
+        (_, seqlens_k), (cu_seqlens_q, cu_seqlens_k), (max_seqlen_q, max_seqlen_k) = (
+            _prepare_for_flash_attn_or_sage_varlen(
+                batch_size, seq_len_q, seq_len_kv, attn_mask=attn_mask, device=query.device
+            )
+        )
+    else:
+        seqlens_k = torch.full((batch_size,), max_seqlen_k, dtype=torch.int32, device=query.device)
+        cu_seqlens_q = cu_seqlens_q.to(dtype=torch.int32, device=query.device)
+        cu_seqlens_k = cu_seqlens_k.to(dtype=torch.int32, device=query.device)
+
+    key_valid, value_valid = [], []
+    for b in range(batch_size):
+        valid_len = seqlens_k[b]
+        key_valid.append(key[b, :valid_len])
+        value_valid.append(value[b, :valid_len])
+
+    query_packed = query.flatten(0, 1)
+    key_packed = torch.cat(key_valid, dim=0)
+    value_packed = torch.cat(value_valid, dim=0)
+
+    out = flex_flash_attn_func(
+        q=query_packed,
+        k=key_packed,
+        v=value_packed,
+        q_ranges=q_ranges,
+        k_ranges=k_ranges,
+        max_seqlen_q=max_seqlen_q,
+        max_seqlen_k=max_seqlen_k,
+        attn_type_map=attn_type_map,
+        softmax_scale=softmax_scale,
+        softcap=softcap,
+        deterministic=deterministic,
+        sm_margin=sm_margin,
+        disable_fwd_atomic_reduction=disable_fwd_atomic_reduction,
+        auto_range_merge=auto_range_merge,
+        ref_block_size=ref_block_size,
+    )
+    out = out.unflatten(0, (batch_size, -1))
 
     return out
