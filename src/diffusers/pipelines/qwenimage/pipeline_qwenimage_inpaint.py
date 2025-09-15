@@ -193,54 +193,6 @@ class QwenImageInpaintPipeline(DiffusionPipeline, QwenImagePipelineMixin, QwenIm
         self.prompt_template_encode_start_idx = 34
         self.default_sample_size = 128
 
-    # Copied from diffusers.pipelines.qwenimage.pipeline_qwenimage.QwenImagePipeline._extract_masked_hidden
-    def _extract_masked_hidden(self, hidden_states: torch.Tensor, mask: torch.Tensor):
-        bool_mask = mask.bool()
-        valid_lengths = bool_mask.sum(dim=1)
-        selected = hidden_states[bool_mask]
-        split_result = torch.split(selected, valid_lengths.tolist(), dim=0)
-
-        return split_result
-
-    # Copied from diffusers.pipelines.qwenimage.pipeline_qwenimage.QwenImagePipeline._get_qwen_prompt_embeds
-    def _get_qwen_prompt_embeds(
-        self,
-        prompt: Union[str, List[str]] = None,
-        device: Optional[torch.device] = None,
-        dtype: Optional[torch.dtype] = None,
-    ):
-        device = device or self._execution_device
-        dtype = dtype or self.text_encoder.dtype
-
-        prompt = [prompt] if isinstance(prompt, str) else prompt
-
-        template = self.prompt_template_encode
-        drop_idx = self.prompt_template_encode_start_idx
-        txt = [template.format(e) for e in prompt]
-        txt_tokens = self.tokenizer(
-            txt, max_length=self.tokenizer_max_length + drop_idx, padding=True, truncation=True, return_tensors="pt"
-        ).to(device)
-        encoder_hidden_states = self.text_encoder(
-            input_ids=txt_tokens.input_ids,
-            attention_mask=txt_tokens.attention_mask,
-            output_hidden_states=True,
-        )
-        hidden_states = encoder_hidden_states.hidden_states[-1]
-        split_hidden_states = self._extract_masked_hidden(hidden_states, txt_tokens.attention_mask)
-        split_hidden_states = [e[drop_idx:] for e in split_hidden_states]
-        attn_mask_list = [torch.ones(e.size(0), dtype=torch.long, device=e.device) for e in split_hidden_states]
-        max_seq_len = max([e.size(0) for e in split_hidden_states])
-        prompt_embeds = torch.stack(
-            [torch.cat([u, u.new_zeros(max_seq_len - u.size(0), u.size(1))]) for u in split_hidden_states]
-        )
-        encoder_attention_mask = torch.stack(
-            [torch.cat([u, u.new_zeros(max_seq_len - u.size(0))]) for u in attn_mask_list]
-        )
-
-        prompt_embeds = prompt_embeds.to(dtype=dtype, device=device)
-
-        return prompt_embeds, encoder_attention_mask
-
     # Copied from diffusers.pipelines.qwenimage.pipeline_qwenimage_img2img.QwenImageImg2ImgPipeline._encode_vae_image
     def _encode_vae_image(self, image: torch.Tensor, generator: torch.Generator):
         if isinstance(generator, list):
@@ -276,48 +228,6 @@ class QwenImageInpaintPipeline(DiffusionPipeline, QwenImagePipelineMixin, QwenIm
             self.scheduler.set_begin_index(t_start * self.scheduler.order)
 
         return timesteps, num_inference_steps - t_start
-
-    # Copied fromCopied from diffusers.pipelines.qwenimage.pipeline_qwenimage.QwenImagePipeline.encode_prompt
-    def encode_prompt(
-        self,
-        prompt: Union[str, List[str]],
-        device: Optional[torch.device] = None,
-        num_images_per_prompt: int = 1,
-        prompt_embeds: Optional[torch.Tensor] = None,
-        prompt_embeds_mask: Optional[torch.Tensor] = None,
-        max_sequence_length: int = 1024,
-    ):
-        r"""
-
-        Args:
-            prompt (`str` or `List[str]`, *optional*):
-                prompt to be encoded
-            device: (`torch.device`):
-                torch device
-            num_images_per_prompt (`int`):
-                number of images that should be generated per prompt
-            prompt_embeds (`torch.Tensor`, *optional*):
-                Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
-                provided, text embeddings will be generated from `prompt` input argument.
-        """
-        device = device or self._execution_device
-
-        prompt = [prompt] if isinstance(prompt, str) else prompt
-        batch_size = len(prompt) if prompt_embeds is None else prompt_embeds.shape[0]
-
-        if prompt_embeds is None:
-            prompt_embeds, prompt_embeds_mask = self._get_qwen_prompt_embeds(prompt, device)
-
-        prompt_embeds = prompt_embeds[:, :max_sequence_length]
-        prompt_embeds_mask = prompt_embeds_mask[:, :max_sequence_length]
-
-        _, seq_len, _ = prompt_embeds.shape
-        prompt_embeds = prompt_embeds.repeat(1, num_images_per_prompt, 1)
-        prompt_embeds = prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
-        prompt_embeds_mask = prompt_embeds_mask.repeat(1, num_images_per_prompt, 1)
-        prompt_embeds_mask = prompt_embeds_mask.view(batch_size * num_images_per_prompt, seq_len)
-
-        return prompt_embeds, prompt_embeds_mask
 
     def check_inputs(
         self,
