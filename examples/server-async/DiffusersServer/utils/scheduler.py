@@ -7,14 +7,31 @@ class BaseAsyncScheduler:
     def __init__(self, scheduler: Any):
         self.scheduler = scheduler
 
+    def __getattr__(self, name: str):
+        if hasattr(self.scheduler, name):
+            return getattr(self.scheduler, name)
+        raise AttributeError(f"'{self.__class__.__name__}' object has no attribute '{name}'")
+    
+    def __setattr__(self, name: str, value):
+        if name == 'scheduler':
+            super().__setattr__(name, value)
+        else:
+            if hasattr(self, 'scheduler') and hasattr(self.scheduler, name):
+                setattr(self.scheduler, name, value)
+            else:
+                super().__setattr__(name, value)
+
     def clone_for_request(self, num_inference_steps: int, device: Union[str, torch.device, None] = None, **kwargs):
         local = copy.deepcopy(self.scheduler)
-
         local.set_timesteps(num_inference_steps=num_inference_steps, device=device, **kwargs)
-
         cloned = self.__class__(local)
-        
         return cloned
+
+    def __repr__(self):
+        return f"BaseAsyncScheduler({repr(self.scheduler)})"
+    
+    def __str__(self):
+        return f"BaseAsyncScheduler wrapping: {str(self.scheduler)}"
 
 
 def async_retrieve_timesteps(
