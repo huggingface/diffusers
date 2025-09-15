@@ -207,6 +207,7 @@ DIFFUSERS_DEFAULT_PIPELINE_PATHS = {
     "wan-i2v-14B": {"pretrained_model_name_or_path": "Wan-AI/Wan2.1-I2V-14B-480P-Diffusers"},
     "wan-vace-1.3B": {"pretrained_model_name_or_path": "Wan-AI/Wan2.1-VACE-1.3B-diffusers"},
     "wan-vace-14B": {"pretrained_model_name_or_path": "Wan-AI/Wan2.1-VACE-14B-diffusers"},
+    "wan-2-2-i2v-14B": {"pretrained_model_name_or_path": "Wan-AI/Wan-AI/Wan2.1-I2V-14B-720P-Diffusers"},
     "hidream": {"pretrained_model_name_or_path": "HiDream-ai/HiDream-I1-Dev"},
     "cosmos-1.0-t2w-7B": {"pretrained_model_name_or_path": "nvidia/Cosmos-1.0-Diffusion-7B-Text2World"},
     "cosmos-1.0-t2w-14B": {"pretrained_model_name_or_path": "nvidia/Cosmos-1.0-Diffusion-14B-Text2World"},
@@ -732,7 +733,10 @@ def infer_diffusers_model_type(checkpoint):
         elif checkpoint[target_key].shape[0] == 5120 and checkpoint[target_key].shape[1] == 16:
             model_type = "wan-t2v-14B"
         else:
-            model_type = "wan-i2v-14B"
+            if "img_emb.proj.0.bias" in checkpoint:
+                model_type = "wan-i2v-14B"
+            else:
+                model_type = "wan-2-2-i2v-14B"
 
     elif CHECKPOINT_KEY_NAMES["wan_vae"] in checkpoint:
         # All Wan models use the same VAE so we can use the same default model repo to fetch the config
