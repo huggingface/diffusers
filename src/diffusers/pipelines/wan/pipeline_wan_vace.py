@@ -814,7 +814,7 @@ class WanVACEPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             video,
             mask,
             reference_images,
-            guidance_scale_2
+            guidance_scale_2,
         )
 
         if num_frames % self.vae_scale_factor_temporal != 1:
