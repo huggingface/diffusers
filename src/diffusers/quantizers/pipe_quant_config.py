@@ -48,12 +48,15 @@ class PipelineQuantizationConfig:
         self,
         quant_backend: str = None,
         quant_kwargs: Dict[str, Union[str, float, int, dict]] = None,
-        components_to_quantize: Optional[List[str]] = None,
+        components_to_quantize: Optional[Union[List[str], str]] = None,
         quant_mapping: Dict[str, Union[DiffQuantConfigMixin, "TransformersQuantConfigMixin"]] = None,
     ):
         self.quant_backend = quant_backend
         # Initialize kwargs to be {} to set to the defaults.
         self.quant_kwargs = quant_kwargs or {}
+        if components_to_quantize:
+            if isinstance(components_to_quantize, str):
+                components_to_quantize = [components_to_quantize]
         self.components_to_quantize = components_to_quantize
         self.quant_mapping = quant_mapping
         self.config_mapping = {}  # book-keeping Example: `{module_name: quant_config}`

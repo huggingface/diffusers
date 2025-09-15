@@ -45,15 +45,15 @@ class PyramidAttentionBroadcastConfig:
         spatial_attention_block_skip_range (`int`, *optional*, defaults to `None`):
             The number of times a specific spatial attention broadcast is skipped before computing the attention states
             to re-use. If this is set to the value `N`, the attention computation will be skipped `N - 1` times (i.e.,
-            old attention states will be re-used) before computing the new attention states again.
+            old attention states will be reused) before computing the new attention states again.
         temporal_attention_block_skip_range (`int`, *optional*, defaults to `None`):
             The number of times a specific temporal attention broadcast is skipped before computing the attention
             states to re-use. If this is set to the value `N`, the attention computation will be skipped `N - 1` times
-            (i.e., old attention states will be re-used) before computing the new attention states again.
+            (i.e., old attention states will be reused) before computing the new attention states again.
         cross_attention_block_skip_range (`int`, *optional*, defaults to `None`):
             The number of times a specific cross-attention broadcast is skipped before computing the attention states
             to re-use. If this is set to the value `N`, the attention computation will be skipped `N - 1` times (i.e.,
-            old attention states will be re-used) before computing the new attention states again.
+            old attention states will be reused) before computing the new attention states again.
         spatial_attention_timestep_skip_range (`Tuple[int, int]`, defaults to `(100, 800)`):
             The range of timesteps to skip in the spatial attention layer. The attention computations will be
             conditionally skipped if the current timestep is within the specified range.
@@ -305,7 +305,7 @@ def _apply_pyramid_attention_broadcast_hook(
         block_skip_range (`int`):
             The number of times a specific attention broadcast is skipped before computing the attention states to
             re-use. If this is set to the value `N`, the attention computation will be skipped `N - 1` times (i.e., old
-            attention states will be re-used) before computing the new attention states again.
+            attention states will be reused) before computing the new attention states again.
         current_timestep_callback (`Callable[[], int]`):
             A callback function that returns the current inference timestep.
     """
