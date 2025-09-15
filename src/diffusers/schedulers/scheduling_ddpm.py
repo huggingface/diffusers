@@ -322,7 +322,6 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
 
         self.timesteps = torch.from_numpy(timesteps).to(device)
 
-
     def _get_variance(self, t, predicted_variance=None, variance_type=None):
         prev_t = self.previous_timestep(t)
 

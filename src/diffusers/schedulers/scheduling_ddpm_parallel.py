@@ -332,7 +332,6 @@ class DDPMParallelScheduler(SchedulerMixin, ConfigMixin):
 
         self.timesteps = torch.from_numpy(timesteps).to(device)
 
-
     # Copied from diffusers.schedulers.scheduling_ddpm.DDPMScheduler._get_variance
     def _get_variance(self, t, predicted_variance=None, variance_type=None):
         prev_t = self.previous_timestep(t)

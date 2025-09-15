@@ -521,7 +521,6 @@ class TCDScheduler(SchedulerMixin, ConfigMixin):
         self._step_index = None
         self._begin_index = None
 
-
     def step(
         self,
         model_output: torch.Tensor,

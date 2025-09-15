@@ -161,7 +161,6 @@ class DDPMWuerstchenScheduler(SchedulerMixin, ConfigMixin):
             timesteps = torch.Tensor(timesteps).to(device)
         self.timesteps = timesteps
 
-
     def step(
         self,
         model_output: torch.Tensor,

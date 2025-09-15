@@ -303,7 +303,6 @@ class CogVideoXDPMScheduler(SchedulerMixin, ConfigMixin):
 
         self.timesteps = torch.from_numpy(timesteps).to(device)
 
-
     def get_variables(self, alpha_prod_t, alpha_prod_t_prev, alpha_prod_t_back=None):
         lamb = ((alpha_prod_t / (1 - alpha_prod_t)) ** 0.5).log()
         lamb_next = ((alpha_prod_t_prev / (1 - alpha_prod_t_prev)) ** 0.5).log()

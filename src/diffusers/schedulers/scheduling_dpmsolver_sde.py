@@ -412,7 +412,6 @@ class DPMSolverSDEScheduler(SchedulerMixin, ConfigMixin):
         self.sigmas = self.sigmas.to("cpu")  # to avoid too much CPU/GPU communication
         self.noise_sampler = None
 
-
     def _second_order_timesteps(self, sigmas, log_sigmas):
         def sigma_fn(_t):
             return np.exp(-_t)

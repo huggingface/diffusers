@@ -109,8 +109,6 @@ class ConsistencyDecoderScheduler(SchedulerMixin, ConfigMixin):
         self.c_out = self.c_out.to(device)
         self.c_in = self.c_in.to(device)
 
-    
-
     @property
     def init_noise_sigma(self):
         return self.sqrt_one_minus_alphas_cumprod[self.timesteps[0]]

@@ -302,7 +302,6 @@ class CogVideoXDDIMScheduler(SchedulerMixin, ConfigMixin):
 
         self.timesteps = torch.from_numpy(timesteps).to(device)
 
-
     def step(
         self,
         model_output: torch.Tensor,

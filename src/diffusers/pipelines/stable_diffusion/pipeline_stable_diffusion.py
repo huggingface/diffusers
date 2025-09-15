@@ -13,6 +13,7 @@
 # limitations under the License.
 import inspect
 from typing import Any, Callable, Dict, List, Optional, Union
+
 import torch
 from packaging import version
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer, CLIPVisionModelWithProjection
@@ -148,7 +149,6 @@ def retrieve_timesteps(
         scheduler.set_timesteps(num_inference_steps, device=device, **kwargs)
         timesteps = scheduler.timesteps
     return timesteps, num_inference_steps
-
 
 
 class StableDiffusionPipeline(

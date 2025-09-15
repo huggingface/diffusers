@@ -197,7 +197,6 @@ class VQDiffusionScheduler(SchedulerMixin, ConfigMixin):
         self.log_cumprod_bt = self.log_cumprod_bt.to(device)
         self.log_cumprod_ct = self.log_cumprod_ct.to(device)
 
-
     def step(
         self,
         model_output: torch.Tensor,

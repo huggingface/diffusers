@@ -160,4 +160,3 @@ class AmusedScheduler(SchedulerMixin, ConfigMixin):
         masked_sample[mask_indices] = self.config.mask_token_id
 
         return masked_sample
-

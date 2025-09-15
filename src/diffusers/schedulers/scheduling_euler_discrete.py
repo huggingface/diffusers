@@ -449,7 +449,6 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         self._begin_index = None
         self.sigmas = sigmas.to("cpu")  # to avoid too much CPU/GPU communication
 
-
     def _sigma_to_t(self, sigma, log_sigmas):
         # get log sigma
         log_sigma = np.log(np.maximum(sigma, 1e-10))

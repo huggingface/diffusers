@@ -243,7 +243,6 @@ class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
         self._begin_index = None
         self.sigmas = self.sigmas.to("cpu")  # to avoid too much CPU/GPU communication
 
-
     # Modified _convert_to_karras implementation that takes in ramp as argument
     def _convert_to_karras(self, ramp):
         """Constructs the noise schedule of Karras et al. (2022)."""
