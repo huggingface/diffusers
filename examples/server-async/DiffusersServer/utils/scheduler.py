@@ -5,14 +5,16 @@ import inspect
 
 class BaseAsyncScheduler:
     def __init__(self, scheduler: Any):
-        pass
+        self.scheduler = scheduler
 
-    def clone_for_request(self, num_inference_steps: int, device: Union[str, torch.device] = None):
-        # I leave it as an example of what the Scheduler should do to implement it later
-        """local = copy.deepcopy(self)
-        local.set_timesteps(num_inference_steps=num_inference_steps, device=device)
-        return local"""
-        pass
+    def clone_for_request(self, num_inference_steps: int, device: Union[str, torch.device, None] = None, **kwargs):
+        local = copy.deepcopy(self.scheduler)
+
+        local.set_timesteps(num_inference_steps=num_inference_steps, device=device, **kwargs)
+
+        cloned = self.__class__(local)
+        
+        return cloned
 
 
 def async_retrieve_timesteps(

@@ -3,6 +3,8 @@ import copy
 import threading
 import torch
 from diffusers.utils import logging
+from .scheduler import BaseAsyncScheduler, async_retrieve_timesteps
+
 
 logger = logging.get_logger(__name__)
 
@@ -27,13 +29,18 @@ class RequestScopedPipeline:
         mutable_attrs: Optional[Iterable[str]] = None,
         auto_detect_mutables: bool = True,
         tensor_numel_threshold: int = 1_000_000,
-        tokenizer_lock: Optional[threading.Lock] = None
+        tokenizer_lock: Optional[threading.Lock] = None,
+        wrap_scheduler: bool = True
     ):
         self._base = pipeline
         self.unet = getattr(pipeline, "unet", None)
         self.vae = getattr(pipeline, "vae", None)
         self.text_encoder = getattr(pipeline, "text_encoder", None)
         self.components = getattr(pipeline, "components", None)
+
+        if wrap_scheduler and hasattr(pipeline, 'scheduler') and pipeline.scheduler is not None:
+            if not isinstance(pipeline.scheduler, BaseAsyncScheduler):
+                pipeline.scheduler = BaseAsyncScheduler(pipeline.scheduler)
 
         self._mutable_attrs = list(mutable_attrs) if mutable_attrs is not None else list(self.DEFAULT_MUTABLE_ATTRS)
         self._tokenizer_lock = tokenizer_lock if tokenizer_lock is not None else threading.Lock()
@@ -48,17 +55,24 @@ class RequestScopedPipeline:
         if base_sched is None:
             return None
 
-        if hasattr(base_sched, "clone_for_request"):
-            try:
-                return base_sched.clone_for_request(num_inference_steps=num_inference_steps, device=device, **clone_kwargs)
-            except Exception as e:
-                logger.debug(f"clone_for_request failed: {e}; falling back to deepcopy()")
+        if not isinstance(base_sched, BaseAsyncScheduler):
+            wrapped_scheduler = BaseAsyncScheduler(base_sched)
+        else:
+            wrapped_scheduler = base_sched
 
         try:
-            return copy.deepcopy(base_sched)
+            return wrapped_scheduler.clone_for_request(
+                num_inference_steps=num_inference_steps, 
+                device=device, 
+                **clone_kwargs
+            )
         except Exception as e:
-            logger.warning(f"Deepcopy of scheduler failed: {e}. Returning original scheduler (*risky*).")
-            return base_sched  
+            logger.debug(f"clone_for_request failed: {e}; falling back to deepcopy()")
+            try:
+                return copy.deepcopy(wrapped_scheduler)
+            except Exception as e:
+                logger.warning(f"Deepcopy of scheduler failed: {e}. Returning original scheduler (*risky*).")
+                return wrapped_scheduler  
 
     def _autodetect_mutables(self, max_attrs: int = 40):
         if not self._auto_detect_mutables:
@@ -197,7 +211,16 @@ class RequestScopedPipeline:
 
         if local_scheduler is not None:
             try:
-                setattr(local_pipe, "scheduler", local_scheduler)
+                timesteps, num_steps, configured_scheduler = async_retrieve_timesteps(
+                    local_scheduler.scheduler,
+                    num_inference_steps=num_inference_steps,
+                    device=device,
+                    return_scheduler=True,
+                    **{k: v for k, v in kwargs.items() if k in ['timesteps', 'sigmas']}
+                )
+
+                final_scheduler = BaseAsyncScheduler(configured_scheduler)
+                setattr(local_pipe, "scheduler", final_scheduler)
             except Exception:
                 logger.warning("Could not set scheduler on local pipe; proceeding without replacing scheduler.")
 
