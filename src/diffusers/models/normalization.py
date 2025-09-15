@@ -21,6 +21,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from ..utils import is_torch_npu_available, is_torch_version
+from ..utils.kernels_utils import use_kernel_forward_from_hub
 from .activations import get_activation
 from .embeddings import CombinedTimestepLabelEmbeddings, PixArtAlphaCombinedTimestepSizeEmbeddings
 
@@ -508,6 +509,7 @@ else:
             return F.layer_norm(input, self.dim, self.weight, self.bias, self.eps)
 
 
+@use_kernel_forward_from_hub("RMSNorm")
 class RMSNorm(nn.Module):
     r"""
     RMS Norm as introduced in https://huggingface.co/papers/1910.07467 by Zhang et al.
