@@ -322,11 +322,6 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
 
         self.timesteps = torch.from_numpy(timesteps).to(device)
 
-    def clone_for_request(self, num_inference_steps: int, device: Union[str, torch.device] = None, timesteps: Optional[List[int]] = None):
-        import copy
-        local = copy.deepcopy(self)
-        local.set_timesteps(num_inference_steps=num_inference_steps, device=device, timesteps=timesteps)
-        return local
 
     def _get_variance(self, t, predicted_variance=None, variance_type=None):
         prev_t = self.previous_timestep(t)

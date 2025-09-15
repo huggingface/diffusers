@@ -412,11 +412,6 @@ class DPMSolverSDEScheduler(SchedulerMixin, ConfigMixin):
         self.sigmas = self.sigmas.to("cpu")  # to avoid too much CPU/GPU communication
         self.noise_sampler = None
 
-    def clone_for_request(self, num_inference_steps: int, device: Union[str, torch.device] = None):
-        import copy
-        local = copy.deepcopy(self)
-        local.set_timesteps(num_inference_steps=num_inference_steps, device=device)
-        return local
 
     def _second_order_timesteps(self, sigmas, log_sigmas):
         def sigma_fn(_t):

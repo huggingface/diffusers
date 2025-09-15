@@ -8,7 +8,6 @@ from ..configuration_utils import ConfigMixin, register_to_config
 from ..utils import BaseOutput
 from ..utils.torch_utils import randn_tensor
 from .scheduling_utils import SchedulerMixin
-import copy
 
 
 # Copied from diffusers.schedulers.scheduling_ddpm.betas_for_alpha_bar
@@ -110,10 +109,7 @@ class ConsistencyDecoderScheduler(SchedulerMixin, ConfigMixin):
         self.c_out = self.c_out.to(device)
         self.c_in = self.c_in.to(device)
 
-    def clone_for_request(self, num_inference_steps: int, device: Union[str, torch.device] = None):
-        local = copy.deepcopy(self)
-        local.set_timesteps(num_inference_steps=num_inference_steps, device=device)
-        return local
+    
 
     @property
     def init_noise_sigma(self):

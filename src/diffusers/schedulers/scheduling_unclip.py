@@ -177,11 +177,6 @@ class UnCLIPScheduler(SchedulerMixin, ConfigMixin):
         timesteps = (np.arange(0, num_inference_steps) * step_ratio).round()[::-1].copy().astype(np.int64)
         self.timesteps = torch.from_numpy(timesteps).to(device)
 
-    def clone_for_request(self, num_inference_steps: int, device: Union[str, torch.device] = None):
-        import copy
-        local = copy.deepcopy(self)
-        local.set_timesteps(num_inference_steps=num_inference_steps, device=device)
-        return local
 
     def _get_variance(self, t, prev_timestep=None, predicted_variance=None, variance_type=None):
         if prev_timestep is None:

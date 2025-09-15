@@ -123,10 +123,6 @@ class ScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
 
         self.timesteps = torch.linspace(1, sampling_eps, num_inference_steps, device=device)
 
-    def clone_for_request(self, num_inference_steps: int, sampling_eps: float = None, device: Union[str, torch.device] = None):
-        local = copy.deepcopy(self)
-        local.set_timesteps(num_inference_steps=num_inference_steps, sampling_eps=sampling_eps, device=device)
-        return local
 
     def set_sigmas(
         self, num_inference_steps: int, sigma_min: float = None, sigma_max: float = None, sampling_eps: float = None

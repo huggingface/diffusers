@@ -3,11 +3,10 @@ from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel
-from .Pipelines import TextToImagePipelineSD3, TextToImagePipelineFlux, TextToImagePipelineSD
+from .Pipelines import TextToImagePipelineSD3, TextToImagePipelineFlux, TextToImagePipelineSD, logger
 import logging
-from diffusers.pipelines.pipeline_utils import RequestScopedPipeline
+from ..utils import RequestScopedPipeline
 from diffusers import *
-from .superpipeline import *
 import random
 import uuid
 import tempfile

@@ -303,11 +303,6 @@ class CogVideoXDPMScheduler(SchedulerMixin, ConfigMixin):
 
         self.timesteps = torch.from_numpy(timesteps).to(device)
 
-    def clone_for_request(self, num_inference_steps: int, device: Union[str, torch.device] = None):
-        import copy
-        local = copy.deepcopy(self)
-        local.set_timesteps(num_inference_steps=num_inference_steps, device=device)
-        return local
 
     def get_variables(self, alpha_prod_t, alpha_prod_t_prev, alpha_prod_t_back=None):
         lamb = ((alpha_prod_t / (1 - alpha_prod_t)) ** 0.5).log()

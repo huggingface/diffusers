@@ -330,11 +330,6 @@ class DPMSolverMultistepInverseScheduler(SchedulerMixin, ConfigMixin):
         self.sigmas = self.sigmas.to("cpu")  # to avoid too much CPU/GPU communication
 
 
-    def clone_for_request(self, num_inference_steps: int, device: Union[str, torch.device] = None, timesteps: Optional[List[int]] = None):
-        import copy
-        local = copy.deepcopy(self)
-        local.set_timesteps(num_inference_steps=num_inference_steps, device=device, timesteps=timesteps)
-        return local
 
     # Copied from diffusers.schedulers.scheduling_ddpm.DDPMScheduler._threshold_sample
     def _threshold_sample(self, sample: torch.Tensor) -> torch.Tensor:
