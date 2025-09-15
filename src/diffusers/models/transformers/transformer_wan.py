@@ -166,6 +166,24 @@ class WanAttnProcessor2_0:
         return WanAttnProcessor(*args, **kwargs)
 
 
+class FP32RMSNorm(nn.Module):
+    def __init__(self, dim, eps=1e-5):
+        super().__init__()
+        self.dim = dim
+        self.eps = eps
+        self.weight = nn.Parameter(torch.ones(dim))
+
+    def forward(self, x):
+        r"""
+        Args:
+            x(Tensor): Shape [B, L, C]
+        """
+        return self._norm(x.float()).type_as(x) * self.weight
+
+    def _norm(self, x):
+        return x * torch.rsqrt(x.pow(2).mean(dim=-1, keepdim=True) + self.eps)
+
+
 class WanAttention(torch.nn.Module, AttentionModuleMixin):
     _default_processor_cls = WanAttnProcessor
     _available_processors = [WanAttnProcessor]
@@ -199,14 +217,14 @@ class WanAttention(torch.nn.Module, AttentionModuleMixin):
                 torch.nn.Dropout(dropout),
             ]
         )
-        self.norm_q = torch.nn.RMSNorm(dim_head * heads, eps=eps, elementwise_affine=True)
-        self.norm_k = torch.nn.RMSNorm(dim_head * heads, eps=eps, elementwise_affine=True)
+        self.norm_q = FP32RMSNorm(dim_head * heads, eps=eps)
+        self.norm_k = FP32RMSNorm(dim_head * heads, eps=eps)
 
         self.add_k_proj = self.add_v_proj = None
         if added_kv_proj_dim is not None:
             self.add_k_proj = torch.nn.Linear(added_kv_proj_dim, self.inner_dim, bias=True)
             self.add_v_proj = torch.nn.Linear(added_kv_proj_dim, self.inner_dim, bias=True)
-            self.norm_added_k = torch.nn.RMSNorm(dim_head * heads, eps=eps)
+            self.norm_added_k = FP32RMSNorm(dim_head * heads, eps=eps)
 
         self.is_cross_attention = cross_attention_dim_head is not None
 
