@@ -85,13 +85,13 @@ def _get_added_kv_projections(attn: "WanAttention", encoder_hidden_states_img: t
     return key_img, value_img
 
 
-class WanAttnProcessor:
+class WanS2VAttnProcessor:
     _attention_backend = None
 
     def __init__(self):
         if not hasattr(F, "scaled_dot_product_attention"):
             raise ImportError(
-                "WanAttnProcessor requires PyTorch 2.0. To use it, please upgrade PyTorch to version 2.0 or higher."
+                "WanS2VAttnProcessor requires PyTorch 2.0. To use it, please upgrade PyTorch to version 2.0 or higher."
             )
 
     def __call__(
@@ -103,7 +103,6 @@ class WanAttnProcessor:
         rotary_emb: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
         **kwargs,
     ) -> torch.Tensor:
-        attention_kwargs = kwargs
         encoder_hidden_states_img = None
         if attn.add_k_proj is not None:
             # 512 is the context length of the text encoder, hardcoded for now
@@ -158,7 +157,7 @@ class WanAttnProcessor:
                 dropout_p=0.0,
                 is_causal=False,
                 backend=self._attention_backend,
-                attention_kwargs=attention_kwargs,
+                attention_kwargs=kwargs,
             )
             hidden_states_img = hidden_states_img.flatten(2, 3)
             hidden_states_img = hidden_states_img.type_as(query)
@@ -171,6 +170,7 @@ class WanAttnProcessor:
             dropout_p=0.0,
             is_causal=False,
             backend=self._attention_backend,
+            attention_kwargs=kwargs,
         )
         hidden_states = hidden_states.flatten(2, 3)
         hidden_states = hidden_states.type_as(query)
@@ -358,7 +358,7 @@ class AudioInjector(nn.Module):
                     eps=eps,
                     added_kv_proj_dim=added_kv_proj_dim,
                     cross_attention_dim_head=dim // num_heads,
-                    processor=WanAttnProcessor(),
+                    processor=WanS2VAttnProcessor(),
                 )
                 for _ in range(audio_injector_id)
             ]
@@ -695,7 +695,7 @@ class WanS2VTransformerBlock(nn.Module):
             dim_head=dim // num_heads,
             eps=eps,
             cross_attention_dim_head=None,
-            processor=WanAttnProcessor(),
+            processor=WanS2VAttnProcessor(),
         )
 
         # 2. Cross-attention
@@ -706,7 +706,7 @@ class WanS2VTransformerBlock(nn.Module):
             eps=eps,
             added_kv_proj_dim=added_kv_proj_dim,
             cross_attention_dim_head=dim // num_heads,
-            processor=WanAttnProcessor(),
+            processor=WanS2VAttnProcessor(),
         )
         self.norm2 = FP32LayerNorm(dim, eps, elementwise_affine=True) if cross_attn_norm else nn.Identity()
 
@@ -839,11 +839,11 @@ class WanS2VTransformer3DModel(
         out_channels: int = 16,
         text_dim: int = 4096,
         freq_dim: int = 256,
-        audio_dim: int = 1280,
-        audio_inject_layers: List[int] = [0, 4, 8, 12, 16, 20, 24, 27],
+        audio_dim: int = 1024,
+        audio_inject_layers: List[int] = [0, 4, 8, 12, 16, 20, 24, 27, 30, 33, 36, 39],
         enable_adain: bool = True,
         adain_mode: str = "attn_norm",
-        pose_dim: int = 1280,
+        pose_dim: int = 16,
         ffn_dim: int = 13824,
         num_layers: int = 40,
         cross_attn_norm: bool = True,
@@ -851,9 +851,9 @@ class WanS2VTransformer3DModel(
         eps: float = 1e-6,
         added_kv_proj_dim: Optional[int] = None,
         rope_max_seq_len: int = 1024,
-        enable_framepack: bool = False,
+        enable_framepack: bool = True,
         framepack_drop_mode: str = "padd",
-        add_last_motion: bool = False,
+        add_last_motion: bool = True,
         zero_timestep: bool = True,
     ) -> None:
         super().__init__()
@@ -1015,9 +1015,14 @@ class WanS2VTransformer3DModel(
             else:
                 attn_hidden_states = self.audio_injector.injector_pre_norm_feat[audio_attn_id](input_hidden_states)
 
+            attention_kwargs = {
+                "max_seqlen_k": torch.ones(
+                    attn_hidden_states.shape[0], dtype=torch.long, device=attn_hidden_states.device
+                )
+                * attn_audio_emb.shape[1]
+            }
             residual_out = self.audio_injector.injector[audio_attn_id](
-                attn_hidden_states,
-                attn_audio_emb,
+                attn_hidden_states, attn_audio_emb, None, None, attention_kwargs
             )
             residual_out = residual_out.unflatten(0, (-1, merged_audio_emb_num_frames)).flatten(1, 2)
             hidden_states[:, :original_sequence_length] = hidden_states[:, :original_sequence_length] + residual_out
@@ -1153,7 +1158,12 @@ class WanS2VTransformer3DModel(
         if torch.is_grad_enabled() and self.gradient_checkpointing:
             for block_idx, block in enumerate(self.blocks):
                 hidden_states = self._gradient_checkpointing_func(
-                    block, hidden_states, encoder_hidden_states, timestep_proj, rotary_emb, attention_kwargs=attention_kwargs
+                    block,
+                    hidden_states,
+                    encoder_hidden_states,
+                    timestep_proj,
+                    rotary_emb,
+                    attention_kwargs,
                 )
                 hidden_states = self.after_transformer_block(
                     block_idx,
@@ -1165,7 +1175,9 @@ class WanS2VTransformer3DModel(
                 )
         else:
             for block_idx, block in enumerate(self.blocks):
-                hidden_states = block(hidden_states, encoder_hidden_states, timestep_proj, rotary_emb, attention_kwargs=attention_kwargs)
+                hidden_states = block(
+                    hidden_states, encoder_hidden_states, timestep_proj, rotary_emb, attention_kwargs
+                )
                 hidden_states = self.after_transformer_block(
                     block_idx,
                     hidden_states,

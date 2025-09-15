@@ -602,15 +602,13 @@ def _flash_varlen_attention(
 
     if attn_mask is not None:
         attn_mask = _normalize_attn_mask(attn_mask, batch_size, seq_len_kv)
-    
+
     if any(x is None for x in (cu_seqlens_q, cu_seqlens_k, max_seqlen_q, max_seqlen_k)):
         if max_seqlen_k is not None:
             seqlens_k = torch.full((batch_size,), max_seqlen_k, dtype=torch.int32, device=query.device)
-        
-            (_, _), (cu_seqlens_q, cu_seqlens_k), (max_seqlen_q, _) = (
-                _prepare_for_flash_attn_or_sage_varlen(
-                    batch_size, seq_len_q, max_seqlen_k, attn_mask=attn_mask, device=query.device
-                )
+
+            (_, _), (cu_seqlens_q, cu_seqlens_k), (max_seqlen_q, _) = _prepare_for_flash_attn_or_sage_varlen(
+                batch_size, seq_len_q, max_seqlen_k, attn_mask=attn_mask, device=query.device
             )
             max_seqlen_k = seq_len_kv
         else:
