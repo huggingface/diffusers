@@ -1022,7 +1022,7 @@ class WanS2VTransformer3DModel(
                 * attn_audio_emb.shape[1]
             }
             residual_out = self.audio_injector.injector[audio_attn_id](
-                attn_hidden_states, attn_audio_emb, None, None, attention_kwargs
+                attn_hidden_states, attn_audio_emb, None, None, **attention_kwargs
             )
             residual_out = residual_out.unflatten(0, (-1, merged_audio_emb_num_frames)).flatten(1, 2)
             hidden_states[:, :original_sequence_length] = hidden_states[:, :original_sequence_length] + residual_out
