@@ -1052,7 +1052,7 @@ class AutoencoderKLWan(ModelMixin, ConfigMixin, FromOriginalModelMixin):
             is_residual=is_residual,
         )
 
-        self.spatial_compression_ratio = 2 ** len(self.temperal_downsample)
+        self.spatial_compression_ratio = scale_factor_spatial
 
         # When decoding a batch of video latents at a time, one can save memory by slicing across the batch dimension
         # to perform decoding of a single video latent at a time.
