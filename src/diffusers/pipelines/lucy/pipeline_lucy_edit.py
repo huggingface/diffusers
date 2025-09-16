@@ -56,8 +56,7 @@ EXAMPLE_DOC_STRING = """
         >>> import torch
         >>> from PIL import Image
 
-        >>> from diffusers import AutoencoderKLWan, WanTransformer3DModel
-        >>> from diffusers.pipelines.lucy.pipeline_lucy_edit import LucyEditPipeline
+        >>> from diffusers import AutoencoderKLWan, LucyEditPipeline
         >>> from diffusers.utils import export_to_video, load_video
 
         >>> # Arguments
