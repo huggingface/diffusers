@@ -1277,6 +1277,9 @@ class AutoencoderKLWan(ModelMixin, ConfigMixin, FromOriginalModelMixin):
             `torch.Tensor`:
                 The latent representation of the encoded videos.
         """
+        if self.config.patch_size is not None:
+            x = patchify(x, patch_size=self.config.patch_size)
+            
         _, _, num_frames, height, width = x.shape
         latent_height = height // self.spatial_compression_ratio
         latent_width = width // self.spatial_compression_ratio
@@ -1311,7 +1314,7 @@ class AutoencoderKLWan(ModelMixin, ConfigMixin, FromOriginalModelMixin):
                             j : j + self.tile_sample_min_width,
                         ]
                     tile = self.encoder(tile, feat_cache=self._enc_feat_map, feat_idx=self._enc_conv_idx)
-                    tile = self.quant_conv(tile)
+                    # tile = self.quant_conv(tile)
                     time.append(tile)
                 row.append(torch.cat(time, dim=2))
             rows.append(row)
@@ -1331,6 +1334,7 @@ class AutoencoderKLWan(ModelMixin, ConfigMixin, FromOriginalModelMixin):
             result_rows.append(torch.cat(result_row, dim=-1))
 
         enc = torch.cat(result_rows, dim=3)[:, :, :, :latent_height, :latent_width]
+        enc = self.quant_conv(enc)
         return enc
 
     def tiled_decode(self, z: torch.Tensor, return_dict: bool = True) -> Union[DecoderOutput, torch.Tensor]:
@@ -1347,6 +1351,8 @@ class AutoencoderKLWan(ModelMixin, ConfigMixin, FromOriginalModelMixin):
                 If return_dict is True, a [`~models.vae.DecoderOutput`] is returned, otherwise a plain `tuple` is
                 returned.
         """
+        z = self.post_quant_conv(z)
+
         _, _, num_frames, height, width = z.shape
         sample_height = height * self.spatial_compression_ratio
         sample_width = width * self.spatial_compression_ratio
@@ -1370,8 +1376,11 @@ class AutoencoderKLWan(ModelMixin, ConfigMixin, FromOriginalModelMixin):
                 for k in range(num_frames):
                     self._conv_idx = [0]
                     tile = z[:, :, k : k + 1, i : i + tile_latent_min_height, j : j + tile_latent_min_width]
-                    tile = self.post_quant_conv(tile)
-                    decoded = self.decoder(tile, feat_cache=self._feat_map, feat_idx=self._conv_idx)
+                    # tile = self.post_quant_conv(tile)
+                    if k == 0:
+                        decoded = self.decoder(tile, feat_cache=self._feat_map, feat_idx=self._conv_idx,first_chunk=True)
+                    else:
+                        decoded = self.decoder(tile, feat_cache=self._feat_map, feat_idx=self._conv_idx)
                     time.append(decoded)
                 row.append(torch.cat(time, dim=2))
             rows.append(row)
@@ -1391,6 +1400,10 @@ class AutoencoderKLWan(ModelMixin, ConfigMixin, FromOriginalModelMixin):
             result_rows.append(torch.cat(result_row, dim=-1))
 
         dec = torch.cat(result_rows, dim=3)[:, :, :, :sample_height, :sample_width]
+
+        if self.config.patch_size is not None:
+            dec = unpatchify(dec, patch_size=self.config.patch_size)
+        dec = torch.clamp(dec, min=-1.0, max=1.0)
 
         if not return_dict:
             return (dec,)
