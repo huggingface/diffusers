@@ -17,9 +17,11 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-from ..utils import deprecate
-from ..utils.import_utils import is_torch_npu_available, is_torch_version
+from ..utils import deprecate, get_logger, is_kernels_available, is_torch_npu_available, is_torch_version
+from ..utils.constants import DIFFUSERS_ENABLE_HUB_KERNELS
 
+
+logger = get_logger(__name__)
 
 if is_torch_npu_available():
     import torch_npu
@@ -31,6 +33,7 @@ ACT2CLS = {
     "gelu": nn.GELU,
     "relu": nn.ReLU,
 }
+KERNELS_REPO_ID = "kernels-community/activation"
 
 
 def get_activation(act_fn: str) -> nn.Module:
@@ -88,6 +91,38 @@ class GELU(nn.Module):
         hidden_states = self.proj(hidden_states)
         hidden_states = self.gelu(hidden_states)
         return hidden_states
+
+
+class CUDAOptimizedGELU(nn.Module):
+    def __init__(self, dim_in: int, dim_out: int, approximate: str = "none", bias: bool = True):
+        if not torch.cuda.is_available():
+            raise NotImplementedError(f"{self.__class__.__name__} is implemented only for CUDA devices.")
+        if not DIFFUSERS_ENABLE_HUB_KERNELS:
+            raise RuntimeError(
+                f"{self.__class__.__name__} isn't usable because the `DIFFUSERS_ENABLE_HUB_KERNELS` env var isn't set. Please set it like `export DIFFUSERS_ENABLE_HUB_KERNELS=yes`."
+            )
+        if not is_kernels_available():
+            raise NotImplementedError(
+                f"{self.__class__.__name__} requires the `kernels` library to be installed. Install it with `pip install kernels`."
+            )
+
+        from kernels import get_kernel
+
+        super().__init__()
+        self.proj = nn.Linear(dim_in, dim_out, bias=bias)
+        activations = get_kernel(KERNELS_REPO_ID)
+        if approximate == "tanh":
+            self.act = activations.gelu_tanh_and_mul
+        elif approximate == "none":
+            self.act = activations.gelu_and_mul
+        else:
+            raise NotImplementedError
+
+    def forward(self, hidden_states):
+        hidden_states = self.proj(hidden_states)
+        out = torch.empty_like(hidden_states)
+        output = self.act(out, hidden_states)
+        return output
 
 
 class GEGLU(nn.Module):

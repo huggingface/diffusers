@@ -20,7 +20,6 @@ import torch.nn.functional as F
 
 from ..utils import deprecate, logging
 from ..utils.import_utils import is_torch_npu_available, is_torch_xla_available, is_xformers_available
-from ..utils.kernels_utils import use_kernel_forward_from_hub
 from ..utils.torch_utils import maybe_allow_in_graph
 from .activations import GEGLU, GELU, ApproximateGELU, FP32SiLU, LinearActivation, SwiGLU
 from .attention_processor import Attention, AttentionProcessor, JointAttnProcessor2_0
@@ -1670,7 +1669,6 @@ class FreeNoiseTransformerBlock(nn.Module):
         return hidden_states
 
 
-@use_kernel_forward_from_hub("MLP")
 class FeedForward(nn.Module):
     r"""
     A feed-forward layer.

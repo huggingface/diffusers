@@ -38,7 +38,6 @@ if is_kernels_available():
         "RMSNorm": {
             "cuda": LayerRepository(repo_id="kernels-community/liger_kernels", layer_name="LigerRMSNorm"),
         },
-        "MLP": {"cuda": LayerRepository(repo_id="medmekk/triton-llama-mlp", layer_name="TritonLlamaMLP")},
     }
 
     register_kernel_mapping(_KERNEL_MAPPING)
