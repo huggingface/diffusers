@@ -82,7 +82,7 @@ class UNet1DModel(ModelMixin, ConfigMixin):
         out_channels: int = 2,
         extra_in_channels: int = 0,
         time_embedding_type: str = "fourier",
-        time_embedding_dim: int = 0,
+        time_embedding_dim: Optional[int] = None,
         flip_sin_to_cos: bool = True,
         use_timestep_embedding: bool = False,
         freq_shift: float = 0.0,
