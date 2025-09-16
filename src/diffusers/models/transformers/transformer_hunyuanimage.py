@@ -64,7 +64,7 @@ class HunyuanImageAttnProcessor2_0:
         key = attn.to_k(hidden_states)
         value = attn.to_v(hidden_states)
 
-        query = query.unflatten(2, (attn.heads, -1)).transpose(1, 2)
+        query = query.unflatten(2, (attn.heads, -1)).transpose(1, 2) # batch_size, heads, seq_len, head_dim
         key = key.unflatten(2, (attn.heads, -1)).transpose(1, 2)
         value = value.unflatten(2, (attn.heads, -1)).transpose(1, 2)
 
@@ -518,7 +518,7 @@ class HunyuanImageTransformerBlock(nn.Module):
         encoder_hidden_states: torch.Tensor,
         temb: torch.Tensor,
         attention_mask: Optional[torch.Tensor] = None,
-        freqs_cis: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
+        image_rotary_emb: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
         *args,
         **kwargs,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -533,7 +533,7 @@ class HunyuanImageTransformerBlock(nn.Module):
             hidden_states=norm_hidden_states,
             encoder_hidden_states=norm_encoder_hidden_states,
             attention_mask=attention_mask,
-            image_rotary_emb=freqs_cis,
+            image_rotary_emb=image_rotary_emb,
         )
 
         # 3. Modulation and residual connection
@@ -790,18 +790,18 @@ class HunyuanImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, 
             text_mask_2 = text_mask_2.bool()
             # Concatenate: [valid_mllm, valid_byt5, invalid_mllm, invalid_byt5]
             new_encoder_hidden_states.append(torch.cat([
-                text[text_mask], # valid mllm
                 text_2[text_mask_2], # valid byt5
+                text[text_mask], # valid mllm
+                text_2[~text_mask_2], # invalid byt5
                 text[~text_mask], # invalid mllm
-                text_2[~text_mask_2] # invalid byt5
             ], dim=0))
 
             # Apply same reordering to attention masks
             new_encoder_attention_mask.append(torch.cat([
-                text_mask[text_mask],
                 text_mask_2[text_mask_2],
+                text_mask[text_mask],
+                text_mask_2[~text_mask_2],
                 text_mask[~text_mask],
-                text_mask_2[~text_mask_2]
             ], dim=0))
 
         encoder_hidden_states = torch.stack(new_encoder_hidden_states)
@@ -817,8 +817,8 @@ class HunyuanImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, 
                     hidden_states,
                     encoder_hidden_states,
                     temb,
-                    attention_mask,
-                    image_rotary_emb,
+                    attention_mask=attention_mask,
+                    image_rotary_emb=image_rotary_emb,
                 )
 
             for block in self.single_transformer_blocks:
@@ -827,32 +827,27 @@ class HunyuanImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, 
                     hidden_states,
                     encoder_hidden_states,
                     temb,
-                    attention_mask,
-                    image_rotary_emb,
+                    attention_mask=attention_mask,
+                    image_rotary_emb=image_rotary_emb,
                 )
 
         else:
             for block in self.transformer_blocks:
-                print(f" attention_mask: {attention_mask.shape}, {attention_mask.dtype}")
-                print(f" hidden_states: {hidden_states.shape}, {hidden_states.dtype}")
-                print(f" encoder_hidden_states: {encoder_hidden_states.shape}, {encoder_hidden_states.dtype}")
-                print(f" temb: {temb.shape}, {temb.dtype}")
                 hidden_states, encoder_hidden_states = block(
                     hidden_states,
                     encoder_hidden_states,
                     temb,
-                    attention_mask,
-                    image_rotary_emb,
+                    attention_mask=attention_mask,
+                    image_rotary_emb=image_rotary_emb,
                 )
-                assert False
 
             for block in self.single_transformer_blocks:
                 hidden_states, encoder_hidden_states = block(
                     hidden_states,
                     encoder_hidden_states,
                     temb,
-                    attention_mask,
-                    image_rotary_emb,
+                    attention_mask=attention_mask,
+                    image_rotary_emb=image_rotary_emb,
                 )
 
         # 5. Output projection
@@ -862,7 +857,7 @@ class HunyuanImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, 
         hidden_states = hidden_states.reshape(
             batch_size, post_patch_height, post_patch_width, -1, p, p
         )
-        hidden_states = hidden_states.permute(0, 3, 1, 4, 2, 5)
+        hidden_states = hidden_states.permute(0, 3, 1, 4, 2, 5) # batch_size, channels, height, patch_size, width, patch_size
         hidden_states = hidden_states.flatten(4, 5).flatten(2, 3)
 
         if USE_PEFT_BACKEND:
