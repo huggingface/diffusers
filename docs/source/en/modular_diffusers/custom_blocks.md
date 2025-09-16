@@ -13,11 +13,19 @@ specific language governing permissions and limitations under the License.
 
 # Building Custom Blocks
 
-Modular Diffusers allows you to create custom blocks that can be used in a pipeline. This guide will show you how to create a custom block, define its inputs and outputs, and implement the computation logic.
+Modular Diffusers allows you to create custom blocks that can be plugged into Modular Pipelines. This guide will show you how to create and use a custom block.
 
-Let's create a custom block that uses the Florence2 model to process an input image and generate a mask for inpainting
+First let's take a look at the structure of our custom block project:
 
-First let's define a custom block in a file called `block.py`:
+```shell
+.
+├── block.py
+└── modular_config.json
+```
+
+The code to define the custom block lives in a file called `block.py`. The `modular_config.json` file contains metadata for loading the block with Modular Diffusers.
+
+In this example, we will create a custom block that uses the Florence 2 model to process an input image and generate a mask for inpainting
 
 ```py
 from typing import List, Union
@@ -32,7 +40,7 @@ from diffusers.modular_pipelines import (
     ComponentSpec,
     OutputParam,
 )
-from transformers import AutoProcessor, AutoModelForCausalLM
+from transformers import AutoProcessor, Florence2ForConditionalGeneration
 
 
 class Florence2ImageAnnotatorBlock(ModularPipelineBlocks):
@@ -41,13 +49,13 @@ class Florence2ImageAnnotatorBlock(ModularPipelineBlocks):
         return [
             ComponentSpec(
                 name="image_annotator",
-                type_hint=AutoModelForCausalLM,
-                repo="mrhendrey/Florence-2-large-ft-safetensors",
+                type_hint=Florence2ForConditionalGeneration,
+                repo="florence-community/Florence-2-base-ft",
             ),
             ComponentSpec(
                 name="image_annotator_processor",
                 type_hint=AutoProcessor,
-                repo="mrhendrey/Florence-2-large-ft-safetensors",
+                repo="florence-community/Florence-2-base-ft",
             ),
         ]
 
@@ -93,12 +101,10 @@ class Florence2ImageAnnotatorBlock(ModularPipelineBlocks):
                 required=True,
                 default="mask_image",
                 description="""Output type from annotation predictions. Availabe options are
-                annotation:
-                    - raw annotation predictions from the model based on task type.
                 mask_image:
                     -black and white mask image for the given image based on the task type
                 mask_overlay:
-                    - white mask overlayed on the original image
+                    - mask overlayed on the original image
                 bounding_box:
                     - bounding boxes drawn on the original image
                 """,
@@ -159,7 +165,7 @@ class Florence2ImageAnnotatorBlock(ModularPipelineBlocks):
             )
         return outputs
 
-    def prepare_mask(self, images, annotations, overlay=False):
+    def prepare_mask(self, images, annotations, overlay=False, fill="white"):
         masks = []
         for image, annotation in zip(images, annotations):
             mask_image = image.copy() if overlay else Image.new("L", image.size, 0)
@@ -172,7 +178,7 @@ class Florence2ImageAnnotatorBlock(ModularPipelineBlocks):
                         if len(polygon) < 3:
                             continue
                         polygon = polygon.reshape(-1).tolist()
-                        draw.polygon(polygon, fill="white")
+                        draw.polygon(polygon, fill=fill)
 
                 elif "bbox" in _annotation:
                     bbox = _annotation["bbox"]
@@ -218,6 +224,7 @@ class Florence2ImageAnnotatorBlock(ModularPipelineBlocks):
             block_state.image, block_state.annotation_prompt
         )
         task = block_state.annotation_task
+        fill = block_state.fill
 
         annotations = self.get_annotations(
             components, images, annotation_task_prompt, task
@@ -229,7 +236,7 @@ class Florence2ImageAnnotatorBlock(ModularPipelineBlocks):
             block_state.mask_image = None
 
         if block_state.annotation_output_type == "mask_overlay":
-            block_state.image = self.prepare_mask(images, annotations, overlay=True)
+            block_state.image = self.prepare_mask(images, annotations, overlay=True, fill=fill)
 
         elif block_state.annotation_output_type == "bounding_box":
             block_state.image = self.prepare_bounding_boxes(images, annotations)
@@ -239,7 +246,7 @@ class Florence2ImageAnnotatorBlock(ModularPipelineBlocks):
         return components, state
 ```
 
-Once we have defined our custom block, we can save it as a model repo so that we can easily reuse it.
+Now that we have defined our custom block, we can save it as a model repository on the Huggingface Hub so that it is easy to share and reuse.
 
 There are two ways to save the block:
 
@@ -275,7 +282,7 @@ from diffusers.modular_pipelines.stable_diffusion_xl import INPAINT_BLOCKS
 from diffusers.utils import load_image
 
 # Fetch the Florence2 image annotator block that will create our mask
-image_annotator_block = ModularPipelineBlocks.from_pretrained("diffusers/florence2-image-annotator", trust_remote_code=True)
+image_annotator_block = ModularPipelineBlocks.from_pretrained("diffusers/florence-2-custom-block", trust_remote_code=True)
 
 my_blocks = INPAINT_BLOCKS.copy()
 # insert the annotation block before the image encoding step
@@ -284,7 +291,7 @@ my_blocks.insert("image_annotator", image_annotator_block, 1)
 # Create our initial set of inpainting blocks
 blocks = SequentialPipelineBlocks.from_blocks_dict(my_blocks)
 
-repo_id = "diffusers-internal-dev/modular-sdxl-inpainting"
+repo_id = "diffusers/modular-stable-diffusion-xl-base-1.0"
 pipe = blocks.init_pipeline(repo_id)
 pipe.load_components(torch_dtype=torch.float16, device_map="cuda", trust_remote_code=True)
 
