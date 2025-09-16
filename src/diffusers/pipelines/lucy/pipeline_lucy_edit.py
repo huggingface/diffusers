@@ -68,11 +68,13 @@ EXAMPLE_DOC_STRING = """
         >>> height = 480
         >>> width = 832
 
+
         >>> # Load video
         >>> def convert_video(video: List[Image.Image]) -> List[Image.Image]:
         ...     video = load_video(url)[:num_frames]
         ...     video = [video[i].resize((width, height)) for i in range(num_frames)]
         ...     return video
+
 
         >>> video = load_video(url, convert_method=convert_video)
 
@@ -90,7 +92,7 @@ EXAMPLE_DOC_STRING = """
         ...     height=480,
         ...     width=832,
         ...     num_frames=81,
-        ...     guidance_scale=5.0
+        ...     guidance_scale=5.0,
         ... ).frames[0]
 
         >>> # Export video
@@ -114,6 +116,7 @@ def whitespace_clean(text):
 def prompt_clean(text):
     text = whitespace_clean(basic_clean(text))
     return text
+
 
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.retrieve_latents
 def retrieve_latents(
@@ -191,6 +194,7 @@ class LucyEditPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         self.vae_scale_factor_spatial = self.vae.config.scale_factor_spatial if getattr(self, "vae", None) else 8
         self.video_processor = VideoProcessor(vae_scale_factor=self.vae_scale_factor_spatial)
 
+    # Copied from diffusers.pipelines.wan.pipeline_wan.WanPipeline._get_t5_prompt_embeds
     def _get_t5_prompt_embeds(
         self,
         prompt: Union[str, List[str]] = None,
@@ -232,6 +236,7 @@ class LucyEditPipeline(DiffusionPipeline, WanLoraLoaderMixin):
 
         return prompt_embeds
 
+    # Copied from diffusers.pipelines.wan.pipeline_wan.WanPipeline.encode_prompt
     def encode_prompt(
         self,
         prompt: Union[str, List[str]],
@@ -358,7 +363,7 @@ class LucyEditPipeline(DiffusionPipeline, WanLoraLoaderMixin):
 
         if self.config.boundary_ratio is None and guidance_scale_2 is not None:
             raise ValueError("`guidance_scale_2` is only supported when the pipeline's `boundary_ratio` is not None.")
- 
+
         if video is None:
             raise ValueError("`video` is required, received None.")
 
@@ -397,7 +402,9 @@ class LucyEditPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             latents = latents.to(device)
 
         # Prepare condition latents
-        condition_latents = [retrieve_latents(self.vae.encode(vid.unsqueeze(0)), sample_mode="argmax") for vid in video]
+        condition_latents = [
+            retrieve_latents(self.vae.encode(vid.unsqueeze(0)), sample_mode="argmax") for vid in video
+        ]
 
         condition_latents = torch.cat(condition_latents, dim=0).to(dtype)
 
@@ -411,9 +418,12 @@ class LucyEditPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         condition_latents = (condition_latents - latents_mean) * latents_std
 
         # Check shapes
-        assert latents.shape == condition_latents.shape, f"Latents shape {latents.shape} does not match expected shape {condition_latents.shape}. Please check the input."
+        assert latents.shape == condition_latents.shape, (
+            f"Latents shape {latents.shape} does not match expected shape {condition_latents.shape}. Please check the input."
+        )
 
         return latents, condition_latents
+
     @property
     def guidance_scale(self):
         return self._guidance_scale
@@ -469,7 +479,7 @@ class LucyEditPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         The call function to the pipeline for generation.
 
         Args:
-            video (`List[Image.Image]`): 
+            video (`List[Image.Image]`):
                 The video to use as the condition for the video generation.
             prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts to guide the image generation. If not defined, pass `prompt_embeds` instead.
@@ -620,7 +630,6 @@ class LucyEditPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             generator,
             latents,
         )
-
 
         mask = torch.ones(latents.shape, dtype=torch.float32, device=device)
 
