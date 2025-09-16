@@ -12,12 +12,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import List, Optional, Tuple, Union
+from typing import Optional, Tuple, Union
 
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.utils.checkpoint
+
+# YiYi TODO: remove this
+from einops import rearrange
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FromOriginalModelMixin
@@ -27,10 +31,6 @@ from ..activations import get_activation
 from ..modeling_outputs import AutoencoderKLOutput
 from ..modeling_utils import ModelMixin
 from .vae import DecoderOutput, DiagonalGaussianDistribution
-import numpy as np
-
-#YiYi TODO: remove this
-from einops import rearrange
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -50,7 +50,7 @@ class HunyuanImageResnetBlock(nn.Module):
         super().__init__()
         self.in_channels = in_channels
         self.out_channels = out_channels
-        self.nonlinearity = get_activation(non_linearity) # YiYi Notes, they have a custom defined swish but should be the same
+        self.nonlinearity = get_activation(non_linearity)
 
         # layers
         self.norm1 = nn.GroupNorm(num_groups=32, num_channels=in_channels, eps=1e-6, affine=True)
@@ -109,9 +109,9 @@ class HunyuanImageAttentionBlock(nn.Module):
         value = self.to_v(x)
 
         batch_size, channels, height, width = query.shape
-        query = query.permute(0, 2, 3, 1).reshape(batch_size, height*width, channels).contiguous()
-        key = key.permute(0, 2, 3, 1).reshape(batch_size, height*width, channels).contiguous()
-        value = value.permute(0, 2, 3, 1).reshape(batch_size, height*width, channels).contiguous()
+        query = query.permute(0, 2, 3, 1).reshape(batch_size, height * width, channels).contiguous()
+        key = key.permute(0, 2, 3, 1).reshape(batch_size, height * width, channels).contiguous()
+        value = value.permute(0, 2, 3, 1).reshape(batch_size, height * width, channels).contiguous()
 
         # apply attention
         x = F.scaled_dot_product_attention(query, key, value)
@@ -182,12 +182,11 @@ class HunyuanImageMidBlock(nn.Module):
         in_channels (int): Number of input channels.
         num_layers (int): Number of layers.
     """
+
     def __init__(self, in_channels: int, num_layers: int = 1):
         super().__init__()
 
-        resnets = [
-            HunyuanImageResnetBlock(in_channels=in_channels, out_channels=in_channels)
-        ]
+        resnets = [HunyuanImageResnetBlock(in_channels=in_channels, out_channels=in_channels)]
 
         attentions = []
         for _ in range(num_layers):
@@ -198,7 +197,6 @@ class HunyuanImageMidBlock(nn.Module):
         self.attentions = nn.ModuleList(attentions)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-
         x = self.resnets[0](x)
 
         for attn, resnet in zip(self.attentions, self.resnets[1:]):
@@ -234,8 +232,10 @@ class HunyuanImageEncoder2D(nn.Module):
     ):
         super().__init__()
         if block_out_channels[-1] % (2 * z_channels) != 0:
-            raise ValueError(f"block_out_channels[-1 has to be divisible by 2 * out_channels, you have block_out_channels = {block_out_channels[-1]} and out_channels = {out_channels}")
-        
+            raise ValueError(
+                f"block_out_channels[-1 has to be divisible by 2 * out_channels, you have block_out_channels = {block_out_channels[-1]} and out_channels = {z_channels}"
+            )
+
         self.in_channels = in_channels
         self.z_channels = z_channels
         self.block_out_channels = block_out_channels
@@ -256,14 +256,18 @@ class HunyuanImageEncoder2D(nn.Module):
             block_out_channel = block_out_channels[i]
             # residual blocks
             for _ in range(num_res_blocks):
-                self.down_blocks.append(HunyuanImageResnetBlock(in_channels=block_in_channel, out_channels=block_out_channel))
+                self.down_blocks.append(
+                    HunyuanImageResnetBlock(in_channels=block_in_channel, out_channels=block_out_channel)
+                )
                 block_in_channel = block_out_channel
 
             # downsample block
             if i < np.log2(ffactor_spatial) and i != len(block_out_channels) - 1:
                 if downsample_match_channel:
                     block_out_channel = block_out_channels[i + 1]
-                self.down_blocks.append(HunyuanImageDownsample(in_channels=block_in_channel, out_channels=block_out_channel))
+                self.down_blocks.append(
+                    HunyuanImageDownsample(in_channels=block_in_channel, out_channels=block_out_channel)
+                )
                 block_in_channel = block_out_channel
 
         # middle blocks
@@ -305,7 +309,6 @@ class HunyuanImageDecoder2D(nn.Module):
     Decoder network that reconstructs output from latent representation.
 
     Args:
-
     z_channels : int
         Number of latent channels.
     out_channels : int
@@ -333,7 +336,9 @@ class HunyuanImageDecoder2D(nn.Module):
     ):
         super().__init__()
         if block_out_channels[0] % z_channels != 0:
-            raise ValueError(f"block_out_channels[0] should be divisible by z_channels but has block_out_channels[0] = {block_out_channels[0]} and z_channels = {z_channels}")
+            raise ValueError(
+                f"block_out_channels[0] should be divisible by z_channels but has block_out_channels[0] = {block_out_channels[0]} and z_channels = {z_channels}"
+            )
 
         self.z_channels = z_channels
         self.block_out_channels = block_out_channels
@@ -353,7 +358,9 @@ class HunyuanImageDecoder2D(nn.Module):
         for i in range(len(block_out_channels)):
             block_out_channel = block_out_channels[i]
             for _ in range(self.num_res_blocks + 1):
-                self.up_blocks.append(HunyuanImageResnetBlock(in_channels=block_in_channel, out_channels=block_out_channel))
+                self.up_blocks.append(
+                    HunyuanImageResnetBlock(in_channels=block_in_channel, out_channels=block_out_channel)
+                )
                 block_in_channel = block_out_channel
 
             if i < np.log2(ffactor_spatial) and i != len(block_out_channels) - 1:
@@ -369,9 +376,8 @@ class HunyuanImageDecoder2D(nn.Module):
         self.gradient_checkpointing = False
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        
         h = self.conv_in(x) + x.repeat_interleave(repeats=self.repeat, dim=1)
-        
+
         if torch.is_grad_enabled() and self.gradient_checkpointing:
             h = self._gradient_checkpointing_func(self.mid_block, h)
         else:
@@ -386,7 +392,6 @@ class HunyuanImageDecoder2D(nn.Module):
         h = self.nonlinearity(h)
         h = self.conv_out(h)
         return h
-
 
 
 class AutoencoderKLHunyuanImage(ModelMixin, ConfigMixin, FromOriginalModelMixin):
@@ -425,7 +430,7 @@ class AutoencoderKLHunyuanImage(ModelMixin, ConfigMixin, FromOriginalModelMixin)
             ffactor_spatial=ffactor_spatial,
             downsample_match_channel=downsample_match_channel,
         )
-        
+
         self.decoder = HunyuanImageDecoder2D(
             z_channels=latent_channels,
             out_channels=out_channels,
@@ -450,9 +455,9 @@ class AutoencoderKLHunyuanImage(ModelMixin, ConfigMixin, FromOriginalModelMixin)
         tile_overlap_factor: Optional[float] = None,
     ) -> None:
         r"""
-        Enable spatial tiled VAE decoding. When this option is enabled, the VAE will split the input tensor into tiles to
-        compute decoding and encoding in several steps. This is useful for saving a large amount of memory and to allow
-        processing larger images.
+        Enable spatial tiled VAE decoding. When this option is enabled, the VAE will split the input tensor into tiles
+        to compute decoding and encoding in several steps. This is useful for saving a large amount of memory and to
+        allow processing larger images.
 
         Args:
             tile_sample_min_size (`int`, *optional*):
@@ -528,7 +533,7 @@ class AutoencoderKLHunyuanImage(ModelMixin, ConfigMixin, FromOriginalModelMixin)
     def _decode(self, z: torch.Tensor, return_dict: bool = True):
 
         batch_size, num_channels, height, width = z.shape
-        
+
         if self.use_tiling and (width > self.tile_latent_min_size or height > self.tile_latent_min_size):
             return self.tiled_decode(z, return_dict=return_dict)
 
@@ -587,7 +592,7 @@ class AutoencoderKLHunyuanImage(ModelMixin, ConfigMixin, FromOriginalModelMixin)
 
         Args:
             x (`torch.Tensor`): Input tensor of shape (B, C, T, H, W).
-        
+
         Returns:
             `torch.Tensor`:
                 The latent representation of the encoded images.
@@ -618,7 +623,7 @@ class AutoencoderKLHunyuanImage(ModelMixin, ConfigMixin, FromOriginalModelMixin)
             result_rows.append(torch.cat(result_row, dim=-1))
 
         moments = torch.cat(result_rows, dim=-2)
-        
+
         return moments
 
     def tiled_decode(self, z: torch.Tensor, return_dict: bool = True) -> Union[DecoderOutput, torch.Tensor]:

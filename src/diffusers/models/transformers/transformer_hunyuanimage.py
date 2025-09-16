@@ -28,14 +28,13 @@ from ..attention_processor import Attention, AttentionProcessor
 from ..cache_utils import CacheMixin
 from ..embeddings import (
     CombinedTimestepTextProjEmbeddings,
-    PixArtAlphaTextProjection,
     TimestepEmbedding,
     Timesteps,
     get_1d_rotary_pos_embed,
 )
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
-from ..normalization import AdaLayerNormContinuous, AdaLayerNormZero, AdaLayerNormZeroSingle, FP32LayerNorm
+from ..normalization import AdaLayerNormContinuous, AdaLayerNormZero, AdaLayerNormZeroSingle
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -64,7 +63,7 @@ class HunyuanImageAttnProcessor2_0:
         key = attn.to_k(hidden_states)
         value = attn.to_v(hidden_states)
 
-        query = query.unflatten(2, (attn.heads, -1)).transpose(1, 2) # batch_size, heads, seq_len, head_dim
+        query = query.unflatten(2, (attn.heads, -1)).transpose(1, 2)  # batch_size, heads, seq_len, head_dim
         key = key.unflatten(2, (attn.heads, -1)).transpose(1, 2)
         value = value.unflatten(2, (attn.heads, -1)).transpose(1, 2)
 
@@ -228,8 +227,8 @@ class HunyuanImageCombinedTimeGuidanceEmbedding(nn.Module):
 class HunyuanImageIndividualTokenRefinerBlock(nn.Module):
     def __init__(
         self,
-        num_attention_heads: int, # 28
-        attention_head_dim: int, # 128
+        num_attention_heads: int,  # 28
+        attention_head_dim: int,  # 128
         mlp_width_ratio: str = 4.0,
         mlp_drop_rate: float = 0.0,
         attention_bias: bool = True,
@@ -321,6 +320,7 @@ class HunyuanImageIndividualTokenRefiner(nn.Module):
 
         return hidden_states
 
+
 # txt_in
 class HunyuanImageTokenRefiner(nn.Module):
     def __init__(
@@ -381,7 +381,7 @@ class HunyuanImageRotaryPosEmbed(nn.Module):
         self.theta = theta
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
-        _, _ , height, width = hidden_states.shape
+        _, _, height, width = hidden_states.shape
         rope_sizes = [height // self.patch_size, width // self.patch_size]
 
         axes_grids = []
@@ -635,7 +635,6 @@ class HunyuanImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, 
     ) -> None:
         super().__init__()
 
-
         inner_dim = num_attention_heads * attention_head_dim
         out_channels = out_channels or in_channels
 
@@ -644,8 +643,7 @@ class HunyuanImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, 
         self.context_embedder = HunyuanImageTokenRefiner(
             text_embed_dim, num_attention_heads, attention_head_dim, num_layers=num_refiner_layers
         )
-        self.context_embedder_2 = HunyuanImageByT5TextProjection(
-            text_embed_2_dim, 2048, inner_dim)
+        self.context_embedder_2 = HunyuanImageByT5TextProjection(text_embed_2_dim, 2048, inner_dim)
 
         self.time_guidance_embed = HunyuanImageCombinedTimeGuidanceEmbedding(inner_dim, guidance_embeds)
 
@@ -739,7 +737,6 @@ class HunyuanImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, 
         for name, module in self.named_children():
             fn_recursive_attn_processor(name, module, processor)
 
-    
     def forward(
         self,
         hidden_states: torch.Tensor,
@@ -785,24 +782,36 @@ class HunyuanImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, 
         new_encoder_hidden_states = []
         new_encoder_attention_mask = []
 
-        for text, text_mask, text_2, text_mask_2 in zip(encoder_hidden_states, encoder_attention_mask, encoder_hidden_states_2, encoder_attention_mask_2):
+        for text, text_mask, text_2, text_mask_2 in zip(
+            encoder_hidden_states, encoder_attention_mask, encoder_hidden_states_2, encoder_attention_mask_2
+        ):
             text_mask = text_mask.bool()
             text_mask_2 = text_mask_2.bool()
             # Concatenate: [valid_mllm, valid_byt5, invalid_mllm, invalid_byt5]
-            new_encoder_hidden_states.append(torch.cat([
-                text_2[text_mask_2], # valid byt5
-                text[text_mask], # valid mllm
-                text_2[~text_mask_2], # invalid byt5
-                text[~text_mask], # invalid mllm
-            ], dim=0))
+            new_encoder_hidden_states.append(
+                torch.cat(
+                    [
+                        text_2[text_mask_2],  # valid byt5
+                        text[text_mask],  # valid mllm
+                        text_2[~text_mask_2],  # invalid byt5
+                        text[~text_mask],  # invalid mllm
+                    ],
+                    dim=0,
+                )
+            )
 
             # Apply same reordering to attention masks
-            new_encoder_attention_mask.append(torch.cat([
-                text_mask_2[text_mask_2],
-                text_mask[text_mask],
-                text_mask_2[~text_mask_2],
-                text_mask[~text_mask],
-            ], dim=0))
+            new_encoder_attention_mask.append(
+                torch.cat(
+                    [
+                        text_mask_2[text_mask_2],
+                        text_mask[text_mask],
+                        text_mask_2[~text_mask_2],
+                        text_mask[~text_mask],
+                    ],
+                    dim=0,
+                )
+            )
 
         encoder_hidden_states = torch.stack(new_encoder_hidden_states)
         encoder_attention_mask = torch.stack(new_encoder_attention_mask)
@@ -854,10 +863,10 @@ class HunyuanImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, 
         hidden_states = self.norm_out(hidden_states, temb)
         hidden_states = self.proj_out(hidden_states)
 
-        hidden_states = hidden_states.reshape(
-            batch_size, post_patch_height, post_patch_width, -1, p, p
-        )
-        hidden_states = hidden_states.permute(0, 3, 1, 4, 2, 5) # batch_size, channels, height, patch_size, width, patch_size
+        hidden_states = hidden_states.reshape(batch_size, post_patch_height, post_patch_width, -1, p, p)
+        hidden_states = hidden_states.permute(
+            0, 3, 1, 4, 2, 5
+        )  # batch_size, channels, height, patch_size, width, patch_size
         hidden_states = hidden_states.flatten(4, 5).flatten(2, 3)
 
         if USE_PEFT_BACKEND:
