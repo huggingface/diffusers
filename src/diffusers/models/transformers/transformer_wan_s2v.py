@@ -234,7 +234,7 @@ class WanS2VCausalConv1d(nn.Module):
         return self.conv(x)
 
 
-class MotionEncoder_tc(nn.Module):
+class WanS2VMotionEncoder(nn.Module):
     def __init__(self, in_dim: int, hidden_dim: int, num_attention_heads: int, need_global: bool = True):
         super().__init__()
 
