@@ -331,7 +331,6 @@ class AudioInjector(nn.Module):
         all_modules_names,
         dim=2048,
         num_heads=32,
-        inject_layer=[0, 27],
         enable_adain=False,
         adain_dim=2048,
         need_adain_ont=False,
