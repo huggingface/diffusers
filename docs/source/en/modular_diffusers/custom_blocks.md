@@ -271,7 +271,6 @@ block = Florence2ImageAnnotatorBlock()
 block.push_to_hub("<your repo id>")
 ```
 
-## Using the Custom Block
 
 Let's use this custom block in an inpainting workflow.
 
