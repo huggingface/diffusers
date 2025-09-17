@@ -327,8 +327,7 @@ class CausalAudioEncoder(nn.Module):
 class AudioInjector(nn.Module):
     def __init__(
         self,
-        all_modules,
-        all_modules_names,
+        num_injection_layers
         dim=2048,
         num_heads=32,
         enable_adain=False,
