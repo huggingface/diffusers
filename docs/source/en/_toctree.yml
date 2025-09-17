@@ -127,7 +127,7 @@
   - local: modular_diffusers/guiders
     title: Guiders
   - local: modular_diffusers/custom_blocks
-    title: Building Custom Blocks
+    title: Building custom blocks
 
 - title: Training
   isExpanded: false
