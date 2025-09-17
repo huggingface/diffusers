@@ -272,7 +272,7 @@ block.push_to_hub("<your repo id>")
 ```
 
 
-Let's use this custom block in an inpainting workflow.
+Load the custom block with [`~ModularPipelineBlocks.from_pretrained`] and set `trust_remote_code=True`.
 
 ```py
 import torch
