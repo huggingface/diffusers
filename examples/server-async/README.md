@@ -5,24 +5,24 @@
 
 ## ⚠️ IMPORTANT
 
-* The server and inference harness live in this repo: `https://github.com/F4k3r22/DiffusersServer`.
-  The example demonstrates how to run pipelines like `StableDiffusion3-3.5` and `Flux.1` concurrently while keeping a single copy of the heavy model parameters on GPU.
+* The example demonstrates how to run pipelines like `StableDiffusion3-3.5` and `Flux.1` concurrently while keeping a single copy of the heavy model parameters on GPU.
 
 ## Necessary components
 
-All the components needed to create the inference server are in `DiffusersServer/`
+All the components needed to create the inference server are in the current directory:
 
 ```
-DiffusersServer/
+server-async/
 ├── utils/
 ├─────── __init__.py
-├─────── scheduler.py # BaseAsyncScheduler wrapper and async_retrieve_timesteps for secure inferences
-├─────── requestscopedpipeline.py # RequestScoped Pipeline for inference with a single in-memory model
-├── __init__.py
-├── create_server.py             # helper script to build/run the app programmatically
-├── Pipelines.py                 # pipeline loader classes (SD3, Flux, legacy SD, video)
-├── serverasync.py               # FastAPI app factory (create\_app\_fastapi)
-├── uvicorn_diffu.py             # convenience script to start uvicorn with recommended flags
+├─────── scheduler.py              # BaseAsyncScheduler wrapper and async_retrieve_timesteps for secure inferences
+├─────── requestscopedpipeline.py  # RequestScoped Pipeline for inference with a single in-memory model
+├─────── utils.py                  # Image/video saving utilities and service configuration
+├── Pipelines.py                   # pipeline loader classes (SD3, Flux, legacy SD, video)
+├── serverasync.py                 # FastAPI app with lifespan management and async inference endpoints
+├── test.py                        # Client test script for inference requests
+├── requirements.txt               # Dependencies
+└── README.md                      # This documentation
 ```
 
 ## What `diffusers-async` adds / Why we needed it
@@ -69,13 +69,28 @@ pip install -r requirements.txt
 
 ### 2) Start the server
 
-Using the `server.py` file that already has everything you need:
+Using the `serverasync.py` file that already has everything you need:
 
 ```bash
-python server.py
+python serverasync.py
 ```
 
-### 3) Example request
+The server will start on `http://localhost:8500` by default with the following features:
+- FastAPI application with async lifespan management
+- Automatic model loading and pipeline initialization
+- Request counting and active inference tracking
+- Memory cleanup after each inference
+- CORS middleware for cross-origin requests
+
+### 3) Test the server
+
+Use the included test script:
+
+```bash
+python test.py
+```
+
+Or send a manual request:
 
 `POST /api/diffusers/inference` with JSON body:
 
@@ -94,6 +109,13 @@ Response example:
   "response": ["http://localhost:8500/images/img123.png"]
 }
 ```
+
+### 4) Server endpoints
+
+- `GET /` - Welcome message
+- `POST /api/diffusers/inference` - Main inference endpoint
+- `GET /images/{filename}` - Serve generated images
+- `GET /api/status` - Server status and memory info
 
 ## Advanced Configuration
 
@@ -116,6 +138,19 @@ RequestScopedPipeline(
 * `clone_for_request()` method for safe per-request scheduler cloning
 * Enhanced debugging with `__repr__` and `__str__` methods
 * Full compatibility with existing scheduler APIs
+
+### Server Configuration
+
+The server configuration can be modified in `serverasync.py` through the `ServerConfigModels` dataclass:
+
+```python
+@dataclass
+class ServerConfigModels:
+    model: str = 'stabilityai/stable-diffusion-3-medium'  
+    type_models: str = 't2im'  
+    host: str = '0.0.0.0' 
+    port: int = 8500
+```
 
 ## Troubleshooting (quick)
 

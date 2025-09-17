@@ -1,4 +1,3 @@
-# Pipelines.py
 from diffusers.pipelines.stable_diffusion_3.pipeline_stable_diffusion_3 import StableDiffusion3Pipeline
 from diffusers.pipelines.flux.pipeline_flux import FluxPipeline
 import torch
@@ -102,8 +101,6 @@ class ModelPipelineInitializer:
             self.model_type = "SD3_5"
         elif self.model in preset_models.Flux:
             self.model_type = "Flux"
-        else:
-            self.model_type = "SD"
 
         # Create appropriate pipeline based on model type and type_models
         if self.type_models == 't2im':
