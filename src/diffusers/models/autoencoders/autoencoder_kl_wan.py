@@ -1278,17 +1278,15 @@ class AutoencoderKLWan(ModelMixin, ConfigMixin, FromOriginalModelMixin):
             `torch.Tensor`:
                 The latent representation of the encoded videos.
         """
-        if self.config.patch_size is not None:
-            x = patchify(x, patch_size=self.config.patch_size)
-            
+        spatial_compression_ratio = self.spatial_compression_ratio // self.config.patch_size    # remove compression_ratio by patchify 
         _, _, num_frames, height, width = x.shape
-        latent_height = height // self.spatial_compression_ratio
-        latent_width = width // self.spatial_compression_ratio
+        latent_height = height // spatial_compression_ratio
+        latent_width = width // spatial_compression_ratio
 
-        tile_latent_min_height = self.tile_sample_min_height // self.spatial_compression_ratio
-        tile_latent_min_width = self.tile_sample_min_width // self.spatial_compression_ratio
-        tile_latent_stride_height = self.tile_sample_stride_height // self.spatial_compression_ratio
-        tile_latent_stride_width = self.tile_sample_stride_width // self.spatial_compression_ratio
+        tile_latent_min_height = self.tile_sample_min_height // spatial_compression_ratio
+        tile_latent_min_width = self.tile_sample_min_width // spatial_compression_ratio
+        tile_latent_stride_height = self.tile_sample_stride_height // spatial_compression_ratio
+        tile_latent_stride_width = self.tile_sample_stride_width // spatial_compression_ratio
 
         blend_height = tile_latent_min_height - tile_latent_stride_height
         blend_width = tile_latent_min_width - tile_latent_stride_width
@@ -1353,15 +1351,16 @@ class AutoencoderKLWan(ModelMixin, ConfigMixin, FromOriginalModelMixin):
                 returned.
         """
         z = self.post_quant_conv(z)
-
+        
+        spatial_compression_ratio = self.spatial_compression_ratio // self.config.patch_size    # remove compression_ratio by patchify 
         _, _, num_frames, height, width = z.shape
-        sample_height = height * self.spatial_compression_ratio
-        sample_width = width * self.spatial_compression_ratio
+        sample_height = height * spatial_compression_ratio
+        sample_width = width * spatial_compression_ratio
 
-        tile_latent_min_height = self.tile_sample_min_height // self.spatial_compression_ratio
-        tile_latent_min_width = self.tile_sample_min_width // self.spatial_compression_ratio
-        tile_latent_stride_height = self.tile_sample_stride_height // self.spatial_compression_ratio
-        tile_latent_stride_width = self.tile_sample_stride_width // self.spatial_compression_ratio
+        tile_latent_min_height = self.tile_sample_min_height // spatial_compression_ratio
+        tile_latent_min_width = self.tile_sample_min_width // spatial_compression_ratio
+        tile_latent_stride_height = self.tile_sample_stride_height // spatial_compression_ratio
+        tile_latent_stride_width = self.tile_sample_stride_width // spatial_compression_ratio
 
         blend_height = self.tile_sample_min_height - self.tile_sample_stride_height
         blend_width = self.tile_sample_min_width - self.tile_sample_stride_width
