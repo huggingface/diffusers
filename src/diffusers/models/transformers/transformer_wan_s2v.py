@@ -340,13 +340,13 @@ class AudioInjector(nn.Module):
     ):
         super().__init__()
         self.injected_block_id = {}
-        audio_injector_id = 0
+        num_injection_layers = 0
         for mod_name, mod in zip(all_modules_names, all_modules):
             if isinstance(mod, WanS2VTransformerBlock):
                 for inject_id in inject_layer:
                     if f"transformer_blocks.{inject_id}" in mod_name:
-                        self.injected_block_id[inject_id] = audio_injector_id
-                        audio_injector_id += 1
+                        self.injected_block_id[inject_id] = num_injection_layers
+                        num_injection_layers += 1
 
         # Cross-attention
         self.injector = nn.ModuleList(
@@ -365,21 +365,55 @@ class AudioInjector(nn.Module):
         )
 
         self.injector_pre_norm_feat = nn.ModuleList(
-            [nn.LayerNorm(dim, elementwise_affine=False, eps=eps) for _ in range(audio_injector_id)]
+            [nn.LayerNorm(dim, elementwise_affine=False, eps=eps) for _ in range(num_injection_layers)]
         )
         self.injector_pre_norm_vec = nn.ModuleList(
-            [nn.LayerNorm(dim, elementwise_affine=False, eps=eps) for _ in range(audio_injector_id)]
+            [nn.LayerNorm(dim, elementwise_affine=False, eps=eps) for _ in range(num_injection_layers)]
         )
 
         if enable_adain:
             self.injector_adain_layers = nn.ModuleList(
-                [AdaLayerNorm(output_dim=dim * 2, embedding_dim=adain_dim) for _ in range(audio_injector_id)]
+                [AdaLayerNorm(output_dim=dim * 2, embedding_dim=adain_dim) for _ in range(num_injection_layers)]
             )
             if need_adain_ont:
                 self.injector_adain_output_layers = nn.ModuleList(
-                    [nn.Linear(dim, dim) for _ in range(audio_injector_id)]
+                    [nn.Linear(dim, dim) for _ in range(num_injection_layers)]
                 )
 
+    def forward(
+        self,
+        block_idx,
+        hidden_states,
+        original_sequence_length,
+        merged_audio_emb_num_frames,
+        attn_audio_emb,
+        audio_emb_global,
+    ):
+        audio_attn_id = self.injected_block_id[block_idx]
+
+        input_hidden_states = hidden_states[:, :original_sequence_length].clone()  # B (F H W) C
+        input_hidden_states = input_hidden_states.unflatten(1, (merged_audio_emb_num_frames, -1)).flatten(0, 1)
+
+        if self.config.enable_adain and self.config.adain_mode == "attn_norm":
+            attn_hidden_states = self.audio_injector.injector_adain_layers[audio_attn_id](
+                input_hidden_states, temb=audio_emb_global[:, 0]
+            )
+        else:
+            attn_hidden_states = self.audio_injector.injector_pre_norm_feat[audio_attn_id](input_hidden_states)
+
+        attention_kwargs = {
+            "max_seqlen_k": torch.ones(
+                attn_hidden_states.shape[0], dtype=torch.long, device=attn_hidden_states.device
+            )
+            * attn_audio_emb.shape[1]
+        }
+        residual_out = self.audio_injector.injector[audio_attn_id](
+            attn_hidden_states, attn_audio_emb, None, None, **attention_kwargs
+        )
+        residual_out = residual_out.unflatten(0, (-1, merged_audio_emb_num_frames)).flatten(1, 2)
+        hidden_states[:, :original_sequence_length] = hidden_states[:, :original_sequence_length] + residual_out
+
+        return hidden_states
 
 class FramePackMotioner(nn.Module):
     def __init__(
@@ -991,41 +1025,6 @@ class WanS2VTransformer3DModel(
             )
         return hidden_states, seq_lens, rope_embs, mask_input
 
-    def after_transformer_block(
-        self,
-        block_idx,
-        hidden_states,
-        original_sequence_length,
-        merged_audio_emb_num_frames,
-        attn_audio_emb,
-        audio_emb_global,
-    ):
-        if block_idx in self.audio_injector.injected_block_id.keys():
-            audio_attn_id = self.audio_injector.injected_block_id[block_idx]
-
-            input_hidden_states = hidden_states[:, :original_sequence_length].clone()  # B (F H W) C
-            input_hidden_states = input_hidden_states.unflatten(1, (merged_audio_emb_num_frames, -1)).flatten(0, 1)
-
-            if self.config.enable_adain and self.config.adain_mode == "attn_norm":
-                attn_hidden_states = self.audio_injector.injector_adain_layers[audio_attn_id](
-                    input_hidden_states, temb=audio_emb_global[:, 0]
-                )
-            else:
-                attn_hidden_states = self.audio_injector.injector_pre_norm_feat[audio_attn_id](input_hidden_states)
-
-            attention_kwargs = {
-                "max_seqlen_k": torch.ones(
-                    attn_hidden_states.shape[0], dtype=torch.long, device=attn_hidden_states.device
-                )
-                * attn_audio_emb.shape[1]
-            }
-            residual_out = self.audio_injector.injector[audio_attn_id](
-                attn_hidden_states, attn_audio_emb, None, None, **attention_kwargs
-            )
-            residual_out = residual_out.unflatten(0, (-1, merged_audio_emb_num_frames)).flatten(1, 2)
-            hidden_states[:, :original_sequence_length] = hidden_states[:, :original_sequence_length] + residual_out
-
-        return hidden_states
 
     def forward(
         self,
@@ -1163,27 +1162,29 @@ class WanS2VTransformer3DModel(
                     rotary_emb,
                     attention_kwargs,
                 )
-                hidden_states = self.after_transformer_block(
-                    block_idx,
-                    hidden_states,
-                    original_sequence_length,
-                    merged_audio_emb_num_frames,
-                    attn_audio_emb,
-                    audio_emb_global,
-                )
+                if block_idx in self.injected_block_id.keys():
+                    hidden_states = self.audio_injector(
+                        block_idx,
+                        hidden_states,
+                        original_sequence_length,
+                        merged_audio_emb_num_frames,
+                        attn_audio_emb,
+                        audio_emb_global,
+                    )
         else:
             for block_idx, block in enumerate(self.blocks):
                 hidden_states = block(
                     hidden_states, encoder_hidden_states, timestep_proj, rotary_emb, attention_kwargs
                 )
-                hidden_states = self.after_transformer_block(
-                    block_idx,
-                    hidden_states,
-                    original_sequence_length,
-                    merged_audio_emb_num_frames,
-                    attn_audio_emb,
-                    audio_emb_global,
-                )
+                if block_idx in self.injected_block_id.keys():
+                    hidden_states = self.audio_injector(
+                        block_idx,
+                        hidden_states,
+                        original_sequence_length,
+                        merged_audio_emb_num_frames,
+                        attn_audio_emb,
+                        audio_emb_global,
+                    )
 
         hidden_states = hidden_states[:, :original_sequence_length]
 
