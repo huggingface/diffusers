@@ -13,7 +13,9 @@ specific language governing permissions and limitations under the License.
 
 # Building Custom Blocks
 
-Modular Diffusers allows you to create custom blocks that can be plugged into Modular Pipelines. This guide will show you how to create and use a custom block.
+[ModularPipelineBlocks](./pipeline_block) are the fundamental building blocks for a [`ModularPipeline`]. As long as they contain the appropriate inputs, outputs, and computation logic, you can customize these blocks to create custom blocks.
+
+This guide will show you how to create and use a custom block.
 
 First let's take a look at the structure of our custom block project:
 
