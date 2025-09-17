@@ -306,6 +306,7 @@ class CausalAudioEncoder(nn.Module):
 
         return res  # b f n dim
 
+
 class AudioInjector(nn.Module):
     def __init__(
         self,
@@ -322,7 +323,7 @@ class AudioInjector(nn.Module):
         super().__init__()
         self.enable_adain = enable_adain
         self.adain_mode = adain_mode
-        self.injected_block_id = {inject_id: idx for inject_id, idx in zip(inject_layers, range(num_injection_layers))}
+        self.injected_block_id = dict(zip(inject_layers, range(num_injection_layers)))
 
         # Cross-attention
         self.injector = nn.ModuleList(
@@ -381,9 +382,7 @@ class AudioInjector(nn.Module):
             "max_seqlen_k": torch.ones(attn_hidden_states.shape[0], dtype=torch.long, device=attn_hidden_states.device)
             * attn_audio_emb.shape[1]
         }
-        residual_out = self.injector[audio_attn_id](
-            attn_hidden_states, attn_audio_emb, None, None, **attention_kwargs
-        )
+        residual_out = self.injector[audio_attn_id](attn_hidden_states, attn_audio_emb, None, None, **attention_kwargs)
         residual_out = residual_out.unflatten(0, (-1, merged_audio_emb_num_frames)).flatten(1, 2)
         hidden_states[:, :original_sequence_length] = hidden_states[:, :original_sequence_length] + residual_out
 
