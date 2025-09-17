@@ -5,7 +5,7 @@ import requests
 
 SERVER_URL = "http://localhost:8500/api/diffusers/inference"
 BASE_URL = "http://localhost:8500"
-DOWNLOAD_FOLDER = "imagenes_generadas"
+DOWNLOAD_FOLDER = "generated_images"
 WAIT_BEFORE_DOWNLOAD = 2  # seconds
 
 os.makedirs(DOWNLOAD_FOLDER, exist_ok=True)
