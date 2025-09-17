@@ -402,9 +402,7 @@ class AudioInjector(nn.Module):
             attn_hidden_states = self.audio_injector.injector_pre_norm_feat[audio_attn_id](input_hidden_states)
 
         attention_kwargs = {
-            "max_seqlen_k": torch.ones(
-                attn_hidden_states.shape[0], dtype=torch.long, device=attn_hidden_states.device
-            )
+            "max_seqlen_k": torch.ones(attn_hidden_states.shape[0], dtype=torch.long, device=attn_hidden_states.device)
             * attn_audio_emb.shape[1]
         }
         residual_out = self.audio_injector.injector[audio_attn_id](
@@ -414,6 +412,7 @@ class AudioInjector(nn.Module):
         hidden_states[:, :original_sequence_length] = hidden_states[:, :original_sequence_length] + residual_out
 
         return hidden_states
+
 
 class FramePackMotioner(nn.Module):
     def __init__(
@@ -1025,7 +1024,6 @@ class WanS2VTransformer3DModel(
             )
         return hidden_states, seq_lens, rope_embs, mask_input
 
-
     def forward(
         self,
         hidden_states: torch.Tensor,
@@ -1193,8 +1191,7 @@ class WanS2VTransformer3DModel(
 
         # Move the shift and scale tensors to the same device as hidden_states.
         # When using multi-GPU inference via accelerate these will be on the
-        # first device rather than the last device, which hidden_states ends up
-        # on.
+        # first device rather than the last device, which hidden_states ends up on.
         shift = shift.to(hidden_states.device)
         scale = scale.to(hidden_states.device)
 
