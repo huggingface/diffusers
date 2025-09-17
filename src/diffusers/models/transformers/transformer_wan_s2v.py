@@ -220,7 +220,7 @@ class AdaLayerNorm(nn.Module):
         return x
 
 
-class CausalConv1d(nn.Module):
+class WanS2VCausalConv1d(nn.Module):
     def __init__(self, chan_in, chan_out, kernel_size=3, stride=1, dilation=1, pad_mode="replicate", **kwargs):
         super().__init__()
 
