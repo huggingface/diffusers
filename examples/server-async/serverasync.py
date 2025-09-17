@@ -3,10 +3,9 @@ from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel
-from .Pipelines import ModelPipelineInitializer
-from .utils import Utils, RequestScopedPipeline
+from Pipelines import ModelPipelineInitializer
+from utils import Utils, RequestScopedPipeline
 import logging
-from diffusers import *
 import random
 from dataclasses import dataclass
 import os
@@ -20,7 +19,7 @@ import asyncio
 
 @dataclass
 class ServerConfigModels:
-    model: str = 'stabilityai/stable-diffusion-3-medium'  
+    model: str = 'stabilityai/stable-diffusion-3.5-medium'  
     type_models: str = 't2im'  
     constructor_pipeline: Optional[Type] = None
     custom_pipeline: Optional[Type] = None  

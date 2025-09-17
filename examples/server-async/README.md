@@ -146,7 +146,7 @@ The server configuration can be modified in `serverasync.py` through the `Server
 ```python
 @dataclass
 class ServerConfigModels:
-    model: str = 'stabilityai/stable-diffusion-3-medium'  
+    model: str = 'stabilityai/stable-diffusion-3.5-medium'  
     type_models: str = 't2im'  
     host: str = '0.0.0.0' 
     port: int = 8500
