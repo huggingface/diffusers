@@ -393,8 +393,6 @@ class FramePackMotioner(nn.Module):
         ],  # Three numbers representing the number of frames sampled for patch operations from the nearest to the farthest frames
         drop_mode="drop",  # If not "drop", it will use "padd", meaning padding instead of deletion
         patch_size=(1, 2, 2),
-        *args,
-        **kwargs,
     ):
         super().__init__(*args, **kwargs)
         self.inner_dim = inner_dim
