@@ -172,6 +172,10 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
             Whether to rescale the betas to have zero terminal SNR. This enables the model to generate very bright and
             dark samples instead of limiting it to samples with medium brightness. Loosely related to
             [`--offset_noise`](https://github.com/huggingface/diffusers/blob/74fd735eb073eb1d774b1ab4154a0876eb82f055/examples/dreambooth/train_dreambooth.py#L506).
+        scale_betas_for_timesteps (`bool`, defaults to `False`):
+            Whether to scale the `beta_end` parameter based on the number of training timesteps. The original DDPM
+            paper's parameters are tuned for `num_train_timesteps=1000`, so scaling may be required for other values to
+            maintain a similar noise schedule.
     """
 
     _compatibles = [e.name for e in KarrasDiffusionSchedulers]
@@ -195,23 +199,32 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
         timestep_spacing: str = "leading",
         steps_offset: int = 0,
         rescale_betas_zero_snr: bool = False,
+        scale_betas_for_timesteps: bool = False,
     ):
         if trained_betas is not None:
             self.betas = torch.tensor(trained_betas, dtype=torch.float32)
-        elif beta_schedule == "linear":
-            self.betas = torch.linspace(beta_start, beta_end, num_train_timesteps, dtype=torch.float32)
-        elif beta_schedule == "scaled_linear":
-            # this schedule is very specific to the latent diffusion model.
-            self.betas = torch.linspace(beta_start**0.5, beta_end**0.5, num_train_timesteps, dtype=torch.float32) ** 2
-        elif beta_schedule == "squaredcos_cap_v2":
-            # Glide cosine schedule
-            self.betas = betas_for_alpha_bar(num_train_timesteps)
-        elif beta_schedule == "sigmoid":
-            # GeoDiff sigmoid schedule
-            betas = torch.linspace(-6, 6, num_train_timesteps)
-            self.betas = torch.sigmoid(betas) * (beta_end - beta_start) + beta_start
         else:
-            raise NotImplementedError(f"{beta_schedule} is not implemented for {self.__class__}")
+            if scale_betas_for_timesteps and num_train_timesteps != 1000:
+                # scale betas for num_train_timesteps
+                scale_factor = 1000 / num_train_timesteps
+                beta_end = beta_end * scale_factor
+
+            if beta_schedule == "linear":
+                self.betas = torch.linspace(beta_start, beta_end, num_train_timesteps, dtype=torch.float32)
+            elif beta_schedule == "scaled_linear":
+                # this schedule is very specific to the latent diffusion model.
+                self.betas = (
+                    torch.linspace(beta_start**0.5, beta_end**0.5, num_train_timesteps, dtype=torch.float32) ** 2
+                )
+            elif beta_schedule == "squaredcos_cap_v2":
+                # Glide cosine schedule
+                self.betas = betas_for_alpha_bar(num_train_timesteps)
+            elif beta_schedule == "sigmoid":
+                # GeoDiff sigmoid schedule
+                betas = torch.linspace(-6, 6, num_train_timesteps)
+                self.betas = torch.sigmoid(betas) * (beta_end - beta_start) + beta_start
+            else:
+                raise NotImplementedError(f"{beta_schedule} is not implemented for {self.__class__}")
 
         # Rescale for zero SNR
         if rescale_betas_zero_snr:
