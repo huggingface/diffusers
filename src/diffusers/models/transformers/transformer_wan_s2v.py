@@ -314,12 +314,14 @@ class AudioInjector(nn.Module):
         dim=2048,
         num_heads=32,
         enable_adain=False,
+        adain_mode="attn_norm",
         adain_dim=2048,
-        need_adain_ont=False,
         eps=1e-6,
         added_kv_proj_dim=None,
     ):
         super().__init__()
+        self.enable_adain = enable_adain
+        self.adain_mode = adain_mode
         self.injected_block_id = {inject_id: idx for inject_id, idx in zip(inject_layers, range(num_injection_layers))}
 
         # Cross-attention
@@ -349,7 +351,7 @@ class AudioInjector(nn.Module):
             self.injector_adain_layers = nn.ModuleList(
                 [AdaLayerNorm(output_dim=dim * 2, embedding_dim=adain_dim) for _ in range(num_injection_layers)]
             )
-            if need_adain_ont:
+            if adain_mode != "attn_norm":
                 self.injector_adain_output_layers = nn.ModuleList(
                     [nn.Linear(dim, dim) for _ in range(num_injection_layers)]
                 )
@@ -368,18 +370,18 @@ class AudioInjector(nn.Module):
         input_hidden_states = hidden_states[:, :original_sequence_length].clone()  # B (F H W) C
         input_hidden_states = input_hidden_states.unflatten(1, (merged_audio_emb_num_frames, -1)).flatten(0, 1)
 
-        if self.config.enable_adain and self.config.adain_mode == "attn_norm":
-            attn_hidden_states = self.audio_injector.injector_adain_layers[audio_attn_id](
+        if self.enable_adain and self.adain_mode == "attn_norm":
+            attn_hidden_states = self.injector_adain_layers[audio_attn_id](
                 input_hidden_states, temb=audio_emb_global[:, 0]
             )
         else:
-            attn_hidden_states = self.audio_injector.injector_pre_norm_feat[audio_attn_id](input_hidden_states)
+            attn_hidden_states = self.injector_pre_norm_feat[audio_attn_id](input_hidden_states)
 
         attention_kwargs = {
             "max_seqlen_k": torch.ones(attn_hidden_states.shape[0], dtype=torch.long, device=attn_hidden_states.device)
             * attn_audio_emb.shape[1]
         }
-        residual_out = self.audio_injector.injector[audio_attn_id](
+        residual_out = self.injector[audio_attn_id](
             attn_hidden_states, attn_audio_emb, None, None, **attention_kwargs
         )
         residual_out = residual_out.unflatten(0, (-1, merged_audio_emb_num_frames)).flatten(1, 2)
@@ -911,7 +913,7 @@ class WanS2VTransformer3DModel(
             num_heads=num_attention_heads,
             enable_adain=enable_adain,
             adain_dim=inner_dim,
-            need_adain_ont=adain_mode != "attn_norm",
+            adain_mode=adain_mode,
             eps=eps,
         )
 
