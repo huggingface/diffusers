@@ -240,12 +240,12 @@ class WanS2VMotionEncoder(nn.Module):
 
         self.num_attention_heads = num_attention_heads
         self.need_global = need_global
-        self.conv1_local = CausalConv1d(in_dim, hidden_dim // 4 * num_attention_heads, 3, stride=1)
+        self.conv1_local = WanS2VCausalConv1d(in_dim, hidden_dim // 4 * num_attention_heads, 3, stride=1)
         if need_global:
-            self.conv1_global = CausalConv1d(in_dim, hidden_dim // 4, 3, stride=1)
+            self.conv1_global = WanS2VCausalConv1d(in_dim, hidden_dim // 4, 3, stride=1)
         self.act = nn.SiLU()
-        self.conv2 = CausalConv1d(hidden_dim // 4, hidden_dim // 2, 3, stride=2)
-        self.conv3 = CausalConv1d(hidden_dim // 2, hidden_dim, 3, stride=2)
+        self.conv2 = WanS2VCausalConv1d(hidden_dim // 4, hidden_dim // 2, 3, stride=2)
+        self.conv3 = WanS2VCausalConv1d(hidden_dim // 2, hidden_dim, 3, stride=2)
 
         if need_global:
             self.final_linear = nn.Linear(hidden_dim, hidden_dim)
@@ -305,7 +305,7 @@ class WanS2VMotionEncoder(nn.Module):
 class CausalAudioEncoder(nn.Module):
     def __init__(self, dim=5120, num_layers=25, out_dim=2048, num_audio_token=4, need_global=False):
         super().__init__()
-        self.encoder = MotionEncoder_tc(
+        self.encoder = WanS2VMotionEncoder(
             in_dim=dim, hidden_dim=out_dim, num_attention_heads=num_audio_token, need_global=need_global
         )
         weight = torch.ones((1, num_layers, 1, 1)) * 0.01
@@ -394,7 +394,7 @@ class FramePackMotioner(nn.Module):
         drop_mode="drop",  # If not "drop", it will use "padd", meaning padding instead of deletion
         patch_size=(1, 2, 2),
     ):
-        super().__init__(*args, **kwargs)
+        super().__init__()
         self.inner_dim = inner_dim
         self.num_attention_heads = num_attention_heads
         if (inner_dim % num_attention_heads) != 0 or (inner_dim // num_attention_heads) % 2 != 0:
