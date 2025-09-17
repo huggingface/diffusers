@@ -39,23 +39,6 @@ from .transformer_wan import (
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-def torch_dfs(model: nn.Module, parent_name="root"):
-    module_names, modules = [], []
-    current_name = parent_name if parent_name else "root"
-    module_names.append(current_name)
-    modules.append(model)
-
-    for name, child in model.named_children():
-        if parent_name:
-            child_name = f"{parent_name}.{name}"
-        else:
-            child_name = name
-        child_modules, child_names = torch_dfs(child, child_name)
-        module_names += child_names
-        modules += child_modules
-    return modules, module_names
-
-
 def _get_qkv_projections(attn: "WanAttention", hidden_states: torch.Tensor, encoder_hidden_states: torch.Tensor):
     # encoder_hidden_states is only passed for cross-attention
     if encoder_hidden_states is None:
@@ -323,11 +306,11 @@ class CausalAudioEncoder(nn.Module):
 
         return res  # b f n dim
 
-
 class AudioInjector(nn.Module):
     def __init__(
         self,
-        num_injection_layers
+        num_injection_layers,
+        inject_layers,
         dim=2048,
         num_heads=32,
         enable_adain=False,
@@ -337,14 +320,7 @@ class AudioInjector(nn.Module):
         added_kv_proj_dim=None,
     ):
         super().__init__()
-        self.injected_block_id = {}
-        num_injection_layers = 0
-        for mod_name, mod in zip(all_modules_names, all_modules):
-            if isinstance(mod, WanS2VTransformerBlock):
-                for inject_id in inject_layer:
-                    if f"transformer_blocks.{inject_id}" in mod_name:
-                        self.injected_block_id[inject_id] = num_injection_layers
-                        num_injection_layers += 1
+        self.injected_block_id = {inject_id: idx for inject_id, idx in zip(inject_layers, range(num_injection_layers))}
 
         # Cross-attention
         self.injector = nn.ModuleList(
@@ -928,13 +904,11 @@ class WanS2VTransformer3DModel(
         )
 
         # 4. Audio Injector
-        all_modules, all_modules_names = torch_dfs(self.blocks, parent_name="root.transformer_blocks")
         self.audio_injector = AudioInjector(
-            all_modules,
-            all_modules_names,
+            num_injection_layers=len(audio_inject_layers),
+            inject_layers=audio_inject_layers,
             dim=inner_dim,
             num_heads=num_attention_heads,
-            inject_layer=audio_inject_layers,
             enable_adain=enable_adain,
             adain_dim=inner_dim,
             need_adain_ont=adain_mode != "attn_norm",
@@ -1158,7 +1132,7 @@ class WanS2VTransformer3DModel(
                     rotary_emb,
                     attention_kwargs,
                 )
-                if block_idx in self.injected_block_id.keys():
+                if block_idx in self.audio_injector.injected_block_id.keys():
                     hidden_states = self.audio_injector(
                         block_idx,
                         hidden_states,
@@ -1172,7 +1146,7 @@ class WanS2VTransformer3DModel(
                 hidden_states = block(
                     hidden_states, encoder_hidden_states, timestep_proj, rotary_emb, attention_kwargs
                 )
-                if block_idx in self.injected_block_id.keys():
+                if block_idx in self.audio_injector.injected_block_id.keys():
                     hidden_states = self.audio_injector(
                         block_idx,
                         hidden_states,
