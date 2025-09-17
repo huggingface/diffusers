@@ -360,7 +360,7 @@ class AudioInjector(nn.Module):
                     cross_attention_dim_head=dim // num_heads,
                     processor=WanS2VAttnProcessor(),
                 )
-                for _ in range(audio_injector_id)
+                for _ in range(num_injection_layers)
             ]
         )
 
