@@ -518,32 +518,20 @@ class TorchAoConfig(QuantizationConfigMixin):
         TORCHAO_QUANT_TYPE_METHODS = self._get_torchao_quant_type_to_method()
         AO_VERSION = self._get_ao_version()
 
-        if isinstance(self.quant_type, str) and self.quant_type not in TORCHAO_QUANT_TYPE_METHODS.keys():
-            is_floating_quant_type = self.quant_type.startswith("float") or self.quant_type.startswith("fp")
-            if is_floating_quant_type and not self._is_xpu_or_cuda_capability_atleast_8_9():
-                raise ValueError(
-                    f"Requested quantization type: {self.quant_type} is not supported on GPUs with CUDA capability <= 8.9. You "
-                    f"can check the CUDA capability of your GPU using `torch.cuda.get_device_capability()`."
-                )
-
-            raise ValueError(
-                f"Requested quantization type: {self.quant_type} is not supported or is an incorrect `quant_type` name. If you think the "
-                f"provided quantization type should be supported, please open an issue at https://github.com/huggingface/diffusers/issues."
-            )
-        elif AO_VERSION > version.parse("0.9.0"):
-            from torchao.quantization.quant_api import AOBaseConfig
-
-            if not isinstance(self.quant_type, AOBaseConfig):
-                raise TypeError(
-                    f"`quant_type` must be either a string or an `AOBaseConfig` instance, got {type(self.quant_type)}."
-                )
-        else:
-            raise ValueError(
-                f"In torchao <= 0.9.0, quant_type must be a string. Got {type(self.quant_type)}. "
-                f"Please upgrade to torchao > 0.9.0 to use `AOBaseConfig` instances."
-            )
-
         if isinstance(self.quant_type, str):
+            if self.quant_type not in TORCHAO_QUANT_TYPE_METHODS.keys():
+                is_floating_quant_type = self.quant_type.startswith("float") or self.quant_type.startswith("fp")
+                if is_floating_quant_type and not self._is_xpu_or_cuda_capability_atleast_8_9():
+                    raise ValueError(
+                        f"Requested quantization type: {self.quant_type} is not supported on GPUs with CUDA capability <= 8.9. You "
+                        f"can check the CUDA capability of your GPU using `torch.cuda.get_device_capability()`."
+                    )
+
+                raise ValueError(
+                    f"Requested quantization type: {self.quant_type} is not supported or is an incorrect `quant_type` name. If you think the "
+                    f"provided quantization type should be supported, please open an issue at https://github.com/huggingface/diffusers/issues."
+                )
+
             method = TORCHAO_QUANT_TYPE_METHODS[self.quant_type]
             signature = inspect.signature(method)
             all_kwargs = {
@@ -558,6 +546,18 @@ class TorchAoConfig(QuantizationConfigMixin):
                     f'The quantization method "{self.quant_type}" does not support the following keyword arguments: '
                     f"{unsupported_kwargs}. The following keywords arguments are supported: {all_kwargs}."
                 )
+        elif AO_VERSION > version.parse("0.9.0"):
+            from torchao.quantization.quant_api import AOBaseConfig
+
+            if not isinstance(self.quant_type, AOBaseConfig):
+                raise TypeError(
+                    f"`quant_type` must be either a string or an `AOBaseConfig` instance, got {type(self.quant_type)}."
+                )
+        else:
+            raise ValueError(
+                f"In torchao <= 0.9.0, quant_type must be a string. Got {type(self.quant_type)}. "
+                f"Please upgrade to torchao > 0.9.0 to use `AOBaseConfig` instances."
+            )
 
     def to_dict(self):
         """Convert configuration to a dictionary."""

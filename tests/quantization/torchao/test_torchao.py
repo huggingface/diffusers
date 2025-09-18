@@ -590,7 +590,6 @@ class TorchAoSerializationTest(unittest.TestCase):
         inputs = self.get_dummy_tensor_inputs(torch_device)
         output = quantized_model(**inputs)[0]
         output_slice = output.flatten()[-9:].detach().float().cpu().numpy()
-        print(f"{output_slice=}")
         weight = quantized_model.transformer_blocks[0].ff.net[2].weight
         self.assertTrue(isinstance(weight, (AffineQuantizedTensor, LinearActivationQuantizedTensor)))
         self.assertTrue(numpy_cosine_similarity_distance(output_slice, expected_slice) < 1e-3)
