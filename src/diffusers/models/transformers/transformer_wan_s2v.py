@@ -259,7 +259,7 @@ class WeightedAveragelayer(nn.Module):
         weights = self.act(self.weights)
         weights_sum = weights.sum(dim=1, keepdims=True)
         weighted_feat = ((features * weights) / weights_sum).sum(dim=1)  # b dim f
-        
+
         return weighted_feat
 
 
