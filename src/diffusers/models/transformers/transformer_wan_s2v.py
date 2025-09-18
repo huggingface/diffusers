@@ -30,7 +30,7 @@ from ..cache_utils import CacheMixin
 from ..embeddings import PixArtAlphaTextProjection, TimestepEmbedding, Timesteps, get_1d_rotary_pos_embed
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin, get_parameter_dtype
-from ..normalization import FP32LayerNorm, AdaLayerNorm
+from ..normalization import AdaLayerNorm, FP32LayerNorm
 from .transformer_wan import (
     WanAttention,
 )
@@ -313,7 +313,10 @@ class AudioInjector(nn.Module):
 
         if enable_adain:
             self.injector_adain_layers = nn.ModuleList(
-                [AdaLayerNorm(embedding_dim=adain_dim, output_dim=dim * 2, chunk_dim=1) for _ in range(num_injection_layers)]
+                [
+                    AdaLayerNorm(embedding_dim=adain_dim, output_dim=dim * 2, chunk_dim=1)
+                    for _ in range(num_injection_layers)
+                ]
             )
             if adain_mode != "attn_norm":
                 self.injector_adain_output_layers = nn.ModuleList(
