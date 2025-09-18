@@ -248,15 +248,10 @@ class WanS2VMotionEncoder(nn.Module):
         return x, x_local
 
 
-class CausalAudioEncoder(nn.Module):
-    def __init__(self, dim=5120, num_layers=25, out_dim=2048, num_audio_token=4, need_global=False):
+class WeightedAveragelayer(nn.Module):
+    def __init__(self, num_layers):
         super().__init__()
-        self.encoder = WanS2VMotionEncoder(
-            in_dim=dim, hidden_dim=out_dim, num_attention_heads=num_audio_token, need_global=need_global
-        )
-        weight = torch.ones((1, num_layers, 1, 1)) * 0.01
-
-        self.weights = torch.nn.Parameter(weight)
+        self.weights = torch.nn.Parameter(torch.ones((1, num_layers, 1, 1)) * 0.01)
         self.act = torch.nn.SiLU()
 
     def forward(self, features):
@@ -264,6 +259,21 @@ class CausalAudioEncoder(nn.Module):
         weights = self.act(self.weights)
         weights_sum = weights.sum(dim=1, keepdims=True)
         weighted_feat = ((features * weights) / weights_sum).sum(dim=1)  # b dim f
+        
+        return weighted_feat
+
+
+class CausalAudioEncoder(nn.Module):
+    def __init__(self, dim=5120, num_layers=25, out_dim=2048, num_audio_token=4, need_global=False):
+        super().__init__()
+        self.weighted_avg = WeightedAveragelayer(num_layers)
+        self.encoder = WanS2VMotionEncoder(
+            in_dim=dim, hidden_dim=out_dim, num_attention_heads=num_audio_token, need_global=need_global
+        )
+
+    def forward(self, features):
+        # features B * num_layers * dim * video_length
+        weighted_feat = self.weighted_avg(features)
         weighted_feat = weighted_feat.permute(0, 2, 1)  # b f dim
         res = self.encoder(weighted_feat)  # b f n dim
 
