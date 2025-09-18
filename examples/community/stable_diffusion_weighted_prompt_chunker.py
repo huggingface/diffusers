@@ -11,7 +11,7 @@
 ## -----------------------------------------------------------
 
 import torch
-from diffusers import StableDiffusionPipeline, StableDiffusionXLPipeline
+from diffusers import DiffusionPipeline
 from functorch.dim import Tensor
 from enum import Enum
 
@@ -369,7 +369,7 @@ def _pad_weighted_tensors(
 
     return (pos_tokens, pos_weights), (neg_tokens, neg_weights)
 
-def _embed_sd15_impl(pipe: StableDiffusionPipeline, chunk: Tensor, weighting: Tensor, clip_skip: int | None) -> Tensor:
+def _embed_sd15_impl(pipe: DiffusionPipeline, chunk: Tensor, weighting: Tensor, clip_skip: int | None) -> Tensor:
     """
     Embeds a single chunk using the text encoders from the pipeline (Stable Diffusion 1.5 version)
     """
@@ -400,7 +400,7 @@ def _embed_sd15(
         positive: tuple[Tensor, Tensor],
         negative: tuple[Tensor, Tensor],
         clip_skip: int | None,
-        pipe: StableDiffusionPipeline,
+        pipe: DiffusionPipeline,
         max_length: int
 ) -> tuple[Tensor, Tensor]:
     """
@@ -443,7 +443,7 @@ def _embed_sd15(
 
     return positive_embed, negative_embed
 
-def _embed_sdxl_impl(pipe: StableDiffusionXLPipeline, chunk_1: Tensor, chunk_2: Tensor, weighting: Tensor,
+def _embed_sdxl_impl(pipe: DiffusionPipeline, chunk_1: Tensor, chunk_2: Tensor, weighting: Tensor,
                      pooled_accumulator: PooledAccumulator, clip_skip: int | None,
                      clip_skip_2: int | None) -> Tensor:
     """
@@ -490,7 +490,7 @@ def _embed_sdxl(
         negative_2: tuple[Tensor, Tensor],
         clip_skip: int | None,
         clip_skip_2: int | None,
-        pipe: StableDiffusionXLPipeline,
+        pipe: DiffusionPipeline,
         pooled_accumulator: type[PooledAccumulator],
         max_length: int
 ) -> tuple[tuple[Tensor, Tensor], tuple[Tensor, Tensor]]:
@@ -546,7 +546,7 @@ def _embed_sdxl(
     return (positive_embed, positive_pooled), (negative_embed, negative_pooled)
 
 def chunked_prompts_sdxl(
-        pipe: StableDiffusionXLPipeline,
+        pipe: DiffusionPipeline,
         positive_prompts: list[str],
         negative_prompts: list[str],
         clip_skip: int | None = None,
@@ -617,7 +617,7 @@ def chunked_prompts_sdxl(
     )
 
 def chunked_prompts_sd15(
-        pipe: StableDiffusionPipeline,
+        pipe: DiffusionPipeline,
         positive_prompts: list[str],
         negative_prompts: list[str],
         clip_skip: int | None = None,
