@@ -17,8 +17,7 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-from ..utils import deprecate, get_logger, is_kernels_available, is_torch_npu_available, is_torch_version
-from ..utils.constants import DIFFUSERS_ENABLE_HUB_KERNELS
+from ..utils import deprecate, get_logger, is_torch_npu_available, is_torch_version
 
 
 logger = get_logger(__name__)
@@ -93,36 +92,24 @@ class GELU(nn.Module):
         return hidden_states
 
 
-class CUDAOptimizedGELU(nn.Module):
-    def __init__(self, dim_in: int, dim_out: int, approximate: str = "none", bias: bool = True):
-        if not torch.cuda.is_available():
-            raise NotImplementedError(f"{self.__class__.__name__} is implemented only for CUDA devices.")
-        if not DIFFUSERS_ENABLE_HUB_KERNELS:
-            raise RuntimeError(
-                f"{self.__class__.__name__} isn't usable because the `DIFFUSERS_ENABLE_HUB_KERNELS` env var isn't set. Please set it like `export DIFFUSERS_ENABLE_HUB_KERNELS=yes`."
-            )
-        if not is_kernels_available():
-            raise NotImplementedError(
-                f"{self.__class__.__name__} requires the `kernels` library to be installed. Install it with `pip install kernels`."
-            )
-
+# TODO: validation checks / consider making Python classes of activations like `transformers`
+# All of these are temporary for now.
+class CUDAOptimizedGELU(GELU):
+    def __init__(self, *args, **kwargs):
         from kernels import get_kernel
 
-        super().__init__()
-        self.proj = nn.Linear(dim_in, dim_out, bias=bias)
-        activations = get_kernel(KERNELS_REPO_ID)
-        if approximate == "tanh":
-            self.act = activations.gelu_tanh_and_mul
-        elif approximate == "none":
-            self.act = activations.gelu_and_mul
-        else:
-            raise NotImplementedError
+        activation = get_kernel("kernels-community/activation", revision="add_more_act")
+        approximate = kwargs.get("approximate", "none")
+        if approximate == "none":
+            self.act_fn = activation.gelu
+        elif approximate == "tanh":
+            self.act_fn = activation.gelu_tanh
+        super().__init__(*args, **kwargs)
 
     def forward(self, hidden_states):
         hidden_states = self.proj(hidden_states)
-        out = torch.empty_like(hidden_states)
-        output = self.act(out, hidden_states)
-        return output
+        hidden_states = self.act_fn(hidden_states)
+        return hidden_states
 
 
 class GEGLU(nn.Module):

@@ -20,10 +20,18 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from ..utils import is_torch_npu_available, is_torch_version
+from ..utils import is_kernels_available, is_torch_npu_available, is_torch_version
+from ..utils.constants import DIFFUSERS_ENABLE_HUB_KERNELS
 from ..utils.kernels_utils import use_kernel_forward_from_hub
 from .activations import get_activation
 from .embeddings import CombinedTimestepLabelEmbeddings, PixArtAlphaCombinedTimestepSizeEmbeddings
+
+
+if is_kernels_available() and DIFFUSERS_ENABLE_HUB_KERNELS:
+    from kernels import get_kernel
+
+    activation = get_kernel("kernels-community/activation", revision="add_more_act")
+    silu_kernel = activation.silu
 
 
 class AdaLayerNorm(nn.Module):
@@ -58,7 +66,10 @@ class AdaLayerNorm(nn.Module):
         else:
             self.emb = None
 
-        self.silu = nn.SiLU()
+        if not DIFFUSERS_ENABLE_HUB_KERNELS:
+            self.silu = nn.SiLU()
+        else:
+            self.silu = silu_kernel
         self.linear = nn.Linear(embedding_dim, output_dim)
         self.norm = nn.LayerNorm(output_dim // 2, norm_eps, norm_elementwise_affine)
 
@@ -145,7 +156,10 @@ class AdaLayerNormZero(nn.Module):
         else:
             self.emb = None
 
-        self.silu = nn.SiLU()
+        if not DIFFUSERS_ENABLE_HUB_KERNELS:
+            self.silu = nn.SiLU()
+        else:
+            self.silu = silu_kernel
         self.linear = nn.Linear(embedding_dim, 6 * embedding_dim, bias=bias)
         if norm_type == "layer_norm":
             self.norm = nn.LayerNorm(embedding_dim, elementwise_affine=False, eps=1e-6)
@@ -184,7 +198,10 @@ class AdaLayerNormZeroSingle(nn.Module):
     def __init__(self, embedding_dim: int, norm_type="layer_norm", bias=True):
         super().__init__()
 
-        self.silu = nn.SiLU()
+        if not DIFFUSERS_ENABLE_HUB_KERNELS:
+            self.silu = nn.SiLU()
+        else:
+            self.silu = silu_kernel
         self.linear = nn.Linear(embedding_dim, 3 * embedding_dim, bias=bias)
         if norm_type == "layer_norm":
             self.norm = nn.LayerNorm(embedding_dim, elementwise_affine=False, eps=1e-6)
@@ -336,7 +353,10 @@ class AdaLayerNormContinuous(nn.Module):
         norm_type="layer_norm",
     ):
         super().__init__()
-        self.silu = nn.SiLU()
+        if not DIFFUSERS_ENABLE_HUB_KERNELS:
+            self.silu = nn.SiLU()
+        else:
+            self.silu = silu_kernel
         self.linear = nn.Linear(conditioning_embedding_dim, embedding_dim * 2, bias=bias)
         if norm_type == "layer_norm":
             self.norm = LayerNorm(embedding_dim, eps, elementwise_affine, bias)
