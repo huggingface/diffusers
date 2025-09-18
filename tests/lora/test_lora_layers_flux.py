@@ -914,7 +914,6 @@ class FluxLoRAIntegrationTests(unittest.TestCase):
 
         assert True
 
-
     def test_flux_xlabs(self):
         self.pipeline.load_lora_weights("XLabs-AI/flux-lora-collection", weight_name="disney_lora.safetensors")
         self.pipeline.fuse_lora()
