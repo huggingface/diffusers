@@ -18,6 +18,7 @@ from typing import Any, Callable, Dict, List, Optional, Union
 
 import numpy as np
 import torch
+import torch.nn.functional as F
 from transformers import Qwen2_5_VLForConditionalGeneration, Qwen2Tokenizer, Qwen2VLProcessor
 
 from ...image_processor import PipelineImageInput, VaeImageProcessor
@@ -25,7 +26,7 @@ from ...loaders import QwenImageLoraLoaderMixin
 from ...models import AutoencoderKLQwenImage, QwenImageTransformer2DModel
 from ...models.controlnets.controlnet_qwenimage import QwenImageControlNetModel, QwenImageMultiControlNetModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
-from ...utils import deprecate, is_torch_xla_available, logging, replace_example_docstring
+from ...utils import is_torch_xla_available, logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
 from .pipeline_output import QwenImagePipelineOutput
@@ -969,6 +970,14 @@ class QwenImageEditControlNetPipeline(DiffusionPipeline, QwenImageLoraLoaderMixi
                     txt_seq_lens=txt_seq_lens,
                     return_dict=False,
                 )
+
+                if image_latents is not None:
+                    padding_size = image_latents.shape[1]
+                    for i, sample in enumerate(controlnet_block_samples):
+                        # Pad right with padding_size zeros at dimension 1 of each sample
+                        pad_tuple = [0] * (2 * sample.dim())
+                        pad_tuple[-3] = padding_size
+                        controlnet_block_samples[i] = F.pad(sample, pad_tuple, mode="constant", value=0)
 
                 with self.transformer.cache_context("cond"):
                     noise_pred = self.transformer(
