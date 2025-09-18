@@ -206,7 +206,7 @@ class WanAttention(torch.nn.Module, AttentionModuleMixin):
         if added_kv_proj_dim is not None:
             self.add_k_proj = torch.nn.Linear(added_kv_proj_dim, self.inner_dim, bias=True)
             self.add_v_proj = torch.nn.Linear(added_kv_proj_dim, self.inner_dim, bias=True)
-            self.norm_added_k = torch.nn.RMSNorm(dim_head * heads, eps=eps, elementwise_affine=True)
+            self.norm_added_k = torch.nn.RMSNorm(dim_head * heads, eps=eps)
 
         self.is_cross_attention = cross_attention_dim_head is not None
 
