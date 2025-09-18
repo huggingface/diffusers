@@ -45,7 +45,7 @@ if is_kernels_available() and DIFFUSERS_ENABLE_HUB_KERNELS:
     from kernels import get_kernel
 
     activation = get_kernel("kernels-community/activation", revision="add_more_act")
-    gelu_tanh_kernel = activation.gelu_tanh
+    gelu_tanh_kernel = activation.layers.GeluTanh
 
 
 def _get_projections(attn: "FluxAttention", hidden_states, encoder_hidden_states=None):
@@ -360,7 +360,7 @@ class FluxSingleTransformerBlock(nn.Module):
         if not DIFFUSERS_ENABLE_HUB_KERNELS:
             self.act_mlp = nn.GELU(approximate="tanh")
         else:
-            self.act_mlp = gelu_tanh_kernel
+            self.act_mlp = gelu_tanh_kernel()
 
         self.proj_out = nn.Linear(dim + self.mlp_hidden_dim, dim)
 

@@ -100,11 +100,12 @@ class CUDAOptimizedGELU(GELU):
 
         activation = get_kernel("kernels-community/activation", revision="add_more_act")
         approximate = kwargs.get("approximate", "none")
-        if approximate == "none":
-            self.act_fn = activation.gelu
-        elif approximate == "tanh":
-            self.act_fn = activation.gelu_tanh
+
         super().__init__(*args, **kwargs)
+        if approximate == "none":
+            self.act_fn = activation.layers.Gelu()
+        elif approximate == "tanh":
+            self.act_fn = activation.layers.GeluTanh()
 
     def forward(self, hidden_states):
         hidden_states = self.proj(hidden_states)
