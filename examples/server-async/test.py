@@ -1,7 +1,9 @@
 import os
 import time
 import urllib.parse
+
 import requests
+
 
 SERVER_URL = "http://localhost:8500/api/diffusers/inference"
 BASE_URL = "http://localhost:8500"
@@ -9,6 +11,7 @@ DOWNLOAD_FOLDER = "generated_images"
 WAIT_BEFORE_DOWNLOAD = 2  # seconds
 
 os.makedirs(DOWNLOAD_FOLDER, exist_ok=True)
+
 
 def save_from_url(url: str) -> str:
     """Download the given URL (relative or absolute) and save it locally."""
@@ -24,11 +27,12 @@ def save_from_url(url: str) -> str:
         f.write(resp.content)
     return path
 
+
 def main():
     payload = {
         "prompt": "The T-800 Terminator Robot Returning From The Future, Anime Style",
         "num_inference_steps": 30,
-        "num_images_per_prompt": 1
+        "num_images_per_prompt": 1,
     }
 
     print("Sending request...")
@@ -55,6 +59,7 @@ def main():
             print(f"Image saved to: {path}")
         except Exception as e:
             print(f"Error downloading {u}: {e}")
+
 
 if __name__ == "__main__":
     main()

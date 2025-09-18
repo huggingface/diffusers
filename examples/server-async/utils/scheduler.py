@@ -1,7 +1,9 @@
-from typing import Any, Optional, Union, List
-import torch
 import copy
 import inspect
+from typing import Any, List, Optional, Union
+
+import torch
+
 
 class BaseAsyncScheduler:
     def __init__(self, scheduler: Any):
@@ -11,12 +13,12 @@ class BaseAsyncScheduler:
         if hasattr(self.scheduler, name):
             return getattr(self.scheduler, name)
         raise AttributeError(f"'{self.__class__.__name__}' object has no attribute '{name}'")
-    
+
     def __setattr__(self, name: str, value):
-        if name == 'scheduler':
+        if name == "scheduler":
             super().__setattr__(name, value)
         else:
-            if hasattr(self, 'scheduler') and hasattr(self.scheduler, name):
+            if hasattr(self, "scheduler") and hasattr(self.scheduler, name):
                 setattr(self.scheduler, name, value)
             else:
                 super().__setattr__(name, value)
@@ -29,7 +31,7 @@ class BaseAsyncScheduler:
 
     def __repr__(self):
         return f"BaseAsyncScheduler({repr(self.scheduler)})"
-    
+
     def __str__(self):
         return f"BaseAsyncScheduler wrapping: {str(self.scheduler)}"
 
@@ -91,7 +93,9 @@ def async_retrieve_timesteps(
         if hasattr(scheduler, "clone_for_request"):
             try:
                 # clone_for_request may accept num_inference_steps or other kwargs; be permissive
-                scheduler_in_use = scheduler.clone_for_request(num_inference_steps=num_inference_steps or 0, device=device)
+                scheduler_in_use = scheduler.clone_for_request(
+                    num_inference_steps=num_inference_steps or 0, device=device
+                )
             except Exception:
                 scheduler_in_use = copy.deepcopy(scheduler)
         else:

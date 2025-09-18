@@ -1,14 +1,17 @@
-import os
-import tempfile
-import torch
-import uuid
 import gc
 import logging
+import os
+import tempfile
+import uuid
+
+import torch
+
 
 logger = logging.getLogger(__name__)
 
+
 class Utils:
-    def __init__(self, host: str = '0.0.0.0', port: int = 8500):
+    def __init__(self, host: str = "0.0.0.0", port: int = 8500):
         self.service_url = f"http://{host}:{port}"
         self.image_dir = os.path.join(tempfile.gettempdir(), "images")
         if not os.path.exists(self.image_dir):
@@ -27,6 +30,7 @@ class Utils:
 
         if isinstance(image, torch.Tensor):
             from torchvision import transforms
+
             to_pil = transforms.ToPILImage()
             image = to_pil(image.squeeze(0).clamp(0, 1))
 

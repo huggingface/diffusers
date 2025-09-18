@@ -1,16 +1,21 @@
-from typing import Optional, Any, Iterable, List
 import copy
 import threading
+from typing import Any, Iterable, List, Optional
+
 import torch
+
 from diffusers.utils import logging
+
 from .scheduler import BaseAsyncScheduler, async_retrieve_timesteps
 
 
 logger = logging.get_logger(__name__)
 
+
 def safe_tokenize(tokenizer, *args, lock, **kwargs):
     with lock:
         return tokenizer(*args, **kwargs)
+
 
 class RequestScopedPipeline:
     DEFAULT_MUTABLE_ATTRS = [
@@ -30,7 +35,7 @@ class RequestScopedPipeline:
         auto_detect_mutables: bool = True,
         tensor_numel_threshold: int = 1_000_000,
         tokenizer_lock: Optional[threading.Lock] = None,
-        wrap_scheduler: bool = True
+        wrap_scheduler: bool = True,
     ):
         self._base = pipeline
         self.unet = getattr(pipeline, "unet", None)
@@ -38,7 +43,7 @@ class RequestScopedPipeline:
         self.text_encoder = getattr(pipeline, "text_encoder", None)
         self.components = getattr(pipeline, "components", None)
 
-        if wrap_scheduler and hasattr(pipeline, 'scheduler') and pipeline.scheduler is not None:
+        if wrap_scheduler and hasattr(pipeline, "scheduler") and pipeline.scheduler is not None:
             if not isinstance(pipeline.scheduler, BaseAsyncScheduler):
                 pipeline.scheduler = BaseAsyncScheduler(pipeline.scheduler)
 
@@ -62,9 +67,7 @@ class RequestScopedPipeline:
 
         try:
             return wrapped_scheduler.clone_for_request(
-                num_inference_steps=num_inference_steps, 
-                device=device, 
-                **clone_kwargs
+                num_inference_steps=num_inference_steps, device=device, **clone_kwargs
             )
         except Exception as e:
             logger.debug(f"clone_for_request failed: {e}; falling back to deepcopy()")
@@ -72,7 +75,7 @@ class RequestScopedPipeline:
                 return copy.deepcopy(wrapped_scheduler)
             except Exception as e:
                 logger.warning(f"Deepcopy of scheduler failed: {e}. Returning original scheduler (*risky*).")
-                return wrapped_scheduler  
+                return wrapped_scheduler
 
     def _autodetect_mutables(self, max_attrs: int = 40):
         if not self._auto_detect_mutables:
@@ -140,7 +143,9 @@ class RequestScopedPipeline:
         attrs_to_clone = list(self._mutable_attrs)
         attrs_to_clone.extend(self._autodetect_mutables())
 
-        EXCLUDE_ATTRS = {"components",}
+        EXCLUDE_ATTRS = {
+            "components",
+        }
 
         for attr in attrs_to_clone:
             if attr in EXCLUDE_ATTRS:
@@ -188,16 +193,16 @@ class RequestScopedPipeline:
     def _is_tokenizer_component(self, component) -> bool:
         if component is None:
             return False
-        
-        tokenizer_methods = ['encode', 'decode', 'tokenize', '__call__']
+
+        tokenizer_methods = ["encode", "decode", "tokenize", "__call__"]
         has_tokenizer_methods = any(hasattr(component, method) for method in tokenizer_methods)
-        
+
         class_name = component.__class__.__name__.lower()
-        has_tokenizer_in_name = 'tokenizer' in class_name
-        
-        tokenizer_attrs = ['vocab_size', 'pad_token', 'eos_token', 'bos_token']
+        has_tokenizer_in_name = "tokenizer" in class_name
+
+        tokenizer_attrs = ["vocab_size", "pad_token", "eos_token", "bos_token"]
         has_tokenizer_attrs = any(hasattr(component, attr) for attr in tokenizer_attrs)
-        
+
         return has_tokenizer_methods and (has_tokenizer_in_name or has_tokenizer_attrs)
 
     def generate(self, *args, num_inference_steps: int = 50, device: Optional[str] = None, **kwargs):
@@ -216,7 +221,7 @@ class RequestScopedPipeline:
                     num_inference_steps=num_inference_steps,
                     device=device,
                     return_scheduler=True,
-                    **{k: v for k, v in kwargs.items() if k in ['timesteps', 'sigmas']}
+                    **{k: v for k, v in kwargs.items() if k in ["timesteps", "sigmas"]},
                 )
 
                 final_scheduler = BaseAsyncScheduler(configured_scheduler)
@@ -238,7 +243,9 @@ class RequestScopedPipeline:
                         setattr(
                             local_pipe,
                             name,
-                            lambda *args, tok=tok, **kwargs: safe_tokenize(tok, *args, lock=self._tokenizer_lock, **kwargs)
+                            lambda *args, tok=tok, **kwargs: safe_tokenize(
+                                tok, *args, lock=self._tokenizer_lock, **kwargs
+                            ),
                         )
 
             # b) wrap tokenizers in components dict
@@ -246,7 +253,7 @@ class RequestScopedPipeline:
                 for key, val in local_pipe.components.items():
                     if val is None:
                         continue
-                    
+
                     if self._is_tokenizer_component(val):
                         tokenizer_wrappers[f"components[{key}]"] = val
                         local_pipe.components[key] = lambda *args, tokenizer=val, **kwargs: safe_tokenize(
@@ -281,7 +288,7 @@ class RequestScopedPipeline:
             try:
                 for name, tok in tokenizer_wrappers.items():
                     if name.startswith("components["):
-                        key = name[len("components["):-1]
+                        key = name[len("components[") : -1]
                         local_pipe.components[key] = tok
                     else:
                         setattr(local_pipe, name, tok)
