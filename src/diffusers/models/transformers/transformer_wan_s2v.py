@@ -30,7 +30,7 @@ from ..cache_utils import CacheMixin
 from ..embeddings import PixArtAlphaTextProjection, TimestepEmbedding, Timesteps, get_1d_rotary_pos_embed
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin, get_parameter_dtype
-from ..normalization import FP32LayerNorm
+from ..normalization import FP32LayerNorm, AdaLayerNorm
 from .transformer_wan import (
     WanAttention,
 )
@@ -164,43 +164,6 @@ class WanS2VAttnProcessor:
         hidden_states = attn.to_out[0](hidden_states)
         hidden_states = attn.to_out[1](hidden_states)
         return hidden_states
-
-
-class AdaLayerNorm(nn.Module):
-    r"""
-    Norm layer modified to incorporate timestep embeddings.
-
-    Parameters:
-        embedding_dim (`int`): The size of each embedding vector.
-        output_dim (`int`, *optional*): Output dimension for the layer.
-        norm_elementwise_affine (`bool`, defaults to `False`): Whether to use elementwise affine in LayerNorm.
-        norm_eps (`float`, defaults to `1e-5`): Epsilon value for LayerNorm.
-    """
-
-    def __init__(
-        self,
-        embedding_dim: int,
-        output_dim: Optional[int] = None,
-        norm_elementwise_affine: bool = False,
-        norm_eps: float = 1e-5,
-    ):
-        super().__init__()
-
-        output_dim = output_dim or embedding_dim * 2
-
-        self.silu = nn.SiLU()
-        self.linear = nn.Linear(embedding_dim, output_dim)
-        self.norm = nn.LayerNorm(output_dim // 2, norm_eps, norm_elementwise_affine)
-
-    def forward(self, x: torch.Tensor, temb: Optional[torch.Tensor] = None) -> torch.Tensor:
-        temb = self.linear(self.silu(temb))
-
-        shift, scale = temb.chunk(2, dim=1)
-        shift = shift[:, None, :]
-        scale = scale[:, None, :]
-
-        x = self.norm(x) * (1 + scale) + shift
-        return x
 
 
 class WanS2VCausalConv1d(nn.Module):
@@ -350,7 +313,7 @@ class AudioInjector(nn.Module):
 
         if enable_adain:
             self.injector_adain_layers = nn.ModuleList(
-                [AdaLayerNorm(output_dim=dim * 2, embedding_dim=adain_dim) for _ in range(num_injection_layers)]
+                [AdaLayerNorm(embedding_dim=adain_dim, output_dim=dim * 2, chunk_dim=1) for _ in range(num_injection_layers)]
             )
             if adain_mode != "attn_norm":
                 self.injector_adain_output_layers = nn.ModuleList(
