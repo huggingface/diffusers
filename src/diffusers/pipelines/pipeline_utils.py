@@ -57,6 +57,7 @@ from ..utils import (
     PushToHubMixin,
     _get_detailed_type,
     _is_valid_type,
+    deprecate,
     is_accelerate_available,
     is_accelerate_version,
     is_hpu_available,
@@ -503,6 +504,13 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
             os.environ["PT_HPU_MAX_COMPOUND_OP_SIZE"] = "1"
             logger.debug("Environment variable set: PT_HPU_MAX_COMPOUND_OP_SIZE=1")
+
+            if dtype in (torch.bfloat16, None) and kwargs.pop("sdp_on_bf16", True):
+                if hasattr(torch._C, "_set_math_sdp_allow_fp16_bf16_reduction"):
+                    torch._C._set_math_sdp_allow_fp16_bf16_reduction(True)
+                    logger.warning(
+                        "Enabled SDP with BF16 precision on HPU. To disable, please use `.to('hpu', sdp_on_bf16=False)`"
+                    )
 
         module_names, _ = self._get_signature_keys(self)
         modules = [getattr(self, n, None) for n in module_names]
@@ -1334,6 +1342,133 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 offload_buffers = len(model._parameters) > 0
                 cpu_offload(model, device, offload_buffers=offload_buffers)
 
+    def enable_group_offload(
+        self,
+        onload_device: torch.device,
+        offload_device: torch.device = torch.device("cpu"),
+        offload_type: str = "block_level",
+        num_blocks_per_group: Optional[int] = None,
+        non_blocking: bool = False,
+        use_stream: bool = False,
+        record_stream: bool = False,
+        low_cpu_mem_usage=False,
+        offload_to_disk_path: Optional[str] = None,
+        exclude_modules: Optional[Union[str, List[str]]] = None,
+    ) -> None:
+        r"""
+        Applies group offloading to the internal layers of a torch.nn.Module. To understand what group offloading is,
+        and where it is beneficial, we need to first provide some context on how other supported offloading methods
+        work.
+
+        Typically, offloading is done at two levels:
+        - Module-level: In Diffusers, this can be enabled using the `ModelMixin::enable_model_cpu_offload()` method. It
+        works by offloading each component of a pipeline to the CPU for storage, and onloading to the accelerator
+        device when needed for computation. This method is more memory-efficient than keeping all components on the
+        accelerator, but the memory requirements are still quite high. For this method to work, one needs memory
+        equivalent to size of the model in runtime dtype + size of largest intermediate activation tensors to be able
+        to complete the forward pass.
+        - Leaf-level: In Diffusers, this can be enabled using the `ModelMixin::enable_sequential_cpu_offload()` method.
+          It
+        works by offloading the lowest leaf-level parameters of the computation graph to the CPU for storage, and
+        onloading only the leafs to the accelerator device for computation. This uses the lowest amount of accelerator
+        memory, but can be slower due to the excessive number of device synchronizations.
+
+        Group offloading is a middle ground between the two methods. It works by offloading groups of internal layers,
+        (either `torch.nn.ModuleList` or `torch.nn.Sequential`). This method uses lower memory than module-level
+        offloading. It is also faster than leaf-level/sequential offloading, as the number of device synchronizations
+        is reduced.
+
+        Another supported feature (for CUDA devices with support for asynchronous data transfer streams) is the ability
+        to overlap data transfer and computation to reduce the overall execution time compared to sequential
+        offloading. This is enabled using layer prefetching with streams, i.e., the layer that is to be executed next
+        starts onloading to the accelerator device while the current layer is being executed - this increases the
+        memory requirements slightly. Note that this implementation also supports leaf-level offloading but can be made
+        much faster when using streams.
+
+        Args:
+            onload_device (`torch.device`):
+                The device to which the group of modules are onloaded.
+            offload_device (`torch.device`, defaults to `torch.device("cpu")`):
+                The device to which the group of modules are offloaded. This should typically be the CPU. Default is
+                CPU.
+            offload_type (`str` or `GroupOffloadingType`, defaults to "block_level"):
+                The type of offloading to be applied. Can be one of "block_level" or "leaf_level". Default is
+                "block_level".
+            offload_to_disk_path (`str`, *optional*, defaults to `None`):
+                The path to the directory where parameters will be offloaded. Setting this option can be useful in
+                limited RAM environment settings where a reasonable speed-memory trade-off is desired.
+            num_blocks_per_group (`int`, *optional*):
+                The number of blocks per group when using offload_type="block_level". This is required when using
+                offload_type="block_level".
+            non_blocking (`bool`, defaults to `False`):
+                If True, offloading and onloading is done with non-blocking data transfer.
+            use_stream (`bool`, defaults to `False`):
+                If True, offloading and onloading is done asynchronously using a CUDA stream. This can be useful for
+                overlapping computation and data transfer.
+            record_stream (`bool`, defaults to `False`): When enabled with `use_stream`, it marks the current tensor
+                as having been used by this stream. It is faster at the expense of slightly more memory usage. Refer to
+                the [PyTorch official docs](https://pytorch.org/docs/stable/generated/torch.Tensor.record_stream.html)
+                more details.
+            low_cpu_mem_usage (`bool`, defaults to `False`):
+                If True, the CPU memory usage is minimized by pinning tensors on-the-fly instead of pre-pinning them.
+                This option only matters when using streamed CPU offloading (i.e. `use_stream=True`). This can be
+                useful when the CPU memory is a bottleneck but may counteract the benefits of using streams.
+            exclude_modules (`Union[str, List[str]]`, defaults to `None`): List of modules to exclude from offloading.
+
+        Example:
+            ```python
+            >>> from diffusers import DiffusionPipeline
+            >>> import torch
+
+            >>> pipe = DiffusionPipeline.from_pretrained("Qwen/Qwen-Image", torch_dtype=torch.bfloat16)
+
+            >>> pipe.enable_group_offload(
+            ...     onload_device=torch.device("cuda"),
+            ...     offload_device=torch.device("cpu"),
+            ...     offload_type="leaf_level",
+            ...     use_stream=True,
+            ... )
+            >>> image = pipe("a beautiful sunset").images[0]
+            ```
+        """
+        from ..hooks import apply_group_offloading
+
+        if isinstance(exclude_modules, str):
+            exclude_modules = [exclude_modules]
+        elif exclude_modules is None:
+            exclude_modules = []
+
+        unknown = set(exclude_modules) - self.components.keys()
+        if unknown:
+            logger.info(
+                f"The following modules are not present in pipeline: {', '.join(unknown)}. Ignore if this is expected."
+            )
+
+        group_offload_kwargs = {
+            "onload_device": onload_device,
+            "offload_device": offload_device,
+            "offload_type": offload_type,
+            "num_blocks_per_group": num_blocks_per_group,
+            "non_blocking": non_blocking,
+            "use_stream": use_stream,
+            "record_stream": record_stream,
+            "low_cpu_mem_usage": low_cpu_mem_usage,
+            "offload_to_disk_path": offload_to_disk_path,
+        }
+        for name, component in self.components.items():
+            if name not in exclude_modules and isinstance(component, torch.nn.Module):
+                if hasattr(component, "enable_group_offload"):
+                    component.enable_group_offload(**group_offload_kwargs)
+                else:
+                    apply_group_offloading(module=component, **group_offload_kwargs)
+
+        if exclude_modules:
+            for module_name in exclude_modules:
+                module = getattr(self, module_name, None)
+                if module is not None and isinstance(module, torch.nn.Module):
+                    module.to(onload_device)
+                    logger.debug(f"Placed `{module_name}` on {onload_device} device as it was in `exclude_modules`.")
+
     def reset_device_map(self):
         r"""
         Resets the device maps (if any) to None.
@@ -2074,6 +2209,12 @@ class StableDiffusionMixin:
         Enable sliced VAE decoding. When this option is enabled, the VAE will split the input tensor in slices to
         compute decoding in several steps. This is useful to save some memory and allow larger batch sizes.
         """
+        depr_message = f"Calling `enable_vae_slicing()` on a `{self.__class__.__name__}` is deprecated and this method will be removed in a future version. Please use `pipe.vae.enable_slicing()`."
+        deprecate(
+            "enable_vae_slicing",
+            "0.40.0",
+            depr_message,
+        )
         self.vae.enable_slicing()
 
     def disable_vae_slicing(self):
@@ -2081,6 +2222,12 @@ class StableDiffusionMixin:
         Disable sliced VAE decoding. If `enable_vae_slicing` was previously enabled, this method will go back to
         computing decoding in one step.
         """
+        depr_message = f"Calling `disable_vae_slicing()` on a `{self.__class__.__name__}` is deprecated and this method will be removed in a future version. Please use `pipe.vae.disable_slicing()`."
+        deprecate(
+            "disable_vae_slicing",
+            "0.40.0",
+            depr_message,
+        )
         self.vae.disable_slicing()
 
     def enable_vae_tiling(self):
@@ -2089,6 +2236,12 @@ class StableDiffusionMixin:
         compute decoding and encoding in several steps. This is useful for saving a large amount of memory and to allow
         processing larger images.
         """
+        depr_message = f"Calling `enable_vae_tiling()` on a `{self.__class__.__name__}` is deprecated and this method will be removed in a future version. Please use `pipe.vae.enable_tiling()`."
+        deprecate(
+            "enable_vae_tiling",
+            "0.40.0",
+            depr_message,
+        )
         self.vae.enable_tiling()
 
     def disable_vae_tiling(self):
@@ -2096,6 +2249,12 @@ class StableDiffusionMixin:
         Disable tiled VAE decoding. If `enable_vae_tiling` was previously enabled, this method will go back to
         computing decoding in one step.
         """
+        depr_message = f"Calling `disable_vae_tiling()` on a `{self.__class__.__name__}` is deprecated and this method will be removed in a future version. Please use `pipe.vae.disable_tiling()`."
+        deprecate(
+            "disable_vae_tiling",
+            "0.40.0",
+            depr_message,
+        )
         self.vae.disable_tiling()
 
     def enable_freeu(self, s1: float, s2: float, b1: float, b2: float):

@@ -285,6 +285,7 @@ else:
     ]
     _import_structure["lumina"] = ["LuminaPipeline", "LuminaText2ImgPipeline"]
     _import_structure["lumina2"] = ["Lumina2Pipeline", "Lumina2Text2ImgPipeline"]
+    _import_structure["lucy"] = ["LucyEditPipeline"]
     _import_structure["marigold"].extend(
         [
             "MarigoldDepthPipeline",
@@ -393,6 +394,8 @@ else:
         "QwenImageImg2ImgPipeline",
         "QwenImageInpaintPipeline",
         "QwenImageEditPipeline",
+        "QwenImageEditInpaintPipeline",
+        "QwenImageControlNetInpaintPipeline",
         "QwenImageControlNetPipeline",
     ]
 try:
@@ -680,6 +683,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             LEditsPPPipelineStableDiffusionXL,
         )
         from .ltx import LTXConditionPipeline, LTXImageToVideoPipeline, LTXLatentUpsamplePipeline, LTXPipeline
+        from .lucy import LucyEditPipeline
         from .lumina import LuminaPipeline, LuminaText2ImgPipeline
         from .lumina2 import Lumina2Pipeline, Lumina2Text2ImgPipeline
         from .marigold import (
@@ -713,7 +717,9 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .pia import PIAPipeline
         from .pixart_alpha import PixArtAlphaPipeline, PixArtSigmaPipeline
         from .qwenimage import (
+            QwenImageControlNetInpaintPipeline,
             QwenImageControlNetPipeline,
+            QwenImageEditInpaintPipeline,
             QwenImageEditPipeline,
             QwenImageImg2ImgPipeline,
             QwenImageInpaintPipeline,
