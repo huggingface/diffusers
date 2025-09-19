@@ -32,7 +32,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     except OptionalDependencyNotAvailable:
         from ...utils.dummy_torch_and_transformers_objects import *
     else:
-        from .pipeline_hunyuan_image import HunyuanImagePipeline
+        from .pipeline_hunyuanimage import HunyuanImagePipeline
 
 else:
     import sys
