@@ -56,7 +56,7 @@ else:
 # ------------------------------------------------------------------------------
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.34.0.dev0")
+check_min_version("0.36.0.dev0")
 
 logger = logging.getLogger(__name__)
 
@@ -166,7 +166,7 @@ def parse_args():
         "--use_auth_token",
         action="store_true",
         help=(
-            "Will use the token generated when running `huggingface-cli login` (necessary to use this script with"
+            "Will use the token generated when running `hf auth login` (necessary to use this script with"
             " private models)."
         ),
     )

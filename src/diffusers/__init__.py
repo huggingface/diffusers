@@ -1,4 +1,4 @@
-__version__ = "0.34.0.dev0"
+__version__ = "0.36.0.dev0"
 
 from typing import TYPE_CHECKING
 
@@ -13,6 +13,7 @@ from .utils import (
     is_k_diffusion_available,
     is_librosa_available,
     is_note_seq_available,
+    is_nvidia_modelopt_available,
     is_onnx_available,
     is_opencv_available,
     is_optimum_quanto_available,
@@ -34,10 +35,13 @@ from .utils import (
 
 _import_structure = {
     "configuration_utils": ["ConfigMixin"],
+    "guiders": [],
     "hooks": [],
     "loaders": ["FromOriginalModelMixin"],
     "models": [],
+    "modular_pipelines": [],
     "pipelines": [],
+    "quantizers.pipe_quant_config": ["PipelineQuantizationConfig"],
     "quantizers.quantization_config": [],
     "schedulers": [],
     "utils": [
@@ -109,6 +113,18 @@ else:
     _import_structure["quantizers.quantization_config"].append("QuantoConfig")
 
 try:
+    if not is_torch_available() and not is_accelerate_available() and not is_nvidia_modelopt_available():
+        raise OptionalDependencyNotAvailable()
+except OptionalDependencyNotAvailable:
+    from .utils import dummy_nvidia_modelopt_objects
+
+    _import_structure["utils.dummy_nvidia_modelopt_objects"] = [
+        name for name in dir(dummy_nvidia_modelopt_objects) if not name.startswith("_")
+    ]
+else:
+    _import_structure["quantizers.quantization_config"].append("NVIDIAModelOptConfig")
+
+try:
     if not is_onnx_available():
         raise OptionalDependencyNotAvailable()
 except OptionalDependencyNotAvailable:
@@ -130,12 +146,30 @@ except OptionalDependencyNotAvailable:
     _import_structure["utils.dummy_pt_objects"] = [name for name in dir(dummy_pt_objects) if not name.startswith("_")]
 
 else:
+    _import_structure["guiders"].extend(
+        [
+            "AdaptiveProjectedGuidance",
+            "AutoGuidance",
+            "ClassifierFreeGuidance",
+            "ClassifierFreeZeroStarGuidance",
+            "FrequencyDecoupledGuidance",
+            "PerturbedAttentionGuidance",
+            "SkipLayerGuidance",
+            "SmoothedEnergyGuidance",
+            "TangentialClassifierFreeGuidance",
+        ]
+    )
     _import_structure["hooks"].extend(
         [
             "FasterCacheConfig",
+            "FirstBlockCacheConfig",
             "HookRegistry",
+            "LayerSkipConfig",
             "PyramidAttentionBroadcastConfig",
+            "SmoothedEnergyGuidanceConfig",
             "apply_faster_cache",
+            "apply_first_block_cache",
+            "apply_layer_skip",
             "apply_pyramid_attention_broadcast",
         ]
     )
@@ -143,6 +177,7 @@ else:
         [
             "AllegroTransformer3DModel",
             "AsymmetricAutoencoderKL",
+            "AttentionBackendName",
             "AuraFlowTransformer2DModel",
             "AutoencoderDC",
             "AutoencoderKL",
@@ -153,11 +188,13 @@ else:
             "AutoencoderKLLTXVideo",
             "AutoencoderKLMagvit",
             "AutoencoderKLMochi",
+            "AutoencoderKLQwenImage",
             "AutoencoderKLTemporalDecoder",
             "AutoencoderKLWan",
             "AutoencoderOobleck",
             "AutoencoderTiny",
             "AutoModel",
+            "BriaTransformer2DModel",
             "CacheMixin",
             "ChromaTransformer2DModel",
             "CogVideoXTransformer3DModel",
@@ -194,11 +231,15 @@ else:
             "OmniGenTransformer2DModel",
             "PixArtTransformer2DModel",
             "PriorTransformer",
+            "QwenImageControlNetModel",
+            "QwenImageMultiControlNetModel",
+            "QwenImageTransformer2DModel",
             "SanaControlNetModel",
             "SanaTransformer2DModel",
             "SD3ControlNetModel",
             "SD3MultiControlNetModel",
             "SD3Transformer2DModel",
+            "SkyReelsV2Transformer3DModel",
             "SparseControlNetModel",
             "StableAudioDiTModel",
             "StableCascadeUNet",
@@ -217,6 +258,15 @@ else:
             "VQModel",
             "WanTransformer3DModel",
             "WanVACETransformer3DModel",
+            "attention_backend",
+        ]
+    )
+    _import_structure["modular_pipelines"].extend(
+        [
+            "ComponentsManager",
+            "ComponentSpec",
+            "ModularPipeline",
+            "ModularPipelineBlocks",
         ]
     )
     _import_structure["optimization"] = [
@@ -331,6 +381,20 @@ except OptionalDependencyNotAvailable:
     ]
 
 else:
+    _import_structure["modular_pipelines"].extend(
+        [
+            "FluxAutoBlocks",
+            "FluxModularPipeline",
+            "QwenImageAutoBlocks",
+            "QwenImageEditAutoBlocks",
+            "QwenImageEditModularPipeline",
+            "QwenImageModularPipeline",
+            "StableDiffusionXLAutoBlocks",
+            "StableDiffusionXLModularPipeline",
+            "WanAutoBlocks",
+            "WanModularPipeline",
+        ]
+    )
     _import_structure["pipelines"].extend(
         [
             "AllegroPipeline",
@@ -353,6 +417,7 @@ else:
             "AuraFlowPipeline",
             "BlipDiffusionControlNetPipeline",
             "BlipDiffusionPipeline",
+            "BriaPipeline",
             "ChromaImg2ImgPipeline",
             "ChromaPipeline",
             "CLIPImageProjection",
@@ -381,6 +446,8 @@ else:
             "FluxFillPipeline",
             "FluxImg2ImgPipeline",
             "FluxInpaintPipeline",
+            "FluxKontextInpaintPipeline",
+            "FluxKontextPipeline",
             "FluxPipeline",
             "FluxPriorReduxPipeline",
             "HiDreamImagePipeline",
@@ -428,6 +495,7 @@ else:
             "LTXImageToVideoPipeline",
             "LTXLatentUpsamplePipeline",
             "LTXPipeline",
+            "LucyEditPipeline",
             "Lumina2Pipeline",
             "Lumina2Text2ImgPipeline",
             "LuminaPipeline",
@@ -443,6 +511,13 @@ else:
             "PixArtAlphaPipeline",
             "PixArtSigmaPAGPipeline",
             "PixArtSigmaPipeline",
+            "QwenImageControlNetInpaintPipeline",
+            "QwenImageControlNetPipeline",
+            "QwenImageEditInpaintPipeline",
+            "QwenImageEditPipeline",
+            "QwenImageImg2ImgPipeline",
+            "QwenImageInpaintPipeline",
+            "QwenImagePipeline",
             "ReduxImageEncoder",
             "SanaControlNetPipeline",
             "SanaPAGPipeline",
@@ -452,6 +527,11 @@ else:
             "SemanticStableDiffusionPipeline",
             "ShapEImg2ImgPipeline",
             "ShapEPipeline",
+            "SkyReelsV2DiffusionForcingImageToVideoPipeline",
+            "SkyReelsV2DiffusionForcingPipeline",
+            "SkyReelsV2DiffusionForcingVideoToVideoPipeline",
+            "SkyReelsV2ImageToVideoPipeline",
+            "SkyReelsV2Pipeline",
             "StableAudioPipeline",
             "StableAudioProjectionModel",
             "StableCascadeCombinedPipeline",
@@ -540,6 +620,7 @@ else:
             "WuerstchenPriorPipeline",
         ]
     )
+
 
 try:
     if not (is_torch_available() and is_transformers_available() and is_opencv_available()):
@@ -734,6 +815,14 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .quantizers.quantization_config import QuantoConfig
 
     try:
+        if not is_nvidia_modelopt_available():
+            raise OptionalDependencyNotAvailable()
+    except OptionalDependencyNotAvailable:
+        from .utils.dummy_nvidia_modelopt_objects import *
+    else:
+        from .quantizers.quantization_config import NVIDIAModelOptConfig
+
+    try:
         if not is_onnx_available():
             raise OptionalDependencyNotAvailable()
     except OptionalDependencyNotAvailable:
@@ -747,16 +836,33 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     except OptionalDependencyNotAvailable:
         from .utils.dummy_pt_objects import *  # noqa F403
     else:
+        from .guiders import (
+            AdaptiveProjectedGuidance,
+            AutoGuidance,
+            ClassifierFreeGuidance,
+            ClassifierFreeZeroStarGuidance,
+            FrequencyDecoupledGuidance,
+            PerturbedAttentionGuidance,
+            SkipLayerGuidance,
+            SmoothedEnergyGuidance,
+            TangentialClassifierFreeGuidance,
+        )
         from .hooks import (
             FasterCacheConfig,
+            FirstBlockCacheConfig,
             HookRegistry,
+            LayerSkipConfig,
             PyramidAttentionBroadcastConfig,
+            SmoothedEnergyGuidanceConfig,
             apply_faster_cache,
+            apply_first_block_cache,
+            apply_layer_skip,
             apply_pyramid_attention_broadcast,
         )
         from .models import (
             AllegroTransformer3DModel,
             AsymmetricAutoencoderKL,
+            AttentionBackendName,
             AuraFlowTransformer2DModel,
             AutoencoderDC,
             AutoencoderKL,
@@ -767,11 +873,13 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AutoencoderKLLTXVideo,
             AutoencoderKLMagvit,
             AutoencoderKLMochi,
+            AutoencoderKLQwenImage,
             AutoencoderKLTemporalDecoder,
             AutoencoderKLWan,
             AutoencoderOobleck,
             AutoencoderTiny,
             AutoModel,
+            BriaTransformer2DModel,
             CacheMixin,
             ChromaTransformer2DModel,
             CogVideoXTransformer3DModel,
@@ -808,11 +916,15 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             OmniGenTransformer2DModel,
             PixArtTransformer2DModel,
             PriorTransformer,
+            QwenImageControlNetModel,
+            QwenImageMultiControlNetModel,
+            QwenImageTransformer2DModel,
             SanaControlNetModel,
             SanaTransformer2DModel,
             SD3ControlNetModel,
             SD3MultiControlNetModel,
             SD3Transformer2DModel,
+            SkyReelsV2Transformer3DModel,
             SparseControlNetModel,
             StableAudioDiTModel,
             T2IAdapter,
@@ -830,7 +942,9 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             VQModel,
             WanTransformer3DModel,
             WanVACETransformer3DModel,
+            attention_backend,
         )
+        from .modular_pipelines import ComponentsManager, ComponentSpec, ModularPipeline, ModularPipelineBlocks
         from .optimization import (
             get_constant_schedule,
             get_constant_schedule_with_warmup,
@@ -927,6 +1041,18 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     except OptionalDependencyNotAvailable:
         from .utils.dummy_torch_and_transformers_objects import *  # noqa F403
     else:
+        from .modular_pipelines import (
+            FluxAutoBlocks,
+            FluxModularPipeline,
+            QwenImageAutoBlocks,
+            QwenImageEditAutoBlocks,
+            QwenImageEditModularPipeline,
+            QwenImageModularPipeline,
+            StableDiffusionXLAutoBlocks,
+            StableDiffusionXLModularPipeline,
+            WanAutoBlocks,
+            WanModularPipeline,
+        )
         from .pipelines import (
             AllegroPipeline,
             AltDiffusionImg2ImgPipeline,
@@ -946,6 +1072,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AudioLDM2UNet2DConditionModel,
             AudioLDMPipeline,
             AuraFlowPipeline,
+            BriaPipeline,
             ChromaImg2ImgPipeline,
             ChromaPipeline,
             CLIPImageProjection,
@@ -974,6 +1101,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             FluxFillPipeline,
             FluxImg2ImgPipeline,
             FluxInpaintPipeline,
+            FluxKontextInpaintPipeline,
+            FluxKontextPipeline,
             FluxPipeline,
             FluxPriorReduxPipeline,
             HiDreamImagePipeline,
@@ -1021,6 +1150,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             LTXImageToVideoPipeline,
             LTXLatentUpsamplePipeline,
             LTXPipeline,
+            LucyEditPipeline,
             Lumina2Pipeline,
             Lumina2Text2ImgPipeline,
             LuminaPipeline,
@@ -1036,6 +1166,13 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             PixArtAlphaPipeline,
             PixArtSigmaPAGPipeline,
             PixArtSigmaPipeline,
+            QwenImageControlNetInpaintPipeline,
+            QwenImageControlNetPipeline,
+            QwenImageEditInpaintPipeline,
+            QwenImageEditPipeline,
+            QwenImageImg2ImgPipeline,
+            QwenImageInpaintPipeline,
+            QwenImagePipeline,
             ReduxImageEncoder,
             SanaControlNetPipeline,
             SanaPAGPipeline,
@@ -1045,6 +1182,11 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             SemanticStableDiffusionPipeline,
             ShapEImg2ImgPipeline,
             ShapEPipeline,
+            SkyReelsV2DiffusionForcingImageToVideoPipeline,
+            SkyReelsV2DiffusionForcingPipeline,
+            SkyReelsV2DiffusionForcingVideoToVideoPipeline,
+            SkyReelsV2ImageToVideoPipeline,
+            SkyReelsV2Pipeline,
             StableAudioPipeline,
             StableAudioProjectionModel,
             StableCascadeCombinedPipeline,

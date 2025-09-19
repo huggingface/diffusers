@@ -15,6 +15,7 @@
 # limitations under the License.
 
 import copy
+import functools
 import inspect
 import itertools
 import json
@@ -42,6 +43,7 @@ from ..quantizers.quantization_config import QuantizationMethod
 from ..utils import (
     CONFIG_NAME,
     FLAX_WEIGHTS_NAME,
+    HF_ENABLE_PARALLEL_LOADING,
     SAFE_WEIGHTS_INDEX_NAME,
     SAFETENSORS_WEIGHTS_NAME,
     WEIGHTS_INDEX_NAME,
@@ -62,12 +64,15 @@ from ..utils.hub_utils import (
     load_or_create_model_card,
     populate_model_card,
 )
+from ..utils.torch_utils import empty_device_cache
 from .model_loading_utils import (
+    _caching_allocator_warmup,
     _determine_device_map,
+    _expand_device_map,
     _fetch_index_file,
     _fetch_index_file_legacy,
-    _load_state_dict_into_model,
-    load_model_dict_into_meta,
+    _load_shard_file,
+    _load_shard_files_with_threadpool,
     load_state_dict,
 )
 
@@ -168,7 +173,11 @@ def get_parameter_dtype(parameter: torch.nn.Module) -> torch.dtype:
 
     for name, param in parameter.named_parameters():
         last_dtype = param.dtype
-        if parameter._keep_in_fp32_modules and any(m in name for m in parameter._keep_in_fp32_modules):
+        if (
+            hasattr(parameter, "_keep_in_fp32_modules")
+            and parameter._keep_in_fp32_modules
+            and any(m in name for m in parameter._keep_in_fp32_modules)
+        ):
             continue
 
         if param.is_floating_point():
@@ -198,34 +207,6 @@ def get_parameter_dtype(parameter: torch.nn.Module) -> torch.dtype:
     if last_tuple is not None:
         # fallback to the last dtype
         return last_tuple[1].dtype
-
-
-def check_support_param_buffer_assignment(model_to_load, state_dict, start_prefix=""):
-    """
-    Checks if `model_to_load` supports param buffer assignment (such as when loading in empty weights) by first
-    checking if the model explicitly disables it, then by ensuring that the state dict keys are a subset of the model's
-    parameters.
-
-    """
-    if model_to_load.device.type == "meta":
-        return False
-
-    if len([key for key in state_dict if key.startswith(start_prefix)]) == 0:
-        return False
-
-    # Some models explicitly do not support param buffer assignment
-    if not getattr(model_to_load, "_supports_param_buffer_assignment", True):
-        logger.debug(
-            f"{model_to_load.__class__.__name__} does not support param buffer assignment, loading will be slower"
-        )
-        return False
-
-    # If the model does, the incoming `state_dict` and the `model_to_load` must be the same dtype
-    first_key = next(iter(model_to_load.state_dict().keys()))
-    if start_prefix + first_key in state_dict:
-        return state_dict[start_prefix + first_key].dtype == model_to_load.state_dict()[first_key].dtype
-
-    return False
 
 
 @contextmanager
@@ -266,6 +247,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
     _keep_in_fp32_modules = None
     _skip_layerwise_casting_patterns = None
     _supports_group_offloading = True
+    _repeated_blocks = []
 
     def __init__(self):
         super().__init__()
@@ -601,6 +583,60 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             offload_to_disk_path=offload_to_disk_path,
         )
 
+    def set_attention_backend(self, backend: str) -> None:
+        """
+        Set the attention backend for the model.
+
+        Args:
+            backend (`str`):
+                The name of the backend to set. Must be one of the available backends defined in
+                `AttentionBackendName`. Available backends can be found in
+                `diffusers.attention_dispatch.AttentionBackendName`. Defaults to torch native scaled dot product
+                attention as backend.
+        """
+        from .attention import AttentionModuleMixin
+        from .attention_dispatch import AttentionBackendName, _check_attention_backend_requirements
+
+        # TODO: the following will not be required when everything is refactored to AttentionModuleMixin
+        from .attention_processor import Attention, MochiAttention
+
+        logger.warning("Attention backends are an experimental feature and the API may be subject to change.")
+
+        backend = backend.lower()
+        available_backends = {x.value for x in AttentionBackendName.__members__.values()}
+        if backend not in available_backends:
+            raise ValueError(f"`{backend=}` must be one of the following: " + ", ".join(available_backends))
+        backend = AttentionBackendName(backend)
+        _check_attention_backend_requirements(backend)
+
+        attention_classes = (Attention, MochiAttention, AttentionModuleMixin)
+        for module in self.modules():
+            if not isinstance(module, attention_classes):
+                continue
+            processor = module.processor
+            if processor is None or not hasattr(processor, "_attention_backend"):
+                continue
+            processor._attention_backend = backend
+
+    def reset_attention_backend(self) -> None:
+        """
+        Resets the attention backend for the model. Following calls to `forward` will use the environment default or
+        the torch native scaled dot product attention.
+        """
+        from .attention import AttentionModuleMixin
+        from .attention_processor import Attention, MochiAttention
+
+        logger.warning("Attention backends are an experimental feature and the API may be subject to change.")
+
+        attention_classes = (Attention, MochiAttention, AttentionModuleMixin)
+        for module in self.modules():
+            if not isinstance(module, attention_classes):
+                continue
+            processor = module.processor
+            if processor is None or not hasattr(processor, "_attention_backend"):
+                continue
+            processor._attention_backend = None
+
     def save_pretrained(
         self,
         save_directory: Union[str, os.PathLike],
@@ -880,8 +916,8 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
 
         <Tip>
 
-        To use private or [gated models](https://huggingface.co/docs/hub/models-gated#gated-models), log-in with
-        `huggingface-cli login`. You can also activate the special
+        To use private or [gated models](https://huggingface.co/docs/hub/models-gated#gated-models), log-in with `hf
+        auth login`. You can also activate the special
         ["offline-mode"](https://huggingface.co/diffusers/installation.html#offline-mode) to use this method in a
         firewalled environment.
 
@@ -924,6 +960,10 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         quantization_config = kwargs.pop("quantization_config", None)
         dduf_entries: Optional[Dict[str, DDUFEntry]] = kwargs.pop("dduf_entries", None)
         disable_mmap = kwargs.pop("disable_mmap", False)
+
+        is_parallel_loading_enabled = HF_ENABLE_PARALLEL_LOADING
+        if is_parallel_loading_enabled and not low_cpu_mem_usage:
+            raise NotImplementedError("Parallel loading is not supported when not using `low_cpu_mem_usage`.")
 
         if torch_dtype is not None and not isinstance(torch_dtype, torch.dtype):
             torch_dtype = torch.float32
@@ -1260,6 +1300,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             hf_quantizer=hf_quantizer,
             keep_in_fp32_modules=keep_in_fp32_modules,
             dduf_entries=dduf_entries,
+            is_parallel_loading_enabled=is_parallel_loading_enabled,
         )
         loading_info = {
             "missing_keys": missing_keys,
@@ -1404,6 +1445,39 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         else:
             return super().float(*args)
 
+    def compile_repeated_blocks(self, *args, **kwargs):
+        """
+        Compiles *only* the frequently repeated sub-modules of a model (e.g. the Transformer layers) instead of
+        compiling the entire model. This technique—often called **regional compilation** (see the PyTorch recipe
+        https://docs.pytorch.org/tutorials/recipes/regional_compilation.html) can reduce end-to-end compile time
+        substantially, while preserving the runtime speed-ups you would expect from a full `torch.compile`.
+
+        The set of sub-modules to compile is discovered by the presence of **`_repeated_blocks`** attribute in the
+        model definition. Define this attribute on your model subclass as a list/tuple of class names (strings). Every
+        module whose class name matches will be compiled.
+
+        Once discovered, each matching sub-module is compiled by calling `submodule.compile(*args, **kwargs)`. Any
+        positional or keyword arguments you supply to `compile_repeated_blocks` are forwarded verbatim to
+        `torch.compile`.
+        """
+        repeated_blocks = getattr(self, "_repeated_blocks", None)
+
+        if not repeated_blocks:
+            raise ValueError(
+                "`_repeated_blocks` attribute is empty. "
+                f"Set `_repeated_blocks` for the class `{self.__class__.__name__}` to benefit from faster compilation. "
+            )
+        has_compiled_region = False
+        for submod in self.modules():
+            if submod.__class__.__name__ in repeated_blocks:
+                submod.compile(*args, **kwargs)
+                has_compiled_region = True
+
+        if not has_compiled_region:
+            raise ValueError(
+                f"Regional compilation failed because {repeated_blocks} classes are not found in the model. "
+            )
+
     @classmethod
     def _load_pretrained_model(
         cls,
@@ -1422,6 +1496,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         offload_state_dict: Optional[bool] = None,
         offload_folder: Optional[Union[str, os.PathLike]] = None,
         dduf_entries: Optional[Dict[str, DDUFEntry]] = None,
+        is_parallel_loading_enabled: Optional[bool] = False,
     ):
         model_state_dict = model.state_dict()
         expected_keys = list(model_state_dict.keys())
@@ -1436,8 +1511,6 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 unexpected_keys = [k for k in unexpected_keys if re.search(pat, k) is None]
 
         mismatched_keys = []
-
-        assign_to_params_buffers = None
         error_msgs = []
 
         # Deal with offload
@@ -1448,80 +1521,67 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                     " for them. Alternatively, make sure you have `safetensors` installed if the model you are using"
                     " offers the weights in this format."
                 )
-            if offload_folder is not None:
+            else:
                 os.makedirs(offload_folder, exist_ok=True)
             if offload_state_dict is None:
                 offload_state_dict = True
 
+        # If a device map has been used, we can speedup the load time by warming up the device caching allocator.
+        # If we don't warmup, each tensor allocation on device calls to the allocator for memory (effectively, a
+        # lot of individual calls to device malloc). We can, however, preallocate the memory required by the
+        # tensors using their expected shape and not performing any initialization of the memory (empty data).
+        # When the actual device allocations happen, the allocator already has a pool of unused device memory
+        # that it can re-use for faster loading of the model.
+        if device_map is not None:
+            expanded_device_map = _expand_device_map(device_map, expected_keys)
+            _caching_allocator_warmup(model, expanded_device_map, dtype, hf_quantizer)
+
         offload_index = {} if device_map is not None and "disk" in device_map.values() else None
+        state_dict_folder, state_dict_index = None, None
         if offload_state_dict:
             state_dict_folder = tempfile.mkdtemp()
             state_dict_index = {}
-        else:
-            state_dict_folder = None
-            state_dict_index = None
 
         if state_dict is not None:
             # load_state_dict will manage the case where we pass a dict instead of a file
             # if state dict is not None, it means that we don't need to read the files from resolved_model_file also
             resolved_model_file = [state_dict]
 
-        if len(resolved_model_file) > 1:
-            resolved_model_file = logging.tqdm(resolved_model_file, desc="Loading checkpoint shards")
+        # Prepare the loading function sharing the attributes shared between them.
+        load_fn = functools.partial(
+            _load_shard_files_with_threadpool if is_parallel_loading_enabled else _load_shard_file,
+            model=model,
+            model_state_dict=model_state_dict,
+            device_map=device_map,
+            dtype=dtype,
+            hf_quantizer=hf_quantizer,
+            keep_in_fp32_modules=keep_in_fp32_modules,
+            dduf_entries=dduf_entries,
+            loaded_keys=loaded_keys,
+            unexpected_keys=unexpected_keys,
+            offload_index=offload_index,
+            offload_folder=offload_folder,
+            state_dict_index=state_dict_index,
+            state_dict_folder=state_dict_folder,
+            ignore_mismatched_sizes=ignore_mismatched_sizes,
+            low_cpu_mem_usage=low_cpu_mem_usage,
+        )
 
-        for shard_file in resolved_model_file:
-            state_dict = load_state_dict(shard_file, dduf_entries=dduf_entries)
+        if is_parallel_loading_enabled:
+            offload_index, state_dict_index, _mismatched_keys, _error_msgs = load_fn(resolved_model_file)
+            error_msgs += _error_msgs
+            mismatched_keys += _mismatched_keys
+        else:
+            shard_files = resolved_model_file
+            if len(resolved_model_file) > 1:
+                shard_files = logging.tqdm(resolved_model_file, desc="Loading checkpoint shards")
 
-            def _find_mismatched_keys(
-                state_dict,
-                model_state_dict,
-                loaded_keys,
-                ignore_mismatched_sizes,
-            ):
-                mismatched_keys = []
-                if ignore_mismatched_sizes:
-                    for checkpoint_key in loaded_keys:
-                        model_key = checkpoint_key
-                        # If the checkpoint is sharded, we may not have the key here.
-                        if checkpoint_key not in state_dict:
-                            continue
+            for shard_file in shard_files:
+                offload_index, state_dict_index, _mismatched_keys, _error_msgs = load_fn(shard_file)
+                error_msgs += _error_msgs
+                mismatched_keys += _mismatched_keys
 
-                        if (
-                            model_key in model_state_dict
-                            and state_dict[checkpoint_key].shape != model_state_dict[model_key].shape
-                        ):
-                            mismatched_keys.append(
-                                (checkpoint_key, state_dict[checkpoint_key].shape, model_state_dict[model_key].shape)
-                            )
-                            del state_dict[checkpoint_key]
-                return mismatched_keys
-
-            mismatched_keys += _find_mismatched_keys(
-                state_dict,
-                model_state_dict,
-                loaded_keys,
-                ignore_mismatched_sizes,
-            )
-
-            if low_cpu_mem_usage:
-                offload_index, state_dict_index = load_model_dict_into_meta(
-                    model,
-                    state_dict,
-                    device_map=device_map,
-                    dtype=dtype,
-                    hf_quantizer=hf_quantizer,
-                    keep_in_fp32_modules=keep_in_fp32_modules,
-                    unexpected_keys=unexpected_keys,
-                    offload_folder=offload_folder,
-                    offload_index=offload_index,
-                    state_dict_index=state_dict_index,
-                    state_dict_folder=state_dict_folder,
-                )
-            else:
-                if assign_to_params_buffers is None:
-                    assign_to_params_buffers = check_support_param_buffer_assignment(model, state_dict)
-
-                error_msgs += _load_state_dict_into_model(model, state_dict, assign_to_params_buffers)
+        empty_device_cache()
 
         if offload_index is not None and len(offload_index) > 0:
             save_offload_index(offload_index, offload_folder)
@@ -1858,4 +1918,9 @@ class LegacyModelMixin(ModelMixin):
         # resolve remapping
         remapped_class = _fetch_remapped_cls_from_config(config, cls)
 
-        return remapped_class.from_pretrained(pretrained_model_name_or_path, **kwargs_copy)
+        if remapped_class is cls:
+            return super(LegacyModelMixin, remapped_class).from_pretrained(
+                pretrained_model_name_or_path, **kwargs_copy
+            )
+        else:
+            return remapped_class.from_pretrained(pretrained_model_name_or_path, **kwargs_copy)

@@ -11,15 +11,11 @@ from diffusers import (
     FluxControlInpaintPipeline,
     FluxTransformer2DModel,
 )
-from diffusers.utils.testing_utils import (
+
+from ...testing_utils import (
     torch_device,
 )
-
-from ..test_pipelines_common import (
-    PipelineTesterMixin,
-    check_qkv_fusion_matches_attn_procs_length,
-    check_qkv_fusion_processors_exist,
-)
+from ..test_pipelines_common import PipelineTesterMixin, check_qkv_fused_layers_exist
 
 
 class FluxControlInpaintPipelineFastTests(unittest.TestCase, PipelineTesterMixin):
@@ -134,12 +130,10 @@ class FluxControlInpaintPipelineFastTests(unittest.TestCase, PipelineTesterMixin
         # TODO (sayakpaul): will refactor this once `fuse_qkv_projections()` has been added
         # to the pipeline level.
         pipe.transformer.fuse_qkv_projections()
-        assert check_qkv_fusion_processors_exist(pipe.transformer), (
-            "Something wrong with the fused attention processors. Expected all the attention processors to be fused."
+        self.assertTrue(
+            check_qkv_fused_layers_exist(pipe.transformer, ["to_qkv"]),
+            ("Something wrong with the fused attention layers. Expected all the attention projections to be fused."),
         )
-        assert check_qkv_fusion_matches_attn_procs_length(
-            pipe.transformer, pipe.transformer.original_attn_processors
-        ), "Something wrong with the attention processors concerning the fused QKV projections."
 
         inputs = self.get_dummy_inputs(device)
         image = pipe(**inputs).images

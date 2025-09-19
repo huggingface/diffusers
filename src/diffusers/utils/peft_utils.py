@@ -150,7 +150,9 @@ def unscale_lora_layers(model, weight: Optional[float] = None):
                     module.set_scale(adapter_name, 1.0)
 
 
-def get_peft_kwargs(rank_dict, network_alpha_dict, peft_state_dict, is_unet=True):
+def get_peft_kwargs(
+    rank_dict, network_alpha_dict, peft_state_dict, is_unet=True, model_state_dict=None, adapter_name=None
+):
     rank_pattern = {}
     alpha_pattern = {}
     r = lora_alpha = list(rank_dict.values())[0]
@@ -180,7 +182,6 @@ def get_peft_kwargs(rank_dict, network_alpha_dict, peft_state_dict, is_unet=True
         else:
             lora_alpha = set(network_alpha_dict.values()).pop()
 
-    # layer names without the Diffusers specific
     target_modules = list({name.split(".lora")[0] for name in peft_state_dict.keys()})
     use_dora = any("lora_magnitude_vector" in k for k in peft_state_dict)
     # for now we know that the "bias" keys are only associated with `lora_B`.
@@ -195,6 +196,7 @@ def get_peft_kwargs(rank_dict, network_alpha_dict, peft_state_dict, is_unet=True
         "use_dora": use_dora,
         "lora_bias": lora_bias,
     }
+
     return lora_config_kwargs
 
 
@@ -294,11 +296,7 @@ def check_peft_version(min_version: str) -> None:
 
 
 def _create_lora_config(
-    state_dict,
-    network_alphas,
-    metadata,
-    rank_pattern_dict,
-    is_unet: bool = True,
+    state_dict, network_alphas, metadata, rank_pattern_dict, is_unet=True, model_state_dict=None, adapter_name=None
 ):
     from peft import LoraConfig
 
@@ -306,7 +304,12 @@ def _create_lora_config(
         lora_config_kwargs = metadata
     else:
         lora_config_kwargs = get_peft_kwargs(
-            rank_pattern_dict, network_alpha_dict=network_alphas, peft_state_dict=state_dict, is_unet=is_unet
+            rank_pattern_dict,
+            network_alpha_dict=network_alphas,
+            peft_state_dict=state_dict,
+            is_unet=is_unet,
+            model_state_dict=model_state_dict,
+            adapter_name=adapter_name,
         )
 
     _maybe_raise_error_for_ambiguous_keys(lora_config_kwargs)

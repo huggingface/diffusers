@@ -12,6 +12,7 @@
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
+# limitations under the License.
 
 import argparse
 import copy
@@ -57,7 +58,7 @@ if is_wandb_available():
     import wandb
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.34.0.dev0")
+check_min_version("0.36.0.dev0")
 
 logger = get_logger(__name__)
 
@@ -725,7 +726,7 @@ def main(args):
     if args.report_to == "wandb" and args.hub_token is not None:
         raise ValueError(
             "You cannot use both --report_to=wandb and --hub_token due to a security risk of exposing your token."
-            " Please use `huggingface-cli login` to authenticate with the Hub."
+            " Please use `hf auth login` to authenticate with the Hub."
         )
     if args.use_lora_bias and args.gaussian_init_lora:
         raise ValueError("`gaussian` LoRA init scheme isn't supported when `use_lora_bias` is True.")
@@ -837,11 +838,6 @@ def main(args):
     assert torch.all(flux_transformer.x_embedder.weight[:, initial_input_channels:].data == 0)
     flux_transformer.register_to_config(in_channels=initial_input_channels * 2, out_channels=initial_input_channels)
 
-    if args.train_norm_layers:
-        for name, param in flux_transformer.named_parameters():
-            if any(k in name for k in NORM_LAYER_PREFIXES):
-                param.requires_grad = True
-
     if args.lora_layers is not None:
         if args.lora_layers != "all-linear":
             target_modules = [layer.strip() for layer in args.lora_layers.split(",")]
@@ -878,6 +874,11 @@ def main(args):
         lora_bias=args.use_lora_bias,
     )
     flux_transformer.add_adapter(transformer_lora_config)
+
+    if args.train_norm_layers:
+        for name, param in flux_transformer.named_parameters():
+            if any(k in name for k in NORM_LAYER_PREFIXES):
+                param.requires_grad = True
 
     def unwrap_model(model):
         model = accelerator.unwrap_model(model)

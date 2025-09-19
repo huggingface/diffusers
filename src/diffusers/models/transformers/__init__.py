@@ -17,6 +17,7 @@ if is_torch_available():
     from .t5_film_transformer import T5FilmDecoder
     from .transformer_2d import Transformer2DModel
     from .transformer_allegro import AllegroTransformer3DModel
+    from .transformer_bria import BriaTransformer2DModel
     from .transformer_chroma import ChromaTransformer2DModel
     from .transformer_cogview3plus import CogView3PlusTransformer2DModel
     from .transformer_cogview4 import CogView4Transformer2DModel
@@ -30,7 +31,9 @@ if is_torch_available():
     from .transformer_lumina2 import Lumina2Transformer2DModel
     from .transformer_mochi import MochiTransformer3DModel
     from .transformer_omnigen import OmniGenTransformer2DModel
+    from .transformer_qwenimage import QwenImageTransformer2DModel
     from .transformer_sd3 import SD3Transformer2DModel
+    from .transformer_skyreels_v2 import SkyReelsV2Transformer3DModel
     from .transformer_temporal import TransformerTemporalModel
     from .transformer_wan import WanTransformer3DModel
     from .transformer_wan_vace import WanVACETransformer3DModel

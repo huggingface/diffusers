@@ -13,6 +13,7 @@ on:
       - "src/diffusers/loaders/peft.py"
       - "tests/pipelines/test_pipelines_common.py"
       - "tests/models/test_modeling_common.py"
+      - "examples/**/*.py"
   workflow_dispatch:
 
 concurrency:
@@ -117,7 +118,7 @@ jobs:
       group: aws-g4dn-2xlarge
     container:
       image: diffusers/diffusers-pytorch-cuda
-      options: --shm-size "16gb" --ipc host --gpus 0
+      options: --shm-size "16gb" --ipc host --gpus all
     steps:
       - name: Checkout diffusers
         uses: actions/checkout@v3
@@ -182,13 +183,13 @@ jobs:
       group: aws-g4dn-2xlarge
     container:
       image: diffusers/diffusers-pytorch-cuda
-      options: --shm-size "16gb" --ipc host --gpus 0
+      options: --shm-size "16gb" --ipc host --gpus all
     defaults:
       run:
         shell: bash
     strategy:
       fail-fast: false
-      max-parallel: 2
+      max-parallel: 4
       matrix:
         module: [models, schedulers, lora, others]
     steps:
@@ -252,7 +253,7 @@ jobs:
 
     container:
       image: diffusers/diffusers-pytorch-cuda
-      options: --gpus 0 --shm-size "16gb" --ipc host
+      options: --gpus all --shm-size "16gb" --ipc host
     steps:
     - name: Checkout diffusers
       uses: actions/checkout@v3

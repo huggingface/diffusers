@@ -28,7 +28,9 @@ from diffusers import (
     LEditsPPPipelineStableDiffusion,
     UNet2DConditionModel,
 )
-from diffusers.utils.testing_utils import (
+
+from ...testing_utils import (
+    Expectations,
     backend_empty_cache,
     enable_full_determinism,
     floats_tensor,
@@ -244,7 +246,35 @@ class LEditsPPPipelineStableDiffusionSlowTests(unittest.TestCase):
 
         output_slice = reconstruction[150:153, 140:143, -1]
         output_slice = output_slice.flatten()
-        expected_slice = np.array(
-            [0.9453125, 0.93310547, 0.84521484, 0.94628906, 0.9111328, 0.80859375, 0.93847656, 0.9042969, 0.8144531]
+        expected_slices = Expectations(
+            {
+                ("xpu", 3): np.array(
+                    [
+                        0.9511719,
+                        0.94140625,
+                        0.87597656,
+                        0.9472656,
+                        0.9296875,
+                        0.8378906,
+                        0.94433594,
+                        0.91503906,
+                        0.8491211,
+                    ]
+                ),
+                ("cuda", 7): np.array(
+                    [
+                        0.9453125,
+                        0.93310547,
+                        0.84521484,
+                        0.94628906,
+                        0.9111328,
+                        0.80859375,
+                        0.93847656,
+                        0.9042969,
+                        0.8144531,
+                    ]
+                ),
+            }
         )
+        expected_slice = expected_slices.get_expectation()
         assert np.abs(output_slice - expected_slice).max() < 1e-2

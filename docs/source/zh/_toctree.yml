@@ -1,12 +1,150 @@
-- sections:
+- title: 开始Diffusers
+  sections:
   - local: index
-    title: 🧨 Diffusers
+    title: Diffusers
+  - local: installation
+    title: 安装
   - local: quicktour
     title: 快速入门
   - local: stable_diffusion
     title: 有效和高效的扩散
-  - local: consisid 
-    title: 身份保持的文本到视频生成
-  - local: installation
-    title: 安装
-  title: 开始
+
+- title: DiffusionPipeline
+  isExpanded: false
+  sections:
+  - local: using-diffusers/schedulers
+    title: Load schedulers and models
+
+- title: Inference
+  isExpanded: false
+  sections:
+  - local: training/distributed_inference
+    title: Distributed inference
+
+- title: Inference optimization
+  isExpanded: false
+  sections:
+  - local: optimization/fp16
+    title: Accelerate inference
+  - local: optimization/cache
+    title: Caching
+  - local: optimization/memory
+    title: Reduce memory usage
+  - local: optimization/speed-memory-optims
+    title: Compile and offloading quantized models
+  - title: Community optimizations
+    sections:
+    - local: optimization/pruna
+      title: Pruna
+    - local: optimization/xformers
+      title: xFormers
+    - local: optimization/tome
+      title: Token merging
+    - local: optimization/deepcache
+      title: DeepCache
+    - local: optimization/tgate
+      title: TGATE
+    - local: optimization/xdit
+      title: xDiT
+    - local: optimization/para_attn
+      title: ParaAttention
+
+- title: Hybrid Inference
+  isExpanded: false
+  sections:
+  - local: hybrid_inference/overview
+    title: Overview
+  - local: hybrid_inference/vae_encode
+    title: VAE Encode
+  - local: hybrid_inference/api_reference
+    title: API Reference
+
+- title: Modular Diffusers
+  isExpanded: false
+  sections:
+  - local: modular_diffusers/overview
+    title: Overview
+  - local: modular_diffusers/quickstart
+    title: Quickstart
+  - local: modular_diffusers/modular_diffusers_states
+    title: States
+  - local: modular_diffusers/pipeline_block
+    title: ModularPipelineBlocks
+  - local: modular_diffusers/sequential_pipeline_blocks
+    title: SequentialPipelineBlocks
+  - local: modular_diffusers/loop_sequential_pipeline_blocks
+    title: LoopSequentialPipelineBlocks
+  - local: modular_diffusers/auto_pipeline_blocks
+    title: AutoPipelineBlocks
+  - local: modular_diffusers/modular_pipeline
+    title: ModularPipeline
+  - local: modular_diffusers/components_manager
+    title: ComponentsManager
+  - local: modular_diffusers/guiders
+    title: Guiders
+
+- title: Training
+  isExpanded: false
+  sections:
+  - local: training/overview
+    title: Overview
+  - local: training/adapt_a_model
+    title: Adapt a model to a new task
+  - title: Models
+    sections:
+    - local: training/text2image
+      title: Text-to-image
+    - local: training/kandinsky
+      title: Kandinsky 2.2
+    - local: training/wuerstchen
+      title: Wuerstchen
+    - local: training/controlnet
+      title: ControlNet
+    - local: training/instructpix2pix
+      title: InstructPix2Pix
+  - title: Methods
+    sections:
+    - local: training/text_inversion
+      title: Textual Inversion
+    - local: training/dreambooth
+      title: DreamBooth
+    - local: training/lora
+      title: LoRA
+
+- title: Model accelerators and hardware
+  isExpanded: false
+  sections:
+  - local: optimization/onnx
+    title: ONNX
+  - local: optimization/open_vino
+    title: OpenVINO
+  - local: optimization/coreml
+    title: Core ML
+  - local: optimization/mps
+    title: Metal Performance Shaders (MPS)
+  - local: optimization/habana
+    title: Intel Gaudi
+  - local: optimization/neuron
+    title: AWS Neuron
+
+- title: Specific pipeline examples
+  isExpanded: false
+  sections:
+  - local: using-diffusers/consisid
+    title: ConsisID
+
+- title: Resources
+  isExpanded: false
+  sections:
+  - title: Task recipes
+    sections:
+    - local: community_projects
+      title: Projects built with Diffusers
+    - local: conceptual/philosophy
+      title: Philosophy
+    - local: conceptual/contribution
+      title: How to contribute?
+    - local: conceptual/ethical_guidelines
+      title: Diffusers' Ethical Guidelines
+    - local: conceptual/evaluation
+      title: Evaluating Diffusion Models
