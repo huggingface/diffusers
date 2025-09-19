@@ -413,7 +413,7 @@ class AutoencoderKLHunyuanImage(ModelMixin, ConfigMixin, FromOriginalModelMixin)
         latent_channels: int,
         block_out_channels: Tuple[int, ...],
         layers_per_block: int,
-        ffactor_spatial: int,
+        ffactor_spatial: int, # YiYi Notes: rename this config to scale_factor_spatial be consistent with wan 
         sample_size: int,
         scaling_factor: float = None,
         downsample_match_channel: bool = True,
