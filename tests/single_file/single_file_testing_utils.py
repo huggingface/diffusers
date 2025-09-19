@@ -119,6 +119,24 @@ class SingleFileModelTesterMixin:
                 f"max difference {torch.max(torch.abs(param - param_single_file)).item()}"
             )
 
+    def test_checkpoint_altered_keys_loading(self):
+        # Test loading with checkpoints that have altered keys
+        if not hasattr(self, "alternate_keys_ckpt_paths") or not self.alternate_keys_ckpt_paths:
+            return
+
+        for ckpt_path in self.alternate_keys_ckpt_paths:
+            backend_empty_cache(torch_device)
+
+            single_file_kwargs = {}
+            if hasattr(self, "torch_dtype") and self.torch_dtype:
+                single_file_kwargs["torch_dtype"] = self.torch_dtype
+
+            model = self.model_class.from_single_file(ckpt_path, **single_file_kwargs)
+
+            del model
+            gc.collect()
+            backend_empty_cache(torch_device)
+
 
 class SDSingleFileTesterMixin:
     single_file_kwargs = {}

@@ -37,17 +37,7 @@ class FluxTransformer2DModelSingleFileTests(SingleFileModelTesterMixin, unittest
     alternate_keys_ckpt_paths = ["https://huggingface.co/Comfy-Org/flux1-dev/blob/main/flux1-dev-fp8.safetensors"]
 
     repo_id = "black-forest-labs/FLUX.1-dev"
-
     subfolder = "transformer"
-
-    def test_checkpoint_loading(self):
-        for ckpt_path in self.alternate_keys_ckpt_paths:
-            backend_empty_cache(torch_device)
-            model = self.model_class.from_single_file(ckpt_path)
-
-            del model
-            gc.collect()
-            backend_empty_cache(torch_device)
 
     def test_device_map_cuda(self):
         backend_empty_cache(torch_device)

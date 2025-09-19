@@ -13,7 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import gc
 import unittest
 
 from diffusers import (
@@ -21,9 +20,7 @@ from diffusers import (
 )
 
 from ..testing_utils import (
-    backend_empty_cache,
     enable_full_determinism,
-    torch_device,
 )
 from .single_file_testing_utils import SingleFileModelTesterMixin
 
@@ -40,12 +37,3 @@ class Lumina2Transformer2DModelSingleFileTests(SingleFileModelTesterMixin, unitt
 
     repo_id = "Alpha-VLLM/Lumina-Image-2.0"
     subfolder = "transformer"
-
-    def test_checkpoint_loading(self):
-        for ckpt_path in self.alternate_keys_ckpt_paths:
-            backend_empty_cache(torch_device)
-            model = self.model_class.from_single_file(ckpt_path)
-
-            del model
-            gc.collect()
-            backend_empty_cache(torch_device)
