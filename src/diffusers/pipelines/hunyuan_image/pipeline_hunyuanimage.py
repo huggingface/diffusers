@@ -13,11 +13,12 @@
 # limitations under the License.
 
 import inspect
+import re
 from typing import Any, Callable, Dict, List, Optional, Union
 
 import numpy as np
 import torch
-from transformers import Qwen2_5_VLForConditionalGeneration, Qwen2Tokenizer, T5EncoderModel, ByT5Tokenizer
+from transformers import ByT5Tokenizer, Qwen2_5_VLForConditionalGeneration, Qwen2Tokenizer, T5EncoderModel
 
 from ...image_processor import VaeImageProcessor
 from ...models import AutoencoderKLHunyuanImage, HunyuanImageTransformer2DModel
@@ -26,7 +27,6 @@ from ...utils import is_torch_xla_available, logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
 from .pipeline_output import HunyuanImagePipelineOutput
-import re
 
 
 if is_torch_xla_available():
@@ -45,7 +45,9 @@ EXAMPLE_DOC_STRING = """
         >>> import torch
         >>> from diffusers import HunyuanImagePipeline
 
-        >>> pipe = HunyuanImagePipeline.from_pretrained("hunyuanvideo-community/HunyuanVideo", torch_dtype=torch.bfloat16)
+        >>> pipe = HunyuanImagePipeline.from_pretrained(
+        ...     "hunyuanvideo-community/HunyuanVideo", torch_dtype=torch.bfloat16
+        ... )
         >>> pipe.to("cuda")
         >>> prompt = "A cat holding a sign that says hello world"
         >>> # Depending on the variant being used, the pipeline call will slightly vary.
@@ -59,21 +61,20 @@ EXAMPLE_DOC_STRING = """
 def extract_glyph_text(prompt: str):
     """
     Extract text enclosed in quotes for glyph rendering.
-    
-    Finds text in single quotes, double quotes, and Chinese quotes,
-    then formats it for byT5 processing.
-    
+
+    Finds text in single quotes, double quotes, and Chinese quotes, then formats it for byT5 processing.
+
     Args:
         prompt: Input text prompt
-        
+
     Returns:
         Formatted glyph text string or None if no quoted text found
     """
     text_prompt_texts = []
-    pattern_quote_single = r'\'(.*?)\''
-    pattern_quote_double = r'\"(.*?)\"'
-    pattern_quote_chinese_single = r'‘(.*?)’'
-    pattern_quote_chinese_double = r'“(.*?)”'
+    pattern_quote_single = r"\'(.*?)\'"
+    pattern_quote_double = r"\"(.*?)\""
+    pattern_quote_chinese_single = r"‘(.*?)’"
+    pattern_quote_chinese_double = r"“(.*?)”"
 
     matches_quote_single = re.findall(pattern_quote_single, prompt)
     matches_quote_double = re.findall(pattern_quote_double, prompt)
@@ -86,12 +87,11 @@ def extract_glyph_text(prompt: str):
     text_prompt_texts.extend(matches_quote_chinese_double)
 
     if text_prompt_texts:
-        glyph_text_formatted ='. '.join([f'Text "{text}"' for text in text_prompt_texts]) + '. '
+        glyph_text_formatted = ". ".join([f'Text "{text}"' for text in text_prompt_texts]) + ". "
     else:
         glyph_text_formatted = None
 
     return glyph_text_formatted
-
 
 
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.retrieve_timesteps
@@ -170,8 +170,9 @@ class HunyuanImagePipeline(DiffusionPipeline):
             [Qwen2.5-VL-7B-Instruct](https://huggingface.co/Qwen/Qwen2.5-VL-7B-Instruct) variant.
         tokenizer (`Qwen2Tokenizer`): Tokenizer of class [Qwen2Tokenizer].
         text_encoder_2 ([`T5EncoderModel`]):
-            [T5EncoderModel](https://huggingface.co/docs/transformers/en/model_doc/t5#transformers.T5EncoderModel) variant.
-        tokenizer_2 (`ByT5Tokenizer`): Tokenizer of class [ByT5Tokenizer]    
+            [T5EncoderModel](https://huggingface.co/docs/transformers/en/model_doc/t5#transformers.T5EncoderModel)
+            variant.
+        tokenizer_2 (`ByT5Tokenizer`): Tokenizer of class [ByT5Tokenizer]
     """
 
     model_cpu_offload_seq = "text_encoder->text_encoder_2->transformer->vae"
@@ -244,7 +245,6 @@ class HunyuanImagePipeline(DiffusionPipeline):
 
         return prompt_embeds, encoder_attention_mask
 
-    
     def _get_byt5_prompt_embeds(
         self,
         tokenizer: ByT5Tokenizer,
@@ -254,8 +254,6 @@ class HunyuanImagePipeline(DiffusionPipeline):
         dtype: Optional[torch.dtype] = None,
         tokenizer_max_length: int = 128,
     ):
-
-
         device = device or self._execution_device
         dtype = dtype or text_encoder.dtype
 
@@ -277,7 +275,6 @@ class HunyuanImagePipeline(DiffusionPipeline):
             input_ids=txt_tokens.input_ids,
             attention_mask=txt_tokens.attention_mask.float(),
         )[0]
-
 
         prompt_embeds = prompt_embeds.to(dtype=dtype, device=device)
         encoder_attention_mask = txt_tokens.attention_mask.to(device=device)
@@ -304,13 +301,16 @@ class HunyuanImagePipeline(DiffusionPipeline):
             num_images_per_prompt (`int`):
                 number of images that should be generated per prompt
             prompt_embeds (`torch.Tensor`, *optional*):
-                Pre-generated text embeddings. If not provided, text embeddings will be generated from `prompt` input argument.
+                Pre-generated text embeddings. If not provided, text embeddings will be generated from `prompt` input
+                argument.
             prompt_embeds_mask (`torch.Tensor`, *optional*):
                 Pre-generated text mask. If not provided, text mask will be generated from `prompt` input argument.
             prompt_embeds_2 (`torch.Tensor`, *optional*):
-                Pre-generated glyph text embeddings from ByT5. If not provided, will be generated from `prompt` input argument using self.tokenizer_2 and self.text_encoder_2.
+                Pre-generated glyph text embeddings from ByT5. If not provided, will be generated from `prompt` input
+                argument using self.tokenizer_2 and self.text_encoder_2.
             prompt_embeds_mask_2 (`torch.Tensor`, *optional*):
-                Pre-generated glyph text mask from ByT5. If not provided, will be generated from `prompt` input argument using self.tokenizer_2 and self.text_encoder_2.
+                Pre-generated glyph text mask from ByT5. If not provided, will be generated from `prompt` input
+                argument using self.tokenizer_2 and self.text_encoder_2.
         """
         device = device or self._execution_device
 
@@ -319,15 +319,15 @@ class HunyuanImagePipeline(DiffusionPipeline):
 
         if prompt_embeds is None:
             prompt_embeds, prompt_embeds_mask = self._get_qwen_prompt_embeds(
-                tokenizer=self.tokenizer, 
-                text_encoder=self.text_encoder, 
-                prompt=prompt, 
+                tokenizer=self.tokenizer,
+                text_encoder=self.text_encoder,
+                prompt=prompt,
                 device=device,
                 tokenizer_max_length=self.tokenizer_max_length,
                 template=self.prompt_template_encode,
                 drop_idx=self.prompt_template_encode_start_idx,
             )
-        
+
         if prompt_embeds_2 is None:
             prompt_embeds_2_list = []
             prompt_embeds_mask_2_list = []
@@ -336,7 +336,9 @@ class HunyuanImagePipeline(DiffusionPipeline):
             for glyph_text in glyph_texts:
                 if glyph_text is None:
                     glyph_text_embeds = torch.zeros((1, self.tokenizer_2_max_length, 1472), device=device)
-                    glyph_text_embeds_mask = torch.zeros((1, self.tokenizer_2_max_length), device=device, dtype=torch.int64)
+                    glyph_text_embeds_mask = torch.zeros(
+                        (1, self.tokenizer_2_max_length), device=device, dtype=torch.int64
+                    )
                 else:
                     glyph_text_embeds, glyph_text_embeds_mask = self._get_byt5_prompt_embeds(
                         tokenizer=self.tokenizer_2,
@@ -345,10 +347,10 @@ class HunyuanImagePipeline(DiffusionPipeline):
                         device=device,
                         tokenizer_max_length=self.tokenizer_2_max_length,
                     )
-                
+
                 prompt_embeds_2_list.append(glyph_text_embeds)
                 prompt_embeds_mask_2_list.append(glyph_text_embeds_mask)
-                
+
             prompt_embeds_2 = torch.cat(prompt_embeds_2_list, dim=0)
             prompt_embeds_mask_2 = torch.cat(prompt_embeds_mask_2_list, dim=0)
 
@@ -425,7 +427,7 @@ class HunyuanImagePipeline(DiffusionPipeline):
             raise ValueError(
                 "Provide either `prompt` or `prompt_embeds_2`. Cannot leave both `prompt` and `prompt_embeds_2` undefined."
             )
-        
+
         if prompt_embeds_2 is not None and prompt_embeds_mask_2 is None:
             raise ValueError(
                 "If `prompt_embeds_2` are provided, `prompt_embeds_mask_2` also have to be passed. Make sure to generate `prompt_embeds_mask_2` from the same text encoder that was used to generate `prompt_embeds_2`."
@@ -434,7 +436,6 @@ class HunyuanImagePipeline(DiffusionPipeline):
             raise ValueError(
                 "If `negative_prompt_embeds_2` are provided, `negative_prompt_embeds_mask_2` also have to be passed. Make sure to generate `negative_prompt_embeds_mask_2` from the same text encoder that was used to generate `negative_prompt_embeds_2`."
             )
-
 
     def prepare_latents(
         self,
@@ -660,7 +661,12 @@ class HunyuanImagePipeline(DiffusionPipeline):
         prompt_embeds_2 = prompt_embeds_2.to(self.transformer.dtype)
 
         if do_true_cfg:
-            negative_prompt_embeds, negative_prompt_embeds_mask, negative_prompt_embeds_2, negative_prompt_embeds_mask_2 = self.encode_prompt(
+            (
+                negative_prompt_embeds,
+                negative_prompt_embeds_mask,
+                negative_prompt_embeds_2,
+                negative_prompt_embeds_mask_2,
+            ) = self.encode_prompt(
                 prompt=negative_prompt,
                 prompt_embeds=negative_prompt_embeds,
                 prompt_embeds_mask=negative_prompt_embeds_mask,
@@ -697,7 +703,9 @@ class HunyuanImagePipeline(DiffusionPipeline):
         if self.transformer.config.guidance_embeds and guidance_scale is None:
             raise ValueError("guidance_scale is required for guidance-distilled model.")
         elif self.transformer.config.guidance_embeds:
-            guidance = torch.tensor([guidance_scale] * latents.shape[0], dtype=self.transformer.dtype, device=device) * 1000.0
+            guidance = (
+                torch.tensor([guidance_scale] * latents.shape[0], dtype=self.transformer.dtype, device=device) * 1000.0
+            )
         elif not self.transformer.config.guidance_embeds and guidance_scale is not None:
             logger.warning(
                 f"guidance_scale is passed as {guidance_scale}, but ignored since the model is not guidance-distilled."
@@ -708,7 +716,6 @@ class HunyuanImagePipeline(DiffusionPipeline):
 
         if self.attention_kwargs is None:
             self._attention_kwargs = {}
-
 
         # 6. Denoising loop
         self.scheduler.set_begin_index(0)
