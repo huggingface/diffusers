@@ -39,9 +39,8 @@ from ....utils import (
     unscale_lora_layers,
 )
 from ....utils.torch_utils import randn_tensor
-from ...pipeline_utils import DiffusionPipeline, StableDiffusionMixin
+from ...pipeline_utils import DiffusionPipeline, StableDiffusionMixin, retrieve_timesteps
 from ...stable_diffusion.safety_checker import StableDiffusionSafetyChecker
-from ..pipeline_utils import retrieve_timesteps
 from .modeling_roberta_series import RobertaSeriesModelWithTransformation
 from .pipeline_output import AltDiffusionPipelineOutput
 
