@@ -45,10 +45,10 @@ EXAMPLE_DOC_STRING = """
         ```py
         >>> import torch
         >>> from PIL import Image
-        >>> from diffusers import QwenImageEditPipeline
+        >>> from diffusers import QwenImageEditPlusPipeline
         >>> from diffusers.utils import load_image
 
-        >>> pipe = QwenImageEditPipeline.from_pretrained("Qwen/Qwen-Image-Edit", torch_dtype=torch.bfloat16)
+        >>> pipe = QwenImageEditPlusPipeline.from_pretrained("Qwen/Qwen-Image-Edit-2509", torch_dtype=torch.bfloat16)
         >>> pipe.to("cuda")
         >>> image = load_image(
         ...     "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/yarn-art-pikachu.png"
@@ -59,7 +59,7 @@ EXAMPLE_DOC_STRING = """
         >>> # Depending on the variant being used, the pipeline call will slightly vary.
         >>> # Refer to the pipeline documentation for more details.
         >>> image = pipe(image, prompt, num_inference_steps=50).images[0]
-        >>> image.save("qwenimage_edit.png")
+        >>> image.save("qwenimage_edit_plus.png")
         ```
 """
 
@@ -284,6 +284,7 @@ class QwenImageEditPlusPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
 
         return prompt_embeds, encoder_attention_mask
 
+    # Copied from diffusers.pipelines.qwenimage.pipeline_qwenimage.QwenImageEditPipeline.encode_prompt
     def encode_prompt(
         self,
         prompt: Union[str, List[str]],
@@ -325,6 +326,7 @@ class QwenImageEditPlusPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
 
         return prompt_embeds, prompt_embeds_mask
 
+    # Copied from diffusers.pipelines.qwenimage.pipeline_qwenimage.QwenImageEditPipeline.check_inputs
     def check_inputs(
         self,
         prompt,
@@ -406,29 +408,28 @@ class QwenImageEditPlusPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
 
         return latents
 
+    # Copied from diffusers.pipelines.qwenimage.pipeline_qwenimage.QwenImageEditPipeline._encode_vae_image
     def _encode_vae_image(self, image: torch.Tensor, generator: torch.Generator):
-        origin_dtype = image.dtype
-        with torch.autocast(image.device.type, torch.float32):
-            if isinstance(generator, list):
-                image_latents = [
-                    retrieve_latents(self.vae.encode(image[i : i + 1]), generator=generator[i], sample_mode="argmax")
-                    for i in range(image.shape[0])
-                ]
-                image_latents = torch.cat(image_latents, dim=0)
-            else:
-                image_latents = retrieve_latents(self.vae.encode(image), generator=generator, sample_mode="argmax")
-            latents_mean = (
-                torch.tensor(self.vae.config.latents_mean)
-                .view(1, self.latent_channels, 1, 1, 1)
-                .to(image_latents.device, image_latents.dtype)
-            )
-            latents_std = (
-                torch.tensor(self.vae.config.latents_std)
-                .view(1, self.latent_channels, 1, 1, 1)
-                .to(image_latents.device, image_latents.dtype)
-            )
-            image_latents = (image_latents - latents_mean) / latents_std
-        image_latents = image_latents.to(origin_dtype)
+        if isinstance(generator, list):
+            image_latents = [
+                retrieve_latents(self.vae.encode(image[i : i + 1]), generator=generator[i], sample_mode="argmax")
+                for i in range(image.shape[0])
+            ]
+            image_latents = torch.cat(image_latents, dim=0)
+        else:
+            image_latents = retrieve_latents(self.vae.encode(image), generator=generator, sample_mode="argmax")
+        latents_mean = (
+            torch.tensor(self.vae.config.latents_mean)
+            .view(1, self.latent_channels, 1, 1, 1)
+            .to(image_latents.device, image_latents.dtype)
+        )
+        latents_std = (
+            torch.tensor(self.vae.config.latents_std)
+            .view(1, self.latent_channels, 1, 1, 1)
+            .to(image_latents.device, image_latents.dtype)
+        )
+        image_latents = (image_latents - latents_mean) / latents_std
+
         return image_latents
 
     def enable_vae_slicing(self):
