@@ -32,9 +32,8 @@ from ...utils import (
     unscale_lora_layers,
 )
 from ...utils.torch_utils import randn_tensor
-from ..flux.pipeline_flux_fill import calculate_shift, retrieve_latents, retrieve_timesteps
 from ..flux.pipeline_output import FluxPipelineOutput
-from ..pipeline_utils import DiffusionPipeline
+from ..pipeline_utils import DiffusionPipeline, calculate_shift, retrieve_latents, retrieve_timesteps
 from .visualcloze_utils import VisualClozeProcessor
 
 
