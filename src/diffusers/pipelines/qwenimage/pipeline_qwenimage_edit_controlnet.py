@@ -973,11 +973,11 @@ class QwenImageEditControlNetPipeline(DiffusionPipeline, QwenImageLoraLoaderMixi
 
                 if image_latents is not None:
                     padding_size = image_latents.shape[1]
-                    for i, sample in enumerate(controlnet_block_samples):
+                    for sample_index, sample in enumerate(controlnet_block_samples):
                         # Pad right with padding_size zeros at dimension 1 of each sample
                         pad_tuple = [0] * (2 * sample.dim())
                         pad_tuple[-3] = padding_size
-                        controlnet_block_samples[i] = F.pad(sample, pad_tuple, mode="constant", value=0)
+                        controlnet_block_samples[sample_index] = F.pad(sample, pad_tuple, mode="constant", value=0)
 
                 with self.transformer.cache_context("cond"):
                     noise_pred = self.transformer(
