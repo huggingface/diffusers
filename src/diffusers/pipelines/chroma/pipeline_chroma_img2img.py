@@ -752,9 +752,6 @@ class ChromaImg2ImgPipeline(
             guidance_scale (`float`, *optional*, defaults to 5.0):
                 Embedded guiddance scale is enabled by setting `guidance_scale` > 1. Higher `guidance_scale` encourages
                 a model to generate images more aligned with `prompt` at the expense of lower image quality.
-
-                Guidance-distilled models approximates true classifer-free guidance for `guidance_scale` > 1. Refer to
-                the [paper](https://huggingface.co/papers/2210.03142) to learn more.
             strength (`float, *optional*, defaults to 0.9):
                 Conceptually, indicates how much to transform the reference image. Must be between 0 and 1. image will
                 be used as a starting point, adding more noise to it the larger the strength. The number of denoising
