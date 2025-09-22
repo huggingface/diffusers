@@ -14,6 +14,8 @@
 
 from typing import Any, Dict, List, Optional, Tuple, Union
 
+import math
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -142,14 +144,20 @@ class HunyuanImageAttnProcessor2_0:
 class HunyuanImagePatchEmbed(nn.Module):
     def __init__(
         self,
-        patch_size: Union[int, Tuple[int, int]] = 16,
+        patch_size: Union[Tuple[int, int], Tuple[int, int, int]] = (16, 16),
         in_chans: int = 3,
         embed_dim: int = 768,
     ) -> None:
         super().__init__()
 
-        patch_size = (patch_size, patch_size) if isinstance(patch_size, int) else patch_size
-        self.proj = nn.Conv2d(in_chans, embed_dim, kernel_size=patch_size, stride=patch_size)
+        self.patch_size = patch_size
+
+        if len(patch_size) == 2:
+            self.proj = nn.Conv2d(in_chans, embed_dim, kernel_size=patch_size, stride=patch_size)
+        elif len(patch_size) == 3:
+            self.proj = nn.Conv3d(in_chans, embed_dim, kernel_size=patch_size, stride=patch_size)
+        else:
+            raise ValueError(f"patch_size must be a tuple of length 2 or 3, got {len(patch_size)}")
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         hidden_states = self.proj(hidden_states)
@@ -203,12 +211,13 @@ class HunyuanImageCombinedTimeGuidanceEmbedding(nn.Module):
 
         self.time_proj = Timesteps(num_channels=256, flip_sin_to_cos=True, downscale_freq_shift=0)
         self.timestep_embedder = TimestepEmbedding(in_channels=256, time_embed_dim=embedding_dim)
+
         self.guidance_embedder = None
         if guidance_embeds:
             self.guidance_embedder = TimestepEmbedding(in_channels=256, time_embed_dim=embedding_dim)
 
     def forward(
-        self, timestep: torch.Tensor, guidance: Optional[torch.Tensor] = None
+        self, timestep: torch.Tensor, guidance: Optional[torch.Tensor] = None,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         timesteps_proj = self.time_proj(timestep)
         timesteps_emb = self.timestep_embedder(timesteps_proj.to(dtype=timestep.dtype))  # (N, D)
@@ -309,7 +318,7 @@ class HunyuanImageIndividualTokenRefiner(nn.Module):
         if attention_mask is not None:
             batch_size = attention_mask.shape[0]
             seq_len = attention_mask.shape[1]
-            attention_mask = attention_mask.to(hidden_states.device).bool()
+            attention_mask = attention_mask.to(hidden_states.device)
             self_attn_mask_1 = attention_mask.view(batch_size, 1, 1, seq_len).repeat(1, 1, seq_len, 1)
             self_attn_mask_2 = self_attn_mask_1.transpose(2, 3)
             self_attn_mask = (self_attn_mask_1 & self_attn_mask_2).bool()
@@ -371,28 +380,45 @@ class HunyuanImageTokenRefiner(nn.Module):
         return hidden_states
 
 
-# YiYi TODO: not updated yet
 class HunyuanImageRotaryPosEmbed(nn.Module):
-    def __init__(self, patch_size: int, rope_dim: List[int], theta: float = 256.0) -> None:
+    def __init__(self, patch_size: Union[Tuple, List[int]], rope_dim: Union[Tuple, List[int]], theta: float = 256.0) -> None:
         super().__init__()
+
+        if not isinstance(patch_size, (tuple, list)) or not len(patch_size) in [2, 3]:
+            raise ValueError(f"patch_size must be a tuple or list of length 2 or 3, got {patch_size}")
+        
+        if not isinstance(rope_dim, (tuple, list)) or not len(rope_dim) in [2, 3]:
+            raise ValueError(f"rope_dim must be a tuple or list of length 2 or 3, got {rope_dim}")
+
+        if not len(patch_size) == len(rope_dim):
+            raise ValueError(f"patch_size and rope_dim must have the same length, got {patch_size} and {rope_dim}")
 
         self.patch_size = patch_size
         self.rope_dim = rope_dim
         self.theta = theta
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
-        _, _, height, width = hidden_states.shape
-        rope_sizes = [height // self.patch_size, width // self.patch_size]
+
+        if hidden_states.ndim == 5:
+            _, _, frame, height, width = hidden_states.shape
+            patch_size_frame, patch_size_height, patch_size_width = self.patch_size
+            rope_sizes = [frame // patch_size_frame, height // patch_size_height, width // patch_size_width]
+        elif hidden_states.ndim == 4:
+            _, _, height, width = hidden_states.shape
+            patch_size_height, patch_size_width = self.patch_size
+            rope_sizes = [height // patch_size_height, width // patch_size_width]
+        else:
+            raise ValueError(f"hidden_states must be a 4D or 5D tensor, got {hidden_states.shape}")
 
         axes_grids = []
-        for i in range(2):
+        for i in range(len(rope_sizes)):
             grid = torch.arange(0, rope_sizes[i], device=hidden_states.device, dtype=torch.float32)
             axes_grids.append(grid)
         grid = torch.meshgrid(*axes_grids, indexing="ij")  # dim x [H, W]
         grid = torch.stack(grid, dim=0)  # [2, H, W]
 
         freqs = []
-        for i in range(2):
+        for i in range(len(rope_sizes)):
             freq = get_1d_rotary_pos_embed(self.rope_dim[i], grid[i].reshape(-1), self.theta, use_real=True)
             freqs.append(freq)
 
@@ -625,15 +651,18 @@ class HunyuanImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, 
         num_single_layers: int = 40,
         num_refiner_layers: int = 2,
         mlp_ratio: float = 4.0,
-        patch_size: int = 1,
+        patch_size: Tuple[int, int] = (1, 1),
         qk_norm: str = "rms_norm",
         guidance_embeds: bool = False,
         text_embed_dim: int = 3584,
-        text_embed_2_dim: int = 1472,
+        text_embed_2_dim: Optional[int] = None,
         rope_theta: float = 256.0,
         rope_axes_dim: Tuple[int] = (64, 64),
     ) -> None:
         super().__init__()
+
+        if not (isinstance(patch_size, (tuple, list)) and len(patch_size) in [2, 3]):
+            raise ValueError(f"patch_size must be a tuple of length 2 or 3, got {patch_size}")
 
         inner_dim = num_attention_heads * attention_head_dim
         out_channels = out_channels or in_channels
@@ -643,7 +672,11 @@ class HunyuanImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, 
         self.context_embedder = HunyuanImageTokenRefiner(
             text_embed_dim, num_attention_heads, attention_head_dim, num_layers=num_refiner_layers
         )
-        self.context_embedder_2 = HunyuanImageByT5TextProjection(text_embed_2_dim, 2048, inner_dim)
+
+        if text_embed_2_dim is not None:
+            self.context_embedder_2 = HunyuanImageByT5TextProjection(text_embed_2_dim, 2048, inner_dim)
+        else:
+            self.context_embedder_2 = None
 
         self.time_guidance_embed = HunyuanImageCombinedTimeGuidanceEmbedding(inner_dim, guidance_embeds)
 
@@ -673,7 +706,7 @@ class HunyuanImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, 
 
         # 5. Output projection
         self.norm_out = AdaLayerNormContinuous(inner_dim, inner_dim, elementwise_affine=False, eps=1e-6)
-        self.proj_out = nn.Linear(inner_dim, patch_size * patch_size * out_channels)
+        self.proj_out = nn.Linear(inner_dim, math.prod(patch_size) * out_channels)
 
         self.gradient_checkpointing = False
 
@@ -743,9 +776,9 @@ class HunyuanImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, 
         timestep: torch.LongTensor,
         encoder_hidden_states: torch.Tensor,
         encoder_attention_mask: torch.Tensor,
-        encoder_hidden_states_2: torch.Tensor,
-        encoder_attention_mask_2: torch.Tensor,
-        guidance: torch.Tensor = None,
+        encoder_hidden_states_2: Optional[torch.Tensor] = None,
+        encoder_attention_mask_2: Optional[torch.Tensor] = None,
+        guidance: Optional[torch.Tensor] = None,
         attention_kwargs: Optional[Dict[str, Any]] = None,
         return_dict: bool = True,
     ) -> Union[torch.Tensor, Dict[str, torch.Tensor]]:
@@ -764,61 +797,70 @@ class HunyuanImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, 
                     "Passing `scale` via `attention_kwargs` when not using the PEFT backend is ineffective."
                 )
 
-        batch_size, _, height, width = hidden_states.shape
-        p = self.config.patch_size
-        post_patch_height = height // p
-        post_patch_width = width // p
+        if hidden_states.ndim == 4:
+            batch_size, channels, height, width = hidden_states.shape
+            sizes = (height, width)
+        elif hidden_states.ndim == 5:
+            batch_size, channels, frame, height, width = hidden_states.shape
+            sizes = (frame, height, width)
+        else:
+            raise ValueError(f"hidden_states must be a 4D or 5D tensor, got {hidden_states.shape}")
+        
+        post_patch_sizes = tuple(d // p for d, p in zip(sizes, self.config.patch_size))
 
         # 1. RoPE
         image_rotary_emb = self.rope(hidden_states)
 
         # 2. Conditional embeddings
+        encoder_attention_mask = encoder_attention_mask.bool()
         temb = self.time_guidance_embed(timestep, guidance)
         hidden_states = self.x_embedder(hidden_states)
         encoder_hidden_states = self.context_embedder(encoder_hidden_states, timestep, encoder_attention_mask)
-        encoder_hidden_states_2 = self.context_embedder_2(encoder_hidden_states_2)
+        
+        if self.context_embedder_2 is not None and encoder_hidden_states_2 is not None:
+            encoder_hidden_states_2 = self.context_embedder_2(encoder_hidden_states_2)
 
-        # 3. reorder and combine text tokens: combine valid tokens first, then padding
-        new_encoder_hidden_states = []
-        new_encoder_attention_mask = []
+            encoder_attention_mask_2 = encoder_attention_mask_2.bool()
 
-        for text, text_mask, text_2, text_mask_2 in zip(
-            encoder_hidden_states, encoder_attention_mask, encoder_hidden_states_2, encoder_attention_mask_2
-        ):
-            text_mask = text_mask.bool()
-            text_mask_2 = text_mask_2.bool()
-            # Concatenate: [valid_mllm, valid_byt5, invalid_mllm, invalid_byt5]
-            new_encoder_hidden_states.append(
-                torch.cat(
-                    [
-                        text_2[text_mask_2],  # valid byt5
-                        text[text_mask],  # valid mllm
-                        text_2[~text_mask_2],  # invalid byt5
-                        text[~text_mask],  # invalid mllm
-                    ],
-                    dim=0,
+            # reorder and combine text tokens: combine valid tokens first, then padding
+            new_encoder_hidden_states = []
+            new_encoder_attention_mask = []
+
+            for text, text_mask, text_2, text_mask_2 in zip(
+                encoder_hidden_states, encoder_attention_mask, encoder_hidden_states_2, encoder_attention_mask_2
+            ):
+                # Concatenate: [valid_mllm, valid_byt5, invalid_mllm, invalid_byt5]
+                new_encoder_hidden_states.append(
+                    torch.cat(
+                        [
+                            text_2[text_mask_2],  # valid byt5
+                            text[text_mask],  # valid mllm
+                            text_2[~text_mask_2],  # invalid byt5
+                            text[~text_mask],  # invalid mllm
+                        ],
+                        dim=0,
+                    )
                 )
-            )
 
-            # Apply same reordering to attention masks
-            new_encoder_attention_mask.append(
-                torch.cat(
-                    [
-                        text_mask_2[text_mask_2],
-                        text_mask[text_mask],
-                        text_mask_2[~text_mask_2],
-                        text_mask[~text_mask],
-                    ],
-                    dim=0,
+                # Apply same reordering to attention masks
+                new_encoder_attention_mask.append(
+                    torch.cat(
+                        [
+                            text_mask_2[text_mask_2],
+                            text_mask[text_mask],
+                            text_mask_2[~text_mask_2],
+                            text_mask[~text_mask],
+                        ],
+                        dim=0,
+                    )
                 )
-            )
 
-        encoder_hidden_states = torch.stack(new_encoder_hidden_states)
-        encoder_attention_mask = torch.stack(new_encoder_attention_mask)
+            encoder_hidden_states = torch.stack(new_encoder_hidden_states)
+            encoder_attention_mask = torch.stack(new_encoder_attention_mask)
 
         attention_mask = torch.nn.functional.pad(encoder_attention_mask, (hidden_states.shape[1], 0), value=True)
         attention_mask = attention_mask.unsqueeze(1).unsqueeze(2)
-        # 4. Transformer blocks
+        # 3. Transformer blocks
         if torch.is_grad_enabled() and self.gradient_checkpointing:
             for block in self.transformer_blocks:
                 hidden_states, encoder_hidden_states = self._gradient_checkpointing_func(
@@ -859,15 +901,29 @@ class HunyuanImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, 
                     image_rotary_emb=image_rotary_emb,
                 )
 
-        # 5. Output projection
+        # 4. Output projection
         hidden_states = self.norm_out(hidden_states, temb)
         hidden_states = self.proj_out(hidden_states)
 
-        hidden_states = hidden_states.reshape(batch_size, post_patch_height, post_patch_width, -1, p, p)
-        hidden_states = hidden_states.permute(
-            0, 3, 1, 4, 2, 5
-        )  # batch_size, channels, height, patch_size, width, patch_size
-        hidden_states = hidden_states.flatten(4, 5).flatten(2, 3)
+        # 5. unpatchify
+        # reshape: [batch_size, *post_patch_dims, channels, *patch_size]
+        out_channels = self.config.out_channels
+        reshape_dims = [batch_size] + list(post_patch_sizes) + [out_channels] + list(self.config.patch_size)
+        hidden_states = hidden_states.reshape(*reshape_dims)
+
+        # create permutation pattern: batch, channels, then interleave post_patch and patch dims
+        # For 4D: [0, 3, 1, 4, 2, 5] -> batch, channels, post_patch_height, patch_size_height, post_patch_width, patch_size_width  
+        # For 5D: [0, 4, 1, 5, 2, 6, 3, 7] -> batch, channels, post_patch_frame, patch_size_frame, post_patch_height, patch_size_height, post_patch_width, patch_size_width
+        ndim = len(post_patch_sizes)
+        permute_pattern = [0, ndim + 1]  # batch, channels
+        for i in range(ndim):
+            permute_pattern.extend([i + 1, ndim + 2 + i])  # post_patch_sizes[i], patch_sizes[i]
+        hidden_states = hidden_states.permute(*permute_pattern)
+
+        # flatten patch dimensions: flatten each (post_patch_size, patch_size) pair
+        # batch_size, channels, post_patch_sizes[0] * patch_sizes[0], post_patch_sizes[1] * patch_sizes[1], ...
+        final_dims = [batch_size, out_channels] + [post_patch * patch for post_patch, patch in zip(post_patch_sizes, self.config.patch_size)]
+        hidden_states = hidden_states.reshape(*final_dims)
 
         if USE_PEFT_BACKEND:
             # remove `lora_scale` from each PEFT layer

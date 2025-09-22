@@ -9,6 +9,8 @@ from .autoencoder_kl_ltx import AutoencoderKLLTXVideo
 from .autoencoder_kl_magvit import AutoencoderKLMagvit
 from .autoencoder_kl_mochi import AutoencoderKLMochi
 from .autoencoder_kl_qwenimage import AutoencoderKLQwenImage
+from .autoencoder_kl_hunyuanimage import AutoencoderKLHunyuanImage
+from .autoencoder_kl_hunyuanimage_refiner import AutoencoderKLHunyuanImageRefiner
 from .autoencoder_kl_temporal_decoder import AutoencoderKLTemporalDecoder
 from .autoencoder_kl_wan import AutoencoderKLWan
 from .autoencoder_oobleck import AutoencoderOobleck

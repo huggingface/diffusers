@@ -35,6 +35,8 @@ if is_torch_available():
     _import_structure["autoencoders.autoencoder_kl_cogvideox"] = ["AutoencoderKLCogVideoX"]
     _import_structure["autoencoders.autoencoder_kl_cosmos"] = ["AutoencoderKLCosmos"]
     _import_structure["autoencoders.autoencoder_kl_hunyuan_video"] = ["AutoencoderKLHunyuanVideo"]
+    _import_structure["autoencoders.autoencoder_kl_hunyuanimage"] = ["AutoencoderKLHunyuanImage"]
+    _import_structure["autoencoders.autoencoder_kl_hunyuanimage_refiner"] = ["AutoencoderKLHunyuanImageRefiner"]
     _import_structure["autoencoders.autoencoder_kl_ltx"] = ["AutoencoderKLLTXVideo"]
     _import_structure["autoencoders.autoencoder_kl_magvit"] = ["AutoencoderKLMagvit"]
     _import_structure["autoencoders.autoencoder_kl_mochi"] = ["AutoencoderKLMochi"]
@@ -71,6 +73,7 @@ if is_torch_available():
     _import_structure["transformers.dit_transformer_2d"] = ["DiTTransformer2DModel"]
     _import_structure["transformers.dual_transformer_2d"] = ["DualTransformer2DModel"]
     _import_structure["transformers.hunyuan_transformer_2d"] = ["HunyuanDiT2DModel"]
+    _import_structure["transformers.transformer_hunyuanimage"] = ["HunyuanImageTransformer2DModel"]
     _import_structure["transformers.latte_transformer_3d"] = ["LatteTransformer3DModel"]
     _import_structure["transformers.lumina_nextdit2d"] = ["LuminaNextDiT2DModel"]
     _import_structure["transformers.pixart_transformer_2d"] = ["PixArtTransformer2DModel"]
@@ -130,6 +133,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AutoencoderKLCogVideoX,
             AutoencoderKLCosmos,
             AutoencoderKLHunyuanVideo,
+            AutoencoderKLHunyuanImage,
+            AutoencoderKLHunyuanImageRefiner,
             AutoencoderKLLTXVideo,
             AutoencoderKLMagvit,
             AutoencoderKLMochi,
@@ -178,6 +183,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             FluxTransformer2DModel,
             HiDreamImageTransformer2DModel,
             HunyuanDiT2DModel,
+            HunyuanImageTransformer2DModel,
             HunyuanVideoFramepackTransformer3DModel,
             HunyuanVideoTransformer3DModel,
             LatteTransformer3DModel,
