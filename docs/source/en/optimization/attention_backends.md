@@ -71,7 +71,7 @@ with attention_backend("_flash_3_hub"):
 
 ## Available backends
 
-Refer to the table below for available attention backends.
+Refer to the table below for a complete list of available attention backends and their variants.
 
 | Backend Name | Family | Description |
 |--------------|--------|-------------|
