@@ -29,9 +29,6 @@ from ..modeling_outputs import AutoencoderKLOutput
 from ..modeling_utils import ModelMixin
 from .vae import DecoderOutput, DiagonalGaussianDistribution
 
-#YiYi TODO: remove this
-from einops import rearrange
-
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
@@ -500,7 +497,9 @@ class HunyuanImageRefinerEncoder3D(nn.Module):
 
             hidden_states = self.mid_block(hidden_states)
 
-        short_cut = rearrange(hidden_states, "b (c r) f h w -> b c r f h w", r=self.group_size).mean(dim=2)
+        # short_cut = rearrange(hidden_states, "b (c r) f h w -> b c r f h w", r=self.group_size).mean(dim=2)
+        batch_size, _, frame, height, width = hidden_states.shape
+        short_cut = hidden_states.view(batch_size, -1, self.group_size, frame, height, width).mean(dim=2)
 
         hidden_states = self.norm_out(hidden_states)
         hidden_states = self.conv_act(hidden_states)
@@ -513,7 +512,7 @@ class HunyuanImageRefinerEncoder3D(nn.Module):
 
 class HunyuanImageRefinerDecoder3D(nn.Module):
     r"""
-    Causal decoder for 3D video-like data introduced in [Hunyuan Video](https://huggingface.co/papers/2412.03603).
+    Causal decoder for 3D video-like data used for HunyuanImage-2.1 Refiner.
     """
 
     def __init__(
@@ -600,7 +599,7 @@ class HunyuanImageRefinerDecoder3D(nn.Module):
 class AutoencoderKLHunyuanImageRefiner(ModelMixin, ConfigMixin):
     r"""
     A VAE model with KL loss for encoding videos into latents and decoding latent representations into videos.
-    Introduced in [HunyuanVideo](https://huggingface.co/papers/2412.03603).
+    Used for HunyuanImage-2.1 Refiner..
 
     This model inherits from [`ModelMixin`]. Check the superclass documentation for it's generic methods implemented
     for all models (such as downloading or saving).
