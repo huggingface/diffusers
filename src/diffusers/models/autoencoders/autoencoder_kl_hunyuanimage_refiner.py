@@ -142,27 +142,40 @@ class HunyuanImageRefinerUpsampleDCAE(nn.Module):
         self.add_temporal_upsample = add_temporal_upsample
         self.repeats = factor * out_channels // in_channels
 
+    @staticmethod
+    def _dcae_upsample_rearrange(tensor, r1=1, r2=2, r3=2):
+        """
+        Convert (b, r1*r2*r3*c, f, h, w) -> (b, c, r1*f, r2*h, r3*w)
+        
+        Args:
+            tensor: Input tensor of shape (b, r1*r2*r3*c, f, h, w)
+            r1: temporal upsampling factor
+            r2: height upsampling factor  
+            r3: width upsampling factor
+        """
+        b, packed_c, f, h, w = tensor.shape
+        factor = r1 * r2 * r3
+        c = packed_c // factor
+
+        tensor = tensor.view(b, r1, r2, r3, c, f, h, w)
+        tensor = tensor.permute(0, 4, 5, 1, 6, 2, 7, 3)
+        return tensor.reshape(b, c, f * r1, h * r2, w * r3)
+
     def forward(self, x: torch.Tensor):
         r1 = 2 if self.add_temporal_upsample else 1
         h = self.conv(x)
         if self.add_temporal_upsample:
-            h = rearrange(h, "b (r2 r3 c) f h w -> b c f (h r2) (w r3)", r2=2, r3=2)
+            h = self._dcae_upsample_rearrange(h, r1=1, r2=2, r3=2)
             h = h[:, : h.shape[1] // 2]
 
             # shortcut computation
-            shortcut = rearrange(x, "b (r2 r3 c) f h w -> b c f (h r2) (w r3)", r2=2, r3=2)
+            shortcut = self._dcae_upsample_rearrange(x, r1=1, r2=2, r3=2)
             shortcut = shortcut.repeat_interleave(repeats=self.repeats // 2, dim=1)
 
         else:
-            h = rearrange(h, "b (r1 r2 r3 c) f h w -> b c (f r1) (h r2) (w r3)", r1=r1, r2=2, r3=2)
+            h = self._dcae_upsample_rearrange(h, r1=r1, r2=2, r3=2)
             shortcut = x.repeat_interleave(repeats=self.repeats, dim=1)
-            shortcut = rearrange(
-                shortcut,
-                "b (r1 r2 r3 c) f h w -> b c (f r1) (h r2) (w r3)",
-                r1=r1,
-                r2=2,
-                r3=2,
-            )
+            shortcut = self._dcae_upsample_rearrange(shortcut, r1=r1, r2=2, r3=2)
         return h + shortcut
 
 
@@ -177,20 +190,40 @@ class HunyuanImageRefinerDownsampleDCAE(nn.Module):
         self.add_temporal_downsample = add_temporal_downsample
         self.group_size = factor * in_channels // out_channels
 
+
+    @staticmethod
+    def _dcae_downsample_rearrange(self, tensor, r1=1, r2=2, r3=2):
+        """
+        Convert (b, c, r1*f, r2*h, r3*w) -> (b, r1*r2*r3*c, f, h, w)
+        
+        This packs spatial/temporal dimensions into channels (opposite of upsample)
+        """
+        b, c, packed_f, packed_h, packed_w = tensor.shape
+        f, h, w = packed_f // r1, packed_h // r2, packed_w // r3
+
+        tensor = tensor.view(b, c, r1, f, r2, h, r3, w)
+        tensor = tensor.permute(0, 2, 4, 6, 1, 3, 5, 7)
+        return tensor.reshape(b, r1 * r2 * r3 * c, f, h, w)
+
+
     def forward(self, x: torch.Tensor):
         r1 = 2 if self.add_temporal_downsample else 1
         h = self.conv(x)
         if self.add_temporal_downsample:
-            h = rearrange(h, "b c f (h r2) (w r3) -> b (r2 r3 c) f h w", r2=2, r3=2)
+            # h = rearrange(h, "b c f (h r2) (w r3) -> b (r2 r3 c) f h w", r2=2, r3=2)
+            h = self._dcae_downsample_rearrange(h, r1=1, r2=2, r3=2)
             h = torch.cat([h, h], dim=1)
 
             # shortcut computation
-            shortcut = rearrange(x, "b c f (h r2) (w r3) -> b (r2 r3 c) f h w", r2=2, r3=2)
+            # shortcut = rearrange(x, "b c f (h r2) (w r3) -> b (r2 r3 c) f h w", r2=2, r3=2)
+            shortcut = self._dcae_downsample_rearrange(x, r1=1, r2=2, r3=2)
             B, C, T, H, W = shortcut.shape
             shortcut = shortcut.view(B, h.shape[1], self.group_size // 2, T, H, W).mean(dim=2)
         else:
-            h = rearrange(h, "b c (f r1) (h r2) (w r3) -> b (r1 r2 r3 c) f h w", r1=r1, r2=2, r3=2)
-            shortcut = rearrange(x, "b c (f r1) (h r2) (w r3) -> b (r1 r2 r3 c) f h w", r1=r1, r2=2, r3=2)
+            # h = rearrange(h, "b c (f r1) (h r2) (w r3) -> b (r1 r2 r3 c) f h w", r1=r1, r2=2, r3=2)
+            h = self._dcae_downsample_rearrange(h, r1=r1, r2=2, r3=2)
+            # shortcut = rearrange(x, "b c (f r1) (h r2) (w r3) -> b (r1 r2 r3 c) f h w", r1=r1, r2=2, r3=2)
+            shortcut = self._dcae_downsample_rearrange(x, r1=r1, r2=2, r3=2)
             B, C, T, H, W = shortcut.shape
             shortcut = shortcut.view(B, h.shape[1], self.group_size, T, H, W).mean(dim=2)
 
