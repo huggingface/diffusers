@@ -241,7 +241,7 @@ class AttentionModuleMixin:
                             op_fw, op_bw = attention_op
                             dtype, *_ = op_fw.SUPPORTED_DTYPES
                         q = torch.randn((1, 2, 40), device="cuda", dtype=dtype)
-                        _ = xops.memory_efficient_attention(q, q, q)
+                        _ = xops.ops.memory_efficient_attention(q, q, q)
                 except Exception as e:
                     raise e
 
