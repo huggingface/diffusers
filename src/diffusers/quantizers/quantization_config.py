@@ -759,7 +759,9 @@ class TorchAoConfig(QuantizationConfigMixin):
 
     def get_apply_tensor_subclass(self):
         """Create the appropriate quantization method based on configuration."""
-        if isinstance(self.quant_type, str):
+        if not isinstance(self.quant_type, str):
+            return self.quant_type
+        else:
             methods = self._get_torchao_quant_type_to_method()
             quant_type_kwargs = self.quant_type_kwargs.copy()
             if (
@@ -788,8 +790,6 @@ class TorchAoConfig(QuantizationConfigMixin):
                     quant_type_kwargs["layout"] = Int4CPULayout()
 
             return methods[self.quant_type](**quant_type_kwargs)
-        else:
-            return self.quant_type
 
     def __repr__(self):
         r"""
