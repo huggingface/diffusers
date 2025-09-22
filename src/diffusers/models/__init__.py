@@ -73,7 +73,6 @@ if is_torch_available():
     _import_structure["transformers.dit_transformer_2d"] = ["DiTTransformer2DModel"]
     _import_structure["transformers.dual_transformer_2d"] = ["DualTransformer2DModel"]
     _import_structure["transformers.hunyuan_transformer_2d"] = ["HunyuanDiT2DModel"]
-    _import_structure["transformers.transformer_hunyuanimage"] = ["HunyuanImageTransformer2DModel"]
     _import_structure["transformers.latte_transformer_3d"] = ["LatteTransformer3DModel"]
     _import_structure["transformers.lumina_nextdit2d"] = ["LuminaNextDiT2DModel"]
     _import_structure["transformers.pixart_transformer_2d"] = ["PixArtTransformer2DModel"]
@@ -93,6 +92,7 @@ if is_torch_available():
     _import_structure["transformers.transformer_hidream_image"] = ["HiDreamImageTransformer2DModel"]
     _import_structure["transformers.transformer_hunyuan_video"] = ["HunyuanVideoTransformer3DModel"]
     _import_structure["transformers.transformer_hunyuan_video_framepack"] = ["HunyuanVideoFramepackTransformer3DModel"]
+    _import_structure["transformers.transformer_hunyuanimage"] = ["HunyuanImageTransformer2DModel"]
     _import_structure["transformers.transformer_ltx"] = ["LTXVideoTransformer3DModel"]
     _import_structure["transformers.transformer_lumina2"] = ["Lumina2Transformer2DModel"]
     _import_structure["transformers.transformer_mochi"] = ["MochiTransformer3DModel"]
@@ -132,9 +132,9 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AutoencoderKLAllegro,
             AutoencoderKLCogVideoX,
             AutoencoderKLCosmos,
-            AutoencoderKLHunyuanVideo,
             AutoencoderKLHunyuanImage,
             AutoencoderKLHunyuanImageRefiner,
+            AutoencoderKLHunyuanVideo,
             AutoencoderKLLTXVideo,
             AutoencoderKLMagvit,
             AutoencoderKLMochi,

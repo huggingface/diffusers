@@ -12,9 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Any, Dict, List, Optional, Tuple, Union
-
 import math
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
@@ -217,7 +216,9 @@ class HunyuanImageCombinedTimeGuidanceEmbedding(nn.Module):
             self.guidance_embedder = TimestepEmbedding(in_channels=256, time_embed_dim=embedding_dim)
 
     def forward(
-        self, timestep: torch.Tensor, guidance: Optional[torch.Tensor] = None,
+        self,
+        timestep: torch.Tensor,
+        guidance: Optional[torch.Tensor] = None,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         timesteps_proj = self.time_proj(timestep)
         timesteps_emb = self.timestep_embedder(timesteps_proj.to(dtype=timestep.dtype))  # (N, D)
@@ -381,13 +382,15 @@ class HunyuanImageTokenRefiner(nn.Module):
 
 
 class HunyuanImageRotaryPosEmbed(nn.Module):
-    def __init__(self, patch_size: Union[Tuple, List[int]], rope_dim: Union[Tuple, List[int]], theta: float = 256.0) -> None:
+    def __init__(
+        self, patch_size: Union[Tuple, List[int]], rope_dim: Union[Tuple, List[int]], theta: float = 256.0
+    ) -> None:
         super().__init__()
 
-        if not isinstance(patch_size, (tuple, list)) or not len(patch_size) in [2, 3]:
+        if not isinstance(patch_size, (tuple, list)) or len(patch_size) not in [2, 3]:
             raise ValueError(f"patch_size must be a tuple or list of length 2 or 3, got {patch_size}")
-        
-        if not isinstance(rope_dim, (tuple, list)) or not len(rope_dim) in [2, 3]:
+
+        if not isinstance(rope_dim, (tuple, list)) or len(rope_dim) not in [2, 3]:
             raise ValueError(f"rope_dim must be a tuple or list of length 2 or 3, got {rope_dim}")
 
         if not len(patch_size) == len(rope_dim):
@@ -398,7 +401,6 @@ class HunyuanImageRotaryPosEmbed(nn.Module):
         self.theta = theta
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
-
         if hidden_states.ndim == 5:
             _, _, frame, height, width = hidden_states.shape
             patch_size_frame, patch_size_height, patch_size_width = self.patch_size
@@ -805,7 +807,7 @@ class HunyuanImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, 
             sizes = (frame, height, width)
         else:
             raise ValueError(f"hidden_states must be a 4D or 5D tensor, got {hidden_states.shape}")
-        
+
         post_patch_sizes = tuple(d // p for d, p in zip(sizes, self.config.patch_size))
 
         # 1. RoPE
@@ -816,7 +818,7 @@ class HunyuanImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, 
         temb = self.time_guidance_embed(timestep, guidance)
         hidden_states = self.x_embedder(hidden_states)
         encoder_hidden_states = self.context_embedder(encoder_hidden_states, timestep, encoder_attention_mask)
-        
+
         if self.context_embedder_2 is not None and encoder_hidden_states_2 is not None:
             encoder_hidden_states_2 = self.context_embedder_2(encoder_hidden_states_2)
 
@@ -912,7 +914,7 @@ class HunyuanImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, 
         hidden_states = hidden_states.reshape(*reshape_dims)
 
         # create permutation pattern: batch, channels, then interleave post_patch and patch dims
-        # For 4D: [0, 3, 1, 4, 2, 5] -> batch, channels, post_patch_height, patch_size_height, post_patch_width, patch_size_width  
+        # For 4D: [0, 3, 1, 4, 2, 5] -> batch, channels, post_patch_height, patch_size_height, post_patch_width, patch_size_width
         # For 5D: [0, 4, 1, 5, 2, 6, 3, 7] -> batch, channels, post_patch_frame, patch_size_frame, post_patch_height, patch_size_height, post_patch_width, patch_size_width
         ndim = len(post_patch_sizes)
         permute_pattern = [0, ndim + 1]  # batch, channels
@@ -922,7 +924,9 @@ class HunyuanImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, 
 
         # flatten patch dimensions: flatten each (post_patch_size, patch_size) pair
         # batch_size, channels, post_patch_sizes[0] * patch_sizes[0], post_patch_sizes[1] * patch_sizes[1], ...
-        final_dims = [batch_size, out_channels] + [post_patch * patch for post_patch, patch in zip(post_patch_sizes, self.config.patch_size)]
+        final_dims = [batch_size, out_channels] + [
+            post_patch * patch for post_patch, patch in zip(post_patch_sizes, self.config.patch_size)
+        ]
         hidden_states = hidden_states.reshape(*final_dims)
 
         if USE_PEFT_BACKEND:

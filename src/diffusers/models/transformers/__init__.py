@@ -8,7 +8,6 @@ if is_torch_available():
     from .dit_transformer_2d import DiTTransformer2DModel
     from .dual_transformer_2d import DualTransformer2DModel
     from .hunyuan_transformer_2d import HunyuanDiT2DModel
-    from .transformer_hunyuanimage import HunyuanImageTransformer2DModel
     from .latte_transformer_3d import LatteTransformer3DModel
     from .lumina_nextdit2d import LuminaNextDiT2DModel
     from .pixart_transformer_2d import PixArtTransformer2DModel
@@ -28,6 +27,7 @@ if is_torch_available():
     from .transformer_hidream_image import HiDreamImageTransformer2DModel
     from .transformer_hunyuan_video import HunyuanVideoTransformer3DModel
     from .transformer_hunyuan_video_framepack import HunyuanVideoFramepackTransformer3DModel
+    from .transformer_hunyuanimage import HunyuanImageTransformer2DModel
     from .transformer_ltx import LTXVideoTransformer3DModel
     from .transformer_lumina2 import Lumina2Transformer2DModel
     from .transformer_mochi import MochiTransformer3DModel

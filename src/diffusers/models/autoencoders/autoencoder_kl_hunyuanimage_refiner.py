@@ -24,7 +24,6 @@ from ...configuration_utils import ConfigMixin, register_to_config
 from ...utils import logging
 from ...utils.accelerate_utils import apply_forward_hook
 from ..activations import get_activation
-from ..attention_processor import Attention
 from ..modeling_outputs import AutoencoderKLOutput
 from ..modeling_utils import ModelMixin
 from .vae import DecoderOutput, DiagonalGaussianDistribution
@@ -126,8 +125,8 @@ class HunyuanImageRefinerAttnBlock(nn.Module):
 
         x = x.squeeze(1).reshape(batch_size, frames, height, width, channels).permute(0, 4, 1, 2, 3)
         x = self.proj_out(x)
-    
-        return x + identity 
+
+        return x + identity
 
 
 class HunyuanImageRefinerUpsampleDCAE(nn.Module):
@@ -143,11 +142,11 @@ class HunyuanImageRefinerUpsampleDCAE(nn.Module):
     def _dcae_upsample_rearrange(tensor, r1=1, r2=2, r3=2):
         """
         Convert (b, r1*r2*r3*c, f, h, w) -> (b, c, r1*f, r2*h, r3*w)
-        
+
         Args:
             tensor: Input tensor of shape (b, r1*r2*r3*c, f, h, w)
             r1: temporal upsampling factor
-            r2: height upsampling factor  
+            r2: height upsampling factor
             r3: width upsampling factor
         """
         b, packed_c, f, h, w = tensor.shape
@@ -187,12 +186,11 @@ class HunyuanImageRefinerDownsampleDCAE(nn.Module):
         self.add_temporal_downsample = add_temporal_downsample
         self.group_size = factor * in_channels // out_channels
 
-
     @staticmethod
     def _dcae_downsample_rearrange(self, tensor, r1=1, r2=2, r3=2):
         """
         Convert (b, c, r1*f, r2*h, r3*w) -> (b, r1*r2*r3*c, f, h, w)
-        
+
         This packs spatial/temporal dimensions into channels (opposite of upsample)
         """
         b, c, packed_f, packed_h, packed_w = tensor.shape
@@ -201,7 +199,6 @@ class HunyuanImageRefinerDownsampleDCAE(nn.Module):
         tensor = tensor.view(b, c, r1, f, r2, h, r3, w)
         tensor = tensor.permute(0, 2, 4, 6, 1, 3, 5, 7)
         return tensor.reshape(b, r1 * r2 * r3 * c, f, h, w)
-
 
     def forward(self, x: torch.Tensor):
         r1 = 2 if self.add_temporal_downsample else 1
@@ -304,15 +301,12 @@ class HunyuanImageRefinerMidBlock(nn.Module):
         self.gradient_checkpointing = False
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
-
         hidden_states = self.resnets[0](hidden_states)
-
 
         for attn, resnet in zip(self.attentions, self.resnets[1:]):
             if attn is not None:
                 hidden_states = attn(hidden_states)
             hidden_states = resnet(hidden_states)
-
 
         return hidden_states
 
@@ -356,7 +350,6 @@ class HunyuanImageRefinerDownBlock3D(nn.Module):
         self.gradient_checkpointing = False
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
-
         for resnet in self.resnets:
             hidden_states = resnet(hidden_states)
 
@@ -461,7 +454,6 @@ class HunyuanImageRefinerEncoder3D(nn.Module):
                 )
                 input_channel = output_channel
             else:
-
                 add_temporal_downsample = i >= np.log2(spatial_compression_ratio // temporal_compression_ratio)
                 downsample_out_channels = block_out_channels[i + 1] if downsample_match_channel else output_channel
                 down_block = HunyuanImageRefinerDownBlock3D(
@@ -518,7 +510,7 @@ class HunyuanImageRefinerDecoder3D(nn.Module):
     def __init__(
         self,
         in_channels: int = 32,
-        out_channels: int = 3, 
+        out_channels: int = 3,
         block_out_channels: Tuple[int, ...] = (1024, 1024, 512, 256, 128),
         layers_per_block: int = 2,
         spatial_compression_ratio: int = 16,
@@ -574,9 +566,7 @@ class HunyuanImageRefinerDecoder3D(nn.Module):
         self.gradient_checkpointing = False
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
-
         hidden_states = self.conv_in(hidden_states) + hidden_states.repeat_interleave(repeats=self.repeat, dim=1)
-
 
         if torch.is_grad_enabled() and self.gradient_checkpointing:
             hidden_states = self._gradient_checkpointing_func(self.mid_block, hidden_states)
@@ -598,8 +588,8 @@ class HunyuanImageRefinerDecoder3D(nn.Module):
 
 class AutoencoderKLHunyuanImageRefiner(ModelMixin, ConfigMixin):
     r"""
-    A VAE model with KL loss for encoding videos into latents and decoding latent representations into videos.
-    Used for HunyuanImage-2.1 Refiner..
+    A VAE model with KL loss for encoding videos into latents and decoding latent representations into videos. Used for
+    HunyuanImage-2.1 Refiner..
 
     This model inherits from [`ModelMixin`]. Check the superclass documentation for it's generic methods implemented
     for all models (such as downloading or saving).
@@ -621,7 +611,7 @@ class AutoencoderKLHunyuanImageRefiner(ModelMixin, ConfigMixin):
         upsample_match_channel: bool = True,
         scaling_factor: float = 1.03682,
     ) -> None:
-        super().__init__() 
+        super().__init__()
 
         self.encoder = HunyuanImageRefinerEncoder3D(
             in_channels=in_channels,
@@ -654,7 +644,6 @@ class AutoencoderKLHunyuanImageRefiner(ModelMixin, ConfigMixin):
         # frames spatially into smaller tiles and performing multiple forward passes for decoding, and then blending the
         # intermediate tiles together, the memory requirement can be lowered.
         self.use_tiling = False
-
 
         # The minimal tile height and width for spatial tiling to be used
         self.tile_sample_min_height = 256
@@ -763,7 +752,7 @@ class AutoencoderKLHunyuanImageRefiner(ModelMixin, ConfigMixin):
 
         if self.use_tiling and (width > tile_latent_min_width or height > tile_latent_min_height):
             return self.tiled_decode(z)
-        
+
         dec = self.decoder(z)
 
         return dec
@@ -829,7 +818,7 @@ class AutoencoderKLHunyuanImageRefiner(ModelMixin, ConfigMixin):
                 The latent representation of the encoded videos.
         """
         _, _, _, height, width = x.shape
-        
+
         tile_latent_min_height = self.tile_sample_min_height // self.spatial_compression_ratio
         tile_latent_min_width = self.tile_sample_min_width // self.spatial_compression_ratio
         overlap_height = int(tile_latent_min_height * (1 - self.tile_overlap_factor))  # 256 * (1 - 0.25) = 192
@@ -921,7 +910,6 @@ class AutoencoderKLHunyuanImageRefiner(ModelMixin, ConfigMixin):
         dec = torch.cat(result_rows, dim=-2)
 
         return dec
-
 
     def forward(
         self,
