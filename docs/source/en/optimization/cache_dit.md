@@ -1,23 +1,6 @@
-<div align="center">
-<p align="center">
-    <h1>CacheDiT</h1>
-    A <b>Unified</b>, Flexible and Training-free <b>Cache Acceleration</b> Framework for <b>🤗Diffusers</b> <br>
-    ♥️ Cache Acceleration with <b>One-line</b> Code ~ ♥️
-  </p>
-  <p align="center">
-    <b><a href="#unified">📚Unified Cache APIs</a></b> | <a href="#forward-pattern-matching">📚Forward Pattern Matching</a> | <a href="#automatic-block-adapter">📚Automatic Block Adapter</a><br>
-    <a href="#hybird-forward-pattern">📚Hybrid Forward Pattern</a> | <a href="#dbcache">📚DBCache</a> | <a href="#taylorseer">📚TaylorSeer Calibrator</a> | <a href="#cfg">📚Cache CFG</a><br>
-    <a href="#benchmarks">📚Text2Image DrawBench</a> | <a href="#benchmarks">📚Text2Image Distillation DrawBench</a>
-  </p>
-  <p align="center">
-    🎉Now, <b>cache-dit</b> covers almost <b>All</b> Diffusers' <b>DiT</b> Pipelines🎉<br>
-    🔥<a href="#supported">Qwen-Image</a> | <a href="#supported">FLUX.1</a> | <a href="#supported">Qwen-Image-Lightning</a> | <a href="#supported"> Wan 2.1 </a> | <a href="#supported"> Wan 2.2 </a>🔥<br>
-    🔥<a href="#supported">HunyuanImage-2.1</a> | <a href="#supported">HunyuanVideo</a> | <a href="#supported">HunyuanDiT</a> | <a href="#supported">HiDream</a> | <a href="#supported">AuraFlow</a>🔥<br>
-    🔥<a href="#supported">CogView3Plus</a> | <a href="#supported">CogView4</a> | <a href="#supported">LTXVideo</a> | <a href="#supported">CogVideoX</a> | <a href="#supported">CogVideoX 1.5</a> | <a href="#supported">ConsisID</a>🔥<br>
-    🔥<a href="#supported">Cosmos</a> | <a href="#supported">SkyReelsV2</a> | <a href="#supported">VisualCloze</a> | <a href="#supported">OmniGen 1/2</a> | <a href="#supported">Lumina 1/2</a> | <a href="#supported">PixArt</a>🔥<br>
-    🔥<a href="#supported">Chroma</a> | <a href="#supported">Sana</a> | <a href="#supported">Allegro</a> | <a href="#supported">Mochi</a> | <a href="#supported">SD 3/3.5</a> | <a href="#supported">Amused</a> | <a href="#supported"> ... </a> | <a href="#supported">DiT-XL</a>🔥
-  </p>
-</div>
+**[cache-dit](https://github.com/vipshop/cache-dit)** is a **Unified**, **Flexible**, and **Training-free** cache acceleration framework designed for 🤗 Diffusers, enabling cache acceleration with just **one line** of code. It encompasses a range of key features including **Unified Cache APIs**, **Forward Pattern Matching**, **Automatic Block Adapter**, **Hybrid Forward Pattern**, **DBCache**, **TaylorSeer Calibrator**, and **Cache CFG**.   
+
+Notably, **[cache-dit](https://github.com/vipshop/cache-dit)** now supports nearly **all** of Diffusers' **DiT-based** pipelines, such as Qwen-Image, FLUX.1, Qwen-Image-Lightning, Wan 2.1/2.2, HunyuanImage-2.1, HunyuanVideo, HunyuanDiT, HiDream, AuraFlow, CogView3Plus, CogView4, LTXVideo, CogVideoX/X 1.5, ConsisID, Cosmos, SkyReelsV2, VisualCloze, OmniGen 1/2, Lumina 1/2, PixArt, Chroma, Sana, Allegro, Mochi, SD 3/3.5, Amused, and DiT-XL, with relevant benchmarks available for **Text2Image DrawBench** and **Text2Image Distillation DrawBench**.
 
 ## 📖Contents 
 
