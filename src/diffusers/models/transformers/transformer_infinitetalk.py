@@ -23,12 +23,11 @@ import torch.nn.functional as F
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
-from ...utils import USE_PEFT_BACKEND, deprecate, logging, scale_lora_layers, unscale_lora_layers
+from ...utils import USE_PEFT_BACKEND, logging, scale_lora_layers, unscale_lora_layers
 from ...utils.torch_utils import maybe_allow_in_graph
 from ..attention import AttentionMixin, AttentionModuleMixin, FeedForward
 from ..attention_dispatch import dispatch_attention_fn
 from ..cache_utils import CacheMixin
-from ..embeddings import PixArtAlphaTextProjection, TimestepEmbedding, Timesteps, get_1d_rotary_pos_embed
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
 from ..normalization import FP32LayerNorm
@@ -432,7 +431,7 @@ class InfiniteTalkAudioCrossAttnProcessor:
         _, audio_seq_len, _ = encoder_hidden_states.shape
         dim_head = attn.inner_dim // attn.heads
         dim_head_kv = attn.kv_inner_dim // attn.heads
-    
+
         # For audio cross-attention, reshape such that the seq_len runs over only the spatial dims
         hidden_states = hidden_states.reshape(batch_size * grid_size_t, -1, hidden_dim)  # [B * N_t, S, C]
 
@@ -1056,7 +1055,7 @@ class InfiniteTalkTransformer3DModel(
 
         if encoder_hidden_states_image is not None:
             encoder_hidden_states = torch.concat([encoder_hidden_states_image, encoder_hidden_states], dim=1)
-        
+
         # 3. Prepare audio embedding using the audio adapter
         audio_cond = encoder_hidden_states_audio.to(device=hidden_states.device, dtype=hidden_states.dtype)
         audio_cond_first_frame = audio_cond[:, :1, ...]
