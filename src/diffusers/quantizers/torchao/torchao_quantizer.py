@@ -235,7 +235,7 @@ class TorchAoHfQuantizer(DiffusersQuantizer):
             elif quant_type.startswith("float") or quant_type.startswith("fp"):
                 return torch.bfloat16
 
-        elif self.quantization_config._get_ao_version() > version.Version("0.9.0"):
+        elif is_torchao_version(">", "0.9.0"):
             from torchao.core.config import AOBaseConfig
 
             quant_type = self.quantization_config.quant_type
@@ -332,7 +332,7 @@ class TorchAoHfQuantizer(DiffusersQuantizer):
         # Original mapping for non-AOBaseConfig types
         # For the uint types, this is a best guess. Once these types become more used
         # we can look into their nuances.
-        if self.quantization_config._get_ao_version() > version.Version("0.9.0"):
+        if is_torchao_version(">", "0.9.0"):
             from torchao.core.config import AOBaseConfig
 
             quant_type = self.quantization_config.quant_type

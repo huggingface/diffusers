@@ -34,7 +34,7 @@ from typing import Any, Callable, Dict, List, Optional, Union
 
 from packaging import version
 
-from ..utils import is_torch_available, is_torchao_available, logging
+from ..utils import is_torch_available, is_torchao_available, is_torchao_version, logging
 
 
 if is_torch_available():
@@ -516,7 +516,6 @@ class TorchAoConfig(QuantizationConfigMixin):
 
     def post_init(self):
         TORCHAO_QUANT_TYPE_METHODS = self._get_torchao_quant_type_to_method()
-        AO_VERSION = self._get_ao_version()
 
         if isinstance(self.quant_type, str):
             if self.quant_type not in TORCHAO_QUANT_TYPE_METHODS.keys():
@@ -546,7 +545,7 @@ class TorchAoConfig(QuantizationConfigMixin):
                     f'The quantization method "{self.quant_type}" does not support the following keyword arguments: '
                     f"{unsupported_kwargs}. The following keywords arguments are supported: {all_kwargs}."
                 )
-        elif AO_VERSION > version.parse("0.9.0"):
+        elif is_torchao_version(">", "0.9.0"):
             from torchao.quantization.quant_api import AOBaseConfig
 
             if not isinstance(self.quant_type, AOBaseConfig):
@@ -590,8 +589,8 @@ class TorchAoConfig(QuantizationConfigMixin):
     @classmethod
     def from_dict(cls, config_dict, return_unused_kwargs=False, **kwargs):
         """Create configuration from a dictionary."""
-        ao_version = cls._get_ao_version()
-        assert ao_version > version.parse("0.9.0"), "TorchAoConfig requires torchao > 0.9.0 for construction from dict"
+        if not is_torchao_version(">", "0.9.0"):
+            raise NotImplementedError("TorchAoConfig requires torchao > 0.9.0 for construction from dict")
         config_dict = config_dict.copy()
         quant_type = config_dict.pop("quant_type")
 
@@ -610,14 +609,6 @@ class TorchAoConfig(QuantizationConfigMixin):
         quant_type = config_from_dict(quant_type)
 
         return cls(quant_type=quant_type, **config_dict)
-
-    @staticmethod
-    def _get_ao_version() -> version.Version:
-        """Centralized check for TorchAO availability and version requirements."""
-        if not is_torchao_available():
-            raise ValueError("TorchAoConfig requires torchao to be installed. Install with `pip install torchao`")
-
-        return version.parse(importlib.metadata.version("torchao"))
 
     @classmethod
     def _get_torchao_quant_type_to_method(cls):
