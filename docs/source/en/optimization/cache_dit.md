@@ -1,7 +1,6 @@
 <div align="center">
-  <img src=https://github.com/vipshop/cache-dit/raw/main/assets/cache-dit-logo.png height="120">
-
 <p align="center">
+    <h1>CacheDiT</h1>
     A <b>Unified</b>, Flexible and Training-free <b>Cache Acceleration</b> Framework for <b>🤗Diffusers</b> <br>
     ♥️ Cache Acceleration with <b>One-line</b> Code ~ ♥️
   </p>
