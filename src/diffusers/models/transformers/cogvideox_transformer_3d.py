@@ -17,10 +17,20 @@ from typing import Any, Dict, Optional, Tuple, Union
 
 import torch
 from torch import nn
+import functools
+import time
+import logging
+import logging.handlers  # 用于添加 handler
+
+# 先配置 logging（在导入 diffusers 前）
+logger = logging.getLogger()  # 根 logger
+logger.setLevel(logging.DEBUG)
+from contextlib import contextmanager
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import PeftAdapterMixin
-from ...utils import USE_PEFT_BACKEND, logging, scale_lora_layers, unscale_lora_layers
+# from ...utils import USE_PEFT_BACKEND, logging, scale_lora_layers, unscale_lora_layers
+from ...utils import USE_PEFT_BACKEND, scale_lora_layers, unscale_lora_layers
 from ...utils.torch_utils import maybe_allow_in_graph
 from ..attention import Attention, FeedForward
 from ..attention_processor import AttentionProcessor, CogVideoXAttnProcessor2_0, FusedCogVideoXAttnProcessor2_0
@@ -31,8 +41,29 @@ from ..modeling_utils import ModelMixin
 from ..normalization import AdaLayerNorm, CogVideoXLayerNormZero
 
 
-logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+# logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
+def timing_decorator(func):
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        torch.cuda.synchronize()
+        start = time.perf_counter()  # 高精度计时器
+        result = func(*args, **kwargs)
+        torch.cuda.synchronize()
+        end = time.perf_counter()
+        logger.info(f"{func.__name__} 执行耗时: {(end - start) * 1000:.2f} ms")
+        return result
+    return wrapper
+
+@contextmanager
+def timing_context(label="代码段"):
+    torch.cuda.synchronize()
+    start = time.perf_counter()
+    yield
+    torch.cuda.synchronize()
+    end = time.perf_counter()
+    # print(f"{label} 执行耗时: {(end - start) * 1000:.2f} ms")
+    logger.info(f"{label} 执行耗时: {(end - start) * 1000:.2f} ms")
 
 @maybe_allow_in_graph
 class CogVideoXBlock(nn.Module):
@@ -115,6 +146,7 @@ class CogVideoXBlock(nn.Module):
             bias=ff_bias,
         )
 
+    
     def forward(
         self,
         hidden_states: torch.Tensor,
@@ -218,6 +250,7 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Cac
     _no_split_modules = ["CogVideoXBlock", "CogVideoXPatchEmbed"]
 
     @register_to_config
+    @timing_decorator
     def __init__(
         self,
         num_attention_heads: int = 30,
@@ -431,6 +464,7 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Cac
         if self.original_attn_processors is not None:
             self.set_attn_processor(self.original_attn_processors)
 
+    @timing_decorator
     def forward(
         self,
         hidden_states: torch.Tensor,
@@ -460,71 +494,76 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Cac
         batch_size, num_frames, channels, height, width = hidden_states.shape
 
         # 1. Time embedding
-        timesteps = timestep
-        t_emb = self.time_proj(timesteps)
+        with timing_context("去噪网络Time Embedding用时"):
+            timesteps = timestep
+            t_emb = self.time_proj(timesteps)
 
-        # timesteps does not contain any weights and will always return f32 tensors
-        # but time_embedding might actually be running in fp16. so we need to cast here.
-        # there might be better ways to encapsulate this.
-        t_emb = t_emb.to(dtype=hidden_states.dtype)
-        emb = self.time_embedding(t_emb, timestep_cond)
+            # timesteps does not contain any weights and will always return f32 tensors
+            # but time_embedding might actually be running in fp16. so we need to cast here.
+            # there might be better ways to encapsulate this.
+            t_emb = t_emb.to(dtype=hidden_states.dtype)
+            emb = self.time_embedding(t_emb, timestep_cond)
 
-        if self.ofs_embedding is not None:
-            ofs_emb = self.ofs_proj(ofs)
-            ofs_emb = ofs_emb.to(dtype=hidden_states.dtype)
-            ofs_emb = self.ofs_embedding(ofs_emb)
-            emb = emb + ofs_emb
+            if self.ofs_embedding is not None:
+                ofs_emb = self.ofs_proj(ofs)
+                ofs_emb = ofs_emb.to(dtype=hidden_states.dtype)
+                ofs_emb = self.ofs_embedding(ofs_emb)
+                emb = emb + ofs_emb
 
         # 2. Patch embedding
-        hidden_states = self.patch_embed(encoder_hidden_states, hidden_states)
-        hidden_states = self.embedding_dropout(hidden_states)
+        with timing_context("去噪网络Patch Embedding用时"):
+            hidden_states = self.patch_embed(encoder_hidden_states, hidden_states)
+            hidden_states = self.embedding_dropout(hidden_states)
 
-        text_seq_length = encoder_hidden_states.shape[1]
-        encoder_hidden_states = hidden_states[:, :text_seq_length]
-        hidden_states = hidden_states[:, text_seq_length:]
+            text_seq_length = encoder_hidden_states.shape[1]
+            encoder_hidden_states = hidden_states[:, :text_seq_length]
+            hidden_states = hidden_states[:, text_seq_length:]
 
         # 3. Transformer blocks
-        for i, block in enumerate(self.transformer_blocks):
-            if torch.is_grad_enabled() and self.gradient_checkpointing:
-                hidden_states, encoder_hidden_states = self._gradient_checkpointing_func(
-                    block,
-                    hidden_states,
-                    encoder_hidden_states,
-                    emb,
-                    image_rotary_emb,
-                    attention_kwargs,
-                )
-            else:
-                hidden_states, encoder_hidden_states = block(
-                    hidden_states=hidden_states,
-                    encoder_hidden_states=encoder_hidden_states,
-                    temb=emb,
-                    image_rotary_emb=image_rotary_emb,
-                    attention_kwargs=attention_kwargs,
-                )
+        with timing_context("去噪网络Expert Transformer Blocks用时"):
+            for i, block in enumerate(self.transformer_blocks):
+                if torch.is_grad_enabled() and self.gradient_checkpointing:
+                    hidden_states, encoder_hidden_states = self._gradient_checkpointing_func(
+                        block,
+                        hidden_states,
+                        encoder_hidden_states,
+                        emb,
+                        image_rotary_emb,
+                        attention_kwargs,
+                    )
+                else:
+                    hidden_states, encoder_hidden_states = block(
+                        hidden_states=hidden_states,
+                        encoder_hidden_states=encoder_hidden_states,
+                        temb=emb,
+                        image_rotary_emb=image_rotary_emb,
+                        attention_kwargs=attention_kwargs,
+                    )
 
         hidden_states = self.norm_final(hidden_states)
 
         # 4. Final block
-        hidden_states = self.norm_out(hidden_states, temb=emb)
-        hidden_states = self.proj_out(hidden_states)
+        with timing_context("去噪网络Final Block用时"):
+            hidden_states = self.norm_out(hidden_states, temb=emb)
+            hidden_states = self.proj_out(hidden_states)
 
         # 5. Unpatchify
-        p = self.config.patch_size
-        p_t = self.config.patch_size_t
+        with timing_context("去噪网络Unpatchify用时"):
+            p = self.config.patch_size
+            p_t = self.config.patch_size_t
 
-        if p_t is None:
-            output = hidden_states.reshape(batch_size, num_frames, height // p, width // p, -1, p, p)
-            output = output.permute(0, 1, 4, 2, 5, 3, 6).flatten(5, 6).flatten(3, 4)
-        else:
-            output = hidden_states.reshape(
-                batch_size, (num_frames + p_t - 1) // p_t, height // p, width // p, -1, p_t, p, p
-            )
-            output = output.permute(0, 1, 5, 4, 2, 6, 3, 7).flatten(6, 7).flatten(4, 5).flatten(1, 2)
+            if p_t is None:
+                output = hidden_states.reshape(batch_size, num_frames, height // p, width // p, -1, p, p)
+                output = output.permute(0, 1, 4, 2, 5, 3, 6).flatten(5, 6).flatten(3, 4)
+            else:
+                output = hidden_states.reshape(
+                    batch_size, (num_frames + p_t - 1) // p_t, height // p, width // p, -1, p_t, p, p
+                )
+                output = output.permute(0, 1, 5, 4, 2, 6, 3, 7).flatten(6, 7).flatten(4, 5).flatten(1, 2)
 
-        if USE_PEFT_BACKEND:
-            # remove `lora_scale` from each PEFT layer
-            unscale_lora_layers(self, lora_scale)
+            if USE_PEFT_BACKEND:
+                # remove `lora_scale` from each PEFT layer
+                unscale_lora_layers(self, lora_scale)
 
         if not return_dict:
             return (output,)

@@ -15,6 +15,21 @@
 
 import inspect
 import math
+import time
+import functools
+import logging
+import logging.handlers  # 用于添加 handler
+from contextlib import contextmanager
+
+# 先配置 logging（在导入 diffusers 前）
+logger = logging.getLogger()  # 根 logger
+logger.setLevel(logging.DEBUG)
+
+# 文件 handler
+# file_handler = logging.FileHandler('/home/lyc/diffusers/src/diffusers/cogvideox.log', mode='a')
+# file_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
+# logger.addHandler(file_handler)
+
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import torch
@@ -26,7 +41,8 @@ from ...models import AutoencoderKLCogVideoX, CogVideoXTransformer3DModel
 from ...models.embeddings import get_3d_rotary_pos_embed
 from ...pipelines.pipeline_utils import DiffusionPipeline
 from ...schedulers import CogVideoXDDIMScheduler, CogVideoXDPMScheduler
-from ...utils import is_torch_xla_available, logging, replace_example_docstring
+# from ...utils import is_torch_xla_available, logging, replace_example_docstring
+from ...utils import is_torch_xla_available, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from ...video_processor import VideoProcessor
 from .pipeline_output import CogVideoXPipelineOutput
@@ -38,8 +54,6 @@ if is_torch_xla_available():
     XLA_AVAILABLE = True
 else:
     XLA_AVAILABLE = False
-
-logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
 EXAMPLE_DOC_STRING = """
@@ -83,6 +97,39 @@ def get_resize_crop_region_for_grid(src, tgt_width, tgt_height):
 
     return (crop_top, crop_left), (crop_top + resize_height, crop_left + resize_width)
 
+def timing_decorator(func):
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        torch.cuda.synchronize()
+        start = time.perf_counter()  # 高精度计时器
+        result = func(*args, **kwargs)
+        torch.cuda.synchronize()
+        end = time.perf_counter()
+        logger.info(f"{func.__name__} 执行耗时: {(end - start) * 1000:.2f} ms")
+        return result
+    return wrapper
+
+@contextmanager
+def timing_context(label="代码段"):
+    torch.cuda.synchronize()
+    start = time.perf_counter()
+    yield
+    torch.cuda.synchronize()
+    end = time.perf_counter()
+    # print(f"{label} 执行耗时: {(end - start) * 1000:.2f} ms")
+    logger.info(f"{label} 执行耗时: {(end - start) * 1000:.2f} ms")
+
+@contextmanager
+def timing_accumulator(total_time_list):
+    torch.cuda.synchronize()
+    start = time.perf_counter()
+    yield
+    end = time.perf_counter()
+    torch.cuda.synchronize()
+    # print(end - start)
+    total_time_list[0] += (end - start)  # 累加到列表（可变对象）
+
+total_time_list = [0.0]  # 用列表包裹，便于修改
 
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.retrieve_timesteps
 def retrieve_timesteps(
@@ -322,6 +369,7 @@ class CogVideoXPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
 
         return prompt_embeds, negative_prompt_embeds
 
+    @timing_decorator
     def prepare_latents(
         self, batch_size, num_channels_latents, num_frames, height, width, dtype, device, generator, latents=None
     ):
@@ -348,6 +396,7 @@ class CogVideoXPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
         latents = latents * self.scheduler.init_noise_sigma
         return latents
 
+    @timing_decorator
     def decode_latents(self, latents: torch.Tensor) -> torch.Tensor:
         latents = latents.permute(0, 2, 1, 3, 4)  # [batch_size, num_channels, num_frames, height, width]
         latents = 1 / self.vae_scaling_factor_image * latents
@@ -504,6 +553,7 @@ class CogVideoXPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
 
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
+    @timing_decorator
     def __call__(
         self,
         prompt: Optional[Union[str, List[str]]] = None,
@@ -609,7 +659,8 @@ class CogVideoXPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
             [`~pipelines.cogvideo.pipeline_cogvideox.CogVideoXPipelineOutput`] if `return_dict` is True, otherwise a
             `tuple`. When returning a tuple, the first element is a list with the generated images.
         """
-
+        logger.info("Pipeline __call__ started")
+        
         if isinstance(callback_on_step_end, (PipelineCallback, MultiPipelineCallbacks)):
             callback_on_step_end_tensor_inputs = callback_on_step_end.tensor_inputs
 
@@ -706,71 +757,79 @@ class CogVideoXPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             # for DPM-solver++
             old_pred_original_sample = None
-            for i, t in enumerate(timesteps):
-                if self.interrupt:
-                    continue
+            with timing_context("去噪循环用时"):
+                for i, t in enumerate(timesteps):
+                    if self.interrupt:
+                        continue
 
-                self._current_timestep = t
-                latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
-                latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
+                    self._current_timestep = t
+                    latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
+                    latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
-                # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
-                timestep = t.expand(latent_model_input.shape[0])
+                    # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
+                    timestep = t.expand(latent_model_input.shape[0])
+                
+                    # predict noise model_output
+                    with self.transformer.cache_context("cond_uncond"):
+                        noise_pred = self.transformer(
+                            hidden_states=latent_model_input,
+                            encoder_hidden_states=prompt_embeds,
+                            timestep=timestep,
+                            image_rotary_emb=image_rotary_emb,
+                            attention_kwargs=attention_kwargs,
+                            return_dict=False,
+                        )[0]
+                    noise_pred = noise_pred.float()
 
-                # predict noise model_output
-                with self.transformer.cache_context("cond_uncond"):
-                    noise_pred = self.transformer(
-                        hidden_states=latent_model_input,
-                        encoder_hidden_states=prompt_embeds,
-                        timestep=timestep,
-                        image_rotary_emb=image_rotary_emb,
-                        attention_kwargs=attention_kwargs,
-                        return_dict=False,
-                    )[0]
-                noise_pred = noise_pred.float()
+                    # perform guidance
+                    if use_dynamic_cfg:
+                        self._guidance_scale = 1 + guidance_scale * (
+                            (1 - math.cos(math.pi * ((num_inference_steps - t.item()) / num_inference_steps) ** 5.0)) / 2
+                        )
+                    if do_classifier_free_guidance:
+                        noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
+                        noise_pred = noise_pred_uncond + self.guidance_scale * (noise_pred_text - noise_pred_uncond)
 
-                # perform guidance
-                if use_dynamic_cfg:
-                    self._guidance_scale = 1 + guidance_scale * (
-                        (1 - math.cos(math.pi * ((num_inference_steps - t.item()) / num_inference_steps) ** 5.0)) / 2
-                    )
-                if do_classifier_free_guidance:
-                    noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
-                    noise_pred = noise_pred_uncond + self.guidance_scale * (noise_pred_text - noise_pred_uncond)
+                    # 累计计时
+                    with timing_accumulator(total_time_list):
+                    # compute the previous noisy sample x_t -> x_t-1
+                        if not isinstance(self.scheduler, CogVideoXDPMScheduler):
+                            latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs, return_dict=False)[0]
+                        else:
+                            latents, old_pred_original_sample = self.scheduler.step(
+                                noise_pred,
+                                old_pred_original_sample,
+                                t,
+                                timesteps[i - 1] if i > 0 else None,
+                                latents,
+                                **extra_step_kwargs,
+                                return_dict=False,
+                            )
+                    latents = latents.to(prompt_embeds.dtype)
 
-                # compute the previous noisy sample x_t -> x_t-1
-                if not isinstance(self.scheduler, CogVideoXDPMScheduler):
-                    latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs, return_dict=False)[0]
-                else:
-                    latents, old_pred_original_sample = self.scheduler.step(
-                        noise_pred,
-                        old_pred_original_sample,
-                        t,
-                        timesteps[i - 1] if i > 0 else None,
-                        latents,
-                        **extra_step_kwargs,
-                        return_dict=False,
-                    )
-                latents = latents.to(prompt_embeds.dtype)
+                    # call the callback, if provided
+                    if callback_on_step_end is not None:
+                        callback_kwargs = {}
+                        for k in callback_on_step_end_tensor_inputs:
+                            callback_kwargs[k] = locals()[k]
+                        callback_outputs = callback_on_step_end(self, i, t, callback_kwargs)
 
-                # call the callback, if provided
-                if callback_on_step_end is not None:
-                    callback_kwargs = {}
-                    for k in callback_on_step_end_tensor_inputs:
-                        callback_kwargs[k] = locals()[k]
-                    callback_outputs = callback_on_step_end(self, i, t, callback_kwargs)
+                        latents = callback_outputs.pop("latents", latents)
+                        prompt_embeds = callback_outputs.pop("prompt_embeds", prompt_embeds)
+                        negative_prompt_embeds = callback_outputs.pop("negative_prompt_embeds", negative_prompt_embeds)
 
-                    latents = callback_outputs.pop("latents", latents)
-                    prompt_embeds = callback_outputs.pop("prompt_embeds", prompt_embeds)
-                    negative_prompt_embeds = callback_outputs.pop("negative_prompt_embeds", negative_prompt_embeds)
+                    if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
+                        progress_bar.update()
 
-                if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
-                    progress_bar.update()
-
-                if XLA_AVAILABLE:
-                    xm.mark_step()
+                    if XLA_AVAILABLE:
+                        xm.mark_step()
 
         self._current_timestep = None
+        # print("Denoising complete")
+        logger.info(f"scheduler.step(): {total_time_list[0] * 1000:.2f} ms")
+        logger.info("Denoising complete")
+
+        # record the time taken to decode latents
 
         if not output_type == "latent":
             # Discard any padding frames that were added for CogVideoX 1.5
@@ -787,3 +846,4 @@ class CogVideoXPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
             return (video,)
 
         return CogVideoXPipelineOutput(frames=video)
+
