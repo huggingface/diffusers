@@ -60,6 +60,8 @@
     title: Batch inference
   - local: training/distributed_inference
     title: Distributed inference
+  - local: hybrid_inference/overview
+    title: Remote inference
 
 - title: Inference optimization
   isExpanded: false
@@ -90,18 +92,6 @@
       title: ParaAttention
     - local: using-diffusers/image_quality
       title: FreeU
-
-- title: Hybrid Inference
-  isExpanded: false
-  sections:
-  - local: hybrid_inference/overview
-    title: Overview
-  - local: hybrid_inference/vae_decode
-    title: VAE Decode
-  - local: hybrid_inference/vae_encode
-    title: VAE Encode
-  - local: hybrid_inference/api_reference
-    title: API Reference
 
 - title: Modular Diffusers
   isExpanded: false
@@ -280,6 +270,8 @@
       title: Outputs
     - local: api/quantization
       title: Quantization
+    - local: hybrid_inference/api_reference
+      title: Remote inference
   - title: Modular
     sections:
     - local: api/modular_diffusers/pipeline
