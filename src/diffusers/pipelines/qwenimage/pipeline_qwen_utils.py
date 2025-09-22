@@ -283,6 +283,65 @@ class QwenImageEditPipelineMixin(QwenImageMixin):
         return prompt_embeds, prompt_embeds_mask
 
 
+class QwenImageEditPlusPipelineMixin(QwenImageEditPipelineMixin):
+    def _get_qwen_prompt_embeds(
+        self,
+        prompt: Union[str, List[str]] = None,
+        image: Optional[torch.Tensor] = None,
+        device: Optional[torch.device] = None,
+        dtype: Optional[torch.dtype] = None,
+    ):
+        device = device or self._execution_device
+        dtype = dtype or self.text_encoder.dtype
+
+        prompt = [prompt] if isinstance(prompt, str) else prompt
+        img_prompt_template = "Picture {}: <|vision_start|><|image_pad|><|vision_end|>"
+        if isinstance(image, list):
+            base_img_prompt = ""
+            for i, img in enumerate(image):
+                base_img_prompt += img_prompt_template.format(i + 1)
+        elif image is not None:
+            base_img_prompt = img_prompt_template.format(1)
+        else:
+            base_img_prompt = ""
+
+        template = self.prompt_template_encode
+
+        drop_idx = self.prompt_template_encode_start_idx
+        txt = [template.format(base_img_prompt + e) for e in prompt]
+
+        model_inputs = self.processor(
+            text=txt,
+            images=image,
+            padding=True,
+            return_tensors="pt",
+        ).to(device)
+
+        outputs = self.text_encoder(
+            input_ids=model_inputs.input_ids,
+            attention_mask=model_inputs.attention_mask,
+            pixel_values=model_inputs.pixel_values,
+            image_grid_thw=model_inputs.image_grid_thw,
+            output_hidden_states=True,
+        )
+
+        hidden_states = outputs.hidden_states[-1]
+        split_hidden_states = self._extract_masked_hidden(hidden_states, model_inputs.attention_mask)
+        split_hidden_states = [e[drop_idx:] for e in split_hidden_states]
+        attn_mask_list = [torch.ones(e.size(0), dtype=torch.long, device=e.device) for e in split_hidden_states]
+        max_seq_len = max([e.size(0) for e in split_hidden_states])
+        prompt_embeds = torch.stack(
+            [torch.cat([u, u.new_zeros(max_seq_len - u.size(0), u.size(1))]) for u in split_hidden_states]
+        )
+        encoder_attention_mask = torch.stack(
+            [torch.cat([u, u.new_zeros(max_seq_len - u.size(0))]) for u in attn_mask_list]
+        )
+
+        prompt_embeds = prompt_embeds.to(dtype=dtype, device=device)
+
+        return prompt_embeds, encoder_attention_mask
+
+
 def calculate_dimensions(target_area, ratio):
     width = math.sqrt(target_area * ratio)
     height = width / ratio
