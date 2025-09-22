@@ -34,7 +34,7 @@ pip3 install git+https://github.com/vipshop/cache-dit.git
 
 <div id="supported"></div>
 
-Currently, **cache-dit** library supports almost **Any** Diffusion Transformers (with **Transformer Blocks** that match the specific Input and Output **patterns**). Please check [🎉Examples](https://github.com/vipshop/cache-dit/raw/main/examples/pipeline) for more details. Here are just some of the tested models listed.
+Currently, **cache-dit** library supports almost **Any** Diffusion Transformers (with **Transformer Blocks** that match the specific Input and Output **patterns**). Please check [🎉Examples](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline) for more details. Here are just some of the tested models listed.
 
 ```python
 >>> import cache_dit
@@ -48,39 +48,39 @@ Currently, **cache-dit** library supports almost **Any** Diffusion Transformers 
 <details>
 <summary> Show all pipelines </summary>  
 
-- [🚀HunyuanImage-2.1](https://github.com/vipshop/cache-dit/raw/main/examples)  
-- [🚀Qwen-Image-Lightning](https://github.com/vipshop/cache-dit/raw/main/examples)
-- [🚀Qwen-Image-Edit](https://github.com/vipshop/cache-dit/raw/main/examples)  
-- [🚀Qwen-Image](https://github.com/vipshop/cache-dit/raw/main/examples)  
-- [🚀FLUX.1-dev](https://github.com/vipshop/cache-dit/raw/main/examples)  
-- [🚀FLUX.1-Fill-dev](https://github.com/vipshop/cache-dit/raw/main/examples)  
-- [🚀FLUX.1-Kontext-dev](https://github.com/vipshop/cache-dit/raw/main/examples)
-- [🚀CogView4](https://github.com/vipshop/cache-dit/raw/main/examples)
-- [🚀Wan2.2-T2V](https://github.com/vipshop/cache-dit/raw/main/examples)
-- [🚀HunyuanVideo](https://github.com/vipshop/cache-dit/raw/main/examples)
-- [🚀HiDream-I1-Full](https://github.com/vipshop/cache-dit/raw/main/examples)
-- [🚀HunyuanDiT](https://github.com/vipshop/cache-dit/raw/main/examples)
-- [🚀Wan2.1-T2V](https://github.com/vipshop/cache-dit/raw/main/examples)
-- [🚀Wan2.1-FLF2V](https://github.com/vipshop/cache-dit/raw/main/examples)
-- [🚀SkyReelsV2](https://github.com/vipshop/cache-dit/raw/main/examples)  
-- [🚀Chroma1-HD](https://github.com/vipshop/cache-dit/raw/main/examples)  
-- [🚀CogVideoX1.5](https://github.com/vipshop/cache-dit/raw/main/examples)
-- [🚀CogView3-Plus](https://github.com/vipshop/cache-dit/raw/main/examples)
-- [🚀CogVideoX](https://github.com/vipshop/cache-dit/raw/main/examples)
-- [🚀VisualCloze](https://github.com/vipshop/cache-dit/raw/main/examples)  
-- [🚀LTXVideo](https://github.com/vipshop/cache-dit/raw/main/examples)  
-- [🚀OmniGen](https://github.com/vipshop/cache-dit/raw/main/examples)  
-- [🚀Lumina2](https://github.com/vipshop/cache-dit/raw/main/examples)  
-- [🚀mochi-1-preview](https://github.com/vipshop/cache-dit/raw/main/examples)
-- [🚀AuraFlow-v0.3](https://github.com/vipshop/cache-dit/raw/main/examples)
-- [🚀PixArt-Alpha](https://github.com/vipshop/cache-dit/raw/main/examples)
-- [🚀PixArt-Sigma](https://github.com/vipshop/cache-dit/raw/main/examples)
-- [🚀NVIDIA Sana](https://github.com/vipshop/cache-dit/raw/main/examples)
-- [🚀SD-3/3.5](https://github.com/vipshop/cache-dit/raw/main/examples)
-- [🚀ConsisID](https://github.com/vipshop/cache-dit/raw/main/examples)
-- [🚀Allegro](https://github.com/vipshop/cache-dit/raw/main/examples)
-- [🚀Amused](https://github.com/vipshop/cache-dit/raw/main/examples)
-- [🚀DiT-XL](https://github.com/vipshop/cache-dit/raw/main/examples)
+- [🚀HunyuanImage-2.1](https://github.com/vipshop/cache-dit/blob/main/examples)  
+- [🚀Qwen-Image-Lightning](https://github.com/vipshop/cache-dit/blob/main/examples)
+- [🚀Qwen-Image-Edit](https://github.com/vipshop/cache-dit/blob/main/examples)  
+- [🚀Qwen-Image](https://github.com/vipshop/cache-dit/blob/main/examples)  
+- [🚀FLUX.1-dev](https://github.com/vipshop/cache-dit/blob/main/examples)  
+- [🚀FLUX.1-Fill-dev](https://github.com/vipshop/cache-dit/blob/main/examples)  
+- [🚀FLUX.1-Kontext-dev](https://github.com/vipshop/cache-dit/blob/main/examples)
+- [🚀CogView4](https://github.com/vipshop/cache-dit/blob/main/examples)
+- [🚀Wan2.2-T2V](https://github.com/vipshop/cache-dit/blob/main/examples)
+- [🚀HunyuanVideo](https://github.com/vipshop/cache-dit/blob/main/examples)
+- [🚀HiDream-I1-Full](https://github.com/vipshop/cache-dit/blob/main/examples)
+- [🚀HunyuanDiT](https://github.com/vipshop/cache-dit/blob/main/examples)
+- [🚀Wan2.1-T2V](https://github.com/vipshop/cache-dit/blob/main/examples)
+- [🚀Wan2.1-FLF2V](https://github.com/vipshop/cache-dit/blob/main/examples)
+- [🚀SkyReelsV2](https://github.com/vipshop/cache-dit/blob/main/examples)  
+- [🚀Chroma1-HD](https://github.com/vipshop/cache-dit/blob/main/examples)  
+- [🚀CogVideoX1.5](https://github.com/vipshop/cache-dit/blob/main/examples)
+- [🚀CogView3-Plus](https://github.com/vipshop/cache-dit/blob/main/examples)
+- [🚀CogVideoX](https://github.com/vipshop/cache-dit/blob/main/examples)
+- [🚀VisualCloze](https://github.com/vipshop/cache-dit/blob/main/examples)  
+- [🚀LTXVideo](https://github.com/vipshop/cache-dit/blob/main/examples)  
+- [🚀OmniGen](https://github.com/vipshop/cache-dit/blob/main/examples)  
+- [🚀Lumina2](https://github.com/vipshop/cache-dit/blob/main/examples)  
+- [🚀mochi-1-preview](https://github.com/vipshop/cache-dit/blob/main/examples)
+- [🚀AuraFlow-v0.3](https://github.com/vipshop/cache-dit/blob/main/examples)
+- [🚀PixArt-Alpha](https://github.com/vipshop/cache-dit/blob/main/examples)
+- [🚀PixArt-Sigma](https://github.com/vipshop/cache-dit/blob/main/examples)
+- [🚀NVIDIA Sana](https://github.com/vipshop/cache-dit/blob/main/examples)
+- [🚀SD-3/3.5](https://github.com/vipshop/cache-dit/blob/main/examples)
+- [🚀ConsisID](https://github.com/vipshop/cache-dit/blob/main/examples)
+- [🚀Allegro](https://github.com/vipshop/cache-dit/blob/main/examples)
+- [🚀Amused](https://github.com/vipshop/cache-dit/blob/main/examples)
+- [🚀DiT-XL](https://github.com/vipshop/cache-dit/blob/main/examples)
 - ...
 
 </details>
@@ -89,7 +89,7 @@ Currently, **cache-dit** library supports almost **Any** Diffusion Transformers 
 
 <div id="benchmarks"></div>
 
-cache-dit will support more mainstream Cache acceleration algorithms in the future. More benchmarks will be released, please stay tuned for update. Here, only the results of some precision and performance benchmarks are presented. The test dataset is **DrawBench**. For a complete benchmark, please refer to [📚Benchmarks](https://github.com/vipshop/cache-dit/raw/main/bench/).
+cache-dit will support more mainstream Cache acceleration algorithms in the future. More benchmarks will be released, please stay tuned for update. Here, only the results of some precision and performance benchmarks are presented. The test dataset is **DrawBench**. For a complete benchmark, please refer to [📚Benchmarks](https://github.com/vipshop/cache-dit/blob/main/bench/).
 
 ### 📚Text2Image DrawBench: FLUX.1-dev
 
@@ -105,7 +105,7 @@ Comparisons between different FnBn compute block configurations show that **more
 | F4B0_W4MC3_R0.12 | 32.8981 | 1.0130 | 31.8031 | 1507.83 | 2.47x |
 | F4B0_W4MC4_R0.12 | 32.8384 | 1.0065 | 31.5292 | 1400.08 | 2.66x |
 
-The comparison between **cache-dit: DBCache** and algorithms such as Δ-DiT, Chipmunk, FORA, DuCa, TaylorSeer and FoCa is as follows. Now, in the comparison with a speedup ratio less than **3x**, cache-dit achieved the best accuracy. Please check [📚How to Reproduce?](https://github.com/vipshop/cache-dit/raw/main/bench/) for more details.
+The comparison between **cache-dit: DBCache** and algorithms such as Δ-DiT, Chipmunk, FORA, DuCa, TaylorSeer and FoCa is as follows. Now, in the comparison with a speedup ratio less than **3x**, cache-dit achieved the best accuracy. Please check [📚How to Reproduce?](https://github.com/vipshop/cache-dit/blob/main/bench/) for more details.
 
 | Method | TFLOPs(↓) | SpeedUp(↑) | ImageReward(↑) | Clip Score(↑) |
 | --- | --- | --- | --- | --- |
@@ -188,7 +188,7 @@ Currently, for any **Diffusion** models with **Transformer Blocks** that match t
 
 ### ♥️Cache Acceleration with One-line Code
 
-In most cases, you only need to call **one-line** of code, that is `cache_dit.enable_cache(...)`. After this API is called, you just need to call the pipe as normal. The `pipe` param can be **any** Diffusion Pipeline. Please refer to [Qwen-Image](https://github.com/vipshop/cache-dit/raw/main/examples/pipeline/run_qwen_image.py) as an example. 
+In most cases, you only need to call **one-line** of code, that is `cache_dit.enable_cache(...)`. After this API is called, you just need to call the pipe as normal. The `pipe` param can be **any** Diffusion Pipeline. Please refer to [Qwen-Image](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline/run_qwen_image.py) as an example. 
 
 ```python
 import cache_dit
@@ -209,7 +209,7 @@ cache_dit.disable_cache(pipe)
 
 ### 🔥Automatic Block Adapter
 
-But in some cases, you may have a **modified** Diffusion Pipeline or Transformer that is not located in the diffusers library or not officially supported by **cache-dit** at this time. The **BlockAdapter** can help you solve this problems. Please refer to [🔥Qwen-Image w/ BlockAdapter](https://github.com/vipshop/cache-dit/raw/main/examples/adapter/run_qwen_image_adapter.py) as an example.
+But in some cases, you may have a **modified** Diffusion Pipeline or Transformer that is not located in the diffusers library or not officially supported by **cache-dit** at this time. The **BlockAdapter** can help you solve this problems. Please refer to [🔥Qwen-Image w/ BlockAdapter](https://github.com/vipshop/cache-dit/blob/main/examples/adapter/run_qwen_image_adapter.py) as an example.
 
 ```python
 from cache_dit import ForwardPattern, BlockAdapter
@@ -235,11 +235,11 @@ cache_dit.enable_cache(
     ), 
 )
 ```
-For such situations, **BlockAdapter** can help you quickly apply various cache acceleration features to your own Diffusion Pipelines and Transformers. Please check the [📚BlockAdapter.md](https://github.com/vipshop/cache-dit/raw/main/docs/BlockAdapter.md) for more details.
+For such situations, **BlockAdapter** can help you quickly apply various cache acceleration features to your own Diffusion Pipelines and Transformers. Please check the [📚BlockAdapter.md](https://github.com/vipshop/cache-dit/blob/main/docs/BlockAdapter.md) for more details.
 
 ### 📚Hybird Forward Pattern
 
-Sometimes, a Transformer class will contain more than one transformer `blocks`. For example, **FLUX.1** (HiDream, Chroma, etc) contains transformer_blocks and single_transformer_blocks (with different forward patterns). The **BlockAdapter** can also help you solve this problem. Please refer to [📚FLUX.1](https://github.com/vipshop/cache-dit/raw/main/examples/adapter/run_flux_adapter.py) as an example.
+Sometimes, a Transformer class will contain more than one transformer `blocks`. For example, **FLUX.1** (HiDream, Chroma, etc) contains transformer_blocks and single_transformer_blocks (with different forward patterns). The **BlockAdapter** can also help you solve this problem. Please refer to [📚FLUX.1](https://github.com/vipshop/cache-dit/blob/main/examples/adapter/run_flux_adapter.py) as an example.
 
 ```python
 # For diffusers <= 0.34.0, FLUX.1 transformer_blocks and 
@@ -260,7 +260,7 @@ cache_dit.enable_cache(
 )
 ```
 
-Even sometimes you have more complex cases, such as **Wan 2.2 MoE**, which has more than one Transformer (namely `transformer` and `transformer_2`) in its structure. Fortunately, **cache-dit** can also handle this situation very well. Please refer to [📚Wan 2.2 MoE](https://github.com/vipshop/cache-dit/raw/main/examples/pipeline/run_wan_2.2.py) as an example.
+Even sometimes you have more complex cases, such as **Wan 2.2 MoE**, which has more than one Transformer (namely `transformer` and `transformer_2`) in its structure. Fortunately, **cache-dit** can also handle this situation very well. Please refer to [📚Wan 2.2 MoE](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline/run_wan_2.2.py) as an example.
 
 ```python
 from cache_dit import ForwardPattern, BlockAdapter, ParamsModifier, BasicCacheConfig
@@ -307,7 +307,7 @@ For any PATTERN not in {0...5}, we introduced the simple abstract concept of **P
 
 ![](https://github.com/vipshop/cache-dit/raw/main/assets/patch-functor.png)
 
-Some Patch functors have already been provided in cache-dit: [📚HiDreamPatchFunctor](https://github.com/vipshop/cache-dit/raw/main/src/cache_dit/cache_factory/patch_functors/functor_hidream.py), [📚ChromaPatchFunctor](https://github.com/vipshop/cache-dit/raw/main/src/cache_dit/cache_factory/patch_functors/functor_chroma.py), etc. After implementing Patch Functor, users need to set the `patch_functor` property of **BlockAdapter**.
+Some Patch functors have already been provided in cache-dit: [📚HiDreamPatchFunctor](https://github.com/vipshop/cache-dit/blob/main/src/cache_dit/cache_factory/patch_functors/functor_hidream.py), [📚ChromaPatchFunctor](https://github.com/vipshop/cache-dit/blob/main/src/cache_dit/cache_factory/patch_functors/functor_chroma.py), etc. After implementing Patch Functor, users need to set the `patch_functor` property of **BlockAdapter**.
 
 ```python
 @BlockAdapterRegistry.register("HiDream")
@@ -356,7 +356,7 @@ You can set `details` param as `True` to show more details of cache stats. (mark
 
 ![](https://github.com/vipshop/cache-dit/raw/main/assets/dbcache-v1.png)
 
-**DBCache**: **Dual Block Caching** for Diffusion Transformers. Different configurations of compute blocks (**F8B12**, etc.) can be customized in DBCache, enabling a balanced trade-off between performance and precision. Moreover, it can be entirely **training**-**free**. Please check [DBCache.md](https://github.com/vipshop/cache-dit/raw/main/docs/DBCache.md) docs for more design details.
+**DBCache**: **Dual Block Caching** for Diffusion Transformers. Different configurations of compute blocks (**F8B12**, etc.) can be customized in DBCache, enabling a balanced trade-off between performance and precision. Moreover, it can be entirely **training**-**free**. Please check [DBCache.md](https://github.com/vipshop/cache-dit/blob/main/docs/DBCache.md) docs for more design details.
 
 - **Fn**: Specifies that DBCache uses the **first n** Transformer blocks to fit the information at time step t, enabling the calculation of a more stable L1 diff and delivering more accurate information to subsequent blocks.
 - **Bn**: Further fuses approximate information in the **last n** Transformer blocks to enhance prediction accuracy. These blocks act as an auto-scaler for approximate hidden states that use residual cache.
@@ -491,4 +491,4 @@ torch._dynamo.config.recompile_limit = 96  # default is 8
 torch._dynamo.config.accumulated_recompile_limit = 2048  # default is 256
 ```
 
-Please check [perf.py](https://github.com/vipshop/cache-dit/raw/main/bench/perf.py) for more details.
+Please check [perf.py](https://github.com/vipshop/cache-dit/blob/main/bench/perf.py) for more details.
