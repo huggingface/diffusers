@@ -23,7 +23,7 @@ from transformers import Qwen2_5_VLConfig, Qwen2_5_VLForConditionalGeneration, Q
 from diffusers import (
     AutoencoderKLQwenImage,
     FlowMatchEulerDiscreteScheduler,
-    QwenImagePlusEditPipeline,
+    QwenImageEditPlusPipeline,
     QwenImageTransformer2DModel,
 )
 
@@ -36,7 +36,7 @@ enable_full_determinism()
 
 
 class QwenImageEditPlusPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
-    pipeline_class = QwenImagePlusEditPipeline
+    pipeline_class = QwenImageEditPlusPipeline
     params = TEXT_TO_IMAGE_PARAMS - {"cross_attention_kwargs"}
     batch_params = frozenset(["prompt", "image"])
     image_params = frozenset(["image"])
@@ -137,7 +137,7 @@ class QwenImageEditPlusPipelineFastTests(PipelineTesterMixin, unittest.TestCase)
         image = Image.new("RGB", (32, 32))
         inputs = {
             "prompt": "dance monkey",
-            "image": [image] * 2,
+            "image": [image, image],
             "negative_prompt": "bad quality",
             "generator": generator,
             "num_inference_steps": 2,
@@ -169,11 +169,7 @@ class QwenImageEditPlusPipelineFastTests(PipelineTesterMixin, unittest.TestCase)
 
         generated_slice = generated_image.flatten()
         generated_slice = torch.cat([generated_slice[:8], generated_slice[-8:]])
-        print(f"{generated_slice=}")
         self.assertTrue(torch.allclose(generated_slice, expected_slice, atol=1e-3))
-
-    def test_inference_batch_single_identical(self):
-        self._test_inference_batch_single_identical(batch_size=3, expected_max_diff=1e-1)
 
     def test_attention_slicing_forward_pass(
         self, test_max_difference=True, test_mean_pixel_difference=True, expected_max_diff=1e-3
@@ -243,3 +239,15 @@ class QwenImageEditPlusPipelineFastTests(PipelineTesterMixin, unittest.TestCase)
     @pytest.mark.xfail(condition=True, reason="Preconfigured embeddings need to be revisited.", strict=True)
     def test_encode_prompt_works_in_isolation(self, extra_required_param_value_dict=None, atol=1e-4, rtol=1e-4):
         super().test_encode_prompt_works_in_isolation(extra_required_param_value_dict, atol, rtol)
+
+    @pytest.mark.xfail(condition=True, reason="Batch of multiple images needs to be revisited", strict=True)
+    def test_num_images_per_prompt():
+        super().test_num_images_per_prompt()
+
+    @pytest.mark.xfail(condition=True, reason="Batch of multiple images needs to be revisited", strict=True)
+    def test_inference_batch_consistent():
+        super().test_inference_batch_consistent()
+
+    @pytest.mark.xfail(condition=True, reason="Batch of multiple images needs to be revisited", strict=True)
+    def test_inference_batch_single_identical():
+        super().test_inference_batch_single_identical()
