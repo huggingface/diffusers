@@ -13,14 +13,13 @@
 # limitations under the License.
 
 import inspect
-import re
 from typing import Any, Callable, Dict, List, Optional, Union
 
 import numpy as np
 import torch
-from transformers import ByT5Tokenizer, Qwen2_5_VLForConditionalGeneration, Qwen2Tokenizer, T5EncoderModel
+from transformers import Qwen2_5_VLForConditionalGeneration, Qwen2Tokenizer
 
-from ...image_processor import VaeImageProcessor, PipelineImageInput
+from ...image_processor import PipelineImageInput, VaeImageProcessor
 from ...models import AutoencoderKLHunyuanImageRefiner, HunyuanImageTransformer2DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import is_torch_xla_available, logging, replace_example_docstring
@@ -56,6 +55,7 @@ EXAMPLE_DOC_STRING = """
         >>> image.save("hunyuanimage.png")
         ```
 """
+
 
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.retrieve_timesteps
 def retrieve_timesteps(
@@ -128,7 +128,7 @@ def retrieve_latents(
     elif hasattr(encoder_output, "latents"):
         return encoder_output.latents
     else:
-        raise AttributeError("Could not access latents of provided encoder_output") 
+        raise AttributeError("Could not access latents of provided encoder_output")
 
 
 class HunyuanImageRefinerPipeline(DiffusionPipeline):
@@ -358,8 +358,7 @@ class HunyuanImageRefinerPipeline(DiffusionPipeline):
 
         latents = strength * noise + (1 - strength) * image_latents
 
-        return noise,latents
-
+        return noise, latents
 
     def _encode_vae_image(self, image: torch.Tensor, generator: torch.Generator):
         if isinstance(generator, list):
@@ -370,9 +369,10 @@ class HunyuanImageRefinerPipeline(DiffusionPipeline):
             image_latents = torch.cat(image_latents, dim=0)
         else:
             image_latents = retrieve_latents(self.vae.encode(image), generator=generator, sample_mode="sample")
-        
+
         # rearrange tokens
-        from einops import rearrange # YiYi TODO: remove this dependency
+        from einops import rearrange  # YiYi TODO: remove this dependency
+
         image_latents = torch.cat((image_latents[:, :, :1], image_latents), dim=2)
         image_latents = rearrange(image_latents, "b c f h w -> b f c h w")
         image_latents = rearrange(image_latents, "b (f n) c h w -> b f (n c) h w", n=2)
@@ -556,7 +556,6 @@ class HunyuanImageRefinerPipeline(DiffusionPipeline):
 
         image_latents = self._encode_vae_image(image=image, generator=generator)
 
-
         has_neg_prompt = negative_prompt is not None or (
             negative_prompt_embeds is not None and negative_prompt_embeds_mask is not None
         )
@@ -708,7 +707,8 @@ class HunyuanImageRefinerPipeline(DiffusionPipeline):
         else:
             latents = latents.to(self.vae.dtype) / self.vae.config.scaling_factor
 
-            from einops import rearrange # YiYi TODO: remove this dependency
+            from einops import rearrange  # YiYi TODO: remove this dependency
+
             latents = rearrange(latents, "b c f h w -> b f c h w")
             latents = rearrange(latents, "b f (n c) h w -> b (f n) c h w", n=2)
             latents = rearrange(latents, "b f c h w -> b c f h w")
