@@ -66,10 +66,10 @@ class AdaLayerNorm(nn.Module):
         else:
             self.emb = None
 
-        if not DIFFUSERS_ENABLE_HUB_KERNELS:
-            self.silu = nn.SiLU()
-        else:
+        if DIFFUSERS_ENABLE_HUB_KERNELS:
             self.silu = silu_kernel()
+        else:
+            self.silu = nn.SiLU()
         self.linear = nn.Linear(embedding_dim, output_dim)
         self.norm = nn.LayerNorm(output_dim // 2, norm_eps, norm_elementwise_affine)
 
@@ -156,10 +156,10 @@ class AdaLayerNormZero(nn.Module):
         else:
             self.emb = None
 
-        if not DIFFUSERS_ENABLE_HUB_KERNELS:
-            self.silu = nn.SiLU()
-        else:
+        if DIFFUSERS_ENABLE_HUB_KERNELS:
             self.silu = silu_kernel()
+        else:
+            self.silu = nn.SiLU()
         self.linear = nn.Linear(embedding_dim, 6 * embedding_dim, bias=bias)
         if norm_type == "layer_norm":
             self.norm = nn.LayerNorm(embedding_dim, elementwise_affine=False, eps=1e-6)
@@ -198,10 +198,10 @@ class AdaLayerNormZeroSingle(nn.Module):
     def __init__(self, embedding_dim: int, norm_type="layer_norm", bias=True):
         super().__init__()
 
-        if not DIFFUSERS_ENABLE_HUB_KERNELS:
-            self.silu = nn.SiLU()
-        else:
+        if DIFFUSERS_ENABLE_HUB_KERNELS:
             self.silu = silu_kernel()
+        else:
+            self.silu = nn.SiLU()
         self.linear = nn.Linear(embedding_dim, 3 * embedding_dim, bias=bias)
         if norm_type == "layer_norm":
             self.norm = nn.LayerNorm(embedding_dim, elementwise_affine=False, eps=1e-6)
@@ -353,10 +353,10 @@ class AdaLayerNormContinuous(nn.Module):
         norm_type="layer_norm",
     ):
         super().__init__()
-        if not DIFFUSERS_ENABLE_HUB_KERNELS:
-            self.silu = nn.SiLU()
-        else:
+        if DIFFUSERS_ENABLE_HUB_KERNELS:
             self.silu = silu_kernel()
+        else:
+            self.silu = nn.SiLU()
         self.linear = nn.Linear(conditioning_embedding_dim, embedding_dim * 2, bias=bias)
         if norm_type == "layer_norm":
             self.norm = LayerNorm(embedding_dim, eps, elementwise_affine, bias)
