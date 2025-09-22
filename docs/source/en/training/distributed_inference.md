@@ -232,7 +232,7 @@ By selectively loading and unloading the models you need at a given stage and sh
 
 [Context parallelism](https://huggingface.co/spaces/nanotron/ultrascale-playbook?section=context_parallelism) reduces memory by splitting input sequences across multiple GPUs. Each GPU processes its own slice of the sequence.
 
-The key (K) and value (V) representations are communicated between devices with [Ring Attention](https://nanotron-ultrascale-playbook.static.hf.space/index.html?section=second_optimization%3A_bucketing_gradients#ring_attention) to ensure each split can see every other token's K/V. In Ring Attention, each GPU computes attention for it's local K/V and passes it to the next GPU in the ring. This way, no single GPU has to hold the full sequence and reduces communication latency.
+The key (K) and value (V) representations are communicated between devices with [Ring Attention](https://huggingface.co/papers/2310.01889) to ensure each split can see every other token's K/V. In Ring Attention, each GPU computes attention for it's local K/V and passes it to the next GPU in the ring. This way, no single GPU has to hold the full sequence and reduces communication latency.
 
 Call [`parallelize`] on the model and pass a [`ContextParallelConfig`]. This config supports the `ring_degree` argument which determines the number of devices to use for Ring Attention.
 
@@ -253,8 +253,7 @@ try:
     device = torch.device("cuda", rank % torch.cuda.device_count())
     torch.cuda.set_device(device)
     
-    pipeline = QwenImagePipeline.from_pretrained("Qwen/Qwen-Image", torch_dtype=torch.bfloat16)
-    pipeline.to("cuda")
+    pipeline = QwenImagePipeline.from_pretrained("Qwen/Qwen-Image", torch_dtype=torch.bfloat16, device_map="cuda")
 
     pipeline.transformer.parallelize(config=ContextParallelConfig(ring_degree=2))
     pipeline.transformer.set_attention_backend("flash")
@@ -284,7 +283,7 @@ finally:
 
 ### Ulysses Attention
 
-Ulysses Attention splits a sequence across GPUs and performs an *all-to-all* (every device sends/receives data to every other device) so that each GPU ends up with all the tokens for only a subset of the attention heads. Each GPU computes attention locally on all tokens for its head and then performs another all-to-all to regroup the results by tokens, making it ready for the next layer.
+[Ulysses Attention](https://huggingface.co/papers/2309.14509) splits a sequence across GPUs and performs an *all-to-all* (every device sends/receives data to every other device) so that each GPU ends up with all the tokens for only a subset of the attention heads. Each GPU computes attention locally on all tokens for its head and then performs another all-to-all to regroup the results by tokens, making it ready for the next layer.
 
 [`ContextParallelConfig`] also supports Ulysses Attention through the `ulysses_degree` argument. This determines the number of devices to use for Ulysses Attention.
 
