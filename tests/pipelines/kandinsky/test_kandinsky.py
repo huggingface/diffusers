@@ -18,11 +18,13 @@ import random
 import unittest
 
 import numpy as np
+import pytest
 import torch
 from transformers import XLMRobertaTokenizerFast
 
 from diffusers import DDIMScheduler, KandinskyPipeline, KandinskyPriorPipeline, UNet2DConditionModel, VQModel
 from diffusers.pipelines.kandinsky.text_encoder import MCLIPConfig, MultilingualCLIP
+from diffusers.utils import is_transformers_version
 
 from ...testing_utils import (
     backend_empty_cache,
@@ -215,6 +217,9 @@ class KandinskyPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         dummy = Dummies()
         return dummy.get_dummy_inputs(device=device, seed=seed)
 
+    @pytest.mark.xfail(
+        condition=is_transformers_version(">=", "4.56.2"), reason="Latest transformers changes the slices", strict=True
+    )
     def test_kandinsky(self):
         device = "cpu"
 
