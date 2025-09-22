@@ -26,6 +26,7 @@ Qwen-Image comes in the following variants:
 |:----------:|:--------:|
 | Qwen-Image | [`Qwen/Qwen-Image`](https://huggingface.co/Qwen/Qwen-Image) |
 | Qwen-Image-Edit | [`Qwen/Qwen-Image-Edit`](https://huggingface.co/Qwen/Qwen-Image-Edit) |
+| Qwen-Image-Edit Plus | [TODO](TODO) |
 
 <Tip>
 
@@ -96,6 +97,10 @@ The `guidance_scale` parameter in the pipeline is there to support future guidan
 
 </Tip>
 
+## Multi-image reference with QwenImageEditPlusPipeline
+
+TODO
+
 ## QwenImagePipeline
 
 [[autodoc]] QwenImagePipeline
@@ -126,7 +131,15 @@ The `guidance_scale` parameter in the pipeline is there to support future guidan
   - all
   - __call__
 
-## QwenImaggeControlNetPipeline
+## QwenImageControlNetPipeline
+
+[[autodoc]] QwenImageControlNetPipeline
+  - all
+  - __call__
+
+## QwenImageEditPlusPipeline
+
+[[autodoc]] QwenImageEditPlusPipeline
   - all
   - __call__
 
