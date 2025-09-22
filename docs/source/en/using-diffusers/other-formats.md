@@ -59,7 +59,7 @@ from diffusers import FluxPipeline, FluxTransformer2DModel
 transformer = FluxTransformer2DModel.from_single_file(
     "https://huggingface.co/Kijai/flux-fp8/blob/main/flux1-dev-fp8.safetensors", torch_dtype=torch.bfloat16
 )
-pipeline = FluxPipeline.from_single_file(
+pipeline = FluxPipeline.from_pretrained(
     "black-forest-labs/FLUX.1-dev",
     transformer=transformer,
     torch_dtype=torch.bfloat16,
@@ -79,17 +79,6 @@ from diffusers import StableDiffusionXLPipeline
 ckpt_path = "https://huggingface.co/segmind/SSD-1B/blob/main/SSD-1B.safetensors"
 
 pipeline = StableDiffusionXLPipeline.from_single_file(ckpt_path, config="segmind/SSD-1B")
-```
-
-You could also load a config file not stored on the Hub by passing a local path or URL of the config file to the `original_config` argument.
-
-```py
-from diffusers import StableDiffusionXLPipeline
-
-ckpt_path = "https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0/blob/main/sd_xl_base_1.0_0.9vae.safetensors"
-original_config = "https://raw.githubusercontent.com/Stability-AI/generative-models/main/configs/inference/sd_xl_base.yaml"
-
-pipeline = StableDiffusionXLPipeline.from_single_file(ckpt_path, original_config=original_config)
 ```
 
 Diffusers attempts to infer the pipeline components based on the signature types of the pipeline class when using `original_config` with `local_files_only=True`. It won't download the config files from a Hub repository to avoid backward breaking changes when you can't connect to the internet. This method isn't as reliable as providing a path to a local model with the `config` argument and may lead to errors. You should run the pipeline with `local_files_only=False` to download the config files to the local cache to avoid errors.
@@ -139,7 +128,7 @@ pipeline = StableDiffusionXLPipeline.from_single_file(
 
 ### Symlink
 
-If you're working with a file system that does not support symlinking, download the checkpoint file to a local directory first. Disable symlinking with `local_dir_use_symlink=False` in [`~huggingface_hub.snapshot_download`] and [`~huggingface_hub.hf_hub_download`].
+If you're working with a file system that does not support symlinking, download the checkpoint file to a local directory first with the `local_dir` parameter. Using the `local_dir` parameter automatically disables symlinks.
 
 ```py
 from huggingface_hub import hf_hub_download, snapshot_download
@@ -149,14 +138,12 @@ my_local_checkpoint_path = hf_hub_download(
     repo_id="segmind/SSD-1B",
     filename="SSD-1B.safetensors"
     local_dir="my_local_checkpoints",
-    local_dir_use_symlinks=False
 )
 print("My local checkpoint: ", my_local_checkpoint_path)
 
 my_local_config_path = snapshot_download(
     repo_id="segmind/SSD-1B",
     allow_patterns=["*.json", "**/*.json", "*.txt", "**/*.txt"]
-    local_dir_use_symlinks=False,
 )
 print("My local config: ", my_local_config_path)
 ```
