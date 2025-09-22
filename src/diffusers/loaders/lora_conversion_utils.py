@@ -558,70 +558,62 @@ def _convert_kohya_flux_lora_to_diffusers(state_dict):
                     ait_sd[target_key] = value
 
         if any("guidance_in" in k for k in sds_sd):
-            assign_remaining_weights(
-                [
-                    (
-                        "time_text_embed.guidance_embedder.linear_1.{lora_key}.weight",
-                        "lora_unet_guidance_in_in_layer.{orig_lora_key}.weight",
-                        None,
-                    ),
-                    (
-                        "time_text_embed.guidance_embedder.linear_2.{lora_key}.weight",
-                        "lora_unet_guidance_in_out_layer.{orig_lora_key}.weight",
-                        None,
-                    ),
-                ],
+            _convert_to_ai_toolkit(
                 sds_sd,
+                ait_sd,
+                "lora_unet_guidance_in_in_layer",
+                "time_text_embed.guidance_embedder.linear_1",
+            )
+
+            _convert_to_ai_toolkit(
+                sds_sd,
+                ait_sd,
+                "lora_unet_guidance_in_out_layer",
+                "time_text_embed.guidance_embedder.linear_2",
             )
 
         if any("img_in" in k for k in sds_sd):
-            assign_remaining_weights(
-                [
-                    ("x_embedder.{lora_key}.weight", "lora_unet_img_in.{orig_lora_key}.weight", None),
-                ],
+            _convert_to_ai_toolkit(
                 sds_sd,
+                ait_sd,
+                "lora_unet_img_in",
+                "x_embedder",
             )
 
         if any("txt_in" in k for k in sds_sd):
-            assign_remaining_weights(
-                [
-                    ("context_embedder.{lora_key}.weight", "lora_unet_txt_in.{orig_lora_key}.weight", None),
-                ],
+            _convert_to_ai_toolkit(
                 sds_sd,
+                ait_sd,
+                "lora_unet_txt_in",
+                "context_embedder",
             )
 
         if any("time_in" in k for k in sds_sd):
-            assign_remaining_weights(
-                [
-                    (
-                        "time_text_embed.timestep_embedder.linear_1.{lora_key}.weight",
-                        "lora_unet_time_in_in_layer.{orig_lora_key}.weight",
-                        None,
-                    ),
-                    (
-                        "time_text_embed.timestep_embedder.linear_2.{lora_key}.weight",
-                        "lora_unet_time_in_out_layer.{orig_lora_key}.weight",
-                        None,
-                    ),
-                ],
+            _convert_to_ai_toolkit(
                 sds_sd,
+                ait_sd,
+                "lora_unet_time_in_in_layer",
+                "time_text_embed.timestep_embedder.linear_1",
+            )
+            _convert_to_ai_toolkit(
+                sds_sd,
+                ait_sd,
+                "lora_unet_time_in_out_layer",
+                "time_text_embed.timestep_embedder.linear_2",
             )
 
         if any("vector_in" in k for k in sds_sd):
-            assign_remaining_weights(
-                [
-                    (
-                        "time_text_embed.text_embedder.linear_1.{lora_key}.weight",
-                        "lora_unet_vector_in_in_layer.{orig_lora_key}.weight",
-                        None,
-                    ),
-                    (
-                        "time_text_embed.text_embedder.linear_2.{lora_key}.weight",
-                        "lora_unet_vector_in_out_layer.{orig_lora_key}.weight",
-                        None,
-                    ),
-                ],
+            _convert_to_ai_toolkit(
                 sds_sd,
+                ait_sd,
+                "lora_unet_vector_in_in_layer",
+                "time_text_embed.text_embedder.linear_1",
+            )
+            _convert_to_ai_toolkit(
+                sds_sd,
+                ait_sd,
+                "lora_unet_vector_in_out_layer",
+                "time_text_embed.text_embedder.linear_2",
             )
 
         if any("final_layer" in k for k in sds_sd):
@@ -2129,6 +2121,10 @@ def _convert_non_diffusers_ltxv_lora_to_diffusers(state_dict, non_diffusers_pref
 
 
 def _convert_non_diffusers_qwen_lora_to_diffusers(state_dict):
+    has_diffusion_model = any(k.startswith("diffusion_model.") for k in state_dict)
+    if has_diffusion_model:
+        state_dict = {k.removeprefix("diffusion_model."): v for k, v in state_dict.items()}
+
     has_lora_unet = any(k.startswith("lora_unet_") for k in state_dict)
     if has_lora_unet:
         state_dict = {k.removeprefix("lora_unet_"): v for k, v in state_dict.items()}
@@ -2201,29 +2197,44 @@ def _convert_non_diffusers_qwen_lora_to_diffusers(state_dict):
     all_keys = list(state_dict.keys())
     down_key = ".lora_down.weight"
     up_key = ".lora_up.weight"
+    a_key = ".lora_A.weight"
+    b_key = ".lora_B.weight"
 
-    def get_alpha_scales(down_weight, alpha_key):
-        rank = down_weight.shape[0]
-        alpha = state_dict.pop(alpha_key).item()
-        scale = alpha / rank  # LoRA is scaled by 'alpha / rank' in forward pass, so we need to scale it back here
-        scale_down = scale
-        scale_up = 1.0
-        while scale_down * 2 < scale_up:
-            scale_down *= 2
-            scale_up /= 2
-        return scale_down, scale_up
+    has_non_diffusers_lora_id = any(down_key in k or up_key in k for k in all_keys)
+    has_diffusers_lora_id = any(a_key in k or b_key in k for k in all_keys)
 
-    for k in all_keys:
-        if k.endswith(down_key):
-            diffusers_down_key = k.replace(down_key, ".lora_A.weight")
-            diffusers_up_key = k.replace(down_key, up_key).replace(up_key, ".lora_B.weight")
-            alpha_key = k.replace(down_key, ".alpha")
+    if has_non_diffusers_lora_id:
 
-            down_weight = state_dict.pop(k)
-            up_weight = state_dict.pop(k.replace(down_key, up_key))
-            scale_down, scale_up = get_alpha_scales(down_weight, alpha_key)
-            converted_state_dict[diffusers_down_key] = down_weight * scale_down
-            converted_state_dict[diffusers_up_key] = up_weight * scale_up
+        def get_alpha_scales(down_weight, alpha_key):
+            rank = down_weight.shape[0]
+            alpha = state_dict.pop(alpha_key).item()
+            scale = alpha / rank  # LoRA is scaled by 'alpha / rank' in forward pass, so we need to scale it back here
+            scale_down = scale
+            scale_up = 1.0
+            while scale_down * 2 < scale_up:
+                scale_down *= 2
+                scale_up /= 2
+            return scale_down, scale_up
+
+        for k in all_keys:
+            if k.endswith(down_key):
+                diffusers_down_key = k.replace(down_key, ".lora_A.weight")
+                diffusers_up_key = k.replace(down_key, up_key).replace(up_key, ".lora_B.weight")
+                alpha_key = k.replace(down_key, ".alpha")
+
+                down_weight = state_dict.pop(k)
+                up_weight = state_dict.pop(k.replace(down_key, up_key))
+                scale_down, scale_up = get_alpha_scales(down_weight, alpha_key)
+                converted_state_dict[diffusers_down_key] = down_weight * scale_down
+                converted_state_dict[diffusers_up_key] = up_weight * scale_up
+
+    # Already in diffusers format (lora_A/lora_B), just pop
+    elif has_diffusers_lora_id:
+        for k in all_keys:
+            if a_key in k or b_key in k:
+                converted_state_dict[k] = state_dict.pop(k)
+            elif ".alpha" in k:
+                state_dict.pop(k)
 
     if len(state_dict) > 0:
         raise ValueError(f"`state_dict` should be empty at this point but has {state_dict.keys()=}")

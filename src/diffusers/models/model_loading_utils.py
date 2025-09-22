@@ -112,9 +112,6 @@ def _determine_device_map(
         device_map_kwargs["max_memory"] = max_memory
         device_map = infer_auto_device_map(model, dtype=target_dtype, **device_map_kwargs)
 
-        if hf_quantizer is not None:
-            hf_quantizer.validate_environment(device_map=device_map)
-
     return device_map
 
 

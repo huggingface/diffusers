@@ -48,9 +48,11 @@ from .transformers_loading_utils import _load_tokenizer_from_dduf, _load_transfo
 if is_transformers_available():
     import transformers
     from transformers import PreTrainedModel, PreTrainedTokenizerBase
-    from transformers.utils import FLAX_WEIGHTS_NAME as TRANSFORMERS_FLAX_WEIGHTS_NAME
     from transformers.utils import SAFE_WEIGHTS_NAME as TRANSFORMERS_SAFE_WEIGHTS_NAME
     from transformers.utils import WEIGHTS_NAME as TRANSFORMERS_WEIGHTS_NAME
+
+    if is_transformers_version("<=", "4.56.2"):
+        from transformers.utils import FLAX_WEIGHTS_NAME as TRANSFORMERS_FLAX_WEIGHTS_NAME
 
 if is_accelerate_available():
     import accelerate
@@ -112,7 +114,9 @@ def is_safetensors_compatible(filenames, passed_components=None, folder_names=No
     ]
 
     if is_transformers_available():
-        weight_names += [TRANSFORMERS_WEIGHTS_NAME, TRANSFORMERS_SAFE_WEIGHTS_NAME, TRANSFORMERS_FLAX_WEIGHTS_NAME]
+        weight_names += [TRANSFORMERS_WEIGHTS_NAME, TRANSFORMERS_SAFE_WEIGHTS_NAME]
+        if is_transformers_version("<=", "4.56.2"):
+            weight_names += [TRANSFORMERS_FLAX_WEIGHTS_NAME]
 
     # model_pytorch, diffusion_model_pytorch, ...
     weight_prefixes = [w.split(".")[0] for w in weight_names]
@@ -191,7 +195,9 @@ def filter_model_files(filenames):
     ]
 
     if is_transformers_available():
-        weight_names += [TRANSFORMERS_WEIGHTS_NAME, TRANSFORMERS_SAFE_WEIGHTS_NAME, TRANSFORMERS_FLAX_WEIGHTS_NAME]
+        weight_names += [TRANSFORMERS_WEIGHTS_NAME, TRANSFORMERS_SAFE_WEIGHTS_NAME]
+        if is_transformers_version("<=", "4.56.2"):
+            weight_names += [TRANSFORMERS_FLAX_WEIGHTS_NAME]
 
     allowed_extensions = [wn.split(".")[-1] for wn in weight_names]
 
@@ -212,7 +218,9 @@ def variant_compatible_siblings(filenames, variant=None, ignore_patterns=None) -
     ]
 
     if is_transformers_available():
-        weight_names += [TRANSFORMERS_WEIGHTS_NAME, TRANSFORMERS_SAFE_WEIGHTS_NAME, TRANSFORMERS_FLAX_WEIGHTS_NAME]
+        weight_names += [TRANSFORMERS_WEIGHTS_NAME, TRANSFORMERS_SAFE_WEIGHTS_NAME]
+        if is_transformers_version("<=", "4.56.2"):
+            weight_names += [TRANSFORMERS_FLAX_WEIGHTS_NAME]
 
     # model_pytorch, diffusion_model_pytorch, ...
     weight_prefixes = [w.split(".")[0] for w in weight_names]
@@ -613,7 +621,7 @@ def _assign_components_to_devices(
 
 
 def _get_final_device_map(device_map, pipeline_class, passed_class_obj, init_dict, library, max_memory, **kwargs):
-    # TODO: seperate out different device_map methods when it gets to it.
+    # TODO: separate out different device_map methods when it gets to it.
     if device_map != "balanced":
         return device_map
     # To avoid circular import problem.
