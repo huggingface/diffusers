@@ -16,8 +16,10 @@
 import unittest
 
 import numpy as np
+import pytest
 
 from diffusers import KandinskyCombinedPipeline, KandinskyImg2ImgCombinedPipeline, KandinskyInpaintCombinedPipeline
+from diffusers.utils import is_transformers_version
 
 from ...testing_utils import enable_full_determinism, require_torch_accelerator, torch_device
 from ..test_pipelines_common import PipelineTesterMixin
@@ -73,6 +75,9 @@ class KandinskyPipelineCombinedFastTests(PipelineTesterMixin, unittest.TestCase)
         )
         return inputs
 
+    @pytest.mark.xfail(
+        condition=is_transformers_version(">=", "4.56.2"), reason="Latest transformers changes the slices", strict=True
+    )
     def test_kandinsky(self):
         device = "cpu"
 
@@ -181,6 +186,9 @@ class KandinskyPipelineImg2ImgCombinedFastTests(PipelineTesterMixin, unittest.Te
         inputs.pop("negative_image_embeds")
         return inputs
 
+    @pytest.mark.xfail(
+        condition=is_transformers_version(">=", "4.56.2"), reason="Latest transformers changes the slices", strict=True
+    )
     def test_kandinsky(self):
         device = "cpu"
 
@@ -292,6 +300,9 @@ class KandinskyPipelineInpaintCombinedFastTests(PipelineTesterMixin, unittest.Te
         inputs.pop("negative_image_embeds")
         return inputs
 
+    @pytest.mark.xfail(
+        condition=is_transformers_version(">=", "4.56.2"), reason="Latest transformers changes the slices", strict=True
+    )
     def test_kandinsky(self):
         device = "cpu"
 
