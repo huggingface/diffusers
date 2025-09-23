@@ -22,7 +22,6 @@ import math
 import os
 import random
 import shutil
-import sys
 import warnings
 from contextlib import nullcontext
 from pathlib import Path
