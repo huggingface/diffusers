@@ -26,6 +26,7 @@ Qwen-Image comes in the following variants:
 |:----------:|:--------:|
 | Qwen-Image | [`Qwen/Qwen-Image`](https://huggingface.co/Qwen/Qwen-Image) |
 | Qwen-Image-Edit | [`Qwen/Qwen-Image-Edit`](https://huggingface.co/Qwen/Qwen-Image-Edit) |
+| Qwen-Image-Edit Plus | [Qwen/Qwen-Image-Edit-2509](https://huggingface.co/Qwen/Qwen-Image-Edit-2509) |
 
 <Tip>
 
@@ -96,6 +97,29 @@ The `guidance_scale` parameter in the pipeline is there to support future guidan
 
 </Tip>
 
+## Multi-image reference with QwenImageEditPlusPipeline
+
+With [`QwenImageEditPlusPipeline`], one can provide multiple images as input reference.
+
+```
+import torch
+from PIL import Image
+from diffusers import QwenImageEditPlusPipeline
+from diffusers.utils import load_image
+
+pipe = QwenImageEditPlusPipeline.from_pretrained(
+    "Qwen/Qwen-Image-Edit-2509", torch_dtype=torch.bfloat16
+).to("cuda")
+
+image_1 = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/grumpy.jpg")
+image_2 = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/peng.png")
+image = pipe(
+    image=[image_1, image_2], 
+    prompt="put the penguin and the cat at a game show called "Qwen Edit Plus Games"", 
+    num_inference_steps=50
+).images[0]
+```
+
 ## QwenImagePipeline
 
 [[autodoc]] QwenImagePipeline
@@ -126,7 +150,15 @@ The `guidance_scale` parameter in the pipeline is there to support future guidan
   - all
   - __call__
 
-## QwenImaggeControlNetPipeline
+## QwenImageControlNetPipeline
+
+[[autodoc]] QwenImageControlNetPipeline
+  - all
+  - __call__
+
+## QwenImageEditPlusPipeline
+
+[[autodoc]] QwenImageEditPlusPipeline
   - all
   - __call__
 
