@@ -215,7 +215,7 @@ class HunyuanImageEncoder2D(nn.Module):
         z_channels (int): Number of latent channels.
         block_out_channels (list of int): Output channels for each block.
         num_res_blocks (int): Number of residual blocks per block.
-        ffactor_spatial (int): Spatial downsampling factor.
+        spatial_compression_ratio (int): Spatial downsampling factor.
         non_linearity (str): Type of non-linearity to use. Default is "silu".
         downsample_match_channel (bool): Whether to match channels during downsampling.
     """
@@ -226,7 +226,7 @@ class HunyuanImageEncoder2D(nn.Module):
         z_channels: int,
         block_out_channels: Tuple[int, ...],
         num_res_blocks: int,
-        ffactor_spatial: int,
+        spatial_compression_ratio: int,
         non_linearity: str = "silu",
         downsample_match_channel: bool = True,
     ):
@@ -240,7 +240,7 @@ class HunyuanImageEncoder2D(nn.Module):
         self.z_channels = z_channels
         self.block_out_channels = block_out_channels
         self.num_res_blocks = num_res_blocks
-        self.ffactor_spatial = ffactor_spatial
+        self.spatial_compression_ratio = spatial_compression_ratio
 
         self.group_size = block_out_channels[-1] // (2 * z_channels)
         self.nonlinearity = get_activation(non_linearity)
@@ -262,7 +262,7 @@ class HunyuanImageEncoder2D(nn.Module):
                 block_in_channel = block_out_channel
 
             # downsample block
-            if i < np.log2(ffactor_spatial) and i != len(block_out_channels) - 1:
+            if i < np.log2(spatial_compression_ratio) and i != len(block_out_channels) - 1:
                 if downsample_match_channel:
                     block_out_channel = block_out_channels[i + 1]
                 self.down_blocks.append(
@@ -317,7 +317,7 @@ class HunyuanImageDecoder2D(nn.Module):
         Output channels for each block.
     num_res_blocks : int
         Number of residual blocks per block.
-    ffactor_spatial : int
+    spatial_compression_ratio : int
         Spatial upsampling factor.
     upsample_match_channel : bool
         Whether to match channels during upsampling.
@@ -330,7 +330,7 @@ class HunyuanImageDecoder2D(nn.Module):
         out_channels: int,
         block_out_channels: Tuple[int, ...],
         num_res_blocks: int,
-        ffactor_spatial: int,
+        spatial_compression_ratio: int,
         upsample_match_channel: bool = True,
         non_linearity: str = "silu",
     ):
@@ -344,7 +344,7 @@ class HunyuanImageDecoder2D(nn.Module):
         self.block_out_channels = block_out_channels
         self.num_res_blocks = num_res_blocks
         self.repeat = block_out_channels[0] // z_channels
-        self.ffactor_spatial = ffactor_spatial
+        self.spatial_compression_ratio = spatial_compression_ratio
         self.nonlinearity = get_activation(non_linearity)
 
         self.conv_in = nn.Conv2d(z_channels, block_out_channels[0], kernel_size=3, stride=1, padding=1)
@@ -363,7 +363,7 @@ class HunyuanImageDecoder2D(nn.Module):
                 )
                 block_in_channel = block_out_channel
 
-            if i < np.log2(ffactor_spatial) and i != len(block_out_channels) - 1:
+            if i < np.log2(spatial_compression_ratio) and i != len(block_out_channels) - 1:
                 if upsample_match_channel:
                     block_out_channel = block_out_channels[i + 1]
                 self.up_blocks.append(HunyuanImageUpsample(block_in_channel, block_out_channel))
@@ -413,7 +413,7 @@ class AutoencoderKLHunyuanImage(ModelMixin, ConfigMixin, FromOriginalModelMixin)
         latent_channels: int,
         block_out_channels: Tuple[int, ...],
         layers_per_block: int,
-        ffactor_spatial: int, # YiYi Notes: rename this config to scale_factor_spatial be consistent with wan
+        spatial_compression_ratio: int,
         sample_size: int,
         scaling_factor: float = None,
         downsample_match_channel: bool = True,
@@ -427,7 +427,7 @@ class AutoencoderKLHunyuanImage(ModelMixin, ConfigMixin, FromOriginalModelMixin)
             z_channels=latent_channels,
             block_out_channels=block_out_channels,
             num_res_blocks=layers_per_block,
-            ffactor_spatial=ffactor_spatial,
+            spatial_compression_ratio=spatial_compression_ratio,
             downsample_match_channel=downsample_match_channel,
         )
 
@@ -436,7 +436,7 @@ class AutoencoderKLHunyuanImage(ModelMixin, ConfigMixin, FromOriginalModelMixin)
             out_channels=out_channels,
             block_out_channels=list(reversed(block_out_channels)),
             num_res_blocks=layers_per_block,
-            ffactor_spatial=ffactor_spatial,
+            spatial_compression_ratio=spatial_compression_ratio,
             upsample_match_channel=upsample_match_channel,
         )
 
@@ -446,7 +446,7 @@ class AutoencoderKLHunyuanImage(ModelMixin, ConfigMixin, FromOriginalModelMixin)
 
         # Tiling parameters
         self.tile_sample_min_size = sample_size
-        self.tile_latent_min_size = sample_size // ffactor_spatial
+        self.tile_latent_min_size = sample_size // spatial_compression_ratio
         self.tile_overlap_factor = 0.25
 
     def enable_tiling(
@@ -468,7 +468,7 @@ class AutoencoderKLHunyuanImage(ModelMixin, ConfigMixin, FromOriginalModelMixin)
         self.use_tiling = True
         self.tile_sample_min_size = tile_sample_min_size or self.tile_sample_min_size
         self.tile_overlap_factor = tile_overlap_factor or self.tile_overlap_factor
-        self.tile_latent_min_size = self.tile_sample_min_size // self.config.ffactor_spatial
+        self.tile_latent_min_size = self.tile_sample_min_size // self.config.spatial_compression_ratio
 
     def disable_tiling(self) -> None:
         r"""
