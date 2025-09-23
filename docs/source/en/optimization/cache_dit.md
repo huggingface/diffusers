@@ -39,6 +39,7 @@ For a complete benchmark, please refer to [Benchmarks](https://github.com/vipsho
 ## Unified Cache API
 
 CacheDiT works by matching specific input/output patterns as shown below.
+
 ![](https://github.com/vipshop/cache-dit/raw/main/assets/patterns-v1.png)
 
 
@@ -119,11 +120,35 @@ This also works if there is more than one transformer (namely `transformer` and 
 
 ### Patch Functor
 
-For any pattern not included in CacheDiT, use the Patch Functor to convert the pattern into a known pattern. You need to subclass the Patch Functor and may also need to fuse the operations within the blocks for loop into block `forward`. After implementing a Patch Functor, set the `patch_functor` property in `BlockAdapter.
+For any pattern not included in CacheDiT, use the Patch Functor to convert the pattern into a known pattern. You need to subclass the Patch Functor and may also need to fuse the operations within the blocks for loop into block `forward`. After implementing a Patch Functor, set the `patch_functor` property in `BlockAdapter`.
 
 ![](https://github.com/vipshop/cache-dit/raw/main/assets/patch-functor.png)
 
 Some Patch Functors are already provided in CacheDiT, [HiDreamPatchFunctor](https://github.com/vipshop/cache-dit/blob/main/src/cache_dit/cache_factory/patch_functors/functor_hidream.py), [ChromaPatchFunctor](https://github.com/vipshop/cache-dit/blob/main/src/cache_dit/cache_factory/patch_functors/functor_chroma.py), etc.
+
+```python
+@BlockAdapterRegistry.register("HiDream")
+def hidream_adapter(pipe, **kwargs) -> BlockAdapter:
+    from diffusers import HiDreamImageTransformer2DModel
+    from cache_dit.cache_factory.patch_functors import HiDreamPatchFunctor
+
+    assert isinstance(pipe.transformer, HiDreamImageTransformer2DModel)
+    return BlockAdapter(
+        pipe=pipe,
+        transformer=pipe.transformer,
+        blocks=[
+            pipe.transformer.double_stream_blocks,
+            pipe.transformer.single_stream_blocks,
+        ],
+        forward_pattern=[
+            ForwardPattern.Pattern_0,
+            ForwardPattern.Pattern_3,
+        ],
+        # NOTE: Setup your custom patch functor here.
+        patch_functor=HiDreamPatchFunctor(),
+        **kwargs,
+    )
+```
 
 ### Cache Summary
 
