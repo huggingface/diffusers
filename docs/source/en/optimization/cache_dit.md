@@ -117,84 +117,21 @@ cache_dit.enable_cache(
 
 This also works if there is more than one transformer (namely `transformer` and `transformer_2`) in its structure. Refer to [Wan 2.2 MoE](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline/run_wan_2.2.py) as an example.
 
-```python
-from cache_dit import ForwardPattern, BlockAdapter, ParamsModifier, BasicCacheConfig
-
-cache_dit.enable_cache(
-    BlockAdapter(
-        pipe=pipe,
-        transformer=[
-            pipe.transformer,
-            pipe.transformer_2,
-        ],
-        blocks=[
-            pipe.transformer.blocks,
-            pipe.transformer_2.blocks,
-        ],
-        forward_pattern=[
-            ForwardPattern.Pattern_2,
-            ForwardPattern.Pattern_2,
-        ],
-        # Setup different cache params for each 'blocks'. You can 
-        # pass any specific cache params to ParamModifier, the old 
-        # value will be overwrite by the new one.
-        params_modifiers=[
-            ParamsModifier(
-                cache_config=BasicCacheConfig(
-                    max_warmup_steps=4,
-                    max_cached_steps=8,
-                ),
-            ),
-            ParamsModifier(
-                cache_config=BasicCacheConfig(
-                    max_warmup_steps=2,
-                    max_cached_steps=20,
-                ),
-            ),
-        ],
-        has_separate_cfg=True,
-    ),
-)
-```
 ### Patch Functor
 
 For any pattern not included in CacheDiT, use the Patch Functor to convert the pattern into a known pattern. You need to subclass the Patch Functor and may also need to fuse the operations within the blocks for loop into block `forward`. After implementing a Patch Functor, set the `patch_functor` property in `BlockAdapter.
 
 ![](https://github.com/vipshop/cache-dit/raw/main/assets/patch-functor.png)
 
-Some Patch Functors are already provided in CacheDit, [HiDreamPatchFunctor](https://github.com/vipshop/cache-dit/blob/main/src/cache_dit/cache_factory/patch_functors/functor_hidream.py), [ChromaPatchFunctor](https://github.com/vipshop/cache-dit/blob/main/src/cache_dit/cache_factory/patch_functors/functor_chroma.py), etc.
+Some Patch Functors are already provided in CacheDiT, [HiDreamPatchFunctor](https://github.com/vipshop/cache-dit/blob/main/src/cache_dit/cache_factory/patch_functors/functor_hidream.py), [ChromaPatchFunctor](https://github.com/vipshop/cache-dit/blob/main/src/cache_dit/cache_factory/patch_functors/functor_chroma.py), etc.
 
-```python
-@BlockAdapterRegistry.register("HiDream")
-def hidream_adapter(pipe, **kwargs) -> BlockAdapter:
-    from diffusers import HiDreamImageTransformer2DModel
-    from cache_dit.cache_factory.patch_functors import HiDreamPatchFunctor
+### Cache Summary
 
-    assert isinstance(pipe.transformer, HiDreamImageTransformer2DModel)
-    return BlockAdapter(
-        pipe=pipe,
-        transformer=pipe.transformer,
-        blocks=[
-            pipe.transformer.double_stream_blocks,
-            pipe.transformer.single_stream_blocks,
-        ],
-        forward_pattern=[
-            ForwardPattern.Pattern_0,
-            ForwardPattern.Pattern_3,
-        ],
-        # NOTE: Setup your custom patch functor here.
-        patch_functor=HiDreamPatchFunctor(),
-        **kwargs,
-    )
-```
-
-Call the `cache_dit.summary()` function on a pipeline after its completed inference to get the cache acceleration details.
+Finally, you can call the `cache_dit.summary()` function on a pipeline after its completed inference to get the cache acceleration details.
 
 ```python
 stats = cache_dit.summary(pipe)
 ```
-
-You can set `details` param as `True` to show more details of cache stats. (markdown table format) Sometimes, this may help you analyze what values of the residual diff threshold would be better.
 
 ```python
 ⚡️Cache Steps and Residual Diffs Statistics: QwenImagePipeline
@@ -283,19 +220,9 @@ cache_dit.enable_cache(
     pipe_or_adapter, 
     cache_config=BasicCacheConfig(
         ...,
-        # CFG: classifier free guidance or not
-        # For model that fused CFG and non-CFG into single forward step,
-        # should set enable_separate_cfg as False. For example, set it as True 
-        # for Wan 2.1/Qwen-Image and set it as False for FLUX.1, HunyuanVideo, 
-        # CogVideoX, Mochi, LTXVideo, Allegro, CogView3Plus, EasyAnimate, SD3, etc.
-        enable_separate_cfg=True, # Wan 2.1, Qwen-Image, CogView4, Cosmos, SkyReelsV2, etc.
-        # Compute cfg forward first or not, default False, namely, 
-        # 0, 2, 4, ..., -> non-CFG step; 1, 3, 5, ... -> CFG step.
-        cfg_compute_first=False,
-        # Compute separate diff values for CFG and non-CFG step, 
-        # default True. If False, we will use the computed diff from 
-        # current non-CFG transformer step for current CFG step.
-        cfg_diff_compute_separate=True,
+        # For example, set it as True for Wan 2.1/Qwen-Image 
+        # and set it as False for FLUX.1, HunyuanVideo, CogVideoX, etc.
+        enable_separate_cfg=True,
     ),
 )
 ```
