@@ -269,13 +269,13 @@ Refer to the scheduler API [overview](../api/schedulers/overview) for a list of 
 
 ## Choosing a scheduler
 
-It's important to try different schedulers to find the best one for your use case. There is typically a tradeoff between denoising speed and quality. To help you get started, refer to the table below.
+It's important to try different schedulers to find the best one for your use case. Here are a few recommendations to help you get started.
 
-| Denoising speed | Denoising quality |
-|---|---|
-|  |  |
-|  |  |
-|  |  |
+- DPM++ 2M SDE Karras is generally a good all-purpose option.
+- [`TCDScheduler`] works well for distilled models.
+- [`FlowMatchEulerDiscreteScheduler`] and [`FlowMatchHeunDiscreteScheduler`] for FlowMatch models.
+- [`EulerDiscreteScheduler`] or [`EulerAncestralDiscreteScheduler`] for generating anime style images.
+- DPM++ 2M paired with [`LCMScheduler`] on SDXL for generating realistic images.
 
 ## Resources
 
