@@ -24,9 +24,9 @@ pip3 install git+https://github.com/vipshop/cache-dit.git
 
 Run the command below to view supported DiT pipelines.
 
-```bash
-import cache_dit
-cache_dit.supported_pipelines()
+```python
+>>> import cache_dit
+>>> cache_dit.supported_pipelines()
 (30, ['Flux*', 'Mochi*', 'CogVideoX*', 'Wan*', 'HunyuanVideo*', 'QwenImage*', 'LTX*', 'Allegro*',
 'CogView3Plus*', 'CogView4*', 'Cosmos*', 'EasyAnimate*', 'SkyReelsV2*', 'StableDiffusion3*',
 'ConsisID*', 'DiT*', 'Amused*', 'Bria*', 'Lumina*', 'OmniGen*', 'PixArt*', 'Sana*', 'StableAudio*',
