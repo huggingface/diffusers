@@ -28,11 +28,7 @@ from transformers import (
 from ... import __version__
 from ...models import UNet2DConditionModel, VQModel
 from ...schedulers import DDIMScheduler
-from ...utils import (
-    is_torch_xla_available,
-    logging,
-    replace_example_docstring,
-)
+from ...utils import is_torch_xla_available, logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 from .text_encoder import MultilingualCLIP

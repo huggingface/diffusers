@@ -11,12 +11,12 @@ from diffusers import (
     QwenImageImg2ImgPipeline,
     QwenImageTransformer2DModel,
 )
-from diffusers.utils.testing_utils import (
+
+from ...testing_utils import (
     enable_full_determinism,
     floats_tensor,
     torch_device,
 )
-
 from ..test_pipelines_common import PipelineTesterMixin, to_np
 
 

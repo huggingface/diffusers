@@ -56,6 +56,8 @@ MODULAR_PIPELINE_MAPPING = OrderedDict(
         ("stable-diffusion-xl", "StableDiffusionXLModularPipeline"),
         ("wan", "WanModularPipeline"),
         ("flux", "FluxModularPipeline"),
+        ("qwenimage", "QwenImageModularPipeline"),
+        ("qwenimage-edit", "QwenImageEditModularPipeline"),
     ]
 )
 
@@ -64,6 +66,8 @@ MODULAR_PIPELINE_BLOCKS_MAPPING = OrderedDict(
         ("StableDiffusionXLModularPipeline", "StableDiffusionXLAutoBlocks"),
         ("WanModularPipeline", "WanAutoBlocks"),
         ("FluxModularPipeline", "FluxAutoBlocks"),
+        ("QwenImageModularPipeline", "QwenImageAutoBlocks"),
+        ("QwenImageEditModularPipeline", "QwenImageEditAutoBlocks"),
     ]
 )
 
@@ -133,8 +137,8 @@ class PipelineState:
         Allow attribute access to intermediate values. If an attribute is not found in the object, look for it in the
         intermediates dict.
         """
-        if name in self.intermediates:
-            return self.intermediates[name]
+        if name in self.values:
+            return self.values[name]
         raise AttributeError(f"'{self.__class__.__name__}' object has no attribute '{name}'")
 
     def __repr__(self):
@@ -229,7 +233,7 @@ class ModularPipelineBlocks(ConfigMixin, PushToHubMixin):
     Base class for all Pipeline Blocks: PipelineBlock, AutoPipelineBlocks, SequentialPipelineBlocks,
     LoopSequentialPipelineBlocks
 
-    [`ModularPipelineBlocks`] provides method to load and save the defination of pipeline blocks.
+    [`ModularPipelineBlocks`] provides method to load and save the definition of pipeline blocks.
 
     <Tip warning={true}>
 
@@ -299,7 +303,7 @@ class ModularPipelineBlocks(ConfigMixin, PushToHubMixin):
     def from_pretrained(
         cls,
         pretrained_model_name_or_path: str,
-        trust_remote_code: Optional[bool] = None,
+        trust_remote_code: bool = False,
         **kwargs,
     ):
         hub_kwargs_names = [
@@ -548,8 +552,11 @@ class AutoPipelineBlocks(ModularPipelineBlocks):
 
     def __init__(self):
         sub_blocks = InsertableDict()
-        for block_name, block_cls in zip(self.block_names, self.block_classes):
-            sub_blocks[block_name] = block_cls()
+        for block_name, block in zip(self.block_names, self.block_classes):
+            if inspect.isclass(block):
+                sub_blocks[block_name] = block()
+            else:
+                sub_blocks[block_name] = block
         self.sub_blocks = sub_blocks
         if not (len(self.block_classes) == len(self.block_names) == len(self.block_trigger_inputs)):
             raise ValueError(
@@ -830,7 +837,9 @@ class SequentialPipelineBlocks(ModularPipelineBlocks):
         return expected_configs
 
     @classmethod
-    def from_blocks_dict(cls, blocks_dict: Dict[str, Any]) -> "SequentialPipelineBlocks":
+    def from_blocks_dict(
+        cls, blocks_dict: Dict[str, Any], description: Optional[str] = None
+    ) -> "SequentialPipelineBlocks":
         """Creates a SequentialPipelineBlocks instance from a dictionary of blocks.
 
         Args:
@@ -852,12 +861,19 @@ class SequentialPipelineBlocks(ModularPipelineBlocks):
         instance.block_classes = [block.__class__ for block in sub_blocks.values()]
         instance.block_names = list(sub_blocks.keys())
         instance.sub_blocks = sub_blocks
+
+        if description is not None:
+            instance.description = description
+
         return instance
 
     def __init__(self):
         sub_blocks = InsertableDict()
-        for block_name, block_cls in zip(self.block_names, self.block_classes):
-            sub_blocks[block_name] = block_cls()
+        for block_name, block in zip(self.block_names, self.block_classes):
+            if inspect.isclass(block):
+                sub_blocks[block_name] = block()
+            else:
+                sub_blocks[block_name] = block
         self.sub_blocks = sub_blocks
 
     def _get_inputs(self):
@@ -1280,8 +1296,11 @@ class LoopSequentialPipelineBlocks(ModularPipelineBlocks):
 
     def __init__(self):
         sub_blocks = InsertableDict()
-        for block_name, block_cls in zip(self.block_names, self.block_classes):
-            sub_blocks[block_name] = block_cls()
+        for block_name, block in zip(self.block_names, self.block_classes):
+            if inspect.isclass(block):
+                sub_blocks[block_name] = block()
+            else:
+                sub_blocks[block_name] = block
         self.sub_blocks = sub_blocks
 
     @classmethod
@@ -1418,7 +1437,7 @@ class LoopSequentialPipelineBlocks(ModularPipelineBlocks):
 # YiYi TODO:
 # 1. look into the serialization of modular_model_index.json, make sure the items are properly ordered like model_index.json (currently a mess)
 # 2. do we need ConfigSpec? the are basically just key/val kwargs
-# 3. imnprove docstring and potentially add validator for methods where we accpet kwargs to be passed to from_pretrained/save_pretrained/load_default_components(), load_components()
+# 3. imnprove docstring and potentially add validator for methods where we accept kwargs to be passed to from_pretrained/save_pretrained/load_components()
 class ModularPipeline(ConfigMixin, PushToHubMixin):
     """
     Base class for all Modular pipelines.
@@ -1488,7 +1507,7 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
             - Components with default_creation_method="from_config" are created immediately, its specs are not included
               in config dict and will not be saved in `modular_model_index.json`
             - Components with default_creation_method="from_pretrained" are set to None and can be loaded later with
-              `load_default_components()`/`load_components()`
+              `load_components()` (with or without specific component names)
             - The pipeline's config dict is populated with component specs (only for from_pretrained components) and
               config values, which will be saved as `modular_model_index.json` during `save_pretrained`
             - The pipeline's config dict is also used to store the pipeline blocks's class name, which will be saved as
@@ -1602,20 +1621,6 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
         for input_param in self.blocks.inputs:
             params[input_param.name] = input_param.default
         return params
-
-    def load_default_components(self, **kwargs):
-        """
-        Load from_pretrained components using the loading specs in the config dict.
-
-        Args:
-            **kwargs: Additional arguments passed to `from_pretrained` method, e.g. torch_dtype, cache_dir, etc.
-        """
-        names = [
-            name
-            for name in self._component_specs.keys()
-            if self._component_specs[name].default_creation_method == "from_pretrained"
-        ]
-        self.load_components(names=names, **kwargs)
 
     @classmethod
     @validate_hf_hub_args
@@ -1770,8 +1775,8 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
            - non from_pretrained components are created during __init__ and registered as the object itself
         - Components are updated with the `update_components()` method: e.g. loader.update_components(unet=unet) or
           loader.update_components(guider=guider_spec)
-        - (from_pretrained) Components are loaded with the `load_default_components()` method: e.g.
-          loader.load_default_components(names=["unet"])
+        - (from_pretrained) Components are loaded with the `load_components()` method: e.g.
+          loader.load_components(names=["unet"]) or loader.load_components() to load all default components
 
         Args:
             **kwargs: Keyword arguments where keys are component names and values are component objects.
@@ -2097,13 +2102,14 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
         self.register_to_config(**config_to_register)
 
     # YiYi TODO: support map for additional from_pretrained kwargs
-    # YiYi/Dhruv TODO: consolidate load_components and load_default_components?
-    def load_components(self, names: Union[List[str], str], **kwargs):
+    def load_components(self, names: Optional[Union[List[str], str]] = None, **kwargs):
         """
         Load selected components from specs.
 
         Args:
-            names: List of component names to load; by default will not load any components
+            names: List of component names to load. If None, will load all components with
+                   default_creation_method == "from_pretrained". If provided as a list or string, will load only the
+                   specified components.
             **kwargs: additional kwargs to be passed to `from_pretrained()`.Can be:
              - a single value to be applied to all components to be loaded, e.g. torch_dtype=torch.bfloat16
              - a dict, e.g. torch_dtype={"unet": torch.bfloat16, "default": torch.float32}
@@ -2111,7 +2117,13 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
                `variant`, `revision`, etc.
         """
 
-        if isinstance(names, str):
+        if names is None:
+            names = [
+                name
+                for name in self._component_specs.keys()
+                if self._component_specs[name].default_creation_method == "from_pretrained"
+            ]
+        elif isinstance(names, str):
             names = [names]
         elif not isinstance(names, list):
             raise ValueError(f"Invalid type for names: {type(names)}")
