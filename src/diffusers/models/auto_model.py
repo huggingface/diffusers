@@ -205,6 +205,7 @@ class AutoModel(ConfigMixin):
             module_file = module_file + ".py"
             model_cls = get_class_from_dynamic_module(
                 pretrained_model_or_path,
+                subfolder=subfolder,
                 module_file=module_file,
                 class_name=class_name,
                 **hub_kwargs,
