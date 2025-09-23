@@ -123,7 +123,7 @@ class FluxLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
         pipe.set_progress_bar_config(disable=None)
         _, _, inputs = self.get_dummy_inputs(with_generator=False)
 
-        output_no_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
+        output_no_lora = self.cached_non_lora_outputs[self.scheduler_cls.__class__.__name__]
         self.assertTrue(output_no_lora.shape == self.output_shape)
 
         pipe.transformer.add_adapter(denoiser_lora_config)
@@ -171,7 +171,7 @@ class FluxLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
         pipe.set_progress_bar_config(disable=None)
         _, _, inputs = self.get_dummy_inputs(with_generator=False)
 
-        output_no_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
+        output_no_lora = self.cached_non_lora_outputs[self.scheduler_cls.__class__.__name__]
         self.assertTrue(output_no_lora.shape == self.output_shape)
 
         # Modify the config to have a layer which won't be present in the second LoRA we will load.
@@ -220,7 +220,7 @@ class FluxLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
         pipe.set_progress_bar_config(disable=None)
         _, _, inputs = self.get_dummy_inputs(with_generator=False)
 
-        output_no_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
+        output_no_lora = self.cached_non_lora_outputs[self.scheduler_cls.__class__.__name__]
         self.assertTrue(output_no_lora.shape == self.output_shape)
 
         # Modify the config to have a layer which won't be present in the first LoRA we will load.
@@ -331,6 +331,7 @@ class FluxControlLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
         noise = floats_tensor((batch_size, num_channels) + sizes)
         input_ids = torch.randint(1, sequence_length, size=(batch_size, sequence_length), generator=generator)
 
+        np.random.seed(0)
         pipeline_inputs = {
             "prompt": "A painting of a squirrel eating a burger",
             "control_image": Image.fromarray(np.random.randint(0, 255, size=(32, 32, 3), dtype="uint8")),
