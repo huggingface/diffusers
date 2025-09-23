@@ -187,7 +187,7 @@ class HunyuanImageRefinerDownsampleDCAE(nn.Module):
         self.group_size = factor * in_channels // out_channels
 
     @staticmethod
-    def _dcae_downsample_rearrange(self, tensor, r1=1, r2=2, r3=2):
+    def _dcae_downsample_rearrange(tensor, r1=1, r2=2, r3=2):
         """
         Convert (b, c, r1*f, r2*h, r3*w) -> (b, r1*r2*r3*c, f, h, w)
 
@@ -196,8 +196,8 @@ class HunyuanImageRefinerDownsampleDCAE(nn.Module):
         b, c, packed_f, packed_h, packed_w = tensor.shape
         f, h, w = packed_f // r1, packed_h // r2, packed_w // r3
 
-        tensor = tensor.view(b, c, r1, f, r2, h, r3, w)
-        tensor = tensor.permute(0, 2, 4, 6, 1, 3, 5, 7)
+        tensor = tensor.view(b, c, f, r1, h, r2, w, r3)
+        tensor = tensor.permute(0, 3, 5, 7, 1, 2, 4, 6)
         return tensor.reshape(b, r1 * r2 * r3 * c, f, h, w)
 
     def forward(self, x: torch.Tensor):
@@ -207,7 +207,6 @@ class HunyuanImageRefinerDownsampleDCAE(nn.Module):
             # h = rearrange(h, "b c f (h r2) (w r3) -> b (r2 r3 c) f h w", r2=2, r3=2)
             h = self._dcae_downsample_rearrange(h, r1=1, r2=2, r3=2)
             h = torch.cat([h, h], dim=1)
-
             # shortcut computation
             # shortcut = rearrange(x, "b c f (h r2) (w r3) -> b (r2 r3 c) f h w", r2=2, r3=2)
             shortcut = self._dcae_downsample_rearrange(x, r1=1, r2=2, r3=2)
