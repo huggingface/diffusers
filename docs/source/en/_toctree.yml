@@ -23,11 +23,7 @@
   - local: using-diffusers/reusing_seeds
     title: Reproducibility
   - local: using-diffusers/schedulers
-    title: Load schedulers and models
-  - local: using-diffusers/models
-    title: Models
-  - local: using-diffusers/scheduler_features
-    title: Scheduler features
+    title: Schedulers
   - local: using-diffusers/other-formats
     title: Model files and layouts
   - local: using-diffusers/push_to_hub
