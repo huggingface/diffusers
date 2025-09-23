@@ -11,6 +11,9 @@ specific language governing permissions and limitations under the License. -->
 
 # Attention backends
 
+> [!TIP]
+> The attention dispatcher is an experimental feature. Please open an issue if you have any feedback or encounter any problems.
+
 Diffusers provides several optimized attention algorithms that are more memory and computationally efficient through it's *attention dispatcher*. The dispatcher acts as a router for managing and switching between different attention implementations and provides a unified interface for interacting with them.
 
 Available attention implementations include the following.
@@ -41,6 +44,12 @@ pipeline = QwenImagePipeline.from_pretrained(
     "Qwen/Qwen-Image", torch_dtype=torch.bfloat16, device_map="cuda"
 )
 pipeline.transformer.set_attention_backend("_flash_3_hub")
+
+prompt = """
+cinematic film still of a cat sipping a margarita in a pool in Palm Springs, California
+highly detailed, high budget hollywood movie, cinemascope, moody, epic, gorgeous, film grain
+"""
+pipeline(prompt).images[0]
 ```
 
 To restore the default attention backend, call [`~ModelMixin.reset_attention_backend`].
