@@ -175,6 +175,7 @@ class HunyuanImageRefinerPipeline(DiffusionPipeline):
         self.prompt_template_encode = "<|start_header_id|>system<|end_header_id|>\n\nDescribe the image by detailing the color, shape, size, texture, quantity, text, spatial relationships of the objects and background:<|eot_id|><|start_header_id|>user<|end_header_id|>\n\n{}<|eot_id|>"
         self.prompt_template_encode_start_idx = 36
         self.default_sample_size = 64
+        self.latent_channels = self.transformer.config.in_channels // 2 if getattr(self, "transformer", None) else 64
 
     # Copied from diffusers.pipelines.hunyuan_image.pipeline_hunyuanimage.HunyuanImagePipeline._get_qwen_prompt_embeds
     def _get_qwen_prompt_embeds(
@@ -334,10 +335,12 @@ class HunyuanImageRefinerPipeline(DiffusionPipeline):
         height = int(height) // self.vae_scale_factor
         width = int(width) // self.vae_scale_factor
 
-        shape = (batch_size, num_channels_latents, height, width)
+        shape = (batch_size, num_channels_latents, 1, height, width)
 
-        if latents is not None:
-            return latents.to(device=device, dtype=dtype)
+        if latents is None:
+            latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
+        else:
+            latents = latents.to(device=device, dtype=dtype)
 
         if batch_size > image_latents.shape[0] and batch_size % image_latents.shape[0] == 0:
             # expand init_latents for batch_size
@@ -355,10 +358,37 @@ class HunyuanImageRefinerPipeline(DiffusionPipeline):
             )
 
         noise = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
+        cond_latents = strength * noise + (1 - strength) * image_latents
 
-        latents = strength * noise + (1 - strength) * image_latents
+        return latents, cond_latents
 
-        return noise, latents
+    @staticmethod
+    def _reorder_image_tokens(image_latents):
+        image_latents = torch.cat((image_latents[:, :, :1], image_latents), dim=2)
+        batch_size, num_latent_channels, num_latent_frames, latent_height, latent_width = image_latents.shape
+        image_latents = image_latents.permute(0, 2, 1, 3, 4)
+        image_latents = image_latents.reshape(
+            batch_size, num_latent_frames // 2, num_latent_channels * 2, latent_height, latent_width
+        )
+        image_latents = image_latents.permute(0, 2, 1, 3, 4).contiguous()
+
+        return image_latents
+
+    @staticmethod
+    def _restore_image_tokens_order(latents):
+        """Restore image tokens order by splitting channels and removing first frame slice."""
+        batch_size, num_latent_channels, num_latent_frames, latent_height, latent_width = latents.shape
+
+        latents = latents.permute(0, 2, 1, 3, 4)  # B, F, C, H, W
+        latents = latents.reshape(
+            batch_size, num_latent_frames * 2, num_latent_channels // 2, latent_height, latent_width
+        )  # B, F*2, C//2, H, W
+
+        latents = latents.permute(0, 2, 1, 3, 4)  # B, C//2, F*2, H, W
+        # Remove first frame slice
+        latents = latents[:, :, 1:]
+
+        return latents
 
     def _encode_vae_image(self, image: torch.Tensor, generator: torch.Generator):
         if isinstance(generator, list):
@@ -369,14 +399,7 @@ class HunyuanImageRefinerPipeline(DiffusionPipeline):
             image_latents = torch.cat(image_latents, dim=0)
         else:
             image_latents = retrieve_latents(self.vae.encode(image), generator=generator, sample_mode="sample")
-
-        # rearrange tokens
-        from einops import rearrange  # YiYi TODO: remove this dependency
-
-        image_latents = torch.cat((image_latents[:, :, :1], image_latents), dim=2)
-        image_latents = rearrange(image_latents, "b c f h w -> b f c h w")
-        image_latents = rearrange(image_latents, "b (f n) c h w -> b f (n c) h w", n=2)
-        image_latents = rearrange(image_latents, "b f c h w -> b c f h w").contiguous()
+        image_latents = self._reorder_image_tokens(image_latents)
 
         image_latents = image_latents * self.vae.config.scaling_factor
 
@@ -529,10 +552,6 @@ class HunyuanImageRefinerPipeline(DiffusionPipeline):
             prompt_embeds_mask=prompt_embeds_mask,
             negative_prompt_embeds_mask=negative_prompt_embeds_mask,
             callback_on_step_end_tensor_inputs=callback_on_step_end_tensor_inputs,
-            prompt_embeds_2=prompt_embeds_2,
-            prompt_embeds_mask_2=prompt_embeds_mask_2,
-            negative_prompt_embeds_2=negative_prompt_embeds_2,
-            negative_prompt_embeds_mask_2=negative_prompt_embeds_mask_2,
         )
 
         self._guidance_scale = guidance_scale
@@ -551,10 +570,12 @@ class HunyuanImageRefinerPipeline(DiffusionPipeline):
         device = self._execution_device
 
         # 3. process image
-        image = self.image_processor.preprocess(image, height, width)
-        image = image.unsqueeze(2)
-
-        image_latents = self._encode_vae_image(image=image, generator=generator)
+        if image is not None and isinstance(image, torch.Tensor) and image.shape[1] == self.latent_channels:
+            image_latents = image
+        else:
+            image = self.image_processor.preprocess(image, height, width)
+            image = image.unsqueeze(2).to(device, dtype=self.vae.dtype)
+            image_latents = self._encode_vae_image(image=image, generator=generator)
 
         has_neg_prompt = negative_prompt is not None or (
             negative_prompt_embeds is not None and negative_prompt_embeds_mask is not None
@@ -570,44 +591,34 @@ class HunyuanImageRefinerPipeline(DiffusionPipeline):
             )
 
         do_true_cfg = true_cfg_scale > 1 and has_neg_prompt
-        prompt_embeds, prompt_embeds_mask, prompt_embeds_2, prompt_embeds_mask_2 = self.encode_prompt(
+        prompt_embeds, prompt_embeds_mask = self.encode_prompt(
             prompt=prompt,
             prompt_embeds=prompt_embeds,
             prompt_embeds_mask=prompt_embeds_mask,
             device=device,
             num_images_per_prompt=num_images_per_prompt,
-            prompt_embeds_2=prompt_embeds_2,
-            prompt_embeds_mask_2=prompt_embeds_mask_2,
         )
 
         prompt_embeds = prompt_embeds.to(self.transformer.dtype)
-        prompt_embeds_2 = prompt_embeds_2.to(self.transformer.dtype)
 
         if do_true_cfg:
             (
                 negative_prompt_embeds,
                 negative_prompt_embeds_mask,
-                negative_prompt_embeds_2,
-                negative_prompt_embeds_mask_2,
             ) = self.encode_prompt(
                 prompt=negative_prompt,
                 prompt_embeds=negative_prompt_embeds,
                 prompt_embeds_mask=negative_prompt_embeds_mask,
                 device=device,
                 num_images_per_prompt=num_images_per_prompt,
-                prompt_embeds_2=negative_prompt_embeds_2,
-                prompt_embeds_mask_2=negative_prompt_embeds_mask_2,
             )
 
             negative_prompt_embeds = negative_prompt_embeds.to(self.transformer.dtype)
-            negative_prompt_embeds_2 = negative_prompt_embeds_2.to(self.transformer.dtype)
-
         # 4. Prepare latent variables
-        num_channels_latents = self.transformer.config.in_channels
         latents, cond_latents = self.prepare_latents(
             image_latents=image_latents,
             batch_size=batch_size * num_images_per_prompt,
-            num_channels_latents=num_channels_latents,
+            num_channels_latents=self.latent_channels,
             height=height,
             width=width,
             dtype=prompt_embeds.dtype,
@@ -650,8 +661,8 @@ class HunyuanImageRefinerPipeline(DiffusionPipeline):
 
                 self._current_timestep = t
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
+                latent_model_input = torch.cat([latents, cond_latents], dim=1).to(self.transformer.dtype)
                 timestep = t.expand(latents.shape[0]).to(latents.dtype)
-                latent_model_input = torch.cat([latents, cond_latents], dim=1)
                 with self.transformer.cache_context("cond"):
                     noise_pred = self.transformer(
                         hidden_states=latent_model_input,
@@ -706,16 +717,10 @@ class HunyuanImageRefinerPipeline(DiffusionPipeline):
             image = latents
         else:
             latents = latents.to(self.vae.dtype) / self.vae.config.scaling_factor
-
-            from einops import rearrange  # YiYi TODO: remove this dependency
-
-            latents = rearrange(latents, "b c f h w -> b f c h w")
-            latents = rearrange(latents, "b f (n c) h w -> b (f n) c h w", n=2)
-            latents = rearrange(latents, "b f c h w -> b c f h w")
-            latents = latents[:, :, 1:]
+            latents = self._restore_image_tokens_order(latents)
 
             image = self.vae.decode(latents, return_dict=False)[0]
-            image = self.image_processor.postprocess(image, output_type=output_type)
+            image = self.image_processor.postprocess(image.squeeze(2), output_type=output_type)
 
         # Offload all models
         self.maybe_free_model_hooks()
