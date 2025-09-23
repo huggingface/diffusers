@@ -204,12 +204,21 @@ class HunyuanImageCombinedTimeGuidanceEmbedding(nn.Module):
     def __init__(
         self,
         embedding_dim: int,
-        guidance_embeds: bool,
+        guidance_embeds: bool = False,
+        use_meanflow: bool = False,
     ):
         super().__init__()
 
         self.time_proj = Timesteps(num_channels=256, flip_sin_to_cos=True, downscale_freq_shift=0)
         self.timestep_embedder = TimestepEmbedding(in_channels=256, time_embed_dim=embedding_dim)
+
+        self.use_meanflow = use_meanflow
+
+        self.time_proj_r = None
+        self.timestep_embedder_r = None
+        if use_meanflow:
+            self.time_proj_r = Timesteps(num_channels=256, flip_sin_to_cos=True, downscale_freq_shift=0)
+            self.timestep_embedder_r = TimestepEmbedding(in_channels=256, time_embed_dim=embedding_dim)
 
         self.guidance_embedder = None
         if guidance_embeds:
@@ -218,10 +227,16 @@ class HunyuanImageCombinedTimeGuidanceEmbedding(nn.Module):
     def forward(
         self,
         timestep: torch.Tensor,
+        timestep_r: Optional[torch.Tensor] = None,
         guidance: Optional[torch.Tensor] = None,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         timesteps_proj = self.time_proj(timestep)
-        timesteps_emb = self.timestep_embedder(timesteps_proj.to(dtype=timestep.dtype))  # (N, D)
+        timesteps_emb = self.timestep_embedder(timesteps_proj.to(dtype=timestep.dtype))
+
+        if timestep_r is not None:
+            timesteps_proj_r = self.time_proj_r(timestep_r)
+            timesteps_emb_r = self.timestep_embedder_r(timesteps_proj_r.to(dtype=timestep.dtype))
+            timesteps_emb = (timesteps_emb + timesteps_emb_r) / 2
 
         if self.guidance_embedder is not None:
             guidance_proj = self.time_proj(guidance)
@@ -660,6 +675,7 @@ class HunyuanImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, 
         text_embed_2_dim: Optional[int] = None,
         rope_theta: float = 256.0,
         rope_axes_dim: Tuple[int] = (64, 64),
+        use_meanflow: bool = False,
     ) -> None:
         super().__init__()
 
@@ -680,7 +696,7 @@ class HunyuanImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, 
         else:
             self.context_embedder_2 = None
 
-        self.time_guidance_embed = HunyuanImageCombinedTimeGuidanceEmbedding(inner_dim, guidance_embeds)
+        self.time_guidance_embed = HunyuanImageCombinedTimeGuidanceEmbedding(inner_dim, guidance_embeds, use_meanflow)
 
         # 2. RoPE
         self.rope = HunyuanImageRotaryPosEmbed(patch_size, rope_axes_dim, rope_theta)
@@ -778,6 +794,7 @@ class HunyuanImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, 
         timestep: torch.LongTensor,
         encoder_hidden_states: torch.Tensor,
         encoder_attention_mask: torch.Tensor,
+        timestep_r: Optional[torch.LongTensor] = None,
         encoder_hidden_states_2: Optional[torch.Tensor] = None,
         encoder_attention_mask_2: Optional[torch.Tensor] = None,
         guidance: Optional[torch.Tensor] = None,
@@ -815,7 +832,7 @@ class HunyuanImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, 
 
         # 2. Conditional embeddings
         encoder_attention_mask = encoder_attention_mask.bool()
-        temb = self.time_guidance_embed(timestep, guidance)
+        temb = self.time_guidance_embed(timestep, guidance=guidance, timestep_r=timestep_r)
         hidden_states = self.x_embedder(hidden_states)
         encoder_hidden_states = self.context_embedder(encoder_hidden_states, timestep, encoder_attention_mask)
 

@@ -200,7 +200,7 @@ class HunyuanImagePipeline(DiffusionPipeline):
             scheduler=scheduler,
         )
 
-        self.vae_scale_factor = self.vae.config.ffactor_spatial if getattr(self, "vae", None) else 32
+        self.vae_scale_factor = self.vae.config.spatial_compression_ratio if getattr(self, "vae", None) else 32
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
         self.tokenizer_max_length = 1000
         self.tokenizer_2_max_length = 128
@@ -727,6 +727,16 @@ class HunyuanImagePipeline(DiffusionPipeline):
                 self._current_timestep = t
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
                 timestep = t.expand(latents.shape[0]).to(latents.dtype)
+
+                if self.transformer.config.use_meanflow:
+                    if i == len(timesteps) - 1:
+                        timestep_r = torch.tensor([0.0], device=device)
+                    else:
+                        timestep_r = timesteps[i + 1]
+                    timestep_r = timestep_r.expand(latents.shape[0]).to(latents.dtype)
+                else:
+                    timestep_r = None
+
                 with self.transformer.cache_context("cond"):
                     noise_pred = self.transformer(
                         hidden_states=latents,
@@ -737,6 +747,7 @@ class HunyuanImagePipeline(DiffusionPipeline):
                         encoder_hidden_states_2=prompt_embeds_2,
                         encoder_attention_mask_2=prompt_embeds_mask_2,
                         attention_kwargs=self.attention_kwargs,
+                        timestep_r=timestep_r,
                         return_dict=False,
                     )[0]
 
@@ -745,6 +756,7 @@ class HunyuanImagePipeline(DiffusionPipeline):
                         neg_noise_pred = self.transformer(
                             hidden_states=latents,
                             timestep=timestep,
+                            timestep_r=timestep_r,
                             guidance=guidance,
                             encoder_attention_mask=negative_prompt_embeds_mask,
                             encoder_hidden_states=negative_prompt_embeds,
