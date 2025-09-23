@@ -16,7 +16,7 @@ specific language governing permissions and limitations under the License. -->
 
 Diffusers provides several optimized attention algorithms that are more memory and computationally efficient through it's *attention dispatcher*. The dispatcher acts as a router for managing and switching between different attention implementations and provides a unified interface for interacting with them.
 
-Available attention implementations include the following.
+Refer to the table below for an overview of the available attention families and to the [Available backends](#available-backends) section for a more complete list.
 
 | attention family | main feature |
 |---|---|
@@ -34,7 +34,7 @@ The [`~ModelMixin.set_attention_backend`] method iterates through all the module
 The example below demonstrates how to enable the `_flash_3_hub` implementation for FlashAttention-3 from the [kernel](https://github.com/huggingface/kernels) library, which allows you to instantly use optimized compute kernels from the Hub without requiring any setup.
 
 > [!TIP]
-> FlashAttention-3 is not supported for non-Hopper architectures, in which case, use FlashAttention (set_attention_backend("flash")).
+> FlashAttention-3 is not supported for non-Hopper architectures, in which case, use FlashAttention with `set_attention_backend("flash")`.
 
 ```py
 import torch
