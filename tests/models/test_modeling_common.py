@@ -1989,7 +1989,7 @@ class VAETestMixin:
         model = self.model_class(**init_dict).to(torch_device)
 
         inputs_dict.update({"return_dict": False})
-        _ = inputs_dict.pop("generator")
+        _ = inputs_dict.pop("generator", None)
 
         torch.manual_seed(0)
         output_without_slicing = model(**inputs_dict, generator=torch.manual_seed(0))[0]
