@@ -8,30 +8,30 @@ Install a stable release of CacheDiT from PyPI or you can install the latest ver
 <hfoptions id="install">
 <hfoption id="PyPI">
 
-\```bash
+```bash
 pip3 install -U cache-dit
-\```
+```
 
 </hfoption>
 <hfoption id="source">
 
-\```bash
+```bash
 pip3 install git+https://github.com/vipshop/cache-dit.git
-\```
+```
 
 </hfoption>
 </hfoptions>
 
 Run the command below to view supported DiT pipelines.
 
-\```bash
+```bash
 import cache_dit
 cache_dit.supported_pipelines()
 (30, ['Flux*', 'Mochi*', 'CogVideoX*', 'Wan*', 'HunyuanVideo*', 'QwenImage*', 'LTX*', 'Allegro*',
 'CogView3Plus*', 'CogView4*', 'Cosmos*', 'EasyAnimate*', 'SkyReelsV2*', 'StableDiffusion3*',
 'ConsisID*', 'DiT*', 'Amused*', 'Bria*', 'Lumina*', 'OmniGen*', 'PixArt*', 'Sana*', 'StableAudio*',
 'VisualCloze*', 'AuraFlow*', 'Chroma*', 'ShapE*', 'HiDream*', 'HunyuanDiT*', 'HunyuanDiTPAG*'])
-\```
+```
 
 For a complete benchmark, please refer to [Benchmarks](https://github.com/vipshop/cache-dit/blob/main/bench/).
 
