@@ -19,17 +19,14 @@ import torch
 
 from diffusers import Lumina2Transformer2DModel
 
-from ...testing_utils import (
-    enable_full_determinism,
-    torch_device,
-)
-from ..test_modeling_common import ModelTesterMixin
+from ...testing_utils import enable_full_determinism, torch_device
+from ..test_modeling_common import ModelTesterMixin, PEFTTesterMixin
 
 
 enable_full_determinism()
 
 
-class Lumina2Transformer2DModelTransformerTests(ModelTesterMixin, unittest.TestCase):
+class Lumina2Transformer2DModelTransformerTests(ModelTesterMixin, PEFTTesterMixin, unittest.TestCase):
     model_class = Lumina2Transformer2DModel
     main_input_name = "hidden_states"
     uses_custom_attn_processor = True

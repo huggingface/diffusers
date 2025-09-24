@@ -19,17 +19,14 @@ import torch
 
 from diffusers import ConsisIDTransformer3DModel
 
-from ...testing_utils import (
-    enable_full_determinism,
-    torch_device,
-)
-from ..test_modeling_common import ModelTesterMixin
+from ...testing_utils import enable_full_determinism, torch_device
+from ..test_modeling_common import ModelTesterMixin, PEFTTesterMixin
 
 
 enable_full_determinism()
 
 
-class ConsisIDTransformerTests(ModelTesterMixin, unittest.TestCase):
+class ConsisIDTransformerTests(ModelTesterMixin, PEFTTesterMixin, unittest.TestCase):
     model_class = ConsisIDTransformer3DModel
     main_input_name = "hidden_states"
     uses_custom_attn_processor = True

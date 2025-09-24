@@ -22,7 +22,12 @@ from diffusers.models.attention_processor import FluxIPAdapterJointAttnProcessor
 from diffusers.models.embeddings import ImageProjection
 
 from ...testing_utils import enable_full_determinism, torch_device
-from ..test_modeling_common import LoraHotSwappingForModelTesterMixin, ModelTesterMixin, TorchCompileTesterMixin
+from ..test_modeling_common import (
+    LoraHotSwappingForModelTesterMixin,
+    ModelTesterMixin,
+    PEFTTesterMixin,
+    TorchCompileTesterMixin,
+)
 
 
 enable_full_determinism()
@@ -78,7 +83,7 @@ def create_chroma_ip_adapter_state_dict(model):
     return ip_state_dict
 
 
-class ChromaTransformerTests(ModelTesterMixin, unittest.TestCase):
+class ChromaTransformerTests(ModelTesterMixin, PEFTTesterMixin, unittest.TestCase):
     model_class = ChromaTransformer2DModel
     main_input_name = "hidden_states"
     # We override the items here because the transformer under consideration is small.

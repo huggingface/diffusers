@@ -19,17 +19,14 @@ import torch
 
 from diffusers import HiDreamImageTransformer2DModel
 
-from ...testing_utils import (
-    enable_full_determinism,
-    torch_device,
-)
-from ..test_modeling_common import ModelTesterMixin
+from ...testing_utils import enable_full_determinism, torch_device
+from ..test_modeling_common import ModelTesterMixin, PEFTTesterMixin
 
 
 enable_full_determinism()
 
 
-class HiDreamTransformerTests(ModelTesterMixin, unittest.TestCase):
+class HiDreamTransformerTests(ModelTesterMixin, PEFTTesterMixin, unittest.TestCase):
     model_class = HiDreamImageTransformer2DModel
     main_input_name = "hidden_states"
     model_split_percents = [0.8, 0.8, 0.9]

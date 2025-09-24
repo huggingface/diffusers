@@ -30,13 +30,13 @@ from ...testing_utils import (
     torch_all_close,
     torch_device,
 )
-from ..test_modeling_common import ModelTesterMixin
+from ..test_modeling_common import ModelTesterMixin, PEFTTesterMixin
 
 
 enable_full_determinism()
 
 
-class PriorTransformerTests(ModelTesterMixin, unittest.TestCase):
+class PriorTransformerTests(ModelTesterMixin, PEFTTesterMixin, unittest.TestCase):
     model_class = PriorTransformer
     main_input_name = "hidden_states"
 
