@@ -247,6 +247,7 @@ def find_pipeline_class(loaded_module):
 def get_cached_module_file(
     pretrained_model_name_or_path: Union[str, os.PathLike],
     module_file: str,
+    subfolder: Optional[str] = None,
     cache_dir: Optional[Union[str, os.PathLike]] = None,
     force_download: bool = False,
     proxies: Optional[Dict[str, str]] = None,
@@ -353,6 +354,7 @@ def get_cached_module_file(
             resolved_module_file = hf_hub_download(
                 pretrained_model_name_or_path,
                 module_file,
+                subfolder=subfolder,
                 cache_dir=cache_dir,
                 force_download=force_download,
                 proxies=proxies,
@@ -410,6 +412,7 @@ def get_cached_module_file(
                 get_cached_module_file(
                     pretrained_model_name_or_path,
                     f"{module_needed}.py",
+                    subfolder=subfolder,
                     cache_dir=cache_dir,
                     force_download=force_download,
                     proxies=proxies,
@@ -424,6 +427,7 @@ def get_cached_module_file(
 def get_class_from_dynamic_module(
     pretrained_model_name_or_path: Union[str, os.PathLike],
     module_file: str,
+    subfolder: Optional[str] = None,
     class_name: Optional[str] = None,
     cache_dir: Optional[Union[str, os.PathLike]] = None,
     force_download: bool = False,
@@ -497,6 +501,7 @@ def get_class_from_dynamic_module(
     final_module = get_cached_module_file(
         pretrained_model_name_or_path,
         module_file,
+        subfolder=subfolder,
         cache_dir=cache_dir,
         force_download=force_download,
         proxies=proxies,

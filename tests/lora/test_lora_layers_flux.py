@@ -907,6 +907,13 @@ class FluxLoRAIntegrationTests(unittest.TestCase):
 
         assert max_diff < 1e-3
 
+    def test_flux_kohya_embedders_conversion(self):
+        """Test that embedders load without throwing errors"""
+        self.pipeline.load_lora_weights("rockerBOO/flux-bpo-po-lora")
+        self.pipeline.unload_lora_weights()
+
+        assert True
+
     def test_flux_xlabs(self):
         self.pipeline.load_lora_weights("XLabs-AI/flux-lora-collection", weight_name="disney_lora.safetensors")
         self.pipeline.fuse_lora()
