@@ -148,8 +148,9 @@ S2V_TRANSFORMER_KEYS_RENAME_DICT = {
     "attn2.to_v_img": "attn2.add_v_proj",
     "attn2.norm_k_img": "attn2.norm_added_k",
     # S2V-specific audio component mappings
-    "casual_audio_encoder.encoder": "condition_embedder.causal_audio_encoder.encoder",
-    "casual_audio_encoder.weights": "condition_embedder.causal_audio_encoder.weights",
+    "casual_audio_encoder.encoder.conv2.conv": "condition_embedder.causal_audio_encoder.encoder.conv2.conv.conv",
+    "casual_audio_encoder.encoder.conv3.conv": "condition_embedder.causal_audio_encoder.encoder.conv3.conv.conv",
+    "casual_audio_encoder.weights": "condition_embedder.causal_audio_encoder.weighted_avg.weights",
     # Pose condition encoder mappings
     "cond_encoder.weight": "condition_embedder.pose_embedder.weight",
     "cond_encoder.bias": "condition_embedder.pose_embedder.bias",

@@ -180,6 +180,25 @@ class WanS2VCausalConv1d(nn.Module):
         return self.conv(x)
 
 
+class WanS2VCausalConvLayer(nn.Module):
+    """A layer that combines causal convolution, normalization, and activation in sequence."""
+
+    def __init__(self, chan_in, chan_out, kernel_size=3, stride=1, dilation=1, pad_mode="replicate", eps=1e-6, **kwargs):
+        super().__init__()
+
+        self.conv = WanS2VCausalConv1d(chan_in, chan_out, kernel_size, stride, dilation, pad_mode, **kwargs)
+        self.norm = nn.LayerNorm(chan_out, elementwise_affine=False, eps=eps)
+        self.act = nn.SiLU()
+
+    def forward(self, x):
+        x = x.permute(0, 2, 1)
+        x = self.conv(x)
+        x = x.permute(0, 2, 1)
+        x = self.norm(x)
+        x = self.act(x)
+        return x
+
+
 class WanS2VMotionEncoder(nn.Module):
     def __init__(self, in_dim: int, hidden_dim: int, num_attention_heads: int, need_global: bool = True):
         super().__init__()
@@ -189,16 +208,14 @@ class WanS2VMotionEncoder(nn.Module):
         self.conv1_local = WanS2VCausalConv1d(in_dim, hidden_dim // 4 * num_attention_heads, 3, stride=1)
         if need_global:
             self.conv1_global = WanS2VCausalConv1d(in_dim, hidden_dim // 4, 3, stride=1)
-        self.act = nn.SiLU()
-        self.conv2 = WanS2VCausalConv1d(hidden_dim // 4, hidden_dim // 2, 3, stride=2)
-        self.conv3 = WanS2VCausalConv1d(hidden_dim // 2, hidden_dim, 3, stride=2)
+        self.conv2 = WanS2VCausalConvLayer(hidden_dim // 4, hidden_dim // 2, 3, stride=2)
+        self.conv3 = WanS2VCausalConvLayer(hidden_dim // 2, hidden_dim, 3, stride=2)
 
         if need_global:
             self.final_linear = nn.Linear(hidden_dim, hidden_dim)
 
         self.norm1 = nn.LayerNorm(hidden_dim // 4, elementwise_affine=False, eps=1e-6)
-        self.norm2 = nn.LayerNorm(hidden_dim // 2, elementwise_affine=False, eps=1e-6)
-        self.norm3 = nn.LayerNorm(hidden_dim, elementwise_affine=False, eps=1e-6)
+        self.act = nn.SiLU()
 
         self.padding_tokens = nn.Parameter(torch.zeros(1, 1, 1, hidden_dim))
 
@@ -210,16 +227,8 @@ class WanS2VMotionEncoder(nn.Module):
         x = x.unflatten(1, (self.num_attention_heads, -1)).permute(0, 1, 3, 2).flatten(0, 1)
         x = self.norm1(x)
         x = self.act(x)
-        x = x.permute(0, 2, 1)
         x = self.conv2(x)
-        x = x.permute(0, 2, 1)
-        x = self.norm2(x)
-        x = self.act(x)
-        x = x.permute(0, 2, 1)
         x = self.conv3(x)
-        x = x.permute(0, 2, 1)
-        x = self.norm3(x)
-        x = self.act(x)
         x = x.unflatten(0, (batch_size, -1)).permute(0, 2, 1, 3)
         padding = self.padding_tokens.repeat(batch_size, x.shape[1], 1, 1)
         x = torch.cat([x, padding], dim=-2)
@@ -232,16 +241,8 @@ class WanS2VMotionEncoder(nn.Module):
         x = x.permute(0, 2, 1)
         x = self.norm1(x)
         x = self.act(x)
-        x = x.permute(0, 2, 1)
         x = self.conv2(x)
-        x = x.permute(0, 2, 1)
-        x = self.norm2(x)
-        x = self.act(x)
-        x = x.permute(0, 2, 1)
         x = self.conv3(x)
-        x = x.permute(0, 2, 1)
-        x = self.norm3(x)
-        x = self.act(x)
         x = self.final_linear(x)
         x = x.unflatten(0, (batch_size, -1)).permute(0, 2, 1, 3)
 
