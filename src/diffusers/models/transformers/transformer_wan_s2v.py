@@ -183,7 +183,9 @@ class WanS2VCausalConv1d(nn.Module):
 class WanS2VCausalConvLayer(nn.Module):
     """A layer that combines causal convolution, normalization, and activation in sequence."""
 
-    def __init__(self, chan_in, chan_out, kernel_size=3, stride=1, dilation=1, pad_mode="replicate", eps=1e-6, **kwargs):
+    def __init__(
+        self, chan_in, chan_out, kernel_size=3, stride=1, dilation=1, pad_mode="replicate", eps=1e-6, **kwargs
+    ):
         super().__init__()
 
         self.conv = WanS2VCausalConv1d(chan_in, chan_out, kernel_size, stride, dilation, pad_mode, **kwargs)
