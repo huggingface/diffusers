@@ -31,13 +31,13 @@ from ...testing_utils import (
     torch_all_close,
     torch_device,
 )
-from ..test_modeling_common import AutoencoderTesterMixin, ModelTesterMixin, UNetTesterMixin
+from ..test_modeling_common import AutoencoderTesterMixin, ModelTesterMixin
 
 
 enable_full_determinism()
 
 
-class AutoencoderTinyTests(ModelTesterMixin, AutoencoderTesterMixin, UNetTesterMixin, unittest.TestCase):
+class AutoencoderTinyTests(ModelTesterMixin, AutoencoderTesterMixin, unittest.TestCase):
     model_class = AutoencoderTiny
     main_input_name = "sample"
     base_precision = 1e-2

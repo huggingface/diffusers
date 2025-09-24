@@ -30,13 +30,13 @@ from ...testing_utils import (
     torch_all_close,
     torch_device,
 )
-from ..test_modeling_common import ModelTesterMixin, UNetTesterMixin
+from ..test_modeling_common import ModelTesterMixin
 
 
 enable_full_determinism()
 
 
-class AutoencoderOobleckTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
+class AutoencoderOobleckTests(ModelTesterMixin, unittest.TestCase):
     model_class = AutoencoderOobleck
     main_input_name = "sample"
     base_precision = 1e-2

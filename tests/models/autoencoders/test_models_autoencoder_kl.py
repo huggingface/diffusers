@@ -35,13 +35,13 @@ from ...testing_utils import (
     torch_all_close,
     torch_device,
 )
-from ..test_modeling_common import AutoencoderTesterMixin, ModelTesterMixin, UNetTesterMixin
+from ..test_modeling_common import AutoencoderTesterMixin, ModelTesterMixin
 
 
 enable_full_determinism()
 
 
-class AutoencoderKLTests(ModelTesterMixin, UNetTesterMixin, AutoencoderTesterMixin, unittest.TestCase):
+class AutoencoderKLTests(ModelTesterMixin, AutoencoderTesterMixin, unittest.TestCase):
     model_class = AutoencoderKL
     main_input_name = "sample"
     base_precision = 1e-2

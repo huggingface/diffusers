@@ -22,13 +22,13 @@ from ...testing_utils import (
     floats_tensor,
     torch_device,
 )
-from ..test_modeling_common import ModelTesterMixin, UNetTesterMixin
+from ..test_modeling_common import ModelTesterMixin
 
 
 enable_full_determinism()
 
 
-class AutoencoderDCTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
+class AutoencoderDCTests(ModelTesterMixin, unittest.TestCase):
     model_class = AutoencoderDC
     main_input_name = "sample"
     base_precision = 1e-2

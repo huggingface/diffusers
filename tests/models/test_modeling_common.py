@@ -1941,7 +1941,7 @@ class ModelTesterMixin:
             _ = loaded_model(**inputs_dict)
 
 
-class AutoencoderTesterMixin:
+class AutoencoderTesterMixin(UNetTesterMixin):
     """
     Test mixin class specific to VAEs to test for slicing and tiling. Diffusion networks
     usually don't do slicing and tiling.
