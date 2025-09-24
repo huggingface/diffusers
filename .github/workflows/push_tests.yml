@@ -35,7 +35,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
-          python -m uv pip install -e [quality,test]
+          python -m uv pip install --prerelease=allow -e [quality,test]
       - name: Environment
         run: |
           python utils/print_env.py
@@ -76,7 +76,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
-          python -m uv pip install -e [quality,test]
+          python -m uv pip install --prerelease=allow -e [quality,test]
           pip uninstall accelerate -y && python -m uv pip install -U accelerate@git+https://github.com/huggingface/accelerate.git
       - name: Environment
         run: |
@@ -127,7 +127,7 @@ jobs:
     - name: Install dependencies
       run: |
         python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
-        python -m uv pip install -e [quality,test]
+        python -m uv pip install --prerelease=allow -e [quality,test]
         python -m uv pip install peft@git+https://github.com/huggingface/peft.git
         pip uninstall accelerate -y && python -m uv pip install -U accelerate@git+https://github.com/huggingface/accelerate.git
 
@@ -181,7 +181,7 @@ jobs:
     - name: Install dependencies
       run: |
         python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
-        python -m uv pip install -e [quality,test,training]
+        python -m uv pip install --prerelease=allow -e [quality,test,training]
     - name: Environment
       run: |
         python utils/print_env.py
@@ -224,7 +224,7 @@ jobs:
     - name: Install dependencies
       run: |
         python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
-        python -m uv pip install -e [quality,test,training]
+        python -m uv pip install --prerelease=allow -e [quality,test,training]
     - name: Environment
       run: |
         python utils/print_env.py
@@ -265,7 +265,7 @@ jobs:
     - name: Install dependencies
       run: |
         python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
-        python -m uv pip install -e [quality,test,training]
+        python -m uv pip install --prerelease=allow -e [quality,test,training]
 
     - name: Environment
       run: |
