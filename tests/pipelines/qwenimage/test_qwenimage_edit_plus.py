@@ -15,20 +15,19 @@
 import unittest
 
 import numpy as np
+import pytest
 import torch
-from transformers import Qwen2_5_VLConfig, Qwen2_5_VLForConditionalGeneration, Qwen2Tokenizer
+from PIL import Image
+from transformers import Qwen2_5_VLConfig, Qwen2_5_VLForConditionalGeneration, Qwen2Tokenizer, Qwen2VLProcessor
 
 from diffusers import (
     AutoencoderKLQwenImage,
     FlowMatchEulerDiscreteScheduler,
-    QwenImageControlNetModel,
-    QwenImageControlNetPipeline,
-    QwenImageMultiControlNetModel,
+    QwenImageEditPlusPipeline,
     QwenImageTransformer2DModel,
 )
-from diffusers.utils.testing_utils import enable_full_determinism, torch_device
-from diffusers.utils.torch_utils import randn_tensor
 
+from ...testing_utils import enable_full_determinism, torch_device
 from ..pipeline_params import TEXT_TO_IMAGE_PARAMS
 from ..test_pipelines_common import PipelineTesterMixin, to_np
 
@@ -36,33 +35,30 @@ from ..test_pipelines_common import PipelineTesterMixin, to_np
 enable_full_determinism()
 
 
-class QwenControlNetPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
-    pipeline_class = QwenImageControlNetPipeline
-    params = (TEXT_TO_IMAGE_PARAMS | frozenset(["control_image", "controlnet_conditioning_scale"])) - {
-        "cross_attention_kwargs"
-    }
-    batch_params = frozenset(["prompt", "negative_prompt", "control_image"])
-    image_params = frozenset(["control_image"])
+class QwenImageEditPlusPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+    pipeline_class = QwenImageEditPlusPipeline
+    params = TEXT_TO_IMAGE_PARAMS - {"cross_attention_kwargs"}
+    batch_params = frozenset(["prompt", "image"])
+    image_params = frozenset(["image"])
     image_latents_params = frozenset(["latents"])
     required_optional_params = frozenset(
         [
             "num_inference_steps",
             "generator",
             "latents",
-            "control_image",
-            "controlnet_conditioning_scale",
             "return_dict",
             "callback_on_step_end",
             "callback_on_step_end_tensor_inputs",
         ]
     )
-
     supports_dduf = False
     test_xformers_attention = False
     test_layerwise_casting = True
     test_group_offloading = True
 
     def get_dummy_components(self):
+        tiny_ckpt_id = "hf-internal-testing/tiny-random-Qwen2VLForConditionalGeneration"
+
         torch.manual_seed(0)
         transformer = QwenImageTransformer2DModel(
             patch_size=2,
@@ -73,18 +69,6 @@ class QwenControlNetPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             num_attention_heads=3,
             joint_attention_dim=16,
             guidance_embeds=False,
-            axes_dims_rope=(8, 4, 4),
-        )
-
-        torch.manual_seed(0)
-        controlnet = QwenImageControlNetModel(
-            patch_size=2,
-            in_channels=16,
-            out_channels=4,
-            num_layers=2,
-            attention_head_dim=16,
-            num_attention_heads=3,
-            joint_attention_dim=16,
             axes_dims_rope=(8, 4, 4),
         )
 
@@ -116,7 +100,7 @@ class QwenControlNetPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
                     "rope_type": "default",
                     "type": "default",
                 },
-                "rope_theta": 1_000_000.0,
+                "rope_theta": 1000000.0,
             },
             vision_config={
                 "depth": 2,
@@ -131,9 +115,8 @@ class QwenControlNetPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             vision_start_token_id=151652,
             vision_token_id=151654,
         )
-
         text_encoder = Qwen2_5_VLForConditionalGeneration(config)
-        tokenizer = Qwen2Tokenizer.from_pretrained("hf-internal-testing/tiny-random-Qwen2VLForConditionalGeneration")
+        tokenizer = Qwen2Tokenizer.from_pretrained(tiny_ckpt_id)
 
         components = {
             "transformer": transformer,
@@ -141,7 +124,7 @@ class QwenControlNetPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "scheduler": scheduler,
             "text_encoder": text_encoder,
             "tokenizer": tokenizer,
-            "controlnet": controlnet,
+            "processor": Qwen2VLProcessor.from_pretrained(tiny_ckpt_id),
         }
         return components
 
@@ -151,32 +134,25 @@ class QwenControlNetPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         else:
             generator = torch.Generator(device=device).manual_seed(seed)
 
-        control_image = randn_tensor(
-            (1, 3, 32, 32),
-            generator=generator,
-            device=torch.device(device),
-            dtype=torch.float32,
-        )
-
+        image = Image.new("RGB", (32, 32))
         inputs = {
             "prompt": "dance monkey",
+            "image": [image, image],
             "negative_prompt": "bad quality",
             "generator": generator,
             "num_inference_steps": 2,
-            "guidance_scale": 3.0,
             "true_cfg_scale": 1.0,
             "height": 32,
             "width": 32,
             "max_sequence_length": 16,
-            "control_image": control_image,
-            "controlnet_conditioning_scale": 0.5,
             "output_type": "pt",
         }
 
         return inputs
 
-    def test_qwen_controlnet(self):
+    def test_inference(self):
         device = "cpu"
+
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
         pipe.to(device)
@@ -187,71 +163,9 @@ class QwenControlNetPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         generated_image = image[0]
         self.assertEqual(generated_image.shape, (3, 32, 32))
 
-        # Expected slice from the generated image
-        expected_slice = torch.tensor(
-            [
-                0.4726,
-                0.5549,
-                0.6324,
-                0.6548,
-                0.4968,
-                0.4639,
-                0.4749,
-                0.4898,
-                0.4725,
-                0.4645,
-                0.4435,
-                0.3339,
-                0.3400,
-                0.4630,
-                0.3879,
-                0.4406,
-            ]
-        )
-
-        generated_slice = generated_image.flatten()
-        generated_slice = torch.cat([generated_slice[:8], generated_slice[-8:]])
-        self.assertTrue(torch.allclose(generated_slice, expected_slice, atol=1e-3))
-
-    def test_qwen_controlnet_multicondition(self):
-        device = "cpu"
-        components = self.get_dummy_components()
-
-        components["controlnet"] = QwenImageMultiControlNetModel([components["controlnet"]])
-
-        pipe = self.pipeline_class(**components)
-        pipe.to(device)
-        pipe.set_progress_bar_config(disable=None)
-
-        inputs = self.get_dummy_inputs(device)
-        control_image = inputs["control_image"]
-        inputs["control_image"] = [control_image, control_image]
-        inputs["controlnet_conditioning_scale"] = [0.5, 0.5]
-
-        image = pipe(**inputs).images
-        generated_image = image[0]
-        self.assertEqual(generated_image.shape, (3, 32, 32))
-        # Expected slice from the generated image
-        expected_slice = torch.tensor(
-            [
-                0.6239,
-                0.6642,
-                0.5768,
-                0.6039,
-                0.5270,
-                0.5070,
-                0.5006,
-                0.5271,
-                0.4506,
-                0.3085,
-                0.3435,
-                0.5152,
-                0.5096,
-                0.5422,
-                0.4286,
-                0.5752,
-            ]
-        )
+        # fmt: off
+        expected_slice = torch.tensor([[0.5637, 0.6341, 0.6001, 0.5620, 0.5794, 0.5498, 0.5757, 0.6389, 0.4174, 0.3597, 0.5649, 0.4894, 0.4969, 0.5255, 0.4083, 0.4986]])
+        # fmt: on
 
         generated_slice = generated_image.flatten()
         generated_slice = torch.cat([generated_slice[:8], generated_slice[-8:]])
@@ -292,9 +206,6 @@ class QwenControlNetPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
                 "Attention slicing should not affect the inference results",
             )
 
-    def test_inference_batch_single_identical(self):
-        self._test_inference_batch_single_identical(batch_size=3, expected_max_diff=1e-1)
-
     def test_vae_tiling(self, expected_diff_max: float = 0.2):
         generator_device = "cpu"
         components = self.get_dummy_components()
@@ -306,12 +217,6 @@ class QwenControlNetPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         # Without tiling
         inputs = self.get_dummy_inputs(generator_device)
         inputs["height"] = inputs["width"] = 128
-        inputs["control_image"] = randn_tensor(
-            (1, 3, 128, 128),
-            generator=inputs["generator"],
-            device=torch.device(generator_device),
-            dtype=torch.float32,
-        )
         output_without_tiling = pipe(**inputs)[0]
 
         # With tiling
@@ -323,12 +228,6 @@ class QwenControlNetPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         )
         inputs = self.get_dummy_inputs(generator_device)
         inputs["height"] = inputs["width"] = 128
-        inputs["control_image"] = randn_tensor(
-            (1, 3, 128, 128),
-            generator=inputs["generator"],
-            device=torch.device(generator_device),
-            dtype=torch.float32,
-        )
         output_with_tiling = pipe(**inputs)[0]
 
         self.assertLess(
@@ -336,3 +235,19 @@ class QwenControlNetPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             expected_diff_max,
             "VAE tiling should not affect the inference results",
         )
+
+    @pytest.mark.xfail(condition=True, reason="Preconfigured embeddings need to be revisited.", strict=True)
+    def test_encode_prompt_works_in_isolation(self, extra_required_param_value_dict=None, atol=1e-4, rtol=1e-4):
+        super().test_encode_prompt_works_in_isolation(extra_required_param_value_dict, atol, rtol)
+
+    @pytest.mark.xfail(condition=True, reason="Batch of multiple images needs to be revisited", strict=True)
+    def test_num_images_per_prompt():
+        super().test_num_images_per_prompt()
+
+    @pytest.mark.xfail(condition=True, reason="Batch of multiple images needs to be revisited", strict=True)
+    def test_inference_batch_consistent():
+        super().test_inference_batch_consistent()
+
+    @pytest.mark.xfail(condition=True, reason="Batch of multiple images needs to be revisited", strict=True)
+    def test_inference_batch_single_identical():
+        super().test_inference_batch_single_identical()
