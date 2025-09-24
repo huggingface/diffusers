@@ -85,7 +85,6 @@ class WanS2VAttnProcessor:
         encoder_hidden_states: Optional[torch.Tensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
         rotary_emb: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
-        **kwargs,
     ) -> torch.Tensor:
         encoder_hidden_states_img = None
         if attn.add_k_proj is not None:
@@ -358,11 +357,7 @@ class AudioInjector(nn.Module):
         else:
             attn_hidden_states = self.injector_pre_norm_feat[audio_attn_id](input_hidden_states)
 
-        attention_kwargs = {
-            "max_seqlen_k": torch.ones(attn_hidden_states.shape[0], dtype=torch.long, device=attn_hidden_states.device)
-            * attn_audio_emb.shape[1]
-        }
-        residual_out = self.injector[audio_attn_id](attn_hidden_states, attn_audio_emb, None, None, **attention_kwargs)
+        residual_out = self.injector[audio_attn_id](attn_hidden_states, attn_audio_emb, None, None)
         residual_out = residual_out.unflatten(0, (-1, merged_audio_emb_num_frames)).flatten(1, 2)
         hidden_states[:, :original_sequence_length] = hidden_states[:, :original_sequence_length] + residual_out
 
@@ -745,7 +740,6 @@ class WanS2VTransformerBlock(nn.Module):
         encoder_hidden_states: torch.Tensor,
         temb: Tuple[torch.Tensor, torch.Tensor],
         rotary_emb: torch.Tensor,
-        attention_kwargs: Optional[Dict[str, torch.Tensor]] = None,
     ) -> torch.Tensor:
         seg_idx = temb[1].item()
         seg_idx = min(max(0, seg_idx), hidden_states.shape[1])
@@ -773,7 +767,7 @@ class WanS2VTransformerBlock(nn.Module):
         norm_hidden_states = torch.cat(parts, dim=1).type_as(hidden_states)
 
         # 1. Self-attention
-        attn_output = self.attn1(norm_hidden_states, None, None, rotary_emb, **(attention_kwargs or {}))
+        attn_output = self.attn1(norm_hidden_states, None, None, rotary_emb)
         z = []
         for i in range(2):
             z.append(attn_output[:, seg_idx[i] : seg_idx[i + 1]] * gate_msa[:, i : i + 1])
@@ -782,7 +776,7 @@ class WanS2VTransformerBlock(nn.Module):
 
         # 2. Cross-attention
         norm_hidden_states = self.norm2(hidden_states.float()).type_as(hidden_states)
-        attn_output = self.attn2(norm_hidden_states, encoder_hidden_states, None, None, **(attention_kwargs or {}))
+        attn_output = self.attn2(norm_hidden_states, encoder_hidden_states, None, None)
         hidden_states = hidden_states + attn_output
 
         # 3. Feed-forward
@@ -1102,7 +1096,6 @@ class WanS2VTransformer3DModel(
             drop_motion_frames,
             add_last_motion,
         )
-        attention_kwargs = {"max_seqlen_k": sequence_length.item()}
 
         hidden_states = hidden_states + self.trainable_condition_mask(mask_input).to(hidden_states.dtype)
 
@@ -1132,7 +1125,6 @@ class WanS2VTransformer3DModel(
                     encoder_hidden_states,
                     timestep_proj,
                     rotary_emb,
-                    attention_kwargs,
                 )
                 if block_idx in self.audio_injector.injected_block_id.keys():
                     hidden_states = self.audio_injector(
@@ -1145,9 +1137,7 @@ class WanS2VTransformer3DModel(
                     )
         else:
             for block_idx, block in enumerate(self.blocks):
-                hidden_states = block(
-                    hidden_states, encoder_hidden_states, timestep_proj, rotary_emb, attention_kwargs
-                )
+                hidden_states = block(hidden_states, encoder_hidden_states, timestep_proj, rotary_emb)
                 if block_idx in self.audio_injector.injected_block_id.keys():
                     hidden_states = self.audio_injector(
                         block_idx,
