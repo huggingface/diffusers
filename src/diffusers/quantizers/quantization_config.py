@@ -515,9 +515,21 @@ class TorchAoConfig(QuantizationConfigMixin):
         self.post_init()
 
     def post_init(self):
-        TORCHAO_QUANT_TYPE_METHODS = self._get_torchao_quant_type_to_method()
+        if not isinstance(self.quant_type, str):
+            if is_torchao_version("<=", "0.9.0"):
+                raise ValueError(
+                    f"torchao <= 0.9.0 only supports string quant_type, got {type(self.quant_type).__name__}. "
+                    f"Upgrade to torchao > 0.9.0 to use AOBaseConfig."
+                )
 
-        if isinstance(self.quant_type, str):
+            from torchao.quantization.quant_api import AOBaseConfig
+
+            if not isinstance(self.quant_type, AOBaseConfig):
+                raise TypeError(f"quant_type must be a AOBaseConfig instance, got {type(self.quant_type).__name__}")
+
+        elif isinstance(self.quant_type, str):
+            TORCHAO_QUANT_TYPE_METHODS = self._get_torchao_quant_type_to_method()
+
             if self.quant_type not in TORCHAO_QUANT_TYPE_METHODS.keys():
                 is_floating_quant_type = self.quant_type.startswith("float") or self.quant_type.startswith("fp")
                 if is_floating_quant_type and not self._is_xpu_or_cuda_capability_atleast_8_9():
@@ -545,18 +557,6 @@ class TorchAoConfig(QuantizationConfigMixin):
                     f'The quantization method "{self.quant_type}" does not support the following keyword arguments: '
                     f"{unsupported_kwargs}. The following keywords arguments are supported: {all_kwargs}."
                 )
-        elif is_torchao_version(">", "0.9.0"):
-            from torchao.quantization.quant_api import AOBaseConfig
-
-            if not isinstance(self.quant_type, AOBaseConfig):
-                raise TypeError(
-                    f"`quant_type` must be either a string or an `AOBaseConfig` instance, got {type(self.quant_type)}."
-                )
-        else:
-            raise ValueError(
-                f"In torchao <= 0.9.0, quant_type must be a string. Got {type(self.quant_type)}. "
-                f"Please upgrade to torchao > 0.9.0 to use `AOBaseConfig` instances."
-            )
 
     def to_dict(self):
         """Convert configuration to a dictionary."""
