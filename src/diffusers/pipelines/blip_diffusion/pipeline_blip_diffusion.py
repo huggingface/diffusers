@@ -19,11 +19,7 @@ from transformers import CLIPTokenizer
 
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...schedulers import PNDMScheduler
-from ...utils import (
-    is_torch_xla_available,
-    logging,
-    replace_example_docstring,
-)
+from ...utils import is_torch_xla_available, logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DeprecatedPipelineMixin, DiffusionPipeline, ImagePipelineOutput
 from .blip_image_processing import BlipImageProcessor

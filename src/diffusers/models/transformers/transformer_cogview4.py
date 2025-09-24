@@ -494,7 +494,7 @@ class CogView4TransformerBlock(nn.Module):
         ] = None,
         attention_mask: Optional[Dict[str, torch.Tensor]] = None,
         attention_kwargs: Optional[Dict[str, Any]] = None,
-    ) -> torch.Tensor:
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
         # 1. Timestep conditioning
         (
             norm_hidden_states,
@@ -717,7 +717,7 @@ class CogView4Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Cach
         image_rotary_emb: Optional[
             Union[Tuple[torch.Tensor, torch.Tensor], List[Tuple[torch.Tensor, torch.Tensor]]]
         ] = None,
-    ) -> Union[torch.Tensor, Transformer2DModelOutput]:
+    ) -> Union[Tuple[torch.Tensor], Transformer2DModelOutput]:
         if attention_kwargs is not None:
             attention_kwargs = attention_kwargs.copy()
             lora_scale = attention_kwargs.pop("scale", 1.0)

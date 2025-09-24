@@ -55,9 +55,8 @@ from .utils import PeftLoraLoaderMixinTests, check_if_lora_correctly_set  # noqa
 @require_peft_backend
 class FluxLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
     pipeline_class = FluxPipeline
-    scheduler_cls = FlowMatchEulerDiscreteScheduler()
+    scheduler_cls = FlowMatchEulerDiscreteScheduler
     scheduler_kwargs = {}
-    scheduler_classes = [FlowMatchEulerDiscreteScheduler]
     transformer_kwargs = {
         "patch_size": 1,
         "in_channels": 4,
@@ -282,9 +281,8 @@ class FluxLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
 
 class FluxControlLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
     pipeline_class = FluxControlPipeline
-    scheduler_cls = FlowMatchEulerDiscreteScheduler()
+    scheduler_cls = FlowMatchEulerDiscreteScheduler
     scheduler_kwargs = {}
-    scheduler_classes = [FlowMatchEulerDiscreteScheduler]
     transformer_kwargs = {
         "patch_size": 1,
         "in_channels": 8,
@@ -906,6 +904,13 @@ class FluxLoRAIntegrationTests(unittest.TestCase):
         max_diff = numpy_cosine_similarity_distance(expected_slice.flatten(), out_slice)
 
         assert max_diff < 1e-3
+
+    def test_flux_kohya_embedders_conversion(self):
+        """Test that embedders load without throwing errors"""
+        self.pipeline.load_lora_weights("rockerBOO/flux-bpo-po-lora")
+        self.pipeline.unload_lora_weights()
+
+        assert True
 
     def test_flux_xlabs(self):
         self.pipeline.load_lora_weights("XLabs-AI/flux-lora-collection", weight_name="disney_lora.safetensors")
