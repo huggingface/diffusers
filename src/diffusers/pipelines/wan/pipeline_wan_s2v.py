@@ -288,7 +288,7 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
 
         self.vae_scale_factor_temporal = self.vae.config.scale_factor_temporal if getattr(self, "vae", None) else 4
         self.vae_scale_factor_spatial = self.vae.config.scale_factor_spatial if getattr(self, "vae", None) else 8
-        self.video_processor = VideoProcessor(vae_scale_factor=self.vae_scale_factor_spatial)
+        self.video_processor = VideoProcessor(vae_scale_factor=self.vae_scale_factor_spatial, resample="bilinear")
         self.audio_processor = audio_processor
         self.motion_frames = 73
         self.drop_first_motion = True
@@ -352,7 +352,7 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         res = self.audio_encoder(input_values.to(self.audio_encoder.device), output_hidden_states=True)
         feat = torch.cat(res.hidden_states)
 
-        feat = linear_interpolation(feat, input_fps=50, output_fps=30)
+        feat = linear_interpolation(feat, input_fps=50, output_fps=video_rate)
 
         audio_embed = feat.to(torch.float32)  # Encoding for the motion
 
@@ -568,7 +568,7 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         num_channels_latents: int = 16,
         height: int = 480,
         width: int = 832,
-        num_frames_per_chunk: int = 81,
+        num_frames_per_chunk: int = 80,
         dtype: Optional[torch.dtype] = None,
         device: Optional[torch.device] = None,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
@@ -627,14 +627,14 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 pose_video, num_chunks, num_frames_per_chunk, height, width, latents_mean, latents_std
             )
             # Encode motion latents
+            videos_last_pixels = motion_pixels.detach()
             if init_first_frame:
                 self.drop_first_motion = False
-                motion_pixels[:, :, -6:] = latent_condition
+                motion_pixels[:, :, -6:] = video_condition
             motion_latents = retrieve_latents(self.vae.encode(motion_pixels), sample_mode="argmax")
             motion_latents = (motion_latents - latents_mean) * latents_std
-            videos_last_latents = motion_latents.detach()
 
-            return latents, latent_condition, videos_last_latents, motion_latents, pose_condition
+            return latents, latent_condition, videos_last_pixels, motion_latents, pose_condition
         else:
             return latents
 
@@ -706,7 +706,7 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         pose_video_path_or_url: Optional[str] = None,
         height: int = 480,
         width: int = 832,
-        num_frames_per_chunk: int = 81,
+        num_frames_per_chunk: int = 80,
         num_inference_steps: int = 40,
         guidance_scale: float = 4.5,
         num_videos_per_prompt: Optional[int] = 1,
@@ -751,9 +751,8 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 The height of the generated video.
             width (`int`, defaults to `832`):
                 The width of the generated video.
-            num_frames_per_chunk (`int`, defaults to `81`):
-                The number of frames in each chunk of the generated video. `num_frames_per_chunk` - 1 should be a
-                multiple of 4.
+            num_frames_per_chunk (`int`, defaults to `80`):
+                The number of frames in each chunk of the generated video. `num_frames_per_chunk` should be a multiple of 4.
             num_inference_steps (`int`, defaults to `50`):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
@@ -839,12 +838,12 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             audio_embeds,
         )
 
-        if num_frames_per_chunk % self.vae_scale_factor_temporal != 1:
-            logger.warning(
-                f"`num_frames_per_chunk - 1` has to be divisible by {self.vae_scale_factor_temporal}. Rounding to the nearest number."
-            )
+        if num_frames_per_chunk % self.vae_scale_factor_temporal != 0:
             num_frames_per_chunk = (
-                num_frames_per_chunk // self.vae_scale_factor_temporal * self.vae_scale_factor_temporal + 1
+                num_frames_per_chunk // self.vae_scale_factor_temporal * self.vae_scale_factor_temporal
+            )
+            logger.warning(
+                f"`num_frames_per_chunk` had to be divisible by {self.vae_scale_factor_temporal}. Rounding to the nearest number: {num_frames_per_chunk}"
             )
         num_frames_per_chunk = max(num_frames_per_chunk, 1)
 
@@ -902,11 +901,11 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 target_fps=sampling_fps,
                 reverse=True,
             )
-            pose_video = self.video_processor.preprocess_video(pose_video, height=height, width=width).to(
+            pose_video = self.video_processor.preprocess_video(pose_video, height=height, width=width, resize_mode="resize_min_center_crop").to(
                 device, dtype=torch.float32
             )
 
-        all_latents = []
+        video_chunks = []
         for r in range(num_chunks):
             latents_outputs = self.prepare_latents(
                 image if r == 0 else None,
@@ -926,7 +925,7 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             )
 
             if r == 0:
-                latents, condition, videos_last_latents, motion_latents, pose_condition = latents_outputs
+                latents, condition, videos_last_pixels, motion_latents, pose_condition = latents_outputs
             else:
                 latents = latents_outputs
 
@@ -1013,45 +1012,40 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             else:
                 decode_latents = torch.cat([condition, latents], dim=2)
 
-            # Work in latent space - no decode-encode cycle
-            num_latent_frames = (num_frames_per_chunk + 3) // self.vae_scale_factor_temporal
-            segment_latents = decode_latents[:, :, -num_latent_frames:]
-            if self.drop_first_motion and r == 0:
-                segment_latents = segment_latents[:, :, (3 + 3) // self.vae_scale_factor_temporal :]
+            decode_latents = decode_latents.to(self.vae.dtype)
 
-            num_latent_overlap_frames = min(latent_motion_frames, segment_latents.shape[2])
-            videos_last_latents = torch.cat(
-                [
-                    videos_last_latents[:, :, num_latent_overlap_frames:],
-                    segment_latents[:, :, -num_latent_overlap_frames:],
-                ],
-                dim=2,
+            latents_mean = (
+                torch.tensor(self.vae.config.latents_mean)
+                .view(1, self.vae.config.z_dim, 1, 1, 1)
+                .to(decode_latents.device, decode_latents.dtype)
             )
+            latents_std = 1.0 / torch.tensor(self.vae.config.latents_std).view(1, self.vae.config.z_dim, 1, 1, 1).to(
+                decode_latents.device, decode_latents.dtype
+            )
+            decode_latents = decode_latents / latents_std + latents_mean
+            video = self.vae.decode(decode_latents, return_dict=False)[0]
+            video = video[:, :, -(num_frames_per_chunk):]
+
+            if self.drop_first_motion and r == 0:
+                video = video[:, :, 3:]
+
+            num_overlap_frames = min(self.motion_frames, video.shape[2])
+            videos_last_pixels = torch.cat([videos_last_pixels[:, :, num_overlap_frames:], video[:, :, -num_overlap_frames:]], dim=2)
 
             # Update motion_latents for next iteration
-            motion_latents = videos_last_latents.to(dtype=motion_latents.dtype, device=motion_latents.device)
+            motion_latents = retrieve_latents(self.vae.encode(videos_last_pixels), sample_mode="argmax")
+            motion_latents = (motion_latents - latents_mean) * latents_std
 
-            # Accumulate latents so as to decode them all at once at the end
-            all_latents.append(segment_latents)
+            video_chunks.append(video)
 
-        latents = torch.cat(all_latents, dim=2)
+        video_chunks = torch.cat(video_chunks, dim=2)
 
         self._current_timestep = None
 
         if not output_type == "latent":
-            latents = latents.to(self.vae.dtype)
-            latents_mean = (
-                torch.tensor(self.vae.config.latents_mean)
-                .view(1, self.vae.config.z_dim, 1, 1, 1)
-                .to(latents.device, latents.dtype)
-            )
-            latents_std = 1.0 / torch.tensor(self.vae.config.latents_std).view(1, self.vae.config.z_dim, 1, 1, 1).to(
-                latents.device, latents.dtype
-            )
-            latents = latents / latents_std + latents_mean
-            video = self.vae.decode(latents, return_dict=False)[0]
-            video = self.video_processor.postprocess_video(video, output_type=output_type)
+            video = self.video_processor.postprocess_video(video_chunks, output_type=output_type)
         else:
+            # TODO
             video = latents
 
         # Offload all models
