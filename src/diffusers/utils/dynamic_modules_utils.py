@@ -254,6 +254,7 @@ def get_cached_module_file(
     token: Optional[Union[bool, str]] = None,
     revision: Optional[str] = None,
     local_files_only: bool = False,
+    local_dir: Optional[str] = None,
 ):
     """
     Prepares Downloads a module from a local folder or a distant repo and returns its path inside the cached
@@ -336,6 +337,7 @@ def get_cached_module_file(
                 force_download=force_download,
                 proxies=proxies,
                 local_files_only=local_files_only,
+                local_dir=local_dir,
             )
             submodule = "git"
             module_file = pretrained_model_name_or_path + ".py"
@@ -359,6 +361,7 @@ def get_cached_module_file(
                 force_download=force_download,
                 proxies=proxies,
                 local_files_only=local_files_only,
+                local_dir=local_dir,
                 token=token,
             )
             submodule = os.path.join("local", "--".join(pretrained_model_name_or_path.split("/")))
@@ -419,6 +422,7 @@ def get_cached_module_file(
                     token=token,
                     revision=revision,
                     local_files_only=local_files_only,
+                    local_dir=local_dir,
                 )
     return os.path.join(full_submodule, module_file)
 
@@ -435,7 +439,7 @@ def get_class_from_dynamic_module(
     token: Optional[Union[bool, str]] = None,
     revision: Optional[str] = None,
     local_files_only: bool = False,
-    **kwargs,
+    local_dir: Optional[str] = None,
 ):
     """
     Extracts a class from a module file, present in the local folder or repository of a model.
@@ -508,5 +512,6 @@ def get_class_from_dynamic_module(
         token=token,
         revision=revision,
         local_files_only=local_files_only,
+        local_dir=local_dir,
     )
     return get_class_in_module(class_name, final_module)
