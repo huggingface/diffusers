@@ -1,5 +1,3 @@
-import unittest
-
 from diffusers import (
     SanaTransformer2DModel,
 )
@@ -13,7 +11,7 @@ from .single_file_testing_utils import SingleFileModelTesterMixin
 enable_full_determinism()
 
 
-class SanaTransformer2DModelSingleFileTests(SingleFileModelTesterMixin, unittest.TestCase):
+class SanaTransformer2DModelSingleFileTests(SingleFileModelTesterMixin):
     model_class = SanaTransformer2DModel
     ckpt_path = (
         "https://huggingface.co/Efficient-Large-Model/Sana_1600M_1024px/blob/main/checkpoints/Sana_1600M_1024px.pth"

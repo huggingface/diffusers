@@ -13,7 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import unittest
 
 import torch
 
@@ -31,7 +30,7 @@ from .single_file_testing_utils import SingleFileModelTesterMixin
 enable_full_determinism()
 
 
-class WanTransformer3DModelText2VideoSingleFileTest(SingleFileModelTesterMixin, unittest.TestCase):
+class WanTransformer3DModelText2VideoSingleFileTest(SingleFileModelTesterMixin):
     model_class = WanTransformer3DModel
     ckpt_path = "https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/blob/main/split_files/diffusion_models/wan2.1_t2v_1.3B_bf16.safetensors"
     repo_id = "Wan-AI/Wan2.1-T2V-1.3B-Diffusers"
@@ -39,7 +38,7 @@ class WanTransformer3DModelText2VideoSingleFileTest(SingleFileModelTesterMixin, 
 
 
 @require_big_accelerator
-class WanTransformer3DModelImage2VideoSingleFileTest(SingleFileModelTesterMixin, unittest.TestCase):
+class WanTransformer3DModelImage2VideoSingleFileTest(SingleFileModelTesterMixin):
     model_class = WanTransformer3DModel
     ckpt_path = "https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/blob/main/split_files/diffusion_models/wan2.1_i2v_480p_14B_fp8_e4m3fn.safetensors"
     repo_id = "Wan-AI/Wan2.1-I2V-14B-480P-Diffusers"

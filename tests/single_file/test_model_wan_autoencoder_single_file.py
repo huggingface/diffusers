@@ -13,7 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import unittest
 
 from diffusers import (
     AutoencoderKLWan,
@@ -28,7 +27,7 @@ from .single_file_testing_utils import SingleFileModelTesterMixin
 enable_full_determinism()
 
 
-class AutoencoderKLWanSingleFileTests(SingleFileModelTesterMixin, unittest.TestCase):
+class AutoencoderKLWanSingleFileTests(SingleFileModelTesterMixin):
     model_class = AutoencoderKLWan
     ckpt_path = (
         "https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/blob/main/split_files/vae/wan_2.1_vae.safetensors"

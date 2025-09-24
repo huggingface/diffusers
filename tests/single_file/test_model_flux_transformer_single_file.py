@@ -14,7 +14,6 @@
 # limitations under the License.
 
 import gc
-import unittest
 
 from diffusers import (
     FluxTransformer2DModel,
@@ -31,7 +30,7 @@ from .single_file_testing_utils import SingleFileModelTesterMixin
 enable_full_determinism()
 
 
-class FluxTransformer2DModelSingleFileTests(SingleFileModelTesterMixin, unittest.TestCase):
+class FluxTransformer2DModelSingleFileTests(SingleFileModelTesterMixin):
     model_class = FluxTransformer2DModel
     ckpt_path = "https://huggingface.co/black-forest-labs/FLUX.1-dev/blob/main/flux1-dev.safetensors"
     alternate_keys_ckpt_paths = ["https://huggingface.co/Comfy-Org/flux1-dev/blob/main/flux1-dev-fp8.safetensors"]

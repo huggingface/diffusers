@@ -11,6 +11,7 @@ from diffusers.models.attention_processor import AttnProcessor
 
 from ..testing_utils import (
     backend_empty_cache,
+    nightly,
     numpy_cosine_similarity_distance,
     require_torch_accelerator,
     torch_device,
@@ -50,15 +51,14 @@ def download_diffusers_config(repo_id, tmpdir):
     return path
 
 
+@nightly
 @require_torch_accelerator
 class SingleFileModelTesterMixin:
-    def setUp(self):
-        super().setUp()
+    def setup_method(self):
         gc.collect()
         backend_empty_cache(torch_device)
 
-    def tearDown(self):
-        super().tearDown()
+    def teardown_method(self):
         gc.collect()
         backend_empty_cache(torch_device)
 

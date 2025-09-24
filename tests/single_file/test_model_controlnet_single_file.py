@@ -13,7 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import unittest
 
 import torch
 
@@ -30,7 +29,7 @@ from .single_file_testing_utils import SingleFileModelTesterMixin
 enable_full_determinism()
 
 
-class ControlNetModelSingleFileTests(SingleFileModelTesterMixin, unittest.TestCase):
+class ControlNetModelSingleFileTests(SingleFileModelTesterMixin):
     model_class = ControlNetModel
     ckpt_path = "https://huggingface.co/lllyasviel/ControlNet-v1-1/blob/main/control_v11p_sd15_canny.pth"
     repo_id = "lllyasviel/control_v11p_sd15_canny"

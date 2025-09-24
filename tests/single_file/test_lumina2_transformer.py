@@ -13,7 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import unittest
 
 from diffusers import (
     Lumina2Transformer2DModel,
@@ -28,7 +27,7 @@ from .single_file_testing_utils import SingleFileModelTesterMixin
 enable_full_determinism()
 
 
-class Lumina2Transformer2DModelSingleFileTests(SingleFileModelTesterMixin, unittest.TestCase):
+class Lumina2Transformer2DModelSingleFileTests(SingleFileModelTesterMixin):
     model_class = Lumina2Transformer2DModel
     ckpt_path = "https://huggingface.co/Comfy-Org/Lumina_Image_2.0_Repackaged/blob/main/split_files/diffusion_models/lumina_2_model_bf16.safetensors"
     alternate_keys_ckpt_paths = [
