@@ -25,7 +25,7 @@ from .image_processor import VaeImageProcessor, is_valid_image, is_valid_image_i
 class VideoProcessor(VaeImageProcessor):
     r"""Simple video processor."""
 
-    def preprocess_video(self, video, height: Optional[int] = None, width: Optional[int] = None) -> torch.Tensor:
+    def preprocess_video(self, video, height: Optional[int] = None, width: Optional[int] = None, resize_mode: str = "default") -> torch.Tensor:
         r"""
         Preprocesses input video(s).
 
@@ -49,6 +49,9 @@ class VideoProcessor(VaeImageProcessor):
             width (`int`, *optional*`, defaults to `None`):
                 The width in preprocessed frames of the video. If `None`, will use get_default_height_width()` to get
                 the default width.
+            resize_mode (`str`, *optional*, defaults to `default`):
+                The resize mode, can be one of `default`, `fill`, `crop`, or `center_crop`. See `VaeImageProcessor.preprocess`
+                for detailed descriptions of each mode.
         """
         if isinstance(video, list) and isinstance(video[0], np.ndarray) and video[0].ndim == 5:
             warnings.warn(
@@ -79,7 +82,7 @@ class VideoProcessor(VaeImageProcessor):
                 "Input is in incorrect format. Currently, we only support numpy.ndarray, torch.Tensor, PIL.Image.Image"
             )
 
-        video = torch.stack([self.preprocess(img, height=height, width=width) for img in video], dim=0)
+        video = torch.stack([self.preprocess(img, height=height, width=width, resize_mode=resize_mode) for img in video], dim=0)
 
         # move the number of channels before the number of frames.
         video = video.permute(0, 2, 1, 3, 4)
