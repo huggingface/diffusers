@@ -82,6 +82,8 @@
       title: Token merging
     - local: optimization/deepcache
       title: DeepCache
+    - local: optimization/cache_dit
+      title: CacheDiT
     - local: optimization/tgate
       title: TGATE
     - local: optimization/xdit
