@@ -25,13 +25,13 @@ from ...testing_utils import (
     floats_tensor,
     torch_device,
 )
-from ..test_modeling_common import ModelTesterMixin, UNetTesterMixin, VAETestMixin
+from ..test_modeling_common import AutoencoderTesterMixin, ModelTesterMixin, UNetTesterMixin
 
 
 enable_full_determinism()
 
 
-class AutoencoderKLHunyuanVideoTests(ModelTesterMixin, VAETestMixin, UNetTesterMixin, unittest.TestCase):
+class AutoencoderKLHunyuanVideoTests(ModelTesterMixin, AutoencoderTesterMixin, UNetTesterMixin, unittest.TestCase):
     model_class = AutoencoderKLHunyuanVideo
     main_input_name = "sample"
     base_precision = 1e-2

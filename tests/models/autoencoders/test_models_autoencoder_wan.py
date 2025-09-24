@@ -18,13 +18,13 @@ import unittest
 from diffusers import AutoencoderKLWan
 
 from ...testing_utils import enable_full_determinism, floats_tensor, torch_device
-from ..test_modeling_common import ModelTesterMixin, UNetTesterMixin, VAETestMixin
+from ..test_modeling_common import AutoencoderTesterMixin, ModelTesterMixin, UNetTesterMixin
 
 
 enable_full_determinism()
 
 
-class AutoencoderKLWanTests(ModelTesterMixin, VAETestMixin, UNetTesterMixin, unittest.TestCase):
+class AutoencoderKLWanTests(ModelTesterMixin, AutoencoderTesterMixin, UNetTesterMixin, unittest.TestCase):
     model_class = AutoencoderKLWan
     main_input_name = "sample"
     base_precision = 1e-2

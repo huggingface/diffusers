@@ -30,13 +30,13 @@ from ...testing_utils import (
     torch_all_close,
     torch_device,
 )
-from ..test_modeling_common import ModelTesterMixin, VAETestMixin
+from ..test_modeling_common import AutoencoderTesterMixin, ModelTesterMixin
 
 
 enable_full_determinism()
 
 
-class ConsistencyDecoderVAETests(ModelTesterMixin, VAETestMixin, unittest.TestCase):
+class ConsistencyDecoderVAETests(ModelTesterMixin, AutoencoderTesterMixin, unittest.TestCase):
     model_class = ConsistencyDecoderVAE
     main_input_name = "sample"
     base_precision = 1e-2
