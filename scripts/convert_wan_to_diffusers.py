@@ -154,6 +154,7 @@ S2V_TRANSFORMER_KEYS_RENAME_DICT = {
     "cond_encoder.weight": "condition_embedder.pose_embedder.weight",
     "cond_encoder.bias": "condition_embedder.pose_embedder.bias",
     "trainable_cond_mask": "trainable_condition_mask",
+    "patch_embedding": "motion_in.patch_embedding",
     # Audio injector attention mappings - convert original q/k/v/o format to diffusers format
     **{
         f"audio_injector.injector.{i}.{src}": f"audio_injector.injector.{i}.{dst}"

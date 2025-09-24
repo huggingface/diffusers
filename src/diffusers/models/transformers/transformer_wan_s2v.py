@@ -483,6 +483,43 @@ class FramePackMotioner(nn.Module):
         return motion_lat, motion_rope_emb
 
 
+class Motioner(nn.Module):
+    def __init__(self, inner_dim, num_attention_heads, patch_size=(1, 2, 2), in_channels=16, rope_max_seq_len=1024):
+        super().__init__()
+        self.inner_dim = inner_dim
+        self.num_attention_heads = num_attention_heads
+
+        self.patch_embedding = nn.Conv3d(in_channels, inner_dim, kernel_size=patch_size, stride=patch_size)
+        self.rope = WanS2VRotaryPosEmbed(
+            inner_dim // num_attention_heads, patch_size, rope_max_seq_len, num_attention_heads
+        )
+
+    def forward(self, motion_latents):
+        latent_motion_frames = motion_latents.shape[2]
+        mot = self.patch_embedding(motion_latents)
+
+        height, width = mot.shape[3], mot.shape[4]
+        flat_mot = mot.flatten(2).transpose(1, 2).contiguous()
+        motion_grid_sizes = [
+            [
+                torch.tensor([-latent_motion_frames, 0, 0]).unsqueeze(0),
+                torch.tensor([0, height, width]).unsqueeze(0),
+                torch.tensor([latent_motion_frames, height, width]).unsqueeze(0),
+            ]
+        ]
+        motion_rope_emb = self.rope(
+            flat_mot.detach().view(
+                flat_mot.shape[0],
+                flat_mot.shape[1],
+                self.num_attention_heads,
+                self.inner_dim // self.num_attention_heads,
+            ),
+            motion_grid_sizes,
+        )
+
+        return flat_mot, motion_rope_emb
+
+
 class WanTimeTextAudioPoseEmbedding(nn.Module):
     def __init__(
         self,
@@ -855,6 +892,14 @@ class WanS2VTransformer3DModel(
                 drop_mode=framepack_drop_mode,
                 patch_size=patch_size,
             )
+        else:
+            self.motion_in = Motioner(
+                inner_dim=inner_dim,
+                num_attention_heads=num_attention_heads,
+                patch_size=patch_size,
+                in_channels=in_channels,
+                rope_max_seq_len=rope_max_seq_len,
+            )
 
         self.trainable_condition_mask = nn.Embedding(3, inner_dim)
 
@@ -900,36 +945,12 @@ class WanS2VTransformer3DModel(
         self.gradient_checkpointing = False
 
     def process_motion(self, motion_latents, drop_motion_frames=False):
+        flattern_mot, mot_remb = self.motion_in(motion_latents)
+
         if drop_motion_frames or motion_latents[0].shape[1] == 0:
             return [], []
-        self.latent_motion_frames = motion_latents[0].shape[1]
-        mot = [self.patch_embedding(m.unsqueeze(0)) for m in motion_latents]
-        batch_size = len(mot)
-
-        mot_remb = []
-        flattern_mot = []
-        for bs in range(batch_size):
-            height, width = mot[bs].shape[3], mot[bs].shape[4]
-            flat_mot = mot[bs].flatten(2).transpose(1, 2).contiguous()
-            motion_grid_sizes = [
-                [
-                    torch.tensor([-self.latent_motion_frames, 0, 0]).unsqueeze(0),
-                    torch.tensor([0, height, width]).unsqueeze(0),
-                    torch.tensor([self.latent_motion_frames, height, width]).unsqueeze(0),
-                ]
-            ]
-            motion_rope_emb = self.rope(
-                flat_mot.detach().view(
-                    1,
-                    flat_mot.shape[1],
-                    self.config.num_attention_heads,
-                    self.inner_dim // self.config.num_attention_heads,
-                ),
-                motion_grid_sizes,
-            )
-            mot_remb.append(motion_rope_emb)
-            flattern_mot.append(flat_mot)
-        return flattern_mot, mot_remb
+        else:
+            return flattern_mot, mot_remb
 
     def process_motion_frame_pack(self, motion_latents, drop_motion_frames=False, add_last_motion=2):
         flattern_mot, mot_remb = self.frame_packer(motion_latents, add_last_motion)
