@@ -37,7 +37,7 @@ A single-file format stores *all* the model (UNet, transformer, text encoder) we
 - Greater compatibility with [ComfyUI](https://github.com/comfyanonymous/ComfyUI) or [Automatic1111](https://github.com/AUTOMATIC1111/stable-diffusion-webui).
 - Easier to download and share a single file.
 
-Use [`~loaders.FromSingleFileMixin.from_single_file`] to load a single file. Pass `"cuda"` to the `device_map` argument to pre-allocate GPU memory and reduce model loading time (refer to the [parallel loading](../using-diffusers/loading#parallel-loading) docs for more details).
+Use [`~loaders.FromSingleFileMixin.from_single_file`] to load a single file.
 
 ```py
 import torch
