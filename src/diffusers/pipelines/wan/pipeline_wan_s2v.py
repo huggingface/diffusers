@@ -134,13 +134,7 @@ EXAMPLE_DOC_STRING = """
         ...         return target_height, target_width
 
 
-        >>> def aspect_ratio_resize(image, pipe, max_area):
-        ...     height, width = get_size_less_than_area(image.size[1], image.size[0], target_area=max_area)
-        ...     image = image.resize((width, height))
-        ...     return image, height, width
-
-
-        >>> image, height, width = aspect_ratio_resize(first_frame, pipe, 480 * 832)
+        >>> height, width = get_size_less_than_area(image.height, image.width, target_area=480 * 832)
 
         >>> prompt = "Einstein singing a song."
 
@@ -151,7 +145,7 @@ EXAMPLE_DOC_STRING = """
         ...     sampling_rate=sampling_rate,
         ...     height=height,
         ...     width=width,
-        ...     num_frames_per_chunk=81,
+        ...     num_frames_per_chunk=80,
         ...     # pose_video_path_or_url=pose_video_path_or_url,
         ... ).frames[0]
         >>> export_to_video(output, "output.mp4", fps=16)
