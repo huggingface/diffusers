@@ -253,7 +253,7 @@ The example below demonstrates how to use the speech-to-video pipeline to genera
 import numpy as np, math
 import torch
 from diffusers import AutoencoderKLWan, WanSpeechToVideoPipeline
-from diffusers.utils import export_to_video, load_image, load_audio, load_video
+from diffusers.utils import export_to_merged_video_audio, load_image, load_audio, load_video
 from transformers import Wav2Vec2ForCTC
 import requests
 from PIL import Image
@@ -336,18 +336,13 @@ def get_size_less_than_area(height,
 
         return target_height, target_width
 
-def aspect_ratio_resize(image, pipe, max_area):
-    height, width = get_size_less_than_area(image.size[1], image.size[0], target_area=max_area)
-    image = image.resize((width, height))
-    return image, height, width
-
-image, height, width = aspect_ratio_resize(first_frame, pipe, 480*832)
+height, width = get_size_less_than_area(first_frame.height, first_frame.width, 480*832)
 
 prompt = "Einstein singing a song."
 
 output = pipe(
     prompt=prompt, image=image, audio=audio, sampling_rate=sampling_rate,
-    height=height, width=width, num_frames_per_chunk=81,
+    height=height, width=width, num_frames_per_chunk=80,
     #pose_video_path_or_url=pose_video_path_or_url,
 ).frames[0]
 export_to_video(output, "output.mp4", fps=16)
@@ -355,62 +350,6 @@ export_to_video(output, "output.mp4", fps=16)
 # Lastly, we need to merge the video and audio into a new video, with the duration set to
 # the shorter of the two and overwrite the original video file.
 
-import os, logging, subprocess, shutil
-
-def merge_video_audio(video_path: str, audio_path: str):
-    logging.basicConfig(level=logging.INFO)
-
-    if not os.path.exists(video_path):
-        raise FileNotFoundError(f"video file {video_path} does not exist")
-    if not os.path.exists(audio_path):
-        raise FileNotFoundError(f"audio file {audio_path} does not exist")
-
-    base, ext = os.path.splitext(video_path)
-    temp_output = f"{base}_temp{ext}"
-
-    try:
-        # Create ffmpeg command
-        command = [
-            'ffmpeg',
-            '-y',  # overwrite
-            '-i',
-            video_path,
-            '-i',
-            audio_path,
-            '-c:v',
-            'copy',  # copy video stream
-            '-c:a',
-            'aac',  # use AAC audio encoder
-            '-b:a',
-            '192k',  # set audio bitrate (optional)
-            '-map',
-            '0:v:0',  # select the first video stream
-            '-map',
-            '1:a:0',  # select the first audio stream
-            '-shortest',  # choose the shortest duration
-            temp_output
-        ]
-
-        # Execute the command
-        logging.info("Start merging video and audio...")
-        result = subprocess.run(
-            command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-
-        # Check result
-        if result.returncode != 0:
-            error_msg = f"FFmpeg execute failed: {result.stderr}"
-            logging.error(error_msg)
-            raise RuntimeError(error_msg)
-
-        shutil.move(temp_output, video_path)
-        logging.info(f"Merge completed, saved to {video_path}")
-
-    except Exception as e:
-        if os.path.exists(temp_output):
-            os.remove(temp_output)
-        logging.error(f"merge_video_audio failed with error: {e}")
-
-merge_video_audio("output.mp4", "audio.mp3")
 ```
 
 </hfoption>
