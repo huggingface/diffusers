@@ -92,6 +92,7 @@ if is_kernels_available():
 
 class Magi1AttnProcessor:
     _attention_backend = None
+    _parallel_config = None
 
     def __init__(self):
         if not hasattr(F, "scaled_dot_product_attention"):
@@ -162,6 +163,7 @@ class Magi1AttnProcessor:
             is_causal=False,
             enable_gqa=True,
             backend=self._attention_backend,
+            parallel_config=self._parallel_config,
         )
         # Convert [b, nh, sq, hd] -> [sq, b, (hn hd)]
         hidden_states = hidden_states.permute(2, 0, 1, 3)
