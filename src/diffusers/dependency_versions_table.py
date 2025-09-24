@@ -9,6 +9,7 @@ deps = {
     "filelock": "filelock",
     "flax": "flax>=0.4.1",
     "hf-doc-builder": "hf-doc-builder>=0.3.0",
+    "httpx": "httpx",
     "huggingface-hub": "huggingface-hub==1.0.0.rc1",
     "requests-mock": "requests-mock==1.10.0",
     "importlib_metadata": "importlib_metadata",
