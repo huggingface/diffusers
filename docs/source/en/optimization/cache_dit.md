@@ -1,6 +1,7 @@
 ## CacheDiT  
 
-CacheDiT is a unified, flexible, and training-free cache acceleration framework designed to support nearly all Diffusers' DiT-based pipelines. It provides unified cache APIs, automatic block adapter, DBCache, and more.
+CacheDiT is a unified, flexible, and training-free cache acceleration framework designed to support nearly all Diffusers' DiT-based pipelines. It provides a unified cache API that supports automatic block adapter, DBCache, and more.
+
 To learn more, refer to the [CacheDiT](https://github.com/vipshop/cache-dit) repository.
 
 Install a stable release of CacheDiT from PyPI or you can install the latest version from GitHub.
@@ -42,10 +43,7 @@ CacheDiT works by matching specific input/output patterns as shown below.
 
 ![](https://github.com/vipshop/cache-dit/raw/main/assets/patterns-v1.png)
 
-
-### Cache Acceleration with One-line Code
-
-Call the `enable_cache()` function on a pipeline to enable the cache.
+Call the `enable_cache()` function on a pipeline to enable cache acceleration. This function is the entry point to many of CacheDiT's features.
 
 ```python
 import cache_dit
@@ -64,7 +62,7 @@ output = pipe(...)
 cache_dit.disable_cache(pipe)
 ```
 
-### Automatic Block Adapter
+## Automatic Block Adapter
 
 For custom or modified pipelines or transformers not included in Diffusers, use the `BlockAdapter` in `auto` mode or via manual configuration. Please check the [BlockAdapter](https://github.com/vipshop/cache-dit/blob/main/docs/User_Guide.md#automatic-block-adapter) docs for more details. Refer to [Qwen-Image w/ BlockAdapter](https://github.com/vipshop/cache-dit/blob/main/examples/adapter/run_qwen_image_adapter.py) as an example.
 
@@ -118,7 +116,7 @@ cache_dit.enable_cache(
 
 This also works if there is more than one transformer (namely `transformer` and `transformer_2`) in its structure. Refer to [Wan 2.2 MoE](https://github.com/vipshop/cache-dit/blob/main/examples/pipeline/run_wan_2.2.py) as an example.
 
-### Patch Functor
+## Patch Functor
 
 For any pattern not included in CacheDiT, use the Patch Functor to convert the pattern into a known pattern. You need to subclass the Patch Functor and may also need to fuse the operations within the blocks for loop into block `forward`. After implementing a Patch Functor, set the `patch_functor` property in `BlockAdapter`.
 
@@ -149,8 +147,6 @@ def hidream_adapter(pipe, **kwargs) -> BlockAdapter:
         **kwargs,
     )
 ```
-
-### Cache Summary
 
 Finally, you can call the `cache_dit.summary()` function on a pipeline after its completed inference to get the cache acceleration details.
 
@@ -236,7 +232,7 @@ cache_dit.enable_cache(
 
 ## Hybrid Cache CFG
 
-CacheDiT supports caching for CFG (classifier-free guidance). For models that fuse CFG and non-CFG into a single forward step, or models that do not include CFG (classifier-free guidance) in the forward step, please set `enable_separate_cfg` parameter  to `False (default, None)`. Otherwise, set it to `True`. 
+CacheDiT supports caching for CFG (classifier-free guidance). For models that fuse CFG and non-CFG into a single forward step, or models that do not include CFG in the forward step, please set `enable_separate_cfg` parameter  to `False (default, None)`. Otherwise, set it to `True`. 
 
 ```python
 from cache_dit import BasicCacheConfig
@@ -245,8 +241,8 @@ cache_dit.enable_cache(
     pipe_or_adapter, 
     cache_config=BasicCacheConfig(
         ...,
-        # For example, set it as True for Wan 2.1/Qwen-Image 
-        # and set it as False for FLUX.1, HunyuanVideo, CogVideoX, etc.
+        # For example, set it as True for Wan 2.1, Qwen-Image 
+        # and set it as False for FLUX.1, HunyuanVideo, etc.
         enable_separate_cfg=True,
     ),
 )
