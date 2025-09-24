@@ -203,7 +203,7 @@ class ComponentSpec:
 
         Returns:
             Dict mapping loading field names to their values. e.g. {
-                "pretrained_model_name_or_path": "path/to/pretrained_model_name_or_path", "subfolder": "subfolder", "variant": "variant", "revision": "revision"
+                "pretrained_model_name_or_path": "path/to/repo", "subfolder": "subfolder", "variant": "variant", "revision": "revision"
             } If a segment value is "null", it's replaced with None. Returns None if load_id is "null" (indicating
             component not created with `load` method).
         """
