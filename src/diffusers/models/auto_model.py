@@ -194,7 +194,7 @@ class AutoModel(ConfigMixin):
 
         has_remote_code = "auto_map" in config and cls.__name__ in config["auto_map"]
         trust_remote_code = resolve_trust_remote_code(trust_remote_code, pretrained_model_or_path, has_remote_code)
-        if not (has_remote_code and trust_remote_code):
+        if not has_remote_code and trust_remote_code:
             raise ValueError(
                 "Selected model repository does not happear to have any custom code or does not have a valid `config.json` file."
             )
