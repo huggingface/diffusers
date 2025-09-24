@@ -366,7 +366,7 @@ class ModularPipelineBlocks(ConfigMixin, PushToHubMixin):
         collection: Optional[str] = None,
     ) -> "ModularPipeline":
         """
-        create a ModularPipeline, optionally accept modular_pretrained_model_name_or_path to load from hub.
+        create a ModularPipeline, optionally accept pretrained_model_name_or_path to load from hub.
         """
         pipeline_class_name = MODULAR_PIPELINE_MAPPING.get(self.model_name, ModularPipeline.__name__)
         diffusers_module = importlib.import_module("diffusers")
@@ -1639,7 +1639,7 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
             pretrained_model_name_or_path (`str` or `os.PathLike`, optional):
                 Path to a pretrained pipeline configuration. It will first try to load config from
                 `modular_model_index.json`, then fallback to `model_index.json` for compatibility with standard
-                non-modular pretrained_model_name_or_pathsitories. If the pretrained_model_name_or_path does not contain any pipeline config, it will be set to None
+                non-modular repositories. If the pretrained_model_name_or_path does not contain any pipeline config, it will be set to None
                 during initialization.
             trust_remote_code (`bool`, optional):
                 Whether to trust remote code when loading the pipeline, need to be set to True if you want to create
