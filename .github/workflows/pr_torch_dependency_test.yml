@@ -30,6 +30,7 @@ jobs:
           python -m uv pip install -e .
           python -m uv pip install torch torchvision torchaudio
           python -m uv pip install pytest
+          python -m uv pip install git+https://github.com/huggingface/transformers.git@ci-test-huggingface-hub-v1.0.0.rc0 # temporary (only for tests)
       - name: Check for soft dependencies
         run: |
           python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
