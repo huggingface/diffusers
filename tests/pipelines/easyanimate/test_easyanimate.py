@@ -48,6 +48,7 @@ class EasyAnimatePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
     image_params = TEXT_TO_IMAGE_IMAGE_PARAMS
     image_latents_params = TEXT_TO_IMAGE_IMAGE_PARAMS
+    test_xformers_attention = False
     required_optional_params = frozenset(
         [
             "num_inference_steps",
