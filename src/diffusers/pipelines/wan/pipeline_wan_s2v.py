@@ -752,7 +752,8 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             width (`int`, defaults to `832`):
                 The width of the generated video.
             num_frames_per_chunk (`int`, defaults to `80`):
-                The number of frames in each chunk of the generated video. `num_frames_per_chunk` should be a multiple of 4.
+                The number of frames in each chunk of the generated video. `num_frames_per_chunk` should be a multiple
+                of 4.
             num_inference_steps (`int`, defaults to `50`):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
@@ -901,9 +902,9 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 target_fps=sampling_fps,
                 reverse=True,
             )
-            pose_video = self.video_processor.preprocess_video(pose_video, height=height, width=width, resize_mode="resize_min_center_crop").to(
-                device, dtype=torch.float32
-            )
+            pose_video = self.video_processor.preprocess_video(
+                pose_video, height=height, width=width, resize_mode="resize_min_center_crop"
+            ).to(device, dtype=torch.float32)
 
         video_chunks = []
         for r in range(num_chunks):
@@ -1030,7 +1031,9 @@ class WanSpeechToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 video = video[:, :, 3:]
 
             num_overlap_frames = min(self.motion_frames, video.shape[2])
-            videos_last_pixels = torch.cat([videos_last_pixels[:, :, num_overlap_frames:], video[:, :, -num_overlap_frames:]], dim=2)
+            videos_last_pixels = torch.cat(
+                [videos_last_pixels[:, :, num_overlap_frames:], video[:, :, -num_overlap_frames:]], dim=2
+            )
 
             # Update motion_latents for next iteration
             motion_latents = retrieve_latents(self.vae.encode(videos_last_pixels), sample_mode="argmax")
