@@ -20,12 +20,9 @@ import torch
 from diffusers import AutoencoderKLHunyuanVideo
 from diffusers.models.autoencoders.autoencoder_kl_hunyuan_video import prepare_causal_attention_mask
 
-from ...testing_utils import (
-    enable_full_determinism,
-    floats_tensor,
-    torch_device,
-)
-from ..test_modeling_common import AutoencoderTesterMixin, ModelTesterMixin
+from ...testing_utils import enable_full_determinism, floats_tensor, torch_device
+from ..test_modeling_common import ModelTesterMixin
+from .testing_utils import AutoencoderTesterMixin
 
 
 enable_full_determinism()
