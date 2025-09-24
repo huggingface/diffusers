@@ -33,9 +33,9 @@ import safetensors.torch
 import torch
 import torch.nn as nn
 from huggingface_hub import snapshot_download
+from huggingface_hub.utils import HfHubHTTPError
 from parameterized import parameterized
 from PIL import Image
-from requests.exceptions import HTTPError
 from transformers import CLIPImageProcessor, CLIPModel, CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
 from diffusers import (
@@ -430,7 +430,7 @@ class DownloadTests(unittest.TestCase):
         response_mock = mock.Mock()
         response_mock.status_code = 500
         response_mock.headers = {}
-        response_mock.raise_for_status.side_effect = HTTPError
+        response_mock.raise_for_status.side_effect = HfHubHTTPError("Server down", response=mock.Mock())
         response_mock.json.return_value = {}
 
         # Download this model to make sure it's in the cache.
@@ -457,7 +457,7 @@ class DownloadTests(unittest.TestCase):
         response_mock = mock.Mock()
         response_mock.status_code = 500
         response_mock.headers = {}
-        response_mock.raise_for_status.side_effect = HTTPError
+        response_mock.raise_for_status.side_effect = HfHubHTTPError("Server down", response=mock.Mock())
         response_mock.json.return_value = {}
 
         # first check that with local files only the pipeline can only be used if cached
