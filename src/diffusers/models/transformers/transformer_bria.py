@@ -120,6 +120,7 @@ def get_1d_rotary_pos_embed(
 
 class BriaAttnProcessor:
     _attention_backend = None
+    _parallel_config = None
 
     def __init__(self):
         if not hasattr(F, "scaled_dot_product_attention"):
@@ -161,7 +162,12 @@ class BriaAttnProcessor:
             key = apply_rotary_emb(key, image_rotary_emb, sequence_dim=1)
 
         hidden_states = dispatch_attention_fn(
-            query, key, value, attn_mask=attention_mask, backend=self._attention_backend
+            query,
+            key,
+            value,
+            attn_mask=attention_mask,
+            backend=self._attention_backend,
+            parallel_config=self._parallel_config,
         )
         hidden_states = hidden_states.flatten(2, 3)
         hidden_states = hidden_states.to(query.dtype)
