@@ -230,18 +230,21 @@ By selectively loading and unloading the models you need at a given stage and sh
 
 ## Context parallelism
 
-[Context parallelism](https://huggingface.co/spaces/nanotron/ultrascale-playbook?section=context_parallelism) reduces memory by splitting input sequences across multiple GPUs. Each GPU processes its own slice of the sequence.
+[Context parallelism](https://huggingface.co/spaces/nanotron/ultrascale-playbook?section=context_parallelism) splits input sequences across multiple GPUs to reduce memory usage. Each GPU processes its own slice of the sequence.
 
-The key (K) and value (V) representations are communicated between devices with [Ring Attention](https://huggingface.co/papers/2310.01889) to ensure each split can see every other token's K/V. In Ring Attention, each GPU computes attention for it's local K/V and passes it to the next GPU in the ring. This way, no single GPU has to hold the full sequence and reduces communication latency.
+Key (K) and value (V) representations communicate between devices using [Ring Attention](https://huggingface.co/papers/2310.01889). This ensures each split sees every other token's K/V. Each GPU computes attention for its local K/V and passes it to the next GPU in the ring. No single GPU holds the full sequence, which reduces communication latency.
 
-Call [`parallelize`] on the model and pass a [`ContextParallelConfig`]. This config supports the `ring_degree` argument which determines the number of devices to use for Ring Attention.
+Call [`parallelize`] on the model and pass a [`ContextParallelConfig`]. The config supports the `ring_degree` argument that determines how many devices to use for Ring Attention.
 
-Use the [`~ModelMixin.set_attention_backend`] method to use a more optimized [attention backend](../optimization/attention_backends). The example below uses the FlashAttention backend.
+Use [`~ModelMixin.set_attention_backend`] to switch to a more optimized [attention backend](../optimization/attention_backends). The example below uses the FlashAttention backend.
 
-Pass your pipelines to [`~ModelMixin.enable_parallelism`] as a context manager to activate and coordinate context parallelism.
+Refer to the table below for the supported attention backends enabled by [`~ModelMixin.set_attention_backend`].
 
-> [!TIP]
-> Context parallelism currently supports the cuDNN, FlashAttention-2, and SageAttention backends.
+| attention family | support type |
+|---|---|
+| native cuDNN | inference and training |
+| FlashAttention-2/3 | inference and training |
+| SageAttention | inference |
 
 ```py
 import torch
@@ -257,7 +260,11 @@ try:
 
     pipeline.transformer.parallelize(config=ContextParallelConfig(ring_degree=2))
     pipeline.transformer.set_attention_backend("flash")
-    
+```
+
+Pass your pipeline to [`~ModelMixin.enable_parallelism`] as a context manager to activate and coordinate context parallelism.
+
+```py
     prompt = """
     cinematic film still of a cat sipping a margarita in a pool in Palm Springs, California
     highly detailed, high budget hollywood movie, cinemascope, moody, epic, gorgeous, film grain
@@ -283,9 +290,9 @@ finally:
 
 ### Ulysses Attention
 
-[Ulysses Attention](https://huggingface.co/papers/2309.14509) splits a sequence across GPUs and performs an *all-to-all* (every device sends/receives data to every other device) so that each GPU ends up with all the tokens for only a subset of the attention heads. Each GPU computes attention locally on all tokens for its head and then performs another all-to-all to regroup the results by tokens, making it ready for the next layer.
+[Ulysses Attention](https://huggingface.co/papers/2309.14509) splits a sequence across GPUs and performs an *all-to-all* communication (every device sends/receives data to every other device). Each GPU ends up with all tokens for only a subset of attention heads. Each GPU computes attention locally on all tokens for its head, then performs another all-to-all to regroup results by tokens for the next layer.
 
-[`ContextParallelConfig`] also supports Ulysses Attention through the `ulysses_degree` argument. This determines the number of devices to use for Ulysses Attention.
+[`ContextParallelConfig`] supports Ulysses Attention through the `ulysses_degree` argument. This determines how many devices to use for Ulysses Attention.
 
 ```py
 pipeline.transformer.parallelize(config=ContextParallelConfig(ulysses_degree=2))
