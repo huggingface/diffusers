@@ -104,11 +104,8 @@ Esses comandos irá linkar a pasta que você clonou o repositório e os caminhos
 Python então irá procurar dentro da pasta que você clonou além dos caminhos normais das bibliotecas.
 Por exemplo, se o pacote python for tipicamente instalado no `~/anaconda3/envs/main/lib/python3.10/site-packages/`, o Python também irá procurar na pasta `~/diffusers/` que você clonou.
 
-<Tip warning={true}>
-
-Você deve deixar a pasta `diffusers` se você quiser continuar usando a biblioteca.
-
-</Tip>
+> [!WARNING]
+> Você deve deixar a pasta `diffusers` se você quiser continuar usando a biblioteca.
 
 Agora você pode facilmente atualizar seu clone para a última versão do 🤗 Diffusers com o seguinte comando:
 

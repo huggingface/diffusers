@@ -335,9 +335,8 @@ grid_image = make_image_grid([canny_image, image], rows=1, cols=2)
 ```
 ![](https://github.com/jabir-zheng/TCD/raw/main/assets/controlnet_canny_tcd.png)
 
-<Tip>
-The inference parameters in this example might not work for all examples, so we recommend you to try different values for `num_inference_steps`, `guidance_scale`, `controlnet_conditioning_scale` and `cross_attention_kwargs` parameters and choose the best one.
-</Tip>
+> [!TIP]
+> The inference parameters in this example might not work for all examples, so we recommend you to try different values for `num_inference_steps`, `guidance_scale`, `controlnet_conditioning_scale` and `cross_attention_kwargs` parameters and choose the best one.
 
 </hfoption>
 <hfoption id="IP-Adapter">

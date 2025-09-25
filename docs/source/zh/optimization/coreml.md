@@ -13,11 +13,8 @@ http://www.apache.org/licenses/LICENSE-2.0
 
 Core ML 模型可以利用 Apple 设备中所有可用的计算引擎：CPU、GPU 和 Apple Neural Engine（或 ANE，一种在 Apple Silicon Mac 和现代 iPhone/iPad 中可用的张量优化加速器）。根据模型及其运行的设备，Core ML 还可以混合和匹配计算引擎，例如，模型的某些部分可能在 CPU 上运行，而其他部分在 GPU 上运行。
 
-<Tip>
-
-您还可以使用 PyTorch 内置的 `mps` 加速器在 Apple Silicon Mac 上运行 `diffusers` Python 代码库。这种方法在 [mps 指南](mps) 中有详细解释，但它与原生应用不兼容。
-
-</Tip>
+> [!TIP]
+> 您还可以使用 PyTorch 内置的 `mps` 加速器在 Apple Silicon Mac 上运行 `diffusers` Python 代码库。这种方法在 [mps 指南](mps) 中有详细解释，但它与原生应用不兼容。
 
 ## Stable Diffusion Core ML 检查点
 

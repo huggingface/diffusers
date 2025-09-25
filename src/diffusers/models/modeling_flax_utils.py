@@ -227,15 +227,12 @@ class FlaxModelMixin(PushToHubMixin):
                 This can be used to enable mixed-precision training or half-precision inference on GPUs or TPUs. If
                 specified, all the computation will be performed with the given `dtype`.
 
-                <Tip>
-
-                This only specifies the dtype of the *computation* and does not influence the dtype of model
-                parameters.
-
-                If you wish to change the dtype of the model parameters, see [`~FlaxModelMixin.to_fp16`] and
-                [`~FlaxModelMixin.to_bf16`].
-
-                </Tip>
+                > [!TIP]
+                > This only specifies the dtype of the *computation* and does not influence the dtype of model
+                > parameters.
+                >
+                > If you wish to change the dtype of the model parameters, see [`~FlaxModelMixin.to_fp16`] and
+                > [`~FlaxModelMixin.to_bf16`].
 
             model_args (sequence of positional arguments, *optional*):
                 All remaining positional arguments are passed to the underlying model's `__init__` method.

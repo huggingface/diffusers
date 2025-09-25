@@ -34,11 +34,8 @@ image = pipeline(prompt).images[0]
 pipeline.save_pretrained("./onnx-stable-diffusion-v1-5")
 ```
 
-<Tip warning={true}>
-
-Generating multiple prompts in a batch seems to take too much memory. While we look into it, you may need to iterate instead of batching.
-
-</Tip>
+> [!WARNING]
+> Generating multiple prompts in a batch seems to take too much memory. While we look into it, you may need to iterate instead of batching.
 
 To export the pipeline in the ONNX format offline and use it later for inference,
 use the [`optimum-cli export`](https://huggingface.co/docs/optimum/main/en/exporters/onnx/usage_guides/export_a_model#exporting-a-model-to-onnx-using-the-cli) command:

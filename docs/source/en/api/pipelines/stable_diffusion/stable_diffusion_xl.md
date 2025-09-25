@@ -33,13 +33,10 @@ The abstract from the paper is:
 - SDXL output images can be improved by making use of a refiner model in an image-to-image setting.
 - SDXL offers `negative_original_size`, `negative_crops_coords_top_left`, and `negative_target_size` to negatively condition the model on image resolution and cropping parameters.
 
-<Tip>
-
-To learn how to use SDXL for various tasks, how to optimize performance, and other usage examples, take a look at the [Stable Diffusion XL](../../../using-diffusers/sdxl) guide.
-
-Check out the [Stability AI](https://huggingface.co/stabilityai) Hub organization for the official base and refiner model checkpoints!
-
-</Tip>
+> [!TIP]
+> To learn how to use SDXL for various tasks, how to optimize performance, and other usage examples, take a look at the [Stable Diffusion XL](../../../using-diffusers/sdxl) guide.
+>
+> Check out the [Stability AI](https://huggingface.co/stabilityai) Hub organization for the official base and refiner model checkpoints!
 
 ## StableDiffusionXLPipeline
 

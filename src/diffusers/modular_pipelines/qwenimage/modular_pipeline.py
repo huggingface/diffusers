@@ -97,11 +97,8 @@ class QwenImageModularPipeline(ModularPipeline, QwenImageLoraLoaderMixin):
     """
     A ModularPipeline for QwenImage.
 
-    <Tip warning={true}>
-
-        This is an experimental feature and is likely to change in the future.
-
-    </Tip>
+    > [!WARNING]
+    > This is an experimental feature and is likely to change in the future.
     """
 
     @property
@@ -151,11 +148,8 @@ class QwenImageEditModularPipeline(ModularPipeline, QwenImageLoraLoaderMixin):
     """
     A ModularPipeline for QwenImage-Edit.
 
-    <Tip warning={true}>
-
-        This is an experimental feature and is likely to change in the future.
-
-    </Tip>
+    > [!WARNING]
+    > This is an experimental feature and is likely to change in the future.
     """
 
     # YiYi TODO: qwen edit should not provide default height/width, should be derived from the resized input image (after adjustment) produced by the resize step.

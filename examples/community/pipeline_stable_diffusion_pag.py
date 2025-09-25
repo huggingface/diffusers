@@ -940,9 +940,8 @@ class StableDiffusionPAGPipeline(
         """
         Enables fused QKV projections. For self-attention modules, all projection matrices (i.e., query,
         key, value) are fused. For cross-attention modules, key and value projection matrices are fused.
-        <Tip warning={true}>
-        This API is 🧪 experimental.
-        </Tip>
+        > [!WARNING]
+        > This API is 🧪 experimental.
         Args:
             unet (`bool`, defaults to `True`): To apply fusion on the UNet.
             vae (`bool`, defaults to `True`): To apply fusion on the VAE.
@@ -966,9 +965,8 @@ class StableDiffusionPAGPipeline(
     # Copied from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl.StableDiffusionXLPipeline.unfuse_qkv_projections
     def unfuse_qkv_projections(self, unet: bool = True, vae: bool = True):
         """Disable QKV projection fusion if enabled.
-        <Tip warning={true}>
-        This API is 🧪 experimental.
-        </Tip>
+        > [!WARNING]
+        > This API is 🧪 experimental.
         Args:
             unet (`bool`, defaults to `True`): To apply fusion on the UNet.
             vae (`bool`, defaults to `True`): To apply fusion on the VAE.
