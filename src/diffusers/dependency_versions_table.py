@@ -47,7 +47,6 @@ deps = {
     "tiktoken": "tiktoken>=0.7.0",
     "torch": "torch>=1.4",
     "torchvision": "torchvision",
-    "transformers": "transformers>=4.41.2",
     "urllib3": "urllib3<=2.0.0",
     "black": "black",
     "phonemizer": "phonemizer",

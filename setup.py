@@ -140,7 +140,7 @@ _deps = [
     "tiktoken>=0.7.0",
     "torch>=1.4",
     "torchvision",
-    "transformers>=4.41.2",
+    # "transformers>=4.41.2",
     "urllib3<=2.0.0",
     "black",
     "phonemizer",
