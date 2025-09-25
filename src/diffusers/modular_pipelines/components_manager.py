@@ -286,11 +286,8 @@ class ComponentsManager:
     encoders, etc.) across different modular pipelines. It includes features for duplicate detection, memory
     management, and component organization.
 
-    <Tip warning={true}>
-
-        This is an experimental feature and is likely to change in the future.
-
-    </Tip>
+    > [!WARNING]
+    > This is an experimental feature and is likely to change in the future.
 
     Example:
         ```python

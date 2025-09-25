@@ -226,11 +226,8 @@ class ModularPipelineBlocks(ConfigMixin, PushToHubMixin):
 
     [`ModularPipelineBlocks`] provides method to load and save the definition of pipeline blocks.
 
-    <Tip warning={true}>
-
-        This is an experimental feature and is likely to change in the future.
-
-    </Tip>
+    > [!WARNING]
+    > This is an experimental feature and is likely to change in the future.
     """
 
     config_name = "modular_config.json"
@@ -525,11 +522,8 @@ class AutoPipelineBlocks(ModularPipelineBlocks):
     This class inherits from [`ModularPipelineBlocks`]. Check the superclass documentation for the generic methods the
     library implements for all the pipeline blocks (such as loading or saving etc.)
 
-    <Tip warning={true}>
-
-        This is an experimental feature and is likely to change in the future.
-
-    </Tip>
+    > [!WARNING]
+    > This is an experimental feature and is likely to change in the future.
 
     Attributes:
         block_classes: List of block classes to be used
@@ -787,11 +781,8 @@ class SequentialPipelineBlocks(ModularPipelineBlocks):
     This class inherits from [`ModularPipelineBlocks`]. Check the superclass documentation for the generic methods the
     library implements for all the pipeline blocks (such as loading or saving etc.)
 
-    <Tip warning={true}>
-
-        This is an experimental feature and is likely to change in the future.
-
-    </Tip>
+    > [!WARNING]
+    > This is an experimental feature and is likely to change in the future.
 
     Attributes:
         block_classes: List of block classes to be used
@@ -1146,11 +1137,8 @@ class LoopSequentialPipelineBlocks(ModularPipelineBlocks):
     This class inherits from [`ModularPipelineBlocks`]. Check the superclass documentation for the generic methods the
     library implements for all the pipeline blocks (such as loading or saving etc.)
 
-    <Tip warning={true}>
-
-        This is an experimental feature and is likely to change in the future.
-
-    </Tip>
+    > [!WARNING]
+    > This is an experimental feature and is likely to change in the future.
 
     Attributes:
         block_classes: List of block classes to be used
@@ -1433,11 +1421,8 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
     """
     Base class for all Modular pipelines.
 
-    <Tip warning={true}>
-
-        This is an experimental feature and is likely to change in the future.
-
-    </Tip>
+    > [!WARNING]
+    > This is an experimental feature and is likely to change in the future.
 
     Args:
         blocks: ModularPipelineBlocks, the blocks to be used in the pipeline
@@ -2173,12 +2158,9 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
         Performs Pipeline dtype and/or device conversion. A torch.dtype and torch.device are inferred from the
         arguments of `self.to(*args, **kwargs).`
 
-        <Tip>
-
-            If the pipeline already has the correct torch.dtype and torch.device, then it is returned as is. Otherwise,
-            the returned pipeline is a copy of self with the desired torch.dtype and torch.device.
-
-        </Tip>
+        > [!TIP]
+        > If the pipeline already has the correct torch.dtype and torch.device, then it is returned as is. Otherwise,
+        >     the returned pipeline is a copy of self with the desired torch.dtype and torch.device.
 
 
         Here are the ways to call `to`:
