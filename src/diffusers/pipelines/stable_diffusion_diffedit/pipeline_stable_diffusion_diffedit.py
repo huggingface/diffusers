@@ -249,8 +249,7 @@ class StableDiffusionDiffEditPipeline(
     StableDiffusionLoraLoaderMixin,
 ):
     r"""
-    > [!WARNING]
-    > This is an experimental feature!
+    > [!WARNING] > This is an experimental feature!
 
     Pipeline for text-guided image inpainting using Stable Diffusion and DiffEdit.
 

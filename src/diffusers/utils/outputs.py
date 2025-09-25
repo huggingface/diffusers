@@ -43,9 +43,8 @@ class BaseOutput(OrderedDict):
     tuple) or strings (like a dictionary) that will ignore the `None` attributes. Otherwise behaves like a regular
     Python dictionary.
 
-    > [!WARNING]
-    > You can't unpack a [`BaseOutput`] directly. Use the [`~utils.BaseOutput.to_tuple`] method to convert it to a tuple
-    > first.
+    > [!WARNING] > You can't unpack a [`BaseOutput`] directly. Use the [`~utils.BaseOutput.to_tuple`] method to convert
+    it to a tuple > first.
     """
 
     def __init_subclass__(cls) -> None:

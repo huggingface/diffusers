@@ -3669,8 +3669,7 @@ class FusedAttnProcessor2_0:
     fused projection layers. For self-attention modules, all projection matrices (i.e., query, key, value) are fused.
     For cross-attention modules, key and value projection matrices are fused.
 
-    > [!WARNING]
-    > This API is currently 🧪 experimental in nature and can change in future.
+    > [!WARNING] > This API is currently 🧪 experimental in nature and can change in future.
     """
 
     def __init__(self):
