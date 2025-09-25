@@ -265,7 +265,14 @@ class StableDiffusionXLCoreDenoiseStep(SequentialPipelineBlocks):
             + " - `StableDiffusionXLInputStep` (input) standardizes the inputs for the denoising step.\n"
             + " - `StableDiffusionXLAutoBeforeDenoiseStep` (before_denoise) prepares the inputs for the denoising step.\n"
             + " - `StableDiffusionXLAutoControlNetInputStep` (controlnet_input) prepares the controlnet input.\n"
-            + " - `StableDiffusionXLAutoDenoiseStep` (denoise) iteratively denoises the latents.\n"
+            + " - `StableDiffusionXLAutoDenoiseStep` (denoise) iteratively denoises the latents.\n\n"
+            + "This step support text-to-image, image-to-image, inpainting, with or without controlnet/controlnet_union/ip_adapter for Stable Diffusion XL:\n"
+            + "- for image-to-image generation, you need to provide `image_latents`\n"
+            + "- for inpainting, you need to provide `mask_image` and `image_latents`\n"
+            + "- to run the controlnet workflow, you need to provide `control_image`\n"
+            + "- to run the controlnet_union workflow, you need to provide `control_image` and `control_mode`\n"
+            + "- to run the ip_adapter workflow, you need to load ip_adapter into your unet and provide `ip_adapter_embeds`\n"
+            + "- for text-to-image generation, all you need to provide is prompt embeddings\n"
         )
 
 

@@ -531,7 +531,12 @@ class QwenImageCoreDenoiseStep(SequentialPipelineBlocks):
             + " - `QwenImageAutoBeforeDenoiseStep` (before_denoise) prepares the inputs for the denoising step.\n"
             + " - `QwenImageOptionalControlNetBeforeDenoiseStep` (controlnet_before_denoise) prepares the controlnet input for the denoising step.\n"
             + " - `QwenImageAutoDenoiseStep` (denoise) iteratively denoises the latents.\n"
-            + " - `QwenImageAutoDecodeStep` (decode) decodes the latents into images.\n"
+            + " - `QwenImageAutoDecodeStep` (decode) decodes the latents into images.\n\n"
+            + "This step support text-to-image, image-to-image, inpainting, and controlnet tasks for QwenImage:\n"
+            + " - for image-to-image generation, you need to provide `image_latents`\n"
+            + " - for inpainting, you need to provide `processed_mask_image` and `image_latents`\n"
+            + " - to run the controlnet workflow, you need to provide `control_image_latents`\n"
+            + " - for text-to-image generation, all you need to provide is prompt embeddings"
         )
 
 
@@ -836,7 +841,10 @@ class QwenImageEditCoreDenoiseStep(SequentialPipelineBlocks):
             "Core step that performs the denoising process. \n"
             + " - `QwenImageEditAutoInputStep` (input) standardizes the inputs for the denoising step.\n"
             + " - `QwenImageEditAutoBeforeDenoiseStep` (before_denoise) prepares the inputs for the denoising step.\n"
-            + " - `QwenImageEditAutoDenoiseStep` (denoise) iteratively denoises the latents.\n"
+            + " - `QwenImageEditAutoDenoiseStep` (denoise) iteratively denoises the latents.\n\n"
+            + "This step support edit (img2img) and edit inpainting workflow for QwenImage Edit:\n"
+            + " - When `processed_mask_image` is provided, it will be used for edit inpainting task.\n"
+            + " - When `image_latents` is provided, it will be used for edit (img2img) task.\n"
         )
 
 
