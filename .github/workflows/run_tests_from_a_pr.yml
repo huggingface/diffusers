@@ -67,6 +67,7 @@ jobs:
           python -m uv pip install -e [quality,test]
           python -m uv pip install --prerelease=allow git+https://github.com/huggingface/transformers.git # temporary (only for tests)
           python -m uv pip install peft
+          python -m uv pip install compel==0.1.8
 
       - name: Run tests
         env:

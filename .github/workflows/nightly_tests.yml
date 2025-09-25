@@ -75,6 +75,7 @@ jobs:
           python -m uv pip install -e [quality,test]
           pip uninstall accelerate -y && python -m uv pip install -U accelerate@git+https://github.com/huggingface/accelerate.git
           python -m uv pip install pytest-reportlog
+          python -m uv pip install compel==0.1.8
       - name: Environment
         run: |
           python utils/print_env.py
@@ -129,6 +130,7 @@ jobs:
         python -m uv pip install peft@git+https://github.com/huggingface/peft.git
         pip uninstall accelerate -y && python -m uv pip install -U accelerate@git+https://github.com/huggingface/accelerate.git
         python -m uv pip install pytest-reportlog
+        python -m uv pip install compel==0.1.8
     - name: Environment
       run: python utils/print_env.py
 
@@ -237,6 +239,7 @@ jobs:
           python -m uv pip install peft@git+https://github.com/huggingface/peft.git
           pip uninstall accelerate -y && python -m uv pip install -U accelerate@git+https://github.com/huggingface/accelerate.git
           python -m uv pip install pytest-reportlog
+          python -m uv pip install compel==0.1.8
       - name: Environment
         run: |
           python utils/print_env.py
@@ -286,6 +289,7 @@ jobs:
           python -m uv pip install -e [quality,test]
           python -m uv pip install peft@git+https://github.com/huggingface/peft.git
           pip uninstall accelerate -y && python -m uv pip install -U accelerate@git+https://github.com/huggingface/accelerate.git
+          python -m uv pip install compel==0.1.8
 
       - name: Environment
         run: |

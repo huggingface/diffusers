@@ -41,6 +41,7 @@ jobs:
           python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
           python -m uv pip install -e [quality,test]
           python -m uv pip install --prerelease=allow git+https://github.com/huggingface/transformers.git # temporary (only for tests)
+          python -m uv pip install compel==0.1.8
           python -m uv pip install -r benchmarks/requirements.txt
       - name: Environment
         run: |
