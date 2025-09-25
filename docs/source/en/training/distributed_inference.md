@@ -288,8 +288,10 @@ finally:
 
 [`ContextParallelConfig`] supports Ulysses Attention through the `ulysses_degree` argument. This determines how many devices to use for Ulysses Attention.
 
+Pass the [`ContextParallelConfig`] to [`~ModelMixin.enable_parallelism`].
+
 ```py
-pipeline.transformer.parallelize(config=ContextParallelConfig(ulysses_degree=2))
+pipeline.transformer.enable_parallelism(config=ContextParallelConfig(ulysses_degree=2))
 ```
 
 - Take a look at this [script](https://gist.github.com/sayakpaul/cfaebd221820d7b43fae638b4dfa01ba) for a minimal example of distributed inference with Accelerate.
