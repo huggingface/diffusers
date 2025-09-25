@@ -67,6 +67,7 @@ def _check_if_slices_match(output, expected_slice):
     img = output.images
     generated_slice = img.flatten()
     generated_slice = torch.cat([generated_slice[:8], generated_slice[-8:]])
+    print(f"{generated_slice=}")
     assert torch.allclose(generated_slice, expected_slice, atol=1e-4)
 
 
