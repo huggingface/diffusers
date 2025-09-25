@@ -89,6 +89,22 @@
     - local: using-diffusers/image_quality
       title: FreeU
 
+- title: Quantization
+  isExpanded: false
+  sections:
+  - local: quantization/overview
+    title: Overview
+  - local: quantization/bitsandbytes
+    title: bitsandbytes
+  - local: quantization/gguf
+    title: gguf
+  - local: quantization/torchao
+    title: torchao
+  - local: quantization/quanto
+    title: quanto
+  - local: quantization/modelopt
+    title: NVIDIA ModelOpt
+
 - title: Hybrid Inference
   isExpanded: false
   sections:
@@ -170,22 +186,6 @@
       title: Latent Consistency Distillation
     - local: training/ddpo
       title: Reinforcement learning training with DDPO
-
-- title: Quantization
-  isExpanded: false
-  sections:
-  - local: quantization/overview
-    title: Getting started
-  - local: quantization/bitsandbytes
-    title: bitsandbytes
-  - local: quantization/gguf
-    title: gguf
-  - local: quantization/torchao
-    title: torchao
-  - local: quantization/quanto
-    title: quanto
-  - local: quantization/modelopt
-    title: NVIDIA ModelOpt
 
 - title: Model accelerators and hardware
   isExpanded: false
