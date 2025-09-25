@@ -389,9 +389,8 @@ class FlaxStableDiffusionImg2ImgPipeline(FlaxDiffusionPipeline):
             jit (`bool`, defaults to `False`):
                 Whether to run `pmap` versions of the generation and safety scoring functions.
 
-                    > [!WARNING]
-                    > This argument exists because `__call__` is not yet end-to-end pmap-able. It will be removed in a
-                    > future release.
+                    > [!WARNING] > This argument exists because `__call__` is not yet end-to-end pmap-able. It will be
+                    removed in a > future release.
 
         Examples:
 

@@ -53,10 +53,9 @@ class KarrasVeScheduler(SchedulerMixin, ConfigMixin):
     This model inherits from [`SchedulerMixin`] and [`ConfigMixin`]. Check the superclass documentation for the generic
     methods the library implements for all schedulers such as loading and saving.
 
-    > [!TIP]
-    > For more details on the parameters, see [Appendix E](https://huggingface.co/papers/2206.00364). The grid search
-    > values used to find the optimal `{s_noise, s_churn, s_min, s_max}` for a specific model are described in Table 5 of
-    > the paper.
+    > [!TIP] > For more details on the parameters, see [Appendix E](https://huggingface.co/papers/2206.00364). The grid
+    search > values used to find the optimal `{s_noise, s_churn, s_min, s_max}` for a specific model are described in
+    Table 5 of > the paper.
 
     Args:
         sigma_min (`float`, defaults to 0.02):

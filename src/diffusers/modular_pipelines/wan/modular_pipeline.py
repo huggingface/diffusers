@@ -30,8 +30,7 @@ class WanModularPipeline(
     """
     A ModularPipeline for Wan.
 
-    > [!WARNING]
-    > This is an experimental feature and is likely to change in the future.
+    > [!WARNING] > This is an experimental feature and is likely to change in the future.
     """
 
     default_blocks_name = "WanAutoBlocks"

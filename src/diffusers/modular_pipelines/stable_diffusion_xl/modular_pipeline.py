@@ -47,8 +47,7 @@ class StableDiffusionXLModularPipeline(
     """
     A ModularPipeline for Stable Diffusion XL.
 
-    > [!WARNING]
-    > This is an experimental feature and is likely to change in the future.
+    > [!WARNING] > This is an experimental feature and is likely to change in the future.
     """
 
     default_blocks_name = "StableDiffusionXLAutoBlocks"

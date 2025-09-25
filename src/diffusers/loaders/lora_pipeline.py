@@ -246,10 +246,8 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
         r"""
         Return state dict for lora weights and the network alphas.
 
-        > [!WARNING]
-        > We support loading A1111 formatted LoRA checkpoints in a limited capacity.
-        >
-        > This function is experimental and might change in the future.
+        > [!WARNING] > We support loading A1111 formatted LoRA checkpoints in a limited capacity. > > This function is
+        experimental and might change in the future.
 
         Parameters:
             pretrained_model_name_or_path_or_dict (`str` or `os.PathLike` or `dict`):
@@ -542,8 +540,7 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
         r"""
         Fuses the LoRA parameters into the original parameters of the corresponding blocks.
 
-        > [!WARNING]
-        > This is an experimental API.
+        > [!WARNING] > This is an experimental API.
 
         Args:
             components: (`List[str]`): List of LoRA-injectable components to fuse the LoRAs into.
@@ -580,8 +577,7 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
         Reverses the effect of
         [`pipe.fuse_lora()`](https://huggingface.co/docs/diffusers/main/en/api/loaders#diffusers.loaders.LoraBaseMixin.fuse_lora).
 
-        > [!WARNING]
-        > This is an experimental API.
+        > [!WARNING] > This is an experimental API.
 
         Args:
             components (`List[str]`): List of LoRA-injectable components to unfuse LoRA from.
@@ -689,10 +685,8 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
         r"""
         Return state dict for lora weights and the network alphas.
 
-        > [!WARNING]
-        > We support loading A1111 formatted LoRA checkpoints in a limited capacity.
-        >
-        > This function is experimental and might change in the future.
+        > [!WARNING] > We support loading A1111 formatted LoRA checkpoints in a limited capacity. > > This function is
+        experimental and might change in the future.
 
         Parameters:
             pretrained_model_name_or_path_or_dict (`str` or `os.PathLike` or `dict`):
@@ -1995,8 +1989,7 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
         Reverses the effect of
         [`pipe.fuse_lora()`](https://huggingface.co/docs/diffusers/main/en/api/loaders#diffusers.loaders.LoraBaseMixin.fuse_lora).
 
-        > [!WARNING]
-        > This is an experimental API.
+        > [!WARNING] > This is an experimental API.
 
         Args:
             components (`List[str]`): List of LoRA-injectable components to unfuse LoRA from.

@@ -290,9 +290,8 @@ def get_cached_module_file(
         local_files_only (`bool`, *optional*, defaults to `False`):
             If `True`, will only try to load the tokenizer configuration from local files.
 
-    > [!TIP]
-    > You may pass a token in `token` if you are not logged in (`hf auth login`) and want to use private or [gated
-    > models](https://huggingface.co/docs/hub/models-gated#gated-models).
+    > [!TIP] > You may pass a token in `token` if you are not logged in (`hf auth login`) and want to use private or
+    [gated > models](https://huggingface.co/docs/hub/models-gated#gated-models).
 
     Returns:
         `str`: The path to the module inside the cache.
@@ -437,9 +436,8 @@ def get_class_from_dynamic_module(
     """
     Extracts a class from a module file, present in the local folder or repository of a model.
 
-    > [!WARNING]
-    > Calling this function will execute the code in the module file found locally or downloaded from the Hub. It should
-    > therefore only be called on trusted repos.
+    > [!WARNING] > Calling this function will execute the code in the module file found locally or downloaded from the
+    Hub. It should > therefore only be called on trusted repos.
 
     Args:
         pretrained_model_name_or_path (`str` or `os.PathLike`):
@@ -474,9 +472,8 @@ def get_class_from_dynamic_module(
         local_files_only (`bool`, *optional*, defaults to `False`):
             If `True`, will only try to load the tokenizer configuration from local files.
 
-    > [!TIP]
-    > You may pass a token in `token` if you are not logged in (`hf auth login`) and want to use private or [gated
-    > models](https://huggingface.co/docs/hub/models-gated#gated-models).
+    > [!TIP] > You may pass a token in `token` if you are not logged in (`hf auth login`) and want to use private or
+    [gated > models](https://huggingface.co/docs/hub/models-gated#gated-models).
 
     Returns:
         `type`: The class, dynamically imported from the module.
