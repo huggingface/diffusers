@@ -298,6 +298,8 @@ finally:
 
 [`ContextParallelConfig`] supports Ulysses Attention through the `ulysses_degree` argument. This determines how many devices to use for Ulysses Attention.
 
+Pass the [`ContextParallelConfig`] to [`~ModelMixin.enable_parallelism`].
+
 ```py
-pipeline.transformer.parallelize(config=ContextParallelConfig(ulysses_degree=2))
+pipeline.transformer.enable_parallelism(config=ContextParallelConfig(ulysses_degree=2))
 ```
