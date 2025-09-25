@@ -253,7 +253,7 @@ The example below demonstrates how to use the speech-to-video pipeline to genera
 import numpy as np, math
 import torch
 from diffusers import AutoencoderKLWan, WanSpeechToVideoPipeline
-from diffusers.utils import export_to_merged_video_audio, load_image, load_audio, load_video
+from diffusers.utils import export_to_merged_video_audio, load_image, load_audio, load_video, export_to_video
 from transformers import Wav2Vec2ForCTC
 import requests
 from PIL import Image
@@ -349,7 +349,7 @@ export_to_video(output, "output.mp4", fps=16)
 
 # Lastly, we need to merge the video and audio into a new video, with the duration set to
 # the shorter of the two and overwrite the original video file.
-
+export_to_merged_video_audio("output.mp4", "audio.mp3")
 ```
 
 </hfoption>
