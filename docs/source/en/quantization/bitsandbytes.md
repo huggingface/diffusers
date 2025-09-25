@@ -32,7 +32,7 @@ By default, all the other modules such as `torch.nn.LayerNorm` are converted to 
 
 This works for any model in any modality, as long as it supports loading with [Accelerate](https://hf.co/docs/accelerate/index) and contains `torch.nn.Linear` layers.
 
-> [!TIP]
+> [!NOTE]
 > For Ada and higher-series GPUs, change `torch_dtype` to `torch.bfloat16`.
 
 <hfoptions id="bnb">

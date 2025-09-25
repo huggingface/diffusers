@@ -13,57 +13,12 @@ specific language governing permissions and limitations under the License.
 
 # GGUF
 
-The GGUF file format is typically used to store models for inference with [GGML](https://github.com/ggerganov/ggml) and supports a variety of block wise quantization options. Diffusers supports loading checkpoints prequantized and saved in the GGUF format via `from_single_file` loading with Model classes. Loading GGUF checkpoints via Pipelines is currently not supported.
+GGUF is a binary file format for storing and loading [GGML](https://github.com/ggerganov/ggml) models for inference. It's designed to support various blockwise quantization options, single-file deployment, and fast loading and saving.
 
-The following example will load the [FLUX.1 DEV](https://huggingface.co/black-forest-labs/FLUX.1-dev) transformer model using the GGUF Q2_K quantization variant.
+Diffusers only supports loading GGUF *model* files as opposed to an entire GGUF pipeline checkpoint.
 
-Before starting please install gguf in your environment
-
-```shell
-pip install -U gguf
-```
-
-Since GGUF is a single file format, use [`~FromSingleFileMixin.from_single_file`] to load the model and pass in the [`GGUFQuantizationConfig`].
-
-When using GGUF checkpoints, the quantized weights remain in a low memory `dtype`(typically `torch.uint8`) and are dynamically dequantized and cast to the configured `compute_dtype` during each module's forward pass through the model. The `GGUFQuantizationConfig` allows you to set the `compute_dtype`.
-
-The functions used for dynamic dequantizatation are based on the great work done by [city96](https://github.com/city96/ComfyUI-GGUF), who created the Pytorch ports of the original [`numpy`](https://github.com/ggerganov/llama.cpp/blob/master/gguf-py/gguf/quants.py) implementation by [compilade](https://github.com/compilade).
-
-```python
-import torch
-
-from diffusers import FluxPipeline, FluxTransformer2DModel, GGUFQuantizationConfig
-
-ckpt_path = (
-    "https://huggingface.co/city96/FLUX.1-dev-gguf/blob/main/flux1-dev-Q2_K.gguf"
-)
-transformer = FluxTransformer2DModel.from_single_file(
-    ckpt_path,
-    quantization_config=GGUFQuantizationConfig(compute_dtype=torch.bfloat16),
-    torch_dtype=torch.bfloat16,
-)
-pipe = FluxPipeline.from_pretrained(
-    "black-forest-labs/FLUX.1-dev",
-    transformer=transformer,
-    torch_dtype=torch.bfloat16,
-)
-pipe.enable_model_cpu_offload()
-prompt = "A cat holding a sign that says hello world"
-image = pipe(prompt, generator=torch.manual_seed(0)).images[0]
-image.save("flux-gguf.png")
-```
-
-## Using Optimized CUDA Kernels with GGUF
-
-Optimized CUDA kernels can accelerate GGUF quantized model inference by approximately 10%. This functionality requires a compatible GPU with `torch.cuda.get_device_capability` greater than 7 and the kernels library:
-
-```shell
-pip install -U kernels
-```
-
-Once installed, set `DIFFUSERS_GGUF_CUDA_KERNELS=true`  to use optimized kernels when available. Note that CUDA kernels may introduce minor numerical differences compared to the original GGUF implementation, potentially causing subtle visual variations in generated images. To disable CUDA kernel usage, set the environment variable `DIFFUSERS_GGUF_CUDA_KERNELS=false`.
-
-## Supported Quantization Types
+<details>
+<summary>Supported quantization types</summary>
 
 - BF16
 - Q4_0
@@ -77,10 +32,61 @@ Once installed, set `DIFFUSERS_GGUF_CUDA_KERNELS=true`  to use optimized kernels
 - Q5_K
 - Q6_K
 
+</details>
+
+Make sure gguf is installed.
+
+```bash
+pip install -U gguf
+```
+
+Load GGUF files with [`~loaders.FromSingleFileMixin.from_single_file`] and pass [`GGUFQuantizationConfig`] to configure the `compute_type`. Quantized weights remain in a low memory data type and are dynamically dequantized and cast to the configured `compute_dtype` during each module's forward pass through the model.
+
+```python
+import torch
+from diffusers import FluxPipeline, AutoModel, GGUFQuantizationConfig
+
+transformer = AutoModel.from_single_file(
+    "https://huggingface.co/city96/FLUX.1-dev-gguf/blob/main/flux1-dev-Q2_K.gguf",
+    quantization_config=GGUFQuantizationConfig(compute_dtype=torch.bfloat16),
+    torch_dtype=torch.bfloat16,
+)
+pipeline = FluxPipeline.from_pretrained(
+    "black-forest-labs/FLUX.1-dev",
+    transformer=transformer,
+    torch_dtype=torch.bfloat16,
+    device_map="cuda"
+)
+prompt = """
+cinematic film still of a cat sipping a margarita in a pool in Palm Springs, California
+highly detailed, high budget hollywood movie, cinemascope, moody, epic, gorgeous, film grain
+"""
+image = pipeline(prompt).images[0]
+image.save("flux-gguf.png")
+```
+
+## CUDA kernels
+
+Optimized CUDA kernels can accelerate GGUF model inference by ~10%. It requires a compatible GPU with `torch.cuda.get_device_capability` greater than 7 and the [kernels](https://huggingface.co/docs/kernels/index) library.
+
+```bash
+pip install -U kernels
+```
+
+Set `DIFFUSERS_GGUF_CUDA_KERNELS=true` to enable optimized kernels. CUDA kernels may introduce minor numerical differences compared to the original GGUF implementation, potentially causing subtle visual variations in generated images.
+
+```python
+import os
+
+# Enable CUDA kernels for ~10% speedup
+os.environ["DIFFUSERS_GGUF_CUDA_KERNELS"] = "true"
+# Disable CUDA kernels
+# os.environ["DIFFUSERS_GGUF_CUDA_KERNELS"] = "false"
+```
+
 ## Convert to GGUF
 
-Use the Space below to convert a Diffusers checkpoint into the GGUF format for inference.
-run conversion:
+Use the Space below to convert a Diffusers checkpoint into a GGUF file.
 
 <iframe
 	src="https://diffusers-internal-dev-diffusers-to-gguf.hf.space"
@@ -89,32 +95,17 @@ run conversion:
 	height="450"
 ></iframe>
 
+GGUF files stored in the [Diffusers format](../using-diffusers/other-formats) require the model's `config` path. If the model config is inside a subfolder, provide the `subfolder` argument as well.
 
 ```py
 import torch
+from diffusers import FluxPipeline, AutoModel, GGUFQuantizationConfig
 
-from diffusers import FluxPipeline, FluxTransformer2DModel, GGUFQuantizationConfig
-
-ckpt_path = (
-    "https://huggingface.co/sayakpaul/different-lora-from-civitai/blob/main/flux_dev_diffusers-q4_0.gguf"
-)
-transformer = FluxTransformer2DModel.from_single_file(
-    ckpt_path,
+transformer = AutoModel.from_single_file(
+    "https://huggingface.co/sayakpaul/different-lora-from-civitai/blob/main/flux_dev_diffusers-q4_0.gguf",
     quantization_config=GGUFQuantizationConfig(compute_dtype=torch.bfloat16),
     config="black-forest-labs/FLUX.1-dev",
     subfolder="transformer",
     torch_dtype=torch.bfloat16,
 )
-pipe = FluxPipeline.from_pretrained(
-    "black-forest-labs/FLUX.1-dev",
-    transformer=transformer,
-    torch_dtype=torch.bfloat16,
-)
-pipe.enable_model_cpu_offload()
-prompt = "A cat holding a sign that says hello world"
-image = pipe(prompt, generator=torch.manual_seed(0)).images[0]
-image.save("flux-gguf.png")
 ```
-
-When using Diffusers format GGUF checkpoints, it's a must to provide the model `config` path. If the
-model config resides in a `subfolder`, that needs to be specified, too.
