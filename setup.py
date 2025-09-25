@@ -260,6 +260,7 @@ extras["dev"] = (
 install_requires = [
     deps["importlib_metadata"],
     deps["filelock"],
+    deps["httpx"],
     deps["huggingface-hub"],
     deps["numpy"],
     deps["regex"],
