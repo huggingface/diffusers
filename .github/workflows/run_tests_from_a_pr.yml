@@ -65,12 +65,12 @@ jobs:
         run: |
           python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
           python -m uv pip install -e [quality,test]
-          python -m uv pip install --prerelease=allow git+https://github.com/huggingface/transformers.git # temporary (only for tests)
+          python -m uv pip install --prerelease=allow "transformers @ git+https://github.com/huggingface/transformers.git" # temporary (only for tests)
           python -m uv pip install peft
           python -m uv pip install compel==0.1.8
 
       - name: Run tests
         env:
-            PY_TEST: ${{ github.event.inputs.test }}
+          PY_TEST: ${{ github.event.inputs.test }}
         run: |
           pytest "$PY_TEST"

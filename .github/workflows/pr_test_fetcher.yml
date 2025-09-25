@@ -35,7 +35,7 @@ jobs:
       run: |
         python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
         python -m uv pip install --prerelease=allow -e [quality,test]
-        python -m uv pip install --prerelease=allow git+https://github.com/huggingface/transformers.git # temporary (only for tests)
+        python -m uv pip install --prerelease=allow "transformers @ git+https://github.com/huggingface/transformers.git" # temporary (only for tests)
         python -m uv pip install compel==0.1.8
     - name: Environment
       run: |
