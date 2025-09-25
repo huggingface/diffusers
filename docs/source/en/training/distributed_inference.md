@@ -234,7 +234,7 @@ By selectively loading and unloading the models you need at a given stage and sh
 
 Key (K) and value (V) representations communicate between devices using [Ring Attention](https://huggingface.co/papers/2310.01889). This ensures each split sees every other token's K/V. Each GPU computes attention for its local K/V and passes it to the next GPU in the ring. No single GPU holds the full sequence, which reduces communication latency.
 
-Call [`parallelize`] on the model and pass a [`ContextParallelConfig`]. The config supports the `ring_degree` argument that determines how many devices to use for Ring Attention.
+Pass a [`ContextParallelConfig`] to the `parallel_config` argument of the transformer model. The config supports the `ring_degree` argument that determines how many devices to use for Ring Attention.
 
 Use [`~ModelMixin.set_attention_backend`] to switch to a more optimized [attention backend](../optimization/attention_backends). The example below uses the FlashAttention backend.
 
@@ -248,7 +248,7 @@ Refer to the table below for the supported attention backends enabled by [`~Mode
 
 ```py
 import torch
-from diffusers import QwenImagePipeline, ContextParallelConfig, enable_parallelism
+from diffusers import AutoModel, QwenImagePipeline, ContextParallelConfig
 
 try:
     torch.distributed.init_process_group("nccl")
@@ -256,15 +256,10 @@ try:
     device = torch.device("cuda", rank % torch.cuda.device_count())
     torch.cuda.set_device(device)
     
-    pipeline = QwenImagePipeline.from_pretrained("Qwen/Qwen-Image", torch_dtype=torch.bfloat16, device_map="cuda")
-
-    pipeline.transformer.parallelize(config=ContextParallelConfig(ring_degree=2))
+    transformer = AutoModel.from_pretrained("Qwen/Qwen-Image", subfolder="transformer", torch_dtype=torch.bfloat16, parallel_config=ContextParallelConfig(ring_degree=2))
+    pipeline = QwenImagePipeline.from_pretrained("Qwen/Qwen-Image", transformer=transformer, torch_dtype=torch.bfloat16, device_map="cuda")
     pipeline.transformer.set_attention_backend("flash")
-```
 
-Pass your pipeline to [`~ModelMixin.enable_parallelism`] as a context manager to activate and coordinate context parallelism.
-
-```py
     prompt = """
     cinematic film still of a cat sipping a margarita in a pool in Palm Springs, California
     highly detailed, high budget hollywood movie, cinemascope, moody, epic, gorgeous, film grain
@@ -272,8 +267,7 @@ Pass your pipeline to [`~ModelMixin.enable_parallelism`] as a context manager to
     
     # Must specify generator so all ranks start with same latents (or pass your own)
     generator = torch.Generator().manual_seed(42)
-    with enable_parallelism(pipeline):
-        image = pipeline(prompt, num_inference_steps=50, generator=generator).images[0]
+    image = pipeline(prompt, num_inference_steps=50, generator=generator).images[0]
     
     if rank == 0:
         image.save("output.png")
