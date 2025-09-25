@@ -17,7 +17,7 @@ import unittest
 import numpy as np
 import torch
 from PIL import Image
-from transformers import AutoTokenizer, T5EncoderModel
+from transformers import AutoTokenizer, T5EncoderModel, Wav2Vec2ForCTC, Wav2Vec2Processor
 
 from diffusers import (
     AutoencoderKLWan,
@@ -76,7 +76,7 @@ class WanSpeechToVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             in_channels=16,
             out_channels=16,
             text_dim=32,
-            freq_dim=256,
+            freq_dim=16,
             ffn_dim=32,
             num_layers=3,
             cross_attn_norm=True,
@@ -84,12 +84,18 @@ class WanSpeechToVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             rope_max_seq_len=32,
         )
 
+        torch.manual_seed(0)
+        audio_encoder = Wav2Vec2ForCTC.from_pretrained("hf-internal-testing/tiny-random-wav2vec2")
+        audio_processor = Wav2Vec2Processor.from_pretrained("hf-internal-testing/tiny-random-wav2vec2")
+
         components = {
             "transformer": transformer,
             "vae": vae,
             "scheduler": scheduler,
             "text_encoder": text_encoder,
             "tokenizer": tokenizer,
+            "audio_encoder": audio_encoder,
+            "audio_processor": audio_processor,
         }
         return components
 
@@ -99,26 +105,30 @@ class WanSpeechToVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         else:
             generator = torch.Generator(device=device).manual_seed(seed)
 
-        num_frames = 17
         height = 16
         width = 16
 
-        video = [Image.new("RGB", (height, width))] * num_frames
-        mask = [Image.new("L", (height, width), 0)] * num_frames
+        image = Image.new("RGB", (width, height))
+
+        sampling_rate = 16000
+        audio_length = 0.5
+        audio = np.random.rand(int(sampling_rate * audio_length)).astype(np.float32)
 
         inputs = {
-            "video": video,
-            "mask": mask,
-            "prompt": "dance monkey",
-            "negative_prompt": "negative",
+            "image": image,
+            "audio": audio,
+            "sampling_rate": sampling_rate,
+            "prompt": "A person speaking",
+            "negative_prompt": "low quality",
             "generator": generator,
             "num_inference_steps": 2,
-            "guidance_scale": 6.0,
-            "height": 16,
-            "width": 16,
-            "num_frames": num_frames,
+            "guidance_scale": 4.5,
+            "height": height,
+            "width": width,
+            "num_frames_per_chunk": 5,
             "max_sequence_length": 16,
             "output_type": "pt",
+            "pose_video_path_or_url": None,
         }
         return inputs
 
@@ -132,18 +142,14 @@ class WanSpeechToVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         inputs = self.get_dummy_inputs(device)
         video = pipe(**inputs).frames[0]
-        self.assertEqual(video.shape, (17, 3, 16, 16))
-
-        # fmt: off
-        expected_slice = [0.4523, 0.45198, 0.44872, 0.45326, 0.45211, 0.45258, 0.45344, 0.453, 0.52431, 0.52572, 0.50701, 0.5118, 0.53717, 0.53093, 0.50557, 0.51402]
-        # fmt: on
+        self.assertEqual(video.shape, (5, 3, 16, 16))
 
         video_slice = video.flatten()
-        video_slice = torch.cat([video_slice[:8], video_slice[-8:]])
-        video_slice = [round(x, 5) for x in video_slice.tolist()]
-        self.assertTrue(np.allclose(video_slice, expected_slice, atol=1e-3))
+        self.assertEqual(len(video_slice), 5 * 3 * 16 * 16)
+        self.assertTrue(torch.is_tensor(video))
+        self.assertTrue(video.dtype == torch.float32)
 
-    def test_inference_with_single_reference_image(self):
+    def test_inference_with_audio_embeds(self):
         device = "cpu"
 
         components = self.get_dummy_components()
@@ -152,20 +158,21 @@ class WanSpeechToVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_dummy_inputs(device)
-        inputs["reference_images"] = Image.new("RGB", (16, 16))
+
+        batch_size = 1
+        num_layers = 5
+        freq_dim = 16
+        num_frames = 170
+        audio_embeds = torch.randn(batch_size, num_layers, freq_dim, num_frames)
+
+        inputs["audio"] = None
+        inputs["sampling_rate"] = None
+        inputs["audio_embeds"] = audio_embeds
+
         video = pipe(**inputs).frames[0]
         self.assertEqual(video.shape, (17, 3, 16, 16))
 
-        # fmt: off
-        expected_slice = [0.45247, 0.45214, 0.44874, 0.45314, 0.45171, 0.45299, 0.45428, 0.45317, 0.51378, 0.52658, 0.53361, 0.52303, 0.46204, 0.50435, 0.52555, 0.51342]
-        # fmt: on
-
-        video_slice = video.flatten()
-        video_slice = torch.cat([video_slice[:8], video_slice[-8:]])
-        video_slice = [round(x, 5) for x in video_slice.tolist()]
-        self.assertTrue(np.allclose(video_slice, expected_slice, atol=1e-3))
-
-    def test_inference_with_multiple_reference_image(self):
+    def test_inference_with_different_sampling_rates(self):
         device = "cpu"
 
         components = self.get_dummy_components()
@@ -174,18 +181,16 @@ class WanSpeechToVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_dummy_inputs(device)
-        inputs["reference_images"] = [[Image.new("RGB", (16, 16))] * 2]
+
+        sampling_rate = 22050
+        audio_length = 1.0
+        audio = np.random.rand(int(sampling_rate * audio_length)).astype(np.float32)
+
+        inputs["audio"] = audio
+        inputs["sampling_rate"] = sampling_rate
+
         video = pipe(**inputs).frames[0]
         self.assertEqual(video.shape, (17, 3, 16, 16))
-
-        # fmt: off
-        expected_slice = [0.45321, 0.45221, 0.44818, 0.45375, 0.45268, 0.4519, 0.45271, 0.45253, 0.51244, 0.52223, 0.51253, 0.51321, 0.50743, 0.51177, 0.51626, 0.50983]
-        # fmt: on
-
-        video_slice = video.flatten()
-        video_slice = torch.cat([video_slice[:8], video_slice[-8:]])
-        video_slice = [round(x, 5) for x in video_slice.tolist()]
-        self.assertTrue(np.allclose(video_slice, expected_slice, atol=1e-3))
 
     @unittest.skip("Test not supported")
     def test_attention_slicing_forward_pass(self):
