@@ -233,7 +233,6 @@ class ChromaPipeline(
         )
         text_input_ids = text_inputs.input_ids
         attention_mask = text_inputs.attention_mask.clone()
-        attention_mask = attention_mask.bool()
 
         # Chroma requires the attention mask to include one padding token
         seq_lengths = attention_mask.sum(dim=1)
