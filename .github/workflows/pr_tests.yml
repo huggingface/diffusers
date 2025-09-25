@@ -40,7 +40,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install .[quality]
-          pip install git+https://github.com/huggingface/transformers.git@ci-test-huggingface-hub-v1.0.0.rc0 # temporary (only for tests)
+          pip install git+https://github.com/huggingface/transformers.git # temporary (only for tests)
       - name: Check quality
         run: make quality
       - name: Check if failure
@@ -61,7 +61,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install .[quality]
-          pip install git+https://github.com/huggingface/transformers.git@ci-test-huggingface-hub-v1.0.0.rc0 # temporary (only for tests)
+          pip install git+https://github.com/huggingface/transformers.git # temporary (only for tests)
       - name: Check repo consistency
         run: |
           python utils/check_copies.py
@@ -199,6 +199,7 @@ jobs:
       run: |
         python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
         python -m uv pip install --prerelease=allow -e [quality,test]
+        python -m uv pip install --prerelease=allow git+https://github.com/huggingface/transformers.git # temporary (only for tests)
 
     - name: Environment
       run: |

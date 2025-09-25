@@ -35,6 +35,7 @@ jobs:
       run: |
         python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
         python -m uv pip install --prerelease=allow -e [quality,test]
+        python -m uv pip install --prerelease=allow git+https://github.com/huggingface/transformers.git # temporary (only for tests)
     - name: Environment
       run: |
         python utils/print_env.py
@@ -92,6 +93,7 @@ jobs:
       run: |
         python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
         python -m pip install -e [quality,test]
+        python -m pip install git+https://github.com/huggingface/transformers.git # temporary (only for tests)
         python -m pip install accelerate
 
     - name: Environment
@@ -149,6 +151,7 @@ jobs:
     - name: Install dependencies
       run: |
         python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
+        python -m pip install git+https://github.com/huggingface/transformers.git # temporary (only for tests)
         python -m pip install -e [quality,test]
 
     - name: Environment
