@@ -67,13 +67,13 @@ image.save("flux-gguf.png")
 
 ## CUDA kernels
 
-Optimized CUDA kernels can accelerate GGUF model inference by ~10%. It requires a compatible GPU with `torch.cuda.get_device_capability` greater than 7 and the [kernels](https://huggingface.co/docs/kernels/index) library.
+Optimized CUDA kernels accelerate GGUF model inference by ~10%. You need a compatible GPU with `torch.cuda.get_device_capability` greater than 7 and the [kernels](https://huggingface.co/docs/kernels/index) library.
 
 ```bash
 pip install -U kernels
 ```
 
-Set `DIFFUSERS_GGUF_CUDA_KERNELS=true` to enable optimized kernels. CUDA kernels may introduce minor numerical differences compared to the original GGUF implementation, potentially causing subtle visual variations in generated images.
+Set `DIFFUSERS_GGUF_CUDA_KERNELS=true` to enable optimized kernels. CUDA kernels introduce minor numerical differences compared to the original GGUF implementation, which may cause subtle visual variations in generated images.
 
 ```python
 import os
@@ -95,7 +95,7 @@ Use the Space below to convert a Diffusers checkpoint into a GGUF file.
 	height="450"
 ></iframe>
 
-GGUF files stored in the [Diffusers format](../using-diffusers/other-formats) require the model's `config` path. If the model config is inside a subfolder, provide the `subfolder` argument as well.
+GGUF files stored in the [Diffusers format](../using-diffusers/other-formats) require the model's `config` path. Provide the `subfolder` argument if the model config is inside a subfolder.
 
 ```py
 import torch

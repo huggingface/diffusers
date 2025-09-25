@@ -13,14 +13,9 @@ specific language governing permissions and limitations under the License.
 
 # Quanto
 
-[Quanto](https://github.com/huggingface/optimum-quanto) is a PyTorch quantization backend for [Optimum](https://huggingface.co/docs/optimum/index). It has been designed with versatility and simplicity in mind:
+[Quanto](https://github.com/huggingface/optimum-quanto) is a PyTorch quantization backend inside the [Optimum](https://huggingface.co/docs/optimum/index) ecosystem. It's designed to work in eager mode, automatically inserts quantization/dequantization steps, supports a variety of weights and activations, and features accelerated matrix multiplication on CUDA devices.
 
-- All features are available in eager mode (works with non-traceable models)
-- Supports quantization aware training
-- Quantized models are compatible with `torch.compile`
-- Quantized models are Device agnostic (e.g CUDA,XPU,MPS,CPU)
-
-Although the Quanto library does allow quantizing `nn.Conv2d` and `nn.LayerNorm` modules, currently, Diffusers only supports quantizing the weights in the `nn.Linear` layers of a model.
+Quanto doesn't quantize `nn.Conv2d` and `nn.LayerNorm` modules because Diffusers can only quantize weights in `nn.Linear` layers.
 
 Make sure Quanto and [Accelerate](https://huggingface.co/docs/optimum/index) are installed.
 
