@@ -25,9 +25,9 @@ def _get_from_hub(key: str):
         raise
 
 
-def get_fa3_from_hub():
+def _get_fa3_from_hub():
     return _get_from_hub("fa3")
 
 
-def get_fa_from_hub():
+def _get_fa_from_hub():
     return _get_from_hub("fa")

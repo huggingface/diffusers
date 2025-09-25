@@ -80,11 +80,11 @@ if DIFFUSERS_ENABLE_HUB_KERNELS:
         raise ImportError(
             "To use FA3 kernel for your hardware from the Hub, the `kernels` library must be installed. Install with `pip install kernels`."
         )
-    from ..utils.kernels_utils import _get_fa3_from_hub, get_fa_from_hub
+    from ..utils.kernels_utils import _get_fa3_from_hub, _get_fa_from_hub
 
     fa3_interface_hub = _get_fa3_from_hub()
     flash_attn_3_func_hub = fa3_interface_hub.flash_attn_func
-    fa_interface_hub = get_fa_from_hub()
+    fa_interface_hub = _get_fa_from_hub()
     flash_attn_func_hub = fa_interface_hub.flash_attn_func
 else:
     flash_attn_3_func_hub = None
@@ -1242,10 +1242,9 @@ def _flash_attention_hub(
     is_causal: bool = False,
     scale: Optional[float] = None,
     return_lse: bool = False,
-    _parallel_config: Optional["ParallelConfig"] = None,
 ) -> torch.Tensor:
     lse = None
-    out = flash_attn_func(
+    out = flash_attn_func_hub(
         q=query,
         k=key,
         v=value,
