@@ -23,11 +23,7 @@
   - local: using-diffusers/reusing_seeds
     title: Reproducibility
   - local: using-diffusers/schedulers
-    title: Load schedulers and models
-  - local: using-diffusers/models
-    title: Models
-  - local: using-diffusers/scheduler_features
-    title: Scheduler features
+    title: Schedulers
   - local: using-diffusers/other-formats
     title: Model files and layouts
   - local: using-diffusers/push_to_hub
@@ -68,10 +64,14 @@
     title: Accelerate inference
   - local: optimization/cache
     title: Caching
+  - local: optimization/attention_backends
+    title: Attention backends
   - local: optimization/memory
     title: Reduce memory usage
   - local: optimization/speed-memory-optims
     title: Compiling and offloading quantized models
+  - local: api/parallel
+    title: Parallel inference
   - title: Community optimizations
     sections:
     - local: optimization/pruna
@@ -82,6 +82,8 @@
       title: Token merging
     - local: optimization/deepcache
       title: DeepCache
+    - local: optimization/cache_dit
+      title: CacheDiT
     - local: optimization/tgate
       title: TGATE
     - local: optimization/xdit
