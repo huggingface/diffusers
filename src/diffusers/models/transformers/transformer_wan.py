@@ -23,6 +23,7 @@ from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
 from ...utils import USE_PEFT_BACKEND, deprecate, logging, scale_lora_layers, unscale_lora_layers
 from ...utils.torch_utils import maybe_allow_in_graph
+from .._modeling_parallel import ContextParallelInput, ContextParallelOutput
 from ..attention import AttentionMixin, AttentionModuleMixin, FeedForward
 from ..attention_dispatch import dispatch_attention_fn
 from ..cache_utils import CacheMixin
@@ -66,6 +67,7 @@ def _get_added_kv_projections(attn: "WanAttention", encoder_hidden_states_img: t
 
 class WanAttnProcessor:
     _attention_backend = None
+    _parallel_config = None
 
     def __init__(self):
         if not hasattr(F, "scaled_dot_product_attention"):
@@ -132,6 +134,7 @@ class WanAttnProcessor:
                 dropout_p=0.0,
                 is_causal=False,
                 backend=self._attention_backend,
+                parallel_config=self._parallel_config,
             )
             hidden_states_img = hidden_states_img.flatten(2, 3)
             hidden_states_img = hidden_states_img.type_as(query)
@@ -144,6 +147,7 @@ class WanAttnProcessor:
             dropout_p=0.0,
             is_causal=False,
             backend=self._attention_backend,
+            parallel_config=self._parallel_config,
         )
         hidden_states = hidden_states.flatten(2, 3)
         hidden_states = hidden_states.type_as(query)
@@ -539,6 +543,19 @@ class WanTransformer3DModel(
     _keep_in_fp32_modules = ["time_embedder", "scale_shift_table", "norm1", "norm2", "norm3"]
     _keys_to_ignore_on_load_unexpected = ["norm_added_q"]
     _repeated_blocks = ["WanTransformerBlock"]
+    _cp_plan = {
+        "rope": {
+            0: ContextParallelInput(split_dim=1, expected_dims=4, split_output=True),
+            1: ContextParallelInput(split_dim=1, expected_dims=4, split_output=True),
+        },
+        "blocks.0": {
+            "hidden_states": ContextParallelInput(split_dim=1, expected_dims=3, split_output=False),
+        },
+        "blocks.*": {
+            "encoder_hidden_states": ContextParallelInput(split_dim=1, expected_dims=3, split_output=False),
+        },
+        "proj_out": ContextParallelOutput(gather_dim=1, expected_dims=3),
+    }
 
     @register_to_config
     def __init__(
