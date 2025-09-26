@@ -308,6 +308,13 @@ class QwenImageInputsDynamicStep(ModularPipelineBlocks):
         return inputs
 
     @property
+    def intermediate_outputs(self) -> List[OutputParam]:
+        return [
+            OutputParam(name="image_height", type_hint=int, description="The height of the image latents"),
+            OutputParam(name="image_width", type_hint=int, description="The width of the image latents"),
+        ]
+
+    @property
     def expected_components(self) -> List[ComponentSpec]:
         return [
             ComponentSpec("pachifier", QwenImagePachifier, default_creation_method="from_config"),
@@ -326,6 +333,11 @@ class QwenImageInputsDynamicStep(ModularPipelineBlocks):
             height, width = calculate_dimension_from_latents(image_latent_tensor, components.vae_scale_factor)
             block_state.height = block_state.height or height
             block_state.width = block_state.width or width
+
+            if not hasattr(block_state, "image_height"):
+                block_state.image_height = height
+            if not hasattr(block_state, "image_width"):
+                block_state.image_width = width
 
             # 2. Patchify the image latent tensor
             image_latent_tensor = components.pachifier.pack_latents(image_latent_tensor)

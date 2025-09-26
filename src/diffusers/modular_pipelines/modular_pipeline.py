@@ -51,6 +51,7 @@ if is_accelerate_available():
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
+# map regular pipeline to modular pipeline class name
 MODULAR_PIPELINE_MAPPING = OrderedDict(
     [
         ("stable-diffusion-xl", "StableDiffusionXLModularPipeline"),
@@ -58,16 +59,6 @@ MODULAR_PIPELINE_MAPPING = OrderedDict(
         ("flux", "FluxModularPipeline"),
         ("qwenimage", "QwenImageModularPipeline"),
         ("qwenimage-edit", "QwenImageEditModularPipeline"),
-    ]
-)
-
-MODULAR_PIPELINE_BLOCKS_MAPPING = OrderedDict(
-    [
-        ("StableDiffusionXLModularPipeline", "StableDiffusionXLAutoBlocks"),
-        ("WanModularPipeline", "WanAutoBlocks"),
-        ("FluxModularPipeline", "FluxAutoBlocks"),
-        ("QwenImageModularPipeline", "QwenImageAutoBlocks"),
-        ("QwenImageEditModularPipeline", "QwenImageEditAutoBlocks"),
     ]
 )
 
@@ -423,7 +414,7 @@ class ModularPipelineBlocks(ConfigMixin, PushToHubMixin):
                     state.set(input_param.name, param, input_param.kwargs_type)
 
             elif input_param.kwargs_type:
-                # if it is a kwargs type, e.g. "guider_input_fields", it is likely to be a list of parameters
+                # if it is a kwargs type, e.g. "denoiser_input_fields", it is likely to be a list of parameters
                 # we need to first find out which inputs are and loop through them.
                 intermediate_kwargs = state.get_by_kwargs(input_param.kwargs_type)
                 for param_name, current_value in intermediate_kwargs.items():
@@ -1454,6 +1445,7 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
 
     config_name = "modular_model_index.json"
     hf_device_map = None
+    default_blocks_name = None
 
     # YiYi TODO: add warning for passing multiple ComponentSpec/ConfigSpec with the same name
     def __init__(
@@ -1514,7 +1506,7 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
               `_blocks_class_name` in the config dict
         """
         if blocks is None:
-            blocks_class_name = MODULAR_PIPELINE_BLOCKS_MAPPING.get(self.__class__.__name__)
+            blocks_class_name = self.default_blocks_name
             if blocks_class_name is not None:
                 diffusers_module = importlib.import_module("diffusers")
                 blocks_class = getattr(diffusers_module, blocks_class_name)
