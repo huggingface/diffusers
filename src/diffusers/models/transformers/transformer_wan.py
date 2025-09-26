@@ -682,12 +682,12 @@ class WanTransformer3DModel(
         # 5. Output norm, projection & unpatchify
         if temb.ndim == 3:
             # batch_size, seq_len, inner_dim (wan 2.2 ti2v)
-            shift, scale = (self.scale_shift_table.unsqueeze(0) + temb.unsqueeze(2)).chunk(2, dim=2)
+            shift, scale = (self.scale_shift_table.unsqueeze(0).to(temb.device) + temb.unsqueeze(2)).chunk(2, dim=2)
             shift = shift.squeeze(2)
             scale = scale.squeeze(2)
         else:
             # batch_size, inner_dim
-            shift, scale = (self.scale_shift_table + temb.unsqueeze(1)).chunk(2, dim=1)
+            shift, scale = (self.scale_shift_table.to(temb.device) + temb.unsqueeze(1)).chunk(2, dim=1)
 
         # Move the shift and scale tensors to the same device as hidden_states.
         # When using multi-GPU inference via accelerate these will be on the
