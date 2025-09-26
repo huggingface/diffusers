@@ -29,7 +29,7 @@ from diffusers import (
 
 from ...testing_utils import enable_full_determinism, torch_device
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
-from ..test_pipelines_common import PipelineTesterMixin, to_np
+from ..test_pipelines_common import PipelineTesterMixin
 
 
 enable_full_determinism()
@@ -173,7 +173,6 @@ class WanSpeechToVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         if not inputs["init_first_frame"]:
             expected_num_frames -= 3
         self.assertEqual(video.shape, (expected_num_frames, 3, inputs["height"], inputs["width"]))
-
 
     @unittest.skip("Test not supported")
     def test_attention_slicing_forward_pass(self):

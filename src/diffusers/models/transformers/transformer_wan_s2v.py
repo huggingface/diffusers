@@ -540,7 +540,11 @@ class WanTimeTextAudioPoseEmbedding(nn.Module):
         self.time_proj = nn.Linear(dim, time_proj_dim)
         self.text_embedder = PixArtAlphaTextProjection(text_embed_dim, dim, act_fn="gelu_tanh")
         self.causal_audio_encoder = CausalAudioEncoder(
-            dim=audio_embed_dim, num_weighted_avg_layers=num_weighted_avg_layers, out_dim=dim, num_audio_token=4, need_global=enable_adain
+            dim=audio_embed_dim,
+            num_weighted_avg_layers=num_weighted_avg_layers,
+            out_dim=dim,
+            num_audio_token=4,
+            need_global=enable_adain,
         )
         self.pose_embedder = nn.Conv3d(pose_embed_dim, dim, kernel_size=patch_size, stride=patch_size)
 
