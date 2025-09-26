@@ -37,9 +37,8 @@ import torch
 import torch.nn as nn
 from accelerate.utils.modeling import _get_proper_dtype, compute_module_sizes, dtype_byte_size
 from huggingface_hub import ModelCard, delete_repo, snapshot_download, try_to_load_from_cache
-from huggingface_hub.utils import is_jinja_available
+from huggingface_hub.utils import HfHubHTTPError, is_jinja_available
 from parameterized import parameterized
-from requests.exceptions import HTTPError
 
 from diffusers.models import FluxTransformer2DModel, SD3Transformer2DModel, UNet2DConditionModel
 from diffusers.models.attention_processor import (
@@ -272,7 +271,7 @@ class ModelUtilsTest(unittest.TestCase):
         response_mock = mock.Mock()
         response_mock.status_code = 500
         response_mock.headers = {}
-        response_mock.raise_for_status.side_effect = HTTPError
+        response_mock.raise_for_status.side_effect = HfHubHTTPError("Server down", response=mock.Mock())
         response_mock.json.return_value = {}
 
         # Download this model to make sure it's in the cache.
@@ -296,7 +295,7 @@ class ModelUtilsTest(unittest.TestCase):
         error_response = mock.Mock(
             status_code=500,
             headers={},
-            raise_for_status=mock.Mock(side_effect=HTTPError),
+            raise_for_status=mock.Mock(side_effect=HfHubHTTPError("Server down", response=mock.Mock())),
             json=mock.Mock(return_value={}),
         )
 
