@@ -6,6 +6,16 @@ import os
 from dataclasses import asdict, dataclass
 from typing import Any, Dict, List, Optional, Tuple, Union
 
+from huggingface_hub import create_repo, hf_hub_download
+from huggingface_hub.utils import (
+    EntryNotFoundError,
+    RepositoryNotFoundError,
+    RevisionNotFoundError,
+    validate_hf_hub_args,
+)
+from requests import HTTPError
+
+from ..utils import HUGGINGFACE_CO_RESOLVE_ENDPOINT, PushToHubMixin, extract_commit_hash
 from .modular_pipeline import ModularPipelineBlocks
 
 
@@ -306,26 +316,27 @@ class MellonParam:
     name: str
     label: str
     type: str
-    display: str
+    display: Optional[str] = None
     default: Any = None
     min: Optional[float] = None
     max: Optional[float] = None
     step: Optional[float] = None
     options: Any = None
+    value: Any = None
     fieldOptions: Optional[Dict[str, Any]] = None
     onChange: Any = None
     onSignal: Any = None
+    _map_to_input: Any = None  # the block input name this parameter maps to
 
     def to_dict(self) -> Dict[str, Any]:
         data = asdict(self)
-        return {k: v for k, v in data.items() if v is not None}
+        return {k: v for k, v in data.items() if not k.startswith("_") and v is not None}
 
 
 @dataclass
-class MellonNodeConfig:
+class MellonNodeConfig(PushToHubMixin):
     """
-    A ModularNode is a base class to build UI nodes using diffusers. Currently only supports Mellon. It is a wrapper
-    around a ModularPipelineBlocks object.
+    A MellonNodeConfig is a base class to build Mellon nodes UI with modular diffusers.
 
     <Tip warning={true}>
 
@@ -339,12 +350,9 @@ class MellonNodeConfig:
     outputs: List[Union[str, MellonParam]]
     blocks_names: list[str]
     node_type: str
+    config_name = "mellon_config.json"
 
     def __post_init__(self):
-        """Validate node_type after initialization."""
-        if self.node_type not in SUPPORTED_NODE_TYPES:
-            raise ValueError(f"node_type must be one of {SUPPORTED_NODE_TYPES}, got '{self.node_type}'")
-
         if isinstance(self.inputs, list):
             self.inputs = self._resolve_params_list(self.inputs, MELLON_INPUT_PARAMS)
         if isinstance(self.model_inputs, list):
@@ -382,25 +390,210 @@ class MellonNodeConfig:
         return resolved
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "MellonNodeConfig":
-        """
-        Create an instance from a dictionary.
-        """
-        if not isinstance(data, dict):
-            raise TypeError(f"Expected dict, got {type(data)}")
+    @validate_hf_hub_args
+    def load_mellon_config(
+        cls,
+        pretrained_model_name_or_path: Union[str, os.PathLike],
+        return_unused_kwargs=False,
+        return_commit_hash=False,
+        **kwargs,
+    ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        r"""
+        Load a model or scheduler configuration.
 
-        # Filter out any extra keys that aren't part of the dataclass
-        valid_fields = {field.name for field in cls.__dataclass_fields__.values()}
-        valid_data = {k: v for k, v in data.items() if k in valid_fields}
+        Parameters:
+            pretrained_model_name_or_path (`str` or `os.PathLike`, *optional*):
+                Can be either:
 
-        return cls(**valid_data)
+                    - A string, the *model id* (for example `google/ddpm-celebahq-256`) of a pretrained model hosted on
+                      the Hub.
+                    - A path to a *directory* (for example `./my_model_directory`) containing model weights saved with
+                      [`~ConfigMixin.save_config`].
 
-    def to_dict(self) -> Dict[str, Any]:
+            cache_dir (`Union[str, os.PathLike]`, *optional*):
+                Path to a directory where a downloaded pretrained model configuration is cached if the standard cache
+                is not used.
+            force_download (`bool`, *optional*, defaults to `False`):
+                Whether or not to force the (re-)download of the model weights and configuration files, overriding the
+                cached versions if they exist.
+            proxies (`Dict[str, str]`, *optional*):
+                A dictionary of proxy servers to use by protocol or endpoint, for example, `{'http': 'foo.bar:3128',
+                'http://hostname': 'foo.bar:4012'}`. The proxies are used on each request.
+            output_loading_info(`bool`, *optional*, defaults to `False`):
+                Whether or not to also return a dictionary containing missing keys, unexpected keys and error messages.
+            local_files_only (`bool`, *optional*, defaults to `False`):
+                Whether to only load local model weights and configuration files or not. If set to `True`, the model
+                won't be downloaded from the Hub.
+            token (`str` or *bool*, *optional*):
+                The token to use as HTTP bearer authorization for remote files. If `True`, the token generated from
+                `diffusers-cli login` (stored in `~/.huggingface`) is used.
+            revision (`str`, *optional*, defaults to `"main"`):
+                The specific model version to use. It can be a branch name, a tag name, a commit id, or any identifier
+                allowed by Git.
+            subfolder (`str`, *optional*, defaults to `""`):
+                The subfolder location of a model file within a larger model repository on the Hub or locally.
+            return_unused_kwargs (`bool`, *optional*, defaults to `False):
+                Whether unused keyword arguments of the config are returned.
+            return_commit_hash (`bool`, *optional*, defaults to `False):
+                Whether the `commit_hash` of the loaded configuration are returned.
+
+        Returns:
+            `dict`:
+                A dictionary of all the parameters stored in a JSON configuration file.
+
         """
-        Serializes this instance to a Python dictionary. Returns:
-            `Dict[str, Any]`: Dictionary of all the attributes that make up this configuration instance.
+        cache_dir = kwargs.pop("cache_dir", None)
+        local_dir = kwargs.pop("local_dir", None)
+        local_dir_use_symlinks = kwargs.pop("local_dir_use_symlinks", "auto")
+        force_download = kwargs.pop("force_download", False)
+        proxies = kwargs.pop("proxies", None)
+        token = kwargs.pop("token", None)
+        local_files_only = kwargs.pop("local_files_only", False)
+        revision = kwargs.pop("revision", None)
+
+        pretrained_model_name_or_path = str(pretrained_model_name_or_path)
+
+        if cls.config_name is None:
+            raise ValueError(
+                "`self.config_name` is not defined. Note that one should not load a config from "
+                "`ConfigMixin`. Please make sure to define `config_name` in a class inheriting from `ConfigMixin`"
+            )
+        if os.path.isfile(pretrained_model_name_or_path):
+            config_file = pretrained_model_name_or_path
+        elif os.path.isdir(pretrained_model_name_or_path):
+            if os.path.isfile(os.path.join(pretrained_model_name_or_path, cls.config_name)):
+                # Load from a PyTorch checkpoint
+                config_file = os.path.join(pretrained_model_name_or_path, cls.config_name)
+            else:
+                raise EnvironmentError(
+                    f"Error no file named {cls.config_name} found in directory {pretrained_model_name_or_path}."
+                )
+        else:
+            try:
+                # Load from URL or cache if already cached
+                config_file = hf_hub_download(
+                    pretrained_model_name_or_path,
+                    filename=cls.config_name,
+                    cache_dir=cache_dir,
+                    force_download=force_download,
+                    proxies=proxies,
+                    local_files_only=local_files_only,
+                    token=token,
+                    revision=revision,
+                    local_dir=local_dir,
+                    local_dir_use_symlinks=local_dir_use_symlinks,
+                )
+            except RepositoryNotFoundError:
+                raise EnvironmentError(
+                    f"{pretrained_model_name_or_path} is not a local folder and is not a valid model identifier"
+                    " listed on 'https://huggingface.co/models'\nIf this is a private repository, make sure to pass a"
+                    " token having permission to this repo with `token` or log in with `hf auth login`."
+                )
+            except RevisionNotFoundError:
+                raise EnvironmentError(
+                    f"{revision} is not a valid git identifier (branch name, tag name or commit id) that exists for"
+                    " this model name. Check the model page at"
+                    f" 'https://huggingface.co/{pretrained_model_name_or_path}' for available revisions."
+                )
+            except EntryNotFoundError:
+                raise EnvironmentError(
+                    f"{pretrained_model_name_or_path} does not appear to have a file named {cls.config_name}."
+                )
+            except HTTPError as err:
+                raise EnvironmentError(
+                    "There was a specific connection error when trying to load"
+                    f" {pretrained_model_name_or_path}:\n{err}"
+                )
+            except ValueError:
+                raise EnvironmentError(
+                    f"We couldn't connect to '{HUGGINGFACE_CO_RESOLVE_ENDPOINT}' to load this model, couldn't find it"
+                    f" in the cached files and it looks like {pretrained_model_name_or_path} is not the path to a"
+                    f" directory containing a {cls.config_name} file.\nCheckout your internet connection or see how to"
+                    " run the library in offline mode at"
+                    " 'https://huggingface.co/docs/diffusers/installation#offline-mode'."
+                )
+            except EnvironmentError:
+                raise EnvironmentError(
+                    f"Can't load config for '{pretrained_model_name_or_path}'. If you were trying to load it from "
+                    "'https://huggingface.co/models', make sure you don't have a local directory with the same name. "
+                    f"Otherwise, make sure '{pretrained_model_name_or_path}' is the correct path to a directory "
+                    f"containing a {cls.config_name} file"
+                )
+        try:
+            with open(config_file, "r", encoding="utf-8") as reader:
+                text = reader.read()
+            config_dict = json.loads(text)
+
+            commit_hash = extract_commit_hash(config_file)
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            raise EnvironmentError(f"It looks like the config file at '{config_file}' is not a valid JSON file.")
+
+        if not (return_unused_kwargs or return_commit_hash):
+            return config_dict
+
+        outputs = (config_dict,)
+
+        if return_unused_kwargs:
+            outputs += (kwargs,)
+
+        if return_commit_hash:
+            outputs += (commit_hash,)
+
+        return outputs
+
+    def save_mellon_config(self, save_directory: Union[str, os.PathLike], push_to_hub: bool = False, **kwargs):
         """
-        return {**self.__dict__}
+        Save the Mellon node definition to a JSON file.
+
+        Args:
+            save_directory (`str` or `os.PathLike`):
+                Directory where the configuration JSON file is saved (will be created if it does not exist).
+            push_to_hub (`bool`, *optional*, defaults to `False`):
+                Whether or not to push your model to the Hugging Face Hub after saving it. You can specify the
+                repository you want to push to with `repo_id` (will default to the name of `save_directory` in your
+                namespace).
+            kwargs (`Dict[str, Any]`, *optional*):
+                Additional keyword arguments passed along to the [`~utils.PushToHubMixin.push_to_hub`] method.
+        """
+        if os.path.isfile(save_directory):
+            raise AssertionError(f"Provided path ({save_directory}) should be a directory, not a file")
+
+        os.makedirs(save_directory, exist_ok=True)
+
+        # If we save using the predefined names, we can load using `from_config`
+        output_config_file = os.path.join(save_directory, self.config_name)
+
+        self.to_json_file(output_config_file)
+        logger.info(f"Mellon node definition saved in {output_config_file}")
+
+        if push_to_hub:
+            commit_message = kwargs.pop("commit_message", None)
+            private = kwargs.pop("private", None)
+            create_pr = kwargs.pop("create_pr", False)
+            token = kwargs.pop("token", None)
+            repo_id = kwargs.pop("repo_id", save_directory.split(os.path.sep)[-1])
+            repo_id = create_repo(repo_id, exist_ok=True, private=private, token=token).repo_id
+            subfolder = kwargs.pop("subfolder", None)
+
+            self._upload_folder(
+                save_directory,
+                repo_id,
+                token=token,
+                commit_message=commit_message,
+                create_pr=create_pr,
+                subfolder=subfolder,
+            )
+
+    def to_json_file(self, json_file_path: Union[str, os.PathLike]):
+        """
+        Save the Mellon schema dictionary to a JSON file.
+
+        Args:
+            json_file_path (`str` or `os.PathLike`):
+                Path to the JSON file to save a configuration instance's parameters.
+        """
+        with open(json_file_path, "w", encoding="utf-8") as writer:
+            writer.write(self.to_json_string())
 
     def to_json_string(self) -> str:
         """
@@ -413,17 +606,6 @@ class MellonNodeConfig:
 
         mellon_dict = self.to_mellon_dict()
         return json.dumps(mellon_dict, indent=2, sort_keys=True) + "\n"
-
-    def to_json_file(self, json_file_path: Union[str, os.PathLike]):
-        """
-        Save the Mellon schema dictionary to a JSON file.
-
-        Args:
-            json_file_path (`str` or `os.PathLike`):
-                Path to the JSON file to save a configuration instance's parameters.
-        """
-        with open(json_file_path, "w", encoding="utf-8") as writer:
-            writer.write(self.to_json_string())
 
     def to_mellon_dict(self) -> Dict[str, Any]:
         """Return a JSON-serializable dict focusing on the Mellon schema fields only.
@@ -472,6 +654,7 @@ class MellonNodeConfig:
             node_type=mellon_dict.get("node_type"),
         )
 
+    # YiYi Notes: not used yet
     @classmethod
     def from_blocks(cls, blocks: ModularPipelineBlocks, node_type: str) -> "MellonNodeConfig":
         """
