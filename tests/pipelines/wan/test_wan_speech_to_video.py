@@ -29,7 +29,7 @@ from diffusers import (
 
 from ...testing_utils import enable_full_determinism, torch_device
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
-from ..test_pipelines_common import PipelineTesterMixin
+from ..test_pipelines_common import PipelineTesterMixin, to_np
 
 
 enable_full_determinism()
@@ -119,7 +119,9 @@ class WanSpeechToVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         sampling_rate = 16000
         audio_length = 0.5
-        audio = np.random.rand(int(sampling_rate * audio_length)).astype(np.float32)
+        # Make audio generation deterministic by using a fixed seed
+        np_rng = np.random.RandomState(seed)
+        audio = np_rng.rand(int(sampling_rate * audio_length)).astype(np.float32)
 
         inputs = {
             "image": image,
@@ -200,3 +202,42 @@ class WanSpeechToVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     )
     def test_save_load_float16(self):
         pass
+
+    def test_callback_cfg(self):
+        sig = inspect.signature(self.pipeline_class.__call__)
+        has_callback_tensor_inputs = "callback_on_step_end_tensor_inputs" in sig.parameters
+        has_callback_step_end = "callback_on_step_end" in sig.parameters
+
+        if not (has_callback_tensor_inputs and has_callback_step_end):
+            return
+
+        if "guidance_scale" not in sig.parameters:
+            return
+
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+        self.assertTrue(
+            hasattr(pipe, "_callback_tensor_inputs"),
+            f" {self.pipeline_class} should have `_callback_tensor_inputs` that defines a list of tensor variables its callback function can use as inputs",
+        )
+
+        def callback_increase_guidance(pipe, i, t, callback_kwargs):
+            pipe._guidance_scale += 1.0
+
+            return callback_kwargs
+
+        inputs = self.get_dummy_inputs(torch_device)
+
+        # use cfg guidance because some pipelines modify the shape of the latents
+        # outside of the denoising loop
+        inputs["guidance_scale"] = 2.0
+        inputs["callback_on_step_end"] = callback_increase_guidance
+        inputs["callback_on_step_end_tensor_inputs"] = pipe._callback_tensor_inputs
+        _ = pipe(**inputs)[0]
+
+        # For this pipeline, the total number of timesteps is multiplied by num_chunks
+        # since each chunk runs independently with its own denoising loop
+        expected_final_guidance = inputs["guidance_scale"] + (pipe.num_timesteps * inputs["num_chunks"])
+        assert pipe.guidance_scale == expected_final_guidance
