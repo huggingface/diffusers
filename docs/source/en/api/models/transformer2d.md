@@ -22,11 +22,8 @@ When the input is **continuous**:
 
 When the input is **discrete**:
 
-<Tip>
-
-It is assumed one of the input classes is the masked latent pixel. The predicted classes of the unnoised image don't contain a prediction for the masked pixel because the unnoised image cannot be masked.
-
-</Tip>
+> [!TIP]
+> It is assumed one of the input classes is the masked latent pixel. The predicted classes of the unnoised image don't contain a prediction for the masked pixel because the unnoised image cannot be masked.
 
 1. Convert input (classes of latent pixels) to embeddings and apply positional embeddings.
 2. Apply the Transformer blocks in the standard way.

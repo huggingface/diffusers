@@ -120,19 +120,12 @@ class FlaxSchedulerMixin(PushToHubMixin):
                 git-based system for storing models and other artifacts on huggingface.co, so `revision` can be any
                 identifier allowed by git.
 
-        <Tip>
+        > [!TIP] > It is required to be logged in (`hf auth login`) when you want to use private or [gated >
+        models](https://huggingface.co/docs/hub/models-gated#gated-models).
 
-         It is required to be logged in (`hf auth login`) when you want to use private or [gated
-         models](https://huggingface.co/docs/hub/models-gated#gated-models).
-
-        </Tip>
-
-        <Tip>
-
-        Activate the special ["offline-mode"](https://huggingface.co/transformers/installation.html#offline-mode) to
-        use this method in a firewalled environment.
-
-        </Tip>
+        > [!TIP] > Activate the special
+        ["offline-mode"](https://huggingface.co/transformers/installation.html#offline-mode) to > use this method in a
+        firewalled environment.
 
         """
         logger.warning(

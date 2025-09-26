@@ -158,11 +158,7 @@ def prepare_mask_and_masked_image(image, mask):
 class PaintByExamplePipeline(DeprecatedPipelineMixin, DiffusionPipeline, StableDiffusionMixin):
     _last_supported_version = "0.33.1"
     r"""
-    <Tip warning={true}>
-
-    🧪 This is an experimental feature!
-
-    </Tip>
+    > [!WARNING] > 🧪 This is an experimental feature!
 
     Pipeline for image-guided image inpainting using Stable Diffusion.
 

@@ -318,12 +318,9 @@ images = pipeline(prompt_ids, params, prng_seed, num_inference_steps, jit=True).
 images = pipeline.numpy_to_pil(np.asarray(images.reshape((num_samples,) + images.shape[-3:])))
 ```
 
-<Tip warning={true}>
-
-다음 Flax 스케줄러는 *아직* Flax Stable Diffusion 파이프라인과 호환되지 않습니다.
-
-- `FlaxLMSDiscreteScheduler`
-- `FlaxDDPMScheduler`
-
-</Tip>
+> [!WARNING]
+> 다음 Flax 스케줄러는 *아직* Flax Stable Diffusion 파이프라인과 호환되지 않습니다.
+>
+> - `FlaxLMSDiscreteScheduler`
+> - `FlaxDDPMScheduler`
 

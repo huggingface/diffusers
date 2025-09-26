@@ -33,11 +33,8 @@ cd examples/wuerstchen/text_to_image
 pip install -r requirements.txt
 ```
 
-<Tip>
-
-🤗 Accelerate 是一个帮助您在多个 GPU/TPU 上或使用混合精度进行训练的库。它会根据您的硬件和环境自动配置训练设置。查看 🤗 Accelerate [快速入门](https://huggingface.co/docs/accelerate/quicktour) 以了解更多信息。
-
-</Tip>
+> [!TIP]
+> 🤗 Accelerate 是一个帮助您在多个 GPU/TPU 上或使用混合精度进行训练的库。它会根据您的硬件和环境自动配置训练设置。查看 🤗 Accelerate [快速入门](https://huggingface.co/docs/accelerate/quicktour) 以了解更多信息。
 
 初始化一个 🤗 Accelerate 环境：
 
@@ -61,11 +58,8 @@ write_basic_config()
 
 最后，如果您想在自己的数据集上训练模型，请查看 [创建训练数据集](create_dataset) 指南，了解如何创建与训练脚本兼容的数据集。
 
-<Tip>
-
-以下部分重点介绍了训练脚本中对于理解如何修改它很重要的部分，但并未涵盖 [脚本](https://github.com/huggingface/diffusers/blob/main/examples/wuerstchen/text_to_image/train_text_to_image_prior.py) 的详细信息。如果您有兴趣了解更多，请随时阅读脚本，并告诉我们您是否有任何问题或疑虑。
-
-</Tip>
+> [!TIP]
+> 以下部分重点介绍了训练脚本中对于理解如何修改它很重要的部分，但并未涵盖 [脚本](https://github.com/huggingface/diffusers/blob/main/examples/wuerstchen/text_to_image/train_text_to_image_prior.py) 的详细信息。如果您有兴趣了解更多，请随时阅读脚本，并告诉我们您是否有任何问题或疑虑。
 
 ## 脚本参数
 
@@ -134,11 +128,8 @@ pred_noise = prior(noisy_latents, timesteps, prompt_embeds)
 
 设置`DATASET_NAME`环境变量为Hub中的数据集名称。本指南使用[Naruto BLIP captions](https://huggingface.co/datasets/lambdalabs/naruto-blip-captions)数据集，但您也可以创建和训练自己的数据集（参见[创建用于训练的数据集](create_dataset)指南）。
 
-<Tip>
-
-要使用Weights & Biases监控训练进度，请在训练命令中添加`--report_to=wandb`参数。您还需要在训练命令中添加`--validation_prompt`以跟踪结果。这对于调试模型和查看中间结果非常有用。
-
-</Tip>
+> [!TIP]
+> 要使用Weights & Biases监控训练进度，请在训练命令中添加`--report_to=wandb`参数。您还需要在训练命令中添加`--validation_prompt`以跟踪结果。这对于调试模型和查看中间结果非常有用。
 
 ```bash
 export DATASET_NAME="lambdalabs/naruto-blip-captions"

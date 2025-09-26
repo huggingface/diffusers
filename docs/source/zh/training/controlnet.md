@@ -68,11 +68,8 @@ pip install -r requirements_flax.txt
 </hfoption>
 </hfoptions>
 
-<Tip>
-
-🤗 Accelerate 是一个支持多GPU/TPU训练和混合精度的库，它能根据硬件环境自动配置训练方案。参阅 🤗 Accelerate [快速入门](https://huggingface.co/docs/accelerate/quicktour) 了解更多。
-
-</Tip>
+> [!TIP]
+> 🤗 Accelerate 是一个支持多GPU/TPU训练和混合精度的库，它能根据硬件环境自动配置训练方案。参阅 🤗 Accelerate [快速入门](https://huggingface.co/docs/accelerate/quicktour) 了解更多。
 
 初始化🤗 Accelerate环境：
 
@@ -96,11 +93,8 @@ write_basic_config()
 
 最后，如需训练自定义数据集，请参阅 [创建训练数据集](create_dataset) 指南了解数据准备方法。
 
-<Tip>
-
-下文重点解析脚本中的关键模块，但不会覆盖所有实现细节。如需深入了解，建议直接阅读 [脚本源码](https://github.com/huggingface/diffusers/blob/main/examples/controlnet/train_controlnet.py)，如有疑问欢迎反馈。
-
-</Tip>
+> [!TIP]
+> 下文重点解析脚本中的关键模块，但不会覆盖所有实现细节。如需深入了解，建议直接阅读 [脚本源码](https://github.com/huggingface/diffusers/blob/main/examples/controlnet/train_controlnet.py)，如有疑问欢迎反馈。
 
 ## 脚本参数
 
@@ -135,11 +129,8 @@ accelerate launch train_controlnet.py \
 
 脚本中的 [`make_train_dataset`](https://github.com/huggingface/diffusers/blob/64603389da01082055a901f2883c4810d1144edb/examples/controlnet/train_controlnet.py#L582) 函数负责数据预处理，除常规的文本标注分词和图像变换外，还包含条件图像的特效处理：
 
-<Tip>
-
-在TPU上流式加载数据集时，🤗 Datasets库可能成为性能瓶颈（因其未针对图像数据优化）。建议考虑 [WebDataset](https://webdataset.github.io/webdataset/)、[TorchData](https://github.com/pytorch/data) 或 [TensorFlow Datasets](https://www.tensorflow.org/datasets/tfless_tfds) 等高效数据格式。
-
-</Tip>
+> [!TIP]
+> 在TPU上流式加载数据集时，🤗 Datasets库可能成为性能瓶颈（因其未针对图像数据优化）。建议考虑 [WebDataset](https://webdataset.github.io/webdataset/)、[TorchData](https://github.com/pytorch/data) 或 [TensorFlow Datasets](https://www.tensorflow.org/datasets/tfless_tfds) 等高效数据格式。
 
 ```py
 conditioning_image_transforms = transforms.Compose(
@@ -304,11 +295,8 @@ tensorboard --logdir runs/fill-circle-100steps-20230411_165612/
 
 在 [http://localhost:6006/#profile](http://localhost:6006/#profile) 查看分析结果。
 
-<Tip warning={true}>
-
-若遇到插件版本冲突，建议重新安装TensorFlow和Tensorboard。注意性能分析插件仍处实验阶段，部分视图可能不完整。`trace_viewer` 会截断超过1M的事件记录，在编译步骤分析时可能导致设备轨迹丢失。
-
-</Tip>
+> [!WARNING]
+> 若遇到插件版本冲突，建议重新安装TensorFlow和Tensorboard。注意性能分析插件仍处实验阶段，部分视图可能不完整。`trace_viewer` 会截断超过1M的事件记录，在编译步骤分析时可能导致设备轨迹丢失。
 
 ```bash
 python3 train_controlnet_flax.py \

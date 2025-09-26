@@ -45,11 +45,8 @@ pip install -r requirements_flax.txt
 </hfoption>
 </hfoptions>
 
-<Tip>
-
-🤗 Accelerate 是一个帮助您在多GPU/TPU或混合精度环境下训练的工具库。它会根据硬件和环境自动配置训练设置。查看🤗 Accelerate [快速入门](https://huggingface.co/docs/accelerate/quicktour)了解更多。
-
-</Tip>
+> [!TIP]
+> 🤗 Accelerate 是一个帮助您在多GPU/TPU或混合精度环境下训练的工具库。它会根据硬件和环境自动配置训练设置。查看🤗 Accelerate [快速入门](https://huggingface.co/docs/accelerate/quicktour)了解更多。
 
 初始化🤗 Accelerate环境：
 
@@ -73,11 +70,8 @@ write_basic_config()
 
 最后，如果想在自定义数据集上训练模型，请参阅[创建训练数据集](create_dataset)指南，了解如何创建适用于训练脚本的数据集。
 
-<Tip>
-
-以下部分重点介绍训练脚本中需要理解的关键修改点，但未涵盖脚本所有细节。如需深入了解，可随时查阅[脚本源码](https://github.com/huggingface/diffusers/blob/main/examples/textual_inversion/textual_inversion.py)，如有疑问欢迎反馈。
-
-</Tip>
+> [!TIP]
+> 以下部分重点介绍训练脚本中需要理解的关键修改点，但未涵盖脚本所有细节。如需深入了解，可随时查阅[脚本源码](https://github.com/huggingface/diffusers/blob/main/examples/textual_inversion/textual_inversion.py)，如有疑问欢迎反馈。
 
 ## 脚本参数
 
@@ -173,11 +167,8 @@ snapshot_download(
 - `token_identifier.txt`：特殊占位符词汇
 - `type_of_concept.txt`：训练概念类型（"object"或"style"）
 
-<Tip warning={true}>
-
-在单块V100 GPU上完整训练约需1小时。
-
-</Tip>
+> [!WARNING]
+> 在单块V100 GPU上完整训练约需1小时。
 
 启动脚本前还有最后一步。如果想实时观察训练过程，可以定期保存生成图像。在训练命令中添加以下参数：
 

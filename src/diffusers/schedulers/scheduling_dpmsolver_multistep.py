@@ -630,12 +630,8 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         designed to discretize an integral of the noise prediction model, and DPM-Solver++ is designed to discretize an
         integral of the data prediction model.
 
-        <Tip>
-
-        The algorithm and model type are decoupled. You can use either DPMSolver or DPMSolver++ for both noise
-        prediction and data prediction models.
-
-        </Tip>
+        > [!TIP] > The algorithm and model type are decoupled. You can use either DPMSolver or DPMSolver++ for both
+        noise > prediction and data prediction models.
 
         Args:
             model_output (`torch.Tensor`):
