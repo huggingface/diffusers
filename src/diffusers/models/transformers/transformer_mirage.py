@@ -24,6 +24,7 @@ from einops.layers.torch import Rearrange
 from ...configuration_utils import ConfigMixin, register_to_config
 from ..modeling_utils import ModelMixin
 from ..modeling_outputs import Transformer2DModelOutput
+from ..attention_processor import Attention, AttentionProcessor, MirageAttnProcessor2_0
 from ...utils import USE_PEFT_BACKEND, logging, scale_lora_layers, unscale_lora_layers
 
 
@@ -159,12 +160,20 @@ class MirageBlock(nn.Module):
         # img qkv
         self.img_pre_norm = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
         self.img_qkv_proj = nn.Linear(hidden_size, hidden_size * 3, bias=False)
-        self.attn_out = nn.Linear(hidden_size, hidden_size, bias=False)
         self.qk_norm = QKNorm(self.head_dim)
 
         # txt kv
         self.txt_kv_proj = nn.Linear(hidden_size, hidden_size * 2, bias=False)
         self.k_norm = RMSNorm(self.head_dim)
+
+        self.attention = Attention(
+            query_dim=hidden_size,
+            heads=num_heads,
+            dim_head=self.head_dim,
+            bias=False,
+            out_bias=False,
+            processor=MirageAttnProcessor2_0(),
+        )
 
 
         # mlp
@@ -214,15 +223,11 @@ class MirageBlock(nn.Module):
             k = torch.cat((cond_k, k), dim=2)
             v = torch.cat((cond_v, v), dim=2)
 
-        # build additive attention bias
-        attn_bias: Tensor | None = None
-        attn_mask: Tensor | None = None
-
         # build multiplicative 0/1 mask for provided attention_mask over [cond?, text, image] keys
+        attn_mask: Tensor | None = None
         if attention_mask is not None:
             bs, _, l_img, _ = img_q.shape
             l_txt = txt_k.shape[2]
-            l_all = k.shape[2]
 
             assert attention_mask.dim() == 2, f"Unsupported attention_mask shape: {attention_mask.shape}"
             assert (
@@ -244,11 +249,13 @@ class MirageBlock(nn.Module):
             # repeat across heads and query positions
             attn_mask = joint_mask[:, None, None, :].expand(-1, self.num_heads, l_img, -1)  # (B,H,L_img,L_all)
 
-        attn = torch.nn.functional.scaled_dot_product_attention(
-            img_q.contiguous(), k.contiguous(), v.contiguous(), attn_mask=attn_mask
+        kv_packed = torch.cat([k, v], dim=-1)
+
+        attn = self.attention(
+            hidden_states=img_q,                    
+            encoder_hidden_states=kv_packed,        
+            attention_mask=attn_mask,
         )
-        attn = rearrange(attn, "B H L D -> B L (H D)")
-        attn = self.attn_out(attn)
 
         return attn
 
@@ -412,6 +419,65 @@ class MirageTransformer2DModel(ModelMixin, ConfigMixin):
         )
 
         self.final_layer = LastLayer(self.hidden_size, 1, self.out_channels)
+
+    @property
+    # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.attn_processors
+    def attn_processors(self) -> Dict[str, AttentionProcessor]:
+        r"""
+        Returns:
+            `dict` of attention processors: A dictionary containing all attention processors used in the model with
+            indexed by its weight name.
+        """
+        # set recursively
+        processors = {}
+
+        def fn_recursive_add_processors(name: str, module: torch.nn.Module, processors: Dict[str, AttentionProcessor]):
+            if hasattr(module, "get_processor"):
+                processors[f"{name}.processor"] = module.get_processor()
+
+            for sub_name, child in module.named_children():
+                fn_recursive_add_processors(f"{name}.{sub_name}", child, processors)
+
+            return processors
+
+        for name, module in self.named_children():
+            fn_recursive_add_processors(name, module, processors)
+
+        return processors
+
+    def set_attn_processor(self, processor: Union[AttentionProcessor, Dict[str, AttentionProcessor]]):
+        r"""
+        Sets the attention processor to use to compute attention.
+
+        Parameters:
+            processor (`dict` of `AttentionProcessor` or only `AttentionProcessor`):
+                The instantiated processor class or a dictionary of processor classes that will be set as the processor
+                for **all** `Attention` layers.
+
+                If `processor` is a dict, the key needs to define the path to the corresponding cross attention
+                processor. This is strongly recommended when setting trainable attention processors.
+
+        """
+        count = len(self.attn_processors.keys())
+
+        if isinstance(processor, dict) and len(processor) != count:
+            raise ValueError(
+                f"A dict of processors was passed, but the number of processors {len(processor)} does not match the"
+                f" number of attention layers: {count}. Please make sure to pass {count} processor classes."
+            )
+
+        def fn_recursive_attn_processor(name: str, module: torch.nn.Module, processor):
+            if hasattr(module, "set_processor"):
+                if not isinstance(processor, dict):
+                    module.set_processor(processor)
+                else:
+                    module.set_processor(processor.pop(f"{name}.processor"))
+
+            for sub_name, child in module.named_children():
+                fn_recursive_attn_processor(f"{name}.{sub_name}", child, processor)
+
+        for name, module in self.named_children():
+            fn_recursive_attn_processor(name, module, processor)
 
     def process_inputs(self, image_latent: Tensor, txt: Tensor, **_: Any) -> tuple[Tensor, Tensor, Tensor]:
         """Timestep independent stuff"""
