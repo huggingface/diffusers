@@ -101,7 +101,7 @@ The `guidance_scale` parameter in the pipeline is there to support future guidan
 
 With [`QwenImageEditPlusPipeline`], one can provide multiple images as input reference.
 
-```
+```py
 import torch
 from PIL import Image
 from diffusers import QwenImageEditPlusPipeline
