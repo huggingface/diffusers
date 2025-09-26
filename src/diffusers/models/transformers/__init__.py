@@ -29,6 +29,7 @@ if is_torch_available():
     from .transformer_hunyuan_video_framepack import HunyuanVideoFramepackTransformer3DModel
     from .transformer_ltx import LTXVideoTransformer3DModel
     from .transformer_lumina2 import Lumina2Transformer2DModel
+    from .transformer_mirage import MirageTransformer2DModel
     from .transformer_mochi import MochiTransformer3DModel
     from .transformer_omnigen import OmniGenTransformer2DModel
     from .transformer_qwenimage import QwenImageTransformer2DModel
