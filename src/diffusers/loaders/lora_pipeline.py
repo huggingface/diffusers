@@ -994,21 +994,7 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
 
     def unfuse_lora(self, components: List[str] = ["unet", "text_encoder", "text_encoder_2"], **kwargs):
         r"""
-        Reverses the effect of
-        [`pipe.fuse_lora()`](https://huggingface.co/docs/diffusers/main/en/api/loaders#diffusers.loaders.LoraBaseMixin.fuse_lora).
-
-        <Tip warning={true}>
-
-        This is an experimental API.
-
-        </Tip>
-
-        Args:
-            components (`List[str]`): List of LoRA-injectable components to unfuse LoRA from.
-            unfuse_unet (`bool`, defaults to `True`): Whether to unfuse the UNet LoRA parameters.
-            unfuse_text_encoder (`bool`, defaults to `True`):
-                Whether to unfuse the text encoder LoRA parameters. If the text encoder wasn't monkey-patched with the
-                LoRA parameters then it won't have any effect.
+        See [`~loaders.StableDiffusionLoraLoaderMixin.unfuse_lora`] for more details.
         """
         super().unfuse_lora(components=components, **kwargs)
 
@@ -1326,18 +1312,7 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
     # Copied from diffusers.loaders.lora_pipeline.StableDiffusionXLLoraLoaderMixin.unfuse_lora with unet->transformer
     def unfuse_lora(self, components: List[str] = ["transformer", "text_encoder", "text_encoder_2"], **kwargs):
         r"""
-        Reverses the effect of
-        [`pipe.fuse_lora()`](https://huggingface.co/docs/diffusers/main/en/api/loaders#diffusers.loaders.LoraBaseMixin.fuse_lora).
-
-        <Tip warning={true}>
-
-        This is an experimental API.
-
-        </Tip>
-
-        Args:
-            components (`List[str]`): List of LoRA-injectable components to unfuse LoRA from.
-            unfuse_transformer (`bool`, defaults to `True`): Whether to unfuse the UNet LoRA parameters.
+        See [`~loaders.StableDiffusionLoraLoaderMixin.unfuse_lora`] for more details.
             unfuse_text_encoder (`bool`, defaults to `True`):
                 Whether to unfuse the text encoder LoRA parameters. If the text encoder wasn't monkey-patched with the
                 LoRA parameters then it won't have any effect.
@@ -1559,18 +1534,7 @@ class AuraFlowLoraLoaderMixin(LoraBaseMixin):
     # Copied from diffusers.loaders.lora_pipeline.SanaLoraLoaderMixin.unfuse_lora
     def unfuse_lora(self, components: List[str] = ["transformer", "text_encoder"], **kwargs):
         r"""
-        Reverses the effect of
-        [`pipe.fuse_lora()`](https://huggingface.co/docs/diffusers/main/en/api/loaders#diffusers.loaders.LoraBaseMixin.fuse_lora).
-
-        <Tip warning={true}>
-
-        This is an experimental API.
-
-        </Tip>
-
-        Args:
-            components (`List[str]`): List of LoRA-injectable components to unfuse LoRA from.
-            unfuse_transformer (`bool`, defaults to `True`): Whether to unfuse the UNet LoRA parameters.
+        See [`~loaders.StableDiffusionLoraLoaderMixin.unfuse_lora`] for more details.
         """
         super().unfuse_lora(components=components, **kwargs)
 
@@ -2788,18 +2752,7 @@ class CogVideoXLoraLoaderMixin(LoraBaseMixin):
 
     def unfuse_lora(self, components: List[str] = ["transformer"], **kwargs):
         r"""
-        Reverses the effect of
-        [`pipe.fuse_lora()`](https://huggingface.co/docs/diffusers/main/en/api/loaders#diffusers.loaders.LoraBaseMixin.fuse_lora).
-
-        <Tip warning={true}>
-
-        This is an experimental API.
-
-        </Tip>
-
-        Args:
-            components (`List[str]`): List of LoRA-injectable components to unfuse LoRA from.
-            unfuse_transformer (`bool`, defaults to `True`): Whether to unfuse the UNet LoRA parameters.
+        See [`~loaders.StableDiffusionLoraLoaderMixin.unfuse_lora`] for more details.
         """
         super().unfuse_lora(components=components, **kwargs)
 
@@ -3018,18 +2971,7 @@ class Mochi1LoraLoaderMixin(LoraBaseMixin):
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.unfuse_lora
     def unfuse_lora(self, components: List[str] = ["transformer"], **kwargs):
         r"""
-        Reverses the effect of
-        [`pipe.fuse_lora()`](https://huggingface.co/docs/diffusers/main/en/api/loaders#diffusers.loaders.LoraBaseMixin.fuse_lora).
-
-        <Tip warning={true}>
-
-        This is an experimental API.
-
-        </Tip>
-
-        Args:
-            components (`List[str]`): List of LoRA-injectable components to unfuse LoRA from.
-            unfuse_transformer (`bool`, defaults to `True`): Whether to unfuse the UNet LoRA parameters.
+        See [`~loaders.StableDiffusionLoraLoaderMixin.unfuse_lora`] for more details.
         """
         super().unfuse_lora(components=components, **kwargs)
 
@@ -3251,18 +3193,7 @@ class LTXVideoLoraLoaderMixin(LoraBaseMixin):
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.unfuse_lora
     def unfuse_lora(self, components: List[str] = ["transformer"], **kwargs):
         r"""
-        Reverses the effect of
-        [`pipe.fuse_lora()`](https://huggingface.co/docs/diffusers/main/en/api/loaders#diffusers.loaders.LoraBaseMixin.fuse_lora).
-
-        <Tip warning={true}>
-
-        This is an experimental API.
-
-        </Tip>
-
-        Args:
-            components (`List[str]`): List of LoRA-injectable components to unfuse LoRA from.
-            unfuse_transformer (`bool`, defaults to `True`): Whether to unfuse the UNet LoRA parameters.
+        See [`~loaders.StableDiffusionLoraLoaderMixin.unfuse_lora`] for more details.
         """
         super().unfuse_lora(components=components, **kwargs)
 
@@ -3481,18 +3412,7 @@ class SanaLoraLoaderMixin(LoraBaseMixin):
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.unfuse_lora
     def unfuse_lora(self, components: List[str] = ["transformer"], **kwargs):
         r"""
-        Reverses the effect of
-        [`pipe.fuse_lora()`](https://huggingface.co/docs/diffusers/main/en/api/loaders#diffusers.loaders.LoraBaseMixin.fuse_lora).
-
-        <Tip warning={true}>
-
-        This is an experimental API.
-
-        </Tip>
-
-        Args:
-            components (`List[str]`): List of LoRA-injectable components to unfuse LoRA from.
-            unfuse_transformer (`bool`, defaults to `True`): Whether to unfuse the UNet LoRA parameters.
+        See [`~loaders.StableDiffusionLoraLoaderMixin.unfuse_lora`] for more details.
         """
         super().unfuse_lora(components=components, **kwargs)
 
@@ -3714,18 +3634,7 @@ class HunyuanVideoLoraLoaderMixin(LoraBaseMixin):
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.unfuse_lora
     def unfuse_lora(self, components: List[str] = ["transformer"], **kwargs):
         r"""
-        Reverses the effect of
-        [`pipe.fuse_lora()`](https://huggingface.co/docs/diffusers/main/en/api/loaders#diffusers.loaders.LoraBaseMixin.fuse_lora).
-
-        <Tip warning={true}>
-
-        This is an experimental API.
-
-        </Tip>
-
-        Args:
-            components (`List[str]`): List of LoRA-injectable components to unfuse LoRA from.
-            unfuse_transformer (`bool`, defaults to `True`): Whether to unfuse the UNet LoRA parameters.
+        See [`~loaders.StableDiffusionLoraLoaderMixin.unfuse_lora`] for more details.
         """
         super().unfuse_lora(components=components, **kwargs)
 
@@ -3948,18 +3857,7 @@ class Lumina2LoraLoaderMixin(LoraBaseMixin):
     # Copied from diffusers.loaders.lora_pipeline.SanaLoraLoaderMixin.unfuse_lora
     def unfuse_lora(self, components: List[str] = ["transformer"], **kwargs):
         r"""
-        Reverses the effect of
-        [`pipe.fuse_lora()`](https://huggingface.co/docs/diffusers/main/en/api/loaders#diffusers.loaders.LoraBaseMixin.fuse_lora).
-
-        <Tip warning={true}>
-
-        This is an experimental API.
-
-        </Tip>
-
-        Args:
-            components (`List[str]`): List of LoRA-injectable components to unfuse LoRA from.
-            unfuse_transformer (`bool`, defaults to `True`): Whether to unfuse the UNet LoRA parameters.
+        See [`~loaders.StableDiffusionLoraLoaderMixin.unfuse_lora`] for more details.
         """
         super().unfuse_lora(components=components, **kwargs)
 
@@ -4252,18 +4150,7 @@ class WanLoraLoaderMixin(LoraBaseMixin):
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.unfuse_lora
     def unfuse_lora(self, components: List[str] = ["transformer"], **kwargs):
         r"""
-        Reverses the effect of
-        [`pipe.fuse_lora()`](https://huggingface.co/docs/diffusers/main/en/api/loaders#diffusers.loaders.LoraBaseMixin.fuse_lora).
-
-        <Tip warning={true}>
-
-        This is an experimental API.
-
-        </Tip>
-
-        Args:
-            components (`List[str]`): List of LoRA-injectable components to unfuse LoRA from.
-            unfuse_transformer (`bool`, defaults to `True`): Whether to unfuse the UNet LoRA parameters.
+        See [`~loaders.StableDiffusionLoraLoaderMixin.unfuse_lora`] for more details.
         """
         super().unfuse_lora(components=components, **kwargs)
 
@@ -4559,18 +4446,7 @@ class SkyReelsV2LoraLoaderMixin(LoraBaseMixin):
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.unfuse_lora
     def unfuse_lora(self, components: List[str] = ["transformer"], **kwargs):
         r"""
-        Reverses the effect of
-        [`pipe.fuse_lora()`](https://huggingface.co/docs/diffusers/main/en/api/loaders#diffusers.loaders.LoraBaseMixin.fuse_lora).
-
-        <Tip warning={true}>
-
-        This is an experimental API.
-
-        </Tip>
-
-        Args:
-            components (`List[str]`): List of LoRA-injectable components to unfuse LoRA from.
-            unfuse_transformer (`bool`, defaults to `True`): Whether to unfuse the UNet LoRA parameters.
+        See [`~loaders.StableDiffusionLoraLoaderMixin.unfuse_lora`] for more details.
         """
         super().unfuse_lora(components=components, **kwargs)
 
@@ -4789,18 +4665,7 @@ class CogView4LoraLoaderMixin(LoraBaseMixin):
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.unfuse_lora
     def unfuse_lora(self, components: List[str] = ["transformer"], **kwargs):
         r"""
-        Reverses the effect of
-        [`pipe.fuse_lora()`](https://huggingface.co/docs/diffusers/main/en/api/loaders#diffusers.loaders.LoraBaseMixin.fuse_lora).
-
-        <Tip warning={true}>
-
-        This is an experimental API.
-
-        </Tip>
-
-        Args:
-            components (`List[str]`): List of LoRA-injectable components to unfuse LoRA from.
-            unfuse_transformer (`bool`, defaults to `True`): Whether to unfuse the UNet LoRA parameters.
+        See [`~loaders.StableDiffusionLoraLoaderMixin.unfuse_lora`] for more details.
         """
         super().unfuse_lora(components=components, **kwargs)
 
@@ -5022,18 +4887,7 @@ class HiDreamImageLoraLoaderMixin(LoraBaseMixin):
     # Copied from diffusers.loaders.lora_pipeline.SanaLoraLoaderMixin.unfuse_lora
     def unfuse_lora(self, components: List[str] = ["transformer"], **kwargs):
         r"""
-        Reverses the effect of
-        [`pipe.fuse_lora()`](https://huggingface.co/docs/diffusers/main/en/api/loaders#diffusers.loaders.LoraBaseMixin.fuse_lora).
-
-        <Tip warning={true}>
-
-        This is an experimental API.
-
-        </Tip>
-
-        Args:
-            components (`List[str]`): List of LoRA-injectable components to unfuse LoRA from.
-            unfuse_transformer (`bool`, defaults to `True`): Whether to unfuse the UNet LoRA parameters.
+        See [`~loaders.StableDiffusionLoraLoaderMixin.unfuse_lora`] for more details.
         """
         super().unfuse_lora(components=components, **kwargs)
 
@@ -5257,18 +5111,7 @@ class QwenImageLoraLoaderMixin(LoraBaseMixin):
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.unfuse_lora
     def unfuse_lora(self, components: List[str] = ["transformer"], **kwargs):
         r"""
-        Reverses the effect of
-        [`pipe.fuse_lora()`](https://huggingface.co/docs/diffusers/main/en/api/loaders#diffusers.loaders.LoraBaseMixin.fuse_lora).
-
-        <Tip warning={true}>
-
-        This is an experimental API.
-
-        </Tip>
-
-        Args:
-            components (`List[str]`): List of LoRA-injectable components to unfuse LoRA from.
-            unfuse_transformer (`bool`, defaults to `True`): Whether to unfuse the UNet LoRA parameters.
+        See [`~loaders.StableDiffusionLoraLoaderMixin.unfuse_lora`] for more details.
         """
         super().unfuse_lora(components=components, **kwargs)
 
