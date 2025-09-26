@@ -237,3 +237,69 @@ with torch.no_grad():
 ```
 
 By selectively loading and unloading the models you need at a given stage and sharding the largest models across multiple GPUs, it is possible to run inference with large models on consumer GPUs.
+
+## Context parallelism
+
+[Context parallelism](https://huggingface.co/spaces/nanotron/ultrascale-playbook?section=context_parallelism) splits input sequences across multiple GPUs to reduce memory usage. Each GPU processes its own slice of the sequence.
+
+Key (K) and value (V) representations communicate between devices using [Ring Attention](https://huggingface.co/papers/2310.01889). This ensures each split sees every other token's K/V. Each GPU computes attention for its local K/V and passes it to the next GPU in the ring. No single GPU holds the full sequence, which reduces communication latency.
+
+Pass a [`ContextParallelConfig`] to the `parallel_config` argument of the transformer model. The config supports the `ring_degree` argument that determines how many devices to use for Ring Attention.
+
+Use [`~ModelMixin.set_attention_backend`] to switch to a more optimized [attention backend](../optimization/attention_backends). The example below uses the FlashAttention backend.
+
+Refer to the table below for the supported attention backends enabled by [`~ModelMixin.set_attention_backend`].
+
+| attention family | support type |
+|---|---|
+| native cuDNN | inference and training |
+| FlashAttention-2/3 | inference and training |
+| SageAttention | inference |
+
+```py
+import torch
+from diffusers import AutoModel, QwenImagePipeline, ContextParallelConfig
+
+try:
+    torch.distributed.init_process_group("nccl")
+    rank = torch.distributed.get_rank()
+    device = torch.device("cuda", rank % torch.cuda.device_count())
+    torch.cuda.set_device(device)
+    
+    transformer = AutoModel.from_pretrained("Qwen/Qwen-Image", subfolder="transformer", torch_dtype=torch.bfloat16, parallel_config=ContextParallelConfig(ring_degree=2))
+    pipeline = QwenImagePipeline.from_pretrained("Qwen/Qwen-Image", transformer=transformer, torch_dtype=torch.bfloat16, device_map="cuda")
+    pipeline.transformer.set_attention_backend("flash")
+
+    prompt = """
+    cinematic film still of a cat sipping a margarita in a pool in Palm Springs, California
+    highly detailed, high budget hollywood movie, cinemascope, moody, epic, gorgeous, film grain
+    """
+    
+    # Must specify generator so all ranks start with same latents (or pass your own)
+    generator = torch.Generator().manual_seed(42)
+    image = pipeline(prompt, num_inference_steps=50, generator=generator).images[0]
+    
+    if rank == 0:
+        image.save("output.png")
+
+except Exception as e:
+    print(f"An error occurred: {e}")
+    torch.distributed.breakpoint()
+    raise
+
+finally:
+    if torch.distributed.is_initialized():
+        torch.distributed.destroy_process_group()
+```
+
+### Ulysses Attention
+
+[Ulysses Attention](https://huggingface.co/papers/2309.14509) splits a sequence across GPUs and performs an *all-to-all* communication (every device sends/receives data to every other device). Each GPU ends up with all tokens for only a subset of attention heads. Each GPU computes attention locally on all tokens for its head, then performs another all-to-all to regroup results by tokens for the next layer.
+
+[`ContextParallelConfig`] supports Ulysses Attention through the `ulysses_degree` argument. This determines how many devices to use for Ulysses Attention.
+
+Pass the [`ContextParallelConfig`] to [`~ModelMixin.enable_parallelism`].
+
+```py
+pipeline.transformer.enable_parallelism(config=ContextParallelConfig(ulysses_degree=2))
+```
