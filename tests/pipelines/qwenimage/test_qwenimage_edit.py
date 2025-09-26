@@ -15,7 +15,6 @@
 import unittest
 
 import numpy as np
-import pytest
 import torch
 from PIL import Image
 from transformers import Qwen2_5_VLConfig, Qwen2_5_VLForConditionalGeneration, Qwen2Tokenizer, Qwen2VLProcessor
@@ -238,6 +237,8 @@ class QwenImageEditPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "VAE tiling should not affect the inference results",
         )
 
-    @pytest.mark.xfail(condition=True, reason="Preconfigured embeddings need to be revisited.", strict=True)
-    def test_encode_prompt_works_in_isolation(self, extra_required_param_value_dict=None, atol=1e-4, rtol=1e-4):
-        super().test_encode_prompt_works_in_isolation(extra_required_param_value_dict, atol, rtol)
+    def test_encode_prompt_works_in_isolation(
+        self, extra_required_param_value_dict=None, keep_params=None, atol=1e-4, rtol=1e-4
+    ):
+        keep_params = ["image"]
+        super().test_encode_prompt_works_in_isolation(extra_required_param_value_dict, keep_params, atol, rtol)
