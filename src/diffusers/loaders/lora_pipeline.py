@@ -982,35 +982,7 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
         **kwargs,
     ):
         r"""
-        Fuses the LoRA parameters into the original parameters of the corresponding blocks.
-
-        <Tip warning={true}>
-
-        This is an experimental API.
-
-        </Tip>
-
-        Args:
-            components: (`List[str]`): List of LoRA-injectable components to fuse the LoRAs into.
-            lora_scale (`float`, defaults to 1.0):
-                Controls how much to influence the outputs with the LoRA parameters.
-            safe_fusing (`bool`, defaults to `False`):
-                Whether to check fused weights for NaN values before fusing and if values are NaN not fusing them.
-            adapter_names (`List[str]`, *optional*):
-                Adapter names to be used for fusing. If nothing is passed, all active adapters will be fused.
-
-        Example:
-
-        ```py
-        from diffusers import DiffusionPipeline
-        import torch
-
-        pipeline = DiffusionPipeline.from_pretrained(
-            "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16
-        ).to("cuda")
-        pipeline.load_lora_weights("nerijs/pixel-art-xl", weight_name="pixel-art-xl.safetensors", adapter_name="pixel")
-        pipeline.fuse_lora(lora_scale=0.7)
-        ```
+        See [`~loaders.StableDiffusionLoraLoaderMixin.fuse_lora`] for more details.
         """
         super().fuse_lora(
             components=components,
@@ -1341,35 +1313,7 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
         **kwargs,
     ):
         r"""
-        Fuses the LoRA parameters into the original parameters of the corresponding blocks.
-
-        <Tip warning={true}>
-
-        This is an experimental API.
-
-        </Tip>
-
-        Args:
-            components: (`List[str]`): List of LoRA-injectable components to fuse the LoRAs into.
-            lora_scale (`float`, defaults to 1.0):
-                Controls how much to influence the outputs with the LoRA parameters.
-            safe_fusing (`bool`, defaults to `False`):
-                Whether to check fused weights for NaN values before fusing and if values are NaN not fusing them.
-            adapter_names (`List[str]`, *optional*):
-                Adapter names to be used for fusing. If nothing is passed, all active adapters will be fused.
-
-        Example:
-
-        ```py
-        from diffusers import DiffusionPipeline
-        import torch
-
-        pipeline = DiffusionPipeline.from_pretrained(
-            "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16
-        ).to("cuda")
-        pipeline.load_lora_weights("nerijs/pixel-art-xl", weight_name="pixel-art-xl.safetensors", adapter_name="pixel")
-        pipeline.fuse_lora(lora_scale=0.7)
-        ```
+        See [`~loaders.StableDiffusionLoraLoaderMixin.fuse_lora`] for more details.
         """
         super().fuse_lora(
             components=components,
@@ -1602,35 +1546,7 @@ class AuraFlowLoraLoaderMixin(LoraBaseMixin):
         **kwargs,
     ):
         r"""
-        Fuses the LoRA parameters into the original parameters of the corresponding blocks.
-
-        <Tip warning={true}>
-
-        This is an experimental API.
-
-        </Tip>
-
-        Args:
-            components: (`List[str]`): List of LoRA-injectable components to fuse the LoRAs into.
-            lora_scale (`float`, defaults to 1.0):
-                Controls how much to influence the outputs with the LoRA parameters.
-            safe_fusing (`bool`, defaults to `False`):
-                Whether to check fused weights for NaN values before fusing and if values are NaN not fusing them.
-            adapter_names (`List[str]`, *optional*):
-                Adapter names to be used for fusing. If nothing is passed, all active adapters will be fused.
-
-        Example:
-
-        ```py
-        from diffusers import DiffusionPipeline
-        import torch
-
-        pipeline = DiffusionPipeline.from_pretrained(
-            "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16
-        ).to("cuda")
-        pipeline.load_lora_weights("nerijs/pixel-art-xl", weight_name="pixel-art-xl.safetensors", adapter_name="pixel")
-        pipeline.fuse_lora(lora_scale=0.7)
-        ```
+        See [`~loaders.StableDiffusionLoraLoaderMixin.fuse_lora`] for more details.
         """
         super().fuse_lora(
             components=components,
@@ -2163,35 +2079,7 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
         **kwargs,
     ):
         r"""
-        Fuses the LoRA parameters into the original parameters of the corresponding blocks.
-
-        <Tip warning={true}>
-
-        This is an experimental API.
-
-        </Tip>
-
-        Args:
-            components: (`List[str]`): List of LoRA-injectable components to fuse the LoRAs into.
-            lora_scale (`float`, defaults to 1.0):
-                Controls how much to influence the outputs with the LoRA parameters.
-            safe_fusing (`bool`, defaults to `False`):
-                Whether to check fused weights for NaN values before fusing and if values are NaN not fusing them.
-            adapter_names (`List[str]`, *optional*):
-                Adapter names to be used for fusing. If nothing is passed, all active adapters will be fused.
-
-        Example:
-
-        ```py
-        from diffusers import DiffusionPipeline
-        import torch
-
-        pipeline = DiffusionPipeline.from_pretrained(
-            "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16
-        ).to("cuda")
-        pipeline.load_lora_weights("nerijs/pixel-art-xl", weight_name="pixel-art-xl.safetensors", adapter_name="pixel")
-        pipeline.fuse_lora(lora_scale=0.7)
-        ```
+        See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`] for more details.
         """
 
         transformer = getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer
@@ -2888,35 +2776,7 @@ class CogVideoXLoraLoaderMixin(LoraBaseMixin):
         **kwargs,
     ):
         r"""
-        Fuses the LoRA parameters into the original parameters of the corresponding blocks.
-
-        <Tip warning={true}>
-
-        This is an experimental API.
-
-        </Tip>
-
-        Args:
-            components: (`List[str]`): List of LoRA-injectable components to fuse the LoRAs into.
-            lora_scale (`float`, defaults to 1.0):
-                Controls how much to influence the outputs with the LoRA parameters.
-            safe_fusing (`bool`, defaults to `False`):
-                Whether to check fused weights for NaN values before fusing and if values are NaN not fusing them.
-            adapter_names (`List[str]`, *optional*):
-                Adapter names to be used for fusing. If nothing is passed, all active adapters will be fused.
-
-        Example:
-
-        ```py
-        from diffusers import DiffusionPipeline
-        import torch
-
-        pipeline = DiffusionPipeline.from_pretrained(
-            "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16
-        ).to("cuda")
-        pipeline.load_lora_weights("nerijs/pixel-art-xl", weight_name="pixel-art-xl.safetensors", adapter_name="pixel")
-        pipeline.fuse_lora(lora_scale=0.7)
-        ```
+        See [`~loaders.StableDiffusionLoraLoaderMixin.fuse_lora`] for more details.
         """
         super().fuse_lora(
             components=components,
@@ -3145,35 +3005,7 @@ class Mochi1LoraLoaderMixin(LoraBaseMixin):
         **kwargs,
     ):
         r"""
-        Fuses the LoRA parameters into the original parameters of the corresponding blocks.
-
-        <Tip warning={true}>
-
-        This is an experimental API.
-
-        </Tip>
-
-        Args:
-            components: (`List[str]`): List of LoRA-injectable components to fuse the LoRAs into.
-            lora_scale (`float`, defaults to 1.0):
-                Controls how much to influence the outputs with the LoRA parameters.
-            safe_fusing (`bool`, defaults to `False`):
-                Whether to check fused weights for NaN values before fusing and if values are NaN not fusing them.
-            adapter_names (`List[str]`, *optional*):
-                Adapter names to be used for fusing. If nothing is passed, all active adapters will be fused.
-
-        Example:
-
-        ```py
-        from diffusers import DiffusionPipeline
-        import torch
-
-        pipeline = DiffusionPipeline.from_pretrained(
-            "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16
-        ).to("cuda")
-        pipeline.load_lora_weights("nerijs/pixel-art-xl", weight_name="pixel-art-xl.safetensors", adapter_name="pixel")
-        pipeline.fuse_lora(lora_scale=0.7)
-        ```
+        See [`~loaders.StableDiffusionLoraLoaderMixin.fuse_lora`] for more details.
         """
         super().fuse_lora(
             components=components,
@@ -3406,35 +3238,7 @@ class LTXVideoLoraLoaderMixin(LoraBaseMixin):
         **kwargs,
     ):
         r"""
-        Fuses the LoRA parameters into the original parameters of the corresponding blocks.
-
-        <Tip warning={true}>
-
-        This is an experimental API.
-
-        </Tip>
-
-        Args:
-            components: (`List[str]`): List of LoRA-injectable components to fuse the LoRAs into.
-            lora_scale (`float`, defaults to 1.0):
-                Controls how much to influence the outputs with the LoRA parameters.
-            safe_fusing (`bool`, defaults to `False`):
-                Whether to check fused weights for NaN values before fusing and if values are NaN not fusing them.
-            adapter_names (`List[str]`, *optional*):
-                Adapter names to be used for fusing. If nothing is passed, all active adapters will be fused.
-
-        Example:
-
-        ```py
-        from diffusers import DiffusionPipeline
-        import torch
-
-        pipeline = DiffusionPipeline.from_pretrained(
-            "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16
-        ).to("cuda")
-        pipeline.load_lora_weights("nerijs/pixel-art-xl", weight_name="pixel-art-xl.safetensors", adapter_name="pixel")
-        pipeline.fuse_lora(lora_scale=0.7)
-        ```
+        See [`~loaders.StableDiffusionLoraLoaderMixin.fuse_lora`] for more details.
         """
         super().fuse_lora(
             components=components,
@@ -3664,35 +3468,7 @@ class SanaLoraLoaderMixin(LoraBaseMixin):
         **kwargs,
     ):
         r"""
-        Fuses the LoRA parameters into the original parameters of the corresponding blocks.
-
-        <Tip warning={true}>
-
-        This is an experimental API.
-
-        </Tip>
-
-        Args:
-            components: (`List[str]`): List of LoRA-injectable components to fuse the LoRAs into.
-            lora_scale (`float`, defaults to 1.0):
-                Controls how much to influence the outputs with the LoRA parameters.
-            safe_fusing (`bool`, defaults to `False`):
-                Whether to check fused weights for NaN values before fusing and if values are NaN not fusing them.
-            adapter_names (`List[str]`, *optional*):
-                Adapter names to be used for fusing. If nothing is passed, all active adapters will be fused.
-
-        Example:
-
-        ```py
-        from diffusers import DiffusionPipeline
-        import torch
-
-        pipeline = DiffusionPipeline.from_pretrained(
-            "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16
-        ).to("cuda")
-        pipeline.load_lora_weights("nerijs/pixel-art-xl", weight_name="pixel-art-xl.safetensors", adapter_name="pixel")
-        pipeline.fuse_lora(lora_scale=0.7)
-        ```
+        See [`~loaders.StableDiffusionLoraLoaderMixin.fuse_lora`] for more details.
         """
         super().fuse_lora(
             components=components,
@@ -3925,35 +3701,7 @@ class HunyuanVideoLoraLoaderMixin(LoraBaseMixin):
         **kwargs,
     ):
         r"""
-        Fuses the LoRA parameters into the original parameters of the corresponding blocks.
-
-        <Tip warning={true}>
-
-        This is an experimental API.
-
-        </Tip>
-
-        Args:
-            components: (`List[str]`): List of LoRA-injectable components to fuse the LoRAs into.
-            lora_scale (`float`, defaults to 1.0):
-                Controls how much to influence the outputs with the LoRA parameters.
-            safe_fusing (`bool`, defaults to `False`):
-                Whether to check fused weights for NaN values before fusing and if values are NaN not fusing them.
-            adapter_names (`List[str]`, *optional*):
-                Adapter names to be used for fusing. If nothing is passed, all active adapters will be fused.
-
-        Example:
-
-        ```py
-        from diffusers import DiffusionPipeline
-        import torch
-
-        pipeline = DiffusionPipeline.from_pretrained(
-            "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16
-        ).to("cuda")
-        pipeline.load_lora_weights("nerijs/pixel-art-xl", weight_name="pixel-art-xl.safetensors", adapter_name="pixel")
-        pipeline.fuse_lora(lora_scale=0.7)
-        ```
+        See [`~loaders.StableDiffusionLoraLoaderMixin.fuse_lora`] for more details.
         """
         super().fuse_lora(
             components=components,
@@ -4187,35 +3935,7 @@ class Lumina2LoraLoaderMixin(LoraBaseMixin):
         **kwargs,
     ):
         r"""
-        Fuses the LoRA parameters into the original parameters of the corresponding blocks.
-
-        <Tip warning={true}>
-
-        This is an experimental API.
-
-        </Tip>
-
-        Args:
-            components: (`List[str]`): List of LoRA-injectable components to fuse the LoRAs into.
-            lora_scale (`float`, defaults to 1.0):
-                Controls how much to influence the outputs with the LoRA parameters.
-            safe_fusing (`bool`, defaults to `False`):
-                Whether to check fused weights for NaN values before fusing and if values are NaN not fusing them.
-            adapter_names (`List[str]`, *optional*):
-                Adapter names to be used for fusing. If nothing is passed, all active adapters will be fused.
-
-        Example:
-
-        ```py
-        from diffusers import DiffusionPipeline
-        import torch
-
-        pipeline = DiffusionPipeline.from_pretrained(
-            "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16
-        ).to("cuda")
-        pipeline.load_lora_weights("nerijs/pixel-art-xl", weight_name="pixel-art-xl.safetensors", adapter_name="pixel")
-        pipeline.fuse_lora(lora_scale=0.7)
-        ```
+        See [`~loaders.StableDiffusionLoraLoaderMixin.fuse_lora`] for more details.
         """
         super().fuse_lora(
             components=components,
@@ -4519,35 +4239,7 @@ class WanLoraLoaderMixin(LoraBaseMixin):
         **kwargs,
     ):
         r"""
-        Fuses the LoRA parameters into the original parameters of the corresponding blocks.
-
-        <Tip warning={true}>
-
-        This is an experimental API.
-
-        </Tip>
-
-        Args:
-            components: (`List[str]`): List of LoRA-injectable components to fuse the LoRAs into.
-            lora_scale (`float`, defaults to 1.0):
-                Controls how much to influence the outputs with the LoRA parameters.
-            safe_fusing (`bool`, defaults to `False`):
-                Whether to check fused weights for NaN values before fusing and if values are NaN not fusing them.
-            adapter_names (`List[str]`, *optional*):
-                Adapter names to be used for fusing. If nothing is passed, all active adapters will be fused.
-
-        Example:
-
-        ```py
-        from diffusers import DiffusionPipeline
-        import torch
-
-        pipeline = DiffusionPipeline.from_pretrained(
-            "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16
-        ).to("cuda")
-        pipeline.load_lora_weights("nerijs/pixel-art-xl", weight_name="pixel-art-xl.safetensors", adapter_name="pixel")
-        pipeline.fuse_lora(lora_scale=0.7)
-        ```
+        See [`~loaders.StableDiffusionLoraLoaderMixin.fuse_lora`] for more details.
         """
         super().fuse_lora(
             components=components,
@@ -4854,35 +4546,7 @@ class SkyReelsV2LoraLoaderMixin(LoraBaseMixin):
         **kwargs,
     ):
         r"""
-        Fuses the LoRA parameters into the original parameters of the corresponding blocks.
-
-        <Tip warning={true}>
-
-        This is an experimental API.
-
-        </Tip>
-
-        Args:
-            components: (`List[str]`): List of LoRA-injectable components to fuse the LoRAs into.
-            lora_scale (`float`, defaults to 1.0):
-                Controls how much to influence the outputs with the LoRA parameters.
-            safe_fusing (`bool`, defaults to `False`):
-                Whether to check fused weights for NaN values before fusing and if values are NaN not fusing them.
-            adapter_names (`List[str]`, *optional*):
-                Adapter names to be used for fusing. If nothing is passed, all active adapters will be fused.
-
-        Example:
-
-        ```py
-        from diffusers import DiffusionPipeline
-        import torch
-
-        pipeline = DiffusionPipeline.from_pretrained(
-            "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16
-        ).to("cuda")
-        pipeline.load_lora_weights("nerijs/pixel-art-xl", weight_name="pixel-art-xl.safetensors", adapter_name="pixel")
-        pipeline.fuse_lora(lora_scale=0.7)
-        ```
+        See [`~loaders.StableDiffusionLoraLoaderMixin.fuse_lora`] for more details.
         """
         super().fuse_lora(
             components=components,
@@ -5112,35 +4776,7 @@ class CogView4LoraLoaderMixin(LoraBaseMixin):
         **kwargs,
     ):
         r"""
-        Fuses the LoRA parameters into the original parameters of the corresponding blocks.
-
-        <Tip warning={true}>
-
-        This is an experimental API.
-
-        </Tip>
-
-        Args:
-            components: (`List[str]`): List of LoRA-injectable components to fuse the LoRAs into.
-            lora_scale (`float`, defaults to 1.0):
-                Controls how much to influence the outputs with the LoRA parameters.
-            safe_fusing (`bool`, defaults to `False`):
-                Whether to check fused weights for NaN values before fusing and if values are NaN not fusing them.
-            adapter_names (`List[str]`, *optional*):
-                Adapter names to be used for fusing. If nothing is passed, all active adapters will be fused.
-
-        Example:
-
-        ```py
-        from diffusers import DiffusionPipeline
-        import torch
-
-        pipeline = DiffusionPipeline.from_pretrained(
-            "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16
-        ).to("cuda")
-        pipeline.load_lora_weights("nerijs/pixel-art-xl", weight_name="pixel-art-xl.safetensors", adapter_name="pixel")
-        pipeline.fuse_lora(lora_scale=0.7)
-        ```
+        See [`~loaders.StableDiffusionLoraLoaderMixin.fuse_lora`] for more details.
         """
         super().fuse_lora(
             components=components,
@@ -5373,35 +5009,7 @@ class HiDreamImageLoraLoaderMixin(LoraBaseMixin):
         **kwargs,
     ):
         r"""
-        Fuses the LoRA parameters into the original parameters of the corresponding blocks.
-
-        <Tip warning={true}>
-
-        This is an experimental API.
-
-        </Tip>
-
-        Args:
-            components: (`List[str]`): List of LoRA-injectable components to fuse the LoRAs into.
-            lora_scale (`float`, defaults to 1.0):
-                Controls how much to influence the outputs with the LoRA parameters.
-            safe_fusing (`bool`, defaults to `False`):
-                Whether to check fused weights for NaN values before fusing and if values are NaN not fusing them.
-            adapter_names (`List[str]`, *optional*):
-                Adapter names to be used for fusing. If nothing is passed, all active adapters will be fused.
-
-        Example:
-
-        ```py
-        from diffusers import DiffusionPipeline
-        import torch
-
-        pipeline = DiffusionPipeline.from_pretrained(
-            "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16
-        ).to("cuda")
-        pipeline.load_lora_weights("nerijs/pixel-art-xl", weight_name="pixel-art-xl.safetensors", adapter_name="pixel")
-        pipeline.fuse_lora(lora_scale=0.7)
-        ```
+        See [`~loaders.StableDiffusionLoraLoaderMixin.fuse_lora`] for more details.
         """
         super().fuse_lora(
             components=components,
@@ -5636,35 +5244,7 @@ class QwenImageLoraLoaderMixin(LoraBaseMixin):
         **kwargs,
     ):
         r"""
-        Fuses the LoRA parameters into the original parameters of the corresponding blocks.
-
-        <Tip warning={true}>
-
-        This is an experimental API.
-
-        </Tip>
-
-        Args:
-            components: (`List[str]`): List of LoRA-injectable components to fuse the LoRAs into.
-            lora_scale (`float`, defaults to 1.0):
-                Controls how much to influence the outputs with the LoRA parameters.
-            safe_fusing (`bool`, defaults to `False`):
-                Whether to check fused weights for NaN values before fusing and if values are NaN not fusing them.
-            adapter_names (`List[str]`, *optional*):
-                Adapter names to be used for fusing. If nothing is passed, all active adapters will be fused.
-
-        Example:
-
-        ```py
-        from diffusers import DiffusionPipeline
-        import torch
-
-        pipeline = DiffusionPipeline.from_pretrained(
-            "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16
-        ).to("cuda")
-        pipeline.load_lora_weights("nerijs/pixel-art-xl", weight_name="pixel-art-xl.safetensors", adapter_name="pixel")
-        pipeline.fuse_lora(lora_scale=0.7)
-        ```
+        See [`~loaders.StableDiffusionLoraLoaderMixin.fuse_lora`] for more details.
         """
         super().fuse_lora(
             components=components,
