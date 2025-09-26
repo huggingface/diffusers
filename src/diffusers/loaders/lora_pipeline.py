@@ -1143,26 +1143,7 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
         metadata=None,
     ):
         """
-        This will load the LoRA layers specified in `state_dict` into `transformer`.
-
-        Parameters:
-            state_dict (`dict`):
-                A standard state dict containing the lora layer parameters. The keys can either be indexed directly
-                into the unet or prefixed with an additional `unet` which can be used to distinguish between text
-                encoder lora layers.
-            transformer (`SD3Transformer2DModel`):
-                The Transformer model to load the LoRA layers into.
-            adapter_name (`str`, *optional*):
-                Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
-                `default_{i}` where i is the total number of adapters being loaded.
-            low_cpu_mem_usage (`bool`, *optional*):
-                Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
-                weights.
-            hotswap (`bool`, *optional*):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`].
-            metadata (`dict`):
-                Optional LoRA adapter metadata. When supplied, the `LoraConfig` arguments of `peft` won't be derived
-                from the state dict.
+        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_unet`] for more details.
         """
         if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
             raise ValueError(
@@ -1313,9 +1294,6 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
     def unfuse_lora(self, components: List[str] = ["transformer", "text_encoder", "text_encoder_2"], **kwargs):
         r"""
         See [`~loaders.StableDiffusionLoraLoaderMixin.unfuse_lora`] for more details.
-            unfuse_text_encoder (`bool`, defaults to `True`):
-                Whether to unfuse the text encoder LoRA parameters. If the text encoder wasn't monkey-patched with the
-                LoRA parameters then it won't have any effect.
         """
         super().unfuse_lora(components=components, **kwargs)
 
@@ -1438,26 +1416,7 @@ class AuraFlowLoraLoaderMixin(LoraBaseMixin):
         metadata=None,
     ):
         """
-        This will load the LoRA layers specified in `state_dict` into `transformer`.
-
-        Parameters:
-            state_dict (`dict`):
-                A standard state dict containing the lora layer parameters. The keys can either be indexed directly
-                into the unet or prefixed with an additional `unet` which can be used to distinguish between text
-                encoder lora layers.
-            transformer (`AuraFlowTransformer2DModel`):
-                The Transformer model to load the LoRA layers into.
-            adapter_name (`str`, *optional*):
-                Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
-                `default_{i}` where i is the total number of adapters being loaded.
-            low_cpu_mem_usage (`bool`, *optional*):
-                Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
-                weights.
-            hotswap (`bool`, *optional*):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`].
-            metadata (`dict`):
-                Optional LoRA adapter metadata. When supplied, the `LoraConfig` arguments of `peft` won't be derived
-                from the state dict.
+        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_unet`] for more details.
         """
         if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
             raise ValueError(
@@ -1815,30 +1774,7 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
         hotswap: bool = False,
     ):
         """
-        This will load the LoRA layers specified in `state_dict` into `transformer`.
-
-        Parameters:
-            state_dict (`dict`):
-                A standard state dict containing the lora layer parameters. The keys can either be indexed directly
-                into the unet or prefixed with an additional `unet` which can be used to distinguish between text
-                encoder lora layers.
-            network_alphas (`Dict[str, float]`):
-                The value of the network alpha used for stable learning and preventing underflow. This value has the
-                same meaning as the `--network_alpha` option in the kohya-ss trainer script. Refer to [this
-                link](https://github.com/darkstorm2150/sd-scripts/blob/main/docs/train_network_README-en.md#execute-learning).
-            transformer (`FluxTransformer2DModel`):
-                The Transformer model to load the LoRA layers into.
-            adapter_name (`str`, *optional*):
-                Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
-                `default_{i}` where i is the total number of adapters being loaded.
-            low_cpu_mem_usage (`bool`, *optional*):
-                Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
-                weights.
-            hotswap (`bool`, *optional*):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`].
-            metadata (`dict`):
-                Optional LoRA adapter metadata. When supplied, the `LoraConfig` arguments of `peft` won't be derived
-                from the state dict.
+        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_unet`] for more details.
         """
         if low_cpu_mem_usage and not is_peft_version(">=", "0.13.1"):
             raise ValueError(
@@ -2386,30 +2322,7 @@ class AmusedLoraLoaderMixin(StableDiffusionLoraLoaderMixin):
         hotswap: bool = False,
     ):
         """
-        This will load the LoRA layers specified in `state_dict` into `transformer`.
-
-        Parameters:
-            state_dict (`dict`):
-                A standard state dict containing the lora layer parameters. The keys can either be indexed directly
-                into the unet or prefixed with an additional `unet` which can be used to distinguish between text
-                encoder lora layers.
-            network_alphas (`Dict[str, float]`):
-                The value of the network alpha used for stable learning and preventing underflow. This value has the
-                same meaning as the `--network_alpha` option in the kohya-ss trainer script. Refer to [this
-                link](https://github.com/darkstorm2150/sd-scripts/blob/main/docs/train_network_README-en.md#execute-learning).
-            transformer (`UVit2DModel`):
-                The Transformer model to load the LoRA layers into.
-            adapter_name (`str`, *optional*):
-                Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
-                `default_{i}` where i is the total number of adapters being loaded.
-            low_cpu_mem_usage (`bool`, *optional*):
-                Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
-                weights.
-            hotswap (`bool`, *optional*):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`].
-            metadata (`dict`):
-                Optional LoRA adapter metadata. When supplied, the `LoraConfig` arguments of `peft` won't be derived
-                from the state dict.
+        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_unet`] for more details.
         """
         if low_cpu_mem_usage and not is_peft_version(">=", "0.13.1"):
             raise ValueError(
@@ -2659,26 +2572,7 @@ class CogVideoXLoraLoaderMixin(LoraBaseMixin):
         metadata=None,
     ):
         """
-        This will load the LoRA layers specified in `state_dict` into `transformer`.
-
-        Parameters:
-            state_dict (`dict`):
-                A standard state dict containing the lora layer parameters. The keys can either be indexed directly
-                into the unet or prefixed with an additional `unet` which can be used to distinguish between text
-                encoder lora layers.
-            transformer (`CogVideoXTransformer3DModel`):
-                The Transformer model to load the LoRA layers into.
-            adapter_name (`str`, *optional*):
-                Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
-                `default_{i}` where i is the total number of adapters being loaded.
-            low_cpu_mem_usage (`bool`, *optional*):
-                Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
-                weights.
-            hotswap (`bool`, *optional*):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`].
-            metadata (`dict`):
-                Optional LoRA adapter metadata. When supplied, the `LoraConfig` arguments of `peft` won't be derived
-                from the state dict.
+        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_unet`] for more details.
         """
         if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
             raise ValueError(
@@ -2875,26 +2769,7 @@ class Mochi1LoraLoaderMixin(LoraBaseMixin):
         metadata=None,
     ):
         """
-        This will load the LoRA layers specified in `state_dict` into `transformer`.
-
-        Parameters:
-            state_dict (`dict`):
-                A standard state dict containing the lora layer parameters. The keys can either be indexed directly
-                into the unet or prefixed with an additional `unet` which can be used to distinguish between text
-                encoder lora layers.
-            transformer (`MochiTransformer3DModel`):
-                The Transformer model to load the LoRA layers into.
-            adapter_name (`str`, *optional*):
-                Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
-                `default_{i}` where i is the total number of adapters being loaded.
-            low_cpu_mem_usage (`bool`, *optional*):
-                Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
-                weights.
-            hotswap (`bool`, *optional*):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`].
-            metadata (`dict`):
-                Optional LoRA adapter metadata. When supplied, the `LoraConfig` arguments of `peft` won't be derived
-                from the state dict.
+        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_unet`] for more details.
         """
         if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
             raise ValueError(
@@ -3097,26 +2972,7 @@ class LTXVideoLoraLoaderMixin(LoraBaseMixin):
         metadata=None,
     ):
         """
-        This will load the LoRA layers specified in `state_dict` into `transformer`.
-
-        Parameters:
-            state_dict (`dict`):
-                A standard state dict containing the lora layer parameters. The keys can either be indexed directly
-                into the unet or prefixed with an additional `unet` which can be used to distinguish between text
-                encoder lora layers.
-            transformer (`LTXVideoTransformer3DModel`):
-                The Transformer model to load the LoRA layers into.
-            adapter_name (`str`, *optional*):
-                Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
-                `default_{i}` where i is the total number of adapters being loaded.
-            low_cpu_mem_usage (`bool`, *optional*):
-                Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
-                weights.
-            hotswap (`bool`, *optional*):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`].
-            metadata (`dict`):
-                Optional LoRA adapter metadata. When supplied, the `LoraConfig` arguments of `peft` won't be derived
-                from the state dict.
+        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_unet`] for more details.
         """
         if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
             raise ValueError(
@@ -3316,26 +3172,7 @@ class SanaLoraLoaderMixin(LoraBaseMixin):
         metadata=None,
     ):
         """
-        This will load the LoRA layers specified in `state_dict` into `transformer`.
-
-        Parameters:
-            state_dict (`dict`):
-                A standard state dict containing the lora layer parameters. The keys can either be indexed directly
-                into the unet or prefixed with an additional `unet` which can be used to distinguish between text
-                encoder lora layers.
-            transformer (`SanaTransformer2DModel`):
-                The Transformer model to load the LoRA layers into.
-            adapter_name (`str`, *optional*):
-                Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
-                `default_{i}` where i is the total number of adapters being loaded.
-            low_cpu_mem_usage (`bool`, *optional*):
-                Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
-                weights.
-            hotswap (`bool`, *optional*):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`].
-            metadata (`dict`):
-                Optional LoRA adapter metadata. When supplied, the `LoraConfig` arguments of `peft` won't be derived
-                from the state dict.
+        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_unet`] for more details.
         """
         if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
             raise ValueError(
@@ -3538,26 +3375,7 @@ class HunyuanVideoLoraLoaderMixin(LoraBaseMixin):
         metadata=None,
     ):
         """
-        This will load the LoRA layers specified in `state_dict` into `transformer`.
-
-        Parameters:
-            state_dict (`dict`):
-                A standard state dict containing the lora layer parameters. The keys can either be indexed directly
-                into the unet or prefixed with an additional `unet` which can be used to distinguish between text
-                encoder lora layers.
-            transformer (`HunyuanVideoTransformer3DModel`):
-                The Transformer model to load the LoRA layers into.
-            adapter_name (`str`, *optional*):
-                Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
-                `default_{i}` where i is the total number of adapters being loaded.
-            low_cpu_mem_usage (`bool`, *optional*):
-                Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
-                weights.
-            hotswap (`bool`, *optional*):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`].
-            metadata (`dict`):
-                Optional LoRA adapter metadata. When supplied, the `LoraConfig` arguments of `peft` won't be derived
-                from the state dict.
+        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_unet`] for more details.
         """
         if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
             raise ValueError(
@@ -3761,26 +3579,7 @@ class Lumina2LoraLoaderMixin(LoraBaseMixin):
         metadata=None,
     ):
         """
-        This will load the LoRA layers specified in `state_dict` into `transformer`.
-
-        Parameters:
-            state_dict (`dict`):
-                A standard state dict containing the lora layer parameters. The keys can either be indexed directly
-                into the unet or prefixed with an additional `unet` which can be used to distinguish between text
-                encoder lora layers.
-            transformer (`Lumina2Transformer2DModel`):
-                The Transformer model to load the LoRA layers into.
-            adapter_name (`str`, *optional*):
-                Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
-                `default_{i}` where i is the total number of adapters being loaded.
-            low_cpu_mem_usage (`bool`, *optional*):
-                Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
-                weights.
-            hotswap (`bool`, *optional*):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`].
-            metadata (`dict`):
-                Optional LoRA adapter metadata. When supplied, the `LoraConfig` arguments of `peft` won't be derived
-                from the state dict.
+        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_unet`] for more details.
         """
         if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
             raise ValueError(
@@ -4054,26 +3853,7 @@ class WanLoraLoaderMixin(LoraBaseMixin):
         metadata=None,
     ):
         """
-        This will load the LoRA layers specified in `state_dict` into `transformer`.
-
-        Parameters:
-            state_dict (`dict`):
-                A standard state dict containing the lora layer parameters. The keys can either be indexed directly
-                into the unet or prefixed with an additional `unet` which can be used to distinguish between text
-                encoder lora layers.
-            transformer (`WanTransformer3DModel`):
-                The Transformer model to load the LoRA layers into.
-            adapter_name (`str`, *optional*):
-                Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
-                `default_{i}` where i is the total number of adapters being loaded.
-            low_cpu_mem_usage (`bool`, *optional*):
-                Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
-                weights.
-            hotswap (`bool`, *optional*):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`].
-            metadata (`dict`):
-                Optional LoRA adapter metadata. When supplied, the `LoraConfig` arguments of `peft` won't be derived
-                from the state dict.
+        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_unet`] for more details.
         """
         if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
             raise ValueError(
@@ -4350,26 +4130,7 @@ class SkyReelsV2LoraLoaderMixin(LoraBaseMixin):
         metadata=None,
     ):
         """
-        This will load the LoRA layers specified in `state_dict` into `transformer`.
-
-        Parameters:
-            state_dict (`dict`):
-                A standard state dict containing the lora layer parameters. The keys can either be indexed directly
-                into the unet or prefixed with an additional `unet` which can be used to distinguish between text
-                encoder lora layers.
-            transformer (`SkyReelsV2Transformer3DModel`):
-                The Transformer model to load the LoRA layers into.
-            adapter_name (`str`, *optional*):
-                Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
-                `default_{i}` where i is the total number of adapters being loaded.
-            low_cpu_mem_usage (`bool`, *optional*):
-                Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
-                weights.
-            hotswap (`bool`, *optional*):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`].
-            metadata (`dict`):
-                Optional LoRA adapter metadata. When supplied, the `LoraConfig` arguments of `peft` won't be derived
-                from the state dict.
+        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_unet`] for more details.
         """
         if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
             raise ValueError(
@@ -4569,26 +4330,7 @@ class CogView4LoraLoaderMixin(LoraBaseMixin):
         metadata=None,
     ):
         """
-        This will load the LoRA layers specified in `state_dict` into `transformer`.
-
-        Parameters:
-            state_dict (`dict`):
-                A standard state dict containing the lora layer parameters. The keys can either be indexed directly
-                into the unet or prefixed with an additional `unet` which can be used to distinguish between text
-                encoder lora layers.
-            transformer (`CogView4Transformer2DModel`):
-                The Transformer model to load the LoRA layers into.
-            adapter_name (`str`, *optional*):
-                Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
-                `default_{i}` where i is the total number of adapters being loaded.
-            low_cpu_mem_usage (`bool`, *optional*):
-                Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
-                weights.
-            hotswap (`bool`, *optional*):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`].
-            metadata (`dict`):
-                Optional LoRA adapter metadata. When supplied, the `LoraConfig` arguments of `peft` won't be derived
-                from the state dict.
+        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_unet`] for more details.
         """
         if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
             raise ValueError(
@@ -4791,26 +4533,7 @@ class HiDreamImageLoraLoaderMixin(LoraBaseMixin):
         metadata=None,
     ):
         """
-        This will load the LoRA layers specified in `state_dict` into `transformer`.
-
-        Parameters:
-            state_dict (`dict`):
-                A standard state dict containing the lora layer parameters. The keys can either be indexed directly
-                into the unet or prefixed with an additional `unet` which can be used to distinguish between text
-                encoder lora layers.
-            transformer (`HiDreamImageTransformer2DModel`):
-                The Transformer model to load the LoRA layers into.
-            adapter_name (`str`, *optional*):
-                Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
-                `default_{i}` where i is the total number of adapters being loaded.
-            low_cpu_mem_usage (`bool`, *optional*):
-                Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
-                weights.
-            hotswap (`bool`, *optional*):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`].
-            metadata (`dict`):
-                Optional LoRA adapter metadata. When supplied, the `LoraConfig` arguments of `peft` won't be derived
-                from the state dict.
+        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_unet`] for more details.
         """
         if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
             raise ValueError(
@@ -5015,26 +4738,7 @@ class QwenImageLoraLoaderMixin(LoraBaseMixin):
         metadata=None,
     ):
         """
-        This will load the LoRA layers specified in `state_dict` into `transformer`.
-
-        Parameters:
-            state_dict (`dict`):
-                A standard state dict containing the lora layer parameters. The keys can either be indexed directly
-                into the unet or prefixed with an additional `unet` which can be used to distinguish between text
-                encoder lora layers.
-            transformer (`QwenImageTransformer2DModel`):
-                The Transformer model to load the LoRA layers into.
-            adapter_name (`str`, *optional*):
-                Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
-                `default_{i}` where i is the total number of adapters being loaded.
-            low_cpu_mem_usage (`bool`, *optional*):
-                Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
-                weights.
-            hotswap (`bool`, *optional*):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`].
-            metadata (`dict`):
-                Optional LoRA adapter metadata. When supplied, the `LoraConfig` arguments of `peft` won't be derived
-                from the state dict.
+        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_unet`] for more details.
         """
         if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
             raise ValueError(
