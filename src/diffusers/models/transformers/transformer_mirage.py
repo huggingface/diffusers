@@ -26,12 +26,12 @@ from ..modeling_utils import ModelMixin
 from ..modeling_outputs import Transformer2DModelOutput
 from ..attention_processor import Attention, AttentionProcessor, MirageAttnProcessor2_0
 from ...utils import USE_PEFT_BACKEND, logging, scale_lora_layers, unscale_lora_layers
+from ..normalization import RMSNorm
 
 
 logger = logging.get_logger(__name__)
 
 
-# Mirage Layer Components
 def get_image_ids(bs: int, h: int, w: int, patch_size: int, device: torch.device) -> Tensor:
     img_ids = torch.zeros(h // patch_size, w // patch_size, 2, device=device)
     img_ids[..., 0] = torch.arange(h // patch_size, device=device)[:, None]
@@ -93,23 +93,13 @@ class MLPEmbedder(nn.Module):
         return self.out_layer(self.silu(self.in_layer(x)))
 
 
-class RMSNorm(torch.nn.Module):
-    def __init__(self, dim: int):
-        super().__init__()
-        self.scale = nn.Parameter(torch.ones(dim))
-
-    def forward(self, x: Tensor) -> Tensor:
-        x_dtype = x.dtype
-        x = x.float()
-        rrms = torch.rsqrt(torch.mean(x**2, dim=-1, keepdim=True) + 1e-6)
-        return (x * rrms * self.scale).to(dtype=x_dtype)
 
 
 class QKNorm(torch.nn.Module):
     def __init__(self, dim: int):
         super().__init__()
-        self.query_norm = RMSNorm(dim)
-        self.key_norm = RMSNorm(dim)
+        self.query_norm = RMSNorm(dim, eps=1e-6)
+        self.key_norm = RMSNorm(dim, eps=1e-6)
 
     def forward(self, q: Tensor, k: Tensor, v: Tensor) -> tuple[Tensor, Tensor]:
         q = self.query_norm(q)
@@ -164,7 +154,7 @@ class MirageBlock(nn.Module):
 
         # txt kv
         self.txt_kv_proj = nn.Linear(hidden_size, hidden_size * 2, bias=False)
-        self.k_norm = RMSNorm(self.head_dim)
+        self.k_norm = RMSNorm(self.head_dim, eps=1e-6)
 
         self.attention = Attention(
             query_dim=hidden_size,
