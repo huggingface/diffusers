@@ -27,6 +27,7 @@ from ..modeling_outputs import Transformer2DModelOutput
 from ..attention_processor import Attention, AttentionProcessor, MirageAttnProcessor2_0
 from ...utils import USE_PEFT_BACKEND, logging, scale_lora_layers, unscale_lora_layers
 from ..normalization import RMSNorm
+from ..embeddings import get_timestep_embedding
 
 
 logger = logging.get_logger(__name__)
@@ -71,15 +72,6 @@ class EmbedND(nn.Module):
         return emb.unsqueeze(1)
 
 
-def timestep_embedding(t: Tensor, dim: int, max_period: int = 10000, time_factor: float = 1000.0) -> Tensor:
-    t = time_factor * t
-    half = dim // 2
-    freqs = torch.exp(-math.log(max_period) * torch.arange(start=0, end=half, dtype=torch.float32) / half).to(t.device)
-    args = t[:, None].float() * freqs[None]
-    embedding = torch.cat([torch.cos(args), torch.sin(args)], dim=-1)
-    if dim % 2:
-        embedding = torch.cat([embedding, torch.zeros_like(embedding[:, :1])], dim=-1)
-    return embedding
 
 
 class MLPEmbedder(nn.Module):
@@ -480,8 +472,12 @@ class MirageTransformer2DModel(ModelMixin, ConfigMixin):
 
     def compute_timestep_embedding(self, timestep: Tensor, dtype: torch.dtype) -> Tensor:
         return self.time_in(
-            timestep_embedding(
-                t=timestep, dim=256, max_period=self.time_max_period, time_factor=self.time_factor
+            get_timestep_embedding(
+                timesteps=timestep,
+                embedding_dim=256,
+                max_period=self.time_max_period,
+                scale=self.time_factor,
+                flip_sin_to_cos=True  # Match original cos, sin order
             ).to(dtype)
         )
 
