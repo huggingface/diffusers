@@ -967,35 +967,7 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
         text_encoder_2_lora_adapter_metadata=None,
     ):
         r"""
-        Save the LoRA parameters corresponding to the UNet and text encoder.
-
-        Arguments:
-            save_directory (`str` or `os.PathLike`):
-                Directory to save LoRA parameters to. Will be created if it doesn't exist.
-            unet_lora_layers (`Dict[str, torch.nn.Module]` or `Dict[str, torch.Tensor]`):
-                State dict of the LoRA layers corresponding to the `unet`.
-            text_encoder_lora_layers (`Dict[str, torch.nn.Module]` or `Dict[str, torch.Tensor]`):
-                State dict of the LoRA layers corresponding to the `text_encoder`. Must explicitly pass the text
-                encoder LoRA state dict because it comes from 🤗 Transformers.
-            text_encoder_2_lora_layers (`Dict[str, torch.nn.Module]` or `Dict[str, torch.Tensor]`):
-                State dict of the LoRA layers corresponding to the `text_encoder_2`. Must explicitly pass the text
-                encoder LoRA state dict because it comes from 🤗 Transformers.
-            is_main_process (`bool`, *optional*, defaults to `True`):
-                Whether the process calling this is the main process or not. Useful during distributed training and you
-                need to call this function on all processes. In this case, set `is_main_process=True` only on the main
-                process to avoid race conditions.
-            save_function (`Callable`):
-                The function to use to save the state dictionary. Useful during distributed training when you need to
-                replace `torch.save` with another method. Can be configured with the environment variable
-                `DIFFUSERS_SAVE_MODE`.
-            safe_serialization (`bool`, *optional*, defaults to `True`):
-                Whether to save the model using `safetensors` or the traditional PyTorch way with `pickle`.
-            unet_lora_adapter_metadata:
-                LoRA adapter metadata associated with the unet to be serialized with the state dict.
-            text_encoder_lora_adapter_metadata:
-                LoRA adapter metadata associated with the text encoder to be serialized with the state dict.
-            text_encoder_2_lora_adapter_metadata:
-                LoRA adapter metadata associated with the second text encoder to be serialized with the state dict.
+        See [`~loaders.lora_pipeline.StableDiffusionLoraLoaderMixin.save_lora_weights`] for more information.
         """
         lora_layers = {}
         lora_metadata = {}
@@ -1420,35 +1392,7 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
         text_encoder_2_lora_adapter_metadata=None,
     ):
         r"""
-        Save the LoRA parameters corresponding to the UNet and text encoder.
-
-        Arguments:
-            save_directory (`str` or `os.PathLike`):
-                Directory to save LoRA parameters to. Will be created if it doesn't exist.
-            transformer_lora_layers (`Dict[str, torch.nn.Module]` or `Dict[str, torch.Tensor]`):
-                State dict of the LoRA layers corresponding to the `transformer`.
-            text_encoder_lora_layers (`Dict[str, torch.nn.Module]` or `Dict[str, torch.Tensor]`):
-                State dict of the LoRA layers corresponding to the `text_encoder`. Must explicitly pass the text
-                encoder LoRA state dict because it comes from 🤗 Transformers.
-            text_encoder_2_lora_layers (`Dict[str, torch.nn.Module]` or `Dict[str, torch.Tensor]`):
-                State dict of the LoRA layers corresponding to the `text_encoder_2`. Must explicitly pass the text
-                encoder LoRA state dict because it comes from 🤗 Transformers.
-            is_main_process (`bool`, *optional*, defaults to `True`):
-                Whether the process calling this is the main process or not. Useful during distributed training and you
-                need to call this function on all processes. In this case, set `is_main_process=True` only on the main
-                process to avoid race conditions.
-            save_function (`Callable`):
-                The function to use to save the state dictionary. Useful during distributed training when you need to
-                replace `torch.save` with another method. Can be configured with the environment variable
-                `DIFFUSERS_SAVE_MODE`.
-            safe_serialization (`bool`, *optional*, defaults to `True`):
-                Whether to save the model using `safetensors` or the traditional PyTorch way with `pickle`.
-            transformer_lora_adapter_metadata:
-                LoRA adapter metadata associated with the transformer to be serialized with the state dict.
-            text_encoder_lora_adapter_metadata:
-                LoRA adapter metadata associated with the text encoder to be serialized with the state dict.
-            text_encoder_2_lora_adapter_metadata:
-                LoRA adapter metadata associated with the second text encoder to be serialized with the state dict.
+        See [`~loaders.lora_pipeline.StableDiffusionLoraLoaderMixin.save_lora_weights`] for more information.
         """
         lora_layers = {}
         lora_metadata = {}
@@ -1781,25 +1725,7 @@ class AuraFlowLoraLoaderMixin(LoraBaseMixin):
         transformer_lora_adapter_metadata: Optional[dict] = None,
     ):
         r"""
-        Save the LoRA parameters corresponding to the transformer.
-
-        Arguments:
-            save_directory (`str` or `os.PathLike`):
-                Directory to save LoRA parameters to. Will be created if it doesn't exist.
-            transformer_lora_layers (`Dict[str, torch.nn.Module]` or `Dict[str, torch.Tensor]`):
-                State dict of the LoRA layers corresponding to the `transformer`.
-            is_main_process (`bool`, *optional*, defaults to `True`):
-                Whether the process calling this is the main process or not. Useful during distributed training and you
-                need to call this function on all processes. In this case, set `is_main_process=True` only on the main
-                process to avoid race conditions.
-            save_function (`Callable`):
-                The function to use to save the state dictionary. Useful during distributed training when you need to
-                replace `torch.save` with another method. Can be configured with the environment variable
-                `DIFFUSERS_SAVE_MODE`.
-            safe_serialization (`bool`, *optional*, defaults to `True`):
-                Whether to save the model using `safetensors` or the traditional PyTorch way with `pickle`.
-            transformer_lora_adapter_metadata:
-                LoRA adapter metadata associated with the transformer to be serialized with the state dict.
+        See [`~loaders.lora_pipeline.StableDiffusionLoraLoaderMixin.save_lora_weights`] for more information.
         """
         lora_layers = {}
         lora_metadata = {}
@@ -3180,7 +3106,6 @@ class CogVideoXLoraLoaderMixin(LoraBaseMixin):
         )
 
     @classmethod
-    # Adapted from diffusers.loaders.lora_pipeline.StableDiffusionLoraLoaderMixin.save_lora_weights without support for text encoder
     def save_lora_weights(
         cls,
         save_directory: Union[str, os.PathLike],
@@ -3192,25 +3117,7 @@ class CogVideoXLoraLoaderMixin(LoraBaseMixin):
         transformer_lora_adapter_metadata: Optional[dict] = None,
     ):
         r"""
-        Save the LoRA parameters corresponding to the transformer.
-
-        Arguments:
-            save_directory (`str` or `os.PathLike`):
-                Directory to save LoRA parameters to. Will be created if it doesn't exist.
-            transformer_lora_layers (`Dict[str, torch.nn.Module]` or `Dict[str, torch.Tensor]`):
-                State dict of the LoRA layers corresponding to the `transformer`.
-            is_main_process (`bool`, *optional*, defaults to `True`):
-                Whether the process calling this is the main process or not. Useful during distributed training and you
-                need to call this function on all processes. In this case, set `is_main_process=True` only on the main
-                process to avoid race conditions.
-            save_function (`Callable`):
-                The function to use to save the state dictionary. Useful during distributed training when you need to
-                replace `torch.save` with another method. Can be configured with the environment variable
-                `DIFFUSERS_SAVE_MODE`.
-            safe_serialization (`bool`, *optional*, defaults to `True`):
-                Whether to save the model using `safetensors` or the traditional PyTorch way with `pickle`.
-            transformer_lora_adapter_metadata:
-                LoRA adapter metadata associated with the transformer to be serialized with the state dict.
+        See [`~loaders.lora_pipeline.StableDiffusionLoraLoaderMixin.save_lora_weights`] for more information.
         """
         lora_layers = {}
         lora_metadata = {}
@@ -3528,25 +3435,7 @@ class Mochi1LoraLoaderMixin(LoraBaseMixin):
         transformer_lora_adapter_metadata: Optional[dict] = None,
     ):
         r"""
-        Save the LoRA parameters corresponding to the transformer.
-
-        Arguments:
-            save_directory (`str` or `os.PathLike`):
-                Directory to save LoRA parameters to. Will be created if it doesn't exist.
-            transformer_lora_layers (`Dict[str, torch.nn.Module]` or `Dict[str, torch.Tensor]`):
-                State dict of the LoRA layers corresponding to the `transformer`.
-            is_main_process (`bool`, *optional*, defaults to `True`):
-                Whether the process calling this is the main process or not. Useful during distributed training and you
-                need to call this function on all processes. In this case, set `is_main_process=True` only on the main
-                process to avoid race conditions.
-            save_function (`Callable`):
-                The function to use to save the state dictionary. Useful during distributed training when you need to
-                replace `torch.save` with another method. Can be configured with the environment variable
-                `DIFFUSERS_SAVE_MODE`.
-            safe_serialization (`bool`, *optional*, defaults to `True`):
-                Whether to save the model using `safetensors` or the traditional PyTorch way with `pickle`.
-            transformer_lora_adapter_metadata:
-                LoRA adapter metadata associated with the transformer to be serialized with the state dict.
+        See [`~loaders.lora_pipeline.StableDiffusionLoraLoaderMixin.save_lora_weights`] for more information.
         """
         lora_layers = {}
         lora_metadata = {}
@@ -3868,25 +3757,7 @@ class LTXVideoLoraLoaderMixin(LoraBaseMixin):
         transformer_lora_adapter_metadata: Optional[dict] = None,
     ):
         r"""
-        Save the LoRA parameters corresponding to the transformer.
-
-        Arguments:
-            save_directory (`str` or `os.PathLike`):
-                Directory to save LoRA parameters to. Will be created if it doesn't exist.
-            transformer_lora_layers (`Dict[str, torch.nn.Module]` or `Dict[str, torch.Tensor]`):
-                State dict of the LoRA layers corresponding to the `transformer`.
-            is_main_process (`bool`, *optional*, defaults to `True`):
-                Whether the process calling this is the main process or not. Useful during distributed training and you
-                need to call this function on all processes. In this case, set `is_main_process=True` only on the main
-                process to avoid race conditions.
-            save_function (`Callable`):
-                The function to use to save the state dictionary. Useful during distributed training when you need to
-                replace `torch.save` with another method. Can be configured with the environment variable
-                `DIFFUSERS_SAVE_MODE`.
-            safe_serialization (`bool`, *optional*, defaults to `True`):
-                Whether to save the model using `safetensors` or the traditional PyTorch way with `pickle`.
-            transformer_lora_adapter_metadata:
-                LoRA adapter metadata associated with the transformer to be serialized with the state dict.
+        See [`~loaders.lora_pipeline.StableDiffusionLoraLoaderMixin.save_lora_weights`] for more information.
         """
         lora_layers = {}
         lora_metadata = {}
@@ -4206,25 +4077,7 @@ class SanaLoraLoaderMixin(LoraBaseMixin):
         transformer_lora_adapter_metadata: Optional[dict] = None,
     ):
         r"""
-        Save the LoRA parameters corresponding to the transformer.
-
-        Arguments:
-            save_directory (`str` or `os.PathLike`):
-                Directory to save LoRA parameters to. Will be created if it doesn't exist.
-            transformer_lora_layers (`Dict[str, torch.nn.Module]` or `Dict[str, torch.Tensor]`):
-                State dict of the LoRA layers corresponding to the `transformer`.
-            is_main_process (`bool`, *optional*, defaults to `True`):
-                Whether the process calling this is the main process or not. Useful during distributed training and you
-                need to call this function on all processes. In this case, set `is_main_process=True` only on the main
-                process to avoid race conditions.
-            save_function (`Callable`):
-                The function to use to save the state dictionary. Useful during distributed training when you need to
-                replace `torch.save` with another method. Can be configured with the environment variable
-                `DIFFUSERS_SAVE_MODE`.
-            safe_serialization (`bool`, *optional*, defaults to `True`):
-                Whether to save the model using `safetensors` or the traditional PyTorch way with `pickle`.
-            transformer_lora_adapter_metadata:
-                LoRA adapter metadata associated with the transformer to be serialized with the state dict.
+        See [`~loaders.lora_pipeline.StableDiffusionLoraLoaderMixin.save_lora_weights`] for more information.
         """
         lora_layers = {}
         lora_metadata = {}
@@ -4546,25 +4399,7 @@ class HunyuanVideoLoraLoaderMixin(LoraBaseMixin):
         transformer_lora_adapter_metadata: Optional[dict] = None,
     ):
         r"""
-        Save the LoRA parameters corresponding to the transformer.
-
-        Arguments:
-            save_directory (`str` or `os.PathLike`):
-                Directory to save LoRA parameters to. Will be created if it doesn't exist.
-            transformer_lora_layers (`Dict[str, torch.nn.Module]` or `Dict[str, torch.Tensor]`):
-                State dict of the LoRA layers corresponding to the `transformer`.
-            is_main_process (`bool`, *optional*, defaults to `True`):
-                Whether the process calling this is the main process or not. Useful during distributed training and you
-                need to call this function on all processes. In this case, set `is_main_process=True` only on the main
-                process to avoid race conditions.
-            save_function (`Callable`):
-                The function to use to save the state dictionary. Useful during distributed training when you need to
-                replace `torch.save` with another method. Can be configured with the environment variable
-                `DIFFUSERS_SAVE_MODE`.
-            safe_serialization (`bool`, *optional*, defaults to `True`):
-                Whether to save the model using `safetensors` or the traditional PyTorch way with `pickle`.
-            transformer_lora_adapter_metadata:
-                LoRA adapter metadata associated with the transformer to be serialized with the state dict.
+        See [`~loaders.lora_pipeline.StableDiffusionLoraLoaderMixin.save_lora_weights`] for more information.
         """
         lora_layers = {}
         lora_metadata = {}
@@ -4887,25 +4722,7 @@ class Lumina2LoraLoaderMixin(LoraBaseMixin):
         transformer_lora_adapter_metadata: Optional[dict] = None,
     ):
         r"""
-        Save the LoRA parameters corresponding to the transformer.
-
-        Arguments:
-            save_directory (`str` or `os.PathLike`):
-                Directory to save LoRA parameters to. Will be created if it doesn't exist.
-            transformer_lora_layers (`Dict[str, torch.nn.Module]` or `Dict[str, torch.Tensor]`):
-                State dict of the LoRA layers corresponding to the `transformer`.
-            is_main_process (`bool`, *optional*, defaults to `True`):
-                Whether the process calling this is the main process or not. Useful during distributed training and you
-                need to call this function on all processes. In this case, set `is_main_process=True` only on the main
-                process to avoid race conditions.
-            save_function (`Callable`):
-                The function to use to save the state dictionary. Useful during distributed training when you need to
-                replace `torch.save` with another method. Can be configured with the environment variable
-                `DIFFUSERS_SAVE_MODE`.
-            safe_serialization (`bool`, *optional*, defaults to `True`):
-                Whether to save the model using `safetensors` or the traditional PyTorch way with `pickle`.
-            transformer_lora_adapter_metadata:
-                LoRA adapter metadata associated with the transformer to be serialized with the state dict.
+        See [`~loaders.lora_pipeline.StableDiffusionLoraLoaderMixin.save_lora_weights`] for more information.
         """
         lora_layers = {}
         lora_metadata = {}
@@ -5298,25 +5115,7 @@ class WanLoraLoaderMixin(LoraBaseMixin):
         transformer_lora_adapter_metadata: Optional[dict] = None,
     ):
         r"""
-        Save the LoRA parameters corresponding to the transformer.
-
-        Arguments:
-            save_directory (`str` or `os.PathLike`):
-                Directory to save LoRA parameters to. Will be created if it doesn't exist.
-            transformer_lora_layers (`Dict[str, torch.nn.Module]` or `Dict[str, torch.Tensor]`):
-                State dict of the LoRA layers corresponding to the `transformer`.
-            is_main_process (`bool`, *optional*, defaults to `True`):
-                Whether the process calling this is the main process or not. Useful during distributed training and you
-                need to call this function on all processes. In this case, set `is_main_process=True` only on the main
-                process to avoid race conditions.
-            save_function (`Callable`):
-                The function to use to save the state dictionary. Useful during distributed training when you need to
-                replace `torch.save` with another method. Can be configured with the environment variable
-                `DIFFUSERS_SAVE_MODE`.
-            safe_serialization (`bool`, *optional*, defaults to `True`):
-                Whether to save the model using `safetensors` or the traditional PyTorch way with `pickle`.
-            transformer_lora_adapter_metadata:
-                LoRA adapter metadata associated with the transformer to be serialized with the state dict.
+        See [`~loaders.lora_pipeline.StableDiffusionLoraLoaderMixin.save_lora_weights`] for more information.
         """
         lora_layers = {}
         lora_metadata = {}
@@ -5712,25 +5511,7 @@ class SkyReelsV2LoraLoaderMixin(LoraBaseMixin):
         transformer_lora_adapter_metadata: Optional[dict] = None,
     ):
         r"""
-        Save the LoRA parameters corresponding to the transformer.
-
-        Arguments:
-            save_directory (`str` or `os.PathLike`):
-                Directory to save LoRA parameters to. Will be created if it doesn't exist.
-            transformer_lora_layers (`Dict[str, torch.nn.Module]` or `Dict[str, torch.Tensor]`):
-                State dict of the LoRA layers corresponding to the `transformer`.
-            is_main_process (`bool`, *optional*, defaults to `True`):
-                Whether the process calling this is the main process or not. Useful during distributed training and you
-                need to call this function on all processes. In this case, set `is_main_process=True` only on the main
-                process to avoid race conditions.
-            save_function (`Callable`):
-                The function to use to save the state dictionary. Useful during distributed training when you need to
-                replace `torch.save` with another method. Can be configured with the environment variable
-                `DIFFUSERS_SAVE_MODE`.
-            safe_serialization (`bool`, *optional*, defaults to `True`):
-                Whether to save the model using `safetensors` or the traditional PyTorch way with `pickle`.
-            transformer_lora_adapter_metadata:
-                LoRA adapter metadata associated with the transformer to be serialized with the state dict.
+        See [`~loaders.lora_pipeline.StableDiffusionLoraLoaderMixin.save_lora_weights`] for more information.
         """
         lora_layers = {}
         lora_metadata = {}
@@ -6050,25 +5831,7 @@ class CogView4LoraLoaderMixin(LoraBaseMixin):
         transformer_lora_adapter_metadata: Optional[dict] = None,
     ):
         r"""
-        Save the LoRA parameters corresponding to the transformer.
-
-        Arguments:
-            save_directory (`str` or `os.PathLike`):
-                Directory to save LoRA parameters to. Will be created if it doesn't exist.
-            transformer_lora_layers (`Dict[str, torch.nn.Module]` or `Dict[str, torch.Tensor]`):
-                State dict of the LoRA layers corresponding to the `transformer`.
-            is_main_process (`bool`, *optional*, defaults to `True`):
-                Whether the process calling this is the main process or not. Useful during distributed training and you
-                need to call this function on all processes. In this case, set `is_main_process=True` only on the main
-                process to avoid race conditions.
-            save_function (`Callable`):
-                The function to use to save the state dictionary. Useful during distributed training when you need to
-                replace `torch.save` with another method. Can be configured with the environment variable
-                `DIFFUSERS_SAVE_MODE`.
-            safe_serialization (`bool`, *optional*, defaults to `True`):
-                Whether to save the model using `safetensors` or the traditional PyTorch way with `pickle`.
-            transformer_lora_adapter_metadata:
-                LoRA adapter metadata associated with the transformer to be serialized with the state dict.
+        See [`~loaders.lora_pipeline.StableDiffusionLoraLoaderMixin.save_lora_weights`] for more information.
         """
         lora_layers = {}
         lora_metadata = {}
@@ -6390,25 +6153,7 @@ class HiDreamImageLoraLoaderMixin(LoraBaseMixin):
         transformer_lora_adapter_metadata: Optional[dict] = None,
     ):
         r"""
-        Save the LoRA parameters corresponding to the transformer.
-
-        Arguments:
-            save_directory (`str` or `os.PathLike`):
-                Directory to save LoRA parameters to. Will be created if it doesn't exist.
-            transformer_lora_layers (`Dict[str, torch.nn.Module]` or `Dict[str, torch.Tensor]`):
-                State dict of the LoRA layers corresponding to the `transformer`.
-            is_main_process (`bool`, *optional*, defaults to `True`):
-                Whether the process calling this is the main process or not. Useful during distributed training and you
-                need to call this function on all processes. In this case, set `is_main_process=True` only on the main
-                process to avoid race conditions.
-            save_function (`Callable`):
-                The function to use to save the state dictionary. Useful during distributed training when you need to
-                replace `torch.save` with another method. Can be configured with the environment variable
-                `DIFFUSERS_SAVE_MODE`.
-            safe_serialization (`bool`, *optional*, defaults to `True`):
-                Whether to save the model using `safetensors` or the traditional PyTorch way with `pickle`.
-            transformer_lora_adapter_metadata:
-                LoRA adapter metadata associated with the transformer to be serialized with the state dict.
+        See [`~loaders.lora_pipeline.StableDiffusionLoraLoaderMixin.save_lora_weights`] for more information.
         """
         lora_layers = {}
         lora_metadata = {}
@@ -6733,25 +6478,7 @@ class QwenImageLoraLoaderMixin(LoraBaseMixin):
         transformer_lora_adapter_metadata: Optional[dict] = None,
     ):
         r"""
-        Save the LoRA parameters corresponding to the transformer.
-
-        Arguments:
-            save_directory (`str` or `os.PathLike`):
-                Directory to save LoRA parameters to. Will be created if it doesn't exist.
-            transformer_lora_layers (`Dict[str, torch.nn.Module]` or `Dict[str, torch.Tensor]`):
-                State dict of the LoRA layers corresponding to the `transformer`.
-            is_main_process (`bool`, *optional*, defaults to `True`):
-                Whether the process calling this is the main process or not. Useful during distributed training and you
-                need to call this function on all processes. In this case, set `is_main_process=True` only on the main
-                process to avoid race conditions.
-            save_function (`Callable`):
-                The function to use to save the state dictionary. Useful during distributed training when you need to
-                replace `torch.save` with another method. Can be configured with the environment variable
-                `DIFFUSERS_SAVE_MODE`.
-            safe_serialization (`bool`, *optional*, defaults to `True`):
-                Whether to save the model using `safetensors` or the traditional PyTorch way with `pickle`.
-            transformer_lora_adapter_metadata:
-                LoRA adapter metadata associated with the transformer to be serialized with the state dict.
+        See [`~loaders.lora_pipeline.StableDiffusionLoraLoaderMixin.save_lora_weights`] for more information.
         """
         lora_layers = {}
         lora_metadata = {}
