@@ -174,34 +174,6 @@ class WanSpeechToVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             expected_num_frames -= 3
         self.assertEqual(video.shape, (expected_num_frames, 3, inputs["height"], inputs["width"]))
 
-    @unittest.skip("Test not supported")
-    def test_attention_slicing_forward_pass(self):
-        pass
-
-    @unittest.skip("Errors out because passing multiple prompts at once is not yet supported by this pipeline.")
-    def test_encode_prompt_works_in_isolation(self):
-        pass
-
-    @unittest.skip("Batching is not yet supported with this pipeline")
-    def test_inference_batch_consistent(self):
-        pass
-
-    @unittest.skip("Batching is not yet supported with this pipeline")
-    def test_inference_batch_single_identical(self):
-        return super().test_inference_batch_single_identical()
-
-    @unittest.skip(
-        "AutoencoderKLWan encoded latents are always in FP32. This test is not designed to handle mixed dtype inputs"
-    )
-    def test_float16_inference(self):
-        pass
-
-    @unittest.skip(
-        "AutoencoderKLWan encoded latents are always in FP32. This test is not designed to handle mixed dtype inputs"
-    )
-    def test_save_load_float16(self):
-        pass
-
     def test_callback_cfg(self):
         sig = inspect.signature(self.pipeline_class.__call__)
         has_callback_tensor_inputs = "callback_on_step_end_tensor_inputs" in sig.parameters
@@ -242,3 +214,31 @@ class WanSpeechToVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         # For this pipeline, the total number of timesteps is multiplied by num_chunks
         # since each chunk runs independently with its own denoising loop
         assert pipe.guidance_scale == (inputs["guidance_scale"] + pipe.num_timesteps * inputs["num_chunks"])
+
+    @unittest.skip("Test not supported")
+    def test_attention_slicing_forward_pass(self):
+        pass
+
+    @unittest.skip("Errors out because passing multiple prompts at once is not yet supported by this pipeline.")
+    def test_encode_prompt_works_in_isolation(self):
+        pass
+
+    @unittest.skip("Batching is not yet supported with this pipeline")
+    def test_inference_batch_consistent(self):
+        pass
+
+    @unittest.skip("Batching is not yet supported with this pipeline")
+    def test_inference_batch_single_identical(self):
+        return super().test_inference_batch_single_identical()
+
+    @unittest.skip(
+        "AutoencoderKLWan encoded latents are always in FP32. This test is not designed to handle mixed dtype inputs"
+    )
+    def test_float16_inference(self):
+        pass
+
+    @unittest.skip(
+        "AutoencoderKLWan encoded latents are always in FP32. This test is not designed to handle mixed dtype inputs"
+    )
+    def test_save_load_float16(self):
+        pass
