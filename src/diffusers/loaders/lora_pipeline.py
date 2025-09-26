@@ -621,33 +621,7 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
         **kwargs,
     ):
         """
-        Load LoRA weights specified in `pretrained_model_name_or_path_or_dict` into `self.unet` and
-        `self.text_encoder`.
-
-        All kwargs are forwarded to `self.lora_state_dict`.
-
-        See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`] for more details on how the state dict is
-        loaded.
-
-        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_unet`] for more details on how the state dict is
-        loaded into `self.unet`.
-
-        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_text_encoder`] for more details on how the state
-        dict is loaded into `self.text_encoder`.
-
-        Parameters:
-            pretrained_model_name_or_path_or_dict (`str` or `os.PathLike` or `dict`):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`].
-            adapter_name (`str`, *optional*):
-                Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
-                `default_{i}` where i is the total number of adapters being loaded.
-            low_cpu_mem_usage (`bool`, *optional*):
-                Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
-                weights.
-            hotswap (`bool`, *optional*):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`].
-            kwargs (`dict`, *optional*):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`].
+        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`] for more details.
         """
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
@@ -967,7 +941,7 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
         text_encoder_2_lora_adapter_metadata=None,
     ):
         r"""
-        See [`~loaders.lora_pipeline.StableDiffusionLoraLoaderMixin.save_lora_weights`] for more information.
+        See [`~loaders.StableDiffusionLoraLoaderMixin.save_lora_weights`] for more information.
         """
         lora_layers = {}
         lora_metadata = {}
@@ -1186,30 +1160,7 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
         **kwargs,
     ):
         """
-        Load LoRA weights specified in `pretrained_model_name_or_path_or_dict` into `self.unet` and
-        `self.text_encoder`.
-
-        All kwargs are forwarded to `self.lora_state_dict`.
-
-        See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`] for more details on how the state dict is
-        loaded.
-
-        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_transformer`] for more details on how the state
-        dict is loaded into `self.transformer`.
-
-        Parameters:
-            pretrained_model_name_or_path_or_dict (`str` or `os.PathLike` or `dict`):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`].
-            adapter_name (`str`, *optional*):
-                Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
-                `default_{i}` where i is the total number of adapters being loaded.
-            low_cpu_mem_usage (`bool`, *optional*):
-                Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
-                weights.
-            hotswap (`bool`, *optional*):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`].
-            kwargs (`dict`, *optional*):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`].
+        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`] for more details.
         """
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
@@ -1392,7 +1343,7 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
         text_encoder_2_lora_adapter_metadata=None,
     ):
         r"""
-        See [`~loaders.lora_pipeline.StableDiffusionLoraLoaderMixin.save_lora_weights`] for more information.
+        See [`~loaders.StableDiffusionLoraLoaderMixin.save_lora_weights`] for more information.
         """
         lora_layers = {}
         lora_metadata = {}
@@ -1610,25 +1561,7 @@ class AuraFlowLoraLoaderMixin(LoraBaseMixin):
         **kwargs,
     ):
         """
-        Load LoRA weights specified in `pretrained_model_name_or_path_or_dict` into `self.transformer` and
-        `self.text_encoder`. All kwargs are forwarded to `self.lora_state_dict`. See
-        [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`] for more details on how the state dict is loaded.
-        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_transformer`] for more details on how the state
-        dict is loaded into `self.transformer`.
-
-        Parameters:
-            pretrained_model_name_or_path_or_dict (`str` or `os.PathLike` or `dict`):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`].
-            adapter_name (`str`, *optional*):
-                Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
-                `default_{i}` where i is the total number of adapters being loaded.
-            low_cpu_mem_usage (`bool`, *optional*):
-                Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
-                weights.
-            hotswap (`bool`, *optional*):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`].
-            kwargs (`dict`, *optional*):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`].
+        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`] for more details.
         """
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
@@ -1725,7 +1658,7 @@ class AuraFlowLoraLoaderMixin(LoraBaseMixin):
         transformer_lora_adapter_metadata: Optional[dict] = None,
     ):
         r"""
-        See [`~loaders.lora_pipeline.StableDiffusionLoraLoaderMixin.save_lora_weights`] for more information.
+        See [`~loaders.StableDiffusionLoraLoaderMixin.save_lora_weights`] for more information.
         """
         lora_layers = {}
         lora_metadata = {}
@@ -3003,25 +2936,7 @@ class CogVideoXLoraLoaderMixin(LoraBaseMixin):
         **kwargs,
     ):
         """
-        Load LoRA weights specified in `pretrained_model_name_or_path_or_dict` into `self.transformer` and
-        `self.text_encoder`. All kwargs are forwarded to `self.lora_state_dict`. See
-        [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`] for more details on how the state dict is loaded.
-        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_transformer`] for more details on how the state
-        dict is loaded into `self.transformer`.
-
-        Parameters:
-            pretrained_model_name_or_path_or_dict (`str` or `os.PathLike` or `dict`):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`].
-            adapter_name (`str`, *optional*):
-                Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
-                `default_{i}` where i is the total number of adapters being loaded.
-            low_cpu_mem_usage (`bool`, *optional*):
-                Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
-                weights.
-            hotswap (`bool`, *optional*):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`].
-            kwargs (`dict`, *optional*):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`].
+        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`] for more details.
         """
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
@@ -3117,7 +3032,7 @@ class CogVideoXLoraLoaderMixin(LoraBaseMixin):
         transformer_lora_adapter_metadata: Optional[dict] = None,
     ):
         r"""
-        See [`~loaders.lora_pipeline.StableDiffusionLoraLoaderMixin.save_lora_weights`] for more information.
+        See [`~loaders.StableDiffusionLoraLoaderMixin.save_lora_weights`] for more information.
         """
         lora_layers = {}
         lora_metadata = {}
@@ -3320,25 +3235,7 @@ class Mochi1LoraLoaderMixin(LoraBaseMixin):
         **kwargs,
     ):
         """
-        Load LoRA weights specified in `pretrained_model_name_or_path_or_dict` into `self.transformer` and
-        `self.text_encoder`. All kwargs are forwarded to `self.lora_state_dict`. See
-        [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`] for more details on how the state dict is loaded.
-        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_transformer`] for more details on how the state
-        dict is loaded into `self.transformer`.
-
-        Parameters:
-            pretrained_model_name_or_path_or_dict (`str` or `os.PathLike` or `dict`):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`].
-            adapter_name (`str`, *optional*):
-                Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
-                `default_{i}` where i is the total number of adapters being loaded.
-            low_cpu_mem_usage (`bool`, *optional*):
-                Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
-                weights.
-            hotswap (`bool`, *optional*):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`].
-            kwargs (`dict`, *optional*):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`].
+        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`] for more details.
         """
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
@@ -3435,7 +3332,7 @@ class Mochi1LoraLoaderMixin(LoraBaseMixin):
         transformer_lora_adapter_metadata: Optional[dict] = None,
     ):
         r"""
-        See [`~loaders.lora_pipeline.StableDiffusionLoraLoaderMixin.save_lora_weights`] for more information.
+        See [`~loaders.StableDiffusionLoraLoaderMixin.save_lora_weights`] for more information.
         """
         lora_layers = {}
         lora_metadata = {}
@@ -3642,25 +3539,7 @@ class LTXVideoLoraLoaderMixin(LoraBaseMixin):
         **kwargs,
     ):
         """
-        Load LoRA weights specified in `pretrained_model_name_or_path_or_dict` into `self.transformer` and
-        `self.text_encoder`. All kwargs are forwarded to `self.lora_state_dict`. See
-        [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`] for more details on how the state dict is loaded.
-        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_transformer`] for more details on how the state
-        dict is loaded into `self.transformer`.
-
-        Parameters:
-            pretrained_model_name_or_path_or_dict (`str` or `os.PathLike` or `dict`):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`].
-            adapter_name (`str`, *optional*):
-                Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
-                `default_{i}` where i is the total number of adapters being loaded.
-            low_cpu_mem_usage (`bool`, *optional*):
-                Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
-                weights.
-            hotswap (`bool`, *optional*):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`].
-            kwargs (`dict`, *optional*):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`].
+        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`] for more details.
         """
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
@@ -3757,7 +3636,7 @@ class LTXVideoLoraLoaderMixin(LoraBaseMixin):
         transformer_lora_adapter_metadata: Optional[dict] = None,
     ):
         r"""
-        See [`~loaders.lora_pipeline.StableDiffusionLoraLoaderMixin.save_lora_weights`] for more information.
+        See [`~loaders.StableDiffusionLoraLoaderMixin.save_lora_weights`] for more information.
         """
         lora_layers = {}
         lora_metadata = {}
@@ -3962,25 +3841,7 @@ class SanaLoraLoaderMixin(LoraBaseMixin):
         **kwargs,
     ):
         """
-        Load LoRA weights specified in `pretrained_model_name_or_path_or_dict` into `self.transformer` and
-        `self.text_encoder`. All kwargs are forwarded to `self.lora_state_dict`. See
-        [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`] for more details on how the state dict is loaded.
-        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_transformer`] for more details on how the state
-        dict is loaded into `self.transformer`.
-
-        Parameters:
-            pretrained_model_name_or_path_or_dict (`str` or `os.PathLike` or `dict`):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`].
-            adapter_name (`str`, *optional*):
-                Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
-                `default_{i}` where i is the total number of adapters being loaded.
-            low_cpu_mem_usage (`bool`, *optional*):
-                Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
-                weights.
-            hotswap (`bool`, *optional*):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`].
-            kwargs (`dict`, *optional*):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`].
+        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`] for more details.
         """
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
@@ -4077,7 +3938,7 @@ class SanaLoraLoaderMixin(LoraBaseMixin):
         transformer_lora_adapter_metadata: Optional[dict] = None,
     ):
         r"""
-        See [`~loaders.lora_pipeline.StableDiffusionLoraLoaderMixin.save_lora_weights`] for more information.
+        See [`~loaders.StableDiffusionLoraLoaderMixin.save_lora_weights`] for more information.
         """
         lora_layers = {}
         lora_metadata = {}
@@ -4284,25 +4145,7 @@ class HunyuanVideoLoraLoaderMixin(LoraBaseMixin):
         **kwargs,
     ):
         """
-        Load LoRA weights specified in `pretrained_model_name_or_path_or_dict` into `self.transformer` and
-        `self.text_encoder`. All kwargs are forwarded to `self.lora_state_dict`. See
-        [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`] for more details on how the state dict is loaded.
-        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_transformer`] for more details on how the state
-        dict is loaded into `self.transformer`.
-
-        Parameters:
-            pretrained_model_name_or_path_or_dict (`str` or `os.PathLike` or `dict`):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`].
-            adapter_name (`str`, *optional*):
-                Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
-                `default_{i}` where i is the total number of adapters being loaded.
-            low_cpu_mem_usage (`bool`, *optional*):
-                Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
-                weights.
-            hotswap (`bool`, *optional*):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`].
-            kwargs (`dict`, *optional*):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`].
+        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`] for more details.
         """
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
@@ -4399,7 +4242,7 @@ class HunyuanVideoLoraLoaderMixin(LoraBaseMixin):
         transformer_lora_adapter_metadata: Optional[dict] = None,
     ):
         r"""
-        See [`~loaders.lora_pipeline.StableDiffusionLoraLoaderMixin.save_lora_weights`] for more information.
+        See [`~loaders.StableDiffusionLoraLoaderMixin.save_lora_weights`] for more information.
         """
         lora_layers = {}
         lora_metadata = {}
@@ -4607,25 +4450,7 @@ class Lumina2LoraLoaderMixin(LoraBaseMixin):
         **kwargs,
     ):
         """
-        Load LoRA weights specified in `pretrained_model_name_or_path_or_dict` into `self.transformer` and
-        `self.text_encoder`. All kwargs are forwarded to `self.lora_state_dict`. See
-        [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`] for more details on how the state dict is loaded.
-        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_transformer`] for more details on how the state
-        dict is loaded into `self.transformer`.
-
-        Parameters:
-            pretrained_model_name_or_path_or_dict (`str` or `os.PathLike` or `dict`):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`].
-            adapter_name (`str`, *optional*):
-                Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
-                `default_{i}` where i is the total number of adapters being loaded.
-            low_cpu_mem_usage (`bool`, *optional*):
-                Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
-                weights.
-            hotswap (`bool`, *optional*):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`].
-            kwargs (`dict`, *optional*):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`].
+        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`] for more details.
         """
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
@@ -4722,7 +4547,7 @@ class Lumina2LoraLoaderMixin(LoraBaseMixin):
         transformer_lora_adapter_metadata: Optional[dict] = None,
     ):
         r"""
-        See [`~loaders.lora_pipeline.StableDiffusionLoraLoaderMixin.save_lora_weights`] for more information.
+        See [`~loaders.StableDiffusionLoraLoaderMixin.save_lora_weights`] for more information.
         """
         lora_layers = {}
         lora_metadata = {}
@@ -4976,25 +4801,7 @@ class WanLoraLoaderMixin(LoraBaseMixin):
         **kwargs,
     ):
         """
-        Load LoRA weights specified in `pretrained_model_name_or_path_or_dict` into `self.transformer` and
-        `self.text_encoder`. All kwargs are forwarded to `self.lora_state_dict`. See
-        [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`] for more details on how the state dict is loaded.
-        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_transformer`] for more details on how the state
-        dict is loaded into `self.transformer`.
-
-        Parameters:
-            pretrained_model_name_or_path_or_dict (`str` or `os.PathLike` or `dict`):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`].
-            adapter_name (`str`, *optional*):
-                Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
-                `default_{i}` where i is the total number of adapters being loaded.
-            low_cpu_mem_usage (`bool`, *optional*):
-                Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
-                weights.
-            hotswap (`bool`, *optional*):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`].
-            kwargs (`dict`, *optional*):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`].
+        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`] for more details.
         """
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
@@ -5115,7 +4922,7 @@ class WanLoraLoaderMixin(LoraBaseMixin):
         transformer_lora_adapter_metadata: Optional[dict] = None,
     ):
         r"""
-        See [`~loaders.lora_pipeline.StableDiffusionLoraLoaderMixin.save_lora_weights`] for more information.
+        See [`~loaders.StableDiffusionLoraLoaderMixin.save_lora_weights`] for more information.
         """
         lora_layers = {}
         lora_metadata = {}
@@ -5372,25 +5179,7 @@ class SkyReelsV2LoraLoaderMixin(LoraBaseMixin):
         **kwargs,
     ):
         """
-        Load LoRA weights specified in `pretrained_model_name_or_path_or_dict` into `self.transformer` and
-        `self.text_encoder`. All kwargs are forwarded to `self.lora_state_dict`. See
-        [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`] for more details on how the state dict is loaded.
-        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_transformer`] for more details on how the state
-        dict is loaded into `self.transformer`.
-
-        Parameters:
-            pretrained_model_name_or_path_or_dict (`str` or `os.PathLike` or `dict`):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`].
-            adapter_name (`str`, *optional*):
-                Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
-                `default_{i}` where i is the total number of adapters being loaded.
-            low_cpu_mem_usage (`bool`, *optional*):
-                Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
-                weights.
-            hotswap (`bool`, *optional*):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`].
-            kwargs (`dict`, *optional*):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`].
+        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`] for more details.
         """
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
@@ -5511,7 +5300,7 @@ class SkyReelsV2LoraLoaderMixin(LoraBaseMixin):
         transformer_lora_adapter_metadata: Optional[dict] = None,
     ):
         r"""
-        See [`~loaders.lora_pipeline.StableDiffusionLoraLoaderMixin.save_lora_weights`] for more information.
+        See [`~loaders.StableDiffusionLoraLoaderMixin.save_lora_weights`] for more information.
         """
         lora_layers = {}
         lora_metadata = {}
@@ -5716,25 +5505,7 @@ class CogView4LoraLoaderMixin(LoraBaseMixin):
         **kwargs,
     ):
         """
-        Load LoRA weights specified in `pretrained_model_name_or_path_or_dict` into `self.transformer` and
-        `self.text_encoder`. All kwargs are forwarded to `self.lora_state_dict`. See
-        [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`] for more details on how the state dict is loaded.
-        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_transformer`] for more details on how the state
-        dict is loaded into `self.transformer`.
-
-        Parameters:
-            pretrained_model_name_or_path_or_dict (`str` or `os.PathLike` or `dict`):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`].
-            adapter_name (`str`, *optional*):
-                Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
-                `default_{i}` where i is the total number of adapters being loaded.
-            low_cpu_mem_usage (`bool`, *optional*):
-                Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
-                weights.
-            hotswap (`bool`, *optional*):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`].
-            kwargs (`dict`, *optional*):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`].
+        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`] for more details.
         """
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
@@ -5831,7 +5602,7 @@ class CogView4LoraLoaderMixin(LoraBaseMixin):
         transformer_lora_adapter_metadata: Optional[dict] = None,
     ):
         r"""
-        See [`~loaders.lora_pipeline.StableDiffusionLoraLoaderMixin.save_lora_weights`] for more information.
+        See [`~loaders.StableDiffusionLoraLoaderMixin.save_lora_weights`] for more information.
         """
         lora_layers = {}
         lora_metadata = {}
@@ -6038,25 +5809,7 @@ class HiDreamImageLoraLoaderMixin(LoraBaseMixin):
         **kwargs,
     ):
         """
-        Load LoRA weights specified in `pretrained_model_name_or_path_or_dict` into `self.transformer` and
-        `self.text_encoder`. All kwargs are forwarded to `self.lora_state_dict`. See
-        [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`] for more details on how the state dict is loaded.
-        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_transformer`] for more details on how the state
-        dict is loaded into `self.transformer`.
-
-        Parameters:
-            pretrained_model_name_or_path_or_dict (`str` or `os.PathLike` or `dict`):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`].
-            adapter_name (`str`, *optional*):
-                Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
-                `default_{i}` where i is the total number of adapters being loaded.
-            low_cpu_mem_usage (`bool`, *optional*):
-                Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
-                weights.
-            hotswap (`bool`, *optional*):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`].
-            kwargs (`dict`, *optional*):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`].
+        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`] for more details.
         """
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
@@ -6153,7 +5906,7 @@ class HiDreamImageLoraLoaderMixin(LoraBaseMixin):
         transformer_lora_adapter_metadata: Optional[dict] = None,
     ):
         r"""
-        See [`~loaders.lora_pipeline.StableDiffusionLoraLoaderMixin.save_lora_weights`] for more information.
+        See [`~loaders.StableDiffusionLoraLoaderMixin.save_lora_weights`] for more information.
         """
         lora_layers = {}
         lora_metadata = {}
@@ -6363,25 +6116,7 @@ class QwenImageLoraLoaderMixin(LoraBaseMixin):
         **kwargs,
     ):
         """
-        Load LoRA weights specified in `pretrained_model_name_or_path_or_dict` into `self.transformer` and
-        `self.text_encoder`. All kwargs are forwarded to `self.lora_state_dict`. See
-        [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`] for more details on how the state dict is loaded.
-        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_transformer`] for more details on how the state
-        dict is loaded into `self.transformer`.
-
-        Parameters:
-            pretrained_model_name_or_path_or_dict (`str` or `os.PathLike` or `dict`):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`].
-            adapter_name (`str`, *optional*):
-                Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
-                `default_{i}` where i is the total number of adapters being loaded.
-            low_cpu_mem_usage (`bool`, *optional*):
-                Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
-                weights.
-            hotswap (`bool`, *optional*):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`].
-            kwargs (`dict`, *optional*):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`].
+        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`] for more details.
         """
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
@@ -6478,7 +6213,7 @@ class QwenImageLoraLoaderMixin(LoraBaseMixin):
         transformer_lora_adapter_metadata: Optional[dict] = None,
     ):
         r"""
-        See [`~loaders.lora_pipeline.StableDiffusionLoraLoaderMixin.save_lora_weights`] for more information.
+        See [`~loaders.StableDiffusionLoraLoaderMixin.save_lora_weights`] for more information.
         """
         lora_layers = {}
         lora_metadata = {}
