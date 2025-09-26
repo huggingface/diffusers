@@ -8,15 +8,16 @@ import json
 import os
 import shutil
 import sys
+
 import torch
 from safetensors.torch import save_file
-from transformers import GemmaTokenizerFast
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from diffusers.models.transformers.transformer_mirage import MirageTransformer2DModel
-from diffusers.schedulers import FlowMatchEulerDiscreteScheduler
 from diffusers.pipelines.mirage import MiragePipeline
+
 
 def load_reference_config(vae_type: str) -> dict:
     """Load transformer config from existing pipeline checkpoint."""
@@ -31,11 +32,12 @@ def load_reference_config(vae_type: str) -> dict:
     if not os.path.exists(config_path):
         raise FileNotFoundError(f"Reference config not found: {config_path}")
 
-    with open(config_path, 'r') as f:
+    with open(config_path, "r") as f:
         config = json.load(f)
 
     print(f"✓ Loaded {vae_type} config: in_channels={config['in_channels']}")
     return config
+
 
 def create_parameter_mapping() -> dict:
     """Create mapping from old parameter names to new diffusers names."""
@@ -53,6 +55,7 @@ def create_parameter_mapping() -> dict:
         mapping[f"blocks.{i}.attn_out.weight"] = f"blocks.{i}.attention.to_out.0.weight"
 
     return mapping
+
 
 def convert_checkpoint_parameters(old_state_dict: dict) -> dict:
     """Convert old checkpoint parameters to new diffusers format."""
@@ -82,15 +85,14 @@ def convert_checkpoint_parameters(old_state_dict: dict) -> dict:
             print(f"  Found QKV projection: {key}")
             # Split QKV weight into separate Q, K, V projections
             qkv_weight = value
-            hidden_size = qkv_weight.shape[1]
             q_weight, k_weight, v_weight = qkv_weight.chunk(3, dim=0)
 
             # Extract layer number from key (e.g., blocks.0.img_qkv_proj.weight -> 0)
-            parts = key.split('.')
+            parts = key.split(".")
             layer_idx = None
             for i, part in enumerate(parts):
-                if part == 'blocks' and i + 1 < len(parts) and parts[i+1].isdigit():
-                    layer_idx = parts[i+1]
+                if part == "blocks" and i + 1 < len(parts) and parts[i + 1].isdigit():
+                    layer_idx = parts[i + 1]
                     break
 
             if layer_idx is not None:
@@ -117,14 +119,14 @@ def create_transformer_from_checkpoint(checkpoint_path: str, config: dict) -> Mi
     if not os.path.exists(checkpoint_path):
         raise FileNotFoundError(f"Checkpoint not found: {checkpoint_path}")
 
-    old_checkpoint = torch.load(checkpoint_path, map_location='cpu')
+    old_checkpoint = torch.load(checkpoint_path, map_location="cpu")
 
     # Handle different checkpoint formats
     if isinstance(old_checkpoint, dict):
-        if 'model' in old_checkpoint:
-            state_dict = old_checkpoint['model']
-        elif 'state_dict' in old_checkpoint:
-            state_dict = old_checkpoint['state_dict']
+        if "model" in old_checkpoint:
+            state_dict = old_checkpoint["model"]
+        elif "state_dict" in old_checkpoint:
+            state_dict = old_checkpoint["state_dict"]
         else:
             state_dict = old_checkpoint
     else:
@@ -153,6 +155,7 @@ def create_transformer_from_checkpoint(checkpoint_path: str, config: dict) -> Mi
 
     return transformer
 
+
 def copy_pipeline_components(vae_type: str, output_path: str):
     """Copy VAE, scheduler, text encoder, and tokenizer from reference pipeline."""
 
@@ -176,6 +179,7 @@ def copy_pipeline_components(vae_type: str, output_path: str):
         else:
             print(f"⚠ Component not found: {src_path}")
 
+
 def create_model_index(vae_type: str, output_path: str):
     """Create model_index.json for the pipeline."""
 
@@ -188,33 +192,19 @@ def create_model_index(vae_type: str, output_path: str):
         "_class_name": "MiragePipeline",
         "_diffusers_version": "0.31.0.dev0",
         "_name_or_path": os.path.basename(output_path),
-        "scheduler": [
-            "diffusers",
-            "FlowMatchEulerDiscreteScheduler"
-        ],
-        "text_encoder": [
-            "transformers",
-            "T5GemmaEncoder"
-        ],
-        "tokenizer": [
-            "transformers",
-            "GemmaTokenizerFast"
-        ],
-        "transformer": [
-            "diffusers",
-            "MirageTransformer2DModel"
-        ],
-        "vae": [
-            "diffusers",
-            vae_class
-        ]
+        "scheduler": ["diffusers", "FlowMatchEulerDiscreteScheduler"],
+        "text_encoder": ["transformers", "T5GemmaEncoder"],
+        "tokenizer": ["transformers", "GemmaTokenizerFast"],
+        "transformer": ["diffusers", "MirageTransformer2DModel"],
+        "vae": ["diffusers", vae_class],
     }
 
     model_index_path = os.path.join(output_path, "model_index.json")
-    with open(model_index_path, 'w') as f:
+    with open(model_index_path, "w") as f:
         json.dump(model_index, f, indent=2)
 
-    print(f"✓ Created model_index.json")
+    print("✓ Created model_index.json")
+
 
 def main(args):
     # Validate inputs
@@ -236,7 +226,7 @@ def main(args):
     os.makedirs(transformer_path, exist_ok=True)
 
     # Save config
-    with open(os.path.join(transformer_path, "config.json"), 'w') as f:
+    with open(os.path.join(transformer_path, "config.json"), "w") as f:
         json.dump(config, f, indent=2)
 
     # Save model weights as safetensors
@@ -253,7 +243,7 @@ def main(args):
     # Verify the pipeline can be loaded
     try:
         pipeline = MiragePipeline.from_pretrained(args.output_path)
-        print(f"Pipeline loaded successfully!")
+        print("Pipeline loaded successfully!")
         print(f"Transformer: {type(pipeline.transformer).__name__}")
         print(f"VAE: {type(pipeline.vae).__name__}")
         print(f"Text Encoder: {type(pipeline.text_encoder).__name__}")
@@ -271,24 +261,18 @@ def main(args):
     print(f"Converted pipeline saved to: {args.output_path}")
     print(f"VAE type: {args.vae_type}")
 
-
     return True
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Convert Mirage checkpoint to diffusers format")
 
     parser.add_argument(
-        "--checkpoint_path",
-        type=str,
-        required=True,
-        help="Path to the original Mirage checkpoint (.pth file)"
+        "--checkpoint_path", type=str, required=True, help="Path to the original Mirage checkpoint (.pth file)"
     )
 
     parser.add_argument(
-        "--output_path",
-        type=str,
-        required=True,
-        help="Output directory for the converted diffusers pipeline"
+        "--output_path", type=str, required=True, help="Output directory for the converted diffusers pipeline"
     )
 
     parser.add_argument(
@@ -296,7 +280,7 @@ if __name__ == "__main__":
         type=str,
         choices=["flux", "dc-ae"],
         required=True,
-        help="VAE type to use: 'flux' for AutoencoderKL (16 channels) or 'dc-ae' for AutoencoderDC (32 channels)"
+        help="VAE type to use: 'flux' for AutoencoderKL (16 channels) or 'dc-ae' for AutoencoderDC (32 channels)",
     )
 
     args = parser.parse_args()
@@ -306,7 +290,8 @@ if __name__ == "__main__":
         if not success:
             sys.exit(1)
     except Exception as e:
-        print(f"❌ Conversion failed: {e}")
+        print(f"Conversion failed: {e}")
         import traceback
+
         traceback.print_exc()
         sys.exit(1)

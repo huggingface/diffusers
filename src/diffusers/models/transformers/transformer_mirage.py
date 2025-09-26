@@ -13,21 +13,21 @@
 # limitations under the License.
 
 from dataclasses import dataclass
-from typing import Any, Dict, Optional, Union, Tuple
+from typing import Any, Dict, Optional, Tuple, Union
+
 import torch
-import math
-from torch import Tensor, nn
-from torch.nn.functional import fold, unfold
 from einops import rearrange
 from einops.layers.torch import Rearrange
+from torch import Tensor, nn
+from torch.nn.functional import fold, unfold
 
 from ...configuration_utils import ConfigMixin, register_to_config
-from ..modeling_utils import ModelMixin
-from ..modeling_outputs import Transformer2DModelOutput
-from ..attention_processor import Attention, AttentionProcessor, MirageAttnProcessor2_0
 from ...utils import USE_PEFT_BACKEND, logging, scale_lora_layers, unscale_lora_layers
-from ..normalization import RMSNorm
+from ..attention_processor import Attention, AttentionProcessor, MirageAttnProcessor2_0
 from ..embeddings import get_timestep_embedding
+from ..modeling_outputs import Transformer2DModelOutput
+from ..modeling_utils import ModelMixin
+from ..normalization import RMSNorm
 
 
 logger = logging.get_logger(__name__)
@@ -72,8 +72,6 @@ class EmbedND(nn.Module):
         return emb.unsqueeze(1)
 
 
-
-
 class MLPEmbedder(nn.Module):
     def __init__(self, in_dim: int, hidden_dim: int):
         super().__init__()
@@ -83,8 +81,6 @@ class MLPEmbedder(nn.Module):
 
     def forward(self, x: Tensor) -> Tensor:
         return self.out_layer(self.silu(self.in_layer(x)))
-
-
 
 
 class QKNorm(torch.nn.Module):
@@ -157,7 +153,6 @@ class MirageBlock(nn.Module):
             processor=MirageAttnProcessor2_0(),
         )
 
-
         # mlp
         self.post_attention_layernorm = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
         self.gate_proj = nn.Linear(hidden_size, self.mlp_hidden_dim, bias=False)
@@ -212,9 +207,9 @@ class MirageBlock(nn.Module):
             l_txt = txt_k.shape[2]
 
             assert attention_mask.dim() == 2, f"Unsupported attention_mask shape: {attention_mask.shape}"
-            assert (
-                attention_mask.shape[-1] == l_txt
-            ), f"attention_mask last dim {attention_mask.shape[-1]} must equal text length {l_txt}"
+            assert attention_mask.shape[-1] == l_txt, (
+                f"attention_mask last dim {attention_mask.shape[-1]} must equal text length {l_txt}"
+            )
 
             device = img_q.device
 
@@ -234,8 +229,8 @@ class MirageBlock(nn.Module):
         kv_packed = torch.cat([k, v], dim=-1)
 
         attn = self.attention(
-            hidden_states=img_q,                    
-            encoder_hidden_states=kv_packed,        
+            hidden_states=img_q,
+            encoder_hidden_states=kv_packed,
             attention_mask=attn_mask,
         )
 
@@ -288,8 +283,6 @@ class LastLayer(nn.Module):
         return x
 
 
-
-
 def img2seq(img: Tensor, patch_size: int) -> Tensor:
     """Flatten an image into a sequence of patches"""
     return unfold(img, kernel_size=patch_size, stride=patch_size).transpose(1, 2)
@@ -327,7 +320,7 @@ class MirageTransformer2DModel(ModelMixin, ConfigMixin):
         time_factor: float = 1000.0,
         time_max_period: int = 10000,
         conditioning_block_ids: list = None,
-        **kwargs
+        **kwargs,
     ):
         super().__init__()
 
@@ -447,7 +440,7 @@ class MirageTransformer2DModel(ModelMixin, ConfigMixin):
                 embedding_dim=256,
                 max_period=self.time_max_period,
                 scale=self.time_factor,
-                flip_sin_to_cos=True  # Match original cos, sin order
+                flip_sin_to_cos=True,  # Match original cos, sin order
             ).to(dtype)
         )
 
@@ -470,9 +463,7 @@ class MirageTransformer2DModel(ModelMixin, ConfigMixin):
             vec = self.compute_timestep_embedding(timestep, dtype=img.dtype)
 
         for block in self.blocks:
-            img = block(
-                img=img, txt=cross_attn_conditioning, vec=vec, attention_mask=attention_mask, **block_kwargs
-            )
+            img = block(img=img, txt=cross_attn_conditioning, vec=vec, attention_mask=attention_mask, **block_kwargs)
 
         img = self.final_layer(img, vec)
         return img

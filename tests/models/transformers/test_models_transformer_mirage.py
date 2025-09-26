@@ -133,8 +133,7 @@ class MirageTransformerTests(ModelTesterMixin, unittest.TestCase):
 
         with torch.no_grad():
             img_seq, txt, pe = model.process_inputs(
-                inputs_dict["image_latent"],
-                inputs_dict["cross_attn_conditioning"]
+                inputs_dict["image_latent"], inputs_dict["cross_attn_conditioning"]
             )
 
         # Check shapes
@@ -144,7 +143,9 @@ class MirageTransformerTests(ModelTesterMixin, unittest.TestCase):
         expected_seq_len = (height // patch_size) * (width // patch_size)
 
         self.assertEqual(img_seq.shape, (batch_size, expected_seq_len, init_dict["in_channels"] * patch_size**2))
-        self.assertEqual(txt.shape, (batch_size, inputs_dict["cross_attn_conditioning"].shape[1], init_dict["hidden_size"]))
+        self.assertEqual(
+            txt.shape, (batch_size, inputs_dict["cross_attn_conditioning"].shape[1], init_dict["hidden_size"])
+        )
         # Check that pe has the correct batch size, sequence length and some embedding dimension
         self.assertEqual(pe.shape[0], batch_size)  # batch size
         self.assertEqual(pe.shape[1], 1)  # unsqueeze(1) in EmbedND
@@ -160,20 +161,14 @@ class MirageTransformerTests(ModelTesterMixin, unittest.TestCase):
         with torch.no_grad():
             # Process inputs first
             img_seq, txt, pe = model.process_inputs(
-                inputs_dict["image_latent"],
-                inputs_dict["cross_attn_conditioning"]
+                inputs_dict["image_latent"], inputs_dict["cross_attn_conditioning"]
             )
 
             # Test forward_transformers
-            output_seq = model.forward_transformers(
-                img_seq,
-                txt,
-                timestep=inputs_dict["timestep"],
-                pe=pe
-            )
+            output_seq = model.forward_transformers(img_seq, txt, timestep=inputs_dict["timestep"], pe=pe)
 
         # Check output shape
-        expected_out_channels = init_dict["in_channels"] * init_dict["patch_size"]**2
+        expected_out_channels = init_dict["in_channels"] * init_dict["patch_size"] ** 2
         self.assertEqual(output_seq.shape, (img_seq.shape[0], img_seq.shape[1], expected_out_channels))
 
     def test_attention_mask(self):
@@ -186,13 +181,10 @@ class MirageTransformerTests(ModelTesterMixin, unittest.TestCase):
         batch_size = inputs_dict["cross_attn_conditioning"].shape[0]
         seq_len = inputs_dict["cross_attn_conditioning"].shape[1]
         attention_mask = torch.ones((batch_size, seq_len), dtype=torch.bool).to(torch_device)
-        attention_mask[:, seq_len//2:] = False  # Mask second half
+        attention_mask[:, seq_len // 2 :] = False  # Mask second half
 
         with torch.no_grad():
-            outputs = model(
-                **inputs_dict,
-                cross_attn_mask=attention_mask
-            )
+            outputs = model(**inputs_dict, cross_attn_mask=attention_mask)
 
         self.assertIsNotNone(outputs)
         expected_shape = inputs_dict["image_latent"].shape
@@ -237,7 +229,7 @@ class MirageTransformerTests(ModelTesterMixin, unittest.TestCase):
 
         # Check that _activation_checkpointing is set
         for block in model.blocks:
-            self.assertTrue(hasattr(block, '_activation_checkpointing'))
+            self.assertTrue(hasattr(block, "_activation_checkpointing"))
 
     def test_from_config(self):
         init_dict, _ = self.prepare_init_args_and_inputs_for_common()

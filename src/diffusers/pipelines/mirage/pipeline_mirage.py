@@ -12,13 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import html
 import inspect
 import os
-from typing import Any, Callable, Dict, List, Optional, Union
-
-import html
 import re
 import urllib.parse as ul
+from typing import Any, Callable, Dict, List, Optional, Union
 
 import ftfy
 import torch
@@ -31,7 +30,7 @@ from transformers import (
 
 from ...image_processor import VaeImageProcessor
 from ...loaders import FromSingleFileMixin, LoraLoaderMixin, TextualInversionLoaderMixin
-from ...models import AutoencoderKL, AutoencoderDC
+from ...models import AutoencoderDC, AutoencoderKL
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import (
     logging,
@@ -40,6 +39,7 @@ from ...utils import (
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
 from .pipeline_output import MiragePipelineOutput
+
 
 try:
     from ...models.transformers.transformer_mirage import MirageTransformer2DModel
@@ -55,7 +55,19 @@ class TextPreprocessor:
     def __init__(self):
         """Initialize text preprocessor."""
         self.bad_punct_regex = re.compile(
-            r"[" + "#®•©™&@·º½¾¿¡§~" + r"\)" + r"\(" + r"\]" + r"\[" + r"\}" + r"\{" + r"\|" + r"\\" + r"\/" + r"\*" + r"]{1,}"
+            r"["
+            + "#®•©™&@·º½¾¿¡§~"
+            + r"\)"
+            + r"\("
+            + r"\]"
+            + r"\["
+            + r"\}"
+            + r"\{"
+            + r"\|"
+            + r"\\"
+            + r"\/"
+            + r"\*"
+            + r"]{1,}"
         )
 
     def clean_text(self, text: str) -> str:
@@ -93,7 +105,7 @@ class TextPreprocessor:
         )
 
         # кавычки к одному стандарту
-        text = re.sub(r"[`´«»""¨]", '"', text)
+        text = re.sub(r"[`´«»" "¨]", '"', text)
         text = re.sub(r"['']", "'", text)
 
         # &quot; and &amp
@@ -243,9 +255,11 @@ class MiragePipeline(
         """
         # Ensure T5GemmaEncoder is available for loading
         import transformers
-        if not hasattr(transformers, 'T5GemmaEncoder'):
+
+        if not hasattr(transformers, "T5GemmaEncoder"):
             try:
                 from transformers.models.t5gemma.modeling_t5gemma import T5GemmaEncoder
+
                 transformers.T5GemmaEncoder = T5GemmaEncoder
             except ImportError:
                 # T5GemmaEncoder not available in this transformers version
@@ -253,7 +267,6 @@ class MiragePipeline(
 
         # Proceed with standard loading
         return super().from_pretrained(pretrained_model_name_or_path, **kwargs)
-
 
     def __init__(
         self,
@@ -333,7 +346,7 @@ class MiragePipeline(
             if hasattr(self.vae, "spatial_compression_ratio") and self.vae.spatial_compression_ratio == 32:
                 self.vae.latent_channels = 32  # DC-AE default
             else:
-                self.vae.latent_channels = 4   # AutoencoderKL default
+                self.vae.latent_channels = 4  # AutoencoderKL default
 
     @property
     def vae_scale_factor(self):
@@ -353,7 +366,10 @@ class MiragePipeline(
     ):
         """Prepare initial latents for the diffusion process."""
         if latents is None:
-            latent_height, latent_width = height // self.vae.spatial_compression_ratio, width // self.vae.spatial_compression_ratio
+            latent_height, latent_width = (
+                height // self.vae.spatial_compression_ratio,
+                width // self.vae.spatial_compression_ratio,
+            )
             shape = (batch_size, num_channels_latents, latent_height, latent_width)
             latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
         else:
@@ -424,7 +440,9 @@ class MiragePipeline(
     ):
         """Check that all inputs are in correct format."""
         if height % self.vae.spatial_compression_ratio != 0 or width % self.vae.spatial_compression_ratio != 0:
-            raise ValueError(f"`height` and `width` have to be divisible by {self.vae.spatial_compression_ratio} but are {height} and {width}.")
+            raise ValueError(
+                f"`height` and `width` have to be divisible by {self.vae.spatial_compression_ratio} but are {height} and {width}."
+            )
 
         if guidance_scale < 1.0:
             raise ValueError(f"guidance_scale has to be >= 1.0 but is {guidance_scale}")
@@ -584,12 +602,16 @@ class MiragePipeline(
 
                 # Forward through transformer layers
                 img_seq = self.transformer.forward_transformers(
-                    img_seq, txt, time_embedding=self.transformer.compute_timestep_embedding(t_cont, img_seq.dtype),
-                    pe=pe, attention_mask=ca_mask
+                    img_seq,
+                    txt,
+                    time_embedding=self.transformer.compute_timestep_embedding(t_cont, img_seq.dtype),
+                    pe=pe,
+                    attention_mask=ca_mask,
                 )
 
                 # Convert back to image format
                 from ...models.transformers.transformer_mirage import seq2img
+
                 noise_both = seq2img(img_seq, self.transformer.patch_size, latents_in.shape)
 
                 # Apply CFG
