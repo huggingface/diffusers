@@ -243,8 +243,8 @@ class ModelUtilsTest(unittest.TestCase):
             else:
                 _ = load_model(repo_id)
 
-        warning_message = str(warning.warnings[0].message)
-        self.assertIn("This serialization format is now deprecated to standardize the serialization", warning_message)
+        warning_messages = " ".join(str(w.message) for w in warning.warnings)
+        self.assertIn("This serialization format is now deprecated to standardize the serialization", warning_messages)
 
     # Local tests are already covered down below.
     @parameterized.expand(
