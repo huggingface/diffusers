@@ -19,17 +19,14 @@ import torch
 
 from diffusers import CogVideoXTransformer3DModel
 
-from ...testing_utils import (
-    enable_full_determinism,
-    torch_device,
-)
-from ..test_modeling_common import ModelTesterMixin
+from ...testing_utils import enable_full_determinism, torch_device
+from ..test_modeling_common import ModelTesterMixin, PEFTTesterMixin
 
 
 enable_full_determinism()
 
 
-class CogVideoXTransformerTests(ModelTesterMixin, unittest.TestCase):
+class CogVideoXTransformerTests(ModelTesterMixin, PEFTTesterMixin, unittest.TestCase):
     model_class = CogVideoXTransformer3DModel
     main_input_name = "hidden_states"
     uses_custom_attn_processor = True

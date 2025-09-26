@@ -20,13 +20,13 @@ import torch
 from diffusers import AuraFlowTransformer2DModel
 
 from ...testing_utils import enable_full_determinism, torch_device
-from ..test_modeling_common import ModelTesterMixin
+from ..test_modeling_common import ModelTesterMixin, PEFTTesterMixin
 
 
 enable_full_determinism()
 
 
-class AuraFlowTransformerTests(ModelTesterMixin, unittest.TestCase):
+class AuraFlowTransformerTests(ModelTesterMixin, PEFTTesterMixin, unittest.TestCase):
     model_class = AuraFlowTransformer2DModel
     main_input_name = "hidden_states"
     # We override the items here because the transformer under consideration is small.
