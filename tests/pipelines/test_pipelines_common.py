@@ -2107,10 +2107,9 @@ class PipelineTesterMixin:
         # Craft inputs for the `encode_prompt()` method to run in isolation.
         encode_prompt_param_names = [p.name for p in encode_prompt_parameters if p.name != "self"]
         encode_prompt_inputs = {name: inputs[name] for name in encode_prompt_param_names if name in inputs}
-        if keep_params:
-            for name in encode_prompt_param_names:
-                if name in inputs and name not in keep_params:
-                    inputs.pop(name)
+        for name in encode_prompt_param_names:
+            if name in inputs and (not keep_params or name not in keep_params):
+                inputs.pop(name)
 
         pipe_call_signature = inspect.signature(pipe_with_just_text_encoder.__call__)
         pipe_call_parameters = pipe_call_signature.parameters
@@ -2173,7 +2172,6 @@ class PipelineTesterMixin:
             and pipe_call_parameters.get("prompt_embeds").default is None
         ):
             pipe_without_tes_inputs.update({"prompt": None})
-
         pipe_out = pipe_without_text_encoders(**pipe_without_tes_inputs)[0]
 
         # Compare against regular pipeline outputs.
