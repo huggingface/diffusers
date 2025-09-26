@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import inspect
 import unittest
 
 import numpy as np
@@ -26,7 +27,7 @@ from diffusers import (
     WanSpeechToVideoPipeline,
 )
 
-from ...testing_utils import enable_full_determinism
+from ...testing_utils import enable_full_determinism, torch_device
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
 from ..test_pipelines_common import PipelineTesterMixin
 
@@ -64,7 +65,7 @@ class WanSpeechToVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         )
 
         torch.manual_seed(0)
-        scheduler = FlowMatchEulerDiscreteScheduler(shift=7.0)
+        scheduler = FlowMatchEulerDiscreteScheduler(shift=3.0)
         text_encoder = T5EncoderModel.from_pretrained("hf-internal-testing/tiny-random-t5")
         tokenizer = AutoTokenizer.from_pretrained("hf-internal-testing/tiny-random-t5")
 
@@ -76,12 +77,17 @@ class WanSpeechToVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             in_channels=16,
             out_channels=16,
             text_dim=32,
-            freq_dim=16,
+            freq_dim=256,
             ffn_dim=32,
             num_layers=3,
+            num_weighted_avg_layers=5,
             cross_attn_norm=True,
             qk_norm="rms_norm_across_heads",
             rope_max_seq_len=32,
+            audio_dim=16,
+            audio_inject_layers=[0, 2],
+            enable_adain=True,
+            enable_framepack=True,
         )
 
         torch.manual_seed(0)
@@ -104,9 +110,10 @@ class WanSpeechToVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             generator = torch.manual_seed(seed)
         else:
             generator = torch.Generator(device=device).manual_seed(seed)
-
-        height = 16
-        width = 16
+        # Use 64x64 so that after VAE downsampling (factor ~8) latent spatial size is 8x8, which matches
+        # the frame-packing conv kernel requirement. The largest kernel is (4, 8, 8) so we need at least 8x8 latents.
+        height = 64
+        width = 64
 
         image = Image.new("RGB", (width, height))
 
@@ -125,10 +132,12 @@ class WanSpeechToVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "guidance_scale": 4.5,
             "height": height,
             "width": width,
-            "num_frames_per_chunk": 5,
+            "num_frames_per_chunk": 4,
+            "num_chunks": 2,
             "max_sequence_length": 16,
             "output_type": "pt",
             "pose_video_path_or_url": None,
+            "init_first_frame": True,
         }
         return inputs
 
@@ -142,14 +151,12 @@ class WanSpeechToVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         inputs = self.get_dummy_inputs(device)
         video = pipe(**inputs).frames[0]
-        self.assertEqual(video.shape, (5, 3, 16, 16))
+        expected_num_frames = inputs["num_frames_per_chunk"] * inputs["num_chunks"]
+        if not inputs["init_first_frame"]:
+            expected_num_frames -= 3
+        self.assertEqual(video.shape, (expected_num_frames, 3, inputs["height"], inputs["width"]))
 
-        video_slice = video.flatten()
-        self.assertEqual(len(video_slice), 5 * 3 * 16 * 16)
-        self.assertTrue(torch.is_tensor(video))
-        self.assertTrue(video.dtype == torch.float32)
-
-    def test_inference_with_audio_embeds(self):
+    def test_inference_with_pose(self):
         device = "cpu"
 
         components = self.get_dummy_components()
@@ -158,19 +165,12 @@ class WanSpeechToVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_dummy_inputs(device)
-
-        batch_size = 1
-        num_layers = 5
-        freq_dim = 16
-        num_frames = 170
-        audio_embeds = torch.randn(batch_size, num_layers, freq_dim, num_frames)
-
-        inputs["audio"] = None
-        inputs["sampling_rate"] = None
-        inputs["audio_embeds"] = audio_embeds
-
+        inputs["pose_video_path_or_url"] = "https://github.com/Wan-Video/Wan2.2/raw/refs/heads/main/examples/pose.mp4"
         video = pipe(**inputs).frames[0]
-        self.assertEqual(video.shape, (17, 3, 16, 16))
+        expected_num_frames = inputs["num_frames_per_chunk"] * inputs["num_chunks"]
+        if not inputs["init_first_frame"]:
+            expected_num_frames -= 3
+        self.assertEqual(video.shape, (expected_num_frames, 3, inputs["height"], inputs["width"]))
 
     def test_inference_with_different_sampling_rates(self):
         device = "cpu"

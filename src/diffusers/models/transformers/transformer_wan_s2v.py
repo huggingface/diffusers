@@ -267,9 +267,9 @@ class WeightedAveragelayer(nn.Module):
 
 
 class CausalAudioEncoder(nn.Module):
-    def __init__(self, dim=5120, num_layers=25, out_dim=2048, num_audio_token=4, need_global=False):
+    def __init__(self, dim=5120, num_weighted_avg_layers=25, out_dim=2048, num_audio_token=4, need_global=False):
         super().__init__()
-        self.weighted_avg = WeightedAveragelayer(num_layers)
+        self.weighted_avg = WeightedAveragelayer(num_weighted_avg_layers)
         self.encoder = WanS2VMotionEncoder(
             in_dim=dim, hidden_dim=out_dim, num_attention_heads=num_audio_token, need_global=need_global
         )
@@ -530,6 +530,7 @@ class WanTimeTextAudioPoseEmbedding(nn.Module):
         pose_embed_dim: int,
         patch_size: Tuple[int],
         enable_adain: bool,
+        num_weighted_avg_layers: int,
     ):
         super().__init__()
 
@@ -539,7 +540,7 @@ class WanTimeTextAudioPoseEmbedding(nn.Module):
         self.time_proj = nn.Linear(dim, time_proj_dim)
         self.text_embedder = PixArtAlphaTextProjection(text_embed_dim, dim, act_fn="gelu_tanh")
         self.causal_audio_encoder = CausalAudioEncoder(
-            dim=audio_embed_dim, out_dim=dim, num_audio_token=4, need_global=enable_adain
+            dim=audio_embed_dim, num_weighted_avg_layers=num_weighted_avg_layers, out_dim=dim, num_audio_token=4, need_global=enable_adain
         )
         self.pose_embedder = nn.Conv3d(pose_embed_dim, dim, kernel_size=patch_size, stride=patch_size)
 
@@ -863,6 +864,7 @@ class WanS2VTransformer3DModel(
         pose_dim: int = 16,
         ffn_dim: int = 13824,
         num_layers: int = 40,
+        num_weighted_avg_layers: int = 25,
         cross_attn_norm: bool = True,
         qk_norm: Optional[str] = "rms_norm_across_heads",
         eps: float = 1e-6,
@@ -911,6 +913,7 @@ class WanS2VTransformer3DModel(
             pose_embed_dim=pose_dim,
             patch_size=patch_size,
             enable_adain=enable_adain,
+            num_weighted_avg_layers=num_weighted_avg_layers,
         )
 
         # 3. Transformer blocks
