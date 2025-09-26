@@ -237,7 +237,9 @@ class WanSpeechToVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         inputs["callback_on_step_end_tensor_inputs"] = pipe._callback_tensor_inputs
         _ = pipe(**inputs)[0]
 
+        # we increase the guidance scale by 1.0 at every step
+        # check that the guidance scale is increased by the number of scheduler timesteps
+        # accounts for models that modify the number of inference steps based on strength.
         # For this pipeline, the total number of timesteps is multiplied by num_chunks
         # since each chunk runs independently with its own denoising loop
-        expected_final_guidance = inputs["guidance_scale"] + (pipe.num_timesteps * inputs["num_chunks"])
-        assert pipe.guidance_scale == expected_final_guidance
+        assert pipe.guidance_scale == (inputs["guidance_scale"] + pipe.num_timesteps * inputs["num_chunks"])
