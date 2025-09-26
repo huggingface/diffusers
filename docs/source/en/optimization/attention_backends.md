@@ -79,7 +79,7 @@ with attention_backend("_flash_3_hub"):
 ```
 
 > [!TIP]
-> Most of these attention backends come with `torch.compile` compatibility without any graph breaks. Consider using it for maximum speedups.
+> Most attention backends support `torch.compile` without graph breaks and can be used to further speed up inference.
 
 ## Available backends
 
