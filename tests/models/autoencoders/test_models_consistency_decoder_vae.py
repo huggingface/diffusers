@@ -31,12 +31,13 @@ from ...testing_utils import (
     torch_device,
 )
 from ..test_modeling_common import ModelTesterMixin
+from .testing_utils import AutoencoderTesterMixin
 
 
 enable_full_determinism()
 
 
-class ConsistencyDecoderVAETests(ModelTesterMixin, unittest.TestCase):
+class ConsistencyDecoderVAETests(ModelTesterMixin, AutoencoderTesterMixin, unittest.TestCase):
     model_class = ConsistencyDecoderVAE
     main_input_name = "sample"
     base_precision = 1e-2
@@ -91,70 +92,6 @@ class ConsistencyDecoderVAETests(ModelTesterMixin, unittest.TestCase):
 
     def prepare_init_args_and_inputs_for_common(self):
         return self.init_dict, self.inputs_dict()
-
-    def test_enable_disable_tiling(self):
-        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
-
-        torch.manual_seed(0)
-        model = self.model_class(**init_dict).to(torch_device)
-
-        inputs_dict.update({"return_dict": False})
-        _ = inputs_dict.pop("generator")
-
-        torch.manual_seed(0)
-        output_without_tiling = model(**inputs_dict, generator=torch.manual_seed(0))[0]
-
-        torch.manual_seed(0)
-        model.enable_tiling()
-        output_with_tiling = model(**inputs_dict, generator=torch.manual_seed(0))[0]
-
-        self.assertLess(
-            (output_without_tiling.detach().cpu().numpy() - output_with_tiling.detach().cpu().numpy()).max(),
-            0.5,
-            "VAE tiling should not affect the inference results",
-        )
-
-        torch.manual_seed(0)
-        model.disable_tiling()
-        output_without_tiling_2 = model(**inputs_dict, generator=torch.manual_seed(0))[0]
-
-        self.assertEqual(
-            output_without_tiling.detach().cpu().numpy().all(),
-            output_without_tiling_2.detach().cpu().numpy().all(),
-            "Without tiling outputs should match with the outputs when tiling is manually disabled.",
-        )
-
-    def test_enable_disable_slicing(self):
-        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
-
-        torch.manual_seed(0)
-        model = self.model_class(**init_dict).to(torch_device)
-
-        inputs_dict.update({"return_dict": False})
-        _ = inputs_dict.pop("generator")
-
-        torch.manual_seed(0)
-        output_without_slicing = model(**inputs_dict, generator=torch.manual_seed(0))[0]
-
-        torch.manual_seed(0)
-        model.enable_slicing()
-        output_with_slicing = model(**inputs_dict, generator=torch.manual_seed(0))[0]
-
-        self.assertLess(
-            (output_without_slicing.detach().cpu().numpy() - output_with_slicing.detach().cpu().numpy()).max(),
-            0.5,
-            "VAE slicing should not affect the inference results",
-        )
-
-        torch.manual_seed(0)
-        model.disable_slicing()
-        output_without_slicing_2 = model(**inputs_dict, generator=torch.manual_seed(0))[0]
-
-        self.assertEqual(
-            output_without_slicing.detach().cpu().numpy().all(),
-            output_without_slicing_2.detach().cpu().numpy().all(),
-            "Without slicing outputs should match with the outputs when slicing is manually disabled.",
-        )
 
 
 @slow
