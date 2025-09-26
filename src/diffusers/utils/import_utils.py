@@ -21,7 +21,7 @@ import operator as op
 import os
 import sys
 from collections import OrderedDict, defaultdict
-from functools import cache
+from functools import lru_cache as cache
 from itertools import chain
 from types import ModuleType
 from typing import Any, Tuple, Union
