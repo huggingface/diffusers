@@ -288,20 +288,6 @@ class LastLayer(nn.Module):
         return x
 
 
-@dataclass
-class MirageParams:
-    in_channels: int
-    patch_size: int
-    context_in_dim: int
-    hidden_size: int
-    mlp_ratio: float
-    num_heads: int
-    depth: int
-    axes_dim: list[int]
-    theta: int
-    time_factor: float = 1000.0
-    time_max_period: int = 10_000
-    conditioning_block_ids: list[int] | None = None
 
 
 def img2seq(img: Tensor, patch_size: int) -> Tensor:
@@ -348,55 +334,39 @@ class MirageTransformer2DModel(ModelMixin, ConfigMixin):
         if axes_dim is None:
             axes_dim = [32, 32]
 
-        # Create MirageParams from the provided arguments
-        params = MirageParams(
-            in_channels=in_channels,
-            patch_size=patch_size,
-            context_in_dim=context_in_dim,
-            hidden_size=hidden_size,
-            mlp_ratio=mlp_ratio,
-            num_heads=num_heads,
-            depth=depth,
-            axes_dim=axes_dim,
-            theta=theta,
-            time_factor=time_factor,
-            time_max_period=time_max_period,
-            conditioning_block_ids=conditioning_block_ids,
-        )
-
-        self.params = params
-        self.in_channels = params.in_channels
-        self.patch_size = params.patch_size
+        # Store parameters directly
+        self.in_channels = in_channels
+        self.patch_size = patch_size
         self.out_channels = self.in_channels * self.patch_size**2
 
-        self.time_factor = params.time_factor
-        self.time_max_period = params.time_max_period
+        self.time_factor = time_factor
+        self.time_max_period = time_max_period
 
-        if params.hidden_size % params.num_heads != 0:
-            raise ValueError(f"Hidden size {params.hidden_size} must be divisible by num_heads {params.num_heads}")
+        if hidden_size % num_heads != 0:
+            raise ValueError(f"Hidden size {hidden_size} must be divisible by num_heads {num_heads}")
 
-        pe_dim = params.hidden_size // params.num_heads
+        pe_dim = hidden_size // num_heads
 
-        if sum(params.axes_dim) != pe_dim:
-            raise ValueError(f"Got {params.axes_dim} but expected positional dim {pe_dim}")
+        if sum(axes_dim) != pe_dim:
+            raise ValueError(f"Got {axes_dim} but expected positional dim {pe_dim}")
 
-        self.hidden_size = params.hidden_size
-        self.num_heads = params.num_heads
-        self.pe_embedder = EmbedND(dim=pe_dim, theta=params.theta, axes_dim=params.axes_dim)
+        self.hidden_size = hidden_size
+        self.num_heads = num_heads
+        self.pe_embedder = EmbedND(dim=pe_dim, theta=theta, axes_dim=axes_dim)
         self.img_in = nn.Linear(self.in_channels * self.patch_size**2, self.hidden_size, bias=True)
         self.time_in = MLPEmbedder(in_dim=256, hidden_dim=self.hidden_size)
-        self.txt_in = nn.Linear(params.context_in_dim, self.hidden_size)
+        self.txt_in = nn.Linear(context_in_dim, self.hidden_size)
 
-        conditioning_block_ids: list[int] = params.conditioning_block_ids or list(range(params.depth))
+        conditioning_block_ids: list[int] = conditioning_block_ids or list(range(depth))
 
         self.blocks = nn.ModuleList(
             [
                 MirageBlock(
                     self.hidden_size,
                     self.num_heads,
-                    mlp_ratio=params.mlp_ratio,
+                    mlp_ratio=mlp_ratio,
                 )
-                for i in range(params.depth)
+                for i in range(depth)
             ]
         )
 

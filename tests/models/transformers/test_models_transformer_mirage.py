@@ -17,7 +17,7 @@ import unittest
 
 import torch
 
-from diffusers.models.transformers.transformer_mirage import MirageTransformer2DModel, MirageParams
+from diffusers.models.transformers.transformer_mirage import MirageTransformer2DModel
 
 from ...testing_utils import enable_full_determinism, torch_device
 from ..test_modeling_common import ModelTesterMixin
@@ -88,9 +88,9 @@ class MirageTransformerTests(ModelTesterMixin, unittest.TestCase):
 
         self.assertIsNotNone(outputs)
         expected_shape = inputs_dict["image_latent"].shape
-        self.assertEqual(outputs.shape, expected_shape)
+        self.assertEqual(outputs.sample.shape, expected_shape)
 
-    def test_mirage_params_initialization(self):
+    def test_model_initialization(self):
         # Test model initialization
         model = MirageTransformer2DModel(
             in_channels=16,
@@ -196,7 +196,7 @@ class MirageTransformerTests(ModelTesterMixin, unittest.TestCase):
 
         self.assertIsNotNone(outputs)
         expected_shape = inputs_dict["image_latent"].shape
-        self.assertEqual(outputs.shape, expected_shape)
+        self.assertEqual(outputs.sample.shape, expected_shape)
 
     def test_invalid_config(self):
         # Test invalid configuration - hidden_size not divisible by num_heads
