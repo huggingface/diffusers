@@ -1793,11 +1793,6 @@ class ModelTesterMixin:
         if not self.model_class._supports_group_offloading:
             pytest.skip("Model does not support group offloading.")
 
-        if self.model_class.__name__ == "QwenImageTransformer2DModel":
-            pytest.skip(
-                "QwenImageTransformer2DModel doesn't support group offloading with disk. Needs to be investigated."
-            )
-
         def _has_generator_arg(model):
             sig = inspect.signature(model.forward)
             params = sig.parameters
