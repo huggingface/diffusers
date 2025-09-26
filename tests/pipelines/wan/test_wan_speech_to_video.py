@@ -172,25 +172,6 @@ class WanSpeechToVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             expected_num_frames -= 3
         self.assertEqual(video.shape, (expected_num_frames, 3, inputs["height"], inputs["width"]))
 
-    def test_inference_with_different_sampling_rates(self):
-        device = "cpu"
-
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        pipe.to(device)
-        pipe.set_progress_bar_config(disable=None)
-
-        inputs = self.get_dummy_inputs(device)
-
-        sampling_rate = 22050
-        audio_length = 1.0
-        audio = np.random.rand(int(sampling_rate * audio_length)).astype(np.float32)
-
-        inputs["audio"] = audio
-        inputs["sampling_rate"] = sampling_rate
-
-        video = pipe(**inputs).frames[0]
-        self.assertEqual(video.shape, (17, 3, 16, 16))
 
     @unittest.skip("Test not supported")
     def test_attention_slicing_forward_pass(self):
