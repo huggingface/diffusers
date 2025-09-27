@@ -1119,7 +1119,53 @@ class StableDiffusion3ControlNetInpaintingPipeline(
             width = latent_width * self.vae_scale_factor
 
         elif isinstance(self.controlnet, SD3MultiControlNetModel):
-            raise NotImplementedError("MultiControlNetModel is not supported for SD3ControlNetInpaintingPipeline.")
+            # Normalize inputs to lists matching number of control nets
+            num_cn = len(self.controlnet.nets)
+
+            if not isinstance(control_image, (list, tuple)):
+                control_images = [control_image] * num_cn
+            else:
+                control_images = list(control_image)
+
+            if not isinstance(control_mask, (list, tuple)):
+                control_masks = [control_mask] * num_cn
+            else:
+                control_masks = list(control_mask)
+
+            if len(control_images) != num_cn:
+                raise ValueError(
+                    f"Expected {num_cn} control images for SD3MultiControlNetModel, got {len(control_images)}."
+                )
+            if len(control_masks) != num_cn:
+                raise ValueError(
+                    f"Expected {num_cn} control masks for SD3MultiControlNetModel, got {len(control_masks)}."
+                )
+
+            # Prepare per-control inpainting conditions
+            prepared_controls = []
+            first_latent_size = None
+            for img_i, msk_i in zip(control_images, control_masks):
+                ctrl = self.prepare_image_with_mask(
+                    image=img_i,
+                    mask=msk_i,
+                    width=width,
+                    height=height,
+                    batch_size=batch_size * num_images_per_prompt,
+                    num_images_per_prompt=num_images_per_prompt,
+                    device=device,
+                    dtype=dtype,
+                    do_classifier_free_guidance=self.do_classifier_free_guidance,
+                    guess_mode=False,
+                )
+                if first_latent_size is None:
+                    first_latent_size = ctrl.shape[-2:]
+                prepared_controls.append(ctrl)
+
+            latent_height, latent_width = first_latent_size
+            height = latent_height * self.vae_scale_factor
+            width = latent_width * self.vae_scale_factor
+
+            control_image = prepared_controls
         else:
             assert False
 
@@ -1127,6 +1173,10 @@ class StableDiffusion3ControlNetInpaintingPipeline(
             controlnet_pooled_projections = torch.zeros_like(pooled_prompt_embeds)
         else:
             controlnet_pooled_projections = controlnet_pooled_projections or pooled_prompt_embeds
+
+        # Ensure conditioning scale broadcast for multi-control
+        if isinstance(self.controlnet, SD3MultiControlNetModel) and not isinstance(controlnet_conditioning_scale, list):
+            controlnet_conditioning_scale = [controlnet_conditioning_scale] * len(self.controlnet.nets)
 
         # 4. Prepare timesteps
         timesteps, num_inference_steps = retrieve_timesteps(self.scheduler, num_inference_steps, device, sigmas=sigmas)
