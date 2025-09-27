@@ -57,3 +57,18 @@ class FluxModularPipeline(ModularPipeline, FluxLoraLoaderMixin, TextualInversion
         if getattr(self, "transformer", None):
             num_channels_latents = self.transformer.config.in_channels // 4
         return num_channels_latents
+
+
+class FluxKontextModularPipeline(FluxModularPipeline):
+    """
+    A ModularPipeline for Flux Kontext.
+
+    <Tip warning={true}>
+
+        This is an experimental feature and is likely to change in the future.
+
+    </Tip>
+    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
