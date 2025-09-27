@@ -51,7 +51,6 @@ from .utils import PeftLoraLoaderMixinTests  # noqa: E402
 class HunyuanVideoLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
     pipeline_class = HunyuanVideoPipeline
     scheduler_cls = FlowMatchEulerDiscreteScheduler
-    scheduler_classes = [FlowMatchEulerDiscreteScheduler]
     scheduler_kwargs = {}
 
     transformer_kwargs = {
@@ -254,6 +253,7 @@ class HunyuanVideoLoRAIntegrationTests(unittest.TestCase):
         expected_slices = Expectations(
             {
                 ("cuda", 7): np.array([0.1013, 0.1924, 0.0078, 0.1021, 0.1929, 0.0078, 0.1023, 0.1919, 0.7402, 0.104, 0.4482, 0.7354, 0.0925, 0.4382, 0.7275, 0.0815]),
+                ("xpu", 3): np.array([0.1013, 0.1924, 0.0078, 0.1021, 0.1929, 0.0078, 0.1023, 0.1919, 0.7402, 0.104, 0.4482, 0.7354, 0.0925, 0.4382, 0.7275, 0.0815]),
             }
         )
         # fmt: on
