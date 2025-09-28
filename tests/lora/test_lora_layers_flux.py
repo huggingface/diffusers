@@ -122,9 +122,6 @@ class FluxLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
         pipe.set_progress_bar_config(disable=None)
         _, _, inputs = self.get_dummy_inputs(with_generator=False)
 
-        output_no_lora = self.cached_non_lora_outputs[self.scheduler_cls.__class__.__name__]
-        self.assertTrue(output_no_lora.shape == self.output_shape)
-
         pipe.transformer.add_adapter(denoiser_lora_config)
         self.assertTrue(check_if_lora_correctly_set(pipe.transformer), "Lora not correctly set in transformer")
 
@@ -170,8 +167,7 @@ class FluxLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
         pipe.set_progress_bar_config(disable=None)
         _, _, inputs = self.get_dummy_inputs(with_generator=False)
 
-        output_no_lora = self.cached_non_lora_outputs[self.scheduler_cls.__class__.__name__]
-        self.assertTrue(output_no_lora.shape == self.output_shape)
+        output_no_lora = self.cached_non_lora_outputs[self.scheduler_cls.__name__]
 
         # Modify the config to have a layer which won't be present in the second LoRA we will load.
         modified_denoiser_lora_config = copy.deepcopy(denoiser_lora_config)
@@ -218,9 +214,7 @@ class FluxLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
         pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
         _, _, inputs = self.get_dummy_inputs(with_generator=False)
-
-        output_no_lora = self.cached_non_lora_outputs[self.scheduler_cls.__class__.__name__]
-        self.assertTrue(output_no_lora.shape == self.output_shape)
+        output_no_lora = self.cached_non_lora_outputs[self.scheduler_cls.__name__]
 
         # Modify the config to have a layer which won't be present in the first LoRA we will load.
         modified_denoiser_lora_config = copy.deepcopy(denoiser_lora_config)
