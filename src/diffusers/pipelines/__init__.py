@@ -398,6 +398,7 @@ else:
         "QwenImageEditInpaintPipeline",
         "QwenImageControlNetInpaintPipeline",
         "QwenImageControlNetPipeline",
+        "QwenImageBlockControlNetPipeline",
     ]
 try:
     if not is_onnx_available():
@@ -726,6 +727,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             QwenImageImg2ImgPipeline,
             QwenImageInpaintPipeline,
             QwenImagePipeline,
+            QwenImageBlockControlNetPipeline,
         )
         from .sana import SanaControlNetPipeline, SanaPipeline, SanaSprintImg2ImgPipeline, SanaSprintPipeline
         from .semantic_stable_diffusion import SemanticStableDiffusionPipeline
