@@ -309,6 +309,7 @@ class QwenImageEditPlusPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
                 Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
                 provided, text embeddings will be generated from `prompt` input argument.
         """
+        print(f"{image[0].size=}")
         device = device or self._execution_device
 
         prompt = [prompt] if isinstance(prompt, str) else prompt
@@ -322,7 +323,7 @@ class QwenImageEditPlusPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
         prompt_embeds = prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
         prompt_embeds_mask = prompt_embeds_mask.repeat(1, num_images_per_prompt, 1)
         prompt_embeds_mask = prompt_embeds_mask.view(batch_size * num_images_per_prompt, seq_len)
-
+        print(f"{prompt_embeds.shape=}, {prompt_embeds_mask.shape=}")
         return prompt_embeds, prompt_embeds_mask
 
     # Copied from diffusers.pipelines.qwenimage.pipeline_qwenimage_edit.QwenImageEditPipeline.check_inputs

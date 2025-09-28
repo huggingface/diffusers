@@ -308,7 +308,6 @@ class QwenImageEditPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
         prompt_embeds = prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
         prompt_embeds_mask = prompt_embeds_mask.repeat(1, num_images_per_prompt, 1)
         prompt_embeds_mask = prompt_embeds_mask.view(batch_size * num_images_per_prompt, seq_len)
-
         return prompt_embeds, prompt_embeds_mask
 
     def check_inputs(
