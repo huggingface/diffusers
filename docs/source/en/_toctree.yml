@@ -70,6 +70,8 @@
     title: Reduce memory usage
   - local: optimization/speed-memory-optims
     title: Compiling and offloading quantized models
+  - local: api/parallel
+    title: Parallel inference
   - title: Community optimizations
     sections:
     - local: optimization/pruna
@@ -80,6 +82,8 @@
       title: Token merging
     - local: optimization/deepcache
       title: DeepCache
+    - local: optimization/cache_dit
+      title: CacheDiT
     - local: optimization/tgate
       title: TGATE
     - local: optimization/xdit
