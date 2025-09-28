@@ -23,6 +23,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Union, get_args, get_origin
 
+import httpx
 import numpy as np
 import PIL.Image
 import requests
@@ -36,9 +37,8 @@ from huggingface_hub import (
     read_dduf_file,
     snapshot_download,
 )
-from huggingface_hub.utils import OfflineModeIsEnabled, validate_hf_hub_args
+from huggingface_hub.utils import HfHubHTTPError, OfflineModeIsEnabled, validate_hf_hub_args
 from packaging import version
-from requests.exceptions import HTTPError
 from tqdm.auto import tqdm
 from typing_extensions import Self
 
@@ -1616,7 +1616,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         if not local_files_only:
             try:
                 info = model_info(pretrained_model_name, token=token, revision=revision)
-            except (HTTPError, OfflineModeIsEnabled, requests.ConnectionError) as e:
+            except (HfHubHTTPError, OfflineModeIsEnabled, requests.ConnectionError, httpx.NetworkError) as e:
                 logger.warning(f"Couldn't connect to the Hub: {e}.\nWill try to load from local cache.")
                 local_files_only = True
                 model_info_call_error = e  # save error to reraise it if model is not cached locally

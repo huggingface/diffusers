@@ -781,7 +781,7 @@ class WanVACEPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             callback_on_step_end_tensor_inputs = callback_on_step_end.tensor_inputs
 
         # Simplification of implementation for now
-        if not isinstance(prompt, str):
+        if prompt is not None and not isinstance(prompt, str):
             raise ValueError("Passing a list of prompts is not yet supported. This may be supported in the future.")
         if num_videos_per_prompt != 1:
             raise ValueError(

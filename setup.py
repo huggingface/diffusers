@@ -102,7 +102,8 @@ _deps = [
     "filelock",
     "flax>=0.4.1",
     "hf-doc-builder>=0.3.0",
-    "huggingface-hub>=0.34.0",
+    "httpx<1.0.0",
+    "huggingface-hub>=0.34.0,<2.0",
     "requests-mock==1.10.0",
     "importlib_metadata",
     "invisible-watermark>=0.2.0",
@@ -259,6 +260,7 @@ extras["dev"] = (
 install_requires = [
     deps["importlib_metadata"],
     deps["filelock"],
+    deps["httpx"],
     deps["huggingface-hub"],
     deps["numpy"],
     deps["regex"],
