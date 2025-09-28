@@ -1551,7 +1551,6 @@ class PeftLoraLoaderMixinTests:
 
         self.assertDictEqual(pipe.get_list_adapters(), dicts_to_be_checked)
 
-    @require_peft_version_greater(peft_version="0.6.2")
     def test_simple_inference_with_text_lora_denoiser_fused_multi(
         self, expected_atol: float = 1e-3, expected_rtol: float = 1e-3
     ):
@@ -1685,7 +1684,6 @@ class PeftLoraLoaderMixinTests:
                 "LoRA should change the output",
             )
 
-    @require_peft_version_greater(peft_version="0.9.0")
     def test_simple_inference_with_dora(self):
         components, text_lora_config, denoiser_lora_config = self.get_dummy_components(use_dora=True)
         pipe = self.pipeline_class(**components)
