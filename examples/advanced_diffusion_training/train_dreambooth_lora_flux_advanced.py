@@ -25,7 +25,8 @@
 #     "Jinja2",
 #     "peft>=0.11.1",
 #     "sentencepiece",
-#     "torchvision"
+#     "torchvision",
+#     "datasets",
 # ]
 # ///
 
