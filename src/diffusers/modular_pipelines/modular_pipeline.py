@@ -2397,7 +2397,7 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
         Example:
             >>> from diffusers.pipelines.modular_pipeline_utils import ComponentSpec >>> from diffusers import
             UNet2DConditionModel >>> spec = ComponentSpec(
-                ... name="unet", ... type_hint=UNet2DConditionModel, ... config=None, ... pretrained_model_name_or_path="path/to/pretrained_model_name_or_path", ...
+                ... name="unet", ... type_hint=UNet2DConditionModel, ... config=None, ... pretrained_model_name_or_path="path/to/repo", ...
                 subfolder="subfolder", ... variant=None, ... revision=None, ...
                 default_creation_method="from_pretrained",
             ... ) >>> ModularPipeline._component_spec_to_dict(spec) {
@@ -2432,7 +2432,7 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
               Library name and class name of the component. (e.g. ("diffusers", "UNet2DConditionModel"))
           - All loading fields defined by `component_spec.loading_fields()`, typically:
               - "pretrained_model_name_or_path": Optional[str]
-                  The model pretrained_model_name_or_pathsitory (e.g., "stabilityai/stable-diffusion-xl").
+                  The model repository (e.g., "stabilityai/stable-diffusion-xl").
               - "subfolder": Optional[str]
                   A subfolder within the pretrained_model_name_or_path where this component lives.
               - "variant": Optional[str]
