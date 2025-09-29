@@ -9,10 +9,10 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 from huggingface_hub import create_repo, hf_hub_download
 from huggingface_hub.utils import (
     EntryNotFoundError,
+    HfHubHTTPError,
     RepositoryNotFoundError,
     RevisionNotFoundError,
     validate_hf_hub_args,
-    HfHubHTTPError
 )
 
 from ..utils import HUGGINGFACE_CO_RESOLVE_ENDPOINT, PushToHubMixin, extract_commit_hash
