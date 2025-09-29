@@ -862,7 +862,7 @@ class WanS2VTransformer3DModel(
         text_dim: int = 4096,
         freq_dim: int = 256,
         audio_dim: int = 1024,
-        audio_inject_layers: List[int] = [0, 4, 8, 12, 16, 20, 24, 27, 30, 33, 36, 39],
+        audio_inject_layers: Tuple[int] = (0, 4, 8, 12, 16, 20, 24, 27, 30, 33, 36, 39),
         enable_adain: bool = True,
         adain_mode: str = "attn_norm",
         pose_dim: int = 16,
