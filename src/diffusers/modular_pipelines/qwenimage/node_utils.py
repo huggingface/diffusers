@@ -54,7 +54,7 @@ QwenImage_NODE_TYPES_PARAMS_MAP = {
             "latents",
             "latents_preview",
         ],
-        "block_names": ["input", "controlnet_input", "before_denoise", "controlnet_before_denoise", "denoise"],
+        "block_names": ["denoise"],
     },
     "vae_encoder": {
         "inputs": [
