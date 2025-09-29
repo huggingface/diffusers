@@ -167,7 +167,7 @@ class FluxLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
         pipe.set_progress_bar_config(disable=None)
         _, _, inputs = self.get_dummy_inputs(with_generator=False)
 
-        output_no_lora = self.get_cached_non_lora_output()
+        output_no_lora = self.get_base_pipe_output()
 
         # Modify the config to have a layer which won't be present in the second LoRA we will load.
         modified_denoiser_lora_config = copy.deepcopy(denoiser_lora_config)
@@ -214,7 +214,7 @@ class FluxLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
         pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
         _, _, inputs = self.get_dummy_inputs(with_generator=False)
-        output_no_lora = self.get_cached_non_lora_output()
+        output_no_lora = self.get_base_pipe_output()
 
         # Modify the config to have a layer which won't be present in the first LoRA we will load.
         modified_denoiser_lora_config = copy.deepcopy(denoiser_lora_config)
