@@ -232,19 +232,21 @@ By selectively loading and unloading the models you need at a given stage and sh
 
 [Context parallelism](https://huggingface.co/spaces/nanotron/ultrascale-playbook?section=context_parallelism) splits input sequences across multiple GPUs to reduce memory usage. Each GPU processes its own slice of the sequence.
 
+Use [`~ModelMixin.set_attention_backend`] to switch to a more optimized [attention backend](../optimization/attention_backends). The example below uses the FlashAttention backend.
+
+Refer to the table supported attention backends enabled by [`~ModelMixin.set_attention_backend`].
+
+| attention family | support type | argument |
+|---|---|---|
+| native cuDNN | inference and training | `_native_cudnn` |
+| FlashAttention-2/3 | inference and training | `flash` or `_flash_3` |
+| SageAttention | inference | `sage` |
+
+### Ring Attention
+
 Key (K) and value (V) representations communicate between devices using [Ring Attention](https://huggingface.co/papers/2310.01889). This ensures each split sees every other token's K/V. Each GPU computes attention for its local K/V and passes it to the next GPU in the ring. No single GPU holds the full sequence, which reduces communication latency.
 
 Pass a [`ContextParallelConfig`] to the `parallel_config` argument of the transformer model. The config supports the `ring_degree` argument that determines how many devices to use for Ring Attention.
-
-Use [`~ModelMixin.set_attention_backend`] to switch to a more optimized [attention backend](../optimization/attention_backends). The example below uses the FlashAttention backend.
-
-Refer to the table below for the supported attention backends enabled by [`~ModelMixin.set_attention_backend`].
-
-| attention family | support type |
-|---|---|
-| native cuDNN | inference and training |
-| FlashAttention-2/3 | inference and training |
-| SageAttention | inference |
 
 ```py
 import torch
@@ -293,7 +295,3 @@ Pass the [`ContextParallelConfig`] to [`~ModelMixin.enable_parallelism`].
 ```py
 pipeline.transformer.enable_parallelism(config=ContextParallelConfig(ulysses_degree=2))
 ```
-
-- Take a look at this [script](https://gist.github.com/sayakpaul/cfaebd221820d7b43fae638b4dfa01ba) for a minimal example of distributed inference with Accelerate.
-- For more details, check out Accelerate's [Distributed inference](https://huggingface.co/docs/accelerate/en/usage_guides/distributed_inference#distributed-inference-with-accelerate) guide.
-- The `device_map` argument assign models or an entire pipeline to devices. Refer to the [device placement](../using-diffusers/loading#device-placement) docs for more information.
