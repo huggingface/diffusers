@@ -12,8 +12,8 @@ from huggingface_hub.utils import (
     RepositoryNotFoundError,
     RevisionNotFoundError,
     validate_hf_hub_args,
+    HfHubHTTPError
 )
-from requests import HTTPError
 
 from ..utils import HUGGINGFACE_CO_RESOLVE_ENDPOINT, PushToHubMixin, extract_commit_hash
 from .modular_pipeline import ModularPipelineBlocks
@@ -499,7 +499,7 @@ class MellonNodeConfig(PushToHubMixin):
                 raise EnvironmentError(
                     f"{pretrained_model_name_or_path} does not appear to have a file named {cls.config_name}."
                 )
-            except HTTPError as err:
+            except HfHubHTTPError as err:
                 raise EnvironmentError(
                     "There was a specific connection error when trying to load"
                     f" {pretrained_model_name_or_path}:\n{err}"
