@@ -102,7 +102,8 @@ _deps = [
     "filelock",
     "flax>=0.4.1",
     "hf-doc-builder>=0.3.0",
-    "huggingface-hub>=0.34.0",
+    "httpx<1.0.0",
+    "huggingface-hub>=0.34.0,<2.0",
     "requests-mock==1.10.0",
     "importlib_metadata",
     "invisible-watermark>=0.2.0",
@@ -132,6 +133,7 @@ _deps = [
     "gguf>=0.10.0",
     "torchao>=0.7.0",
     "bitsandbytes>=0.43.3",
+    "nvidia_modelopt[hf]>=0.33.1",
     "regex!=2019.12.17",
     "requests",
     "tensorboard",
@@ -244,6 +246,7 @@ extras["bitsandbytes"] = deps_list("bitsandbytes", "accelerate")
 extras["gguf"] = deps_list("gguf", "accelerate")
 extras["optimum_quanto"] = deps_list("optimum_quanto", "accelerate")
 extras["torchao"] = deps_list("torchao", "accelerate")
+extras["nvidia_modelopt"] = deps_list("nvidia_modelopt[hf]")
 
 if os.name == "nt":  # windows
     extras["flax"] = []  # jax is not supported on windows
@@ -257,6 +260,7 @@ extras["dev"] = (
 install_requires = [
     deps["importlib_metadata"],
     deps["filelock"],
+    deps["httpx"],
     deps["huggingface-hub"],
     deps["numpy"],
     deps["regex"],
