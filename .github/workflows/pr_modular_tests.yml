@@ -110,8 +110,9 @@ jobs:
       run: |
         python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
         python -m uv pip install -e [quality,test]
-        pip uninstall transformers -y && python -m uv pip install -U transformers@git+https://github.com/huggingface/transformers.git --no-deps
-        pip uninstall accelerate -y && python -m uv pip install -U accelerate@git+https://github.com/huggingface/accelerate.git --no-deps
+        # Stopping this update temporarily until the Hub RC is fully shipped and integrated.
+        # pip uninstall transformers -y && python -m uv pip install -U transformers@git+https://github.com/huggingface/transformers.git --no-deps
+        # pip uninstall accelerate -y && python -m uv pip install -U accelerate@git+https://github.com/huggingface/accelerate.git --no-deps
 
     - name: Environment
       run: |

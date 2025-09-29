@@ -241,7 +241,7 @@ class AttentionModuleMixin:
                             op_fw, op_bw = attention_op
                             dtype, *_ = op_fw.SUPPORTED_DTYPES
                         q = torch.randn((1, 2, 40), device="cuda", dtype=dtype)
-                        _ = xops.memory_efficient_attention(q, q, q)
+                        _ = xops.ops.memory_efficient_attention(q, q, q)
                 except Exception as e:
                     raise e
 
@@ -674,7 +674,7 @@ class JointTransformerBlock(nn.Module):
         encoder_hidden_states: torch.FloatTensor,
         temb: torch.FloatTensor,
         joint_attention_kwargs: Optional[Dict[str, Any]] = None,
-    ):
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
         joint_attention_kwargs = joint_attention_kwargs or {}
         if self.use_dual_attention:
             norm_hidden_states, gate_msa, shift_mlp, scale_mlp, gate_mlp, norm_hidden_states2, gate_msa2 = self.norm1(
