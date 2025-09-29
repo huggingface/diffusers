@@ -298,11 +298,13 @@ class ModelUtilsTest(unittest.TestCase):
             raise_for_status=mock.Mock(side_effect=HfHubHTTPError("Server down", response=mock.Mock())),
             json=mock.Mock(return_value={}),
         )
+        client_mock = mock.Mock()
+        client_mock.get.return_value = error_response
 
         with tempfile.TemporaryDirectory() as tmpdir:
             model = FluxTransformer2DModel.from_pretrained(repo_id, subfolder="transformer", cache_dir=tmpdir)
 
-            with mock.patch("requests.Session.get", return_value=error_response):
+            with mock.patch("huggingface_hub.hf_api.get_session", return_value=client_mock):
                 # Should fail with local_files_only=False (network required)
                 # We would make a network call with model_info
                 with self.assertRaises(OSError):
