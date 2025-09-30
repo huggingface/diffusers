@@ -126,18 +126,26 @@ class PeftLoraLoaderMixinTests:
     text_encoder_target_modules = ["q_proj", "k_proj", "v_proj", "out_proj"]
     denoiser_target_modules = ["to_q", "to_k", "to_v", "to_out.0"]
 
-    cached_non_lora_output = None
+    cached_non_lora_output = {}
 
     @pytest.fixture(scope="class", autouse=True)
     def get_base_pipeline_outputs(self):
         """
         This fixture is executed once per test class and caches the baseline outputs.
         """
-        self.cached_non_lora_output = self._compute_baseline_output()
+        components, _, _ = self.get_dummy_components(self.scheduler_cls)
+        pipe = self.pipeline_class(**components)
+        pipe = pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        # Always ensure the inputs are without the `generator`. Make sure to pass the `generator`
+        # explicitly.
+        _, _, inputs = self.get_dummy_inputs(with_generator=False)
+        self.cached_non_lora_output["base"] = pipe(**inputs, generator=torch.manual_seed(0))[0]
 
         # Ensures that there's no inconsistency when reusing the cache.
         yield
-        self.cached_non_lora_output = None
+        self.cached_non_lora_output.clear()
 
     def get_dummy_components(self, scheduler_cls=None, use_dora=False, lora_alpha=None):
         if self.unet_kwargs and self.transformer_kwargs:
@@ -262,16 +270,6 @@ class PeftLoraLoaderMixinTests:
         _, _, inputs = self.get_dummy_inputs(with_generator=False)
         return pipe(**inputs, generator=torch.manual_seed(0))[0]
 
-    # Copied from: https://colab.research.google.com/gist/sayakpaul/df2ef6e1ae6d8c10a49d859883b10860/scratchpad.ipynb
-    def get_dummy_tokens(self):
-        max_seq_length = 77
-
-        inputs = torch.randint(2, 56, size=(1, max_seq_length), generator=torch.manual_seed(0))
-
-        prepared_inputs = {}
-        prepared_inputs["input_ids"] = inputs
-        return prepared_inputs
-
     def _get_lora_state_dicts(self, modules_to_save):
         state_dicts = {}
         for module_name, module in modules_to_save.items():
@@ -340,8 +338,8 @@ class PeftLoraLoaderMixinTests:
         """
         Tests a simple inference and makes sure it works as expected
         """
-        output_no_lora = self.cached_non_lora_output
-        self.assertTrue(output_no_lora.shape == self.output_shape)
+        output_no_lora = self.cached_non_lora_output["base"]
+        assert output_no_lora.shape == self.output_shape
 
     def test_simple_inference_with_text_lora(self):
         """
@@ -354,7 +352,7 @@ class PeftLoraLoaderMixinTests:
         pipe.set_progress_bar_config(disable=None)
         _, _, inputs = self.get_dummy_inputs(with_generator=False)
 
-        output_no_lora = self.cached_non_lora_output
+        output_no_lora = self.cached_non_lora_output["base"]
         pipe, _ = self.add_adapters_to_pipeline(pipe, text_lora_config, denoiser_lora_config=None)
 
         output_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
@@ -479,7 +477,7 @@ class PeftLoraLoaderMixinTests:
         pipe.set_progress_bar_config(disable=None)
         _, _, inputs = self.get_dummy_inputs(with_generator=False)
 
-        output_no_lora = self.cached_non_lora_output
+        output_no_lora = self.cached_non_lora_output["base"]
 
         pipe, _ = self.add_adapters_to_pipeline(pipe, text_lora_config, denoiser_lora_config=None)
 
@@ -515,7 +513,7 @@ class PeftLoraLoaderMixinTests:
         pipe.set_progress_bar_config(disable=None)
         _, _, inputs = self.get_dummy_inputs(with_generator=False)
 
-        output_no_lora = self.cached_non_lora_output
+        output_no_lora = self.cached_non_lora_output["base"]
 
         pipe, _ = self.add_adapters_to_pipeline(pipe, text_lora_config, denoiser_lora_config=None)
 
@@ -545,7 +543,7 @@ class PeftLoraLoaderMixinTests:
         pipe.set_progress_bar_config(disable=None)
         _, _, inputs = self.get_dummy_inputs(with_generator=False)
 
-        output_no_lora = self.cached_non_lora_output
+        output_no_lora = self.cached_non_lora_output["base"]
 
         pipe, _ = self.add_adapters_to_pipeline(pipe, text_lora_config, denoiser_lora_config=None)
 
@@ -623,7 +621,7 @@ class PeftLoraLoaderMixinTests:
         pipe.set_progress_bar_config(disable=None)
         _, _, inputs = self.get_dummy_inputs(with_generator=False)
 
-        output_no_lora = self.cached_non_lora_output
+        output_no_lora = self.cached_non_lora_output["base"]
 
         pipe, _ = self.add_adapters_to_pipeline(pipe, text_lora_config, denoiser_lora_config=None)
 
@@ -747,7 +745,7 @@ class PeftLoraLoaderMixinTests:
         pipe.set_progress_bar_config(disable=None)
         _, _, inputs = self.get_dummy_inputs(with_generator=False)
 
-        output_no_lora = self.cached_non_lora_output
+        output_no_lora = self.cached_non_lora_output["base"]
         pipe, _ = self.add_adapters_to_pipeline(pipe, text_lora_config, denoiser_lora_config)
 
         output_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
@@ -788,7 +786,7 @@ class PeftLoraLoaderMixinTests:
         pipe.set_progress_bar_config(disable=None)
         _, _, inputs = self.get_dummy_inputs(with_generator=False)
 
-        output_no_lora = self.cached_non_lora_output
+        output_no_lora = self.cached_non_lora_output["base"]
 
         pipe, denoiser = self.add_adapters_to_pipeline(pipe, text_lora_config, denoiser_lora_config)
 
@@ -822,7 +820,7 @@ class PeftLoraLoaderMixinTests:
         pipe.set_progress_bar_config(disable=None)
         _, _, inputs = self.get_dummy_inputs(with_generator=False)
 
-        output_no_lora = self.cached_non_lora_output
+        output_no_lora = self.cached_non_lora_output["base"]
 
         pipe, denoiser = self.add_adapters_to_pipeline(pipe, text_lora_config, denoiser_lora_config)
 
@@ -896,7 +894,7 @@ class PeftLoraLoaderMixinTests:
         pipe.set_progress_bar_config(disable=None)
         _, _, inputs = self.get_dummy_inputs(with_generator=False)
 
-        output_no_lora = self.cached_non_lora_output
+        output_no_lora = self.cached_non_lora_output["base"]
 
         if "text_encoder" in self.pipeline_class._lora_loadable_modules:
             pipe.text_encoder.add_adapter(text_lora_config, "adapter-1")
@@ -1020,7 +1018,7 @@ class PeftLoraLoaderMixinTests:
         pipe.set_progress_bar_config(disable=None)
         _, _, inputs = self.get_dummy_inputs(with_generator=False)
 
-        output_no_lora = self.cached_non_lora_output
+        output_no_lora = self.cached_non_lora_output["base"]
 
         pipe.text_encoder.add_adapter(text_lora_config, "adapter-1")
         self.assertTrue(check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder")
@@ -1076,7 +1074,7 @@ class PeftLoraLoaderMixinTests:
         pipe.set_progress_bar_config(disable=None)
         _, _, inputs = self.get_dummy_inputs(with_generator=False)
 
-        output_no_lora = self.cached_non_lora_output
+        output_no_lora = self.cached_non_lora_output["base"]
 
         if "text_encoder" in self.pipeline_class._lora_loadable_modules:
             pipe.text_encoder.add_adapter(text_lora_config, "adapter-1")
@@ -1236,7 +1234,7 @@ class PeftLoraLoaderMixinTests:
         pipe.set_progress_bar_config(disable=None)
         _, _, inputs = self.get_dummy_inputs(with_generator=False)
 
-        output_no_lora = self.cached_non_lora_output
+        output_no_lora = self.cached_non_lora_output["base"]
 
         if "text_encoder" in self.pipeline_class._lora_loadable_modules:
             pipe.text_encoder.add_adapter(text_lora_config, "adapter-1")
@@ -1327,7 +1325,7 @@ class PeftLoraLoaderMixinTests:
         pipe.set_progress_bar_config(disable=None)
         _, _, inputs = self.get_dummy_inputs(with_generator=False)
 
-        output_no_lora = self.cached_non_lora_output
+        output_no_lora = self.cached_non_lora_output["base"]
 
         if "text_encoder" in self.pipeline_class._lora_loadable_modules:
             pipe.text_encoder.add_adapter(text_lora_config, "adapter-1")
@@ -1633,7 +1631,7 @@ class PeftLoraLoaderMixinTests:
             pipe.set_progress_bar_config(disable=None)
             _, _, inputs = self.get_dummy_inputs(with_generator=False)
 
-            output_no_lora = self.cached_non_lora_output
+            output_no_lora = self.cached_non_lora_output["base"]
 
             if "text_encoder" in self.pipeline_class._lora_loadable_modules:
                 pipe.text_encoder.add_adapter(text_lora_config, "adapter-1")
@@ -1808,7 +1806,7 @@ class PeftLoraLoaderMixinTests:
         pipe.set_progress_bar_config(disable=None)
 
         _, _, inputs = self.get_dummy_inputs(with_generator=False)
-        output_no_lora = self.cached_non_lora_output
+        output_no_lora = self.cached_non_lora_output["base"]
 
         no_op_state_dict = {"lora_foo": torch.tensor(2.0), "lora_bar": torch.tensor(3.0)}
         logger = logging.get_logger("diffusers.loaders.peft")
@@ -1852,7 +1850,7 @@ class PeftLoraLoaderMixinTests:
         pipe.set_progress_bar_config(disable=None)
         _, _, inputs = self.get_dummy_inputs(with_generator=False)
 
-        output_no_lora = self.cached_non_lora_output
+        output_no_lora = self.cached_non_lora_output["base"]
         pipe, _ = self.add_adapters_to_pipeline(pipe, text_lora_config, denoiser_lora_config)
 
         lora_scale = 0.5
@@ -2243,7 +2241,7 @@ class PeftLoraLoaderMixinTests:
         pipe.set_progress_bar_config(disable=None)
         _, _, inputs = self.get_dummy_inputs(with_generator=False)
 
-        output_no_lora = self.cached_non_lora_output
+        output_no_lora = self.cached_non_lora_output["base"]
 
         if "text_encoder" in self.pipeline_class._lora_loadable_modules:
             pipe.text_encoder.add_adapter(text_lora_config)
