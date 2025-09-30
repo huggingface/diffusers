@@ -232,15 +232,7 @@ By selectively loading and unloading the models you need at a given stage and sh
 
 [Context parallelism](https://huggingface.co/spaces/nanotron/ultrascale-playbook?section=context_parallelism) splits input sequences across multiple GPUs to reduce memory usage. Each GPU processes its own slice of the sequence.
 
-Use [`~ModelMixin.set_attention_backend`] to switch to a more optimized [attention backend](../optimization/attention_backends). The example below uses the FlashAttention backend.
-
-Refer to the table supported attention backends enabled by [`~ModelMixin.set_attention_backend`].
-
-| attention family | support type | argument |
-|---|---|---|
-| native cuDNN | inference and training | `_native_cudnn` |
-| FlashAttention-2/3 | inference and training | `flash` or `_flash_3` |
-| SageAttention | inference | `sage` |
+Use [`~ModelMixin.set_attention_backend`] to switch to a more optimized attention backend. Refer to this [table](../optimization/attention_backends#available-backends) for a complete list of available backends.
 
 ### Ring Attention
 
