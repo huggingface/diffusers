@@ -24,7 +24,7 @@ enable_full_determinism()
 
 @slow
 @require_torch_accelerator
-class StableDiffusionUpscalePipelineSingleFileSlowTests(SDSingleFileTesterMixin):
+class TestStableDiffusionUpscalePipelineSingleFileSlowTests(SDSingleFileTesterMixin):
     pipeline_class = StableDiffusionUpscalePipeline
     ckpt_path = "https://huggingface.co/stabilityai/stable-diffusion-x4-upscaler/blob/main/x4-upscaler-ema.safetensors"
     original_config = "https://raw.githubusercontent.com/Stability-AI/stablediffusion/main/configs/stable-diffusion/x4-upscaling.yaml"

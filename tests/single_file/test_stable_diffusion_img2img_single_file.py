@@ -22,7 +22,7 @@ enable_full_determinism()
 
 @slow
 @require_torch_accelerator
-class StableDiffusionImg2ImgPipelineSingleFileSlowTests(SDSingleFileTesterMixin):
+class TestStableDiffusionImg2ImgPipelineSingleFileSlowTests(SDSingleFileTesterMixin):
     pipeline_class = StableDiffusionImg2ImgPipeline
     ckpt_path = (
         "https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5/blob/main/v1-5-pruned-emaonly.safetensors"
@@ -63,7 +63,7 @@ class StableDiffusionImg2ImgPipelineSingleFileSlowTests(SDSingleFileTesterMixin)
 
 @slow
 @require_torch_accelerator
-class StableDiffusion21Img2ImgPipelineSingleFileSlowTests(SDSingleFileTesterMixin):
+class TestStableDiffusion21Img2ImgPipelineSingleFileSlowTests(SDSingleFileTesterMixin):
     pipeline_class = StableDiffusionImg2ImgPipeline
     ckpt_path = "https://huggingface.co/stabilityai/stable-diffusion-2-1/blob/main/v2-1_768-ema-pruned.safetensors"
     original_config = "https://raw.githubusercontent.com/Stability-AI/stablediffusion/main/configs/stable-diffusion/v2-inference-v.yaml"

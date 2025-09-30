@@ -23,7 +23,7 @@ enable_full_determinism()
 
 @slow
 @require_torch_accelerator
-class StableDiffusionInpaintPipelineSingleFileSlowTests(SDSingleFileTesterMixin):
+class TestStableDiffusionInpaintPipelineSingleFileSlowTests(SDSingleFileTesterMixin):
     pipeline_class = StableDiffusionInpaintPipeline
     ckpt_path = "https://huggingface.co/botp/stable-diffusion-v1-5-inpainting/blob/main/sd-v1-5-inpainting.ckpt"
     original_config = "https://raw.githubusercontent.com/runwayml/stable-diffusion/main/configs/stable-diffusion/v1-inpainting-inference.yaml"
@@ -79,7 +79,7 @@ class StableDiffusionInpaintPipelineSingleFileSlowTests(SDSingleFileTesterMixin)
 
 @slow
 @require_torch_accelerator
-class StableDiffusion21InpaintPipelineSingleFileSlowTests(SDSingleFileTesterMixin):
+class TestStableDiffusion21InpaintPipelineSingleFileSlowTests(SDSingleFileTesterMixin):
     pipeline_class = StableDiffusionInpaintPipeline
     ckpt_path = (
         "https://huggingface.co/stabilityai/stable-diffusion-2-inpainting/blob/main/512-inpainting-ema.safetensors"

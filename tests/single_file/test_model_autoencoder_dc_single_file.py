@@ -32,7 +32,7 @@ from .single_file_testing_utils import SingleFileModelTesterMixin
 enable_full_determinism()
 
 
-class AutoencoderDCSingleFileTests(SingleFileModelTesterMixin):
+class TestAutoencoderDCSingleFileTests(SingleFileModelTesterMixin):
     model_class = AutoencoderDC
     ckpt_path = "https://huggingface.co/mit-han-lab/dc-ae-f32c32-sana-1.0/blob/main/model.safetensors"
     repo_id = "mit-han-lab/dc-ae-f32c32-sana-1.0-diffusers"

@@ -28,7 +28,7 @@ enable_full_determinism()
 
 @slow
 @require_torch_accelerator
-class StableDiffusionControlNetPipelineSingleFileSlowTests(SDSingleFileTesterMixin):
+class TestStableDiffusionControlNetPipelineSingleFileSlowTests(SDSingleFileTesterMixin):
     pipeline_class = StableDiffusionControlNetPipeline
     ckpt_path = (
         "https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5/blob/main/v1-5-pruned-emaonly.safetensors"

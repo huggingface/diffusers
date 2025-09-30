@@ -29,7 +29,7 @@ from .single_file_testing_utils import SingleFileModelTesterMixin
 enable_full_determinism()
 
 
-class ControlNetModelSingleFileTests(SingleFileModelTesterMixin):
+class TestControlNetModelSingleFileTests(SingleFileModelTesterMixin):
     model_class = ControlNetModel
     ckpt_path = "https://huggingface.co/lllyasviel/ControlNet-v1-1/blob/main/control_v11p_sd15_canny.pth"
     repo_id = "lllyasviel/control_v11p_sd15_canny"

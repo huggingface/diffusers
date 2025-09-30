@@ -27,7 +27,7 @@ enable_full_determinism()
 
 @slow
 @require_torch_accelerator
-class StableDiffusionPipelineSingleFileSlowTests(SDSingleFileTesterMixin):
+class TestStableDiffusionPipelineSingleFileSlowTests(SDSingleFileTesterMixin):
     pipeline_class = StableDiffusionPipeline
     ckpt_path = (
         "https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5/blob/main/v1-5-pruned-emaonly.safetensors"
@@ -87,7 +87,7 @@ class StableDiffusionPipelineSingleFileSlowTests(SDSingleFileTesterMixin):
 
 
 @slow
-class StableDiffusion21PipelineSingleFileSlowTests(SDSingleFileTesterMixin):
+class TestStableDiffusion21PipelineSingleFileSlowTests(SDSingleFileTesterMixin):
     pipeline_class = StableDiffusionPipeline
     ckpt_path = "https://huggingface.co/stabilityai/stable-diffusion-2-1/blob/main/v2-1_768-ema-pruned.safetensors"
     original_config = "https://raw.githubusercontent.com/Stability-AI/stablediffusion/main/configs/stable-diffusion/v2-inference-v.yaml"
@@ -120,7 +120,7 @@ class StableDiffusion21PipelineSingleFileSlowTests(SDSingleFileTesterMixin):
 @nightly
 @slow
 @require_torch_accelerator
-class StableDiffusionInstructPix2PixPipelineSingleFileSlowTests(SDSingleFileTesterMixin):
+class TestStableDiffusionInstructPix2PixPipelineSingleFileSlowTests(SDSingleFileTesterMixin):
     pipeline_class = StableDiffusionInstructPix2PixPipeline
     ckpt_path = "https://huggingface.co/timbrooks/instruct-pix2pix/blob/main/instruct-pix2pix-00-22000.safetensors"
     original_config = (

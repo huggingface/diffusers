@@ -27,7 +27,7 @@ from .single_file_testing_utils import SingleFileModelTesterMixin
 enable_full_determinism()
 
 
-class Lumina2Transformer2DModelSingleFileTests(SingleFileModelTesterMixin):
+class TestLumina2Transformer2DModelSingleFileTests(SingleFileModelTesterMixin):
     model_class = Lumina2Transformer2DModel
     ckpt_path = "https://huggingface.co/Comfy-Org/Lumina_Image_2.0_Repackaged/blob/main/split_files/diffusion_models/lumina_2_model_bf16.safetensors"
     alternate_keys_ckpt_paths = [
