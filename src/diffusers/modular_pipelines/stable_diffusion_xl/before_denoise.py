@@ -262,37 +262,37 @@ class StableDiffusionXLInputStep(ModularPipelineBlocks):
             OutputParam(
                 "prompt_embeds",
                 type_hint=torch.Tensor,
-                kwargs_type="guider_input_fields",  # already in intermedites state but declare here again for guider_input_fields
+                kwargs_type="denoiser_input_fields",  # already in intermedites state but declare here again for denoiser_input_fields
                 description="text embeddings used to guide the image generation",
             ),
             OutputParam(
                 "negative_prompt_embeds",
                 type_hint=torch.Tensor,
-                kwargs_type="guider_input_fields",  # already in intermedites state but declare here again for guider_input_fields
+                kwargs_type="denoiser_input_fields",  # already in intermedites state but declare here again for denoiser_input_fields
                 description="negative text embeddings used to guide the image generation",
             ),
             OutputParam(
                 "pooled_prompt_embeds",
                 type_hint=torch.Tensor,
-                kwargs_type="guider_input_fields",  # already in intermedites state but declare here again for guider_input_fields
+                kwargs_type="denoiser_input_fields",  # already in intermedites state but declare here again for denoiser_input_fields
                 description="pooled text embeddings used to guide the image generation",
             ),
             OutputParam(
                 "negative_pooled_prompt_embeds",
                 type_hint=torch.Tensor,
-                kwargs_type="guider_input_fields",  # already in intermedites state but declare here again for guider_input_fields
+                kwargs_type="denoiser_input_fields",  # already in intermedites state but declare here again for denoiser_input_fields
                 description="negative pooled text embeddings used to guide the image generation",
             ),
             OutputParam(
                 "ip_adapter_embeds",
                 type_hint=List[torch.Tensor],
-                kwargs_type="guider_input_fields",  # already in intermedites state but declare here again for guider_input_fields
+                kwargs_type="denoiser_input_fields",  # already in intermedites state but declare here again for denoiser_input_fields
                 description="image embeddings for IP-Adapter",
             ),
             OutputParam(
                 "negative_ip_adapter_embeds",
                 type_hint=List[torch.Tensor],
-                kwargs_type="guider_input_fields",  # already in intermedites state but declare here again for guider_input_fields
+                kwargs_type="denoiser_input_fields",  # already in intermedites state but declare here again for denoiser_input_fields
                 description="negative image embeddings for IP-Adapter",
             ),
         ]
@@ -1120,13 +1120,13 @@ class StableDiffusionXLImg2ImgPrepareAdditionalConditioningStep(ModularPipelineB
             OutputParam(
                 "add_time_ids",
                 type_hint=torch.Tensor,
-                kwargs_type="guider_input_fields",
+                kwargs_type="denoiser_input_fields",
                 description="The time ids to condition the denoising process",
             ),
             OutputParam(
                 "negative_add_time_ids",
                 type_hint=torch.Tensor,
-                kwargs_type="guider_input_fields",
+                kwargs_type="denoiser_input_fields",
                 description="The negative time ids to condition the denoising process",
             ),
             OutputParam("timestep_cond", type_hint=torch.Tensor, description="The timestep cond to use for LCM"),
@@ -1331,13 +1331,13 @@ class StableDiffusionXLPrepareAdditionalConditioningStep(ModularPipelineBlocks):
             OutputParam(
                 "add_time_ids",
                 type_hint=torch.Tensor,
-                kwargs_type="guider_input_fields",
+                kwargs_type="denoiser_input_fields",
                 description="The time ids to condition the denoising process",
             ),
             OutputParam(
                 "negative_add_time_ids",
                 type_hint=torch.Tensor,
-                kwargs_type="guider_input_fields",
+                kwargs_type="denoiser_input_fields",
                 description="The negative time ids to condition the denoising process",
             ),
             OutputParam("timestep_cond", type_hint=torch.Tensor, description="The timestep cond to use for LCM"),
