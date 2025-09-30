@@ -32,7 +32,7 @@ from .single_file_testing_utils import SingleFileModelTesterMixin
 enable_full_determinism()
 
 
-class TestAutoencoderKLSingleFileTests(SingleFileModelTesterMixin):
+class TestAutoencoderKLSingleFile(SingleFileModelTesterMixin):
     model_class = AutoencoderKL
     ckpt_path = (
         "https://huggingface.co/stabilityai/sd-vae-ft-mse-original/blob/main/vae-ft-mse-840000-ema-pruned.safetensors"

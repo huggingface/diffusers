@@ -29,7 +29,7 @@ enable_full_determinism()
 
 @slow
 @require_torch_accelerator
-class TestStableDiffusionControlNetInpaintPipelineSingleFileSlowTests(SDSingleFileTesterMixin):
+class TestStableDiffusionControlNetInpaintPipelineSingleFileSlow(SDSingleFileTesterMixin):
     pipeline_class = StableDiffusionControlNetInpaintPipeline
     ckpt_path = "https://huggingface.co/botp/stable-diffusion-v1-5-inpainting/blob/main/sd-v1-5-inpainting.ckpt"
     original_config = "https://raw.githubusercontent.com/runwayml/stable-diffusion/main/configs/stable-diffusion/v1-inpainting-inference.yaml"

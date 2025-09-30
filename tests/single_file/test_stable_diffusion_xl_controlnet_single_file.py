@@ -27,7 +27,7 @@ enable_full_determinism()
 
 @slow
 @require_torch_accelerator
-class TestStableDiffusionXLControlNetPipelineSingleFileSlowTests(SDXLSingleFileTesterMixin):
+class TestStableDiffusionXLControlNetPipelineSingleFileSlow(SDXLSingleFileTesterMixin):
     pipeline_class = StableDiffusionXLControlNetPipeline
     ckpt_path = "https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0/blob/main/sd_xl_base_1.0.safetensors"
     repo_id = "stabilityai/stable-diffusion-xl-base-1.0"
