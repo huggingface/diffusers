@@ -25,7 +25,7 @@
   - local: using-diffusers/schedulers
     title: Schedulers
   - local: using-diffusers/other-formats
-    title: Model files and layouts
+    title: Model formats
   - local: using-diffusers/push_to_hub
     title: Sharing pipelines and models
 
