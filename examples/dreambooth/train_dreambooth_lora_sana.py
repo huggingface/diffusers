@@ -27,6 +27,8 @@
 #     "sentencepiece",
 #     "torchvision",
 #     "datasets",
+#     "bitsandbytes",
+#     "prodigyopt",
 # ]
 # ///
 
