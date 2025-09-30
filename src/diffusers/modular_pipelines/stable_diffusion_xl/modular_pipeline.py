@@ -54,6 +54,8 @@ class StableDiffusionXLModularPipeline(
     </Tip>
     """
 
+    default_blocks_name = "StableDiffusionXLAutoBlocks"
+
     @property
     def default_height(self):
         return self.default_sample_size * self.vae_scale_factor
