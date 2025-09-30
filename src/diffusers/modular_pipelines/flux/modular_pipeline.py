@@ -32,6 +32,8 @@ class FluxModularPipeline(ModularPipeline, FluxLoraLoaderMixin, TextualInversion
     </Tip>
     """
 
+    default_blocks_name = "FluxAutoBlocks"
+
     @property
     def default_height(self):
         return self.default_sample_size * self.vae_scale_factor
