@@ -98,6 +98,7 @@ from .qwenimage import (
     QwenImageImg2ImgPipeline,
     QwenImageInpaintPipeline,
     QwenImagePipeline,
+    QwenImageEditPlusPipeline,
 )
 from .sana import SanaPipeline
 from .stable_cascade import StableCascadeCombinedPipeline, StableCascadeDecoderPipeline
@@ -186,6 +187,7 @@ AUTO_IMAGE2IMAGE_PIPELINES_MAPPING = OrderedDict(
         ("flux-kontext", FluxKontextPipeline),
         ("qwenimage", QwenImageImg2ImgPipeline),
         ("qwenimage-edit", QwenImageEditPipeline),
+        ("qwenimage-edit-plus", QwenImageEditPlusPipeline),
     ]
 )
 

@@ -38,7 +38,7 @@ else:
         "QwenImageEditAutoBlocks",
         "QwenImageEditPlusAutoBlocks",
     ]
-    _import_structure["modular_pipeline"] = ["QwenImageEditModularPipeline", "QwenImageModularPipeline"]
+    _import_structure["modular_pipeline"] = ["QwenImageEditModularPipeline", "QwenImageModularPipeline", "QwenImageEditPlusModularPipeline"]
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     try:

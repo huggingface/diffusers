@@ -132,7 +132,7 @@ def get_qwen_prompt_embeds_edit_plus(
     text_encoder,
     processor,
     prompt: Union[str, List[str]] = None,
-    image: Optional[Union[torch.Tensor, List[PIL.Image.Image], [PIL.Image.Image]]] = None,
+    image: Optional[Union[torch.Tensor, List[PIL.Image.Image], PIL.Image.Image]] = None,
     prompt_template_encode: str = "<|im_start|>system\nDescribe the key features of the input image (color, shape, size, texture, objects, background), then explain how the user's text instruction should alter or modify the image. Generate a new image that meets the user's requirements while maintaining consistency with the original input where appropriate.<|im_end|>\n<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n",
     img_template_encode: str = "Picture {}: <|vision_start|><|image_pad|><|vision_end|>",
     prompt_template_encode_start_idx: int = 64,
@@ -371,7 +371,7 @@ class QwenImageEditPlusResizeDynamicStep(QwenImageEditResizeDynamicStep):
             ),
             OutputParam(
                 name=self._resized_image_vae_output_name,
-                type_hint=List[PIL.Image.Image],
+                type_hint=torch.Tensor,
                 description="The resized images to be used by the VAE encoder.",
             ),
             OutputParam(
@@ -409,8 +409,8 @@ class QwenImageEditPlusResizeDynamicStep(QwenImageEditResizeDynamicStep):
             )
             vae_width, vae_height, _ = calculate_dimensions(self.vae_image_size, image_width / image_height)
             vae_image_sizes.append((vae_width, vae_height))
-            condition_images.append(self.image_processor.resize(img, condition_height, condition_width))
-            vae_images.append(self.image_processor.preprocess(img, vae_height, vae_width).unsqueeze(2))
+            condition_images.append(components.image_resize_processor.resize(img, condition_height, condition_width))
+            vae_images.append(components.image_resize_processor.preprocess(img, vae_height, vae_width).unsqueeze(2))
 
         setattr(block_state, self._resized_image_output_name, condition_images)
         setattr(block_state, self._resized_image_vae_output_name, vae_images)
@@ -718,7 +718,7 @@ class QwenImageEditPlusTextEncoderStep(QwenImageEditTextEncoderStep):
 
         if components.requires_unconditional_embeds:
             negative_prompt = block_state.negative_prompt or " "
-            block_state.negative_prompt_embeds, block_state.negative_prompt_embeds_mask = get_qwen_prompt_embeds_edit(
+            block_state.negative_prompt_embeds, block_state.negative_prompt_embeds_mask = get_qwen_prompt_embeds_edit_plus(
                 components.text_encoder,
                 components.processor,
                 prompt=negative_prompt,
