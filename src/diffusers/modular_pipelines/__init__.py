@@ -80,9 +80,9 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             QwenImageAutoBlocks,
             QwenImageEditAutoBlocks,
             QwenImageEditModularPipeline,
-            QwenImageModularPipeline,
-            QwenImageEditPlusModularPipeline,
             QwenImageEditPlusAutoBlocks,
+            QwenImageEditPlusModularPipeline,
+            QwenImageModularPipeline,
         )
         from .stable_diffusion_xl import StableDiffusionXLAutoBlocks, StableDiffusionXLModularPipeline
         from .wan import WanAutoBlocks, WanModularPipeline

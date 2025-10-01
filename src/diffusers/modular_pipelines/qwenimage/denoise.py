@@ -343,7 +343,6 @@ class QwenImageEditLoopDenoiser(ModularPipelineBlocks):
             cond_kwargs = {k: v for k, v in cond_kwargs.items() if k in guider_input_fields}
 
             # YiYi TODO: add cache context
-            print(f"{block_state.img_shapes=}")
             guider_state_batch.noise_pred = components.transformer(
                 hidden_states=block_state.latent_model_input,
                 timestep=block_state.timestep / 1000,

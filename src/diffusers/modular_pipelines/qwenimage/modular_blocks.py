@@ -38,6 +38,7 @@ from .denoise import (
 )
 from .encoders import (
     QwenImageControlNetVaeEncoderStep,
+    QwenImageEditPlusProcessImagesInputStep,
     QwenImageEditPlusResizeDynamicStep,
     QwenImageEditPlusTextEncoderStep,
     QwenImageEditResizeDynamicStep,
@@ -904,7 +905,7 @@ class QwenImageEditPlusVLEncoderStep(SequentialPipelineBlocks):
 QwenImageEditPlusVaeEncoderBlocks = InsertableDict(
     [
         ("resize", QwenImageEditPlusResizeDynamicStep()),  # edit plus has a different resize step
-        ("preprocess", QwenImageProcessImagesInputStep()),  # resized_image -> processed_image
+        ("preprocess", QwenImageEditPlusProcessImagesInputStep()),  # vae_image -> processed_image
         ("encode", QwenImageVaeEncoderDynamicStep()),  # processed_image -> image_latents
     ]
 )

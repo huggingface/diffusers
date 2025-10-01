@@ -95,10 +95,10 @@ from .qwenimage import (
     QwenImageControlNetPipeline,
     QwenImageEditInpaintPipeline,
     QwenImageEditPipeline,
+    QwenImageEditPlusPipeline,
     QwenImageImg2ImgPipeline,
     QwenImageInpaintPipeline,
     QwenImagePipeline,
-    QwenImageEditPlusPipeline,
 )
 from .sana import SanaPipeline
 from .stable_cascade import StableCascadeCombinedPipeline, StableCascadeDecoderPipeline

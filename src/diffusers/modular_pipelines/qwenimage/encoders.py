@@ -330,7 +330,7 @@ class QwenImageEditPlusResizeDynamicStep(QwenImageEditResizeDynamicStep):
         self,
         input_name: str = "image",
         output_name: str = "resized_image",
-        vae_image_output_name: str = "resize_vae_image",
+        vae_image_output_name: str = "vae_image",
     ):
         """Create a configurable step for resizing images to the target area (1024 * 1024) while maintaining the aspect ratio.
 
@@ -343,9 +343,9 @@ class QwenImageEditPlusResizeDynamicStep(QwenImageEditResizeDynamicStep):
                 pipeline state. Defaults to "image".
             output_name (str, optional): Name of the resized image field to write
                 back to the pipeline state. Defaults to "resized_image".
-            vae_image_output_name (str, optional): Name of the resized image field
+            vae_image_output_name (str, optional): Name of the image field
                 to write back to the pipeline state. This is used by the VAE encoder step later on. QwenImage Edit Plus
-                resizes the input image(s) differently for the VL and the VAE.
+                processes the input image(s) differently for the VL and the VAE.
         """
         if not isinstance(input_name, str) or not isinstance(output_name, str):
             raise ValueError(
@@ -355,13 +355,9 @@ class QwenImageEditPlusResizeDynamicStep(QwenImageEditResizeDynamicStep):
         self.vae_image_size = 1024 * 1024
         self._image_input_name = input_name
         self._resized_image_output_name = output_name
-        self._resized_image_vae_output_name = vae_image_output_name
+        self._vae_image_output_name = vae_image_output_name
         self._image_size_output_name = "image_sizes"
         super().__init__()
-
-    @property
-    def description(self) -> str:
-        return f"Image Resize step that resize the {self._image_input_name} to the target areas of {self.condition_image_size} and {self.vae_image_size} while maintaining the aspect ratio."
 
     @property
     def intermediate_outputs(self) -> List[OutputParam]:
@@ -370,9 +366,9 @@ class QwenImageEditPlusResizeDynamicStep(QwenImageEditResizeDynamicStep):
                 name=self._resized_image_output_name, type_hint=List[PIL.Image.Image], description="The resized images"
             ),
             OutputParam(
-                name=self._resized_image_vae_output_name,
-                type_hint=torch.Tensor,
-                description="The resized images to be used by the VAE encoder.",
+                name=self._vae_image_output_name,
+                type_hint=List[PIL.Image.Image],
+                description="The images to be processed which will be used by the VAE encoder.",
             ),
             OutputParam(
                 name=self._image_size_output_name,
@@ -397,8 +393,7 @@ class QwenImageEditPlusResizeDynamicStep(QwenImageEditResizeDynamicStep):
         ):
             images = [images]
 
-        # TODO: revisit this when the inputs are `torch.Tensor`s
-        image_width, image_height = images[-1].size
+        # TODO (sayakpaul): revisit this when the inputs are `torch.Tensor`s
         condition_images = []
         vae_image_sizes = []
         vae_images = []
@@ -410,10 +405,10 @@ class QwenImageEditPlusResizeDynamicStep(QwenImageEditResizeDynamicStep):
             vae_width, vae_height, _ = calculate_dimensions(self.vae_image_size, image_width / image_height)
             vae_image_sizes.append((vae_width, vae_height))
             condition_images.append(components.image_resize_processor.resize(img, condition_height, condition_width))
-            vae_images.append(components.image_resize_processor.preprocess(img, vae_height, vae_width).unsqueeze(2))
+            vae_images.append(img)
 
         setattr(block_state, self._resized_image_output_name, condition_images)
-        setattr(block_state, self._resized_image_vae_output_name, vae_images)
+        setattr(block_state, self._vae_image_output_name, vae_images)
         setattr(block_state, self._image_size_output_name, vae_image_sizes)
         self.set_block_state(state, block_state)
         return components, state
@@ -718,14 +713,16 @@ class QwenImageEditPlusTextEncoderStep(QwenImageEditTextEncoderStep):
 
         if components.requires_unconditional_embeds:
             negative_prompt = block_state.negative_prompt or " "
-            block_state.negative_prompt_embeds, block_state.negative_prompt_embeds_mask = get_qwen_prompt_embeds_edit_plus(
-                components.text_encoder,
-                components.processor,
-                prompt=negative_prompt,
-                image=block_state.resized_image,
-                prompt_template_encode=components.config.prompt_template_encode,
-                prompt_template_encode_start_idx=components.config.prompt_template_encode_start_idx,
-                device=device,
+            block_state.negative_prompt_embeds, block_state.negative_prompt_embeds_mask = (
+                get_qwen_prompt_embeds_edit_plus(
+                    components.text_encoder,
+                    components.processor,
+                    prompt=negative_prompt,
+                    image=block_state.resized_image,
+                    prompt_template_encode=components.config.prompt_template_encode,
+                    prompt_template_encode_start_idx=components.config.prompt_template_encode_start_idx,
+                    device=device,
+                )
             )
 
         self.set_block_state(state, block_state)
@@ -833,12 +830,7 @@ class QwenImageProcessImagesInputStep(ModularPipelineBlocks):
 
     @property
     def inputs(self) -> List[InputParam]:
-        return [
-            InputParam("resized_image"),
-            InputParam("image"),
-            InputParam("height"),
-            InputParam("width"),
-        ]
+        return [InputParam("resized_image"), InputParam("image"), InputParam("height"), InputParam("width")]
 
     @property
     def intermediate_outputs(self) -> List[OutputParam]:
@@ -877,6 +869,41 @@ class QwenImageProcessImagesInputStep(ModularPipelineBlocks):
             height=height,
             width=width,
         )
+
+        self.set_block_state(state, block_state)
+        return components, state
+
+
+class QwenImageEditPlusProcessImagesInputStep(QwenImageProcessImagesInputStep):
+    model_name = "qwenimage-edit-plus"
+
+    @property
+    def description(self) -> str:
+        return "Image Preprocess step for QwenImage Edit Plus. Unlike QwenImage Edit, QwenImage Edit Plus doesn't use the same resized image for further preprocessing."
+
+    @property
+    def inputs(self) -> List[InputParam]:
+        return [InputParam("vae_image"), InputParam("image"), InputParam("height"), InputParam("width")]
+
+    @torch.no_grad()
+    def __call__(self, components: QwenImageModularPipeline, state: PipelineState):
+        block_state = self.get_block_state(state)
+
+        if block_state.vae_image is None and block_state.image is None:
+            raise ValueError("`vae_image` and `image` cannot be None at the same time")
+
+        if block_state.vae_image is None:
+            image = block_state.image
+            self.check_inputs(
+                height=block_state.height, width=block_state.width, vae_scale_factor=components.vae_scale_factor
+            )
+            height = block_state.height or components.default_height
+            width = block_state.width or components.default_width
+        else:
+            width, height = block_state.vae_image[0].size
+            image = block_state.vae_image
+
+        block_state.processed_image = components.image_processor.preprocess(image=image, height=height, width=width)
 
         self.set_block_state(state, block_state)
         return components, state
