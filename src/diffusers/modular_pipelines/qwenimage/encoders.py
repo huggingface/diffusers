@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Dict, List, Optional, Union
+from typing import Dict, List, Optional, Tuple, Union
 
 import PIL
 import torch
@@ -95,6 +95,63 @@ def get_qwen_prompt_embeds_edit(
     template = prompt_template_encode
     drop_idx = prompt_template_encode_start_idx
     txt = [template.format(e) for e in prompt]
+
+    model_inputs = processor(
+        text=txt,
+        images=image,
+        padding=True,
+        return_tensors="pt",
+    ).to(device)
+
+    outputs = text_encoder(
+        input_ids=model_inputs.input_ids,
+        attention_mask=model_inputs.attention_mask,
+        pixel_values=model_inputs.pixel_values,
+        image_grid_thw=model_inputs.image_grid_thw,
+        output_hidden_states=True,
+    )
+
+    hidden_states = outputs.hidden_states[-1]
+    split_hidden_states = _extract_masked_hidden(hidden_states, model_inputs.attention_mask)
+    split_hidden_states = [e[drop_idx:] for e in split_hidden_states]
+    attn_mask_list = [torch.ones(e.size(0), dtype=torch.long, device=e.device) for e in split_hidden_states]
+    max_seq_len = max([e.size(0) for e in split_hidden_states])
+    prompt_embeds = torch.stack(
+        [torch.cat([u, u.new_zeros(max_seq_len - u.size(0), u.size(1))]) for u in split_hidden_states]
+    )
+    encoder_attention_mask = torch.stack(
+        [torch.cat([u, u.new_zeros(max_seq_len - u.size(0))]) for u in attn_mask_list]
+    )
+
+    prompt_embeds = prompt_embeds.to(device=device)
+
+    return prompt_embeds, encoder_attention_mask
+
+
+def get_qwen_prompt_embeds_edit_plus(
+    text_encoder,
+    processor,
+    prompt: Union[str, List[str]] = None,
+    image: Optional[Union[torch.Tensor, List[PIL.Image.Image], [PIL.Image.Image]]] = None,
+    prompt_template_encode: str = "<|im_start|>system\nDescribe the key features of the input image (color, shape, size, texture, objects, background), then explain how the user's text instruction should alter or modify the image. Generate a new image that meets the user's requirements while maintaining consistency with the original input where appropriate.<|im_end|>\n<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n",
+    img_template_encode: str = "Picture {}: <|vision_start|><|image_pad|><|vision_end|>",
+    prompt_template_encode_start_idx: int = 64,
+    device: Optional[torch.device] = None,
+):
+    prompt = [prompt] if isinstance(prompt, str) else prompt
+    if isinstance(image, list):
+        base_img_prompt = ""
+        for i, img in enumerate(image):
+            base_img_prompt += img_template_encode.format(i + 1)
+    elif image is not None:
+        base_img_prompt = img_template_encode.format(1)
+    else:
+        base_img_prompt = ""
+
+    template = prompt_template_encode
+
+    drop_idx = prompt_template_encode_start_idx
+    txt = [template.format(base_img_prompt + e) for e in prompt]
 
     model_inputs = processor(
         text=txt,
@@ -262,6 +319,102 @@ class QwenImageEditResizeDynamicStep(ModularPipelineBlocks):
         ]
 
         setattr(block_state, self._resized_image_output_name, resized_images)
+        self.set_block_state(state, block_state)
+        return components, state
+
+
+class QwenImageEditPlusResizeDynamicStep(QwenImageEditResizeDynamicStep):
+    model_name = "qwenimage"
+
+    def __init__(
+        self,
+        input_name: str = "image",
+        output_name: str = "resized_image",
+        vae_image_output_name: str = "resize_vae_image",
+    ):
+        """Create a configurable step for resizing images to the target area (1024 * 1024) while maintaining the aspect ratio.
+
+        This block resizes an input image or a list input images and exposes the resized result under configurable
+        input and output names. Use this when you need to wire the resize step to different image fields (e.g.,
+        "image", "control_image")
+
+        Args:
+            input_name (str, optional): Name of the image field to read from the
+                pipeline state. Defaults to "image".
+            output_name (str, optional): Name of the resized image field to write
+                back to the pipeline state. Defaults to "resized_image".
+            vae_image_output_name (str, optional): Name of the resized image field
+                to write back to the pipeline state. This is used by the VAE encoder step later on. QwenImage Edit Plus
+                resizes the input image(s) differently for the VL and the VAE.
+        """
+        if not isinstance(input_name, str) or not isinstance(output_name, str):
+            raise ValueError(
+                f"input_name and output_name must be strings but are {type(input_name)} and {type(output_name)}"
+            )
+        self.condition_image_size = 384 * 384
+        self.vae_image_size = 1024 * 1024
+        self._image_input_name = input_name
+        self._resized_image_output_name = output_name
+        self._resized_image_vae_output_name = vae_image_output_name
+        self._image_size_output_name = "image_sizes"
+        super().__init__()
+
+    @property
+    def description(self) -> str:
+        return f"Image Resize step that resize the {self._image_input_name} to the target areas of {self.condition_image_size} and {self.vae_image_size} while maintaining the aspect ratio."
+
+    @property
+    def intermediate_outputs(self) -> List[OutputParam]:
+        return [
+            OutputParam(
+                name=self._resized_image_output_name, type_hint=List[PIL.Image.Image], description="The resized images"
+            ),
+            OutputParam(
+                name=self._resized_image_vae_output_name,
+                type_hint=List[PIL.Image.Image],
+                description="The resized images to be used by the VAE encoder.",
+            ),
+            OutputParam(
+                name=self._image_size_output_name,
+                type_hint=List[Tuple[int, int]],
+                description="Sizes of images fed to the VAE encoder. To be used with RoPE.",
+            ),
+        ]
+
+    @torch.no_grad()
+    def __call__(self, components: QwenImageModularPipeline, state: PipelineState):
+        block_state = self.get_block_state(state)
+
+        images = getattr(block_state, self._image_input_name)
+
+        if not is_valid_image_imagelist(images):
+            raise ValueError(f"Images must be image or list of images but are {type(images)}")
+
+        if (
+            not isinstance(images, torch.Tensor)
+            and isinstance(images, PIL.Image.Image)
+            and not isinstance(images, list)
+        ):
+            images = [images]
+
+        # TODO: revisit this when the inputs are `torch.Tensor`s
+        image_width, image_height = images[-1].size
+        condition_images = []
+        vae_image_sizes = []
+        vae_images = []
+        for img in images:
+            image_width, image_height = img.size
+            condition_width, condition_height, _ = calculate_dimensions(
+                self.condition_image_size, image_width / image_height
+            )
+            vae_width, vae_height, _ = calculate_dimensions(self.vae_image_size, image_width / image_height)
+            vae_image_sizes.append((vae_width, vae_height))
+            condition_images.append(self.image_processor.resize(img, condition_height, condition_width))
+            vae_images.append(self.image_processor.preprocess(img, vae_height, vae_width).unsqueeze(2))
+
+        setattr(block_state, self._resized_image_output_name, condition_images)
+        setattr(block_state, self._resized_image_vae_output_name, vae_images)
+        setattr(block_state, self._image_size_output_name, vae_image_sizes)
         self.set_block_state(state, block_state)
         return components, state
 
@@ -491,6 +644,74 @@ class QwenImageEditTextEncoderStep(ModularPipelineBlocks):
             prompt=block_state.prompt,
             image=block_state.resized_image,
             prompt_template_encode=components.config.prompt_template_encode,
+            prompt_template_encode_start_idx=components.config.prompt_template_encode_start_idx,
+            device=device,
+        )
+
+        if components.requires_unconditional_embeds:
+            negative_prompt = block_state.negative_prompt or " "
+            block_state.negative_prompt_embeds, block_state.negative_prompt_embeds_mask = get_qwen_prompt_embeds_edit(
+                components.text_encoder,
+                components.processor,
+                prompt=negative_prompt,
+                image=block_state.resized_image,
+                prompt_template_encode=components.config.prompt_template_encode,
+                prompt_template_encode_start_idx=components.config.prompt_template_encode_start_idx,
+                device=device,
+            )
+
+        self.set_block_state(state, block_state)
+        return components, state
+
+
+class QwenImageEditPlusTextEncoderStep(QwenImageEditTextEncoderStep):
+    model_name = "qwenimage"
+
+    @property
+    def description(self) -> str:
+        return "Text Encoder step that processes both prompt and image together to generate text embeddings for guiding image generation.\n"
+
+    @property
+    def expected_configs(self) -> List[ConfigSpec]:
+        return [
+            ConfigSpec(
+                name="prompt_template_encode",
+                default="<|im_start|>system\nDescribe the key features of the input image (color, shape, size, texture, objects, background), then explain how the user's text instruction should alter or modify the image. Generate a new image that meets the user's requirements while maintaining consistency with the original input where appropriate.<|im_end|>\n<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n",
+            ),
+            ConfigSpec(
+                name="img_template_encode",
+                default='img_prompt_template = "Picture {}: <|vision_start|><|image_pad|><|vision_end|>"',
+            ),
+            ConfigSpec(name="prompt_template_encode_start_idx", default=64),
+        ]
+
+    @staticmethod
+    def check_inputs(prompt, negative_prompt):
+        if not isinstance(prompt, str) and not isinstance(prompt, list):
+            raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
+
+        if (
+            negative_prompt is not None
+            and not isinstance(negative_prompt, str)
+            and not isinstance(negative_prompt, list)
+        ):
+            raise ValueError(f"`negative_prompt` has to be of type `str` or `list` but is {type(negative_prompt)}")
+
+    @torch.no_grad()
+    def __call__(self, components: QwenImageModularPipeline, state: PipelineState):
+        block_state = self.get_block_state(state)
+
+        self.check_inputs(block_state.prompt, block_state.negative_prompt)
+
+        device = components._execution_device
+
+        block_state.prompt_embeds, block_state.prompt_embeds_mask = get_qwen_prompt_embeds_edit_plus(
+            components.text_encoder,
+            components.processor,
+            prompt=block_state.prompt,
+            image=block_state.resized_image,
+            prompt_template_encode=components.config.prompt_template_encode,
+            img_template_encode=components.config.img_template_encode,
             prompt_template_encode_start_idx=components.config.prompt_template_encode_start_idx,
             device=device,
         )

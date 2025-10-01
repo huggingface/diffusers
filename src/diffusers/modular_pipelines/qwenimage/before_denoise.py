@@ -571,7 +571,7 @@ class QwenImageEditRoPEInputsStep(ModularPipelineBlocks):
 
     @property
     def description(self) -> str:
-        return "Step that prepares the RoPE inputs for denoising process. This is used in QwenImage Edit. Should be place after prepare_latents step"
+        return "Step that prepares the RoPE inputs for denoising process. This is used in QwenImage Edit. Should be placed after prepare_latents step"
 
     @property
     def inputs(self) -> List[InputParam]:
@@ -624,6 +624,50 @@ class QwenImageEditRoPEInputsStep(ModularPipelineBlocks):
                     block_state.image_height // components.vae_scale_factor // 2,
                     block_state.image_width // components.vae_scale_factor // 2,
                 ),
+            ]
+        ] * block_state.batch_size
+
+        block_state.txt_seq_lens = (
+            block_state.prompt_embeds_mask.sum(dim=1).tolist() if block_state.prompt_embeds_mask is not None else None
+        )
+        block_state.negative_txt_seq_lens = (
+            block_state.negative_prompt_embeds_mask.sum(dim=1).tolist()
+            if block_state.negative_prompt_embeds_mask is not None
+            else None
+        )
+
+        self.set_block_state(state, block_state)
+
+        return components, state
+
+
+class QwenImageEditPlusRoPEInputsStep(QwenImageEditRoPEInputsStep):
+    model_name = "qwenimage"
+    # TODO: Is there a better way to handle this name? It's used in
+    # `QwenImageEditPlusResizeDynamicStep` as well. We can later
+    # keep these things as a module-level constant.
+    _image_size_output_name = "image_sizes"
+
+    @property
+    def inputs(self) -> List[InputParam]:
+        inputs_list = super().inputs
+        return inputs_list + [
+            InputParam(name=self._image_size_output_name, required=True),
+        ]
+
+    def __call__(self, components: QwenImageModularPipeline, state: PipelineState) -> PipelineState:
+        block_state = self.get_block_state(state)
+        vae_image_sizes = getattr(block_state, self._image_size_output_name)
+        height, width = block_state.image_height, block_state.image_width
+
+        # for edit, image size can be different from the target size (height/width)
+        block_state.img_shapes = [
+            [
+                (1, height // components.vae_scale_factor // 2, width // components.vae_scale_factor // 2),
+                *[
+                    (1, vae_height // components.vae_scale_factor // 2, vae_width // components.vae_scale_factor // 2)
+                    for vae_width, vae_height in vae_image_sizes
+                ],
             ]
         ] * block_state.batch_size
 
