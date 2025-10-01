@@ -663,10 +663,6 @@ class QwenImageEditPlusTextEncoderStep(QwenImageEditTextEncoderStep):
     model_name = "qwenimage"
 
     @property
-    def description(self) -> str:
-        return "Text Encoder step that processes both prompt and image together to generate text embeddings for guiding image generation.\n"
-
-    @property
     def expected_configs(self) -> List[ConfigSpec]:
         return [
             ConfigSpec(
@@ -679,18 +675,6 @@ class QwenImageEditPlusTextEncoderStep(QwenImageEditTextEncoderStep):
             ),
             ConfigSpec(name="prompt_template_encode_start_idx", default=64),
         ]
-
-    @staticmethod
-    def check_inputs(prompt, negative_prompt):
-        if not isinstance(prompt, str) and not isinstance(prompt, list):
-            raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
-
-        if (
-            negative_prompt is not None
-            and not isinstance(negative_prompt, str)
-            and not isinstance(negative_prompt, list)
-        ):
-            raise ValueError(f"`negative_prompt` has to be of type `str` or `list` but is {type(negative_prompt)}")
 
     @torch.no_grad()
     def __call__(self, components: QwenImageModularPipeline, state: PipelineState):
@@ -720,6 +704,7 @@ class QwenImageEditPlusTextEncoderStep(QwenImageEditTextEncoderStep):
                     prompt=negative_prompt,
                     image=block_state.resized_image,
                     prompt_template_encode=components.config.prompt_template_encode,
+                    img_template_encode=components.config.img_template_encode,
                     prompt_template_encode_start_idx=components.config.prompt_template_encode_start_idx,
                     device=device,
                 )
