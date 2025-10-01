@@ -169,7 +169,7 @@ class WanVACELoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
         pipe = self.pipeline_class(**components).to(torch_device)
         _, _, inputs = self.get_dummy_inputs(with_generator=False)
 
-        output_no_lora = self.cached_non_lora_output["base"]
+        output_no_lora = self.get_base_pipe_output()
         self.assertTrue(output_no_lora.shape == self.output_shape)
 
         # only supported for `denoiser` now
