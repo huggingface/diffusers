@@ -297,6 +297,7 @@ class ModularPipelineBlocks(ConfigMixin, PushToHubMixin):
             "cache_dir",
             "force_download",
             "local_files_only",
+            "local_dir",
             "proxies",
             "resume_download",
             "revision",
@@ -323,7 +324,6 @@ class ModularPipelineBlocks(ConfigMixin, PushToHubMixin):
             module_file=module_file,
             class_name=class_name,
             **hub_kwargs,
-            **kwargs,
         )
         expected_kwargs, optional_kwargs = block_cls._get_signature_keys(block_cls)
         block_kwargs = {
