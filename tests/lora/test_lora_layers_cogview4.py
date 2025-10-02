@@ -129,9 +129,6 @@ class CogView4LoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
         pipe.set_progress_bar_config(disable=None)
         _, _, inputs = self.get_dummy_inputs(with_generator=False)
 
-        output_no_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
-        self.assertTrue(output_no_lora.shape == self.output_shape)
-
         images_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
 
         with tempfile.TemporaryDirectory() as tmpdirname:

@@ -28,11 +28,8 @@ The original codebase of this paper can be found at [ermongroup/ddim](https://gi
 
 The paper [Common Diffusion Noise Schedules and Sample Steps are Flawed](https://huggingface.co/papers/2305.08891) claims that a mismatch between the training and inference settings leads to suboptimal inference generation results for Stable Diffusion. To fix this, the authors propose:
 
-<Tip warning={true}>
-
-🧪 This is an experimental feature!
-
-</Tip>
+> [!WARNING]
+> 🧪 This is an experimental feature!
 
 1. rescale the noise schedule to enforce zero terminal signal-to-noise ratio (SNR)
 
