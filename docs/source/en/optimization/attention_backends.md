@@ -104,3 +104,4 @@ Refer to the table below for a complete list of available attention backends and
 | `_sage_qk_int8_pv_fp16_cuda` | [SageAttention](https://github.com/thu-ml/SageAttention) | INT8 QK + FP16 PV (CUDA) |
 | `_sage_qk_int8_pv_fp16_triton` | [SageAttention](https://github.com/thu-ml/SageAttention) | INT8 QK + FP16 PV (Triton) |
 | `xformers` | [xFormers](https://github.com/facebookresearch/xformers) | Memory-efficient attention |
+| `magi` | [MagiAttention](https://github.com/SandAI-org/MagiAttention) | A CP-based Attention Towards Linear Scalability, Heterogeneous Mask Training |

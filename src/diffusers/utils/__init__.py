@@ -86,6 +86,8 @@ from .import_utils import (
     is_kernels_available,
     is_kornia_available,
     is_librosa_available,
+    is_magi_attn_available,
+    is_magi_attn_version,
     is_matplotlib_available,
     is_nltk_available,
     is_note_seq_available,
