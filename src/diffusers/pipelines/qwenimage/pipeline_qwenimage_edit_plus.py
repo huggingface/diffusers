@@ -706,6 +706,7 @@ class QwenImageEditPlusPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
             num_images_per_prompt=num_images_per_prompt,
             max_sequence_length=max_sequence_length,
         )
+        torch.save({"prompt_embeds": prompt_embeds, "prompt_embeds_mask": prompt_embeds_mask}, "prompt_embeds.pt")
         if do_true_cfg:
             negative_prompt_embeds, negative_prompt_embeds_mask = self.encode_prompt(
                 image=condition_images,
@@ -715,6 +716,10 @@ class QwenImageEditPlusPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
                 device=device,
                 num_images_per_prompt=num_images_per_prompt,
                 max_sequence_length=max_sequence_length,
+            )
+            torch.save(
+                {"neg_prompt_embeds": negative_prompt_embeds, "neg_prompt_embeds_mask": negative_prompt_embeds_mask},
+                "neg_prompt_embeds.pt",
             )
 
         # 4. Prepare latent variables
@@ -730,6 +735,7 @@ class QwenImageEditPlusPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
             generator,
             latents,
         )
+        torch.save({"latents": latents, "image_latents": image_latents}, "latents.pt")
         img_shapes = [
             [
                 (1, height // self.vae_scale_factor // 2, width // self.vae_scale_factor // 2),
@@ -830,6 +836,7 @@ class QwenImageEditPlusPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
                     cond_norm = torch.norm(noise_pred, dim=-1, keepdim=True)
                     noise_norm = torch.norm(comb_pred, dim=-1, keepdim=True)
                     noise_pred = comb_pred * (cond_norm / noise_norm)
+                    torch.save({"noise_pred": noise_pred}, f"noise_pred_{i}.pt")
 
                 # compute the previous noisy sample x_t -> x_t-1
                 latents_dtype = latents.dtype

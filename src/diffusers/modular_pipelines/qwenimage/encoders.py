@@ -159,7 +159,6 @@ def get_qwen_prompt_embeds_edit_plus(
         padding=True,
         return_tensors="pt",
     ).to(device)
-
     outputs = text_encoder(
         input_ids=model_inputs.input_ids,
         attention_mask=model_inputs.attention_mask,
@@ -181,7 +180,6 @@ def get_qwen_prompt_embeds_edit_plus(
     )
 
     prompt_embeds = prompt_embeds.to(device=device)
-
     return prompt_embeds, encoder_attention_mask
 
 
@@ -671,7 +669,7 @@ class QwenImageEditPlusTextEncoderStep(QwenImageEditTextEncoderStep):
             ),
             ConfigSpec(
                 name="img_template_encode",
-                default='img_prompt_template = "Picture {}: <|vision_start|><|image_pad|><|vision_end|>"',
+                default="Picture {}: <|vision_start|><|image_pad|><|vision_end|>",
             ),
             ConfigSpec(name="prompt_template_encode_start_idx", default=64),
         ]
@@ -694,6 +692,10 @@ class QwenImageEditPlusTextEncoderStep(QwenImageEditTextEncoderStep):
             prompt_template_encode_start_idx=components.config.prompt_template_encode_start_idx,
             device=device,
         )
+        torch.save(
+            {"prompt_embeds": block_state.prompt_embeds, "prompt_embeds_mask": block_state.prompt_embeds_mask},
+            "prompt_embeds_mod.pt",
+        )
 
         if components.requires_unconditional_embeds:
             negative_prompt = block_state.negative_prompt or " "
@@ -708,6 +710,13 @@ class QwenImageEditPlusTextEncoderStep(QwenImageEditTextEncoderStep):
                     prompt_template_encode_start_idx=components.config.prompt_template_encode_start_idx,
                     device=device,
                 )
+            )
+            torch.save(
+                {
+                    "neg_prompt_embeds": block_state.negative_prompt_embeds,
+                    "neg_prompt_embeds_mask": block_state.negative_prompt_embeds_mask,
+                },
+                "neg_prompt_embeds_mod.pt",
             )
 
         self.set_block_state(state, block_state)
@@ -971,7 +980,7 @@ class QwenImageVaeEncoderDynamicStep(ModularPipelineBlocks):
             dtype=dtype,
             latent_channels=components.num_channels_latents,
         )
-
+        torch.save({"image_latents": image_latents}, "image_latents_mod.pt")
         setattr(block_state, self._image_latents_output_name, image_latents)
 
         self.set_block_state(state, block_state)

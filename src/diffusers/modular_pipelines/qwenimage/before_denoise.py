@@ -203,7 +203,7 @@ class QwenImagePrepareLatentsStep(ModularPipelineBlocks):
         block_state.latents = components.pachifier.pack_latents(block_state.latents)
 
         self.set_block_state(state, block_state)
-
+        torch.save({"latents": block_state.latents}, "latents_mod.pt")
         return components, state
 
 
