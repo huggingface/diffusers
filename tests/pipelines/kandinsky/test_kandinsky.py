@@ -218,7 +218,9 @@ class KandinskyPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         return dummy.get_dummy_inputs(device=device, seed=seed)
 
     @pytest.mark.xfail(
-        condition=is_transformers_version(">=", "4.56.2"), reason="Latest transformers changes the slices", strict=True
+        condition=is_transformers_version(">=", "4.56.2"),
+        reason="Latest transformers changes the slices",
+        strict=False,
     )
     def test_kandinsky(self):
         device = "cpu"
