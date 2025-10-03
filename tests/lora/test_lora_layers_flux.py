@@ -16,7 +16,6 @@ import copy
 import gc
 import os
 import sys
-import tempfile
 import unittest
 
 import numpy as np
@@ -114,7 +113,7 @@ class TestFluxLoRA(PeftLoraLoaderMixinTests):
 
         return noise, input_ids, pipeline_inputs
 
-    def test_with_alpha_in_state_dict(self):
+    def test_with_alpha_in_state_dict(self, tmpdirname):
         components, _, denoiser_lora_config = self.get_dummy_components(FlowMatchEulerDiscreteScheduler)
         pipe = self.pipeline_class(**components)
         pipe = pipe.to(torch_device)
@@ -126,24 +125,23 @@ class TestFluxLoRA(PeftLoraLoaderMixinTests):
 
         images_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
 
-        with tempfile.TemporaryDirectory() as tmpdirname:
-            denoiser_state_dict = get_peft_model_state_dict(pipe.transformer)
-            self.pipeline_class.save_lora_weights(tmpdirname, transformer_lora_layers=denoiser_state_dict)
+        denoiser_state_dict = get_peft_model_state_dict(pipe.transformer)
+        self.pipeline_class.save_lora_weights(tmpdirname, transformer_lora_layers=denoiser_state_dict)
 
-            assert os.path.isfile(os.path.join(tmpdirname, "pytorch_lora_weights.safetensors"))
-            pipe.unload_lora_weights()
-            pipe.load_lora_weights(os.path.join(tmpdirname, "pytorch_lora_weights.safetensors"))
+        assert os.path.isfile(os.path.join(tmpdirname, "pytorch_lora_weights.safetensors"))
+        pipe.unload_lora_weights()
+        pipe.load_lora_weights(os.path.join(tmpdirname, "pytorch_lora_weights.safetensors"))
 
-            # modify the state dict to have alpha values following
-            # https://huggingface.co/TheLastBen/Jon_Snow_Flux_LoRA/blob/main/jon_snow.safetensors
-            state_dict_with_alpha = safetensors.torch.load_file(
-                os.path.join(tmpdirname, "pytorch_lora_weights.safetensors")
-            )
-            alpha_dict = {}
-            for k, v in state_dict_with_alpha.items():
-                if "transformer" in k and "to_k" in k and ("lora_A" in k):
-                    alpha_dict[f"{k}.alpha"] = float(torch.randint(10, 100, size=()))
-            state_dict_with_alpha.update(alpha_dict)
+        # modify the state dict to have alpha values following
+        # https://huggingface.co/TheLastBen/Jon_Snow_Flux_LoRA/blob/main/jon_snow.safetensors
+        state_dict_with_alpha = safetensors.torch.load_file(
+            os.path.join(tmpdirname, "pytorch_lora_weights.safetensors")
+        )
+        alpha_dict = {}
+        for k, v in state_dict_with_alpha.items():
+            if "transformer" in k and "to_k" in k and ("lora_A" in k):
+                alpha_dict[f"{k}.alpha"] = float(torch.randint(10, 100, size=()))
+        state_dict_with_alpha.update(alpha_dict)
 
         images_lora_from_pretrained = pipe(**inputs, generator=torch.manual_seed(0)).images
         assert check_if_lora_correctly_set(pipe.transformer), "Lora not correctly set in denoiser"
@@ -156,7 +154,7 @@ class TestFluxLoRA(PeftLoraLoaderMixinTests):
         )
         assert not np.allclose(images_lora_with_alpha, images_lora, atol=0.001, rtol=0.001)
 
-    def test_lora_expansion_works_for_absent_keys(self, base_pipe_output):
+    def test_lora_expansion_works_for_absent_keys(self, base_pipe_output, tmpdirname):
         components, _, denoiser_lora_config = self.get_dummy_components(FlowMatchEulerDiscreteScheduler)
         pipe = self.pipeline_class(**components)
         pipe = pipe.to(torch_device)
@@ -175,16 +173,15 @@ class TestFluxLoRA(PeftLoraLoaderMixinTests):
             np.allclose(images_lora, base_pipe_output, atol=0.001, rtol=0.001),
             "LoRA should lead to different results.",
         )
-        with tempfile.TemporaryDirectory() as tmpdirname:
-            denoiser_state_dict = get_peft_model_state_dict(pipe.transformer)
-            self.pipeline_class.save_lora_weights(tmpdirname, transformer_lora_layers=denoiser_state_dict)
+        denoiser_state_dict = get_peft_model_state_dict(pipe.transformer)
+        self.pipeline_class.save_lora_weights(tmpdirname, transformer_lora_layers=denoiser_state_dict)
 
-            assert os.path.isfile(os.path.join(tmpdirname, "pytorch_lora_weights.safetensors"))
+        assert os.path.isfile(os.path.join(tmpdirname, "pytorch_lora_weights.safetensors"))
 
-            pipe.unload_lora_weights()
-            pipe.load_lora_weights(os.path.join(tmpdirname, "pytorch_lora_weights.safetensors"), adapter_name="one")
-            lora_state_dict = safetensors.torch.load_file(os.path.join(tmpdirname, "pytorch_lora_weights.safetensors"))
-            lora_state_dict_without_xembedder = {k: v for (k, v) in lora_state_dict.items() if "x_embedder" not in k}
+        pipe.unload_lora_weights()
+        pipe.load_lora_weights(os.path.join(tmpdirname, "pytorch_lora_weights.safetensors"), adapter_name="one")
+        lora_state_dict = safetensors.torch.load_file(os.path.join(tmpdirname, "pytorch_lora_weights.safetensors"))
+        lora_state_dict_without_xembedder = {k: v for (k, v) in lora_state_dict.items() if "x_embedder" not in k}
 
         pipe.load_lora_weights(lora_state_dict_without_xembedder, adapter_name="two")
         pipe.set_adapters(["one", "two"])
@@ -200,7 +197,7 @@ class TestFluxLoRA(PeftLoraLoaderMixinTests):
             "LoRA should lead to different results.",
         )
 
-    def test_lora_expansion_works_for_extra_keys(self, base_pipe_output):
+    def test_lora_expansion_works_for_extra_keys(self, base_pipe_output, tmpdirname):
         components, _, denoiser_lora_config = self.get_dummy_components(FlowMatchEulerDiscreteScheduler)
         pipe = self.pipeline_class(**components)
         pipe = pipe.to(torch_device)
@@ -217,16 +214,15 @@ class TestFluxLoRA(PeftLoraLoaderMixinTests):
             np.allclose(images_lora, base_pipe_output, atol=0.001, rtol=0.001),
             "LoRA should lead to different results.",
         )
-        with tempfile.TemporaryDirectory() as tmpdirname:
-            denoiser_state_dict = get_peft_model_state_dict(pipe.transformer)
-            self.pipeline_class.save_lora_weights(tmpdirname, transformer_lora_layers=denoiser_state_dict)
-            assert os.path.isfile(os.path.join(tmpdirname, "pytorch_lora_weights.safetensors"))
+        denoiser_state_dict = get_peft_model_state_dict(pipe.transformer)
+        self.pipeline_class.save_lora_weights(tmpdirname, transformer_lora_layers=denoiser_state_dict)
+        assert os.path.isfile(os.path.join(tmpdirname, "pytorch_lora_weights.safetensors"))
 
-            pipe.unload_lora_weights()
-            lora_state_dict = safetensors.torch.load_file(os.path.join(tmpdirname, "pytorch_lora_weights.safetensors"))
-            lora_state_dict_without_xembedder = {k: v for (k, v) in lora_state_dict.items() if "x_embedder" not in k}
-            pipe.load_lora_weights(lora_state_dict_without_xembedder, adapter_name="one")
-            pipe.load_lora_weights(os.path.join(tmpdirname, "pytorch_lora_weights.safetensors"), adapter_name="two")
+        pipe.unload_lora_weights()
+        lora_state_dict = safetensors.torch.load_file(os.path.join(tmpdirname, "pytorch_lora_weights.safetensors"))
+        lora_state_dict_without_xembedder = {k: v for (k, v) in lora_state_dict.items() if "x_embedder" not in k}
+        pipe.load_lora_weights(lora_state_dict_without_xembedder, adapter_name="one")
+        pipe.load_lora_weights(os.path.join(tmpdirname, "pytorch_lora_weights.safetensors"), adapter_name="two")
 
         pipe.set_adapters(["one", "two"])
         assert check_if_lora_correctly_set(pipe.transformer), "Lora not correctly set in transformer"

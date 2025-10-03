@@ -14,7 +14,6 @@
 
 import os
 import sys
-import tempfile
 import unittest
 
 import numpy as np
@@ -163,7 +162,7 @@ class TestWanVACELoRA(PeftLoraLoaderMixinTests):
         super().test_layerwise_casting_inference_denoiser()
 
     @require_peft_version_greater("0.13.2")
-    def test_lora_exclude_modules_wanvace(self, base_pipe_output):
+    def test_lora_exclude_modules_wanvace(self, base_pipe_output, tmpdirname):
         exclude_module_name = "vace_blocks.0.proj_out"
         components, text_lora_config, denoiser_lora_config = self.get_dummy_components()
         pipe = self.pipeline_class(**components).to(torch_device)
@@ -183,30 +182,26 @@ class TestWanVACELoRA(PeftLoraLoaderMixinTests):
         assert any("proj_out" in k for k in state_dict_from_model)
         output_lora_exclude_modules = pipe(**inputs, generator=torch.manual_seed(0))[0]
 
-        with tempfile.TemporaryDirectory() as tmpdir:
-            modules_to_save = self._get_modules_to_save(pipe, has_denoiser=True)
-            lora_state_dicts = self._get_lora_state_dicts(modules_to_save)
-            self.pipeline_class.save_lora_weights(save_directory=tmpdir, **lora_state_dicts)
-            pipe.unload_lora_weights()
+        modules_to_save = self._get_modules_to_save(pipe, has_denoiser=True)
+        lora_state_dicts = self._get_lora_state_dicts(modules_to_save)
+        self.pipeline_class.save_lora_weights(save_directory=tmpdirname, **lora_state_dicts)
+        pipe.unload_lora_weights()
 
-            # Check in the loaded state dict.
-            loaded_state_dict = safetensors.torch.load_file(os.path.join(tmpdir, "pytorch_lora_weights.safetensors"))
-            assert not any(exclude_module_name in k for k in loaded_state_dict)
-            assert any("proj_out" in k for k in loaded_state_dict)
+        # Check in the loaded state dict.
+        loaded_state_dict = safetensors.torch.load_file(os.path.join(tmpdirname, "pytorch_lora_weights.safetensors"))
+        assert not any(exclude_module_name in k for k in loaded_state_dict)
+        assert any("proj_out" in k for k in loaded_state_dict)
 
-            # Check in the state dict obtained after loading LoRA.
-            pipe.load_lora_weights(tmpdir)
-            state_dict_from_model = get_peft_model_state_dict(pipe.transformer, adapter_name="default_0")
-            assert not any(exclude_module_name in k for k in state_dict_from_model)
-            assert any("proj_out" in k for k in state_dict_from_model)
+        # Check in the state dict obtained after loading LoRA.
+        pipe.load_lora_weights(tmpdirname)
+        state_dict_from_model = get_peft_model_state_dict(pipe.transformer, adapter_name="default_0")
+        assert not any(exclude_module_name in k for k in state_dict_from_model)
+        assert any("proj_out" in k for k in state_dict_from_model)
 
-            output_lora_pretrained = pipe(**inputs, generator=torch.manual_seed(0))[0]
-            assert not np.allclose(base_pipe_output, output_lora_exclude_modules, atol=1e-3, rtol=1e-3), (
-                "LoRA should change outputs."
-            )
-            assert np.allclose(output_lora_exclude_modules, output_lora_pretrained, atol=1e-3, rtol=1e-3), (
-                "Lora outputs should match."
-            )
-
-    def test_simple_inference_with_text_denoiser_lora_and_scale(self):
-        super().test_simple_inference_with_text_denoiser_lora_and_scale()
+        output_lora_pretrained = pipe(**inputs, generator=torch.manual_seed(0))[0]
+        assert not np.allclose(base_pipe_output, output_lora_exclude_modules, atol=1e-3, rtol=1e-3), (
+            "LoRA should change outputs."
+        )
+        assert np.allclose(output_lora_exclude_modules, output_lora_pretrained, atol=1e-3, rtol=1e-3), (
+            "Lora outputs should match."
+        )
