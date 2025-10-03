@@ -14,7 +14,6 @@
 
 import sys
 
-import numpy as np
 import pytest
 import torch
 from transformers import AutoTokenizer, GlmModel
@@ -26,7 +25,6 @@ from ..testing_utils import (
     require_peft_backend,
     require_torch_accelerator,
     skip_mps,
-    torch_device,
 )
 
 
@@ -116,29 +114,6 @@ class TestCogView4LoRA(PeftLoraLoaderMixinTests):
 
     def test_simple_inference_with_text_denoiser_lora_unfused(self):
         super().test_simple_inference_with_text_denoiser_lora_unfused(expected_atol=9e-3)
-
-    def test_simple_inference_save_pretrained(self, tmpdirname):
-        """
-        Tests a simple usecase where users could use saving utilities for LoRA through save_pretrained
-        """
-        components, _, _ = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        pipe = pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
-        _, _, inputs = self.get_dummy_inputs(with_generator=False)
-
-        images_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
-
-        pipe.save_pretrained(tmpdirname)
-
-        pipe_from_pretrained = self.pipeline_class.from_pretrained(tmpdirname)
-        pipe_from_pretrained.to(torch_device)
-
-        images_lora_save_pretrained = pipe_from_pretrained(**inputs, generator=torch.manual_seed(0))[0]
-
-        assert np.allclose(images_lora, images_lora_save_pretrained, atol=1e-3, rtol=1e-3), (
-            "Loading from saved checkpoints should give same results."
-        )
 
     @pytest.mark.parametrize(
         "offload_type, use_stream",
