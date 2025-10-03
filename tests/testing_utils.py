@@ -266,7 +266,7 @@ def slow(test_case):
     Slow tests are skipped by default. Set the RUN_SLOW environment variable to a truthy value to run them.
 
     """
-    return unittest.skipUnless(_run_slow_tests, "test is slow")(test_case)
+    return pytest.mark.skipif(not _run_slow_tests, reason="test is slow")(test_case)
 
 
 def nightly(test_case):
