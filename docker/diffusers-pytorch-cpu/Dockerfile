@@ -17,13 +17,13 @@ RUN apt-get -y update && apt-get install -y bash \
 ENV UV_PYTHON=/usr/local/bin/python
 
 # pre-install the heavy dependencies (these can later be overridden by the deps from setup.py)
-RUN pip install --no-cache-dir --upgrade uv \
-    uv pip install --no-cache-dir \
-        torch \
-        torchvision \
-        torchaudio \
-        invisible_watermark \
-        --extra-index-url https://download.pytorch.org/whl/cpu && \
+RUN pip install uv
+RUN uv pip install --no-cache-dir \
+    torch \
+    torchvision \
+    torchaudio \
+    invisible_watermark \
+    --extra-index-url https://download.pytorch.org/whl/cpu && \
     uv pip install --no-cache-dir \
         accelerate \
         datasets \
