@@ -757,7 +757,9 @@ class TestFluxLoRAIntegration:
     def pipeline(self):
         gc.collect()
         backend_empty_cache(torch_device)
-        pipe = FluxPipeline.from_pretrained("black-forest-labs/FLUX.1-dev", torch_dtype=torch.bfloat16)
+        pipe = FluxPipeline.from_pretrained("black-forest-labs/FLUX.1-dev", torch_dtype=torch.bfloat16).to(
+            torch_device
+        )
         try:
             yield pipe
         finally:
@@ -876,7 +878,9 @@ class TestFluxControlLoRAIntegration:
     def pipeline(self):
         gc.collect()
         backend_empty_cache(torch_device)
-        pipe = FluxControlPipeline.from_pretrained("black-forest-labs/FLUX.1-dev", torch_dtype=torch.bfloat16)
+        pipe = FluxControlPipeline.from_pretrained("black-forest-labs/FLUX.1-dev", torch_dtype=torch.bfloat16).to(
+            torch_device
+        )
         try:
             yield pipe
         finally:
