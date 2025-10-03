@@ -36,7 +36,7 @@ from .utils import PeftLoraLoaderMixinTests, check_if_lora_correctly_set  # noqa
 
 
 @require_peft_backend
-class Lumina2LoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
+class TestLumina2LoRA(PeftLoraLoaderMixinTests):
     pipeline_class = Lumina2Pipeline
     scheduler_cls = FlowMatchEulerDiscreteScheduler
     scheduler_kwargs = {}

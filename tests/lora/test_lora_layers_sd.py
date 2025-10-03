@@ -55,7 +55,7 @@ if is_accelerate_available():
     from accelerate.utils import release_memory
 
 
-class StableDiffusionLoRATests(PeftLoraLoaderMixinTests, unittest.TestCase):
+class TestStableDiffusionLoRA(PeftLoraLoaderMixinTests):
     pipeline_class = StableDiffusionPipeline
     scheduler_cls = DDIMScheduler
     scheduler_kwargs = {
@@ -666,11 +666,11 @@ class LoraIntegrationTests(unittest.TestCase):
         previous_state_dict = lcm_lora.copy()
 
         pipe.load_lora_weights(lcm_lora, adapter_name="lcm")
-        self.assertDictEqual(lcm_lora, previous_state_dict)
+        assert lcm_lora == previous_state_dict
 
         pipe.unload_lora_weights()
         pipe.load_lora_weights(lcm_lora, adapter_name="lcm")
-        self.assertDictEqual(lcm_lora, previous_state_dict)
+        assert lcm_lora == previous_state_dict
 
         release_memory(pipe)
 

@@ -59,7 +59,7 @@ if is_accelerate_available():
     from accelerate.utils import release_memory
 
 
-class StableDiffusionXLLoRATests(PeftLoraLoaderMixinTests, unittest.TestCase):
+class TestStableDiffusionXLLoRA(PeftLoraLoaderMixinTests):
     has_two_text_encoders = True
     pipeline_class = StableDiffusionXLPipeline
     scheduler_cls = EulerDiscreteScheduler

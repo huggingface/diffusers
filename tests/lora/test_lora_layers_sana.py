@@ -29,7 +29,7 @@ from .utils import PeftLoraLoaderMixinTests  # noqa: E402
 
 
 @require_peft_backend
-class SanaLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
+class TestSanaLoRA(PeftLoraLoaderMixinTests):
     pipeline_class = SanaPipeline
     scheduler_cls = FlowMatchEulerDiscreteScheduler
     scheduler_kwargs = {"shift": 7.0}

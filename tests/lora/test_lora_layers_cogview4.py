@@ -47,7 +47,7 @@ class TokenizerWrapper:
 
 @require_peft_backend
 @skip_mps
-class CogView4LoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
+class TestCogView4LoRA(PeftLoraLoaderMixinTests):
     pipeline_class = CogView4Pipeline
     scheduler_cls = FlowMatchEulerDiscreteScheduler
     scheduler_kwargs = {}

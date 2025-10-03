@@ -40,7 +40,7 @@ from .utils import PeftLoraLoaderMixinTests  # noqa: E402
 
 
 @require_peft_backend
-class AuraFlowLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
+class TestAuraFlowLoRA(PeftLoraLoaderMixinTests):
     pipeline_class = AuraFlowPipeline
     scheduler_cls = FlowMatchEulerDiscreteScheduler
     scheduler_kwargs = {}

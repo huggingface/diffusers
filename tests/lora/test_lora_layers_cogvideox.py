@@ -39,7 +39,7 @@ from .utils import PeftLoraLoaderMixinTests  # noqa: E402
 
 
 @require_peft_backend
-class CogVideoXLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
+class TestCogVideoXLoRA(PeftLoraLoaderMixinTests):
     pipeline_class = CogVideoXPipeline
     scheduler_cls = CogVideoXDPMScheduler
     scheduler_kwargs = {"timestep_spacing": "trailing"}
