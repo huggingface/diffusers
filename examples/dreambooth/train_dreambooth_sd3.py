@@ -875,15 +875,20 @@ def _encode_prompt_with_t5(
     prompt = [prompt] if isinstance(prompt, str) else prompt
     batch_size = len(prompt)
 
-    text_inputs = tokenizer(
-        prompt,
-        padding="max_length",
-        max_length=max_sequence_length,
-        truncation=True,
-        add_special_tokens=True,
-        return_tensors="pt",
-    )
-    text_input_ids = text_inputs.input_ids
+    if tokenizer is not None:
+        text_inputs = tokenizer(
+            prompt,
+            padding="max_length",
+            max_length=max_sequence_length,
+            truncation=True,
+            add_special_tokens=True,
+            return_tensors="pt",
+        )
+        text_input_ids = text_inputs.input_ids
+    else:
+        if text_input_ids is None:
+            raise ValueError("text_input_ids must be provided when the tokenizer is not specified")
+        
     prompt_embeds = text_encoder(text_input_ids.to(device))[0]
 
     dtype = text_encoder.dtype
@@ -1604,8 +1609,9 @@ def main(args):
                 else:
                     prompt_embeds, pooled_prompt_embeds = encode_prompt(
                         text_encoders=[text_encoder_one, text_encoder_two, text_encoder_three],
-                        tokenizers=None,
-                        prompt=None,
+                        tokenizers=[None, None, None],
+                        prompt=prompts,
+                        max_sequence_length=args.max_sequence_length,
                         text_input_ids_list=[tokens_one, tokens_two, tokens_three],
                     )
                     model_pred = transformer(
