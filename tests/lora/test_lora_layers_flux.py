@@ -111,11 +111,8 @@ class TestFluxLoRA(PeftLoraLoaderMixinTests):
 
         return noise, input_ids, pipeline_inputs
 
-    def test_with_alpha_in_state_dict(self, tmpdirname):
-        components, _, denoiser_lora_config = self.get_dummy_components(FlowMatchEulerDiscreteScheduler)
-        pipe = self.pipeline_class(**components)
-        pipe = pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
+    def test_with_alpha_in_state_dict(self, tmpdirname, pipe):
+        _, _, denoiser_lora_config = self.get_dummy_components(FlowMatchEulerDiscreteScheduler)
         _, _, inputs = self.get_dummy_inputs(with_generator=False)
 
         pipe.transformer.add_adapter(denoiser_lora_config)
@@ -152,11 +149,8 @@ class TestFluxLoRA(PeftLoraLoaderMixinTests):
         )
         assert not np.allclose(images_lora_with_alpha, images_lora, atol=0.001, rtol=0.001)
 
-    def test_lora_expansion_works_for_absent_keys(self, base_pipe_output, tmpdirname):
-        components, _, denoiser_lora_config = self.get_dummy_components(FlowMatchEulerDiscreteScheduler)
-        pipe = self.pipeline_class(**components)
-        pipe = pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
+    def test_lora_expansion_works_for_absent_keys(self, base_pipe_output, tmpdirname, pipe):
+        _, _, denoiser_lora_config = self.get_dummy_components(FlowMatchEulerDiscreteScheduler)
         _, _, inputs = self.get_dummy_inputs(with_generator=False)
 
         # Modify the config to have a layer which won't be present in the second LoRA we will load.
@@ -192,11 +186,8 @@ class TestFluxLoRA(PeftLoraLoaderMixinTests):
             "LoRA should lead to different results."
         )
 
-    def test_lora_expansion_works_for_extra_keys(self, base_pipe_output, tmpdirname):
-        components, _, denoiser_lora_config = self.get_dummy_components(FlowMatchEulerDiscreteScheduler)
-        pipe = self.pipeline_class(**components)
-        pipe = pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
+    def test_lora_expansion_works_for_extra_keys(self, base_pipe_output, tmpdirname, pipe):
+        _, _, denoiser_lora_config = self.get_dummy_components(FlowMatchEulerDiscreteScheduler)
         _, _, inputs = self.get_dummy_inputs(with_generator=False)
 
         modified_denoiser_lora_config = copy.deepcopy(denoiser_lora_config)
@@ -312,12 +303,7 @@ class TestFluxControlLoRA(PeftLoraLoaderMixinTests):
 
         return noise, input_ids, pipeline_inputs
 
-    def test_with_norm_in_state_dict(self):
-        components, _, denoiser_lora_config = self.get_dummy_components(FlowMatchEulerDiscreteScheduler)
-        pipe = self.pipeline_class(**components)
-        pipe = pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
-
+    def test_with_norm_in_state_dict(self, pipe):
         _, _, inputs = self.get_dummy_inputs(with_generator=False)
 
         logger = logging.get_logger("diffusers.loaders.lora_pipeline")
@@ -346,6 +332,7 @@ class TestFluxControlLoRA(PeftLoraLoaderMixinTests):
 
                 pipe.unload_lora_weights()
                 lora_unload_output = pipe(**inputs, generator=torch.manual_seed(0))[0]
+
             assert pipe.transformer._transformer_norm_layers is None
             assert np.allclose(original_output, lora_unload_output, atol=1e-05, rtol=1e-05)
             assert not np.allclose(original_output, lora_load_output, atol=1e-06, rtol=1e-06), (
@@ -358,11 +345,8 @@ class TestFluxControlLoRA(PeftLoraLoaderMixinTests):
             pipe.load_lora_weights(norm_state_dict)
         assert "Unsupported keys found in state dict when trying to load normalization layers" in cap_logger.out
 
-    def test_lora_parameter_expanded_shapes(self):
+    def test_lora_parameter_expanded_shapes(self, pipe):
         components, _, _ = self.get_dummy_components(FlowMatchEulerDiscreteScheduler)
-        pipe = self.pipeline_class(**components)
-        pipe = pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
         _, _, inputs = self.get_dummy_inputs(with_generator=False)
 
         original_out = pipe(**inputs, generator=torch.manual_seed(0))[0]
@@ -573,14 +557,10 @@ class TestFluxControlLoRA(PeftLoraLoaderMixinTests):
         lora_output_4 = pipe(**inputs, generator=torch.manual_seed(0))[0]
         assert np.allclose(lora_output_3, lora_output_4, atol=0.001, rtol=0.001)
 
-    def test_load_regular_lora(self, base_pipe_output):
+    def test_load_regular_lora(self, base_pipe_output, pipe):
         # This test checks if a regular lora (think of one trained on Flux.1 Dev for example) can be loaded
         # into the transformer with more input channels than Flux.1 Dev, for example. Some examples of those
         # transformers include Flux Fill, Flux Control, etc.
-        components, _, _ = self.get_dummy_components(FlowMatchEulerDiscreteScheduler)
-        pipe = self.pipeline_class(**components)
-        pipe = pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
         _, _, inputs = self.get_dummy_inputs(with_generator=False)
 
         out_features, in_features = pipe.transformer.x_embedder.weight.shape

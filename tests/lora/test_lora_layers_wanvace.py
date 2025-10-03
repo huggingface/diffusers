@@ -31,7 +31,6 @@ from ..testing_utils import (
     require_peft_backend,
     require_peft_version_greater,
     skip_mps,
-    torch_device,
 )
 
 
@@ -159,10 +158,9 @@ class TestWanVACELoRA(PeftLoraLoaderMixinTests):
         pass
 
     @require_peft_version_greater("0.13.2")
-    def test_lora_exclude_modules_wanvace(self, base_pipe_output, tmpdirname):
+    def test_lora_exclude_modules_wanvace(self, base_pipe_output, tmpdirname, pipe):
         exclude_module_name = "vace_blocks.0.proj_out"
-        components, text_lora_config, denoiser_lora_config = self.get_dummy_components()
-        pipe = self.pipeline_class(**components).to(torch_device)
+        _, text_lora_config, denoiser_lora_config = self.get_dummy_components()
         _, _, inputs = self.get_dummy_inputs(with_generator=False)
 
         assert base_pipe_output.shape == self.output_shape

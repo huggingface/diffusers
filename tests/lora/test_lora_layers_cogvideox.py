@@ -131,13 +131,13 @@ class TestCogVideoXLoRA(PeftLoraLoaderMixinTests):
 
     @pytest.mark.parametrize(
         "offload_type, use_stream",
-        [("block_level", True), ("leaf_level", False), ("leaf_level", True)],
+        [("block_level", True), ("leaf_level", False)],
     )
     @require_torch_accelerator
-    def test_group_offloading_inference_denoiser(self, offload_type, use_stream, tmpdirname):
+    def test_group_offloading_inference_denoiser(self, offload_type, use_stream, tmpdirname, pipe):
         # TODO: We don't run the (leaf_level, True) test here that is enabled for other models.
         # The reason for this can be found here: https://github.com/huggingface/diffusers/pull/11804#issuecomment-3013325338
-        super()._test_group_offloading_inference_denoiser(offload_type, use_stream, tmpdirname)
+        super()._test_group_offloading_inference_denoiser(offload_type, use_stream, tmpdirname, pipe)
 
     @pytest.mark.skip("Not supported in CogVideoX.")
     def test_simple_inference_with_text_denoiser_block_scale(self):

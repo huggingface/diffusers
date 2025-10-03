@@ -138,11 +138,8 @@ class TestLumina2LoRA(PeftLoraLoaderMixinTests):
         reason="Test currently fails on CPU and PyTorch 2.5.1 but not on PyTorch 2.4.1.",
         strict=False,
     )
-    def test_lora_fuse_nan(self):
-        components, text_lora_config, denoiser_lora_config = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        pipe = pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
+    def test_lora_fuse_nan(self, pipe):
+        _, text_lora_config, denoiser_lora_config = self.get_dummy_components()
         _, _, inputs = self.get_dummy_inputs(with_generator=False)
 
         if "text_encoder" in self.pipeline_class._lora_loadable_modules:
