@@ -111,11 +111,7 @@ class AttentionMixin:
     def unfuse_qkv_projections(self):
         """Disables the fused QKV projection if enabled.
 
-        <Tip warning={true}>
-
-        This API is 🧪 experimental.
-
-        </Tip>
+        > [!WARNING] > This API is 🧪 experimental.
         """
         for module in self.modules():
             if isinstance(module, AttentionModuleMixin):
