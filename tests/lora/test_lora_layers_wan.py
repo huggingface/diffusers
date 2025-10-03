@@ -104,11 +104,11 @@ class TestWanLoRA(PeftLoraLoaderMixinTests):
 
         return noise, input_ids, pipeline_inputs
 
-    def test_simple_inference_with_text_lora_denoiser_fused_multi(self):
-        super().test_simple_inference_with_text_lora_denoiser_fused_multi(expected_atol=9e-3)
+    def test_simple_inference_with_text_lora_denoiser_fused_multi(self, pipe):
+        super().test_simple_inference_with_text_lora_denoiser_fused_multi(pipe=pipe, expected_atol=9e-3)
 
-    def test_simple_inference_with_text_denoiser_lora_unfused(self):
-        super().test_simple_inference_with_text_denoiser_lora_unfused(expected_atol=9e-3)
+    def test_simple_inference_with_text_denoiser_lora_unfused(self, pipe):
+        super().test_simple_inference_with_text_denoiser_lora_unfused(pipe=pipe, expected_atol=9e-3)
 
     @pytest.mark.skip("Not supported in Wan.")
     def test_simple_inference_with_text_denoiser_block_scale(self):

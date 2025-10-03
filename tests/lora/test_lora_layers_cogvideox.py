@@ -118,15 +118,15 @@ class TestCogVideoXLoRA(PeftLoraLoaderMixinTests):
 
         return noise, input_ids, pipeline_inputs
 
-    def test_simple_inference_with_text_lora_denoiser_fused_multi(self):
-        super().test_simple_inference_with_text_lora_denoiser_fused_multi(expected_atol=9e-3)
+    def test_simple_inference_with_text_lora_denoiser_fused_multi(self, pipe):
+        super().test_simple_inference_with_text_lora_denoiser_fused_multi(expected_atol=9e-3, pipe=pipe)
 
-    def test_simple_inference_with_text_denoiser_lora_unfused(self):
-        super().test_simple_inference_with_text_denoiser_lora_unfused(expected_atol=9e-3)
+    def test_simple_inference_with_text_denoiser_lora_unfused(self, pipe):
+        super().test_simple_inference_with_text_denoiser_lora_unfused(pipe=pipe, expected_atol=9e-3)
 
-    def test_lora_scale_kwargs_match_fusion(self, base_pipe_output):
+    def test_lora_scale_kwargs_match_fusion(self, pipe, base_pipe_output):
         super().test_lora_scale_kwargs_match_fusion(
-            base_pipe_output=base_pipe_output, expected_atol=9e-3, expected_rtol=9e-3
+            pipe=pipe, base_pipe_output=base_pipe_output, expected_atol=9e-3, expected_rtol=9e-3
         )
 
     @pytest.mark.parametrize(
