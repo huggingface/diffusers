@@ -17,14 +17,17 @@ from dataclasses import dataclass
 from typing import Dict, List, Type, Union
 
 import torch
-import torch.distributed._functional_collectives as funcol
 
-from ..models._modeling_parallel import (
-    ContextParallelConfig,
-    ContextParallelInput,
-    ContextParallelModelPlan,
-    ContextParallelOutput,
-)
+
+if torch.distributed.is_available():
+    import torch.distributed._functional_collectives as funcol
+
+    from ..models._modeling_parallel import (
+        ContextParallelConfig,
+        ContextParallelInput,
+        ContextParallelModelPlan,
+        ContextParallelOutput,
+    )
 from ..utils import get_logger
 from ..utils.torch_utils import unwrap_module
 from .hooks import HookRegistry, ModelHook
