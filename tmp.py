@@ -6,12 +6,10 @@ from diffusers.utils import export_to_video
 
 def sana_video():
 
-    # model_id = "sana_video"
-    model_id = "hf://Efficient-Large-Model/sana_video_v2"
-    # model_id = "sana_video_unipc"
+    model_id = "Efficient-Large-Model/sana_video_v2_diffusers"
     pipe = SanaVideoPipeline.from_pretrained(model_id, torch_dtype=torch.bfloat16)
     # pipe.scheduler = UniPCMultistepScheduler.from_config(pipe.scheduler.config, flow_shift=5.0)
-    pipe.vae.to(torch.bfloat32)
+    pipe.vae.to(torch.float32)
     pipe.text_encoder.to(torch.bfloat16)
     pipe.to("cuda")
 
@@ -60,7 +58,7 @@ def profile_sana_video():
             generator=torch.Generator(device="cuda").manual_seed(42),
         ).frames[0]
 
-    n = 10
+    n = 1
     time_start = time.time()
     for i in tqdm(range(n), desc=f"Inference {n} times"):
         video = pipe(
