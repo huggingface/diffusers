@@ -32,4 +32,6 @@ RUN uv pip install --no-cache-dir \
     numpy==1.26.4 \
     hf_transfer
 
+RUN apt-get clean && rm -rf /var/lib/apt/lists/* && apt-get autoremove && apt-get autoclean
+
 CMD ["/bin/bash"]
