@@ -24,6 +24,7 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Set, Tupl
 import numpy as np
 import PIL.Image
 import PIL.ImageOps
+import pytest
 import requests
 from numpy.linalg import norm
 from packaging import version
@@ -275,7 +276,7 @@ def nightly(test_case):
     Slow tests are skipped by default. Set the RUN_NIGHTLY environment variable to a truthy value to run them.
 
     """
-    return unittest.skipUnless(_run_nightly_tests, "test is nightly")(test_case)
+    return pytest.mark.skipif(not _run_nightly_tests, reason="test is nightly")(test_case)
 
 
 def is_torch_compile(test_case):
@@ -350,9 +351,9 @@ def require_torch_cuda_compatibility(expected_compute_capability):
 # These decorators are for accelerator-specific behaviours that are not GPU-specific
 def require_torch_accelerator(test_case):
     """Decorator marking a test that requires an accelerator backend and PyTorch."""
-    return unittest.skipUnless(is_torch_available() and torch_device != "cpu", "test requires accelerator+PyTorch")(
-        test_case
-    )
+    return pytest.mark.skipif(
+        not (is_torch_available() and torch_device != "cpu"), reason="test requires accelerator+PyTorch"
+    )(test_case)
 
 
 def require_torch_multi_gpu(test_case):
@@ -441,9 +442,9 @@ def require_big_accelerator(test_case):
         device_properties = torch.cuda.get_device_properties(0)
 
     total_memory = device_properties.total_memory / (1024**3)
-    return unittest.skipUnless(
-        total_memory >= BIG_GPU_MEMORY,
-        f"test requires a hardware accelerator with at least {BIG_GPU_MEMORY} GB memory",
+    return pytest.mark.skipif(
+        not total_memory >= BIG_GPU_MEMORY,
+        reason=f"test requires a hardware accelerator with at least {BIG_GPU_MEMORY} GB memory",
     )(test_case)
 
 
@@ -509,7 +510,7 @@ def require_peft_backend(test_case):
     Decorator marking a test that requires PEFT backend, this would require some specific versions of PEFT and
     transformers.
     """
-    return unittest.skipUnless(USE_PEFT_BACKEND, "test requires PEFT backend")(test_case)
+    return pytest.mark.skipif(not USE_PEFT_BACKEND, reason="test requires PEFT backend")(test_case)
 
 
 def require_timm(test_case):
@@ -550,8 +551,8 @@ def require_peft_version_greater(peft_version):
         correct_peft_version = is_peft_available() and version.parse(
             version.parse(importlib.metadata.version("peft")).base_version
         ) > version.parse(peft_version)
-        return unittest.skipUnless(
-            correct_peft_version, f"test requires PEFT backend with the version greater than {peft_version}"
+        return pytest.mark.skipif(
+            not correct_peft_version, reason=f"test requires PEFT backend with the version greater than {peft_version}"
         )(test_case)
 
     return decorator
@@ -567,9 +568,9 @@ def require_transformers_version_greater(transformers_version):
         correct_transformers_version = is_transformers_available() and version.parse(
             version.parse(importlib.metadata.version("transformers")).base_version
         ) > version.parse(transformers_version)
-        return unittest.skipUnless(
-            correct_transformers_version,
-            f"test requires transformers with the version greater than {transformers_version}",
+        return pytest.mark.skipif(
+            not correct_transformers_version,
+            reason=f"test requires transformers with the version greater than {transformers_version}",
         )(test_case)
 
     return decorator

@@ -13,11 +13,10 @@
 # limitations under the License.
 
 import sys
-import unittest
 
 import numpy as np
+import pytest
 import torch
-from parameterized import parameterized
 from transformers import AutoTokenizer, GlmModel
 
 from diffusers import AutoencoderKL, CogView4Pipeline, CogView4Transformer2DModel, FlowMatchEulerDiscreteScheduler
@@ -142,41 +141,56 @@ class TestCogView4LoRA(PeftLoraLoaderMixinTests):
             "Loading from saved checkpoints should give same results.",
         )
 
-    @parameterized.expand([("block_level", True), ("leaf_level", False)])
+    @pytest.mark.parametrize(
+        "offload_type, use_stream",
+        [
+            ("block_level", True),
+            ("leaf_level", False),
+            ("leaf_level", True),
+        ],
+    )
     @require_torch_accelerator
-    def test_group_offloading_inference_denoiser(self, offload_type, use_stream):
+    def test_group_offloading_inference_denoiser(self, offload_type, use_stream, tmpdirname):
         # TODO: We don't run the (leaf_level, True) test here that is enabled for other models.
         # The reason for this can be found here: https://github.com/huggingface/diffusers/pull/11804#issuecomment-3013325338
-        super()._test_group_offloading_inference_denoiser(offload_type, use_stream)
+        super()._test_group_offloading_inference_denoiser(offload_type, use_stream, tmpdirname)
 
-    @unittest.skip("Not supported in CogView4.")
+    pytest.mark.skip("Not supported in CogView4.")
+
     def test_simple_inference_with_text_denoiser_block_scale(self):
         pass
 
-    @unittest.skip("Not supported in CogView4.")
+    pytest.mark.skip("Not supported in CogView4.")
+
     def test_simple_inference_with_text_denoiser_block_scale_for_all_dict_options(self):
         pass
 
-    @unittest.skip("Not supported in CogView4.")
+    pytest.mark.skip("Not supported in CogView4.")
+
     def test_modify_padding_mode(self):
         pass
 
-    @unittest.skip("Text encoder LoRA is not supported in CogView4.")
+    pytest.mark.skip("Text encoder LoRA is not supported in CogView4.")
+
     def test_simple_inference_with_partial_text_lora(self):
         pass
 
-    @unittest.skip("Text encoder LoRA is not supported in CogView4.")
+    pytest.mark.skip("Text encoder LoRA is not supported in CogView4.")
+
     def test_simple_inference_with_text_lora(self):
         pass
 
-    @unittest.skip("Text encoder LoRA is not supported in CogView4.")
+    pytest.mark.skip("Text encoder LoRA is not supported in CogView4.")
+
     def test_simple_inference_with_text_lora_and_scale(self):
         pass
 
-    @unittest.skip("Text encoder LoRA is not supported in CogView4.")
+    pytest.mark.skip("Text encoder LoRA is not supported in CogView4.")
+
     def test_simple_inference_with_text_lora_fused(self):
         pass
 
-    @unittest.skip("Text encoder LoRA is not supported in CogView4.")
+    pytest.mark.skip("Text encoder LoRA is not supported in CogView4.")
+
     def test_simple_inference_with_text_lora_save_load(self):
         pass

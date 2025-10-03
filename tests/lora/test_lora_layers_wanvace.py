@@ -14,9 +14,9 @@
 
 import os
 import sys
-import unittest
 
 import numpy as np
+import pytest
 import safetensors.torch
 import torch
 from PIL import Image
@@ -126,35 +126,43 @@ class TestWanVACELoRA(PeftLoraLoaderMixinTests):
     def test_simple_inference_with_text_denoiser_lora_unfused(self):
         super().test_simple_inference_with_text_denoiser_lora_unfused(expected_atol=9e-3)
 
-    @unittest.skip("Not supported in Wan VACE.")
+    pytest.mark.skip("Not supported in Wan VACE.")
+
     def test_simple_inference_with_text_denoiser_block_scale(self):
         pass
 
-    @unittest.skip("Not supported in Wan VACE.")
+    pytest.mark.skip("Not supported in Wan VACE.")
+
     def test_simple_inference_with_text_denoiser_block_scale_for_all_dict_options(self):
         pass
 
-    @unittest.skip("Not supported in Wan VACE.")
+    pytest.mark.skip("Not supported in Wan VACE.")
+
     def test_modify_padding_mode(self):
         pass
 
-    @unittest.skip("Text encoder LoRA is not supported in Wan VACE.")
+    pytest.mark.skip("Text encoder LoRA is not supported in Wan VACE.")
+
     def test_simple_inference_with_partial_text_lora(self):
         pass
 
-    @unittest.skip("Text encoder LoRA is not supported in Wan VACE.")
+    pytest.mark.skip("Text encoder LoRA is not supported in Wan VACE.")
+
     def test_simple_inference_with_text_lora(self):
         pass
 
-    @unittest.skip("Text encoder LoRA is not supported in Wan VACE.")
+    pytest.mark.skip("Text encoder LoRA is not supported in Wan VACE.")
+
     def test_simple_inference_with_text_lora_and_scale(self):
         pass
 
-    @unittest.skip("Text encoder LoRA is not supported in Wan VACE.")
+    pytest.mark.skip("Text encoder LoRA is not supported in Wan VACE.")
+
     def test_simple_inference_with_text_lora_fused(self):
         pass
 
-    @unittest.skip("Text encoder LoRA is not supported in Wan VACE.")
+    pytest.mark.skip("Text encoder LoRA is not supported in Wan VACE.")
+
     def test_simple_inference_with_text_lora_save_load(self):
         pass
 

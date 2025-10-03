@@ -13,8 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import sys
-import unittest
 
+import pytest
 import torch
 from transformers import Qwen2_5_VLForConditionalGeneration, Qwen2Tokenizer
 
@@ -96,34 +96,42 @@ class TestQwenImageLoRA(PeftLoraLoaderMixinTests):
 
         return noise, input_ids, pipeline_inputs
 
-    @unittest.skip("Not supported in Qwen Image.")
+    pytest.mark.skip("Not supported in Qwen Image.")
+
     def test_simple_inference_with_text_denoiser_block_scale(self):
         pass
 
-    @unittest.skip("Not supported in Qwen Image.")
+    pytest.mark.skip("Not supported in Qwen Image.")
+
     def test_simple_inference_with_text_denoiser_block_scale_for_all_dict_options(self):
         pass
 
-    @unittest.skip("Not supported in Qwen Image.")
+    pytest.mark.skip("Not supported in Qwen Image.")
+
     def test_modify_padding_mode(self):
         pass
 
-    @unittest.skip("Text encoder LoRA is not supported in Qwen Image.")
+    pytest.mark.skip("Text encoder LoRA is not supported in Qwen Image.")
+
     def test_simple_inference_with_partial_text_lora(self):
         pass
 
-    @unittest.skip("Text encoder LoRA is not supported in Qwen Image.")
+    pytest.mark.skip("Text encoder LoRA is not supported in Qwen Image.")
+
     def test_simple_inference_with_text_lora(self):
         pass
 
-    @unittest.skip("Text encoder LoRA is not supported in Qwen Image.")
+    pytest.mark.skip("Text encoder LoRA is not supported in Qwen Image.")
+
     def test_simple_inference_with_text_lora_and_scale(self):
         pass
 
-    @unittest.skip("Text encoder LoRA is not supported in Qwen Image.")
+    pytest.mark.skip("Text encoder LoRA is not supported in Qwen Image.")
+
     def test_simple_inference_with_text_lora_fused(self):
         pass
 
-    @unittest.skip("Text encoder LoRA is not supported in Qwen Image.")
+    pytest.mark.skip("Text encoder LoRA is not supported in Qwen Image.")
+
     def test_simple_inference_with_text_lora_save_load(self):
         pass

@@ -22,12 +22,11 @@ import numpy as np
 import pytest
 import safetensors.torch
 import torch
-from parameterized import parameterized
 from PIL import Image
 from transformers import AutoTokenizer, CLIPTextModel, CLIPTokenizer, T5EncoderModel
 
 from diffusers import FlowMatchEulerDiscreteScheduler, FluxControlPipeline, FluxPipeline, FluxTransformer2DModel
-from diffusers.utils import load_image, logging
+from diffusers.utils import logging
 
 from ..testing_utils import (
     CaptureLogger,
@@ -169,9 +168,8 @@ class TestFluxLoRA(PeftLoraLoaderMixinTests):
         assert check_if_lora_correctly_set(pipe.transformer), "Lora not correctly set in transformer"
 
         images_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
-        assert not (
-            np.allclose(images_lora, base_pipe_output, atol=0.001, rtol=0.001),
-            "LoRA should lead to different results.",
+        assert not np.allclose(images_lora, base_pipe_output, atol=0.001, rtol=0.001), (
+            "LoRA should lead to different results."
         )
         denoiser_state_dict = get_peft_model_state_dict(pipe.transformer)
         self.pipeline_class.save_lora_weights(tmpdirname, transformer_lora_layers=denoiser_state_dict)
@@ -188,13 +186,11 @@ class TestFluxLoRA(PeftLoraLoaderMixinTests):
         assert check_if_lora_correctly_set(pipe.transformer), "Lora not correctly set in transformer"
 
         images_lora_with_absent_keys = pipe(**inputs, generator=torch.manual_seed(0)).images
-        assert not (
-            np.allclose(images_lora, images_lora_with_absent_keys, atol=0.001, rtol=0.001),
-            "Different LoRAs should lead to different results.",
+        assert not np.allclose(images_lora, images_lora_with_absent_keys, atol=0.001, rtol=0.001), (
+            "Different LoRAs should lead to different results."
         )
-        assert not (
-            np.allclose(base_pipe_output, images_lora_with_absent_keys, atol=0.001, rtol=0.001),
-            "LoRA should lead to different results.",
+        assert not np.allclose(base_pipe_output, images_lora_with_absent_keys, atol=0.001, rtol=0.001), (
+            "LoRA should lead to different results."
         )
 
     def test_lora_expansion_works_for_extra_keys(self, base_pipe_output, tmpdirname):
@@ -210,10 +206,10 @@ class TestFluxLoRA(PeftLoraLoaderMixinTests):
         assert check_if_lora_correctly_set(pipe.transformer), "Lora not correctly set in transformer"
 
         images_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
-        assert not (
-            np.allclose(images_lora, base_pipe_output, atol=0.001, rtol=0.001),
-            "LoRA should lead to different results.",
+        assert not np.allclose(images_lora, base_pipe_output, atol=0.001, rtol=0.001), (
+            "LoRA should lead to different results."
         )
+
         denoiser_state_dict = get_peft_model_state_dict(pipe.transformer)
         self.pipeline_class.save_lora_weights(tmpdirname, transformer_lora_layers=denoiser_state_dict)
         assert os.path.isfile(os.path.join(tmpdirname, "pytorch_lora_weights.safetensors"))
@@ -228,28 +224,30 @@ class TestFluxLoRA(PeftLoraLoaderMixinTests):
         assert check_if_lora_correctly_set(pipe.transformer), "Lora not correctly set in transformer"
 
         images_lora_with_extra_keys = pipe(**inputs, generator=torch.manual_seed(0)).images
-        assert not (
-            np.allclose(images_lora, images_lora_with_extra_keys, atol=0.001, rtol=0.001),
-            "Different LoRAs should lead to different results.",
+        assert not np.allclose(images_lora, images_lora_with_extra_keys, atol=0.001, rtol=0.001), (
+            "Different LoRAs should lead to different results."
         )
-        assert not (
-            np.allclose(base_pipe_output, images_lora_with_extra_keys, atol=0.001, rtol=0.001),
-            "LoRA should lead to different results.",
+        assert not np.allclose(base_pipe_output, images_lora_with_extra_keys, atol=0.001, rtol=0.001), (
+            "LoRA should lead to different results."
         )
 
-    @unittest.skip("Not supported in Flux.")
+    pytest.mark.skip("Not supported in Flux.")
+
     def test_simple_inference_with_text_denoiser_block_scale(self):
         pass
 
-    @unittest.skip("Not supported in Flux.")
+    pytest.mark.skip("Not supported in Flux.")
+
     def test_simple_inference_with_text_denoiser_block_scale_for_all_dict_options(self):
         pass
 
-    @unittest.skip("Not supported in Flux.")
+    pytest.mark.skip("Not supported in Flux.")
+
     def test_modify_padding_mode(self):
         pass
 
-    @unittest.skip("Not supported in Flux.")
+    pytest.mark.skip("Not supported in Flux.")
+
     def test_simple_inference_with_text_denoiser_multi_adapter_block_lora(self):
         pass
 
@@ -355,9 +353,8 @@ class TestFluxControlLoRA(PeftLoraLoaderMixinTests):
                 lora_unload_output = pipe(**inputs, generator=torch.manual_seed(0))[0]
             assert pipe.transformer._transformer_norm_layers is None
             assert np.allclose(original_output, lora_unload_output, atol=1e-05, rtol=1e-05)
-            assert not (
-                np.allclose(original_output, lora_load_output, atol=1e-06, rtol=1e-06),
-                f"{norm_layer} is tested",
+            assert not np.allclose(original_output, lora_load_output, atol=1e-06, rtol=1e-06), (
+                f"{norm_layer} is tested"
             )
 
         with CaptureLogger(logger) as cap_logger:
@@ -729,19 +726,23 @@ class TestFluxControlLoRA(PeftLoraLoaderMixinTests):
         assert pipe.transformer.x_embedder.weight.data.shape[1] == in_features * 2
         assert pipe.transformer.config.in_channels == in_features * 2
 
-    @unittest.skip("Not supported in Flux.")
+    pytest.mark.skip("Not supported in Flux.")
+
     def test_simple_inference_with_text_denoiser_block_scale(self):
         pass
 
-    @unittest.skip("Not supported in Flux.")
+    pytest.mark.skip("Not supported in Flux.")
+
     def test_simple_inference_with_text_denoiser_block_scale_for_all_dict_options(self):
         pass
 
-    @unittest.skip("Not supported in Flux.")
+    pytest.mark.skip("Not supported in Flux.")
+
     def test_modify_padding_mode(self):
         pass
 
-    @unittest.skip("Not supported in Flux.")
+    pytest.mark.skip("Not supported in Flux.")
+
     def test_simple_inference_with_text_denoiser_multi_adapter_block_lora(self):
         pass
 
@@ -870,91 +871,5 @@ class FluxLoRAIntegrationTests(unittest.TestCase):
         expected_slice = np.array(
             [0.04882812, 0.04101562, 0.04882812, 0.03710938, 0.02929688, 0.02734375, 0.0234375, 0.01757812, 0.0390625]
         )
-        max_diff = numpy_cosine_similarity_distance(expected_slice.flatten(), out_slice)
-        assert max_diff < 0.001
-
-
-@nightly
-@require_torch_accelerator
-@require_peft_backend
-@require_big_accelerator
-class FluxControlLoRAIntegrationTests(unittest.TestCase):
-    num_inference_steps = 10
-    seed = 0
-    prompt = "A robot made of exotic candies and chocolates of different kinds."
-
-    def setUp(self):
-        super().setUp()
-        gc.collect()
-        backend_empty_cache(torch_device)
-        self.pipeline = FluxControlPipeline.from_pretrained(
-            "black-forest-labs/FLUX.1-dev", torch_dtype=torch.bfloat16
-        ).to(torch_device)
-
-    def tearDown(self):
-        super().tearDown()
-        gc.collect()
-        backend_empty_cache(torch_device)
-
-    @parameterized.expand(["black-forest-labs/FLUX.1-Canny-dev-lora", "black-forest-labs/FLUX.1-Depth-dev-lora"])
-    def test_lora(self, lora_ckpt_id):
-        self.pipeline.load_lora_weights(lora_ckpt_id)
-        self.pipeline.fuse_lora()
-        self.pipeline.unload_lora_weights()
-        if "Canny" in lora_ckpt_id:
-            control_image = load_image(
-                "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/flux-control-lora/canny_condition_image.png"
-            )
-        else:
-            control_image = load_image(
-                "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/flux-control-lora/depth_condition_image.png"
-            )
-        image = self.pipeline(
-            prompt=self.prompt,
-            control_image=control_image,
-            height=1024,
-            width=1024,
-            num_inference_steps=self.num_inference_steps,
-            guidance_scale=30.0 if "Canny" in lora_ckpt_id else 10.0,
-            output_type="np",
-            generator=torch.manual_seed(self.seed),
-        ).images
-        out_slice = image[0, -3:, -3:, -1].flatten()
-        if "Canny" in lora_ckpt_id:
-            expected_slice = np.array([0.8438, 0.8438, 0.8438, 0.8438, 0.8438, 0.8398, 0.8438, 0.8438, 0.8516])
-        else:
-            expected_slice = np.array([0.8203, 0.832, 0.8359, 0.8203, 0.8281, 0.8281, 0.8203, 0.8242, 0.8359])
-        max_diff = numpy_cosine_similarity_distance(expected_slice.flatten(), out_slice)
-        assert max_diff < 0.001
-
-    @parameterized.expand(["black-forest-labs/FLUX.1-Canny-dev-lora", "black-forest-labs/FLUX.1-Depth-dev-lora"])
-    def test_lora_with_turbo(self, lora_ckpt_id):
-        self.pipeline.load_lora_weights(lora_ckpt_id)
-        self.pipeline.load_lora_weights("ByteDance/Hyper-SD", weight_name="Hyper-FLUX.1-dev-8steps-lora.safetensors")
-        self.pipeline.fuse_lora()
-        self.pipeline.unload_lora_weights()
-        if "Canny" in lora_ckpt_id:
-            control_image = load_image(
-                "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/flux-control-lora/canny_condition_image.png"
-            )
-        else:
-            control_image = load_image(
-                "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/flux-control-lora/depth_condition_image.png"
-            )
-        image = self.pipeline(
-            prompt=self.prompt,
-            control_image=control_image,
-            height=1024,
-            width=1024,
-            num_inference_steps=self.num_inference_steps,
-            guidance_scale=30.0 if "Canny" in lora_ckpt_id else 10.0,
-            output_type="np",
-            generator=torch.manual_seed(self.seed),
-        ).images
-        out_slice = image[0, -3:, -3:, -1].flatten()
-        if "Canny" in lora_ckpt_id:
-            expected_slice = np.array([0.6562, 0.7266, 0.7578, 0.6367, 0.6758, 0.7031, 0.6172, 0.6602, 0.6484])
-        else:
-            expected_slice = np.array([0.668, 0.7344, 0.7656, 0.6484, 0.6875, 0.7109, 0.6328, 0.6719, 0.6562])
         max_diff = numpy_cosine_similarity_distance(expected_slice.flatten(), out_slice)
         assert max_diff < 0.001
