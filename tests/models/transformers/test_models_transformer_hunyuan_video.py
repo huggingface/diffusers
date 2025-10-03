@@ -18,17 +18,14 @@ import torch
 
 from diffusers import HunyuanVideoTransformer3DModel
 
-from ...testing_utils import (
-    enable_full_determinism,
-    torch_device,
-)
-from ..test_modeling_common import ModelTesterMixin, TorchCompileTesterMixin
+from ...testing_utils import enable_full_determinism, torch_device
+from ..test_modeling_common import ModelTesterMixin, PEFTTesterMixin, TorchCompileTesterMixin
 
 
 enable_full_determinism()
 
 
-class HunyuanVideoTransformer3DTests(ModelTesterMixin, unittest.TestCase):
+class HunyuanVideoTransformer3DTests(ModelTesterMixin, PEFTTesterMixin, unittest.TestCase):
     model_class = HunyuanVideoTransformer3DModel
     main_input_name = "hidden_states"
     uses_custom_attn_processor = True

@@ -30,7 +30,7 @@ from ...testing_utils import (
     floats_tensor,
     torch_device,
 )
-from ..test_modeling_common import ModelTesterMixin, UNetTesterMixin
+from ..test_modeling_common import ModelTesterMixin, PEFTTesterMixin, UNetTesterMixin
 
 
 logger = logging.get_logger(__name__)
@@ -38,7 +38,7 @@ logger = logging.get_logger(__name__)
 enable_full_determinism()
 
 
-class UNetMotionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
+class UNetMotionModelTests(ModelTesterMixin, PEFTTesterMixin, UNetTesterMixin, unittest.TestCase):
     model_class = UNetMotionModel
     main_input_name = "sample"
 
