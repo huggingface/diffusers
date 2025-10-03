@@ -18,13 +18,13 @@ import unittest
 import torch
 
 from diffusers import PixArtTransformer2DModel, Transformer2DModel
-from diffusers.utils.testing_utils import (
+
+from ...testing_utils import (
     enable_full_determinism,
     floats_tensor,
     slow,
     torch_device,
 )
-
 from ..test_modeling_common import ModelTesterMixin
 
 
