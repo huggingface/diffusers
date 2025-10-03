@@ -114,42 +114,34 @@ class TestLTXVideoLoRA(PeftLoraLoaderMixinTests):
     def test_simple_inference_with_text_denoiser_lora_unfused(self):
         super().test_simple_inference_with_text_denoiser_lora_unfused(expected_atol=9e-3)
 
-    pytest.mark.skip("Not supported in LTXVideo.")
-
+    @pytest.mark.skip("Not supported in LTXVideo.")
     def test_simple_inference_with_text_denoiser_block_scale(self):
         pass
 
-    pytest.mark.skip("Not supported in LTXVideo.")
-
+    @pytest.mark.skip("Not supported in LTXVideo.")
     def test_simple_inference_with_text_denoiser_block_scale_for_all_dict_options(self):
         pass
 
-    pytest.mark.skip("Not supported in LTXVideo.")
-
+    @pytest.mark.skip("Not supported in LTXVideo.")
     def test_modify_padding_mode(self):
         pass
 
-    pytest.mark.skip("Text encoder LoRA is not supported in LTXVideo.")
-
+    @pytest.mark.skip("Text encoder LoRA is not supported in LTXVideo.")
     def test_simple_inference_with_partial_text_lora(self):
         pass
 
-    pytest.mark.skip("Text encoder LoRA is not supported in LTXVideo.")
-
+    @pytest.mark.skip("Text encoder LoRA is not supported in LTXVideo.")
     def test_simple_inference_with_text_lora(self):
         pass
 
-    pytest.mark.skip("Text encoder LoRA is not supported in LTXVideo.")
-
+    @pytest.mark.skip("Text encoder LoRA is not supported in LTXVideo.")
     def test_simple_inference_with_text_lora_and_scale(self):
         pass
 
-    pytest.mark.skip("Text encoder LoRA is not supported in LTXVideo.")
-
+    @pytest.mark.skip("Text encoder LoRA is not supported in LTXVideo.")
     def test_simple_inference_with_text_lora_fused(self):
         pass
 
-    pytest.mark.skip("Text encoder LoRA is not supported in LTXVideo.")
-
+    @pytest.mark.skip("Text encoder LoRA is not supported in LTXVideo.")
     def test_simple_inference_with_text_lora_save_load(self):
         pass

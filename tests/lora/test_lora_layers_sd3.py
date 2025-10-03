@@ -113,23 +113,19 @@ class TestSD3LoRA(PeftLoraLoaderMixinTests):
         lora_filename = "lora_peft_format.safetensors"
         pipe.load_lora_weights(lora_model_id, weight_name=lora_filename)
 
-    pytest.mark.skip("Not supported in SD3.")
-
+    @pytest.mark.skip("Not supported in SD3.")
     def test_simple_inference_with_text_denoiser_block_scale(self):
         pass
 
-    pytest.mark.skip("Not supported in SD3.")
-
+    @pytest.mark.skip("Not supported in SD3.")
     def test_simple_inference_with_text_denoiser_multi_adapter_block_lora(self):
         pass
 
-    pytest.mark.skip("Not supported in SD3.")
-
+    @pytest.mark.skip("Not supported in SD3.")
     def test_simple_inference_with_text_denoiser_block_scale_for_all_dict_options(self):
         pass
 
-    pytest.mark.skip("Not supported in SD3.")
-
+    @pytest.mark.skip("Not supported in SD3.")
     def test_modify_padding_mode(self):
         pass
 

@@ -100,43 +100,35 @@ class TestLumina2LoRA(PeftLoraLoaderMixinTests):
 
         return noise, input_ids, pipeline_inputs
 
-    pytest.mark.skip("Not supported in Lumina2.")
-
+    @pytest.mark.skip("Not supported in Lumina2.")
     def test_simple_inference_with_text_denoiser_block_scale(self):
         pass
 
-    pytest.mark.skip("Not supported in Lumina2.")
-
+    @pytest.mark.skip("Not supported in Lumina2.")
     def test_simple_inference_with_text_denoiser_block_scale_for_all_dict_options(self):
         pass
 
-    pytest.mark.skip("Not supported in Lumina2.")
-
+    @pytest.mark.skip("Not supported in Lumina2.")
     def test_modify_padding_mode(self):
         pass
 
-    pytest.mark.skip("Text encoder LoRA is not supported in Lumina2.")
-
+    @pytest.mark.skip("Text encoder LoRA is not supported in Lumina2.")
     def test_simple_inference_with_partial_text_lora(self):
         pass
 
-    pytest.mark.skip("Text encoder LoRA is not supported in Lumina2.")
-
+    @pytest.mark.skip("Text encoder LoRA is not supported in Lumina2.")
     def test_simple_inference_with_text_lora(self):
         pass
 
-    pytest.mark.skip("Text encoder LoRA is not supported in Lumina2.")
-
+    @pytest.mark.skip("Text encoder LoRA is not supported in Lumina2.")
     def test_simple_inference_with_text_lora_and_scale(self):
         pass
 
-    pytest.mark.skip("Text encoder LoRA is not supported in Lumina2.")
-
+    @pytest.mark.skip("Text encoder LoRA is not supported in Lumina2.")
     def test_simple_inference_with_text_lora_fused(self):
         pass
 
-    pytest.mark.skip("Text encoder LoRA is not supported in Lumina2.")
-
+    @pytest.mark.skip("Text encoder LoRA is not supported in Lumina2.")
     def test_simple_inference_with_text_lora_save_load(self):
         pass
 

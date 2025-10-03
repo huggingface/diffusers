@@ -2029,11 +2029,7 @@ class PeftLoraLoaderMixinTests:
 
     @pytest.mark.parametrize(
         "offload_type, use_stream",
-        [
-            ("block_level", True),
-            ("leaf_level", False),
-            ("leaf_level", True),
-        ],
+        [("block_level", True), ("leaf_level", False), ("leaf_level", True)],
     )
     @require_torch_accelerator
     def test_group_offloading_inference_denoiser(self, offload_type, use_stream, tmpdirname):

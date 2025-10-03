@@ -155,48 +155,39 @@ class TestHunyuanVideoLoRA(PeftLoraLoaderMixinTests):
         super().test_simple_inference_with_text_denoiser_lora_unfused(expected_atol=9e-3)
 
     # TODO(aryan): Fix the following test
-    pytest.mark.skip("This test fails with an error I haven't been able to debug yet.")
-
+    @pytest.mark.skip("This test fails with an error I haven't been able to debug yet.")
     def test_simple_inference_save_pretrained(self):
         pass
 
-    pytest.mark.skip("Not supported in HunyuanVideo.")
-
+    @pytest.mark.skip("Not supported in HunyuanVideo.")
     def test_simple_inference_with_text_denoiser_block_scale(self):
         pass
 
-    pytest.mark.skip("Not supported in HunyuanVideo.")
-
+    @pytest.mark.skip("Not supported in HunyuanVideo.")
     def test_simple_inference_with_text_denoiser_block_scale_for_all_dict_options(self):
         pass
 
-    pytest.mark.skip("Not supported in HunyuanVideo.")
-
+    @pytest.mark.skip("Not supported in HunyuanVideo.")
     def test_modify_padding_mode(self):
         pass
 
-    pytest.mark.skip("Text encoder LoRA is not supported in HunyuanVideo.")
-
+    @pytest.mark.skip("Text encoder LoRA is not supported in HunyuanVideo.")
     def test_simple_inference_with_partial_text_lora(self):
         pass
 
-    pytest.mark.skip("Text encoder LoRA is not supported in HunyuanVideo.")
-
+    @pytest.mark.skip("Text encoder LoRA is not supported in HunyuanVideo.")
     def test_simple_inference_with_text_lora(self):
         pass
 
-    pytest.mark.skip("Text encoder LoRA is not supported in HunyuanVideo.")
-
+    @pytest.mark.skip("Text encoder LoRA is not supported in HunyuanVideo.")
     def test_simple_inference_with_text_lora_and_scale(self):
         pass
 
-    pytest.mark.skip("Text encoder LoRA is not supported in HunyuanVideo.")
-
+    @pytest.mark.skip("Text encoder LoRA is not supported in HunyuanVideo.")
     def test_simple_inference_with_text_lora_fused(self):
         pass
 
-    pytest.mark.skip("Text encoder LoRA is not supported in HunyuanVideo.")
-
+    @pytest.mark.skip("Text encoder LoRA is not supported in HunyuanVideo.")
     def test_simple_inference_with_text_lora_save_load(self):
         pass
 

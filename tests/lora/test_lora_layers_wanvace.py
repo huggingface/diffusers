@@ -126,48 +126,37 @@ class TestWanVACELoRA(PeftLoraLoaderMixinTests):
     def test_simple_inference_with_text_denoiser_lora_unfused(self):
         super().test_simple_inference_with_text_denoiser_lora_unfused(expected_atol=9e-3)
 
-    pytest.mark.skip("Not supported in Wan VACE.")
-
+    @pytest.mark.skip("Not supported in Wan VACE.")
     def test_simple_inference_with_text_denoiser_block_scale(self):
         pass
 
-    pytest.mark.skip("Not supported in Wan VACE.")
-
+    @pytest.mark.skip("Not supported in Wan VACE.")
     def test_simple_inference_with_text_denoiser_block_scale_for_all_dict_options(self):
         pass
 
-    pytest.mark.skip("Not supported in Wan VACE.")
-
+    @pytest.mark.skip("Not supported in Wan VACE.")
     def test_modify_padding_mode(self):
         pass
 
-    pytest.mark.skip("Text encoder LoRA is not supported in Wan VACE.")
-
+    @pytest.mark.skip("Text encoder LoRA is not supported in Wan VACE.")
     def test_simple_inference_with_partial_text_lora(self):
         pass
 
-    pytest.mark.skip("Text encoder LoRA is not supported in Wan VACE.")
-
+    @pytest.mark.skip("Text encoder LoRA is not supported in Wan VACE.")
     def test_simple_inference_with_text_lora(self):
         pass
 
-    pytest.mark.skip("Text encoder LoRA is not supported in Wan VACE.")
-
+    @pytest.mark.skip("Text encoder LoRA is not supported in Wan VACE.")
     def test_simple_inference_with_text_lora_and_scale(self):
         pass
 
-    pytest.mark.skip("Text encoder LoRA is not supported in Wan VACE.")
-
+    @pytest.mark.skip("Text encoder LoRA is not supported in Wan VACE.")
     def test_simple_inference_with_text_lora_fused(self):
         pass
 
-    pytest.mark.skip("Text encoder LoRA is not supported in Wan VACE.")
-
+    @pytest.mark.skip("Text encoder LoRA is not supported in Wan VACE.")
     def test_simple_inference_with_text_lora_save_load(self):
         pass
-
-    def test_layerwise_casting_inference_denoiser(self):
-        super().test_layerwise_casting_inference_denoiser()
 
     @require_peft_version_greater("0.13.2")
     def test_lora_exclude_modules_wanvace(self, base_pipe_output, tmpdirname):

@@ -129,11 +129,7 @@ class TestCogVideoXLoRA(PeftLoraLoaderMixinTests):
 
     @pytest.mark.parametrize(
         "offload_type, use_stream",
-        [
-            ("block_level", True),
-            ("leaf_level", False),
-            ("leaf_level", True),
-        ],
+        [("block_level", True), ("leaf_level", False), ("leaf_level", True)],
     )
     @require_torch_accelerator
     def test_group_offloading_inference_denoiser(self, offload_type, use_stream, tmpdirname):
@@ -141,47 +137,38 @@ class TestCogVideoXLoRA(PeftLoraLoaderMixinTests):
         # The reason for this can be found here: https://github.com/huggingface/diffusers/pull/11804#issuecomment-3013325338
         super()._test_group_offloading_inference_denoiser(offload_type, use_stream, tmpdirname)
 
-    pytest.mark.skip("Not supported in CogVideoX.")
-
+    @pytest.mark.skip("Not supported in CogVideoX.")
     def test_simple_inference_with_text_denoiser_block_scale(self):
         pass
 
-    pytest.mark.skip("Not supported in CogVideoX.")
-
+    @pytest.mark.skip("Not supported in CogVideoX.")
     def test_simple_inference_with_text_denoiser_block_scale_for_all_dict_options(self):
         pass
 
-    pytest.mark.skip("Not supported in CogVideoX.")
-
+    @pytest.mark.skip("Not supported in CogVideoX.")
     def test_modify_padding_mode(self):
         pass
 
-    pytest.mark.skip("Text encoder LoRA is not supported in CogVideoX.")
-
+    @pytest.mark.skip("Text encoder LoRA is not supported in CogVideoX.")
     def test_simple_inference_with_partial_text_lora(self):
         pass
 
-    pytest.mark.skip("Text encoder LoRA is not supported in CogVideoX.")
-
+    @pytest.mark.skip("Text encoder LoRA is not supported in CogVideoX.")
     def test_simple_inference_with_text_lora(self):
         pass
 
-    pytest.mark.skip("Text encoder LoRA is not supported in CogVideoX.")
-
+    @pytest.mark.skip("Text encoder LoRA is not supported in CogVideoX.")
     def test_simple_inference_with_text_lora_and_scale(self):
         pass
 
-    pytest.mark.skip("Text encoder LoRA is not supported in CogVideoX.")
-
+    @pytest.mark.skip("Text encoder LoRA is not supported in CogVideoX.")
     def test_simple_inference_with_text_lora_fused(self):
         pass
 
-    pytest.mark.skip("Text encoder LoRA is not supported in CogVideoX.")
-
+    @pytest.mark.skip("Text encoder LoRA is not supported in CogVideoX.")
     def test_simple_inference_with_text_lora_save_load(self):
         pass
 
-    pytest.mark.skip("Not supported in CogVideoX.")
-
+    @pytest.mark.skip("Not supported in CogVideoX.")
     def test_simple_inference_with_text_denoiser_multi_adapter_block_lora(self):
         pass

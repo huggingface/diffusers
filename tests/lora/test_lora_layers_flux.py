@@ -230,23 +230,19 @@ class TestFluxLoRA(PeftLoraLoaderMixinTests):
             "LoRA should lead to different results."
         )
 
-    pytest.mark.skip("Not supported in Flux.")
-
+    @pytest.mark.skip("Not supported in Flux.")
     def test_simple_inference_with_text_denoiser_block_scale(self):
         pass
 
-    pytest.mark.skip("Not supported in Flux.")
-
+    @pytest.mark.skip("Not supported in Flux.")
     def test_simple_inference_with_text_denoiser_block_scale_for_all_dict_options(self):
         pass
 
-    pytest.mark.skip("Not supported in Flux.")
-
+    @pytest.mark.skip("Not supported in Flux.")
     def test_modify_padding_mode(self):
         pass
 
-    pytest.mark.skip("Not supported in Flux.")
-
+    @pytest.mark.skip("Not supported in Flux.")
     def test_simple_inference_with_text_denoiser_multi_adapter_block_lora(self):
         pass
 
@@ -725,23 +721,19 @@ class TestFluxControlLoRA(PeftLoraLoaderMixinTests):
         assert pipe.transformer.x_embedder.weight.data.shape[1] == in_features * 2
         assert pipe.transformer.config.in_channels == in_features * 2
 
-    pytest.mark.skip("Not supported in Flux.")
-
+    @pytest.mark.skip("Not supported in Flux.")
     def test_simple_inference_with_text_denoiser_block_scale(self):
         pass
 
-    pytest.mark.skip("Not supported in Flux.")
-
+    @pytest.mark.skip("Not supported in Flux.")
     def test_simple_inference_with_text_denoiser_block_scale_for_all_dict_options(self):
         pass
 
-    pytest.mark.skip("Not supported in Flux.")
-
+    @pytest.mark.skip("Not supported in Flux.")
     def test_modify_padding_mode(self):
         pass
 
-    pytest.mark.skip("Not supported in Flux.")
-
+    @pytest.mark.skip("Not supported in Flux.")
     def test_simple_inference_with_text_denoiser_multi_adapter_block_lora(self):
         pass
 
