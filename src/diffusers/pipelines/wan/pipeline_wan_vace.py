@@ -336,7 +336,15 @@ class WanVACEPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         reference_images=None,
         guidance_scale_2=None,
     ):
-        base = self.vae_scale_factor_spatial * self.transformer.config.patch_size[1]
+        if self.transformer is not None:
+            base = self.vae_scale_factor_spatial * self.transformer.config.patch_size[1]
+        elif self.transformer_2 is not None:
+            base = self.vae_scale_factor_spatial * self.transformer_2.config.patch_size[1]
+        else:
+            raise ValueError(
+                "`transformer` or `transformer_2` component must be set in order to run inference with this pipeline"
+            )
+
         if height % base != 0 or width % base != 0:
             raise ValueError(f"`height` and `width` have to be divisible by {base} but are {height} and {width}.")
 
