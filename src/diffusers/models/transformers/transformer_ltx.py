@@ -24,14 +24,14 @@ from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
 from ...utils import USE_PEFT_BACKEND, deprecate, is_torch_version, logging, scale_lora_layers, unscale_lora_layers
 from ...utils.torch_utils import maybe_allow_in_graph
-from ..attention import AttentionMixin, AttentionModuleMixin
+from .._modeling_parallel import ContextParallelInput, ContextParallelOutput
+from ..attention import AttentionMixin, AttentionModuleMixin, FeedForward
 from ..attention_dispatch import dispatch_attention_fn
 from ..cache_utils import CacheMixin
 from ..embeddings import PixArtAlphaTextProjection
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
 from ..normalization import AdaLayerNormSingle, RMSNorm
-from .modeling_common import FeedForward
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -52,6 +52,7 @@ class LTXVideoAttnProcessor:
     """
 
     _attention_backend = None
+    _parallel_config = None
 
     def __init__(self):
         if is_torch_version("<", "2.0"):
@@ -101,6 +102,7 @@ class LTXVideoAttnProcessor:
             dropout_p=0.0,
             is_causal=False,
             backend=self._attention_backend,
+            parallel_config=self._parallel_config,
         )
         hidden_states = hidden_states.flatten(2, 3)
         hidden_states = hidden_states.to(query.dtype)
@@ -410,6 +412,18 @@ class LTXVideoTransformer3DModel(
     _supports_gradient_checkpointing = True
     _skip_layerwise_casting_patterns = ["norm"]
     _repeated_blocks = ["LTXVideoTransformerBlock"]
+    _cp_plan = {
+        "": {
+            "hidden_states": ContextParallelInput(split_dim=1, expected_dims=3, split_output=False),
+            "encoder_hidden_states": ContextParallelInput(split_dim=1, expected_dims=3, split_output=False),
+            "encoder_attention_mask": ContextParallelInput(split_dim=1, expected_dims=2, split_output=False),
+        },
+        "rope": {
+            0: ContextParallelInput(split_dim=1, expected_dims=3, split_output=True),
+            1: ContextParallelInput(split_dim=1, expected_dims=3, split_output=True),
+        },
+        "proj_out": ContextParallelOutput(gather_dim=1, expected_dims=3),
+    }
 
     @register_to_config
     def __init__(

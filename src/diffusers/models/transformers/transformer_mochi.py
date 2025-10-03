@@ -23,13 +23,13 @@ from ...loaders import PeftAdapterMixin
 from ...loaders.single_file_model import FromOriginalModelMixin
 from ...utils import USE_PEFT_BACKEND, logging, scale_lora_layers, unscale_lora_layers
 from ...utils.torch_utils import maybe_allow_in_graph
+from ..attention import FeedForward
 from ..attention_processor import MochiAttention, MochiAttnProcessor2_0
 from ..cache_utils import CacheMixin
 from ..embeddings import MochiCombinedTimestepCaptionEmbedding, PatchEmbed
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
 from ..normalization import AdaLayerNormContinuous, RMSNorm
-from .modeling_common import FeedForward
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name

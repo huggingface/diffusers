@@ -22,13 +22,13 @@ from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import PeftAdapterMixin
 from ...utils import USE_PEFT_BACKEND, logging, scale_lora_layers, unscale_lora_layers
 from ...utils.torch_utils import maybe_allow_in_graph
+from ..attention import FeedForward
 from ..attention_processor import Attention
 from ..cache_utils import CacheMixin
 from ..embeddings import CogView3CombinedTimestepSizeEmbeddings
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
 from ..normalization import LayerNorm, RMSNorm
-from .modeling_common import FeedForward
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -494,7 +494,7 @@ class CogView4TransformerBlock(nn.Module):
         ] = None,
         attention_mask: Optional[Dict[str, torch.Tensor]] = None,
         attention_kwargs: Optional[Dict[str, Any]] = None,
-    ) -> torch.Tensor:
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
         # 1. Timestep conditioning
         (
             norm_hidden_states,
@@ -717,7 +717,7 @@ class CogView4Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Cach
         image_rotary_emb: Optional[
             Union[Tuple[torch.Tensor, torch.Tensor], List[Tuple[torch.Tensor, torch.Tensor]]]
         ] = None,
-    ) -> Union[torch.Tensor, Transformer2DModelOutput]:
+    ) -> Union[Tuple[torch.Tensor], Transformer2DModelOutput]:
         if attention_kwargs is not None:
             attention_kwargs = attention_kwargs.copy()
             lora_scale = attention_kwargs.pop("scale", 1.0)

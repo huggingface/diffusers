@@ -23,12 +23,12 @@ from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import PeftAdapterMixin
 from ...loaders.single_file_model import FromOriginalModelMixin
 from ...utils import USE_PEFT_BACKEND, logging, scale_lora_layers, unscale_lora_layers
+from ..attention import LuminaFeedForward
 from ..attention_processor import Attention
 from ..embeddings import TimestepEmbedding, Timesteps, apply_rotary_emb, get_1d_rotary_pos_embed
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
 from ..normalization import LuminaLayerNormContinuous, LuminaRMSNormZero, RMSNorm
-from .modeling_common import LuminaFeedForward
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name

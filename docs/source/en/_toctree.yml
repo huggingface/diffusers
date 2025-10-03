@@ -9,11 +9,11 @@
   - local: stable_diffusion
     title: Basic performance
 
-- title: DiffusionPipeline
+- title: Pipelines
   isExpanded: false
   sections:
   - local: using-diffusers/loading
-    title: Load pipelines
+    title: DiffusionPipeline
   - local: tutorials/autopipeline
     title: AutoPipeline
   - local: using-diffusers/custom_pipeline_overview
@@ -21,15 +21,13 @@
   - local: using-diffusers/callback
     title: Pipeline callbacks
   - local: using-diffusers/reusing_seeds
-    title: Reproducible pipelines
+    title: Reproducibility
   - local: using-diffusers/schedulers
-    title: Load schedulers and models
-  - local: using-diffusers/scheduler_features
-    title: Scheduler features
+    title: Schedulers
   - local: using-diffusers/other-formats
-    title: Model files and layouts
+    title: Model formats
   - local: using-diffusers/push_to_hub
-    title: Push files to the Hub
+    title: Sharing pipelines and models
 
 - title: Adapters
   isExpanded: false
@@ -58,14 +56,6 @@
     title: Batch inference
   - local: training/distributed_inference
     title: Distributed inference
-  - local: using-diffusers/scheduler_features
-    title: Scheduler features
-  - local: using-diffusers/callback
-    title: Pipeline callbacks
-  - local: using-diffusers/reusing_seeds
-    title: Reproducible pipelines
-  - local: using-diffusers/image_quality
-    title: Controlling image quality
 
 - title: Inference optimization
   isExpanded: false
@@ -74,10 +64,12 @@
     title: Accelerate inference
   - local: optimization/cache
     title: Caching
+  - local: optimization/attention_backends
+    title: Attention backends
   - local: optimization/memory
     title: Reduce memory usage
   - local: optimization/speed-memory-optims
-    title: Compile and offloading quantized models
+    title: Compiling and offloading quantized models
   - title: Community optimizations
     sections:
     - local: optimization/pruna
@@ -88,12 +80,16 @@
       title: Token merging
     - local: optimization/deepcache
       title: DeepCache
+    - local: optimization/cache_dit
+      title: CacheDiT
     - local: optimization/tgate
       title: TGATE
     - local: optimization/xdit
       title: xDiT
     - local: optimization/para_attn
       title: ParaAttention
+    - local: using-diffusers/image_quality
+      title: FreeU
 
 - title: Hybrid Inference
   isExpanded: false
@@ -190,12 +186,12 @@
     title: torchao
   - local: quantization/quanto
     title: quanto
+  - local: quantization/modelopt
+    title: NVIDIA ModelOpt
 
 - title: Model accelerators and hardware
   isExpanded: false
   sections:
-  - local: using-diffusers/stable_diffusion_jax_how_to
-    title: JAX/Flax
   - local: optimization/onnx
     title: ONNX
   - local: optimization/open_vino
@@ -284,6 +280,8 @@
       title: Outputs
     - local: api/quantization
       title: Quantization
+    - local: api/parallel
+      title: Parallel inference
   - title: Modular
     sections:
     - local: api/modular_diffusers/pipeline

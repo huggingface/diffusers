@@ -16,11 +16,8 @@ AuraFlow is inspired by [Stable Diffusion 3](../pipelines/stable_diffusion/stabl
 
 It was developed by the Fal team and more details about it can be found in [this blog post](https://blog.fal.ai/auraflow/).
 
-<Tip>
-
-AuraFlow can be quite expensive to run on consumer hardware devices. However, you can perform a suite of optimizations to run it faster and in a more memory-friendly manner. Check out [this section](https://huggingface.co/blog/sd3#memory-optimizations-for-sd3) for more details.
-
-</Tip>
+> [!TIP]
+> AuraFlow can be quite expensive to run on consumer hardware devices. However, you can perform a suite of optimizations to run it faster and in a more memory-friendly manner. Check out [this section](https://huggingface.co/blog/sd3#memory-optimizations-for-sd3) for more details.
 
 ## Quantization
 

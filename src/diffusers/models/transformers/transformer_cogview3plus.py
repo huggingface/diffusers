@@ -13,19 +13,19 @@
 # limitations under the License.
 
 
-from typing import Dict, Union
+from typing import Dict, Tuple, Union
 
 import torch
 import torch.nn as nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...utils import logging
+from ..attention import FeedForward
 from ..attention_processor import Attention, AttentionProcessor, CogVideoXAttnProcessor2_0
 from ..embeddings import CogView3CombinedTimestepSizeEmbeddings, CogView3PlusPatchEmbed
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
 from ..normalization import AdaLayerNormContinuous, CogView3PlusAdaLayerNormZeroTextImage
-from .modeling_common import FeedForward
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -79,7 +79,7 @@ class CogView3PlusTransformerBlock(nn.Module):
         hidden_states: torch.Tensor,
         encoder_hidden_states: torch.Tensor,
         emb: torch.Tensor,
-    ) -> torch.Tensor:
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
         text_seq_length = encoder_hidden_states.size(1)
 
         # norm & modulate
@@ -293,7 +293,7 @@ class CogView3PlusTransformer2DModel(ModelMixin, ConfigMixin):
         target_size: torch.Tensor,
         crop_coords: torch.Tensor,
         return_dict: bool = True,
-    ) -> Union[torch.Tensor, Transformer2DModelOutput]:
+    ) -> Union[Tuple[torch.Tensor], Transformer2DModelOutput]:
         """
         The [`CogView3PlusTransformer2DModel`] forward method.
 

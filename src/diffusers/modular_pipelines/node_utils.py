@@ -351,11 +351,7 @@ class ModularNode(ConfigMixin):
     A ModularNode is a base class to build UI nodes using diffusers. Currently only supports Mellon. It is a wrapper
     around a ModularPipelineBlocks object.
 
-    <Tip warning={true}>
-
-        This is an experimental feature and is likely to change in the future.
-
-    </Tip>
+    > [!WARNING] > This is an experimental feature and is likely to change in the future.
     """
 
     config_name = "node_config.json"
@@ -384,14 +380,14 @@ class ModularNode(ConfigMixin):
         # pass or create a default param dict for each input
         # e.g. for prompt,
         #       prompt = {
-        #               "name": "text_input", # the name of the input in node defination, could be different from the input name in diffusers
+        #               "name": "text_input", # the name of the input in node definition, could be different from the input name in diffusers
         #               "label": "Prompt",
         #               "type": "string",
         #               "default": "a bear sitting in a chair drinking a milkshake",
         #               "display": "textarea"}
         # if type is not specified, it'll be a "custom" param of its own type
         # e.g. you can pass ModularNode(scheduler = {name :"scheduler"})
-        #  it will get this spec in node defination {"scheduler": {"label": "Scheduler", "type": "scheduler", "display": "input"}}
+        #  it will get this spec in node definition {"scheduler": {"label": "Scheduler", "type": "scheduler", "display": "input"}}
         #  name can be a dict, in that case, it is part of a "dict" input in mellon nodes, e.g. text_encoder= {name: {"text_encoders": "text_encoder"}}
         inputs = self.blocks.inputs + self.blocks.intermediate_inputs
         for inp in inputs:

@@ -21,11 +21,8 @@ Chroma is a text to image generation model based on Flux.
 
 Original model checkpoints for Chroma can be found [here](https://huggingface.co/lodestones/Chroma).
 
-<Tip>
-
-Chroma can use all the same optimizations as Flux.
-
-</Tip>
+> [!TIP]
+> Chroma can use all the same optimizations as Flux.
 
 ## Inference
 

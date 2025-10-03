@@ -12,13 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...utils import logging
+from ..attention import LuminaFeedForward
 from ..attention_processor import Attention, LuminaAttnProcessor2_0
 from ..embeddings import (
     LuminaCombinedTimestepCaptionEmbedding,
@@ -27,7 +28,6 @@ from ..embeddings import (
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
 from ..normalization import LuminaLayerNormContinuous, LuminaRMSNormZero, RMSNorm
-from .modeling_common import LuminaFeedForward
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -124,7 +124,7 @@ class LuminaNextDiTBlock(nn.Module):
         encoder_mask: torch.Tensor,
         temb: torch.Tensor,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
-    ):
+    ) -> torch.Tensor:
         """
         Perform a forward pass through the LuminaNextDiTBlock.
 
@@ -297,7 +297,7 @@ class LuminaNextDiT2DModel(ModelMixin, ConfigMixin):
         image_rotary_emb: torch.Tensor,
         cross_attention_kwargs: Dict[str, Any] = None,
         return_dict=True,
-    ) -> torch.Tensor:
+    ) -> Union[Tuple[torch.Tensor], Transformer2DModelOutput]:
         """
         Forward pass of LuminaNextDiT.
 

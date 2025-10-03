@@ -156,11 +156,8 @@ print(source_prompts)
 print(target_prompts)
 ```
 
-<Tip>
-
-다양한 품질의 텍스트를 생성하는 전략에 대해 자세히 알아보려면 [생성 전략](https://huggingface.co/docs/transformers/main/en/generation_strategies) 가이드를 참조하세요.
-
-</Tip>
+> [!TIP]
+> 다양한 품질의 텍스트를 생성하는 전략에 대해 자세히 알아보려면 [생성 전략](https://huggingface.co/docs/transformers/main/en/generation_strategies) 가이드를 참조하세요.
 
 텍스트 인코딩을 위해 [`StableDiffusionDiffEditPipeline`]에서 사용하는 텍스트 인코더 모델을 불러옵니다. 텍스트 인코더를 사용하여 텍스트 임베딩을 계산합니다:
 
