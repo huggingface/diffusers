@@ -39,7 +39,7 @@ from ...utils import (
 from ...utils.torch_utils import is_compiled_module, randn_tensor
 from ...video_processor import VideoProcessor
 from ..free_init_utils import FreeInitMixin
-from ..pipeline_utils import DiffusionPipeline, StableDiffusionMixin
+from ..pipeline_utils import DiffusionPipeline, StableDiffusionMixin, retrieve_latents
 from .pipeline_output import AnimateDiffPipelineOutput
 
 
@@ -113,20 +113,6 @@ EXAMPLE_DOC_STRING = """
         >>> export_to_gif(video, "output.gif")
         ```
 """
-
-
-# Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.retrieve_latents
-def retrieve_latents(
-    encoder_output: torch.Tensor, generator: Optional[torch.Generator] = None, sample_mode: str = "sample"
-):
-    if hasattr(encoder_output, "latent_dist") and sample_mode == "sample":
-        return encoder_output.latent_dist.sample(generator)
-    elif hasattr(encoder_output, "latent_dist") and sample_mode == "argmax":
-        return encoder_output.latent_dist.mode()
-    elif hasattr(encoder_output, "latents"):
-        return encoder_output.latents
-    else:
-        raise AttributeError("Could not access latents of provided encoder_output")
 
 
 class AnimateDiffSparseControlNetPipeline(
