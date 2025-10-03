@@ -351,11 +351,7 @@ class ModularNode(ConfigMixin):
     A ModularNode is a base class to build UI nodes using diffusers. Currently only supports Mellon. It is a wrapper
     around a ModularPipelineBlocks object.
 
-    <Tip warning={true}>
-
-        This is an experimental feature and is likely to change in the future.
-
-    </Tip>
+    > [!WARNING] > This is an experimental feature and is likely to change in the future.
     """
 
     config_name = "node_config.json"

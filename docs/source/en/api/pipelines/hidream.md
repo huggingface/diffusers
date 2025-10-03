@@ -16,11 +16,8 @@
 
 [HiDream-I1](https://huggingface.co/HiDream-ai) by HiDream.ai
 
-<Tip>
-
-[Caching](../../optimization/cache) may also speed up inference by storing and reusing intermediate outputs.
-
-</Tip>
+> [!TIP]
+> [Caching](../../optimization/cache) may also speed up inference by storing and reusing intermediate outputs.
 
 ## Available models
 
