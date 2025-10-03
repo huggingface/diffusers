@@ -152,34 +152,36 @@ class WanVACEPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         text_encoder ([`T5EncoderModel`]):
             [T5](https://huggingface.co/docs/transformers/en/model_doc/t5#transformers.T5EncoderModel), specifically
             the [google/umt5-xxl](https://huggingface.co/google/umt5-xxl) variant.
-        transformer ([`WanVACETransformer3DModel`]):
-            Conditional Transformer to denoise the input latents.
-        transformer_2 ([`WanVACETransformer3DModel`], *optional*):
-            Conditional Transformer to denoise the input latents during the low-noise stage. In two-stage denoising,
-            `transformer` handles high-noise stages and `transformer_2` handles low-noise stages. If not provided, only
-            `transformer` is used.
-        scheduler ([`UniPCMultistepScheduler`]):
-            A scheduler to be used in combination with `transformer` to denoise the encoded image latents.
         vae ([`AutoencoderKLWan`]):
             Variational Auto-Encoder (VAE) Model to encode and decode videos to and from latent representations.
+        scheduler ([`UniPCMultistepScheduler`]):
+            A scheduler to be used in combination with `transformer` to denoise the encoded image latents.
+        transformer ([`WanVACETransformer3DModel`], *optional*):
+            Conditional Transformer to denoise the input latents during the high-noise stage. In two-stage denoising,
+            `transformer` handles high-noise stages and `transformer_2` handles low-noise stages. At least one of
+            `transformer` or `transformer_2` must be provided.
+        transformer_2 ([`WanVACETransformer3DModel`], *optional*):
+            Conditional Transformer to denoise the input latents during the low-noise stage. In two-stage denoising,
+            `transformer` handles high-noise stages and `transformer_2` handles low-noise stages. At least one of
+            `transformer` or `transformer_2` must be provided.
         boundary_ratio (`float`, *optional*, defaults to `None`):
             Ratio of total timesteps to use as the boundary for switching between transformers in two-stage denoising.
             The actual boundary timestep is calculated as `boundary_ratio * num_train_timesteps`. When provided,
             `transformer` handles timesteps >= boundary_timestep and `transformer_2` handles timesteps <
-            boundary_timestep. If `None`, only `transformer` is used for the entire denoising process.
+            boundary_timestep. If `None`, only the available transformer is used for the entire denoising process.
     """
 
     model_cpu_offload_seq = "text_encoder->transformer->vae"
     _callback_tensor_inputs = ["latents", "prompt_embeds", "negative_prompt_embeds"]
-    _optional_components = ["transformer_2"]
+    _optional_components = ["transformer", "transformer_2"]
 
     def __init__(
         self,
         tokenizer: AutoTokenizer,
         text_encoder: UMT5EncoderModel,
-        transformer: WanVACETransformer3DModel,
         vae: AutoencoderKLWan,
         scheduler: FlowMatchEulerDiscreteScheduler,
+        transformer: WanVACETransformer3DModel = None,
         transformer_2: WanVACETransformer3DModel = None,
         boundary_ratio: Optional[float] = None,
     ):
