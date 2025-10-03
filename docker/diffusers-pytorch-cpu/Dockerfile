@@ -22,19 +22,14 @@ RUN uv pip install --no-cache-dir \
     torch \
     torchvision \
     torchaudio \
-    invisible_watermark \
-    --extra-index-url https://download.pytorch.org/whl/cpu && \
-    uv pip install --no-cache-dir \
-        accelerate \
-        datasets \
-        hf-doc-builder \
-        huggingface-hub \
-        Jinja2 \
-        librosa \
-        numpy==1.26.4 \
-        scipy \
-        tensorboard \
-        transformers matplotlib  \
-        hf_transfer
+    --extra-index-url https://download.pytorch.org/whl/cpu
+
+RUN uv pip install --no-cache-dir "git+https://github.com/huggingface/diffusers.git@main#egg=diffusers[test]"
+
+# Extra dependencies
+RUN uv pip install --no-cache-dir \
+    accelerate \
+    numpy==1.26.4 
+    hf_transfer
 
 CMD ["/bin/bash"]
