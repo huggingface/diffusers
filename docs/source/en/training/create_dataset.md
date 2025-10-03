@@ -7,11 +7,8 @@ This guide will show you two ways to create a dataset to finetune on:
 - provide a folder of images to the `--train_data_dir` argument
 - upload a dataset to the Hub and pass the dataset repository id to the `--dataset_name` argument
 
-<Tip>
-
-💡 Learn more about how to create an image dataset for training in the [Create an image dataset](https://huggingface.co/docs/datasets/image_dataset) guide.
-
-</Tip>
+> [!TIP]
+> 💡 Learn more about how to create an image dataset for training in the [Create an image dataset](https://huggingface.co/docs/datasets/image_dataset) guide.
 
 ## Provide a dataset as a folder
 
@@ -33,11 +30,8 @@ accelerate launch train_unconditional.py \
 
 ## Upload your data to the Hub
 
-<Tip>
-
-💡 For more details and context about creating and uploading a dataset to the Hub, take a look at the [Image search with 🤗 Datasets](https://huggingface.co/blog/image-search-datasets) post.
-
-</Tip>
+> [!TIP]
+> 💡 For more details and context about creating and uploading a dataset to the Hub, take a look at the [Image search with 🤗 Datasets](https://huggingface.co/blog/image-search-datasets) post.
 
 Start by creating a dataset with the [`ImageFolder`](https://huggingface.co/docs/datasets/image_load#imagefolder) feature, which creates an `image` column containing the PIL-encoded images.
 

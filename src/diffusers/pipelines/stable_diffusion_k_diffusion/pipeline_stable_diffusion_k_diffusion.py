@@ -81,11 +81,7 @@ class StableDiffusionKDiffusionPipeline(
         - [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`] for loading LoRA weights
         - [`~loaders.StableDiffusionLoraLoaderMixin.save_lora_weights`] for saving LoRA weights
 
-    <Tip warning={true}>
-
-        This is an experimental pipeline and is likely to change in the future.
-
-    </Tip>
+    > [!WARNING] > This is an experimental pipeline and is likely to change in the future.
 
     Args:
         vae ([`AutoencoderKL`]):

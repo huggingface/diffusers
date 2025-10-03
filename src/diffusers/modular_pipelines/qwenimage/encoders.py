@@ -496,7 +496,7 @@ class QwenImageEditTextEncoderStep(ModularPipelineBlocks):
         )
 
         if components.requires_unconditional_embeds:
-            negative_prompt = block_state.negative_prompt or ""
+            negative_prompt = block_state.negative_prompt or " "
             block_state.negative_prompt_embeds, block_state.negative_prompt_embeds_mask = get_qwen_prompt_embeds_edit(
                 components.text_encoder,
                 components.processor,
