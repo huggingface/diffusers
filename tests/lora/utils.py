@@ -243,20 +243,23 @@ class PeftLoraLoaderMixinTests:
             if "text_encoder" in self.pipeline_class._lora_loadable_modules:
                 pipe.text_encoder.add_adapter(text_lora_config, adapter_name=adapter_name)
                 assert check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder"
+        
         if denoiser_lora_config is not None:
             denoiser = pipe.transformer if self.unet_kwargs is None else pipe.unet
             denoiser.add_adapter(denoiser_lora_config, adapter_name=adapter_name)
             assert check_if_lora_correctly_set(denoiser), "Lora not correctly set in denoiser."
         else:
             denoiser = None
+        
         if text_lora_config is not None and self.has_two_text_encoders or self.has_three_text_encoders:
             if "text_encoder_2" in self.pipeline_class._lora_loadable_modules:
                 pipe.text_encoder_2.add_adapter(text_lora_config, adapter_name=adapter_name)
                 assert check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text encoder 2"
+        
         return pipe, denoiser
 
     def _compute_baseline_output(self):
-        components, _, _ = self.get_dummy_components(self.scheduler_cls)
+        components, _, _ = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
         pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
@@ -326,7 +329,7 @@ class PeftLoraLoaderMixinTests:
         pipe, _ = self.add_adapters_to_pipeline(pipe, text_lora_config, denoiser_lora_config=None)
 
         output_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
-        assert not np.allclose(output_lora, base_pipe_output, atol=0.001, rtol=0.001), "Lora should change the output"
+        assert not np.allclose(output_lora, base_pipe_output, atol=1e-3, rtol=1e-3), "Lora should change the output"
 
     @require_peft_version_greater("0.13.1")
     def test_low_cpu_mem_usage_with_injection(self):
@@ -401,7 +404,7 @@ class PeftLoraLoaderMixinTests:
             assert check_if_lora_correctly_set(module), f"Lora not correctly set in {module_name}"
 
         images_lora_from_pretrained = pipe(**inputs, generator=torch.manual_seed(0))[0]
-        assert np.allclose(images_lora, images_lora_from_pretrained, atol=0.001, rtol=0.001), (
+        assert np.allclose(images_lora, images_lora_from_pretrained, atol=1e-3, rtol=1e-3), (
             "Loading from saved checkpoints should give same results."
         )
 
@@ -411,7 +414,7 @@ class PeftLoraLoaderMixinTests:
             assert check_if_lora_correctly_set(module), f"Lora not correctly set in {module_name}"
 
         images_lora_from_pretrained_low_cpu = pipe(**inputs, generator=torch.manual_seed(0))[0]
-        assert np.allclose(images_lora_from_pretrained_low_cpu, images_lora_from_pretrained, atol=0.001, rtol=0.001), (
+        assert np.allclose(images_lora_from_pretrained_low_cpu, images_lora_from_pretrained, atol=1e-3, rtol=1e-3), (
             "Loading from saved checkpoints with `low_cpu_mem_usage` should give same results."
         )
 
@@ -430,17 +433,17 @@ class PeftLoraLoaderMixinTests:
         pipe, _ = self.add_adapters_to_pipeline(pipe, text_lora_config, denoiser_lora_config=None)
 
         output_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
-        assert not np.allclose(output_lora, base_pipe_output, atol=0.001, rtol=0.001), "Lora should change the output"
+        assert not np.allclose(output_lora, base_pipe_output, atol=1e-3, rtol=1e-3), "Lora should change the output"
 
         attention_kwargs = {attention_kwargs_name: {"scale": 0.5}}
         output_lora_scale = pipe(**inputs, generator=torch.manual_seed(0), **attention_kwargs)[0]
-        assert not np.allclose(output_lora, output_lora_scale, atol=0.001, rtol=0.001), (
+        assert not np.allclose(output_lora, output_lora_scale, atol=1e-3, rtol=1e-3), (
             "Lora + scale should change the output"
         )
 
         attention_kwargs = {attention_kwargs_name: {"scale": 0.0}}
         output_lora_0_scale = pipe(**inputs, generator=torch.manual_seed(0), **attention_kwargs)[0]
-        assert np.allclose(base_pipe_output, output_lora_0_scale, atol=0.001, rtol=0.001), (
+        assert np.allclose(base_pipe_output, output_lora_0_scale, atol=1e-3, rtol=1e-3), (
             "Lora + 0 scale should lead to same result as no LoRA"
         )
 
@@ -466,7 +469,7 @@ class PeftLoraLoaderMixinTests:
 
         ouput_fused = pipe(**inputs, generator=torch.manual_seed(0))[0]
         assert not (
-            np.allclose(ouput_fused, base_pipe_output, atol=0.001, rtol=0.001),
+            np.allclose(ouput_fused, base_pipe_output, atol=1e-3, rtol=1e-3),
             "Fused lora should change the output",
         )
 
@@ -484,18 +487,15 @@ class PeftLoraLoaderMixinTests:
         pipe, _ = self.add_adapters_to_pipeline(pipe, text_lora_config, denoiser_lora_config=None)
 
         pipe.unload_lora_weights()
-        assert not (check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly unloaded in text encoder")
+        assert not check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly unloaded in text encoder"
 
         if self.has_two_text_encoders or self.has_three_text_encoders:
             if "text_encoder_2" in self.pipeline_class._lora_loadable_modules:
-                assert not (
-                    check_if_lora_correctly_set(pipe.text_encoder_2),
-                    "Lora not correctly unloaded in text encoder 2",
-                )
+                assert not check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly unloaded in text encoder 2"
 
         ouput_unloaded = pipe(**inputs, generator=torch.manual_seed(0))[0]
-        assert np.allclose(ouput_unloaded, base_pipe_output, atol=0.001, rtol=0.001), (
-            "Fused lora should change the output"
+        assert np.allclose(ouput_unloaded, base_pipe_output, atol=1e-3, rtol=1e-3), (
+            "Unloading lora should match the base pipe output"
         )
 
     def test_simple_inference_with_text_lora_save_load(self, tmpdirname):
@@ -523,7 +523,7 @@ class PeftLoraLoaderMixinTests:
             assert check_if_lora_correctly_set(module), f"Lora not correctly set in {module_name}"
 
         images_lora_from_pretrained = pipe(**inputs, generator=torch.manual_seed(0))[0]
-        assert np.allclose(images_lora, images_lora_from_pretrained, atol=0.001, rtol=0.001), (
+        assert np.allclose(images_lora, images_lora_from_pretrained, atol=1e-3, rtol=1e-3), (
             "Loading from saved checkpoints should give same results."
         )
 
@@ -565,12 +565,12 @@ class PeftLoraLoaderMixinTests:
                     }
                 )
         output_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
-        assert not np.allclose(output_lora, base_pipe_output, atol=0.001, rtol=0.001), "Lora should change the output"
+        assert not np.allclose(output_lora, base_pipe_output, atol=1e-3, rtol=1e-3), "Lora should change the output"
 
         pipe.unload_lora_weights()
         pipe.load_lora_weights(state_dict)
         output_partial_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
-        assert not np.allclose(output_partial_lora, output_lora, atol=0.001, rtol=0.001), (
+        assert not np.allclose(output_partial_lora, output_lora, atol=1e-3, rtol=1e-3), (
             "Removing adapters should change the output"
         )
 
@@ -602,7 +602,7 @@ class PeftLoraLoaderMixinTests:
                 )
 
         images_lora_save_pretrained = pipe_from_pretrained(**inputs, generator=torch.manual_seed(0))[0]
-        assert np.allclose(images_lora, images_lora_save_pretrained, atol=0.001, rtol=0.001), (
+        assert np.allclose(images_lora, images_lora_save_pretrained, atol=1e-3, rtol=1e-3), (
             "Loading from saved checkpoints should give same results."
         )
 
@@ -630,7 +630,7 @@ class PeftLoraLoaderMixinTests:
             assert check_if_lora_correctly_set(module), f"Lora not correctly set in {module_name}"
 
         images_lora_from_pretrained = pipe(**inputs, generator=torch.manual_seed(0))[0]
-        assert np.allclose(images_lora, images_lora_from_pretrained, atol=0.001, rtol=0.001), (
+        assert np.allclose(images_lora, images_lora_from_pretrained, atol=1e-3, rtol=1e-3), (
             "Loading from saved checkpoints should give same results."
         )
 
@@ -649,17 +649,17 @@ class PeftLoraLoaderMixinTests:
         pipe, _ = self.add_adapters_to_pipeline(pipe, text_lora_config, denoiser_lora_config)
 
         output_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
-        assert not np.allclose(output_lora, base_pipe_output, atol=0.001, rtol=0.001), "Lora should change the output"
+        assert not np.allclose(output_lora, base_pipe_output, atol=1e-3, rtol=1e-3), "Lora should change the output"
 
         attention_kwargs = {attention_kwargs_name: {"scale": 0.5}}
         output_lora_scale = pipe(**inputs, generator=torch.manual_seed(0), **attention_kwargs)[0]
-        assert not np.allclose(output_lora, output_lora_scale, atol=0.001, rtol=0.001), (
+        assert not np.allclose(output_lora, output_lora_scale, atol=1e-3, rtol=1e-3), (
             "Lora + scale should change the output"
         )
 
         attention_kwargs = {attention_kwargs_name: {"scale": 0.0}}
         output_lora_0_scale = pipe(**inputs, generator=torch.manual_seed(0), **attention_kwargs)[0]
-        assert np.allclose(base_pipe_output, output_lora_0_scale, atol=0.001, rtol=0.001), (
+        assert np.allclose(base_pipe_output, output_lora_0_scale, atol=1e-3, rtol=1e-3), (
             "Lora + 0 scale should lead to same result as no LoRA"
         )
         if "text_encoder" in self.pipeline_class._lora_loadable_modules:
@@ -691,7 +691,7 @@ class PeftLoraLoaderMixinTests:
 
         output_fused = pipe(**inputs, generator=torch.manual_seed(0))[0]
         assert not (
-            np.allclose(output_fused, base_pipe_output, atol=0.001, rtol=0.001),
+            np.allclose(output_fused, base_pipe_output, atol=1e-3, rtol=1e-3),
             "Fused lora should change the output",
         )
 
@@ -720,12 +720,12 @@ class PeftLoraLoaderMixinTests:
                 )
 
         output_unloaded = pipe(**inputs, generator=torch.manual_seed(0))[0]
-        assert np.allclose(output_unloaded, base_pipe_output, atol=0.001, rtol=0.001), (
+        assert np.allclose(output_unloaded, base_pipe_output, atol=1e-3, rtol=1e-3), (
             "Fused lora should change the output"
         )
 
     def test_simple_inference_with_text_denoiser_lora_unfused(
-        self, expected_atol: float = 0.001, expected_rtol: float = 0.001
+        self, expected_atol: float = 1e-3, expected_rtol: float = 1e-3
     ):
         """
         Tests a simple inference with lora attached to text encoder and unet, then unloads the lora weights
@@ -792,40 +792,40 @@ class PeftLoraLoaderMixinTests:
         pipe.set_adapters("adapter-1")
         output_adapter_1 = pipe(**inputs, generator=torch.manual_seed(0))[0]
         assert not (
-            np.allclose(base_pipe_output, output_adapter_1, atol=0.001, rtol=0.001),
+            np.allclose(base_pipe_output, output_adapter_1, atol=1e-3, rtol=1e-3),
             "Adapter outputs should be different.",
         )
 
         pipe.set_adapters("adapter-2")
         output_adapter_2 = pipe(**inputs, generator=torch.manual_seed(0))[0]
         assert not (
-            np.allclose(base_pipe_output, output_adapter_2, atol=0.001, rtol=0.001),
+            np.allclose(base_pipe_output, output_adapter_2, atol=1e-3, rtol=1e-3),
             "Adapter outputs should be different.",
         )
 
         pipe.set_adapters(["adapter-1", "adapter-2"])
         output_adapter_mixed = pipe(**inputs, generator=torch.manual_seed(0))[0]
         assert not (
-            np.allclose(base_pipe_output, output_adapter_mixed, atol=0.001, rtol=0.001),
+            np.allclose(base_pipe_output, output_adapter_mixed, atol=1e-3, rtol=1e-3),
             "Adapter outputs should be different.",
         )
 
         assert not (
-            np.allclose(output_adapter_1, output_adapter_2, atol=0.001, rtol=0.001),
+            np.allclose(output_adapter_1, output_adapter_2, atol=1e-3, rtol=1e-3),
             "Adapter 1 and 2 should give different results",
         )
         assert not (
-            np.allclose(output_adapter_1, output_adapter_mixed, atol=0.001, rtol=0.001),
+            np.allclose(output_adapter_1, output_adapter_mixed, atol=1e-3, rtol=1e-3),
             "Adapter 1 and mixed adapters should give different results",
         )
         assert not (
-            np.allclose(output_adapter_2, output_adapter_mixed, atol=0.001, rtol=0.001),
+            np.allclose(output_adapter_2, output_adapter_mixed, atol=1e-3, rtol=1e-3),
             "Adapter 2 and mixed adapters should give different results",
         )
 
         pipe.disable_lora()
         output_disabled = pipe(**inputs, generator=torch.manual_seed(0))[0]
-        assert np.allclose(base_pipe_output, output_disabled, atol=0.001, rtol=0.001), (
+        assert np.allclose(base_pipe_output, output_disabled, atol=1e-3, rtol=1e-3), (
             "output with no lora and output with lora disabled should give same results"
         )
 
@@ -903,21 +903,21 @@ class PeftLoraLoaderMixinTests:
         pipe.set_adapters("adapter-1", weights_2)
         output_weights_2 = pipe(**inputs, generator=torch.manual_seed(0))[0]
         assert not (
-            np.allclose(output_weights_1, output_weights_2, atol=0.001, rtol=0.001),
+            np.allclose(output_weights_1, output_weights_2, atol=1e-3, rtol=1e-3),
             "LoRA weights 1 and 2 should give different results",
         )
         assert not (
-            np.allclose(base_pipe_output, output_weights_1, atol=0.001, rtol=0.001),
+            np.allclose(base_pipe_output, output_weights_1, atol=1e-3, rtol=1e-3),
             "No adapter and LoRA weights 1 should give different results",
         )
         assert not (
-            np.allclose(base_pipe_output, output_weights_2, atol=0.001, rtol=0.001),
+            np.allclose(base_pipe_output, output_weights_2, atol=1e-3, rtol=1e-3),
             "No adapter and LoRA weights 2 should give different results",
         )
 
         pipe.disable_lora()
         output_disabled = pipe(**inputs, generator=torch.manual_seed(0))[0]
-        assert np.allclose(base_pipe_output, output_disabled, atol=0.001, rtol=0.001), (
+        assert np.allclose(base_pipe_output, output_disabled, atol=1e-3, rtol=1e-3), (
             "output with no lora and output with lora disabled should give same results"
         )
 
@@ -957,21 +957,21 @@ class PeftLoraLoaderMixinTests:
         pipe.set_adapters(["adapter-1", "adapter-2"], [scales_1, scales_2])
         output_adapter_mixed = pipe(**inputs, generator=torch.manual_seed(0))[0]
         assert not (
-            np.allclose(output_adapter_1, output_adapter_2, atol=0.001, rtol=0.001),
+            np.allclose(output_adapter_1, output_adapter_2, atol=1e-3, rtol=1e-3),
             "Adapter 1 and 2 should give different results",
         )
         assert not (
-            np.allclose(output_adapter_1, output_adapter_mixed, atol=0.001, rtol=0.001),
+            np.allclose(output_adapter_1, output_adapter_mixed, atol=1e-3, rtol=1e-3),
             "Adapter 1 and mixed adapters should give different results",
         )
         assert not (
-            np.allclose(output_adapter_2, output_adapter_mixed, atol=0.001, rtol=0.001),
+            np.allclose(output_adapter_2, output_adapter_mixed, atol=1e-3, rtol=1e-3),
             "Adapter 2 and mixed adapters should give different results",
         )
 
         pipe.disable_lora()
         output_disabled = pipe(**inputs, generator=torch.manual_seed(0))[0]
-        assert np.allclose(base_pipe_output, output_disabled, atol=0.001, rtol=0.001), (
+        assert np.allclose(base_pipe_output, output_disabled, atol=1e-3, rtol=1e-3), (
             "output with no lora and output with lora disabled should give same results"
         )
         with pytest.raises(ValueError):
@@ -1094,27 +1094,27 @@ class PeftLoraLoaderMixinTests:
         output_adapter_mixed = pipe(**inputs, generator=torch.manual_seed(0))[0]
 
         assert not (
-            np.allclose(output_adapter_1, output_adapter_2, atol=0.001, rtol=0.001),
+            np.allclose(output_adapter_1, output_adapter_2, atol=1e-3, rtol=1e-3),
             "Adapter 1 and 2 should give different results",
         )
         assert not (
-            np.allclose(output_adapter_1, output_adapter_mixed, atol=0.001, rtol=0.001),
+            np.allclose(output_adapter_1, output_adapter_mixed, atol=1e-3, rtol=1e-3),
             "Adapter 1 and mixed adapters should give different results",
         )
         assert not (
-            np.allclose(output_adapter_2, output_adapter_mixed, atol=0.001, rtol=0.001),
+            np.allclose(output_adapter_2, output_adapter_mixed, atol=1e-3, rtol=1e-3),
             "Adapter 2 and mixed adapters should give different results",
         )
 
         pipe.delete_adapters("adapter-1")
         output_deleted_adapter_1 = pipe(**inputs, generator=torch.manual_seed(0))[0]
-        assert np.allclose(output_deleted_adapter_1, output_adapter_2, atol=0.001, rtol=0.001), (
+        assert np.allclose(output_deleted_adapter_1, output_adapter_2, atol=1e-3, rtol=1e-3), (
             "Adapter 1 and 2 should give different results"
         )
 
         pipe.delete_adapters("adapter-2")
         output_deleted_adapters = pipe(**inputs, generator=torch.manual_seed(0))[0]
-        assert np.allclose(base_pipe_output, output_deleted_adapters, atol=0.001, rtol=0.001), (
+        assert np.allclose(base_pipe_output, output_deleted_adapters, atol=1e-3, rtol=1e-3), (
             "output with no lora and output with lora disabled should give same results"
         )
 
@@ -1130,7 +1130,7 @@ class PeftLoraLoaderMixinTests:
         pipe.set_adapters(["adapter-1", "adapter-2"])
         pipe.delete_adapters(["adapter-1", "adapter-2"])
         output_deleted_adapters = pipe(**inputs, generator=torch.manual_seed(0))[0]
-        assert np.allclose(base_pipe_output, output_deleted_adapters, atol=0.001, rtol=0.001), (
+        assert np.allclose(base_pipe_output, output_deleted_adapters, atol=1e-3, rtol=1e-3), (
             "output with no lora and output with lora disabled should give same results"
         )
 
@@ -1172,28 +1172,28 @@ class PeftLoraLoaderMixinTests:
         pipe.set_adapters(["adapter-1", "adapter-2"])
         output_adapter_mixed = pipe(**inputs, generator=torch.manual_seed(0))[0]
         assert not (
-            np.allclose(output_adapter_1, output_adapter_2, atol=0.001, rtol=0.001),
+            np.allclose(output_adapter_1, output_adapter_2, atol=1e-3, rtol=1e-3),
             "Adapter 1 and 2 should give different results",
         )
         assert not (
-            np.allclose(output_adapter_1, output_adapter_mixed, atol=0.001, rtol=0.001),
+            np.allclose(output_adapter_1, output_adapter_mixed, atol=1e-3, rtol=1e-3),
             "Adapter 1 and mixed adapters should give different results",
         )
         assert not (
-            np.allclose(output_adapter_2, output_adapter_mixed, atol=0.001, rtol=0.001),
+            np.allclose(output_adapter_2, output_adapter_mixed, atol=1e-3, rtol=1e-3),
             "Adapter 2 and mixed adapters should give different results",
         )
 
         pipe.set_adapters(["adapter-1", "adapter-2"], [0.5, 0.6])
         output_adapter_mixed_weighted = pipe(**inputs, generator=torch.manual_seed(0))[0]
         assert not (
-            np.allclose(output_adapter_mixed_weighted, output_adapter_mixed, atol=0.001, rtol=0.001),
+            np.allclose(output_adapter_mixed_weighted, output_adapter_mixed, atol=1e-3, rtol=1e-3),
             "Weighted adapter and mixed adapter should give different results",
         )
 
         pipe.disable_lora()
         output_disabled = pipe(**inputs, generator=torch.manual_seed(0))[0]
-        assert np.allclose(base_pipe_output, output_disabled, atol=0.001, rtol=0.001), (
+        assert np.allclose(base_pipe_output, output_disabled, atol=1e-3, rtol=1e-3), (
             "output with no lora and output with lora disabled should give same results"
         )
 
@@ -1341,7 +1341,7 @@ class PeftLoraLoaderMixinTests:
         assert pipe.get_list_adapters() == dicts_to_be_checked
 
     def test_simple_inference_with_text_lora_denoiser_fused_multi(
-        self, expected_atol: float = 0.001, expected_rtol: float = 0.001
+        self, expected_atol: float = 1e-3, expected_rtol: float = 1e-3
     ):
         """
         Tests a simple inference with lora attached into text encoder + fuses the lora weights into base model
@@ -1415,7 +1415,7 @@ class PeftLoraLoaderMixinTests:
         )
 
     def test_lora_scale_kwargs_match_fusion(
-        self, base_pipe_output, expected_atol: float = 0.001, expected_rtol: float = 0.001
+        self, base_pipe_output, expected_atol: float = 1e-3, expected_rtol: float = 1e-3
     ):
         attention_kwargs_name = determine_attention_kwargs_name(self.pipeline_class)
         for lora_scale in [1.0, 0.8]:
@@ -1475,7 +1475,7 @@ class PeftLoraLoaderMixinTests:
         pipe, _ = self.add_adapters_to_pipeline(pipe, text_lora_config, denoiser_lora_config)
         output_dora_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
         assert not (
-            np.allclose(output_dora_lora, output_no_dora_lora, atol=0.001, rtol=0.001),
+            np.allclose(output_dora_lora, output_no_dora_lora, atol=1e-3, rtol=1e-3),
             "DoRA lora should change the output",
         )
 
@@ -1619,16 +1619,16 @@ class PeftLoraLoaderMixinTests:
         attention_kwargs = {attention_kwargs_name: {"scale": lora_scale}}
         output_lora_scale = pipe(**inputs, generator=torch.manual_seed(0), **attention_kwargs)[0]
         assert not (
-            np.allclose(base_pipe_output, output_lora_scale, atol=0.001, rtol=0.001),
+            np.allclose(base_pipe_output, output_lora_scale, atol=1e-3, rtol=1e-3),
             "Lora + scale should change the output",
         )
 
         pipe.set_adapters("default", lora_scale)
         output_lora_scale_wo_kwargs = pipe(**inputs, generator=torch.manual_seed(0))[0]
-        assert not np.allclose(base_pipe_output, output_lora_scale_wo_kwargs, atol=0.001, rtol=0.001), (
+        assert not np.allclose(base_pipe_output, output_lora_scale_wo_kwargs, atol=1e-3, rtol=1e-3), (
             "Lora + scale should change the output"
         )
-        assert np.allclose(output_lora_scale, output_lora_scale_wo_kwargs, atol=0.001, rtol=0.001), (
+        assert np.allclose(output_lora_scale, output_lora_scale_wo_kwargs, atol=1e-3, rtol=1e-3), (
             "Lora + scale should match the output of `set_adapters()`."
         )
 
@@ -1645,13 +1645,13 @@ class PeftLoraLoaderMixinTests:
             assert check_if_lora_correctly_set(module), f"Lora not correctly set in {module_name}"
 
         output_lora_from_pretrained = pipe(**inputs, generator=torch.manual_seed(0), **attention_kwargs)[0]
-        assert not np.allclose(base_pipe_output, output_lora_from_pretrained, atol=0.001, rtol=0.001), (
+        assert not np.allclose(base_pipe_output, output_lora_from_pretrained, atol=1e-3, rtol=1e-3), (
             "Lora + scale should change the output"
         )
-        assert np.allclose(output_lora_scale, output_lora_from_pretrained, atol=0.001, rtol=0.001), (
+        assert np.allclose(output_lora_scale, output_lora_from_pretrained, atol=1e-3, rtol=1e-3), (
             "Loading from saved checkpoints should give same results as attention_kwargs."
         )
-        assert np.allclose(output_lora_scale_wo_kwargs, output_lora_from_pretrained, atol=0.001, rtol=0.001), (
+        assert np.allclose(output_lora_scale_wo_kwargs, output_lora_from_pretrained, atol=1e-3, rtol=1e-3), (
             "Loading from saved checkpoints should give same results as set_adapters()."
         )
 
@@ -1686,9 +1686,9 @@ class PeftLoraLoaderMixinTests:
             pipe.transformer.add_adapter(denoiser_lora_config, "adapter-1")
         lora_bias_true_output = pipe(**inputs, generator=torch.manual_seed(0))[0]
 
-        assert not np.allclose(base_pipe_output, lora_bias_false_output, atol=0.001, rtol=0.001)
-        assert not np.allclose(base_pipe_output, lora_bias_true_output, atol=0.001, rtol=0.001)
-        assert not np.allclose(lora_bias_false_output, lora_bias_true_output, atol=0.001, rtol=0.001)
+        assert not np.allclose(base_pipe_output, lora_bias_false_output, atol=1e-3, rtol=1e-3)
+        assert not np.allclose(base_pipe_output, lora_bias_true_output, atol=1e-3, rtol=1e-3)
+        assert not np.allclose(lora_bias_false_output, lora_bias_true_output, atol=1e-3, rtol=1e-3)
 
     def test_correct_lora_configs_with_different_ranks(self, base_pipe_output):
         components, _, denoiser_lora_config = self.get_dummy_components()
@@ -1725,8 +1725,8 @@ class PeftLoraLoaderMixinTests:
         assert updated_rank_pattern == {module_name_to_rank_update: updated_rank}
 
         lora_output_diff_rank = pipe(**inputs, generator=torch.manual_seed(0))[0]
-        assert not np.allclose(base_pipe_output, lora_output_same_rank, atol=0.001, rtol=0.001)
-        assert not np.allclose(lora_output_diff_rank, lora_output_same_rank, atol=0.001, rtol=0.001)
+        assert not np.allclose(base_pipe_output, lora_output_same_rank, atol=1e-3, rtol=1e-3)
+        assert not np.allclose(lora_output_diff_rank, lora_output_same_rank, atol=1e-3, rtol=1e-3)
 
         if self.unet_kwargs is not None:
             pipe.unet.delete_adapters("adapter-1")
@@ -1745,8 +1745,8 @@ class PeftLoraLoaderMixinTests:
                 module_name_to_rank_update: updated_alpha
             }
         lora_output_diff_alpha = pipe(**inputs, generator=torch.manual_seed(0))[0]
-        assert not np.allclose(base_pipe_output, lora_output_diff_alpha, atol=0.001, rtol=0.001)
-        assert not np.allclose(lora_output_diff_alpha, lora_output_same_rank, atol=0.001, rtol=0.001)
+        assert not np.allclose(base_pipe_output, lora_output_diff_alpha, atol=1e-3, rtol=1e-3)
+        assert not np.allclose(lora_output_diff_alpha, lora_output_same_rank, atol=1e-3, rtol=1e-3)
 
     def test_layerwise_casting_inference_denoiser(self):
         from diffusers.hooks._common import _GO_LC_SUPPORTED_PYTORCH_LAYERS
@@ -1934,7 +1934,7 @@ class PeftLoraLoaderMixinTests:
         pipe.unload_lora_weights()
         pipe.load_lora_weights(tmpdirname)
         output_lora_pretrained = pipe(**inputs, generator=torch.manual_seed(0))[0]
-        assert np.allclose(output_lora, output_lora_pretrained, atol=0.001, rtol=0.001), "Lora outputs should match."
+        assert np.allclose(output_lora, output_lora_pretrained, atol=1e-3, rtol=1e-3), "Lora outputs should match."
 
     def test_lora_unload_add_adapter(self):
         """Tests if `unload_lora_weights()` -> `add_adapter()` works."""
@@ -1986,12 +1986,12 @@ class PeftLoraLoaderMixinTests:
 
         pipe.delete_adapters(pipe.get_active_adapters()[0])
         output_no_adapter = pipe(**inputs, generator=torch.manual_seed(0))[0]
-        assert not np.allclose(output_adapter_1, output_no_adapter, atol=0.001, rtol=0.001)
-        assert np.allclose(base_pipe_output, output_no_adapter, atol=0.001, rtol=0.001)
+        assert not np.allclose(output_adapter_1, output_no_adapter, atol=1e-3, rtol=1e-3)
+        assert np.allclose(base_pipe_output, output_no_adapter, atol=1e-3, rtol=1e-3)
 
         pipe.load_lora_weights(tmpdirname)
         output_lora_loaded = pipe(**inputs, generator=torch.manual_seed(0))[0]
-        assert np.allclose(output_adapter_1, output_lora_loaded, atol=0.001, rtol=0.001)
+        assert np.allclose(output_adapter_1, output_lora_loaded, atol=1e-3, rtol=1e-3)
 
     def _test_group_offloading_inference_denoiser(self, offload_type, use_stream, tmpdirname):
         from diffusers.hooks.group_offloading import _get_top_level_group_offload_hook
@@ -2045,7 +2045,7 @@ class PeftLoraLoaderMixinTests:
         assert group_offload_hook_3 is not None
 
         output_3 = pipe(**inputs, generator=torch.manual_seed(0))[0]
-        assert np.allclose(output_1, output_3, atol=0.001, rtol=0.001)
+        assert np.allclose(output_1, output_3, atol=1e-3, rtol=1e-3)
 
     @parameterized.expand([("block_level", True), ("leaf_level", False), ("leaf_level", True)])
     @require_torch_accelerator
@@ -2080,4 +2080,4 @@ class PeftLoraLoaderMixinTests:
         assert check_if_lora_correctly_set(denoiser), "Lora not correctly set in denoiser."
 
         output_lora_loaded = pipe(**inputs, generator=torch.manual_seed(0))[0]
-        assert np.allclose(output_lora, output_lora_loaded, atol=0.001, rtol=0.001)
+        assert np.allclose(output_lora, output_lora_loaded, atol=1e-3, rtol=1e-3)
