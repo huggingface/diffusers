@@ -41,7 +41,7 @@ from .constants import (
 from .deprecation_utils import deprecate
 from .doc_utils import replace_example_docstring
 from .dynamic_modules_utils import get_class_from_dynamic_module
-from .export_utils import export_to_gif, export_to_obj, export_to_ply, export_to_video
+from .export_utils import export_to_gif, export_to_merged_video_audio, export_to_obj, export_to_ply, export_to_video
 from .hub_utils import (
     PushToHubMixin,
     _add_variant,
@@ -122,7 +122,7 @@ from .import_utils import (
     is_xformers_version,
     requires_backends,
 )
-from .loading_utils import get_module_from_name, get_submodule_by_name, load_image, load_video
+from .loading_utils import get_module_from_name, get_submodule_by_name, load_audio, load_image, load_video
 from .logging import get_logger
 from .outputs import BaseOutput
 from .peft_utils import (

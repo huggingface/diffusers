@@ -3,6 +3,8 @@ import tempfile
 from typing import Any, Callable, List, Optional, Tuple, Union
 from urllib.parse import unquote, urlparse
 
+import librosa
+import numpy
 import PIL.Image
 import PIL.ImageOps
 import requests
@@ -57,6 +59,9 @@ def load_image(
 def load_video(
     video: str,
     convert_method: Optional[Callable[[List[PIL.Image.Image]], List[PIL.Image.Image]]] = None,
+    n_frames: Optional[int] = None,
+    target_fps: Optional[int] = None,
+    reverse: bool = False,
 ) -> List[PIL.Image.Image]:
     """
     Loads `video` to a list of PIL Image.
@@ -67,6 +72,13 @@ def load_video(
         convert_method (Callable[[List[PIL.Image.Image]], List[PIL.Image.Image]], *optional*):
             A conversion method to apply to the video after loading it. When set to `None` the images will be converted
             to "RGB".
+        n_frames (`int`, *optional*):
+            Number of frames to sample from the video. If None, all frames are loaded.
+        target_fps (`int`, *optional*):
+            Target sampling frame rate. If None, uses original frame rate.
+        reverse (`bool`, *optional*):
+            If True, samples frames starting from the beginning of the video; if False, samples frames starting from
+            the end. Defaults to False.
 
     Returns:
         `List[PIL.Image.Image]`:
@@ -125,9 +137,40 @@ def load_video(
             )
 
         with imageio.get_reader(video) as reader:
-            # Read all frames
-            for frame in reader:
-                pil_images.append(PIL.Image.fromarray(frame))
+            # Determine which frames to sample
+            if n_frames is not None and target_fps is not None:
+                # Get video metadata
+                total_frames = reader.count_frames()
+                original_fps = reader.get_meta_data().get("fps")
+
+                # Calculate sampling interval based on target fps
+                interval = max(1, round(original_fps / target_fps))
+                required_span = (n_frames - 1) * interval
+
+                if reverse:
+                    start_frame = 0
+                else:
+                    start_frame = max(0, total_frames - required_span - 1)
+
+                # Generate sampling indices
+                sampled_indices = []
+                for i in range(n_frames):
+                    indice = start_frame + i * interval
+                    if indice >= total_frames:
+                        break
+                    sampled_indices.append(int(indice))
+
+                # Read specific frames
+                for idx in sampled_indices:
+                    try:
+                        frame = reader.get_data(idx)
+                        pil_images.append(PIL.Image.fromarray(frame))
+                    except IndexError:
+                        break
+            else:
+                # Read all frames
+                for frame in reader:
+                    pil_images.append(PIL.Image.fromarray(frame))
 
     if was_tempfile_created:
         os.remove(video_path)
@@ -136,6 +179,53 @@ def load_video(
         pil_images = convert_method(pil_images)
 
     return pil_images
+
+
+def load_audio(
+    audio: Union[str, numpy.ndarray], convert_method: Optional[Callable[[numpy.ndarray], numpy.ndarray]] = None
+) -> numpy.ndarray:
+    """
+    Loads `audio` to a numpy array.
+
+    Args:
+        audio (`str` or `numpy.ndarray`):
+            The audio to convert to the numpy array format.
+        convert_method (Callable[[numpy.ndarray], numpy.ndarray], *optional*):
+            A conversion method to apply to the audio after loading it. When set to `None` the audio will be converted
+            to a specific format.
+
+    Returns:
+        `numpy.ndarray`:
+            A Librosa audio object.
+        `int`:
+            The sample rate of the audio.
+    """
+    if isinstance(audio, str):
+        if audio.startswith("http://") or audio.startswith("https://"):
+            # Download audio from URL and load with librosa
+            response = requests.get(audio, stream=True, timeout=DIFFUSERS_REQUEST_TIMEOUT)
+            with tempfile.NamedTemporaryFile(delete=False) as temp_file:
+                for chunk in response.iter_content(chunk_size=8192):
+                    temp_file.write(chunk)
+                temp_audio_path = temp_file.name
+
+            audio, sample_rate = librosa.load(temp_audio_path, sr=16000)
+            os.remove(temp_audio_path)  # Clean up temporary file
+        elif os.path.isfile(audio):
+            audio, sample_rate = librosa.load(audio, sr=16000)
+        else:
+            raise ValueError(
+                f"Incorrect path or URL. URLs must start with `http://` or `https://`, and {audio} is not a valid path."
+            )
+    elif isinstance(audio, numpy.ndarray):
+        audio = audio
+        sample_rate = 16000  # Default sample rate for numpy arrays
+    else:
+        raise ValueError(
+            "Incorrect format used for the audio. Should be a URL linking to an audio, a local path, or a numpy array."
+        )
+
+    return audio, sample_rate
 
 
 # Taken from `transformers`.
