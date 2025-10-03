@@ -14,7 +14,6 @@
 # limitations under the License.
 import gc
 import sys
-import unittest
 
 import numpy as np
 import pytest
@@ -143,17 +142,15 @@ class TestSD3LoRA(PeftLoraLoaderMixinTests):
 @require_torch_accelerator
 @require_peft_backend
 @require_big_accelerator
-class SD3LoraIntegrationTests(unittest.TestCase):
+class TestSD3LoraIntegration:
     pipeline_class = StableDiffusion3Img2ImgPipeline
     repo_id = "stabilityai/stable-diffusion-3-medium-diffusers"
 
-    def setUp(self):
-        super().setUp()
+    @pytest.fixture(autouse=True)
+    def _gc_and_cache_cleanup(self, torch_device):
         gc.collect()
         backend_empty_cache(torch_device)
-
-    def tearDown(self):
-        super().tearDown()
+        yield
         gc.collect()
         backend_empty_cache(torch_device)
 

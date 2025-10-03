@@ -155,11 +155,11 @@ class TestLumina2LoRA(PeftLoraLoaderMixinTests):
 
         if "text_encoder" in self.pipeline_class._lora_loadable_modules:
             pipe.text_encoder.add_adapter(text_lora_config, "adapter-1")
-            self.assertTrue(check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder")
+            assert check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder"
 
         denoiser = pipe.transformer if self.unet_kwargs is None else pipe.unet
         denoiser.add_adapter(denoiser_lora_config, "adapter-1")
-        self.assertTrue(check_if_lora_correctly_set(denoiser), "Lora not correctly set in denoiser.")
+        assert check_if_lora_correctly_set(denoiser), "Lora not correctly set in denoiser."
 
         # corrupt one LoRA weight with `inf` values
         with torch.no_grad():
@@ -173,4 +173,4 @@ class TestLumina2LoRA(PeftLoraLoaderMixinTests):
         pipe.fuse_lora(components=self.pipeline_class._lora_loadable_modules, safe_fusing=False)
         out = pipe(**inputs)[0]
 
-        self.assertTrue(np.isnan(out).all())
+        assert np.isnan(out).all()

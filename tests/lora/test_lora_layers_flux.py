@@ -119,7 +119,7 @@ class TestFluxLoRA(PeftLoraLoaderMixinTests):
         _, _, inputs = self.get_dummy_inputs(with_generator=False)
 
         pipe.transformer.add_adapter(denoiser_lora_config)
-        self.assertTrue(check_if_lora_correctly_set(pipe.transformer), "Lora not correctly set in transformer")
+        assert check_if_lora_correctly_set(pipe.transformer), "Lora not correctly set in transformer"
 
         images_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
 

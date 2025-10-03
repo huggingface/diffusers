@@ -136,9 +136,8 @@ class TestCogView4LoRA(PeftLoraLoaderMixinTests):
 
         images_lora_save_pretrained = pipe_from_pretrained(**inputs, generator=torch.manual_seed(0))[0]
 
-        self.assertTrue(
-            np.allclose(images_lora, images_lora_save_pretrained, atol=1e-3, rtol=1e-3),
-            "Loading from saved checkpoints should give same results.",
+        assert np.allclose(images_lora, images_lora_save_pretrained, atol=1e-3, rtol=1e-3), (
+            "Loading from saved checkpoints should give same results."
         )
 
     @pytest.mark.parametrize(

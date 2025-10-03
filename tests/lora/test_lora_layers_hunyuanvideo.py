@@ -14,7 +14,6 @@
 
 import gc
 import sys
-import unittest
 
 import numpy as np
 import pytest
@@ -38,7 +37,6 @@ from ..testing_utils import (
     require_peft_backend,
     require_torch_accelerator,
     skip_mps,
-    torch_device,
 )
 
 
@@ -207,7 +205,7 @@ class TestHunyuanVideoLoRA(PeftLoraLoaderMixinTests):
 @require_torch_accelerator
 @require_peft_backend
 @require_big_accelerator
-class HunyuanVideoLoRAIntegrationTests(unittest.TestCase):
+class TestHunyuanVideoLoRAIntegration:
     """internal note: The integration slices were obtained on DGX.
 
     torch: 2.5.1+cu124 with CUDA 12.5. Need the same setup for the
@@ -217,9 +215,8 @@ class HunyuanVideoLoRAIntegrationTests(unittest.TestCase):
     num_inference_steps = 10
     seed = 0
 
-    def setUp(self):
-        super().setUp()
-
+    @pytest.fixture(scope="function")
+    def pipeline(self, torch_device):
         gc.collect()
         backend_empty_cache(torch_device)
 
@@ -227,27 +224,27 @@ class HunyuanVideoLoRAIntegrationTests(unittest.TestCase):
         transformer = HunyuanVideoTransformer3DModel.from_pretrained(
             model_id, subfolder="transformer", torch_dtype=torch.bfloat16
         )
-        self.pipeline = HunyuanVideoPipeline.from_pretrained(
-            model_id, transformer=transformer, torch_dtype=torch.float16
-        ).to(torch_device)
+        pipe = HunyuanVideoPipeline.from_pretrained(model_id, transformer=transformer, torch_dtype=torch.float16).to(
+            torch_device
+        )
+        try:
+            yield pipe
+        finally:
+            del pipe
+            gc.collect()
+            backend_empty_cache(torch_device)
 
-    def tearDown(self):
-        super().tearDown()
-
-        gc.collect()
-        backend_empty_cache(torch_device)
-
-    def test_original_format_cseti(self):
-        self.pipeline.load_lora_weights(
+    def test_original_format_cseti(self, pipeline):
+        pipeline.load_lora_weights(
             "Cseti/HunyuanVideo-LoRA-Arcane_Jinx-v1", weight_name="csetiarcane-nfjinx-v1-6000.safetensors"
         )
-        self.pipeline.fuse_lora()
-        self.pipeline.unload_lora_weights()
-        self.pipeline.vae.enable_tiling()
+        pipeline.fuse_lora()
+        pipeline.unload_lora_weights()
+        pipeline.vae.enable_tiling()
 
         prompt = "CSETIARCANE. A cat walks on the grass, realistic"
 
-        out = self.pipeline(
+        out = pipeline(
             prompt=prompt,
             height=320,
             width=512,

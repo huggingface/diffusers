@@ -14,9 +14,9 @@
 # limitations under the License.
 import gc
 import sys
-import unittest
 
 import numpy as np
+import pytest
 import torch
 import torch.nn as nn
 from huggingface_hub import hf_hub_download
@@ -91,16 +91,6 @@ class TestStableDiffusionLoRA(PeftLoraLoaderMixinTests):
     def output_shape(self):
         return (1, 64, 64, 3)
 
-    def setUp(self):
-        super().setUp()
-        gc.collect()
-        backend_empty_cache(torch_device)
-
-    def tearDown(self):
-        super().tearDown()
-        gc.collect()
-        backend_empty_cache(torch_device)
-
     # Keeping this test here makes sense because it doesn't look any integration
     # (value assertions on logits).
     @slow
@@ -114,15 +104,8 @@ class TestStableDiffusionLoRA(PeftLoraLoaderMixinTests):
         pipe.load_lora_weights(lora_id, adapter_name="adapter-2")
         pipe = pipe.to(torch_device)
 
-        self.assertTrue(
-            check_if_lora_correctly_set(pipe.text_encoder),
-            "Lora not correctly set in text encoder",
-        )
-
-        self.assertTrue(
-            check_if_lora_correctly_set(pipe.unet),
-            "Lora not correctly set in unet",
-        )
+        assert check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder"
+        assert check_if_lora_correctly_set(pipe.unet), "Lora not correctly set in unet"
 
         # We will offload the first adapter in CPU and check if the offloading
         # has been performed correctly
@@ -130,35 +113,35 @@ class TestStableDiffusionLoRA(PeftLoraLoaderMixinTests):
 
         for name, module in pipe.unet.named_modules():
             if "adapter-1" in name and not isinstance(module, (nn.Dropout, nn.Identity)):
-                self.assertTrue(module.weight.device == torch.device("cpu"))
+                assert module.weight.device == torch.device("cpu")
             elif "adapter-2" in name and not isinstance(module, (nn.Dropout, nn.Identity)):
-                self.assertTrue(module.weight.device != torch.device("cpu"))
+                assert module.weight.device != torch.device("cpu")
 
         for name, module in pipe.text_encoder.named_modules():
             if "adapter-1" in name and not isinstance(module, (nn.Dropout, nn.Identity)):
-                self.assertTrue(module.weight.device == torch.device("cpu"))
+                assert module.weight.device == torch.device("cpu")
             elif "adapter-2" in name and not isinstance(module, (nn.Dropout, nn.Identity)):
-                self.assertTrue(module.weight.device != torch.device("cpu"))
+                assert module.weight.device != torch.device("cpu")
 
         pipe.set_lora_device(["adapter-1"], 0)
 
         for n, m in pipe.unet.named_modules():
             if "adapter-1" in n and not isinstance(m, (nn.Dropout, nn.Identity)):
-                self.assertTrue(m.weight.device != torch.device("cpu"))
+                assert m.weight.device != torch.device("cpu")
 
         for n, m in pipe.text_encoder.named_modules():
             if "adapter-1" in n and not isinstance(m, (nn.Dropout, nn.Identity)):
-                self.assertTrue(m.weight.device != torch.device("cpu"))
+                assert m.weight.device != torch.device("cpu")
 
         pipe.set_lora_device(["adapter-1", "adapter-2"], torch_device)
 
         for n, m in pipe.unet.named_modules():
             if ("adapter-1" in n or "adapter-2" in n) and not isinstance(m, (nn.Dropout, nn.Identity)):
-                self.assertTrue(m.weight.device != torch.device("cpu"))
+                assert m.weight.device != torch.device("cpu")
 
         for n, m in pipe.text_encoder.named_modules():
             if ("adapter-1" in n or "adapter-2" in n) and not isinstance(m, (nn.Dropout, nn.Identity)):
-                self.assertTrue(m.weight.device != torch.device("cpu"))
+                assert m.weight.device != torch.device("cpu")
 
     @slow
     @require_torch_accelerator
@@ -181,15 +164,9 @@ class TestStableDiffusionLoRA(PeftLoraLoaderMixinTests):
         pipe.unet.add_adapter(unet_lora_config, "adapter-1")
         pipe.text_encoder.add_adapter(text_lora_config, "adapter-1")
 
-        self.assertTrue(
-            check_if_lora_correctly_set(pipe.text_encoder),
-            "Lora not correctly set in text encoder",
-        )
+        assert check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder"
 
-        self.assertTrue(
-            check_if_lora_correctly_set(pipe.unet),
-            "Lora not correctly set in unet",
-        )
+        assert check_if_lora_correctly_set(pipe.unet), "Lora not correctly set in unet"
 
         for name, param in pipe.unet.named_parameters():
             if "lora_" in name:
@@ -225,17 +202,14 @@ class TestStableDiffusionLoRA(PeftLoraLoaderMixinTests):
         pipe.unet.add_adapter(config1, adapter_name="adapter-1")
         pipe = pipe.to(torch_device)
 
-        self.assertTrue(
-            check_if_lora_correctly_set(pipe.unet),
-            "Lora not correctly set in unet",
-        )
+        assert check_if_lora_correctly_set(pipe.unet), "Lora not correctly set in unet"
 
         # sanity check that the adapters don't target the same layers, otherwise the test passes even without the fix
         modules_adapter_0 = {n for n, _ in pipe.unet.named_modules() if n.endswith(".adapter-0")}
         modules_adapter_1 = {n for n, _ in pipe.unet.named_modules() if n.endswith(".adapter-1")}
-        self.assertNotEqual(modules_adapter_0, modules_adapter_1)
-        self.assertTrue(modules_adapter_0 - modules_adapter_1)
-        self.assertTrue(modules_adapter_1 - modules_adapter_0)
+        assert modules_adapter_0 != modules_adapter_1
+        assert modules_adapter_0 - modules_adapter_1
+        assert modules_adapter_1 - modules_adapter_0
 
         # setting both separately works
         pipe.set_lora_device(["adapter-0"], "cpu")
@@ -243,32 +217,30 @@ class TestStableDiffusionLoRA(PeftLoraLoaderMixinTests):
 
         for name, module in pipe.unet.named_modules():
             if "adapter-0" in name and not isinstance(module, (nn.Dropout, nn.Identity)):
-                self.assertTrue(module.weight.device == torch.device("cpu"))
+                assert module.weight.device == torch.device("cpu")
             elif "adapter-1" in name and not isinstance(module, (nn.Dropout, nn.Identity)):
-                self.assertTrue(module.weight.device == torch.device("cpu"))
+                assert module.weight.device == torch.device("cpu")
 
         # setting both at once also works
         pipe.set_lora_device(["adapter-0", "adapter-1"], torch_device)
 
         for name, module in pipe.unet.named_modules():
             if "adapter-0" in name and not isinstance(module, (nn.Dropout, nn.Identity)):
-                self.assertTrue(module.weight.device != torch.device("cpu"))
+                assert module.weight.device != torch.device("cpu")
             elif "adapter-1" in name and not isinstance(module, (nn.Dropout, nn.Identity)):
-                self.assertTrue(module.weight.device != torch.device("cpu"))
+                assert module.weight.device != torch.device("cpu")
 
 
 @slow
 @nightly
 @require_torch_accelerator
 @require_peft_backend
-class LoraIntegrationTests(unittest.TestCase):
-    def setUp(self):
-        super().setUp()
+class TestSDLoraIntegration:
+    @pytest.fixture(autouse=True)
+    def _gc_and_cache_cleanup(self, torch_device):
         gc.collect()
         backend_empty_cache(torch_device)
-
-    def tearDown(self):
-        super().tearDown()
+        yield
         gc.collect()
         backend_empty_cache(torch_device)
 
@@ -280,10 +252,7 @@ class LoraIntegrationTests(unittest.TestCase):
         pipe.load_lora_weights(lora_id)
         pipe = pipe.to(torch_device)
 
-        self.assertTrue(
-            check_if_lora_correctly_set(pipe.text_encoder),
-            "Lora not correctly set in text encoder",
-        )
+        assert check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder"
 
         prompt = "a red sks dog"
 
@@ -312,10 +281,7 @@ class LoraIntegrationTests(unittest.TestCase):
         pipe.load_lora_weights(lora_id)
         pipe = pipe.to(torch_device)
 
-        self.assertTrue(
-            check_if_lora_correctly_set(pipe.text_encoder),
-            "Lora not correctly set in text encoder",
-        )
+        assert check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder"
 
         prompt = "a red sks dog"
 
@@ -587,8 +553,8 @@ class LoraIntegrationTests(unittest.TestCase):
         ).images
         unloaded_lora_images = unloaded_lora_images[0, -3:, -3:, -1].flatten()
 
-        self.assertFalse(np.allclose(initial_images, lora_images))
-        self.assertTrue(np.allclose(initial_images, unloaded_lora_images, atol=1e-3))
+        assert not np.allclose(initial_images, lora_images)
+        assert np.allclose(initial_images, unloaded_lora_images, atol=1e-3)
 
         release_memory(pipe)
 
@@ -625,8 +591,8 @@ class LoraIntegrationTests(unittest.TestCase):
         ).images
         unloaded_lora_images = unloaded_lora_images[0, -3:, -3:, -1].flatten()
 
-        self.assertFalse(np.allclose(initial_images, lora_images))
-        self.assertTrue(np.allclose(initial_images, unloaded_lora_images, atol=1e-3))
+        assert not np.allclose(initial_images, lora_images)
+        assert np.allclose(initial_images, unloaded_lora_images, atol=1e-3)
 
         # make sure we can load a LoRA again after unloading and they don't have
         # any undesired effects.
@@ -637,7 +603,7 @@ class LoraIntegrationTests(unittest.TestCase):
         ).images
         lora_images_again = lora_images_again[0, -3:, -3:, -1].flatten()
 
-        self.assertTrue(np.allclose(lora_images, lora_images_again, atol=1e-3))
+        assert np.allclose(lora_images, lora_images_again, atol=1e-3)
         release_memory(pipe)
 
     def test_not_empty_state_dict(self):
@@ -651,7 +617,7 @@ class LoraIntegrationTests(unittest.TestCase):
         lcm_lora = load_file(cached_file)
 
         pipe.load_lora_weights(lcm_lora, adapter_name="lcm")
-        self.assertTrue(lcm_lora != {})
+        assert lcm_lora != {}
         release_memory(pipe)
 
     def test_load_unload_load_state_dict(self):
