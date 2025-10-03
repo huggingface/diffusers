@@ -516,19 +516,46 @@ def _chunked_feed_forward(*args, **kwargs):
     return _actual_chunked_feed_forward(*args, **kwargs)
 
 
-class GatedSelfAttentionDense:
+class GatedSelfAttentionDense(nn.Module):
     r"""
-    Backward compatibility stub. Use transformers.modeling_common.GatedSelfAttentionDense instead.
+    A gated self-attention dense layer that combines visual features and object features.
+
+    Parameters:
+        query_dim (`int`): The number of channels in the query.
+        context_dim (`int`): The number of channels in the context.
+        n_heads (`int`): The number of heads to use for attention.
+        d_head (`int`): The number of channels in each head.
     """
 
-    def __new__(cls, *args, **kwargs):
-        logger.warning(
-            "Importing `GatedSelfAttentionDense` from `diffusers.models.attention` is deprecated and will be removed in a future version. "
-            "Please use `from diffusers.models.transformers.modeling_common import GatedSelfAttentionDense` instead."
-        )
-        from .transformers.modeling_common import GatedSelfAttentionDense
+    def __init__(self, query_dim: int, context_dim: int, n_heads: int, d_head: int):
+        super().__init__()
+        from .transformers.modeling_common import FeedForward
 
-        return GatedSelfAttentionDense(*args, **kwargs)
+        # we need a linear projection since we need cat visual feature and obj feature
+        self.linear = nn.Linear(context_dim, query_dim)
+
+        self.attn = Attention(query_dim=query_dim, heads=n_heads, dim_head=d_head)
+        self.ff = FeedForward(query_dim, activation_fn="geglu")
+
+        self.norm1 = nn.LayerNorm(query_dim)
+        self.norm2 = nn.LayerNorm(query_dim)
+
+        self.register_parameter("alpha_attn", nn.Parameter(torch.tensor(0.0)))
+        self.register_parameter("alpha_dense", nn.Parameter(torch.tensor(0.0)))
+
+        self.enabled = True
+
+    def forward(self, x: torch.Tensor, objs: torch.Tensor) -> torch.Tensor:
+        if not self.enabled:
+            return x
+
+        n_visual = x.shape[1]
+        objs = self.linear(objs)
+
+        x = x + self.alpha_attn.tanh() * self.attn(self.norm1(torch.cat([x, objs], dim=1)))[:, :n_visual, :]
+        x = x + self.alpha_dense.tanh() * self.ff(self.norm2(x))
+
+        return x
 
 
 class JointTransformerBlock:
