@@ -19,9 +19,15 @@ import torch
 from PIL import Image
 from transformers import AutoTokenizer, T5EncoderModel
 
-from diffusers import AutoencoderKLWan, FlowMatchEulerDiscreteScheduler, WanVACEPipeline, WanVACETransformer3DModel
+from diffusers import (
+    AutoencoderKLWan,
+    FlowMatchEulerDiscreteScheduler,
+    UniPCMultistepScheduler,
+    WanVACEPipeline,
+    WanVACETransformer3DModel,
+)
 
-from ...testing_utils import enable_full_determinism
+from ...testing_utils import enable_full_determinism, torch_device
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
 from ..test_pipelines_common import PipelineTesterMixin
 
@@ -212,3 +218,35 @@ class WanVACEPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     )
     def test_save_load_float16(self):
         pass
+
+    def test_inference_with_only_transformer(self):
+        components = self.get_dummy_components()
+        components["transformer_2"] = None
+        components["boundary_ratio"] = 0.0
+        pipe = self.pipeline_class(**components)
+        pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(torch_device)
+        video = pipe(**inputs).frames[0]
+        assert video.shape == (17, 3, 16, 16)
+
+    def test_inference_with_only_transformer_2(self):
+        components = self.get_dummy_components()
+        components["transformer_2"] = components["transformer"]
+        components["transformer"] = None
+
+        # FlowMatchEulerDiscreteScheduler doesn't support running low noise only scheduler
+        # because starting timestep t == 1000 == boundary_timestep
+        components["scheduler"] = UniPCMultistepScheduler(
+            prediction_type="flow_prediction", use_flow_sigmas=True, flow_shift=3.0
+        )
+
+        components["boundary_ratio"] = 1.0
+        pipe = self.pipeline_class(**components)
+        pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(torch_device)
+        video = pipe(**inputs).frames[0]
+        assert video.shape == (17, 3, 16, 16)
