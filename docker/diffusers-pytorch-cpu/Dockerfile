@@ -1,41 +1,30 @@
-FROM ubuntu:20.04
+FROM python:3.10-slim
+ENV PYTHONDONTWRITEBYTECODE=1
 LABEL maintainer="Hugging Face"
 LABEL repository="diffusers"
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-RUN apt-get -y update \
-    && apt-get install -y software-properties-common \
-    && add-apt-repository ppa:deadsnakes/ppa \
-    && apt-get -y update
+RUN apt-get -y update && apt-get install -y bash \
+    build-essential \
+    git \
+    git-lfs \
+    curl \
+    ca-certificates \
+    libsndfile1-dev \
+    libgl1
 
-RUN apt-get install -y bash \
-                   build-essential \
-                   git \
-                   git-lfs \
-                   curl \
-                   ca-certificates \
-                   libsndfile1-dev \
-                   python3.10 \
-                   python3.10-dev \
-                   python3-pip \
-                   libgl1 \
-                   python3.10-venv && \
-    rm -rf /var/lib/apt/lists/*
-
-# make sure to use venv
-RUN python3.10 -m venv /opt/venv
-ENV PATH="/opt/venv/bin:$PATH"
+ENV UV_PYTHON=/usr/local/bin/python
 
 # pre-install the heavy dependencies (these can later be overridden by the deps from setup.py)
-RUN python3.10 -m pip install --no-cache-dir --upgrade pip uv==0.1.11 && \
-    python3.10 -m uv pip install --no-cache-dir \
+RUN pip install --no-cache-dir --upgrade uv \
+    uv pip install --no-cache-dir \
         torch \
         torchvision \
         torchaudio \
         invisible_watermark \
         --extra-index-url https://download.pytorch.org/whl/cpu && \
-    python3.10 -m uv pip install --no-cache-dir \
+    uv pip install --no-cache-dir \
         accelerate \
         datasets \
         hf-doc-builder \
