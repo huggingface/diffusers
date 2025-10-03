@@ -6,9 +6,10 @@ ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get -y update \
     && apt-get install -y software-properties-common \
-    && add-apt-repository ppa:deadsnakes/ppa
+    && add-apt-repository ppa:deadsnakes/ppa \
+    && apt-get -y update
 
-RUN apt install -y bash \
+RUN apt-get install -y bash \
                    build-essential \
                    git \
                    git-lfs \
@@ -20,7 +21,7 @@ RUN apt install -y bash \
                    python3-pip \
                    libgl1 \
                    python3.10-venv && \
-    rm -rf /var/lib/apt/lists
+    rm -rf /var/lib/apt/lists/*
 
 # make sure to use venv
 RUN python3.10 -m venv /opt/venv
