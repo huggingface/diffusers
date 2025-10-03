@@ -754,7 +754,7 @@ class TestFluxLoRAIntegration:
     seed = 0
 
     @pytest.fixture(scope="function")
-    def pipeline(self, torch_device):
+    def pipeline(self):
         gc.collect()
         backend_empty_cache(torch_device)
         pipe = FluxPipeline.from_pretrained("black-forest-labs/FLUX.1-dev", torch_dtype=torch.bfloat16)
@@ -873,10 +873,10 @@ class TestFluxControlLoRAIntegration:
     prompt = "A robot made of exotic candies and chocolates of different kinds."
 
     @pytest.fixture(scope="function")
-    def pipeline(self, torch_device):
+    def pipeline(self):
         gc.collect()
         backend_empty_cache(torch_device)
-        pipe = FluxPipeline.from_pretrained("black-forest-labs/FLUX.1-dev", torch_dtype=torch.bfloat16)
+        pipe = FluxControlPipeline.from_pretrained("black-forest-labs/FLUX.1-dev", torch_dtype=torch.bfloat16)
         try:
             yield pipe
         finally:

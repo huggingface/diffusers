@@ -132,7 +132,7 @@ class TestStableDiffusionXLLoRA(PeftLoraLoaderMixinTests):
             expected_atol=expected_atol, expected_rtol=expected_rtol
         )
 
-    def test_lora_scale_kwargs_match_fusion(self):
+    def test_lora_scale_kwargs_match_fusion(self, base_pipe_output):
         if torch.cuda.is_available():
             expected_atol = 9e-2
             expected_rtol = 9e-2
@@ -140,7 +140,9 @@ class TestStableDiffusionXLLoRA(PeftLoraLoaderMixinTests):
             expected_atol = 1e-3
             expected_rtol = 1e-3
 
-        super().test_lora_scale_kwargs_match_fusion(expected_atol=expected_atol, expected_rtol=expected_rtol)
+        super().test_lora_scale_kwargs_match_fusion(
+            base_pipe_output=base_pipe_output, expected_atol=expected_atol, expected_rtol=expected_rtol
+        )
 
 
 @slow

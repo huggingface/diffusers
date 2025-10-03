@@ -37,6 +37,7 @@ from ..testing_utils import (
     require_peft_backend,
     require_torch_accelerator,
     skip_mps,
+    torch_device,
 )
 
 
@@ -207,7 +208,7 @@ class TestHunyuanVideoLoRAIntegration:
     seed = 0
 
     @pytest.fixture(scope="function")
-    def pipeline(self, torch_device):
+    def pipeline(self):
         gc.collect()
         backend_empty_cache(torch_device)
 
