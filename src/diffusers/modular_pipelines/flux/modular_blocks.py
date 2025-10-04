@@ -84,9 +84,9 @@ class FluxImg2ImgBeforeDenoiseStep(SequentialPipelineBlocks):
 
 # before_denoise: all task (text2img, img2img)
 class FluxAutoBeforeDenoiseStep(AutoPipelineBlocks):
-    block_classes = [FluxBeforeDenoiseStep, FluxImg2ImgBeforeDenoiseStep]
-    block_names = ["text2image", "img2img"]
-    block_trigger_inputs = [None, "image_latents"]
+    block_classes = [FluxImg2ImgBeforeDenoiseStep, FluxBeforeDenoiseStep]
+    block_names = ["img2img", "text2image"]
+    block_trigger_inputs = ["image_latents", None]
 
     @property
     def description(self):

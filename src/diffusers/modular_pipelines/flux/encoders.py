@@ -181,6 +181,7 @@ class FluxTextEncoderStep(ModularPipelineBlocks):
         return [
             InputParam("prompt"),
             InputParam("prompt_2"),
+            InputParam("max_sequence_length", type_hint=int, default=512, required=False),
             InputParam("joint_attention_kwargs"),
         ]
 
@@ -404,6 +405,7 @@ class FluxTextEncoderStep(ModularPipelineBlocks):
             pooled_prompt_embeds=None,
             device=block_state.device,
             num_images_per_prompt=1,  # TODO: hardcoded for now.
+            max_sequence_length=block_state.max_sequence_length,
             lora_scale=block_state.text_encoder_lora_scale,
         )
 
