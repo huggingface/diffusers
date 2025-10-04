@@ -37,3 +37,4 @@ if is_torch_available():
     from .transformer_temporal import TransformerTemporalModel
     from .transformer_wan import WanTransformer3DModel
     from .transformer_wan_vace import WanVACETransformer3DModel
+    from .transformer_kandinsky import Kandinsky5Transformer3DModel

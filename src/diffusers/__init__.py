@@ -260,6 +260,7 @@ else:
             "VQModel",
             "WanTransformer3DModel",
             "WanVACETransformer3DModel",
+            "Kandinsky5Transformer3DModel",
             "attention_backend",
         ]
     )
@@ -618,6 +619,7 @@ else:
             "WanPipeline",
             "WanVACEPipeline",
             "WanVideoToVideoPipeline",
+            "Kandinsky5T2VPipeline",
             "WuerstchenCombinedPipeline",
             "WuerstchenDecoderPipeline",
             "WuerstchenPriorPipeline",
@@ -947,6 +949,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             VQModel,
             WanTransformer3DModel,
             WanVACETransformer3DModel,
+            Kandinsky5Transformer3DModel,
             attention_backend,
         )
         from .modular_pipelines import ComponentsManager, ComponentSpec, ModularPipeline, ModularPipelineBlocks
@@ -1275,6 +1278,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             WanPipeline,
             WanVACEPipeline,
             WanVideoToVideoPipeline,
+            Kandinsky5T2VPipeline,
             WuerstchenCombinedPipeline,
             WuerstchenDecoderPipeline,
             WuerstchenPriorPipeline,

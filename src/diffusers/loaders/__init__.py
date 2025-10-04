@@ -77,6 +77,7 @@ if is_torch_available():
             "SanaLoraLoaderMixin",
             "Lumina2LoraLoaderMixin",
             "WanLoraLoaderMixin",
+            "KandinskyLoraLoaderMixin",
             "HiDreamImageLoraLoaderMixin",
             "SkyReelsV2LoraLoaderMixin",
             "QwenImageLoraLoaderMixin",
@@ -126,6 +127,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
                 StableDiffusionLoraLoaderMixin,
                 StableDiffusionXLLoraLoaderMixin,
                 WanLoraLoaderMixin,
+                KandinskyLoraLoaderMixin
             )
             from .single_file import FromSingleFileMixin
             from .textual_inversion import TextualInversionLoaderMixin
