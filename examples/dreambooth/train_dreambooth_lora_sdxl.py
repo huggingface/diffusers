@@ -1911,7 +1911,7 @@ def main(args):
                 # Predict the noise residual
                 if not args.train_text_encoder:
                     # print(f'init_embed:{unet_add_text_embeds.shape}, times:{elems_to_repeat_text_embeds}')
-                    if elems_to_repeat_text_embeds == 1:
+                    if elems_to_repeat_text_embeds == 1 and args.with_prior_preservation:
                         double_add_time_ids = add_time_ids.repeat_interleave(2, dim=0)
                     else:
                         double_add_time_ids = add_time_ids.repeat_interleave(elems_to_repeat_text_embeds, dim=0)
@@ -1953,6 +1953,7 @@ def main(args):
                     )
                     prompt_embeds_input = prompt_embeds.repeat_interleave(elems_to_repeat_text_embeds, dim=0)
                     prompt_embeds_input = prompt_embeds.repeat(elems_to_repeat_text_embeds, 1, 1)
+                    # print(f'test:{prompt_embeds_input}////////////////')
                     model_pred = unet(
                         inp_noisy_latents if args.do_edm_style_training else noisy_model_input,
                         timesteps,
