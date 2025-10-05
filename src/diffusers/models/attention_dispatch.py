@@ -20,7 +20,10 @@ from enum import Enum
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Literal, Optional, Tuple, Union
 
 import torch
-import torch.distributed._functional_collectives as funcol
+
+
+if torch.distributed.is_available():
+    import torch.distributed._functional_collectives as funcol
 
 from ..utils import (
     get_logger,
