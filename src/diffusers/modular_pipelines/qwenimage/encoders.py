@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Dict, List, Optional, Union
 
 import PIL
 import torch
@@ -855,12 +855,6 @@ class QwenImageEditPlusProcessImagesInputStep(QwenImageProcessImagesInputStep):
     def inputs(self) -> List[InputParam]:
         return [InputParam("vae_image"), InputParam("image"), InputParam("height"), InputParam("width")]
 
-    @property
-    def intermediate_outputs(self) -> List[OutputParam]:
-        return super().intermediate_outputs + [
-            OutputParam(name="vae_image_sizes", type_hint=List[Tuple[int, int]]),
-        ]
-
     @torch.no_grad()
     def __call__(self, components: QwenImageModularPipeline, state: PipelineState):
         block_state = self.get_block_state(state)
@@ -879,18 +873,11 @@ class QwenImageEditPlusProcessImagesInputStep(QwenImageProcessImagesInputStep):
                 image=image, height=height, width=width
             )
         else:
-            vae_image_sizes = []
-            image = block_state.vae_image
-            for img in image:
-                width, height = img.size
-                vae_width, vae_height, _ = calculate_dimensions(self.vae_image_size, width / height)
-                vae_image_sizes.append((vae_width, vae_height))
-
-            block_state.vae_image_sizes = vae_image_sizes
-
             width, height = block_state.vae_image[0].size
+            image = block_state.vae_image
+
             block_state.processed_image = components.image_processor.preprocess(
-                image=image, height=vae_height, width=vae_width
+                image=image, height=height, width=width
             )
 
         self.set_block_state(state, block_state)

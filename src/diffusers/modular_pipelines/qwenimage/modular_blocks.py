@@ -18,7 +18,6 @@ from ..modular_pipeline_utils import InsertableDict
 from .before_denoise import (
     QwenImageControlNetBeforeDenoiserStep,
     QwenImageCreateMaskLatentsStep,
-    QwenImageEditPlusRoPEInputsStep,
     QwenImageEditRoPEInputsStep,
     QwenImagePrepareLatentsStep,
     QwenImagePrepareLatentsWithStrengthStep,
@@ -929,41 +928,17 @@ EDIT_PLUS_BLOCKS = InsertableDict(
         ("input", QwenImageEditInputStep()),
         ("prepare_latents", QwenImagePrepareLatentsStep()),
         ("set_timesteps", QwenImageSetTimestepsStep()),
-        ("prepare_rope_inputs", QwenImageEditPlusRoPEInputsStep()),
+        ("prepare_rope_inputs", QwenImageEditRoPEInputsStep()),
         ("denoise", QwenImageEditDenoiseStep()),
         ("decode", QwenImageDecodeStep()),
     ]
 )
 
 
-## 3.2 QwenImage-Edit Plus/auto before denoise
-# compose the steps into a BeforeDenoiseStep for edit tasks before combining into an auto step
-
-#### QwenImage-Edit/edit before denoise
-QwenImageEditPlusBeforeDenoiseBlocks = InsertableDict(
-    [
-        ("prepare_latents", QwenImagePrepareLatentsStep()),
-        ("set_timesteps", QwenImageSetTimestepsStep()),
-        # Different from QwenImage Edit.
-        ("prepare_rope_inputs", QwenImageEditPlusRoPEInputsStep()),
-    ]
-)
-
-
-class QwenImageEditPlusBeforeDenoiseStep(SequentialPipelineBlocks):
-    model_name = "qwenimage"
-    block_classes = QwenImageEditPlusBeforeDenoiseBlocks.values()
-    block_names = QwenImageEditPlusBeforeDenoiseBlocks.keys()
-
-    @property
-    def description(self):
-        return "Before denoise step that prepare the inputs (timesteps, latents, rope inputs etc.) for the denoise step for edit task."
-
-
 # auto before_denoise step for edit tasks
 class QwenImageEditPlusAutoBeforeDenoiseStep(AutoPipelineBlocks):
     model_name = "qwenimage-edit-plus"
-    block_classes = [QwenImageEditPlusBeforeDenoiseStep]
+    block_classes = [QwenImageEditBeforeDenoiseStep]
     block_names = ["edit"]
     block_trigger_inputs = ["image_latents"]
 
@@ -977,7 +952,7 @@ class QwenImageEditPlusAutoBeforeDenoiseStep(AutoPipelineBlocks):
         )
 
 
-## 3.3 QwenImage-Edit Plus/auto encoders
+## 3.2 QwenImage-Edit Plus/auto encoders
 
 
 class QwenImageEditPlusAutoVaeEncoderStep(AutoPipelineBlocks):
@@ -997,7 +972,7 @@ class QwenImageEditPlusAutoVaeEncoderStep(AutoPipelineBlocks):
         )
 
 
-## 3.4 QwenImage-Edit/auto blocks & presets
+## 3.3 QwenImage-Edit/auto blocks & presets
 
 
 class QwenImageEditPlusCoreDenoiseStep(SequentialPipelineBlocks):
