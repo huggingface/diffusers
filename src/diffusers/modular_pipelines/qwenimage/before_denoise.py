@@ -641,11 +641,11 @@ class QwenImageEditRoPEInputsStep(ModularPipelineBlocks):
 
 
 class QwenImageEditPlusRoPEInputsStep(QwenImageEditRoPEInputsStep):
-    model_name = "qwenimage"
+    model_name = "qwenimage-edit-plus"
     # TODO: Is there a better way to handle this name? It's used in
-    # `QwenImageEditPlusResizeDynamicStep` as well. We can later
+    # `QwenImageEditPlusProcessImagesInputStep` as well. We can later
     # keep these things as a module-level constant.
-    _image_size_output_name = "image_sizes"
+    _image_size_output_name = "vae_image_sizes"
 
     @property
     def inputs(self) -> List[InputParam]:

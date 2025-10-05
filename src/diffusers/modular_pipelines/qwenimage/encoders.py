@@ -350,28 +350,18 @@ class QwenImageEditPlusResizeDynamicStep(QwenImageEditResizeDynamicStep):
                 f"input_name and output_name must be strings but are {type(input_name)} and {type(output_name)}"
             )
         self.condition_image_size = 384 * 384
-        self.vae_image_size = 1024 * 1024
         self._image_input_name = input_name
         self._resized_image_output_name = output_name
         self._vae_image_output_name = vae_image_output_name
-        self._image_size_output_name = "image_sizes"
         super().__init__()
 
     @property
     def intermediate_outputs(self) -> List[OutputParam]:
-        return [
-            OutputParam(
-                name=self._resized_image_output_name, type_hint=List[PIL.Image.Image], description="The resized images"
-            ),
+        return super().intermediate_outputs + [
             OutputParam(
                 name=self._vae_image_output_name,
                 type_hint=List[PIL.Image.Image],
-                description="The images to be processed which will be used by the VAE encoder.",
-            ),
-            OutputParam(
-                name=self._image_size_output_name,
-                type_hint=List[Tuple[int, int]],
-                description="Sizes of images fed to the VAE encoder. To be used with RoPE.",
+                description="The images to be processed which will be further used by the VAE encoder.",
             ),
         ]
 
@@ -393,21 +383,17 @@ class QwenImageEditPlusResizeDynamicStep(QwenImageEditResizeDynamicStep):
 
         # TODO (sayakpaul): revisit this when the inputs are `torch.Tensor`s
         condition_images = []
-        vae_image_sizes = []
         vae_images = []
         for img in images:
             image_width, image_height = img.size
             condition_width, condition_height, _ = calculate_dimensions(
                 self.condition_image_size, image_width / image_height
             )
-            vae_width, vae_height, _ = calculate_dimensions(self.vae_image_size, image_width / image_height)
-            vae_image_sizes.append((vae_width, vae_height))
             condition_images.append(components.image_resize_processor.resize(img, condition_height, condition_width))
             vae_images.append(img)
 
         setattr(block_state, self._resized_image_output_name, condition_images)
         setattr(block_state, self._vae_image_output_name, vae_images)
-        setattr(block_state, self._image_size_output_name, vae_image_sizes)
         self.set_block_state(state, block_state)
         return components, state
 
@@ -859,6 +845,7 @@ class QwenImageProcessImagesInputStep(ModularPipelineBlocks):
 
 class QwenImageEditPlusProcessImagesInputStep(QwenImageProcessImagesInputStep):
     model_name = "qwenimage-edit-plus"
+    vae_image_size = 1024 * 1024
 
     @property
     def description(self) -> str:
@@ -867,6 +854,12 @@ class QwenImageEditPlusProcessImagesInputStep(QwenImageProcessImagesInputStep):
     @property
     def inputs(self) -> List[InputParam]:
         return [InputParam("vae_image"), InputParam("image"), InputParam("height"), InputParam("width")]
+
+    @property
+    def intermediate_outputs(self) -> List[OutputParam]:
+        return super().intermediate_outputs + [
+            OutputParam(name="vae_image_sizes", type_hint=List[Tuple[int, int]]),
+        ]
 
     @torch.no_grad()
     def __call__(self, components: QwenImageModularPipeline, state: PipelineState):
@@ -882,11 +875,23 @@ class QwenImageEditPlusProcessImagesInputStep(QwenImageProcessImagesInputStep):
             )
             height = block_state.height or components.default_height
             width = block_state.width or components.default_width
+            block_state.processed_image = components.image_processor.preprocess(
+                image=image, height=height, width=width
+            )
         else:
-            width, height = block_state.vae_image[0].size
+            vae_image_sizes = []
             image = block_state.vae_image
+            for img in image:
+                width, height = img.size
+                vae_width, vae_height, _ = calculate_dimensions(self.vae_image_size, width / height)
+                vae_image_sizes.append((vae_width, vae_height))
 
-        block_state.processed_image = components.image_processor.preprocess(image=image, height=height, width=width)
+            block_state.vae_image_sizes = vae_image_sizes
+
+            width, height = block_state.vae_image[0].size
+            block_state.processed_image = components.image_processor.preprocess(
+                image=image, height=vae_height, width=vae_width
+            )
 
         self.set_block_state(state, block_state)
         return components, state
