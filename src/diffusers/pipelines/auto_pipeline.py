@@ -95,6 +95,7 @@ from .qwenimage import (
     QwenImageControlNetPipeline,
     QwenImageEditInpaintPipeline,
     QwenImageEditPipeline,
+    QwenImageEditPlusPipeline,
     QwenImageImg2ImgPipeline,
     QwenImageInpaintPipeline,
     QwenImagePipeline,
@@ -186,6 +187,7 @@ AUTO_IMAGE2IMAGE_PIPELINES_MAPPING = OrderedDict(
         ("flux-kontext", FluxKontextPipeline),
         ("qwenimage", QwenImageImg2ImgPipeline),
         ("qwenimage-edit", QwenImageEditPipeline),
+        ("qwenimage-edit-plus", QwenImageEditPlusPipeline),
     ]
 )
 
@@ -407,12 +409,8 @@ class AutoPipelineForText2Image(ConfigMixin):
                 Load weights from a specified variant filename such as `"fp16"` or `"ema"`. This is ignored when
                 loading `from_flax`.
 
-        <Tip>
-
-        To use private or [gated](https://huggingface.co/docs/hub/models-gated#gated-models) models, log-in with `hf
-        auth login`.
-
-        </Tip>
+        > [!TIP] > To use private or [gated](https://huggingface.co/docs/hub/models-gated#gated-models) models, log-in
+        with `hf > auth login`.
 
         Examples:
 
@@ -702,12 +700,8 @@ class AutoPipelineForImage2Image(ConfigMixin):
                 Load weights from a specified variant filename such as `"fp16"` or `"ema"`. This is ignored when
                 loading `from_flax`.
 
-        <Tip>
-
-        To use private or [gated](https://huggingface.co/docs/hub/models-gated#gated-models) models, log-in with `hf
-        auth login`.
-
-        </Tip>
+        > [!TIP] > To use private or [gated](https://huggingface.co/docs/hub/models-gated#gated-models) models, log-in
+        with `hf > auth login`.
 
         Examples:
 
@@ -1012,12 +1006,8 @@ class AutoPipelineForInpainting(ConfigMixin):
                 Load weights from a specified variant filename such as `"fp16"` or `"ema"`. This is ignored when
                 loading `from_flax`.
 
-        <Tip>
-
-        To use private or [gated](https://huggingface.co/docs/hub/models-gated#gated-models) models, log-in with `hf
-        auth login`.
-
-        </Tip>
+        > [!TIP] > To use private or [gated](https://huggingface.co/docs/hub/models-gated#gated-models) models, log-in
+        with `hf > auth login`.
 
         Examples:
 
