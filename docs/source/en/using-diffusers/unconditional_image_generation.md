@@ -26,11 +26,8 @@ image = generator().images[0]
 image
 ```
 
-<Tip>
-
-Want to generate images of something else? Take a look at the training [guide](../training/unconditional_training) to learn how to train a model to generate your own images.
-
-</Tip>
+> [!TIP]
+> Want to generate images of something else? Take a look at the training [guide](../training/unconditional_training) to learn how to train a model to generate your own images.
 
 The output image is a [`PIL.Image`](https://pillow.readthedocs.io/en/stable/reference/Image.html?highlight=image#the-image-class) object that can be saved:
 

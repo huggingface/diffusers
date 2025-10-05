@@ -11,7 +11,7 @@ specific language governing permissions and limitations under the License. -->
 
 # Parallelism
 
-Parallelism strategies help speed up diffusion transformers by distributing computations across multiple devices, allowing for faster inference/training times.
+Parallelism strategies help speed up diffusion transformers by distributing computations across multiple devices, allowing for faster inference/training times. Refer to the [Distributed inferece](../training/distributed_inference) guide to learn more.
 
 ## ParallelConfig
 
