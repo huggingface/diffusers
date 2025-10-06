@@ -195,9 +195,6 @@ class FluxDenoiseLoopWrapper(LoopSequentialPipelineBlocks):
         block_state.num_warmup_steps = max(
             len(block_state.timesteps) - block_state.num_inference_steps * components.scheduler.order, 0
         )
-        # We set the index here to remove DtoH sync, helpful especially during compilation.
-        # Check out more details here: https://github.com/huggingface/diffusers/pull/11696
-        components.scheduler.set_begin_index(0)
         with self.progress_bar(total=block_state.num_inference_steps) as progress_bar:
             for i, t in enumerate(block_state.timesteps):
                 components, block_state = self.loop_step(components, block_state, i=i, t=t)
