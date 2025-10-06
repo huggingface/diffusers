@@ -103,7 +103,7 @@ class WanVACETransformerBlock(nn.Module):
             control_hidden_states = control_hidden_states + hidden_states
 
         shift_msa, scale_msa, gate_msa, c_shift_msa, c_scale_msa, c_gate_msa = (
-            self.scale_shift_table + temb.float()
+            self.scale_shift_table.to(temb.device) + temb.float()
         ).chunk(6, dim=1)
 
         # 1. Self-attention
@@ -361,7 +361,7 @@ class WanVACETransformer3DModel(
                     hidden_states = hidden_states + control_hint * scale
 
         # 6. Output norm, projection & unpatchify
-        shift, scale = (self.scale_shift_table + temb.unsqueeze(1)).chunk(2, dim=1)
+        shift, scale = (self.scale_shift_table.to(temb.device) + temb.unsqueeze(1)).chunk(2, dim=1)
 
         # Move the shift and scale tensors to the same device as hidden_states.
         # When using multi-GPU inference via accelerate these will be on the

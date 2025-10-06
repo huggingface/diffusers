@@ -1475,11 +1475,8 @@ class MatryoshkaFusedAttnProcessor2_0:
     fused projection layers. For self-attention modules, all projection matrices (i.e., query, key, value) are fused.
     For cross-attention modules, key and value projection matrices are fused.
 
-    <Tip warning={true}>
-
-    This API is currently 🧪 experimental in nature and can change in future.
-
-    </Tip>
+    > [!WARNING]
+    > This API is currently 🧪 experimental in nature and can change in future.
     """
 
     def __init__(self):
@@ -2696,11 +2693,8 @@ class MatryoshkaUNet2DConditionModel(
         Enables fused QKV projections. For self-attention modules, all projection matrices (i.e., query, key, value)
         are fused. For cross-attention modules, key and value projection matrices are fused.
 
-        <Tip warning={true}>
-
-        This API is 🧪 experimental.
-
-        </Tip>
+        > [!WARNING]
+        > This API is 🧪 experimental.
         """
         self.original_attn_processors = None
 
@@ -2719,11 +2713,8 @@ class MatryoshkaUNet2DConditionModel(
     def unfuse_qkv_projections(self):
         """Disables the fused QKV projection if enabled.
 
-        <Tip warning={true}>
-
-        This API is 🧪 experimental.
-
-        </Tip>
+        > [!WARNING]
+        > This API is 🧪 experimental.
 
         """
         if self.original_attn_processors is not None:
