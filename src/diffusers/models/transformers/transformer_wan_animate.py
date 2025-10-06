@@ -38,7 +38,7 @@ from .transformer_wan import (
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-class WanVACETransformerBlock(nn.Module):
+class WanAnimateTransformerBlock(nn.Module):
     def __init__(
         self,
         dim: int,
@@ -134,7 +134,7 @@ class WanVACETransformerBlock(nn.Module):
         return conditioning_states, control_hidden_states
 
 
-class WanVACETransformer3DModel(
+class WanAnimateTransformer3DModel(
     ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginalModelMixin, CacheMixin, AttentionMixin
 ):
     r"""
@@ -230,27 +230,10 @@ class WanVACETransformer3DModel(
         # 3. Transformer blocks
         self.blocks = nn.ModuleList(
             [
-                WanTransformerBlock(
+                WanAnimateTransformerBlock(
                     inner_dim, ffn_dim, num_attention_heads, qk_norm, cross_attn_norm, eps, added_kv_proj_dim
                 )
                 for _ in range(num_layers)
-            ]
-        )
-
-        self.vace_blocks = nn.ModuleList(
-            [
-                WanVACETransformerBlock(
-                    inner_dim,
-                    ffn_dim,
-                    num_attention_heads,
-                    qk_norm,
-                    cross_attn_norm,
-                    eps,
-                    added_kv_proj_dim,
-                    apply_input_projection=i == 0,  # Layer 0 always has input projection and is in vace_layers
-                    apply_output_projection=True,
-                )
-                for i in range(len(vace_layers))
             ]
         )
 
