@@ -35,6 +35,23 @@ from ..normalization import FP32LayerNorm
 logger = logging.get_logger(__name__)
 
 
+if torch.cuda.get_device_capability()[0] >= 9:
+    try:
+        from flash_attn_interface import flash_attn_func as FA
+    except:
+        FA = None
+        
+    try:
+        from flash_attn import flash_attn_func as FA
+    except:
+        FA = None
+else:
+    try:
+        from flash_attn import flash_attn_func as FA
+    except:
+        FA = None
+
+
 # @torch.compile()
 @torch.autocast(device_type="cuda", dtype=torch.float32)
 def apply_scale_shift_norm(norm, x, scale, shift):
@@ -99,7 +116,7 @@ class VisualEmbeddings(nn.Module):
         super().__init__()
         self.patch_size = patch_size
         self.in_layer = nn.Linear(math.prod(patch_size) * visual_dim, model_dim)
-
+    
     def forward(self, x):
         batch_size, duration, height, width, dim = x.shape
         x = (
@@ -107,7 +124,7 @@ class VisualEmbeddings(nn.Module):
                 batch_size,
                 duration // self.patch_size[0],
                 self.patch_size[0],
-                height // self.patch_size[1],
+                height // self.patch_size[1], 
                 self.patch_size[1],
                 width // self.patch_size[2],
                 self.patch_size[2],
@@ -169,24 +186,23 @@ class RoPE3D(nn.Module):
     @torch.autocast(device_type="cuda", enabled=False)
     def forward(self, shape, pos, scale_factor=(1.0, 1.0, 1.0)):
         batch_size, duration, height, width = shape
+        
         args_t = self.args_0[pos[0]] / scale_factor[0]
         args_h = self.args_1[pos[1]] / scale_factor[1]
         args_w = self.args_2[pos[2]] / scale_factor[2]
 
-        # Replicate the original logic with batch dimension
         args_t_expanded = args_t.view(1, duration, 1, 1, -1).expand(batch_size, -1, height, width, -1)
         args_h_expanded = args_h.view(1, 1, height, 1, -1).expand(batch_size, duration, -1, width, -1)
         args_w_expanded = args_w.view(1, 1, 1, width, -1).expand(batch_size, duration, height, -1, -1)
 
-        # Concatenate along the last dimension
-        args = torch.cat([args_t_expanded, args_h_expanded, args_w_expanded], dim=-1)  # [B, D, H, W, F]
+        args = torch.cat([args_t_expanded, args_h_expanded, args_w_expanded], dim=-1)
         
         cosine = torch.cos(args)
         sine = torch.sin(args)
-        rope = torch.stack([cosine, -sine, sine, cosine], dim=-1)  # [B, D, H, W, F, 4]
-        rope = rope.view(*rope.shape[:-1], 2, 2)  # [B, D, H, W, F, 2, 2]
-        return rope.unsqueeze(-4)  # [B, D, H, 1, W, F, 2, 2]
-    
+        rope = torch.stack([cosine, -sine, sine, cosine], dim=-1)
+        rope = rope.view(*rope.shape[:-1], 2, 2)
+        return rope.unsqueeze(-4)
+
 
 class Modulation(nn.Module):
     def __init__(self, time_dim, model_dim, num_params):
@@ -230,11 +246,14 @@ class MultiheadSelfAttentionEnc(nn.Module):
         key = apply_rotary(key, rope).type_as(key)
 
         # Use torch's scaled_dot_product_attention
-        out = F.scaled_dot_product_attention(
-            query,
-            key,
-            value,
-        ).flatten(-2, -1)
+        # print(query.shape, key.shape, value.shape, "QKV MultiheadSelfAttentionEnc SHAPE")
+        # out = F.scaled_dot_product_attention(
+        #     query.permute(0, 2, 1, 3),
+        #     key.permute(0, 2, 1, 3),
+        #     value.permute(0, 2, 1, 3),
+        # ).permute(0, 2, 1, 3).flatten(-2, -1)
+        
+        out = FA(q=query, k=key, v=value).flatten(-2, -1)
 
         out = self.out_layer(out)
         return out
@@ -270,11 +289,15 @@ class MultiheadSelfAttentionDec(nn.Module):
         key = apply_rotary(key, rope).type_as(key)
 
         # Use standard attention (can be extended with sparse attention)
-        out = F.scaled_dot_product_attention(
-            query,
-            key,
-            value,
-        ).flatten(-2, -1)
+        # out = F.scaled_dot_product_attention(
+        #     query.permute(0, 2, 1, 3),
+        #     key.permute(0, 2, 1, 3),
+        #     value.permute(0, 2, 1, 3),
+        # ).permute(0, 2, 1, 3).flatten(-2, -1)
+        
+        # print(query.shape, key.shape, value.shape, "QKV MultiheadSelfAttentionDec SHAPE")
+        
+        out = FA(q=query, k=key, v=value).flatten(-2, -1)
 
         out = self.out_layer(out)
         return out
@@ -306,11 +329,15 @@ class MultiheadCrossAttention(nn.Module):
         query = self.query_norm(query.float()).type_as(query)
         key = self.key_norm(key.float()).type_as(key)
         
-        out = F.scaled_dot_product_attention(
-            query.permute(0, 2, 1, 3),
-            key.permute(0, 2, 1, 3),
-            value.permute(0, 2, 1, 3),
-        ).permute(0, 2, 1, 3).flatten(-2, -1)
+        # out = F.scaled_dot_product_attention(
+        #     query.permute(0, 2, 1, 3),
+        #     key.permute(0, 2, 1, 3),
+        #     value.permute(0, 2, 1, 3),
+        # ).permute(0, 2, 1, 3).flatten(-2, -1)
+        
+        # print(query.shape, key.shape, value.shape, "QKV MultiheadCrossAttention SHAPE")
+
+        out = FA(q=query, k=key, v=value).flatten(-2, -1)
 
         out = self.out_layer(out)
         return out
@@ -339,19 +366,18 @@ class TransformerEncoderBlock(nn.Module):
         self.feed_forward = FeedForward(model_dim, ff_dim)
 
     def forward(self, x, time_embed, rope):
-        self_attn_params, ff_params = torch.chunk(self.text_modulation(time_embed), 2, dim=-1)
+        self_attn_params, ff_params = torch.chunk(
+            self.text_modulation(time_embed).unsqueeze(dim=1), 2, dim=-1
+        )
         shift, scale, gate = torch.chunk(self_attn_params, 3, dim=-1)
-        
-        out = self.self_attention_norm(x)
-        out = out * (scale + 1.0) + shift
+        out = apply_scale_shift_norm(self.self_attention_norm, x, scale, shift)
         out = self.self_attention(out, rope)
-        x = x + gate * out
+        x = apply_gate_sum(x, out, gate)
 
         shift, scale, gate = torch.chunk(ff_params, 3, dim=-1)
-        out = self.feed_forward_norm(x)
-        out = out * (scale + 1.0) + shift
+        out = apply_scale_shift_norm(self.feed_forward_norm, x, scale, shift)
         out = self.feed_forward(out)
-        x = x + gate * out
+        x = apply_gate_sum(x, out, gate)
         return x
 
 
@@ -371,26 +397,22 @@ class TransformerDecoderBlock(nn.Module):
 
     def forward(self, visual_embed, text_embed, time_embed, rope, sparse_params):
         self_attn_params, cross_attn_params, ff_params = torch.chunk(
-            self.visual_modulation(time_embed), 3, dim=-1
+            self.visual_modulation(time_embed).unsqueeze(dim=1), 3, dim=-1
         )
         shift, scale, gate = torch.chunk(self_attn_params, 3, dim=-1)
-        
-        visual_out = self.self_attention_norm(visual_embed)
-        visual_out = visual_out * (scale + 1.0) + shift
+        visual_out = apply_scale_shift_norm(self.self_attention_norm, visual_embed, scale, shift)
         visual_out = self.self_attention(visual_out, rope, sparse_params)
-        visual_embed = visual_embed + gate * visual_out
+        visual_embed = apply_gate_sum(visual_embed, visual_out, gate)
 
         shift, scale, gate = torch.chunk(cross_attn_params, 3, dim=-1)
-        visual_out = self.cross_attention_norm(visual_embed)
-        visual_out = visual_out * (scale + 1.0) + shift
+        visual_out = apply_scale_shift_norm(self.cross_attention_norm, visual_embed, scale, shift)
         visual_out = self.cross_attention(visual_out, text_embed)
-        visual_embed = visual_embed + gate * visual_out
+        visual_embed = apply_gate_sum(visual_embed, visual_out, gate)
 
         shift, scale, gate = torch.chunk(ff_params, 3, dim=-1)
-        visual_out = self.feed_forward_norm(visual_embed)
-        visual_out = visual_out * (scale + 1.0) + shift
+        visual_out = apply_scale_shift_norm(self.feed_forward_norm, visual_embed, scale, shift)
         visual_out = self.feed_forward(visual_out)
-        visual_embed = visual_embed + gate * visual_out
+        visual_embed = apply_gate_sum(visual_embed, visual_out, gate)
         return visual_embed
 
 
@@ -575,7 +597,7 @@ class Kandinsky5Transformer3DModel(ModelMixin, ConfigMixin):
         # 1. Process text embeddings
         text_embed = self.text_embeddings(encoder_hidden_states)
         time_embed = self.time_embeddings(timestep)
-        
+
         # Add pooled text embedding to time embedding
         pooled_embed = self.pooled_text_embeddings(pooled_text_embed)
         time_embed = time_embed + pooled_embed
@@ -587,22 +609,29 @@ class Kandinsky5Transformer3DModel(ModelMixin, ConfigMixin):
         text_rope = self.text_rope_embeddings(text_rope_pos)
 
         # 4. Text transformer blocks
+        i = 0
         for text_block in self.text_transformer_blocks:
             if self.gradient_checkpointing and self.training:
                 text_embed = torch.utils.checkpoint.checkpoint(
                     text_block, text_embed, time_embed, text_rope, use_reentrant=False
                 )
+                
             else:
                 text_embed = text_block(text_embed, time_embed, text_rope)
+
+            i += 1
 
         # 5. Prepare visual rope
         visual_shape = visual_embed.shape[:-1]
         visual_rope = self.visual_rope_embeddings(visual_shape, visual_rope_pos, scale_factor)
+                
+        # visual_embed = visual_embed.reshape(visual_embed.shape[0], -1, visual_embed.shape[-1])
+        # visual_rope = visual_rope.view(visual_rope.shape[0], -1, *list(visual_rope.shape[-4:]))
+        visual_embed = visual_embed.flatten(1, 3)
+        visual_rope = visual_rope.flatten(1, 3)
         
-        visual_embed = visual_embed.reshape(visual_embed.shape[0], -1, visual_embed.shape[-1])
-        visual_rope = visual_rope.view(visual_rope.shape[0], -1, *list(visual_rope.shape[-4:]))
-
         # 6. Visual transformer blocks
+        i = 0
         for visual_block in self.visual_transformer_blocks:
             if self.gradient_checkpointing and self.training:
                 visual_embed = torch.utils.checkpoint.checkpoint(
@@ -619,6 +648,8 @@ class Kandinsky5Transformer3DModel(ModelMixin, ConfigMixin):
                 visual_embed = visual_block(
                     visual_embed, text_embed, time_embed, visual_rope, sparse_params
                 )
+                
+                i += 1
 
         # 7. Output projection
         visual_embed = visual_embed.reshape(batch_size, num_frames, height // 2, width // 2, -1)

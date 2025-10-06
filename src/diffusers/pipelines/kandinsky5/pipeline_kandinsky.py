@@ -220,19 +220,14 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
     ):
         device = device or self._execution_device
 
-        # Encode with Qwen2.5-VL
-        prompt_embeds, prompt_cu_seqlens = self._encode_prompt_qwen(
-            prompt, device, num_videos_per_prompt
-        )
+        prompt_embeds, prompt_cu_seqlens = self._encode_prompt_qwen(prompt, device, num_videos_per_prompt)
         pooled_embed = self._encode_prompt_clip(prompt, device, num_videos_per_prompt)
 
         if do_classifier_free_guidance:
             negative_prompt = negative_prompt or ""
             negative_prompt = [negative_prompt] if isinstance(negative_prompt, str) else negative_prompt
             
-            negative_prompt_embeds, negative_cu_seqlens = self._encode_prompt_qwen(
-                negative_prompt, device, num_videos_per_prompt
-            )
+            negative_prompt_embeds, negative_cu_seqlens = self._encode_prompt_qwen(negative_prompt, device, num_videos_per_prompt)
             negative_pooled_embed = self._encode_prompt_clip(negative_prompt, device, num_videos_per_prompt)
         else:
             negative_prompt_embeds = None
@@ -264,23 +259,25 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
         latents: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         if latents is not None:
-            return latents.to(device=device, dtype=dtype)
+            num_latent_frames = latents.shape[1]
+            latents = latents.to(device=device, dtype=dtype)
 
-        num_latent_frames = (num_frames - 1) // self.vae_scale_factor_temporal + 1
-        shape = (
-            batch_size,
-            num_latent_frames,
-            int(height) // self.vae_scale_factor_spatial,
-            int(width) // self.vae_scale_factor_spatial,
-            num_channels_latents,
-        )
-        if isinstance(generator, list) and len(generator) != batch_size:
-            raise ValueError(
-                f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
-                f" size of {batch_size}. Make sure the batch size matches the length of the generators."
+        else:
+            num_latent_frames = (num_frames - 1) // self.vae_scale_factor_temporal + 1
+            shape = (
+                batch_size,
+                num_latent_frames,
+                int(height) // self.vae_scale_factor_spatial,
+                int(width) // self.vae_scale_factor_spatial,
+                num_channels_latents,
             )
+            if isinstance(generator, list) and len(generator) != batch_size:
+                raise ValueError(
+                    f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
+                    f" size of {batch_size}. Make sure the batch size matches the length of the generators."
+                )
 
-        latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
+            latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
                             
         if visual_cond:
             # For visual conditioning, concatenate with zeros and mask
@@ -294,50 +291,6 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
 
         return latents
 
-    def get_velocity(
-        self,
-        latents: torch.Tensor,
-        timestep: torch.Tensor,
-        text_embeds: Dict[str, torch.Tensor],
-        negative_text_embeds: Optional[Dict[str, torch.Tensor]],
-        visual_rope_pos: List[torch.Tensor],
-        text_rope_pos: torch.Tensor,
-        negative_text_rope_pos: torch.Tensor,
-        guidance_scale: float,
-        sparse_params: Optional[Dict] = None,
-    ):
-        # print(latents.shape, text_embeds["text_embeds"].shape, text_embeds["pooled_embed"].shape, timestep.shape, [el.shape for el in visual_rope_pos], text_rope_pos, sparse_params)
-
-        pred_velocity = self.transformer(
-            latents,
-            text_embeds["text_embeds"],
-            text_embeds["pooled_embed"],
-            timestep * 1000,  # Scale to match training
-            visual_rope_pos,
-            text_rope_pos,
-            scale_factor=(1, 2, 2),  # From Kandinsky config
-            sparse_params=sparse_params,
-            return_dict=False
-        )[0]
-
-        if guidance_scale > 1.0 and negative_text_embeds is not None:
-            uncond_pred_velocity = self.transformer(
-                latents,
-                negative_text_embeds["text_embeds"],
-                negative_text_embeds["pooled_embed"],
-                timestep * 1000,
-                visual_rope_pos,
-                negative_text_rope_pos,
-                scale_factor=(1, 2, 2),
-                sparse_params=sparse_params,
-                return_dict=False
-            )[0]
-            
-            pred_velocity = uncond_pred_velocity + guidance_scale * (
-                pred_velocity - uncond_pred_velocity
-            )
-
-        return pred_velocity
 
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
@@ -402,11 +355,9 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
                 indicating whether the corresponding generated image contains "not-safe-for-work" (nsfw) content.
         """
 
-        # 1. Check inputs
         if height % 16 != 0 or width % 16 != 0:
             raise ValueError(f"`height` and `width` have to be divisible by 16 but are {height} and {width}.")
 
-        # 2. Define call parameters
         if isinstance(prompt, str):
             batch_size = 1
         else:
@@ -415,16 +366,18 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
         device = self._execution_device
         do_classifier_free_guidance = guidance_scale > 1.0
         
-        
         if num_frames % self.vae_scale_factor_temporal != 1:
             logger.warning(
                 f"`num_frames - 1` has to be divisible by {self.vae_scale_factor_temporal}. Rounding to the nearest number."
             )
             num_frames = num_frames // self.vae_scale_factor_temporal * self.vae_scale_factor_temporal + 1
         num_frames = max(num_frames, 1)
+        
+        self.scheduler.set_timesteps(num_inference_steps, device=device)
+        timesteps = self.scheduler.timesteps
+        
+        num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
 
-
-        # 3. Encode input prompt
         text_embeds, negative_text_embeds, prompt_cu_seqlens, negative_cu_seqlens = self.encode_prompt(
             prompt=prompt,
             negative_prompt=negative_prompt,
@@ -433,11 +386,6 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
             device=device,
         )
 
-        # 4. Prepare timesteps (Kandinsky uses custom flow matching)
-        timesteps = torch.linspace(1, 0, num_inference_steps + 1, device=device)
-        timesteps = scheduler_scale * timesteps / (1 + (scheduler_scale - 1) * timesteps)
-
-        # 5. Prepare latent variables
         num_channels_latents = 16
         latents = self.prepare_latents(
             batch_size=batch_size * num_videos_per_prompt,
@@ -451,11 +399,12 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
             generator=generator,
             latents=latents,
         )
+        
+        visual_cond = latents[:, :, :, :, 16:]
 
-        # 6. Prepare rope positions
         visual_rope_pos = [
             torch.arange(num_frames // 4 + 1, device=device),
-            torch.arange(height // 8 // 2, device=device),  # patch size 2
+            torch.arange(height // 8 // 2, device=device),
             torch.arange(width // 8 // 2, device=device),
         ]
         
@@ -467,31 +416,43 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
             else None
         )
 
-        # 7. Prepare sparse attention params if needed
-        sparse_params = None  # Can be extended based on Kandinsky attention config
-
-        # 8. Denoising loop
-        num_warmup_steps = len(timesteps) - num_inference_steps
-
         with self.progress_bar(total=num_inference_steps) as progress_bar:
-            for i, (timestep, timestep_diff) in enumerate(zip(timesteps[:-1], torch.diff(timesteps))):
-                # Expand timestep to match batch size
-                time = timestep.unsqueeze(0)
+            for i, t in enumerate(timesteps):
+                timestep = t.unsqueeze(0)
 
-                pred_velocity = self.get_velocity(
-                    latents,
-                    time,
-                    text_embeds,
-                    negative_text_embeds,
-                    visual_rope_pos,
-                    text_rope_pos,
-                    negative_text_rope_pos,
-                    guidance_scale,
-                    sparse_params,
-                )
+                with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
+                    # print(latents.shape)
+                    pred_velocity = self.transformer(
+                        latents,
+                        text_embeds["text_embeds"],
+                        text_embeds["pooled_embed"],
+                        timestep,
+                        visual_rope_pos,
+                        text_rope_pos,
+                        scale_factor=(1, 2, 2), 
+                        sparse_params=None,
+                        return_dict=False
+                    )[0]
+                    
+                    if guidance_scale > 1.0 and negative_text_embeds is not None:
+                        uncond_pred_velocity = self.transformer(
+                            latents,
+                            negative_text_embeds["text_embeds"],
+                            negative_text_embeds["pooled_embed"],
+                            timestep,
+                            visual_rope_pos,
+                            negative_text_rope_pos,
+                            scale_factor=(1, 2, 2),
+                            sparse_params=None,
+                            return_dict=False
+                        )[0]
 
-                # Update latents using flow matching                
-                latents[:, :, :, :, :16] = latents[:, :, :, :, :16] + timestep_diff * pred_velocity
+                        pred_velocity = uncond_pred_velocity + guidance_scale * (
+                            pred_velocity - uncond_pred_velocity
+                        )
+                
+                latents = self.scheduler.step(pred_velocity, t, latents[:, :, :, :, :16], return_dict=False)[0]
+                latents = torch.cat([latents, visual_cond], dim=-1)
 
                 if callback_on_step_end is not None:
                     callback_kwargs = {}
@@ -499,8 +460,8 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
                         callback_kwargs[k] = locals()[k]
                     callback_outputs = callback_on_step_end(self, i, timestep, callback_kwargs)
                     latents = callback_outputs.pop("latents", latents)
-
-                if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % 1 == 0):
+                
+                if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                     progress_bar.update()
                     
         latents = latents[:, :, :, :, :16]
@@ -524,7 +485,6 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
             video = video / self.vae.config.scaling_factor
             video = self.vae.decode(video).sample
             video = ((video.clamp(-1.0, 1.0) + 1.0) * 127.5).to(torch.uint8)
-            
             # Convert to output format
             if output_type == "pil":
                 if num_frames == 1:
@@ -533,6 +493,7 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
                 else:
                     # Video frames
                     video = [video[i] for i in range(video.shape[0])]
+
         else:
             video = latents
 
