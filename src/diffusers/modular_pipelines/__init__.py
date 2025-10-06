@@ -53,6 +53,8 @@ else:
         "QwenImageModularPipeline",
         "QwenImageEditModularPipeline",
         "QwenImageEditAutoBlocks",
+        "QwenImageEditPlusModularPipeline",
+        "QwenImageEditPlusAutoBlocks",
     ]
     _import_structure["components_manager"] = ["ComponentsManager"]
 
@@ -79,6 +81,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             QwenImageAutoBlocks,
             QwenImageEditAutoBlocks,
             QwenImageEditModularPipeline,
+            QwenImageEditPlusAutoBlocks,
+            QwenImageEditPlusModularPipeline,
             QwenImageModularPipeline,
         )
         from .stable_diffusion_xl import StableDiffusionXLAutoBlocks, StableDiffusionXLModularPipeline
