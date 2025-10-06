@@ -36,4 +36,5 @@ if is_torch_available():
     from .transformer_skyreels_v2 import SkyReelsV2Transformer3DModel
     from .transformer_temporal import TransformerTemporalModel
     from .transformer_wan import WanTransformer3DModel
+    from .transformer_wan_animate import WanAnimateTransformer3DModel
     from .transformer_wan_vace import WanVACETransformer3DModel

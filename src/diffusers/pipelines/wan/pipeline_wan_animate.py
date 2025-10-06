@@ -326,7 +326,6 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
         negative_prompt_embeds=None,
         image_embeds=None,
         callback_on_step_end_tensor_inputs=None,
-        guidance_scale_2=None,
     ):
         if image is not None and image_embeds is not None:
             raise ValueError(
@@ -369,12 +368,6 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
             not isinstance(negative_prompt, str) and not isinstance(negative_prompt, list)
         ):
             raise ValueError(f"`negative_prompt` has to be of type `str` or `list` but is {type(negative_prompt)}")
-
-        if self.config.boundary_ratio is None and guidance_scale_2 is not None:
-            raise ValueError("`guidance_scale_2` is only supported when the pipeline's `boundary_ratio` is not None.")
-
-        if self.config.boundary_ratio is not None and image_embeds is not None:
-            raise ValueError("Cannot forward `image_embeds` when the pipeline's `boundary_ratio` is not configured.")
 
     def prepare_latents(
         self,
@@ -613,7 +606,6 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
             negative_prompt_embeds,
             image_embeds,
             callback_on_step_end_tensor_inputs,
-            guidance_scale_2,
         )
 
         if num_frames % self.vae_scale_factor_temporal != 1:
@@ -623,11 +615,7 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
             num_frames = num_frames // self.vae_scale_factor_temporal * self.vae_scale_factor_temporal + 1
         num_frames = max(num_frames, 1)
 
-        if self.config.boundary_ratio is not None and guidance_scale_2 is None:
-            guidance_scale_2 = guidance_scale
-
         self._guidance_scale = guidance_scale
-        self._guidance_scale_2 = guidance_scale_2
         self._attention_kwargs = attention_kwargs
         self._current_timestep = None
         self._interrupt = False
@@ -655,7 +643,7 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
         )
 
         # Encode image embedding
-        transformer_dtype = self.transformer.dtype if self.transformer is not None else self.transformer_2.dtype
+        transformer_dtype = self.transformer.dtype
         prompt_embeds = prompt_embeds.to(transformer_dtype)
         if negative_prompt_embeds is not None:
             negative_prompt_embeds = negative_prompt_embeds.to(transformer_dtype)
@@ -695,20 +683,11 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
             latents,
             last_image,
         )
-        if self.config.expand_timesteps:
-            # wan 2.2 5b i2v use firt_frame_mask to mask timesteps
-            latents, condition, first_frame_mask = latents_outputs
-        else:
-            latents, condition = latents_outputs
+        latents, condition = latents_outputs
 
         # 6. Denoising loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
         self._num_timesteps = len(timesteps)
-
-        if self.config.boundary_ratio is not None:
-            boundary_timestep = self.config.boundary_ratio * self.scheduler.config.num_train_timesteps
-        else:
-            boundary_timestep = None
 
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
@@ -717,26 +696,11 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
 
                 self._current_timestep = t
 
-                if boundary_timestep is None or t >= boundary_timestep:
-                    # wan2.1 or high-noise stage in wan2.2
-                    current_model = self.transformer
-                    current_guidance_scale = guidance_scale
-                else:
-                    # low-noise stage in wan2.2
-                    current_model = self.transformer_2
-                    current_guidance_scale = guidance_scale_2
+                current_model = self.transformer
+                current_guidance_scale = guidance_scale
 
-                if self.config.expand_timesteps:
-                    latent_model_input = (1 - first_frame_mask) * condition + first_frame_mask * latents
-                    latent_model_input = latent_model_input.to(transformer_dtype)
-
-                    # seq_len: num_latent_frames * (latent_height // patch_size) * (latent_width // patch_size)
-                    temp_ts = (first_frame_mask[0][0][:, ::2, ::2] * t).flatten()
-                    # batch_size, seq_len
-                    timestep = temp_ts.unsqueeze(0).expand(latents.shape[0], -1)
-                else:
-                    latent_model_input = torch.cat([latents, condition], dim=1).to(transformer_dtype)
-                    timestep = t.expand(latents.shape[0])
+                latent_model_input = torch.cat([latents, condition], dim=1).to(transformer_dtype)
+                timestep = t.expand(latents.shape[0])
 
                 with current_model.cache_context("cond"):
                     noise_pred = current_model(
@@ -781,9 +745,6 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
                     xm.mark_step()
 
         self._current_timestep = None
-
-        if self.config.expand_timesteps:
-            latents = (1 - first_frame_mask) * condition + first_frame_mask * latents
 
         if not output_type == "latent":
             latents = latents.to(self.vae.dtype)

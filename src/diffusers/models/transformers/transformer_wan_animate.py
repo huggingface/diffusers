@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import math
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
@@ -31,7 +31,6 @@ from .transformer_wan import (
     WanAttnProcessor,
     WanRotaryPosEmbed,
     WanTimeTextImageEmbedding,
-    WanTransformerBlock,
 )
 
 
@@ -198,23 +197,15 @@ class WanAnimateTransformer3DModel(
         added_kv_proj_dim: Optional[int] = None,
         rope_max_seq_len: int = 1024,
         pos_embed_seq_len: Optional[int] = None,
-        vace_layers: List[int] = [0, 5, 10, 15, 20, 25, 30, 35],
-        vace_in_channels: int = 96,
     ) -> None:
         super().__init__()
 
         inner_dim = num_attention_heads * attention_head_dim
         out_channels = out_channels or in_channels
 
-        if max(vace_layers) >= num_layers:
-            raise ValueError(f"VACE layers {vace_layers} exceed the number of transformer layers {num_layers}.")
-        if 0 not in vace_layers:
-            raise ValueError("VACE layers must include layer 0.")
-
         # 1. Patch & position embedding
         self.rope = WanRotaryPosEmbed(attention_head_dim, patch_size, rope_max_seq_len)
         self.patch_embedding = nn.Conv3d(in_channels, inner_dim, kernel_size=patch_size, stride=patch_size)
-        self.vace_patch_embedding = nn.Conv3d(vace_in_channels, inner_dim, kernel_size=patch_size, stride=patch_size)
 
         # 2. Condition embeddings
         # image_embedding_dim=1280 for I2V model
