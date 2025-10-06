@@ -186,6 +186,23 @@ class FluxCoreDenoiseStep(SequentialPipelineBlocks):
         )
 
 
+class FluxKontextCoreDenoiseStep(SequentialPipelineBlocks):
+    block_classes = [FluxKontextInputStep, FluxKontextAutoBeforeDenoiseStep, FluxKontextAutoDenoiseStep]
+    block_names = ["input", "before_denoise", "denoise"]
+
+    @property
+    def description(self):
+        return (
+            "Core step that performs the denoising process for Flux Kontext. \n"
+            + " - `FluxKontextInputStep` (input) standardizes the inputs for the denoising step.\n"
+            + " - `FluxKontextAutoBeforeDenoiseStep` (before_denoise) prepares the inputs for the denoising step.\n"
+            + " - `FluxKontextAutoDenoiseStep` (denoise) iteratively denoises the latents.\n"
+            + "This step support text-to-image and image-to-image tasks for Flux Kontext:\n"
+            + " - for image-to-image generation, you need to provide `image_latents`\n"
+            + " - for text-to-image generation, all you need to provide is prompt embeddings"
+        )
+
+
 # text2image
 class FluxAutoBlocks(SequentialPipelineBlocks):
     block_classes = [FluxTextEncoderStep, FluxAutoVaeEncoderStep, FluxCoreDenoiseStep, FluxAutoDecodeStep]
@@ -204,11 +221,10 @@ class FluxAutoBlocks(SequentialPipelineBlocks):
 class FluxKontextAutoBlocks(SequentialPipelineBlocks):
     block_classes = [
         FluxTextEncoderStep,
-        FluxKontextAutoBeforeDenoiseStep,
-        FluxKontextAutoDenoiseStep,
+        FluxKontextCoreDenoiseStep,
         FluxAutoDecodeStep,
     ]
-    block_names = ["text_encoder", "before_denoise", "denoise", "decoder"]
+    block_names = ["text_encoder", "denoise", "decoder"]
 
     @property
     def description(self):
@@ -256,7 +272,7 @@ AUTO_BLOCKS_KONTEXT = InsertableDict(
         ("input", FluxKontextInputStep),
         ("prepare_latents", FluxKontextPrepareLatentsStep),
         ("set_timesteps", FluxSetTimestepsStep),
-        ("denoise", FluxKontextDenoiseStep),
+        ("denoise", FluxKontextCoreDenoiseStep),
         ("decode", FluxDecodeStep),
     ]
 )
