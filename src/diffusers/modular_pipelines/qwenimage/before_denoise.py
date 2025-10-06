@@ -203,7 +203,6 @@ class QwenImagePrepareLatentsStep(ModularPipelineBlocks):
         block_state.latents = components.pachifier.pack_latents(block_state.latents)
 
         self.set_block_state(state, block_state)
-
         return components, state
 
 
@@ -571,7 +570,7 @@ class QwenImageEditRoPEInputsStep(ModularPipelineBlocks):
 
     @property
     def description(self) -> str:
-        return "Step that prepares the RoPE inputs for denoising process. This is used in QwenImage Edit. Should be place after prepare_latents step"
+        return "Step that prepares the RoPE inputs for denoising process. This is used in QwenImage Edit. Should be placed after prepare_latents step"
 
     @property
     def inputs(self) -> List[InputParam]:
