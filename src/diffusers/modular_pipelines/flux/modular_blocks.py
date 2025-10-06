@@ -149,7 +149,7 @@ class FluxAutoBlocks(SequentialPipelineBlocks):
         FluxCoreDenoiseStep,
         FluxAutoDecodeStep,
     ]
-    block_names = ["text_encoder", "image_encoder", "denoise", "decoder"]
+    block_names = ["text_encoder", "image_encoder", "denoise", "decode"]
 
     @property
     def description(self):
