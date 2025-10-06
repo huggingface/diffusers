@@ -83,12 +83,16 @@ if DIFFUSERS_ENABLE_HUB_KERNELS:
         raise ImportError(
             "To use FA3 kernel for your hardware from the Hub, the `kernels` library must be installed. Install with `pip install kernels`."
         )
-    from ..utils.kernels_utils import _get_fa3_from_hub
+    from ..utils.kernels_utils import _DEFAULT_HUB_ID_FA3, _DEFAULT_HUB_ID_SAGE, _get_kernel_from_hub
 
-    flash_attn_interface_hub = _get_fa3_from_hub()
+    flash_attn_interface_hub = _get_kernel_from_hub(_DEFAULT_HUB_ID_FA3)
     flash_attn_3_func_hub = flash_attn_interface_hub.flash_attn_func
+
+    sage_interface_hub = _get_kernel_from_hub(_DEFAULT_HUB_ID_SAGE)
+    sage_attn_func_hub = sage_interface_hub.sageattn
 else:
     flash_attn_3_func_hub = None
+    sage_attn_func_hub = None
 
 if _CAN_USE_SAGE_ATTN:
     from sageattention import (
@@ -190,6 +194,7 @@ class AttentionBackendName(str, Enum):
 
     # `sageattention`
     SAGE = "sage"
+    SAGE_HUB = "sage_hub"
     SAGE_VARLEN = "sage_varlen"
     _SAGE_QK_INT8_PV_FP8_CUDA = "_sage_qk_int8_pv_fp8_cuda"
     _SAGE_QK_INT8_PV_FP8_CUDA_SM90 = "_sage_qk_int8_pv_fp8_cuda_sm90"
@@ -1752,6 +1757,39 @@ def _sage_attention(
         )
         if return_lse:
             out, lse = out
+
+    return (out, lse) if return_lse else out
+
+
+@_AttentionBackendRegistry.register(
+    AttentionBackendName.SAGE_HUB,
+    constraints=[_check_device_cuda, _check_qkv_dtype_bf16_or_fp16, _check_shape],
+    supports_context_parallel=False,
+)
+def _sage_attention_hub(
+    query: torch.Tensor,
+    key: torch.Tensor,
+    value: torch.Tensor,
+    is_causal: bool = False,
+    scale: Optional[float] = None,
+    return_lse: bool = False,
+    _parallel_config: Optional["ParallelConfig"] = None,
+) -> torch.Tensor:
+    lse = None
+    if _parallel_config is None:
+        out = sage_attn_func_hub(
+            q=query,
+            k=key,
+            v=value,
+            tensor_layout="NHD",
+            is_causal=is_causal,
+            sm_scale=scale,
+            return_lse=return_lse,
+        )
+        if return_lse:
+            out, lse, *_ = out
+    else:
+        raise NotImplementedError("SAGE attention doesn't yet support parallelism.")
 
     return (out, lse) if return_lse else out
 
