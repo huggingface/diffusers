@@ -132,9 +132,8 @@ jobs:
         run: |
           python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
           python -m uv pip install -e [quality,test]
-          # Stopping this update temporarily until the Hub RC is fully shipped and integrated.
-          # pip uninstall accelerate -y && python -m uv pip install -U accelerate@git+https://github.com/huggingface/accelerate.git
-          # pip uninstall transformers -y && python -m uv pip install -U transformers@git+https://github.com/huggingface/transformers.git --no-deps
+          pip uninstall accelerate -y && python -m uv pip install -U accelerate@git+https://github.com/huggingface/accelerate.git
+          pip uninstall transformers -y && pip uninstall huggingface_hub -y && python -m uv pip install --prerelease allow -U transformers@git+https://github.com/huggingface/transformers.git
 
       - name: Environment
         run: |
@@ -204,9 +203,8 @@ jobs:
         python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
         python -m uv pip install -e [quality,test]
         python -m uv pip install peft@git+https://github.com/huggingface/peft.git
-        # Stopping this update temporarily until the Hub RC is fully shipped and integrated.
-        # pip uninstall accelerate -y && python -m uv pip install -U accelerate@git+https://github.com/huggingface/accelerate.git
-        # pip uninstall transformers -y && python -m uv pip install -U transformers@git+https://github.com/huggingface/transformers.git --no-deps
+        pip uninstall accelerate -y && python -m uv pip install -U accelerate@git+https://github.com/huggingface/accelerate.git
+        pip uninstall transformers -y && pip uninstall huggingface_hub -y && python -m uv pip install --prerelease allow -U transformers@git+https://github.com/huggingface/transformers.git
 
     - name: Environment
       run: |
@@ -268,8 +266,7 @@ jobs:
     - name: Install dependencies
       run: |
         python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
-        # Stopping this update temporarily until the Hub RC is fully shipped and integrated.
-        # pip uninstall transformers -y && python -m uv pip install -U transformers@git+https://github.com/huggingface/transformers.git --no-deps
+        pip uninstall transformers -y && pip uninstall huggingface_hub -y && python -m uv pip install --prerelease allow -U transformers@git+https://github.com/huggingface/transformers.git
         python -m uv pip install -e [quality,test,training]
 
     - name: Environment

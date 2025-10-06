@@ -30,12 +30,10 @@ class WanModularPipeline(
     """
     A ModularPipeline for Wan.
 
-    <Tip warning={true}>
-
-        This is an experimental feature and is likely to change in the future.
-
-    </Tip>
+    > [!WARNING] > This is an experimental feature and is likely to change in the future.
     """
+
+    default_blocks_name = "WanAutoBlocks"
 
     @property
     def default_height(self):
