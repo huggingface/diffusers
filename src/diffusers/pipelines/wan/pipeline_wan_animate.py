@@ -53,8 +53,7 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers.utils import export_to_video, load_image
         >>> from transformers import CLIPVisionModel
 
-        >>> # Available models: Wan-AI/Wan2.1-I2V-14B-480P-Diffusers, Wan-AI/Wan2.1-I2V-14B-720P-Diffusers
-        >>> model_id = "Wan-AI/Wan2.1-I2V-14B-480P-Diffusers"
+        >>> model_id = "Wan-AI/Wan2.2-Animate-14B-720P-Diffusers"
         >>> image_encoder = CLIPVisionModel.from_pretrained(
         ...     model_id, subfolder="image_encoder", torch_dtype=torch.float32
         ... )
@@ -495,7 +494,6 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
         num_frames: int = 81,
         num_inference_steps: int = 50,
         guidance_scale: float = 5.0,
-        guidance_scale_2: Optional[float] = None,
         num_videos_per_prompt: Optional[int] = 1,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.Tensor] = None,
@@ -540,10 +538,6 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 of [Imagen Paper](https://huggingface.co/papers/2205.11487). Guidance scale is enabled by setting
                 `guidance_scale > 1`. Higher guidance scale encourages to generate images that are closely linked to
                 the text `prompt`, usually at the expense of lower image quality.
-            guidance_scale_2 (`float`, *optional*, defaults to `None`):
-                Guidance scale for the low-noise stage transformer (`transformer_2`). If `None` and the pipeline's
-                `boundary_ratio` is not None, uses the same value as `guidance_scale`. Only used when `transformer_2`
-                and the pipeline's `boundary_ratio` are not None.
             num_videos_per_prompt (`int`, *optional*, defaults to 1):
                 The number of images to generate per prompt.
             generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
@@ -648,15 +642,13 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
         if negative_prompt_embeds is not None:
             negative_prompt_embeds = negative_prompt_embeds.to(transformer_dtype)
 
-        # only wan 2.1 i2v transformer accepts image_embeds
-        if self.transformer is not None and self.transformer.config.image_dim is not None:
-            if image_embeds is None:
-                if last_image is None:
-                    image_embeds = self.encode_image(image, device)
-                else:
-                    image_embeds = self.encode_image([image, last_image], device)
-            image_embeds = image_embeds.repeat(batch_size, 1, 1)
-            image_embeds = image_embeds.to(transformer_dtype)
+        if image_embeds is None:
+            if last_image is None:
+                image_embeds = self.encode_image(image, device)
+            else:
+                image_embeds = self.encode_image([image, last_image], device)
+        image_embeds = image_embeds.repeat(batch_size, 1, 1)
+        image_embeds = image_embeds.to(transformer_dtype)
 
         # 4. Prepare timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)

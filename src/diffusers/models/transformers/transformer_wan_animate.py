@@ -241,8 +241,6 @@ class WanAnimateTransformer3DModel(
         timestep: torch.LongTensor,
         encoder_hidden_states: torch.Tensor,
         encoder_hidden_states_image: Optional[torch.Tensor] = None,
-        control_hidden_states: torch.Tensor = None,
-        control_hidden_states_scale: torch.Tensor = None,
         return_dict: bool = True,
         attention_kwargs: Optional[Dict[str, Any]] = None,
     ) -> Union[torch.Tensor, Dict[str, torch.Tensor]]:
@@ -267,15 +265,6 @@ class WanAnimateTransformer3DModel(
         post_patch_height = height // p_h
         post_patch_width = width // p_w
 
-        if control_hidden_states_scale is None:
-            control_hidden_states_scale = control_hidden_states.new_ones(len(self.config.vace_layers))
-        control_hidden_states_scale = torch.unbind(control_hidden_states_scale)
-        if len(control_hidden_states_scale) != len(self.config.vace_layers):
-            raise ValueError(
-                f"Length of `control_hidden_states_scale` {len(control_hidden_states_scale)} should be "
-                f"equal to {len(self.config.vace_layers)}."
-            )
-
         # 1. Rotary position embedding
         rotary_emb = self.rope(hidden_states)
 
@@ -283,12 +272,11 @@ class WanAnimateTransformer3DModel(
         hidden_states = self.patch_embedding(hidden_states)
         hidden_states = hidden_states.flatten(2).transpose(1, 2)
 
-        control_hidden_states = self.vace_patch_embedding(control_hidden_states)
-        control_hidden_states = control_hidden_states.flatten(2).transpose(1, 2)
-        control_hidden_states_padding = control_hidden_states.new_zeros(
-            batch_size, hidden_states.size(1) - control_hidden_states.size(1), control_hidden_states.size(2)
+        # 3. Time embedding
+        temb, timestep_proj, encoder_hidden_states, encoder_hidden_states_image = self.condition_embedder(
+            timestep, encoder_hidden_states, encoder_hidden_states_image
         )
-        control_hidden_states = torch.cat([control_hidden_states, control_hidden_states_padding], dim=1)
+        timestep_proj = timestep_proj.unflatten(1, (6, -1))
 
         # 3. Time embedding
         temb, timestep_proj, encoder_hidden_states, encoder_hidden_states_image = self.condition_embedder(
@@ -302,37 +290,13 @@ class WanAnimateTransformer3DModel(
 
         # 5. Transformer blocks
         if torch.is_grad_enabled() and self.gradient_checkpointing:
-            # Prepare VACE hints
-            control_hidden_states_list = []
-            for i, block in enumerate(self.vace_blocks):
-                conditioning_states, control_hidden_states = self._gradient_checkpointing_func(
-                    block, hidden_states, encoder_hidden_states, control_hidden_states, timestep_proj, rotary_emb
-                )
-                control_hidden_states_list.append((conditioning_states, control_hidden_states_scale[i]))
-            control_hidden_states_list = control_hidden_states_list[::-1]
-
             for i, block in enumerate(self.blocks):
                 hidden_states = self._gradient_checkpointing_func(
                     block, hidden_states, encoder_hidden_states, timestep_proj, rotary_emb
                 )
-                if i in self.config.vace_layers:
-                    control_hint, scale = control_hidden_states_list.pop()
-                    hidden_states = hidden_states + control_hint * scale
         else:
-            # Prepare VACE hints
-            control_hidden_states_list = []
-            for i, block in enumerate(self.vace_blocks):
-                conditioning_states, control_hidden_states = block(
-                    hidden_states, encoder_hidden_states, control_hidden_states, timestep_proj, rotary_emb
-                )
-                control_hidden_states_list.append((conditioning_states, control_hidden_states_scale[i]))
-            control_hidden_states_list = control_hidden_states_list[::-1]
-
             for i, block in enumerate(self.blocks):
                 hidden_states = block(hidden_states, encoder_hidden_states, timestep_proj, rotary_emb)
-                if i in self.config.vace_layers:
-                    control_hint, scale = control_hidden_states_list.pop()
-                    hidden_states = hidden_states + control_hint * scale
 
         # 6. Output norm, projection & unpatchify
         shift, scale = (self.scale_shift_table.to(temb.device) + temb.unsqueeze(1)).chunk(2, dim=1)
