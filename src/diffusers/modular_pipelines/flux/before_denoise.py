@@ -252,11 +252,13 @@ class FluxInputStep(ModularPipelineBlocks):
             InputParam(
                 "prompt_embeds",
                 required=True,
+                kwargs_type="denoiser_input_fields",
                 type_hint=torch.Tensor,
                 description="Pre-generated text embeddings. Can be generated from text_encoder step.",
             ),
             InputParam(
                 "pooled_prompt_embeds",
+                kwargs_type="denoiser_input_fields",
                 type_hint=torch.Tensor,
                 description="Pre-generated pooled text embeddings. Can be generated from text_encoder step.",
             ),
@@ -279,11 +281,13 @@ class FluxInputStep(ModularPipelineBlocks):
             OutputParam(
                 "prompt_embeds",
                 type_hint=torch.Tensor,
+                kwargs_type="denoiser_input_fields",
                 description="text embeddings used to guide the image generation",
             ),
             OutputParam(
                 "pooled_prompt_embeds",
                 type_hint=torch.Tensor,
+                kwargs_type="denoiser_input_fields",
                 description="pooled text embeddings used to guide the image generation",
             ),
             # TODO: support negative embeddings?
