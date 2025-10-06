@@ -190,16 +190,19 @@ class FluxTextEncoderStep(ModularPipelineBlocks):
         return [
             OutputParam(
                 "prompt_embeds",
+                kwargs_type="denoiser_input_fields",
                 type_hint=torch.Tensor,
                 description="text embeddings used to guide the image generation",
             ),
             OutputParam(
                 "pooled_prompt_embeds",
+                kwargs_type="denoiser_input_fields",
                 type_hint=torch.Tensor,
                 description="pooled text embeddings used to guide the image generation",
             ),
             OutputParam(
                 "text_ids",
+                kwargs_type="denoiser_input_fields",
                 type_hint=torch.Tensor,
                 description="ids from the text sequence for RoPE",
             ),
