@@ -333,10 +333,10 @@ def offload_models(
         offload (`bool`): Flag to enable offloading.
     """
     if offload:
+        print("THIS SHOULD BE PRINTED")
         is_model = not any(isinstance(m, DiffusionPipeline) for m in modules)
         # record where each module was
         if is_model:
-            print("WTF 1.5")
             original_devices = [next(m.parameters()).device for m in modules]
         else:
             assert len(modules) == 1
@@ -350,7 +350,6 @@ def offload_models(
         yield
     finally:
         if offload:
-            print("WTF 22222", original_devices[0])
             # move back to original devices
             for m, orig_dev in zip(modules, original_devices):
                 m.to(orig_dev)
