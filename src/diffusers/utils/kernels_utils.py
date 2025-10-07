@@ -10,7 +10,7 @@ _DEFAULT_HUB_ID_SAGE = "kernels-community/sage_attention"
 _KERNEL_REVISION = {
     # TODO: temporary revision for now. Remove when merged upstream into `main`.
     _DEFAULT_HUB_ID_FA3: "fake-ops-return-probs",
-    _DEFAULT_HUB_ID_SAGE: None,
+    _DEFAULT_HUB_ID_SAGE: "compile",
 }
 
 

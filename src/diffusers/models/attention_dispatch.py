@@ -17,7 +17,8 @@ import functools
 import inspect
 import math
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Literal, Optional, Tuple, Union
+from functools import partial
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, Union
 
 import torch
 
@@ -84,12 +85,16 @@ if DIFFUSERS_ENABLE_HUB_KERNELS:
             "To use FA3 kernel for your hardware from the Hub, the `kernels` library must be installed. Install with `pip install kernels`."
         )
     from ..utils.kernels_utils import _DEFAULT_HUB_ID_FA3, _DEFAULT_HUB_ID_SAGE, _get_kernel_from_hub
+    from ..utils.sage_utils import _get_sage_attn_fn_for_device
 
     flash_attn_interface_hub = _get_kernel_from_hub(_DEFAULT_HUB_ID_FA3)
     flash_attn_3_func_hub = flash_attn_interface_hub.flash_attn_func
 
     sage_interface_hub = _get_kernel_from_hub(_DEFAULT_HUB_ID_SAGE)
-    sage_attn_func_hub = sage_interface_hub.sageattn
+    sage_fn_with_kwargs = _get_sage_attn_fn_for_device()
+    sage_attn_func_hub = getattr(sage_interface_hub, sage_fn_with_kwargs["func"])
+    sage_attn_func_hub = partial(sage_attn_func_hub, **sage_fn_with_kwargs["kwargs"])
+
 else:
     flash_attn_3_func_hub = None
     sage_attn_func_hub = None
@@ -165,10 +170,6 @@ logger = get_logger(__name__)  # pylint: disable=invalid-name
 # - block sparse, radial and other attention methods
 # - CP with sage attention, flex, xformers, other missing backends
 # - Add support for normal and CP training with backends that don't support it yet
-
-_SAGE_ATTENTION_PV_ACCUM_DTYPE = Literal["fp32", "fp32+fp32"]
-_SAGE_ATTENTION_QK_QUANT_GRAN = Literal["per_thread", "per_warp"]
-_SAGE_ATTENTION_QUANTIZATION_BACKEND = Literal["cuda", "triton"]
 
 
 class AttentionBackendName(str, Enum):
@@ -1777,15 +1778,7 @@ def _sage_attention_hub(
 ) -> torch.Tensor:
     lse = None
     if _parallel_config is None:
-        out = sage_attn_func_hub(
-            q=query,
-            k=key,
-            v=value,
-            tensor_layout="NHD",
-            is_causal=is_causal,
-            sm_scale=scale,
-            return_lse=return_lse,
-        )
+        out = sage_attn_func_hub(q=query, k=key, v=value)
         if return_lse:
             out, lse, *_ = out
     else:
