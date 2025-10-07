@@ -1528,7 +1528,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                     raise ValueError(
                         f"Context parallelism is enabled but the attention processor '{processor.__class__.__name__}' "
                         f"is using backend '{attention_backend.value}' which does not support context parallelism. "
-                        f"Please set a compatible attention backend: {compatible_backends}) using `model.set_attention_backend()` before "
+                        f"Please set a compatible attention backend: {compatible_backends} using `model.set_attention_backend()` before "
                         f"calling `enable_parallelism()`."
                     )
 
