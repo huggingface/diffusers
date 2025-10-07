@@ -238,10 +238,12 @@ class _AttentionBackendRegistry:
         return list(cls._backends.keys())
 
     @classmethod
-    def _is_context_parallel_enabled(
+    def _is_context_parallel_available(
         cls, backend: AttentionBackendName, parallel_config: Optional["ParallelConfig"]
     ) -> bool:
-        supports_context_parallel = backend in cls._supports_context_parallel
+        supports_context_parallel = (
+            backend in cls._supports_context_parallel and cls._supports_context_parallel[backend]
+        )
         is_degree_greater_than_1 = parallel_config is not None and (
             parallel_config.context_parallel_config.ring_degree > 1
             or parallel_config.context_parallel_config.ulysses_degree > 1
@@ -293,7 +295,7 @@ def dispatch_attention_fn(
         backend_name = AttentionBackendName(backend)
         backend_fn = _AttentionBackendRegistry._backends.get(backend_name)
 
-    if parallel_config is not None and not _AttentionBackendRegistry._is_context_parallel_enabled(
+    if parallel_config is not None and not _AttentionBackendRegistry._is_context_parallel_available(
         backend_name, parallel_config
     ):
         raise ValueError(
