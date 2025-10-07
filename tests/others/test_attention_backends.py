@@ -219,11 +219,9 @@ def device():
 
 @pytest.fixture(scope="session")
 def pipe(device):
-    torch.set_grad_enabled(False)
-    model_id = "black-forest-labs/FLUX.1-dev"
-    pipe = FluxPipeline.from_pretrained(model_id, torch_dtype=torch.bfloat16).to(device)
+    repo_id = "black-forest-labs/FLUX.1-dev"
+    pipe = FluxPipeline.from_pretrained(repo_id, torch_dtype=torch.bfloat16).to(device)
     pipe.set_progress_bar_config(disable=True)
-    pipe.transformer.eval()
     return pipe
 
 
