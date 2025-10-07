@@ -37,6 +37,7 @@ from .transformer_wan import (
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
+
 @maybe_allow_in_graph
 class WanAnimateTransformerBlock(nn.Module):
     def __init__(

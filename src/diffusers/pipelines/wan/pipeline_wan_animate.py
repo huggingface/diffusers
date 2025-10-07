@@ -127,7 +127,8 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
     r"""
     WanAnimatePipeline takes a video and a character image as input, and generates a video in these two modes:
 
-    1. Animation mode: The model generates a video of the character image that mimics the human motion in the input video.
+    1. Animation mode: The model generates a video of the character image that mimics the human motion in the input
+       video.
     2. Replacement mode: The model replaces the character image with the input video.
 
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods
@@ -163,9 +164,9 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
         text_encoder: UMT5EncoderModel,
         vae: AutoencoderKLWan,
         scheduler: FlowMatchEulerDiscreteScheduler,
-        image_processor: CLIPImageProcessor = None,
-        image_encoder: CLIPVisionModel = None,
-        transformer: WanAnimateTransformer3DModel = None,
+        image_processor: CLIPImageProcessor,
+        image_encoder: CLIPVisionModel,
+        transformer: WanAnimateTransformer3DModel,
     ):
         super().__init__()
 
@@ -328,6 +329,8 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
         negative_prompt_embeds=None,
         image_embeds=None,
         callback_on_step_end_tensor_inputs=None,
+        mode=None,
+        num_frames_for_temporal_guidance=None,
     ):
         if image is not None and image_embeds is not None:
             raise ValueError(
@@ -371,6 +374,18 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
         ):
             raise ValueError(f"`negative_prompt` has to be of type `str` or `list` but is {type(negative_prompt)}")
 
+        if mode is not None and (not isinstance(mode, str) or mode not in ("animation", "replacement")):
+            raise ValueError(
+                f"`mode` has to be of type `str` and in ('animation', 'replacement') but its type is {type(mode)} and value is {mode}"
+            )
+
+        if num_frames_for_temporal_guidance is not None and (
+            not isinstance(num_frames_for_temporal_guidance, int) or num_frames_for_temporal_guidance <= 0
+        ):
+            raise ValueError(
+                f"`num_frames_for_temporal_guidance` has to be of type `int` and > 0 but its type is {type(num_frames_for_temporal_guidance)} and value is {num_frames_for_temporal_guidance}"
+            )
+
     def prepare_latents(
         self,
         image: PipelineImageInput,
@@ -378,7 +393,7 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
         num_channels_latents: int = 16,
         height: int = 480,
         width: int = 832,
-        num_frames: int = 81,
+        num_frames: int = 80,
         dtype: Optional[torch.dtype] = None,
         device: Optional[torch.device] = None,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
@@ -494,8 +509,10 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
         negative_prompt: Union[str, List[str]] = None,
         height: int = 480,
         width: int = 832,
-        num_frames: int = 81,
+        num_frames: int = 80,
         num_inference_steps: int = 50,
+        mode: str = "animation",
+        num_frames_for_temporal_guidance: int = 1,
         guidance_scale: float = 5.0,
         num_videos_per_prompt: Optional[int] = 1,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
@@ -526,11 +543,15 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 The prompt or prompts not to guide the image generation. If not defined, one has to pass
                 `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
                 less than `1`).
+            mode (`str`, defaults to `"animation"`):
+                The mode of the generation. Choose between `"animation"` and `"replacement"`.
+            num_frames_for_temporal_guidance (`int`, defaults to `1`):
+                The number of frames used for temporal guidance. Recommended to be 1 or 5.
             height (`int`, defaults to `480`):
                 The height of the generated video.
             width (`int`, defaults to `832`):
                 The width of the generated video.
-            num_frames (`int`, defaults to `81`):
+            num_frames (`int`, defaults to `80`):
                 The number of frames in the generated video.
             num_inference_steps (`int`, defaults to `50`):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
@@ -603,6 +624,8 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
             negative_prompt_embeds,
             image_embeds,
             callback_on_step_end_tensor_inputs,
+            mode,
+            num_frames_for_temporal_guidance,
         )
 
         if num_frames % self.vae_scale_factor_temporal != 1:
@@ -639,12 +662,12 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
             device=device,
         )
 
-        # Encode image embedding
         transformer_dtype = self.transformer.dtype
         prompt_embeds = prompt_embeds.to(transformer_dtype)
         if negative_prompt_embeds is not None:
             negative_prompt_embeds = negative_prompt_embeds.to(transformer_dtype)
 
+        # Encode image embedding
         if image_embeds is None:
             if last_image is None:
                 image_embeds = self.encode_image(image, device)
