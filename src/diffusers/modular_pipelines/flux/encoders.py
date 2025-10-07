@@ -207,11 +207,7 @@ class FluxVaeEncoderDynamicStep(ModularPipelineBlocks):
         image = image.to(device=device, dtype=dtype)
 
         # Encode image into latents
-        image_latents = encode_vae_image(
-            image=image,
-            vae=components.vae,
-            generator=block_state.generator
-        )
+        image_latents = encode_vae_image(image=image, vae=components.vae, generator=block_state.generator)
         setattr(block_state, self._image_latents_output_name, image_latents)
 
         self.set_block_state(state, block_state)

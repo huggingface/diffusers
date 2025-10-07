@@ -442,9 +442,7 @@ class FluxImg2ImgPrepareLatentsStep(ModularPipelineBlocks):
 
     @property
     def expected_components(self) -> List[ComponentSpec]:
-        return [
-            ComponentSpec("scheduler", FlowMatchEulerDiscreteScheduler)
-        ]
+        return [ComponentSpec("scheduler", FlowMatchEulerDiscreteScheduler)]
 
     @property
     def inputs(self) -> List[InputParam]:
@@ -516,16 +514,14 @@ class FluxRoPEInputsStep(ModularPipelineBlocks):
 
     @property
     def description(self) -> str:
-        return (
-            "Step that prepares the RoPE inputs for the denoising process. Should be placed after text encoder and latent preparation steps."
-        )
+        return "Step that prepares the RoPE inputs for the denoising process. Should be placed after text encoder and latent preparation steps."
 
     @property
     def inputs(self) -> List[InputParam]:
         return [
             InputParam(name="height", required=True),
             InputParam(name="width", required=True),
-            InputParam(name="prompt_embeds")
+            InputParam(name="prompt_embeds"),
         ]
 
     @property
