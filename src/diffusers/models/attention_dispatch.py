@@ -244,11 +244,7 @@ class _AttentionBackendRegistry:
         supports_context_parallel = (
             backend in cls._supports_context_parallel and cls._supports_context_parallel[backend]
         )
-        is_degree_greater_than_1 = parallel_config is not None and (
-            parallel_config.context_parallel_config.ring_degree > 1
-            or parallel_config.context_parallel_config.ulysses_degree > 1
-        )
-        return supports_context_parallel and is_degree_greater_than_1
+        return supports_context_parallel and parallel_config.context_parallel_config is not None
 
 
 @contextlib.contextmanager
