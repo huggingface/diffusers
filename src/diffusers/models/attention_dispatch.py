@@ -239,12 +239,13 @@ class _AttentionBackendRegistry:
 
     @classmethod
     def _is_context_parallel_available(
-        cls, backend: AttentionBackendName, parallel_config: Optional["ParallelConfig"]
+        cls,
+        backend: AttentionBackendName,
     ) -> bool:
         supports_context_parallel = (
             backend in cls._supports_context_parallel and cls._supports_context_parallel[backend]
         )
-        return supports_context_parallel and parallel_config.context_parallel_config is not None
+        return supports_context_parallel
 
 
 @contextlib.contextmanager

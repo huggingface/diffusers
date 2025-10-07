@@ -1503,6 +1503,38 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         device_module = torch.get_device_module(device_type)
         device = torch.device(device_type, rank % device_module.device_count())
 
+        attention_classes = (Attention, MochiAttention, AttentionModuleMixin)
+
+        # Step 1: Validate attention backend supports context parallelism if enabled
+        if config.context_parallel_config is not None:
+            from .attention_dispatch import AttentionBackendName, _AttentionBackendRegistry
+
+            for module in self.modules():
+                if not isinstance(module, attention_classes):
+                    continue
+
+                processor = module.processor
+                if processor is None or not hasattr(processor, "_attention_backend"):
+                    continue
+
+                attention_backend = processor._attention_backend
+                if attention_backend is None:
+                    attention_backend, _ = _AttentionBackendRegistry.get_active_backend()
+                else:
+                    attention_backend = AttentionBackendName(attention_backend)
+
+                if not _AttentionBackendRegistry._is_context_parallel_available(attention_backend):
+                    raise ValueError(
+                        f"Context parallelism is enabled but the attention processor '{processor.__class__.__name__}' "
+                        f"is using backend '{attention_backend.value}' which does not support context parallelism. "
+                        f"Please set a compatible attention backend using `model.set_attention_backend()` before "
+                        f"calling `enable_parallelism()`."
+                    )
+
+                # All modules use the same attention processor and backend. We don't need to
+                # iterate over all modules after checking the first processor
+                break
+
         mesh = None
         if config.context_parallel_config is not None:
             cp_config = config.context_parallel_config
@@ -1511,20 +1543,10 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 mesh_shape=cp_config.mesh_shape,
                 mesh_dim_names=cp_config.mesh_dim_names,
             )
+
         config.setup(rank, world_size, device, mesh=mesh)
-
-        if cp_plan is None and self._cp_plan is None:
-            raise ValueError(
-                "`cp_plan` must be provided either as an argument or set in the model's `_cp_plan` attribute."
-            )
-        cp_plan = cp_plan if cp_plan is not None else self._cp_plan
-
-        if config.context_parallel_config is not None:
-            apply_context_parallel(self, config.context_parallel_config, cp_plan)
-
         self._parallel_config = config
 
-        attention_classes = (Attention, MochiAttention, AttentionModuleMixin)
         for module in self.modules():
             if not isinstance(module, attention_classes):
                 continue
@@ -1532,6 +1554,14 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             if processor is None or not hasattr(processor, "_parallel_config"):
                 continue
             processor._parallel_config = config
+
+        if config.context_parallel_config is not None:
+            if cp_plan is None and self._cp_plan is None:
+                raise ValueError(
+                    "`cp_plan` must be provided either as an argument or set in the model's `_cp_plan` attribute."
+                )
+            cp_plan = cp_plan if cp_plan is not None else self._cp_plan
+            apply_context_parallel(self, config.context_parallel_config, cp_plan)
 
     @classmethod
     def _load_pretrained_model(
