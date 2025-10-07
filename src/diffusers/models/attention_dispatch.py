@@ -207,7 +207,7 @@ class _AttentionBackendRegistry:
     _backends = {}
     _constraints = {}
     _supported_arg_names = {}
-    _supports_context_parallel = {}
+    _supports_context_parallel = set()
     _active_backend = AttentionBackendName(DIFFUSERS_ATTN_BACKEND)
     _checks_enabled = DIFFUSERS_ATTN_CHECKS
 
@@ -224,7 +224,9 @@ class _AttentionBackendRegistry:
             cls._backends[backend] = func
             cls._constraints[backend] = constraints or []
             cls._supported_arg_names[backend] = set(inspect.signature(func).parameters.keys())
-            cls._supports_context_parallel[backend] = supports_context_parallel
+            if supports_context_parallel:
+                cls._supports_context_parallel.add(backend)
+
             return func
 
         return decorator
@@ -242,9 +244,7 @@ class _AttentionBackendRegistry:
         cls,
         backend: AttentionBackendName,
     ) -> bool:
-        supports_context_parallel = (
-            backend in cls._supports_context_parallel and cls._supports_context_parallel[backend]
-        )
+        supports_context_parallel = backend in cls._supports_context_parallel
         return supports_context_parallel
 
 
