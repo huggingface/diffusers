@@ -16,9 +16,9 @@ from diffusers import (
     HiDreamImageTransformer2DModel,
     SD3Transformer2DModel,
     StableDiffusion3Pipeline,
+    WanAnimateTransformer3DModel,
     WanTransformer3DModel,
     WanVACETransformer3DModel,
-    WanAnimateTransformer3DModel,
 )
 from diffusers.utils import load_image
 

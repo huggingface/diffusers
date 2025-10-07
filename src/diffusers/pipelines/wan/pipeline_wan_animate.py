@@ -348,11 +348,13 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
         if image is not None and not isinstance(image, torch.Tensor) and not isinstance(image, PIL.Image.Image):
             raise ValueError(f"`image` has to be of type `torch.Tensor` or `PIL.Image.Image` but is {type(image)}")
         if pose_video is None:
-            raise ValueError(f"Provide `pose_video`. Cannot leave `pose_video` undefined.")
+            raise ValueError("Provide `pose_video`. Cannot leave `pose_video` undefined.")
         if face_video is None:
-            raise ValueError(f"Provide `face_video`. Cannot leave `face_video` undefined.")
+            raise ValueError("Provide `face_video`. Cannot leave `face_video` undefined.")
         if mode == "replacement" and (background_video is None or mask_video is None):
-            raise ValueError(f"Provide `background_video` and `mask_video`. Cannot leave both `background_video` and `mask_video` undefined when mode is `replacement`.")
+            raise ValueError(
+                "Provide `background_video` and `mask_video`. Cannot leave both `background_video` and `mask_video` undefined when mode is `replacement`."
+            )
 
         if height % 16 != 0 or width % 16 != 0:
             raise ValueError(f"`height` and `width` have to be divisible by 16 but are {height} and {width}.")
@@ -552,13 +554,17 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
             image (`PipelineImageInput`):
                 The input image to condition the generation on. Must be an image, a list of images or a `torch.Tensor`.
             pose_video (`PipelineImageInput`):
-                The input pose video to condition the generation on. Must be a video, a list of images or a `torch.Tensor`.
+                The input pose video to condition the generation on. Must be a video, a list of images or a
+                `torch.Tensor`.
             face_video (`PipelineImageInput`):
-                The input face video to condition the generation on. Must be a video, a list of images or a `torch.Tensor`.
+                The input face video to condition the generation on. Must be a video, a list of images or a
+                `torch.Tensor`.
             background_video (`PipelineImageInput`, *optional*):
-                When mode is `"replacement"`, the input background video to condition the generation on. Must be a video, a list of images or a `torch.Tensor`.
+                When mode is `"replacement"`, the input background video to condition the generation on. Must be a
+                video, a list of images or a `torch.Tensor`.
             mask_video (`PipelineImageInput`, *optional*):
-                When mode is `"replacement"`, the input mask video to condition the generation on. Must be a video, a list of images or a `torch.Tensor`.
+                When mode is `"replacement"`, the input mask video to condition the generation on. Must be a video, a
+                list of images or a `torch.Tensor`.
             prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds`.
                 instead.

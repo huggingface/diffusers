@@ -17,9 +17,20 @@ import unittest
 import numpy as np
 import torch
 from PIL import Image
-from transformers import AutoTokenizer, T5EncoderModel
+from transformers import (
+    AutoTokenizer,
+    CLIPImageProcessor,
+    CLIPVisionConfig,
+    CLIPVisionModelWithProjection,
+    T5EncoderModel,
+)
 
-from diffusers import AutoencoderKLWan, FlowMatchEulerDiscreteScheduler, WanAnimatePipeline, WanAnimateTransformer3DModel
+from diffusers import (
+    AutoencoderKLWan,
+    FlowMatchEulerDiscreteScheduler,
+    WanAnimatePipeline,
+    WanAnimateTransformer3DModel,
+)
 
 from ...testing_utils import enable_full_determinism
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
