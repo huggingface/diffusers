@@ -128,20 +128,24 @@ class WanAnimatePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         height = 16
         width = 16
 
-        video = [Image.new("RGB", (height, width))] * num_frames
-        mask = [Image.new("L", (height, width), 0)] * num_frames
+        pose_video = [Image.new("RGB", (height, width))] * num_frames
+        face_video = [Image.new("RGB", (height, width))] * num_frames
+        image = Image.new("RGB", (height, width))
 
         inputs = {
-            "video": video,
-            "mask": mask,
+            "image": image,
+            "pose_video": pose_video,
+            "face_video": face_video,
             "prompt": "dance monkey",
             "negative_prompt": "negative",
             "generator": generator,
             "num_inference_steps": 2,
-            "guidance_scale": 6.0,
-            "height": 16,
-            "width": 16,
+            "guidance_scale": 1.0,
+            "height": height,
+            "width": width,
             "num_frames": num_frames,
+            "mode": "animation",
+            "num_frames_for_temporal_guidance": 1,
             "max_sequence_length": 16,
             "output_type": "pt",
         }
