@@ -225,7 +225,7 @@ class _AttentionBackendRegistry:
             cls._constraints[backend] = constraints or []
             cls._supported_arg_names[backend] = set(inspect.signature(func).parameters.keys())
             if supports_context_parallel:
-                cls._supports_context_parallel.add(backend)
+                cls._supports_context_parallel.add(backend.value)
 
             return func
 
@@ -244,7 +244,7 @@ class _AttentionBackendRegistry:
         cls,
         backend: AttentionBackendName,
     ) -> bool:
-        supports_context_parallel = backend in cls._supports_context_parallel
+        supports_context_parallel = backend.value in cls._supports_context_parallel
         return supports_context_parallel
 
 
