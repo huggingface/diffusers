@@ -25,6 +25,7 @@ from ...utils import USE_PEFT_BACKEND, logging, scale_lora_layers, unscale_lora_
 from ...utils.torch_utils import maybe_allow_in_graph
 from ..attention import AttentionMixin, FeedForward
 from ..cache_utils import CacheMixin
+from ..embeddings import PixArtAlphaTextProjection, TimestepEmbedding, Timesteps
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
 from ..normalization import FP32LayerNorm
@@ -33,76 +34,82 @@ from .transformer_wan import (
     WanAttnProcessor,
     WanRotaryPosEmbed,
 )
-from ..embeddings import PixArtAlphaTextProjection, TimestepEmbedding, Timesteps
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
 class EncoderApp(nn.Module):
-	def __init__(self, size, w_dim=512):
-		super(EncoderApp, self).__init__()
+    def __init__(self, size, w_dim=512):
+        super(EncoderApp, self).__init__()
 
-		channels = {
-			4: 512,
-			8: 512,
-			16: 512,
-			32: 512,
-			64: 256,
-			128: 128,
-			256: 64,
-			512: 32,
-			1024: 16
-		}
+        channels = {
+            4: 512,
+            8: 512,
+            16: 512,
+            32: 512,
+            64: 256,
+            128: 128,
+            256: 64,
+            512: 32,
+            1024: 16
+        }
 
-		self.w_dim = w_dim
-		log_size = int(math.log(size, 2))
+        self.w_dim = w_dim
+        log_size = int(math.log(size, 2))
 
-		self.convs = nn.ModuleList()
-		self.convs.append(ConvLayer(3, channels[size], 1))
+        self.convs = nn.ModuleList()
+        self.convs.append(ConvLayer(3, channels[size], 1))
 
-		in_channel = channels[size]
-		for i in range(log_size, 2, -1):
-			out_channel = channels[2 ** (i - 1)]
-			self.convs.append(ResBlock(in_channel, out_channel))
-			in_channel = out_channel
+        in_channel = channels[size]
+        for i in range(log_size, 2, -1):
+            out_channel = channels[2 ** (i - 1)]
+            self.convs.append(ResBlock(in_channel, out_channel))
+            in_channel = out_channel
 
-		self.convs.append(EqualConv2d(in_channel, self.w_dim, 4, padding=0, bias=False))
+        self.convs.append(EqualConv2d(in_channel, self.w_dim, 4, padding=0, bias=False))
 
-	def forward(self, x):
+    def forward(self, x):
 
-		res = []
-		h = x
-		for conv in self.convs:
-			h = conv(h)
-			res.append(h)
+        res = []
+        h = x
+        for conv in self.convs:
+            h = conv(h)
+            res.append(h)
 
-		return res[-1].squeeze(-1).squeeze(-1), res[::-1][2:]
+        return res[-1].squeeze(-1).squeeze(-1), res[::-1][2:]
 
 class Encoder(nn.Module):
-	def __init__(self, size, dim=512, dim_motion=20):
-		super(Encoder, self).__init__()
+    def __init__(self, size, dim=512, dim_motion=20):
+        super(Encoder, self).__init__()
 
-		# appearance netmork
-		self.net_app = EncoderApp(size, dim)
+        # appearance netmork
+        self.net_app = EncoderApp(size, dim)
 
-		# motion network
-		fc = [EqualLinear(dim, dim)]
-		for i in range(3):
-			fc.append(EqualLinear(dim, dim))
+        # motion network
+        fc = [EqualLinear(dim, dim)]
+        for i in range(3):
+            fc.append(EqualLinear(dim, dim))
 
-		fc.append(EqualLinear(dim, dim_motion))
-		self.fc = nn.Sequential(*fc)
+        fc.append(EqualLinear(dim, dim_motion))
+        self.fc = nn.Sequential(*fc)
 
-	def enc_app(self, x):
-		h_source = self.net_app(x)
-		return h_source
+    def enc_app(self, x):
+        h_source = self.net_app(x)
+        return h_source
 
-	def enc_motion(self, x):
-		h, _ = self.net_app(x)
-		h_motion = self.fc(h)
-		return h_motion
+    def enc_motion(self, x):
+        h, _ = self.net_app(x)
+        h_motion = self.fc(h)
+        return h_motion
 
+
+def custom_qr(input_tensor):
+    original_dtype = input_tensor.dtype
+    if original_dtype == torch.bfloat16:
+        q, r = torch.linalg.qr(input_tensor.to(torch.float32))
+        return q.to(original_dtype), r.to(original_dtype)
+    return torch.linalg.qr(input_tensor)
 
 class Direction(nn.Module):
     def __init__(self, motion_dim):
@@ -374,7 +381,7 @@ class FaceBlock(nn.Module):
         self.heads_num = heads_num
         head_dim = hidden_size // heads_num
         self.scale = qk_scale or head_dim**-0.5
-       
+
         self.linear1_kv = nn.Linear(hidden_size, hidden_size * 2, **factory_kwargs)
         self.linear1_q = nn.Linear(hidden_size, hidden_size, **factory_kwargs)
 
@@ -397,9 +404,8 @@ class FaceBlock(nn.Module):
         x: torch.Tensor,
         motion_vec: torch.Tensor,
         motion_mask: Optional[torch.Tensor] = None,
-        use_context_parallel=False,
     ) -> torch.Tensor:
-        
+
         B, T, N, C = motion_vec.shape
         T_comp = T
 
@@ -580,7 +586,7 @@ class WanAnimateTransformer3DModel(
                 for _ in range(num_layers)
             ]
         )
-        
+
         self.face_adapter = FaceAdapter(
             heads_num=self.num_heads,
             hidden_dim=self.dim,
@@ -597,6 +603,7 @@ class WanAnimateTransformer3DModel(
     def forward(
         self,
         hidden_states: torch.Tensor,
+        pose_hidden_states: torch.Tensor,
         timestep: torch.LongTensor,
         encoder_hidden_states: torch.Tensor,
         encoder_hidden_states_image: Optional[torch.Tensor] = None,
