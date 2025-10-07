@@ -204,15 +204,13 @@ class FluxVaeEncoderDynamicStep(ModularPipelineBlocks):
         dtype = components.vae.dtype
 
         image = getattr(block_state, self._image_input_name)
+        image = image.to(device=device, dtype=dtype)
 
         # Encode image into latents
         image_latents = encode_vae_image(
             image=image,
             vae=components.vae,
-            generator=block_state.generator,
-            device=device,
-            dtype=dtype,
-            latent_channels=components.num_channels_latents,
+            generator=block_state.generator
         )
         setattr(block_state, self._image_latents_output_name, image_latents)
 
@@ -412,7 +410,6 @@ class FluxTextEncoderStep(ModularPipelineBlocks):
             prompt_embeds=None,
             pooled_prompt_embeds=None,
             device=block_state.device,
-            num_images_per_prompt=1,  # TODO: hardcoded for now.
             max_sequence_length=block_state.max_sequence_length,
             lora_scale=block_state.text_encoder_lora_scale,
         )

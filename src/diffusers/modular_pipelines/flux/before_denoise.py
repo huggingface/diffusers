@@ -398,6 +398,7 @@ class FluxPrepareLatentsStep(ModularPipelineBlocks):
                 f" size of {batch_size}. Make sure the batch size matches the length of the generators."
             )
 
+        # TODO: move packing latents code to a patchifier
         latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
         latents = _pack_latents(latents, batch_size, num_channels_latents, height, width)
 
@@ -436,12 +437,13 @@ class FluxImg2ImgPrepareLatentsStep(ModularPipelineBlocks):
 
     @property
     def description(self) -> str:
-        return "Step that adds noise to image latents for image-to-image/inpainting. Should be run after set_timesteps, prepare_latents. Both noise and image latents should alreadybe patchified."
+        return "Step that adds noise to image latents for image-to-image. Should be run after `set_timesteps`,"
+        " `prepare_latents`. Both noise and image latents should already be patchified."
 
     @property
     def expected_components(self) -> List[ComponentSpec]:
         return [
-            ComponentSpec("scheduler", FlowMatchEulerDiscreteScheduler),
+            ComponentSpec("scheduler", FlowMatchEulerDiscreteScheduler)
         ]
 
     @property
@@ -521,9 +523,9 @@ class FluxRoPEInputsStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> List[InputParam]:
         return [
-            InputParam(name="image_height", required=True),
-            InputParam(name="image_width", required=True),
-            InputParam(name="prompt_embeds"),
+            InputParam(name="height", required=True),
+            InputParam(name="width", required=True),
+            InputParam(name="prompt_embeds")
         ]
 
     @property
@@ -552,8 +554,8 @@ class FluxRoPEInputsStep(ModularPipelineBlocks):
             device=prompt_embeds.device, dtype=prompt_embeds.dtype
         )
 
-        height = 2 * (int(block_state.image_height) // (components.vae_scale_factor * 2))
-        width = 2 * (int(block_state.image_width) // (components.vae_scale_factor * 2))
+        height = 2 * (int(block_state.height) // (components.vae_scale_factor * 2))
+        width = 2 * (int(block_state.width) // (components.vae_scale_factor * 2))
         block_state.img_ids = FluxPipeline._prepare_latent_image_ids(None, height // 2, width // 2, device, dtype)
 
         self.set_block_state(state, block_state)

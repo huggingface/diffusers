@@ -76,18 +76,17 @@ class FluxLoopDenoiser(ModularPipelineBlocks):
                 description="Pooled prompt embeddings",
             ),
             InputParam(
-                "text_ids",
+                "txt_ids",
                 required=True,
                 type_hint=torch.Tensor,
                 description="IDs computed from text sequence needed for RoPE",
             ),
             InputParam(
-                "latent_image_ids",
+                "img_ids",
                 required=True,
                 type_hint=torch.Tensor,
                 description="IDs computed from image sequence needed for RoPE",
             ),
-            # TODO: guidance
         ]
 
     @torch.no_grad()
@@ -101,8 +100,8 @@ class FluxLoopDenoiser(ModularPipelineBlocks):
             encoder_hidden_states=block_state.prompt_embeds,
             pooled_projections=block_state.pooled_prompt_embeds,
             joint_attention_kwargs=block_state.joint_attention_kwargs,
-            txt_ids=block_state.text_ids,
-            img_ids=block_state.latent_image_ids,
+            txt_ids=block_state.txt_ids,
+            img_ids=block_state.img_ids,
             return_dict=False,
         )[0]
         block_state.noise_pred = noise_pred
