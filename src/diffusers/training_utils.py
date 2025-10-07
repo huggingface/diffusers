@@ -333,7 +333,6 @@ def offload_models(
         offload (`bool`): Flag to enable offloading.
     """
     if offload:
-        print("THIS SHOULD BE PRINTED")
         is_model = not any(isinstance(m, DiffusionPipeline) for m in modules)
         # record where each module was
         if is_model:
