@@ -50,7 +50,7 @@ EXAMPLE_DOC_STRING = """
         >>> import torch
         >>> import numpy as np
         >>> from diffusers import AutoencoderKLWan, WanAnimatePipeline
-        >>> from diffusers.utils import export_to_video, load_image
+        >>> from diffusers.utils import export_to_video, load_image, load_video
         >>> from transformers import CLIPVisionModel
 
         >>> model_id = "Wan-AI/Wan2.2-Animate-14B-720P-Diffusers"
@@ -66,6 +66,8 @@ EXAMPLE_DOC_STRING = """
         >>> image = load_image(
         ...     "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/astronaut.jpg"
         ... )
+        >>> pose_video = load_video("path/to/pose_video.mp4")
+        >>> face_video = load_video("path/to/face_video.mp4")
         >>> max_area = 480 * 832
         >>> aspect_ratio = image.height / image.width
         >>> mod_value = pipe.vae_scale_factor_spatial * pipe.transformer.config.patch_size[1]
@@ -80,6 +82,8 @@ EXAMPLE_DOC_STRING = """
 
         >>> output = pipe(
         ...     image=image,
+        ...     pose_video=pose_video,
+        ...     face_video=face_video,
         ...     prompt=prompt,
         ...     negative_prompt=negative_prompt,
         ...     height=height,
@@ -125,11 +129,10 @@ def retrieve_latents(
 
 class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
     r"""
-    WanAnimatePipeline takes a video and a character image as input, and generates a video in these two modes:
+    WanAnimatePipeline takes a character image, pose video, and face video as input, and generates a video in these two modes:
 
-    1. Animation mode: The model generates a video of the character image that mimics the human motion in the input
-       video.
-    2. Replacement mode: The model replaces the character image with the input video.
+    1. Animation mode: The model generates a video of the character image that mimics the human motion in the input pose and face videos.
+    2. Replacement mode: The model replaces the character image with the input video, using background and mask videos.
 
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods
     implemented for all pipelines (downloading, saving, running on a particular device, etc.).
@@ -351,10 +354,16 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
             raise ValueError("Provide `pose_video`. Cannot leave `pose_video` undefined.")
         if face_video is None:
             raise ValueError("Provide `face_video`. Cannot leave `face_video` undefined.")
+        if not isinstance(pose_video, list) or not isinstance(face_video, list):
+            raise ValueError("`pose_video` and `face_video` must be lists of PIL images.")
+        if len(pose_video) == 0 or len(face_video) == 0:
+            raise ValueError("`pose_video` and `face_video` must contain at least one frame.")
         if mode == "replacement" and (background_video is None or mask_video is None):
             raise ValueError(
                 "Provide `background_video` and `mask_video`. Cannot leave both `background_video` and `mask_video` undefined when mode is `replacement`."
             )
+        if mode == "replacement" and (not isinstance(background_video, list) or not isinstance(mask_video, list)):
+            raise ValueError("`background_video` and `mask_video` must be lists of PIL images when mode is `replacement`.")
 
         if height % 16 != 0 or width % 16 != 0:
             raise ValueError(f"`height` and `width` have to be divisible by 16 but are {height} and {width}.")
@@ -411,7 +420,6 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
         device: Optional[torch.device] = None,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.Tensor] = None,
-        last_image: Optional[torch.Tensor] = None,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         num_latent_frames = (num_frames - 1) // self.vae_scale_factor_temporal + 1
         latent_height = height // self.vae_scale_factor_spatial
@@ -431,19 +439,10 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
 
         image = image.unsqueeze(2)  # [batch_size, channels, 1, height, width]
 
-        if self.config.expand_timesteps:
-            video_condition = image
+        video_condition = torch.cat(
+            [image, image.new_zeros(image.shape[0], image.shape[1], num_frames - 1, height, width)], dim=2
+        )
 
-        elif last_image is None:
-            video_condition = torch.cat(
-                [image, image.new_zeros(image.shape[0], image.shape[1], num_frames - 1, height, width)], dim=2
-            )
-        else:
-            last_image = last_image.unsqueeze(2)
-            video_condition = torch.cat(
-                [image, image.new_zeros(image.shape[0], image.shape[1], num_frames - 2, height, width), last_image],
-                dim=2,
-            )
         video_condition = video_condition.to(device=device, dtype=self.vae.dtype)
 
         latents_mean = (
@@ -467,19 +466,9 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
         latent_condition = latent_condition.to(dtype)
         latent_condition = (latent_condition - latents_mean) * latents_std
 
-        if self.config.expand_timesteps:
-            first_frame_mask = torch.ones(
-                1, 1, num_latent_frames, latent_height, latent_width, dtype=dtype, device=device
-            )
-            first_frame_mask[:, :, 0] = 0
-            return latents, latent_condition, first_frame_mask
-
         mask_lat_size = torch.ones(batch_size, 1, num_frames, latent_height, latent_width)
 
-        if last_image is None:
-            mask_lat_size[:, :, list(range(1, num_frames))] = 0
-        else:
-            mask_lat_size[:, :, list(range(1, num_frames - 1))] = 0
+        mask_lat_size[:, :, list(range(1, num_frames))] = 0
         first_frame_mask = mask_lat_size[:, :, 0:1]
         first_frame_mask = torch.repeat_interleave(first_frame_mask, dim=2, repeats=self.vae_scale_factor_temporal)
         mask_lat_size = torch.concat([first_frame_mask, mask_lat_size[:, :, 1:, :]], dim=2)
@@ -518,10 +507,10 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
     def __call__(
         self,
         image: PipelineImageInput,
-        pose_video: PipelineImageInput,
-        face_video: PipelineImageInput,
-        background_video: PipelineImageInput = None,
-        mask_video: PipelineImageInput = None,
+        pose_video: List[PIL.Image.Image],
+        face_video: List[PIL.Image.Image],
+        background_video: Optional[List[PIL.Image.Image]] = None,
+        mask_video: Optional[List[PIL.Image.Image]] = None,
         prompt: Union[str, List[str]] = None,
         negative_prompt: Union[str, List[str]] = None,
         height: int = 480,
@@ -537,7 +526,6 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
         prompt_embeds: Optional[torch.Tensor] = None,
         negative_prompt_embeds: Optional[torch.Tensor] = None,
         image_embeds: Optional[torch.Tensor] = None,
-        last_image: Optional[torch.Tensor] = None,
         output_type: Optional[str] = "np",
         return_dict: bool = True,
         attention_kwargs: Optional[Dict[str, Any]] = None,
@@ -552,19 +540,17 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
 
         Args:
             image (`PipelineImageInput`):
-                The input image to condition the generation on. Must be an image, a list of images or a `torch.Tensor`.
-            pose_video (`PipelineImageInput`):
-                The input pose video to condition the generation on. Must be a video, a list of images or a
-                `torch.Tensor`.
-            face_video (`PipelineImageInput`):
-                The input face video to condition the generation on. Must be a video, a list of images or a
-                `torch.Tensor`.
-            background_video (`PipelineImageInput`, *optional*):
+                The input character image to condition the generation on. Must be an image, a list of images or a `torch.Tensor`.
+            pose_video (`List[PIL.Image.Image]`):
+                The input pose video to condition the generation on. Must be a list of PIL images.
+            face_video (`List[PIL.Image.Image]`):
+                The input face video to condition the generation on. Must be a list of PIL images.
+            background_video (`List[PIL.Image.Image]`, *optional*):
                 When mode is `"replacement"`, the input background video to condition the generation on. Must be a
-                video, a list of images or a `torch.Tensor`.
-            mask_video (`PipelineImageInput`, *optional*):
-                When mode is `"replacement"`, the input mask video to condition the generation on. Must be a video, a
-                list of images or a `torch.Tensor`.
+                list of PIL images.
+            mask_video (`List[PIL.Image.Image]`, *optional*):
+                When mode is `"replacement"`, the input mask video to condition the generation on. Must be a list of
+                PIL images.
             prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds`.
                 instead.
@@ -702,10 +688,7 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
 
         # Encode image embedding
         if image_embeds is None:
-            if last_image is None:
-                image_embeds = self.encode_image(image, device)
-            else:
-                image_embeds = self.encode_image([image, last_image], device)
+            image_embeds = self.encode_image(image, device)
         image_embeds = image_embeds.repeat(batch_size, 1, 1)
         image_embeds = image_embeds.to(transformer_dtype)
 
@@ -726,10 +709,6 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
         # 5. Prepare latent variables
         num_channels_latents = self.vae.config.z_dim
         image = self.video_processor.preprocess(image, height=height, width=width).to(device, dtype=torch.float32)
-        if last_image is not None:
-            last_image = self.video_processor.preprocess(last_image, height=height, width=width).to(
-                device, dtype=torch.float32
-            )
 
         latents_outputs = self.prepare_latents(
             image,
@@ -742,7 +721,6 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
             device,
             generator,
             latents,
-            last_image,
         )
         latents, condition = latents_outputs
 
