@@ -323,6 +323,10 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
         prompt,
         negative_prompt,
         image,
+        pose_video,
+        face_video,
+        background_video,
+        mask_video,
         height,
         width,
         prompt_embeds=None,
@@ -343,6 +347,13 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
             )
         if image is not None and not isinstance(image, torch.Tensor) and not isinstance(image, PIL.Image.Image):
             raise ValueError(f"`image` has to be of type `torch.Tensor` or `PIL.Image.Image` but is {type(image)}")
+        if pose_video is None:
+            raise ValueError(f"Provide `pose_video`. Cannot leave `pose_video` undefined.")
+        if face_video is None:
+            raise ValueError(f"Provide `face_video`. Cannot leave `face_video` undefined.")
+        if mode == "replacement" and (background_video is None or mask_video is None):
+            raise ValueError(f"Provide `background_video` and `mask_video`. Cannot leave both `background_video` and `mask_video` undefined when mode is `replacement`.")
+
         if height % 16 != 0 or width % 16 != 0:
             raise ValueError(f"`height` and `width` have to be divisible by 16 but are {height} and {width}.")
 
@@ -505,6 +516,10 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
     def __call__(
         self,
         image: PipelineImageInput,
+        pose_video: PipelineImageInput,
+        face_video: PipelineImageInput,
+        background_video: PipelineImageInput = None,
+        mask_video: PipelineImageInput = None,
         prompt: Union[str, List[str]] = None,
         negative_prompt: Union[str, List[str]] = None,
         height: int = 480,
@@ -536,6 +551,14 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
         Args:
             image (`PipelineImageInput`):
                 The input image to condition the generation on. Must be an image, a list of images or a `torch.Tensor`.
+            pose_video (`PipelineImageInput`):
+                The input pose video to condition the generation on. Must be a video, a list of images or a `torch.Tensor`.
+            face_video (`PipelineImageInput`):
+                The input face video to condition the generation on. Must be a video, a list of images or a `torch.Tensor`.
+            background_video (`PipelineImageInput`, *optional*):
+                When mode is `"replacement"`, the input background video to condition the generation on. Must be a video, a list of images or a `torch.Tensor`.
+            mask_video (`PipelineImageInput`, *optional*):
+                When mode is `"replacement"`, the input mask video to condition the generation on. Must be a video, a list of images or a `torch.Tensor`.
             prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds`.
                 instead.
@@ -618,6 +641,10 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
             prompt,
             negative_prompt,
             image,
+            pose_video,
+            face_video,
+            background_video,
+            mask_video,
             height,
             width,
             prompt_embeds,
@@ -628,11 +655,11 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
             num_frames_for_temporal_guidance,
         )
 
-        if num_frames % self.vae_scale_factor_temporal != 1:
+        if num_frames % self.vae_scale_factor_temporal != 0:
             logger.warning(
-                f"`num_frames - 1` has to be divisible by {self.vae_scale_factor_temporal}. Rounding to the nearest number."
+                f"`num_frames` has to be divisible by {self.vae_scale_factor_temporal}. Rounding to the nearest number."
             )
-            num_frames = num_frames // self.vae_scale_factor_temporal * self.vae_scale_factor_temporal + 1
+            num_frames = num_frames // self.vae_scale_factor_temporal * self.vae_scale_factor_temporal
         num_frames = max(num_frames, 1)
 
         self._guidance_scale = guidance_scale
@@ -676,6 +703,16 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
         image_embeds = image_embeds.repeat(batch_size, 1, 1)
         image_embeds = image_embeds.to(transformer_dtype)
 
+        num_real_frames = len(pose_video)
+        # Calculate the number of valid frames
+        real_clip_len = num_frames - num_frames_for_temporal_guidance
+        last_clip_num = (num_real_frames - num_frames_for_temporal_guidance) % real_clip_len
+        if last_clip_num == 0:
+            extra = 0
+        else:
+            extra = real_clip_len - last_clip_num
+        num_target_frames = num_real_frames + extra
+
         # 4. Prepare timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
         timesteps = self.scheduler.timesteps
@@ -714,14 +751,11 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
 
                 self._current_timestep = t
 
-                current_model = self.transformer
-                current_guidance_scale = guidance_scale
-
                 latent_model_input = torch.cat([latents, condition], dim=1).to(transformer_dtype)
                 timestep = t.expand(latents.shape[0])
 
-                with current_model.cache_context("cond"):
-                    noise_pred = current_model(
+                with self.transformer.cache_context("cond"):
+                    noise_pred = self.transformer(
                         hidden_states=latent_model_input,
                         timestep=timestep,
                         encoder_hidden_states=prompt_embeds,
@@ -731,8 +765,8 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
                     )[0]
 
                 if self.do_classifier_free_guidance:
-                    with current_model.cache_context("uncond"):
-                        noise_uncond = current_model(
+                    with self.transformer.cache_context("uncond"):
+                        noise_uncond = self.transformer(
                             hidden_states=latent_model_input,
                             timestep=timestep,
                             encoder_hidden_states=negative_prompt_embeds,
@@ -740,7 +774,7 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
                             attention_kwargs=attention_kwargs,
                             return_dict=False,
                         )[0]
-                        noise_pred = noise_uncond + current_guidance_scale * (noise_pred - noise_uncond)
+                        noise_pred = noise_uncond + guidance_scale * (noise_pred - noise_uncond)
 
                 # compute the previous noisy sample x_t -> x_t-1
                 latents = self.scheduler.step(noise_pred, t, latents, return_dict=False)[0]
