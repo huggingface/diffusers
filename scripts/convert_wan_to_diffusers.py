@@ -16,6 +16,8 @@ from diffusers import (
     WanTransformer3DModel,
     WanVACEPipeline,
     WanVACETransformer3DModel,
+    WanAnimateTransformer3DModel,
+    WanAnimatePipeline,
 )
 
 
@@ -364,6 +366,31 @@ def get_transformer_config(model_type: str) -> Tuple[Dict[str, Any], ...]:
         }
         RENAME_DICT = TRANSFORMER_KEYS_RENAME_DICT
         SPECIAL_KEYS_REMAP = TRANSFORMER_SPECIAL_KEYS_REMAP
+    elif model_type == "Wan2.2-Animate-14B":
+        config = {
+            "model_id": "Wan-AI/Wan2.2-Animate-14B",
+            "diffusers_config": {
+                "image_dim": 1280,
+                "added_kv_proj_dim": 5120,
+                "attention_head_dim": 128,
+                "cross_attn_norm": True,
+                "eps": 1e-06,
+                "ffn_dim": 13824,
+                "freq_dim": 256,
+                "in_channels": 36,
+                "motion_encoder_dim": 512,
+                "num_attention_heads": 40,
+                "num_layers": 40,
+                "out_channels": 16,
+                "patch_size": [1, 2, 2],
+                "qk_norm": "rms_norm_across_heads",
+                "text_dim": 4096,
+                "rope_max_seq_len": 1024,
+                "pos_embed_seq_len": 257 * 2,
+            },
+        }
+        RENAME_DICT = TRANSFORMER_KEYS_RENAME_DICT
+        SPECIAL_KEYS_REMAP = TRANSFORMER_SPECIAL_KEYS_REMAP
     return config, RENAME_DICT, SPECIAL_KEYS_REMAP
 
 
@@ -380,10 +407,12 @@ def convert_transformer(model_type: str, stage: str = None):
     original_state_dict = load_sharded_safetensors(model_dir)
 
     with init_empty_weights():
-        if "VACE" not in model_type:
-            transformer = WanTransformer3DModel.from_config(diffusers_config)
-        else:
+        if "Animate" in model_type:
+            transformer = WanAnimateTransformer3DModel.from_config(diffusers_config)
+        elif "VACE" in model_type:
             transformer = WanVACETransformer3DModel.from_config(diffusers_config)
+        else:
+            transformer = WanTransformer3DModel.from_config(diffusers_config)
 
     for key in list(original_state_dict.keys()):
         new_key = key[:]
@@ -926,7 +955,7 @@ DTYPE_MAPPING = {
 if __name__ == "__main__":
     args = get_args()
 
-    if "Wan2.2" in args.model_type and "TI2V" not in args.model_type:
+    if "Wan2.2" in args.model_type and "TI2V" not in args.model_type and "Animate" not in args.model_type:
         transformer = convert_transformer(args.model_type, stage="high_noise_model")
         transformer_2 = convert_transformer(args.model_type, stage="low_noise_model")
     else:
@@ -942,7 +971,7 @@ if __name__ == "__main__":
     tokenizer = AutoTokenizer.from_pretrained("google/umt5-xxl")
     if "FLF2V" in args.model_type:
         flow_shift = 16.0
-    elif "TI2V" in args.model_type:
+    elif "TI2V" in args.model_type or "Animate" in args.model_type:
         flow_shift = 5.0
     else:
         flow_shift = 3.0
@@ -1010,6 +1039,14 @@ if __name__ == "__main__":
         )
     elif "Wan-VACE" in args.model_type:
         pipe = WanVACEPipeline(
+            transformer=transformer,
+            text_encoder=text_encoder,
+            tokenizer=tokenizer,
+            vae=vae,
+            scheduler=scheduler,
+        )
+    elif "Animate" in args.model_type:
+        pipe = WanAnimatePipeline(
             transformer=transformer,
             text_encoder=text_encoder,
             tokenizer=tokenizer,
