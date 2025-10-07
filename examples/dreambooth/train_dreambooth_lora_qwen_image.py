@@ -1338,8 +1338,8 @@ def main(args):
                         batch["pixel_values"] = batch["pixel_values"].to(
                             accelerator.device, non_blocking=True, dtype=vae.dtype
                         )
-
                         latents_cache.append(vae.encode(batch["pixel_values"]).latent_dist)
+                    print("WHY IS THIS HAPPENING",[next(m.parameters()).device for m in vae])
                 if train_dataset.custom_instance_prompts:
                     with offload_models(text_encoding_pipeline, device=accelerator.device, offload=args.offload):
                         prompt_embeds, prompt_embeds_mask = compute_text_embeddings(
