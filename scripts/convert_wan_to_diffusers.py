@@ -11,13 +11,13 @@ from transformers import AutoProcessor, AutoTokenizer, CLIPVisionModelWithProjec
 from diffusers import (
     AutoencoderKLWan,
     UniPCMultistepScheduler,
+    WanAnimatePipeline,
+    WanAnimateTransformer3DModel,
     WanImageToVideoPipeline,
     WanPipeline,
     WanTransformer3DModel,
     WanVACEPipeline,
     WanVACETransformer3DModel,
-    WanAnimateTransformer3DModel,
-    WanAnimatePipeline,
 )
 
 
