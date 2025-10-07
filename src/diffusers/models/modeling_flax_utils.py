@@ -26,11 +26,11 @@ from flax.traverse_util import flatten_dict, unflatten_dict
 from huggingface_hub import create_repo, hf_hub_download
 from huggingface_hub.utils import (
     EntryNotFoundError,
+    HfHubHTTPError,
     RepositoryNotFoundError,
     RevisionNotFoundError,
     validate_hf_hub_args,
 )
-from requests import HTTPError
 
 from .. import __version__, is_torch_available
 from ..utils import (
@@ -227,15 +227,9 @@ class FlaxModelMixin(PushToHubMixin):
                 This can be used to enable mixed-precision training or half-precision inference on GPUs or TPUs. If
                 specified, all the computation will be performed with the given `dtype`.
 
-                <Tip>
-
-                This only specifies the dtype of the *computation* and does not influence the dtype of model
-                parameters.
-
-                If you wish to change the dtype of the model parameters, see [`~FlaxModelMixin.to_fp16`] and
-                [`~FlaxModelMixin.to_bf16`].
-
-                </Tip>
+                > [!TIP] > This only specifies the dtype of the *computation* and does not influence the dtype of model
+                > parameters. > > If you wish to change the dtype of the model parameters, see
+                [`~FlaxModelMixin.to_fp16`] and > [`~FlaxModelMixin.to_bf16`].
 
             model_args (sequence of positional arguments, *optional*):
                 All remaining positional arguments are passed to the underlying model's `__init__` method.
@@ -385,7 +379,7 @@ class FlaxModelMixin(PushToHubMixin):
                 raise EnvironmentError(
                     f"{pretrained_model_name_or_path} does not appear to have a file named {FLAX_WEIGHTS_NAME}."
                 )
-            except HTTPError as err:
+            except HfHubHTTPError as err:
                 raise EnvironmentError(
                     f"There was a specific connection error when trying to load {pretrained_model_name_or_path}:\n"
                     f"{err}"
