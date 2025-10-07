@@ -21,6 +21,7 @@ import torch.nn as nn
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
 from ...utils import USE_PEFT_BACKEND, logging, scale_lora_layers, unscale_lora_layers
+from ...utils.torch_utils import maybe_allow_in_graph
 from ..attention import AttentionMixin, FeedForward
 from ..cache_utils import CacheMixin
 from ..modeling_outputs import Transformer2DModelOutput
@@ -36,7 +37,7 @@ from .transformer_wan import (
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
-
+@maybe_allow_in_graph
 class WanAnimateTransformerBlock(nn.Module):
     def __init__(
         self,
@@ -47,45 +48,35 @@ class WanAnimateTransformerBlock(nn.Module):
         cross_attn_norm: bool = False,
         eps: float = 1e-6,
         added_kv_proj_dim: Optional[int] = None,
-        apply_input_projection: bool = False,
-        apply_output_projection: bool = False,
     ):
         super().__init__()
 
-        # 1. Input projection
-        self.proj_in = None
-        if apply_input_projection:
-            self.proj_in = nn.Linear(dim, dim)
-
-        # 2. Self-attention
+        # 1. Self-attention
         self.norm1 = FP32LayerNorm(dim, eps, elementwise_affine=False)
         self.attn1 = WanAttention(
             dim=dim,
             heads=num_heads,
             dim_head=dim // num_heads,
             eps=eps,
+            cross_attention_dim_head=None,
             processor=WanAttnProcessor(),
         )
 
-        # 3. Cross-attention
+        # 2. Cross-attention
         self.attn2 = WanAttention(
             dim=dim,
             heads=num_heads,
             dim_head=dim // num_heads,
             eps=eps,
             added_kv_proj_dim=added_kv_proj_dim,
+            cross_attention_dim_head=dim // num_heads,
             processor=WanAttnProcessor(),
         )
         self.norm2 = FP32LayerNorm(dim, eps, elementwise_affine=True) if cross_attn_norm else nn.Identity()
 
-        # 4. Feed-forward
+        # 3. Feed-forward
         self.ffn = FeedForward(dim, inner_dim=ffn_dim, activation_fn="gelu-approximate")
         self.norm3 = FP32LayerNorm(dim, eps, elementwise_affine=False)
-
-        # 5. Output projection
-        self.proj_out = None
-        if apply_output_projection:
-            self.proj_out = nn.Linear(dim, dim)
 
         self.scale_shift_table = nn.Parameter(torch.randn(1, 6, dim) / dim**0.5)
 
@@ -93,51 +84,39 @@ class WanAnimateTransformerBlock(nn.Module):
         self,
         hidden_states: torch.Tensor,
         encoder_hidden_states: torch.Tensor,
-        control_hidden_states: torch.Tensor,
         temb: torch.Tensor,
         rotary_emb: torch.Tensor,
     ) -> torch.Tensor:
-        if self.proj_in is not None:
-            control_hidden_states = self.proj_in(control_hidden_states)
-            control_hidden_states = control_hidden_states + hidden_states
-
+        # temb: batch_size, 6, inner_dim (like wan2.1/wan2.2 14B)
         shift_msa, scale_msa, gate_msa, c_shift_msa, c_scale_msa, c_gate_msa = (
-            self.scale_shift_table.to(temb.device) + temb.float()
+            self.scale_shift_table + temb.float()
         ).chunk(6, dim=1)
 
         # 1. Self-attention
-        norm_hidden_states = (self.norm1(control_hidden_states.float()) * (1 + scale_msa) + shift_msa).type_as(
-            control_hidden_states
-        )
+        norm_hidden_states = (self.norm1(hidden_states.float()) * (1 + scale_msa) + shift_msa).type_as(hidden_states)
         attn_output = self.attn1(norm_hidden_states, None, None, rotary_emb)
-        control_hidden_states = (control_hidden_states.float() + attn_output * gate_msa).type_as(control_hidden_states)
+        hidden_states = (hidden_states.float() + attn_output * gate_msa).type_as(hidden_states)
 
         # 2. Cross-attention
-        norm_hidden_states = self.norm2(control_hidden_states.float()).type_as(control_hidden_states)
+        norm_hidden_states = self.norm2(hidden_states.float()).type_as(hidden_states)
         attn_output = self.attn2(norm_hidden_states, encoder_hidden_states, None, None)
-        control_hidden_states = control_hidden_states + attn_output
+        hidden_states = hidden_states + attn_output
 
         # 3. Feed-forward
-        norm_hidden_states = (self.norm3(control_hidden_states.float()) * (1 + c_scale_msa) + c_shift_msa).type_as(
-            control_hidden_states
+        norm_hidden_states = (self.norm3(hidden_states.float()) * (1 + c_scale_msa) + c_shift_msa).type_as(
+            hidden_states
         )
         ff_output = self.ffn(norm_hidden_states)
-        control_hidden_states = (control_hidden_states.float() + ff_output.float() * c_gate_msa).type_as(
-            control_hidden_states
-        )
+        hidden_states = (hidden_states.float() + ff_output.float() * c_gate_msa).type_as(hidden_states)
 
-        conditioning_states = None
-        if self.proj_out is not None:
-            conditioning_states = self.proj_out(control_hidden_states)
-
-        return conditioning_states, control_hidden_states
+        return hidden_states
 
 
 class WanAnimateTransformer3DModel(
     ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginalModelMixin, CacheMixin, AttentionMixin
 ):
     r"""
-    A Transformer model for video-like data used in the Wan model.
+    A Transformer model for video-like data used in the WanAnimate model.
 
     Args:
         patch_size (`Tuple[int]`, defaults to `(1, 2, 2)`):
@@ -166,15 +145,15 @@ class WanAnimateTransformer3DModel(
             Enable query/key normalization.
         eps (`float`, defaults to `1e-6`):
             Epsilon value for normalization layers.
-        add_img_emb (`bool`, defaults to `False`):
-            Whether to use img_emb.
-        added_kv_proj_dim (`int`, *optional*, defaults to `None`):
+        image_dim (`int`, *optional*, defaults to `1280`):
+            The number of channels to use for the image embedding. If `None`, no projection is used.
+        added_kv_proj_dim (`int`, *optional*, defaults to `5120`):
             The number of channels to use for the added key and value projections. If `None`, no projection is used.
     """
 
     _supports_gradient_checkpointing = True
-    _skip_layerwise_casting_patterns = ["patch_embedding", "vace_patch_embedding", "condition_embedder", "norm"]
-    _no_split_modules = ["WanTransformerBlock", "WanVACETransformerBlock"]
+    _skip_layerwise_casting_patterns = ["patch_embedding", "condition_embedder", "norm"]
+    _no_split_modules = ["WanAnimateTransformerBlock"]
     _keep_in_fp32_modules = ["time_embedder", "scale_shift_table", "norm1", "norm2", "norm3"]
     _keys_to_ignore_on_load_unexpected = ["norm_added_q"]
 
@@ -184,7 +163,7 @@ class WanAnimateTransformer3DModel(
         patch_size: Tuple[int] = (1, 2, 2),
         num_attention_heads: int = 40,
         attention_head_dim: int = 128,
-        in_channels: int = 16,
+        in_channels: int = 36,
         out_channels: int = 16,
         text_dim: int = 4096,
         freq_dim: int = 256,
@@ -193,10 +172,10 @@ class WanAnimateTransformer3DModel(
         cross_attn_norm: bool = True,
         qk_norm: Optional[str] = "rms_norm_across_heads",
         eps: float = 1e-6,
-        image_dim: Optional[int] = None,
-        added_kv_proj_dim: Optional[int] = None,
+        image_dim: Optional[int] = 1280,
+        added_kv_proj_dim: Optional[int] = 5120,
         rope_max_seq_len: int = 1024,
-        pos_embed_seq_len: Optional[int] = None,
+        pos_embed_seq_len: Optional[int] = 257 * 2,
     ) -> None:
         super().__init__()
 
@@ -271,12 +250,6 @@ class WanAnimateTransformer3DModel(
         # 2. Patch embedding
         hidden_states = self.patch_embedding(hidden_states)
         hidden_states = hidden_states.flatten(2).transpose(1, 2)
-
-        # 3. Time embedding
-        temb, timestep_proj, encoder_hidden_states, encoder_hidden_states_image = self.condition_embedder(
-            timestep, encoder_hidden_states, encoder_hidden_states_image
-        )
-        timestep_proj = timestep_proj.unflatten(1, (6, -1))
 
         # 3. Time embedding
         temb, timestep_proj, encoder_hidden_states, encoder_hidden_states_image = self.condition_embedder(

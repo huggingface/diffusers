@@ -125,7 +125,10 @@ def retrieve_latents(
 
 class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
     r"""
-    Pipeline for image-to-video generation using Wan.
+    WanAnimatePipeline takes a video and a character image as input, and generates a video in these two modes:
+
+    1. Animation mode: The model generates a video of the character image that mimics the human motion in the input video.
+    2. Replacement mode: The model replaces the character image with the input video.
 
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods
     implemented for all pipelines (downloading, saving, running on a particular device, etc.).
@@ -142,7 +145,7 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
             the
             [clip-vit-huge-patch14](https://github.com/mlfoundations/open_clip/blob/main/docs/PRETRAINED.md#vit-h14-xlm-roberta-large)
             variant.
-        transformer ([`WanTransformer3DModel`]):
+        transformer ([`WanAnimateTransformer3DModel`]):
             Conditional Transformer to denoise the input latents.
         scheduler ([`UniPCMultistepScheduler`]):
             A scheduler to be used in combination with `transformer` to denoise the encoded image latents.

@@ -382,7 +382,7 @@ def get_transformer_config(model_type: str) -> Tuple[Dict[str, Any], ...]:
                 "num_attention_heads": 40,
                 "num_layers": 40,
                 "out_channels": 16,
-                "patch_size": [1, 2, 2],
+                "patch_size": (1, 2, 2),
                 "qk_norm": "rms_norm_across_heads",
                 "text_dim": 4096,
                 "rope_max_seq_len": 1024,
