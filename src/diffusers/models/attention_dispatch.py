@@ -292,14 +292,6 @@ def dispatch_attention_fn(
         backend_name = AttentionBackendName(backend)
         backend_fn = _AttentionBackendRegistry._backends.get(backend_name)
 
-    if parallel_config is not None and not _AttentionBackendRegistry._is_context_parallel_available(
-        backend_name, parallel_config
-    ):
-        raise ValueError(
-            f"Backend {backend_name} either does not support context parallelism or context parallelism "
-            f"was enabled with a world size of 1."
-        )
-
     kwargs = {
         "query": query,
         "key": key,
