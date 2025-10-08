@@ -2,6 +2,7 @@ FROM nvidia/cuda:12.1.0-runtime-ubuntu20.04
 LABEL maintainer="Hugging Face"
 LABEL repository="diffusers"
 
+ARG PYTHON_VERSION=3.10
 ENV DEBIAN_FRONTEND=noninteractive
 ENV MINIMUM_SUPPORTED_TORCH_VERSION="2.1.0"
 ENV MINIMUM_SUPPORTED_TORCHVISION_VERSION="0.16.0"
@@ -9,7 +10,8 @@ ENV MINIMUM_SUPPORTED_TORCHAUDIO_VERSION="2.1.0"
 
 RUN apt-get -y update \
     && apt-get install -y software-properties-common \
-    && add-apt-repository ppa:deadsnakes/ppa
+    && add-apt-repository ppa:deadsnakes/ppa && \
+    apt-get update
 
 RUN apt install -y bash \
     build-essential \
@@ -19,35 +21,31 @@ RUN apt install -y bash \
     ca-certificates \
     libsndfile1-dev \
     libgl1 \
-    python3.10 \
-    python3.10-dev \
+    python3 \
     python3-pip \
-    python3.10-venv && \
-    rm -rf /var/lib/apt/lists
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
 
-# make sure to use venv
-RUN python3.10 -m venv /opt/venv
-ENV PATH="/opt/venv/bin:$PATH"
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+ENV PATH="/root/.local/bin:$PATH"
+ENV VIRTUAL_ENV="/opt/venv"
+ENV UV_PYTHON_INSTALL_DIR=/opt/uv/python
+RUN uv venv --python ${PYTHON_VERSION} --seed ${VIRTUAL_ENV}
+ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 
 # pre-install the heavy dependencies (these can later be overridden by the deps from setup.py)
-RUN python3.10 -m pip install --no-cache-dir --upgrade pip uv==0.1.11 && \
-    python3.10 -m uv pip install --no-cache-dir \
+RUN uv pip install --no-cache-dir \
     torch==$MINIMUM_SUPPORTED_TORCH_VERSION \
     torchvision==$MINIMUM_SUPPORTED_TORCHVISION_VERSION \
-    torchaudio==$MINIMUM_SUPPORTED_TORCHAUDIO_VERSION \
-    invisible_watermark && \
-    python3.10 -m pip install --no-cache-dir \
+    torchaudio==$MINIMUM_SUPPORTED_TORCHAUDIO_VERSION
+
+RUN uv pip install --no-cache-dir "git+https://github.com/huggingface/diffusers.git@main#egg=diffusers[test]"
+
+# Extra dependencies
+RUN uv pip install --no-cache-dir \
     accelerate \
-    datasets \
-    hf-doc-builder \
-    huggingface-hub \
-    hf_transfer \
-    Jinja2 \
-    librosa \
     numpy==1.26.4 \
-    scipy \
-    tensorboard \
-    transformers \
+    pytorch-lightning \
     hf_transfer
 
 CMD ["/bin/bash"]
