@@ -13,8 +13,9 @@
 # limitations under the License.
 
 import html
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 from copy import deepcopy
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+
 import PIL
 import regex as re
 import torch
