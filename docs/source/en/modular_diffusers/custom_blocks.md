@@ -250,7 +250,8 @@ class Florence2ImageAnnotatorBlock(ModularPipelineBlocks):
 
 Save the custom block to the Hub, from either the CLI or with the [`push_to_hub`] method, so you can easily share and reuse it.
 
-1. From the CLI
+<hfoptions id="share">
+<hfoption id="hf CLI">
 
 ```shell
 # In the folder with the `block.py` file, run:
@@ -262,8 +263,8 @@ Then upload the block to the Hub:
 ```shell
 hf upload <your repo id> . .
 ```
-
-2. From Python
+</hfoption>
+<hfoption id="push_to_hub">
 
 ```py
 from block import Florence2ImageAnnotatorBlock
@@ -271,6 +272,8 @@ block = Florence2ImageAnnotatorBlock()
 block.push_to_hub("<your repo id>")
 ```
 
+</hfoption>
+</hfoptions>
 
 Load the custom block with [`~ModularPipelineBlocks.from_pretrained`] and set `trust_remote_code=True`.
 
