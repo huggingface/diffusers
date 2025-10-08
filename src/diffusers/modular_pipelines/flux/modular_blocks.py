@@ -18,21 +18,41 @@ from ..modular_pipeline_utils import InsertableDict
 from .before_denoise import (
     FluxImg2ImgPrepareLatentsStep,
     FluxImg2ImgSetTimestepsStep,
-    FluxInputStep,
     FluxPrepareLatentsStep,
+    FluxRoPEInputsStep,
     FluxSetTimestepsStep,
 )
 from .decoders import FluxDecodeStep
 from .denoise import FluxDenoiseStep
-from .encoders import FluxTextEncoderStep, FluxVaeEncoderStep
+from .encoders import FluxProcessImagesInputStep, FluxTextEncoderStep, FluxVaeEncoderDynamicStep
+from .inputs import FluxInputsDynamicStep, FluxTextInputStep
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
 # vae encoder (run before before_denoise)
+FluxImg2ImgVaeEncoderBlocks = InsertableDict(
+    [
+        ("preprocess", FluxProcessImagesInputStep()),
+        ("encode", FluxVaeEncoderDynamicStep()),
+    ]
+)
+
+
+class FluxImg2ImgVaeEncoderStep(SequentialPipelineBlocks):
+    model_name = "flux"
+
+    block_classes = FluxImg2ImgVaeEncoderBlocks.values()
+    block_names = FluxImg2ImgVaeEncoderBlocks.keys()
+
+    @property
+    def description(self) -> str:
+        return "Vae encoder step that preprocess andencode the image inputs into their latent representations."
+
+
 class FluxAutoVaeEncoderStep(AutoPipelineBlocks):
-    block_classes = [FluxVaeEncoderStep]
+    block_classes = [FluxImg2ImgVaeEncoderStep]
     block_names = ["img2img"]
     block_trigger_inputs = ["image"]
 
@@ -41,45 +61,48 @@ class FluxAutoVaeEncoderStep(AutoPipelineBlocks):
         return (
             "Vae encoder step that encode the image inputs into their latent representations.\n"
             + "This is an auto pipeline block that works for img2img tasks.\n"
-            + " - `FluxVaeEncoderStep` (img2img) is used when only `image` is provided."
-            + " - if `image` is provided, step will be skipped."
+            + " - `FluxImg2ImgVaeEncoderStep` (img2img) is used when only `image` is provided."
+            + " - if `image` is not provided, step will be skipped."
         )
 
 
-# before_denoise: text2img, img2img
-class FluxBeforeDenoiseStep(SequentialPipelineBlocks):
-    block_classes = [
-        FluxInputStep,
-        FluxPrepareLatentsStep,
-        FluxSetTimestepsStep,
+# before_denoise: text2img
+FluxBeforeDenoiseBlocks = InsertableDict(
+    [
+        ("prepare_latents", FluxPrepareLatentsStep()),
+        ("set_timesteps", FluxSetTimestepsStep()),
+        ("prepare_rope_inputs", FluxRoPEInputsStep()),
     ]
-    block_names = ["input", "prepare_latents", "set_timesteps"]
+)
+
+
+class FluxBeforeDenoiseStep(SequentialPipelineBlocks):
+    block_classes = FluxBeforeDenoiseBlocks.values()
+    block_names = FluxBeforeDenoiseBlocks.keys()
 
     @property
     def description(self):
-        return (
-            "Before denoise step that prepare the inputs for the denoise step.\n"
-            + "This is a sequential pipeline blocks:\n"
-            + " - `FluxInputStep` is used to adjust the batch size of the model inputs\n"
-            + " - `FluxPrepareLatentsStep` is used to prepare the latents\n"
-            + " - `FluxSetTimestepsStep` is used to set the timesteps\n"
-        )
+        return "Before denoise step that prepares the inputs for the denoise step in text-to-image generation."
 
 
 # before_denoise: img2img
+FluxImg2ImgBeforeDenoiseBlocks = InsertableDict(
+    [
+        ("prepare_latents", FluxPrepareLatentsStep()),
+        ("set_timesteps", FluxImg2ImgSetTimestepsStep()),
+        ("prepare_img2img_latents", FluxImg2ImgPrepareLatentsStep()),
+        ("prepare_rope_inputs", FluxRoPEInputsStep()),
+    ]
+)
+
+
 class FluxImg2ImgBeforeDenoiseStep(SequentialPipelineBlocks):
-    block_classes = [FluxInputStep, FluxImg2ImgSetTimestepsStep, FluxImg2ImgPrepareLatentsStep]
-    block_names = ["input", "set_timesteps", "prepare_latents"]
+    block_classes = FluxImg2ImgBeforeDenoiseBlocks.values()
+    block_names = FluxImg2ImgBeforeDenoiseBlocks.keys()
 
     @property
     def description(self):
-        return (
-            "Before denoise step that prepare the inputs for the denoise step for img2img task.\n"
-            + "This is a sequential pipeline blocks:\n"
-            + " - `FluxInputStep` is used to adjust the batch size of the model inputs\n"
-            + " - `FluxImg2ImgSetTimestepsStep` is used to set the timesteps\n"
-            + " - `FluxImg2ImgPrepareLatentsStep` is used to prepare the latents\n"
-        )
+        return "Before denoise step that prepare the inputs for the denoise step for img2img task."
 
 
 # before_denoise: all task (text2img, img2img)
@@ -113,7 +136,7 @@ class FluxAutoDenoiseStep(AutoPipelineBlocks):
         )
 
 
-# decode: all task (text2img, img2img, inpainting)
+# decode: all task (text2img, img2img)
 class FluxAutoDecodeStep(AutoPipelineBlocks):
     block_classes = [FluxDecodeStep]
     block_names = ["non-inpaint"]
@@ -124,32 +147,73 @@ class FluxAutoDecodeStep(AutoPipelineBlocks):
         return "Decode step that decode the denoised latents into image outputs.\n - `FluxDecodeStep`"
 
 
+# inputs: text2image/img2img
+FluxImg2ImgBlocks = InsertableDict(
+    [("text_inputs", FluxTextInputStep()), ("additional_inputs", FluxInputsDynamicStep())]
+)
+
+
+class FluxImg2ImgInputStep(SequentialPipelineBlocks):
+    model_name = "flux"
+    block_classes = FluxImg2ImgBlocks.values()
+    block_names = FluxImg2ImgBlocks.keys()
+
+    @property
+    def description(self):
+        return "Input step that prepares the inputs for the img2img denoising step. It:\n"
+        " - make sure the text embeddings have consistent batch size as well as the additional inputs (`image_latents`).\n"
+        " - update height/width based `image_latents`, patchify `image_latents`."
+
+
+class FluxImageAutoInputStep(AutoPipelineBlocks):
+    block_classes = [FluxImg2ImgInputStep, FluxTextInputStep]
+    block_names = ["img2img", "text2image"]
+    block_trigger_inputs = ["image_latents", None]
+
+    @property
+    def description(self):
+        return (
+            "Input step that standardize the inputs for the denoising step, e.g. make sure inputs have consistent batch size, and patchified. \n"
+            " This is an auto pipeline block that works for text2image/img2img tasks.\n"
+            + " - `FluxImg2ImgInputStep` (img2img) is used when `image_latents` is provided.\n"
+            + " - `FluxTextInputStep` (text2image) is used when `image_latents` are not provided.\n"
+        )
+
+
 class FluxCoreDenoiseStep(SequentialPipelineBlocks):
-    block_classes = [FluxInputStep, FluxAutoBeforeDenoiseStep, FluxAutoDenoiseStep]
+    model_name = "flux"
+    block_classes = [FluxImageAutoInputStep, FluxAutoBeforeDenoiseStep, FluxAutoDenoiseStep]
     block_names = ["input", "before_denoise", "denoise"]
 
     @property
     def description(self):
         return (
             "Core step that performs the denoising process. \n"
-            + " - `FluxInputStep` (input) standardizes the inputs for the denoising step.\n"
+            + " - `FluxImageAutoInputStep` (input) standardizes the inputs for the denoising step.\n"
             + " - `FluxAutoBeforeDenoiseStep` (before_denoise) prepares the inputs for the denoising step.\n"
             + " - `FluxAutoDenoiseStep` (denoise) iteratively denoises the latents.\n"
-            + "This step support text-to-image and image-to-image tasks for Flux:\n"
+            + "This step supports text-to-image and image-to-image tasks for Flux:\n"
             + " - for image-to-image generation, you need to provide `image_latents`\n"
-            + " - for text-to-image generation, all you need to provide is prompt embeddings"
+            + " - for text-to-image generation, all you need to provide is prompt embeddings."
         )
 
 
-# text2image
-class FluxAutoBlocks(SequentialPipelineBlocks):
-    block_classes = [
-        FluxTextEncoderStep,
-        FluxAutoVaeEncoderStep,
-        FluxCoreDenoiseStep,
-        FluxAutoDecodeStep,
+# Auto blocks (text2image and img2img)
+AUTO_BLOCKS = InsertableDict(
+    [
+        ("text_encoder", FluxTextEncoderStep()),
+        ("image_encoder", FluxAutoVaeEncoderStep()),
+        ("denoise", FluxCoreDenoiseStep()),
+        ("decode", FluxDecodeStep()),
     ]
-    block_names = ["text_encoder", "image_encoder", "denoise", "decode"]
+)
+
+
+class FluxAutoBlocks(SequentialPipelineBlocks):
+    model_name = "flux"
+
+    block_classes = AUTO_BLOCKS.values()
+    block_names = AUTO_BLOCKS.keys()
 
     @property
     def description(self):
@@ -162,35 +226,28 @@ class FluxAutoBlocks(SequentialPipelineBlocks):
 
 TEXT2IMAGE_BLOCKS = InsertableDict(
     [
-        ("text_encoder", FluxTextEncoderStep),
-        ("input", FluxInputStep),
-        ("prepare_latents", FluxPrepareLatentsStep),
-        ("set_timesteps", FluxSetTimestepsStep),
-        ("denoise", FluxDenoiseStep),
-        ("decode", FluxDecodeStep),
+        ("text_encoder", FluxTextEncoderStep()),
+        ("input", FluxTextInputStep()),
+        ("prepare_latents", FluxPrepareLatentsStep()),
+        ("set_timesteps", FluxSetTimestepsStep()),
+        ("prepare_rope_inputs", FluxRoPEInputsStep()),
+        ("denoise", FluxDenoiseStep()),
+        ("decode", FluxDecodeStep()),
     ]
 )
 
 IMAGE2IMAGE_BLOCKS = InsertableDict(
     [
-        ("text_encoder", FluxTextEncoderStep),
-        ("image_encoder", FluxVaeEncoderStep),
-        ("input", FluxInputStep),
-        ("set_timesteps", FluxImg2ImgSetTimestepsStep),
-        ("prepare_latents", FluxImg2ImgPrepareLatentsStep),
-        ("denoise", FluxDenoiseStep),
-        ("decode", FluxDecodeStep),
+        ("text_encoder", FluxTextEncoderStep()),
+        ("vae_encoder", FluxVaeEncoderDynamicStep()),
+        ("input", FluxImg2ImgInputStep()),
+        ("prepare_latents", FluxPrepareLatentsStep()),
+        ("set_timesteps", FluxImg2ImgSetTimestepsStep()),
+        ("prepare_img2img_latents", FluxImg2ImgPrepareLatentsStep()),
+        ("prepare_rope_inputs", FluxRoPEInputsStep()),
+        ("denoise", FluxDenoiseStep()),
+        ("decode", FluxDecodeStep()),
     ]
 )
-
-AUTO_BLOCKS = InsertableDict(
-    [
-        ("text_encoder", FluxTextEncoderStep),
-        ("image_encoder", FluxAutoVaeEncoderStep),
-        ("denoise", FluxCoreDenoiseStep),
-        ("decode", FluxAutoDecodeStep),
-    ]
-)
-
 
 ALL_BLOCKS = {"text2image": TEXT2IMAGE_BLOCKS, "img2img": IMAGE2IMAGE_BLOCKS, "auto": AUTO_BLOCKS}
