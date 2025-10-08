@@ -17,7 +17,10 @@ from dataclasses import dataclass
 from typing import Dict, List, Type, Union
 
 import torch
-import torch.distributed._functional_collectives as funcol
+
+
+if torch.distributed.is_available():
+    import torch.distributed._functional_collectives as funcol
 
 from ..models._modeling_parallel import (
     ContextParallelConfig,
