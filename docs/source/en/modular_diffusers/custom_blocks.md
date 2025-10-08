@@ -11,7 +11,7 @@ specific language governing permissions and limitations under the License.
 -->
 
 
-# Building Custom Blocks
+# Building custom blocks
 
 [ModularPipelineBlocks](./pipeline_block) are the fundamental building blocks for a [`ModularPipeline`]. As long as they contain the appropriate inputs, outputs, and computation logic, you can customize these blocks to create custom blocks.
 
