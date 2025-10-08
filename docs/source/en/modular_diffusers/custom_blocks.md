@@ -248,9 +248,7 @@ class Florence2ImageAnnotatorBlock(ModularPipelineBlocks):
         return components, state
 ```
 
-Now that we have defined our custom block, we can save it as a model repository on the Huggingface Hub so that it is easy to share and reuse.
-
-There are two ways to save the block:
+Save the custom block to the Hub, from either the CLI or with the [`push_to_hub`] method, so you can easily share and reuse it.
 
 1. From the CLI
 
