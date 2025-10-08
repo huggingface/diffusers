@@ -19,6 +19,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 import PIL
 import regex as re
 import torch
+import torch.nn.functional as F
 from transformers import AutoTokenizer, CLIPImageProcessor, CLIPVisionModel, UMT5EncoderModel
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
@@ -429,11 +430,11 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
         mask_reft_len: Optional[int] = None,
         mode: Optional[str] = None,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
-        num_latent_frames = (num_frames - 1) // self.vae_scale_factor_temporal + 1
+        num_latent_frames = num_frames // self.vae_scale_factor_temporal + 1
         latent_height = height // self.vae_scale_factor_spatial
         latent_width = width // self.vae_scale_factor_spatial
 
-        shape = (batch_size, num_channels_latents, num_latent_frames, latent_height, latent_width)
+        shape = (batch_size, num_channels_latents, num_latent_frames + 1, latent_height, latent_width)
         if isinstance(generator, list) and len(generator) != batch_size:
             raise ValueError(
                 f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
@@ -482,7 +483,6 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
         pose_latents_no_ref = (pose_latents_no_ref - latents_mean) * latents_std
         pose_latents = torch.cat([pose_latents_no_ref], dim=2)
 
-        # TODO: maskings the same?
         mask_lat_size = torch.ones(batch_size, 1, num_frames, latent_height, latent_width)
 
         mask_lat_size[:, :, list(range(1, num_frames))] = 0
@@ -497,51 +497,58 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
             if mode == "replacement":
                 y_reft = retrieve_latents(self.vae.encode(
                     [
-                        torch.concat([refer_t_pixel_values[0, :, :mask_reft_len], bg_pixel_values[0, :, mask_reft_len:]], dim=1).to(device)
+                        torch.concat([refer_t_pixel_values[0, :, :mask_reft_len], bg_pixel_values[0, :, mask_reft_len:]], dim=1)
                     ]
                 ), sample_mode="argmax")
                 mask_pixel_values = 1 - mask_pixel_values
-                mask_pixel_values = rearrange(mask_pixel_values, "b t c h w -> (b t) c h w")
+                mask_pixel_values = mask_pixel_values.flatten(0, 1)
                 mask_pixel_values = F.interpolate(mask_pixel_values, size=(latent_height, latent_width), mode='nearest')
-                mask_pixel_values = rearrange(mask_pixel_values, "(b t) c h w -> b t c h w", b=1)[:,:,0]
-                msk_reft = self.get_i2v_mask(lat_t, latent_height, latent_width, mask_reft_len, mask_pixel_values=mask_pixel_values, device=device)
+                mask_pixel_values = mask_pixel_values.unflatten(0, (1, -1))[:,:,0]
+                msk_reft = self.get_i2v_mask(num_latent_frames, latent_height, latent_width, mask_reft_len, mask_pixel_values=mask_pixel_values, device=device)
             else:
                 y_reft = retrieve_latents(self.vae.encode(
-                    [
                         torch.concat(
                             [
-                                torch.nn.functional.interpolate(refer_t_pixel_values[0, :, :mask_reft_len].cpu(),
-                                                                        size=(latent_height, latent_width), mode="bicubic"),
-                                torch.zeros(3, T - mask_reft_len, latent_height, latent_width),
+                                F.interpolate(refer_t_pixel_values[0, :, :mask_reft_len],#.cpu(),
+                                              size=(height, width), mode="bicubic"),
+                                torch.zeros(3, num_frames - mask_reft_len, height, width, device=device, dtype=self.vae.dtype),
                             ]
-                        ).to(device)
-                    ]
+                        )
                 ), sample_mode="argmax")
-                msk_reft = self.get_i2v_mask(lat_t, latent_height, latent_width, mask_reft_len, device=device)
+                msk_reft = self.get_i2v_mask(num_latent_frames, latent_height, latent_width, mask_reft_len, device=device)
         else:
             if mode == "replacement":
                 mask_pixel_values = 1 - mask_pixel_values
-                mask_pixel_values = rearrange(mask_pixel_values, "b t c h w -> (b t) c h w")
+                mask_pixel_values = mask_pixel_values.flatten(0, 1)
                 mask_pixel_values = F.interpolate(mask_pixel_values, size=(latent_height, latent_width), mode='nearest')
-                mask_pixel_values = rearrange(mask_pixel_values, "(b t) c h w -> b t c h w", b=1)[:,:,0]
+                mask_pixel_values = mask_pixel_values.unflatten(0, (1, -1))[:,:,0]
                 y_reft = retrieve_latents(self.vae.encode(
-                    [
-                        torch.concat([bg_pixel_values[0]], dim=1).to(device)
-                    ]
+                        torch.concat([bg_pixel_values[0]], dim=1).to(dtype=self.vae.dtype)
                 ), sample_mode="argmax")
-                msk_reft = self.get_i2v_mask(lat_t, latent_height, latent_width, mask_reft_len, mask_pixel_values=mask_pixel_values, device=device)
+                msk_reft = self.get_i2v_mask(num_latent_frames, latent_height, latent_width, mask_reft_len, mask_pixel_values=mask_pixel_values, device=device)
             else:
                 y_reft = retrieve_latents(self.vae.encode(
-                    [
-                        torch.concat([torch.zeros(3, T - mask_reft_len, latent_height, latent_width)], dim=1).to(device)
-                    ]
+                        torch.concat([torch.zeros(3, num_frames - mask_reft_len, height, width, device=device, dtype=self.vae.dtype)], dim=1)
                 ), sample_mode="argmax")
-                msk_reft = self.get_i2v_mask(lat_t, latent_height, latent_width, mask_reft_len, device=device)
+                msk_reft = self.get_i2v_mask(num_latent_frames, latent_height, latent_width, mask_reft_len, device=device)
+        msk_reft = self.get_i2v_mask(num_latent_frames, latent_height, latent_width, mask_reft_len, mask_pixel_values=mask_pixel_values, device=device)
+
         y_reft = torch.concat([msk_reft, y_reft]).to(dtype=self.vae.dtype, device=device)
         y = torch.concat([pose_latents, y_reft], dim=1)
 
         return latents, pose_latents, y
-        return latents, torch.concat([mask_lat_size, latent_condition], dim=1)
+
+    def get_i2v_mask(self, lat_t, lat_h, lat_w, mask_len=1, mask_pixel_values=None, device="cuda"):
+        if mask_pixel_values is None:
+            msk = torch.zeros(1, (lat_t-1) * 4 + 1, lat_h, lat_w, device=device)
+        else:
+            msk = mask_pixel_values.clone()
+        msk[:, :mask_len] = 1
+        msk = torch.concat([torch.repeat_interleave(msk[:, 0:1], repeats=4, dim=1), msk[:, 1:]], dim=1)
+        msk = msk.view(1, msk.shape[1] // 4, 4, lat_h, lat_w)
+        msk = msk.transpose(1, 2)[0]
+
+        return msk
 
     def pad_video(self, frames, num_target_frames):
         """
@@ -558,6 +565,7 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 idx += 1
             if idx == 0 or idx == len(frames) - 1:
                 flip = not flip
+
         return target_frames
 
     @property
@@ -823,6 +831,7 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
 
             refer_pixel_values = image
 
+            out_frames = None
             if start == 0:
                 refer_t_pixel_values = torch.zeros(image.shape[0], 3, num_frames_for_temporal_guidance, height, width)
             elif start > 0:
@@ -833,13 +842,15 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
             if mode == "replacement":
                 bg_pixel_values = background_video[start:end]
                 mask_pixel_values = mask_video[start:end] #.permute(0, 3, 1, 2).unsqueeze(0)
+                mask_pixel_values = mask_pixel_values.to(device=device, dtype=torch.bfloat16)
+            else:
+                mask_pixel_values = None
 
             conditioning_pixel_values = conditioning_pixel_values.to(device=device, dtype=torch.bfloat16)
             face_pixel_values = face_pixel_values.to(device=device, dtype=torch.bfloat16)
             refer_pixel_values = refer_pixel_values.to(device=device, dtype=torch.bfloat16)
             refer_t_pixel_values = refer_t_pixel_values.to(device=device, dtype=torch.bfloat16)
             bg_pixel_values = bg_pixel_values.to(device=device, dtype=torch.bfloat16)
-            mask_pixel_values = mask_pixel_values.to(device=device, dtype=torch.bfloat16)
 
 
             latents_outputs = self.prepare_latents(
@@ -874,7 +885,7 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
 
                     self._current_timestep = t
 
-                    latent_model_input = torch.cat([latents, condition], dim=1).to(transformer_dtype)
+                    latent_model_input = torch.cat([latents, y], dim=1).to(transformer_dtype)
                     timestep = t.expand(latents.shape[0])
 
                     with self.transformer.cache_context("cond"):
