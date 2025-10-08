@@ -30,9 +30,9 @@ from ..attention_processor import (
     FusedAuraFlowAttnProcessor2_0,
 )
 from ..embeddings import TimestepEmbedding, Timesteps
-from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
 from ..normalization import AdaLayerNormZero, FP32LayerNorm
+from .modeling_common import Transformer2DModelOutput
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -194,7 +194,8 @@ class AuraFlowSingleTransformerBlock(nn.Module):
 
 
 @maybe_allow_in_graph
-class AuraFlowJointTransformerBlock(nn.Module):
+# Copied from diffusers.models.transformers.transformer_sd3.SD3TransformerBlock with SD3->AuraFlow
+class AuraFlowTransformerBlock(nn.Module):
     r"""
     Transformer block for Aura Flow. Similar to SD3 MMDiT. Differences (non-exhaustive):
 
@@ -337,7 +338,7 @@ class AuraFlowTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, From
 
         self.joint_transformer_blocks = nn.ModuleList(
             [
-                AuraFlowJointTransformerBlock(
+                AuraFlowTransformerBlock(
                     dim=self.inner_dim,
                     num_attention_heads=self.config.num_attention_heads,
                     attention_head_dim=self.config.attention_head_dim,

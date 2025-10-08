@@ -24,7 +24,6 @@ from ...configuration_utils import ConfigMixin, FrozenDict, register_to_config
 from ...loaders import FromOriginalModelMixin, PeftAdapterMixin, UNet2DConditionLoadersMixin
 from ...utils import BaseOutput, deprecate, logging
 from ...utils.torch_utils import apply_freeu
-from ..attention import BasicTransformerBlock
 from ..attention_processor import (
     ADDED_KV_ATTENTION_PROCESSORS,
     CROSS_ATTENTION_PROCESSORS,
@@ -41,7 +40,7 @@ from ..embeddings import TimestepEmbedding, Timesteps
 from ..modeling_utils import ModelMixin
 from ..resnet import Downsample2D, ResnetBlock2D, Upsample2D
 from ..transformers.dual_transformer_2d import DualTransformer2DModel
-from ..transformers.transformer_2d import Transformer2DModel
+from ..transformers.transformer_2d import BasicTransformerBlock, Transformer2DModel
 from .unet_2d_blocks import UNetMidBlock2DCrossAttn
 from .unet_2d_condition import UNet2DConditionModel
 

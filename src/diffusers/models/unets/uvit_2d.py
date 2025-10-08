@@ -22,10 +22,10 @@ from torch.utils.checkpoint import checkpoint
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import PeftAdapterMixin
-from ..attention import BasicTransformerBlock, SkipFFTransformerBlock
 from ..attention_processor import (
     ADDED_KV_ATTENTION_PROCESSORS,
     CROSS_ATTENTION_PROCESSORS,
+    Attention,
     AttentionProcessor,
     AttnAddedKVProcessor,
     AttnProcessor,
@@ -34,6 +34,79 @@ from ..embeddings import TimestepEmbedding, get_timestep_embedding
 from ..modeling_utils import ModelMixin
 from ..normalization import GlobalResponseNorm, RMSNorm
 from ..resnet import Downsample2D, Upsample2D
+from ..transformers.transformer_2d import BasicTransformerBlock
+
+
+class SkipFFTransformerBlock(nn.Module):
+    def __init__(
+        self,
+        dim: int,
+        num_attention_heads: int,
+        attention_head_dim: int,
+        kv_input_dim: int,
+        kv_input_dim_proj_use_bias: bool,
+        dropout=0.0,
+        cross_attention_dim: int = None,
+        attention_bias: bool = False,
+        attention_out_bias: bool = True,
+    ):
+        super().__init__()
+        if kv_input_dim != dim:
+            self.kv_mapper = nn.Linear(kv_input_dim, dim, kv_input_dim_proj_use_bias)
+        else:
+            self.kv_mapper = None
+
+        self.norm1 = RMSNorm(dim, 1e-06)
+
+        self.attn1 = Attention(
+            query_dim=dim,
+            heads=num_attention_heads,
+            dim_head=attention_head_dim,
+            dropout=dropout,
+            bias=attention_bias,
+            cross_attention_dim=cross_attention_dim,
+            out_bias=attention_out_bias,
+        )
+
+        self.norm2 = RMSNorm(dim, 1e-06)
+
+        self.attn2 = Attention(
+            query_dim=dim,
+            cross_attention_dim=cross_attention_dim,
+            heads=num_attention_heads,
+            dim_head=attention_head_dim,
+            dropout=dropout,
+            bias=attention_bias,
+            out_bias=attention_out_bias,
+        )
+
+    def forward(self, hidden_states, encoder_hidden_states, cross_attention_kwargs):
+        cross_attention_kwargs = cross_attention_kwargs.copy() if cross_attention_kwargs is not None else {}
+
+        if self.kv_mapper is not None:
+            encoder_hidden_states = self.kv_mapper(F.silu(encoder_hidden_states))
+
+        norm_hidden_states = self.norm1(hidden_states)
+
+        attn_output = self.attn1(
+            norm_hidden_states,
+            encoder_hidden_states=encoder_hidden_states,
+            **cross_attention_kwargs,
+        )
+
+        hidden_states = attn_output + hidden_states
+
+        norm_hidden_states = self.norm2(hidden_states)
+
+        attn_output = self.attn2(
+            norm_hidden_states,
+            encoder_hidden_states=encoder_hidden_states,
+            **cross_attention_kwargs,
+        )
+
+        hidden_states = attn_output + hidden_states
+
+        return hidden_states
 
 
 class UVit2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):

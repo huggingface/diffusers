@@ -15,7 +15,7 @@ from typing import Optional
 
 from torch import nn
 
-from ..modeling_outputs import Transformer2DModelOutput
+from .modeling_common import Transformer2DModelOutput
 from .transformer_2d import Transformer2DModel
 
 

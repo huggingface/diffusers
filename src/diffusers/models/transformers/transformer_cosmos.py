@@ -22,12 +22,11 @@ import torch.nn.functional as F
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FromOriginalModelMixin
 from ...utils import is_torchvision_available
-from ..attention import FeedForward
 from ..attention_processor import Attention
 from ..embeddings import Timesteps
-from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
 from ..normalization import RMSNorm
+from .modeling_common import FeedForward, Transformer2DModelOutput
 
 
 if is_torchvision_available():

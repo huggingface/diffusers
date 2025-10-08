@@ -1530,7 +1530,7 @@ class ImageProjection(nn.Module):
 class IPAdapterFullImageProjection(nn.Module):
     def __init__(self, image_embed_dim=1024, cross_attention_dim=1024):
         super().__init__()
-        from .attention import FeedForward
+        from .transformers.modeling_common import FeedForward
 
         self.ff = FeedForward(image_embed_dim, cross_attention_dim, mult=1, activation_fn="gelu")
         self.norm = nn.LayerNorm(cross_attention_dim)
@@ -1542,7 +1542,7 @@ class IPAdapterFullImageProjection(nn.Module):
 class IPAdapterFaceIDImageProjection(nn.Module):
     def __init__(self, image_embed_dim=1024, cross_attention_dim=1024, mult=1, num_tokens=1):
         super().__init__()
-        from .attention import FeedForward
+        from .transformers.modeling_common import FeedForward
 
         self.num_tokens = num_tokens
         self.cross_attention_dim = cross_attention_dim
@@ -2219,7 +2219,7 @@ class IPAdapterPlusImageProjectionBlock(nn.Module):
         ffn_ratio: float = 4,
     ) -> None:
         super().__init__()
-        from .attention import FeedForward
+        from .transformers.modeling_common import FeedForward
 
         self.ln0 = nn.LayerNorm(embed_dims)
         self.ln1 = nn.LayerNorm(embed_dims)
@@ -2334,7 +2334,7 @@ class IPAdapterFaceIDPlusImageProjection(nn.Module):
         ffproj_ratio: int = 2,
     ) -> None:
         super().__init__()
-        from .attention import FeedForward
+        from .transformers.modeling_common import FeedForward
 
         self.num_tokens = num_tokens
         self.embed_dim = embed_dims
@@ -2404,7 +2404,7 @@ class IPAdapterTimeImageProjectionBlock(nn.Module):
         ffn_ratio: int = 4,
     ) -> None:
         super().__init__()
-        from .attention import FeedForward
+        from .transformers.modeling_common import FeedForward
 
         self.ln0 = nn.LayerNorm(hidden_dim)
         self.ln1 = nn.LayerNorm(hidden_dim)

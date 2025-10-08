@@ -151,8 +151,8 @@ def _register_attention_processors_metadata():
 
 
 def _register_transformer_blocks_metadata():
-    from ..models.attention import BasicTransformerBlock
     from ..models.transformers.cogvideox_transformer_3d import CogVideoXBlock
+    from ..models.transformers.transformer_2d import BasicTransformerBlock
     from ..models.transformers.transformer_bria import BriaTransformerBlock
     from ..models.transformers.transformer_cogview4 import CogView4TransformerBlock
     from ..models.transformers.transformer_flux import FluxSingleTransformerBlock, FluxTransformerBlock

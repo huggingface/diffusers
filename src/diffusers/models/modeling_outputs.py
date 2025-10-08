@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 
-from ..utils import BaseOutput
+from ..utils import BaseOutput, deprecate
 
 
 @dataclass
@@ -17,8 +17,7 @@ class AutoencoderKLOutput(BaseOutput):
     latent_dist: "DiagonalGaussianDistribution"  # noqa: F821
 
 
-@dataclass
-class Transformer2DModelOutput(BaseOutput):
+class Transformer2DModelOutput:
     """
     The output of [`Transformer2DModel`].
 
@@ -28,4 +27,13 @@ class Transformer2DModelOutput(BaseOutput):
             distributions for the unnoised latent pixels.
     """
 
-    sample: "torch.Tensor"  # noqa: F821
+    def __new__(cls, *args, **kwargs):
+        deprecate(
+            "Transformer2DModelOutput",
+            "1.0.0",
+            "Importing `Transformer2DModelOutput` from `diffusers.models.modeling_outputs` is deprecated. Please use `from diffusers.models.transformers.modeling_common import Transformer2DModelOutput` instead.",
+            standard_warn=False,
+        )
+        from .transformers.modeling_common import Transformer2DModelOutput
+
+        return Transformer2DModelOutput(*args, **kwargs)

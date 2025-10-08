@@ -23,9 +23,9 @@ from ...loaders import PeftAdapterMixin
 from ...utils import USE_PEFT_BACKEND, BaseOutput, logging, scale_lora_layers, unscale_lora_layers
 from ..attention_processor import AttentionProcessor
 from ..embeddings import PatchEmbed, PixArtAlphaTextProjection
-from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
 from ..normalization import AdaLayerNormSingle, RMSNorm
+from ..transformers.modeling_common import Transformer2DModelOutput
 from ..transformers.sana_transformer import SanaTransformerBlock
 from .controlnet import zero_module
 
