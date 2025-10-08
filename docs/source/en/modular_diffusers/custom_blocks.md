@@ -25,9 +25,7 @@ The project should be structured as shown below. The custom block code is contai
 └── modular_config.json
 ```
 
-The code to define the custom block lives in a file called `block.py`. The `modular_config.json` file contains metadata for loading the block with Modular Diffusers.
-
-In this example, we will create a custom block that uses the Florence 2 model to process an input image and generate a mask for inpainting
+This example creates a custom block that uses the [Florence 2](https://huggingface.co/docs/transformers/model_doc/florence2) model to process an input image and generate a mask for inpainting.
 
 ```py
 from typing import List, Union
