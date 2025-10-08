@@ -232,6 +232,7 @@ else:
             "MultiControlNetModel",
             "OmniGenTransformer2DModel",
             "ParallelConfig",
+            "PhotonTransformer2DModel",
             "PixArtTransformer2DModel",
             "PriorTransformer",
             "QwenImageControlNetModel",
