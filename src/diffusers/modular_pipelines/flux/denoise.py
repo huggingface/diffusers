@@ -76,18 +76,17 @@ class FluxLoopDenoiser(ModularPipelineBlocks):
                 description="Pooled prompt embeddings",
             ),
             InputParam(
-                "text_ids",
+                "txt_ids",
                 required=True,
                 type_hint=torch.Tensor,
                 description="IDs computed from text sequence needed for RoPE",
             ),
             InputParam(
-                "latent_image_ids",
+                "img_ids",
                 required=True,
                 type_hint=torch.Tensor,
                 description="IDs computed from image sequence needed for RoPE",
             ),
-            # TODO: guidance
         ]
 
     @torch.no_grad()
@@ -101,8 +100,8 @@ class FluxLoopDenoiser(ModularPipelineBlocks):
             encoder_hidden_states=block_state.prompt_embeds,
             pooled_projections=block_state.pooled_prompt_embeds,
             joint_attention_kwargs=block_state.joint_attention_kwargs,
-            txt_ids=block_state.text_ids,
-            img_ids=block_state.latent_image_ids,
+            txt_ids=block_state.txt_ids,
+            img_ids=block_state.img_ids,
             return_dict=False,
         )[0]
         block_state.noise_pred = noise_pred
@@ -195,9 +194,6 @@ class FluxDenoiseLoopWrapper(LoopSequentialPipelineBlocks):
         block_state.num_warmup_steps = max(
             len(block_state.timesteps) - block_state.num_inference_steps * components.scheduler.order, 0
         )
-        # We set the index here to remove DtoH sync, helpful especially during compilation.
-        # Check out more details here: https://github.com/huggingface/diffusers/pull/11696
-        components.scheduler.set_begin_index(0)
         with self.progress_bar(total=block_state.num_inference_steps) as progress_bar:
             for i, t in enumerate(block_state.timesteps):
                 components, block_state = self.loop_step(components, block_state, i=i, t=t)
