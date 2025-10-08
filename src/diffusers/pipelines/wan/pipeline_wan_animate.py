@@ -14,7 +14,7 @@
 
 import html
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
-
+from copy import deepcopy
 import PIL
 import regex as re
 import torch
@@ -478,6 +478,23 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
 
         return latents, torch.concat([mask_lat_size, latent_condition], dim=1)
 
+    def pad_video(self, frames, num_target_frames):
+        """
+        pad_video([1, 2, 3, 4, 5], 10) -> [1, 2, 3, 4, 5, 4, 3, 2, 1, 2]
+        """
+        idx = 0
+        flip = False
+        target_frames = []
+        while len(target_frames) < num_target_frames:
+            target_frames.append(deepcopy(frames[idx]))
+            if flip:
+                idx -= 1
+            else:
+                idx += 1
+            if idx == 0 or idx == len(frames) - 1:
+                flip = not flip
+        return target_frames
+
     @property
     def guidance_scale(self):
         return self._guidance_scale
@@ -692,8 +709,8 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
         image_embeds = image_embeds.repeat(batch_size, 1, 1)
         image_embeds = image_embeds.to(transformer_dtype)
 
-        num_real_frames = len(pose_video)
         # Calculate the number of valid frames
+        num_real_frames = len(pose_video)
         real_clip_len = num_frames - num_frames_for_temporal_guidance
         last_clip_num = (num_real_frames - num_frames_for_temporal_guidance) % real_clip_len
         if last_clip_num == 0:
@@ -702,13 +719,63 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
             extra = real_clip_len - last_clip_num
         num_target_frames = num_real_frames + extra
 
+        pose_video = self.pad_video(pose_video, num_target_frames)
+        face_video = self.pad_video(face_video, num_target_frames)
+        if mode == "replacement":
+            background_video = self.pad_video(background_video, num_target_frames)
+            mask_video = self.pad_video(mask_video, num_target_frames)
+
         # 4. Prepare timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
         timesteps = self.scheduler.timesteps
 
         # 5. Prepare latent variables
         num_channels_latents = self.vae.config.z_dim
+        height, width = pose_video[0].shape[: 2]
         image = self.video_processor.preprocess(image, height=height, width=width).to(device, dtype=torch.float32)
+
+        pose_video = self.video_processor.preprocess_video(pose_video, height=height, width=width).to(device, dtype=torch.float32)
+        face_video = self.video_processor.preprocess_video(face_video, height=height, width=width).to(device, dtype=torch.float32)
+        if mode == "replacement":
+            background_video = self.video_processor.preprocess_video(background_video, height=height, width=width).to(device, dtype=torch.float32)
+            mask_video = self.video_processor.preprocess_video(mask_video, height=height, width=width).to(device, dtype=torch.float32)
+
+        start = 0
+        end = num_frames
+        all_out_frames = []
+
+        while True:
+            if start + num_frames_for_temporal_guidance >= len(pose_video):
+                break
+
+            if start == 0:
+                mask_reft_len = 0
+            else:
+                mask_reft_len = num_frames_for_temporal_guidance
+
+            conditioning_pixel_values = pose_video[start:end]
+            face_pixel_values = face_video[start:end]
+
+            refer_pixel_values = image
+
+            if start == 0:
+                refer_t_pixel_values = torch.zeros(image.shape[0], 3, num_frames_for_temporal_guidance, height, width)
+            elif start > 0:
+                refer_t_pixel_values = out_frames[0, :, -num_frames_for_temporal_guidance:].clone().detach().permute(1, 0, 2, 3)
+
+            refer_t_pixel_values = refer_t_pixel_values.permute(1, 0, 2, 3).unsqueeze(0)
+
+            if mode == "replacement":
+                bg_pixel_values = background_video[start:end]
+                mask_pixel_values = mask_video[start:end] #.permute(0, 3, 1, 2).unsqueeze(0)
+
+            conditioning_pixel_values = conditioning_pixel_values.to(device=device, dtype=torch.bfloat16)
+            face_pixel_values = face_pixel_values.to(device=device, dtype=torch.bfloat16)
+            refer_pixel_values = refer_pixel_values.to(device=device, dtype=torch.bfloat16)
+            refer_t_pixel_values = refer_t_pixel_values.to(device=device, dtype=torch.bfloat16)
+            bg_pixel_values = bg_pixel_values.to(device=device, dtype=torch.bfloat16)
+            mask_pixel_values = mask_pixel_values.to(device=device, dtype=torch.bfloat16)
+
 
         latents_outputs = self.prepare_latents(
             image,
