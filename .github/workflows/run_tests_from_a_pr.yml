@@ -63,7 +63,7 @@ jobs:
 
       - name: Install pytest
         run: |
-          uv pip install -e [quality]
+          uv pip install -e ".[quality]"
           uv pip install peft
 
       - name: Run tests

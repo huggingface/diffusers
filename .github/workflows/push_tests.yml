@@ -34,7 +34,7 @@ jobs:
           fetch-depth: 2
       - name: Install dependencies
         run: |
-          uv pip install -e [quality]
+          uv pip install -e ".[quality]"
       - name: Environment
         run: |
           python utils/print_env.py
@@ -74,7 +74,7 @@ jobs:
           nvidia-smi
       - name: Install dependencies
         run: |
-          uv pip install -e [quality]
+          uv pip install -e ".[quality]"
           uv pip uninstall accelerate && uv pip install -U accelerate@git+https://github.com/huggingface/accelerate.git
       - name: Environment
         run: |
@@ -124,7 +124,7 @@ jobs:
 
     - name: Install dependencies
       run: |
-        uv pip install -e [quality]
+        uv pip install -e ".[quality]"
         uv pip install peft@git+https://github.com/huggingface/peft.git
         uv pip uninstall accelerate && uv pip install -U accelerate@git+https://github.com/huggingface/accelerate.git
 
@@ -177,8 +177,7 @@ jobs:
         nvidia-smi
     - name: Install dependencies
       run: |
-        venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
-        uv pip install -e [quality,training]
+        uv pip install -e ".[quality,training]"
     - name: Environment
       run: |
         python utils/print_env.py
@@ -220,8 +219,7 @@ jobs:
         nvidia-smi
     - name: Install dependencies
       run: |
-        venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
-        uv pip install -e [quality,training]
+        uv pip install -e ".[quality,training]"
     - name: Environment
       run: |
         python utils/print_env.py
@@ -261,19 +259,16 @@ jobs:
         nvidia-smi
     - name: Install dependencies
       run: |
-        venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
-        uv pip install -e [quality,training]
+        uv pip install -e ".[quality,training]"
 
     - name: Environment
       run: |
-        venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
         python utils/print_env.py
 
     - name: Run example tests on GPU
       env:
         HF_TOKEN: ${{ secrets.DIFFUSERS_HF_HUB_READ_TOKEN }}
       run: |
-        venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
         uv pip install timm
         pytest -n 1 --max-worker-restart=0 --dist=loadfile -s -v --make-reports=examples_torch_cuda examples/
 

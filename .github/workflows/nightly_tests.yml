@@ -71,7 +71,7 @@ jobs:
         run: nvidia-smi
       - name: Install dependencies
         run: |
-          uv pip install -e [quality]
+          uv pip install -e ".[quality]"
           uv pip uninstall accelerate && uv pip install -U accelerate@git+https://github.com/huggingface/accelerate.git
           uv pip install pytest-reportlog
       - name: Environment
@@ -123,8 +123,7 @@ jobs:
 
     - name: Install dependencies
       run: |
-        venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
-        uv pip install -e [quality]
+        uv pip install -e ".[quality]"
         uv pip install peft@git+https://github.com/huggingface/peft.git
         uv pip uninstall accelerate && uv pip install -U accelerate@git+https://github.com/huggingface/accelerate.git
         uv pip install pytest-reportlog
@@ -190,8 +189,7 @@ jobs:
         nvidia-smi
     - name: Install dependencies
       run: |
-        venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
-        uv pip install -e [quality,training]
+        uv pip install -e ".[quality,training]"
     - name: Environment
       run: |
         python utils/print_env.py
@@ -231,7 +229,7 @@ jobs:
         run: nvidia-smi
       - name: Install dependencies
         run: |
-          uv pip install -e [quality]
+          uv pip install -e ".[quality]"
           uv pip install peft@git+https://github.com/huggingface/peft.git
           uv pip uninstall accelerate && uv pip install -U accelerate@git+https://github.com/huggingface/accelerate.git
           uv pip install pytest-reportlog
@@ -280,7 +278,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          uv pip install -e [quality]
+          uv pip install -e ".[quality]"
           uv pip install peft@git+https://github.com/huggingface/peft.git
           uv pip uninstall accelerate && uv pip install -U accelerate@git+https://github.com/huggingface/accelerate.git
 
@@ -354,7 +352,7 @@ jobs:
         run: nvidia-smi
       - name: Install dependencies
         run: |
-          uv pip install -e [quality]
+          uv pip install -e ".[quality]"
           uv pip install -U ${{ matrix.config.backend }}
           if [ "${{ join(matrix.config.additional_deps, ' ') }}" != "" ]; then
               uv pip install ${{ join(matrix.config.additional_deps, ' ') }}
@@ -405,7 +403,7 @@ jobs:
         run: nvidia-smi
       - name: Install dependencies
         run: |
-          uv pip install -e [quality]
+          uv pip install -e ".[quality]"
           uv pip install -U bitsandbytes optimum_quanto
           uv pip install pytest-reportlog
       - name: Environment
@@ -519,7 +517,7 @@ jobs:
 #        shell: arch -arch arm64 bash {0}
 #        run: |
 #          ${CONDA_RUN} pip install --upgrade pip uv
-#          ${CONDA_RUN} uv pip install -e [quality]
+#          ${CONDA_RUN} uv pip install -e ".[quality]"
 #          ${CONDA_RUN} uv pip install torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cpu
 #          ${CONDA_RUN} uv pip install accelerate@git+https://github.com/huggingface/accelerate
 #          ${CONDA_RUN} uv pip install pytest-reportlog
@@ -575,7 +573,7 @@ jobs:
 #        shell: arch -arch arm64 bash {0}
 #        run: |
 #          ${CONDA_RUN} pip install --upgrade pip uv
-#          ${CONDA_RUN} uv pip install -e [quality]
+#          ${CONDA_RUN} uv pip install -e ".[quality]"
 #          ${CONDA_RUN} uv pip install torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cpu
 #          ${CONDA_RUN} uv pip install accelerate@git+https://github.com/huggingface/accelerate
 #          ${CONDA_RUN} uv pip install pytest-reportlog
