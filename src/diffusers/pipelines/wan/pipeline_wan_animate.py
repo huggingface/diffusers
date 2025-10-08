@@ -421,6 +421,11 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
         device: Optional[torch.device] = None,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.Tensor] = None,
+        conditioning_pixel_values: Optional[torch.Tensor] = None,
+        refer_pixel_values: Optional[torch.Tensor] = None,
+        refer_t_pixel_values: Optional[torch.Tensor] = None,
+        bg_pixel_values: Optional[torch.Tensor] = None,
+        mask_pixel_values: Optional[torch.Tensor] = None,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         num_latent_frames = (num_frames - 1) // self.vae_scale_factor_temporal + 1
         latent_height = height // self.vae_scale_factor_spatial
@@ -477,6 +482,7 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
         mask_lat_size = mask_lat_size.transpose(1, 2)
         mask_lat_size = mask_lat_size.to(latent_condition.device)
 
+        return latents, pose_latents, y
         return latents, torch.concat([mask_lat_size, latent_condition], dim=1)
 
     def pad_video(self, frames, num_target_frames):
@@ -778,75 +784,80 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
             mask_pixel_values = mask_pixel_values.to(device=device, dtype=torch.bfloat16)
 
 
-        latents_outputs = self.prepare_latents(
-            image,
-            batch_size * num_videos_per_prompt,
-            num_channels_latents,
-            height,
-            width,
-            num_frames,
-            torch.float32,
-            device,
-            generator,
-            latents,
-        )
-        latents, condition = latents_outputs
+            latents_outputs = self.prepare_latents(
+                image,
+                batch_size * num_videos_per_prompt,
+                num_channels_latents,
+                height,
+                width,
+                num_frames,
+                torch.float32,
+                device,
+                generator,
+                latents,
+                conditioning_pixel_values,
+                refer_pixel_values,
+                refer_t_pixel_values,
+                bg_pixel_values,
+                mask_pixel_values,
+            )
+            latents, pose_latents, y = latents_outputs
 
-        # 6. Denoising loop
-        num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
-        self._num_timesteps = len(timesteps)
+            # 6. Denoising loop
+            num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
+            self._num_timesteps = len(timesteps)
 
-        with self.progress_bar(total=num_inference_steps) as progress_bar:
-            for i, t in enumerate(timesteps):
-                if self.interrupt:
-                    continue
+            with self.progress_bar(total=num_inference_steps) as progress_bar:
+                for i, t in enumerate(timesteps):
+                    if self.interrupt:
+                        continue
 
-                self._current_timestep = t
+                    self._current_timestep = t
 
-                latent_model_input = torch.cat([latents, condition], dim=1).to(transformer_dtype)
-                timestep = t.expand(latents.shape[0])
+                    latent_model_input = torch.cat([latents, condition], dim=1).to(transformer_dtype)
+                    timestep = t.expand(latents.shape[0])
 
-                with self.transformer.cache_context("cond"):
-                    noise_pred = self.transformer(
-                        hidden_states=latent_model_input,
-                        timestep=timestep,
-                        encoder_hidden_states=prompt_embeds,
-                        encoder_hidden_states_image=image_embeds,
-                        attention_kwargs=attention_kwargs,
-                        return_dict=False,
-                    )[0]
-
-                if self.do_classifier_free_guidance:
-                    with self.transformer.cache_context("uncond"):
-                        noise_uncond = self.transformer(
+                    with self.transformer.cache_context("cond"):
+                        noise_pred = self.transformer(
                             hidden_states=latent_model_input,
                             timestep=timestep,
-                            encoder_hidden_states=negative_prompt_embeds,
+                            encoder_hidden_states=prompt_embeds,
                             encoder_hidden_states_image=image_embeds,
                             attention_kwargs=attention_kwargs,
                             return_dict=False,
                         )[0]
-                        noise_pred = noise_uncond + guidance_scale * (noise_pred - noise_uncond)
 
-                # compute the previous noisy sample x_t -> x_t-1
-                latents = self.scheduler.step(noise_pred, t, latents, return_dict=False)[0]
+                    if self.do_classifier_free_guidance:
+                        with self.transformer.cache_context("uncond"):
+                            noise_uncond = self.transformer(
+                                hidden_states=latent_model_input,
+                                timestep=timestep,
+                                encoder_hidden_states=negative_prompt_embeds,
+                                encoder_hidden_states_image=image_embeds,
+                                attention_kwargs=attention_kwargs,
+                                return_dict=False,
+                            )[0]
+                            noise_pred = noise_uncond + guidance_scale * (noise_pred - noise_uncond)
 
-                if callback_on_step_end is not None:
-                    callback_kwargs = {}
-                    for k in callback_on_step_end_tensor_inputs:
-                        callback_kwargs[k] = locals()[k]
-                    callback_outputs = callback_on_step_end(self, i, t, callback_kwargs)
+                    # compute the previous noisy sample x_t -> x_t-1
+                    latents = self.scheduler.step(noise_pred, t, latents, return_dict=False)[0]
 
-                    latents = callback_outputs.pop("latents", latents)
-                    prompt_embeds = callback_outputs.pop("prompt_embeds", prompt_embeds)
-                    negative_prompt_embeds = callback_outputs.pop("negative_prompt_embeds", negative_prompt_embeds)
+                    if callback_on_step_end is not None:
+                        callback_kwargs = {}
+                        for k in callback_on_step_end_tensor_inputs:
+                            callback_kwargs[k] = locals()[k]
+                        callback_outputs = callback_on_step_end(self, i, t, callback_kwargs)
 
-                # call the callback, if provided
-                if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
-                    progress_bar.update()
+                        latents = callback_outputs.pop("latents", latents)
+                        prompt_embeds = callback_outputs.pop("prompt_embeds", prompt_embeds)
+                        negative_prompt_embeds = callback_outputs.pop("negative_prompt_embeds", negative_prompt_embeds)
 
-                if XLA_AVAILABLE:
-                    xm.mark_step()
+                    # call the callback, if provided
+                    if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
+                        progress_bar.update()
+
+                    if XLA_AVAILABLE:
+                        xm.mark_step()
 
         self._current_timestep = None
 
