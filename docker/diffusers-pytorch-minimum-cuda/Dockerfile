@@ -19,6 +19,7 @@ RUN apt install -y bash \
     git-lfs \
     curl \
     ca-certificates \
+    libglib2.0-0 \
     libsndfile1-dev \
     libgl1 \
     python3 \

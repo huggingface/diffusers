@@ -11,6 +11,7 @@ RUN apt-get -y update && apt-get install -y bash \
     git-lfs \
     curl \
     ca-certificates \
+    libglib2.0-0 \
     libsndfile1-dev \
     libgl1
 
