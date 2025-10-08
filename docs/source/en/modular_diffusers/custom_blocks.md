@@ -284,7 +284,7 @@ from diffusers.modular_pipelines.stable_diffusion_xl import INPAINT_BLOCKS
 from diffusers.utils import load_image
 
 # Fetch the Florence2 image annotator block that will create our mask
-image_annotator_block = ModularPipelineBlocks.from_pretrained("diffusers/florence-2-custom-block", trust_remote_code=True)
+image_annotator_block = ModularPipelineBlocks.from_pretrained("diffusers/florence-2-custom-block", }}}trust_remote_code=True)
 
 my_blocks = INPAINT_BLOCKS.copy()
 # insert the annotation block before the image encoding step
