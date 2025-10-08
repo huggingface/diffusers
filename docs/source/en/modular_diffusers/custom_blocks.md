@@ -314,3 +314,19 @@ output = pipe(
 )
 output[0].save("florence-inpainting.png")
 ```
+
+## Editing Custom Blocks
+
+By default, custom blocks are saved in your cache directory. To download and edit a custom block you can use the `local_dir` argument to save the block to a specific folder.
+
+```py
+import torch
+from diffusers.modular_pipelines import ModularPipelineBlocks, SequentialPipelineBlocks
+from diffusers.modular_pipelines.stable_diffusion_xl import INPAINT_BLOCKS
+from diffusers.utils import load_image
+
+# Fetch the Florence2 image annotator block that will create our mask
+image_annotator_block = ModularPipelineBlocks.from_pretrained("diffusers/florence-2-custom-block", trust_remote_code=True, local_dir="/my-local-folder")
+```
+
+Any changes made to the block files to the blocks in this file will be reflected when you load the block again.
