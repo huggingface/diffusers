@@ -17,7 +17,7 @@ specific language governing permissions and limitations under the License.
 
 This guide will show you how to create and use a custom block.
 
-First let's take a look at the structure of our custom block project:
+The project should be structured as shown below. The custom block code is contained in `block.py` and the `modular_config.json` file contains metadata for loading the block.
 
 ```shell
 .
