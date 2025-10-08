@@ -185,27 +185,27 @@ class FaceEncoder(nn.Module):
         self.padding_tokens = nn.Parameter(torch.zeros(1, 1, 1, hidden_dim))
 
     def forward(self, x):
-        
-        x = rearrange(x, "b t c -> b c t")
+
+        x = x.permute(0, 2, 1)
         b, c, t = x.shape
 
         x = self.conv1_local(x)
-        x = rearrange(x, "b (n c) t -> (b n) t c", n=self.num_heads)
-        
+        x = x.unflatten(1, (-1, c)).flatten(0, 1).permute(0, 2, 1)
+
         x = self.norm1(x)
         x = self.act(x)
-        x = rearrange(x, "b t c -> b c t")
+        x = x.permute(0, 2, 1)
         x = self.conv2(x)
-        x = rearrange(x, "b c t -> b t c")
+        x = x.permute(0, 2, 1)
         x = self.norm2(x)
         x = self.act(x)
-        x = rearrange(x, "b t c -> b c t")
+        x = x.permute(0, 2, 1)
         x = self.conv3(x)
-        x = rearrange(x, "b c t -> b t c")
+        x = x.permute(0, 2, 1)
         x = self.norm3(x)
         x = self.act(x)
         x = self.out_proj(x)
-        x = rearrange(x, "(b n) t c -> b t n c", b=b)
+        x = x.unflatten(0, (b, -1)).permute(0, 2, 1, 3)
 
         padding = self.padding_tokens.repeat(b, x.shape[1], 1, 1)
         x = torch.cat([x, padding], dim=-2)
@@ -415,20 +415,17 @@ class FaceBlock(nn.Module):
         kv = self.linear1_kv(x_motion)
         q = self.linear1_q(x_feat)
 
-        k, v = rearrange(kv, "B L N (K H D) -> K B L N H D", K=2, H=self.heads_num)
-        q = rearrange(q, "B S (H D) -> B S H D", H=self.heads_num)
+        k, v = kv.view(B, T, N, 2, self.heads_num, -1).permute(3, 0, 1, 2, 4, 5)
+        q = q.unflatten(2, (self.heads_num, -1))
 
         # Apply QK-Norm if needed.
         q = self.q_norm(q).to(v)
         k = self.k_norm(k).to(v)
 
-        k = rearrange(k, "B L N H D -> (B L) N H D")  
-        v = rearrange(v, "B L N H D -> (B L) N H D") 
+        k = k.flatten(0, 1)
+        v = v.flatten(0, 1)
 
-        if use_context_parallel:
-            q = gather_forward(q, dim=1)
-
-        q = rearrange(q, "B (L S) H D -> (B L) S H D", L=T_comp)  
+        q = q.unflatten(1, (T_comp, -1)).flatten(0, 1)
         # Compute attention.
         attn = attention(
             q,
@@ -438,14 +435,12 @@ class FaceBlock(nn.Module):
             batch_size=q.shape[0],
         )
 
-        attn = rearrange(attn, "(B L) S C -> B (L S) C", L=T_comp)
-        if use_context_parallel:
-            attn = torch.chunk(attn, get_world_size(), dim=1)[get_rank()]
+        attn = attn.unflatten(0, (B, T_comp)).flatten(1, 2)
 
         output = self.linear2(attn)
 
         if motion_mask is not None:
-            output = output * rearrange(motion_mask, "B T H W -> B (T H W)").unsqueeze(-1)
+            output = output * motion_mask.view(B, -1).unsqueeze(-1)
 
         return output
 
