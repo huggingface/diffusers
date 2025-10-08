@@ -60,12 +60,10 @@ jobs:
 
     - name: Install dependencies
       run: |
-        python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
-        python -m uv pip install -e [quality,test]
+        python -m uv pip install -e [quality]
 
     - name: Environment
       run: |
-        python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
         python utils/print_env.py
 
     - name: Run fast PyTorch CPU tests
