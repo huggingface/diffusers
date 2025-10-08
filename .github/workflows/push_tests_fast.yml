@@ -60,7 +60,7 @@ jobs:
 
     - name: Install dependencies
       run: |
-        python -m uv pip install -e ".[quality]"
+        uv pip install -e ".[quality]"
 
     - name: Environment
       run: |
@@ -69,7 +69,7 @@ jobs:
     - name: Run fast PyTorch CPU tests
       if: ${{ matrix.config.framework == 'pytorch' }}
       run: |
-        python -m python -m pytest -n 4 --max-worker-restart=0 --dist=loadfile \
+        pytest -n 4 --max-worker-restart=0 --dist=loadfile \
           -s -v -k "not Flax and not Onnx" \
           --make-reports=tests_${{ matrix.config.report }} \
           tests/
@@ -77,8 +77,8 @@ jobs:
     - name: Run example PyTorch CPU tests
       if: ${{ matrix.config.framework == 'pytorch_examples' }}
       run: |
-        python -m python -m uv pip install peft timm
-        python -m pytest -n 4 --max-worker-restart=0 --dist=loadfile \
+        uv pip install ".[training]"
+        pytest -n 4 --max-worker-restart=0 --dist=loadfile \
           --make-reports=tests_${{ matrix.config.report }} \
           examples
 

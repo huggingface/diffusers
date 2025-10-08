@@ -269,7 +269,7 @@ jobs:
       env:
         HF_TOKEN: ${{ secrets.DIFFUSERS_HF_HUB_READ_TOKEN }}
       run: |
-        uv pip install timm
+        uv pip install ".[training]"
         pytest -n 1 --max-worker-restart=0 --dist=loadfile -s -v --make-reports=examples_torch_cuda examples/
 
     - name: Failure short reports

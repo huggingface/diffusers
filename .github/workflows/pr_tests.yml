@@ -38,7 +38,7 @@ jobs:
           python-version: "3.8"
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip
+          pip install --upgrade pip
           pip install .[quality]
       - name: Check quality
         run: make quality
@@ -58,7 +58,7 @@ jobs:
           python-version: "3.8"
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip
+          pip install --upgrade pip
           pip install .[quality]
       - name: Check repo consistency
         run: |
@@ -125,7 +125,7 @@ jobs:
     - name: Run fast PyTorch Pipeline CPU tests
       if: ${{ matrix.config.framework == 'pytorch_pipelines' }}
       run: |
-        python -m pytest -n 8 --max-worker-restart=0 --dist=loadfile \
+        pytest -n 8 --max-worker-restart=0 --dist=loadfile \
           -s -v -k "not Flax and not Onnx" \
           --make-reports=tests_${{ matrix.config.report }} \
           tests/pipelines
@@ -133,7 +133,7 @@ jobs:
     - name: Run fast PyTorch Model Scheduler CPU tests
       if: ${{ matrix.config.framework == 'pytorch_models' }}
       run: |
-        python -m pytest -n 4 --max-worker-restart=0 --dist=loadfile \
+        pytest -n 4 --max-worker-restart=0 --dist=loadfile \
           -s -v -k "not Flax and not Onnx and not Dependency" \
           --make-reports=tests_${{ matrix.config.report }} \
           tests/models tests/schedulers tests/others
@@ -141,8 +141,8 @@ jobs:
     - name: Run example PyTorch CPU tests
       if: ${{ matrix.config.framework == 'pytorch_examples' }}
       run: |
-        python -m uv pip install peft timm
-        python -m pytest -n 4 --max-worker-restart=0 --dist=loadfile \
+        uv pip install ".[training]"
+        pytest -n 4 --max-worker-restart=0 --dist=loadfile \
           --make-reports=tests_${{ matrix.config.report }} \
           examples
 
@@ -199,7 +199,7 @@ jobs:
     - name: Run Hub tests for models, schedulers, and pipelines on a staging env
       if: ${{ matrix.config.framework == 'hub_tests_pytorch' }}
       run: |
-        HUGGINGFACE_CO_STAGING=true python -m pytest \
+        HUGGINGFACE_CO_STAGING=true pytest \
           -m "is_staging_test" \
           --make-reports=tests_${{ matrix.config.report }} \
           tests
@@ -254,11 +254,11 @@ jobs:
 
     - name: Run fast PyTorch LoRA tests with PEFT
       run: |
-        python -m pytest -n 4 --max-worker-restart=0 --dist=loadfile \
+        pytest -n 4 --max-worker-restart=0 --dist=loadfile \
           -s -v \
           --make-reports=tests_peft_main \
           tests/lora/
-        python -m pytest -n 4 --max-worker-restart=0 --dist=loadfile \
+        pytest -n 4 --max-worker-restart=0 --dist=loadfile \
           -s -v \
           --make-reports=tests_models_lora_peft_main \
           tests/models/ -k "lora"
