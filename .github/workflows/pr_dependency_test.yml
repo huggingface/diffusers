@@ -25,9 +25,8 @@ jobs:
           python-version: "3.8"
       - name: Install dependencies
         run: |
-          pip install --upgrade pip uv
-          uv pip install -e .
-          uv pip install pytest
+          pip install -e .
+          pip install pytest
       - name: Check for soft dependencies
         run: |
             pytest tests/others/test_dependencies.py
