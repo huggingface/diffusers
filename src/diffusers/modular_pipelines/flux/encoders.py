@@ -184,7 +184,7 @@ class FluxKontextProcessImagesInputStep(ModularPipelineBlocks):
             block_state.processed_image = None
 
         else:
-            multiple_of = components.vae_scale_factor * 2
+            multiple_of = components.image_processor.config.vae_scale_factor
 
             if not is_valid_image_imagelist(images):
                 raise ValueError(f"Images must be image or list of images but are {type(images)}")

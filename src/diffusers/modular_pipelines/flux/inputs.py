@@ -240,6 +240,63 @@ class FluxInputsDynamicStep(ModularPipelineBlocks):
         return components, state
 
 
+class FluxKontextInputsDynamicStep(FluxInputsDynamicStep):
+    model_name = "flux_kontext"
+
+    def __call__(self, components: FluxModularPipeline, state: PipelineState) -> PipelineState:
+        block_state = self.get_block_state(state)
+
+        # Process image latent inputs (height/width calculation, patchify, and batch expansion)
+        for image_latent_input_name in self._image_latent_inputs:
+            image_latent_tensor = getattr(block_state, image_latent_input_name)
+            if image_latent_tensor is None:
+                continue
+
+            # 1. Calculate height/width from latents
+            # Unlike the `FluxInputsDynamicStep`, we don't overwrite the `block.height` and `block.width`
+            height, width = calculate_dimension_from_latents(image_latent_tensor, components.vae_scale_factor)
+            if not hasattr(block_state, "image_height"):
+                block_state.image_height = height
+            if not hasattr(block_state, "image_width"):
+                block_state.image_width = width
+
+            # 2. Patchify the image latent tensor
+            # TODO: Implement patchifier for Flux.
+            latent_height, latent_width = image_latent_tensor.shape[2:]
+            image_latent_tensor = FluxPipeline._pack_latents(
+                image_latent_tensor, block_state.batch_size, image_latent_tensor.shape[1], latent_height, latent_width
+            )
+
+            # 3. Expand batch size
+            image_latent_tensor = repeat_tensor_to_batch_size(
+                input_name=image_latent_input_name,
+                input_tensor=image_latent_tensor,
+                num_images_per_prompt=block_state.num_images_per_prompt,
+                batch_size=block_state.batch_size,
+            )
+
+            setattr(block_state, image_latent_input_name, image_latent_tensor)
+
+        # Process additional batch inputs (only batch expansion)
+        for input_name in self._additional_batch_inputs:
+            input_tensor = getattr(block_state, input_name)
+            if input_tensor is None:
+                continue
+
+            # Only expand batch size
+            input_tensor = repeat_tensor_to_batch_size(
+                input_name=input_name,
+                input_tensor=input_tensor,
+                num_images_per_prompt=block_state.num_images_per_prompt,
+                batch_size=block_state.batch_size,
+            )
+
+            setattr(block_state, input_name, input_tensor)
+
+        self.set_block_state(state, block_state)
+        return components, state
+
+
 class FluxKontextSetResolutionStep(ModularPipelineBlocks):
     model_name = "flux_kontext"
 
