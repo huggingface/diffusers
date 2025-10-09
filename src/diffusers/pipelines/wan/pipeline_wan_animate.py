@@ -470,85 +470,58 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 retrieve_latents(self.vae.encode(video_condition), sample_mode="argmax") for _ in generator
             ]
             latent_condition = torch.cat(latent_condition)
+            pose_latents_no_ref = [
+                retrieve_latents(self.vae.encode(conditioning_pixel_values), sample_mode="argmax") for _ in generator
+            ]
+            pose_latents_no_ref = torch.cat(pose_latents_no_ref)
         else:
             latent_condition = retrieve_latents(self.vae.encode(video_condition), sample_mode="argmax")
             latent_condition = latent_condition.repeat(batch_size, 1, 1, 1, 1)
+            pose_latents_no_ref = retrieve_latents(self.vae.encode(conditioning_pixel_values.to(self.vae.dtype)), sample_mode="argmax")
+            pose_latents_no_ref = pose_latents_no_ref.repeat(batch_size, 1, 1, 1, 1)
 
         latent_condition = latent_condition.to(dtype)
         latent_condition = (latent_condition - latents_mean) * latents_std
-
-        pose_latents_no_ref = retrieve_latents(self.vae.encode(conditioning_pixel_values.to(self.vae.dtype)), sample_mode="argmax")
-        pose_latents_no_ref = pose_latents_no_ref.repeat(batch_size, 1, 1, 1, 1)
         pose_latents_no_ref = pose_latents_no_ref.to(dtype)
-        pose_latents_no_ref = (pose_latents_no_ref - latents_mean) * latents_std
-        pose_latents = torch.cat([pose_latents_no_ref], dim=2)
+        pose_latents = (pose_latents_no_ref - latents_mean) * latents_std
+        #pose_latents = torch.cat([pose_latents_no_ref], dim=2)
 
-        mask_lat_size = torch.ones(batch_size, 1, num_frames, latent_height, latent_width)
-
-        mask_lat_size[:, :, list(range(1, num_frames))] = 0
-        first_frame_mask = mask_lat_size[:, :, 0:1]
-        first_frame_mask = torch.repeat_interleave(first_frame_mask, dim=2, repeats=self.vae_scale_factor_temporal)
-        mask_lat_size = torch.concat([first_frame_mask, mask_lat_size[:, :, 1:, :]], dim=2)
-        mask_lat_size = mask_lat_size.view(batch_size, -1, self.vae_scale_factor_temporal, latent_height, latent_width)
-        mask_lat_size = mask_lat_size.transpose(1, 2)
-        mask_lat_size = mask_lat_size.to(latent_condition.device)
+        if mode == "replacement":
+            mask_pixel_values = 1 - mask_pixel_values
+            mask_pixel_values = mask_pixel_values.flatten(0, 1)
+            mask_pixel_values = F.interpolate(mask_pixel_values, size=(latent_height, latent_width), mode='nearest')
+            mask_pixel_values = mask_pixel_values.unflatten(0, (1, -1))[:,:,0]
 
         if mask_reft_len > 0:
             if mode == "replacement":
-                y_reft = retrieve_latents(self.vae.encode(
-                    [
-                        torch.concat([refer_t_pixel_values[0, :, :mask_reft_len], bg_pixel_values[0, :, mask_reft_len:]], dim=1)
-                    ]
-                ), sample_mode="argmax")
-                mask_pixel_values = 1 - mask_pixel_values
-                mask_pixel_values = mask_pixel_values.flatten(0, 1)
-                mask_pixel_values = F.interpolate(mask_pixel_values, size=(latent_height, latent_width), mode='nearest')
-                mask_pixel_values = mask_pixel_values.unflatten(0, (1, -1))[:,:,0]
-                msk_reft = self.get_i2v_mask(num_latent_frames, latent_height, latent_width, mask_reft_len, mask_pixel_values=mask_pixel_values, device=device)
+                y_reft = retrieve_latents(self.vae.encode(torch.concat([refer_t_pixel_values[0, :, :mask_reft_len], bg_pixel_values[0, :, mask_reft_len:]], dim=1)), sample_mode="argmax")
             else:
-                y_reft = retrieve_latents(self.vae.encode(
-                        torch.concat(
-                            [
-                                F.interpolate(refer_t_pixel_values[0, :, :mask_reft_len],#.cpu(),
-                                              size=(height, width), mode="bicubic"),
-                                torch.zeros(3, num_frames - mask_reft_len, height, width, device=device, dtype=self.vae.dtype),
-                            ]
-                        )
-                ), sample_mode="argmax")
-                msk_reft = self.get_i2v_mask(num_latent_frames, latent_height, latent_width, mask_reft_len, device=device)
+                y_reft = retrieve_latents(self.vae.encode(torch.concat([F.interpolate(refer_t_pixel_values[0, :, :mask_reft_len], size=(height, width), mode="bicubic"), torch.zeros(3, num_frames - mask_reft_len, height, width, device=device, dtype=self.vae.dtype),])), sample_mode="argmax")
         else:
             if mode == "replacement":
-                mask_pixel_values = 1 - mask_pixel_values
-                mask_pixel_values = mask_pixel_values.flatten(0, 1)
-                mask_pixel_values = F.interpolate(mask_pixel_values, size=(latent_height, latent_width), mode='nearest')
-                mask_pixel_values = mask_pixel_values.unflatten(0, (1, -1))[:,:,0]
-                y_reft = retrieve_latents(self.vae.encode(
-                        torch.concat([bg_pixel_values[0]], dim=1).to(dtype=self.vae.dtype)
-                ), sample_mode="argmax")
-                msk_reft = self.get_i2v_mask(num_latent_frames, latent_height, latent_width, mask_reft_len, mask_pixel_values=mask_pixel_values, device=device)
+                y_reft = retrieve_latents(self.vae.encode(bg_pixel_values[0].to(dtype=self.vae.dtype)), sample_mode="argmax")
             else:
-                y_reft = retrieve_latents(self.vae.encode(
-                        torch.concat([torch.zeros(3, num_frames - mask_reft_len, height, width, device=device, dtype=self.vae.dtype)], dim=1)
-                ), sample_mode="argmax")
-                msk_reft = self.get_i2v_mask(num_latent_frames, latent_height, latent_width, mask_reft_len, device=device)
-        msk_reft = self.get_i2v_mask(num_latent_frames, latent_height, latent_width, mask_reft_len, mask_pixel_values=mask_pixel_values, device=device)
+                y_reft = retrieve_latents(self.vae.encode(torch.zeros(3, num_frames - mask_reft_len, height, width, device=device, dtype=self.vae.dtype)), sample_mode="argmax")
+        msk_reft = self.get_i2v_mask(batch_size, num_latent_frames, latent_height, latent_width, mask_reft_len, mask_pixel_values, device)
 
-        y_reft = torch.concat([msk_reft, y_reft]).to(dtype=self.vae.dtype, device=device)
+        y_reft = torch.concat([msk_reft, y_reft]).to(dtype=dtype, device=device)
         y = torch.concat([pose_latents, y_reft], dim=1)
 
         return latents, pose_latents, y
 
-    def get_i2v_mask(self, lat_t, lat_h, lat_w, mask_len=1, mask_pixel_values=None, device="cuda"):
+    def get_i2v_mask(self, batch_size, latent_t, latent_h, latent_w, mask_len=1, mask_pixel_values=None, device="cuda"):
         if mask_pixel_values is None:
-            msk = torch.zeros(1, (lat_t-1) * 4 + 1, lat_h, lat_w, device=device)
+            mask_lat_size = torch.zeros(batch_size, 1, (latent_t-1) * 4 + 1, latent_h, latent_w, device=device)
         else:
-            msk = mask_pixel_values.clone()
-        msk[:, :mask_len] = 1
-        msk = torch.concat([torch.repeat_interleave(msk[:, 0:1], repeats=4, dim=1), msk[:, 1:]], dim=1)
-        msk = msk.view(1, msk.shape[1] // 4, 4, lat_h, lat_w)
-        msk = msk.transpose(1, 2)[0]
+            mask_lat_size = mask_pixel_values.clone()
+        mask_lat_size[:, :, :mask_len] = 1
+        first_frame_mask = mask_lat_size[:, :, 0:1]
+        first_frame_mask = torch.repeat_interleave(first_frame_mask, dim=2, repeats=self.vae_scale_factor_temporal)
+        mask_lat_size = torch.concat([first_frame_mask, mask_lat_size[:, :, 1:, :]], dim=2)
+        mask_lat_size = mask_lat_size.view(batch_size, -1, self.vae_scale_factor_temporal, latent_h, latent_w)
+        mask_lat_size = mask_lat_size.transpose(1, 2)
 
-        return msk
+        return mask_lat_size
 
     def pad_video(self, frames, num_target_frames):
         """
