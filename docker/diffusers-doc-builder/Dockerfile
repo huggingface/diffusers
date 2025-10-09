@@ -13,7 +13,9 @@ RUN apt-get -y update && apt-get install -y bash \
     ca-certificates \
     libglib2.0-0 \
     libsndfile1-dev \
-    libgl1
+    libgl1 \
+    zip \
+    wget
 
 ENV UV_PYTHON=/usr/local/bin/python
 
