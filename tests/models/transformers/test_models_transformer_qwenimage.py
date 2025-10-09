@@ -21,13 +21,13 @@ import torch
 from diffusers import QwenImageTransformer2DModel
 
 from ...testing_utils import enable_full_determinism, torch_device
-from ..test_modeling_common import ModelTesterMixin, TorchCompileTesterMixin
+from ..test_modeling_common import ModelTesterMixin, PEFTTesterMixin, TorchCompileTesterMixin
 
 
 enable_full_determinism()
 
 
-class QwenImageTransformerTests(ModelTesterMixin, unittest.TestCase):
+class QwenImageTransformerTests(ModelTesterMixin, PEFTTesterMixin, unittest.TestCase):
     model_class = QwenImageTransformer2DModel
     main_input_name = "hidden_states"
     # We override the items here because the transformer under consideration is small.
