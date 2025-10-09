@@ -131,9 +131,11 @@ def retrieve_latents(
 
 class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
     r"""
-    WanAnimatePipeline takes a character image, pose video, and face video as input, and generates a video in these two modes:
+    WanAnimatePipeline takes a character image, pose video, and face video as input, and generates a video in these two
+    modes:
 
-    1. Animation mode: The model generates a video of the character image that mimics the human motion in the input pose and face videos.
+    1. Animation mode: The model generates a video of the character image that mimics the human motion in the input
+       pose and face videos.
     2. Replacement mode: The model replaces the character image with the input video, using background and mask videos.
 
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods
@@ -365,7 +367,9 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 "Provide `background_video` and `mask_video`. Cannot leave both `background_video` and `mask_video` undefined when mode is `replacement`."
             )
         if mode == "replacement" and (not isinstance(background_video, list) or not isinstance(mask_video, list)):
-            raise ValueError("`background_video` and `mask_video` must be lists of PIL images when mode is `replacement`.")
+            raise ValueError(
+                "`background_video` and `mask_video` must be lists of PIL images when mode is `replacement`."
+            )
 
         if height % 16 != 0 or width % 16 != 0:
             raise ValueError(f"`height` and `width` have to be divisible by 16 but are {height} and {width}.")
@@ -477,41 +481,75 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
         else:
             latent_condition = retrieve_latents(self.vae.encode(video_condition), sample_mode="argmax")
             latent_condition = latent_condition.repeat(batch_size, 1, 1, 1, 1)
-            pose_latents_no_ref = retrieve_latents(self.vae.encode(conditioning_pixel_values.to(self.vae.dtype)), sample_mode="argmax")
+            pose_latents_no_ref = retrieve_latents(
+                self.vae.encode(conditioning_pixel_values.to(self.vae.dtype)), sample_mode="argmax"
+            )
             pose_latents_no_ref = pose_latents_no_ref.repeat(batch_size, 1, 1, 1, 1)
 
         latent_condition = latent_condition.to(dtype)
         latent_condition = (latent_condition - latents_mean) * latents_std
         pose_latents_no_ref = pose_latents_no_ref.to(dtype)
         pose_latents = (pose_latents_no_ref - latents_mean) * latents_std
-        #pose_latents = torch.cat([pose_latents_no_ref], dim=2)
+        # pose_latents = torch.cat([pose_latents_no_ref], dim=2)
 
         if mode == "replacement":
             mask_pixel_values = 1 - mask_pixel_values
             mask_pixel_values = mask_pixel_values.flatten(0, 1)
-            mask_pixel_values = F.interpolate(mask_pixel_values, size=(latent_height, latent_width), mode='nearest')
-            mask_pixel_values = mask_pixel_values.unflatten(0, (1, -1))[:,:,0]
+            mask_pixel_values = F.interpolate(mask_pixel_values, size=(latent_height, latent_width), mode="nearest")
+            mask_pixel_values = mask_pixel_values.unflatten(0, (1, -1))[:, :, 0]
 
         if mask_reft_len > 0:
             if mode == "replacement":
-                y_reft = retrieve_latents(self.vae.encode(torch.concat([refer_t_pixel_values[0, :, :mask_reft_len], bg_pixel_values[0, :, mask_reft_len:]], dim=1)), sample_mode="argmax")
+                y_reft = retrieve_latents(
+                    self.vae.encode(
+                        torch.concat(
+                            [refer_t_pixel_values[0, :, :mask_reft_len], bg_pixel_values[0, :, mask_reft_len:]], dim=1
+                        )
+                    ),
+                    sample_mode="argmax",
+                )
             else:
-                y_reft = retrieve_latents(self.vae.encode(torch.concat([F.interpolate(refer_t_pixel_values[0, :, :mask_reft_len], size=(height, width), mode="bicubic"), torch.zeros(3, num_frames - mask_reft_len, height, width, device=device, dtype=self.vae.dtype),])), sample_mode="argmax")
+                y_reft = retrieve_latents(
+                    self.vae.encode(
+                        torch.concat(
+                            [
+                                F.interpolate(
+                                    refer_t_pixel_values[0, :, :mask_reft_len], size=(height, width), mode="bicubic"
+                                ),
+                                torch.zeros(
+                                    3, num_frames - mask_reft_len, height, width, device=device, dtype=self.vae.dtype
+                                ),
+                            ]
+                        )
+                    ),
+                    sample_mode="argmax",
+                )
         else:
             if mode == "replacement":
-                y_reft = retrieve_latents(self.vae.encode(bg_pixel_values[0].to(dtype=self.vae.dtype)), sample_mode="argmax")
+                y_reft = retrieve_latents(
+                    self.vae.encode(bg_pixel_values[0].to(dtype=self.vae.dtype)), sample_mode="argmax"
+                )
             else:
-                y_reft = retrieve_latents(self.vae.encode(torch.zeros(3, num_frames - mask_reft_len, height, width, device=device, dtype=self.vae.dtype)), sample_mode="argmax")
-        msk_reft = self.get_i2v_mask(batch_size, num_latent_frames, latent_height, latent_width, mask_reft_len, mask_pixel_values, device)
+                y_reft = retrieve_latents(
+                    self.vae.encode(
+                        torch.zeros(3, num_frames - mask_reft_len, height, width, device=device, dtype=self.vae.dtype)
+                    ),
+                    sample_mode="argmax",
+                )
+        msk_reft = self.get_i2v_mask(
+            batch_size, num_latent_frames, latent_height, latent_width, mask_reft_len, mask_pixel_values, device
+        )
 
         y_reft = torch.concat([msk_reft, y_reft]).to(dtype=dtype, device=device)
         y = torch.concat([pose_latents, y_reft], dim=1)
 
         return latents, pose_latents, y
 
-    def get_i2v_mask(self, batch_size, latent_t, latent_h, latent_w, mask_len=1, mask_pixel_values=None, device="cuda"):
+    def get_i2v_mask(
+        self, batch_size, latent_t, latent_h, latent_w, mask_len=1, mask_pixel_values=None, device="cuda"
+    ):
         if mask_pixel_values is None:
-            mask_lat_size = torch.zeros(batch_size, 1, (latent_t-1) * 4 + 1, latent_h, latent_w, device=device)
+            mask_lat_size = torch.zeros(batch_size, 1, (latent_t - 1) * 4 + 1, latent_h, latent_w, device=device)
         else:
             mask_lat_size = mask_pixel_values.clone()
         mask_lat_size[:, :, :mask_len] = 1
@@ -603,14 +641,15 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
 
         Args:
             image (`PipelineImageInput`):
-                The input character image to condition the generation on. Must be an image, a list of images or a `torch.Tensor`.
+                The input character image to condition the generation on. Must be an image, a list of images or a
+                `torch.Tensor`.
             pose_video (`List[PIL.Image.Image]`):
                 The input pose video to condition the generation on. Must be a list of PIL images.
             face_video (`List[PIL.Image.Image]`):
                 The input face video to condition the generation on. Must be a list of PIL images.
             background_video (`List[PIL.Image.Image]`, *optional*):
-                When mode is `"replacement"`, the input background video to condition the generation on. Must be a
-                list of PIL images.
+                When mode is `"replacement"`, the input background video to condition the generation on. Must be a list
+                of PIL images.
             mask_video (`List[PIL.Image.Image]`, *optional*):
                 When mode is `"replacement"`, the input mask video to condition the generation on. Must be a list of
                 PIL images.
@@ -777,14 +816,22 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
 
         # 5. Prepare latent variables
         num_channels_latents = self.vae.config.z_dim
-        height, width = pose_video[0].shape[: 2]
+        height, width = pose_video[0].shape[:2]
         image = self.video_processor.preprocess(image, height=height, width=width).to(device, dtype=torch.float32)
 
-        pose_video = self.video_processor.preprocess_video(pose_video, height=height, width=width).to(device, dtype=torch.float32)
-        face_video = self.video_processor.preprocess_video(face_video, height=height, width=width).to(device, dtype=torch.float32)
+        pose_video = self.video_processor.preprocess_video(pose_video, height=height, width=width).to(
+            device, dtype=torch.float32
+        )
+        face_video = self.video_processor.preprocess_video(face_video, height=height, width=width).to(
+            device, dtype=torch.float32
+        )
         if mode == "replacement":
-            background_video = self.video_processor.preprocess_video(background_video, height=height, width=width).to(device, dtype=torch.float32)
-            mask_video = self.video_processor.preprocess_video(mask_video, height=height, width=width).to(device, dtype=torch.float32)
+            background_video = self.video_processor.preprocess_video(background_video, height=height, width=width).to(
+                device, dtype=torch.float32
+            )
+            mask_video = self.video_processor.preprocess_video(mask_video, height=height, width=width).to(
+                device, dtype=torch.float32
+            )
 
         start = 0
         end = num_frames
@@ -808,13 +855,15 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
             if start == 0:
                 refer_t_pixel_values = torch.zeros(image.shape[0], 3, num_frames_for_temporal_guidance, height, width)
             elif start > 0:
-                refer_t_pixel_values = out_frames[0, :, -num_frames_for_temporal_guidance:].clone().detach().permute(1, 0, 2, 3)
+                refer_t_pixel_values = (
+                    out_frames[0, :, -num_frames_for_temporal_guidance:].clone().detach().permute(1, 0, 2, 3)
+                )
 
             refer_t_pixel_values = refer_t_pixel_values.permute(1, 0, 2, 3).unsqueeze(0)
 
             if mode == "replacement":
                 bg_pixel_values = background_video[start:end]
-                mask_pixel_values = mask_video[start:end] #.permute(0, 3, 1, 2).unsqueeze(0)
+                mask_pixel_values = mask_video[start:end]  # .permute(0, 3, 1, 2).unsqueeze(0)
                 mask_pixel_values = mask_pixel_values.to(device=device, dtype=torch.bfloat16)
             else:
                 mask_pixel_values = None
@@ -824,7 +873,6 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
             refer_pixel_values = refer_pixel_values.to(device=device, dtype=torch.bfloat16)
             refer_t_pixel_values = refer_t_pixel_values.to(device=device, dtype=torch.bfloat16)
             bg_pixel_values = bg_pixel_values.to(device=device, dtype=torch.bfloat16)
-
 
             latents_outputs = self.prepare_latents(
                 image,
