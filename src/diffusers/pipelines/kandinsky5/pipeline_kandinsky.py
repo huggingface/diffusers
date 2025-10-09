@@ -300,7 +300,7 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
         negative_prompt: Optional[Union[str, List[str]]] = None,
         height: int = 512,
         width: int = 768,
-        num_frames: int = 25,
+        num_frames: int = 121,
         num_inference_steps: int = 50,
         guidance_scale: float = 5.0,
         scheduler_scale: float = 10.0,
@@ -354,6 +354,11 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
                 the first element is a list with the generated images and the second element is a list of `bool`s
                 indicating whether the corresponding generated image contains "not-safe-for-work" (nsfw) content.
         """
+        self.transformer.time_embeddings.reset_dtype()
+        self.transformer.text_rope_embeddings.reset_dtype()
+        self.transformer.visual_rope_embeddings.reset_dtype()
+        
+        dtype = self.transformer.dtype
 
         if height % 16 != 0 or width % 16 != 0:
             raise ValueError(f"`height` and `width` have to be divisible by 16 but are {height} and {width}.")
@@ -394,7 +399,7 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
             width=width,
             num_frames=num_frames,
             visual_cond=self.transformer.visual_cond,
-            dtype=self.transformer.dtype,
+            dtype=dtype,
             device=device,
             generator=generator,
             latents=latents,
@@ -418,41 +423,39 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
 
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
-                timestep = t.unsqueeze(0)
+                timestep = t.unsqueeze(0).flatten()
 
-                with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
-                    # print(latents.shape)
+                with torch.autocast(device_type="cuda", dtype=dtype):
                     pred_velocity = self.transformer(
-                        latents,
-                        text_embeds["text_embeds"],
-                        text_embeds["pooled_embed"],
-                        timestep,
-                        visual_rope_pos,
-                        text_rope_pos,
+                        hidden_states=latents,
+                        encoder_hidden_states=text_embeds["text_embeds"],
+                        pooled_projections=text_embeds["pooled_embed"],
+                        timestep=timestep,
+                        visual_rope_pos=visual_rope_pos,
+                        text_rope_pos=text_rope_pos,
                         scale_factor=(1, 2, 2), 
                         sparse_params=None,
-                        return_dict=False
-                    )[0]
-                    
+                        return_dict=True
+                    ).sample
+
                     if guidance_scale > 1.0 and negative_text_embeds is not None:
                         uncond_pred_velocity = self.transformer(
-                            latents,
-                            negative_text_embeds["text_embeds"],
-                            negative_text_embeds["pooled_embed"],
-                            timestep,
-                            visual_rope_pos,
-                            negative_text_rope_pos,
+                            hidden_states=latents,
+                            encoder_hidden_states=negative_text_embeds["text_embeds"],
+                            pooled_projections=negative_text_embeds["pooled_embed"],
+                            timestep=timestep,
+                            visual_rope_pos=visual_rope_pos,
+                            text_rope_pos=negative_text_rope_pos,
                             scale_factor=(1, 2, 2),
                             sparse_params=None,
-                            return_dict=False
-                        )[0]
+                            return_dict=True
+                        ).sample
 
                         pred_velocity = uncond_pred_velocity + guidance_scale * (
                             pred_velocity - uncond_pred_velocity
                         )
                 
-                latents = self.scheduler.step(pred_velocity, t, latents[:, :, :, :, :16], return_dict=False)[0]
-                latents = torch.cat([latents, visual_cond], dim=-1)
+                latents[:, :, :, :, :16] = self.scheduler.step(pred_velocity, t, latents[:, :, :, :, :16], return_dict=False)[0]
 
                 if callback_on_step_end is not None:
                     callback_kwargs = {}
