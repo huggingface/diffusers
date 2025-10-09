@@ -59,7 +59,6 @@ MODULAR_PIPELINE_MAPPING = OrderedDict(
         ("flux", "FluxModularPipeline"),
         ("qwenimage", "QwenImageModularPipeline"),
         ("qwenimage-edit", "QwenImageEditModularPipeline"),
-        ("qwenimage-edit-plus", "QwenImageEditPlusModularPipeline"),
     ]
 )
 
@@ -1630,8 +1629,7 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
             blocks = ModularPipelineBlocks.from_pretrained(
                 pretrained_model_name_or_path, trust_remote_code=trust_remote_code, **kwargs
             )
-        except EnvironmentError as e:
-            logger.debug(f"EnvironmentError: {e}")
+        except EnvironmentError:
             blocks = None
 
         cache_dir = kwargs.pop("cache_dir", None)

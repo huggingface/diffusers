@@ -106,9 +106,9 @@ class FluxImg2ImgBeforeDenoiseStep(SequentialPipelineBlocks):
 
 # before_denoise: all task (text2img, img2img)
 class FluxAutoBeforeDenoiseStep(AutoPipelineBlocks):
-    block_classes = [FluxImg2ImgBeforeDenoiseStep, FluxBeforeDenoiseStep]
-    block_names = ["img2img", "text2image"]
-    block_trigger_inputs = ["image_latents", None]
+    block_classes = [FluxBeforeDenoiseStep, FluxImg2ImgBeforeDenoiseStep]
+    block_names = ["text2image", "img2img"]
+    block_trigger_inputs = [None, "image_latents"]
 
     @property
     def description(self):
@@ -177,32 +177,16 @@ class FluxAutoDecodeStep(AutoPipelineBlocks):
         return "Decode step that decode the denoised latents into image outputs.\n - `FluxDecodeStep`"
 
 
-class FluxCoreDenoiseStep(SequentialPipelineBlocks):
-    block_classes = [FluxInputStep, FluxAutoBeforeDenoiseStep, FluxAutoDenoiseStep]
-    block_names = ["input", "before_denoise", "denoise"]
-
-    @property
-    def description(self):
-        return (
-            "Core step that performs the denoising process. \n"
-            + " - `FluxInputStep` (input) standardizes the inputs for the denoising step.\n"
-            + " - `FluxAutoBeforeDenoiseStep` (before_denoise) prepares the inputs for the denoising step.\n"
-            + " - `FluxAutoDenoiseStep` (denoise) iteratively denoises the latents.\n"
-            + "This step support text-to-image and image-to-image tasks for Flux:\n"
-            + " - for image-to-image generation, you need to provide `image_latents`\n"
-            + " - for text-to-image generation, all you need to provide is prompt embeddings"
-        )
-
-
-# text2image
+# text2image, img2img
 class FluxAutoBlocks(SequentialPipelineBlocks):
     block_classes = [
         FluxTextEncoderStep,
         FluxAutoVaeEncoderStep,
-        FluxCoreDenoiseStep,
+        FluxAutoBeforeDenoiseStep,
+        FluxAutoDenoiseStep,
         FluxAutoDecodeStep,
     ]
-    block_names = ["text_encoder", "image_encoder", "denoise", "decode"]
+    block_names = ["text_encoder", "image_encoder", "before_denoise", "denoise", "decoder"]
 
     @property
     def description(self):
@@ -259,7 +243,8 @@ AUTO_BLOCKS = InsertableDict(
     [
         ("text_encoder", FluxTextEncoderStep),
         ("image_encoder", FluxAutoVaeEncoderStep),
-        ("denoise", FluxCoreDenoiseStep),
+        ("before_denoise", FluxAutoBeforeDenoiseStep),
+        ("denoise", FluxAutoDenoiseStep),
         ("decode", FluxAutoDecodeStep),
     ]
 )

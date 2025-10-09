@@ -95,7 +95,6 @@ from .qwenimage import (
     QwenImageControlNetPipeline,
     QwenImageEditInpaintPipeline,
     QwenImageEditPipeline,
-    QwenImageEditPlusPipeline,
     QwenImageImg2ImgPipeline,
     QwenImageInpaintPipeline,
     QwenImagePipeline,
@@ -187,7 +186,6 @@ AUTO_IMAGE2IMAGE_PIPELINES_MAPPING = OrderedDict(
         ("flux-kontext", FluxKontextPipeline),
         ("qwenimage", QwenImageImg2ImgPipeline),
         ("qwenimage-edit", QwenImageEditPipeline),
-        ("qwenimage-edit-plus", QwenImageEditPlusPipeline),
     ]
 )
 

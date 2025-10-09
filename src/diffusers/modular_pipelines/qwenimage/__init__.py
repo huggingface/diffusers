@@ -29,20 +29,13 @@ else:
         "EDIT_AUTO_BLOCKS",
         "EDIT_BLOCKS",
         "EDIT_INPAINT_BLOCKS",
-        "EDIT_PLUS_AUTO_BLOCKS",
-        "EDIT_PLUS_BLOCKS",
         "IMAGE2IMAGE_BLOCKS",
         "INPAINT_BLOCKS",
         "TEXT2IMAGE_BLOCKS",
         "QwenImageAutoBlocks",
         "QwenImageEditAutoBlocks",
-        "QwenImageEditPlusAutoBlocks",
     ]
-    _import_structure["modular_pipeline"] = [
-        "QwenImageEditModularPipeline",
-        "QwenImageEditPlusModularPipeline",
-        "QwenImageModularPipeline",
-    ]
+    _import_structure["modular_pipeline"] = ["QwenImageEditModularPipeline", "QwenImageModularPipeline"]
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     try:
@@ -61,20 +54,13 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             EDIT_AUTO_BLOCKS,
             EDIT_BLOCKS,
             EDIT_INPAINT_BLOCKS,
-            EDIT_PLUS_AUTO_BLOCKS,
-            EDIT_PLUS_BLOCKS,
             IMAGE2IMAGE_BLOCKS,
             INPAINT_BLOCKS,
             TEXT2IMAGE_BLOCKS,
             QwenImageAutoBlocks,
             QwenImageEditAutoBlocks,
-            QwenImageEditPlusAutoBlocks,
         )
-        from .modular_pipeline import (
-            QwenImageEditModularPipeline,
-            QwenImageEditPlusModularPipeline,
-            QwenImageModularPipeline,
-        )
+        from .modular_pipeline import QwenImageEditModularPipeline, QwenImageModularPipeline
 else:
     import sys
 
