@@ -25,7 +25,7 @@ else:
     _import_structure["modular_blocks"] = [
         "ALL_BLOCKS",
         "AUTO_BLOCKS",
-        "AUTO_BLOCKS_KONTTEXT",
+        "AUTO_BLOCKS_KONTEXT",
         "FLUX_KONTEXT_BLOCKS",
         "TEXT2IMAGE_BLOCKS",
         "FluxAutoBeforeDenoiseStep",
@@ -49,7 +49,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .modular_blocks import (
             ALL_BLOCKS,
             AUTO_BLOCKS,
-            AUTO_BLOCKS_KONTTEXT,
+            AUTO_BLOCKS_KONTEXT,
             FLUX_KONTEXT_BLOCKS,
             TEXT2IMAGE_BLOCKS,
             FluxAutoBeforeDenoiseStep,
