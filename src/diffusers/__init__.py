@@ -179,6 +179,7 @@ else:
             "AsymmetricAutoencoderKL",
             "AttentionBackendName",
             "AuraFlowTransformer2DModel",
+            "AutoencoderBlockwiseVAE",
             "AutoencoderDC",
             "AutoencoderKL",
             "AutoencoderKLAllegro",
@@ -233,6 +234,8 @@ else:
             "ParallelConfig",
             "PixArtTransformer2DModel",
             "PriorTransformer",
+            "QwenImageBlockwiseMultiControlNetModel",
+            "QwenImageBlockTransformer2DModel"
             "QwenImageControlNetModel",
             "QwenImageMultiControlNetModel",
             "QwenImageTransformer2DModel",
@@ -323,6 +326,7 @@ else:
             "EDMEulerScheduler",
             "EulerAncestralDiscreteScheduler",
             "EulerDiscreteScheduler",
+            "FlowMatchScheduler",
             "FlowMatchEulerDiscreteScheduler",
             "FlowMatchHeunDiscreteScheduler",
             "FlowMatchLCMScheduler",
@@ -515,7 +519,11 @@ else:
             "PixArtAlphaPipeline",
             "PixArtSigmaPAGPipeline",
             "PixArtSigmaPipeline",
+<<<<<<< Updated upstream
             "QwenImageControlNetInpaintPipeline",
+=======
+            "QwenImageBlockControlNetPipeline"
+>>>>>>> Stashed changes
             "QwenImageControlNetPipeline",
             "QwenImageEditInpaintPipeline",
             "QwenImageEditPipeline",
@@ -923,6 +931,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             ParallelConfig,
             PixArtTransformer2DModel,
             PriorTransformer,
+            QwenImageBlockwiseMultiControlNetModel,
+            QwenImageBlockTransformer2DModel,
             QwenImageControlNetModel,
             QwenImageMultiControlNetModel,
             QwenImageTransformer2DModel,
@@ -1175,7 +1185,11 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             PixArtAlphaPipeline,
             PixArtSigmaPAGPipeline,
             PixArtSigmaPipeline,
+<<<<<<< Updated upstream
             QwenImageControlNetInpaintPipeline,
+=======
+            QwenImageBlockControlNetPipeline,
+>>>>>>> Stashed changes
             QwenImageControlNetPipeline,
             QwenImageEditInpaintPipeline,
             QwenImageEditPipeline,

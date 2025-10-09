@@ -25,7 +25,11 @@ else:
     _import_structure["modeling_qwenimage"] = ["ReduxImageEncoder"]
     _import_structure["pipeline_qwenimage"] = ["QwenImagePipeline"]
     _import_structure["pipeline_qwenimage_controlnet"] = ["QwenImageControlNetPipeline"]
+<<<<<<< Updated upstream
     _import_structure["pipeline_qwenimage_controlnet_inpaint"] = ["QwenImageControlNetInpaintPipeline"]
+=======
+    _import_structure["pipeline_qwenimage_block_controlnet"] = ["QwenImageBlockControlNetPipeline"]
+>>>>>>> Stashed changes
     _import_structure["pipeline_qwenimage_edit"] = ["QwenImageEditPipeline"]
     _import_structure["pipeline_qwenimage_edit_inpaint"] = ["QwenImageEditInpaintPipeline"]
     _import_structure["pipeline_qwenimage_edit_plus"] = ["QwenImageEditPlusPipeline"]
@@ -41,7 +45,11 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     else:
         from .pipeline_qwenimage import QwenImagePipeline
         from .pipeline_qwenimage_controlnet import QwenImageControlNetPipeline
+<<<<<<< Updated upstream
         from .pipeline_qwenimage_controlnet_inpaint import QwenImageControlNetInpaintPipeline
+=======
+        from .pipeline_qwenimage_blockcontrolnet import QwenImageBlockControlNetPipeline
+>>>>>>> Stashed changes
         from .pipeline_qwenimage_edit import QwenImageEditPipeline
         from .pipeline_qwenimage_edit_inpaint import QwenImageEditInpaintPipeline
         from .pipeline_qwenimage_edit_plus import QwenImageEditPlusPipeline
