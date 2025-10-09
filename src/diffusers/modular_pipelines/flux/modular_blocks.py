@@ -50,7 +50,11 @@ class FluxAutoVaeEncoderStep(AutoPipelineBlocks):
 
 # before_denoise: text2img
 class FluxBeforeDenoiseStep(SequentialPipelineBlocks):
-    block_classes = [FluxInputStep, FluxPrepareLatentsStep, FluxSetTimestepsStep]
+    block_classes = [
+        FluxInputStep,
+        FluxPrepareLatentsStep,
+        FluxSetTimestepsStep,
+    ]
     block_names = ["input", "prepare_latents", "set_timesteps"]
 
     @property
@@ -66,7 +70,11 @@ class FluxBeforeDenoiseStep(SequentialPipelineBlocks):
 
 # before_denoise: text2img, img2img (for Kontext)
 class FluxKontextBeforeDenoiseStep(SequentialPipelineBlocks):
-    block_classes = [FluxInputStep, FluxKontextPrepareLatentsStep, FluxSetTimestepsStep]
+    block_classes = [
+        FluxInputStep,
+        FluxKontextPrepareLatentsStep,
+        FluxSetTimestepsStep,
+    ]
     block_names = ["input", "prepare_latents", "set_timesteps"]
 
     @property
@@ -188,7 +196,12 @@ class FluxCoreDenoiseStep(SequentialPipelineBlocks):
 
 # text2image
 class FluxAutoBlocks(SequentialPipelineBlocks):
-    block_classes = [FluxTextEncoderStep, FluxAutoVaeEncoderStep, FluxCoreDenoiseStep, FluxAutoDecodeStep]
+    block_classes = [
+        FluxTextEncoderStep,
+        FluxAutoVaeEncoderStep,
+        FluxCoreDenoiseStep,
+        FluxAutoDecodeStep,
+    ]
     block_names = ["text_encoder", "image_encoder", "denoise", "decode"]
 
     @property
