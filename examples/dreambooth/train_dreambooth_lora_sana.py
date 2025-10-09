@@ -25,6 +25,10 @@
 #     "Jinja2",
 #     "peft>=0.14.0",
 #     "sentencepiece",
+#     "torchvision",
+#     "datasets",
+#     "bitsandbytes",
+#     "prodigyopt",
 # ]
 # ///
 
