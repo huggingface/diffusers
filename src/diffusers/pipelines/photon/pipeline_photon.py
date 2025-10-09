@@ -381,12 +381,11 @@ class PhotonPipeline(
         attention_mask = tokens["attention_mask"].bool().to(device)
 
         with torch.no_grad():
-            with torch.autocast("cuda", enabled=False):
-                emb = self.text_encoder(
-                    input_ids=input_ids,
-                    attention_mask=attention_mask,
-                    output_hidden_states=True,
-                )
+            emb = self.text_encoder(
+                input_ids=input_ids,
+                attention_mask=attention_mask,
+                output_hidden_states=True,
+            )
 
         all_embeddings = emb["last_hidden_state"]
 
