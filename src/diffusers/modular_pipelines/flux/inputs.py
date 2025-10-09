@@ -17,12 +17,16 @@ from typing import List
 import torch
 
 from ...pipelines import FluxPipeline
+from ...utils import logging
 from ..modular_pipeline import ModularPipelineBlocks, PipelineState
 from ..modular_pipeline_utils import InputParam, OutputParam
 
 # TODO: consider making these common utilities for modular if they are not pipeline-specific.
 from ..qwenimage.inputs import calculate_dimension_from_latents, repeat_tensor_to_batch_size
 from .modular_pipeline import FluxModularPipeline
+
+
+logger = logging.get_logger(__name__)
 
 
 class FluxTextInputStep(ModularPipelineBlocks):
@@ -231,6 +235,67 @@ class FluxInputsDynamicStep(ModularPipelineBlocks):
             )
 
             setattr(block_state, input_name, input_tensor)
+
+        self.set_block_state(state, block_state)
+        return components, state
+
+
+class FluxKontextSetResolutionStep(ModularPipelineBlocks):
+    model_name = "flux_kontext"
+
+    def description(self):
+        return (
+            "Determines the height and width to be used during the subsequent computations.\n"
+            "It should always be placed _before_ the latent preparation step."
+        )
+
+    @property
+    def inputs(self) -> List[InputParam]:
+        inputs = [
+            InputParam(name="height"),
+            InputParam(name="width"),
+            InputParam(name="max_area", type_hint=int, default=1024**2),
+        ]
+        return inputs
+
+    def intermediate_outputs(self) -> List[OutputParam]:
+        return [
+            OutputParam(name="height", type_hint=int, description="The height of the initial noisy latents"),
+            OutputParam(name="width", type_hint=int, description="The width of the initial noisy latents"),
+        ]
+
+    @staticmethod
+    def check_inputs(height, width, vae_scale_factor):
+        if height is not None and height % (vae_scale_factor * 2) != 0:
+            raise ValueError(f"Height must be divisible by {vae_scale_factor * 2} but is {height}")
+
+        if width is not None and width % (vae_scale_factor * 2) != 0:
+            raise ValueError(f"Width must be divisible by {vae_scale_factor * 2} but is {width}")
+
+    def __call__(self, components: FluxModularPipeline, state: PipelineState) -> PipelineState:
+        block_state = self.get_block_state(state)
+
+        height = block_state.height or components.default_height
+        width = block_state.width or components.default_width
+        self.check_inputs(height, width, components.vae_scale_factor)
+
+        original_height, original_width = height, width
+        max_area = block_state.max_area
+        aspect_ratio = width / height
+        width = round((max_area * aspect_ratio) ** 0.5)
+        height = round((max_area / aspect_ratio) ** 0.5)
+
+        multiple_of = components.vae_scale_factor * 2
+        width = width // multiple_of * multiple_of
+        height = height // multiple_of * multiple_of
+
+        if height != original_height or width != original_width:
+            logger.warning(
+                f"Generation `height` and `width` have been adjusted to {height} and {width} to fit the model requirements."
+            )
+
+        block_state.height = height
+        block_state.width = width
 
         self.set_block_state(state, block_state)
         return components, state
