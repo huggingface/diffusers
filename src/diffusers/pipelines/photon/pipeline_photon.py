@@ -26,6 +26,7 @@ from transformers import (
     T5EncoderModel,
     T5TokenizerFast,
 )
+from transformers.models.t5gemma.modeling_t5gemma import T5GemmaEncoder
 
 from diffusers.image_processor import PixArtImageProcessor
 from diffusers.loaders import FromSingleFileMixin, LoraLoaderMixin, TextualInversionLoaderMixin
@@ -233,8 +234,8 @@ class PhotonPipeline(
             The Photon transformer model to denoise the encoded image latents.
         scheduler ([`FlowMatchEulerDiscreteScheduler`]):
             A scheduler to be used in combination with `transformer` to denoise the encoded image latents.
-        text_encoder ([`T5EncoderModel`]):
-            Standard text encoder model for encoding prompts.
+        text_encoder ([`T5EncoderModel`] or [`T5GemmaEncoder`]):
+            Text encoder model for encoding prompts. Supports T5EncoderModel or T5GemmaEncoder.
         tokenizer ([`T5TokenizerFast` or `GemmaTokenizerFast`]):
             Tokenizer for the text encoder.
         vae ([`AutoencoderKL`] or [`AutoencoderDC`]):
@@ -250,7 +251,7 @@ class PhotonPipeline(
         self,
         transformer: PhotonTransformer2DModel,
         scheduler: FlowMatchEulerDiscreteScheduler,
-        text_encoder: Union[T5EncoderModel, Any],
+        text_encoder: Union[T5EncoderModel, T5GemmaEncoder],
         tokenizer: Union[T5TokenizerFast, GemmaTokenizerFast, AutoTokenizer],
         vae: Union[AutoencoderKL, AutoencoderDC],
         default_sample_size: Optional[int] = DEFAULT_RESOLUTION,
@@ -261,10 +262,6 @@ class PhotonPipeline(
             raise ImportError(
                 "PhotonTransformer2DModel is not available. Please ensure the transformer_photon module is properly installed."
             )
-
-        # Extract encoder if text_encoder is T5GemmaModel
-        if hasattr(text_encoder, "encoder"):
-            text_encoder = text_encoder.encoder
 
         self.text_encoder = text_encoder
         self.tokenizer = tokenizer

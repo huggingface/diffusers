@@ -217,8 +217,10 @@ def download_and_save_text_encoder(output_path: str):
     print("Downloading T5Gemma model from google/t5gemma-2b-2b-ul2...")
     t5gemma_model = T5GemmaModel.from_pretrained("google/t5gemma-2b-2b-ul2")
 
-    t5gemma_model.save_pretrained(text_encoder_path)
-    print(f"✓ Saved T5Gemma model to {text_encoder_path}")
+    # Extract and save only the encoder
+    t5gemma_encoder = t5gemma_model.encoder
+    t5gemma_encoder.save_pretrained(text_encoder_path)
+    print(f"✓ Saved T5GemmaEncoder to {text_encoder_path}")
 
     print("Downloading tokenizer from google/t5gemma-2b-2b-ul2...")
     tokenizer = GemmaTokenizerFast.from_pretrained("google/t5gemma-2b-2b-ul2")
@@ -241,7 +243,7 @@ def create_model_index(vae_type: str, default_image_size: int, output_path: str)
         "_name_or_path": os.path.basename(output_path),
         "default_sample_size": default_image_size,
         "scheduler": ["diffusers", "FlowMatchEulerDiscreteScheduler"],
-        "text_encoder": ["transformers", "T5GemmaModel"],
+        "text_encoder": ["transformers.models.t5gemma.modeling_t5gemma", "T5GemmaEncoder"],
         "tokenizer": ["transformers", "GemmaTokenizerFast"],
         "transformer": ["diffusers", "PhotonTransformer2DModel"],
         "vae": ["diffusers", vae_class],
