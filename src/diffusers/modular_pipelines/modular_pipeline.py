@@ -547,6 +547,7 @@ class AutoPipelineBlocks(ModularPipelineBlocks):
                 f"In {self.__class__.__name__}, the number of block_classes, block_names, and block_trigger_inputs must be the same."
             )
         default_blocks = [t for t in self.block_trigger_inputs if t is None]
+        print(f"{default_blocks=}, {self.block_trigger_inputs=}")
         # can only have 1 or 0 default block, and has to put in the last
         # the order of blocks matters here because the first block with matching trigger will be dispatched
         # e.g. blocks = [inpaint, img2img] and block_trigger_inputs = ["mask", "image"]
