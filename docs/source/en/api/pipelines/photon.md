@@ -76,7 +76,7 @@ from transformers import T5GemmaModel, GemmaTokenizerFast
 # Load transformer
 transformer = PhotonTransformer2DModel.from_pretrained(
     "Photoroom/photon-512-t2i", subfolder="transformer"
-)
+).to(dtype=torch.bfloat16)
 
 # Load scheduler
 scheduler = FlowMatchEulerDiscreteScheduler.from_pretrained(
@@ -134,15 +134,15 @@ Key parameters for image generation:
 # Example with custom parameters
 import torch
 from diffusers.pipelines.photon import PhotonPipeline
-
-pipe = pipe(
-    prompt="A highly detailed 3D animated scene of a cute, intelligent duck scientist in a futuristic laboratory. The duck stands on a shiny metallic floor surrounded by glowing glass tubes filled with colorful liquids—blue, green, and purple—connected by translucent hoses emitting soft light. The duck wears a tiny white lab coat, safety goggles, and has a curious, determined expression while conducting an experiment. Sparks of energy and soft particle effects fill the air as scientific instruments hum with power. In the background, holographic screens display molecular diagrams and equations. Above the duck’s head, the word “PHOTON” glows vividly in midair as if made of pure light, illuminating the scene with a warm golden glow. The lighting is cinematic, with rich reflections and subtle depth of field, emphasizing a Pixar-like, ultra-polished 3D animation style. Rendered in ultra high resolution, realistic subsurface scattering on the duck’s feathers, and vibrant color grading that gives a sense of wonder and scientific discovery.",
-    num_inference_steps=28,
-    guidance_scale=4.0,
-    height=512,
-    width=512,
-    generator=torch.Generator("cuda").manual_seed(42)
-).images[0]
+with torch.autocast("cuda", dtype=torch.bfloat16):
+  pipe = pipe(
+      prompt="A highly detailed 3D animated scene of a cute, intelligent duck scientist in a futuristic laboratory. The duck stands on a shiny metallic floor surrounded by glowing glass tubes filled with colorful liquids—blue, green, and purple—connected by translucent hoses emitting soft light. The duck wears a tiny white lab coat, safety goggles, and has a curious, determined expression while conducting an experiment. Sparks of energy and soft particle effects fill the air as scientific instruments hum with power. In the background, holographic screens display molecular diagrams and equations. Above the duck’s head, the word “PHOTON” glows vividly in midair as if made of pure light, illuminating the scene with a warm golden glow. The lighting is cinematic, with rich reflections and subtle depth of field, emphasizing a Pixar-like, ultra-polished 3D animation style. Rendered in ultra high resolution, realistic subsurface scattering on the duck’s feathers, and vibrant color grading that gives a sense of wonder and scientific discovery.",
+      num_inference_steps=28,
+      guidance_scale=4.0,
+      height=512,
+      width=512,
+      generator=torch.Generator("cuda").manual_seed(42)
+  ).images[0]
 ```
 
 ## Memory Optimization
