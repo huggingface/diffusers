@@ -207,6 +207,10 @@ class HunyuanDiTPipeline(DiffusionPipeline):
         tokenizer_2: Optional[MT5Tokenizer] = None,
     ):
         super().__init__()
+        self._guidance_scale = 1.0
+        self._guidance_rescale = 0.0
+        self._num_timesteps = 0
+        self._interrupt = False
 
         self.register_modules(
             vae=vae,
@@ -713,7 +717,6 @@ class HunyuanDiTPipeline(DiffusionPipeline):
         )
         self._guidance_scale = guidance_scale
         self._guidance_rescale = guidance_rescale
-        self._interrupt = False
 
         # 2. Define call parameters
         if prompt is not None and isinstance(prompt, str):

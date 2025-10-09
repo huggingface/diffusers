@@ -139,6 +139,11 @@ class WanPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         expand_timesteps: bool = False,  # Wan2.2 ti2v
     ):
         super().__init__()
+        self._guidance_scale = 1.0
+        self._num_timesteps = 0
+        self._current_timestep = None
+        self._interrupt = False
+        self._attention_kwargs = None
 
         self.register_modules(
             vae=vae,
@@ -501,8 +506,6 @@ class WanPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         self._guidance_scale = guidance_scale
         self._guidance_scale_2 = guidance_scale_2
         self._attention_kwargs = attention_kwargs
-        self._current_timestep = None
-        self._interrupt = False
 
         device = self._execution_device
 
