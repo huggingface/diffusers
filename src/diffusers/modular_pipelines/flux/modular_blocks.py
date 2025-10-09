@@ -272,7 +272,8 @@ class FluxAutoInputStep(AutoPipelineBlocks):
 FluxKontextBlocks = InsertableDict(
     [
         ("text_inputs", FluxTextInputStep()),
-        ("resolution_set", FluxKontextSetResolutionStep())("additional_inputs", FluxInputsDynamicStep()),
+        ("resolution_set", FluxKontextSetResolutionStep()),
+        ("additional_inputs", FluxInputsDynamicStep()),
     ]
 )
 
@@ -353,10 +354,12 @@ AUTO_BLOCKS = InsertableDict(
 )
 
 AUTO_BLOCKS_KONTEXT = InsertableDict(
-    ("text_encoder", FluxTextEncoderStep()),
-    ("image_encoder", FluxKontextAutoVaeEncoderStep()),
-    ("denoise", FluxKontextCoreDenoiseStep()),
-    ("decode", FluxDecodeStep()),
+    [
+        ("text_encoder", FluxTextEncoderStep()),
+        ("image_encoder", FluxKontextAutoVaeEncoderStep()),
+        ("denoise", FluxKontextCoreDenoiseStep()),
+        ("decode", FluxDecodeStep()),
+    ]
 )
 
 

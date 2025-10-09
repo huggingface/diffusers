@@ -193,7 +193,7 @@ class FluxKontextProcessImagesInputStep(ModularPipelineBlocks):
                 images = [images]
 
             img = images[0]
-            image_height, image_width = self.image_processor.get_default_height_width(img)
+            image_height, image_width = components.image_processor.get_default_height_width(img)
             aspect_ratio = image_width / image_height
             if self._auto_resize:
                 # Kontext is trained on specific resolutions, using one of them is recommended

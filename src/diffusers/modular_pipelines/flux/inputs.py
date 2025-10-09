@@ -258,6 +258,7 @@ class FluxKontextSetResolutionStep(ModularPipelineBlocks):
         ]
         return inputs
 
+    @property
     def intermediate_outputs(self) -> List[OutputParam]:
         return [
             OutputParam(name="height", type_hint=int, description="The height of the initial noisy latents"),
