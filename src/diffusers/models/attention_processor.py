@@ -5605,7 +5605,6 @@ class XLAFluxFlashAttnProcessor2_0:
         return processor
 
 
-
 ADDED_KV_ATTENTION_PROCESSORS = (
     AttnAddedKVProcessor,
     SlicedAttnAddedKVProcessor,

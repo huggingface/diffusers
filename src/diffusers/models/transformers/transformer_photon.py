@@ -22,7 +22,7 @@ from torch.nn.functional import fold, unfold
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...utils import USE_PEFT_BACKEND, logging, scale_lora_layers, unscale_lora_layers
 from ..attention import AttentionMixin
-from ..attention_processor import Attention, AttentionProcessor
+from ..attention_processor import Attention
 from ..embeddings import get_timestep_embedding
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
@@ -77,6 +77,7 @@ def apply_rope(xq: Tensor, freqs_cis: Tensor) -> Tensor:
     xq_ = xq.float().reshape(*xq.shape[:-1], -1, 1, 2)
     xq_out = freqs_cis[..., 0] * xq_[..., 0] + freqs_cis[..., 1] * xq_[..., 1]
     return xq_out.reshape(*xq.shape).type_as(xq)
+
 
 class PhotonAttnProcessor2_0:
     r"""
@@ -133,6 +134,8 @@ class PhotonAttnProcessor2_0:
             attn_output = attn.to_out[1](attn_output)  # dropout if present
 
         return attn_output
+
+
 # copied from https://github.com/black-forest-labs/flux/blob/main/src/flux/modules/layers.py
 class EmbedND(nn.Module):
     r"""
@@ -299,9 +302,8 @@ class PhotonBlock(nn.Module):
             Produces scale/shift/gating parameters for modulated layers.
 
     Methods:
-        attn_forward(img, txt, pe, modulation, spatial_conditioning=None, attention_mask=None):
-            Compute cross-attention between image and text tokens, with optional spatial conditioning and attention
-            masking.
+        attn_forward(img, txt, pe, modulation, attention_mask=None):
+            Compute cross-attention between image and text tokens, with optional attention masking.
 
             Parameters:
                 img (`torch.Tensor`):
@@ -312,8 +314,6 @@ class PhotonBlock(nn.Module):
                     Rotary positional embeddings to apply to queries and keys.
                 modulation (`ModulationOut`):
                     Scale and shift parameters for modulating image tokens.
-                spatial_conditioning (`torch.Tensor`, *optional*):
-                    Extra conditioning tokens of shape `(B, L_cond, hidden_size)`.
                 attention_mask (`torch.Tensor`, *optional*):
                     Boolean mask of shape `(B, L_txt)` where 0 marks padding.
 
@@ -372,7 +372,6 @@ class PhotonBlock(nn.Module):
         txt: Tensor,
         pe: Tensor,
         modulation: ModulationOut,
-        spatial_conditioning: None | Tensor = None,
         attention_mask: None | Tensor = None,
     ) -> Tensor:
         # image tokens proj and norm
@@ -444,7 +443,6 @@ class PhotonBlock(nn.Module):
         txt: Tensor,
         vec: Tensor,
         pe: Tensor,
-        spatial_conditioning: Tensor | None = None,
         attention_mask: Tensor | None = None,
         **_: dict[str, Any],
     ) -> Tensor:
@@ -461,9 +459,6 @@ class PhotonBlock(nn.Module):
                 broadcastable).
             pe (`torch.Tensor`):
                 Rotary positional embeddings applied inside attention.
-            spatial_conditioning (`torch.Tensor`, *optional*):
-                Extra conditioning tokens of shape `(B, L_cond, hidden_size)`. Used only if spatial conditioning is
-                enabled in the block.
             attention_mask (`torch.Tensor`, *optional*):
                 Boolean mask for text tokens of shape `(B, L_txt)`, where `0` marks padding.
             **_:
@@ -481,7 +476,6 @@ class PhotonBlock(nn.Module):
             txt,
             pe,
             mod_attn,
-            spatial_conditioning=spatial_conditioning,
             attention_mask=attention_mask,
         )
         img = img + mod_mlp.gate * self._ffn_forward(img, mod_mlp)
@@ -698,14 +692,6 @@ class PhotonTransformer2DModel(ModelMixin, ConfigMixin, AttentionMixin):
 
         self.gradient_checkpointing = False
 
-    def _process_inputs(self, image_latent: Tensor, txt: Tensor, **_: Any) -> tuple[Tensor, Tensor, Tensor]:
-        txt = self.txt_in(txt)
-        img = img2seq(image_latent, self.patch_size)
-        bs, _, h, w = image_latent.shape
-        img_ids = get_image_ids(bs, h, w, patch_size=self.patch_size, device=image_latent.device)
-        pe = self.pe_embedder(img_ids)
-        return img, txt, pe
-
     def _compute_timestep_embedding(self, timestep: Tensor, dtype: torch.dtype) -> Tensor:
         return self.time_in(
             get_timestep_embedding(
@@ -716,43 +702,6 @@ class PhotonTransformer2DModel(ModelMixin, ConfigMixin, AttentionMixin):
                 flip_sin_to_cos=True,  # Match original cos, sin order
             ).to(dtype)
         )
-
-    def _forward_transformers(
-        self,
-        image_latent: Tensor,
-        cross_attn_conditioning: Tensor,
-        timestep: Optional[Tensor] = None,
-        time_embedding: Optional[Tensor] = None,
-        attention_mask: Optional[Tensor] = None,
-        **block_kwargs: Any,
-    ) -> Tensor:
-        img = self.img_in(image_latent)
-
-        if time_embedding is not None:
-            vec = time_embedding
-        else:
-            if timestep is None:
-                raise ValueError("Please provide either a timestep or a timestep_embedding")
-            vec = self._compute_timestep_embedding(timestep, dtype=img.dtype)
-
-        for block in self.blocks:
-            if torch.is_grad_enabled() and self.gradient_checkpointing:
-                img = self._gradient_checkpointing_func(
-                    block.__call__,
-                    img,
-                    cross_attn_conditioning,
-                    vec,
-                    block_kwargs.get("pe"),
-                    block_kwargs.get("spatial_conditioning"),
-                    attention_mask,
-                )
-            else:
-                img = block(
-                    img=img, txt=cross_attn_conditioning, vec=vec, attention_mask=attention_mask, **block_kwargs
-                )
-
-        img = self.final_layer(img, vec)
-        return img
 
     def forward(
         self,
@@ -797,6 +746,7 @@ class PhotonTransformer2DModel(ModelMixin, ConfigMixin, AttentionMixin):
             lora_scale = attention_kwargs.pop("scale", 1.0)
         else:
             lora_scale = 1.0
+
         if USE_PEFT_BACKEND:
             # weight the lora layers by setting `lora_scale` for each PEFT layer
             scale_lora_layers(self, lora_scale)
@@ -805,12 +755,50 @@ class PhotonTransformer2DModel(ModelMixin, ConfigMixin, AttentionMixin):
                 logger.warning(
                     "Passing `scale` via `attention_kwargs` when not using the PEFT backend is ineffective."
                 )
-        img_seq, txt, pe = self._process_inputs(image_latent, cross_attn_conditioning)
-        img_seq = self._forward_transformers(img_seq, txt, timestep, pe=pe, attention_mask=cross_attn_mask)
-        output = seq2img(img_seq, self.patch_size, image_latent.shape)
+
+        # Process text conditioning
+        txt = self.txt_in(cross_attn_conditioning)
+
+        # Convert image to sequence and embed
+        img = img2seq(image_latent, self.patch_size)
+        img = self.img_in(img)
+
+        # Generate positional embeddings
+        bs, _, h, w = image_latent.shape
+        img_ids = get_image_ids(bs, h, w, patch_size=self.patch_size, device=image_latent.device)
+        pe = self.pe_embedder(img_ids)
+
+        # Compute time embedding
+        vec = self._compute_timestep_embedding(timestep, dtype=img.dtype)
+
+        # Apply transformer blocks
+        for block in self.blocks:
+            if torch.is_grad_enabled() and self.gradient_checkpointing:
+                img = self._gradient_checkpointing_func(
+                    block.__call__,
+                    img,
+                    txt,
+                    vec,
+                    pe,
+                    cross_attn_mask,
+                )
+            else:
+                img = block(
+                    img=img,
+                    txt=txt,
+                    vec=vec,
+                    pe=pe,
+                    attention_mask=cross_attn_mask,
+                )
+
+        # Final layer and convert back to image
+        img = self.final_layer(img, vec)
+        output = seq2img(img, self.patch_size, image_latent.shape)
+
         if USE_PEFT_BACKEND:
             # remove `lora_scale` from each PEFT layer
             unscale_lora_layers(self, lora_scale)
+
         if not return_dict:
             return (output,)
         return Transformer2DModelOutput(sample=output)

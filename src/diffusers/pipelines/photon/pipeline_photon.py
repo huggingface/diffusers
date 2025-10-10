@@ -16,14 +16,13 @@ import html
 import inspect
 import re
 import urllib.parse as ul
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Callable, Dict, List, Optional, Union
 
 import ftfy
 import torch
 from transformers import (
     AutoTokenizer,
     GemmaTokenizerFast,
-    T5EncoderModel,
     T5TokenizerFast,
 )
 from transformers.models.t5gemma.modeling_t5gemma import T5GemmaEncoder
@@ -31,7 +30,7 @@ from transformers.models.t5gemma.modeling_t5gemma import T5GemmaEncoder
 from diffusers.image_processor import PixArtImageProcessor
 from diffusers.loaders import FromSingleFileMixin, LoraLoaderMixin, TextualInversionLoaderMixin
 from diffusers.models import AutoencoderDC, AutoencoderKL
-from diffusers.models.transformers.transformer_photon import PhotonTransformer2DModel, seq2img
+from diffusers.models.transformers.transformer_photon import PhotonTransformer2DModel
 from diffusers.pipelines.photon.pipeline_output import PhotonPipelineOutput
 from diffusers.pipelines.pipeline_utils import DiffusionPipeline
 from diffusers.schedulers import FlowMatchEulerDiscreteScheduler
@@ -45,29 +44,29 @@ from diffusers.utils.torch_utils import randn_tensor
 DEFAULT_RESOLUTION = 512
 
 ASPECT_RATIO_256_BIN = {
-  "0.46": [160, 352],
-  "0.6": [192, 320],
-  "0.78": [224, 288],
-  "1.0": [256, 256],
-  "1.29": [288, 224],
-  "1.67": [320, 192],
-  "2.2": [352, 160],
+    "0.46": [160, 352],
+    "0.6": [192, 320],
+    "0.78": [224, 288],
+    "1.0": [256, 256],
+    "1.29": [288, 224],
+    "1.67": [320, 192],
+    "2.2": [352, 160],
 }
 
 ASPECT_RATIO_512_BIN = {
-  "0.5": [352, 704],
-  "0.57": [384, 672],
-  "0.6": [384, 640],
-  "0.68": [416, 608],
-  "0.78": [448, 576],
-  "0.88": [480, 544],
-  "1.0": [512, 512],
-  "1.13": [544, 480],
-  "1.29": [576, 448],
-  "1.46": [608, 416],
-  "1.67": [640, 384],
-  "1.75": [672, 384],
-  "2.0": [704, 352],
+    "0.5": [352, 704],
+    "0.57": [384, 672],
+    "0.6": [384, 640],
+    "0.68": [416, 608],
+    "0.78": [448, 576],
+    "0.88": [480, 544],
+    "1.0": [512, 512],
+    "1.13": [544, 480],
+    "1.29": [576, 448],
+    "1.46": [608, 416],
+    "1.67": [640, 384],
+    "1.75": [672, 384],
+    "2.0": [704, 352],
 }
 
 logger = logging.get_logger(__name__)
@@ -283,7 +282,7 @@ class PhotonPipeline(
     def vae_spatial_compression_ratio(self):
         if hasattr(self.vae, "spatial_compression_ratio"):
             return self.vae.spatial_compression_ratio
-        else: # Flux VAE
+        else:  # Flux VAE
             return 2 ** (len(self.vae.config.block_out_channels) - 1)
 
     @property
@@ -461,8 +460,8 @@ class PhotonPipeline(
                 Whether or not to return a [`~pipelines.photon.PhotonPipelineOutput`] instead of a plain tuple.
             use_resolution_binning (`bool`, *optional*, defaults to `True`):
                 If set to `True`, the requested height and width are first mapped to the closest resolutions using
-                predefined aspect ratio bins. After the produced latents are decoded into images, they are resized back to
-                the requested resolution. Useful for generating non-square images at optimal resolutions.
+                predefined aspect ratio bins. After the produced latents are decoded into images, they are resized back
+                to the requested resolution. Useful for generating non-square images at optimal resolutions.
             callback_on_step_end (`Callable`, *optional*):
                 A function that calls at the end of each denoising steps during the inference. The function is called
                 with the following arguments: `callback_on_step_end(self, step, timestep, callback_kwargs)`.
@@ -572,20 +571,15 @@ class PhotonPipeline(
                     # Normalize timestep for the transformer
                     t_cont = (t.float() / self.scheduler.config.num_train_timesteps).view(1).to(device)
 
-                # Process inputs for transformer
-                img_seq, txt, pe = self.transformer._process_inputs(latents_in, ca_embed)
-
-                # Forward through transformer layers
-                img_seq = self.transformer._forward_transformers(
-                    img_seq,
-                    txt,
-                    time_embedding=self.transformer._compute_timestep_embedding(t_cont, img_seq.dtype),
-                    pe=pe,
-                    attention_mask=ca_mask,
-                )
-
-                # Convert back to image format
-                noise_pred = seq2img(img_seq, self.transformer.patch_size, latents_in.shape)
+                # Forward through transformer
+                noise_pred = self.transformer(
+                    image_latent=latents_in,
+                    timestep=t_cont,
+                    cross_attn_conditioning=ca_embed,
+                    micro_conditioning=None,
+                    cross_attn_mask=ca_mask,
+                    return_dict=False,
+                )[0]
 
                 # Apply CFG
                 if self.do_classifier_free_guidance:
