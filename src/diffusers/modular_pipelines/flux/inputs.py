@@ -241,7 +241,7 @@ class FluxInputsDynamicStep(ModularPipelineBlocks):
 
 
 class FluxKontextInputsDynamicStep(FluxInputsDynamicStep):
-    model_name = "flux_kontext"
+    model_name = "flux-kontext"
 
     def __call__(self, components: FluxModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
@@ -298,7 +298,7 @@ class FluxKontextInputsDynamicStep(FluxInputsDynamicStep):
 
 
 class FluxKontextSetResolutionStep(ModularPipelineBlocks):
-    model_name = "flux_kontext"
+    model_name = "flux-kontext"
 
     def description(self):
         return (

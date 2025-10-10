@@ -202,7 +202,6 @@ class FluxSetTimestepsStep(ModularPipelineBlocks):
         scheduler = components.scheduler
         transformer = components.transformer
 
-        print(f"{block_state.height=}, {block_state.width=}")
         batch_size = block_state.batch_size * block_state.num_images_per_prompt
         timesteps, num_inference_steps, sigmas, guidance = _get_initial_timesteps_and_optionals(
             transformer,
@@ -399,10 +398,6 @@ class FluxPrepareLatentsStep(ModularPipelineBlocks):
     @torch.no_grad()
     def __call__(self, components: FluxModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
-        print(f"{components=} from {self.__class__.__name__=}")
-        print(f"{block_state.height=}")
-        print(f"{components.default_height=}")
-        print(f"{type(components)=}")
         block_state.height = block_state.height or components.default_height
         block_state.width = block_state.width or components.default_width
         block_state.device = components._execution_device
@@ -555,7 +550,7 @@ class FluxRoPEInputsStep(ModularPipelineBlocks):
 
 
 class FluxKontextRoPEInputsStep(ModularPipelineBlocks):
-    model_name = "flux_kontext"
+    model_name = "flux-kontext"
 
     @property
     def description(self) -> str:

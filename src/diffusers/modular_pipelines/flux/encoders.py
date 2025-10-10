@@ -141,7 +141,7 @@ class FluxProcessImagesInputStep(ModularPipelineBlocks):
 
 
 class FluxKontextProcessImagesInputStep(ModularPipelineBlocks):
-    model_name = "flux_kontext"
+    model_name = "flux-kontext"
 
     def __init__(self, _auto_resize=True):
         self._auto_resize = _auto_resize

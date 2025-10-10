@@ -82,7 +82,7 @@ FluxKontextVaeEncoderBlocks = InsertableDict(
 
 
 class FluxKontextVaeEncoderStep(SequentialPipelineBlocks):
-    model_name = "flux_kontext"
+    model_name = "flux-kontext"
 
     block_classes = FluxKontextVaeEncoderBlocks.values()
     block_names = FluxKontextVaeEncoderBlocks.keys()
@@ -148,6 +148,7 @@ class FluxImg2ImgBeforeDenoiseStep(SequentialPipelineBlocks):
 
 # before_denoise: all task (text2img, img2img)
 class FluxAutoBeforeDenoiseStep(AutoPipelineBlocks):
+    model_name = "flux-kontext"
     block_classes = [FluxImg2ImgBeforeDenoiseStep, FluxBeforeDenoiseStep]
     block_names = ["img2img", "text2image"]
     block_trigger_inputs = ["image_latents", None]
@@ -280,15 +281,15 @@ class FluxAutoInputStep(AutoPipelineBlocks):
 
 FluxKontextBlocks = InsertableDict(
     [
-        ("text_inputs", FluxTextInputStep()),
         ("set_resolution", FluxKontextSetResolutionStep()),
+        ("text_inputs", FluxTextInputStep()),
         ("additional_inputs", FluxKontextInputsDynamicStep()),
     ]
 )
 
 
 class FluxKontextInputStep(SequentialPipelineBlocks):
-    model_name = "flux_kontext"
+    model_name = "flux-kontext"
     block_classes = FluxKontextBlocks.values()
     block_names = FluxKontextBlocks.keys()
 
@@ -338,7 +339,7 @@ class FluxCoreDenoiseStep(SequentialPipelineBlocks):
 
 
 class FluxKontextCoreDenoiseStep(SequentialPipelineBlocks):
-    model_name = "flux_kontext"
+    model_name = "flux-kontext"
     block_classes = [FluxKontextAutoInputStep, FluxKontextAutoBeforeDenoiseStep, FluxKontextAutoDenoiseStep]
     block_names = ["input", "before_denoise", "denoise"]
 
@@ -391,7 +392,7 @@ class FluxAutoBlocks(SequentialPipelineBlocks):
 
 
 class FluxKontextAutoBlocks(FluxAutoBlocks):
-    model_name = "flux_kontext"
+    model_name = "flux-kontext"
 
     block_classes = AUTO_BLOCKS_KONTEXT.values()
     block_names = AUTO_BLOCKS_KONTEXT.keys()

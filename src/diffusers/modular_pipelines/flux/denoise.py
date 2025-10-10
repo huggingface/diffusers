@@ -110,7 +110,7 @@ class FluxLoopDenoiser(ModularPipelineBlocks):
 
 
 class FluxKontextLoopDenoiser(ModularPipelineBlocks):
-    model_name = "flux_kontext"
+    model_name = "flux-kontext"
 
     @property
     def expected_components(self) -> List[ComponentSpec]:
@@ -314,6 +314,7 @@ class FluxDenoiseStep(FluxDenoiseLoopWrapper):
 
 
 class FluxKontextDenoiseStep(FluxDenoiseLoopWrapper):
+    model_name = "flux-kontext"
     block_classes = [FluxKontextLoopDenoiser, FluxLoopAfterDenoiser]
     block_names = ["denoiser", "after_denoiser"]
 
