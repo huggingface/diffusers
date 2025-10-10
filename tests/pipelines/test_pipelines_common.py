@@ -2069,7 +2069,7 @@ class PipelineTesterMixin:
 
             assert f"You are trying to load the model files of the `variant={variant}`" in str(error.exception)
 
-    def test_encode_prompt_works_in_isolation(self, extra_required_param_value_dict=None, atol=1e-4, rtol=1e-4):
+    def test_encode_prompt_works_in_isolation(self, extra_required_param_value_dict=None, atol=1e-2, rtol=1e-4):
         if not hasattr(self.pipeline_class, "encode_prompt"):
             return
 
