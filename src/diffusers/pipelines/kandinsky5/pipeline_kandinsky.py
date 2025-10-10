@@ -274,14 +274,6 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
         attention_mask = inputs["attention_mask"][:, crop_start:]
         cu_seqlens = torch.cumsum(attention_mask.sum(1), dim=0)
         cu_seqlens = torch.cat([torch.zeros_like(cu_seqlens)[:1], cu_seqlens]).to(dtype=torch.int32)
-
-#         # duplicate for each generation per prompt
-#         seq_len = embeds.shape[0] // batch_size
-#         embeds = embeds.reshape(batch_size, seq_len, -1)
-#         embeds = embeds.repeat(1, num_videos_per_prompt, 1)
-#         embeds = embeds.view(batch_size * num_videos_per_prompt, seq_len, -1)
-
-#         print(embeds.shape, cu_seqlens,  "ENCODE PROMPT")
         embeds = torch.cat([embeds[i].unsqueeze(dim=0).repeat(num_videos_per_prompt, 1, 1)  for i in range(batch_size)], dim=0)
     
         return embeds.to(dtype), cu_seqlens
@@ -642,7 +634,7 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
             batch_size = len(prompt)
         else:
             batch_size = prompt_embeds[0].shape[0] if isinstance(prompt_embeds, (list, tuple)) else prompt_embeds.shape[0]
-
+        
         # 3. Encode input prompt
         prompt_embeds_dict, negative_prompt_embeds_dict, prompt_cu_seqlens, negative_cu_seqlens = self.encode_prompt(
             prompt=prompt,
@@ -702,16 +694,6 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
                 timestep = t.unsqueeze(0).repeat(batch_size * num_videos_per_prompt)
 
                 # Predict noise residual                
-                # print(
-                #     latents.shape, 
-                #     prompt_embeds_dict["text_embeds"].shape, 
-                #     prompt_embeds_dict["pooled_embed"].shape, 
-                #     timestep.shape, 
-                #     [el.shape for el in visual_rope_pos], 
-                #     text_rope_pos.shape,
-                #     prompt_cu_seqlens,
-                # )
-                
                 pred_velocity = self.transformer(
                     hidden_states=latents.to(dtype),
                     encoder_hidden_states=prompt_embeds_dict["text_embeds"].to(dtype),
