@@ -53,10 +53,10 @@ Refer to [this](https://huggingface.co/collections/Photoroom/photon-models-68e66
 from diffusers.pipelines.photon import PhotonPipeline
 
 # Load pipeline - VAE and text encoder will be loaded from HuggingFace
-pipe = PhotonPipeline.from_pretrained("Photoroom/photon-512-t2i")
+pipe = PhotonPipeline.from_pretrained("Photoroom/photon-512-t2i-sft", torch_dtype=torch.bfloat16)
 pipe.to("cuda")
 
-prompt = prompt = "A digital painting or a heavily manipulated photograph, appearing as a surreal portrait of a young woman. The composition is a close-up, focusing on the face. The woman's face is partially obscured by fragmented, cracked, light teal and off-white pieces resembling peeling paint or decaying skin. These fragments are irregularly shaped and layered, creating a sense of depth and texture. The woman's skin is subtly illuminated, with a warm, golden light highlighting her features, particularly her lips and eyes. Her eyes are a striking light blue, contrasting with the cool tones of the fragmented elements. The overall color palette is muted, with teal, beige, and golden hues dominating. The atmosphere is melancholic and mysterious, with a hint of ethereal beauty. The style is surreal and painterly, blending realistic portraiture with abstract elements. The vibe is introspective and unsettling, suggesting themes of vulnerability, fragility, and hidden identity. The lighting is dramatic, with a chiaroscuro effect emphasizing the texture and form of the fragmented elements"
+prompt = "A vibrant night sky filled with colorful fireworks, with one large firework burst forming the glowing text “PRX” in bright, sparkling light"
 image = pipe(prompt, num_inference_steps=28, guidance_scale=4.0).images[0]
 image.save("photon_output.png")
 ```
@@ -134,9 +134,9 @@ Key parameters for image generation:
 # Example with custom parameters
 import torch
 from diffusers.pipelines.photon import PhotonPipeline
-pipe = PhotonPipeline.from_pretrained("Photoroom/photon-512-t2i", torch_dtype=torch.bfloat16)
+pipe = PhotonPipeline.from_pretrained("Photoroom/photon-512-t2i-sft", torch_dtype=torch.bfloat16)
 pipe = pipe(
-    prompt = "A digital painting or a heavily manipulated photograph, appearing as a surreal portrait of a young woman. The composition is a close-up, focusing on the face. The woman's face is partially obscured by fragmented, cracked, light teal and off-white pieces resembling peeling paint or decaying skin. These fragments are irregularly shaped and layered, creating a sense of depth and texture. The woman's skin is subtly illuminated, with a warm, golden light highlighting her features, particularly her lips and eyes. Her eyes are a striking light blue, contrasting with the cool tones of the fragmented elements. The overall color palette is muted, with teal, beige, and golden hues dominating. The atmosphere is melancholic and mysterious, with a hint of ethereal beauty. The style is surreal and painterly, blending realistic portraiture with abstract elements. The vibe is introspective and unsettling, suggesting themes of vulnerability, fragility, and hidden identity. The lighting is dramatic, with a chiaroscuro effect emphasizing the texture and form of the fragmented elements"
+    prompt = "A vibrant night sky filled with colorful fireworks, with one large firework burst forming the glowing text “PRX” in bright, sparkling light"
     num_inference_steps=28,
     guidance_scale=4.0,
     height=512,
