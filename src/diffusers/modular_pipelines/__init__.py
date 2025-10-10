@@ -46,7 +46,20 @@ else:
     ]
     _import_structure["stable_diffusion_xl"] = ["StableDiffusionXLAutoBlocks", "StableDiffusionXLModularPipeline"]
     _import_structure["wan"] = ["WanAutoBlocks", "WanModularPipeline"]
-    _import_structure["flux"] = ["FluxAutoBlocks", "FluxModularPipeline"]
+    _import_structure["flux"] = [
+        "FluxAutoBlocks",
+        "FluxModularPipeline",
+        "FluxKontextAutoBlocks",
+        "FluxKontextModularPipeline",
+    ]
+    _import_structure["qwenimage"] = [
+        "QwenImageAutoBlocks",
+        "QwenImageModularPipeline",
+        "QwenImageEditModularPipeline",
+        "QwenImageEditAutoBlocks",
+        "QwenImageEditPlusModularPipeline",
+        "QwenImageEditPlusAutoBlocks",
+    ]
     _import_structure["components_manager"] = ["ComponentsManager"]
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
@@ -57,7 +70,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from ..utils.dummy_pt_objects import *  # noqa F403
     else:
         from .components_manager import ComponentsManager
-        from .flux import FluxAutoBlocks, FluxModularPipeline
+        from .flux import FluxAutoBlocks, FluxKontextAutoBlocks, FluxKontextModularPipeline, FluxModularPipeline
         from .modular_pipeline import (
             AutoPipelineBlocks,
             BlockState,
@@ -68,6 +81,14 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             SequentialPipelineBlocks,
         )
         from .modular_pipeline_utils import ComponentSpec, ConfigSpec, InputParam, InsertableDict, OutputParam
+        from .qwenimage import (
+            QwenImageAutoBlocks,
+            QwenImageEditAutoBlocks,
+            QwenImageEditModularPipeline,
+            QwenImageEditPlusAutoBlocks,
+            QwenImageEditPlusModularPipeline,
+            QwenImageModularPipeline,
+        )
         from .stable_diffusion_xl import StableDiffusionXLAutoBlocks, StableDiffusionXLModularPipeline
         from .wan import WanAutoBlocks, WanModularPipeline
 else:

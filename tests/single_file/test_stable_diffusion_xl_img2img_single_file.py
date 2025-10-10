@@ -1,5 +1,4 @@
 import gc
-import unittest
 
 import torch
 
@@ -8,7 +7,8 @@ from diffusers import (
     StableDiffusionXLImg2ImgPipeline,
 )
 from diffusers.utils import load_image
-from diffusers.utils.testing_utils import (
+
+from ..testing_utils import (
     backend_empty_cache,
     enable_full_determinism,
     numpy_cosine_similarity_distance,
@@ -16,7 +16,6 @@ from diffusers.utils.testing_utils import (
     slow,
     torch_device,
 )
-
 from .single_file_testing_utils import SDXLSingleFileTesterMixin
 
 
@@ -25,7 +24,7 @@ enable_full_determinism()
 
 @slow
 @require_torch_accelerator
-class StableDiffusionXLImg2ImgPipelineSingleFileSlowTests(unittest.TestCase, SDXLSingleFileTesterMixin):
+class TestStableDiffusionXLImg2ImgPipelineSingleFileSlow(SDXLSingleFileTesterMixin):
     pipeline_class = StableDiffusionXLImg2ImgPipeline
     ckpt_path = "https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0/blob/main/sd_xl_base_1.0.safetensors"
     repo_id = "stabilityai/stable-diffusion-xl-base-1.0"
@@ -33,13 +32,11 @@ class StableDiffusionXLImg2ImgPipelineSingleFileSlowTests(unittest.TestCase, SDX
         "https://raw.githubusercontent.com/Stability-AI/generative-models/main/configs/inference/sd_xl_base.yaml"
     )
 
-    def setUp(self):
-        super().setUp()
+    def setup_method(self):
         gc.collect()
         backend_empty_cache(torch_device)
 
-    def tearDown(self):
-        super().tearDown()
+    def teardown_method(self):
         gc.collect()
         backend_empty_cache(torch_device)
 
@@ -66,7 +63,7 @@ class StableDiffusionXLImg2ImgPipelineSingleFileSlowTests(unittest.TestCase, SDX
 
 @slow
 @require_torch_accelerator
-class StableDiffusionXLImg2ImgRefinerPipelineSingleFileSlowTests(unittest.TestCase):
+class StableDiffusionXLImg2ImgRefinerPipelineSingleFileSlowTests:
     pipeline_class = StableDiffusionXLImg2ImgPipeline
     ckpt_path = (
         "https://huggingface.co/stabilityai/stable-diffusion-xl-refiner-1.0/blob/main/sd_xl_refiner_1.0.safetensors"

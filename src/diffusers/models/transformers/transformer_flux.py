@@ -22,9 +22,9 @@ import torch.nn.functional as F
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FluxTransformer2DLoadersMixin, FromOriginalModelMixin, PeftAdapterMixin
-from ...utils import USE_PEFT_BACKEND, deprecate, logging, scale_lora_layers, unscale_lora_layers
-from ...utils.import_utils import is_torch_npu_available
+from ...utils import USE_PEFT_BACKEND, logging, scale_lora_layers, unscale_lora_layers
 from ...utils.torch_utils import maybe_allow_in_graph
+from .._modeling_parallel import ContextParallelInput, ContextParallelOutput
 from ..attention import AttentionMixin, AttentionModuleMixin, FeedForward
 from ..attention_dispatch import dispatch_attention_fn
 from ..cache_utils import CacheMixin
@@ -74,6 +74,7 @@ def _get_qkv_projections(attn: "FluxAttention", hidden_states, encoder_hidden_st
 
 class FluxAttnProcessor:
     _attention_backend = None
+    _parallel_config = None
 
     def __init__(self):
         if not hasattr(F, "scaled_dot_product_attention"):
@@ -115,7 +116,12 @@ class FluxAttnProcessor:
             key = apply_rotary_emb(key, image_rotary_emb, sequence_dim=1)
 
         hidden_states = dispatch_attention_fn(
-            query, key, value, attn_mask=attention_mask, backend=self._attention_backend
+            query,
+            key,
+            value,
+            attn_mask=attention_mask,
+            backend=self._attention_backend,
+            parallel_config=self._parallel_config,
         )
         hidden_states = hidden_states.flatten(2, 3)
         hidden_states = hidden_states.to(query.dtype)
@@ -137,6 +143,7 @@ class FluxIPAdapterAttnProcessor(torch.nn.Module):
     """Flux Attention processor for IP-Adapter."""
 
     _attention_backend = None
+    _parallel_config = None
 
     def __init__(
         self, hidden_size: int, cross_attention_dim: int, num_tokens=(4,), scale=1.0, device=None, dtype=None
@@ -221,6 +228,7 @@ class FluxIPAdapterAttnProcessor(torch.nn.Module):
             dropout_p=0.0,
             is_causal=False,
             backend=self._attention_backend,
+            parallel_config=self._parallel_config,
         )
         hidden_states = hidden_states.flatten(2, 3)
         hidden_states = hidden_states.to(query.dtype)
@@ -253,6 +261,7 @@ class FluxIPAdapterAttnProcessor(torch.nn.Module):
                     dropout_p=0.0,
                     is_causal=False,
                     backend=self._attention_backend,
+                    parallel_config=self._parallel_config,
                 )
                 current_ip_hidden_states = current_ip_hidden_states.reshape(batch_size, -1, attn.heads * attn.head_dim)
                 current_ip_hidden_states = current_ip_hidden_states.to(ip_query.dtype)
@@ -354,25 +363,13 @@ class FluxSingleTransformerBlock(nn.Module):
         self.act_mlp = nn.GELU(approximate="tanh")
         self.proj_out = nn.Linear(dim + self.mlp_hidden_dim, dim)
 
-        if is_torch_npu_available():
-            from ..attention_processor import FluxAttnProcessor2_0_NPU
-
-            deprecation_message = (
-                "Defaulting to FluxAttnProcessor2_0_NPU for NPU devices will be removed. Attention processors "
-                "should be set explicitly using the `set_attn_processor` method."
-            )
-            deprecate("npu_processor", "0.34.0", deprecation_message)
-            processor = FluxAttnProcessor2_0_NPU()
-        else:
-            processor = FluxAttnProcessor()
-
         self.attn = FluxAttention(
             query_dim=dim,
             dim_head=attention_head_dim,
             heads=num_attention_heads,
             out_dim=dim,
             bias=True,
-            processor=processor,
+            processor=FluxAttnProcessor(),
             eps=1e-6,
             pre_only=True,
         )
@@ -569,6 +566,15 @@ class FluxTransformer2DModel(
     _no_split_modules = ["FluxTransformerBlock", "FluxSingleTransformerBlock"]
     _skip_layerwise_casting_patterns = ["pos_embed", "norm"]
     _repeated_blocks = ["FluxTransformerBlock", "FluxSingleTransformerBlock"]
+    _cp_plan = {
+        "": {
+            "hidden_states": ContextParallelInput(split_dim=1, expected_dims=3, split_output=False),
+            "encoder_hidden_states": ContextParallelInput(split_dim=1, expected_dims=3, split_output=False),
+            "img_ids": ContextParallelInput(split_dim=0, expected_dims=2, split_output=False),
+            "txt_ids": ContextParallelInput(split_dim=0, expected_dims=2, split_output=False),
+        },
+        "proj_out": ContextParallelOutput(gather_dim=1, expected_dims=3),
+    }
 
     @register_to_config
     def __init__(

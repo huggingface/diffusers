@@ -54,11 +54,11 @@ class FasterCacheConfig:
     Attributes:
         spatial_attention_block_skip_range (`int`, defaults to `2`):
             Calculate the attention states every `N` iterations. If this is set to `N`, the attention computation will
-            be skipped `N - 1` times (i.e., cached attention states will be re-used) before computing the new attention
+            be skipped `N - 1` times (i.e., cached attention states will be reused) before computing the new attention
             states again.
         temporal_attention_block_skip_range (`int`, *optional*, defaults to `None`):
             Calculate the attention states every `N` iterations. If this is set to `N`, the attention computation will
-            be skipped `N - 1` times (i.e., cached attention states will be re-used) before computing the new attention
+            be skipped `N - 1` times (i.e., cached attention states will be reused) before computing the new attention
             states again.
         spatial_attention_timestep_skip_range (`Tuple[float, float]`, defaults to `(-1, 681)`):
             The timestep range within which the spatial attention computation can be skipped without a significant loss
@@ -90,7 +90,7 @@ class FasterCacheConfig:
             from the conditional branch outputs.
         unconditional_batch_skip_range (`int`, defaults to `5`):
             Process the unconditional branch every `N` iterations. If this is set to `N`, the unconditional branch
-            computation will be skipped `N - 1` times (i.e., cached unconditional branch states will be re-used) before
+            computation will be skipped `N - 1` times (i.e., cached unconditional branch states will be reused) before
             computing the new unconditional branch states again.
         unconditional_batch_timestep_skip_range (`Tuple[float, float]`, defaults to `(-1, 641)`):
             The timestep range within which the unconditional branch computation can be skipped without a significant

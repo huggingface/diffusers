@@ -32,8 +32,8 @@ from diffusers import (
     HiDreamImagePipeline,
     HiDreamImageTransformer2DModel,
 )
-from diffusers.utils.testing_utils import enable_full_determinism
 
+from ...testing_utils import enable_full_determinism
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
 from ..test_pipelines_common import PipelineTesterMixin
 
@@ -47,8 +47,8 @@ class HiDreamImagePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
     image_params = TEXT_TO_IMAGE_IMAGE_PARAMS
     image_latents_params = TEXT_TO_IMAGE_IMAGE_PARAMS
-
     required_optional_params = PipelineTesterMixin.required_optional_params
+    test_xformers_attention = False
     test_layerwise_casting = True
     supports_dduf = False
 

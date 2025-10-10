@@ -6,7 +6,8 @@ import torch
 from transformers import AutoTokenizer
 
 from diffusers import AutoencoderKL, FlowMatchEulerDiscreteScheduler, OmniGenPipeline, OmniGenTransformer2DModel
-from diffusers.utils.testing_utils import (
+
+from ...testing_utils import (
     Expectations,
     backend_empty_cache,
     numpy_cosine_similarity_distance,
@@ -14,7 +15,6 @@ from diffusers.utils.testing_utils import (
     slow,
     torch_device,
 )
-
 from ..test_pipelines_common import PipelineTesterMixin
 
 
@@ -22,7 +22,7 @@ class OmniGenPipelineFastTests(unittest.TestCase, PipelineTesterMixin):
     pipeline_class = OmniGenPipeline
     params = frozenset(["prompt", "guidance_scale"])
     batch_params = frozenset(["prompt"])
-
+    test_xformers_attention = False
     test_layerwise_casting = True
 
     def get_dummy_components(self):

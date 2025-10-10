@@ -183,14 +183,14 @@ class StableDiffusionXLLoopDenoiser(ModularPipelineBlocks):
                 description="The guidance scale embedding to use for Latent Consistency Models(LCMs). Can be generated in prepare_additional_conditioning step.",
             ),
             InputParam(
-                kwargs_type="guider_input_fields",
+                kwargs_type="denoiser_input_fields",
                 description=(
                     "All conditional model inputs that need to be prepared with guider. "
                     "It should contain prompt_embeds/negative_prompt_embeds, "
                     "add_time_ids/negative_add_time_ids, "
                     "pooled_prompt_embeds/negative_pooled_prompt_embeds, "
                     "and ip_adapter_embeds/negative_ip_adapter_embeds (optional)."
-                    "please add `kwargs_type=guider_input_fields` to their parameter spec (`OutputParam`) when they are created and added to the pipeline state"
+                    "please add `kwargs_type=denoiser_input_fields` to their parameter spec (`OutputParam`) when they are created and added to the pipeline state"
                 ),
             ),
         ]
@@ -238,7 +238,7 @@ class StableDiffusionXLLoopDenoiser(ModularPipelineBlocks):
             components.guider.cleanup_models(components.unet)
 
         # Perform guidance
-        block_state.noise_pred, block_state.scheduler_step_kwargs = components.guider(guider_state)
+        block_state.noise_pred = components.guider(guider_state)[0]
 
         return components, block_state
 
@@ -307,14 +307,14 @@ class StableDiffusionXLControlNetLoopDenoiser(ModularPipelineBlocks):
                 description="The number of inference steps to use for the denoising process. Can be generated in set_timesteps step.",
             ),
             InputParam(
-                kwargs_type="guider_input_fields",
+                kwargs_type="denoiser_input_fields",
                 description=(
                     "All conditional model inputs that need to be prepared with guider. "
                     "It should contain prompt_embeds/negative_prompt_embeds, "
                     "add_time_ids/negative_add_time_ids, "
                     "pooled_prompt_embeds/negative_pooled_prompt_embeds, "
                     "and ip_adapter_embeds/negative_ip_adapter_embeds (optional)."
-                    "please add `kwargs_type=guider_input_fields` to their parameter spec (`OutputParam`) when they are created and added to the pipeline state"
+                    "please add `kwargs_type=denoiser_input_fields` to their parameter spec (`OutputParam`) when they are created and added to the pipeline state"
                 ),
             ),
             InputParam(
@@ -433,7 +433,7 @@ class StableDiffusionXLControlNetLoopDenoiser(ModularPipelineBlocks):
             components.guider.cleanup_models(components.unet)
 
         # Perform guidance
-        block_state.noise_pred, block_state.scheduler_step_kwargs = components.guider(guider_state)
+        block_state.noise_pred = components.guider(guider_state)[0]
 
         return components, block_state
 
@@ -492,7 +492,6 @@ class StableDiffusionXLLoopAfterDenoiser(ModularPipelineBlocks):
             t,
             block_state.latents,
             **block_state.extra_step_kwargs,
-            **block_state.scheduler_step_kwargs,
             return_dict=False,
         )[0]
 
@@ -590,7 +589,6 @@ class StableDiffusionXLInpaintLoopAfterDenoiser(ModularPipelineBlocks):
             t,
             block_state.latents,
             **block_state.extra_step_kwargs,
-            **block_state.scheduler_step_kwargs,
             return_dict=False,
         )[0]
 
@@ -697,7 +695,7 @@ class StableDiffusionXLDenoiseStep(StableDiffusionXLDenoiseLoopWrapper):
         return (
             "Denoise step that iteratively denoise the latents. \n"
             "Its loop logic is defined in `StableDiffusionXLDenoiseLoopWrapper.__call__` method \n"
-            "At each iteration, it runs blocks defined in `sub_blocks` sequencially:\n"
+            "At each iteration, it runs blocks defined in `sub_blocks` sequentially:\n"
             " - `StableDiffusionXLLoopBeforeDenoiser`\n"
             " - `StableDiffusionXLLoopDenoiser`\n"
             " - `StableDiffusionXLLoopAfterDenoiser`\n"
@@ -719,7 +717,7 @@ class StableDiffusionXLControlNetDenoiseStep(StableDiffusionXLDenoiseLoopWrapper
         return (
             "Denoise step that iteratively denoise the latents with controlnet. \n"
             "Its loop logic is defined in  `StableDiffusionXLDenoiseLoopWrapper.__call__` method \n"
-            "At each iteration, it runs blocks defined in `sub_blocks` sequencially:\n"
+            "At each iteration, it runs blocks defined in `sub_blocks` sequentially:\n"
             " - `StableDiffusionXLLoopBeforeDenoiser`\n"
             " - `StableDiffusionXLControlNetLoopDenoiser`\n"
             " - `StableDiffusionXLLoopAfterDenoiser`\n"
@@ -741,7 +739,7 @@ class StableDiffusionXLInpaintDenoiseStep(StableDiffusionXLDenoiseLoopWrapper):
         return (
             "Denoise step that iteratively denoise the latents(for inpainting task only). \n"
             "Its loop logic is defined in `StableDiffusionXLDenoiseLoopWrapper.__call__` method \n"
-            "At each iteration, it runs blocks defined in `sub_blocks` sequencially:\n"
+            "At each iteration, it runs blocks defined in `sub_blocks` sequentially:\n"
             " - `StableDiffusionXLInpaintLoopBeforeDenoiser`\n"
             " - `StableDiffusionXLLoopDenoiser`\n"
             " - `StableDiffusionXLInpaintLoopAfterDenoiser`\n"
@@ -763,7 +761,7 @@ class StableDiffusionXLInpaintControlNetDenoiseStep(StableDiffusionXLDenoiseLoop
         return (
             "Denoise step that iteratively denoise the latents(for inpainting task only) with controlnet. \n"
             "Its loop logic is defined in `StableDiffusionXLDenoiseLoopWrapper.__call__` method \n"
-            "At each iteration, it runs blocks defined in `sub_blocks` sequencially:\n"
+            "At each iteration, it runs blocks defined in `sub_blocks` sequentially:\n"
             " - `StableDiffusionXLInpaintLoopBeforeDenoiser`\n"
             " - `StableDiffusionXLControlNetLoopDenoiser`\n"
             " - `StableDiffusionXLInpaintLoopAfterDenoiser`\n"
