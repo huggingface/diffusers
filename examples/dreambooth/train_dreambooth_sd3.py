@@ -888,7 +888,7 @@ def _encode_prompt_with_t5(
     else:
         if text_input_ids is None:
             raise ValueError("text_input_ids must be provided when the tokenizer is not specified")
-        
+
     prompt_embeds = text_encoder(text_input_ids.to(device))[0]
 
     dtype = text_encoder.dtype
