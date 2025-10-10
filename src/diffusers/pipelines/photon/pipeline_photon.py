@@ -277,58 +277,14 @@ class PhotonPipeline(
 
         self.register_to_config(default_sample_size=default_sample_size)
 
-        if vae is not None:
-            # Enhance VAE with universal properties for both AutoencoderKL and AutoencoderDC
-            self._enhance_vae_properties()
-
-        self.image_processor = PixArtImageProcessor(vae_scale_factor=self.vae_scale_factor)
-
-    def _enhance_vae_properties(self):
-        """Add universal properties to VAE for consistent interface across AutoencoderKL and AutoencoderDC."""
-        if not hasattr(self, "vae") or self.vae is None:
-            return
-
-        if hasattr(self.vae, "spatial_compression_ratio"):
-            # AutoencoderDC already has this property
-            pass
-        elif hasattr(self.vae, "config") and hasattr(self.vae.config, "block_out_channels"):
-            # AutoencoderKL: calculate from block_out_channels
-            self.vae.spatial_compression_ratio = 2 ** (len(self.vae.config.block_out_channels) - 1)
-        else:
-            # Fallback
-            self.vae.spatial_compression_ratio = 8
-
-        if hasattr(self.vae, "config"):
-            self.vae.scaling_factor = getattr(self.vae.config, "scaling_factor", 0.18215)
-        else:
-            self.vae.scaling_factor = 0.18215
-
-        if hasattr(self.vae, "config"):
-            shift_factor = getattr(self.vae.config, "shift_factor", None)
-            if shift_factor is None:  # AutoencoderDC case
-                self.vae.shift_factor = 0.0
-            else:
-                self.vae.shift_factor = shift_factor
-        else:
-            self.vae.shift_factor = 0.0
-
-        if hasattr(self.vae, "config") and hasattr(self.vae.config, "latent_channels"):
-            # AutoencoderDC has latent_channels in config
-            self.vae.latent_channels = int(self.vae.config.latent_channels)
-        elif hasattr(self.vae, "config") and hasattr(self.vae.config, "in_channels"):
-            # AutoencoderKL has in_channels in config
-            self.vae.latent_channels = int(self.vae.config.in_channels)
-        else:
-            # Fallback based on VAE type - DC-AE typically has 32, AutoencoderKL has 4/16
-            if hasattr(self.vae, "spatial_compression_ratio") and self.vae.spatial_compression_ratio == 32:
-                self.vae.latent_channels = 32  # DC-AE default
-            else:
-                self.vae.latent_channels = 16  # FluxVAE default
+        self.image_processor = PixArtImageProcessor(vae_scale_factor=self.vae_spatial_compression_ratio)
 
     @property
-    def vae_scale_factor(self):
-        """Compatibility property that returns spatial compression ratio."""
-        return getattr(self.vae, "spatial_compression_ratio", 8)
+    def vae_spatial_compression_ratio(self):
+        if hasattr(self.vae, "spatial_compression_ratio"):
+            return self.vae.spatial_compression_ratio
+        else: # Flux VAE
+            return 2 ** (len(self.vae.config.block_out_channels) - 1)
 
     @property
     def do_classifier_free_guidance(self):
@@ -348,9 +304,10 @@ class PhotonPipeline(
     ):
         """Prepare initial latents for the diffusion process."""
         if latents is None:
+            spatial_compression = self.vae_spatial_compression_ratio
             latent_height, latent_width = (
-                height // self.vae.spatial_compression_ratio,
-                width // self.vae.spatial_compression_ratio,
+                height // spatial_compression,
+                width // spatial_compression,
             )
             shape = (batch_size, num_channels_latents, latent_height, latent_width)
             latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
@@ -431,9 +388,10 @@ class PhotonPipeline(
         callback_on_step_end_tensor_inputs: Optional[List[str]] = None,
     ):
         """Check that all inputs are in correct format."""
-        if height % self.vae.spatial_compression_ratio != 0 or width % self.vae.spatial_compression_ratio != 0:
+        spatial_compression = self.vae_spatial_compression_ratio
+        if height % spatial_compression != 0 or width % spatial_compression != 0:
             raise ValueError(
-                f"`height` and `width` have to be divisible by {self.vae.spatial_compression_ratio} but are {height} and {width}."
+                f"`height` and `width` have to be divisible by {spatial_compression} but are {height} and {width}."
             )
 
         if guidance_scale < 1.0:
@@ -574,7 +532,7 @@ class PhotonPipeline(
             timesteps = self.scheduler.timesteps
 
         # 4. Prepare latent variables
-        num_channels_latents = self.vae.latent_channels
+        num_channels_latents = self.vae.config.latent_channels
         latents = self.prepare_latents(
             batch_size * num_images_per_prompt,
             num_channels_latents,
@@ -652,7 +610,9 @@ class PhotonPipeline(
             image = latents
         else:
             # Unscale latents for VAE (supports both AutoencoderKL and AutoencoderDC)
-            latents = (latents / self.vae.scaling_factor) + self.vae.shift_factor
+            scaling_factor = getattr(self.vae.config, "scaling_factor", 0.18215)
+            shift_factor = getattr(self.vae.config, "shift_factor", 0.0)
+            latents = (latents / scaling_factor) + shift_factor
             # Decode using VAE (AutoencoderKL or AutoencoderDC)
             image = self.vae.decode(latents, return_dict=False)[0]
             # Resize back to original resolution if using binning
