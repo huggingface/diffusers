@@ -238,7 +238,7 @@ class ChromaPipeline(
         # Chroma requires the attention mask to include one padding token
         seq_lengths = attention_mask.sum(dim=1)
         mask_indices = torch.arange(attention_mask.size(1)).unsqueeze(0).expand(batch_size, -1)
-        attention_mask = (mask_indices <= seq_lengths.unsqueeze(1)).long()
+        attention_mask = (mask_indices <= seq_lengths.unsqueeze(1)).bool()
 
         prompt_embeds = self.text_encoder(
             text_input_ids.to(device), output_hidden_states=False, attention_mask=attention_mask.to(device)
@@ -246,7 +246,7 @@ class ChromaPipeline(
 
         dtype = self.text_encoder.dtype
         prompt_embeds = prompt_embeds.to(dtype=dtype, device=device)
-        attention_mask = attention_mask.to(dtype=dtype, device=device)
+        attention_mask = attention_mask.to(device=device)
 
         _, seq_len, _ = prompt_embeds.shape
 
@@ -605,10 +605,9 @@ class ChromaPipeline(
 
         # Extend the prompt attention mask to account for image tokens in the final sequence
         attention_mask = torch.cat(
-            [attention_mask, torch.ones(batch_size, sequence_length, device=attention_mask.device)],
+            [attention_mask, torch.ones(batch_size, sequence_length, device=attention_mask.device, dtype=torch.bool)],
             dim=1,
         )
-        attention_mask = attention_mask.to(dtype)
 
         return attention_mask
 
@@ -688,11 +687,11 @@ class ChromaPipeline(
                 their `set_timesteps` method. If not defined, the default behavior when `num_inference_steps` is passed
                 will be used.
             guidance_scale (`float`, *optional*, defaults to 3.5):
-                Embedded guiddance scale is enabled by setting `guidance_scale` > 1. Higher `guidance_scale` encourages
-                a model to generate images more aligned with `prompt` at the expense of lower image quality.
-
-                Guidance-distilled models approximates true classifer-free guidance for `guidance_scale` > 1. Refer to
-                the [paper](https://huggingface.co/papers/2210.03142) to learn more.
+                Guidance scale as defined in [Classifier-Free Diffusion
+                Guidance](https://huggingface.co/papers/2207.12598). `guidance_scale` is defined as `w` of equation 2.
+                of [Imagen Paper](https://huggingface.co/papers/2205.11487). Guidance scale is enabled by setting
+                `guidance_scale > 1`. Higher guidance scale encourages to generate images that are closely linked to
+                the text `prompt`, usually at the expense of lower image quality.
             num_images_per_prompt (`int`, *optional*, defaults to 1):
                 The number of images to generate per prompt.
             generator (`torch.Generator` or `List[torch.Generator]`, *optional*):

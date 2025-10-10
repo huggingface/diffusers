@@ -13,6 +13,24 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 
+# /// script
+# dependencies = [
+#     "diffusers @ git+https://github.com/huggingface/diffusers.git",
+#     "torch>=2.0.0",
+#     "accelerate>=0.31.0",
+#     "transformers>=4.41.2",
+#     "ftfy",
+#     "tensorboard",
+#     "Jinja2",
+#     "peft>=0.11.1",
+#     "sentencepiece",
+#     "torchvision",
+#     "datasets",
+#     "bitsandbytes",
+#     "prodigyopt",
+# ]
+# ///
+
 import argparse
 import copy
 import itertools
@@ -1320,7 +1338,7 @@ def main(args):
                         batch["pixel_values"] = batch["pixel_values"].to(
                             accelerator.device, non_blocking=True, dtype=vae.dtype
                         )
-                    latents_cache.append(vae.encode(batch["pixel_values"]).latent_dist)
+                        latents_cache.append(vae.encode(batch["pixel_values"]).latent_dist)
                 if train_dataset.custom_instance_prompts:
                     with offload_models(text_encoding_pipeline, device=accelerator.device, offload=args.offload):
                         prompt_embeds, prompt_embeds_mask = compute_text_embeddings(

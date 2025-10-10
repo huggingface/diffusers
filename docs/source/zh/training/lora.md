@@ -12,19 +12,13 @@ specific language governing permissions and limitations under the License.
 
 # LoRA 低秩适配
 
-<Tip warning={true}>
-
-当前功能处于实验阶段，API可能在未来版本中变更。
-
-</Tip>
+> [!WARNING]
+> 当前功能处于实验阶段，API可能在未来版本中变更。
 
 [LoRA（大语言模型的低秩适配）](https://hf.co/papers/2106.09685) 是一种轻量级训练技术，能显著减少可训练参数量。其原理是通过向模型注入少量新权重参数，仅训练这些新增参数。这使得LoRA训练速度更快、内存效率更高，并生成更小的模型权重文件（通常仅数百MB），便于存储和分享。LoRA还可与DreamBooth等其他训练技术结合以加速训练过程。
 
-<Tip>
-
-LoRA具有高度通用性，目前已支持以下应用场景：[DreamBooth](https://github.com/huggingface/diffusers/blob/main/examples/dreambooth/train_dreambooth_lora.py)、[Kandinsky 2.2](https://github.com/huggingface/diffusers/blob/main/examples/kandinsky2_2/text_to_image/train_text_to_image_lora_decoder.py)、[Stable Diffusion XL](https://github.com/huggingface/diffusers/blob/main/examples/text_to_image/train_text_to_image_lora_sdxl.py)、[文生图](https://github.com/huggingface/diffusers/blob/main/examples/text_to_image/train_text_to_image_lora.py)以及[Wuerstchen](https://github.com/huggingface/diffusers/blob/main/examples/wuerstchen/text_to_image/train_text_to_image_lora_prior.py)。
-
-</Tip>
+> [!TIP]
+> LoRA具有高度通用性，目前已支持以下应用场景：[DreamBooth](https://github.com/huggingface/diffusers/blob/main/examples/dreambooth/train_dreambooth_lora.py)、[Kandinsky 2.2](https://github.com/huggingface/diffusers/blob/main/examples/kandinsky2_2/text_to_image/train_text_to_image_lora_decoder.py)、[Stable Diffusion XL](https://github.com/huggingface/diffusers/blob/main/examples/text_to_image/train_text_to_image_lora_sdxl.py)、[文生图](https://github.com/huggingface/diffusers/blob/main/examples/text_to_image/train_text_to_image_lora.py)以及[Wuerstchen](https://github.com/huggingface/diffusers/blob/main/examples/wuerstchen/text_to_image/train_text_to_image_lora_prior.py)。
 
 本指南将通过解析[train_text_to_image_lora.py](https://github.com/huggingface/diffusers/blob/main/examples/text_to_image/train_text_to_image_lora.py)脚本，帮助您深入理解其工作原理，并掌握如何针对具体需求进行定制化修改。
 
@@ -57,11 +51,8 @@ pip install -r requirements_flax.txt
 </hfoption>
 </hfoptions>
 
-<Tip>
-
-🤗 Accelerate是一个支持多GPU/TPU训练和混合精度计算的库，它能根据硬件环境自动配置训练方案。参阅🤗 Accelerate[快速入门](https://huggingface.co/docs/accelerate/quicktour)了解更多。
-
-</Tip>
+> [!TIP]
+> 🤗 Accelerate是一个支持多GPU/TPU训练和混合精度计算的库，它能根据硬件环境自动配置训练方案。参阅🤗 Accelerate[快速入门](https://huggingface.co/docs/accelerate/quicktour)了解更多。
 
 初始化🤗 Accelerate环境：
 
@@ -85,11 +76,8 @@ write_basic_config()
 
 如需训练自定义数据集，请参考[创建训练数据集指南](create_dataset)了解数据准备流程。
 
-<Tip>
-
-以下章节重点解析训练脚本中与LoRA相关的核心部分，但不会涵盖所有实现细节。如需完整理解，建议直接阅读[脚本源码](https://github.com/huggingface/diffusers/blob/main/examples/text_to_image/train_text_to_image_lora.py)，如有疑问欢迎反馈。
-
-</Tip>
+> [!TIP]
+> 以下章节重点解析训练脚本中与LoRA相关的核心部分，但不会涵盖所有实现细节。如需完整理解，建议直接阅读[脚本源码](https://github.com/huggingface/diffusers/blob/main/examples/text_to_image/train_text_to_image_lora.py)，如有疑问欢迎反馈。
 
 ## 脚本参数
 
@@ -177,11 +165,8 @@ optimizer = optimizer_cls(
 
 多GPU训练请添加`--multi_gpu`参数。
 
-<Tip warning={true}>
-
-在11GB显存的2080 Ti显卡上完整训练约需5小时。
-
-</Tip>
+> [!WARNING]
+> 在11GB显存的2080 Ti显卡上完整训练约需5小时。
 
 ```bash
 export MODEL_NAME="stable-diffusion-v1-5/stable-diffusion-v1-5"
