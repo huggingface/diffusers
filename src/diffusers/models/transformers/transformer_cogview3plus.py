@@ -20,7 +20,7 @@ import torch.nn as nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...utils import logging
-from ..attention import FeedForward
+from ..attention import AttentionMixin, FeedForward
 from ..attention_processor import Attention, AttentionProcessor, CogVideoXAttnProcessor2_0
 from ..embeddings import CogView3CombinedTimestepSizeEmbeddings, CogView3PlusPatchEmbed
 from ..modeling_outputs import Transformer2DModelOutput
@@ -125,7 +125,7 @@ class CogView3PlusTransformerBlock(nn.Module):
         return hidden_states, encoder_hidden_states
 
 
-class CogView3PlusTransformer2DModel(ModelMixin, ConfigMixin):
+class CogView3PlusTransformer2DModel(ModelMixin, AttentionMixin, ConfigMixin):
     r"""
     The Transformer model introduced in [CogView3: Finer and Faster Text-to-Image Generation via Relay
     Diffusion](https://huggingface.co/papers/2403.05121).
@@ -223,31 +223,6 @@ class CogView3PlusTransformer2DModel(ModelMixin, ConfigMixin):
         self.proj_out = nn.Linear(self.inner_dim, patch_size * patch_size * self.out_channels, bias=True)
 
         self.gradient_checkpointing = False
-
-    @property
-    # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.attn_processors
-    def attn_processors(self) -> Dict[str, AttentionProcessor]:
-        r"""
-        Returns:
-            `dict` of attention processors: A dictionary containing all attention processors used in the model with
-            indexed by its weight name.
-        """
-        # set recursively
-        processors = {}
-
-        def fn_recursive_add_processors(name: str, module: torch.nn.Module, processors: Dict[str, AttentionProcessor]):
-            if hasattr(module, "get_processor"):
-                processors[f"{name}.processor"] = module.get_processor()
-
-            for sub_name, child in module.named_children():
-                fn_recursive_add_processors(f"{name}.{sub_name}", child, processors)
-
-            return processors
-
-        for name, module in self.named_children():
-            fn_recursive_add_processors(name, module, processors)
-
-        return processors
 
     # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.set_attn_processor
     def set_attn_processor(self, processor: Union[AttentionProcessor, Dict[str, AttentionProcessor]]):

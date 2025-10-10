@@ -22,6 +22,7 @@ from torch import Tensor, nn
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...utils import BaseOutput, logging
 from ...utils.torch_utils import apply_freeu
+from ..attention import AttentionMixin
 from ..attention_processor import (
     ADDED_KV_ATTENTION_PROCESSORS,
     CROSS_ATTENTION_PROCESSORS,
@@ -242,7 +243,7 @@ def get_up_block_adapter(
     return UpBlockControlNetXSAdapter(ctrl_to_base=nn.ModuleList(ctrl_to_base))
 
 
-class ControlNetXSAdapter(ModelMixin, ConfigMixin):
+class ControlNetXSAdapter(ModelMixin, AttentionMixin, ConfigMixin):
     r"""
     A `ControlNetXSAdapter` model. To use it, pass it into a `UNetControlNetXSModel` (together with a
     `UNet2DConditionModel` base model).
@@ -863,31 +864,6 @@ class UNetControlNetXSModel(ModelMixin, ConfigMixin):
         self.mid_block.freeze_base_params()
         for u in self.up_blocks:
             u.freeze_base_params()
-
-    @property
-    # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.attn_processors
-    def attn_processors(self) -> Dict[str, AttentionProcessor]:
-        r"""
-        Returns:
-            `dict` of attention processors: A dictionary containing all attention processors used in the model with
-            indexed by its weight name.
-        """
-        # set recursively
-        processors = {}
-
-        def fn_recursive_add_processors(name: str, module: torch.nn.Module, processors: Dict[str, AttentionProcessor]):
-            if hasattr(module, "get_processor"):
-                processors[f"{name}.processor"] = module.get_processor()
-
-            for sub_name, child in module.named_children():
-                fn_recursive_add_processors(f"{name}.{sub_name}", child, processors)
-
-            return processors
-
-        for name, module in self.named_children():
-            fn_recursive_add_processors(name, module, processors)
-
-        return processors
 
     # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.set_attn_processor
     def set_attn_processor(self, processor: Union[AttentionProcessor, Dict[str, AttentionProcessor]]):

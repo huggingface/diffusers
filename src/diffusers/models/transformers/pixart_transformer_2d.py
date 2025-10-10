@@ -18,7 +18,7 @@ from torch import nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...utils import logging
-from ..attention import BasicTransformerBlock
+from ..attention import AttentionMixin, BasicTransformerBlock
 from ..attention_processor import Attention, AttentionProcessor, AttnProcessor, FusedAttnProcessor2_0
 from ..embeddings import PatchEmbed, PixArtAlphaTextProjection
 from ..modeling_outputs import Transformer2DModelOutput
@@ -29,7 +29,7 @@ from ..normalization import AdaLayerNormSingle
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-class PixArtTransformer2DModel(ModelMixin, ConfigMixin):
+class PixArtTransformer2DModel(ModelMixin, AttentionMixin, ConfigMixin):
     r"""
     A 2D Transformer model as introduced in PixArt family of models (https://huggingface.co/papers/2310.00426,
     https://huggingface.co/papers/2403.04692).
@@ -183,31 +183,6 @@ class PixArtTransformer2DModel(ModelMixin, ConfigMixin):
             self.caption_projection = PixArtAlphaTextProjection(
                 in_features=self.config.caption_channels, hidden_size=self.inner_dim
             )
-
-    @property
-    # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.attn_processors
-    def attn_processors(self) -> Dict[str, AttentionProcessor]:
-        r"""
-        Returns:
-            `dict` of attention processors: A dictionary containing all attention processors used in the model with
-            indexed by its weight name.
-        """
-        # set recursively
-        processors = {}
-
-        def fn_recursive_add_processors(name: str, module: torch.nn.Module, processors: Dict[str, AttentionProcessor]):
-            if hasattr(module, "get_processor"):
-                processors[f"{name}.processor"] = module.get_processor()
-
-            for sub_name, child in module.named_children():
-                fn_recursive_add_processors(f"{name}.{sub_name}", child, processors)
-
-            return processors
-
-        for name, module in self.named_children():
-            fn_recursive_add_processors(name, module, processors)
-
-        return processors
 
     # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.set_attn_processor
     def set_attn_processor(self, processor: Union[AttentionProcessor, Dict[str, AttentionProcessor]]):
