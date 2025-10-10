@@ -56,7 +56,7 @@ from diffusers.pipelines.photon import PhotonPipeline
 pipe = PhotonPipeline.from_pretrained("Photoroom/photon-512-t2i")
 pipe.to("cuda")
 
-prompt = "A vast night sky over a quiet city suddenly blazes with enormous glowing neon letters spelling “PHOTON.” The word hums and flickers dramatically, as if trying a little too hard to look epic. The soft glow bathes the rooftops and streets below in blue and pink light. A few people look up, squinting, some taking selfies; a cat blinks lazily at the sky’s new centerpiece. The air feels cinematic and electric — like a sci-fi movie that doesn’t take itself too seriously. Mist swirls around the neon glow, adding a dreamy, aesthetic touch to the humor of it all."
+prompt = prompt = "A digital painting or a heavily manipulated photograph, appearing as a surreal portrait of a young woman. The composition is a close-up, focusing on the face. The woman's face is partially obscured by fragmented, cracked, light teal and off-white pieces resembling peeling paint or decaying skin. These fragments are irregularly shaped and layered, creating a sense of depth and texture. The woman's skin is subtly illuminated, with a warm, golden light highlighting her features, particularly her lips and eyes. Her eyes are a striking light blue, contrasting with the cool tones of the fragmented elements. The overall color palette is muted, with teal, beige, and golden hues dominating. The atmosphere is melancholic and mysterious, with a hint of ethereal beauty. The style is surreal and painterly, blending realistic portraiture with abstract elements. The vibe is introspective and unsettling, suggesting themes of vulnerability, fragility, and hidden identity. The lighting is dramatic, with a chiaroscuro effect emphasizing the texture and form of the fragmented elements"
 image = pipe(prompt, num_inference_steps=28, guidance_scale=4.0).images[0]
 image.save("photon_output.png")
 ```
@@ -85,12 +85,12 @@ scheduler = FlowMatchEulerDiscreteScheduler.from_pretrained(
 
 # Load T5Gemma text encoder
 t5gemma_model = T5GemmaModel.from_pretrained("google/t5gemma-2b-2b-ul2")
-text_encoder = t5gemma_model.encoder
+text_encoder = t5gemma_model.encoder.to(dtype=torch.bfloat16)
 tokenizer = GemmaTokenizerFast.from_pretrained("google/t5gemma-2b-2b-ul2")
 tokenizer.model_max_length = 256
 # Load VAE - choose either Flux VAE or DC-AE
 # Flux VAE (16 latent channels):
-vae = AutoencoderKL.from_pretrained("black-forest-labs/FLUX.1-dev", subfolder="vae")
+vae = AutoencoderKL.from_pretrained("black-forest-labs/FLUX.1-dev", subfolder="vae").to(dtype=torch.bfloat16)
 # Or DC-AE (32 latent channels):
 # vae = AutoencoderDC.from_pretrained("mit-han-lab/dc-ae-f32c32-sana-1.0-diffusers")
 
@@ -134,15 +134,15 @@ Key parameters for image generation:
 # Example with custom parameters
 import torch
 from diffusers.pipelines.photon import PhotonPipeline
-with torch.autocast("cuda", dtype=torch.bfloat16):
-  pipe = pipe(
-      prompt="A highly detailed 3D animated scene of a cute, intelligent duck scientist in a futuristic laboratory. The duck stands on a shiny metallic floor surrounded by glowing glass tubes filled with colorful liquids—blue, green, and purple—connected by translucent hoses emitting soft light. The duck wears a tiny white lab coat, safety goggles, and has a curious, determined expression while conducting an experiment. Sparks of energy and soft particle effects fill the air as scientific instruments hum with power. In the background, holographic screens display molecular diagrams and equations. Above the duck’s head, the word “PHOTON” glows vividly in midair as if made of pure light, illuminating the scene with a warm golden glow. The lighting is cinematic, with rich reflections and subtle depth of field, emphasizing a Pixar-like, ultra-polished 3D animation style. Rendered in ultra high resolution, realistic subsurface scattering on the duck’s feathers, and vibrant color grading that gives a sense of wonder and scientific discovery.",
-      num_inference_steps=28,
-      guidance_scale=4.0,
-      height=512,
-      width=512,
-      generator=torch.Generator("cuda").manual_seed(42)
-  ).images[0]
+pipe = PhotonPipeline.from_pretrained("Photoroom/photon-512-t2i", torch_dtype=torch.bfloat16)
+pipe = pipe(
+    prompt = "A digital painting or a heavily manipulated photograph, appearing as a surreal portrait of a young woman. The composition is a close-up, focusing on the face. The woman's face is partially obscured by fragmented, cracked, light teal and off-white pieces resembling peeling paint or decaying skin. These fragments are irregularly shaped and layered, creating a sense of depth and texture. The woman's skin is subtly illuminated, with a warm, golden light highlighting her features, particularly her lips and eyes. Her eyes are a striking light blue, contrasting with the cool tones of the fragmented elements. The overall color palette is muted, with teal, beige, and golden hues dominating. The atmosphere is melancholic and mysterious, with a hint of ethereal beauty. The style is surreal and painterly, blending realistic portraiture with abstract elements. The vibe is introspective and unsettling, suggesting themes of vulnerability, fragility, and hidden identity. The lighting is dramatic, with a chiaroscuro effect emphasizing the texture and form of the fragmented elements"
+    num_inference_steps=28,
+    guidance_scale=4.0,
+    height=512,
+    width=512,
+    generator=torch.Generator("cuda").manual_seed(42)
+).images[0]
 ```
 
 ## Memory Optimization
@@ -153,7 +153,7 @@ For memory-constrained environments:
 import torch
 from diffusers.pipelines.photon import PhotonPipeline
 
-pipe = PhotonPipeline.from_pretrained("Photoroom/photon-512-t2i", torch_dtype=torch.float16)
+pipe = PhotonPipeline.from_pretrained("Photoroom/photon-512-t2i", torch_dtype=torch.bfloat16)
 pipe.enable_model_cpu_offload()  # Offload components to CPU when not in use
 
 # Or use sequential CPU offload for even lower memory
