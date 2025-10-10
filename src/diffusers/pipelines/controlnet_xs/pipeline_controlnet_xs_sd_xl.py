@@ -31,7 +31,7 @@ from diffusers.utils.import_utils import is_invisible_watermark_available
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...image_processor import PipelineImageInput, VaeImageProcessor
 from ...loaders import FromSingleFileMixin, StableDiffusionXLLoraLoaderMixin, TextualInversionLoaderMixin
-from ...models import AutoencoderKL, ControlNetXSAdapter, UNet2DConditionModel, UNetControlNetXSModel
+from ...models import AutoencoderKL, ControlNetXSAdapter, UNet2DConditionModel, UNetControlNetXSModel, UNetMultiControlNetXSModel
 from ...models.attention_processor import (
     AttnProcessor2_0,
     XFormersAttnProcessor,
@@ -186,7 +186,7 @@ class StableDiffusionXLControlNetXSPipeline(
         tokenizer: CLIPTokenizer,
         tokenizer_2: CLIPTokenizer,
         unet: Union[UNet2DConditionModel, UNetControlNetXSModel],
-        controlnet: ControlNetXSAdapter,
+        controlnet: Union[ControlNetXSAdapter, List[ControlNetXSAdapter]],
         scheduler: KarrasDiffusionSchedulers,
         force_zeros_for_empty_prompt: bool = True,
         add_watermarker: Optional[bool] = None,
@@ -195,7 +195,10 @@ class StableDiffusionXLControlNetXSPipeline(
         super().__init__()
 
         if isinstance(unet, UNet2DConditionModel):
+          if isinstance(controlnet, ControlNetXSAdapter):
             unet = UNetControlNetXSModel.from_unet(unet, controlnet)
+          else:
+            unet = UNetMultiControlNetXSModel.from_unet(unet, controlnet)
 
         self.register_modules(
             vae=vae,
@@ -556,11 +559,12 @@ class StableDiffusionXLControlNetXSPipeline(
         )
         if (
             isinstance(self.unet, UNetControlNetXSModel)
+            or isinstance(self.unet, UNetMultiControlNetXSModel)
             or is_compiled
             and isinstance(self.unet._orig_mod, UNetControlNetXSModel)
         ):
             self.check_image(image, prompt, prompt_embeds)
-            if not isinstance(controlnet_conditioning_scale, float):
+            if not isinstance(controlnet_conditioning_scale, float) and isinstance(self.unet, UNetControlNetXSModel):
                 raise TypeError("For single controlnet: `controlnet_conditioning_scale` must be type `float`.")
         else:
             assert False
@@ -583,6 +587,9 @@ class StableDiffusionXLControlNetXSPipeline(
         image_is_pil_list = isinstance(image, list) and isinstance(image[0], PIL.Image.Image)
         image_is_tensor_list = isinstance(image, list) and isinstance(image[0], torch.Tensor)
         image_is_np_list = isinstance(image, list) and isinstance(image[0], np.ndarray)
+
+        unet_is_with_single_controlnet = isinstance(self.unet, UNetControlNetXSModel)
+        unet_is_with_multiple_controlnets = isinstance(self.unet, UNetMultiControlNetXSModel)
 
         if (
             not image_is_pil
@@ -608,11 +615,16 @@ class StableDiffusionXLControlNetXSPipeline(
         elif prompt_embeds is not None:
             prompt_batch_size = prompt_embeds.shape[0]
 
-        if image_batch_size != 1 and image_batch_size != prompt_batch_size:
+        if unet_is_with_single_controlnet and image_batch_size != 1 and image_batch_size != prompt_batch_size:
             raise ValueError(
                 f"If image batch size is not 1, image batch size must be same as prompt batch size. image batch size: {image_batch_size}, prompt batch size: {prompt_batch_size}"
             )
-
+        
+        if unet_is_with_multiple_controlnets and image_batch_size != 1 and image_batch_size != self.unet.num_of_controlnets():
+          raise ValueError(
+                f"If image batch size is not 1, image batch size must be same as prompt batch size. image batch size: {image_batch_size}, unet controlnet size: {self.unet.num_of_controlnet()}"
+            )
+            
     def prepare_image(
         self,
         image,
@@ -641,6 +653,37 @@ class StableDiffusionXLControlNetXSPipeline(
             image = torch.cat([image] * 2)
 
         return image
+
+
+    def prepare_image_list(
+        self,
+        images,
+        width,
+        height,
+        batch_size,
+        num_images_per_prompt,
+        device,
+        dtype,
+        do_classifier_free_guidance=False,
+    ):
+        image_list = []
+        for image in images:
+          image = self.control_image_processor.preprocess(image, height=height, width=width).to(dtype=torch.float32)
+          image_list.append(image)
+        image_batch_size = len(image_list)
+
+        if image_batch_size == 1:
+            repeat_by = batch_size
+        else:
+            # image batch size is the same as prompt batch size
+            repeat_by = num_images_per_prompt
+
+        for index in range(len(image_list)):
+          image_list[index] = image_list[index].repeat_interleave(repeat_by, dim=0)
+          image_list[index] = image_list[index].to(device=device, dtype=dtype)
+          if do_classifier_free_guidance:
+              image_list[index]  = torch.cat([image_list[index] ] * 2)
+        return image_list
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_latents
     def prepare_latents(self, batch_size, num_channels_latents, height, width, dtype, device, generator, latents=None):
@@ -971,6 +1014,18 @@ class StableDiffusionXLControlNetXSPipeline(
                 do_classifier_free_guidance=do_classifier_free_guidance,
             )
             height, width = image.shape[-2:]
+        elif isinstance(unet, UNetMultiControlNetXSModel):
+            image = self.prepare_image_list(
+                  images=image,
+                  width=width,
+                  height=height,
+                  batch_size=batch_size * num_images_per_prompt,
+                  num_images_per_prompt=num_images_per_prompt,
+                  device=device,
+                  dtype=unet.dtype,
+                  do_classifier_free_guidance=do_classifier_free_guidance,
+              )
+            height, width = image[0].shape[-2:]
         else:
             assert False
 
@@ -1049,6 +1104,8 @@ class StableDiffusionXLControlNetXSPipeline(
                 # expand the latents if we are doing classifier free guidance
                 latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
+
+                latent_model_input = latent_model_input.to(device="cuda", dtype=self.unet.dtype)
 
                 added_cond_kwargs = {"text_embeds": add_text_embeds, "time_ids": add_time_ids}
 
