@@ -138,6 +138,12 @@ image = pipe(
   - all
   - __call__
 
+## QwenImageEditControlNetPipeline
+
+[[autodoc]] QwenImageEditControlNetPipeline
+  - all
+  - __call__
+
 ## QwenImageEditInpaintPipeline
 
 [[autodoc]] QwenImageEditInpaintPipeline
