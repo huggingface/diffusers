@@ -5605,62 +5605,6 @@ class XLAFluxFlashAttnProcessor2_0:
         return processor
 
 
-class PhotonAttnProcessor2_0:
-    r"""
-    Processor for implementing Photon-style attention with multi-source tokens and RoPE. Properly integrates with
-    diffusers Attention module while handling Photon-specific logic.
-    """
-
-    def __init__(self):
-        if not hasattr(torch.nn.functional, "scaled_dot_product_attention"):
-            raise ImportError("PhotonAttnProcessor2_0 requires PyTorch 2.0, please upgrade PyTorch to 2.0.")
-
-    def __call__(
-        self,
-        attn: "Attention",
-        hidden_states: torch.Tensor,
-        encoder_hidden_states: Optional[torch.Tensor] = None,
-        attention_mask: Optional[torch.Tensor] = None,
-        temb: Optional[torch.Tensor] = None,
-        **kwargs,
-    ) -> torch.Tensor:
-        """
-        Apply Photon attention using standard diffusers interface.
-
-        Expected tensor formats from PhotonBlock.attn_forward():
-        - hidden_states: Image queries with RoPE applied [B, H, L_img, D]
-        - encoder_hidden_states: Packed key+value tensors [B, H, L_all, 2*D] (concatenated keys and values from text +
-          image + spatial conditioning)
-        - attention_mask: Custom attention mask [B, H, L_img, L_all] or None
-        """
-
-        if encoder_hidden_states is None:
-            raise ValueError(
-                "PhotonAttnProcessor2_0 requires 'encoder_hidden_states' containing packed key+value tensors. "
-                "This should be provided by PhotonBlock.attn_forward()."
-            )
-
-        # Unpack the combined key+value tensor
-        # encoder_hidden_states is [B, H, L_all, 2*D] containing [keys, values]
-        key, value = encoder_hidden_states.chunk(2, dim=-1)  # Each [B, H, L_all, D]
-
-        # Apply scaled dot-product attention with Photon's processed tensors
-        # hidden_states is image queries [B, H, L_img, D]
-        attn_output = torch.nn.functional.scaled_dot_product_attention(
-            hidden_states.contiguous(), key.contiguous(), value.contiguous(), attn_mask=attention_mask
-        )
-
-        # Reshape from [B, H, L_img, D] to [B, L_img, H*D]
-        batch_size, num_heads, seq_len, head_dim = attn_output.shape
-        attn_output = attn_output.transpose(1, 2).reshape(batch_size, seq_len, num_heads * head_dim)
-
-        # Apply output projection
-        attn_output = attn.to_out[0](attn_output)
-        if len(attn.to_out) > 1:
-            attn_output = attn.to_out[1](attn_output)  # dropout if present
-
-        return attn_output
-
 
 ADDED_KV_ATTENTION_PROCESSORS = (
     AttnAddedKVProcessor,
@@ -5710,7 +5654,6 @@ AttentionProcessor = Union[
     PAGHunyuanAttnProcessor2_0,
     PAGCFGHunyuanAttnProcessor2_0,
     LuminaAttnProcessor2_0,
-    PhotonAttnProcessor2_0,
     FusedAttnProcessor2_0,
     CustomDiffusionXFormersAttnProcessor,
     CustomDiffusionAttnProcessor2_0,
