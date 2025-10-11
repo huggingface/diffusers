@@ -5,6 +5,8 @@ from .autoencoder_kl_allegro import AutoencoderKLAllegro
 from .autoencoder_kl_cogvideox import AutoencoderKLCogVideoX
 from .autoencoder_kl_cosmos import AutoencoderKLCosmos
 from .autoencoder_kl_hunyuan_video import AutoencoderKLHunyuanVideo
+from .autoencoder_kl_hunyuanimage import AutoencoderKLHunyuanImage
+from .autoencoder_kl_hunyuanimage_refiner import AutoencoderKLHunyuanImageRefiner
 from .autoencoder_kl_ltx import AutoencoderKLLTXVideo
 from .autoencoder_kl_magvit import AutoencoderKLMagvit
 from .autoencoder_kl_mochi import AutoencoderKLMochi
