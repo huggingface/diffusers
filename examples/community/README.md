@@ -5557,10 +5557,8 @@ import torch
 
 from diffusers import VQModel, DiffusionPipeline
 from transformers import AutoTokenizer
-from diffusers.utils import load_image
 
-
-pipe = LuminaDiMOOPipeline.from_pretrained(
+pipe = DiffusionPipeline.from_pretrained(
     "Alpha-VLLM/Lumina-DiMOO",
     torch_dtype=torch.bfloat16,
     device_map="auto",
@@ -5599,7 +5597,7 @@ from transformers import AutoTokenizer
 from diffusers.utils import load_image
 
 
-pipe = LuminaDiMOOPipeline.from_pretrained(
+pipe = DiffusionPipeline.from_pretrained(
     "Alpha-VLLM/Lumina-DiMOO",
     torch_dtype=torch.bfloat16,
     device_map="auto",
@@ -5643,7 +5641,7 @@ from transformers import AutoTokenizer
 from diffusers.utils import load_image
 
 
-pipe = LuminaDiMOOPipeline.from_pretrained(
+pipe = DiffusionPipeline.from_pretrained(
     "Alpha-VLLM/Lumina-DiMOO",
     torch_dtype=torch.bfloat16,
     device_map="auto",
