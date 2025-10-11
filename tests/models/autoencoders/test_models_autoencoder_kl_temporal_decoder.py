@@ -22,13 +22,13 @@ from ...testing_utils import (
     floats_tensor,
     torch_device,
 )
-from ..test_modeling_common import ModelTesterMixin, UNetTesterMixin
+from ..test_modeling_common import ModelTesterMixin
 
 
 enable_full_determinism()
 
 
-class AutoencoderKLTemporalDecoderTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
+class AutoencoderKLTemporalDecoderTests(ModelTesterMixin, unittest.TestCase):
     model_class = AutoencoderKLTemporalDecoder
     main_input_name = "sample"
     base_precision = 1e-2

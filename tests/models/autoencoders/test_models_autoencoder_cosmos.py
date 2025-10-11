@@ -17,13 +17,13 @@ import unittest
 from diffusers import AutoencoderKLCosmos
 
 from ...testing_utils import enable_full_determinism, floats_tensor, torch_device
-from ..test_modeling_common import ModelTesterMixin, UNetTesterMixin
+from ..test_modeling_common import ModelTesterMixin
 
 
 enable_full_determinism()
 
 
-class AutoencoderKLCosmosTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
+class AutoencoderKLCosmosTests(ModelTesterMixin, unittest.TestCase):
     model_class = AutoencoderKLCosmos
     main_input_name = "sample"
     base_precision = 1e-2
