@@ -1564,12 +1564,17 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         dduf_entries: Optional[Dict[str, DDUFEntry]] = None,
         is_parallel_loading_enabled: Optional[bool] = False,
     ):
+        is_quantized = hf_quantizer is not None
         model_state_dict = model.state_dict()
         expected_keys = list(model_state_dict.keys())
+        if is_quantized:
+            expected_keys = hf_quantizer.update_expected_keys(model, expected_keys, loaded_keys)
         missing_keys = list(set(expected_keys) - set(loaded_keys))
-        if hf_quantizer is not None:
+        if is_quantized:
             missing_keys = hf_quantizer.update_missing_keys(model, missing_keys, prefix="")
         unexpected_keys = list(set(loaded_keys) - set(expected_keys))
+        if is_quantized:
+            unexpected_keys = hf_quantizer.update_unexpected_keys(model, unexpected_keys)
         # Some models may have keys that are not in the state by design, removing them before needlessly warning
         # the user.
         if cls._keys_to_ignore_on_load_unexpected is not None:

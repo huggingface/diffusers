@@ -233,7 +233,7 @@ def load_model_dict_into_meta(
     empty_state_dict = model.state_dict()
 
     for param_name, param in state_dict.items():
-        if param_name not in empty_state_dict:
+        if param_name in unexpected_keys:
             continue
 
         set_module_kwargs = {}
@@ -260,10 +260,15 @@ def load_model_dict_into_meta(
         # For compatibility with PyTorch load_state_dict which converts state dict dtype to existing dtype in model, and which
         # uses `param.copy_(input_param)` that preserves the contiguity of the parameter in the model.
         # Reference: https://github.com/pytorch/pytorch/blob/db79ceb110f6646523019a59bbd7b838f43d4a86/torch/nn/modules/module.py#L2040C29-L2040C29
-        old_param = model
-        splits = param_name.split(".")
-        for split in splits:
-            old_param = getattr(old_param, split)
+        if param_name in empty_state_dict:
+            old_param = model
+            splits = param_name.split(".")
+            for split in splits:
+                old_param = getattr(old_param, split)
+        else:
+            # hf_quantizer can add parameters that doesn't exist yet
+            # they will be in the loaded_state_dict when pre_quantized
+            old_param = None
 
         if not isinstance(old_param, (torch.nn.Parameter, torch.Tensor)):
             old_param = None
@@ -279,7 +284,7 @@ def load_model_dict_into_meta(
 
         # bnb params are flattened.
         # gguf quants have a different shape based on the type of quantization applied
-        if empty_state_dict[param_name].shape != param.shape:
+        if param_name in empty_state_dict and empty_state_dict[param_name].shape != param.shape:
             if (
                 is_quantized
                 and hf_quantizer.pre_quantized
