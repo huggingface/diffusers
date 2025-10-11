@@ -697,7 +697,6 @@ class UNet2DConditionModel(
                 positive_len=positive_len, out_dim=cross_attention_dim, feature_type=feature_type
             )
 
-    @property
     def set_default_attn_processor(self):
         """
         Disables custom attention processors and sets the default attention implementation.
