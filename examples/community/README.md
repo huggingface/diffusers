@@ -5532,7 +5532,7 @@ images[0].save("pizzeria.png")
 # Lumina-DiMOO
 [Project](https://synbol.github.io/Lumina-DiMOO/) / [GitHub](https://github.com/Alpha-VLLM/Lumina-DiMOO/) / [Model](https://huggingface.co/Alpha-VLLM/Lumina-DiMOO)
 
-Lumina-DiMOO is a descrete diffusion network that ...an omni foundational model for seamless multimodal generation and understanding. This is the implementation with Lumina-DiMOO switch to support text‑to‑image (T2I), image‑to‑image editing (I2I), and multimodal understanding (MMU).
+Lumina-DiMOO is a discrete-diffusion omni-modal foundation model unifying generation and understanding. This implementation integrates a Lumina-DiMOO switch for T2I, I2I editing, and MMU.
 
 #### Key features
 
