@@ -600,6 +600,7 @@ class DownloadTests(unittest.TestCase):
                 )
         assert deprecated_warning_msg in str(cap_logger), "Deprecation warning not found in logs"
 
+    @pytest.mark.xfail(condition=is_transformers_version(">", "4.56.2"), reason="Some import error", strict=True)
     def test_download_safetensors_only_variant_exists_for_model(self):
         variant = None
         use_safetensors = True
@@ -658,6 +659,7 @@ class DownloadTests(unittest.TestCase):
             # https://huggingface.co/hf-internal-testing/stable-diffusion-broken-variants/tree/main/unet
             assert len(files) == 15, f"We should only download 15 files, not {len(files)}"
 
+    @pytest.mark.xfail(condition=is_transformers_version(">", "4.56.2"), reason="Some import error", strict=True)
     def test_download_safetensors_variant_does_not_exist_for_model(self):
         variant = "no_ema"
         use_safetensors = True
@@ -1890,6 +1892,7 @@ class PipelineFastTests(unittest.TestCase):
                 "DDUF/tiny-flux-dev-pipe-dduf", dduf_file="fluxpipeline.dduf", load_connected_pipeline=True
             )
 
+    @pytest.mark.xfail(condition=is_transformers_version(">", "4.56.2"), reason="Some import error", strict=True)
     def test_wrong_model(self):
         tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
         with self.assertRaises(ValueError) as error_context:
