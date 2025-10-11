@@ -24,8 +24,8 @@ from ...utils import USE_PEFT_BACKEND, BaseOutput, logging, scale_lora_layers, u
 from ..attention_processor import AttentionProcessor
 from ..controlnets.controlnet import ControlNetConditioningEmbedding, zero_module
 from ..embeddings import CombinedTimestepGuidanceTextProjEmbeddings, CombinedTimestepTextProjEmbeddings, FluxPosEmbed
-from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
+from ..transformers.modeling_common import Transformer2DModelOutput
 from ..transformers.transformer_flux import FluxSingleTransformerBlock, FluxTransformerBlock
 
 

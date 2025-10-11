@@ -23,9 +23,9 @@ from ...configuration_utils import ConfigMixin, register_to_config
 from ...utils import logging
 from ..attention_processor import Attention
 from ..embeddings import TimestepEmbedding, Timesteps, get_2d_sincos_pos_embed
-from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
 from ..normalization import AdaLayerNorm, RMSNorm
+from .modeling_common import Transformer2DModelOutput
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name

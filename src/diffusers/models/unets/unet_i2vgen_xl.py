@@ -22,7 +22,7 @@ from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import UNet2DConditionLoadersMixin
 from ...utils import logging
 from ..activations import get_activation
-from ..attention import Attention, FeedForward
+from ..attention import Attention
 from ..attention_processor import (
     ADDED_KV_ATTENTION_PROCESSORS,
     CROSS_ATTENTION_PROCESSORS,
@@ -33,6 +33,7 @@ from ..attention_processor import (
 )
 from ..embeddings import TimestepEmbedding, Timesteps
 from ..modeling_utils import ModelMixin
+from ..transformers.modeling_common import FeedForward
 from ..transformers.transformer_temporal import TransformerTemporalModel
 from .unet_3d_blocks import (
     UNetMidBlock3DCrossAttn,

@@ -23,9 +23,9 @@ from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
 from ...utils import USE_PEFT_BACKEND, get_logger, scale_lora_layers, unscale_lora_layers
 from ..cache_utils import CacheMixin
 from ..embeddings import get_1d_rotary_pos_embed
-from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
 from ..normalization import AdaLayerNormContinuous
+from .modeling_common import Transformer2DModelOutput
 from .transformer_hunyuan_video import (
     HunyuanVideoConditionEmbedding,
     HunyuanVideoPatchEmbed,
