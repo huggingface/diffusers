@@ -109,7 +109,7 @@ image_1 = load_image("https://huggingface.co/datasets/huggingface/documentation-
 image_2 = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/peng.png")
 image = pipe(
     image=[image_1, image_2], 
-    prompt="put the penguin and the cat at a game show called "Qwen Edit Plus Games"", 
+    prompt='''put the penguin and the cat at a game show called "Qwen Edit Plus Games"''', 
     num_inference_steps=50
 ).images[0]
 ```
