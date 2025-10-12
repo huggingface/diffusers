@@ -223,6 +223,66 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
         self.vae_scale_factor_temporal = vae.config.temporal_compression_ratio
         self.vae_scale_factor_spatial = vae.config.spatial_compression_ratio
         self.video_processor = VideoProcessor(vae_scale_factor=self.vae_scale_factor_spatial)
+    
+    @staticmethod
+    def fast_sta_nabla(
+        T: int, H: int, W: int, wT: int = 3, wH: int = 3, wW: int = 3, device="cuda"
+    ) -> torch.Tensor:
+        l = torch.Tensor([T, H, W]).amax()
+        r = torch.arange(0, l, 1, dtype=torch.int16, device=device)
+        mat = (r.unsqueeze(1) - r.unsqueeze(0)).abs()
+        sta_t, sta_h, sta_w = (
+            mat[:T, :T].flatten(),
+            mat[:H, :H].flatten(),
+            mat[:W, :W].flatten(),
+        )
+        sta_t = sta_t <= wT // 2
+        sta_h = sta_h <= wH // 2
+        sta_w = sta_w <= wW // 2
+        sta_hw = (
+            (sta_h.unsqueeze(1) * sta_w.unsqueeze(0))
+            .reshape(H, H, W, W)
+            .transpose(1, 2)
+            .flatten()
+        )
+        sta = (
+            (sta_t.unsqueeze(1) * sta_hw.unsqueeze(0))
+            .reshape(T, T, H * W, H * W)
+            .transpose(1, 2)
+        )
+        return sta.reshape(T * H * W, T * H * W)
+    
+    def get_sparse_params(self, sample, device):
+        assert self.transformer.config.patch_size[0] == 1
+        B, T, H, W, _ = sample.shape
+        T, H, W = (
+            T // self.transformer.config.patch_size[0],
+            H // self.transformer.config.patch_size[1],
+            W // self.transformer.config.patch_size[2],
+        )
+        if self.transformer.config.attention_type == "nabla":
+            sta_mask = self.fast_sta_nabla(
+                T, H // 8, W // 8, 
+                self.transformer.config.attention_wT, self.transformer.config.attention_wH, self.transformer.config.attention_wW, 
+                device=device
+            )
+            
+            sparse_params = {
+                "sta_mask": sta_mask.unsqueeze_(0).unsqueeze_(0),
+                "attention_type": self.transformer.config.attention_type,
+                "to_fractal": True,
+                "P": self.transformer.config.attention_P,
+                "wT": self.transformer.config.attention_wT,
+                "wW": self.transformer.config.attention_wW,
+                "wH": self.transformer.config.attention_wH,
+                "add_sta": self.transformer.config.attention_add_sta,
+                "visual_shape": (T, H, W),
+                "method": self.transformer.config.attention_method,
+            }
+        else:
+            sparse_params = None
+
+        return sparse_params
 
     def _encode_prompt_qwen(
         self,
@@ -681,8 +741,11 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
             if negative_cu_seqlens is not None
             else None
         )
+        
+        # 7. Sparse Params
+        sparse_params = self.get_sparse_params(latents, device)
 
-        # 7. Denoising loop
+        # 8. Denoising loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
         self._num_timesteps = len(timesteps)
 
@@ -702,7 +765,7 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
                     visual_rope_pos=visual_rope_pos,
                     text_rope_pos=text_rope_pos,
                     scale_factor=(1, 2, 2), 
-                    sparse_params=None,
+                    sparse_params=sparse_params,
                     return_dict=True
                 ).sample
 
@@ -715,7 +778,7 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
                         visual_rope_pos=visual_rope_pos,
                         text_rope_pos=negative_text_rope_pos,
                         scale_factor=(1, 2, 2),
-                        sparse_params=None,
+                        sparse_params=sparse_params,
                         return_dict=True
                     ).sample
 

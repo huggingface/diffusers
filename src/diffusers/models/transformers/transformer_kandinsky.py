@@ -64,8 +64,8 @@ def get_freqs(dim, max_period=10000.0):
 def fractal_flatten(x, rope, shape, block_mask=False):
     if block_mask:
         pixel_size = 8
-        x = local_patching(x, shape, (1, pixel_size, pixel_size), dim=0)
-        rope = local_patching(rope, shape, (1, pixel_size, pixel_size), dim=0)
+        x = local_patching(x, shape, (1, pixel_size, pixel_size), dim=1)
+        rope = local_patching(rope, shape, (1, pixel_size, pixel_size), dim=1)
         x = x.flatten(1, 2)
         rope = rope.flatten(1, 2)
     else:
@@ -77,15 +77,15 @@ def fractal_flatten(x, rope, shape, block_mask=False):
 def fractal_unflatten(x, shape, block_mask=False):
     if block_mask:
         pixel_size = 8
-        x = x.reshape(-1, pixel_size**2, *x.shape[1:])
-        x = local_merge(x, shape, (1, pixel_size, pixel_size), dim=0)
+        x = x.reshape(x.shape[0], -1, pixel_size**2, *x.shape[2:])
+        x = local_merge(x, shape, (1, pixel_size, pixel_size), dim=1)
     else:
         x = x.reshape(*shape, *x.shape[2:])
     return x
 
 
 def local_patching(x, shape, group_size, dim=0):
-    duration, height, width = shape
+    batch_size, duration, height, width = shape
     g1, g2, g3 = group_size
     x = x.reshape(
         *x.shape[:dim],
@@ -112,7 +112,7 @@ def local_patching(x, shape, group_size, dim=0):
 
 
 def local_merge(x, shape, group_size, dim=0):
-    duration, height, width = shape
+    batch_size, duration, height, width = shape
     g1, g2, g3 = group_size
     x = x.reshape(
         *x.shape[:dim],
@@ -136,6 +136,36 @@ def local_merge(x, shape, group_size, dim=0):
     )
     x = x.flatten(dim, dim + 1).flatten(dim + 1, dim + 2).flatten(dim + 2, dim + 3)
     return x
+
+
+def nablaT_v2(
+    q: Tensor,
+    k: Tensor,
+    sta: Tensor,
+    thr: float = 0.9,
+) -> BlockMask:
+    # Map estimation
+    B, h, S, D = q.shape
+    s1 = S // 64
+    qa = q.reshape(B, h, s1, 64, D).mean(-2)
+    ka = k.reshape(B, h, s1, 64, D).mean(-2).transpose(-2, -1)
+    map = qa @ ka
+
+    map = torch.softmax(map / math.sqrt(D), dim=-1)
+    # Map binarization
+    vals, inds = map.sort(-1)
+    cvals = vals.cumsum_(-1)
+    mask = (cvals >= 1 - thr).int()
+    mask = mask.gather(-1, inds.argsort(-1))
+
+    mask = torch.logical_or(mask, sta)
+
+    # BlockMask creation
+    kv_nb = mask.sum(-1).to(torch.int32)
+    kv_inds = mask.argsort(dim=-1, descending=True).to(torch.int32)
+    return BlockMask.from_kv_blocks(
+        torch.zeros_like(kv_nb), kv_inds, kv_nb, kv_inds, BLOCK_SIZE=64, mask_mod=None
+    )
 
 
 def sdpa(q, k, v):
@@ -392,6 +422,29 @@ class MultiheadSelfAttentionDec(nn.Module):
     def attention(self, query, key, value):
         out = sdpa(q=query, k=key, v=value).flatten(-2, -1)
         return out
+    
+    def nabla(self, query, key, value, sparse_params=None):
+        query = query.transpose(1, 2).contiguous()
+        key = key.transpose(1, 2).contiguous()
+        value = value.transpose(1, 2).contiguous()
+        block_mask = nablaT_v2(
+            query,
+            key,
+            sparse_params["sta_mask"],
+            thr=sparse_params["P"],
+        )
+        out = (
+            flex_attention(
+                query,
+                key,
+                value,
+                block_mask=block_mask
+            )
+            .transpose(1, 2)
+            .contiguous()
+        )
+        out = out.flatten(-2, -1)
+        return out
 
     def out_l(self, x):
         return self.out_layer(x)
@@ -402,7 +455,10 @@ class MultiheadSelfAttentionDec(nn.Module):
         query = apply_rotary(query, rope).type_as(query)
         key = apply_rotary(key, rope).type_as(key)
 
-        out = self.attention(query, key, value)
+        if sparse_params is not None:
+            out = self.nabla(query, key, value, sparse_params=sparse_params)
+        else:
+            out = self.attention(query, key, value)
 
         out = self.out_l(out)
         return out
@@ -587,7 +643,18 @@ class Kandinsky5Transformer3DModel(ModelMixin, ConfigMixin):
         num_text_blocks=2,
         num_visual_blocks=32,
         axes_dims=(16, 24, 24),
-        visual_cond=False,
+        visual_cond=False,        
+        attention_type: str = "regular",
+        attention_causal: bool = None, #Deffault for Nabla: false,
+        attention_local: bool = None, #Deffault for Nabla: false,
+        attention_glob:bool = None, #Deffault for Nabla: false,
+        attention_window: int = None, #Deffault for Nabla: 3
+        attention_P: float = None, #Deffault for Nabla: 0.9
+        attention_wT: int = None, #Deffault for Nabla: 11
+        attention_wW:int = None, #Deffault for Nabla: 3
+        attention_wH:int = None, #Deffault for Nabla: 3
+        attention_add_sta: bool = None, #Deffault for Nabla: true
+        attention_method: str = None, #Deffault for Nabla: "topcdf"
     ):
         super().__init__()
         
@@ -596,6 +663,7 @@ class Kandinsky5Transformer3DModel(ModelMixin, ConfigMixin):
         self.model_dim = model_dim
         self.patch_size = patch_size
         self.visual_cond = visual_cond
+        self.attention_type = attention_type
 
         visual_embed_dim = 2 * in_visual_dim + 1 if visual_cond else in_visual_dim
         self.time_embeddings = TimeEmbeddings(model_dim, time_dim)
