@@ -285,6 +285,8 @@ def load_model_dict_into_meta(
 
         # bnb params are flattened.
         # gguf quants have a different shape based on the type of quantization applied
+        # current parameter might not be in the empty_state_dict if the hf_quantizer needs to create it in create_quantized_param
+        # pass the to be created parameters to create_quantized_param instead
         if param_name in empty_state_dict and empty_state_dict[param_name].shape != param.shape:
             if (
                 is_quantized
