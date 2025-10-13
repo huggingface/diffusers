@@ -243,7 +243,7 @@ class PhotonPipeline(
     """
 
     model_cpu_offload_seq = "text_encoder->transformer->vae"
-    _callback_tensor_inputs = ["latents"]
+    _callback_tensor_inputs = ["latents", "prompt_embeds"]
     _optional_components = ["vae"]
 
     def __init__(
@@ -320,8 +320,21 @@ class PhotonPipeline(
         device: torch.device,
         do_classifier_free_guidance: bool = True,
         negative_prompt: str = "",
+        prompt_embeds: Optional[torch.FloatTensor] = None,
+        negative_prompt_embeds: Optional[torch.FloatTensor] = None,
+        prompt_attention_mask: Optional[torch.BoolTensor] = None,
+        negative_prompt_attention_mask: Optional[torch.BoolTensor] = None,
     ):
-        """Encode text prompt using standard text encoder and tokenizer."""
+        """Encode text prompt using standard text encoder and tokenizer, or use precomputed embeddings."""
+        if prompt_embeds is not None:
+            # Use precomputed embeddings
+            return (
+                prompt_embeds,
+                prompt_attention_mask,
+                negative_prompt_embeds if do_classifier_free_guidance else None,
+                negative_prompt_attention_mask if do_classifier_free_guidance else None,
+            )
+
         if isinstance(prompt, str):
             prompt = [prompt]
 
@@ -385,8 +398,30 @@ class PhotonPipeline(
         width: int,
         guidance_scale: float,
         callback_on_step_end_tensor_inputs: Optional[List[str]] = None,
+        prompt_embeds: Optional[torch.FloatTensor] = None,
+        negative_prompt_embeds: Optional[torch.FloatTensor] = None,
     ):
         """Check that all inputs are in correct format."""
+        if prompt is not None and prompt_embeds is not None:
+            raise ValueError(
+                f"Cannot forward both `prompt`: {prompt} and `prompt_embeds`: {prompt_embeds}. Please make sure to"
+                " only forward one of the two."
+            )
+
+        if prompt is None and prompt_embeds is None:
+            raise ValueError(
+                "Provide either `prompt` or `prompt_embeds`. Cannot leave both `prompt` and `prompt_embeds` undefined."
+            )
+
+        if prompt is not None and (not isinstance(prompt, str) and not isinstance(prompt, list)):
+            raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
+
+        if prompt_embeds is not None and guidance_scale > 1.0 and negative_prompt_embeds is None:
+            raise ValueError(
+                "When `prompt_embeds` is provided and `guidance_scale > 1.0`, "
+                "`negative_prompt_embeds` must also be provided for classifier-free guidance."
+            )
+
         spatial_compression = self.vae_scale_factor
         if height % spatial_compression != 0 or width % spatial_compression != 0:
             raise ValueError(
@@ -399,6 +434,13 @@ class PhotonPipeline(
         if callback_on_step_end_tensor_inputs is not None and not isinstance(callback_on_step_end_tensor_inputs, list):
             raise ValueError(
                 f"`callback_on_step_end_tensor_inputs` has to be a list but is {callback_on_step_end_tensor_inputs}"
+            )
+
+        if callback_on_step_end_tensor_inputs is not None and not all(
+            k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
+        ):
+            raise ValueError(
+                f"`callback_on_step_end_tensor_inputs` has to be in {self._callback_tensor_inputs}, but found {[k for k in callback_on_step_end_tensor_inputs if k not in self._callback_tensor_inputs]}"
             )
 
     @torch.no_grad()
@@ -414,6 +456,10 @@ class PhotonPipeline(
         num_images_per_prompt: Optional[int] = 1,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.Tensor] = None,
+        prompt_embeds: Optional[torch.FloatTensor] = None,
+        negative_prompt_embeds: Optional[torch.FloatTensor] = None,
+        prompt_attention_mask: Optional[torch.BoolTensor] = None,
+        negative_prompt_attention_mask: Optional[torch.BoolTensor] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
         use_resolution_binning: bool = True,
@@ -425,7 +471,7 @@ class PhotonPipeline(
 
         Args:
             prompt (`str` or `List[str]`, *optional*):
-                The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds`.
+                The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds`
                 instead.
             height (`int`, *optional*, defaults to self.transformer.config.sample_size * self.vae_scale_factor):
                 The height in pixels of the generated image.
@@ -453,6 +499,19 @@ class PhotonPipeline(
                 Pre-generated noisy latents, sampled from a Gaussian distribution, to be used as inputs for image
                 generation. Can be used to tweak the same generation with different prompts. If not provided, a latents
                 tensor will be generated by sampling using the supplied random `generator`.
+            prompt_embeds (`torch.FloatTensor`, *optional*):
+                Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
+                provided, text embeddings will be generated from `prompt` input argument.
+            negative_prompt_embeds (`torch.FloatTensor`, *optional*):
+                Pre-generated negative text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
+                weighting. If not provided and `guidance_scale > 1`, negative embeddings will be generated from an
+                empty string.
+            prompt_attention_mask (`torch.BoolTensor`, *optional*):
+                Pre-generated attention mask for `prompt_embeds`. If not provided, attention mask will be generated
+                from `prompt` input argument.
+            negative_prompt_attention_mask (`torch.BoolTensor`, *optional*):
+                Pre-generated attention mask for `negative_prompt_embeds`. If not provided and `guidance_scale > 1`,
+                attention mask will be generated from an empty string.
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generate image. Choose between
                 [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
@@ -503,6 +562,8 @@ class PhotonPipeline(
             width,
             guidance_scale,
             callback_on_step_end_tensor_inputs,
+            prompt_embeds,
+            negative_prompt_embeds,
         )
 
         if prompt is not None and isinstance(prompt, str):
@@ -510,7 +571,7 @@ class PhotonPipeline(
         elif prompt is not None and isinstance(prompt, list):
             batch_size = len(prompt)
         else:
-            raise ValueError("prompt must be provided as a string or list of strings")
+            batch_size = prompt_embeds.shape[0]
 
         device = self._execution_device
 
@@ -518,7 +579,13 @@ class PhotonPipeline(
 
         # 2. Encode input prompt
         text_embeddings, cross_attn_mask, uncond_text_embeddings, uncond_cross_attn_mask = self.encode_prompt(
-            prompt, device, do_classifier_free_guidance=self.do_classifier_free_guidance
+            prompt,
+            device,
+            do_classifier_free_guidance=self.do_classifier_free_guidance,
+            prompt_embeds=prompt_embeds,
+            negative_prompt_embeds=negative_prompt_embeds,
+            prompt_attention_mask=prompt_attention_mask,
+            negative_prompt_attention_mask=negative_prompt_attention_mask,
         )
 
         # 3. Prepare timesteps
