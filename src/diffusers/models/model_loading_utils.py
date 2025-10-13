@@ -233,7 +233,7 @@ def load_model_dict_into_meta(
     empty_state_dict = model.state_dict()
 
     for param_name, param in state_dict.items():
-        if param_name in unexpected_keys:
+        if unexpected_keys is not None and param_name in unexpected_keys:
             continue
 
         set_module_kwargs = {}
@@ -266,8 +266,9 @@ def load_model_dict_into_meta(
             for split in splits:
                 old_param = getattr(old_param, split)
         else:
-            # hf_quantizer can add parameters that doesn't exist yet
-            # they will be in the loaded_state_dict when pre_quantized
+            # hf_quantizer can add parameters that doesn't exist yet in the model and the empty_state_dict
+            # they will be created in create_quantized_param and hf_quantizer should handle the loading of these parameters 
+            # these parameters will be in the loaded_state_dict from the model file instead when loading a pre_quantized model
             old_param = None
 
         if not isinstance(old_param, (torch.nn.Parameter, torch.Tensor)):
