@@ -17,7 +17,6 @@ import functools
 import inspect
 import math
 from enum import Enum
-from functools import partial
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, Union
 
 import torch
@@ -85,15 +84,12 @@ if DIFFUSERS_ENABLE_HUB_KERNELS:
             "To use FA3 kernel for your hardware from the Hub, the `kernels` library must be installed. Install with `pip install kernels`."
         )
     from ..utils.kernels_utils import _DEFAULT_HUB_ID_FA3, _DEFAULT_HUB_ID_SAGE, _get_kernel_from_hub
-    from ..utils.sage_utils import _get_sage_attn_fn_for_device
 
     flash_attn_interface_hub = _get_kernel_from_hub(_DEFAULT_HUB_ID_FA3)
     flash_attn_3_func_hub = flash_attn_interface_hub.flash_attn_func
 
     sage_interface_hub = _get_kernel_from_hub(_DEFAULT_HUB_ID_SAGE)
-    sage_fn_with_kwargs = _get_sage_attn_fn_for_device()
-    sage_attn_func_hub = getattr(sage_interface_hub, sage_fn_with_kwargs["func"])
-    sage_attn_func_hub = partial(sage_attn_func_hub, **sage_fn_with_kwargs["kwargs"])
+    sage_attn_func_hub = sage_interface_hub.sageattn
 
 else:
     flash_attn_3_func_hub = None
