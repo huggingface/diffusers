@@ -428,7 +428,7 @@ class PhotonBlock(nn.Module):
         return img
 
 
-class LastLayer(nn.Module):
+class FinalLayer(nn.Module):
     r"""
     Final projection layer with adaptive LayerNorm modulation.
 
@@ -634,7 +634,7 @@ class PhotonTransformer2DModel(ModelMixin, ConfigMixin, AttentionMixin):
             ]
         )
 
-        self.final_layer = LastLayer(self.hidden_size, 1, self.out_channels)
+        self.final_layer = FinalLayer(self.hidden_size, 1, self.out_channels)
 
         self.gradient_checkpointing = False
 
