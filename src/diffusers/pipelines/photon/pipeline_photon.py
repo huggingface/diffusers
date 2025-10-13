@@ -449,6 +449,7 @@ class PhotonPipeline(
     def __call__(
         self,
         prompt: Union[str, List[str]] = None,
+        negative_prompt: str = "",
         height: Optional[int] = None,
         width: Optional[int] = None,
         num_inference_steps: int = 28,
@@ -474,6 +475,9 @@ class PhotonPipeline(
             prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds`
                 instead.
+            negative_prompt (`str`, *optional*, defaults to `""`):
+                The prompt or prompts not to guide the image generation. Ignored when not using guidance (i.e., ignored
+                if `guidance_scale` is less than `1`).
             height (`int`, *optional*, defaults to self.transformer.config.sample_size * self.vae_scale_factor):
                 The height in pixels of the generated image.
             width (`int`, *optional*, defaults to self.transformer.config.sample_size * self.vae_scale_factor):
@@ -582,6 +586,7 @@ class PhotonPipeline(
             prompt,
             device,
             do_classifier_free_guidance=self.do_classifier_free_guidance,
+            negative_prompt=negative_prompt,
             prompt_embeds=prompt_embeds,
             negative_prompt_embeds=negative_prompt_embeds,
             prompt_attention_mask=prompt_attention_mask,
