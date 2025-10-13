@@ -36,14 +36,16 @@ Both **fine-tuned** and **non-fine-tuned** versions are available:
 - **Fine-tuned models**, trained on the [Alchemist dataset](https://huggingface.co/datasets/yandex/alchemist), enhance the **aesthetic quality** of the base models—especially when prompts are **less detailed**.
 
 
-| Model | Recommended dtype | Resolution | Fine-tuned |
-|:-----:|:-----------------:|:----------:|:----------:|
-| [`Photoroom/photon-256-t2i`](https://huggingface.co/Photoroom/photon-256-t2i) | `torch.bfloat16` | 256x256 | No |
-| [`Photoroom/photon-256-t2i-sft`](https://huggingface.co/Photoroom/photon-256-t2i-sft) | `torch.bfloat16` | 256x256 | Yes |
-| [`Photoroom/photon-512-t2i`](https://huggingface.co/Photoroom/photon-512-t2i) | `torch.bfloat16` | 512x512 | No |
-| [`Photoroom/photon-512-t2i-sft`](hhttps://huggingface.co/Photoroom/photon-512-t2i-sft) | `torch.bfloat16` | 512x512 | Yes |
-| [`Photoroom/photon-512-t2i-dc-ae`](https://huggingface.co/Photoroom/photon-512-t2i-dc-ae) | `torch.bfloat16` | 512x512 | No |
-| [`Photoroom/photon-512-t2i-dc-ae-sft`](https://huggingface.co/Photoroom/photon-512-t2i-dc-ae-sft) | `torch.bfloat16` | 512x512 | Yes |
+| Model | Resolution | Fine-tuned | Distilled | Description | Suggested prompts | Suggested parameters | Recommended dtype |
+|:-----:|:-----------------:|:----------:|:----------:|:----------:|:----------:|:----------:|:----------:|
+| [`Photoroom/photon-256-t2i`](https://huggingface.co/Photoroom/photon-256-t2i)| 256 | No | No | Base model pre-trained at 256 with Flux VAE|Works best with detailed prompts in natural language|28 steps, cfg=5.0| `torch.bfloat16` |
+| [`Photoroom/photon-256-t2i-sft`](https://huggingface.co/Photoroom/photon-256-t2i-sft)| 512 | Yes | No | Fine-tuned on the [Alchemist dataset](https://huggingface.co/datasets/yandex/alchemist) dataset with Flux VAE | Can handle less detailed prompts|28 steps, cfg=5.0| `torch.bfloat16` |
+| [`Photoroom/photon-512-t2i`](https://huggingface.co/Photoroom/photon-512-t2i)| 512 | No | No | Base model pre-trained at 512 with Flux VAE |Works best with detailed prompts in natural language|28 steps, cfg=5.0| `torch.bfloat16` |
+| [`Photoroom/photon-512-t2i-sft`](hhttps://huggingface.co/Photoroom/photon-512-t2i-sft)| 512 | Yes | No | Fine-tuned on the [Alchemist dataset](https://huggingface.co/datasets/yandex/alchemist) dataset with Flux VAE | Can handle less detailed prompts in natural language|28 steps, cfg=5.0| `torch.bfloat16` |
+| [`Photoroom/photon-512-t2i-sft-distilled`](https://huggingface.co/Photoroom/photon-512-t2i-sft-distilled)| 512 | Yes | Yes | 8-step distilled model from [`Photoroom/photon-512-t2i-sft`](https://huggingface.co/Photoroom/photon-512-t2i-sft) | Can handle less detailed prompts in natural language|8 steps, cfg=1.0| `torch.bfloat16` |
+| [`Photoroom/photon-512-t2i-dc-ae`](https://huggingface.co/Photoroom/photon-512-t2i-dc-ae)| 512 | No | No | Base model pre-trained at 512 with [Deep Compression Autoencoder (DC-AE)](https://hanlab.mit.edu/projects/dc-ae)|Works best with detailed prompts in natural language|28 steps, cfg=5.0| `torch.bfloat16` |
+| [`Photoroom/photon-512-t2i-dc-ae-sft`](https://huggingface.co/Photoroom/photon-512-t2i-dc-ae-sft)| 512 | Yes | No | Fine-tuned on the [Alchemist dataset](https://huggingface.co/datasets/yandex/alchemist) dataset with [Deep Compression Autoencoder (DC-AE)](https://hanlab.mit.edu/projects/dc-ae) | Can handle less detailed prompts in natural language|28 steps, cfg=5.0| `torch.bfloat16` |
+| [`Photoroom/photon-512-t2i-dc-ae-sft-distilled`](https://huggingface.co/Photoroom/photon-512-t2i-dc-ae-sft-distilled)| 512 | Yes | Yes | 8-step distilled model from [`Photoroom/photon-512-t2i-dc-ae-sft-distilled`](https://huggingface.co/Photoroom/photon-512-t2i-dc-ae-sft-distilled) | Can handle less detailed prompts in natural language|8 steps, cfg=1.0| `torch.bfloat16` |s
 
 Refer to [this](https://huggingface.co/collections/Photoroom/photon-models-68e66254c202ebfab99ad38e) collection for more information.
 
@@ -56,8 +58,8 @@ from diffusers.pipelines.photon import PhotonPipeline
 pipe = PhotonPipeline.from_pretrained("Photoroom/photon-512-t2i-sft", torch_dtype=torch.bfloat16)
 pipe.to("cuda")
 
-prompt = "A vibrant night sky filled with colorful fireworks, with one large firework burst forming the glowing text “PRX” in bright, sparkling light"
-image = pipe(prompt, num_inference_steps=28, guidance_scale=4.0).images[0]
+prompt = "A front-facing portrait of a lion the golden savanna at sunset."
+image = pipe(prompt, num_inference_steps=28, guidance_scale=5.0).images[0]
 image.save("photon_output.png")
 ```
 
@@ -75,12 +77,12 @@ from transformers import T5GemmaModel, GemmaTokenizerFast
 
 # Load transformer
 transformer = PhotonTransformer2DModel.from_pretrained(
-    "Photoroom/photon-512-t2i", subfolder="transformer"
+    "Photoroom/photon-512-t2i-sft", subfolder="transformer"
 ).to(dtype=torch.bfloat16)
 
 # Load scheduler
 scheduler = FlowMatchEulerDiscreteScheduler.from_pretrained(
-    "Photoroom/photon-512-t2i", subfolder="scheduler"
+    "Photoroom/photon-512-t2i-sft", subfolder="scheduler"
 )
 
 # Load T5Gemma text encoder
@@ -136,7 +138,7 @@ import torch
 from diffusers.pipelines.photon import PhotonPipeline
 pipe = PhotonPipeline.from_pretrained("Photoroom/photon-512-t2i-sft", torch_dtype=torch.bfloat16)
 pipe = pipe(
-    prompt = "A vibrant night sky filled with colorful fireworks, with one large firework burst forming the glowing text “PRX” in bright, sparkling light"
+    prompt = "A front-facing portrait of a lion the golden savanna at sunset."
     num_inference_steps=28,
     guidance_scale=4.0,
     height=512,
@@ -153,7 +155,7 @@ For memory-constrained environments:
 import torch
 from diffusers.pipelines.photon import PhotonPipeline
 
-pipe = PhotonPipeline.from_pretrained("Photoroom/photon-512-t2i", torch_dtype=torch.bfloat16)
+pipe = PhotonPipeline.from_pretrained("Photoroom/photon-512-t2i-sft", torch_dtype=torch.bfloat16)
 pipe.enable_model_cpu_offload()  # Offload components to CPU when not in use
 
 # Or use sequential CPU offload for even lower memory
