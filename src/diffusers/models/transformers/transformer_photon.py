@@ -19,7 +19,7 @@ from torch import Tensor, nn
 from torch.nn.functional import fold, unfold
 
 from ...configuration_utils import ConfigMixin, register_to_config
-from ...utils import USE_PEFT_BACKEND, logging, scale_lora_layers, unscale_lora_layers
+from ...utils import logging
 from ..attention import AttentionMixin
 from ..attention_processor import Attention
 from ..embeddings import get_timestep_embedding
@@ -515,8 +515,7 @@ def seq2img(seq: Tensor, patch_size: int, shape: Tensor) -> Tensor:
 
 class PhotonTransformer2DModel(ModelMixin, ConfigMixin, AttentionMixin):
     r"""
-    Transformer-based 2D model for text to image generation. It supports attention processor injection and LoRA
-    scaling.
+    Transformer-based 2D model for text to image generation.
 
     Parameters:
         in_channels (`int`, *optional*, defaults to 16):
@@ -677,8 +676,7 @@ class PhotonTransformer2DModel(ModelMixin, ConfigMixin, AttentionMixin):
             cross_attn_mask (`torch.Tensor`, *optional*):
                 Boolean mask of shape `(B, L_txt)`, where `0` marks padding in the text sequence.
             attention_kwargs (`dict`, *optional*):
-                Additional arguments passed to attention layers. If using the PEFT backend, the key `"scale"` controls
-                LoRA scaling (default: 1.0).
+                Additional arguments passed to attention layers.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether to return a `Transformer2DModelOutput` or a tuple.
 
@@ -687,21 +685,6 @@ class PhotonTransformer2DModel(ModelMixin, ConfigMixin, AttentionMixin):
 
                 - `sample` (`torch.Tensor`): Output latent image of shape `(B, C, H, W)`.
         """
-        if attention_kwargs is not None:
-            attention_kwargs = attention_kwargs.copy()
-            lora_scale = attention_kwargs.pop("scale", 1.0)
-        else:
-            lora_scale = 1.0
-
-        if USE_PEFT_BACKEND:
-            # weight the lora layers by setting `lora_scale` for each PEFT layer
-            scale_lora_layers(self, lora_scale)
-        else:
-            if attention_kwargs is not None and attention_kwargs.get("scale", None) is not None:
-                logger.warning(
-                    "Passing `scale` via `attention_kwargs` when not using the PEFT backend is ineffective."
-                )
-
         # Process text conditioning
         txt = self.txt_in(cross_attn_conditioning)
 
@@ -740,10 +723,6 @@ class PhotonTransformer2DModel(ModelMixin, ConfigMixin, AttentionMixin):
         # Final layer and convert back to image
         img = self.final_layer(img, vec)
         output = seq2img(img, self.patch_size, image_latent.shape)
-
-        if USE_PEFT_BACKEND:
-            # remove `lora_scale` from each PEFT layer
-            unscale_lora_layers(self, lora_scale)
 
         if not return_dict:
             return (output,)
