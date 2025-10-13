@@ -920,7 +920,7 @@ class AutoencoderMixin:
         compute decoding in several steps. This is useful to save some memory and allow larger batch sizes.
         """
         if not hasattr(self, "use_slicing"):
-            raise NotImplementedError(f"Tiling doesn't seem to be implemented for {self.__class__.__name__}.")
+            raise NotImplementedError(f"Slicing doesn't seem to be implemented for {self.__class__.__name__}.")
         self.use_slicing = True
 
     def disable_slicing(self):
