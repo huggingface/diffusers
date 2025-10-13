@@ -17,7 +17,7 @@ import functools
 import inspect
 import math
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Literal, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Literal, Optional, Set, Tuple, Union
 
 import torch
 
@@ -78,17 +78,8 @@ else:
     flash_attn_3_func = None
     flash_attn_3_varlen_func = None
 
-if DIFFUSERS_ENABLE_HUB_KERNELS:
-    if not is_kernels_available():
-        raise ImportError(
-            "To use FA3 kernel for your hardware from the Hub, the `kernels` library must be installed. Install with `pip install kernels`."
-        )
-    from ..utils.kernels_utils import _get_fa3_from_hub
-
-    flash_attn_interface_hub = _get_fa3_from_hub()
-    flash_attn_3_func_hub = flash_attn_interface_hub.flash_attn_func
-else:
-    flash_attn_3_func_hub = None
+flash_attn_3_func_hub = None
+_PREPARED_BACKENDS: Set["AttentionBackendName"] = set()
 
 if _CAN_USE_SAGE_ATTN:
     from sageattention import (
@@ -231,7 +222,9 @@ class _AttentionBackendRegistry:
 
     @classmethod
     def get_active_backend(cls):
-        return cls._active_backend, cls._backends[cls._active_backend]
+        backend = cls._active_backend
+        _ensure_attention_backend_ready(backend)
+        return backend, cls._backends[backend]
 
     @classmethod
     def list_backends(cls):
@@ -258,7 +251,7 @@ def attention_backend(backend: Union[str, AttentionBackendName] = AttentionBacke
         raise ValueError(f"Backend {backend} is not registered.")
 
     backend = AttentionBackendName(backend)
-    _check_attention_backend_requirements(backend)
+    _ensure_attention_backend_ready(backend)
 
     old_backend = _AttentionBackendRegistry._active_backend
     _AttentionBackendRegistry._active_backend = backend
@@ -450,6 +443,39 @@ def _check_attention_backend_requirements(backend: AttentionBackendName) -> None
             raise RuntimeError(
                 f"Xformers Attention backend '{backend.value}' is not usable because of missing package or the version is too old. Please install `xformers>={_REQUIRED_XFORMERS_VERSION}`."
             )
+
+
+def _ensure_flash_attn_3_func_hub_loaded():
+    global flash_attn_3_func_hub
+
+    if flash_attn_3_func_hub is not None:
+        return flash_attn_3_func_hub
+
+    from ..utils.kernels_utils import _get_fa3_from_hub
+
+    flash_attn_interface_hub = _get_fa3_from_hub()
+    flash_attn_3_func_hub = flash_attn_interface_hub.flash_attn_func
+
+    return flash_attn_3_func_hub
+
+
+_BACKEND_PREPARERS: Dict[AttentionBackendName, Callable[[], None]] = {
+    AttentionBackendName._FLASH_3_HUB: _ensure_flash_attn_3_func_hub_loaded,
+}
+
+
+def _prepare_attention_backend(backend: AttentionBackendName) -> None:
+    preparer = _BACKEND_PREPARERS.get(backend)
+    if preparer is not None:
+        preparer()
+
+
+def _ensure_attention_backend_ready(backend: AttentionBackendName) -> None:
+    if backend in _PREPARED_BACKENDS:
+        return
+    _check_attention_backend_requirements(backend)
+    _prepare_attention_backend(backend)
+    _PREPARED_BACKENDS.add(backend)
 
 
 @functools.lru_cache(maxsize=128)
@@ -1322,7 +1348,8 @@ def _flash_attention_3_hub(
     return_attn_probs: bool = False,
     _parallel_config: Optional["ParallelConfig"] = None,
 ) -> torch.Tensor:
-    out = flash_attn_3_func_hub(
+    func = flash_attn_3_func_hub or _ensure_flash_attn_3_func_hub_loaded()
+    out = func(
         q=query,
         k=key,
         v=value,
