@@ -114,9 +114,9 @@ jobs:
 
     - name: Install dependencies
       run: |
-        uv pip install -e ".[quality]"
-        uv pip uninstall transformers huggingface_hub && uv pip install --prerelease allow -U transformers@git+https://github.com/huggingface/transformers.git
-        uv pip uninstall accelerate && uv pip install -U accelerate@git+https://github.com/huggingface/accelerate.git --no-deps
+        uv pip install --prerelease=allow -e ".[quality]"
+        uv pip uninstall transformers huggingface_hub && uv pip install --prerelease=allow --prerelease allow -U transformers@git+https://github.com/huggingface/transformers.git
+        uv pip uninstall accelerate && uv pip install --prerelease=allow -U accelerate@git+https://github.com/huggingface/accelerate.git --no-deps
 
     - name: Environment
       run: |
@@ -141,7 +141,7 @@ jobs:
     - name: Run example PyTorch CPU tests
       if: ${{ matrix.config.framework == 'pytorch_examples' }}
       run: |
-        uv pip install ".[training]"
+        uv pip install --prerelease=allow ".[training]"
         pytest -n 4 --max-worker-restart=0 --dist=loadfile \
           --make-reports=tests_${{ matrix.config.report }} \
           examples
@@ -190,7 +190,7 @@ jobs:
 
     - name: Install dependencies
       run: |
-        uv pip install -e ".[quality]"
+        uv pip install --prerelease=allow -e ".[quality]"
 
     - name: Environment
       run: |
@@ -241,12 +241,12 @@ jobs:
 
     - name: Install dependencies
       run: |
-        uv pip install -e ".[quality]"
+        uv pip install --prerelease=allow -e ".[quality]"
         # TODO (sayakpaul, DN6): revisit `--no-deps`
-        uv pip install -U peft@git+https://github.com/huggingface/peft.git --no-deps
-        uv pip install -U tokenizers
-        uv pip uninstall accelerate && uv pip install -U accelerate@git+https://github.com/huggingface/accelerate.git --no-deps
-        uv pip uninstall transformers huggingface_hub && uv pip install --prerelease allow -U transformers@git+https://github.com/huggingface/transformers.git
+        uv pip install --prerelease=allow -U peft@git+https://github.com/huggingface/peft.git --no-deps
+        uv pip install --prerelease=allow -U tokenizers
+        uv pip uninstall accelerate && uv pip install --prerelease=allow -U accelerate@git+https://github.com/huggingface/accelerate.git --no-deps
+        uv pip uninstall transformers huggingface_hub && uv pip install --prerelease=allow --prerelease allow -U transformers@git+https://github.com/huggingface/transformers.git
 
     - name: Environment
       run: |

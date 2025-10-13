@@ -63,8 +63,8 @@ jobs:
 
       - name: Install pytest
         run: |
-          uv pip install -e ".[quality]"
-          uv pip install peft
+          uv pip install --prerelease=allow -e ".[quality]"
+          uv pip install --prerelease=allow peft
 
       - name: Run tests
         env:
