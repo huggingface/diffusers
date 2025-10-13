@@ -406,14 +406,14 @@ def _check_attention_backend_requirements(backend: AttentionBackendName) -> None
             )
 
     # TODO: add support Hub variant of FA3 varlen later
-    elif backend in [AttentionBackendName._FLASH_3_HUB]:
+    elif backend in [AttentionBackendName._FLASH_3_HUB, AttentionBackendName.SAGE_HUB]:
         if not DIFFUSERS_ENABLE_HUB_KERNELS:
             raise RuntimeError(
-                f"Flash Attention 3 Hub backend '{backend.value}' is not usable because the `DIFFUSERS_ENABLE_HUB_KERNELS` env var isn't set. Please set it like `export DIFFUSERS_ENABLE_HUB_KERNELS=yes`."
+                f"Attention backend '{backend.value}' is not usable because the `DIFFUSERS_ENABLE_HUB_KERNELS` env var isn't set. Please set it like `export DIFFUSERS_ENABLE_HUB_KERNELS=yes`."
             )
         if not is_kernels_available():
             raise RuntimeError(
-                f"Flash Attention 3 Hub backend '{backend.value}' is not usable because the `kernels` package isn't available. Please install it with `pip install kernels`."
+                f"Attention backend '{backend.value}' is not usable because the `kernels` package isn't available. Please install it with `pip install kernels`."
             )
 
     elif backend in [
