@@ -255,9 +255,6 @@ class QwenImageEditPlusPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
         if image is None:
             images_for_processor = None
         else:
-            # If `image` is a single image (not list) the processor will broadcast it.
-            # If `image` is a list of conditioning images, we must repeat that list
-            # for each prompt so processor has one entry per text example.
             if isinstance(image, list):
                 images_for_processor = [image] * len(txt)
             else:
@@ -638,7 +635,7 @@ class QwenImageEditPlusPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
             [`~pipelines.qwenimage.QwenImagePipelineOutput`] if `return_dict` is True, otherwise a `tuple`. When
             returning a tuple, the first element is a list with the generated images.
         """
-        # Use the first image's size as the deterministic base for output dims
+
         ref_img = image[0] if isinstance(image, list) else image
         if isinstance(ref_img, (tuple, list)):
             ref_img = ref_img[0]
