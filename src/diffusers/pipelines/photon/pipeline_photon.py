@@ -276,10 +276,10 @@ class PhotonPipeline(
 
         self.register_to_config(default_sample_size=default_sample_size)
 
-        self.image_processor = PixArtImageProcessor(vae_scale_factor=self.vae_spatial_compression_ratio)
+        self.image_processor = PixArtImageProcessor(vae_scale_factor=self.vae_scale_factor)
 
     @property
-    def vae_spatial_compression_ratio(self):
+    def vae_scale_factor(self):
         if hasattr(self.vae, "spatial_compression_ratio"):
             return self.vae.spatial_compression_ratio
         else:  # Flux VAE
@@ -303,7 +303,7 @@ class PhotonPipeline(
     ):
         """Prepare initial latents for the diffusion process."""
         if latents is None:
-            spatial_compression = self.vae_spatial_compression_ratio
+            spatial_compression = self.vae_scale_factor
             latent_height, latent_width = (
                 height // spatial_compression,
                 width // spatial_compression,
@@ -387,7 +387,7 @@ class PhotonPipeline(
         callback_on_step_end_tensor_inputs: Optional[List[str]] = None,
     ):
         """Check that all inputs are in correct format."""
-        spatial_compression = self.vae_spatial_compression_ratio
+        spatial_compression = self.vae_scale_factor
         if height % spatial_compression != 0 or width % spatial_compression != 0:
             raise ValueError(
                 f"`height` and `width` have to be divisible by {spatial_compression} but are {height} and {width}."
