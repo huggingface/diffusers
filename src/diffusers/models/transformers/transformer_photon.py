@@ -292,24 +292,7 @@ class PhotonBlock(nn.Module):
             Produces scale/shift/gating parameters for modulated layers.
 
         Methods:
-        attn_forward(img, txt, pe, modulation, attention_mask=None):
-            Compute cross-attention between image and text tokens, with optional attention masking.
-
-            Parameters:
-                img (`torch.Tensor`):
-                    Image tokens of shape `(B, L_img, hidden_size)`.
-                txt (`torch.Tensor`):
-                    Text tokens of shape `(B, L_txt, hidden_size)`.
-                pe (`torch.Tensor`):
-                    Rotary positional embeddings to apply to queries and keys.
-                modulation ((`torch.Tensor`, `torch.Tensor`, `torch.Tensor`)):
-                    Tuple `(shift, scale, gate)` for modulating image tokens.
-                attention_mask (`torch.Tensor`, *optional*):
-                    Boolean mask of shape `(B, L_txt)` where 0 marks padding.
-
-            Returns:
-                `torch.Tensor`:
-                    Attention output of shape `(B, L_img, hidden_size)`.
+            The forward method performs cross-attention and the MLP inline with modulation.
     """
 
     def __init__(
@@ -356,78 +339,7 @@ class PhotonBlock(nn.Module):
 
         self.modulation = Modulation(hidden_size)
 
-    def _attn_forward(
-        self,
-        img: Tensor,
-        txt: Tensor,
-        pe: Tensor,
-        modulation: tuple[Tensor, Tensor, Tensor],
-        attention_mask: None | Tensor = None,
-    ) -> Tensor:
-        # image tokens proj and norm
-        shift, scale, _gate = modulation
-        img_mod = (1 + scale) * self.img_pre_norm(img) + shift
 
-        img_qkv = self.img_qkv_proj(img_mod)
-        # Native PyTorch equivalent of: rearrange(img_qkv, "B L (K H D) -> K B H L D", K=3, H=self.num_heads)
-        B, L, _ = img_qkv.shape
-        img_qkv = img_qkv.reshape(B, L, 3, self.num_heads, self.head_dim)  # (B, L, K, H, D)
-        img_qkv = img_qkv.permute(2, 0, 3, 1, 4)  # (K, B, H, L, D)
-        img_q, img_k, img_v = img_qkv[0], img_qkv[1], img_qkv[2]
-        img_q, img_k = self.qk_norm(img_q, img_k, img_v)
-
-        # txt tokens proj and norm
-        txt_kv = self.txt_kv_proj(txt)
-        # Native PyTorch equivalent of: rearrange(txt_kv, "B L (K H D) -> K B H L D", K=2, H=self.num_heads)
-        B, L, _ = txt_kv.shape
-        txt_kv = txt_kv.reshape(B, L, 2, self.num_heads, self.head_dim)  # (B, L, K, H, D)
-        txt_kv = txt_kv.permute(2, 0, 3, 1, 4)  # (K, B, H, L, D)
-        txt_k, txt_v = txt_kv[0], txt_kv[1]
-        txt_k = self.k_norm(txt_k)
-
-        # compute attention
-        img_q, img_k = apply_rope(img_q, pe), apply_rope(img_k, pe)
-        k = torch.cat((txt_k, img_k), dim=2)
-        v = torch.cat((txt_v, img_v), dim=2)
-
-        # build multiplicative 0/1 mask for provided attention_mask over [cond?, text, image] keys
-        attn_mask: Tensor | None = None
-        if attention_mask is not None:
-            bs, _, l_img, _ = img_q.shape
-            l_txt = txt_k.shape[2]
-
-            if attention_mask.dim() != 2:
-                raise ValueError(f"Unsupported attention_mask shape: {attention_mask.shape}")
-            if attention_mask.shape[-1] != l_txt:
-                raise ValueError(f"attention_mask last dim {attention_mask.shape[-1]} must equal text length {l_txt}")
-
-            device = img_q.device
-
-            ones_img = torch.ones((bs, l_img), dtype=torch.bool, device=device)
-
-            mask_parts = [
-                attention_mask.to(torch.bool),
-                ones_img,
-            ]
-            joint_mask = torch.cat(mask_parts, dim=-1)  # (B, L_all)
-
-            # repeat across heads and query positions
-            attn_mask = joint_mask[:, None, None, :].expand(-1, self.num_heads, l_img, -1)  # (B,H,L_img,L_all)
-
-        kv_packed = torch.cat([k, v], dim=-1)
-
-        attn = self.attention(
-            hidden_states=img_q,
-            encoder_hidden_states=kv_packed,
-            attention_mask=attn_mask,
-        )
-
-        return attn
-
-    def _ffn_forward(self, x: Tensor, modulation: tuple[Tensor, Tensor, Tensor]) -> Tensor:
-        shift, scale, _gate = modulation
-        x = (1 + scale) * self.post_attention_layernorm(x) + shift
-        return self.down_proj(self.mlp_act(self.gate_proj(x)) * self.up_proj(x))
 
     def forward(
         self,
@@ -465,14 +377,54 @@ class PhotonBlock(nn.Module):
         attn_shift, attn_scale, attn_gate = mod_attn
         mlp_shift, mlp_scale, mlp_gate = mod_mlp
 
-        img = img + attn_gate * self._attn_forward(
-            img,
-            txt,
-            pe,
-            (attn_shift, attn_scale, attn_gate),
-            attention_mask=attention_mask,
+        # Inline attention forward
+        img_mod = (1 + attn_scale) * self.img_pre_norm(img) + attn_shift
+
+        img_qkv = self.img_qkv_proj(img_mod)
+        B, L, _ = img_qkv.shape
+        img_qkv = img_qkv.reshape(B, L, 3, self.num_heads, self.head_dim)
+        img_qkv = img_qkv.permute(2, 0, 3, 1, 4)
+        img_q, img_k, img_v = img_qkv[0], img_qkv[1], img_qkv[2]
+        img_q, img_k = self.qk_norm(img_q, img_k, img_v)
+
+        txt_kv = self.txt_kv_proj(txt)
+        B, L, _ = txt_kv.shape
+        txt_kv = txt_kv.reshape(B, L, 2, self.num_heads, self.head_dim)
+        txt_kv = txt_kv.permute(2, 0, 3, 1, 4)
+        txt_k, txt_v = txt_kv[0], txt_kv[1]
+        txt_k = self.k_norm(txt_k)
+
+        img_q, img_k = apply_rope(img_q, pe), apply_rope(img_k, pe)
+        k = torch.cat((txt_k, img_k), dim=2)
+        v = torch.cat((txt_v, img_v), dim=2)
+
+        attn_mask_tensor: Tensor | None = None
+        if attention_mask is not None:
+            bs, _, l_img, _ = img_q.shape
+            l_txt = txt_k.shape[2]
+
+            if attention_mask.dim() != 2:
+                raise ValueError(f"Unsupported attention_mask shape: {attention_mask.shape}")
+            if attention_mask.shape[-1] != l_txt:
+                raise ValueError(f"attention_mask last dim {attention_mask.shape[-1]} must equal text length {l_txt}")
+
+            device = img_q.device
+            ones_img = torch.ones((bs, l_img), dtype=torch.bool, device=device)
+            joint_mask = torch.cat([attention_mask.to(torch.bool), ones_img], dim=-1)
+            attn_mask_tensor = joint_mask[:, None, None, :].expand(-1, self.num_heads, l_img, -1)
+
+        kv_packed = torch.cat([k, v], dim=-1)
+        attn_out = self.attention(
+            hidden_states=img_q,
+            encoder_hidden_states=kv_packed,
+            attention_mask=attn_mask_tensor,
         )
-        img = img + mlp_gate * self._ffn_forward(img, (mlp_shift, mlp_scale, mlp_gate))
+
+        img = img + attn_gate * attn_out
+
+        # Inline FFN forward
+        x = (1 + mlp_scale) * self.post_attention_layernorm(img) + mlp_shift
+        img = img + mlp_gate * (self.down_proj(self.mlp_act(self.gate_proj(x)) * self.up_proj(x)))
         return img
 
 
