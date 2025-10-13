@@ -78,7 +78,7 @@ else:
     flash_attn_3_func = None
     flash_attn_3_varlen_func = None
 
-flash_attn_3_func_hub = None
+_BACKEND_HANDLES: Dict["AttentionBackendName", Callable] = {}
 _PREPARED_BACKENDS: Set["AttentionBackendName"] = set()
 
 if _CAN_USE_SAGE_ATTN:
@@ -446,17 +446,17 @@ def _check_attention_backend_requirements(backend: AttentionBackendName) -> None
 
 
 def _ensure_flash_attn_3_func_hub_loaded():
-    global flash_attn_3_func_hub
-
-    if flash_attn_3_func_hub is not None:
-        return flash_attn_3_func_hub
+    cached = _BACKEND_HANDLES.get(AttentionBackendName._FLASH_3_HUB)
+    if cached is not None:
+        return cached
 
     from ..utils.kernels_utils import _get_fa3_from_hub
 
     flash_attn_interface_hub = _get_fa3_from_hub()
-    flash_attn_3_func_hub = flash_attn_interface_hub.flash_attn_func
+    func = flash_attn_interface_hub.flash_attn_func
+    _BACKEND_HANDLES[AttentionBackendName._FLASH_3_HUB] = func
 
-    return flash_attn_3_func_hub
+    return func
 
 
 _BACKEND_PREPARERS: Dict[AttentionBackendName, Callable[[], None]] = {
@@ -1348,7 +1348,9 @@ def _flash_attention_3_hub(
     return_attn_probs: bool = False,
     _parallel_config: Optional["ParallelConfig"] = None,
 ) -> torch.Tensor:
-    func = flash_attn_3_func_hub or _ensure_flash_attn_3_func_hub_loaded()
+    func = _BACKEND_HANDLES.get(AttentionBackendName._FLASH_3_HUB)
+    if func is None:
+        func = _ensure_flash_attn_3_func_hub_loaded()
     out = func(
         q=query,
         k=key,
