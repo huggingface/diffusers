@@ -172,10 +172,10 @@ def create_transformer_from_checkpoint(checkpoint_path: str, config: dict) -> Ph
     return transformer
 
 
-def create_scheduler_config(output_path: str):
+def create_scheduler_config(output_path: str, shift: float):
     """Create FlowMatchEulerDiscreteScheduler config."""
 
-    scheduler_config = {"_class_name": "FlowMatchEulerDiscreteScheduler", "num_train_timesteps": 1000, "shift": 1.0}
+    scheduler_config = {"_class_name": "FlowMatchEulerDiscreteScheduler", "num_train_timesteps": 1000, "shift": shift}
 
     scheduler_path = os.path.join(output_path, "scheduler")
     os.makedirs(scheduler_path, exist_ok=True)
@@ -207,6 +207,7 @@ def download_and_save_vae(vae_type: str, output_path: str):
 def download_and_save_text_encoder(output_path: str):
     """Download and save T5Gemma text encoder and tokenizer."""
     from transformers import GemmaTokenizerFast
+    from transformers.models.t5gemma.modeling_t5gemma import T5GemmaModel
 
     text_encoder_path = os.path.join(output_path, "text_encoder")
     tokenizer_path = os.path.join(output_path, "tokenizer")
@@ -214,14 +215,11 @@ def download_and_save_text_encoder(output_path: str):
     os.makedirs(tokenizer_path, exist_ok=True)
 
     print("Downloading T5Gemma model from google/t5gemma-2b-2b-ul2...")
-    from transformers.models.t5gemma.modeling_t5gemma import T5GemmaModel
-
     t5gemma_model = T5GemmaModel.from_pretrained("google/t5gemma-2b-2b-ul2")
 
-    # Save only the encoder
-    encoder = t5gemma_model.encoder
-    encoder.save_pretrained(text_encoder_path)
-
+    # Extract and save only the encoder
+    t5gemma_encoder = t5gemma_model.encoder
+    t5gemma_encoder.save_pretrained(text_encoder_path)
     print(f"✓ Saved T5GemmaEncoder to {text_encoder_path}")
 
     print("Downloading tokenizer from google/t5gemma-2b-2b-ul2...")
@@ -284,7 +282,7 @@ def main(args):
     print(f"✓ Saved transformer to {transformer_path}")
 
     # Create scheduler config
-    create_scheduler_config(args.output_path)
+    create_scheduler_config(args.output_path, args.shift)
 
     download_and_save_vae(args.vae_type, args.output_path)
     download_and_save_text_encoder(args.output_path)
@@ -341,6 +339,13 @@ if __name__ == "__main__":
         choices=[256, 512, 1024],
         default=DEFAULT_RESOLUTION,
         help="Target resolution for the model (256, 512, or 1024). Affects the transformer's sample_size.",
+    )
+    
+    parser.add_argument(
+        "--shift",
+        type=float,
+        default=3.0,
+        help="Shift for the scheduler",
     )
 
     args = parser.parse_args()
