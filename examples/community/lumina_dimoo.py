@@ -1960,8 +1960,6 @@ class LuminaDiMOOPipeline(DiffusionPipeline):
             An `AutoTokenizer` to tokenize text prompts.
     """
 
-    model_cpu_offload_seq = "llm->vqvae"
-
     def __init__(
         self,
         vqvae: VQModel,
@@ -2349,7 +2347,6 @@ class LuminaDiMOOPipeline(DiffusionPipeline):
 
 
     @torch.no_grad()
-    @replace_example_docstring(EXAMPLE_DOC_STRING)
     def _image_to_image(
         self,
         prompt: str,
@@ -2362,29 +2359,6 @@ class LuminaDiMOOPipeline(DiffusionPipeline):
         cfg_img: float = 4.0,
         output_type: Optional[str] = "pil",
     ):
-        """
-        The call function to the pipeline for generation.
-
-        Args:
-            prompt (`str`):
-                The prompt to guide image generation.
-            image (`PIL.Image.Image` or `str`):
-                The input image for image-to-image generation. Can be a PIL Image or a path to an image file.
-            ref_image (`PIL.Image.Image` or `str`, *optional*):
-                The reference image for style transfer. Can be a PIL Image or a path to an image file.
-            edit_type (`str`, *optional*, defaults to `"canny_pred"`):
-                The type of image-to-image editing to perform.
-            num_inference_steps (`int`, *optional*, defaults to 64):
-                The number of denoising steps. More steps usually lead to a higher quality image at the expense of
-                slower inference.
-            temperature (`float`, *optional*, defaults to 1.0):
-                The temperature for sampling. A higher temperature introduces more randomness. 0 for deterministic.
-            cfg_scale (`float`, *optional*, defaults to 2.5):
-                Classifier-Free Guidance scale for text conditioning.
-            cfg_img (`float`, *optional*, defaults to 4.0):
-                Classifier-Free Guidance scale for image conditioning.
-
-        """
         
         if isinstance(prompt, list):
             raise ValueError("Batching is not supported for this pipeline.")

@@ -5558,17 +5558,21 @@ import torch
 from diffusers import VQModel, DiffusionPipeline
 from transformers import AutoTokenizer
 
+vqvae = VQModel.from_pretrained("Alpha-VLLM/Lumina-DiMOO", subfolder="vqvae").to(device='cuda', dtype=torch.bfloat16)
+tokenizer = AutoTokenizer.from_pretrained("Alpha-VLLM/Lumina-DiMOO", trust_remote_code=True)
+
 pipe = DiffusionPipeline.from_pretrained(
     "Alpha-VLLM/Lumina-DiMOO",
+    vqvae=vqvae,
+    tokenizer=tokenizer,
     torch_dtype=torch.bfloat16,
-    device_map="auto",
     custom_pipeline="lumina_dimoo",
 )
 pipe.to("cuda")
 
 prompt = '''A striking photograph of a glass of orange juice on a wooden kitchen table, capturing a playful moment. The orange juice splashes out of the glass and forms the word \"Smile\" in a whimsical, swirling script just above the glass. The background is softly blurred, revealing a cozy, homely kitchen with warm lighting and a sense of comfort.'''
 
-out = pipe(
+img = pipe(
     prompt=prompt,
     task="text_to_image",
     height=768,
@@ -5579,7 +5583,7 @@ out = pipe(
     cache_ratio=0.9, 
     warmup_ratio=0.3,
     refresh_interval=5
-)
+).images[0]
 
 img.save("t2i_test_output.png")
 ```
@@ -5596,11 +5600,14 @@ from diffusers import VQModel, DiffusionPipeline
 from transformers import AutoTokenizer
 from diffusers.utils import load_image
 
+vqvae = VQModel.from_pretrained("Alpha-VLLM/Lumina-DiMOO", subfolder="vqvae").to(device='cuda', dtype=torch.bfloat16)
+tokenizer = AutoTokenizer.from_pretrained("Alpha-VLLM/Lumina-DiMOO", trust_remote_code=True)
 
 pipe = DiffusionPipeline.from_pretrained(
     "Alpha-VLLM/Lumina-DiMOO",
+    vqvae=vqvae,
+    tokenizer=tokenizer,
     torch_dtype=torch.bfloat16,
-    device_map="auto",
     custom_pipeline="lumina_dimoo",
 )
 pipe.to("cuda")
@@ -5611,8 +5618,7 @@ input_image = load_image(
 
 prompt = "A functional wooden printer stand.Nestled next to a brick wall in a bustling city street, it stands firm as pedestrians hustle by, illuminated by the warm glow of vintage street lamps."
 
-
-out = pipe(
+img = pipe(
     prompt=prompt,
     image=input_image,
     edit_type="depth_control",
@@ -5621,9 +5627,10 @@ out = pipe(
     cfg_scale=2.5,
     cfg_img=4.0,
     task="image_to_image"
-)
+).images[0]
 
 img.save("i2i_test_output.png")
+
 ```
 
 
@@ -5640,11 +5647,14 @@ from diffusers import VQModel, DiffusionPipeline
 from transformers import AutoTokenizer
 from diffusers.utils import load_image
 
+vqvae = VQModel.from_pretrained("Alpha-VLLM/Lumina-DiMOO", subfolder="vqvae").to(device='cuda', dtype=torch.bfloat16)
+tokenizer = AutoTokenizer.from_pretrained("Alpha-VLLM/Lumina-DiMOO", trust_remote_code=True)
 
 pipe = DiffusionPipeline.from_pretrained(
     "Alpha-VLLM/Lumina-DiMOO",
+    vqvae=vqvae,
+    tokenizer=tokenizer,
     torch_dtype=torch.bfloat16,
-    device_map="auto",
     custom_pipeline="lumina_dimoo",
 )
 pipe.to("cuda")
@@ -5666,7 +5676,9 @@ out = pipe(
     cfg_scale=0.0,
 )
 
-img.save("mmu_answer.txt")
+text = getattr(out, "text", out)
+with open("mmu_answer.txt", "w", encoding="utf-8") as f:
+    f.write(text.strip() + "\n")
 ```
 
 
