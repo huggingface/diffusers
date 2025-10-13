@@ -201,7 +201,7 @@ def apply_rotary(x, rope):
     return x_out.reshape(*x.shape).to(torch.bfloat16)
 
 
-class TimeEmbeddings(nn.Module):
+class Kandinsky5TimeEmbeddings(nn.Module):
     def __init__(self, model_dim, time_dim, max_period=10000.0):
         super().__init__()
         assert model_dim % 2 == 0
@@ -225,7 +225,7 @@ class TimeEmbeddings(nn.Module):
         self.freqs = get_freqs(self.model_dim // 2, self.max_period)
 
 
-class TextEmbeddings(nn.Module):
+class Kandinsky5TextEmbeddings(nn.Module):
     def __init__(self, text_dim, model_dim):
         super().__init__()
         self.in_layer = nn.Linear(text_dim, model_dim, bias=True)
@@ -236,7 +236,7 @@ class TextEmbeddings(nn.Module):
         return self.norm(text_embed).type_as(text_embed)
 
 
-class VisualEmbeddings(nn.Module):
+class Kandinsky5VisualEmbeddings(nn.Module):
     def __init__(self, visual_dim, model_dim, patch_size):
         super().__init__()
         self.patch_size = patch_size
@@ -261,7 +261,7 @@ class VisualEmbeddings(nn.Module):
         return self.in_layer(x)
 
 
-class RoPE1D(nn.Module):
+class Kandinsky5RoPE1D(nn.Module):
     def __init__(self, dim, max_pos=1024, max_period=10000.0):
         super().__init__()
         self.max_period = max_period
@@ -286,7 +286,7 @@ class RoPE1D(nn.Module):
         self.args = torch.outer(pos, freq)
 
 
-class RoPE3D(nn.Module):
+class Kandinsky5RoPE3D(nn.Module):
     def __init__(self, axes_dims, max_pos=(128, 128, 128), max_period=10000.0):
         super().__init__()
         self.axes_dims = axes_dims
@@ -326,7 +326,7 @@ class RoPE3D(nn.Module):
             setattr(self, f'args_{i}',  torch.outer(pos, freq))
 
 
-class Modulation(nn.Module):
+class Kandinsky5Modulation(nn.Module):
     def __init__(self, time_dim, model_dim, num_params):
         super().__init__()
         self.activation = nn.SiLU()
@@ -338,95 +338,42 @@ class Modulation(nn.Module):
     def forward(self, x):
         return self.out_layer(self.activation(x))
 
+
+class Kandinsky5SDPAAttentionProcessor(nn.Module):
+    """Custom attention processor for standard SDPA attention"""
     
-class MultiheadSelfAttentionEnc(nn.Module):
-    def __init__(self, num_channels, head_dim):
-        super().__init__()
-        assert num_channels % head_dim == 0
-        self.num_heads = num_channels // head_dim
-
-        self.to_query = nn.Linear(num_channels, num_channels, bias=True)
-        self.to_key = nn.Linear(num_channels, num_channels, bias=True)
-        self.to_value = nn.Linear(num_channels, num_channels, bias=True)
-        self.query_norm = nn.RMSNorm(head_dim)
-        self.key_norm = nn.RMSNorm(head_dim)
-
-        self.out_layer = nn.Linear(num_channels, num_channels, bias=True)
-
-    def get_qkv(self, x):
-        query = self.to_query(x)
-        key = self.to_key(x)
-        value = self.to_value(x)
-
-        shape = query.shape[:-1]
-        query = query.reshape(*shape, self.num_heads, -1)
-        key = key.reshape(*shape, self.num_heads, -1)
-        value = value.reshape(*shape, self.num_heads, -1)
-
-        return query, key, value
-
-    def norm_qk(self, q, k):
-        q = self.query_norm(q.float()).type_as(q)
-        k = self.key_norm(k.float()).type_as(k)
-        return q, k
-
-    def scaled_dot_product_attention(self, query, key, value):
+    def __call__(
+        self,
+        attn,
+        query,
+        key,
+        value,
+        **kwargs,
+    ):
+        # Process attention with the given query, key, value tensors
         out = sdpa(q=query, k=key, v=value).flatten(-2, -1)
         return out
 
-    def out_l(self, x):
-        return self.out_layer(x)
 
-    def forward(self, x, rope):
-        query, key, value = self.get_qkv(x)
-        query, key = self.norm_qk(query, key)
-        query = apply_rotary(query, rope).type_as(query)
-        key = apply_rotary(key, rope).type_as(key)
-
-        out = self.scaled_dot_product_attention(query, key, value)
-
-        out = self.out_l(out)
-        return out
-
-class MultiheadSelfAttentionDec(nn.Module):
-    def __init__(self, num_channels, head_dim):
-        super().__init__()
-        assert num_channels % head_dim == 0
-        self.num_heads = num_channels // head_dim
-
-        self.to_query = nn.Linear(num_channels, num_channels, bias=True)
-        self.to_key = nn.Linear(num_channels, num_channels, bias=True)
-        self.to_value = nn.Linear(num_channels, num_channels, bias=True)
-        self.query_norm = nn.RMSNorm(head_dim)
-        self.key_norm = nn.RMSNorm(head_dim)
-
-        self.out_layer = nn.Linear(num_channels, num_channels, bias=True)
-
-    def get_qkv(self, x):
-        query = self.to_query(x)
-        key = self.to_key(x)
-        value = self.to_value(x)
-
-        shape = query.shape[:-1]
-        query = query.reshape(*shape, self.num_heads, -1)
-        key = key.reshape(*shape, self.num_heads, -1)
-        value = value.reshape(*shape, self.num_heads, -1)
-
-        return query, key, value
-
-    def norm_qk(self, q, k):
-        q = self.query_norm(q.float()).type_as(q)
-        k = self.key_norm(k.float()).type_as(k)
-        return q, k
-
-    def attention(self, query, key, value):
-        out = sdpa(q=query, k=key, v=value).flatten(-2, -1)
-        return out
+class Kandinsky5NablaAttentionProcessor(nn.Module):
+    """Custom attention processor for Nabla attention"""
     
-    def nabla(self, query, key, value, sparse_params=None):
+    def __call__(
+        self,
+        attn,
+        query,
+        key,
+        value,
+        sparse_params=None,
+        **kwargs,
+    ):
+        if sparse_params is None:
+            raise ValueError("sparse_params is required for Nabla attention")
+        
         query = query.transpose(1, 2).contiguous()
         key = key.transpose(1, 2).contiguous()
         value = value.transpose(1, 2).contiguous()
+        
         block_mask = nablaT_v2(
             query,
             key,
@@ -446,6 +393,122 @@ class MultiheadSelfAttentionDec(nn.Module):
         out = out.flatten(-2, -1)
         return out
 
+
+class Kandinsky5MultiheadSelfAttentionEnc(nn.Module):
+    def __init__(self, num_channels, head_dim):
+        super().__init__()
+        assert num_channels % head_dim == 0
+        self.num_heads = num_channels // head_dim
+
+        self.to_query = nn.Linear(num_channels, num_channels, bias=True)
+        self.to_key = nn.Linear(num_channels, num_channels, bias=True)
+        self.to_value = nn.Linear(num_channels, num_channels, bias=True)
+        self.query_norm = nn.RMSNorm(head_dim)
+        self.key_norm = nn.RMSNorm(head_dim)
+
+        self.out_layer = nn.Linear(num_channels, num_channels, bias=True)
+        
+        # Initialize attention processor
+        self.sdpa_processor = Kandinsky5SDPAAttentionProcessor()
+
+    def get_qkv(self, x):
+        query = self.to_query(x)
+        key = self.to_key(x)
+        value = self.to_value(x)
+
+        shape = query.shape[:-1]
+        query = query.reshape(*shape, self.num_heads, -1)
+        key = key.reshape(*shape, self.num_heads, -1)
+        value = value.reshape(*shape, self.num_heads, -1)
+
+        return query, key, value
+
+    def norm_qk(self, q, k):
+        q = self.query_norm(q.float()).type_as(q)
+        k = self.key_norm(k.float()).type_as(k)
+        return q, k
+
+    def scaled_dot_product_attention(self, query, key, value):
+        # Use the processor
+        return self.sdpa_processor(
+            attn=self,
+            query=query,
+            key=key,
+            value=value,
+            **{}
+        )
+
+    def out_l(self, x):
+        return self.out_layer(x)
+
+    def forward(self, x, rope):
+        query, key, value = self.get_qkv(x)
+        query, key = self.norm_qk(query, key)
+        query = apply_rotary(query, rope).type_as(query)
+        key = apply_rotary(key, rope).type_as(key)
+
+        out = self.scaled_dot_product_attention(query, key, value)
+
+        out = self.out_l(out)
+        return out
+
+
+class Kandinsky5MultiheadSelfAttentionDec(nn.Module):
+    def __init__(self, num_channels, head_dim):
+        super().__init__()
+        assert num_channels % head_dim == 0
+        self.num_heads = num_channels // head_dim
+
+        self.to_query = nn.Linear(num_channels, num_channels, bias=True)
+        self.to_key = nn.Linear(num_channels, num_channels, bias=True)
+        self.to_value = nn.Linear(num_channels, num_channels, bias=True)
+        self.query_norm = nn.RMSNorm(head_dim)
+        self.key_norm = nn.RMSNorm(head_dim)
+
+        self.out_layer = nn.Linear(num_channels, num_channels, bias=True)
+        
+        # Initialize attention processors
+        self.sdpa_processor = Kandinsky5SDPAAttentionProcessor()
+        self.nabla_processor = Kandinsky5NablaAttentionProcessor()
+
+    def get_qkv(self, x):
+        query = self.to_query(x)
+        key = self.to_key(x)
+        value = self.to_value(x)
+
+        shape = query.shape[:-1]
+        query = query.reshape(*shape, self.num_heads, -1)
+        key = key.reshape(*shape, self.num_heads, -1)
+        value = value.reshape(*shape, self.num_heads, -1)
+
+        return query, key, value
+
+    def norm_qk(self, q, k):
+        q = self.query_norm(q.float()).type_as(q)
+        k = self.key_norm(k.float()).type_as(k)
+        return q, k
+
+    def attention(self, query, key, value):
+        # Use the processor
+        return self.sdpa_processor(
+            attn=self,
+            query=query,
+            key=key,
+            value=value,
+            **{}
+        )
+    
+    def nabla(self, query, key, value, sparse_params=None):
+        # Use the processor
+        return self.nabla_processor(
+            attn=self,
+            query=query,
+            key=key,
+            value=value,
+            sparse_params=sparse_params,
+            **{}
+        )
+
     def out_l(self, x):
         return self.out_layer(x)
 
@@ -464,7 +527,7 @@ class MultiheadSelfAttentionDec(nn.Module):
         return out
 
 
-class MultiheadCrossAttention(nn.Module):
+class Kandinsky5MultiheadCrossAttention(nn.Module):
     def __init__(self, num_channels, head_dim):
         super().__init__()
         assert num_channels % head_dim == 0
@@ -477,6 +540,9 @@ class MultiheadCrossAttention(nn.Module):
         self.key_norm = nn.RMSNorm(head_dim)
 
         self.out_layer = nn.Linear(num_channels, num_channels, bias=True)
+        
+        # Initialize attention processor
+        self.sdpa_processor = Kandinsky5SDPAAttentionProcessor()
 
     def get_qkv(self, x, cond):
         query = self.to_query(x)
@@ -496,8 +562,14 @@ class MultiheadCrossAttention(nn.Module):
         return q, k
 
     def attention(self, query, key, value):
-        out = sdpa(q=query, k=key, v=value).flatten(-2, -1)
-        return out
+        # Use the processor
+        return self.sdpa_processor(
+            attn=self,
+            query=query,
+            key=key,
+            value=value,
+            **{}
+        )
 
     def out_l(self, x):
         return self.out_layer(x)
@@ -511,7 +583,7 @@ class MultiheadCrossAttention(nn.Module):
         return out
 
 
-class FeedForward(nn.Module):
+class Kandinsky5FeedForward(nn.Module):
     def __init__(self, dim, ff_dim):
         super().__init__()
         self.in_layer = nn.Linear(dim, ff_dim, bias=False)
@@ -522,11 +594,11 @@ class FeedForward(nn.Module):
         return self.out_layer(self.activation(self.in_layer(x)))
 
 
-class OutLayer(nn.Module):
+class Kandinsky5OutLayer(nn.Module):
     def __init__(self, model_dim, time_dim, visual_dim, patch_size):
         super().__init__()
         self.patch_size = patch_size
-        self.modulation = Modulation(time_dim, model_dim, 2)
+        self.modulation = Kandinsky5Modulation(time_dim, model_dim, 2)
         self.norm = nn.LayerNorm(model_dim, elementwise_affine=False)
         self.out_layer = nn.Linear(
             model_dim, math.prod(patch_size) * visual_dim, bias=True
@@ -561,19 +633,17 @@ class OutLayer(nn.Module):
         )
         return x
 
-        
-        
 
-class TransformerEncoderBlock(nn.Module):
+class Kandinsky5TransformerEncoderBlock(nn.Module):
     def __init__(self, model_dim, time_dim, ff_dim, head_dim):
         super().__init__()
-        self.text_modulation = Modulation(time_dim, model_dim, 6)
+        self.text_modulation = Kandinsky5Modulation(time_dim, model_dim, 6)
 
         self.self_attention_norm = nn.LayerNorm(model_dim, elementwise_affine=False)
-        self.self_attention = MultiheadSelfAttentionEnc(model_dim, head_dim)
+        self.self_attention = Kandinsky5MultiheadSelfAttentionEnc(model_dim, head_dim)
 
         self.feed_forward_norm = nn.LayerNorm(model_dim, elementwise_affine=False)
-        self.feed_forward = FeedForward(model_dim, ff_dim)
+        self.feed_forward = Kandinsky5FeedForward(model_dim, ff_dim)
 
     def forward(self, x, time_embed, rope):
         self_attn_params, ff_params = torch.chunk(self.text_modulation(time_embed).unsqueeze(dim=1), 2, dim=-1)
@@ -589,19 +659,19 @@ class TransformerEncoderBlock(nn.Module):
         return x
 
 
-class TransformerDecoderBlock(nn.Module):
+class Kandinsky5TransformerDecoderBlock(nn.Module):
     def __init__(self, model_dim, time_dim, ff_dim, head_dim):
         super().__init__()
-        self.visual_modulation = Modulation(time_dim, model_dim, 9)
+        self.visual_modulation = Kandinsky5Modulation(time_dim, model_dim, 9)
 
         self.self_attention_norm = nn.LayerNorm(model_dim, elementwise_affine=False)
-        self.self_attention = MultiheadSelfAttentionDec(model_dim, head_dim)
+        self.self_attention = Kandinsky5MultiheadSelfAttentionDec(model_dim, head_dim)
 
         self.cross_attention_norm = nn.LayerNorm(model_dim, elementwise_affine=False)
-        self.cross_attention = MultiheadCrossAttention(model_dim, head_dim)
+        self.cross_attention = Kandinsky5MultiheadCrossAttention(model_dim, head_dim)
 
         self.feed_forward_norm = nn.LayerNorm(model_dim, elementwise_affine=False)
-        self.feed_forward = FeedForward(model_dim, ff_dim)
+        self.feed_forward = Kandinsky5FeedForward(model_dim, ff_dim)
 
     def forward(self, visual_embed, text_embed, time_embed, rope, sparse_params):
         self_attn_params, cross_attn_params, ff_params = torch.chunk(
@@ -645,16 +715,16 @@ class Kandinsky5Transformer3DModel(ModelMixin, ConfigMixin):
         axes_dims=(16, 24, 24),
         visual_cond=False,        
         attention_type: str = "regular",
-        attention_causal: bool = None, #Deffault for Nabla: false,
-        attention_local: bool = None, #Deffault for Nabla: false,
-        attention_glob:bool = None, #Deffault for Nabla: false,
-        attention_window: int = None, #Deffault for Nabla: 3
-        attention_P: float = None, #Deffault for Nabla: 0.9
-        attention_wT: int = None, #Deffault for Nabla: 11
-        attention_wW:int = None, #Deffault for Nabla: 3
-        attention_wH:int = None, #Deffault for Nabla: 3
-        attention_add_sta: bool = None, #Deffault for Nabla: true
-        attention_method: str = None, #Deffault for Nabla: "topcdf"
+        attention_causal: bool = None, # Default for Nabla: false
+        attention_local: bool = None, # Default for Nabla: false
+        attention_glob: bool = None, # Default for Nabla: false
+        attention_window: int = None, # Default for Nabla: 3
+        attention_P: float = None, # Default for Nabla: 0.9
+        attention_wT: int = None, # Default for Nabla: 11
+        attention_wW: int = None, # Default for Nabla: 3
+        attention_wH: int = None, # Default for Nabla: 3
+        attention_add_sta: bool = None, # Default for Nabla: true
+        attention_method: str = None, # Default for Nabla: "topcdf"
     ):
         super().__init__()
         
@@ -666,31 +736,37 @@ class Kandinsky5Transformer3DModel(ModelMixin, ConfigMixin):
         self.attention_type = attention_type
 
         visual_embed_dim = 2 * in_visual_dim + 1 if visual_cond else in_visual_dim
-        self.time_embeddings = TimeEmbeddings(model_dim, time_dim)
-        self.text_embeddings = TextEmbeddings(in_text_dim, model_dim)
-        self.pooled_text_embeddings = TextEmbeddings(in_text_dim2, time_dim)
-        self.visual_embeddings = VisualEmbeddings(visual_embed_dim, model_dim, patch_size)
+        
+        # Initialize embeddings
+        self.time_embeddings = Kandinsky5TimeEmbeddings(model_dim, time_dim)
+        self.text_embeddings = Kandinsky5TextEmbeddings(in_text_dim, model_dim)
+        self.pooled_text_embeddings = Kandinsky5TextEmbeddings(in_text_dim2, time_dim)
+        self.visual_embeddings = Kandinsky5VisualEmbeddings(visual_embed_dim, model_dim, patch_size)
 
-        self.text_rope_embeddings = RoPE1D(head_dim)
+        # Initialize positional embeddings
+        self.text_rope_embeddings = Kandinsky5RoPE1D(head_dim)
+        self.visual_rope_embeddings = Kandinsky5RoPE3D(axes_dims)
+
+        # Initialize transformer blocks
         self.text_transformer_blocks = nn.ModuleList(
             [
-                TransformerEncoderBlock(model_dim, time_dim, ff_dim, head_dim)
+                Kandinsky5TransformerEncoderBlock(model_dim, time_dim, ff_dim, head_dim)
                 for _ in range(num_text_blocks)
             ]
         )
 
-        self.visual_rope_embeddings = RoPE3D(axes_dims)
         self.visual_transformer_blocks = nn.ModuleList(
             [
-                TransformerDecoderBlock(model_dim, time_dim, ff_dim, head_dim)
+                Kandinsky5TransformerDecoderBlock(model_dim, time_dim, ff_dim, head_dim)
                 for _ in range(num_visual_blocks)
             ]
         )
 
-        self.out_layer = OutLayer(model_dim, time_dim, out_visual_dim, patch_size)
+        # Initialize output layer
+        self.out_layer = Kandinsky5OutLayer(model_dim, time_dim, out_visual_dim, patch_size)
 
-    def before_text_transformer_blocks(self, text_embed, time, pooled_text_embed, x,
-                                       text_rope_pos):
+    def prepare_text_embeddings(self, text_embed, time, pooled_text_embed, x, text_rope_pos):
+        """Prepare text embeddings and related components"""
         text_embed = self.text_embeddings(text_embed)
         time_embed = self.time_embeddings(time)
         time_embed = time_embed + self.pooled_text_embeddings(pooled_text_embed)
@@ -699,8 +775,8 @@ class Kandinsky5Transformer3DModel(ModelMixin, ConfigMixin):
         text_rope = text_rope.unsqueeze(dim=0)
         return text_embed, time_embed, text_rope, visual_embed
 
-    def before_visual_transformer_blocks(self, visual_embed, visual_rope_pos, scale_factor,
-                                         sparse_params):
+    def prepare_visual_embeddings(self, visual_embed, visual_rope_pos, scale_factor, sparse_params):
+        """Prepare visual embeddings and related components"""
         visual_shape = visual_embed.shape[:-1]
         visual_rope = self.visual_rope_embeddings(visual_shape, visual_rope_pos, scale_factor)
         to_fractal = sparse_params["to_fractal"] if sparse_params is not None else False
@@ -708,44 +784,79 @@ class Kandinsky5Transformer3DModel(ModelMixin, ConfigMixin):
                                                     block_mask=to_fractal)
         return visual_embed, visual_shape, to_fractal, visual_rope
 
-    def after_blocks(self, visual_embed, visual_shape, to_fractal, text_embed, time_embed):
+    def process_text_transformer_blocks(self, text_embed, time_embed, text_rope):
+        """Process text through transformer blocks"""
+        for text_transformer_block in self.text_transformer_blocks:
+            text_embed = text_transformer_block(text_embed, time_embed, text_rope)
+        return text_embed
+
+    def process_visual_transformer_blocks(self, visual_embed, text_embed, time_embed, visual_rope, sparse_params):
+        """Process visual through transformer blocks"""
+        for visual_transformer_block in self.visual_transformer_blocks:
+            visual_embed = visual_transformer_block(visual_embed, text_embed, time_embed,
+                                                    visual_rope, sparse_params)
+        return visual_embed
+
+    def prepare_output(self, visual_embed, visual_shape, to_fractal, text_embed, time_embed):
+        """Prepare the final output"""
         visual_embed = fractal_unflatten(visual_embed, visual_shape, block_mask=to_fractal)
         x = self.out_layer(visual_embed, text_embed, time_embed)
         return x
 
     def forward(
         self,
-        hidden_states, # x
-        encoder_hidden_states, #text_embed
-        timestep, # time
-        pooled_projections, #pooled_text_embed,
-        visual_rope_pos,
-        text_rope_pos,
-        scale_factor=(1.0, 1.0, 1.0),
-        sparse_params=None,
-        return_dict=True,
-    ):
+        hidden_states: torch.FloatTensor,  # x
+        encoder_hidden_states: torch.FloatTensor,  # text_embed
+        timestep: Union[torch.Tensor, float, int],  # time
+        pooled_projections: torch.FloatTensor,  # pooled_text_embed
+        visual_rope_pos: Tuple[int, int, int],
+        text_rope_pos: torch.LongTensor,
+        scale_factor: Tuple[float, float, float] = (1.0, 1.0, 1.0),
+        sparse_params: Optional[Dict[str, Any]] = None,
+        return_dict: bool = True,
+    ) -> Union[Transformer2DModelOutput, torch.FloatTensor]:
+        """
+        Forward pass of the Kandinsky5 3D Transformer.
+
+        Args:
+            hidden_states (`torch.FloatTensor`): Input visual states
+            encoder_hidden_states (`torch.FloatTensor`): Text embeddings
+            timestep (`torch.Tensor` or `float` or `int`): Current timestep
+            pooled_projections (`torch.FloatTensor`): Pooled text embeddings
+            visual_rope_pos (`Tuple[int, int, int]`): Position for visual RoPE
+            text_rope_pos (`torch.LongTensor`): Position for text RoPE
+            scale_factor (`Tuple[float, float, float]`, optional): Scale factor for RoPE
+            sparse_params (`Dict[str, Any]`, optional): Parameters for sparse attention
+            return_dict (`bool`, optional): Whether to return a dictionary
+
+        Returns:
+            [`~models.transformer_2d.Transformer2DModelOutput`] or `torch.FloatTensor`:
+            The output of the transformer
+        """
         x = hidden_states
         text_embed = encoder_hidden_states
         time = timestep
         pooled_text_embed = pooled_projections
         
-        text_embed, time_embed, text_rope, visual_embed = self.before_text_transformer_blocks(
+        # Prepare text embeddings and related components
+        text_embed, time_embed, text_rope, visual_embed = self.prepare_text_embeddings(
             text_embed, time, pooled_text_embed, x, text_rope_pos)
 
-        for text_transformer_block in self.text_transformer_blocks:
-            text_embed = text_transformer_block(text_embed, time_embed, text_rope)
+        # Process text through transformer blocks
+        text_embed = self.process_text_transformer_blocks(text_embed, time_embed, text_rope)
 
-        visual_embed, visual_shape, to_fractal, visual_rope = self.before_visual_transformer_blocks(
+        # Prepare visual embeddings and related components
+        visual_embed, visual_shape, to_fractal, visual_rope = self.prepare_visual_embeddings(
             visual_embed, visual_rope_pos, scale_factor, sparse_params)
 
-        for visual_transformer_block in self.visual_transformer_blocks:
-            visual_embed = visual_transformer_block(visual_embed, text_embed, time_embed,
-                                                    visual_rope, sparse_params)
+        # Process visual through transformer blocks
+        visual_embed = self.process_visual_transformer_blocks(
+            visual_embed, text_embed, time_embed, visual_rope, sparse_params)
         
-        x = self.after_blocks(visual_embed, visual_shape, to_fractal, text_embed, time_embed)
+        # Prepare final output
+        x = self.prepare_output(visual_embed, visual_shape, to_fractal, text_embed, time_embed)
         
-        if return_dict:
-            return Transformer2DModelOutput(sample=x)
-        
-        return x
+        if not return_dict:
+            return x
+
+        return Transformer2DModelOutput(sample=x)

@@ -263,7 +263,9 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
         if self.transformer.config.attention_type == "nabla":
             sta_mask = self.fast_sta_nabla(
                 T, H // 8, W // 8, 
-                self.transformer.config.attention_wT, self.transformer.config.attention_wH, self.transformer.config.attention_wW, 
+                self.transformer.config.attention_wT, 
+                self.transformer.config.attention_wH, 
+                self.transformer.config.attention_wW, 
                 device=device
             )
             
