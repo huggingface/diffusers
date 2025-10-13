@@ -20,7 +20,7 @@ import torch
 from transformers import CLIPTextModel, CLIPTokenizer, T5EncoderModel, T5TokenizerFast
 
 from ...configuration_utils import FrozenDict
-from ...image_processor import VaeImageProcessor
+from ...image_processor import VaeImageProcessor, is_valid_image, is_valid_image_imagelist
 from ...loaders import FluxLoraLoaderMixin, TextualInversionLoaderMixin
 from ...models import AutoencoderKL
 from ...utils import USE_PEFT_BACKEND, is_ftfy_available, logging, scale_lora_layers, unscale_lora_layers
@@ -83,11 +83,11 @@ def encode_vae_image(vae: AutoencoderKL, image: torch.Tensor, generator: torch.G
 
 
 class FluxProcessImagesInputStep(ModularPipelineBlocks):
-    model_name = "Flux"
+    model_name = "flux"
 
     @property
     def description(self) -> str:
-        return "Image Preprocess step. Resizing is needed in Flux Kontext (will be implemented later.)"
+        return "Image Preprocess step."
 
     @property
     def expected_components(self) -> List[ComponentSpec]:
@@ -106,9 +106,7 @@ class FluxProcessImagesInputStep(ModularPipelineBlocks):
 
     @property
     def intermediate_outputs(self) -> List[OutputParam]:
-        return [
-            OutputParam(name="processed_image"),
-        ]
+        return [OutputParam(name="processed_image")]
 
     @staticmethod
     def check_inputs(height, width, vae_scale_factor):
@@ -142,13 +140,80 @@ class FluxProcessImagesInputStep(ModularPipelineBlocks):
         return components, state
 
 
+class FluxKontextProcessImagesInputStep(ModularPipelineBlocks):
+    model_name = "flux-kontext"
+
+    def __init__(self, _auto_resize=True):
+        self._auto_resize = _auto_resize
+        super().__init__()
+
+    @property
+    def description(self) -> str:
+        return (
+            "Image preprocess step for Flux Kontext. The preprocessed image goes to the VAE.\n"
+            "Kontext works as a T2I model, too, in case no input image is provided."
+        )
+
+    @property
+    def expected_components(self) -> List[ComponentSpec]:
+        return [
+            ComponentSpec(
+                "image_processor",
+                VaeImageProcessor,
+                config=FrozenDict({"vae_scale_factor": 16}),
+                default_creation_method="from_config",
+            ),
+        ]
+
+    @property
+    def inputs(self) -> List[InputParam]:
+        return [InputParam("image")]
+
+    @property
+    def intermediate_outputs(self) -> List[OutputParam]:
+        return [OutputParam(name="processed_image")]
+
+    @torch.no_grad()
+    def __call__(self, components: FluxModularPipeline, state: PipelineState):
+        from ...pipelines.flux.pipeline_flux_kontext import PREFERRED_KONTEXT_RESOLUTIONS
+
+        block_state = self.get_block_state(state)
+        images = block_state.image
+
+        if images is None:
+            block_state.processed_image = None
+
+        else:
+            multiple_of = components.image_processor.config.vae_scale_factor
+
+            if not is_valid_image_imagelist(images):
+                raise ValueError(f"Images must be image or list of images but are {type(images)}")
+
+            if is_valid_image(images):
+                images = [images]
+
+            img = images[0]
+            image_height, image_width = components.image_processor.get_default_height_width(img)
+            aspect_ratio = image_width / image_height
+            if self._auto_resize:
+                # Kontext is trained on specific resolutions, using one of them is recommended
+                _, image_width, image_height = min(
+                    (abs(aspect_ratio - w / h), w, h) for w, h in PREFERRED_KONTEXT_RESOLUTIONS
+                )
+            image_width = image_width // multiple_of * multiple_of
+            image_height = image_height // multiple_of * multiple_of
+            images = components.image_processor.resize(images, image_height, image_width)
+            block_state.processed_image = components.image_processor.preprocess(images, image_height, image_width)
+
+        self.set_block_state(state, block_state)
+        return components, state
+
+
 class FluxVaeEncoderDynamicStep(ModularPipelineBlocks):
     model_name = "flux"
 
     def __init__(
-        self,
-        input_name: str = "processed_image",
-        output_name: str = "image_latents",
+        self, input_name: str = "processed_image", output_name: str = "image_latents", sample_mode: str = "sample"
     ):
         """Initialize a VAE encoder step for converting images to latent representations.
 
@@ -160,6 +225,7 @@ class FluxVaeEncoderDynamicStep(ModularPipelineBlocks):
                 Examples: "processed_image" or "processed_control_image"
             output_name (str, optional): Name of the output latent tensor. Defaults to "image_latents".
                 Examples: "image_latents" or "control_image_latents"
+            sample_mode (str, optional): Sampling mode to be used.
 
         Examples:
             # Basic usage with default settings (includes image processor): # FluxImageVaeEncoderDynamicStep()
@@ -170,6 +236,7 @@ class FluxVaeEncoderDynamicStep(ModularPipelineBlocks):
         """
         self._image_input_name = input_name
         self._image_latents_output_name = output_name
+        self.sample_mode = sample_mode
         super().__init__()
 
     @property
@@ -183,7 +250,7 @@ class FluxVaeEncoderDynamicStep(ModularPipelineBlocks):
 
     @property
     def inputs(self) -> List[InputParam]:
-        inputs = [InputParam(self._image_input_name, required=True), InputParam("generator")]
+        inputs = [InputParam(self._image_input_name), InputParam("generator")]
         return inputs
 
     @property
@@ -199,16 +266,20 @@ class FluxVaeEncoderDynamicStep(ModularPipelineBlocks):
     @torch.no_grad()
     def __call__(self, components: FluxModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
-
-        device = components._execution_device
-        dtype = components.vae.dtype
-
         image = getattr(block_state, self._image_input_name)
-        image = image.to(device=device, dtype=dtype)
 
-        # Encode image into latents
-        image_latents = encode_vae_image(image=image, vae=components.vae, generator=block_state.generator)
-        setattr(block_state, self._image_latents_output_name, image_latents)
+        if image is None:
+            setattr(block_state, self._image_latents_output_name, None)
+        else:
+            device = components._execution_device
+            dtype = components.vae.dtype
+            image = image.to(device=device, dtype=dtype)
+
+            # Encode image into latents
+            image_latents = encode_vae_image(
+                image=image, vae=components.vae, generator=block_state.generator, sample_mode=self.sample_mode
+            )
+            setattr(block_state, self._image_latents_output_name, image_latents)
 
         self.set_block_state(state, block_state)
 
