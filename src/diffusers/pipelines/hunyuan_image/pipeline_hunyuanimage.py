@@ -27,6 +27,7 @@ from ...utils import is_torch_xla_available, logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
 from .pipeline_output import HunyuanImagePipelineOutput
+from ...guiders import AdaptiveProjectedMixGuidance
 
 
 if is_torch_xla_available():
@@ -177,6 +178,12 @@ class HunyuanImagePipeline(DiffusionPipeline):
 
     model_cpu_offload_seq = "text_encoder->text_encoder_2->transformer->vae"
     _callback_tensor_inputs = ["latents", "prompt_embeds"]
+    _guider_input_fields = {
+        "encoder_hidden_states": ("prompt_embeds", "negative_prompt_embeds"),
+        "encoder_attention_mask": ("prompt_embeds_mask", "negative_prompt_embeds_mask"),
+        "encoder_hidden_states_2": ("prompt_embeds_2", "negative_prompt_embeds_2"),
+        "encoder_attention_mask_2": ("prompt_embeds_mask_2", "negative_prompt_embeds_mask_2"),
+        }
 
     def __init__(
         self,
@@ -187,6 +194,7 @@ class HunyuanImagePipeline(DiffusionPipeline):
         text_encoder_2: T5EncoderModel,
         tokenizer_2: ByT5Tokenizer,
         transformer: HunyuanImageTransformer2DModel,
+        guider: AdaptiveProjectedMixGuidance,
     ):
         super().__init__()
 
@@ -198,6 +206,7 @@ class HunyuanImagePipeline(DiffusionPipeline):
             tokenizer_2=tokenizer_2,
             transformer=transformer,
             scheduler=scheduler,
+            guider=guider,
         )
 
         self.vae_scale_factor = self.vae.config.spatial_compression_ratio if getattr(self, "vae", None) else 32
@@ -491,13 +500,11 @@ class HunyuanImagePipeline(DiffusionPipeline):
     def __call__(
         self,
         prompt: Union[str, List[str]] = None,
-        negative_prompt: Union[str, List[str]] = None,
-        true_cfg_scale: float = 4.0,
+        negative_prompt: Union[str, List[str]] = "",
         height: Optional[int] = None,
         width: Optional[int] = None,
         num_inference_steps: int = 50,
         sigmas: Optional[List[float]] = None,
-        guidance_scale: Optional[float] = None,
         num_images_per_prompt: int = 1,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.Tensor] = None,
@@ -618,7 +625,6 @@ class HunyuanImagePipeline(DiffusionPipeline):
             negative_prompt_embeds_mask_2=negative_prompt_embeds_mask_2,
         )
 
-        self._guidance_scale = guidance_scale
         self._attention_kwargs = attention_kwargs
         self._current_timestep = None
         self._interrupt = False
@@ -633,20 +639,9 @@ class HunyuanImagePipeline(DiffusionPipeline):
 
         device = self._execution_device
 
-        has_neg_prompt = negative_prompt is not None or (
-            negative_prompt_embeds is not None and negative_prompt_embeds_mask is not None
-        )
+        requires_unconditional_embeds = self.guider._enabled and self.guider.num_conditions > 1
 
-        if true_cfg_scale > 1 and not has_neg_prompt:
-            logger.warning(
-                f"true_cfg_scale is passed as {true_cfg_scale}, but classifier-free guidance is not enabled since no negative_prompt is provided."
-            )
-        elif true_cfg_scale <= 1 and has_neg_prompt:
-            logger.warning(
-                " negative_prompt is passed but classifier-free guidance is not enabled since true_cfg_scale <= 1"
-            )
 
-        do_true_cfg = true_cfg_scale > 1 and has_neg_prompt
         prompt_embeds, prompt_embeds_mask, prompt_embeds_2, prompt_embeds_mask_2 = self.encode_prompt(
             prompt=prompt,
             prompt_embeds=prompt_embeds,
@@ -660,7 +655,11 @@ class HunyuanImagePipeline(DiffusionPipeline):
         prompt_embeds = prompt_embeds.to(self.transformer.dtype)
         prompt_embeds_2 = prompt_embeds_2.to(self.transformer.dtype)
 
-        if do_true_cfg:
+        has_ocr = False
+        if not torch.all(prompt_embeds_2 ==0):
+            has_ocr = True
+
+        if requires_unconditional_embeds:
             (
                 negative_prompt_embeds,
                 negative_prompt_embeds_mask,
@@ -678,7 +677,9 @@ class HunyuanImagePipeline(DiffusionPipeline):
 
             negative_prompt_embeds = negative_prompt_embeds.to(self.transformer.dtype)
             negative_prompt_embeds_2 = negative_prompt_embeds_2.to(self.transformer.dtype)
-
+            if not torch.all(negative_prompt_embeds_2 ==0):
+                has_ocr = True
+        
         # 4. Prepare latent variables
         num_channels_latents = self.transformer.config.in_channels
         latents = self.prepare_latents(
@@ -700,18 +701,15 @@ class HunyuanImagePipeline(DiffusionPipeline):
         self._num_timesteps = len(timesteps)
 
         # handle guidance
-        if self.transformer.config.guidance_embeds and guidance_scale is None:
+        if self.transformer.config.guidance_embeds and not (hasattr(self.guider, "guidance_scale") and self.guider.guidance_scale is not None):
             raise ValueError("guidance_scale is required for guidance-distilled model.")
-        elif self.transformer.config.guidance_embeds:
+        
+        if self.transformer.config.guidance_embeds:
             guidance = (
-                torch.tensor([guidance_scale] * latents.shape[0], dtype=self.transformer.dtype, device=device) * 1000.0
+                torch.tensor([self.guider.guidance_scale] * latents.shape[0], dtype=self.transformer.dtype, device=device) * 1000.0
             )
-        elif not self.transformer.config.guidance_embeds and guidance_scale is not None:
-            logger.warning(
-                f"guidance_scale is passed as {guidance_scale}, but ignored since the model is not guidance-distilled."
-            )
-            guidance = None
-        elif not self.transformer.config.guidance_embeds and guidance_scale is None:
+
+        else:
             guidance = None
 
         if self.attention_kwargs is None:
@@ -736,36 +734,34 @@ class HunyuanImagePipeline(DiffusionPipeline):
                     timestep_r = timestep_r.expand(latents.shape[0]).to(latents.dtype)
                 else:
                     timestep_r = None
+                # guider inputs 
+                guider_inputs = {}
+                for _, input_names_tuple in self._guider_input_fields.items():
+                    for input_name in input_names_tuple:
+                        guider_inputs[input_name] = locals()[input_name]
 
-                with self.transformer.cache_context("cond"):
-                    noise_pred = self.transformer(
-                        hidden_states=latents,
-                        timestep=timestep,
-                        guidance=guidance,
-                        encoder_attention_mask=prompt_embeds_mask,
-                        encoder_hidden_states=prompt_embeds,
-                        encoder_hidden_states_2=prompt_embeds_2,
-                        encoder_attention_mask_2=prompt_embeds_mask_2,
-                        attention_kwargs=self.attention_kwargs,
-                        timestep_r=timestep_r,
-                        return_dict=False,
-                    )[0]
+                self.guider.set_state(step=i, num_inference_steps=num_inference_steps, timestep=t)
+                guider_state = self.guider.prepare_inputs(guider_inputs, self._guider_input_fields)
 
-                if do_true_cfg:
-                    with self.transformer.cache_context("uncond"):
-                        neg_noise_pred = self.transformer(
+                for guider_state_batch in guider_state:
+                    self.guider.prepare_models(self.transformer)
+                    cond_kwargs = guider_state_batch.as_dict()
+                    cond_kwargs = {k: v for k, v in cond_kwargs.items() if k in self._guider_input_fields}
+
+                    guider_state_batch_identifier = getattr(guider_state_batch, self.guider._identifier_key)
+                    with self.transformer.cache_context(guider_state_batch_identifier):
+                        guider_state_batch.noise_pred = self.transformer(
                             hidden_states=latents,
                             timestep=timestep,
                             timestep_r=timestep_r,
                             guidance=guidance,
-                            encoder_attention_mask=negative_prompt_embeds_mask,
-                            encoder_hidden_states=negative_prompt_embeds,
-                            encoder_hidden_states_2=negative_prompt_embeds_2,
-                            encoder_attention_mask_2=negative_prompt_embeds_mask_2,
                             attention_kwargs=self.attention_kwargs,
                             return_dict=False,
+                            **cond_kwargs,
                         )[0]
-                    noise_pred = neg_noise_pred + true_cfg_scale * (noise_pred - neg_noise_pred)
+                    self.guider.cleanup_models(self.transformer)
+                
+                noise_pred = self.guider(guider_state)[0]
 
                 # compute the previous noisy sample x_t -> x_t-1
                 latents_dtype = latents.dtype

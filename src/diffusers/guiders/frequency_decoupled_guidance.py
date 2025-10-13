@@ -149,6 +149,7 @@ class FrequencyDecoupledGuidance(BaseGuidance):
         stop: Union[float, List[float], Tuple[float]] = 1.0,
         guidance_rescale_space: str = "data",
         upcast_to_double: bool = True,
+        enabled: bool = True,
     ):
         if not _CAN_USE_KORNIA:
             raise ImportError(
@@ -160,7 +161,7 @@ class FrequencyDecoupledGuidance(BaseGuidance):
         # Set start to earliest start for any freq component and stop to latest stop for any freq component
         min_start = start if isinstance(start, float) else min(start)
         max_stop = stop if isinstance(stop, float) else max(stop)
-        super().__init__(min_start, max_stop)
+        super().__init__(min_start, max_stop, enabled)
 
         self.guidance_scales = guidance_scales
         self.levels = len(guidance_scales)
@@ -223,10 +224,10 @@ class FrequencyDecoupledGuidance(BaseGuidance):
         if input_fields is None:
             input_fields = self._input_fields
 
-        tuple_indices = [0] if self.num_conditions == 1 else [0, 1]
+        tuple_indices = [0] if self.num_conditions == 1 or not self._is_fdg_enabled() else [0, 1]
         data_batches = []
-        for i in range(self.num_conditions):
-            data_batch = self._prepare_batch(input_fields, data, tuple_indices[i], self._input_predictions[i])
+        for tuple_idx, input_prediction in zip(tuple_indices, self._input_predictions):
+            data_batch = self._prepare_batch(input_fields, data, tuple_idx, input_prediction)
             data_batches.append(data_batch)
         return data_batches
 

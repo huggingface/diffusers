@@ -40,7 +40,7 @@ class BaseGuidance(ConfigMixin, PushToHubMixin):
     _input_predictions = None
     _identifier_key = "__guidance_identifier__"
 
-    def __init__(self, start: float = 0.0, stop: float = 1.0):
+    def __init__(self, start: float = 0.0, stop: float = 1.0, enabled: bool = True):
         self._start = start
         self._stop = stop
         self._step: int = None
@@ -48,7 +48,7 @@ class BaseGuidance(ConfigMixin, PushToHubMixin):
         self._timestep: torch.LongTensor = None
         self._count_prepared = 0
         self._input_fields: Dict[str, Union[str, Tuple[str, str]]] = None
-        self._enabled = True
+        self._enabled = enabled
 
         if not (0.0 <= start < 1.0):
             raise ValueError(f"Expected `start` to be between 0.0 and 1.0, but got {start}.")
@@ -181,6 +181,9 @@ class BaseGuidance(ConfigMixin, PushToHubMixin):
             `BlockState`: The prepared batch of data.
         """
         from ..modular_pipelines.modular_pipeline import BlockState
+
+        if isinstance(data, dict):
+            data = BlockState(**data)
 
         if input_fields is None:
             raise ValueError(
