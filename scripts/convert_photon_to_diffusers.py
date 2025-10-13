@@ -340,7 +340,7 @@ if __name__ == "__main__":
         default=DEFAULT_RESOLUTION,
         help="Target resolution for the model (256, 512, or 1024). Affects the transformer's sample_size.",
     )
-    
+
     parser.add_argument(
         "--shift",
         type=float,

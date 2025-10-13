@@ -227,6 +227,7 @@ class QKNorm(torch.nn.Module):
         k = self.key_norm(k)
         return q.to(v), k.to(v)
 
+
 class Modulation(nn.Module):
     r"""
     Modulation network that generates scale, shift, and gating parameters.
@@ -338,8 +339,6 @@ class PhotonBlock(nn.Module):
         self.mlp_act = nn.GELU(approximate="tanh")
 
         self.modulation = Modulation(hidden_size)
-
-
 
     def forward(
         self,
