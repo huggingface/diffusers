@@ -769,12 +769,15 @@ class QwenImageEditPlusPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
             generator,
             latents,
         )
-        base_shape = (1, height // self.vae_scale_factor // 2, width // self.vae_scale_factor // 2)
-        per_image_shapes = [
-            (1, vae_height // self.vae_scale_factor // 2, vae_width // self.vae_scale_factor // 2)
-            for vae_width, vae_height in vae_image_sizes
-        ]
-        img_shapes = [[base_shape, *per_image_shapes] for _ in range(batch_size)]
+        img_shapes = [
+            [
+                (1, height // self.vae_scale_factor // 2, width // self.vae_scale_factor // 2),
+                *[
+                    (1, vae_height // self.vae_scale_factor // 2, vae_width // self.vae_scale_factor // 2)
+                    for vae_width, vae_height in vae_image_sizes
+                ],
+            ]
+        ] * batch_size
 
         # 5. Prepare timesteps
         sigmas = np.linspace(1.0, 1 / num_inference_steps, num_inference_steps) if sigmas is None else sigmas
