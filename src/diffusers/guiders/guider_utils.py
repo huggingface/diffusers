@@ -72,6 +72,54 @@ class BaseGuidance(ConfigMixin, PushToHubMixin):
         self._timestep = timestep
         self._count_prepared = 0
 
+    def get_state(self) -> Dict[str, Any]:
+        """
+        Returns the current state of the guidance technique as a dictionary.
+        The state variables will be included in the __repr__ method.
+        Returns:
+            `Dict[str, Any]`: A dictionary containing the current state variables including:
+                - step: Current inference step
+                - num_inference_steps: Total number of inference steps
+                - timestep: Current timestep tensor
+                - count_prepared: Number of times prepare_models has been called
+                - enabled: Whether the guidance is enabled
+                - num_conditions: Number of conditions
+        """
+        state = {
+            "step": self._step,
+            "num_inference_steps": self._num_inference_steps,
+            "timestep": self._timestep,
+            "count_prepared": self._count_prepared,
+            "enabled": self._enabled,
+            "num_conditions": self.num_conditions,
+        }
+        return state
+
+    def __repr__(self) -> str:
+        """
+        Returns a string representation of the guidance object including both config and current state.
+        """
+        # Get ConfigMixin's __repr__
+        str_repr = super().__repr__()
+        
+        # Get current state
+        state = self.get_state()
+        
+        # Format each state variable on its own line with indentation
+        state_lines = []
+        for k, v in state.items():
+            # Convert value to string and handle multi-line values
+            v_str = str(v)
+            if "\n" in v_str:
+                # For multi-line values (like MomentumBuffer), indent subsequent lines
+                v_lines = v_str.split("\n")
+                v_str = v_lines[0] + "\n" + "\n".join(["    " + line for line in v_lines[1:]])
+            state_lines.append(f"  {k}: {v_str}")
+        
+        state_str = "\n".join(state_lines)
+        
+        return f"{str_repr}\nState:\n{state_str}"
+
     def set_input_fields(self, **kwargs: Dict[str, Union[str, Tuple[str, str]]]) -> None:
         """
         Set the input fields for the guidance technique. The input fields are used to specify the names of the returned
