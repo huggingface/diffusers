@@ -27,8 +27,8 @@ if TYPE_CHECKING:
 
 class AdaptiveProjectedMixGuidance(BaseGuidance):
     """
-    Adaptive Projected Guidance (APG) https://huggingface.co/papers/2410.02416 combined with Classifier-Free Guidance (CFG).
-    This guider is used in HunyuanImage2.1 https://github.com/Tencent-Hunyuan/HunyuanImage-2.1
+    Adaptive Projected Guidance (APG) https://huggingface.co/papers/2410.02416 combined with Classifier-Free Guidance
+    (CFG). This guider is used in HunyuanImage2.1 https://github.com/Tencent-Hunyuan/HunyuanImage-2.1
 
     Args:
         guidance_scale (`float`, defaults to `7.5`):
@@ -38,11 +38,12 @@ class AdaptiveProjectedMixGuidance(BaseGuidance):
         adaptive_projected_guidance_momentum (`float`, defaults to `None`):
             The momentum parameter for the adaptive projected guidance. Disabled if set to `None`.
         adaptive_projected_guidance_rescale (`float`, defaults to `15.0`):
-            The rescale factor applied to the noise predictions for adaptive projected guidance. This is used to improve image quality and fix
+            The rescale factor applied to the noise predictions for adaptive projected guidance. This is used to
+            improve image quality and fix
         guidance_rescale (`float`, defaults to `0.0`):
-            The rescale factor applied to the noise predictions for classifier-free guidance. This is used to improve image quality and fix
-            overexposure. Based on Section 3.4 from [Common Diffusion Noise Schedules and Sample Steps are
-            Flawed](https://huggingface.co/papers/2305.08891).
+            The rescale factor applied to the noise predictions for classifier-free guidance. This is used to improve
+            image quality and fix overexposure. Based on Section 3.4 from [Common Diffusion Noise Schedules and Sample
+            Steps are Flawed](https://huggingface.co/papers/2305.08891).
         use_original_formulation (`bool`, defaults to `False`):
             Whether to use the original formulation of classifier-free guidance as proposed in the paper. By default,
             we use the diffusers-native implementation that has been in the codebase for a long time. See
@@ -52,7 +53,8 @@ class AdaptiveProjectedMixGuidance(BaseGuidance):
         stop (`float`, defaults to `1.0`):
             The fraction of the total number of denoising steps after which the classifier-free guidance stops.
         adaptive_projected_guidance_start_step (`int`, defaults to `5`):
-            The step at which the adaptive projected guidance starts (before this step, classifier-free guidance is used, and momentum buffer is updated).
+            The step at which the adaptive projected guidance starts (before this step, classifier-free guidance is
+            used, and momentum buffer is updated).
         enabled (`bool`, defaults to `True`):
             Whether this guidance is enabled.
     """
@@ -95,7 +97,9 @@ class AdaptiveProjectedMixGuidance(BaseGuidance):
         if self._step == 0:
             if self.adaptive_projected_guidance_momentum is not None:
                 self.momentum_buffer = MomentumBuffer(self.adaptive_projected_guidance_momentum)
-        tuple_indices = [0] if self.num_conditions == 1 or not self._is_apg_enabled() and not self._is_cfg_enabled() else [0, 1]
+        tuple_indices = (
+            [0] if self.num_conditions == 1 or not self._is_apg_enabled() and not self._is_cfg_enabled() else [0, 1]
+        )
         data_batches = []
         for tuple_idx, input_prediction in zip(tuple_indices, self._input_predictions):
             data_batch = self._prepare_batch(input_fields, data, tuple_idx, input_prediction)
@@ -108,7 +112,7 @@ class AdaptiveProjectedMixGuidance(BaseGuidance):
         # no guidance
         if not self._is_cfg_enabled():
             pred = pred_cond
-        
+
         # CFG + update momentum buffer
         elif not self._is_apg_enabled():
             if self.momentum_buffer is not None:
@@ -117,7 +121,7 @@ class AdaptiveProjectedMixGuidance(BaseGuidance):
             shift = pred_cond - pred_uncond
             pred = pred_cond if self.use_original_formulation else pred_uncond
             pred = pred + self.guidance_scale * shift
-        
+
         # APG
         elif self._is_apg_enabled():
             pred = normalized_guidance(
@@ -180,7 +184,7 @@ class AdaptiveProjectedMixGuidance(BaseGuidance):
             is_close = math.isclose(self.adaptive_projected_guidance_scale, 1.0)
 
         return is_within_range and not is_close
-    
+
     def get_state(self):
         state = super().get_state()
         state["momentum_buffer"] = self.momentum_buffer
@@ -204,7 +208,7 @@ class MomentumBuffer:
         """
         if isinstance(self.running_average, torch.Tensor):
             shape = tuple(self.running_average.shape)
-            
+
             # Calculate statistics
             with torch.no_grad():
                 stats = {
@@ -213,18 +217,18 @@ class MomentumBuffer:
                     "min": self.running_average.min().item(),
                     "max": self.running_average.max().item(),
                 }
-            
+
             # Get a slice (max 3 elements per dimension)
             slice_indices = tuple(slice(None, min(3, dim)) for dim in shape)
             sliced_data = self.running_average[slice_indices]
-            
+
             # Format the slice for display (convert to float32 for numpy compatibility with bfloat16)
             slice_str = str(sliced_data.detach().float().cpu().numpy())
             if len(slice_str) > 200:  # Truncate if too long
                 slice_str = slice_str[:200] + "..."
-            
+
             stats_str = ", ".join([f"{k}={v:.4f}" for k, v in stats.items()])
-            
+
             return (
                 f"MomentumBuffer(\n"
                 f"  momentum={self.momentum},\n"
@@ -255,9 +259,7 @@ def normalized_guidance(
     eta: float = 1.0,
     norm_threshold: float = 0.0,
     use_original_formulation: bool = False,
-):  
-
-
+):
     if momentum_buffer is not None:
         update_momentum_buffer(pred_cond, pred_uncond, momentum_buffer)
         diff = momentum_buffer.running_average

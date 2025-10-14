@@ -74,9 +74,8 @@ class BaseGuidance(ConfigMixin, PushToHubMixin):
 
     def get_state(self) -> Dict[str, Any]:
         """
-        Returns the current state of the guidance technique as a dictionary.
-        The state variables will be included in the __repr__ method.
-        Returns:
+        Returns the current state of the guidance technique as a dictionary. The state variables will be included in
+        the __repr__ method. Returns:
             `Dict[str, Any]`: A dictionary containing the current state variables including:
                 - step: Current inference step
                 - num_inference_steps: Total number of inference steps
@@ -101,10 +100,10 @@ class BaseGuidance(ConfigMixin, PushToHubMixin):
         """
         # Get ConfigMixin's __repr__
         str_repr = super().__repr__()
-        
+
         # Get current state
         state = self.get_state()
-        
+
         # Format each state variable on its own line with indentation
         state_lines = []
         for k, v in state.items():
@@ -115,9 +114,9 @@ class BaseGuidance(ConfigMixin, PushToHubMixin):
                 v_lines = v_str.split("\n")
                 v_str = v_lines[0] + "\n" + "\n".join(["    " + line for line in v_lines[1:]])
             state_lines.append(f"  {k}: {v_str}")
-        
+
         state_str = "\n".join(state_lines)
-        
+
         return f"{str_repr}\nState:\n{state_str}"
 
     def set_input_fields(self, **kwargs: Dict[str, Union[str, Tuple[str, str]]]) -> None:

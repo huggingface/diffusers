@@ -20,6 +20,7 @@ import numpy as np
 import torch
 from transformers import ByT5Tokenizer, Qwen2_5_VLForConditionalGeneration, Qwen2Tokenizer, T5EncoderModel
 
+from ...guiders import AdaptiveProjectedMixGuidance
 from ...image_processor import VaeImageProcessor
 from ...models import AutoencoderKLHunyuanImage, HunyuanImageTransformer2DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
@@ -27,7 +28,6 @@ from ...utils import is_torch_xla_available, logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
 from .pipeline_output import HunyuanImagePipelineOutput
-from ...guiders import AdaptiveProjectedMixGuidance
 
 
 if is_torch_xla_available():
@@ -183,7 +183,7 @@ class HunyuanImagePipeline(DiffusionPipeline):
         "encoder_attention_mask": ("prompt_embeds_mask", "negative_prompt_embeds_mask"),
         "encoder_hidden_states_2": ("prompt_embeds_2", "negative_prompt_embeds_2"),
         "encoder_attention_mask_2": ("prompt_embeds_mask_2", "negative_prompt_embeds_mask_2"),
-        }
+    }
 
     def __init__(
         self,
@@ -641,7 +641,6 @@ class HunyuanImagePipeline(DiffusionPipeline):
 
         requires_unconditional_embeds = self.guider._enabled and self.guider.num_conditions > 1
 
-
         prompt_embeds, prompt_embeds_mask, prompt_embeds_2, prompt_embeds_mask_2 = self.encode_prompt(
             prompt=prompt,
             prompt_embeds=prompt_embeds,
@@ -656,7 +655,7 @@ class HunyuanImagePipeline(DiffusionPipeline):
         prompt_embeds_2 = prompt_embeds_2.to(self.transformer.dtype)
 
         has_ocr = False
-        if not torch.all(prompt_embeds_2 ==0):
+        if not torch.all(prompt_embeds_2 == 0):
             has_ocr = True
 
         if requires_unconditional_embeds:
@@ -677,9 +676,9 @@ class HunyuanImagePipeline(DiffusionPipeline):
 
             negative_prompt_embeds = negative_prompt_embeds.to(self.transformer.dtype)
             negative_prompt_embeds_2 = negative_prompt_embeds_2.to(self.transformer.dtype)
-            if not torch.all(negative_prompt_embeds_2 ==0):
+            if not torch.all(negative_prompt_embeds_2 == 0):
                 has_ocr = True
-        
+
         # 4. Prepare latent variables
         num_channels_latents = self.transformer.config.in_channels
         latents = self.prepare_latents(
@@ -701,12 +700,17 @@ class HunyuanImagePipeline(DiffusionPipeline):
         self._num_timesteps = len(timesteps)
 
         # handle guidance
-        if self.transformer.config.guidance_embeds and not (hasattr(self.guider, "guidance_scale") and self.guider.guidance_scale is not None):
+        if self.transformer.config.guidance_embeds and not (
+            hasattr(self.guider, "guidance_scale") and self.guider.guidance_scale is not None
+        ):
             raise ValueError("guidance_scale is required for guidance-distilled model.")
-        
+
         if self.transformer.config.guidance_embeds:
             guidance = (
-                torch.tensor([self.guider.guidance_scale] * latents.shape[0], dtype=self.transformer.dtype, device=device) * 1000.0
+                torch.tensor(
+                    [self.guider.guidance_scale] * latents.shape[0], dtype=self.transformer.dtype, device=device
+                )
+                * 1000.0
             )
 
         else:
@@ -734,7 +738,7 @@ class HunyuanImagePipeline(DiffusionPipeline):
                     timestep_r = timestep_r.expand(latents.shape[0]).to(latents.dtype)
                 else:
                     timestep_r = None
-                # guider inputs 
+                # guider inputs
                 guider_inputs = {}
                 for _, input_names_tuple in self._guider_input_fields.items():
                     for input_name in input_names_tuple:
@@ -760,7 +764,7 @@ class HunyuanImagePipeline(DiffusionPipeline):
                             **cond_kwargs,
                         )[0]
                     self.guider.cleanup_models(self.transformer)
-                
+
                 noise_pred = self.guider(guider_state)[0]
 
                 # compute the previous noisy sample x_t -> x_t-1
