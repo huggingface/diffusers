@@ -149,6 +149,7 @@ else:
     _import_structure["guiders"].extend(
         [
             "AdaptiveProjectedGuidance",
+            "AdaptiveProjectedMixGuidance",
             "AutoGuidance",
             "ClassifierFreeGuidance",
             "ClassifierFreeZeroStarGuidance",
@@ -157,6 +158,7 @@ else:
             "SkipLayerGuidance",
             "SmoothedEnergyGuidance",
             "TangentialClassifierFreeGuidance",
+            "BaseGuidance",
         ]
     )
     _import_structure["hooks"].extend(
@@ -844,6 +846,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     else:
         from .guiders import (
             AdaptiveProjectedGuidance,
+            AdaptiveProjectedMixGuidance,
             AutoGuidance,
             ClassifierFreeGuidance,
             ClassifierFreeZeroStarGuidance,
@@ -852,6 +855,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             SkipLayerGuidance,
             SmoothedEnergyGuidance,
             TangentialClassifierFreeGuidance,
+            BaseGuidance,
         )
         from .hooks import (
             FasterCacheConfig,

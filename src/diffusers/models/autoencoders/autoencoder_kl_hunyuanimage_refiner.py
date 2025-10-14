@@ -96,7 +96,6 @@ class HunyuanImageRefinerAttnBlock(nn.Module):
         super().__init__()
         self.in_channels = in_channels
 
-        # self.norm = nn.GroupNorm(num_groups=32, num_channels=in_channels, eps=1e-6, affine=True)
         self.norm = HunyuanImageRefinerRMS_norm(in_channels, images=False)
 
         self.to_q = nn.Conv3d(in_channels, in_channels, kernel_size=1)

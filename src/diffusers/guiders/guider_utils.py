@@ -60,6 +60,31 @@ class BaseGuidance(ConfigMixin, PushToHubMixin):
                 "`_input_predictions` must be a list of required prediction names for the guidance technique."
             )
 
+    def new(self, **kwargs):
+        """
+        Creates a copy of this guider instance, optionally with modified configuration parameters.
+        
+        Args:
+            **kwargs: Configuration parameters to override in the new instance. If no kwargs are provided,
+                returns an exact copy with the same configuration.
+        
+        Returns:
+            A new guider instance with the same (or updated) configuration.
+            
+        Example:
+            ```python
+            # Create a CFG guider
+            guider = ClassifierFreeGuidance(guidance_scale=3.5)
+            
+            # Create an exact copy
+            same_guider = guider.new()
+            
+            # Create a copy with different start step, keeping other config the same
+            new_guider = guider.new(guidance_scale=5)
+            ```
+        """
+        return self.__class__.from_config(self.config, **kwargs)
+
     def disable(self):
         self._enabled = False
 
@@ -118,43 +143,6 @@ class BaseGuidance(ConfigMixin, PushToHubMixin):
         state_str = "\n".join(state_lines)
 
         return f"{str_repr}\nState:\n{state_str}"
-
-    def set_input_fields(self, **kwargs: Dict[str, Union[str, Tuple[str, str]]]) -> None:
-        """
-        Set the input fields for the guidance technique. The input fields are used to specify the names of the returned
-        attributes containing the prepared data after `prepare_inputs` is called. The prepared data is obtained from
-        the values of the provided keyword arguments to this method.
-
-        Args:
-            **kwargs (`Dict[str, Union[str, Tuple[str, str]]]`):
-                A dictionary where the keys are the names of the fields that will be used to store the data once it is
-                prepared with `prepare_inputs`. The values can be either a string or a tuple of length 2, which is used
-                to look up the required data provided for preparation.
-
-                If a string is provided, it will be used as the conditional data (or unconditional if used with a
-                guidance method that requires it). If a tuple of length 2 is provided, the first element must be the
-                conditional data identifier and the second element must be the unconditional data identifier or None.
-
-                Example:
-                ```
-                data = {"prompt_embeds": <some tensor>, "negative_prompt_embeds": <some tensor>, "latents": <some tensor>}
-
-                BaseGuidance.set_input_fields(
-                    latents="latents",
-                    prompt_embeds=("prompt_embeds", "negative_prompt_embeds"),
-                )
-                ```
-        """
-        for key, value in kwargs.items():
-            is_string = isinstance(value, str)
-            is_tuple_of_str_with_len_2 = (
-                isinstance(value, tuple) and len(value) == 2 and all(isinstance(v, str) for v in value)
-            )
-            if not (is_string or is_tuple_of_str_with_len_2):
-                raise ValueError(
-                    f"Expected `set_input_fields` to be called with a string or a tuple of string with length 2, but got {type(value)} for key {key}."
-                )
-        self._input_fields = kwargs
 
     def prepare_models(self, denoiser: torch.nn.Module) -> None:
         """

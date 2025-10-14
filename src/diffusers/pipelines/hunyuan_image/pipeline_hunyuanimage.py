@@ -178,6 +178,7 @@ class HunyuanImagePipeline(DiffusionPipeline):
 
     model_cpu_offload_seq = "text_encoder->text_encoder_2->transformer->vae"
     _callback_tensor_inputs = ["latents", "prompt_embeds"]
+    _optional_components = ["ocr_guider"]
     _guider_input_fields = {
         "encoder_hidden_states": ("prompt_embeds", "negative_prompt_embeds"),
         "encoder_attention_mask": ("prompt_embeds_mask", "negative_prompt_embeds_mask"),
@@ -195,6 +196,7 @@ class HunyuanImagePipeline(DiffusionPipeline):
         tokenizer_2: ByT5Tokenizer,
         transformer: HunyuanImageTransformer2DModel,
         guider: AdaptiveProjectedMixGuidance,
+        ocr_guider: Optional[AdaptiveProjectedMixGuidance] = None,
     ):
         super().__init__()
 
@@ -207,6 +209,7 @@ class HunyuanImagePipeline(DiffusionPipeline):
             transformer=transformer,
             scheduler=scheduler,
             guider=guider,
+            ocr_guider=ocr_guider,
         )
 
         self.vae_scale_factor = self.vae.config.spatial_compression_ratio if getattr(self, "vae", None) else 32
@@ -476,10 +479,6 @@ class HunyuanImagePipeline(DiffusionPipeline):
         return latents
 
     @property
-    def guidance_scale(self):
-        return self._guidance_scale
-
-    @property
     def attention_kwargs(self):
         return self._attention_kwargs
 
@@ -504,6 +503,7 @@ class HunyuanImagePipeline(DiffusionPipeline):
         height: Optional[int] = None,
         width: Optional[int] = None,
         num_inference_steps: int = 50,
+        guidance_scale: Optional[float] = None,
         sigmas: Optional[List[float]] = None,
         num_images_per_prompt: int = 1,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
@@ -531,15 +531,7 @@ class HunyuanImagePipeline(DiffusionPipeline):
                 instead.
             negative_prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts not to guide the image generation. If not defined, one has to pass
-                `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `true_cfg_scale` is
-                not greater than `1`).
-            true_cfg_scale (`float`, *optional*, defaults to 1.0):
-                Guidance scale as defined in [Classifier-Free Diffusion
-                Guidance](https://huggingface.co/papers/2207.12598). `true_cfg_scale` is defined as `w` of equation 2.
-                of [Imagen Paper](https://huggingface.co/papers/2205.11487). Classifier-free guidance is enabled by
-                setting `true_cfg_scale > 1` and a provided `negative_prompt`. Higher guidance scale encourages to
-                generate images that are closely linked to the text `prompt`, usually at the expense of lower image
-                quality.
+                `negative_prompt_embeds` instead. Ignored when guidance is disabled.
             height (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
                 The height in pixels of the generated image. This is set to 1024 by default for the best results.
             width (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
@@ -552,15 +544,12 @@ class HunyuanImagePipeline(DiffusionPipeline):
                 their `set_timesteps` method. If not defined, the default behavior when `num_inference_steps` is passed
                 will be used.
             guidance_scale (`float`, *optional*, defaults to None):
-                A guidance scale value for guidance distilled models. Unlike the traditional classifier-free guidance
-                where the guidance scale is applied during inference through noise prediction rescaling, guidance
-                distilled models take the guidance scale directly as an input parameter during forward pass. Guidance
-                scale is enabled by setting `guidance_scale > 1`. Higher guidance scale encourages to generate images
-                that are closely linked to the text `prompt`, usually at the expense of lower image quality. This
-                parameter in the pipeline is there to support future guidance-distilled models when they come up. It is
-                ignored when not using guidance distilled models. To enable traditional classifier-free guidance,
-                please pass `true_cfg_scale > 1.0` and `negative_prompt` (even an empty negative prompt like " " should
-                enable classifier-free guidance computations).
+                Guidance scale as defined in [Classifier-Free Diffusion
+                Guidance](https://huggingface.co/papers/2207.12598). It is defined as `w` of equation 2.
+                of [Imagen Paper](https://huggingface.co/papers/2205.11487). Classifier-free guidance is enabled by
+                setting `guidance_scale > 1`. Higher guidance scale encourages to
+                generate images that are closely linked to the text `prompt`, usually at the expense of lower image
+                quality. For guidance distilled models, the guidance scale is used directly as an input parameter during forward pass.
             num_images_per_prompt (`int`, *optional*, defaults to 1):
                 The number of images to generate per prompt.
             generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
@@ -573,10 +562,28 @@ class HunyuanImagePipeline(DiffusionPipeline):
             prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
                 provided, text embeddings will be generated from `prompt` input argument.
+            prompt_embeds_mask (`torch.Tensor`, *optional*):
+                Pre-generated text embeddings mask. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
+                provided, text embeddings mask will be generated from `prompt` input argument.
+            prompt_embeds_2 (`torch.Tensor`, *optional*):
+                Pre-generated text embeddings for ocr. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
+                provided, text embeddings for ocr will be generated from `prompt` input argument.
+            prompt_embeds_mask_2 (`torch.Tensor`, *optional*):
+                Pre-generated text embeddings mask for ocr. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
+                provided, text embeddings mask for ocr will be generated from `prompt` input argument.
             negative_prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated negative text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
                 weighting. If not provided, negative_prompt_embeds will be generated from `negative_prompt` input
                 argument.
+            negative_prompt_embeds_mask (`torch.Tensor`, *optional*):
+                Pre-generated negative text embeddings mask. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
+                provided, negative text embeddings mask will be generated from `negative_prompt` input argument.
+            negative_prompt_embeds_2 (`torch.Tensor`, *optional*):
+                Pre-generated negative text embeddings for ocr. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
+                provided, negative text embeddings for ocr will be generated from `negative_prompt` input argument.
+            negative_prompt_embeds_mask_2 (`torch.Tensor`, *optional*):
+                Pre-generated negative text embeddings mask for ocr. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
+                provided, negative text embeddings mask for ocr will be generated from `negative_prompt` input argument.
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generate image. Choose between
                 [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
@@ -595,7 +602,6 @@ class HunyuanImagePipeline(DiffusionPipeline):
                 The list of tensor inputs for the `callback_on_step_end` function. The tensors specified in the list
                 will be passed as `callback_kwargs` argument. You will only be able to include variables listed in the
                 `._callback_tensor_inputs` attribute of your pipeline class.
-            max_sequence_length (`int` defaults to 512): Maximum sequence length to use with the `prompt`.
 
         Examples:
 
@@ -639,8 +645,6 @@ class HunyuanImagePipeline(DiffusionPipeline):
 
         device = self._execution_device
 
-        requires_unconditional_embeds = self.guider._enabled and self.guider.num_conditions > 1
-
         prompt_embeds, prompt_embeds_mask, prompt_embeds_2, prompt_embeds_mask_2 = self.encode_prompt(
             prompt=prompt,
             prompt_embeds=prompt_embeds,
@@ -654,9 +658,16 @@ class HunyuanImagePipeline(DiffusionPipeline):
         prompt_embeds = prompt_embeds.to(self.transformer.dtype)
         prompt_embeds_2 = prompt_embeds_2.to(self.transformer.dtype)
 
-        has_ocr = False
-        if not torch.all(prompt_embeds_2 == 0):
-            has_ocr = True
+        if not torch.all(prompt_embeds_2 == 0) and self.ocr_guider is not None:
+            # prompt contains ocr and pipeline has a guider for ocr
+            guider = self.ocr_guider
+        else:
+            guider = self.guider
+
+        if guidance_scale is not None:
+            guider=guider.new(guidance_scale=guidance_scale)
+
+        requires_unconditional_embeds = guider._enabled and guider.num_conditions > 1
 
         if requires_unconditional_embeds:
             (
@@ -676,8 +687,6 @@ class HunyuanImagePipeline(DiffusionPipeline):
 
             negative_prompt_embeds = negative_prompt_embeds.to(self.transformer.dtype)
             negative_prompt_embeds_2 = negative_prompt_embeds_2.to(self.transformer.dtype)
-            if not torch.all(negative_prompt_embeds_2 == 0):
-                has_ocr = True
 
         # 4. Prepare latent variables
         num_channels_latents = self.transformer.config.in_channels
@@ -699,16 +708,16 @@ class HunyuanImagePipeline(DiffusionPipeline):
         num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
         self._num_timesteps = len(timesteps)
 
-        # handle guidance
+        # handle guidance (for guidance-distilled model)
         if self.transformer.config.guidance_embeds and not (
-            hasattr(self.guider, "guidance_scale") and self.guider.guidance_scale is not None
+            hasattr(guider, "guidance_scale") and guider.guidance_scale is not None
         ):
             raise ValueError("guidance_scale is required for guidance-distilled model.")
 
         if self.transformer.config.guidance_embeds:
             guidance = (
                 torch.tensor(
-                    [self.guider.guidance_scale] * latents.shape[0], dtype=self.transformer.dtype, device=device
+                    [guider.guidance_scale] * latents.shape[0], dtype=self.transformer.dtype, device=device
                 )
                 * 1000.0
             )
@@ -744,15 +753,15 @@ class HunyuanImagePipeline(DiffusionPipeline):
                     for input_name in input_names_tuple:
                         guider_inputs[input_name] = locals()[input_name]
 
-                self.guider.set_state(step=i, num_inference_steps=num_inference_steps, timestep=t)
-                guider_state = self.guider.prepare_inputs(guider_inputs, self._guider_input_fields)
+                guider.set_state(step=i, num_inference_steps=num_inference_steps, timestep=t)
+                guider_state = guider.prepare_inputs(guider_inputs, self._guider_input_fields)
 
                 for guider_state_batch in guider_state:
-                    self.guider.prepare_models(self.transformer)
+                    guider.prepare_models(self.transformer)
                     cond_kwargs = guider_state_batch.as_dict()
                     cond_kwargs = {k: v for k, v in cond_kwargs.items() if k in self._guider_input_fields}
 
-                    guider_state_batch_identifier = getattr(guider_state_batch, self.guider._identifier_key)
+                    guider_state_batch_identifier = getattr(guider_state_batch, guider._identifier_key)
                     with self.transformer.cache_context(guider_state_batch_identifier):
                         guider_state_batch.noise_pred = self.transformer(
                             hidden_states=latents,
@@ -763,9 +772,9 @@ class HunyuanImagePipeline(DiffusionPipeline):
                             return_dict=False,
                             **cond_kwargs,
                         )[0]
-                    self.guider.cleanup_models(self.transformer)
+                    guider.cleanup_models(self.transformer)
 
-                noise_pred = self.guider(guider_state)[0]
+                noise_pred = guider(guider_state)[0]
 
                 # compute the previous noisy sample x_t -> x_t-1
                 latents_dtype = latents.dtype

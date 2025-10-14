@@ -28,6 +28,7 @@ if is_torch_available():
     from .skip_layer_guidance import SkipLayerGuidance
     from .smoothed_energy_guidance import SmoothedEnergyGuidance
     from .tangential_classifier_free_guidance import TangentialClassifierFreeGuidance
+    from .guider_utils import BaseGuidance
 
     GuiderType = Union[
         AdaptiveProjectedGuidance,
@@ -40,4 +41,5 @@ if is_torch_available():
         SmoothedEnergyGuidance,
         TangentialClassifierFreeGuidance,
         AdaptiveProjectedMixGuidance,
+        BaseGuidance,
     ]

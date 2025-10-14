@@ -491,7 +491,6 @@ class AutoencoderKLHunyuanImage(ModelMixin, ConfigMixin, FromOriginalModelMixin)
         """
         self.use_slicing = False
 
-    # YiYi Notes: make sure the inputs tensor is 4D or 5D
     def _encode(self, x: torch.Tensor):
 
         batch_size, num_channels, height, width = x.shape
