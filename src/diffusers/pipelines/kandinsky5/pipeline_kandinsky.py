@@ -18,7 +18,6 @@ from typing import Callable, Dict, List, Optional, Union
 import regex as re
 import torch
 from transformers import Qwen2VLProcessor, Qwen2_5_VLForConditionalGeneration, CLIPTextModel, CLIPTokenizer
-import torchvision
 from torchvision.transforms import ToPILImage
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
