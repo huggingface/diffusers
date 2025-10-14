@@ -545,11 +545,11 @@ class HunyuanImagePipeline(DiffusionPipeline):
                 will be used.
             guidance_scale (`float`, *optional*, defaults to None):
                 Guidance scale as defined in [Classifier-Free Diffusion
-                Guidance](https://huggingface.co/papers/2207.12598). It is defined as `w` of equation 2.
-                of [Imagen Paper](https://huggingface.co/papers/2205.11487). Classifier-free guidance is enabled by
-                setting `guidance_scale > 1`. Higher guidance scale encourages to
-                generate images that are closely linked to the text `prompt`, usually at the expense of lower image
-                quality. For guidance distilled models, the guidance scale is used directly as an input parameter during forward pass.
+                Guidance](https://huggingface.co/papers/2207.12598). It is defined as `w` of equation 2. of [Imagen
+                Paper](https://huggingface.co/papers/2205.11487). Classifier-free guidance is enabled by setting
+                `guidance_scale > 1`. Higher guidance scale encourages to generate images that are closely linked to
+                the text `prompt`, usually at the expense of lower image quality. For guidance distilled models, the
+                guidance scale is used directly as an input parameter during forward pass.
             num_images_per_prompt (`int`, *optional*, defaults to 1):
                 The number of images to generate per prompt.
             generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
@@ -563,27 +563,31 @@ class HunyuanImagePipeline(DiffusionPipeline):
                 Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
                 provided, text embeddings will be generated from `prompt` input argument.
             prompt_embeds_mask (`torch.Tensor`, *optional*):
-                Pre-generated text embeddings mask. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
-                provided, text embeddings mask will be generated from `prompt` input argument.
+                Pre-generated text embeddings mask. Can be used to easily tweak text inputs, *e.g.* prompt weighting.
+                If not provided, text embeddings mask will be generated from `prompt` input argument.
             prompt_embeds_2 (`torch.Tensor`, *optional*):
-                Pre-generated text embeddings for ocr. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
-                provided, text embeddings for ocr will be generated from `prompt` input argument.
+                Pre-generated text embeddings for ocr. Can be used to easily tweak text inputs, *e.g.* prompt
+                weighting. If not provided, text embeddings for ocr will be generated from `prompt` input argument.
             prompt_embeds_mask_2 (`torch.Tensor`, *optional*):
-                Pre-generated text embeddings mask for ocr. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
-                provided, text embeddings mask for ocr will be generated from `prompt` input argument.
+                Pre-generated text embeddings mask for ocr. Can be used to easily tweak text inputs, *e.g.* prompt
+                weighting. If not provided, text embeddings mask for ocr will be generated from `prompt` input
+                argument.
             negative_prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated negative text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
                 weighting. If not provided, negative_prompt_embeds will be generated from `negative_prompt` input
                 argument.
             negative_prompt_embeds_mask (`torch.Tensor`, *optional*):
-                Pre-generated negative text embeddings mask. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
-                provided, negative text embeddings mask will be generated from `negative_prompt` input argument.
+                Pre-generated negative text embeddings mask. Can be used to easily tweak text inputs, *e.g.* prompt
+                weighting. If not provided, negative text embeddings mask will be generated from `negative_prompt`
+                input argument.
             negative_prompt_embeds_2 (`torch.Tensor`, *optional*):
-                Pre-generated negative text embeddings for ocr. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
-                provided, negative text embeddings for ocr will be generated from `negative_prompt` input argument.
+                Pre-generated negative text embeddings for ocr. Can be used to easily tweak text inputs, *e.g.* prompt
+                weighting. If not provided, negative text embeddings for ocr will be generated from `negative_prompt`
+                input argument.
             negative_prompt_embeds_mask_2 (`torch.Tensor`, *optional*):
-                Pre-generated negative text embeddings mask for ocr. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
-                provided, negative text embeddings mask for ocr will be generated from `negative_prompt` input argument.
+                Pre-generated negative text embeddings mask for ocr. Can be used to easily tweak text inputs, *e.g.*
+                prompt weighting. If not provided, negative text embeddings mask for ocr will be generated from
+                `negative_prompt` input argument.
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generate image. Choose between
                 [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
@@ -665,7 +669,7 @@ class HunyuanImagePipeline(DiffusionPipeline):
             guider = self.guider
 
         if guidance_scale is not None:
-            guider=guider.new(guidance_scale=guidance_scale)
+            guider = guider.new(guidance_scale=guidance_scale)
 
         requires_unconditional_embeds = guider._enabled and guider.num_conditions > 1
 
@@ -716,9 +720,7 @@ class HunyuanImagePipeline(DiffusionPipeline):
 
         if self.transformer.config.guidance_embeds:
             guidance = (
-                torch.tensor(
-                    [guider.guidance_scale] * latents.shape[0], dtype=self.transformer.dtype, device=device
-                )
+                torch.tensor([guider.guidance_scale] * latents.shape[0], dtype=self.transformer.dtype, device=device)
                 * 1000.0
             )
 

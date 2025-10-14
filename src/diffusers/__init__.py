@@ -151,6 +151,7 @@ else:
             "AdaptiveProjectedGuidance",
             "AdaptiveProjectedMixGuidance",
             "AutoGuidance",
+            "BaseGuidance",
             "ClassifierFreeGuidance",
             "ClassifierFreeZeroStarGuidance",
             "FrequencyDecoupledGuidance",
@@ -158,7 +159,6 @@ else:
             "SkipLayerGuidance",
             "SmoothedEnergyGuidance",
             "TangentialClassifierFreeGuidance",
-            "BaseGuidance",
         ]
     )
     _import_structure["hooks"].extend(
@@ -848,6 +848,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AdaptiveProjectedGuidance,
             AdaptiveProjectedMixGuidance,
             AutoGuidance,
+            BaseGuidance,
             ClassifierFreeGuidance,
             ClassifierFreeZeroStarGuidance,
             FrequencyDecoupledGuidance,
@@ -855,7 +856,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             SkipLayerGuidance,
             SmoothedEnergyGuidance,
             TangentialClassifierFreeGuidance,
-            BaseGuidance,
         )
         from .hooks import (
             FasterCacheConfig,

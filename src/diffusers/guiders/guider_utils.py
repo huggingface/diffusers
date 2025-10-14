@@ -63,22 +63,22 @@ class BaseGuidance(ConfigMixin, PushToHubMixin):
     def new(self, **kwargs):
         """
         Creates a copy of this guider instance, optionally with modified configuration parameters.
-        
+
         Args:
             **kwargs: Configuration parameters to override in the new instance. If no kwargs are provided,
                 returns an exact copy with the same configuration.
-        
+
         Returns:
             A new guider instance with the same (or updated) configuration.
-            
+
         Example:
             ```python
             # Create a CFG guider
             guider = ClassifierFreeGuidance(guidance_scale=3.5)
-            
+
             # Create an exact copy
             same_guider = guider.new()
-            
+
             # Create a copy with different start step, keeping other config the same
             new_guider = guider.new(guidance_scale=5)
             ```
