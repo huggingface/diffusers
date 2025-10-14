@@ -587,7 +587,7 @@ class HunyuanImageRefinerDecoder3D(nn.Module):
 class AutoencoderKLHunyuanImageRefiner(ModelMixin, ConfigMixin):
     r"""
     A VAE model with KL loss for encoding videos into latents and decoding latent representations into videos. Used for
-    HunyuanImage-2.1 Refiner..
+    HunyuanImage-2.1 Refiner.
 
     This model inherits from [`ModelMixin`]. Check the superclass documentation for it's generic methods implemented
     for all models (such as downloading or saving).
