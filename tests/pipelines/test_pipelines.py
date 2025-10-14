@@ -630,6 +630,7 @@ class DownloadTests(unittest.TestCase):
             # https://huggingface.co/hf-internal-testing/stable-diffusion-broken-variants/tree/main/unet
             assert len(files) == 15, f"We should only download 15 files, not {len(files)}"
 
+    @pytest.mark.xfail(condition=is_transformers_version(">", "4.56.2"), reason="Some import error", strict=True)
     def test_download_bin_only_variant_exists_for_model(self):
         variant = None
         use_safetensors = False
@@ -676,6 +677,7 @@ class DownloadTests(unittest.TestCase):
 
             assert "Could not find the necessary `safetensors` weights" in str(error_context.exception)
 
+    @pytest.mark.xfail(condition=is_transformers_version(">", "4.56.2"), reason="Some import error", strict=True)
     def test_download_bin_variant_does_not_exist_for_model(self):
         variant = "no_ema"
         use_safetensors = False
