@@ -55,12 +55,20 @@ EXAMPLE_DOC_STRING = """
         >>> import torch
         >>> from diffusers import Kandinsky5T2VPipeline
         >>> from diffusers.utils import export_to_video
+        
+        >>> # Available models: 
+        >>> # ai-forever/Kandinsky-5.0-T2V-Lite-sft-5s-Diffusers
+        >>> # ai-forever/Kandinsky-5.0-T2V-Lite-nocfg-5s-Diffusers
+        >>> # ai-forever/Kandinsky-5.0-T2V-Lite-distilled16steps-5s-Diffusers
+        >>> # ai-forever/Kandinsky-5.0-T2V-Lite-pretrain-5s-Diffusers
 
-        >>> pipe = Kandinsky5T2VPipeline.from_pretrained("ai-forever/Kandinsky-5.0-T2V")
+        >>> model_id = "ai-forever/Kandinsky-5.0-T2V-Lite-sft-5s-Diffusers"
+        >>> pipe = Kandinsky5T2VPipeline.from_pretrained(model_id, torch_dtype=torch.bfloat16)
         >>> pipe = pipe.to("cuda")
 
         >>> prompt = "A cat and a dog baking a cake together in a kitchen."
         >>> negative_prompt = "Static, 2D cartoon, cartoon, 2d animation, paintings, images, worst quality, low quality, ugly, deformed, walking backwards"
+        
         >>> output = pipe(
         ...     prompt=prompt,
         ...     negative_prompt=negative_prompt,
@@ -70,7 +78,8 @@ EXAMPLE_DOC_STRING = """
         ...     num_inference_steps=50,
         ...     guidance_scale=5.0,
         ... ).frames[0]
-        >>> export_to_video(output, "output.mp4", fps=24)
+        
+        >>> export_to_video(output, "output.mp4", fps=24, quality=9)
         ```
 """
 
