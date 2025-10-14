@@ -20,9 +20,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.utils.checkpoint
 
-# YiYi TODO: remove this
-from einops import rearrange
-
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FromOriginalModelMixin
 from ...utils import logging
@@ -143,8 +140,16 @@ class HunyuanImageDownsample(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         h = self.conv(x)
-        h = rearrange(h, "b c (h r1) (w r2) -> b (r1 r2 c) h w", r1=2, r2=2)
-        shortcut = rearrange(x, "b c (h r1) (w r2) -> b (r1 r2 c) h w", r1=2, r2=2)
+
+        B, C, H, W = h.shape
+        h = h.reshape(B, C, H // 2, 2, W // 2, 2)
+        h = h.permute(0, 3, 5, 1, 2, 4)  # b, r1, r2, c, h, w
+        h = h.reshape(B, 4 * C, H // 2, W // 2)
+        
+        B, C, H, W = x.shape
+        shortcut = x.reshape(B, C, H // 2, 2, W // 2, 2)
+        shortcut = shortcut.permute(0, 3, 5, 1, 2, 4)  # b, r1, r2, c, h, w
+        shortcut = shortcut.reshape(B, 4 * C, H // 2, W // 2)
 
         B, C, H, W = shortcut.shape
         shortcut = shortcut.view(B, h.shape[1], self.group_size, H, W).mean(dim=2)
@@ -168,9 +173,19 @@ class HunyuanImageUpsample(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         h = self.conv(x)
-        h = rearrange(h, "b (r1 r2 c) h w -> b c (h r1) (w r2)", r1=2, r2=2)
+
+        B, C, H, W = h.shape
+        h = h.reshape(B, 2, 2, C // 4, H, W)  # b, r1, r2, c, h, w
+        h = h.permute(0, 3, 4, 1, 5, 2)  # b, c, h, r1, w, r2
+        h = h.reshape(B, C // 4, H * 2, W * 2)
+        
         shortcut = x.repeat_interleave(repeats=self.repeats, dim=1)
-        shortcut = rearrange(shortcut, "b (r1 r2 c) h w -> b c (h r1) (w r2)", r1=2, r2=2)
+
+
+        B, C, H, W = shortcut.shape
+        shortcut = shortcut.reshape(B, 2, 2, C // 4, H, W)  # b, r1, r2, c, h, w
+        shortcut = shortcut.permute(0, 3, 4, 1, 5, 2)  # b, c, h, r1, w, r2
+        shortcut = shortcut.reshape(B, C // 4, H * 2, W * 2)
         return h + shortcut
 
 
@@ -297,7 +312,9 @@ class HunyuanImageEncoder2D(nn.Module):
             x = self.mid_block(x)
 
         ## head
-        residual = rearrange(x, "b (c r) h w -> b c r h w", r=self.group_size).mean(dim=2)
+        B, C, H, W = x.shape
+        residual = x.view(B, C // self.group_size, self.group_size, H, W).mean(dim=2)
+
         x = self.norm_out(x)
         x = self.nonlinearity(x)
         x = self.conv_out(x)
