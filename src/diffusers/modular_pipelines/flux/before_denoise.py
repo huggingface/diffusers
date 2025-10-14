@@ -118,15 +118,6 @@ def retrieve_latents(
         raise AttributeError("Could not access latents of provided encoder_output")
 
 
-# TODO: align this with Qwen patchifier
-def _pack_latents(latents, batch_size, num_channels_latents, height, width):
-    latents = latents.view(batch_size, num_channels_latents, height // 2, 2, width // 2, 2)
-    latents = latents.permute(0, 2, 4, 1, 3, 5)
-    latents = latents.reshape(batch_size, (height // 2) * (width // 2), num_channels_latents * 4)
-
-    return latents
-
-
 def _get_initial_timesteps_and_optionals(
     transformer,
     scheduler,
@@ -398,16 +389,15 @@ class FluxPrepareLatentsStep(ModularPipelineBlocks):
                 f" size of {batch_size}. Make sure the batch size matches the length of the generators."
             )
 
-        # TODO: move packing latents code to a patchifier
+        # TODO: move packing latents code to a patchifier similar to Qwen
         latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
-        latents = _pack_latents(latents, batch_size, num_channels_latents, height, width)
+        latents = FluxPipeline._pack_latents(latents, batch_size, num_channels_latents, height, width)
 
         return latents
 
     @torch.no_grad()
     def __call__(self, components: FluxModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
-
         block_state.height = block_state.height or components.default_height
         block_state.width = block_state.width or components.default_width
         block_state.device = components._execution_device
@@ -553,6 +543,76 @@ class FluxRoPEInputsStep(ModularPipelineBlocks):
         height = 2 * (int(block_state.height) // (components.vae_scale_factor * 2))
         width = 2 * (int(block_state.width) // (components.vae_scale_factor * 2))
         block_state.img_ids = FluxPipeline._prepare_latent_image_ids(None, height // 2, width // 2, device, dtype)
+
+        self.set_block_state(state, block_state)
+
+        return components, state
+
+
+class FluxKontextRoPEInputsStep(ModularPipelineBlocks):
+    model_name = "flux-kontext"
+
+    @property
+    def description(self) -> str:
+        return "Step that prepares the RoPE inputs for the denoising process of Flux Kontext. Should be placed after text encoder and latent preparation steps."
+
+    @property
+    def inputs(self) -> List[InputParam]:
+        return [
+            InputParam(name="image_height"),
+            InputParam(name="image_width"),
+            InputParam(name="height"),
+            InputParam(name="width"),
+            InputParam(name="prompt_embeds"),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> List[OutputParam]:
+        return [
+            OutputParam(
+                name="txt_ids",
+                kwargs_type="denoiser_input_fields",
+                type_hint=List[int],
+                description="The sequence lengths of the prompt embeds, used for RoPE calculation.",
+            ),
+            OutputParam(
+                name="img_ids",
+                kwargs_type="denoiser_input_fields",
+                type_hint=List[int],
+                description="The sequence lengths of the image latents, used for RoPE calculation.",
+            ),
+        ]
+
+    def __call__(self, components: FluxModularPipeline, state: PipelineState) -> PipelineState:
+        block_state = self.get_block_state(state)
+
+        prompt_embeds = block_state.prompt_embeds
+        device, dtype = prompt_embeds.device, prompt_embeds.dtype
+        block_state.txt_ids = torch.zeros(prompt_embeds.shape[1], 3).to(
+            device=prompt_embeds.device, dtype=prompt_embeds.dtype
+        )
+
+        img_ids = None
+        if (
+            getattr(block_state, "image_height", None) is not None
+            and getattr(block_state, "image_width", None) is not None
+        ):
+            image_latent_height = 2 * (int(block_state.image_height) // (components.vae_scale_factor * 2))
+            image_latent_width = 2 * (int(block_state.width) // (components.vae_scale_factor * 2))
+            img_ids = FluxPipeline._prepare_latent_image_ids(
+                None, image_latent_height // 2, image_latent_width // 2, device, dtype
+            )
+            # image ids are the same as latent ids with the first dimension set to 1 instead of 0
+            img_ids[..., 0] = 1
+
+        height = 2 * (int(block_state.height) // (components.vae_scale_factor * 2))
+        width = 2 * (int(block_state.width) // (components.vae_scale_factor * 2))
+        latent_ids = FluxPipeline._prepare_latent_image_ids(None, height // 2, width // 2, device, dtype)
+
+        if img_ids is not None:
+            latent_ids = torch.cat([latent_ids, img_ids], dim=0)
+
+        block_state.img_ids = latent_ids
 
         self.set_block_state(state, block_state)
 
