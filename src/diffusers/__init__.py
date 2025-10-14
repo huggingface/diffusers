@@ -387,6 +387,8 @@ else:
     _import_structure["modular_pipelines"].extend(
         [
             "FluxAutoBlocks",
+            "FluxKontextAutoBlocks",
+            "FluxKontextModularPipeline",
             "FluxModularPipeline",
             "QwenImageAutoBlocks",
             "QwenImageEditAutoBlocks",
@@ -1053,6 +1055,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     else:
         from .modular_pipelines import (
             FluxAutoBlocks,
+            FluxKontextAutoBlocks,
+            FluxKontextModularPipeline,
             FluxModularPipeline,
             QwenImageAutoBlocks,
             QwenImageEditAutoBlocks,

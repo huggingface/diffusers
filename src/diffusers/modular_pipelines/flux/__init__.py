@@ -25,14 +25,18 @@ else:
     _import_structure["modular_blocks"] = [
         "ALL_BLOCKS",
         "AUTO_BLOCKS",
+        "AUTO_BLOCKS_KONTEXT",
+        "FLUX_KONTEXT_BLOCKS",
         "TEXT2IMAGE_BLOCKS",
         "FluxAutoBeforeDenoiseStep",
         "FluxAutoBlocks",
-        "FluxAutoBlocks",
         "FluxAutoDecodeStep",
         "FluxAutoDenoiseStep",
+        "FluxKontextAutoBlocks",
+        "FluxKontextAutoDenoiseStep",
+        "FluxKontextBeforeDenoiseStep",
     ]
-    _import_structure["modular_pipeline"] = ["FluxModularPipeline"]
+    _import_structure["modular_pipeline"] = ["FluxKontextModularPipeline", "FluxModularPipeline"]
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     try:
@@ -45,13 +49,18 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .modular_blocks import (
             ALL_BLOCKS,
             AUTO_BLOCKS,
+            AUTO_BLOCKS_KONTEXT,
+            FLUX_KONTEXT_BLOCKS,
             TEXT2IMAGE_BLOCKS,
             FluxAutoBeforeDenoiseStep,
             FluxAutoBlocks,
             FluxAutoDecodeStep,
             FluxAutoDenoiseStep,
+            FluxKontextAutoBlocks,
+            FluxKontextAutoDenoiseStep,
+            FluxKontextBeforeDenoiseStep,
         )
-        from .modular_pipeline import FluxModularPipeline
+        from .modular_pipeline import FluxKontextModularPipeline, FluxModularPipeline
 else:
     import sys
 
