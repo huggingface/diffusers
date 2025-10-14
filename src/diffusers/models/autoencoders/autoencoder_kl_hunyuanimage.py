@@ -145,7 +145,7 @@ class HunyuanImageDownsample(nn.Module):
         h = h.reshape(B, C, H // 2, 2, W // 2, 2)
         h = h.permute(0, 3, 5, 1, 2, 4)  # b, r1, r2, c, h, w
         h = h.reshape(B, 4 * C, H // 2, W // 2)
-        
+
         B, C, H, W = x.shape
         shortcut = x.reshape(B, C, H // 2, 2, W // 2, 2)
         shortcut = shortcut.permute(0, 3, 5, 1, 2, 4)  # b, r1, r2, c, h, w
@@ -178,9 +178,8 @@ class HunyuanImageUpsample(nn.Module):
         h = h.reshape(B, 2, 2, C // 4, H, W)  # b, r1, r2, c, h, w
         h = h.permute(0, 3, 4, 1, 5, 2)  # b, c, h, r1, w, r2
         h = h.reshape(B, C // 4, H * 2, W * 2)
-        
-        shortcut = x.repeat_interleave(repeats=self.repeats, dim=1)
 
+        shortcut = x.repeat_interleave(repeats=self.repeats, dim=1)
 
         B, C, H, W = shortcut.shape
         shortcut = shortcut.reshape(B, 2, 2, C // 4, H, W)  # b, r1, r2, c, h, w
