@@ -11,6 +11,7 @@ if is_torch_available():
     from .latte_transformer_3d import LatteTransformer3DModel
     from .lumina_nextdit2d import LuminaNextDiT2DModel
     from .pixart_transformer_2d import PixArtTransformer2DModel
+    from .transformer_lumina_dit import LuminaDiT2DModel
     from .prior_transformer import PriorTransformer
     from .sana_transformer import SanaTransformer2DModel
     from .stable_audio_transformer import StableAudioDiTModel
