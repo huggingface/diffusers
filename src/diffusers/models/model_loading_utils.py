@@ -267,7 +267,7 @@ def load_model_dict_into_meta(
                 old_param = getattr(old_param, split)
         else:
             # hf_quantizer can add parameters that doesn't exist yet in the model and the empty_state_dict
-            # they will be created in create_quantized_param and hf_quantizer should handle the loading of these parameters 
+            # they will be created in create_quantized_param and hf_quantizer should handle the loading of these parameters
             # these parameters will be in the loaded_state_dict from the model file instead when loading a pre_quantized model
             old_param = None
 
