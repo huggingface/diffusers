@@ -22,6 +22,7 @@ import torch.utils.checkpoint
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import UNet2DConditionLoadersMixin
 from ...models.activations import get_activation
+from ...models.attention import AttentionMixin
 from ...models.attention_processor import (
     ADDED_KV_ATTENTION_PROCESSORS,
     CROSS_ATTENTION_PROCESSORS,
@@ -163,7 +164,7 @@ class AudioLDM2ProjectionModel(ModelMixin, ConfigMixin):
         )
 
 
-class AudioLDM2UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
+class AudioLDM2UNet2DConditionModel(ModelMixin, AttentionMixin, ConfigMixin, UNet2DConditionLoadersMixin):
     r"""
     A conditional 2D UNet model that takes a noisy sample, conditional state, and a timestep and returns a sample
     shaped output. Compared to the vanilla [`UNet2DConditionModel`], this variant optionally includes an additional
