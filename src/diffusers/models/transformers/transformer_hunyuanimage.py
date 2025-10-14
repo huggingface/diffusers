@@ -36,16 +36,17 @@ from ..embeddings import (
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
 from ..normalization import AdaLayerNormContinuous, AdaLayerNormZero, AdaLayerNormZeroSingle
+from ...utils.torch_utils import maybe_allow_in_graph
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-class HunyuanImageAttnProcessor2_0:
+class HunyuanImageAttnProcessor:
     def __init__(self):
         if not hasattr(F, "scaled_dot_product_attention"):
             raise ImportError(
-                "HunyuanImageAttnProcessor2_0 requires PyTorch 2.0. To use it, please upgrade PyTorch to 2.0."
+                "HunyuanImageAttnProcessor requires PyTorch 2.0. To use it, please upgrade PyTorch to 2.0."
             )
 
     def __call__(
@@ -249,6 +250,7 @@ class HunyuanImageCombinedTimeGuidanceEmbedding(nn.Module):
 
 
 # IndividualTokenRefinerBlock
+@maybe_allow_in_graph
 class HunyuanImageIndividualTokenRefinerBlock(nn.Module):
     def __init__(
         self,
@@ -444,6 +446,7 @@ class HunyuanImageRotaryPosEmbed(nn.Module):
         return freqs_cos, freqs_sin
 
 
+@maybe_allow_in_graph
 class HunyuanImageSingleTransformerBlock(nn.Module):
     def __init__(
         self,
@@ -464,7 +467,7 @@ class HunyuanImageSingleTransformerBlock(nn.Module):
             heads=num_attention_heads,
             out_dim=hidden_size,
             bias=True,
-            processor=HunyuanImageAttnProcessor2_0(),
+            processor=HunyuanImageAttnProcessor(),
             qk_norm=qk_norm,
             eps=1e-6,
             pre_only=True,
@@ -520,6 +523,7 @@ class HunyuanImageSingleTransformerBlock(nn.Module):
         return hidden_states, encoder_hidden_states
 
 
+@maybe_allow_in_graph
 class HunyuanImageTransformerBlock(nn.Module):
     def __init__(
         self,
@@ -544,7 +548,7 @@ class HunyuanImageTransformerBlock(nn.Module):
             out_dim=hidden_size,
             context_pre_only=False,
             bias=True,
-            processor=HunyuanImageAttnProcessor2_0(),
+            processor=HunyuanImageAttnProcessor(),
             qk_norm=qk_norm,
             eps=1e-6,
         )
@@ -653,8 +657,6 @@ class HunyuanImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, 
     _repeated_blocks = [
         "HunyuanImageTransformerBlock",
         "HunyuanImageSingleTransformerBlock",
-        "HunyuanImagePatchEmbed",
-        "HunyuanImageTokenRefiner",
     ]
 
     @register_to_config
