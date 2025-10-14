@@ -15,7 +15,6 @@
 import math
 from typing import Any, Dict, List, Optional, Tuple, Union
 
-from einops import rearrange
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
