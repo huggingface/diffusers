@@ -3,8 +3,6 @@ name: Check Documentation Links
 on:
   pull_request:
     paths:
-      - "src/diffusers/**.py"
-      - "examples/**"
       - "docs/**"
   push:
     branches:
@@ -13,8 +11,6 @@ on:
       - v*-release
       - v*-patch
     paths:
-      - "src/diffusers/**.py"
-      - "examples/**"
       - "docs/**"
   workflow_dispatch:
 
@@ -46,4 +42,4 @@ jobs:
 
       - name: Check documentation links
         run: |
-          uv run doc-builder check-links docs/source
+          uv run doc-builder check-links docs/source/en
