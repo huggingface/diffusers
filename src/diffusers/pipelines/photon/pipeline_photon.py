@@ -266,6 +266,7 @@ class PhotonPipeline(
         self.tokenizer = tokenizer
         self.text_preprocessor = TextPreprocessor()
         self.default_sample_size = default_sample_size
+        self._guidance_scale = 1.0
 
         self.register_modules(
             transformer=transformer,
@@ -277,10 +278,15 @@ class PhotonPipeline(
 
         self.register_to_config(default_sample_size=self.default_sample_size)
 
-        self.image_processor = PixArtImageProcessor(vae_scale_factor=self.vae_scale_factor)
+        if vae is not None:
+            self.image_processor = PixArtImageProcessor(vae_scale_factor=self.vae_scale_factor)
+        else:
+            self.image_processor = None
 
     @property
     def vae_scale_factor(self):
+        if self.vae is None:
+            return 8
         if hasattr(self.vae, "spatial_compression_ratio"):
             return self.vae.spatial_compression_ratio
         else:  # Flux VAE
@@ -290,6 +296,10 @@ class PhotonPipeline(
     def do_classifier_free_guidance(self):
         """Check if classifier-free guidance is enabled based on guidance scale."""
         return self._guidance_scale > 1.0
+
+    @property
+    def guidance_scale(self):
+        return self._guidance_scale
 
     def prepare_latents(
         self,
@@ -318,28 +328,58 @@ class PhotonPipeline(
     def encode_prompt(
         self,
         prompt: Union[str, List[str]],
-        device: torch.device,
+        device: Optional[torch.device] = None,
         do_classifier_free_guidance: bool = True,
         negative_prompt: str = "",
+        num_images_per_prompt: int = 1,
         prompt_embeds: Optional[torch.FloatTensor] = None,
         negative_prompt_embeds: Optional[torch.FloatTensor] = None,
         prompt_attention_mask: Optional[torch.BoolTensor] = None,
         negative_prompt_attention_mask: Optional[torch.BoolTensor] = None,
     ):
         """Encode text prompt using standard text encoder and tokenizer, or use precomputed embeddings."""
-        if prompt_embeds is not None:
-            # Use precomputed embeddings
-            return (
-                prompt_embeds,
-                prompt_attention_mask,
-                negative_prompt_embeds if do_classifier_free_guidance else None,
-                negative_prompt_attention_mask if do_classifier_free_guidance else None,
+        if device is None:
+            device = self._execution_device
+
+        if prompt_embeds is None:
+            if isinstance(prompt, str):
+                prompt = [prompt]
+            # Encode the prompts
+            text_embeddings, cross_attn_mask, uncond_text_embeddings, uncond_cross_attn_mask = (
+                self._encode_prompt_standard(prompt, device, do_classifier_free_guidance, negative_prompt)
             )
+            prompt_embeds = text_embeddings
+            prompt_attention_mask = cross_attn_mask
+            negative_prompt_embeds = uncond_text_embeddings
+            negative_prompt_attention_mask = uncond_cross_attn_mask
 
-        if isinstance(prompt, str):
-            prompt = [prompt]
+        # Duplicate embeddings for each generation per prompt
+        if num_images_per_prompt > 1:
+            # Repeat prompt embeddings
+            bs_embed, seq_len, _ = prompt_embeds.shape
+            prompt_embeds = prompt_embeds.repeat(1, num_images_per_prompt, 1)
+            prompt_embeds = prompt_embeds.view(bs_embed * num_images_per_prompt, seq_len, -1)
 
-        return self._encode_prompt_standard(prompt, device, do_classifier_free_guidance, negative_prompt)
+            if prompt_attention_mask is not None:
+                prompt_attention_mask = prompt_attention_mask.view(bs_embed, -1)
+                prompt_attention_mask = prompt_attention_mask.repeat(num_images_per_prompt, 1)
+
+            # Repeat negative embeddings if using CFG
+            if do_classifier_free_guidance and negative_prompt_embeds is not None:
+                bs_embed, seq_len, _ = negative_prompt_embeds.shape
+                negative_prompt_embeds = negative_prompt_embeds.repeat(1, num_images_per_prompt, 1)
+                negative_prompt_embeds = negative_prompt_embeds.view(bs_embed * num_images_per_prompt, seq_len, -1)
+
+                if negative_prompt_attention_mask is not None:
+                    negative_prompt_attention_mask = negative_prompt_attention_mask.view(bs_embed, -1)
+                    negative_prompt_attention_mask = negative_prompt_attention_mask.repeat(num_images_per_prompt, 1)
+
+        return (
+            prompt_embeds,
+            prompt_attention_mask,
+            negative_prompt_embeds if do_classifier_free_guidance else None,
+            negative_prompt_attention_mask if do_classifier_free_guidance else None,
+        )
 
     def _tokenize_prompts(self, prompts: List[str], device: torch.device):
         """Tokenize and clean prompts."""
@@ -549,6 +589,11 @@ class PhotonPipeline(
         width = width or self.default_sample_size
 
         if use_resolution_binning:
+            if self.image_processor is None:
+                raise ValueError(
+                    "Resolution binning requires a VAE with image_processor, but VAE is not available. "
+                    "Set use_resolution_binning=False or provide a VAE."
+                )
             if self.default_sample_size <= 256:
                 aspect_ratio_bin = ASPECT_RATIO_256_BIN
             else:
@@ -570,6 +615,12 @@ class PhotonPipeline(
             negative_prompt_embeds,
         )
 
+        if self.vae is None and output_type not in ["latent", "pt"]:
+            raise ValueError(
+                f"VAE is required for output_type='{output_type}' but it is not available. "
+                "Either provide a VAE or set output_type='latent' or 'pt' to get latent outputs."
+            )
+
         if prompt is not None and isinstance(prompt, str):
             batch_size = 1
         elif prompt is not None and isinstance(prompt, list):
@@ -577,6 +628,7 @@ class PhotonPipeline(
         else:
             batch_size = prompt_embeds.shape[0]
 
+        # Use execution device (handles offloading scenarios including group offloading)
         device = self._execution_device
 
         self._guidance_scale = guidance_scale
@@ -587,11 +639,15 @@ class PhotonPipeline(
             device,
             do_classifier_free_guidance=self.do_classifier_free_guidance,
             negative_prompt=negative_prompt,
+            num_images_per_prompt=num_images_per_prompt,
             prompt_embeds=prompt_embeds,
             negative_prompt_embeds=negative_prompt_embeds,
             prompt_attention_mask=prompt_attention_mask,
             negative_prompt_attention_mask=negative_prompt_attention_mask,
         )
+        # Expose standard names for callbacks parity
+        prompt_embeds = text_embeddings
+        negative_prompt_embeds = uncond_text_embeddings
 
         # 3. Prepare timesteps
         if timesteps is not None:
@@ -602,8 +658,14 @@ class PhotonPipeline(
             self.scheduler.set_timesteps(num_inference_steps, device=device)
             timesteps = self.scheduler.timesteps
 
+        self.num_timesteps = len(timesteps)
+
         # 4. Prepare latent variables
-        num_channels_latents = self.vae.config.latent_channels
+        if self.vae is not None:
+            num_channels_latents = self.vae.config.latent_channels
+        else:
+            # When vae is None, get latent channels from transformer
+            num_channels_latents = self.transformer.config.in_channels
         latents = self.prepare_latents(
             batch_size * num_images_per_prompt,
             num_channels_latents,
@@ -675,7 +737,7 @@ class PhotonPipeline(
                     progress_bar.update()
 
         # 8. Post-processing
-        if output_type == "latent":
+        if output_type == "latent" or (output_type == "pt" and self.vae is None):
             image = latents
         else:
             # Unscale latents for VAE (supports both AutoencoderKL and AutoencoderDC)

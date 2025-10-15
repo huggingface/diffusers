@@ -27,9 +27,13 @@ else:
 # Import T5GemmaEncoder for pipeline loading compatibility
 try:
     if is_transformers_available():
+        import transformers
         from transformers.models.t5gemma.modeling_t5gemma import T5GemmaEncoder
 
         _additional_imports["T5GemmaEncoder"] = T5GemmaEncoder
+        # Patch transformers module directly for serialization
+        if not hasattr(transformers, "T5GemmaEncoder"):
+            transformers.T5GemmaEncoder = T5GemmaEncoder
 except ImportError:
     pass
 
@@ -42,12 +46,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     else:
         from .pipeline_output import PhotonPipelineOutput
         from .pipeline_photon import PhotonPipeline
-
-    try:
-        if is_transformers_available():
-            from transformers.models.t5gemma.modeling_t5gemma import T5GemmaEncoder
-    except ImportError:
-        pass
 
 else:
     import sys
