@@ -75,6 +75,7 @@ class AdaptiveProjectedMixGuidance(BaseGuidance):
         stop: float = 1.0,
         adaptive_projected_guidance_start_step: int = 5,
         enabled: bool = True,
+        distilled_guidance_scale: Optional[float] = None,
     ):
         super().__init__(start, stop, enabled)
 
@@ -87,6 +88,7 @@ class AdaptiveProjectedMixGuidance(BaseGuidance):
         self.adaptive_projected_guidance_start_step = adaptive_projected_guidance_start_step
         self.use_original_formulation = use_original_formulation
         self.momentum_buffer = None
+        self.distilled_guidance_scale = distilled_guidance_scale
 
     def prepare_inputs(
         self, data: "BlockState", input_fields: Optional[Dict[str, Union[str, Tuple[str, str]]]] = None
