@@ -18,7 +18,6 @@ from typing import Optional, Union
 import numpy as np
 import torch
 import torch.nn as nn
-import torch.utils.checkpoint
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...utils import logging
