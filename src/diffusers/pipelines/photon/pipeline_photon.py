@@ -301,6 +301,18 @@ class PhotonPipeline(
     def guidance_scale(self):
         return self._guidance_scale
 
+    def get_default_resolution(self):
+        """Determine the default resolution based on the loaded VAE and config.
+
+        Returns:
+            int: The default sample size (height/width) to use for generation.
+        """
+        default_from_config = getattr(self.config, "default_sample_size", None)
+        if default_from_config is not None:
+            return default_from_config
+
+        return DEFAULT_RESOLUTION
+
     def prepare_latents(
         self,
         batch_size: int,
@@ -585,8 +597,9 @@ class PhotonPipeline(
         """
 
         # 0. Set height and width
-        height = height or self.default_sample_size
-        width = width or self.default_sample_size
+        default_resolution = self.get_default_resolution()
+        height = height or default_resolution
+        width = width or default_resolution
 
         if use_resolution_binning:
             if self.image_processor is None:
