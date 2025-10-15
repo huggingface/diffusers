@@ -173,6 +173,9 @@ class AdaptiveProjectedMixGuidance(BaseGuidance):
         if not self._enabled:
             return False
 
+        if not self._is_cfg_enabled():
+            return False
+
         is_within_range = False
         if self._step is not None:
             is_within_range = self._step > self.adaptive_projected_guidance_start_step

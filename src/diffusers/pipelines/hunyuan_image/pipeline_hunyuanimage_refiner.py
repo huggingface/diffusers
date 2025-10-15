@@ -26,6 +26,7 @@ from ...utils import is_torch_xla_available, logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
 from .pipeline_output import HunyuanImagePipelineOutput
+from ...guiders import ClassifierFreeGuidance
 
 
 if is_torch_xla_available():
@@ -149,7 +150,11 @@ class HunyuanImageRefinerPipeline(DiffusionPipeline):
     """
 
     model_cpu_offload_seq = "text_encoder->transformer->vae"
-    _callback_tensor_inputs = ["latents", "prompt_embeds"]
+    _callback_tensor_inputs = ["latents", "prompt_embeds"]    
+    _guider_input_fields = {
+        "encoder_hidden_states": ("prompt_embeds", "negative_prompt_embeds"),
+        "encoder_attention_mask": ("prompt_embeds_mask", "negative_prompt_embeds_mask"),
+    }
 
     def __init__(
         self,
@@ -158,6 +163,7 @@ class HunyuanImageRefinerPipeline(DiffusionPipeline):
         text_encoder: Qwen2_5_VLForConditionalGeneration,
         tokenizer: Qwen2Tokenizer,
         transformer: HunyuanImageTransformer2DModel,
+        guider: ClassifierFreeGuidance,
     ):
         super().__init__()
 
@@ -167,6 +173,7 @@ class HunyuanImageRefinerPipeline(DiffusionPipeline):
             tokenizer=tokenizer,
             transformer=transformer,
             scheduler=scheduler,
+            guider=guider,
         )
 
         self.vae_scale_factor = self.vae.config.spatial_compression_ratio if getattr(self, "vae", None) else 16
@@ -217,7 +224,7 @@ class HunyuanImageRefinerPipeline(DiffusionPipeline):
 
     def encode_prompt(
         self,
-        prompt: Union[str, List[str]],
+        prompt: Optional[Union[str, List[str]]] =  None,
         device: Optional[torch.device] = None,
         num_images_per_prompt: int = 1,
         prompt_embeds: Optional[torch.Tensor] = None,
@@ -246,6 +253,8 @@ class HunyuanImageRefinerPipeline(DiffusionPipeline):
         """
         device = device or self._execution_device
 
+        if prompt is None:
+            prompt = ""
         prompt = [prompt] if isinstance(prompt, str) else prompt
         batch_size = len(prompt) if prompt_embeds is None else prompt_embeds.shape[0]
 
@@ -406,10 +415,6 @@ class HunyuanImageRefinerPipeline(DiffusionPipeline):
         return image_latents
 
     @property
-    def guidance_scale(self):
-        return self._guidance_scale
-
-    @property
     def attention_kwargs(self):
         return self._attention_kwargs
 
@@ -431,13 +436,13 @@ class HunyuanImageRefinerPipeline(DiffusionPipeline):
         self,
         prompt: Union[str, List[str]] = None,
         negative_prompt: Union[str, List[str]] = None,
-        true_cfg_scale: float = 4.0,
+        true_cfg_scale: Optional[float] = None,
+        guidance_scale: Optional[float] = None,
         image: Optional[PipelineImageInput] = None,
         height: Optional[int] = None,
         width: Optional[int] = None,
-        num_inference_steps: int = 50,
+        num_inference_steps: int = 4,
         sigmas: Optional[List[float]] = None,
-        guidance_scale: Optional[float] = None,
         num_images_per_prompt: int = 1,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.Tensor] = None,
@@ -445,10 +450,6 @@ class HunyuanImageRefinerPipeline(DiffusionPipeline):
         prompt_embeds_mask: Optional[torch.Tensor] = None,
         negative_prompt_embeds: Optional[torch.Tensor] = None,
         negative_prompt_embeds_mask: Optional[torch.Tensor] = None,
-        prompt_embeds_2: Optional[torch.Tensor] = None,
-        prompt_embeds_mask_2: Optional[torch.Tensor] = None,
-        negative_prompt_embeds_2: Optional[torch.Tensor] = None,
-        negative_prompt_embeds_mask_2: Optional[torch.Tensor] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
         attention_kwargs: Optional[Dict[str, Any]] = None,
@@ -463,16 +464,26 @@ class HunyuanImageRefinerPipeline(DiffusionPipeline):
                 The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds`.
                 instead.
             negative_prompt (`str` or `List[str]`, *optional*):
-                The prompt or prompts not to guide the image generation. If not defined, one has to pass
-                `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `true_cfg_scale` is
-                not greater than `1`).
-            true_cfg_scale (`float`, *optional*, defaults to 1.0):
+                The prompt or prompts not to guide the image generation. If not defined, will use an empty negative prompt.
+                Ignored when not using guidance (i.e., ignored if any of the following conditions are met:
+                    1. guider is diabled
+                    2. guider.guidance_scale is not greater than `1` and `true_cfg_scale` is not provided,
+                    3. `true_cfg_scale` is not greater than `1`.
+                ).
+            true_cfg_scale (`float`, *optional*, defaults to None):
                 Guidance scale as defined in [Classifier-Free Diffusion
                 Guidance](https://huggingface.co/papers/2207.12598). `true_cfg_scale` is defined as `w` of equation 2.
                 of [Imagen Paper](https://huggingface.co/papers/2205.11487). Classifier-free guidance is enabled by
-                setting `true_cfg_scale > 1` and a provided `negative_prompt`. Higher guidance scale encourages to
+                setting `true_cfg_scale > 1`. Higher guidance scale encourages to
                 generate images that are closely linked to the text `prompt`, usually at the expense of lower image
-                quality.
+                quality. If not defined, the default `guidance_scale` configured in guider will be used.
+            guidance_scale (`float`, *optional*, defaults to None):
+                A guidance scale value for guidance distilled models. Unlike the traditional classifier-free guidance,
+                guidance distilled models take the guidance scale directly as an input parameter during forward pass. Guidance
+                is enabled by setting `guidance_scale > 1`. Higher guidance scale encourages to generate images
+                that are closely linked to the text `prompt`, usually at the expense of lower image quality. 
+                If not defined, the default `distilled_guidance_scale` configured in guider will be used.
+            num_images_per_prompt (`int`, *optional*, defaults to 1):
             height (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
                 The height in pixels of the generated image. This is set to 1024 by default for the best results.
             width (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
@@ -484,16 +495,6 @@ class HunyuanImageRefinerPipeline(DiffusionPipeline):
                 Custom sigmas to use for the denoising process with schedulers which support a `sigmas` argument in
                 their `set_timesteps` method. If not defined, the default behavior when `num_inference_steps` is passed
                 will be used.
-            guidance_scale (`float`, *optional*, defaults to None):
-                A guidance scale value for guidance distilled models. Unlike the traditional classifier-free guidance
-                where the guidance scale is applied during inference through noise prediction rescaling, guidance
-                distilled models take the guidance scale directly as an input parameter during forward pass. Guidance
-                scale is enabled by setting `guidance_scale > 1`. Higher guidance scale encourages to generate images
-                that are closely linked to the text `prompt`, usually at the expense of lower image quality. This
-                parameter in the pipeline is there to support future guidance-distilled models when they come up. It is
-                ignored when not using guidance distilled models. To enable traditional classifier-free guidance,
-                please pass `true_cfg_scale > 1.0` and `negative_prompt` (even an empty negative prompt like " " should
-                enable classifier-free guidance computations).
             num_images_per_prompt (`int`, *optional*, defaults to 1):
                 The number of images to generate per prompt.
             generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
@@ -528,7 +529,6 @@ class HunyuanImageRefinerPipeline(DiffusionPipeline):
                 The list of tensor inputs for the `callback_on_step_end` function. The tensors specified in the list
                 will be passed as `callback_kwargs` argument. You will only be able to include variables listed in the
                 `._callback_tensor_inputs` attribute of your pipeline class.
-            max_sequence_length (`int` defaults to 512): Maximum sequence length to use with the `prompt`.
 
         Examples:
 
@@ -554,7 +554,6 @@ class HunyuanImageRefinerPipeline(DiffusionPipeline):
             callback_on_step_end_tensor_inputs=callback_on_step_end_tensor_inputs,
         )
 
-        self._guidance_scale = guidance_scale
         self._attention_kwargs = attention_kwargs
         self._current_timestep = None
         self._interrupt = False
@@ -577,20 +576,22 @@ class HunyuanImageRefinerPipeline(DiffusionPipeline):
             image = image.unsqueeze(2).to(device, dtype=self.vae.dtype)
             image_latents = self._encode_vae_image(image=image, generator=generator)
 
-        has_neg_prompt = negative_prompt is not None or (
-            negative_prompt_embeds is not None and negative_prompt_embeds_mask is not None
-        )
+        # 3.prepare prompt embeds
+        
+        # if true_cfg_scale/guidance_scale is provided, override the guidance_scale/distilled_guidance_scale in guider at runtime
+        is_guider_enabled = self.guider._enabled
+        guider_kwargs = {}
+        if true_cfg_scale is not None:
+            guider_kwargs["guidance_scale"] = true_cfg_scale
+        if guidance_scale is not None:
+            guider_kwargs["distilled_guidance_scale"] = guidance_scale
+        guider = self.guider.new(**guider_kwargs)
+        if is_guider_enabled:
+            guider.enable()
+        else:
+            guider.disable()
 
-        if true_cfg_scale > 1 and not has_neg_prompt:
-            logger.warning(
-                f"true_cfg_scale is passed as {true_cfg_scale}, but classifier-free guidance is not enabled since no negative_prompt is provided."
-            )
-        elif true_cfg_scale <= 1 and has_neg_prompt:
-            logger.warning(
-                " negative_prompt is passed but classifier-free guidance is not enabled since true_cfg_scale <= 1"
-            )
-
-        do_true_cfg = true_cfg_scale > 1 and has_neg_prompt
+        requires_unconditional_embeds = guider._enabled and guider.num_conditions > 1
         prompt_embeds, prompt_embeds_mask = self.encode_prompt(
             prompt=prompt,
             prompt_embeds=prompt_embeds,
@@ -601,7 +602,7 @@ class HunyuanImageRefinerPipeline(DiffusionPipeline):
 
         prompt_embeds = prompt_embeds.to(self.transformer.dtype)
 
-        if do_true_cfg:
+        if requires_unconditional_embeds:
             (
                 negative_prompt_embeds,
                 negative_prompt_embeds_mask,
@@ -614,6 +615,7 @@ class HunyuanImageRefinerPipeline(DiffusionPipeline):
             )
 
             negative_prompt_embeds = negative_prompt_embeds.to(self.transformer.dtype)
+
         # 4. Prepare latent variables
         latents, cond_latents = self.prepare_latents(
             image_latents=image_latents,
@@ -634,20 +636,12 @@ class HunyuanImageRefinerPipeline(DiffusionPipeline):
         num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
         self._num_timesteps = len(timesteps)
 
-        # handle guidance
-        if self.transformer.config.guidance_embeds and guidance_scale is None:
-            raise ValueError("guidance_scale is required for guidance-distilled model.")
-        elif self.transformer.config.guidance_embeds:
-            guidance = (
-                torch.tensor([guidance_scale] * latents.shape[0], dtype=self.transformer.dtype, device=device) * 1000.0
+        # handle guidance (this pipeline only supports guidance-distilled models)
+        if not (hasattr(guider, "distilled_guidance_scale") and guider.distilled_guidance_scale is not None):
+            raise ValueError("`distilled_guidance_scale` is required for guidance-distilled model.")
+        guidance = (
+                torch.tensor([guider.distilled_guidance_scale] * latents.shape[0], dtype=self.transformer.dtype, device=device) * 1000.0
             )
-        elif not self.transformer.config.guidance_embeds and guidance_scale is not None:
-            logger.warning(
-                f"guidance_scale is passed as {guidance_scale}, but ignored since the model is not guidance-distilled."
-            )
-            guidance = None
-        elif not self.transformer.config.guidance_embeds and guidance_scale is None:
-            guidance = None
 
         if self.attention_kwargs is None:
             self._attention_kwargs = {}
@@ -663,29 +657,73 @@ class HunyuanImageRefinerPipeline(DiffusionPipeline):
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
                 latent_model_input = torch.cat([latents, cond_latents], dim=1).to(self.transformer.dtype)
                 timestep = t.expand(latents.shape[0]).to(latents.dtype)
-                with self.transformer.cache_context("cond"):
-                    noise_pred = self.transformer(
-                        hidden_states=latent_model_input,
-                        timestep=timestep,
-                        guidance=guidance,
-                        encoder_attention_mask=prompt_embeds_mask,
-                        encoder_hidden_states=prompt_embeds,
-                        attention_kwargs=self.attention_kwargs,
-                        return_dict=False,
-                    )[0]
 
-                if do_true_cfg:
-                    with self.transformer.cache_context("uncond"):
-                        neg_noise_pred = self.transformer(
+                # Step 1: Collect model inputs needed for the guidance method
+                # The `_guider_input_fields` defines which inputs model needs for conditional/unconditional predictions. 
+                # e.g. {"encoder_hidden_states": ("prompt_embeds", "negative_prompt_embeds")}
+                # means the both prompt_embeds (conditional) and negative_prompt_embeds (unconditional) as inputs.
+                guider_inputs = {}
+                for _, input_names_tuple in self._guider_input_fields.items():
+                    for input_name in input_names_tuple:
+                        guider_inputs[input_name] = locals()[input_name]
+
+                # Step 2: Update guider's internal state for this denoising step
+                guider.set_state(step=i, num_inference_steps=num_inference_steps, timestep=t)
+
+                # Step 3: Prepare batched model inputs based on the guidance method
+                # The guider splits model inputs into separate batches for conditional/unconditional predictions.
+                # For CFG with _guider_input_fields = {"encoder_hidden_states": ("prompt_embeds", "negative_prompt_embeds")}:
+                #   guider_state = [
+                #       {"encoder_hidden_states": prompt_embeds, "__guidance_identifier__": "pred_cond"},      # conditional batch
+                #       {"encoder_hidden_states": negative_prompt_embeds, "__guidance_identifier__": "pred_uncond"},  # unconditional batch
+                #   ]
+                # Other guidance methods may return 1 batch (no guidance) or 3+ batches (e.g. PAG).
+                guider_state = guider.prepare_inputs(guider_inputs, self._guider_input_fields)
+
+                # Step 4: Run the denoiser for each batch
+                # Each batch represents a different conditioning (conditional, unconditional, etc.).
+                # We run the model once per batch and store the noise prediction in each batch dict.
+                # After this loop, continuing the CFG example:
+                #   guider_state = [
+                #       {"encoder_hidden_states": prompt_embeds, "noise_pred": noise_pred_cond, "__guidance_identifier__": "pred_cond"},
+                #       {"encoder_hidden_states": negative_prompt_embeds, "noise_pred": noise_pred_uncond, "__guidance_identifier__": "pred_uncond"},
+                #   ]
+                for guider_state_batch in guider_state:
+                    guider.prepare_models(self.transformer)
+
+                    # Extract conditioning kwargs for this batch (e.g., encoder_hidden_states)
+                    cond_kwargs = guider_state_batch.as_dict()
+                    cond_kwargs = {k: v for k, v in cond_kwargs.items() if k in self._guider_input_fields}
+
+                    guider_state_batch_identifier = getattr(guider_state_batch, guider._identifier_key)
+                    with self.transformer.cache_context(guider_state_batch_identifier):
+                        # Run denoiser and store noise prediction in this batch
+                        guider_state_batch.noise_pred = self.transformer(
                             hidden_states=latent_model_input,
                             timestep=timestep,
                             guidance=guidance,
-                            encoder_attention_mask=negative_prompt_embeds_mask,
-                            encoder_hidden_states=negative_prompt_embeds,
                             attention_kwargs=self.attention_kwargs,
                             return_dict=False,
+                            **cond_kwargs,
                         )[0]
-                    noise_pred = neg_noise_pred + true_cfg_scale * (noise_pred - neg_noise_pred)
+
+                    # Cleanup model (e.g., remove hooks)
+                    guider.cleanup_models(self.transformer)
+
+                # Step 5: Combine predictions using the guidance method
+                # The guider takes all noise predictions from guider_state and combines them according to the guidance algorithm.
+                # Continuing the CFG example, the guider receives:
+                #   guider_state = [
+                #       {"encoder_hidden_states": prompt_embeds, "noise_pred": noise_pred_cond, "__guidance_identifier__": "pred_cond"},      # batch 0
+                #       {"encoder_hidden_states": negative_prompt_embeds, "noise_pred": noise_pred_uncond, "__guidance_identifier__": "pred_uncond"},  # batch 1
+                #   ]
+                # And extracts predictions using the __guidance_identifier__:
+                #   pred_cond = guider_state[0]["noise_pred"]      # extracts noise_pred_cond
+                #   pred_uncond = guider_state[1]["noise_pred"]    # extracts noise_pred_uncond
+                # Then applies CFG formula:
+                #   noise_pred = pred_uncond + guidance_scale * (pred_cond - pred_uncond)
+                # Returns GuiderOutput(pred=noise_pred, pred_cond=pred_cond, pred_uncond=pred_uncond)
+                noise_pred = guider(guider_state)[0]
 
                 # compute the previous noisy sample x_t -> x_t-1
                 latents_dtype = latents.dtype
