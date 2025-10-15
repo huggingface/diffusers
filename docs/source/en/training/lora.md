@@ -198,5 +198,5 @@ image = pipeline("A naruto with blue eyes").images[0]
 
 Congratulations on training a new model with LoRA! To learn more about how to use your new model, the following guides may be helpful:
 
-- Learn how to [load different LoRA formats](../using-diffusers/loading_adapters#LoRA) trained using community trainers like Kohya and TheLastBen.
+- Learn how to [load different LoRA formats](../tutorials/using_peft_for_inference) trained using community trainers like Kohya and TheLastBen.
 - Learn how to use and [combine multiple LoRA's](../tutorials/using_peft_for_inference) with PEFT for inference.
