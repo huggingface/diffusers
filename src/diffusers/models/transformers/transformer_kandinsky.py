@@ -361,7 +361,8 @@ class Kandinsky5SDPAAttentionProcessor(nn.Module):
 
 class Kandinsky5NablaAttentionProcessor(nn.Module):
     """Custom attention processor for Nabla attention"""
-
+    
+    @torch.compile(mode="max-autotune-no-cudagraphs", dynamic=True)
     def __call__(
         self,
         attn,
