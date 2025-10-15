@@ -329,7 +329,7 @@ class HunyuanImagePipeline(DiffusionPipeline):
                 argument using self.tokenizer_2 and self.text_encoder_2.
         """
         device = device or self._execution_device
-        
+
         if prompt is None:
             prompt = ""
         prompt = [prompt] if isinstance(prompt, str) else prompt
@@ -537,8 +537,9 @@ class HunyuanImagePipeline(DiffusionPipeline):
                 The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds`.
                 instead.
             negative_prompt (`str` or `List[str]`, *optional*):
-                The prompt or prompts not to guide the image generation. If not defined and negative_prompt_embeds is not provided, will use an empty negative prompt.
-                Ignored when not using guidance (i.e., ignored if any of the following conditions are met:
+                The prompt or prompts not to guide the image generation. If not defined and negative_prompt_embeds is
+                not provided, will use an empty negative prompt. Ignored when not using guidance (i.e., ignored if any
+                of the following conditions are met:
                     1. guider is diabled
                     2. guider.guidance_scale is not greater than `1` and `true_cfg_scale` is not provided,
                     3. `true_cfg_scale` is not greater than `1`.
@@ -558,15 +559,15 @@ class HunyuanImagePipeline(DiffusionPipeline):
                 Guidance scale as defined in [Classifier-Free Diffusion
                 Guidance](https://huggingface.co/papers/2207.12598). `true_cfg_scale` is defined as `w` of equation 2.
                 of [Imagen Paper](https://huggingface.co/papers/2205.11487). Classifier-free guidance is enabled by
-                setting `true_cfg_scale > 1`. Higher guidance scale encourages to
-                generate images that are closely linked to the text `prompt`, usually at the expense of lower image
-                quality. If not defined, the default `guidance_scale` configured in guider will be used.
+                setting `true_cfg_scale > 1`. Higher guidance scale encourages to generate images that are closely
+                linked to the text `prompt`, usually at the expense of lower image quality. If not defined, the default
+                `guidance_scale` configured in guider will be used.
             guidance_scale (`float`, *optional*, defaults to None):
                 A guidance scale value for guidance distilled models. Unlike the traditional classifier-free guidance
                 where the guidance scale is applied during inference through noise prediction rescaling, guidance
                 distilled models take the guidance scale directly as an input parameter during forward pass. Guidance
-                is enabled by setting `guidance_scale > 1`. Higher guidance scale encourages to generate images
-                that are closely linked to the text `prompt`, usually at the expense of lower image quality. If not defined,
+                is enabled by setting `guidance_scale > 1`. Higher guidance scale encourages to generate images that
+                are closely linked to the text `prompt`, usually at the expense of lower image quality. If not defined,
                 the default `distilled_guidance_scale` configured in guider will be used.
             num_images_per_prompt (`int`, *optional*, defaults to 1):
                 The number of images to generate per prompt.
@@ -698,7 +699,7 @@ class HunyuanImagePipeline(DiffusionPipeline):
         if guidance_scale is not None:
             guider_kwargs["distilled_guidance_scale"] = guidance_scale
         guider = guider.new(**guider_kwargs)
-    
+
         if is_guider_enabled:
             guider.enable()
         else:
@@ -745,16 +746,24 @@ class HunyuanImagePipeline(DiffusionPipeline):
         self._num_timesteps = len(timesteps)
 
         # handle guidance (for guidance-distilled model)
-        if self.transformer.config.guidance_embeds and not(hasattr(guider, "distilled_guidance_scale") and guider.distilled_guidance_scale is not None):
+        if self.transformer.config.guidance_embeds and not (
+            hasattr(guider, "distilled_guidance_scale") and guider.distilled_guidance_scale is not None
+        ):
             raise ValueError("`guidance_scale` is required for guidance-distilled model.")
-        elif not self.transformer.config.guidance_embeds and hasattr(guider, "distilled_guidance_scale") and guider.distilled_guidance_scale is not None:
+        elif (
+            not self.transformer.config.guidance_embeds
+            and hasattr(guider, "distilled_guidance_scale")
+            and guider.distilled_guidance_scale is not None
+        ):
             logger.warning(
                 f"`distilled_guidance_scale` {guider.distilled_guidance_scale} is ignored since the model is not guidance-distilled. Please use `true_cfg_scale` instead."
             )
 
         if self.transformer.config.guidance_embeds:
             guidance = (
-                torch.tensor([guider.distilled_guidance_scale] * latents.shape[0], dtype=self.transformer.dtype, device=device)
+                torch.tensor(
+                    [guider.distilled_guidance_scale] * latents.shape[0], dtype=self.transformer.dtype, device=device
+                )
                 * 1000.0
             )
 

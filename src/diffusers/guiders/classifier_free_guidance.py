@@ -32,8 +32,8 @@ class ClassifierFreeGuidance(BaseGuidance):
     Reference: https://huggingface.co/papers/2207.12598
 
     CFG improves generation quality and prompt adherence by jointly training models on both conditional and
-    unconditional data, then combining predictions during inference. This allows trading off between quality
-    (high guidance) and diversity (low guidance).
+    unconditional data, then combining predictions during inference. This allows trading off between quality (high
+    guidance) and diversity (low guidance).
 
     **Two CFG Formulations:**
 
@@ -47,38 +47,38 @@ class ClassifierFreeGuidance(BaseGuidance):
        ```
        x_pred = x_uncond + guidance_scale * (x_cond - x_uncond)
        ```
-       Moves unconditional predictions toward conditional ones, effectively suppressing negative features
-       (e.g., "bad quality", "watermarks"). Equivalent in theory but more intuitive.
+       Moves unconditional predictions toward conditional ones, effectively suppressing negative features (e.g., "bad
+       quality", "watermarks"). Equivalent in theory but more intuitive.
 
     Use `use_original_formulation=True` to switch to the original formulation.
 
     **Guidance-Distilled Models:**
 
-    For models with distilled guidance (guidance baked into the model via distillation), set
-    `distilled_guidance_scale` to the desired guidance value. The pipeline will pass this to the model
-    during forward passes. Set to `None` for regular (non-distilled) models.
+    For models with distilled guidance (guidance baked into the model via distillation), set `distilled_guidance_scale`
+    to the desired guidance value. The pipeline will pass this to the model during forward passes. Set to `None` for
+    regular (non-distilled) models.
 
     Args:
         guidance_scale (`float`, defaults to `7.5`):
-            CFG scale applied by this guider during post-processing. Higher values = stronger prompt
-            conditioning but may reduce quality. Typical range: 1.0-20.0.
+            CFG scale applied by this guider during post-processing. Higher values = stronger prompt conditioning but
+            may reduce quality. Typical range: 1.0-20.0.
         distilled_guidance_scale (`float`, *optional*, defaults to `None`):
-            Guidance scale for distilled models, passed directly to the model during forward pass.
-            If `None`, assumes a regular (non-distilled) model. Allows pipelines to configure different
-            defaults for distilled vs. non-distilled models. Typical range for distilled models: 1.0-8.0.
+            Guidance scale for distilled models, passed directly to the model during forward pass. If `None`, assumes a
+            regular (non-distilled) model. Allows pipelines to configure different defaults for distilled vs.
+            non-distilled models. Typical range for distilled models: 1.0-8.0.
         guidance_rescale (`float`, defaults to `0.0`):
-            Rescaling factor to prevent overexposure from high guidance scales. Based on
-            [Common Diffusion Noise Schedules and Sample Steps are Flawed](https://huggingface.co/papers/2305.08891).
-            Range: 0.0 (no rescaling) to 1.0 (full rescaling).
+            Rescaling factor to prevent overexposure from high guidance scales. Based on [Common Diffusion Noise
+            Schedules and Sample Steps are Flawed](https://huggingface.co/papers/2305.08891). Range: 0.0 (no rescaling)
+            to 1.0 (full rescaling).
         use_original_formulation (`bool`, defaults to `False`):
             If `True`, uses the original CFG formulation from the paper. If `False` (default), uses the
             diffusers-native formulation from the Imagen paper.
         start (`float`, defaults to `0.0`):
-            Fraction of denoising steps (0.0-1.0) after which CFG starts. Use > 0.0 to disable CFG in
-            early denoising steps.
+            Fraction of denoising steps (0.0-1.0) after which CFG starts. Use > 0.0 to disable CFG in early denoising
+            steps.
         stop (`float`, defaults to `1.0`):
-            Fraction of denoising steps (0.0-1.0) after which CFG stops. Use < 1.0 to disable CFG in
-            late denoising steps.
+            Fraction of denoising steps (0.0-1.0) after which CFG stops. Use < 1.0 to disable CFG in late denoising
+            steps.
         enabled (`bool`, defaults to `True`):
             Whether CFG is enabled. Set to `False` to disable CFG entirely (uses only conditional predictions).
     """
