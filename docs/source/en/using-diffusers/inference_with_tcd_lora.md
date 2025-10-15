@@ -18,7 +18,7 @@ Trajectory Consistency Distillation (TCD) enables a model to generate higher qua
 
 The major advantages of TCD are:
 
-- Better than Teacher: TCD demonstrates superior generative quality at both small and large inference steps and exceeds the performance of [DPM-Solver++(2S)](../../api/schedulers/multistep_dpm_solver) with Stable Diffusion XL (SDXL). There is no additional discriminator or LPIPS supervision included during TCD training.
+- Better than Teacher: TCD demonstrates superior generative quality at both small and large inference steps and exceeds the performance of [DPM-Solver++(2S)](../api/schedulers/multistep_dpm_solver) with Stable Diffusion XL (SDXL). There is no additional discriminator or LPIPS supervision included during TCD training.
 
 - Flexible Inference Steps: The inference steps for TCD sampling can be freely adjusted without adversely affecting the image quality.
 
@@ -166,7 +166,7 @@ image = pipe(
 TCD-LoRA also supports other LoRAs trained on different styles. For example, let's load the [TheLastBen/Papercut_SDXL](https://huggingface.co/TheLastBen/Papercut_SDXL) LoRA and fuse it with the TCD-LoRA with the [`~loaders.UNet2DConditionLoadersMixin.set_adapters`] method.
 
 > [!TIP]
-> Check out the [Merge LoRAs](merge_loras) guide to learn more about efficient merging methods.
+> Check out the [Merge LoRAs](../tutorials/using_peft_for_inference#merge) guide to learn more about efficient merging methods.
 
 ```python
 import torch
