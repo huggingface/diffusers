@@ -1,7 +1,7 @@
 import gc
 import tempfile
-import unittest
 
+import pytest
 import torch
 
 from diffusers import ControlNetModel, StableDiffusionControlNetInpaintPipeline
@@ -29,19 +29,17 @@ enable_full_determinism()
 
 @slow
 @require_torch_accelerator
-class StableDiffusionControlNetInpaintPipelineSingleFileSlowTests(unittest.TestCase, SDSingleFileTesterMixin):
+class TestStableDiffusionControlNetInpaintPipelineSingleFileSlow(SDSingleFileTesterMixin):
     pipeline_class = StableDiffusionControlNetInpaintPipeline
     ckpt_path = "https://huggingface.co/botp/stable-diffusion-v1-5-inpainting/blob/main/sd-v1-5-inpainting.ckpt"
     original_config = "https://raw.githubusercontent.com/runwayml/stable-diffusion/main/configs/stable-diffusion/v1-inpainting-inference.yaml"
     repo_id = "stable-diffusion-v1-5/stable-diffusion-inpainting"
 
-    def setUp(self):
-        super().setUp()
+    def setup_method(self):
         gc.collect()
         backend_empty_cache(torch_device)
 
-    def tearDown(self):
-        super().tearDown()
+    def teardown_method(self):
         gc.collect()
         backend_empty_cache(torch_device)
 
@@ -115,7 +113,7 @@ class StableDiffusionControlNetInpaintPipelineSingleFileSlowTests(unittest.TestC
 
         super()._compare_component_configs(pipe, pipe_single_file)
 
-    @unittest.skip("runwayml original config repo does not exist")
+    @pytest.mark.skip(reason="runwayml original config repo does not exist")
     def test_single_file_components_with_original_config(self):
         controlnet = ControlNetModel.from_pretrained("lllyasviel/control_v11p_sd15_canny", variant="fp16")
         pipe = self.pipeline_class.from_pretrained(self.repo_id, controlnet=controlnet)
@@ -125,7 +123,7 @@ class StableDiffusionControlNetInpaintPipelineSingleFileSlowTests(unittest.TestC
 
         super()._compare_component_configs(pipe, pipe_single_file)
 
-    @unittest.skip("runwayml original config repo does not exist")
+    @pytest.mark.skip(reason="runwayml original config repo does not exist")
     def test_single_file_components_with_original_config_local_files_only(self):
         controlnet = ControlNetModel.from_pretrained(
             "lllyasviel/control_v11p_sd15_canny", torch_dtype=torch.float16, variant="fp16"

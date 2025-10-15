@@ -79,11 +79,11 @@ class WanLoopDenoiser(ModularPipelineBlocks):
                 description="The number of inference steps to use for the denoising process. Can be generated in set_timesteps step.",
             ),
             InputParam(
-                kwargs_type="guider_input_fields",
+                kwargs_type="denoiser_input_fields",
                 description=(
                     "All conditional model inputs that need to be prepared with guider. "
                     "It should contain prompt_embeds/negative_prompt_embeds. "
-                    "Please add `kwargs_type=guider_input_fields` to their parameter spec (`OutputParam`) when they are created and added to the pipeline state"
+                    "Please add `kwargs_type=denoiser_input_fields` to their parameter spec (`OutputParam`) when they are created and added to the pipeline state"
                 ),
             ),
         ]

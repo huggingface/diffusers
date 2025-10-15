@@ -37,7 +37,6 @@ from .utils import PeftLoraLoaderMixinTests  # noqa: E402
 class LTXVideoLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
     pipeline_class = LTXPipeline
     scheduler_cls = FlowMatchEulerDiscreteScheduler
-    scheduler_classes = [FlowMatchEulerDiscreteScheduler]
     scheduler_kwargs = {}
 
     transformer_kwargs = {

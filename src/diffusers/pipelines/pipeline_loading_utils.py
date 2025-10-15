@@ -19,12 +19,12 @@ import warnings
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Union
 
+import httpx
 import requests
 import torch
 from huggingface_hub import DDUFEntry, ModelCard, model_info, snapshot_download
-from huggingface_hub.utils import OfflineModeIsEnabled, validate_hf_hub_args
+from huggingface_hub.utils import HfHubHTTPError, OfflineModeIsEnabled, validate_hf_hub_args
 from packaging import version
-from requests.exceptions import HTTPError
 
 from .. import __version__
 from ..utils import (
@@ -839,6 +839,9 @@ def load_sub_model(
         else:
             loading_kwargs["low_cpu_mem_usage"] = False
 
+    if is_transformers_model and is_transformers_version(">=", "4.57.0"):
+        loading_kwargs.pop("offload_state_dict")
+
     if (
         quantization_config is not None
         and isinstance(quantization_config, PipelineQuantizationConfig)
@@ -1111,7 +1114,7 @@ def _download_dduf_file(
     if not local_files_only:
         try:
             info = model_info(pretrained_model_name, token=token, revision=revision)
-        except (HTTPError, OfflineModeIsEnabled, requests.ConnectionError) as e:
+        except (HfHubHTTPError, OfflineModeIsEnabled, requests.ConnectionError, httpx.NetworkError) as e:
             logger.warning(f"Couldn't connect to the Hub: {e}.\nWill try to load from local cache.")
             local_files_only = True
             model_info_call_error = e  # save error to reraise it if model is not cached locally
