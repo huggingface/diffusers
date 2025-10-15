@@ -1,0 +1,138 @@
+name: Fast PR tests for Modular
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "src/diffusers/modular_pipelines/**.py"
+      - "src/diffusers/models/modeling_utils.py"
+      - "src/diffusers/models/model_loading_utils.py"
+      - "src/diffusers/pipelines/pipeline_utils.py"
+      - "src/diffusers/pipeline_loading_utils.py"
+      - "src/diffusers/loaders/lora_base.py"
+      - "src/diffusers/loaders/lora_pipeline.py"
+      - "src/diffusers/loaders/peft.py"
+      - "tests/modular_pipelines/**.py"
+      - ".github/**.yml"
+      - "utils/**.py"
+      - "setup.py"
+  push:
+    branches:
+      - ci-*
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+env:
+  DIFFUSERS_IS_CI: yes
+  HF_HUB_ENABLE_HF_TRANSFER: 1
+  OMP_NUM_THREADS: 4
+  MKL_NUM_THREADS: 4
+  PYTEST_TIMEOUT: 60
+
+jobs:
+  check_code_quality:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v3
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.10"
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install .[quality]
+      - name: Check quality
+        run: make quality
+      - name: Check if failure
+        if: ${{ failure() }}
+        run: |
+          echo "Quality check failed. Please ensure the right dependency versions are installed with 'pip install -e .[quality]' and run 'make style && make quality'" >> $GITHUB_STEP_SUMMARY
+
+  check_repository_consistency:
+    needs: check_code_quality
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v3
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.10"
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install .[quality]
+      - name: Check repo consistency
+        run: |
+          python utils/check_copies.py
+          python utils/check_dummies.py
+          python utils/check_support_list.py
+          make deps_table_check_updated
+      - name: Check if failure
+        if: ${{ failure() }}
+        run: |
+          echo "Repo consistency check failed. Please ensure the right dependency versions are installed with 'pip install -e .[quality]' and run 'make fix-copies'" >> $GITHUB_STEP_SUMMARY
+
+  run_fast_tests:
+    needs: [check_code_quality, check_repository_consistency]
+    strategy:
+      fail-fast: false
+      matrix:
+        config:
+          - name: Fast PyTorch Modular Pipeline CPU tests
+            framework: pytorch_pipelines
+            runner: aws-highmemory-32-plus
+            image: diffusers/diffusers-pytorch-cpu
+            report: torch_cpu_modular_pipelines
+
+    name: ${{ matrix.config.name }}
+
+    runs-on:
+      group: ${{ matrix.config.runner }}
+
+    container:
+      image: ${{ matrix.config.image }}
+      options: --shm-size "16gb" --ipc host -v /mnt/hf_cache:/mnt/cache/
+
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+    - name: Checkout diffusers
+      uses: actions/checkout@v3
+      with:
+        fetch-depth: 2
+
+    - name: Install dependencies
+      run: |
+        uv pip install -e ".[quality]"
+        uv pip uninstall transformers huggingface_hub && uv pip install --prerelease allow -U transformers@git+https://github.com/huggingface/transformers.git
+        uv pip uninstall accelerate && uv pip install -U accelerate@git+https://github.com/huggingface/accelerate.git --no-deps
+
+    - name: Environment
+      run: |
+        python utils/print_env.py
+
+    - name: Run fast PyTorch Pipeline CPU tests
+      if: ${{ matrix.config.framework == 'pytorch_pipelines' }}
+      run: |
+        pytest -n 8 --max-worker-restart=0 --dist=loadfile \
+          -s -v -k "not Flax and not Onnx" \
+          --make-reports=tests_${{ matrix.config.report }} \
+          tests/modular_pipelines
+
+    - name: Failure short reports
+      if: ${{ failure() }}
+      run: cat reports/tests_${{ matrix.config.report }}_failures_short.txt
+
+    - name: Test suite reports artifacts
+      if: ${{ always() }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: pr_${{ matrix.config.framework }}_${{ matrix.config.report }}_test_reports
+        path: reports
+
+

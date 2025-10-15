@@ -1,20 +1,20 @@
 import gc
-import unittest
 
+import pytest
 import torch
 
 from diffusers import (
     StableDiffusionInpaintPipeline,
 )
 from diffusers.utils import load_image
-from diffusers.utils.testing_utils import (
+
+from ..testing_utils import (
     backend_empty_cache,
     enable_full_determinism,
     require_torch_accelerator,
     slow,
     torch_device,
 )
-
 from .single_file_testing_utils import SDSingleFileTesterMixin
 
 
@@ -23,19 +23,17 @@ enable_full_determinism()
 
 @slow
 @require_torch_accelerator
-class StableDiffusionInpaintPipelineSingleFileSlowTests(unittest.TestCase, SDSingleFileTesterMixin):
+class TestStableDiffusionInpaintPipelineSingleFileSlow(SDSingleFileTesterMixin):
     pipeline_class = StableDiffusionInpaintPipeline
     ckpt_path = "https://huggingface.co/botp/stable-diffusion-v1-5-inpainting/blob/main/sd-v1-5-inpainting.ckpt"
     original_config = "https://raw.githubusercontent.com/runwayml/stable-diffusion/main/configs/stable-diffusion/v1-inpainting-inference.yaml"
     repo_id = "botp/stable-diffusion-v1-5-inpainting"
 
-    def setUp(self):
-        super().setUp()
+    def setup_method(self):
         gc.collect()
         backend_empty_cache(torch_device)
 
-    def tearDown(self):
-        super().tearDown()
+    def teardown_method(self):
         gc.collect()
         backend_empty_cache(torch_device)
 
@@ -70,18 +68,18 @@ class StableDiffusionInpaintPipelineSingleFileSlowTests(unittest.TestCase, SDSin
 
         assert pipe.unet.config.in_channels == 4
 
-    @unittest.skip("runwayml original config has been removed")
+    @pytest.mark.skip(reason="runwayml original config has been removed")
     def test_single_file_components_with_original_config(self):
         return
 
-    @unittest.skip("runwayml original config has been removed")
+    @pytest.mark.skip(reason="runwayml original config has been removed")
     def test_single_file_components_with_original_config_local_files_only(self):
         return
 
 
 @slow
 @require_torch_accelerator
-class StableDiffusion21InpaintPipelineSingleFileSlowTests(unittest.TestCase, SDSingleFileTesterMixin):
+class TestStableDiffusion21InpaintPipelineSingleFileSlow(SDSingleFileTesterMixin):
     pipeline_class = StableDiffusionInpaintPipeline
     ckpt_path = (
         "https://huggingface.co/stabilityai/stable-diffusion-2-inpainting/blob/main/512-inpainting-ema.safetensors"
@@ -89,13 +87,11 @@ class StableDiffusion21InpaintPipelineSingleFileSlowTests(unittest.TestCase, SDS
     original_config = "https://raw.githubusercontent.com/Stability-AI/stablediffusion/main/configs/stable-diffusion/v2-inpainting-inference.yaml"
     repo_id = "stabilityai/stable-diffusion-2-inpainting"
 
-    def setUp(self):
-        super().setUp()
+    def setup_method(self):
         gc.collect()
         backend_empty_cache(torch_device)
 
-    def tearDown(self):
-        super().tearDown()
+    def teardown_method(self):
         gc.collect()
         backend_empty_cache(torch_device)
 

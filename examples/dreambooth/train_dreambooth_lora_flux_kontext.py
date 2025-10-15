@@ -12,6 +12,25 @@
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
+# limitations under the License.
+
+# /// script
+# dependencies = [
+#     "diffusers @ git+https://github.com/huggingface/diffusers.git",
+#     "torch>=2.0.0",
+#     "accelerate>=0.31.0",
+#     "transformers>=4.41.2",
+#     "ftfy",
+#     "tensorboard",
+#     "Jinja2",
+#     "peft>=0.11.1",
+#     "sentencepiece",
+#     "torchvision",
+#     "datasets",
+#     "bitsandbytes",
+#     "prodigyopt",
+# ]
+# ///
 
 import argparse
 import copy
@@ -28,8 +47,9 @@ from pathlib import Path
 import numpy as np
 import torch
 import transformers
-from accelerate import Accelerator
+from accelerate import Accelerator, DistributedType
 from accelerate.logging import get_logger
+from accelerate.state import AcceleratorState
 from accelerate.utils import DistributedDataParallelKwargs, ProjectConfiguration, set_seed
 from huggingface_hub import create_repo, upload_folder
 from huggingface_hub.utils import insecure_hashlib
@@ -72,7 +92,7 @@ if is_wandb_available():
     import wandb
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.34.0.dev0")
+check_min_version("0.36.0.dev0")
 
 logger = get_logger(__name__)
 
@@ -705,6 +725,7 @@ def parse_args(input_args=None):
         ),
     )
     parser.add_argument("--local_rank", type=int, default=-1, help="For distributed training: local_rank")
+    parser.add_argument("--enable_npu_flash_attention", action="store_true", help="Enabla Flash Attention for NPU")
 
     if input_args is not None:
         args = parser.parse_args(input_args)
@@ -1220,6 +1241,9 @@ def main(args):
         kwargs_handlers=[kwargs],
     )
 
+    if accelerator.distributed_type == DistributedType.DEEPSPEED:
+        AcceleratorState().deepspeed_plugin.deepspeed_config["train_micro_batch_size_per_gpu"] = args.train_batch_size
+
     # Disable AMP for MPS.
     if torch.backends.mps.is_available():
         accelerator.native_amp = False
@@ -1268,6 +1292,7 @@ def main(args):
                 subfolder="transformer",
                 revision=args.revision,
                 variant=args.variant,
+                torch_dtype=torch_dtype,
             )
             pipeline = FluxKontextPipeline.from_pretrained(
                 args.pretrained_model_name_or_path,
@@ -1290,7 +1315,8 @@ def main(args):
             for example in tqdm(
                 sample_dataloader, desc="Generating class images", disable=not accelerator.is_local_main_process
             ):
-                images = pipeline(example["prompt"]).images
+                with torch.autocast(device_type=accelerator.device.type, dtype=torch_dtype):
+                    images = pipeline(prompt=example["prompt"]).images
 
                 for i, image in enumerate(images):
                     hash_image = insecure_hashlib.sha1(image.tobytes()).hexdigest()
@@ -1352,6 +1378,13 @@ def main(args):
     vae.requires_grad_(False)
     text_encoder_one.requires_grad_(False)
     text_encoder_two.requires_grad_(False)
+
+    if args.enable_npu_flash_attention:
+        if is_torch_npu_available():
+            logger.info("npu flash attention enabled.")
+            transformer.set_attention_backend("_native_npu")
+        else:
+            raise ValueError("npu flash attention requires torch_npu extensions and is supported only on npu device ")
 
     # For mixed precision training we cast all non-trainable weights (vae, text_encoder and transformer) to half-precision
     # as these weights are only used for inference, keeping weights in full precision is not required.
@@ -1427,17 +1460,20 @@ def main(args):
             text_encoder_one_lora_layers_to_save = None
             modules_to_save = {}
             for model in models:
-                if isinstance(model, type(unwrap_model(transformer))):
+                if isinstance(unwrap_model(model), type(unwrap_model(transformer))):
+                    model = unwrap_model(model)
                     transformer_lora_layers_to_save = get_peft_model_state_dict(model)
                     modules_to_save["transformer"] = model
-                elif isinstance(model, type(unwrap_model(text_encoder_one))):
+                elif isinstance(unwrap_model(model), type(unwrap_model(text_encoder_one))):
+                    model = unwrap_model(model)
                     text_encoder_one_lora_layers_to_save = get_peft_model_state_dict(model)
                     modules_to_save["text_encoder"] = model
                 else:
                     raise ValueError(f"unexpected save model: {model.__class__}")
 
                 # make sure to pop weight so that corresponding model is not saved again
-                weights.pop()
+                if weights:
+                    weights.pop()
 
             FluxKontextPipeline.save_lora_weights(
                 output_dir,
@@ -1450,15 +1486,25 @@ def main(args):
         transformer_ = None
         text_encoder_one_ = None
 
-        while len(models) > 0:
-            model = models.pop()
+        if not accelerator.distributed_type == DistributedType.DEEPSPEED:
+            while len(models) > 0:
+                model = models.pop()
 
-            if isinstance(model, type(unwrap_model(transformer))):
-                transformer_ = model
-            elif isinstance(model, type(unwrap_model(text_encoder_one))):
-                text_encoder_one_ = model
-            else:
-                raise ValueError(f"unexpected save model: {model.__class__}")
+                if isinstance(unwrap_model(model), type(unwrap_model(transformer))):
+                    transformer_ = unwrap_model(model)
+                elif isinstance(unwrap_model(model), type(unwrap_model(text_encoder_one))):
+                    text_encoder_one_ = unwrap_model(model)
+                else:
+                    raise ValueError(f"unexpected save model: {model.__class__}")
+
+        else:
+            transformer_ = FluxTransformer2DModel.from_pretrained(
+                args.pretrained_model_name_or_path, subfolder="transformer"
+            )
+            transformer_.add_adapter(transformer_lora_config)
+            text_encoder_one_ = text_encoder_cls_one.from_pretrained(
+                args.pretrained_model_name_or_path, subfolder="text_encoder"
+            )
 
         lora_state_dict = FluxKontextPipeline.lora_state_dict(input_dir)
 
@@ -1890,6 +1936,10 @@ def main(args):
                             device=accelerator.device,
                             prompt=args.instance_prompt,
                         )
+                    else:
+                        prompt_embeds, pooled_prompt_embeds, text_ids = compute_text_embeddings(
+                            prompts, text_encoders, tokenizers
+                        )
 
                 # Convert images to latent space
                 if args.cache_latents:
@@ -2054,7 +2104,7 @@ def main(args):
                 progress_bar.update(1)
                 global_step += 1
 
-                if accelerator.is_main_process:
+                if accelerator.is_main_process or accelerator.distributed_type == DistributedType.DEEPSPEED:
                     if global_step % args.checkpointing_steps == 0:
                         # _before_ saving state, check if this save would set us over the `checkpoints_total_limit`
                         if args.checkpoints_total_limit is not None:

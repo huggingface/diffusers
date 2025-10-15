@@ -127,6 +127,7 @@ else:
         "AnimateDiffVideoToVideoPipeline",
         "AnimateDiffVideoToVideoControlNetPipeline",
     ]
+    _import_structure["bria"] = ["BriaPipeline"]
     _import_structure["flux"] = [
         "FluxControlPipeline",
         "FluxControlInpaintPipeline",
@@ -284,6 +285,7 @@ else:
     ]
     _import_structure["lumina"] = ["LuminaPipeline", "LuminaText2ImgPipeline"]
     _import_structure["lumina2"] = ["Lumina2Pipeline", "Lumina2Text2ImgPipeline"]
+    _import_structure["lucy"] = ["LucyEditPipeline"]
     _import_structure["marigold"].extend(
         [
             "MarigoldDepthPipeline",
@@ -387,7 +389,16 @@ else:
         "SkyReelsV2ImageToVideoPipeline",
         "SkyReelsV2Pipeline",
     ]
-    _import_structure["qwenimage"] = ["QwenImagePipeline"]
+    _import_structure["qwenimage"] = [
+        "QwenImagePipeline",
+        "QwenImageImg2ImgPipeline",
+        "QwenImageInpaintPipeline",
+        "QwenImageEditPipeline",
+        "QwenImageEditPlusPipeline",
+        "QwenImageEditInpaintPipeline",
+        "QwenImageControlNetInpaintPipeline",
+        "QwenImageControlNetPipeline",
+    ]
 try:
     if not is_onnx_available():
         raise OptionalDependencyNotAvailable()
@@ -547,6 +558,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         )
         from .aura_flow import AuraFlowPipeline
         from .blip_diffusion import BlipDiffusionPipeline
+        from .bria import BriaPipeline
         from .chroma import ChromaImg2ImgPipeline, ChromaPipeline
         from .cogvideo import (
             CogVideoXFunControlPipeline,
@@ -672,6 +684,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             LEditsPPPipelineStableDiffusionXL,
         )
         from .ltx import LTXConditionPipeline, LTXImageToVideoPipeline, LTXLatentUpsamplePipeline, LTXPipeline
+        from .lucy import LucyEditPipeline
         from .lumina import LuminaPipeline, LuminaText2ImgPipeline
         from .lumina2 import Lumina2Pipeline, Lumina2Text2ImgPipeline
         from .marigold import (
@@ -704,7 +717,16 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .paint_by_example import PaintByExamplePipeline
         from .pia import PIAPipeline
         from .pixart_alpha import PixArtAlphaPipeline, PixArtSigmaPipeline
-        from .qwenimage import QwenImagePipeline
+        from .qwenimage import (
+            QwenImageControlNetInpaintPipeline,
+            QwenImageControlNetPipeline,
+            QwenImageEditInpaintPipeline,
+            QwenImageEditPipeline,
+            QwenImageEditPlusPipeline,
+            QwenImageImg2ImgPipeline,
+            QwenImageInpaintPipeline,
+            QwenImagePipeline,
+        )
         from .sana import SanaControlNetPipeline, SanaPipeline, SanaSprintImg2ImgPipeline, SanaSprintPipeline
         from .semantic_stable_diffusion import SemanticStableDiffusionPipeline
         from .shap_e import ShapEImg2ImgPipeline, ShapEPipeline

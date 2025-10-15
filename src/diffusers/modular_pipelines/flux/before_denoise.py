@@ -18,10 +18,11 @@ from typing import List, Optional, Union
 import numpy as np
 import torch
 
+from ...pipelines import FluxPipeline
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import logging
 from ...utils.torch_utils import randn_tensor
-from ..modular_pipeline import PipelineBlock, PipelineState
+from ..modular_pipeline import ModularPipelineBlocks, PipelineState
 from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
 from .modular_pipeline import FluxModularPipeline
 
@@ -103,120 +104,55 @@ def calculate_shift(
     return mu
 
 
-def _pack_latents(latents, batch_size, num_channels_latents, height, width):
-    latents = latents.view(batch_size, num_channels_latents, height // 2, 2, width // 2, 2)
-    latents = latents.permute(0, 2, 4, 1, 3, 5)
-    latents = latents.reshape(batch_size, (height // 2) * (width // 2), num_channels_latents * 4)
+# Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.retrieve_latents
+def retrieve_latents(
+    encoder_output: torch.Tensor, generator: Optional[torch.Generator] = None, sample_mode: str = "sample"
+):
+    if hasattr(encoder_output, "latent_dist") and sample_mode == "sample":
+        return encoder_output.latent_dist.sample(generator)
+    elif hasattr(encoder_output, "latent_dist") and sample_mode == "argmax":
+        return encoder_output.latent_dist.mode()
+    elif hasattr(encoder_output, "latents"):
+        return encoder_output.latents
+    else:
+        raise AttributeError("Could not access latents of provided encoder_output")
 
-    return latents
 
+def _get_initial_timesteps_and_optionals(
+    transformer,
+    scheduler,
+    batch_size,
+    height,
+    width,
+    vae_scale_factor,
+    num_inference_steps,
+    guidance_scale,
+    sigmas,
+    device,
+):
+    image_seq_len = (int(height) // vae_scale_factor // 2) * (int(width) // vae_scale_factor // 2)
 
-def _prepare_latent_image_ids(batch_size, height, width, device, dtype):
-    latent_image_ids = torch.zeros(height, width, 3)
-    latent_image_ids[..., 1] = latent_image_ids[..., 1] + torch.arange(height)[:, None]
-    latent_image_ids[..., 2] = latent_image_ids[..., 2] + torch.arange(width)[None, :]
-
-    latent_image_id_height, latent_image_id_width, latent_image_id_channels = latent_image_ids.shape
-
-    latent_image_ids = latent_image_ids.reshape(
-        latent_image_id_height * latent_image_id_width, latent_image_id_channels
+    sigmas = np.linspace(1.0, 1 / num_inference_steps, num_inference_steps) if sigmas is None else sigmas
+    if hasattr(scheduler.config, "use_flow_sigmas") and scheduler.config.use_flow_sigmas:
+        sigmas = None
+    mu = calculate_shift(
+        image_seq_len,
+        scheduler.config.get("base_image_seq_len", 256),
+        scheduler.config.get("max_image_seq_len", 4096),
+        scheduler.config.get("base_shift", 0.5),
+        scheduler.config.get("max_shift", 1.15),
     )
+    timesteps, num_inference_steps = retrieve_timesteps(scheduler, num_inference_steps, device, sigmas=sigmas, mu=mu)
+    if transformer.config.guidance_embeds:
+        guidance = torch.full([1], guidance_scale, device=device, dtype=torch.float32)
+        guidance = guidance.expand(batch_size)
+    else:
+        guidance = None
 
-    return latent_image_ids.to(device=device, dtype=dtype)
-
-
-class FluxInputStep(PipelineBlock):
-    model_name = "flux"
-
-    @property
-    def description(self) -> str:
-        return (
-            "Input processing step that:\n"
-            "  1. Determines `batch_size` and `dtype` based on `prompt_embeds`\n"
-            "  2. Adjusts input tensor shapes based on `batch_size` (number of prompts) and `num_images_per_prompt`\n\n"
-            "All input tensors are expected to have either batch_size=1 or match the batch_size\n"
-            "of prompt_embeds. The tensors will be duplicated across the batch dimension to\n"
-            "have a final batch_size of batch_size * num_images_per_prompt."
-        )
-
-    @property
-    def inputs(self) -> List[InputParam]:
-        return [
-            InputParam("num_images_per_prompt", default=1),
-        ]
-
-    @property
-    def intermediate_inputs(self) -> List[str]:
-        return [
-            InputParam(
-                "prompt_embeds",
-                required=True,
-                type_hint=torch.Tensor,
-                description="Pre-generated text embeddings. Can be generated from text_encoder step.",
-            ),
-            InputParam(
-                "pooled_prompt_embeds",
-                type_hint=torch.Tensor,
-                description="Pre-generated pooled text embeddings. Can be generated from text_encoder step.",
-            ),
-            # TODO: support negative embeddings?
-        ]
-
-    @property
-    def intermediate_outputs(self) -> List[str]:
-        return [
-            OutputParam(
-                "batch_size",
-                type_hint=int,
-                description="Number of prompts, the final batch size of model inputs should be batch_size * num_images_per_prompt",
-            ),
-            OutputParam(
-                "dtype",
-                type_hint=torch.dtype,
-                description="Data type of model tensor inputs (determined by `prompt_embeds`)",
-            ),
-            OutputParam(
-                "prompt_embeds",
-                type_hint=torch.Tensor,
-                description="text embeddings used to guide the image generation",
-            ),
-            OutputParam(
-                "pooled_prompt_embeds",
-                type_hint=torch.Tensor,
-                description="pooled text embeddings used to guide the image generation",
-            ),
-            # TODO: support negative embeddings?
-        ]
-
-    def check_inputs(self, components, block_state):
-        if block_state.prompt_embeds is not None and block_state.pooled_prompt_embeds is not None:
-            if block_state.prompt_embeds.shape[0] != block_state.pooled_prompt_embeds.shape[0]:
-                raise ValueError(
-                    "`prompt_embeds` and `pooled_prompt_embeds` must have the same batch size when passed directly, but"
-                    f" got: `prompt_embeds` {block_state.prompt_embeds.shape} != `pooled_prompt_embeds`"
-                    f" {block_state.pooled_prompt_embeds.shape}."
-                )
-
-    @torch.no_grad()
-    def __call__(self, components: FluxModularPipeline, state: PipelineState) -> PipelineState:
-        # TODO: consider adding negative embeddings?
-        block_state = self.get_block_state(state)
-        self.check_inputs(components, block_state)
-
-        block_state.batch_size = block_state.prompt_embeds.shape[0]
-        block_state.dtype = block_state.prompt_embeds.dtype
-
-        _, seq_len, _ = block_state.prompt_embeds.shape
-        block_state.prompt_embeds = block_state.prompt_embeds.repeat(1, block_state.num_images_per_prompt, 1)
-        block_state.prompt_embeds = block_state.prompt_embeds.view(
-            block_state.batch_size * block_state.num_images_per_prompt, seq_len, -1
-        )
-        self.set_block_state(state, block_state)
-
-        return components, state
+    return timesteps, num_inference_steps, sigmas, guidance
 
 
-class FluxSetTimestepsStep(PipelineBlock):
+class FluxSetTimestepsStep(ModularPipelineBlocks):
     model_name = "flux"
 
     @property
@@ -235,17 +171,15 @@ class FluxSetTimestepsStep(PipelineBlock):
             InputParam("sigmas"),
             InputParam("guidance_scale", default=3.5),
             InputParam("latents", type_hint=torch.Tensor),
-        ]
-
-    @property
-    def intermediate_inputs(self) -> List[str]:
-        return [
+            InputParam("num_images_per_prompt", default=1),
+            InputParam("height", type_hint=int),
+            InputParam("width", type_hint=int),
             InputParam(
-                "latents",
+                "batch_size",
                 required=True,
-                type_hint=torch.Tensor,
-                description="The initial latents to use for the denoising process. Can be generated in prepare_latent step.",
-            )
+                type_hint=int,
+                description="Number of prompts, the final batch size of model inputs should be `batch_size * num_images_per_prompt`. Can be generated in input step.",
+            ),
         ]
 
     @property
@@ -264,39 +198,127 @@ class FluxSetTimestepsStep(PipelineBlock):
     def __call__(self, components: FluxModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
         block_state.device = components._execution_device
+
         scheduler = components.scheduler
+        transformer = components.transformer
 
-        latents = block_state.latents
-        image_seq_len = latents.shape[1]
-
-        num_inference_steps = block_state.num_inference_steps
-        sigmas = block_state.sigmas
-        sigmas = np.linspace(1.0, 1 / num_inference_steps, num_inference_steps) if sigmas is None else sigmas
-        if hasattr(scheduler.config, "use_flow_sigmas") and scheduler.config.use_flow_sigmas:
-            sigmas = None
+        batch_size = block_state.batch_size * block_state.num_images_per_prompt
+        timesteps, num_inference_steps, sigmas, guidance = _get_initial_timesteps_and_optionals(
+            transformer,
+            scheduler,
+            batch_size,
+            block_state.height,
+            block_state.width,
+            components.vae_scale_factor,
+            block_state.num_inference_steps,
+            block_state.guidance_scale,
+            block_state.sigmas,
+            block_state.device,
+        )
+        block_state.timesteps = timesteps
+        block_state.num_inference_steps = num_inference_steps
         block_state.sigmas = sigmas
-        mu = calculate_shift(
-            image_seq_len,
-            scheduler.config.get("base_image_seq_len", 256),
-            scheduler.config.get("max_image_seq_len", 4096),
-            scheduler.config.get("base_shift", 0.5),
-            scheduler.config.get("max_shift", 1.15),
+        block_state.guidance = guidance
+
+        # We set the index here to remove DtoH sync, helpful especially during compilation.
+        # Check out more details here: https://github.com/huggingface/diffusers/pull/11696
+        components.scheduler.set_begin_index(0)
+
+        self.set_block_state(state, block_state)
+        return components, state
+
+
+class FluxImg2ImgSetTimestepsStep(ModularPipelineBlocks):
+    model_name = "flux"
+
+    @property
+    def expected_components(self) -> List[ComponentSpec]:
+        return [ComponentSpec("scheduler", FlowMatchEulerDiscreteScheduler)]
+
+    @property
+    def description(self) -> str:
+        return "Step that sets the scheduler's timesteps for inference"
+
+    @property
+    def inputs(self) -> List[InputParam]:
+        return [
+            InputParam("num_inference_steps", default=50),
+            InputParam("timesteps"),
+            InputParam("sigmas"),
+            InputParam("strength", default=0.6),
+            InputParam("guidance_scale", default=3.5),
+            InputParam("num_images_per_prompt", default=1),
+            InputParam("height", type_hint=int),
+            InputParam("width", type_hint=int),
+            InputParam(
+                "batch_size",
+                required=True,
+                type_hint=int,
+                description="Number of prompts, the final batch size of model inputs should be `batch_size * num_images_per_prompt`. Can be generated in input step.",
+            ),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> List[OutputParam]:
+        return [
+            OutputParam("timesteps", type_hint=torch.Tensor, description="The timesteps to use for inference"),
+            OutputParam(
+                "num_inference_steps",
+                type_hint=int,
+                description="The number of denoising steps to perform at inference time",
+            ),
+            OutputParam("guidance", type_hint=torch.Tensor, description="Optional guidance to be used."),
+        ]
+
+    @staticmethod
+    # Copied from diffusers.pipelines.stable_diffusion_3.pipeline_stable_diffusion_3_img2img.StableDiffusion3Img2ImgPipeline.get_timesteps with self.scheduler->scheduler
+    def get_timesteps(scheduler, num_inference_steps, strength, device):
+        # get the original timestep using init_timestep
+        init_timestep = min(num_inference_steps * strength, num_inference_steps)
+
+        t_start = int(max(num_inference_steps - init_timestep, 0))
+        timesteps = scheduler.timesteps[t_start * scheduler.order :]
+        if hasattr(scheduler, "set_begin_index"):
+            scheduler.set_begin_index(t_start * scheduler.order)
+
+        return timesteps, num_inference_steps - t_start
+
+    @torch.no_grad()
+    def __call__(self, components: FluxModularPipeline, state: PipelineState) -> PipelineState:
+        block_state = self.get_block_state(state)
+        block_state.device = components._execution_device
+
+        block_state.height = block_state.height or components.default_height
+        block_state.width = block_state.width or components.default_width
+
+        scheduler = components.scheduler
+        transformer = components.transformer
+        batch_size = block_state.batch_size * block_state.num_images_per_prompt
+        timesteps, num_inference_steps, sigmas, guidance = _get_initial_timesteps_and_optionals(
+            transformer,
+            scheduler,
+            batch_size,
+            block_state.height,
+            block_state.width,
+            components.vae_scale_factor,
+            block_state.num_inference_steps,
+            block_state.guidance_scale,
+            block_state.sigmas,
+            block_state.device,
         )
-        block_state.timesteps, block_state.num_inference_steps = retrieve_timesteps(
-            scheduler, block_state.num_inference_steps, block_state.device, sigmas=block_state.sigmas, mu=mu
+        timesteps, num_inference_steps = self.get_timesteps(
+            scheduler, num_inference_steps, block_state.strength, block_state.device
         )
-        if components.transformer.config.guidance_embeds:
-            guidance = torch.full([1], block_state.guidance_scale, device=block_state.device, dtype=torch.float32)
-            guidance = guidance.expand(latents.shape[0])
-        else:
-            guidance = None
+        block_state.timesteps = timesteps
+        block_state.num_inference_steps = num_inference_steps
+        block_state.sigmas = sigmas
         block_state.guidance = guidance
 
         self.set_block_state(state, block_state)
         return components, state
 
 
-class FluxPrepareLatentsStep(PipelineBlock):
+class FluxPrepareLatentsStep(ModularPipelineBlocks):
     model_name = "flux"
 
     @property
@@ -305,7 +327,7 @@ class FluxPrepareLatentsStep(PipelineBlock):
 
     @property
     def description(self) -> str:
-        return "Prepare latents step that prepares the latents for the text-to-video generation process"
+        return "Prepare latents step that prepares the latents for the text-to-image generation process"
 
     @property
     def inputs(self) -> List[InputParam]:
@@ -314,11 +336,6 @@ class FluxPrepareLatentsStep(PipelineBlock):
             InputParam("width", type_hint=int),
             InputParam("latents", type_hint=Optional[torch.Tensor]),
             InputParam("num_images_per_prompt", type_hint=int, default=1),
-        ]
-
-    @property
-    def intermediate_inputs(self) -> List[InputParam]:
-        return [
             InputParam("generator"),
             InputParam(
                 "batch_size",
@@ -334,11 +351,6 @@ class FluxPrepareLatentsStep(PipelineBlock):
         return [
             OutputParam(
                 "latents", type_hint=torch.Tensor, description="The initial latents to use for the denoising process"
-            ),
-            OutputParam(
-                "latent_image_ids",
-                type_hint=torch.Tensor,
-                description="IDs computed from the image sequence needed for RoPE",
             ),
         ]
 
@@ -363,20 +375,13 @@ class FluxPrepareLatentsStep(PipelineBlock):
         generator,
         latents=None,
     ):
-        # Couldn't use the `prepare_latents` method directly from Flux because I decided to copy over
-        # the packing methods here. So, for example, `comp._pack_latents()` won't work if we were
-        # to go with the "# Copied from ..." approach. Or maybe there's a way?
-
-        # VAE applies 8x compression on images but we must also account for packing which requires
-        # latent height and width to be divisible by 2.
         height = 2 * (int(height) // (comp.vae_scale_factor * 2))
         width = 2 * (int(width) // (comp.vae_scale_factor * 2))
 
         shape = (batch_size, num_channels_latents, height, width)
 
         if latents is not None:
-            latent_image_ids = _prepare_latent_image_ids(batch_size, height // 2, width // 2, device, dtype)
-            return latents.to(device=device, dtype=dtype), latent_image_ids
+            return latents.to(device=device, dtype=dtype)
 
         if isinstance(generator, list) and len(generator) != batch_size:
             raise ValueError(
@@ -384,28 +389,25 @@ class FluxPrepareLatentsStep(PipelineBlock):
                 f" size of {batch_size}. Make sure the batch size matches the length of the generators."
             )
 
+        # TODO: move packing latents code to a patchifier similar to Qwen
         latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
-        latents = _pack_latents(latents, batch_size, num_channels_latents, height, width)
+        latents = FluxPipeline._pack_latents(latents, batch_size, num_channels_latents, height, width)
 
-        latent_image_ids = _prepare_latent_image_ids(batch_size, height // 2, width // 2, device, dtype)
-
-        return latents, latent_image_ids
+        return latents
 
     @torch.no_grad()
     def __call__(self, components: FluxModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
-
         block_state.height = block_state.height or components.default_height
         block_state.width = block_state.width or components.default_width
         block_state.device = components._execution_device
-        block_state.dtype = torch.bfloat16  # TODO: okay to hardcode this?
         block_state.num_channels_latents = components.num_channels_latents
 
         self.check_inputs(components, block_state)
-
-        block_state.latents, block_state.latent_image_ids = self.prepare_latents(
+        batch_size = block_state.batch_size * block_state.num_images_per_prompt
+        block_state.latents = self.prepare_latents(
             components,
-            block_state.batch_size * block_state.num_images_per_prompt,
+            batch_size,
             block_state.num_channels_latents,
             block_state.height,
             block_state.width,
@@ -414,6 +416,203 @@ class FluxPrepareLatentsStep(PipelineBlock):
             block_state.generator,
             block_state.latents,
         )
+
+        self.set_block_state(state, block_state)
+
+        return components, state
+
+
+class FluxImg2ImgPrepareLatentsStep(ModularPipelineBlocks):
+    model_name = "flux"
+
+    @property
+    def description(self) -> str:
+        return "Step that adds noise to image latents for image-to-image. Should be run after `set_timesteps`,"
+        " `prepare_latents`. Both noise and image latents should already be patchified."
+
+    @property
+    def expected_components(self) -> List[ComponentSpec]:
+        return [ComponentSpec("scheduler", FlowMatchEulerDiscreteScheduler)]
+
+    @property
+    def inputs(self) -> List[InputParam]:
+        return [
+            InputParam(
+                name="latents",
+                required=True,
+                type_hint=torch.Tensor,
+                description="The initial random noised, can be generated in prepare latent step.",
+            ),
+            InputParam(
+                name="image_latents",
+                required=True,
+                type_hint=torch.Tensor,
+                description="The image latents to use for the denoising process. Can be generated in vae encoder and packed in input step.",
+            ),
+            InputParam(
+                name="timesteps",
+                required=True,
+                type_hint=torch.Tensor,
+                description="The timesteps to use for the denoising process. Can be generated in set_timesteps step.",
+            ),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> List[OutputParam]:
+        return [
+            OutputParam(
+                name="initial_noise",
+                type_hint=torch.Tensor,
+                description="The initial random noised used for inpainting denoising.",
+            ),
+        ]
+
+    @staticmethod
+    def check_inputs(image_latents, latents):
+        if image_latents.shape[0] != latents.shape[0]:
+            raise ValueError(
+                f"`image_latents` must have have same batch size as `latents`, but got {image_latents.shape[0]} and {latents.shape[0]}"
+            )
+
+        if image_latents.ndim != 3:
+            raise ValueError(f"`image_latents` must have 3 dimensions (patchified), but got {image_latents.ndim}")
+
+    @torch.no_grad()
+    def __call__(self, components: FluxModularPipeline, state: PipelineState) -> PipelineState:
+        block_state = self.get_block_state(state)
+
+        self.check_inputs(image_latents=block_state.image_latents, latents=block_state.latents)
+
+        # prepare latent timestep
+        latent_timestep = block_state.timesteps[:1].repeat(block_state.latents.shape[0])
+
+        # make copy of initial_noise
+        block_state.initial_noise = block_state.latents
+
+        # scale noise
+        block_state.latents = components.scheduler.scale_noise(
+            block_state.image_latents, latent_timestep, block_state.latents
+        )
+
+        self.set_block_state(state, block_state)
+
+        return components, state
+
+
+class FluxRoPEInputsStep(ModularPipelineBlocks):
+    model_name = "flux"
+
+    @property
+    def description(self) -> str:
+        return "Step that prepares the RoPE inputs for the denoising process. Should be placed after text encoder and latent preparation steps."
+
+    @property
+    def inputs(self) -> List[InputParam]:
+        return [
+            InputParam(name="height", required=True),
+            InputParam(name="width", required=True),
+            InputParam(name="prompt_embeds"),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> List[OutputParam]:
+        return [
+            OutputParam(
+                name="txt_ids",
+                kwargs_type="denoiser_input_fields",
+                type_hint=List[int],
+                description="The sequence lengths of the prompt embeds, used for RoPE calculation.",
+            ),
+            OutputParam(
+                name="img_ids",
+                kwargs_type="denoiser_input_fields",
+                type_hint=List[int],
+                description="The sequence lengths of the image latents, used for RoPE calculation.",
+            ),
+        ]
+
+    def __call__(self, components: FluxModularPipeline, state: PipelineState) -> PipelineState:
+        block_state = self.get_block_state(state)
+
+        prompt_embeds = block_state.prompt_embeds
+        device, dtype = prompt_embeds.device, prompt_embeds.dtype
+        block_state.txt_ids = torch.zeros(prompt_embeds.shape[1], 3).to(
+            device=prompt_embeds.device, dtype=prompt_embeds.dtype
+        )
+
+        height = 2 * (int(block_state.height) // (components.vae_scale_factor * 2))
+        width = 2 * (int(block_state.width) // (components.vae_scale_factor * 2))
+        block_state.img_ids = FluxPipeline._prepare_latent_image_ids(None, height // 2, width // 2, device, dtype)
+
+        self.set_block_state(state, block_state)
+
+        return components, state
+
+
+class FluxKontextRoPEInputsStep(ModularPipelineBlocks):
+    model_name = "flux-kontext"
+
+    @property
+    def description(self) -> str:
+        return "Step that prepares the RoPE inputs for the denoising process of Flux Kontext. Should be placed after text encoder and latent preparation steps."
+
+    @property
+    def inputs(self) -> List[InputParam]:
+        return [
+            InputParam(name="image_height"),
+            InputParam(name="image_width"),
+            InputParam(name="height"),
+            InputParam(name="width"),
+            InputParam(name="prompt_embeds"),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> List[OutputParam]:
+        return [
+            OutputParam(
+                name="txt_ids",
+                kwargs_type="denoiser_input_fields",
+                type_hint=List[int],
+                description="The sequence lengths of the prompt embeds, used for RoPE calculation.",
+            ),
+            OutputParam(
+                name="img_ids",
+                kwargs_type="denoiser_input_fields",
+                type_hint=List[int],
+                description="The sequence lengths of the image latents, used for RoPE calculation.",
+            ),
+        ]
+
+    def __call__(self, components: FluxModularPipeline, state: PipelineState) -> PipelineState:
+        block_state = self.get_block_state(state)
+
+        prompt_embeds = block_state.prompt_embeds
+        device, dtype = prompt_embeds.device, prompt_embeds.dtype
+        block_state.txt_ids = torch.zeros(prompt_embeds.shape[1], 3).to(
+            device=prompt_embeds.device, dtype=prompt_embeds.dtype
+        )
+
+        img_ids = None
+        if (
+            getattr(block_state, "image_height", None) is not None
+            and getattr(block_state, "image_width", None) is not None
+        ):
+            image_latent_height = 2 * (int(block_state.image_height) // (components.vae_scale_factor * 2))
+            image_latent_width = 2 * (int(block_state.width) // (components.vae_scale_factor * 2))
+            img_ids = FluxPipeline._prepare_latent_image_ids(
+                None, image_latent_height // 2, image_latent_width // 2, device, dtype
+            )
+            # image ids are the same as latent ids with the first dimension set to 1 instead of 0
+            img_ids[..., 0] = 1
+
+        height = 2 * (int(block_state.height) // (components.vae_scale_factor * 2))
+        width = 2 * (int(block_state.width) // (components.vae_scale_factor * 2))
+        latent_ids = FluxPipeline._prepare_latent_image_ids(None, height // 2, width // 2, device, dtype)
+
+        if img_ids is not None:
+            latent_ids = torch.cat([latent_ids, img_ids], dim=0)
+
+        block_state.img_ids = latent_ids
 
         self.set_block_state(state, block_state)
 

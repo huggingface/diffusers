@@ -20,7 +20,7 @@
   </div>
 </div>
 
-# Wan2.1
+# Wan
 
 [Wan-2.1](https://huggingface.co/papers/2503.20314) by the Wan Team.
 
@@ -42,7 +42,7 @@ The following Wan models are supported in Diffusers:
 - [Wan 2.2 TI2V 5B](https://huggingface.co/Wan-AI/Wan2.2-TI2V-5B-Diffusers)
 
 > [!TIP]
-> Click on the Wan2.1 models in the right sidebar for more examples of video generation.
+> Click on the Wan models in the right sidebar for more examples of video generation.
 
 ### Text-to-Video Generation
 
@@ -119,7 +119,7 @@ export_to_video(output, "output.mp4", fps=16)
 </hfoption>
 <hfoption id="T2V inference speed">
 
-[Compilation](../../optimization/fp16#torchcompile) is slow the first time but subsequent calls to the pipeline are faster.
+[Compilation](../../optimization/fp16#torchcompile) is slow the first time but subsequent calls to the pipeline are faster. [Caching](../../optimization/cache) may also speed up inference by storing and reusing intermediate outputs.
 
 ```py
 # pip install ftfy
@@ -332,6 +332,8 @@ The general rule of thumb to keep in mind when preparing inputs for the VACE pip
 - Try lower `shift` values (`2.0` to `5.0`) for lower resolution videos and higher `shift` values (`7.0` to `12.0`) for higher resolution images.
 
 - Wan 2.1 and 2.2 support using [LightX2V LoRAs](https://huggingface.co/Kijai/WanVideo_comfy/tree/main/Lightx2v) to speed up inference. Using them on Wan 2.2 is slightly more involed. Refer to [this code snippet](https://github.com/huggingface/diffusers/pull/12040#issuecomment-3144185272) to learn more.
+
+- Wan 2.2 has two denoisers. By default, LoRAs are only loaded into the first denoiser. One can set `load_into_transformer_2=True` to load LoRAs into the second denoiser. Refer to [this](https://github.com/huggingface/diffusers/pull/12074#issue-3292620048) and [this](https://github.com/huggingface/diffusers/pull/12074#issuecomment-3155896144) examples to learn more.
 
 ## WanPipeline
 

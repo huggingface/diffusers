@@ -25,6 +25,7 @@ from ..utils import (
     is_accelerate_available,
     logging,
 )
+from ..utils.torch_utils import get_device
 
 
 if is_accelerate_available():
@@ -161,7 +162,9 @@ class AutoOffloadStrategy:
 
         current_module_size = model.get_memory_footprint()
 
-        mem_on_device = torch.cuda.mem_get_info(execution_device.index)[0]
+        device_type = execution_device.type
+        device_module = getattr(torch, device_type, torch.cuda)
+        mem_on_device = device_module.mem_get_info(execution_device.index)[0]
         mem_on_device = mem_on_device - self.memory_reserve_margin
         if current_module_size < mem_on_device:
             return []
@@ -283,11 +286,7 @@ class ComponentsManager:
     encoders, etc.) across different modular pipelines. It includes features for duplicate detection, memory
     management, and component organization.
 
-    <Tip warning={true}>
-
-        This is an experimental feature and is likely to change in the future.
-
-    </Tip>
+    > [!WARNING] > This is an experimental feature and is likely to change in the future.
 
     Example:
         ```python
@@ -301,7 +300,7 @@ class ComponentsManager:
         cm.add("vae", vae_model, collection="sdxl")
 
         # Enable auto offloading
-        cm.enable_auto_cpu_offload(device="cuda")
+        cm.enable_auto_cpu_offload()
 
         # Retrieve components
         unet = cm.get_one(name="unet", collection="sdxl")
@@ -490,6 +489,8 @@ class ComponentsManager:
             gc.collect()
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
+            if torch.xpu.is_available():
+                torch.xpu.empty_cache()
 
     # YiYi TODO: rename to search_components for now, may remove this method
     def search_components(
@@ -678,7 +679,7 @@ class ComponentsManager:
 
         return get_return_dict(matches, return_dict_with_names)
 
-    def enable_auto_cpu_offload(self, device: Union[str, int, torch.device] = "cuda", memory_reserve_margin="3GB"):
+    def enable_auto_cpu_offload(self, device: Union[str, int, torch.device] = None, memory_reserve_margin="3GB"):
         """
         Enable automatic CPU offloading for all components.
 
@@ -704,6 +705,8 @@ class ComponentsManager:
 
         self.disable_auto_cpu_offload()
         offload_strategy = AutoOffloadStrategy(memory_reserve_margin=memory_reserve_margin)
+        if device is None:
+            device = get_device()
         device = torch.device(device)
         if device.index is None:
             device = torch.device(f"{device.type}:{0}")

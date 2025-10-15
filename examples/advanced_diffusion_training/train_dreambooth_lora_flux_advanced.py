@@ -12,6 +12,7 @@
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
+# limitations under the License.
 
 # /// script
 # dependencies = [
@@ -24,6 +25,10 @@
 #     "Jinja2",
 #     "peft>=0.11.1",
 #     "sentencepiece",
+#     "torchvision",
+#     "datasets",
+#     "bitsandbytes",
+#     "prodigyopt",
 # ]
 # ///
 
@@ -89,7 +94,7 @@ if is_wandb_available():
     import wandb
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.35.0.dev0")
+check_min_version("0.36.0.dev0")
 
 logger = get_logger(__name__)
 
@@ -1398,6 +1403,7 @@ def main(args):
                 torch_dtype = torch.float16
             elif args.prior_generation_precision == "bf16":
                 torch_dtype = torch.bfloat16
+
             pipeline = FluxPipeline.from_pretrained(
                 args.pretrained_model_name_or_path,
                 torch_dtype=torch_dtype,
@@ -1418,7 +1424,8 @@ def main(args):
             for example in tqdm(
                 sample_dataloader, desc="Generating class images", disable=not accelerator.is_local_main_process
             ):
-                images = pipeline(example["prompt"]).images
+                with torch.autocast(device_type=accelerator.device.type, dtype=torch_dtype):
+                    images = pipeline(prompt=example["prompt"]).images
 
                 for i, image in enumerate(images):
                     hash_image = insecure_hashlib.sha1(image.tobytes()).hexdigest()

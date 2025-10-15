@@ -20,7 +20,7 @@ import torch
 from ...schedulers import UniPCMultistepScheduler
 from ...utils import logging
 from ...utils.torch_utils import randn_tensor
-from ..modular_pipeline import PipelineBlock, PipelineState
+from ..modular_pipeline import ModularPipelineBlocks, PipelineState
 from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
 from .modular_pipeline import WanModularPipeline
 
@@ -94,7 +94,7 @@ def retrieve_timesteps(
     return timesteps, num_inference_steps
 
 
-class WanInputStep(PipelineBlock):
+class WanInputStep(ModularPipelineBlocks):
     model_name = "wan"
 
     @property
@@ -146,13 +146,13 @@ class WanInputStep(PipelineBlock):
             OutputParam(
                 "prompt_embeds",
                 type_hint=torch.Tensor,
-                kwargs_type="guider_input_fields",  # already in intermedites state but declare here again for guider_input_fields
+                kwargs_type="denoiser_input_fields",  # already in intermedites state but declare here again for denoiser_input_fields
                 description="text embeddings used to guide the image generation",
             ),
             OutputParam(
                 "negative_prompt_embeds",
                 type_hint=torch.Tensor,
-                kwargs_type="guider_input_fields",  # already in intermedites state but declare here again for guider_input_fields
+                kwargs_type="denoiser_input_fields",  # already in intermedites state but declare here again for denoiser_input_fields
                 description="negative text embeddings used to guide the image generation",
             ),
         ]
@@ -194,7 +194,7 @@ class WanInputStep(PipelineBlock):
         return components, state
 
 
-class WanSetTimestepsStep(PipelineBlock):
+class WanSetTimestepsStep(ModularPipelineBlocks):
     model_name = "wan"
 
     @property
@@ -243,7 +243,7 @@ class WanSetTimestepsStep(PipelineBlock):
         return components, state
 
 
-class WanPrepareLatentsStep(PipelineBlock):
+class WanPrepareLatentsStep(ModularPipelineBlocks):
     model_name = "wan"
 
     @property

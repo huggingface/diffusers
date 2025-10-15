@@ -20,7 +20,8 @@ from diffusers import (
     WanVACETransformer3DModel,
 )
 from diffusers.utils import load_image
-from diffusers.utils.testing_utils import (
+
+from ...testing_utils import (
     Expectations,
     backend_empty_cache,
     backend_max_memory_allocated,
@@ -38,7 +39,6 @@ from diffusers.utils.testing_utils import (
     require_torch_version_greater,
     torch_device,
 )
-
 from ..test_torch_compile_utils import QuantCompileTests
 
 
@@ -212,6 +212,7 @@ class GGUFSingleFileTesterMixin:
 
 class FluxGGUFSingleFileTests(GGUFSingleFileTesterMixin, unittest.TestCase):
     ckpt_path = "https://huggingface.co/city96/FLUX.1-dev-gguf/blob/main/flux1-dev-Q2_K.gguf"
+    diffusers_ckpt_path = "https://huggingface.co/sayakpaul/flux-diffusers-gguf/blob/main/model-Q4_0.gguf"
     torch_dtype = torch.bfloat16
     model_cls = FluxTransformer2DModel
     expected_memory_use_in_gb = 5
@@ -296,6 +297,16 @@ class FluxGGUFSingleFileTests(GGUFSingleFileTesterMixin, unittest.TestCase):
         max_diff = numpy_cosine_similarity_distance(expected_slice, output_slice)
         assert max_diff < 1e-4
 
+    def test_loading_gguf_diffusers_format(self):
+        model = self.model_cls.from_single_file(
+            self.diffusers_ckpt_path,
+            subfolder="transformer",
+            quantization_config=GGUFQuantizationConfig(compute_dtype=torch.bfloat16),
+            config="black-forest-labs/FLUX.1-dev",
+        )
+        model.to(torch_device)
+        model(**self.get_dummy_inputs())
+
 
 class SD35LargeGGUFSingleFileTests(GGUFSingleFileTesterMixin, unittest.TestCase):
     ckpt_path = "https://huggingface.co/city96/stable-diffusion-3.5-large-gguf/blob/main/sd3.5_large-Q4_0.gguf"
@@ -349,33 +360,33 @@ class SD35LargeGGUFSingleFileTests(GGUFSingleFileTesterMixin, unittest.TestCase)
             {
                 ("xpu", 3): np.array(
                     [
-                        0.16210938,
-                        0.2734375,
-                        0.27734375,
-                        0.109375,
-                        0.27148438,
-                        0.2578125,
-                        0.1015625,
-                        0.2578125,
-                        0.2578125,
-                        0.14453125,
-                        0.26953125,
-                        0.29492188,
-                        0.12890625,
-                        0.28710938,
-                        0.30078125,
-                        0.11132812,
-                        0.27734375,
+                        0.16796875,
                         0.27929688,
-                        0.15625,
-                        0.31054688,
+                        0.28320312,
+                        0.11328125,
+                        0.27539062,
+                        0.26171875,
+                        0.10742188,
+                        0.26367188,
+                        0.26171875,
+                        0.1484375,
+                        0.2734375,
                         0.296875,
-                        0.15234375,
-                        0.3203125,
-                        0.29492188,
-                        0.140625,
-                        0.3046875,
-                        0.28515625,
+                        0.13476562,
+                        0.2890625,
+                        0.30078125,
+                        0.1171875,
+                        0.28125,
+                        0.28125,
+                        0.16015625,
+                        0.31445312,
+                        0.30078125,
+                        0.15625,
+                        0.32421875,
+                        0.296875,
+                        0.14453125,
+                        0.30859375,
+                        0.2890625,
                     ]
                 ),
                 ("cuda", 7): np.array(

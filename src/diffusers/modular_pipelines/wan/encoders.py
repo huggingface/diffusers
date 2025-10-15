@@ -22,7 +22,7 @@ from transformers import AutoTokenizer, UMT5EncoderModel
 from ...configuration_utils import FrozenDict
 from ...guiders import ClassifierFreeGuidance
 from ...utils import is_ftfy_available, logging
-from ..modular_pipeline import PipelineBlock, PipelineState
+from ..modular_pipeline import ModularPipelineBlocks, PipelineState
 from ..modular_pipeline_utils import ComponentSpec, ConfigSpec, InputParam, OutputParam
 from .modular_pipeline import WanModularPipeline
 
@@ -51,7 +51,7 @@ def prompt_clean(text):
     return text
 
 
-class WanTextEncoderStep(PipelineBlock):
+class WanTextEncoderStep(ModularPipelineBlocks):
     model_name = "wan"
 
     @property
@@ -89,13 +89,13 @@ class WanTextEncoderStep(PipelineBlock):
             OutputParam(
                 "prompt_embeds",
                 type_hint=torch.Tensor,
-                kwargs_type="guider_input_fields",
+                kwargs_type="denoiser_input_fields",
                 description="text embeddings used to guide the image generation",
             ),
             OutputParam(
                 "negative_prompt_embeds",
                 type_hint=torch.Tensor,
-                kwargs_type="guider_input_fields",
+                kwargs_type="denoiser_input_fields",
                 description="negative text embeddings used to guide the image generation",
             ),
         ]

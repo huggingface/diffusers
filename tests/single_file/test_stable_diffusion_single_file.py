@@ -1,13 +1,13 @@
 import gc
 import tempfile
-import unittest
 
 import torch
 
 from diffusers import EulerDiscreteScheduler, StableDiffusionInstructPix2PixPipeline, StableDiffusionPipeline
 from diffusers.loaders.single_file_utils import _extract_repo_id_and_weights_name
 from diffusers.utils import load_image
-from diffusers.utils.testing_utils import (
+
+from ..testing_utils import (
     backend_empty_cache,
     enable_full_determinism,
     nightly,
@@ -15,7 +15,6 @@ from diffusers.utils.testing_utils import (
     slow,
     torch_device,
 )
-
 from .single_file_testing_utils import (
     SDSingleFileTesterMixin,
     download_original_config,
@@ -28,7 +27,7 @@ enable_full_determinism()
 
 @slow
 @require_torch_accelerator
-class StableDiffusionPipelineSingleFileSlowTests(unittest.TestCase, SDSingleFileTesterMixin):
+class TestStableDiffusionPipelineSingleFileSlow(SDSingleFileTesterMixin):
     pipeline_class = StableDiffusionPipeline
     ckpt_path = (
         "https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5/blob/main/v1-5-pruned-emaonly.safetensors"
@@ -38,13 +37,11 @@ class StableDiffusionPipelineSingleFileSlowTests(unittest.TestCase, SDSingleFile
     )
     repo_id = "stable-diffusion-v1-5/stable-diffusion-v1-5"
 
-    def setUp(self):
-        super().setUp()
+    def setup_method(self):
         gc.collect()
         backend_empty_cache(torch_device)
 
-    def tearDown(self):
-        super().tearDown()
+    def teardown_method(self):
         gc.collect()
         backend_empty_cache(torch_device)
 
@@ -90,19 +87,17 @@ class StableDiffusionPipelineSingleFileSlowTests(unittest.TestCase, SDSingleFile
 
 
 @slow
-class StableDiffusion21PipelineSingleFileSlowTests(unittest.TestCase, SDSingleFileTesterMixin):
+class TestStableDiffusion21PipelineSingleFileSlow(SDSingleFileTesterMixin):
     pipeline_class = StableDiffusionPipeline
     ckpt_path = "https://huggingface.co/stabilityai/stable-diffusion-2-1/blob/main/v2-1_768-ema-pruned.safetensors"
     original_config = "https://raw.githubusercontent.com/Stability-AI/stablediffusion/main/configs/stable-diffusion/v2-inference-v.yaml"
     repo_id = "stabilityai/stable-diffusion-2-1"
 
-    def setUp(self):
-        super().setUp()
+    def setup_method(self):
         gc.collect()
         backend_empty_cache(torch_device)
 
-    def tearDown(self):
-        super().tearDown()
+    def teardown_method(self):
         gc.collect()
         backend_empty_cache(torch_device)
 
@@ -125,7 +120,7 @@ class StableDiffusion21PipelineSingleFileSlowTests(unittest.TestCase, SDSingleFi
 @nightly
 @slow
 @require_torch_accelerator
-class StableDiffusionInstructPix2PixPipelineSingleFileSlowTests(unittest.TestCase, SDSingleFileTesterMixin):
+class TestStableDiffusionInstructPix2PixPipelineSingleFileSlow(SDSingleFileTesterMixin):
     pipeline_class = StableDiffusionInstructPix2PixPipeline
     ckpt_path = "https://huggingface.co/timbrooks/instruct-pix2pix/blob/main/instruct-pix2pix-00-22000.safetensors"
     original_config = (
@@ -134,13 +129,11 @@ class StableDiffusionInstructPix2PixPipelineSingleFileSlowTests(unittest.TestCas
     repo_id = "timbrooks/instruct-pix2pix"
     single_file_kwargs = {"extract_ema": True}
 
-    def setUp(self):
-        super().setUp()
+    def setup_method(self):
         gc.collect()
         backend_empty_cache(torch_device)
 
-    def tearDown(self):
-        super().tearDown()
+    def teardown_method(self):
         gc.collect()
         backend_empty_cache(torch_device)
 

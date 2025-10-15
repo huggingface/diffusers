@@ -24,7 +24,7 @@ from ...utils import logging
 from ..modular_pipeline import (
     BlockState,
     LoopSequentialPipelineBlocks,
-    PipelineBlock,
+    ModularPipelineBlocks,
     PipelineState,
 )
 from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
@@ -34,7 +34,7 @@ from .modular_pipeline import WanModularPipeline
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-class WanLoopDenoiser(PipelineBlock):
+class WanLoopDenoiser(ModularPipelineBlocks):
     model_name = "wan"
 
     @property
@@ -79,11 +79,11 @@ class WanLoopDenoiser(PipelineBlock):
                 description="The number of inference steps to use for the denoising process. Can be generated in set_timesteps step.",
             ),
             InputParam(
-                kwargs_type="guider_input_fields",
+                kwargs_type="denoiser_input_fields",
                 description=(
                     "All conditional model inputs that need to be prepared with guider. "
                     "It should contain prompt_embeds/negative_prompt_embeds. "
-                    "Please add `kwargs_type=guider_input_fields` to their parameter spec (`OutputParam`) when they are created and added to the pipeline state"
+                    "Please add `kwargs_type=denoiser_input_fields` to their parameter spec (`OutputParam`) when they are created and added to the pipeline state"
                 ),
             ),
         ]
@@ -127,12 +127,12 @@ class WanLoopDenoiser(PipelineBlock):
             components.guider.cleanup_models(components.transformer)
 
         # Perform guidance
-        block_state.noise_pred, block_state.scheduler_step_kwargs = components.guider(guider_state)
+        block_state.noise_pred = components.guider(guider_state)[0]
 
         return components, block_state
 
 
-class WanLoopAfterDenoiser(PipelineBlock):
+class WanLoopAfterDenoiser(ModularPipelineBlocks):
     model_name = "wan"
 
     @property
@@ -171,7 +171,6 @@ class WanLoopAfterDenoiser(PipelineBlock):
             block_state.noise_pred.float(),
             t,
             block_state.latents.float(),
-            **block_state.scheduler_step_kwargs,
             return_dict=False,
         )[0]
 
@@ -254,7 +253,7 @@ class WanDenoiseStep(WanDenoiseLoopWrapper):
         return (
             "Denoise step that iteratively denoise the latents. \n"
             "Its loop logic is defined in `WanDenoiseLoopWrapper.__call__` method \n"
-            "At each iteration, it runs blocks defined in `sub_blocks` sequencially:\n"
+            "At each iteration, it runs blocks defined in `sub_blocks` sequentially:\n"
             " - `WanLoopDenoiser`\n"
             " - `WanLoopAfterDenoiser`\n"
             "This block supports both text2vid tasks."

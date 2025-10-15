@@ -16,15 +16,12 @@
 
 [HiDream-I1](https://huggingface.co/HiDream-ai) by HiDream.ai
 
-<Tip>
-
-Make sure to check out the Schedulers [guide](../../using-diffusers/schedulers) to learn how to explore the tradeoff between scheduler speed and quality, and see the [reuse components across pipelines](../../using-diffusers/loading#reuse-a-pipeline) section to learn how to efficiently load the same components into multiple pipelines.
-
-</Tip>
+> [!TIP]
+> [Caching](../../optimization/cache) may also speed up inference by storing and reusing intermediate outputs.
 
 ## Available models
 
-The following models are available for the [`HiDreamImagePipeline`](text-to-image) pipeline:
+The following models are available for the [`HiDreamImagePipeline`] pipeline:
 
 | Model name | Description |
 |:---|:---|

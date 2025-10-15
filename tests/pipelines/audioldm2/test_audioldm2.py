@@ -46,14 +46,14 @@ from diffusers import (
     PNDMScheduler,
 )
 from diffusers.utils import is_transformers_version
-from diffusers.utils.testing_utils import (
+
+from ...testing_utils import (
     backend_empty_cache,
     enable_full_determinism,
     is_torch_version,
     nightly,
     torch_device,
 )
-
 from ..pipeline_params import TEXT_TO_AUDIO_BATCH_PARAMS, TEXT_TO_AUDIO_PARAMS
 from ..test_pipelines_common import PipelineTesterMixin
 
@@ -138,10 +138,8 @@ class AudioLDM2PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             patch_stride=2,
             patch_embed_input_channels=4,
         )
-        text_encoder_config = ClapConfig.from_text_audio_configs(
-            text_config=text_branch_config,
-            audio_config=audio_branch_config,
-            projection_dim=16,
+        text_encoder_config = ClapConfig(
+            text_config=text_branch_config, audio_config=audio_branch_config, projection_dim=16
         )
         text_encoder = ClapModel(text_encoder_config)
         tokenizer = RobertaTokenizer.from_pretrained("hf-internal-testing/tiny-random-roberta", model_max_length=77)

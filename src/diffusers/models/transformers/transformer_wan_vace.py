@@ -21,7 +21,7 @@ import torch.nn as nn
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
 from ...utils import USE_PEFT_BACKEND, logging, scale_lora_layers, unscale_lora_layers
-from ..attention import FeedForward
+from ..attention import AttentionMixin, FeedForward
 from ..cache_utils import CacheMixin
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
@@ -103,7 +103,7 @@ class WanVACETransformerBlock(nn.Module):
             control_hidden_states = control_hidden_states + hidden_states
 
         shift_msa, scale_msa, gate_msa, c_shift_msa, c_scale_msa, c_gate_msa = (
-            self.scale_shift_table + temb.float()
+            self.scale_shift_table.to(temb.device) + temb.float()
         ).chunk(6, dim=1)
 
         # 1. Self-attention
@@ -134,7 +134,9 @@ class WanVACETransformerBlock(nn.Module):
         return conditioning_states, control_hidden_states
 
 
-class WanVACETransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginalModelMixin, CacheMixin):
+class WanVACETransformer3DModel(
+    ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginalModelMixin, CacheMixin, AttentionMixin
+):
     r"""
     A Transformer model for video-like data used in the Wan model.
 
@@ -359,7 +361,7 @@ class WanVACETransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromO
                     hidden_states = hidden_states + control_hint * scale
 
         # 6. Output norm, projection & unpatchify
-        shift, scale = (self.scale_shift_table + temb.unsqueeze(1)).chunk(2, dim=1)
+        shift, scale = (self.scale_shift_table.to(temb.device) + temb.unsqueeze(1)).chunk(2, dim=1)
 
         # Move the shift and scale tensors to the same device as hidden_states.
         # When using multi-GPU inference via accelerate these will be on the

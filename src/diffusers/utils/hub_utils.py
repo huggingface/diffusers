@@ -38,13 +38,13 @@ from huggingface_hub.constants import HF_HUB_DISABLE_TELEMETRY, HF_HUB_OFFLINE
 from huggingface_hub.file_download import REGEX_COMMIT_HASH
 from huggingface_hub.utils import (
     EntryNotFoundError,
+    HfHubHTTPError,
     RepositoryNotFoundError,
     RevisionNotFoundError,
     is_jinja_available,
     validate_hf_hub_args,
 )
 from packaging import version
-from requests import HTTPError
 
 from .. import __version__
 from .constants import (
@@ -316,7 +316,7 @@ def _get_model_file(
             raise EnvironmentError(
                 f"{pretrained_model_name_or_path} does not appear to have a file named {weights_name}."
             ) from e
-        except HTTPError as e:
+        except HfHubHTTPError as e:
             raise EnvironmentError(
                 f"There was a specific connection error when trying to load {pretrained_model_name_or_path}:\n{e}"
             ) from e
@@ -402,15 +402,17 @@ def _get_checkpoint_shard_files(
         allow_patterns = [os.path.join(subfolder, p) for p in allow_patterns]
 
     ignore_patterns = ["*.json", "*.md"]
-    # `model_info` call must guarded with the above condition.
-    model_files_info = model_info(pretrained_model_name_or_path, revision=revision, token=token)
-    for shard_file in original_shard_filenames:
-        shard_file_present = any(shard_file in k.rfilename for k in model_files_info.siblings)
-        if not shard_file_present:
-            raise EnvironmentError(
-                f"{shards_path} does not appear to have a file named {shard_file} which is "
-                "required according to the checkpoint index."
-            )
+
+    # If the repo doesn't have the required shards, error out early even before downloading anything.
+    if not local_files_only:
+        model_files_info = model_info(pretrained_model_name_or_path, revision=revision, token=token)
+        for shard_file in original_shard_filenames:
+            shard_file_present = any(shard_file in k.rfilename for k in model_files_info.siblings)
+            if not shard_file_present:
+                raise EnvironmentError(
+                    f"{shards_path} does not appear to have a file named {shard_file} which is "
+                    "required according to the checkpoint index."
+                )
 
     try:
         # Load from URL
@@ -430,13 +432,18 @@ def _get_checkpoint_shard_files(
 
     # We have already dealt with RepositoryNotFoundError and RevisionNotFoundError when getting the index, so
     # we don't have to catch them here. We have also dealt with EntryNotFoundError.
-    except HTTPError as e:
+    except HfHubHTTPError as e:
         raise EnvironmentError(
             f"We couldn't connect to '{HUGGINGFACE_CO_RESOLVE_ENDPOINT}' to load {pretrained_model_name_or_path}. You should try"
             " again after checking your internet connection."
         ) from e
 
     cached_filenames = [os.path.join(cached_folder, f) for f in original_shard_filenames]
+    for cached_file in cached_filenames:
+        if not os.path.isfile(cached_file):
+            raise EnvironmentError(
+                f"{cached_folder} does not have a file named {cached_file} which is required according to the checkpoint index."
+            )
 
     return cached_filenames, sharded_metadata
 

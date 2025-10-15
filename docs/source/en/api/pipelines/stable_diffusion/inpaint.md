@@ -25,13 +25,10 @@ as [runwayml/stable-diffusion-inpainting](https://huggingface.co/runwayml/stable
 text-to-image Stable Diffusion checkpoints, such as
 [stable-diffusion-v1-5/stable-diffusion-v1-5](https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5) are also compatible but they might be less performant.
 
-<Tip>
-
-Make sure to check out the Stable Diffusion [Tips](overview#tips) section to learn how to explore the tradeoff between scheduler speed and quality, and how to reuse pipeline components efficiently!
-
-If you're interested in using one of the official checkpoints for a task, explore the [CompVis](https://huggingface.co/CompVis), [Runway](https://huggingface.co/runwayml), and [Stability AI](https://huggingface.co/stabilityai) Hub organizations!
-
-</Tip>
+> [!TIP]
+> Make sure to check out the Stable Diffusion [Tips](overview#tips) section to learn how to explore the tradeoff between scheduler speed and quality, and how to reuse pipeline components efficiently!
+>
+> If you're interested in using one of the official checkpoints for a task, explore the [CompVis](https://huggingface.co/CompVis), [Runway](https://huggingface.co/runwayml), and [Stability AI](https://huggingface.co/stabilityai) Hub organizations!
 
 ## StableDiffusionInpaintPipeline
 
@@ -49,13 +46,3 @@ If you're interested in using one of the official checkpoints for a task, explor
 ## StableDiffusionPipelineOutput
 
 [[autodoc]] pipelines.stable_diffusion.StableDiffusionPipelineOutput
-
-## FlaxStableDiffusionInpaintPipeline
-
-[[autodoc]] FlaxStableDiffusionInpaintPipeline
-	- all
-	- __call__
-
-## FlaxStableDiffusionPipelineOutput
-
-[[autodoc]] pipelines.stable_diffusion.FlaxStableDiffusionPipelineOutput

@@ -257,7 +257,7 @@ LCMs are compatible with adapters like LoRA, ControlNet, T2I-Adapter, and Animat
 
 ### LoRA
 
-[LoRA](../using-diffusers/loading_adapters#lora) adapters can be rapidly finetuned to learn a new style from just a few images and plugged into a pretrained model to generate images in that style.
+[LoRA](../tutorials/using_peft_for_inference) adapters can be rapidly finetuned to learn a new style from just a few images and plugged into a pretrained model to generate images in that style.
 
 <hfoptions id="lcm-lora">
 <hfoption id="LCM">
