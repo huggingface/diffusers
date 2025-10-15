@@ -20,7 +20,7 @@ import numpy as np
 import torch
 from transformers import ByT5Tokenizer, Qwen2_5_VLForConditionalGeneration, Qwen2Tokenizer, T5EncoderModel
 
-from ...guiders import AdaptiveProjectedMixGuidance, ClassifierFreeGuidance
+from ...guiders import AdaptiveProjectedMixGuidance
 from ...image_processor import VaeImageProcessor
 from ...models import AutoencoderKLHunyuanImage, HunyuanImageTransformer2DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
@@ -199,7 +199,7 @@ class HunyuanImagePipeline(DiffusionPipeline):
         text_encoder_2: T5EncoderModel,
         tokenizer_2: ByT5Tokenizer,
         transformer: HunyuanImageTransformer2DModel,
-        guider: Union[AdaptiveProjectedMixGuidance, ClassifierFreeGuidance],
+        guider: AdaptiveProjectedMixGuidance,
         ocr_guider: Optional[AdaptiveProjectedMixGuidance] = None,
     ):
         super().__init__()
