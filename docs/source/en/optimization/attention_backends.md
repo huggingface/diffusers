@@ -89,13 +89,16 @@ The attention dispatcher includes debugging checks that catch common errors befo
 2. Data type checks confirm tensors have matching dtypes and use either bfloat16 or float16.
 3. Shape checks validate tensor dimensions and prevent mixing attention masks with causal flags.
 
-Enable these checks by setting the `DIFFUSERS_ATTN_CHECKS` environment variable.
+Enable these checks by setting the `DIFFUSERS_ATTN_CHECKS` environment variable. Checks add overhead to every attention operation, so they're disabled by default. 
+
+```bash
+export DIFFUSERS_ATTN_CHECKS=yes
+```
+
+The checks are run now before every attention operation.
 
 ```py
-import os
 import torch
-
-os.environ["DIFFUSERS_ATTN_CHECKS"] = "1"
 
 query = torch.randn(1, 10, 8, 64, dtype=torch.bfloat16, device="cuda")
 key = torch.randn(1, 10, 8, 64, dtype=torch.bfloat16, device="cuda")
@@ -116,8 +119,6 @@ from diffusers.models.attention_dispatch import _AttentionBackendRegistry
 
 _AttentionBackendRegistry._checks_enabled = True
 ```
-
-Checks add overhead to every attention operation, so they're disabled by default.
 
 ## Available backends
 
