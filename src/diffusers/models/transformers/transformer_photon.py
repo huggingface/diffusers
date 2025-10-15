@@ -74,6 +74,8 @@ def apply_rope(xq: Tensor, freqs_cis: Tensor) -> Tensor:
             Tensor of the same shape as `xq` with rotary embeddings applied.
     """
     xq_ = xq.float().reshape(*xq.shape[:-1], -1, 1, 2)
+    # Ensure freqs_cis is on the same device as queries to avoid device mismatches with offloading
+    freqs_cis = freqs_cis.to(device=xq.device, dtype=xq_.dtype)
     xq_out = freqs_cis[..., 0] * xq_[..., 0] + freqs_cis[..., 1] * xq_[..., 1]
     return xq_out.reshape(*xq.shape).type_as(xq)
 
@@ -409,7 +411,8 @@ class PhotonBlock(nn.Module):
 
             device = img_q.device
             ones_img = torch.ones((bs, l_img), dtype=torch.bool, device=device)
-            joint_mask = torch.cat([attention_mask.to(torch.bool), ones_img], dim=-1)
+            attention_mask = attention_mask.to(device=device, dtype=torch.bool)
+            joint_mask = torch.cat([attention_mask, ones_img], dim=-1)
             attn_mask_tensor = joint_mask[:, None, None, :].expand(-1, self.num_heads, l_img, -1)
 
         kv_packed = torch.cat([k, v], dim=-1)
