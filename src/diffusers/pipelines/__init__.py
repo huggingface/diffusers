@@ -234,6 +234,7 @@ else:
     ]
     _import_structure["hidream_image"] = ["HiDreamImagePipeline"]
     _import_structure["hunyuandit"] = ["HunyuanDiTPipeline"]
+    _import_structure["hunyuanimage"] = ["HunyuanImagePipeline"]
     _import_structure["hunyuan_video"] = [
         "HunyuanVideoPipeline",
         "HunyuanSkyreelsImageToVideoPipeline",
@@ -645,6 +646,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             HunyuanVideoPipeline,
         )
         from .hunyuandit import HunyuanDiTPipeline
+        from .hunyuanimage import HunyuanImagePipeline
         from .i2vgen_xl import I2VGenXLPipeline
         from .kandinsky import (
             KandinskyCombinedPipeline,
