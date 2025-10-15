@@ -28,7 +28,7 @@ from ..attention_dispatch import dispatch_attention_fn
 from ..cache_utils import CacheMixin
 from ..embeddings import PixArtAlphaTextProjection, TimestepEmbedding, Timesteps
 from ..modeling_outputs import Transformer2DModelOutput
-from ..modeling_utils import ModelMixin
+from ..modeling_utils import ModelMixin, get_parameter_dtype
 from ..normalization import FP32LayerNorm
 from .transformer_wan import (
     WanAttention,
@@ -40,94 +40,7 @@ from .transformer_wan import (
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-def upfirdn2d_native(input, kernel, up_x, up_y, down_x, down_y, pad_x0, pad_x1, pad_y0, pad_y1):
-    _, minor, in_h, in_w = input.shape
-    kernel_h, kernel_w = kernel.shape
-
-    out = input.view(-1, minor, in_h, 1, in_w, 1)
-    out = F.pad(out, [0, up_x - 1, 0, 0, 0, up_y - 1, 0, 0])
-    out = out.view(-1, minor, in_h * up_y, in_w * up_x)
-
-    out = F.pad(out, [max(pad_x0, 0), max(pad_x1, 0), max(pad_y0, 0), max(pad_y1, 0)])
-    out = out[
-        :,
-        :,
-        max(-pad_y0, 0) : out.shape[2] - max(-pad_y1, 0),
-        max(-pad_x0, 0) : out.shape[3] - max(-pad_x1, 0),
-    ]
-
-    out = out.reshape([-1, 1, in_h * up_y + pad_y0 + pad_y1, in_w * up_x + pad_x0 + pad_x1])
-    w = torch.flip(kernel, [0, 1]).view(1, 1, kernel_h, kernel_w)
-    out = F.conv2d(out, w)
-    out = out.reshape(
-        -1,
-        minor,
-        in_h * up_y + pad_y0 + pad_y1 - kernel_h + 1,
-        in_w * up_x + pad_x0 + pad_x1 - kernel_w + 1,
-    )
-    return out[:, :, ::down_y, ::down_x]
-
-
-class FusedLeakyReLU(nn.Module):
-    def __init__(self, channel: int):
-        super().__init__()
-        self.bias = nn.Parameter(torch.zeros(1, channel, 1, 1))
-
-    def forward(self, input: torch.Tensor) -> torch.Tensor:
-        out = F.leaky_relu(input + self.bias, 0.2) * 2**0.5
-        return out
-
-
-class Blur(nn.Module):
-    def __init__(self, kernel: Tuple[int], pad: Tuple[int]):
-        super().__init__()
-
-        kernel = torch.tensor(kernel, dtype=torch.float32)
-        if kernel.ndim == 1:
-            kernel = kernel[None, :] * kernel[:, None]
-        kernel /= kernel.sum()
-        self.register_buffer("kernel", kernel)
-
-        self.pad = pad
-
-    def forward(self, input: torch.Tensor) -> torch.Tensor:
-        return upfirdn2d_native(input, self.kernel, 1, 1, 1, 1, self.pad[0], self.pad[1], self.pad[0], self.pad[1])
-
-
-class EqualConv2d(nn.Module):
-    def __init__(self, in_channel: int, out_channel: int, kernel_size: int, stride: int = 1, padding: int = 0, bias: bool = True):
-        super().__init__()
-
-        self.weight = nn.Parameter(torch.randn(out_channel, in_channel, kernel_size, kernel_size))
-        self.scale = 1 / math.sqrt(in_channel * kernel_size**2)
-
-        self.stride = stride
-        self.padding = padding
-
-        if bias:
-            self.bias = nn.Parameter(torch.zeros(out_channel))
-        else:
-            self.bias = None
-
-    def forward(self, input: torch.Tensor) -> torch.Tensor:
-        return F.conv2d(input, self.weight * self.scale, bias=self.bias, stride=self.stride, padding=self.padding)
-
-
-class EqualLinear(nn.Module):
-    def __init__(self, in_dim: int, out_dim: int):
-        super().__init__()
-
-        self.weight = nn.Parameter(torch.randn(out_dim, in_dim))
-        self.bias = nn.Parameter(torch.zeros(out_dim))
-        self.scale = 1 / math.sqrt(in_dim)
-
-    def forward(self, input: torch.Tensor) -> torch.Tensor:
-        out = F.linear(input, self.weight * self.scale, bias=self.bias)
-
-        return out
-
-
-class ConvLayer(nn.Sequential):
+class ConvLayer(nn.Module):
     def __init__(
         self,
         in_channel: int,
@@ -137,34 +50,61 @@ class ConvLayer(nn.Sequential):
         bias: bool = True,
         activate: bool = True,
     ):
-        layers = []
-        blur_kernel = (1, 3, 3, 1)
+        super().__init__()
+
+        self.downsample = downsample
+        self.activate = activate
+
+        self.bias_leaky_relu = nn.Parameter(torch.zeros(1, out_channel, 1, 1))
 
         if downsample:
             factor = 2
+            blur_kernel = (1, 3, 3, 1)
             p = (len(blur_kernel) - factor) + (kernel_size - 1)
             pad0 = (p + 1) // 2
             pad1 = p // 2
 
-            layers.append(Blur(blur_kernel, pad=(pad0, pad1)))
+            # Create blur kernel
+            blur_kernel_tensor = torch.tensor(blur_kernel, dtype=torch.float32)
+            blur_kernel_2d = blur_kernel_tensor[None, :] * blur_kernel_tensor[:, None]
+            blur_kernel_2d /= blur_kernel_2d.sum()
+
+            self.blur_conv = nn.Conv2d(
+                in_channel,
+                in_channel,
+                blur_kernel_2d.shape[0],
+                padding=(pad0, pad1),
+                groups=in_channel,
+                bias=False,
+            )
+
+            # Set the kernel weights
+            with torch.no_grad():
+                # Expand kernel for groups
+                kernel_expanded = blur_kernel_2d.unsqueeze(0).unsqueeze(0).expand(in_channel, 1, -1, -1)
+                self.blur_conv.weight.copy_(kernel_expanded)
 
             stride = 2
-            self.padding = 0
-
+            padding = 0
         else:
             stride = 1
-            self.padding = kernel_size // 2
+            padding = kernel_size // 2
 
-        layers.append(
-            EqualConv2d(
-                in_channel, out_channel, kernel_size, padding=self.padding, stride=stride, bias=bias and not activate
-            )
-        )
+        self.conv2d = nn.Conv2d(in_channel, out_channel, kernel_size, stride, padding, bias=bias)
 
         if activate:
-            layers.append(FusedLeakyReLU(out_channel))
+            self.act = nn.LeakyReLU(0.2)
 
-        super().__init__(*layers)
+    def forward(self, input: torch.Tensor) -> torch.Tensor:
+        if self.downsample:
+            input = self.blur_conv(input)
+
+        input = self.conv2d(input)
+
+        if self.activate:
+            input = self.act(input + self.bias_leaky_relu) * 2**0.5
+
+        return input
 
 
 class ResBlock(nn.Module):
@@ -186,7 +126,7 @@ class ResBlock(nn.Module):
         return out
 
 
-class EncoderApp(nn.Module):
+class WanAnimateMotionerEncoderApp(nn.Module):
     def __init__(self, size: int, w_dim: int = 512):
         super().__init__()
 
@@ -202,7 +142,7 @@ class EncoderApp(nn.Module):
             self.convs.append(ResBlock(in_channel, out_channel))
             in_channel = out_channel
 
-        self.convs.append(EqualConv2d(in_channel, w_dim, 4, padding=0, bias=False))
+        self.convs.append(nn.Conv2d(in_channel, w_dim, 4, padding=0, bias=False))
 
     def forward(self, x):
         res = []
@@ -214,19 +154,20 @@ class EncoderApp(nn.Module):
         return res[-1].squeeze(-1).squeeze(-1), res[::-1][2:]
 
 
-class Encoder(nn.Module):
+# TODO: Be aware the conversion of EqualLinear to Linear
+class WanAnimateMotionerEncoder(nn.Module):
     def __init__(self, size: int = 512, dim: int = 512, dim_motion: int = 20):
         super().__init__()
 
         # Appearance network
-        self.net_app = EncoderApp(size, dim)
+        self.net_app = WanAnimateMotionerEncoderApp(size, dim)
 
         # Motion network
         fc = []
         for _ in range(4):
-            fc.append(EqualLinear(dim, dim))
+            fc.append(nn.Linear(dim, dim))
 
-        fc.append(EqualLinear(dim, dim_motion))
+        fc.append(nn.Linear(dim, dim_motion))
         self.fc = nn.Sequential(*fc)
 
     def enc_motion(self, x):
@@ -236,7 +177,7 @@ class Encoder(nn.Module):
         return h_motion
 
 
-class Synthesis(nn.Module):
+class WanAnimateMotionerSynthesis(nn.Module):
     def __init__(self):
         super().__init__()
         self.weight = nn.Parameter(torch.randn(512, 20))
@@ -254,12 +195,12 @@ class Synthesis(nn.Module):
             return out
 
 
-class Generator(nn.Module):
+class WanAnimateMotioner(nn.Module):
     def __init__(self):
         super().__init__()
 
-        self.encoder = Encoder()
-        self.decoder = Synthesis()
+        self.encoder = WanAnimateMotionerEncoder()
+        self.decoder = WanAnimateMotionerSynthesis()
 
     def get_motion(self, img):
         motion_feat = torch.utils.checkpoint.checkpoint((self.encoder.enc_motion), img, use_reentrant=True)
@@ -268,8 +209,16 @@ class Generator(nn.Module):
         return motion
 
 
-class CausalConv1d(nn.Module):
-    def __init__(self, chan_in: int, chan_out: int, kernel_size: int = 3, stride: int = 1, dilation: int = 1, pad_mode: str = "replicate"):
+class WanAnimateCausalConv1d(nn.Module):
+    def __init__(
+        self,
+        chan_in: int,
+        chan_out: int,
+        kernel_size: int = 3,
+        stride: int = 1,
+        dilation: int = 1,
+        pad_mode: str = "replicate",
+    ):
         super().__init__()
 
         self.pad_mode = pad_mode
@@ -283,15 +232,15 @@ class CausalConv1d(nn.Module):
         return self.conv(x)
 
 
-class FaceEncoder(nn.Module):
+class WanAnimateFaceEncoder(nn.Module):
     def __init__(self, in_dim: int, hidden_dim: int, num_heads: int):
         super().__init__()
 
-        self.conv1_local = CausalConv1d(in_dim, 1024 * num_heads, kernel_size=3, stride=1)
+        self.conv1_local = WanAnimateCausalConv1d(in_dim, 1024 * num_heads, kernel_size=3, stride=1)
         self.norm1 = nn.LayerNorm(hidden_dim // 8, elementwise_affine=False, eps=1e-6)
         self.act = nn.SiLU()
-        self.conv2 = CausalConv1d(1024, 1024, kernel_size=3, stride=2)
-        self.conv3 = CausalConv1d(1024, 1024, kernel_size=3, stride=2)
+        self.conv2 = WanAnimateCausalConv1d(1024, 1024, kernel_size=3, stride=2)
+        self.conv3 = WanAnimateCausalConv1d(1024, 1024, kernel_size=3, stride=2)
 
         self.out_proj = nn.Linear(1024, hidden_dim)
         self.norm1 = nn.LayerNorm(1024, elementwise_affine=False, eps=1e-6)
@@ -372,8 +321,8 @@ class WanTimeTextImageMotionEmbedding(nn.Module):
         self.time_proj = nn.Linear(dim, time_proj_dim)
         self.text_embedder = PixArtAlphaTextProjection(text_embed_dim, dim, act_fn="gelu_tanh")
 
-        self.motion_embedder = Generator()
-        self.face_encoder = FaceEncoder(in_dim=motion_encoder_dim, hidden_dim=dim, num_heads=4)
+        self.motion_embedder = WanAnimateMotioner()
+        self.face_encoder = WanAnimateFaceEncoder(in_dim=motion_encoder_dim, hidden_dim=dim, num_heads=4)
 
         self.image_embedder = None
         if image_embed_dim is not None:
@@ -390,7 +339,7 @@ class WanTimeTextImageMotionEmbedding(nn.Module):
         if timestep_seq_len is not None:
             timestep = timestep.unflatten(0, (-1, timestep_seq_len))
 
-        time_embedder_dtype = next(iter(self.time_embedder.parameters())).dtype
+        time_embedder_dtype = get_parameter_dtype(self.time_embedder)
         if timestep.dtype != time_embedder_dtype and time_embedder_dtype != torch.int8:
             timestep = timestep.to(time_embedder_dtype)
         temb = self.time_embedder(timestep).type_as(encoder_hidden_states)
@@ -478,64 +427,11 @@ class WanAnimateTransformerBlock(nn.Module):
         return hidden_states
 
 
-class RMSNorm(nn.Module):
-    def __init__(
-        self,
-        dim: int,
-        elementwise_affine=True,
-        eps: float = 1e-6,
-        device=None,
-        dtype=None,
-    ):
-        """
-        Initialize the RMSNorm normalization layer.
+# TODO: Consider using WanAttnProcessor, WanAttention
+class WanAnimateFaceBlock(nn.Module):
+    _attention_backend = None
+    _parallel_config = None
 
-        Args:
-            dim (int): The dimension of the input tensor.
-            eps (float, optional): A small value added to the denominator for numerical stability. Default is 1e-6.
-
-        Attributes:
-            eps (float): A small value added to the denominator for numerical stability.
-            weight (nn.Parameter): Learnable scaling parameter.
-
-        """
-        factory_kwargs = {"device": device, "dtype": dtype}
-        super().__init__()
-        self.eps = eps
-        if elementwise_affine:
-            self.weight = nn.Parameter(torch.ones(dim, **factory_kwargs))
-
-    def _norm(self, x):
-        """
-        Apply the RMSNorm normalization to the input tensor.
-
-        Args:
-            x (torch.Tensor): The input tensor.
-
-        Returns:
-            torch.Tensor: The normalized tensor.
-
-        """
-        return x * torch.rsqrt(x.pow(2).mean(-1, keepdim=True) + self.eps)
-
-    def forward(self, x):
-        """
-        Forward pass through the RMSNorm layer.
-
-        Args:
-            x (torch.Tensor): The input tensor.
-
-        Returns:
-            torch.Tensor: The output tensor after applying RMSNorm.
-
-        """
-        output = self._norm(x.float()).type_as(x)
-        if hasattr(self, "weight"):
-            output = output * self.weight
-        return output
-
-
-class FaceBlock(nn.Module):
     def __init__(
         self,
         hidden_size: int,
@@ -549,9 +445,8 @@ class FaceBlock(nn.Module):
         self.linear1_q = nn.Linear(hidden_size, hidden_size)
         self.linear2 = nn.Linear(hidden_size, hidden_size)
 
-        qk_norm_layer = RMSNorm("rms")
-        self.q_norm = qk_norm_layer(head_dim)
-        self.k_norm = qk_norm_layer(head_dim)
+        self.q_norm = nn.RMSNorm(head_dim, eps=1e-6)
+        self.k_norm = nn.RMSNorm(head_dim, eps=1e-6)
 
         self.pre_norm_feat = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
         self.pre_norm_motion = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
@@ -574,9 +469,8 @@ class FaceBlock(nn.Module):
         k, v = kv.view(B, T, N, 2, self.heads_num, -1).permute(3, 0, 1, 2, 4, 5)
         q = q.unflatten(2, (self.heads_num, -1))
 
-        # Apply QK-Norm if needed.
-        q = self.q_norm(q).to(v)
-        k = self.k_norm(k).to(v)
+        q = self.q_norm(q.float()).type_as(q)
+        k = self.k_norm(k.float()).type_as(k)
 
         k = k.flatten(0, 1)
         v = v.flatten(0, 1)
@@ -603,7 +497,7 @@ class FaceBlock(nn.Module):
         return output
 
 
-class FaceAdapter(nn.Module):
+class WanAnimateFaceAdapter(nn.Module):
     def __init__(
         self,
         hidden_dim: int,
@@ -613,7 +507,7 @@ class FaceAdapter(nn.Module):
         super().__init__()
         self.fuser_blocks = nn.ModuleList(
             [
-                FaceBlock(
+                WanAnimateFaceBlock(
                     hidden_dim,
                     heads_num,
                 )
@@ -727,7 +621,7 @@ class WanAnimateTransformer3DModel(
             ]
         )
 
-        self.face_adapter = FaceAdapter(
+        self.face_adapter = WanAnimateFaceAdapter(
             heads_num=num_attention_heads,
             hidden_dim=inner_dim,
             num_adapter_layers=num_layers // 5,
