@@ -35,7 +35,9 @@ Photon offers multiple variants with different VAE configurations, each optimize
 
 Refer to [this](https://huggingface.co/collections/Photoroom/photon-models-68e66254c202ebfab99ad38e) collection for more information.
 
-## Loading the Pipeline
+## Loading the pipeline
+
+Load the pipeline with [`~DiffusionPipeline.from_pretrained`].
 
 ```py
 from diffusers.pipelines.photon import PhotonPipeline
