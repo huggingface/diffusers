@@ -427,12 +427,12 @@ class WanImageToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
 
         elif last_image is None:
             video_condition = torch.cat(
-                [image, image.new_zeros(image.shape[0], image.shape[1], num_frames - 1, height, width)], dim=2
+                [image, image.new_zeros(image.shape[0], image.shape[1], num_latent_frames - 1, height, width)], dim=2
             )
         else:
             last_image = last_image.unsqueeze(2)
             video_condition = torch.cat(
-                [image, image.new_zeros(image.shape[0], image.shape[1], num_frames - 2, height, width), last_image],
+                [image, image.new_zeros(image.shape[0], image.shape[1], num_latent_frames - 2, height, width), last_image],
                 dim=2,
             )
         video_condition = video_condition.to(device=device, dtype=self.vae.dtype)
