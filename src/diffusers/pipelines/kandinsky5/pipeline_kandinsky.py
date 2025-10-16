@@ -303,7 +303,6 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
             padding=True,
         ).to(device)
 
-        with torch.no_grad():
             embeds = self.text_encoder(
                 input_ids=inputs["input_ids"],
                 return_dict=True,
