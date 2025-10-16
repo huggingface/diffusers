@@ -73,15 +73,17 @@ def create_parameter_mapping(depth: int) -> dict:
         mapping[f"blocks.{i}.img_qkv_proj.weight"] = f"blocks.{i}.attention.img_qkv_proj.weight"
         mapping[f"blocks.{i}.txt_kv_proj.weight"] = f"blocks.{i}.attention.txt_kv_proj.weight"
 
-        # QK norm moved to attention module
-        mapping[f"blocks.{i}.qk_norm.query_norm.scale"] = f"blocks.{i}.attention.qk_norm.query_norm.weight"
-        mapping[f"blocks.{i}.qk_norm.key_norm.scale"] = f"blocks.{i}.attention.qk_norm.key_norm.weight"
-        mapping[f"blocks.{i}.qk_norm.query_norm.weight"] = f"blocks.{i}.attention.qk_norm.query_norm.weight"
-        mapping[f"blocks.{i}.qk_norm.key_norm.weight"] = f"blocks.{i}.attention.qk_norm.key_norm.weight"
+        # QK norm moved to attention module and renamed to match Attention's qk_norm structure
+        # Old: qk_norm.query_norm / qk_norm.key_norm -> New: norm_q / norm_k
+        mapping[f"blocks.{i}.qk_norm.query_norm.scale"] = f"blocks.{i}.attention.norm_q.weight"
+        mapping[f"blocks.{i}.qk_norm.key_norm.scale"] = f"blocks.{i}.attention.norm_k.weight"
+        mapping[f"blocks.{i}.qk_norm.query_norm.weight"] = f"blocks.{i}.attention.norm_q.weight"
+        mapping[f"blocks.{i}.qk_norm.key_norm.weight"] = f"blocks.{i}.attention.norm_k.weight"
 
-        # K norm moved to attention module
-        mapping[f"blocks.{i}.k_norm.scale"] = f"blocks.{i}.attention.k_norm.weight"
-        mapping[f"blocks.{i}.k_norm.weight"] = f"blocks.{i}.attention.k_norm.weight"
+        # K norm for text tokens moved to attention module
+        # Old: k_norm -> New: norm_added_k
+        mapping[f"blocks.{i}.k_norm.scale"] = f"blocks.{i}.attention.norm_added_k.weight"
+        mapping[f"blocks.{i}.k_norm.weight"] = f"blocks.{i}.attention.norm_added_k.weight"
 
         # Attention output projection
         mapping[f"blocks.{i}.attn_out.weight"] = f"blocks.{i}.attention.to_out.0.weight"

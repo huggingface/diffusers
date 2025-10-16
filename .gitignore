@@ -179,3 +179,23 @@ tags
 
 # wandb
 wandb
+converted_mirage_dcae_/
+converted_mirage_flux_/
+converted_photon_dcae
+converted_photon_dcae/
+converted_photon_flux/
+diffusers_pipeline_checkpoints/
+*.png
+convert_checkpoints.py
+example_usage.py
+plan.md
+test_existing_checkpoints_with_timestep_change.py
+test_timestep_embedding.py
+test_updated_checkpoint.py
+testhf.ipynb
+update_checkpoint_parameters.py
+verify_checkpoint_parameters.py
+for_claude/mirage_layers.py
+for_claude/mirage.py
+for_claude/text_tower.py
+for_claude/vae_tower.py

@@ -125,7 +125,8 @@ class PhotonAttnProcessor2_0:
         img_q, img_k, img_v = img_qkv[0], img_qkv[1], img_qkv[2]
 
         # Apply QK normalization to image tokens
-        img_q, img_k = attn.qk_norm(img_q, img_k, img_v)
+        img_q = attn.norm_q(img_q)
+        img_k = attn.norm_k(img_k)
 
         # Project text tokens to K, V
         txt_kv = attn.txt_kv_proj(encoder_hidden_states)
@@ -135,7 +136,7 @@ class PhotonAttnProcessor2_0:
         txt_k, txt_v = txt_kv[0], txt_kv[1]
 
         # Apply K normalization to text tokens
-        txt_k = attn.k_norm(txt_k)
+        txt_k = attn.norm_added_k(txt_k)
 
         # Apply RoPE to image queries and keys
         if image_rotary_emb is not None:
@@ -206,15 +207,14 @@ class PhotonAttention(nn.Module, AttentionModuleMixin):
         self.inner_dim = dim_head * heads
         self.query_dim = query_dim
 
-        # Image QKV projections
         self.img_qkv_proj = nn.Linear(query_dim, query_dim * 3, bias=bias)
-        self.qk_norm = QKNorm(self.head_dim)
 
-        # Text KV projections
+        self.norm_q = RMSNorm(self.head_dim, eps=eps, elementwise_affine=True)
+        self.norm_k = RMSNorm(self.head_dim, eps=eps, elementwise_affine=True)
+
         self.txt_kv_proj = nn.Linear(query_dim, query_dim * 2, bias=bias)
-        self.k_norm = RMSNorm(self.head_dim, eps=eps)
+        self.norm_added_k = RMSNorm(self.head_dim, eps=eps, elementwise_affine=True)
 
-        # Output projection
         self.to_out = nn.ModuleList([])
         self.to_out.append(nn.Linear(self.inner_dim, query_dim, bias=out_bias))
         self.to_out.append(nn.Dropout(0.0))
@@ -307,31 +307,6 @@ class MLPEmbedder(nn.Module):
 
     def forward(self, x: Tensor) -> Tensor:
         return self.out_layer(self.silu(self.in_layer(x)))
-
-
-class QKNorm(torch.nn.Module):
-    r"""
-    Applies RMS normalization to query and key tensors separately before attention which can help stabilize training
-    and improve numerical precision.
-
-    Parameters:
-        dim (`int`):
-            Dimensionality of the query and key vectors.
-
-    Returns:
-        (`torch.Tensor`, `torch.Tensor`):
-            A tuple `(q, k)` where both are normalized and cast to the same dtype as the value tensor `v`.
-    """
-
-    def __init__(self, dim: int):
-        super().__init__()
-        self.query_norm = RMSNorm(dim, eps=1e-6)
-        self.key_norm = RMSNorm(dim, eps=1e-6)
-
-    def forward(self, q: Tensor, k: Tensor, v: Tensor) -> tuple[Tensor, Tensor]:
-        q = self.query_norm(q)
-        k = self.key_norm(k)
-        return q.to(v), k.to(v)
 
 
 class Modulation(nn.Module):
