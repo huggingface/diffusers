@@ -262,8 +262,6 @@ class PhotonPipeline(
                 "PhotonTransformer2DModel is not available. Please ensure the transformer_photon module is properly installed."
             )
 
-        self.text_encoder = text_encoder
-        self.tokenizer = tokenizer
         self.text_preprocessor = TextPreprocessor()
         self.default_sample_size = default_sample_size
         self._guidance_scale = 1.0
@@ -357,13 +355,9 @@ class PhotonPipeline(
             if isinstance(prompt, str):
                 prompt = [prompt]
             # Encode the prompts
-            text_embeddings, cross_attn_mask, uncond_text_embeddings, uncond_cross_attn_mask = (
+            prompt_embeds, prompt_attention_mask, negative_prompt_embeds, negative_prompt_attention_mask = (
                 self._encode_prompt_standard(prompt, device, do_classifier_free_guidance, negative_prompt)
             )
-            prompt_embeds = text_embeddings
-            prompt_attention_mask = cross_attn_mask
-            negative_prompt_embeds = uncond_text_embeddings
-            negative_prompt_attention_mask = uncond_cross_attn_mask
 
         # Duplicate embeddings for each generation per prompt
         if num_images_per_prompt > 1:
