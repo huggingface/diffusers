@@ -314,7 +314,7 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
     
         return embeds.to(dtype), cu_seqlens
 
-    def _encode_prompt_clip(
+    def _get_clip_prompt_embeds(
         self,
         prompt: Union[str, List[str]],
         device: Optional[torch.device] = None,
