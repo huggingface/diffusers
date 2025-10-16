@@ -43,4 +43,4 @@ controlnet = SparseControlNetModel.from_pretrained("guoyww/animatediff-sparsectr
 
 ## SparseControlNetOutput
 
-[[autodoc]] models.controlnet_sparsectrl.SparseControlNetOutput
+[[autodoc]] models.controlnets.controlnet_sparsectrl.SparseControlNetOutput
