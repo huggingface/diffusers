@@ -20,7 +20,7 @@ from torch.nn.functional import fold, unfold
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...utils import logging
-from ..attention import AttentionMixin
+from ..attention import AttentionMixin, AttentionModuleMixin
 from ..attention_processor import Attention
 from ..embeddings import get_timestep_embedding
 from ..modeling_outputs import Transformer2DModelOutput
@@ -86,43 +86,86 @@ class PhotonAttnProcessor2_0:
     diffusers Attention module while handling Photon-specific logic.
     """
 
+    _attention_backend = None
+
     def __init__(self):
         if not hasattr(torch.nn.functional, "scaled_dot_product_attention"):
             raise ImportError("PhotonAttnProcessor2_0 requires PyTorch 2.0, please upgrade PyTorch to 2.0.")
 
     def __call__(
         self,
-        attn: "Attention",
+        attn: "PhotonAttention",
         hidden_states: torch.Tensor,
         encoder_hidden_states: Optional[torch.Tensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
-        temb: Optional[torch.Tensor] = None,
+        image_rotary_emb: Optional[torch.Tensor] = None,
         **kwargs,
     ) -> torch.Tensor:
         """
-        Apply Photon attention using standard diffusers interface.
+        Apply Photon attention using PhotonAttention module.
 
-        Expected tensor formats from PhotonBlock.attn_forward():
-        - hidden_states: Image queries with RoPE applied [B, H, L_img, D]
-        - encoder_hidden_states: Packed key+value tensors [B, H, L_all, 2*D] (concatenated keys and values from text +
-          image + spatial conditioning)
-        - attention_mask: Custom attention mask [B, H, L_img, L_all] or None
+        Parameters:
+            attn: PhotonAttention module containing projection layers
+            hidden_states: Image tokens [B, L_img, D]
+            encoder_hidden_states: Text tokens [B, L_txt, D]
+            attention_mask: Boolean mask for text tokens [B, L_txt]
+            image_rotary_emb: Rotary positional embeddings [B, 1, L_img, head_dim//2, 2, 2]
         """
 
         if encoder_hidden_states is None:
             raise ValueError(
-                "PhotonAttnProcessor2_0 requires 'encoder_hidden_states' containing packed key+value tensors. "
-                "This should be provided by PhotonBlock.attn_forward()."
+                "PhotonAttnProcessor2_0 requires 'encoder_hidden_states' containing text tokens."
             )
 
-        # Unpack the combined key+value tensor
-        # encoder_hidden_states is [B, H, L_all, 2*D] containing [keys, values]
-        key, value = encoder_hidden_states.chunk(2, dim=-1)  # Each [B, H, L_all, D]
+        # Project image tokens to Q, K, V
+        img_qkv = attn.img_qkv_proj(hidden_states)
+        B, L_img, _ = img_qkv.shape
+        img_qkv = img_qkv.reshape(B, L_img, 3, attn.heads, attn.head_dim)
+        img_qkv = img_qkv.permute(2, 0, 3, 1, 4)  # [3, B, H, L_img, D]
+        img_q, img_k, img_v = img_qkv[0], img_qkv[1], img_qkv[2]
 
-        # Apply scaled dot-product attention with Photon's processed tensors
-        # hidden_states is image queries [B, H, L_img, D]
+        # Apply QK normalization to image tokens
+        img_q, img_k = attn.qk_norm(img_q, img_k, img_v)
+
+        # Project text tokens to K, V
+        txt_kv = attn.txt_kv_proj(encoder_hidden_states)
+        B, L_txt, _ = txt_kv.shape
+        txt_kv = txt_kv.reshape(B, L_txt, 2, attn.heads, attn.head_dim)
+        txt_kv = txt_kv.permute(2, 0, 3, 1, 4)  # [2, B, H, L_txt, D]
+        txt_k, txt_v = txt_kv[0], txt_kv[1]
+
+        # Apply K normalization to text tokens
+        txt_k = attn.k_norm(txt_k)
+
+        # Apply RoPE to image queries and keys
+        if image_rotary_emb is not None:
+            img_q = apply_rope(img_q, image_rotary_emb)
+            img_k = apply_rope(img_k, image_rotary_emb)
+
+        # Concatenate text and image keys/values
+        k = torch.cat((txt_k, img_k), dim=2)  # [B, H, L_txt + L_img, D]
+        v = torch.cat((txt_v, img_v), dim=2)  # [B, H, L_txt + L_img, D]
+
+        # Build attention mask if provided
+        attn_mask_tensor = None
+        if attention_mask is not None:
+            bs, _, l_img, _ = img_q.shape
+            l_txt = txt_k.shape[2]
+
+            if attention_mask.dim() != 2:
+                raise ValueError(f"Unsupported attention_mask shape: {attention_mask.shape}")
+            if attention_mask.shape[-1] != l_txt:
+                raise ValueError(f"attention_mask last dim {attention_mask.shape[-1]} must equal text length {l_txt}")
+
+            device = img_q.device
+            ones_img = torch.ones((bs, l_img), dtype=torch.bool, device=device)
+            attention_mask = attention_mask.to(device=device, dtype=torch.bool)
+            joint_mask = torch.cat([attention_mask, ones_img], dim=-1)
+            attn_mask_tensor = joint_mask[:, None, None, :].expand(-1, attn.heads, l_img, -1)
+
+        # Apply scaled dot-product attention
         attn_output = torch.nn.functional.scaled_dot_product_attention(
-            hidden_states.contiguous(), key.contiguous(), value.contiguous(), attn_mask=attention_mask
+            img_q.contiguous(), k.contiguous(), v.contiguous(), attn_mask=attn_mask_tensor
         )
 
         # Reshape from [B, H, L_img, D] to [B, L_img, H*D]
@@ -135,6 +178,67 @@ class PhotonAttnProcessor2_0:
             attn_output = attn.to_out[1](attn_output)  # dropout if present
 
         return attn_output
+
+
+class PhotonAttention(nn.Module, AttentionModuleMixin):
+    r"""
+    Photon-style attention module that handles multi-source tokens and RoPE.
+    Similar to FluxAttention but adapted for Photon's architecture.
+    """
+
+    _default_processor_cls = PhotonAttnProcessor2_0
+    _available_processors = [PhotonAttnProcessor2_0]
+
+    def __init__(
+        self,
+        query_dim: int,
+        heads: int = 8,
+        dim_head: int = 64,
+        bias: bool = False,
+        out_bias: bool = False,
+        eps: float = 1e-6,
+        processor=None,
+    ):
+        super().__init__()
+
+        self.heads = heads
+        self.head_dim = dim_head
+        self.inner_dim = dim_head * heads
+        self.query_dim = query_dim
+
+        # Image QKV projections
+        self.img_qkv_proj = nn.Linear(query_dim, query_dim * 3, bias=bias)
+        self.qk_norm = QKNorm(self.head_dim)
+
+        # Text KV projections
+        self.txt_kv_proj = nn.Linear(query_dim, query_dim * 2, bias=bias)
+        self.k_norm = RMSNorm(self.head_dim, eps=eps)
+
+        # Output projection
+        self.to_out = nn.ModuleList([])
+        self.to_out.append(nn.Linear(self.inner_dim, query_dim, bias=out_bias))
+        self.to_out.append(nn.Dropout(0.0))
+
+        if processor is None:
+            processor = self._default_processor_cls()
+        self.set_processor(processor)
+
+    def forward(
+        self,
+        hidden_states: torch.Tensor,
+        encoder_hidden_states: Optional[torch.Tensor] = None,
+        attention_mask: Optional[torch.Tensor] = None,
+        image_rotary_emb: Optional[torch.Tensor] = None,
+        **kwargs,
+    ) -> torch.Tensor:
+        return self.processor(
+            self,
+            hidden_states,
+            encoder_hidden_states=encoder_hidden_states,
+            attention_mask=attention_mask,
+            image_rotary_emb=image_rotary_emb,
+            **kwargs,
+        )
 
 
 # inspired from https://github.com/black-forest-labs/flux/blob/main/src/flux/modules/layers.py
@@ -273,18 +377,10 @@ class PhotonBlock(nn.Module):
 
     Attributes:
         img_pre_norm (`nn.LayerNorm`):
-            Pre-normalization applied to image tokens before QKV projection.
-        img_qkv_proj (`nn.Linear`):
-            Linear projection to produce image queries, keys, and values.
-        qk_norm (`QKNorm`):
-            RMS normalization applied separately to image queries and keys.
-        txt_kv_proj (`nn.Linear`):
-            Linear projection to produce text keys and values.
-        k_norm (`RMSNorm`):
-            RMS normalization applied to text keys.
-        attention (`Attention`):
-            Multi-head attention module for cross-attention between image, text, and optional spatial conditioning
-            tokens.
+            Pre-normalization applied to image tokens before attention.
+        attention (`PhotonAttention`):
+            Multi-head attention module with built-in QKV projections and normalizations for cross-attention between
+            image and text tokens.
         post_attention_layernorm (`nn.LayerNorm`):
             Normalization applied after attention.
         gate_proj / up_proj / down_proj (`nn.Linear`):
@@ -295,7 +391,7 @@ class PhotonBlock(nn.Module):
             Produces scale/shift/gating parameters for modulated layers.
 
         Methods:
-            The forward method performs cross-attention and the MLP inline with modulation.
+            The forward method performs cross-attention and the MLP with modulation.
     """
 
     def __init__(
@@ -315,21 +411,17 @@ class PhotonBlock(nn.Module):
         self.mlp_hidden_dim = int(hidden_size * mlp_ratio)
         self.hidden_size = hidden_size
 
-        # img qkv
+        # Pre-attention normalization for image tokens
         self.img_pre_norm = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
-        self.img_qkv_proj = nn.Linear(hidden_size, hidden_size * 3, bias=False)
-        self.qk_norm = QKNorm(self.head_dim)
 
-        # txt kv
-        self.txt_kv_proj = nn.Linear(hidden_size, hidden_size * 2, bias=False)
-        self.k_norm = RMSNorm(self.head_dim, eps=1e-6)
-
-        self.attention = Attention(
+        # PhotonAttention module with built-in projections and norms
+        self.attention = PhotonAttention(
             query_dim=hidden_size,
             heads=num_heads,
             dim_head=self.head_dim,
             bias=False,
             out_bias=False,
+            eps=1e-6,
             processor=PhotonAttnProcessor2_0(),
         )
 
@@ -378,48 +470,15 @@ class PhotonBlock(nn.Module):
         attn_shift, attn_scale, attn_gate = mod_attn
         mlp_shift, mlp_scale, mlp_gate = mod_mlp
 
-        # Inline attention forward
+        # Apply modulation and pre-normalization to image tokens
         img_mod = (1 + attn_scale) * self.img_pre_norm(img) + attn_shift
 
-        img_qkv = self.img_qkv_proj(img_mod)
-        B, L, _ = img_qkv.shape
-        img_qkv = img_qkv.reshape(B, L, 3, self.num_heads, self.head_dim)
-        img_qkv = img_qkv.permute(2, 0, 3, 1, 4)
-        img_q, img_k, img_v = img_qkv[0], img_qkv[1], img_qkv[2]
-        img_q, img_k = self.qk_norm(img_q, img_k, img_v)
-
-        txt_kv = self.txt_kv_proj(txt)
-        B, L, _ = txt_kv.shape
-        txt_kv = txt_kv.reshape(B, L, 2, self.num_heads, self.head_dim)
-        txt_kv = txt_kv.permute(2, 0, 3, 1, 4)
-        txt_k, txt_v = txt_kv[0], txt_kv[1]
-        txt_k = self.k_norm(txt_k)
-
-        img_q, img_k = apply_rope(img_q, pe), apply_rope(img_k, pe)
-        k = torch.cat((txt_k, img_k), dim=2)
-        v = torch.cat((txt_v, img_v), dim=2)
-
-        attn_mask_tensor: Tensor | None = None
-        if attention_mask is not None:
-            bs, _, l_img, _ = img_q.shape
-            l_txt = txt_k.shape[2]
-
-            if attention_mask.dim() != 2:
-                raise ValueError(f"Unsupported attention_mask shape: {attention_mask.shape}")
-            if attention_mask.shape[-1] != l_txt:
-                raise ValueError(f"attention_mask last dim {attention_mask.shape[-1]} must equal text length {l_txt}")
-
-            device = img_q.device
-            ones_img = torch.ones((bs, l_img), dtype=torch.bool, device=device)
-            attention_mask = attention_mask.to(device=device, dtype=torch.bool)
-            joint_mask = torch.cat([attention_mask, ones_img], dim=-1)
-            attn_mask_tensor = joint_mask[:, None, None, :].expand(-1, self.num_heads, l_img, -1)
-
-        kv_packed = torch.cat([k, v], dim=-1)
+        # Forward through PhotonAttention module
         attn_out = self.attention(
-            hidden_states=img_q,
-            encoder_hidden_states=kv_packed,
-            attention_mask=attn_mask_tensor,
+            hidden_states=img_mod,
+            encoder_hidden_states=txt,
+            attention_mask=attention_mask,
+            image_rotary_emb=pe,
         )
 
         img = img + attn_gate * attn_out
