@@ -260,7 +260,7 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
 
         return sparse_params
 
-    def _get_qwen_prompt_embeds(
+    def _encode_prompt_qwen(
         self,
         prompt: Union[str, List[str]],
         device: Optional[torch.device] = None,
@@ -314,7 +314,7 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
     
         return embeds.to(dtype), cu_seqlens
 
-    def _get_clip_prompt_embeds(
+    def _encode_prompt_clip(
         self,
         prompt: Union[str, List[str]],
         device: Optional[torch.device] = None,
