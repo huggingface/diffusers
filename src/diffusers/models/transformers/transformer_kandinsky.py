@@ -335,8 +335,6 @@ class Kandinsky5Modulation(nn.Module):
         super().__init__()
         self.activation = nn.SiLU()
         self.out_layer = nn.Linear(time_dim, num_params * model_dim)
-        self.out_layer.weight.data.zero_()
-        self.out_layer.bias.data.zero_()
 
     @torch.autocast(device_type="cuda", dtype=torch.float32)
     def forward(self, x):
