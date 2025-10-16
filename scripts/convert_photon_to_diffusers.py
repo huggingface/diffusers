@@ -67,13 +67,23 @@ def create_parameter_mapping(depth: int) -> dict:
     # Key mappings for structural changes
     mapping = {}
 
-    # RMSNorm: scale -> weight
+    # Map old structure (layers in PhotonBlock) to new structure (layers in PhotonAttention)
     for i in range(depth):
-        mapping[f"blocks.{i}.qk_norm.query_norm.scale"] = f"blocks.{i}.qk_norm.query_norm.weight"
-        mapping[f"blocks.{i}.qk_norm.key_norm.scale"] = f"blocks.{i}.qk_norm.key_norm.weight"
-        mapping[f"blocks.{i}.k_norm.scale"] = f"blocks.{i}.k_norm.weight"
+        # QKV projections moved to attention module
+        mapping[f"blocks.{i}.img_qkv_proj.weight"] = f"blocks.{i}.attention.img_qkv_proj.weight"
+        mapping[f"blocks.{i}.txt_kv_proj.weight"] = f"blocks.{i}.attention.txt_kv_proj.weight"
 
-        # Attention: attn_out -> attention.to_out.0
+        # QK norm moved to attention module
+        mapping[f"blocks.{i}.qk_norm.query_norm.scale"] = f"blocks.{i}.attention.qk_norm.query_norm.weight"
+        mapping[f"blocks.{i}.qk_norm.key_norm.scale"] = f"blocks.{i}.attention.qk_norm.key_norm.weight"
+        mapping[f"blocks.{i}.qk_norm.query_norm.weight"] = f"blocks.{i}.attention.qk_norm.query_norm.weight"
+        mapping[f"blocks.{i}.qk_norm.key_norm.weight"] = f"blocks.{i}.attention.qk_norm.key_norm.weight"
+
+        # K norm moved to attention module
+        mapping[f"blocks.{i}.k_norm.scale"] = f"blocks.{i}.attention.k_norm.weight"
+        mapping[f"blocks.{i}.k_norm.weight"] = f"blocks.{i}.attention.k_norm.weight"
+
+        # Attention output projection
         mapping[f"blocks.{i}.attn_out.weight"] = f"blocks.{i}.attention.to_out.0.weight"
 
     return mapping
@@ -95,31 +105,7 @@ def convert_checkpoint_parameters(old_state_dict: Dict[str, torch.Tensor], depth
             new_key = mapping[key]
             print(f"  Mapped: {key} -> {new_key}")
 
-        # Handle img_qkv_proj -> split to to_q, to_k, to_v
-        if "img_qkv_proj.weight" in key:
-            print(f"  Found QKV projection: {key}")
-            # Split QKV weight into separate Q, K, V projections
-            qkv_weight = value
-            q_weight, k_weight, v_weight = qkv_weight.chunk(3, dim=0)
-
-            # Extract layer number from key (e.g., blocks.0.img_qkv_proj.weight -> 0)
-            parts = key.split(".")
-            layer_idx = None
-            for i, part in enumerate(parts):
-                if part == "blocks" and i + 1 < len(parts) and parts[i + 1].isdigit():
-                    layer_idx = parts[i + 1]
-                    break
-
-            if layer_idx is not None:
-                converted_state_dict[f"blocks.{layer_idx}.attention.to_q.weight"] = q_weight
-                converted_state_dict[f"blocks.{layer_idx}.attention.to_k.weight"] = k_weight
-                converted_state_dict[f"blocks.{layer_idx}.attention.to_v.weight"] = v_weight
-                print(f"  Split QKV for layer {layer_idx}")
-
-                # Also keep the original img_qkv_proj for backward compatibility
-                converted_state_dict[new_key] = value
-        else:
-            converted_state_dict[new_key] = value
+        converted_state_dict[new_key] = value
 
     print(f"✓ Converted {len(converted_state_dict)} parameters")
     return converted_state_dict
