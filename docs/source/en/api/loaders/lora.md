@@ -34,7 +34,7 @@ LoRA is a fast and lightweight training method that inserts and trains a signifi
 - [`LoraBaseMixin`] provides a base class with several utility methods to fuse, unfuse, unload, LoRAs and more.
 
 > [!TIP]
-> To learn more about how to load LoRA weights, see the [LoRA](../../using-diffusers/loading_adapters#lora) loading guide.
+> To learn more about how to load LoRA weights, see the [LoRA](../../tutorials/using_peft_for_inference) loading guide.
 
 ## LoraBaseMixin
 
