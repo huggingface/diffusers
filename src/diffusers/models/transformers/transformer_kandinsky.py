@@ -57,7 +57,6 @@ def freeze(model):
     return model
 
 
-@torch.autocast(device_type="cuda", enabled=False)
 def get_freqs(dim, max_period=10000.0):
     freqs = torch.exp(
         -math.log(max_period)
