@@ -189,7 +189,8 @@ class Kandinsky5TimeEmbeddings(nn.Module):
         self.max_period = max_period
         self.register_buffer(
             "freqs", get_freqs(model_dim // 2, max_period), persistent=False
-        )
+        )        
+        self.freqs = get_freqs(self.model_dim // 2, self.max_period)
         self.in_layer = nn.Linear(model_dim, time_dim, bias=True)
         self.activation = nn.SiLU()
         self.out_layer = nn.Linear(time_dim, time_dim, bias=True)
@@ -199,10 +200,7 @@ class Kandinsky5TimeEmbeddings(nn.Module):
         args = torch.outer(time, self.freqs.to(device=time.device))
         time_embed = torch.cat([torch.cos(args), torch.sin(args)], dim=-1)
         time_embed = self.out_layer(self.activation(self.in_layer(time_embed)))
-        return time_embed
-
-    def reset_dtype(self):
-        self.freqs = get_freqs(self.model_dim // 2, self.max_period)
+        return time_embed        
 
 
 class Kandinsky5TextEmbeddings(nn.Module):
@@ -260,11 +258,6 @@ class Kandinsky5RoPE1D(nn.Module):
         rope = rope.view(*rope.shape[:-1], 2, 2)
         return rope.unsqueeze(-4)
 
-    def reset_dtype(self):
-        freq = get_freqs(self.dim // 2, self.max_period).to(self.args.device)
-        pos = torch.arange(self.max_pos, dtype=freq.dtype, device=freq.device)
-        self.args = torch.outer(pos, freq)
-
 
 class Kandinsky5RoPE3D(nn.Module):
     def __init__(self, axes_dims, max_pos=(128, 128, 128), max_period=10000.0):
@@ -305,12 +298,6 @@ class Kandinsky5RoPE3D(nn.Module):
         rope = rope.view(*rope.shape[:-1], 2, 2)
         return rope.unsqueeze(-4)
 
-    def reset_dtype(self):
-        for i, (axes_dim, ax_max_pos) in enumerate(zip(self.axes_dims, self.max_pos)):
-            freq = get_freqs(axes_dim // 2, self.max_period).to(self.args_0.device)
-            pos = torch.arange(ax_max_pos, dtype=freq.dtype, device=freq.device)
-            setattr(self, f"args_{i}", torch.outer(pos, freq))
-
 
 class Kandinsky5Modulation(nn.Module):
     def __init__(self, time_dim, model_dim, num_params):
@@ -337,7 +324,6 @@ class Kandinsky5SDPAAttentionProcessor(nn.Module):
         **kwargs,
     ):
         # Process attention with the given query, key, value tensors
-        
         query = query.transpose(1, 2).contiguous()
         key = key.transpose(1, 2).contiguous()
         value = value.transpose(1, 2).contiguous()

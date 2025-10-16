@@ -695,11 +695,6 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
         if isinstance(callback_on_step_end, (PipelineCallback, MultiPipelineCallbacks)):
             callback_on_step_end_tensor_inputs = callback_on_step_end.tensor_inputs
 
-        # 0. Reset embeddings dtype
-        self.transformer.time_embeddings.reset_dtype()
-        self.transformer.text_rope_embeddings.reset_dtype()
-        self.transformer.visual_rope_embeddings.reset_dtype()
-
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(
             prompt,
