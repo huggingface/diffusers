@@ -54,36 +54,46 @@ image.save("photon_output.png")
 
 ### Manual Component Loading
 
-You can also load components individually:
+Load components individually to customize the pipeline for instance to use quantized models.
 
 ```py
 import torch
-from diffusers import PhotonPipeline
+from diffusers.pipelines.photon import PhotonPipeline
 from diffusers.models import AutoencoderKL, AutoencoderDC
 from diffusers.models.transformers.transformer_photon import PhotonTransformer2DModel
 from diffusers.schedulers import FlowMatchEulerDiscreteScheduler
 from transformers import T5GemmaModel, GemmaTokenizerFast
+from diffusers import BitsAndBytesConfig as DiffusersBitsAndBytesConfig
+from transformers import BitsAndBytesConfig as BitsAndBytesConfig
 
+quant_config = DiffusersBitsAndBytesConfig(load_in_8bit=True)
 # Load transformer
 transformer = PhotonTransformer2DModel.from_pretrained(
-    "Photoroom/photon-512-t2i-sft", subfolder="transformer"
-).to(dtype=torch.bfloat16)
+    "checkpoints/photon-512-t2i-sft",
+    subfolder="transformer",
+    quantization_config=quant_config,
+    torch_dtype=torch.bfloat16,
+)
 
 # Load scheduler
 scheduler = FlowMatchEulerDiscreteScheduler.from_pretrained(
-    "Photoroom/photon-512-t2i-sft", subfolder="scheduler"
+    "checkpoints/photon-512-t2i-sft", subfolder="scheduler"
 )
 
 # Load T5Gemma text encoder
-t5gemma_model = T5GemmaModel.from_pretrained("google/t5gemma-2b-2b-ul2")
+t5gemma_model = T5GemmaModel.from_pretrained("google/t5gemma-2b-2b-ul2",
+                                            quantization_config=quant_config,
+                                            torch_dtype=torch.bfloat16)
 text_encoder = t5gemma_model.encoder.to(dtype=torch.bfloat16)
 tokenizer = GemmaTokenizerFast.from_pretrained("google/t5gemma-2b-2b-ul2")
 tokenizer.model_max_length = 256
+
 # Load VAE - choose either Flux VAE or DC-AE
-# Flux VAE (16 latent channels):
-vae = AutoencoderKL.from_pretrained("black-forest-labs/FLUX.1-dev", subfolder="vae").to(dtype=torch.bfloat16)
-# Or DC-AE (32 latent channels):
-# vae = AutoencoderDC.from_pretrained("mit-han-lab/dc-ae-f32c32-sana-1.0-diffusers")
+# Flux VAE
+vae = AutoencoderKL.from_pretrained("black-forest-labs/FLUX.1-dev",
+                                    subfolder="vae",
+                                    quantization_config=quant_config,
+                                    torch_dtype=torch.bfloat16)
 
 pipe = PhotonPipeline(
     transformer=transformer,
@@ -95,46 +105,6 @@ pipe = PhotonPipeline(
 pipe.to("cuda")
 ```
 
-## VAE Variants
-
-Photon supports two VAE configurations:
-
-### Flux VAE (AutoencoderKL)
-- **Compression**: 8x spatial compression
-- **Latent channels**: 16
-- **Model**: `black-forest-labs/FLUX.1-dev` (subfolder: "vae")
-- **Use case**: Balanced quality and speed
-
-### DC-AE (AutoencoderDC)
-- **Compression**: 32x spatial compression
-- **Latent channels**: 32
-- **Model**: `mit-han-lab/dc-ae-f32c32-sana-1.0-diffusers`
-- **Use case**: Higher compression for faster processing
-
-The VAE type is automatically determined from the checkpoint's `model_index.json` configuration.
-
-## Generation Parameters
-
-Key parameters for image generation:
-
-- **num_inference_steps**: Number of denoising steps (default: 28). More steps generally improve quality at the cost of speed.
-- **guidance_scale**: Classifier-free guidance strength (default: 4.0). Higher values produce images more closely aligned with the prompt.
-- **height/width**: Output image dimensions (default: 512x512). Can be customized in the checkpoint configuration.
-
-```py
-# Example with custom parameters
-import torch
-from diffusers.pipelines.photon import PhotonPipeline
-pipe = PhotonPipeline.from_pretrained("Photoroom/photon-512-t2i-sft", torch_dtype=torch.bfloat16)
-pipe = pipe(
-    prompt = "A front-facing portrait of a lion the golden savanna at sunset."
-    num_inference_steps=28,
-    guidance_scale=4.0,
-    height=512,
-    width=512,
-    generator=torch.Generator("cuda").manual_seed(42)
-).images[0]
-```
 
 ## Memory Optimization
 
