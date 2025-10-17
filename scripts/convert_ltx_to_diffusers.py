@@ -369,6 +369,15 @@ def get_spatial_latent_upsampler_config(version: str) -> Dict[str, Any]:
             "spatial_upsample": True,
             "temporal_upsample": False,
         }
+    elif version == "0.9.8":
+        config = {
+            "in_channels": 128,
+            "mid_channels": 512,
+            "num_blocks_per_stage": 4,
+            "dims": 3,
+            "spatial_upsample": True,
+            "temporal_upsample": False,
+        }
     else:
         raise ValueError(f"Unsupported version: {version}")
     return config
@@ -402,7 +411,7 @@ def get_args():
         "--version",
         type=str,
         default="0.9.0",
-        choices=["0.9.0", "0.9.1", "0.9.5", "0.9.7"],
+        choices=["0.9.0", "0.9.1", "0.9.5", "0.9.7", "0.9.8"],
         help="Version of the LTX model",
     )
     return parser.parse_args()
