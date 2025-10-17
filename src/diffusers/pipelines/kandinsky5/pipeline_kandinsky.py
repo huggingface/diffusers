@@ -264,7 +264,6 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
         self,
         prompt: Union[str, List[str]],
         device: Optional[torch.device] = None,
-        num_videos_per_prompt: int = 1,
         max_sequence_length: int = 256,
         dtype: Optional[torch.dtype] = None,
     ):
