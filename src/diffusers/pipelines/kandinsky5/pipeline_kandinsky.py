@@ -668,8 +668,6 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
             dtype=dtype,
         )
 
-        negative_prompt_embeds_dict = None
-        negative_cu_seqlens = None
 
         if self.do_classifier_free_guidance:
             if negative_prompt is None:
