@@ -22,13 +22,14 @@ from ...testing_utils import (
     floats_tensor,
     torch_device,
 )
-from ..test_modeling_common import ModelTesterMixin, UNetTesterMixin
+from ..test_modeling_common import ModelTesterMixin
+from .testing_utils import AutoencoderTesterMixin
 
 
 enable_full_determinism()
 
 
-class AutoencoderDCTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
+class AutoencoderDCTests(ModelTesterMixin, AutoencoderTesterMixin, unittest.TestCase):
     model_class = AutoencoderDC
     main_input_name = "sample"
     base_precision = 1e-2
@@ -81,7 +82,3 @@ class AutoencoderDCTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
         init_dict = self.get_autoencoder_dc_config()
         inputs_dict = self.dummy_input
         return init_dict, inputs_dict
-
-    @unittest.skip("AutoencoderDC does not support `norm_num_groups` because it does not use GroupNorm.")
-    def test_forward_with_norm_groups(self):
-        pass
