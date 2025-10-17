@@ -416,7 +416,7 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
             "pooled_embed": prompt_embeds_clip,
         }
 
-        return prompt_embeds_dict, prompt_cu_seqlens
+        return prompt_embeds_qwen, prompt_embeds_clip, prompt_cu_seqlens
 
     def check_inputs(
         self,
