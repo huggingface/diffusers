@@ -72,8 +72,9 @@ class AutoGuidance(BaseGuidance):
         use_original_formulation: bool = False,
         start: float = 0.0,
         stop: float = 1.0,
+        enabled: bool = True,
     ):
-        super().__init__(start, stop)
+        super().__init__(start, stop, enabled)
 
         self.guidance_scale = guidance_scale
         self.auto_guidance_layers = auto_guidance_layers
@@ -138,10 +139,10 @@ class AutoGuidance(BaseGuidance):
         if input_fields is None:
             input_fields = self._input_fields
 
-        tuple_indices = [0] if self.num_conditions == 1 else [0, 1]
+        tuple_indices = [0] if self.num_conditions == 1 or not self._is_ag_enabled() else [0, 1]
         data_batches = []
-        for i in range(self.num_conditions):
-            data_batch = self._prepare_batch(input_fields, data, tuple_indices[i], self._input_predictions[i])
+        for tuple_idx, input_prediction in zip(tuple_indices, self._input_predictions):
+            data_batch = self._prepare_batch(input_fields, data, tuple_idx, input_prediction)
             data_batches.append(data_batch)
         return data_batches
 
