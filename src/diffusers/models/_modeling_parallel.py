@@ -79,29 +79,47 @@ class ContextParallelConfig:
         if self.ulysses_degree is None:
             self.ulysses_degree = 1
 
+        if self.ring_degree == 1 and self.ulysses_degree == 1:
+            raise ValueError(
+                "Either ring_degree or ulysses_degree must be greater than 1 in order to use context parallel inference"
+            )
+        if self.ring_degree < 1 or self.ulysses_degree < 1:
+            raise ValueError("`ring_degree` and `ulysses_degree` must be greater than or equal to 1.")
+        if self.ring_degree > 1 and self.ulysses_degree > 1:
+            raise ValueError(
+                "Unified Ulysses-Ring attention is not yet supported. Please set either `ring_degree` or `ulysses_degree` to 1."
+            )
+        if self.rotate_method != "allgather":
+            raise NotImplementedError(
+                f"Only rotate_method='allgather' is supported for now, but got {self.rotate_method}."
+            )
+
+    @property
+    def mesh_shape(self) -> Tuple[int, int]:
+        """Shape of the device mesh (ring_degree, ulysses_degree)."""
+        return (self.ring_degree, self.ulysses_degree)
+
+    @property
+    def mesh_dim_names(self) -> Tuple[str, str]:
+        """Dimension names for the device mesh."""
+        return ("ring", "ulysses")
+
     def setup(self, rank: int, world_size: int, device: torch.device, mesh: torch.distributed.device_mesh.DeviceMesh):
         self._rank = rank
         self._world_size = world_size
         self._device = device
         self._mesh = mesh
-        if self.ring_degree is None:
-            self.ring_degree = 1
-        if self.ulysses_degree is None:
-            self.ulysses_degree = 1
-        if self.rotate_method != "allgather":
-            raise NotImplementedError(
-                f"Only rotate_method='allgather' is supported for now, but got {self.rotate_method}."
+
+        if self.ulysses_degree * self.ring_degree > world_size:
+            raise ValueError(
+                f"The product of `ring_degree` ({self.ring_degree}) and `ulysses_degree` ({self.ulysses_degree}) must not exceed the world size ({world_size})."
             )
-        if self._flattened_mesh is None:
-            self._flattened_mesh = self._mesh._flatten()
-        if self._ring_mesh is None:
-            self._ring_mesh = self._mesh["ring"]
-        if self._ulysses_mesh is None:
-            self._ulysses_mesh = self._mesh["ulysses"]
-        if self._ring_local_rank is None:
-            self._ring_local_rank = self._ring_mesh.get_local_rank()
-        if self._ulysses_local_rank is None:
-            self._ulysses_local_rank = self._ulysses_mesh.get_local_rank()
+
+        self._flattened_mesh = self._mesh._flatten()
+        self._ring_mesh = self._mesh["ring"]
+        self._ulysses_mesh = self._mesh["ulysses"]
+        self._ring_local_rank = self._ring_mesh.get_local_rank()
+        self._ulysses_local_rank = self._ulysses_mesh.get_local_rank()
 
 
 @dataclass
@@ -119,7 +137,7 @@ class ParallelConfig:
     _rank: int = None
     _world_size: int = None
     _device: torch.device = None
-    _cp_mesh: torch.distributed.device_mesh.DeviceMesh = None
+    _mesh: torch.distributed.device_mesh.DeviceMesh = None
 
     def setup(
         self,
@@ -127,14 +145,14 @@ class ParallelConfig:
         world_size: int,
         device: torch.device,
         *,
-        cp_mesh: Optional[torch.distributed.device_mesh.DeviceMesh] = None,
+        mesh: Optional[torch.distributed.device_mesh.DeviceMesh] = None,
     ):
         self._rank = rank
         self._world_size = world_size
         self._device = device
-        self._cp_mesh = cp_mesh
+        self._mesh = mesh
         if self.context_parallel_config is not None:
-            self.context_parallel_config.setup(rank, world_size, device, cp_mesh)
+            self.context_parallel_config.setup(rank, world_size, device, mesh)
 
 
 @dataclass(frozen=True)
