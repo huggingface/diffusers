@@ -349,6 +349,66 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
 
         return pooled_embed.to(dtype)
 
+#     def encode_prompt(
+#         self,
+#         prompt: Union[str, List[str]],
+#         num_videos_per_prompt: int = 1,
+#         max_sequence_length: int = 512,
+#         device: Optional[torch.device] = None,
+#         dtype: Optional[torch.dtype] = None,
+#     ):
+#         r"""
+#         Encodes a single prompt (positive or negative) into text encoder hidden states.
+
+#         This method combines embeddings from both Qwen2.5-VL and CLIP text encoders
+#         to create comprehensive text representations for video generation.
+
+#         Args:
+#             prompt (`str` or `List[str]`):
+#                 Prompt to be encoded.
+#             num_videos_per_prompt (`int`, *optional*, defaults to 1):
+#                 Number of videos to generate per prompt.
+#             max_sequence_length (`int`, *optional*, defaults to 512):
+#                 Maximum sequence length for text encoding.
+#             device (`torch.device`, *optional*):
+#                 Torch device.
+#             dtype (`torch.dtype`, *optional*):
+#                 Torch dtype.
+
+#         Returns:
+#             Tuple[Dict[str, torch.Tensor], torch.Tensor]:
+#                 - A dict with keys `"text_embeds"` (from Qwen) and `"pooled_embed"` (from CLIP)
+#                 - Cumulative sequence lengths (`cu_seqlens`) for Qwen embeddings
+#         """
+#         device = device or self._execution_device
+#         dtype = dtype or self.text_encoder.dtype
+
+#         batch_size = len(prompt)
+
+#         prompt = [prompt_clean(p) for p in prompt]
+
+#         # Encode with Qwen2.5-VL
+#         prompt_embeds_qwen, prompt_cu_seqlens = self._encode_prompt_qwen(
+#             prompt=prompt,
+#             device=device,
+#             max_sequence_length=max_sequence_length,
+#             dtype=dtype,
+#         )
+
+#         # Encode with CLIP
+#         prompt_embeds_clip = self._encode_prompt_clip(
+#             prompt=prompt,
+#             device=device,
+#             dtype=dtype,
+#         )
+#         prompt_embeds_qwen = prompt_embeds_qwen.repeat(1, num_videos_per_prompt, 1)
+#         prompt_embeds_qwen = prompt_embeds_qwen.view(batch_size * num_videos_per_prompt, -1)
+        
+#         prompt_embeds_clip = prompt_embeds_clip.repeat(1, num_videos_per_prompt, 1)
+#         prompt_embeds_clip = prompt_embeds_clip.view(batch_size * num_videos_per_prompt, -1)
+
+#         return prompt_embeds_qwen, prompt_embeds_clip, prompt_cu_seqlens
+
     def encode_prompt(
         self,
         prompt: Union[str, List[str]],
@@ -376,9 +436,10 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
                 Torch dtype.
 
         Returns:
-            Tuple[Dict[str, torch.Tensor], torch.Tensor]:
-                - A dict with keys `"text_embeds"` (from Qwen) and `"pooled_embed"` (from CLIP)
-                - Cumulative sequence lengths (`cu_seqlens`) for Qwen embeddings
+            Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+                - Qwen text embeddings of shape (batch_size * num_videos_per_prompt, sequence_length, embedding_dim)
+                - CLIP pooled embeddings of shape (batch_size * num_videos_per_prompt, clip_embedding_dim)
+                - Cumulative sequence lengths (`cu_seqlens`) for Qwen embeddings of shape (batch_size * num_videos_per_prompt + 1,)
         """
         device = device or self._execution_device
         dtype = dtype or self.text_encoder.dtype
@@ -394,6 +455,7 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
             max_sequence_length=max_sequence_length,
             dtype=dtype,
         )
+        # prompt_embeds_qwen shape: [batch_size, seq_len, embed_dim]
 
         # Encode with CLIP
         prompt_embeds_clip = self._encode_prompt_clip(
@@ -401,13 +463,30 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
             device=device,
             dtype=dtype,
         )
-        prompt_embeds_qwen = prompt_embeds_qwen.repeat(1, num_videos_per_prompt, 1)
-        prompt_embeds_qwen = prompt_embeds_qwen.view(batch_size * num_videos_per_prompt, -1)
-        
-        prompt_embeds_clip = prompt_embeds_clip.repeat(1, num_videos_per_prompt, 1)
+        # prompt_embeds_clip shape: [batch_size, clip_embed_dim]
+
+        # Repeat embeddings for num_videos_per_prompt
+        # Qwen embeddings: repeat sequence for each video, then reshape
+        prompt_embeds_qwen = prompt_embeds_qwen.repeat(1, num_videos_per_prompt, 1) # [batch_size, seq_len * num_videos_per_prompt, embed_dim]
+        # Reshape to [batch_size * num_videos_per_prompt, seq_len, embed_dim]
+        prompt_embeds_qwen = prompt_embeds_qwen.view(batch_size * num_videos_per_prompt, -1, prompt_embeds_qwen.shape[-1])
+
+        # CLIP embeddings: repeat for each video
+        prompt_embeds_clip = prompt_embeds_clip.repeat(1, num_videos_per_prompt, 1) # [batch_size, num_videos_per_prompt, clip_embed_dim]
+        # Reshape to [batch_size * num_videos_per_prompt, clip_embed_dim]
         prompt_embeds_clip = prompt_embeds_clip.view(batch_size * num_videos_per_prompt, -1)
 
-        return prompt_embeds_qwen, prompt_embeds_clip, prompt_cu_seqlens
+        # Repeat cumulative sequence lengths for num_videos_per_prompt
+        # Original cu_seqlens: [0, len1, len1+len2, ...]
+        # Need to repeat the differences and reconstruct for repeated prompts
+        # Original differences (lengths) for each prompt in the batch
+        original_lengths = prompt_cu_seqlens.diff() # [len1, len2, ...]
+        # Repeat the lengths for num_videos_per_prompt
+        repeated_lengths = original_lengths.repeat_interleave(num_videos_per_prompt) # [len1, len1, ..., len2, len2, ...]
+        # Reconstruct the cumulative lengths
+        repeated_cu_seqlens = torch.cat([torch.tensor([0], device=device, dtype=torch.int32), repeated_lengths.cumsum(0)])
+
+        return prompt_embeds_qwen, prompt_embeds_clip, repeated_cu_seqlens
 
     def check_inputs(
         self,
@@ -415,22 +494,30 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
         negative_prompt,
         height,
         width,
-        prompt_embeds=None,
-        negative_prompt_embeds=None,
+        prompt_embeds_qwen=None,
+        prompt_embeds_clip=None,
+        negative_prompt_embeds_qwen=None,
+        negative_prompt_embeds_clip=None,
+        prompt_cu_seqlens=None,
+        negative_prompt_cu_seqlens=None,
         callback_on_step_end_tensor_inputs=None,
     ):
         """
         Validate input parameters for the pipeline.
-        
+
         Args:
             prompt: Input prompt
             negative_prompt: Negative prompt for guidance
             height: Video height
             width: Video width  
-            prompt_embeds: Pre-computed prompt embeddings
-            negative_prompt_embeds: Pre-computed negative prompt embeddings
+            prompt_embeds_qwen: Pre-computed Qwen prompt embeddings
+            prompt_embeds_clip: Pre-computed CLIP prompt embeddings
+            negative_prompt_embeds_qwen: Pre-computed Qwen negative prompt embeddings
+            negative_prompt_embeds_clip: Pre-computed CLIP negative prompt embeddings
+            prompt_cu_seqlens: Pre-computed cumulative sequence lengths for Qwen positive prompt
+            negative_prompt_cu_seqlens: Pre-computed cumulative sequence lengths for Qwen negative prompt
             callback_on_step_end_tensor_inputs: Callback tensor inputs
-            
+
         Raises:
             ValueError: If inputs are invalid
         """
@@ -444,23 +531,32 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
                 f"`callback_on_step_end_tensor_inputs` has to be in {self._callback_tensor_inputs}, but found {[k for k in callback_on_step_end_tensor_inputs if k not in self._callback_tensor_inputs]}"
             )
 
-        if prompt is not None and prompt_embeds is not None:
+        # Check for consistency within positive prompt embeddings and sequence lengths
+        if prompt_embeds_qwen is not None or prompt_embeds_clip is not None or prompt_cu_seqlens is not None:
+            if prompt_embeds_qwen is None or prompt_embeds_clip is None or prompt_cu_seqlens is None:
+                raise ValueError(
+                    f"If any of `prompt_embeds_qwen`, `prompt_embeds_clip`, or `prompt_cu_seqlens` is provided, "
+                    f"all three must be provided."
+                )
+
+        # Check for consistency within negative prompt embeddings and sequence lengths
+        if negative_prompt_embeds_qwen is not None or negative_prompt_embeds_clip is not None or negative_prompt_cu_seqlens is not None:
+            if negative_prompt_embeds_qwen is None or negative_prompt_embeds_clip is None or negative_prompt_cu_seqlens is None:
+                raise ValueError(
+                    f"If any of `negative_prompt_embeds_qwen`, `negative_prompt_embeds_clip`, or `negative_prompt_cu_seqlens` is provided, "
+                    f"all three must be provided."
+                )
+
+        # Check if prompt or embeddings are provided (either prompt or all required embedding components for positive)
+        if prompt is None and prompt_embeds_qwen is None:
             raise ValueError(
-                f"Cannot forward both `prompt`: {prompt} and `prompt_embeds`: {prompt_embeds}. Please make sure to"
-                " only forward one of the two."
+                "Provide either `prompt` or `prompt_embeds_qwen` (and corresponding `prompt_embeds_clip` and `prompt_cu_seqlens`). Cannot leave all undefined."
             )
-        elif negative_prompt is not None and negative_prompt_embeds is not None:
-            raise ValueError(
-                f"Cannot forward both `negative_prompt`: {negative_prompt} and `negative_prompt_embeds`: {negative_prompt_embeds}. Please make sure to"
-                " only forward one of the two."
-            )
-        elif prompt is None and prompt_embeds is None:
-            raise ValueError(
-                "Provide either `prompt` or `prompt_embeds`. Cannot leave both `prompt` and `prompt_embeds` undefined."
-            )
-        elif prompt is not None and (not isinstance(prompt, str) and not isinstance(prompt, list)):
+
+        # Validate types for prompt and negative_prompt if provided
+        if prompt is not None and (not isinstance(prompt, str) and not isinstance(prompt, list)):
             raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
-        elif negative_prompt is not None and (
+        if negative_prompt is not None and (
             not isinstance(negative_prompt, str) and not isinstance(negative_prompt, list)
         ):
             raise ValueError(f"`negative_prompt` has to be of type `str` or `list` but is {type(negative_prompt)}")
@@ -632,13 +728,17 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
 
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(
-            prompt,
-            negative_prompt,
-            height,
-            width,
-            prompt_embeds,
-            negative_prompt_embeds,
-            callback_on_step_end_tensor_inputs,
+            prompt=prompt,
+            negative_prompt=negative_prompt,
+            height=height,
+            width=width,
+            prompt_embeds_qwen=prompt_embeds_qwen,
+            prompt_embeds_clip=prompt_embeds_clip,
+            negative_prompt_embeds_qwen=negative_prompt_embeds_qwen,
+            negative_prompt_embeds_clip=negative_prompt_embeds_clip,
+            prompt_cu_seqlens=prompt_cu_seqlens,
+            negative_prompt_cu_seqlens=negative_prompt_cu_seqlens,
+            callback_on_step_end_tensor_inputs=callback_on_step_end_tensor_inputs,
         )
 
         if num_frames % self.vae_scale_factor_temporal != 1:
@@ -739,7 +839,7 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
                     continue
 
                 timestep = t.unsqueeze(0).repeat(batch_size * num_videos_per_prompt)
-
+                
                 # Predict noise residual                
                 pred_velocity = self.transformer(
                     hidden_states=latents.to(dtype),
@@ -753,7 +853,7 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
                     return_dict=True
                 ).sample
 
-                if self.do_classifier_free_guidance and negative_prompt_embeds_dict is not None:
+                if self.do_classifier_free_guidance and negative_prompt_embeds_qwen is not None: 
                     uncond_pred_velocity = self.transformer(
                         hidden_states=latents.to(dtype),
                         encoder_hidden_states=negative_prompt_embeds_qwen.to(dtype),
@@ -769,7 +869,6 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
                     pred_velocity = uncond_pred_velocity + guidance_scale * (
                         pred_velocity - uncond_pred_velocity
                     )
-                
                 # Compute previous sample using the scheduler
                 latents[:, :, :, :, :num_channels_latents] = self.scheduler.step(
                     pred_velocity, t, latents[:, :, :, :, :num_channels_latents], return_dict=False
