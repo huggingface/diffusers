@@ -564,7 +564,11 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.Tensor] = None,
         prompt_embeds_qwen: Optional[torch.Tensor] = None,
-        negative_prompt_embeds: Optional[torch.Tensor] = None,
+        prompt_embeds_clip: Optional[torch.Tensor] = None,
+        negative_prompt_embeds_qwen: Optional[torch.Tensor] = None,
+        negative_prompt_embeds_clip: Optional[torch.Tensor] = None,
+        prompt_cu_seqlens: Optional[torch.Tensor] = None,
+        negative_prompt_cu_seqlens: Optional[torch.Tensor] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
         callback_on_step_end: Optional[
