@@ -55,7 +55,8 @@ class ConvLayer(nn.Module):
         self.downsample = downsample
         self.activate = activate
 
-        self.bias_leaky_relu = nn.Parameter(torch.zeros(1, out_channel, 1, 1))
+        if activate:
+            self.bias_leaky_relu = nn.Parameter(torch.zeros(1, out_channel, 1, 1))
 
         if downsample:
             factor = 2
@@ -90,7 +91,7 @@ class ConvLayer(nn.Module):
             stride = 1
             padding = kernel_size // 2
 
-        self.conv2d = nn.Conv2d(in_channel, out_channel, kernel_size, stride, padding, bias=bias)
+        self.conv2d = nn.Conv2d(in_channel, out_channel, kernel_size, stride, padding, bias=bias and not activate)
 
         if activate:
             self.act = nn.LeakyReLU(0.2)
