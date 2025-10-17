@@ -46,10 +46,6 @@ logger = logging.get_logger(__name__)
 
 
 
-def freeze(model):
-    for p in model.parameters():
-        p.requires_grad = False
-    return model
 
 
 def get_freqs(dim, max_period=10000.0):
