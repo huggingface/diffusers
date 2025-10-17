@@ -398,7 +398,6 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
         prompt_embeds_qwen, prompt_cu_seqlens = self._encode_prompt_qwen(
             prompt=prompt,
             device=device,
-            num_videos_per_prompt=num_videos_per_prompt,
             max_sequence_length=max_sequence_length,
             dtype=dtype,
         )
