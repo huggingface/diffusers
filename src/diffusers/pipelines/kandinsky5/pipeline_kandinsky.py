@@ -308,7 +308,6 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
         attention_mask = inputs["attention_mask"][:, self.prompt_template_encode_start_idx:]
         cu_seqlens = torch.cumsum(attention_mask.sum(1), dim=0)
         cu_seqlens = F.pad(cu_seqlens, (1, 0), value=0).to(dtype=torch.int32)
-        embeds = embeds.repeat_interleave(num_videos_per_prompt, dim=0)
     
         return embeds.to(dtype), cu_seqlens
 
