@@ -912,8 +912,10 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
                     with self.transformer.cache_context("cond"):
                         noise_pred = self.transformer(
                             hidden_states=latent_model_input,
+                            pose_hidden_states=pose_latents,
                             timestep=timestep,
                             encoder_hidden_states=prompt_embeds,
+                            face_pixel_values=face_pixel_values,
                             encoder_hidden_states_image=image_embeds,
                             attention_kwargs=attention_kwargs,
                             return_dict=False,
@@ -923,8 +925,10 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
                         with self.transformer.cache_context("uncond"):
                             noise_uncond = self.transformer(
                                 hidden_states=latent_model_input,
+                                pose_hidden_states=pose_latents,
                                 timestep=timestep,
                                 encoder_hidden_states=negative_prompt_embeds,
+                                face_pixel_values=face_pixel_values,
                                 encoder_hidden_states_image=image_embeds,
                                 attention_kwargs=attention_kwargs,
                                 return_dict=False,

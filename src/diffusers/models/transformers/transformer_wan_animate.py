@@ -505,6 +505,7 @@ class WanAnimateTransformer3DModel(
         image_dim: Optional[int] = 1280,
         added_kv_proj_dim: Optional[int] = 5120,
         rope_max_seq_len: int = 1024,
+        motion_encoder_dim: int = 512,
     ) -> None:
         super().__init__()
 
@@ -522,6 +523,7 @@ class WanAnimateTransformer3DModel(
             time_freq_dim=freq_dim,
             time_proj_dim=inner_dim * 6,
             text_embed_dim=text_dim,
+            motion_encoder_dim=motion_encoder_dim,
             image_embed_dim=image_dim,
         )
 
