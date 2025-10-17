@@ -36,12 +36,13 @@ from ...testing_utils import (
     torch_device,
 )
 from ..test_modeling_common import ModelTesterMixin
+from .testing_utils import AutoencoderTesterMixin
 
 
 enable_full_determinism()
 
 
-class AsymmetricAutoencoderKLTests(ModelTesterMixin, unittest.TestCase):
+class AsymmetricAutoencoderKLTests(ModelTesterMixin, AutoencoderTesterMixin, unittest.TestCase):
     model_class = AsymmetricAutoencoderKL
     main_input_name = "sample"
     base_precision = 1e-2

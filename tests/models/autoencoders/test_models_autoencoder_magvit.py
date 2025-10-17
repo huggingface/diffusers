@@ -19,12 +19,13 @@ from diffusers import AutoencoderKLMagvit
 
 from ...testing_utils import enable_full_determinism, floats_tensor, torch_device
 from ..test_modeling_common import ModelTesterMixin
+from .testing_utils import AutoencoderTesterMixin
 
 
 enable_full_determinism()
 
 
-class AutoencoderKLMagvitTests(ModelTesterMixin, unittest.TestCase):
+class AutoencoderKLMagvitTests(ModelTesterMixin, AutoencoderTesterMixin, unittest.TestCase):
     model_class = AutoencoderKLMagvit
     main_input_name = "sample"
     base_precision = 1e-2
