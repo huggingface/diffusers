@@ -24,7 +24,8 @@ args = args.parse_args()
 
 
 def _extract_into_tensor(arr, timesteps, broadcast_shape):
-    # from: https://github.com/openai/guided-diffusion/blob/22e0df8183507e13a7813f8d38d51b072ca1e67c/guided_diffusion/gaussian_diffusion.py#L895    """
+    # from: https://github.com/openai/guided-diffusion/blob/22e0df8183507e13a7813f8d38d51b072ca1e67c/guided_diffusion/gaussian_diffusion.py#L895
+    #  """
     res = arr[timesteps].float()
     dims_to_append = len(broadcast_shape) - len(res.shape)
     return res[(...,) + (None,) * dims_to_append]
@@ -507,7 +508,9 @@ def rename_state_dict(sd, embedding):
 
 
 # encode with stable diffusion vae
-pipe = StableDiffusionPipeline.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5", torch_dtype=torch.float16)
+pipe = StableDiffusionPipeline.from_pretrained(
+    "stable-diffusion-v1-5/stable-diffusion-v1-5", torch_dtype=torch.float16
+)
 pipe.vae.cuda()
 
 # construct original decoder with jitted model

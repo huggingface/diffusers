@@ -93,7 +93,10 @@ EXAMPLE_DOC_STRING = """
         ...     "lllyasviel/control_v11p_sd15_inpaint", torch_dtype=torch.float16
         ... )
         >>> pipe = AutoPipelineForInpainting.from_pretrained(
-        ...     "stable-diffusion-v1-5/stable-diffusion-v1-5", controlnet=controlnet, torch_dtype=torch.float16, enable_pag=True
+        ...     "stable-diffusion-v1-5/stable-diffusion-v1-5",
+        ...     controlnet=controlnet,
+        ...     torch_dtype=torch.float16,
+        ...     enable_pag=True,
         ... )
 
         >>> pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
@@ -151,10 +154,11 @@ class StableDiffusionControlNetPAGInpaintPipeline(
         - [`~loaders.IPAdapterMixin.load_ip_adapter`] for loading IP Adapters
 
     > [!TIP] > This pipeline can be used with checkpoints that have been specifically fine-tuned for inpainting >
-    ([stable-diffusion-v1-5/stable-diffusion-inpainting](https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-inpainting)) as well as >
-    default text-to-image Stable Diffusion checkpoints >
-    ([stable-diffusion-v1-5/stable-diffusion-v1-5](https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5)). Default text-to-image >
-    Stable Diffusion checkpoints might be preferable for ControlNets that have been fine-tuned on those, such as >
+    ([stable-diffusion-v1-5/stable-diffusion-inpainting](https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-inpainting))
+    as well as > default text-to-image Stable Diffusion checkpoints >
+    ([stable-diffusion-v1-5/stable-diffusion-v1-5](https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5)).
+    Default text-to-image > Stable Diffusion checkpoints might be preferable for ControlNets that have been fine-tuned
+    on those, such as >
     [lllyasviel/control_v11p_sd15_inpaint](https://huggingface.co/lllyasviel/control_v11p_sd15_inpaint).
 
     Args:
@@ -175,8 +179,8 @@ class StableDiffusionControlNetPAGInpaintPipeline(
             [`DDIMScheduler`], [`LMSDiscreteScheduler`], or [`PNDMScheduler`].
         safety_checker ([`StableDiffusionSafetyChecker`]):
             Classification module that estimates whether generated images could be considered offensive or harmful.
-            Please refer to the [model card](https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5) for more details
-            about a model's potential harms.
+            Please refer to the [model card](https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5) for
+            more details about a model's potential harms.
         feature_extractor ([`~transformers.CLIPImageProcessor`]):
             A `CLIPImageProcessor` to extract features from generated images; used as inputs to the `safety_checker`.
     """

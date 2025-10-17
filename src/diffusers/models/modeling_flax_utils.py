@@ -216,8 +216,8 @@ class FlaxModelMixin(PushToHubMixin):
             pretrained_model_name_or_path (`str` or `os.PathLike`):
                 Can be either:
 
-                    - A string, the *model id* (for example `stable-diffusion-v1-5/stable-diffusion-v1-5`) of a pretrained model
-                      hosted on the Hub.
+                    - A string, the *model id* (for example `stable-diffusion-v1-5/stable-diffusion-v1-5`) of a
+                      pretrained model hosted on the Hub.
                     - A path to a *directory* (for example `./my_model_directory`) containing the model weights saved
                       using [`~FlaxModelMixin.save_pretrained`].
             dtype (`jax.numpy.dtype`, *optional*, defaults to `jax.numpy.float32`):
