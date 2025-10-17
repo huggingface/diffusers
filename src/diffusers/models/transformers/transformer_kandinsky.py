@@ -614,7 +614,7 @@ class Kandinsky5Transformer3DModel(
 
     def forward(
         self,
-        hidden_states: torch.FloatTensor,  # x
+        hidden_states: torch.Tensor,  # x
         encoder_hidden_states: torch.FloatTensor,  # text_embed
         timestep: Union[torch.Tensor, float, int],  # time
         pooled_projections: torch.FloatTensor,  # pooled_text_embed
