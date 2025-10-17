@@ -44,8 +44,6 @@ from ..attention_dispatch import dispatch_attention_fn, _CAN_USE_FLEX_ATTN
 logger = logging.get_logger(__name__)
 
 
-def exist(item):
-    return item is not None
 
 
 def freeze(model):
