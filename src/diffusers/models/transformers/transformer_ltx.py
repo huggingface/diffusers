@@ -353,7 +353,9 @@ class LTXVideoTransformerBlock(nn.Module):
         norm_hidden_states = self.norm1(hidden_states)
 
         num_ada_params = self.scale_shift_table.shape[0]
-        ada_values = self.scale_shift_table[None, None] + temb.reshape(batch_size, temb.size(1), num_ada_params, -1)
+        ada_values = self.scale_shift_table[None, None].to(temb.device) + temb.reshape(
+            batch_size, temb.size(1), num_ada_params, -1
+        )
         shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = ada_values.unbind(dim=2)
         norm_hidden_states = norm_hidden_states * (1 + scale_msa) + shift_msa
 

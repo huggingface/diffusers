@@ -16,7 +16,6 @@ from dataclasses import dataclass
 from typing import Dict, Tuple, Union
 
 import torch
-import torch.utils.checkpoint
 from torch import nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
