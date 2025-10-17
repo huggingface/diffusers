@@ -346,9 +346,6 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
 
         pooled_embed = self.text_encoder_2(**inputs)["pooler_output"]
 
-        batch_size = len(prompt)
-        pooled_embed = pooled_embed.repeat(1, num_videos_per_prompt, 1)
-        pooled_embed = pooled_embed.view(batch_size * num_videos_per_prompt, -1)
 
         return pooled_embed.to(dtype)
 
