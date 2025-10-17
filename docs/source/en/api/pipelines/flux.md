@@ -418,7 +418,7 @@ When unloading the Control LoRA weights, call `pipe.unload_lora_weights(reset_to
 ## IP-Adapter
 
 > [!TIP]
-> Check out [IP-Adapter](../../../using-diffusers/ip_adapter) to learn more about how IP-Adapters work.
+> Check out [IP-Adapter](../../using-diffusers/ip_adapter) to learn more about how IP-Adapters work.
 
 An IP-Adapter lets you prompt Flux with images, in addition to the text prompt. This is especially useful when describing complex concepts that are difficult to articulate through text alone and you have reference images.
 
