@@ -258,7 +258,6 @@ class Kandinsky5RoPE3D(nn.Module):
             pos = torch.arange(ax_max_pos, dtype=freq.dtype)
             self.register_buffer(f"args_{i}", torch.outer(pos, freq), persistent=False)
 
-    @torch.autocast(device_type="cuda", enabled=False)
     def forward(self, shape, pos, scale_factor=(1.0, 1.0, 1.0)):
         batch_size, duration, height, width = shape
         args_t = self.args_0[pos[0]] / scale_factor[0]
