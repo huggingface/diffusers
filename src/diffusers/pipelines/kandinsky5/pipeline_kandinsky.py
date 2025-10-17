@@ -664,13 +664,13 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
             batch_size = prompt_embeds[0].shape[0] if isinstance(prompt_embeds, (list, tuple)) else prompt_embeds.shape[0]
         
         # 3. Encode input prompt
-        prompt_embeds_dict, prompt_cu_seqlens = self.encode_prompt(
-            prompt=prompt,
-            num_videos_per_prompt=num_videos_per_prompt,
-            max_sequence_length=max_sequence_length,
-            device=device,
-            dtype=dtype,
-        )
+        if prompt_embeds_qwen is None: 
+                prompt_embeds_qwen, prompt_embeds_clip, prompt_cu_seqlens = self.encode_prompt(
+                    prompt=prompt,
+                    max_sequence_length=max_sequence_length,
+                    device=device,
+                    dtype=dtype,
+                )
 
 
         if self.do_classifier_free_guidance:
