@@ -4,6 +4,7 @@ import numpy as np
 import pytest
 import torch
 
+from diffusers.models.autoencoders.vae import DecoderOutput
 from diffusers.utils.torch_utils import torch_device
 
 
@@ -64,12 +65,17 @@ class AutoencoderTesterMixin:
         if accepts_generator:
             inputs_dict["generator"] = torch.manual_seed(0)
         output_without_tiling = model(**inputs_dict)[0]
+        # Mochi-1
+        if isinstance(output_without_tiling, DecoderOutput):
+            output_without_tiling = output_without_tiling.sample
 
         torch.manual_seed(0)
         model.enable_tiling()
         if accepts_generator:
             inputs_dict["generator"] = torch.manual_seed(0)
         output_with_tiling = model(**inputs_dict)[0]
+        if isinstance(output_with_tiling, DecoderOutput):
+            output_with_tiling = output_with_tiling.sample
 
         assert (
             output_without_tiling.detach().cpu().numpy() - output_with_tiling.detach().cpu().numpy()
@@ -80,6 +86,8 @@ class AutoencoderTesterMixin:
         if accepts_generator:
             inputs_dict["generator"] = torch.manual_seed(0)
         output_without_tiling_2 = model(**inputs_dict)[0]
+        if isinstance(output_without_tiling_2, DecoderOutput):
+            output_without_tiling_2 = output_without_tiling_2.sample
 
         assert np.allclose(
             output_without_tiling.detach().cpu().numpy().all(),
@@ -104,12 +112,17 @@ class AutoencoderTesterMixin:
 
         torch.manual_seed(0)
         output_without_slicing = model(**inputs_dict)[0]
+        # Mochi-1
+        if isinstance(output_without_slicing, DecoderOutput):
+            output_without_slicing = output_without_slicing.sample
 
         torch.manual_seed(0)
         model.enable_slicing()
         if accepts_generator:
             inputs_dict["generator"] = torch.manual_seed(0)
         output_with_slicing = model(**inputs_dict)[0]
+        if isinstance(output_with_slicing, DecoderOutput):
+            output_with_slicing = output_with_slicing.sample
 
         assert (
             output_without_slicing.detach().cpu().numpy() - output_with_slicing.detach().cpu().numpy()
@@ -120,6 +133,8 @@ class AutoencoderTesterMixin:
         if accepts_generator:
             inputs_dict["generator"] = torch.manual_seed(0)
         output_without_slicing_2 = model(**inputs_dict)[0]
+        if isinstance(output_without_slicing_2, DecoderOutput):
+            output_without_slicing_2 = output_without_slicing_2.sample
 
         assert np.allclose(
             output_without_slicing.detach().cpu().numpy().all(),
