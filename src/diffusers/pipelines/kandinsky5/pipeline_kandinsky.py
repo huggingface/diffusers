@@ -756,7 +756,7 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
                 if self.do_classifier_free_guidance and negative_prompt_embeds_dict is not None:
                     uncond_pred_velocity = self.transformer(
                         hidden_states=latents.to(dtype),
-                        encoder_hidden_states=negative_prompt_embeds_dict["text_embeds"].to(dtype),
+                        encoder_hidden_states=negative_prompt_embeds_qwen.to(dtype),
                         pooled_projections=negative_prompt_embeds_dict["pooled_embed"].to(dtype),
                         timestep=timestep.to(dtype),
                         visual_rope_pos=visual_rope_pos,
