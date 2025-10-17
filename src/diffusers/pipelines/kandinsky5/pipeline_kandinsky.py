@@ -743,7 +743,7 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
                 # Predict noise residual                
                 pred_velocity = self.transformer(
                     hidden_states=latents.to(dtype),
-                    encoder_hidden_states=prompt_embeds_dict["text_embeds"].to(dtype),
+                    encoder_hidden_states=prompt_embeds_qwen.to(dtype),
                     pooled_projections=prompt_embeds_dict["pooled_embed"].to(dtype),
                     timestep=timestep.to(dtype),
                     visual_rope_pos=visual_rope_pos,
