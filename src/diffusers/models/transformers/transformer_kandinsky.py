@@ -178,9 +178,6 @@ class Kandinsky5TimeEmbeddings(nn.Module):
         assert model_dim % 2 == 0
         self.model_dim = model_dim
         self.max_period = max_period
-        self.register_buffer(
-            "freqs", get_freqs(model_dim // 2, max_period), persistent=False
-        )        
         self.freqs = get_freqs(self.model_dim // 2, self.max_period)
         self.in_layer = nn.Linear(model_dim, time_dim, bias=True)
         self.activation = nn.SiLU()
