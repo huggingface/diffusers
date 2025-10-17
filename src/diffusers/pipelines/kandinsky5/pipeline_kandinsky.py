@@ -411,10 +411,6 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
             dtype=dtype,
         )
 
-        prompt_embeds_dict = {
-            "text_embeds": prompt_embeds_qwen,
-            "pooled_embed": prompt_embeds_clip,
-        }
 
         return prompt_embeds_qwen, prompt_embeds_clip, prompt_cu_seqlens
 
