@@ -68,28 +68,28 @@ class PhotonPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         tokenizer.model_max_length = 64
 
         torch.manual_seed(0)
-        
-        encoder_params = dict(
-            vocab_size=tokenizer.vocab_size,
-            hidden_size=8,
-            intermediate_size=16,
-            num_hidden_layers=1,
-            num_attention_heads=2,
-            num_key_value_heads=1,
-            head_dim=4,
-            max_position_embeddings=64,
-            layer_types=["full_attention"],
-            attention_bias=False,
-            attention_dropout=0.0,
-            dropout_rate=0.0,
-            hidden_activation="gelu_pytorch_tanh",
-            rms_norm_eps=1e-06,
-            attn_logit_softcapping=50.0,
-            final_logit_softcapping=30.0,
-            query_pre_attn_scalar=4,
-            rope_theta=10000.0,
-            sliding_window=4096,
-        )
+
+        encoder_params = {
+            "vocab_size": tokenizer.vocab_size,
+            "hidden_size": 8,
+            "intermediate_size": 16,
+            "num_hidden_layers": 1,
+            "num_attention_heads": 2,
+            "num_key_value_heads": 1,
+            "head_dim": 4,
+            "max_position_embeddings": 64,
+            "layer_types": ["full_attention"],
+            "attention_bias": False,
+            "attention_dropout": 0.0,
+            "dropout_rate": 0.0,
+            "hidden_activation": "gelu_pytorch_tanh",
+            "rms_norm_eps": 1e-06,
+            "attn_logit_softcapping": 50.0,
+            "final_logit_softcapping": 30.0,
+            "query_pre_attn_scalar": 4,
+            "rope_theta": 10000.0,
+            "sliding_window": 4096,
+        }
         encoder_config = T5GemmaModuleConfig(**encoder_params)
         text_encoder_config = T5GemmaConfig(encoder=encoder_config, is_encoder_decoder=False, **encoder_params)
         text_encoder = T5GemmaEncoder(text_encoder_config)

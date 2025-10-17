@@ -206,11 +206,11 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers import PhotonPipeline
 
         >>> # Load pipeline with from_pretrained
-        >>> pipe = PhotonPipeline.from_pretrained("path/to/photon_checkpoint")
+        >>> pipe = PhotonPipeline.from_pretrained("Photoroom/photon-512-t2i-sft")
         >>> pipe.to("cuda")
 
         >>> prompt = "A digital painting of a rusty, vintage tram on a sandy beach"
-        >>> image = pipe(prompt, num_inference_steps=28, guidance_scale=4.0).images[0]
+        >>> image = pipe(prompt, num_inference_steps=28, guidance_scale=5.0).images[0]
         >>> image.save("photon_output.png")
         ```
 """
@@ -717,11 +717,10 @@ class PhotonPipeline(
 
                 # Forward through transformer
                 noise_pred = self.transformer(
-                    image_latent=latents_in,
+                    hidden_states=latents_in,
                     timestep=t_cont,
-                    cross_attn_conditioning=ca_embed,
-                    micro_conditioning=None,
-                    cross_attn_mask=ca_mask,
+                    encoder_hidden_states=ca_embed,
+                    attention_mask=ca_mask,
                     return_dict=False,
                 )[0]
 
