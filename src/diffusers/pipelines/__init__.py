@@ -718,6 +718,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             StableDiffusionXLPAGPipeline,
         )
         from .paint_by_example import PaintByExamplePipeline
+        from .photon import PhotonPipeline
         from .pia import PIAPipeline
         from .pixart_alpha import PixArtAlphaPipeline, PixArtSigmaPipeline
         from .qwenimage import (

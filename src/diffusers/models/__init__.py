@@ -191,6 +191,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             LuminaNextDiT2DModel,
             MochiTransformer3DModel,
             OmniGenTransformer2DModel,
+            PhotonTransformer2DModel,
             PixArtTransformer2DModel,
             PriorTransformer,
             QwenImageTransformer2DModel,

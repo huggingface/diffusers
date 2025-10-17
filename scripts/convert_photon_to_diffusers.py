@@ -13,9 +13,6 @@ from typing import Dict, Tuple
 import torch
 from safetensors.torch import save_file
 
-
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
-
 from diffusers.models.transformers.transformer_photon import PhotonTransformer2DModel
 from diffusers.pipelines.photon import PhotonPipeline
 
@@ -74,14 +71,12 @@ def create_parameter_mapping(depth: int) -> dict:
         mapping[f"blocks.{i}.txt_kv_proj.weight"] = f"blocks.{i}.attention.txt_kv_proj.weight"
 
         # QK norm moved to attention module and renamed to match Attention's qk_norm structure
-        # Old: qk_norm.query_norm / qk_norm.key_norm -> New: norm_q / norm_k
         mapping[f"blocks.{i}.qk_norm.query_norm.scale"] = f"blocks.{i}.attention.norm_q.weight"
         mapping[f"blocks.{i}.qk_norm.key_norm.scale"] = f"blocks.{i}.attention.norm_k.weight"
         mapping[f"blocks.{i}.qk_norm.query_norm.weight"] = f"blocks.{i}.attention.norm_q.weight"
         mapping[f"blocks.{i}.qk_norm.key_norm.weight"] = f"blocks.{i}.attention.norm_k.weight"
 
         # K norm for text tokens moved to attention module
-        # Old: k_norm -> New: norm_added_k
         mapping[f"blocks.{i}.k_norm.scale"] = f"blocks.{i}.attention.norm_added_k.weight"
         mapping[f"blocks.{i}.k_norm.weight"] = f"blocks.{i}.attention.norm_added_k.weight"
 
@@ -306,7 +301,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Convert Photon checkpoint to diffusers format")
 
     parser.add_argument(
-        "--checkpoint_path", type=str, required=True, help="Path to the original Photon checkpoint (.pth file)"
+        "--checkpoint_path", type=str, required=True, help="Path to the original Photon checkpoint (.pth file )"
     )
 
     parser.add_argument(
