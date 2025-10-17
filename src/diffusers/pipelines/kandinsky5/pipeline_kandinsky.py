@@ -406,7 +406,6 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
         prompt_embeds_clip = self._encode_prompt_clip(
             prompt=prompt,
             device=device,
-            num_videos_per_prompt=num_videos_per_prompt,
             dtype=dtype,
         )
 
