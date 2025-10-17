@@ -25,7 +25,7 @@
   - local: using-diffusers/schedulers
     title: Schedulers
   - local: using-diffusers/other-formats
-    title: Model files and layouts
+    title: Model formats
   - local: using-diffusers/push_to_hub
     title: Sharing pipelines and models
 
@@ -49,7 +49,7 @@
   isExpanded: false
   sections:
   - local: using-diffusers/weighted_prompts
-    title: Prompt techniques
+    title: Prompting
   - local: using-diffusers/create_a_server
     title: Create a server
   - local: using-diffusers/batched_inference
@@ -80,6 +80,8 @@
       title: Token merging
     - local: optimization/deepcache
       title: DeepCache
+    - local: optimization/cache_dit
+      title: CacheDiT
     - local: optimization/tgate
       title: TGATE
     - local: optimization/xdit
@@ -278,6 +280,8 @@
       title: Outputs
     - local: api/quantization
       title: Quantization
+    - local: api/parallel
+      title: Parallel inference
   - title: Modular
     sections:
     - local: api/modular_diffusers/pipeline
