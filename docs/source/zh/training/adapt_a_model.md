@@ -16,12 +16,12 @@ pipeline.unet.config["in_channels"]
 4
 ```
 
-而图像修复任务需要输入样本具有9个通道。您可以在 [`runwayml/stable-diffusion-inpainting`](https://huggingface.co/runwayml/stable-diffusion-inpainting) 这样的预训练修复模型中验证此参数：
+而图像修复任务需要输入样本具有9个通道。您可以在 [`stable-diffusion-v1-5/stable-diffusion-inpainting`](https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-inpainting) 这样的预训练修复模型中验证此参数：
 
 ```python
 from diffusers import StableDiffusionPipeline
 
-pipeline = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-inpainting", use_safetensors=True)
+pipeline = StableDiffusionPipeline.from_pretrained("stable-diffusion-v1-5/stable-diffusion-inpainting", use_safetensors=True)
 pipeline.unet.config["in_channels"]
 9
 ```
