@@ -52,4 +52,5 @@ deps = {
     "black": "black",
     "phonemizer": "phonemizer",
     "opencv-python": "opencv-python",
+    "timm": "timm",
 }
