@@ -507,7 +507,7 @@ def rename_state_dict(sd, embedding):
 
 
 # encode with stable diffusion vae
-pipe = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16)
+pipe = StableDiffusionPipeline.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5", torch_dtype=torch.float16)
 pipe.vae.cuda()
 
 # construct original decoder with jitted model
@@ -1090,7 +1090,7 @@ def new_constructor(self, **kwargs):
 Encoder.__init__ = new_constructor
 
 
-vae = AutoencoderKL.from_pretrained("runwayml/stable-diffusion-v1-5", subfolder="vae")
+vae = AutoencoderKL.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5", subfolder="vae")
 consistency_vae = ConsistencyDecoderVAE(
     encoder_args=vae.encoder.constructor_arguments,
     decoder_args=unet.config,
@@ -1117,7 +1117,7 @@ print((sample_consistency_orig - sample_consistency_new_3).abs().sum())
 print("running with diffusers pipeline")
 
 pipe = DiffusionPipeline.from_pretrained(
-    "runwayml/stable-diffusion-v1-5", vae=consistency_vae, torch_dtype=torch.float16
+    "stable-diffusion-v1-5/stable-diffusion-v1-5", vae=consistency_vae, torch_dtype=torch.float16
 )
 pipe.to("cuda")
 
