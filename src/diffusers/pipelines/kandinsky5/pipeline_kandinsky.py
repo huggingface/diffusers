@@ -305,7 +305,6 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
             output_hidden_states=True,
         )["hidden_states"][-1][:, self.prompt_template_encode_start_idx:]
 
-        batch_size = len(prompt)
         
         attention_mask = inputs["attention_mask"][:, self.prompt_template_encode_start_idx:]
         cu_seqlens = torch.cumsum(attention_mask.sum(1), dim=0)
