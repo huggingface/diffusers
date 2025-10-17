@@ -101,6 +101,7 @@ if is_torch_available():
     _import_structure["transformers.transformer_temporal"] = ["TransformerTemporalModel"]
     _import_structure["transformers.transformer_wan"] = ["WanTransformer3DModel"]
     _import_structure["transformers.transformer_wan_vace"] = ["WanVACETransformer3DModel"]
+    _import_structure["transformers.transformer_blockwise_controlnet_text_encoder"] = ["QwenImageBlockwiseControlnetTextEncoder"]
     _import_structure["unets.unet_1d"] = ["UNet1DModel"]
     _import_structure["unets.unet_2d"] = ["UNet2DModel"]
     _import_structure["unets.unet_2d_condition"] = ["UNet2DConditionModel"]
@@ -161,6 +162,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             SD3MultiControlNetModel,
             SparseControlNetModel,
             UNetControlNetXSModel,
+            QwenImageBlockwiseMultiControlNetModel
         )
         from .embeddings import ImageProjection
         from .modeling_utils import ModelMixin
@@ -200,6 +202,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             TransformerTemporalModel,
             WanTransformer3DModel,
             WanVACETransformer3DModel,
+            QwenImageBlockTransformer2DModel,
         )
         from .unets import (
             I2VGenXLUNet,
