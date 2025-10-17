@@ -401,7 +401,11 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
             device=device,
             dtype=dtype,
         )
-
+        prompt_embeds_qwen = prompt_embeds_qwen.repeat(1, num_videos_per_prompt, 1)
+        prompt_embeds_qwen = prompt_embeds_qwen.view(batch_size * num_videos_per_prompt, -1)
+        
+        prompt_embeds_clip = prompt_embeds_clip.repeat(1, num_videos_per_prompt, 1)
+        prompt_embeds_clip = prompt_embeds_clip.view(batch_size * num_videos_per_prompt, -1)
 
         return prompt_embeds_qwen, prompt_embeds_clip, prompt_cu_seqlens
 
