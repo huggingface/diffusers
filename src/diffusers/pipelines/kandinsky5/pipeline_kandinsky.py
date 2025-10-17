@@ -757,7 +757,7 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
                     uncond_pred_velocity = self.transformer(
                         hidden_states=latents.to(dtype),
                         encoder_hidden_states=negative_prompt_embeds_qwen.to(dtype),
-                        pooled_projections=negative_prompt_embeds_dict["pooled_embed"].to(dtype),
+                        pooled_projections=negative_prompt_embeds_clip.to(dtype),
                         timestep=timestep.to(dtype),
                         visual_rope_pos=visual_rope_pos,
                         text_rope_pos=negative_text_rope_pos,
