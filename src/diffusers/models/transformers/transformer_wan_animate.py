@@ -18,6 +18,7 @@ from typing import Any, Dict, Optional, Tuple, Union
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.utils.checkpoint import checkpoint
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
@@ -127,7 +128,7 @@ class ResBlock(nn.Module):
         return out
 
 
-class WanAnimateMotionerEncoderApp(nn.Module):
+class WanAnimateMotionEncoderApp(nn.Module):
     def __init__(self, size: int, w_dim: int = 512):
         super().__init__()
 
@@ -155,13 +156,12 @@ class WanAnimateMotionerEncoderApp(nn.Module):
         return res[-1].squeeze(-1).squeeze(-1), res[::-1][2:]
 
 
-# TODO: Be aware the conversion of EqualLinear to Linear
-class WanAnimateMotionerEncoder(nn.Module):
+class WanAnimateMotionEncoder(nn.Module):
     def __init__(self, size: int = 512, dim: int = 512, dim_motion: int = 20):
         super().__init__()
 
         # Appearance network
-        self.net_app = WanAnimateMotionerEncoderApp(size, dim)
+        self.net_app = WanAnimateMotionEncoderApp(size, dim)
 
         # Motion network
         fc = []
@@ -178,7 +178,7 @@ class WanAnimateMotionerEncoder(nn.Module):
         return h_motion
 
 
-class WanAnimateMotionerSynthesis(nn.Module):
+class WanAnimateMotionSynthesis(nn.Module):
     def __init__(self):
         super().__init__()
         self.weight = nn.Parameter(torch.randn(512, 20))
@@ -196,83 +196,64 @@ class WanAnimateMotionerSynthesis(nn.Module):
             return out
 
 
-class WanAnimateMotioner(nn.Module):
+class WanAnimateMotionEmbedder(nn.Module):
     def __init__(self):
         super().__init__()
 
-        self.encoder = WanAnimateMotionerEncoder()
-        self.decoder = WanAnimateMotionerSynthesis()
+        self.encoder = WanAnimateMotionEncoder()
+        self.decoder = WanAnimateMotionSynthesis()
 
     def get_motion(self, img):
-        motion_feat = torch.utils.checkpoint.checkpoint((self.encoder.enc_motion), img, use_reentrant=True)
+        motion_feat = checkpoint((self.encoder.enc_motion), img, use_reentrant=True)
         with torch.cuda.amp.autocast(dtype=torch.float32):
             motion = self.decoder(motion_feat)
         return motion
 
 
-class WanAnimateCausalConv1d(nn.Module):
-    def __init__(
-        self,
-        chan_in: int,
-        chan_out: int,
-        kernel_size: int = 3,
-        stride: int = 1,
-        dilation: int = 1,
-        pad_mode: str = "replicate",
-    ):
+class WanAnimateFaceEmbedder(nn.Module):
+    def __init__(self, in_dim: int, hidden_dim: int, num_heads: int, kernel_size: int = 3, eps: float = 1e-6):
         super().__init__()
+        self.time_causal_padding = (kernel_size - 1, 0)
 
-        self.pad_mode = pad_mode
-        padding = (kernel_size - 1, 0)  # T
-        self.time_causal_padding = padding
-
-        self.conv = nn.Conv1d(chan_in, chan_out, kernel_size, stride=stride, dilation=dilation)
-
-    def forward(self, x):
-        x = F.pad(x, self.time_causal_padding, mode=self.pad_mode)
-        return self.conv(x)
-
-
-class WanAnimateFaceEncoder(nn.Module):
-    def __init__(self, in_dim: int, hidden_dim: int, num_heads: int):
-        super().__init__()
-
-        self.conv1_local = WanAnimateCausalConv1d(in_dim, 1024 * num_heads, kernel_size=3, stride=1)
-        self.norm1 = nn.LayerNorm(hidden_dim // 8, elementwise_affine=False, eps=1e-6)
+        self.conv1_local = nn.Conv1d(in_dim, 1024 * num_heads, kernel_size=kernel_size, stride=1)
+        self.norm1 = nn.LayerNorm(hidden_dim // 8, eps, elementwise_affine=False)
         self.act = nn.SiLU()
-        self.conv2 = WanAnimateCausalConv1d(1024, 1024, kernel_size=3, stride=2)
-        self.conv3 = WanAnimateCausalConv1d(1024, 1024, kernel_size=3, stride=2)
+        self.conv2 = nn.Conv1d(1024, 1024, kernel_size, stride=2)
+        self.conv3 = nn.Conv1d(1024, 1024, kernel_size, stride=2)
 
         self.out_proj = nn.Linear(1024, hidden_dim)
-        self.norm1 = nn.LayerNorm(1024, elementwise_affine=False, eps=1e-6)
-        self.norm2 = nn.LayerNorm(1024, elementwise_affine=False, eps=1e-6)
-        self.norm3 = nn.LayerNorm(1024, elementwise_affine=False, eps=1e-6)
+        self.norm1 = nn.LayerNorm(1024, eps, elementwise_affine=False)
+        self.norm2 = nn.LayerNorm(1024, eps, elementwise_affine=False)
+        self.norm3 = nn.LayerNorm(1024, eps, elementwise_affine=False)
 
         self.padding_tokens = nn.Parameter(torch.zeros(1, 1, 1, hidden_dim))
 
     def forward(self, x):
         x = x.permute(0, 2, 1)
-        b, c, t = x.shape
+        batch_size, channels, num_frames = x.shape
 
+        x = F.pad(x, self.time_causal_padding, mode="replicate")
         x = self.conv1_local(x)
-        x = x.unflatten(1, (-1, c)).flatten(0, 1).permute(0, 2, 1)
+        x = x.unflatten(1, (-1, channels)).flatten(0, 1).permute(0, 2, 1)
 
         x = self.norm1(x)
         x = self.act(x)
         x = x.permute(0, 2, 1)
+        x = F.pad(x, self.time_causal_padding, mode="replicate")
         x = self.conv2(x)
         x = x.permute(0, 2, 1)
         x = self.norm2(x)
         x = self.act(x)
         x = x.permute(0, 2, 1)
+        x = F.pad(x, self.time_causal_padding, mode="replicate")
         x = self.conv3(x)
         x = x.permute(0, 2, 1)
         x = self.norm3(x)
         x = self.act(x)
         x = self.out_proj(x)
-        x = x.unflatten(0, (b, -1)).permute(0, 2, 1, 3)
+        x = x.unflatten(0, (batch_size, -1)).permute(0, 2, 1, 3)
 
-        padding = self.padding_tokens.repeat(b, x.shape[1], 1, 1)
+        padding = self.padding_tokens.repeat(batch_size, x.shape[1], 1, 1)
         x = torch.cat([x, padding], dim=-2)
         x_local = x.clone()
 
@@ -280,23 +261,14 @@ class WanAnimateFaceEncoder(nn.Module):
 
 
 class WanImageEmbedding(torch.nn.Module):
-    def __init__(self, in_features: int, out_features: int, pos_embed_seq_len=None):
+    def __init__(self, in_features: int, out_features: int):
         super().__init__()
 
         self.norm1 = FP32LayerNorm(in_features)
         self.ff = FeedForward(in_features, out_features, mult=1, activation_fn="gelu")
         self.norm2 = FP32LayerNorm(out_features)
-        if pos_embed_seq_len is not None:
-            self.pos_embed = nn.Parameter(torch.zeros(1, pos_embed_seq_len, in_features))
-        else:
-            self.pos_embed = None
 
     def forward(self, encoder_hidden_states_image: torch.Tensor) -> torch.Tensor:
-        if self.pos_embed is not None:
-            batch_size, seq_len, embed_dim = encoder_hidden_states_image.shape
-            encoder_hidden_states_image = encoder_hidden_states_image.view(-1, 2 * seq_len, embed_dim)
-            encoder_hidden_states_image = encoder_hidden_states_image + self.pos_embed
-
         hidden_states = self.norm1(encoder_hidden_states_image)
         hidden_states = self.ff(hidden_states)
         hidden_states = self.norm2(hidden_states)
@@ -311,8 +283,7 @@ class WanTimeTextImageMotionEmbedding(nn.Module):
         time_proj_dim: int,
         text_embed_dim: int,
         motion_encoder_dim: int,
-        image_embed_dim: Optional[int] = None,
-        pos_embed_seq_len: Optional[int] = None,
+        image_embed_dim: int,
     ):
         super().__init__()
 
@@ -321,13 +292,9 @@ class WanTimeTextImageMotionEmbedding(nn.Module):
         self.act_fn = nn.SiLU()
         self.time_proj = nn.Linear(dim, time_proj_dim)
         self.text_embedder = PixArtAlphaTextProjection(text_embed_dim, dim, act_fn="gelu_tanh")
-
-        self.motion_embedder = WanAnimateMotioner()
-        self.face_encoder = WanAnimateFaceEncoder(in_dim=motion_encoder_dim, hidden_dim=dim, num_heads=4)
-
-        self.image_embedder = None
-        if image_embed_dim is not None:
-            self.image_embedder = WanImageEmbedding(image_embed_dim, dim, pos_embed_seq_len=pos_embed_seq_len)
+        self.motion_embedder = WanAnimateMotionEmbedder()
+        self.face_embedder = WanAnimateFaceEmbedder(in_dim=motion_encoder_dim, hidden_dim=dim, num_heads=4)
+        self.image_embedder = WanImageEmbedding(image_embed_dim, dim)
 
     def forward(
         self,
@@ -590,7 +557,6 @@ class WanAnimateTransformer3DModel(
         image_dim: Optional[int] = 1280,
         added_kv_proj_dim: Optional[int] = 5120,
         rope_max_seq_len: int = 1024,
-        pos_embed_seq_len: Optional[int] = 257 * 2,
     ) -> None:
         super().__init__()
 
@@ -609,7 +575,6 @@ class WanAnimateTransformer3DModel(
             time_proj_dim=inner_dim * 6,
             text_embed_dim=text_dim,
             image_embed_dim=image_dim,
-            pos_embed_seq_len=pos_embed_seq_len,
         )
 
         # 3. Transformer blocks
