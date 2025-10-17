@@ -237,7 +237,6 @@ class Kandinsky5RoPE1D(nn.Module):
         pos = torch.arange(max_pos, dtype=freq.dtype)
         self.register_buffer(f"args", torch.outer(pos, freq), persistent=False)
 
-    @torch.autocast(device_type="cuda", enabled=False)
     def forward(self, pos):
         args = self.args[pos]
         cosine = torch.cos(args)
