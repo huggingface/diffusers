@@ -684,13 +684,13 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
                     f"`negative_prompt` must have same length as `prompt`. Got {len(negative_prompt)} vs {len(prompt)}."
                 )
 
-            negative_prompt_embeds_dict, negative_cu_seqlens = self.encode_prompt(
-                prompt=negative_prompt,
-                num_videos_per_prompt=num_videos_per_prompt,
-                max_sequence_length=max_sequence_length,
-                device=device,
-                dtype=dtype,
-            )
+            if negative_prompt_embeds_qwen is None:
+                        negative_prompt_embeds_qwen, negative_prompt_embeds_clip, negative_cu_seqlens = self.encode_prompt(
+                            prompt=negative_prompt,
+                            max_sequence_length=max_sequence_length,
+                            device=device,
+                            dtype=dtype,
+                        )
 
         # 4. Prepare timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
