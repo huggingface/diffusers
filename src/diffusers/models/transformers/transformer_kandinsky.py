@@ -616,7 +616,7 @@ class Kandinsky5Transformer3DModel(
         self,
         hidden_states: torch.Tensor,  # x
         encoder_hidden_states: torch.Tensor,  # text_embed
-        timestep: Union[torch.Tensor, float, int],  # time
+        timestep: torch.Tensor,  # time
         pooled_projections: torch.FloatTensor,  # pooled_text_embed
         visual_rope_pos: Tuple[int, int, int],
         text_rope_pos: torch.LongTensor,
