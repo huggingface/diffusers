@@ -1438,18 +1438,18 @@ class PipelineTesterMixin:
         with tempfile.TemporaryDirectory() as tmpdir:
             pipe.save_pretrained(tmpdir)
             pipe_loaded = self.pipeline_class.from_pretrained(tmpdir, torch_dtype=torch.float16)
-            for component in pipe_loaded.components.values():
+            for name, component in pipe_loaded.components.items():
                 if hasattr(component, "set_default_attn_processor"):
                     component.set_default_attn_processor()
-            pipe_loaded.to(torch_device)
+                if hasattr(component, "dtype"):
+                    self.assertTrue(
+                        component.dtype == torch.float16,
+                        f"`{name}.dtype` switched from `float16` to {component.dtype} after loading.",
+                    )
+                if hasattr(component, "half"):
+                    # Although all components for pipe_loaded should be float16 now, some submodules still use fp32, like in https://github.com/huggingface/transformers/blob/v4.57.1/src/transformers/models/t5/modeling_t5.py#L783, so we need to do the conversion again manally to align with the datatype we use in pipe exactly
+                    component = component.to(torch_device).half()
             pipe_loaded.set_progress_bar_config(disable=None)
-
-        for name, component in pipe_loaded.components.items():
-            if hasattr(component, "dtype"):
-                self.assertTrue(
-                    component.dtype == torch.float16,
-                    f"`{name}.dtype` switched from `float16` to {component.dtype} after loading.",
-                )
 
         inputs = self.get_dummy_inputs(torch_device)
         output_loaded = pipe_loaded(**inputs)[0]
