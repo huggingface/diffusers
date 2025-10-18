@@ -1,4 +1,5 @@
 import argparse
+import math
 import pathlib
 from typing import Any, Dict, Tuple
 
@@ -6,11 +7,13 @@ import torch
 from accelerate import init_empty_weights
 from huggingface_hub import hf_hub_download, snapshot_download
 from safetensors.torch import load_file
-from transformers import AutoProcessor, AutoTokenizer, CLIPVisionModelWithProjection, UMT5EncoderModel
+from transformers import AutoProcessor, AutoTokenizer, CLIPVisionModelWithProjection, UMT5EncoderModel, CLIPVisionModel
 
 from diffusers import (
     AutoencoderKLWan,
     UniPCMultistepScheduler,
+    WanAnimatePipeline,
+    WanAnimateTransformer3DModel,
     WanImageToVideoPipeline,
     WanPipeline,
     WanTransformer3DModel,
@@ -105,8 +108,88 @@ VACE_TRANSFORMER_KEYS_RENAME_DICT = {
     "after_proj": "proj_out",
 }
 
+ANIMATE_TRANSFORMER_KEYS_RENAME_DICT = {
+    "time_embedding.0": "condition_embedder.time_embedder.linear_1",
+    "time_embedding.2": "condition_embedder.time_embedder.linear_2",
+    "text_embedding.0": "condition_embedder.text_embedder.linear_1",
+    "text_embedding.2": "condition_embedder.text_embedder.linear_2",
+    "time_projection.1": "condition_embedder.time_proj",
+    "head.modulation": "scale_shift_table",
+    "head.head": "proj_out",
+    "modulation": "scale_shift_table",
+    "ffn.0": "ffn.net.0.proj",
+    "ffn.2": "ffn.net.2",
+    # Hack to swap the layer names
+    # The original model calls the norms in following order: norm1, norm3, norm2
+    # We convert it to: norm1, norm2, norm3
+    "norm2": "norm__placeholder",
+    "norm3": "norm2",
+    "norm__placeholder": "norm3",
+    "img_emb.proj.0": "condition_embedder.image_embedder.norm1",
+    "img_emb.proj.1": "condition_embedder.image_embedder.ff.net.0.proj",
+    "img_emb.proj.3": "condition_embedder.image_embedder.ff.net.2",
+    "img_emb.proj.4": "condition_embedder.image_embedder.norm2",
+    # Add attention component mappings
+    "self_attn.q": "attn1.to_q",
+    "self_attn.k": "attn1.to_k",
+    "self_attn.v": "attn1.to_v",
+    "self_attn.o": "attn1.to_out.0",
+    "self_attn.norm_q": "attn1.norm_q",
+    "self_attn.norm_k": "attn1.norm_k",
+    "cross_attn.q": "attn2.to_q",
+    "cross_attn.k": "attn2.to_k",
+    "cross_attn.v": "attn2.to_v",
+    "cross_attn.o": "attn2.to_out.0",
+    "cross_attn.norm_q": "attn2.norm_q",
+    "cross_attn.norm_k": "attn2.norm_k",
+    "attn2.to_k_img": "attn2.add_k_proj",
+    "attn2.to_v_img": "attn2.add_v_proj",
+    "attn2.norm_k_img": "attn2.norm_added_k",
+    # Motion encoder mappings
+    "motion_encoder.enc.net_app.convs": "condition_embedder.motion_embedder.convs",
+    "motion_encoder.enc.fc": "condition_embedder.motion_embedder.linears",
+    "motion_encoder.dec.direction.weight": "condition_embedder.motion_embedder.weight",
+    # Face encoder mappings
+    "face_encoder.conv1_local": "condition_embedder.face_embedder.conv1_local",
+    "face_encoder.conv2": "condition_embedder.face_embedder.conv2",
+    "face_encoder.conv3": "condition_embedder.face_embedder.conv3",
+    "face_encoder.out_proj": "condition_embedder.face_embedder.out_proj",
+    "face_encoder.norm1": "condition_embedder.face_embedder.norm1",
+    "face_encoder.norm2": "condition_embedder.face_embedder.norm2",
+    "face_encoder.norm3": "condition_embedder.face_embedder.norm3",
+    "face_encoder.padding_tokens": "condition_embedder.face_embedder.padding_tokens",
+    # Face adapter mappings
+    "face_adapter.fuser_blocks": "face_adapter",
+}
+
+def convert_equal_linear_weight(key: str, state_dict: Dict[str, Any]) -> None:
+    """
+    Convert EqualLinear weights to standard Linear weights by applying the scale factor.
+    EqualLinear uses: F.linear(input, self.weight * self.scale, bias=self.bias * self.lr_mul)
+    where scale = (1 / sqrt(in_dim)) * lr_mul
+    """
+
+def convert_equal_conv2d_weight(key: str, state_dict: Dict[str, Any]) -> None:
+    """
+    Convert EqualConv2d weights to standard Conv2d weights by applying the scale factor.
+    EqualConv2d uses: F.conv2d(input, self.weight * self.scale, bias=self.bias, ...)
+    where scale = 1 / sqrt(in_channel * kernel_size^2)
+    """
+
+def convert_animate_motion_encoder_weights(key: str, state_dict: Dict[str, Any]) -> None:
+    """
+    Convert all motion encoder weights for Animate model.
+    This handles both EqualLinear (in fc/linears) and EqualConv2d (in conv layers).
+
+    In the original model:
+    - All Linear layers in fc use EqualLinear
+    - All Conv2d layers in convs use EqualConv2d (except blur_conv which is initialized separately)
+    - Blur kernels are stored as buffers in Sequential modules
+    """
+
 TRANSFORMER_SPECIAL_KEYS_REMAP = {}
 VACE_TRANSFORMER_SPECIAL_KEYS_REMAP = {}
+ANIMATE_TRANSFORMER_SPECIAL_KEYS_REMAP = {"condition_embedder.motion_embedder": convert_animate_motion_encoder_weights}
 
 
 def update_state_dict_(state_dict: Dict[str, Any], old_key: str, new_key: str) -> Dict[str, Any]:
@@ -364,6 +447,31 @@ def get_transformer_config(model_type: str) -> Tuple[Dict[str, Any], ...]:
         }
         RENAME_DICT = TRANSFORMER_KEYS_RENAME_DICT
         SPECIAL_KEYS_REMAP = TRANSFORMER_SPECIAL_KEYS_REMAP
+    elif model_type == "Wan2.2-Animate-14B":
+        config = {
+            "model_id": "Wan-AI/Wan2.2-Animate-14B",
+            "diffusers_config": {
+                "image_dim": 1280,
+                "added_kv_proj_dim": 5120,
+                "attention_head_dim": 128,
+                "cross_attn_norm": True,
+                "eps": 1e-06,
+                "ffn_dim": 13824,
+                "freq_dim": 256,
+                "in_channels": 36,
+                "motion_encoder_dim": 512,
+                "num_attention_heads": 40,
+                "num_layers": 40,
+                "out_channels": 16,
+                "patch_size": (1, 2, 2),
+                "qk_norm": "rms_norm_across_heads",
+                "text_dim": 4096,
+                "rope_max_seq_len": 1024,
+                "pos_embed_seq_len": 257 * 2,
+            },
+        }
+        RENAME_DICT = ANIMATE_TRANSFORMER_KEYS_RENAME_DICT
+        SPECIAL_KEYS_REMAP = ANIMATE_TRANSFORMER_SPECIAL_KEYS_REMAP
     return config, RENAME_DICT, SPECIAL_KEYS_REMAP
 
 
@@ -380,10 +488,12 @@ def convert_transformer(model_type: str, stage: str = None):
     original_state_dict = load_sharded_safetensors(model_dir)
 
     with init_empty_weights():
-        if "VACE" not in model_type:
-            transformer = WanTransformer3DModel.from_config(diffusers_config)
-        else:
+        if "Animate" in model_type:
+            transformer = WanAnimateTransformer3DModel.from_config(diffusers_config)
+        elif "VACE" in model_type:
             transformer = WanVACETransformer3DModel.from_config(diffusers_config)
+        else:
+            transformer = WanTransformer3DModel.from_config(diffusers_config)
 
     for key in list(original_state_dict.keys()):
         new_key = key[:]
@@ -926,7 +1036,7 @@ DTYPE_MAPPING = {
 if __name__ == "__main__":
     args = get_args()
 
-    if "Wan2.2" in args.model_type and "TI2V" not in args.model_type:
+    if "Wan2.2" in args.model_type and "TI2V" not in args.model_type and "Animate" not in args.model_type:
         transformer = convert_transformer(args.model_type, stage="high_noise_model")
         transformer_2 = convert_transformer(args.model_type, stage="low_noise_model")
     else:
@@ -942,7 +1052,7 @@ if __name__ == "__main__":
     tokenizer = AutoTokenizer.from_pretrained("google/umt5-xxl")
     if "FLF2V" in args.model_type:
         flow_shift = 16.0
-    elif "TI2V" in args.model_type:
+    elif "TI2V" in args.model_type or "Animate" in args.model_type:
         flow_shift = 5.0
     else:
         flow_shift = 3.0
@@ -954,6 +1064,8 @@ if __name__ == "__main__":
     if args.dtype != "none":
         dtype = DTYPE_MAPPING[args.dtype]
         transformer.to(dtype)
+        if transformer_2 is not None:
+            transformer_2.to(dtype)
 
     if "Wan2.2" and "I2V" in args.model_type and "TI2V" not in args.model_type:
         pipe = WanImageToVideoPipeline(
@@ -1015,6 +1127,20 @@ if __name__ == "__main__":
             tokenizer=tokenizer,
             vae=vae,
             scheduler=scheduler,
+        )
+    elif "Animate" in args.model_type:
+        image_encoder = CLIPVisionModel.from_pretrained(
+            "laion/CLIP-ViT-H-14-laion2B-s32B-b79K", torch_dtype=torch.bfloat16
+        )
+        image_processor = AutoProcessor.from_pretrained("laion/CLIP-ViT-H-14-laion2B-s32B-b79K")
+        pipe = WanAnimatePipeline(
+            transformer=transformer,
+            text_encoder=text_encoder,
+            tokenizer=tokenizer,
+            vae=vae,
+            scheduler=scheduler,
+            image_encoder=image_encoder,
+            image_processor=image_processor,
         )
     else:
         pipe = WanPipeline(
