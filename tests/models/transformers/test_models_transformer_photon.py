@@ -28,7 +28,7 @@ enable_full_determinism()
 
 class PhotonTransformerTests(ModelTesterMixin, unittest.TestCase):
     model_class = PhotonTransformer2DModel
-    main_input_name = "image_latent"
+    main_input_name = "hidden_states"
     uses_custom_attn_processor = True
 
     @property
@@ -49,16 +49,14 @@ class PhotonTransformerTests(ModelTesterMixin, unittest.TestCase):
         sequence_length = 16
         embedding_dim = 1792
 
-        image_latent = torch.randn((batch_size, num_latent_channels, height, width)).to(torch_device)
-        cross_attn_conditioning = torch.randn((batch_size, sequence_length, embedding_dim)).to(torch_device)
-        micro_conditioning = torch.randn((batch_size, embedding_dim)).to(torch_device)
+        hidden_states = torch.randn((batch_size, num_latent_channels, height, width)).to(torch_device)
+        encoder_hidden_states = torch.randn((batch_size, sequence_length, embedding_dim)).to(torch_device)
         timestep = torch.tensor([1.0]).to(torch_device).expand(batch_size)
 
         return {
-            "image_latent": image_latent,
+            "hidden_states": hidden_states,
             "timestep": timestep,
-            "cross_attn_conditioning": cross_attn_conditioning,
-            "micro_conditioning": micro_conditioning,
+            "encoder_hidden_states": encoder_hidden_states,
         }
 
     def prepare_init_args_and_inputs_for_common(self):
