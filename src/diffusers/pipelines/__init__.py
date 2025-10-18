@@ -672,6 +672,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             Kandinsky3Img2ImgPipeline,
             Kandinsky3Pipeline,
         )
+        from .kandinsky5 import Kandinsky5T2VPipeline
         from .latent_consistency_models import (
             LatentConsistencyModelImg2ImgPipeline,
             LatentConsistencyModelPipeline,
@@ -788,7 +789,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         )
         from .visualcloze import VisualClozeGenerationPipeline, VisualClozePipeline
         from .wan import WanImageToVideoPipeline, WanPipeline, WanVACEPipeline, WanVideoToVideoPipeline
-        from .kandinsky5 import Kandinsky5T2VPipeline
         from .wuerstchen import (
             WuerstchenCombinedPipeline,
             WuerstchenDecoderPipeline,

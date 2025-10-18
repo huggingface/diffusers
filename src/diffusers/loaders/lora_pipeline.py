@@ -3638,7 +3638,7 @@ class Lumina2LoraLoaderMixin(LoraBaseMixin):
         """
         super().unfuse_lora(components=components, **kwargs)
 
-        
+
 class KandinskyLoraLoaderMixin(LoraBaseMixin):
     r"""
     Load LoRA layers into [`Kandinsky5Transformer3DModel`],
@@ -3662,7 +3662,8 @@ class KandinskyLoraLoaderMixin(LoraBaseMixin):
                 Can be either:
                     - A string, the *model id* of a pretrained model hosted on the Hub.
                     - A path to a *directory* containing the model weights.
-                    - A [torch state dict](https://pytorch.org/tutorials/beginner/saving_loading_models.html#what-is-a-state-dict).
+                    - A [torch state
+                      dict](https://pytorch.org/tutorials/beginner/saving_loading_models.html#what-is-a-state-dict).
 
             cache_dir (`Union[str, os.PathLike]`, *optional*):
                 Path to a directory where a downloaded pretrained model configuration is cached.
@@ -3737,7 +3738,7 @@ class KandinskyLoraLoaderMixin(LoraBaseMixin):
     ):
         """
         Load LoRA weights specified in `pretrained_model_name_or_path_or_dict` into `self.transformer`
-        
+
         Parameters:
             pretrained_model_name_or_path_or_dict (`str` or `os.PathLike` or `dict`):
                 See [`~loaders.KandinskyLoraLoaderMixin.lora_state_dict`].
@@ -3746,7 +3747,8 @@ class KandinskyLoraLoaderMixin(LoraBaseMixin):
             hotswap (`bool`, *optional*):
                 Whether to substitute an existing (LoRA) adapter with the newly loaded adapter in-place.
             low_cpu_mem_usage (`bool`, *optional*):
-                Speed up model loading by only loading the pretrained LoRA weights and not initializing the random weights.
+                Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
+                weights.
             kwargs (`dict`, *optional*):
                 See [`~loaders.KandinskyLoraLoaderMixin.lora_state_dict`].
         """
@@ -3827,7 +3829,6 @@ class KandinskyLoraLoaderMixin(LoraBaseMixin):
             hotswap=hotswap,
         )
 
-
     @classmethod
     def save_lora_weights(
         cls,
@@ -3864,9 +3865,7 @@ class KandinskyLoraLoaderMixin(LoraBaseMixin):
             lora_metadata[cls.transformer_name] = transformer_lora_adapter_metadata
 
         if not lora_layers:
-            raise ValueError(
-                "You must pass at least one of `transformer_lora_layers`"
-            )
+            raise ValueError("You must pass at least one of `transformer_lora_layers`")
 
         cls._save_lora_weights(
             save_directory=save_directory,
@@ -3923,7 +3922,7 @@ class KandinskyLoraLoaderMixin(LoraBaseMixin):
             components (`List[str]`): List of LoRA-injectable components to unfuse LoRA from.
         """
         super().unfuse_lora(components=components, **kwargs)
-        
+
 
 class WanLoraLoaderMixin(LoraBaseMixin):
     r"""

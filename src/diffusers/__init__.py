@@ -220,6 +220,7 @@ else:
             "HunyuanVideoTransformer3DModel",
             "I2VGenXLUNet",
             "Kandinsky3UNet",
+            "Kandinsky5Transformer3DModel",
             "LatteTransformer3DModel",
             "LTXVideoTransformer3DModel",
             "Lumina2Transformer2DModel",
@@ -260,7 +261,6 @@ else:
             "VQModel",
             "WanTransformer3DModel",
             "WanVACETransformer3DModel",
-            "Kandinsky5Transformer3DModel",
             "attention_backend",
         ]
     )
@@ -475,6 +475,7 @@ else:
             "ImageTextPipelineOutput",
             "Kandinsky3Img2ImgPipeline",
             "Kandinsky3Pipeline",
+            "Kandinsky5T2VPipeline",
             "KandinskyCombinedPipeline",
             "KandinskyImg2ImgCombinedPipeline",
             "KandinskyImg2ImgPipeline",
@@ -623,7 +624,6 @@ else:
             "WanPipeline",
             "WanVACEPipeline",
             "WanVideoToVideoPipeline",
-            "Kandinsky5T2VPipeline",
             "WuerstchenCombinedPipeline",
             "WuerstchenDecoderPipeline",
             "WuerstchenPriorPipeline",
@@ -914,6 +914,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             HunyuanVideoTransformer3DModel,
             I2VGenXLUNet,
             Kandinsky3UNet,
+            Kandinsky5Transformer3DModel,
             LatteTransformer3DModel,
             LTXVideoTransformer3DModel,
             Lumina2Transformer2DModel,
@@ -953,7 +954,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             VQModel,
             WanTransformer3DModel,
             WanVACETransformer3DModel,
-            Kandinsky5Transformer3DModel,
             attention_backend,
         )
         from .modular_pipelines import ComponentsManager, ComponentSpec, ModularPipeline, ModularPipelineBlocks
@@ -1139,6 +1139,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             ImageTextPipelineOutput,
             Kandinsky3Img2ImgPipeline,
             Kandinsky3Pipeline,
+            Kandinsky5T2VPipeline,
             KandinskyCombinedPipeline,
             KandinskyImg2ImgCombinedPipeline,
             KandinskyImg2ImgPipeline,
@@ -1286,7 +1287,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             WanPipeline,
             WanVACEPipeline,
             WanVideoToVideoPipeline,
-            Kandinsky5T2VPipeline,
             WuerstchenCombinedPipeline,
             WuerstchenDecoderPipeline,
             WuerstchenPriorPipeline,

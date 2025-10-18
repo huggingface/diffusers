@@ -91,6 +91,7 @@ if is_torch_available():
     _import_structure["transformers.transformer_hidream_image"] = ["HiDreamImageTransformer2DModel"]
     _import_structure["transformers.transformer_hunyuan_video"] = ["HunyuanVideoTransformer3DModel"]
     _import_structure["transformers.transformer_hunyuan_video_framepack"] = ["HunyuanVideoFramepackTransformer3DModel"]
+    _import_structure["transformers.transformer_kandinsky"] = ["Kandinsky5Transformer3DModel"]
     _import_structure["transformers.transformer_ltx"] = ["LTXVideoTransformer3DModel"]
     _import_structure["transformers.transformer_lumina2"] = ["Lumina2Transformer2DModel"]
     _import_structure["transformers.transformer_mochi"] = ["MochiTransformer3DModel"]
@@ -101,7 +102,6 @@ if is_torch_available():
     _import_structure["transformers.transformer_temporal"] = ["TransformerTemporalModel"]
     _import_structure["transformers.transformer_wan"] = ["WanTransformer3DModel"]
     _import_structure["transformers.transformer_wan_vace"] = ["WanVACETransformer3DModel"]
-    _import_structure["transformers.transformer_kandinsky"] = ["Kandinsky5Transformer3DModel"]
     _import_structure["unets.unet_1d"] = ["UNet1DModel"]
     _import_structure["unets.unet_2d"] = ["UNet2DModel"]
     _import_structure["unets.unet_2d_condition"] = ["UNet2DConditionModel"]
@@ -183,6 +183,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             HunyuanDiT2DModel,
             HunyuanVideoFramepackTransformer3DModel,
             HunyuanVideoTransformer3DModel,
+            Kandinsky5Transformer3DModel,
             LatteTransformer3DModel,
             LTXVideoTransformer3DModel,
             Lumina2Transformer2DModel,
@@ -201,7 +202,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             TransformerTemporalModel,
             WanTransformer3DModel,
             WanVACETransformer3DModel,
-            Kandinsky5Transformer3DModel,
         )
         from .unets import (
             I2VGenXLUNet,

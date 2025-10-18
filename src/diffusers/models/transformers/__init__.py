@@ -27,6 +27,7 @@ if is_torch_available():
     from .transformer_hidream_image import HiDreamImageTransformer2DModel
     from .transformer_hunyuan_video import HunyuanVideoTransformer3DModel
     from .transformer_hunyuan_video_framepack import HunyuanVideoFramepackTransformer3DModel
+    from .transformer_kandinsky import Kandinsky5Transformer3DModel
     from .transformer_ltx import LTXVideoTransformer3DModel
     from .transformer_lumina2 import Lumina2Transformer2DModel
     from .transformer_mochi import MochiTransformer3DModel
@@ -37,4 +38,3 @@ if is_torch_available():
     from .transformer_temporal import TransformerTemporalModel
     from .transformer_wan import WanTransformer3DModel
     from .transformer_wan_vace import WanVACETransformer3DModel
-    from .transformer_kandinsky import Kandinsky5Transformer3DModel
