@@ -618,7 +618,6 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
         num_frames: int = 121,
         num_inference_steps: int = 50,
         guidance_scale: float = 5.0,
-        scheduler_scale: float = 5.0,
         num_videos_per_prompt: Optional[int] = 1,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.Tensor] = None,
@@ -656,8 +655,6 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
                 The number of denoising steps.
             guidance_scale (`float`, defaults to `5.0`):
                 Guidance scale as defined in classifier-free guidance.
-            scheduler_scale (`float`, defaults to `10.0`):
-                Scale factor for the custom flow matching scheduler.
             num_videos_per_prompt (`int`, *optional*, defaults to 1):
                 The number of videos to generate per prompt.
             generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
