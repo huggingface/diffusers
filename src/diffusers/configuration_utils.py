@@ -446,6 +446,20 @@ class ConfigMixin:
         except (json.JSONDecodeError, UnicodeDecodeError):
             raise EnvironmentError(f"It looks like the config file at '{config_file}' is not a valid JSON file.")
 
+        # Replace FeatureExtractor to ImageProcessor in transformers.
+        # See https://github.com/huggingface/diffusers/issues/12492.
+        if "feature_extractor" in config_dict:
+            for i in range(len(config_dict["feature_extractor"])):
+                if "FeatureExtractor" not in config_dict["feature_extractor"][i]:
+                    continue
+                try:
+                    module = importlib.import_module("transformers")
+                    getattr(module, config_dict["feature_extractor"][i])
+                except (ImportError, AttributeError):
+                    config_dict["feature_extractor"][i] = config_dict["feature_extractor"][i].replace(
+                        "FeatureExtractor", "ImageProcessor"
+                    )
+
         if not (return_unused_kwargs or return_commit_hash):
             return config_dict
 
