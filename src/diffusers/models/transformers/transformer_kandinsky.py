@@ -518,7 +518,10 @@ class Kandinsky5Transformer3DModel(
     """
     A 3D Diffusion Transformer model for video-like data.
     """
-
+_repeated_blocks = [
+    "Kandinsky5TransformerEncoderBlock",
+    "Kandinsky5TransformerDecoderBlock",
+]
     _supports_gradient_checkpointing = True
 
     @register_to_config
