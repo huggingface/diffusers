@@ -27,7 +27,7 @@ from ..attention_processor import SanaMultiscaleLinearAttention
 from ..modeling_utils import ModelMixin
 from ..normalization import RMSNorm, get_normalization
 from ..transformers.sana_transformer import GLUMBConv
-from .vae import DecoderOutput, EncoderOutput
+from .vae import AutoencoderMixin, DecoderOutput, EncoderOutput
 
 
 class ResBlock(nn.Module):
@@ -378,7 +378,7 @@ class Decoder(nn.Module):
         return hidden_states
 
 
-class AutoencoderDC(ModelMixin, ConfigMixin, FromOriginalModelMixin):
+class AutoencoderDC(ModelMixin, AutoencoderMixin, ConfigMixin, FromOriginalModelMixin):
     r"""
     An Autoencoder model introduced in [DCAE](https://huggingface.co/papers/2410.10733) and used in
     [SANA](https://huggingface.co/papers/2410.10629).
@@ -535,27 +535,6 @@ class AutoencoderDC(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         self.tile_sample_stride_width = tile_sample_stride_width or self.tile_sample_stride_width
         self.tile_latent_min_height = self.tile_sample_min_height // self.spatial_compression_ratio
         self.tile_latent_min_width = self.tile_sample_min_width // self.spatial_compression_ratio
-
-    def disable_tiling(self) -> None:
-        r"""
-        Disable tiled AE decoding. If `enable_tiling` was previously enabled, this method will go back to computing
-        decoding in one step.
-        """
-        self.use_tiling = False
-
-    def enable_slicing(self) -> None:
-        r"""
-        Enable sliced AE decoding. When this option is enabled, the AE will split the input tensor in slices to compute
-        decoding in several steps. This is useful to save some memory and allow larger batch sizes.
-        """
-        self.use_slicing = True
-
-    def disable_slicing(self) -> None:
-        r"""
-        Disable sliced AE decoding. If `enable_slicing` was previously enabled, this method will go back to computing
-        decoding in one step.
-        """
-        self.use_slicing = False
 
     def _encode(self, x: torch.Tensor) -> torch.Tensor:
         batch_size, num_channels, height, width = x.shape
