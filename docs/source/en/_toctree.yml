@@ -49,7 +49,7 @@
   isExpanded: false
   sections:
   - local: using-diffusers/weighted_prompts
-    title: Prompt techniques
+    title: Prompting
   - local: using-diffusers/create_a_server
     title: Create a server
   - local: using-diffusers/batched_inference

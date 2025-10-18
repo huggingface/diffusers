@@ -21,6 +21,7 @@ import operator as op
 import os
 import sys
 from collections import OrderedDict, defaultdict
+from functools import lru_cache as cache
 from itertools import chain
 from types import ModuleType
 from typing import Any, Tuple, Union
@@ -678,6 +679,7 @@ def compare_versions(library_or_version: Union[str, Version], operation: str, re
 
 
 # This function was copied from: https://github.com/huggingface/accelerate/blob/874c4967d94badd24f893064cc3bef45f57cadf7/src/accelerate/utils/versions.py#L338
+@cache
 def is_torch_version(operation: str, version: str):
     """
     Compares the current PyTorch version to a given reference with an operation.
@@ -691,6 +693,7 @@ def is_torch_version(operation: str, version: str):
     return compare_versions(parse(_torch_version), operation, version)
 
 
+@cache
 def is_torch_xla_version(operation: str, version: str):
     """
     Compares the current torch_xla version to a given reference with an operation.
@@ -706,6 +709,7 @@ def is_torch_xla_version(operation: str, version: str):
     return compare_versions(parse(_torch_xla_version), operation, version)
 
 
+@cache
 def is_transformers_version(operation: str, version: str):
     """
     Compares the current Transformers version to a given reference with an operation.
@@ -721,6 +725,7 @@ def is_transformers_version(operation: str, version: str):
     return compare_versions(parse(_transformers_version), operation, version)
 
 
+@cache
 def is_hf_hub_version(operation: str, version: str):
     """
     Compares the current Hugging Face Hub version to a given reference with an operation.
@@ -736,6 +741,7 @@ def is_hf_hub_version(operation: str, version: str):
     return compare_versions(parse(_hf_hub_version), operation, version)
 
 
+@cache
 def is_accelerate_version(operation: str, version: str):
     """
     Compares the current Accelerate version to a given reference with an operation.
@@ -751,6 +757,7 @@ def is_accelerate_version(operation: str, version: str):
     return compare_versions(parse(_accelerate_version), operation, version)
 
 
+@cache
 def is_peft_version(operation: str, version: str):
     """
     Compares the current PEFT version to a given reference with an operation.
@@ -766,6 +773,7 @@ def is_peft_version(operation: str, version: str):
     return compare_versions(parse(_peft_version), operation, version)
 
 
+@cache
 def is_bitsandbytes_version(operation: str, version: str):
     """
     Args:
@@ -780,6 +788,7 @@ def is_bitsandbytes_version(operation: str, version: str):
     return compare_versions(parse(_bitsandbytes_version), operation, version)
 
 
+@cache
 def is_gguf_version(operation: str, version: str):
     """
     Compares the current Accelerate version to a given reference with an operation.
@@ -795,6 +804,7 @@ def is_gguf_version(operation: str, version: str):
     return compare_versions(parse(_gguf_version), operation, version)
 
 
+@cache
 def is_torchao_version(operation: str, version: str):
     """
     Compares the current torchao version to a given reference with an operation.
@@ -810,6 +820,7 @@ def is_torchao_version(operation: str, version: str):
     return compare_versions(parse(_torchao_version), operation, version)
 
 
+@cache
 def is_k_diffusion_version(operation: str, version: str):
     """
     Compares the current k-diffusion version to a given reference with an operation.
@@ -825,6 +836,7 @@ def is_k_diffusion_version(operation: str, version: str):
     return compare_versions(parse(_k_diffusion_version), operation, version)
 
 
+@cache
 def is_optimum_quanto_version(operation: str, version: str):
     """
     Compares the current Accelerate version to a given reference with an operation.
@@ -840,6 +852,7 @@ def is_optimum_quanto_version(operation: str, version: str):
     return compare_versions(parse(_optimum_quanto_version), operation, version)
 
 
+@cache
 def is_nvidia_modelopt_version(operation: str, version: str):
     """
     Compares the current Nvidia ModelOpt version to a given reference with an operation.
@@ -855,6 +868,7 @@ def is_nvidia_modelopt_version(operation: str, version: str):
     return compare_versions(parse(_nvidia_modelopt_version), operation, version)
 
 
+@cache
 def is_xformers_version(operation: str, version: str):
     """
     Compares the current xformers version to a given reference with an operation.
@@ -870,6 +884,7 @@ def is_xformers_version(operation: str, version: str):
     return compare_versions(parse(_xformers_version), operation, version)
 
 
+@cache
 def is_sageattention_version(operation: str, version: str):
     """
     Compares the current sageattention version to a given reference with an operation.
@@ -885,6 +900,7 @@ def is_sageattention_version(operation: str, version: str):
     return compare_versions(parse(_sageattention_version), operation, version)
 
 
+@cache
 def is_flash_attn_version(operation: str, version: str):
     """
     Compares the current flash-attention version to a given reference with an operation.

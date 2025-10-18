@@ -115,7 +115,7 @@ class StableDiffusionXLInpaintLoopBeforeDenoiser(ModularPipelineBlocks):
     def check_inputs(components, block_state):
         num_channels_unet = components.num_channels_unet
         if num_channels_unet == 9:
-            # default case for runwayml/stable-diffusion-inpainting
+            # default case for stable-diffusion-v1-5/stable-diffusion-inpainting
             if block_state.mask is None or block_state.masked_image_latents is None:
                 raise ValueError("mask and masked_image_latents must be provided for inpainting-specific Unet")
             num_channels_latents = block_state.latents.shape[1]

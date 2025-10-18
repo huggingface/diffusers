@@ -838,6 +838,9 @@ def load_sub_model(
         else:
             loading_kwargs["low_cpu_mem_usage"] = False
 
+    if is_transformers_model and is_transformers_version(">=", "4.57.0"):
+        loading_kwargs.pop("offload_state_dict")
+
     if (
         quantization_config is not None
         and isinstance(quantization_config, PipelineQuantizationConfig)
