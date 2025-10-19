@@ -19,14 +19,15 @@ specific language governing permissions and limitations under the License.
 
 Chroma is a text to image generation model based on Flux.
 
-Original model checkpoints for Chroma can be found [here](https://huggingface.co/lodestones/Chroma1-HD).
+Original model checkpoints for Chroma can be found here:
+* High-resolution finetune: [lodestones/Chroma1-HD](https://huggingface.co/lodestones/Chroma1-HD)
+* Base model: [lodestones/Chroma1-Base](https://huggingface.co/lodestones/Chroma1-Base)
+* Original repo with progress checkpoints: [lodestones/Chroma](https://huggingface.co/lodestones/Chroma) (loading this repo with `from_pretrained` will load a Diffusers-compatible version of the `unlocked-v37` checkpoint)
 
 > [!TIP]
 > Chroma can use all the same optimizations as Flux.
 
 ## Inference
-
-The Diffusers version of Chroma is based on the [`unlocked-v37`](https://huggingface.co/lodestones/Chroma1-HD/blob/main/Chroma1-HD.safetensors) version of the original model, which is available in the [Chroma repository](https://huggingface.co/lodestones/Chroma1-HD).
 
 ```python
 import torch
