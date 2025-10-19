@@ -216,13 +216,13 @@ class ChromaPipeline(
     ):
         device = device or self._execution_device
         dtype = dtype or self.text_encoder.dtype
-
+    
         prompt = [prompt] if isinstance(prompt, str) else prompt
         batch_size = len(prompt)
-
+    
         if isinstance(self, TextualInversionLoaderMixin):
             prompt = self.maybe_convert_prompt(prompt, self.tokenizer)
-
+    
         text_inputs = self.tokenizer(
             prompt,
             padding="max_length",
@@ -232,21 +232,25 @@ class ChromaPipeline(
             return_overflowing_tokens=False,
             return_tensors="pt",
         )
+    
         text_input_ids = text_inputs.input_ids
-        attention_mask = text_inputs.attention_mask.clone()
+        tokenizer_mask = text_inputs.attention_mask  # keep the raw tokenizer mask
 
-        # Chroma requires the attention mask to include one padding token
-        seq_lengths = attention_mask.sum(dim=1)
-        mask_indices = torch.arange(attention_mask.size(1)).unsqueeze(0).expand(batch_size, -1)
-        attention_mask = (mask_indices <= seq_lengths.unsqueeze(1)).bool()
+        tokenizer_mask_device = tokenizer_mask.to(device)
 
         prompt_embeds = self.text_encoder(
-            text_input_ids.to(device), output_hidden_states=False, attention_mask=attention_mask.to(device)
+            text_input_ids.to(device),
+            output_hidden_states=False,
+            attention_mask=tokenizer_mask_device,
         )[0]
 
-        dtype = self.text_encoder.dtype
         prompt_embeds = prompt_embeds.to(dtype=dtype, device=device)
-        attention_mask = attention_mask.to(device=device)
+
+        seq_lengths = tokenizer_mask_device.sum(dim=1)
+        mask_indices = torch.arange(tokenizer_mask_device.size(1), device=device).unsqueeze(0).expand(
+            batch_size, -1
+        )
+        attention_mask = (mask_indices <= seq_lengths.unsqueeze(1)).to(dtype=dtype, device=device)
 
         _, seq_len, _ = prompt_embeds.shape
 
@@ -258,6 +262,7 @@ class ChromaPipeline(
         attention_mask = attention_mask.view(batch_size * num_images_per_prompt, seq_len)
 
         return prompt_embeds, attention_mask
+
 
     def encode_prompt(
         self,
