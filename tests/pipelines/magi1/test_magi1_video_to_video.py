@@ -15,10 +15,16 @@
 import unittest
 
 import numpy as np
+import PIL
 import torch
 from transformers import AutoTokenizer, T5EncoderModel
 
-from diffusers import AutoencoderKLMagi1, Magi1Transformer3DModel, Magi1VideoToVideoPipeline, UniPCMultistepScheduler
+from diffusers import (
+    AutoencoderKLMagi1,
+    FlowMatchEulerDiscreteScheduler,
+    Magi1Transformer3DModel,
+    Magi1VideoToVideoPipeline,
+)
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
 )
@@ -62,9 +68,7 @@ class Magi1VideoToVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase)
         )
 
         torch.manual_seed(0)
-        scheduler = UniPCMultistepScheduler(
-            beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear", num_train_timesteps=1000
-        )
+        scheduler = FlowMatchEulerDiscreteScheduler(shift=7.0)
         text_encoder = T5EncoderModel.from_pretrained("hf-internal-testing/tiny-random-t5")
         tokenizer = AutoTokenizer.from_pretrained("hf-internal-testing/tiny-random-t5")
 
@@ -98,9 +102,11 @@ class Magi1VideoToVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase)
             generator = torch.manual_seed(seed)
         else:
             generator = torch.Generator(device=device).manual_seed(seed)
+        # Create a list of PIL images to simulate video input
+        video_frames = [PIL.Image.new("RGB", (16, 16)) for _ in range(9)]
         inputs = {
             "prompt": "dance monkey",
-            "negative_prompt": "negative",  # TODO
+            "negative_prompt": "negative",
             "generator": generator,
             "num_inference_steps": 2,
             "guidance_scale": 6.0,
@@ -109,7 +115,7 @@ class Magi1VideoToVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase)
             "num_frames": 9,
             "max_sequence_length": 16,
             "output_type": "pt",
-            "video": torch.randn((1, 3, 9, 16, 16)),
+            "video": video_frames,
         }
         return inputs
 

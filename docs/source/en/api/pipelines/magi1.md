@@ -29,8 +29,16 @@
 You can find the MAGI-1 checkpoints under the [sand-ai](https://huggingface.co/sand-ai) organization.
 
 The following MAGI models are supported in Diffusers:
+
+**Base Models:**
 - [MAGI-1 24B](https://huggingface.co/sand-ai/MAGI-1)
 - [MAGI-1 4.5B](https://huggingface.co/sand-ai/MAGI-1-4.5B)
+
+**Distilled Models (faster inference):**
+- [MAGI-1 24B Distill](https://huggingface.co/sand-ai/MAGI-1/tree/main/ckpt/magi/24B_distill)
+- [MAGI-1 24B Distill+Quant (FP8)](https://huggingface.co/sand-ai/MAGI-1/tree/main/ckpt/magi/24B_distill_quant)
+- [MAGI-1 4.5B Distill](https://huggingface.co/sand-ai/MAGI-1/tree/main/ckpt/magi/4.5B_distill)
+- [MAGI-1 4.5B Distill+Quant (FP8)](https://huggingface.co/sand-ai/MAGI-1/tree/main/ckpt/magi/4.5B_distill_quant)
 
 > [!TIP]
 > Click on the MAGI-1 models in the right sidebar for more examples of video generation.
@@ -157,106 +165,41 @@ export_to_video(output, "output.mp4", fps=8)
 
 ### Image-to-Video Generation
 
-The example below demonstrates how to use the image-to-video pipeline to generate a video using a text description and a starting frame.
+The example below demonstrates how to use the image-to-video pipeline to generate a video animation from a single image using text prompts for guidance.
 
 <hfoptions id="I2V usage">
 <hfoption id="usage">
 
 ```python
-import numpy as np
 import torch
-import torchvision.transforms.functional as TF
-from diffusers import AutoencoderKLMagi1, Magi1ImageToVideoPipeline
+from diffusers import Magi1ImageToVideoPipeline, AutoencoderKLMagi1
 from diffusers.utils import export_to_video, load_image
-from transformers import CLIPVisionModel
 
-model_id = "sand-ai/MAGI-1"
-image_encoder = CLIPVisionModel.from_pretrained(model_id, subfolder="image_encoder", torch_dtype=torch.float32)
+model_id = "sand-ai/MAGI-1-I2V"
 vae = AutoencoderKLMagi1.from_pretrained(model_id, subfolder="vae", torch_dtype=torch.float32)
-pipe = Magi1ImageToVideoPipeline.from_pretrained(
-    model_id, vae=vae, image_encoder=image_encoder, torch_dtype=torch.bfloat16
-)
+pipe = Magi1ImageToVideoPipeline.from_pretrained(model_id, vae=vae, torch_dtype=torch.bfloat16)
 pipe.to("cuda")
 
-image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/input_image.png")
+# Load input image
+image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/astronaut.jpg")
 
-def aspect_ratio_resize(image, pipe, max_area=720 * 1280):
-    aspect_ratio = image.height / image.width
-    mod_value = pipe.vae_scale_factor_spatial * pipe.transformer.config.patch_size[1]
-    height = round(np.sqrt(max_area * aspect_ratio)) // mod_value * mod_value
-    width = round(np.sqrt(max_area / aspect_ratio)) // mod_value * mod_value
-    image = image.resize((width, height))
-    return image, height, width
-
-image, height, width = aspect_ratio_resize(image, pipe)
-
-prompt = "A beautiful landscape with mountains and a lake. The camera slowly pans from left to right, revealing more of the landscape."
-
-output = pipe(
-    image=image, prompt=prompt, height=height, width=width, guidance_scale=7.5, num_frames=24
-).frames[0]
-export_to_video(output, "output.mp4", fps=8)
-```
-
-</hfoption>
-</hfoptions>
-
-### First-Last-Frame-to-Video Generation
-
-The example below demonstrates how to use the image-to-video pipeline to generate a video using a text description, a starting frame, and an ending frame.
-
-<hfoptions id="FLF2V usage">
-<hfoption id="usage">
-
-```python
-import numpy as np
-import torch
-import torchvision.transforms.functional as TF
-from diffusers import AutoencoderKLMagi1, Magi1ImageToVideoPipeline
-from diffusers.utils import export_to_video, load_image
-from transformers import CLIPVisionModel
-
-model_id = "sand-ai/MAGI-1"
-image_encoder = CLIPVisionModel.from_pretrained(model_id, subfolder="image_encoder", torch_dtype=torch.float32)
-vae = AutoencoderKLMagi1.from_pretrained(model_id, subfolder="vae", torch_dtype=torch.float32)
-pipe = Magi1ImageToVideoPipeline.from_pretrained(
-    model_id, vae=vae, image_encoder=image_encoder, torch_dtype=torch.bfloat16
+prompt = (
+    "An astronaut walking on the moon's surface, with the Earth visible in the background. "
+    "The astronaut moves slowly in a low-gravity environment, kicking up lunar dust with each step."
 )
-pipe.to("cuda")
-
-first_frame = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/first_frame.png")
-last_frame = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/last_frame.png")
-
-def aspect_ratio_resize(image, pipe, max_area=720 * 1280):
-    aspect_ratio = image.height / image.width
-    mod_value = pipe.vae_scale_factor_spatial * pipe.transformer.config.patch_size[1]
-    height = round(np.sqrt(max_area * aspect_ratio)) // mod_value * mod_value
-    width = round(np.sqrt(max_area / aspect_ratio)) // mod_value * mod_value
-    image = image.resize((width, height))
-    return image, height, width
-
-def center_crop_resize(image, height, width):
-    # Calculate resize ratio to match first frame dimensions
-    resize_ratio = max(width / image.width, height / image.height)
-
-    # Resize the image
-    width = round(image.width * resize_ratio)
-    height = round(image.height * resize_ratio)
-    size = [width, height]
-    image = TF.center_crop(image, size)
-
-    return image, height, width
-
-first_frame, height, width = aspect_ratio_resize(first_frame, pipe)
-if last_frame.size != first_frame.size:
-    last_frame, _, _ = center_crop_resize(last_frame, height, width)
-
-prompt = "A car driving down a winding mountain road. The camera follows the car as it navigates the curves, revealing beautiful mountain scenery in the background."
+negative_prompt = "Bright tones, overexposed, static, blurred details, worst quality, low quality"
 
 output = pipe(
-    image=first_frame, last_image=last_frame, prompt=prompt, height=height, width=width, guidance_scale=7.5, num_frames=24
+    image=image,
+    prompt=prompt,
+    negative_prompt=negative_prompt,
+    height=480,
+    width=832,
+    num_frames=81,  # Generate 81 frames (~5 seconds at 16fps)
+    guidance_scale=5.0,
+    num_inference_steps=50,
 ).frames[0]
-export_to_video(output, "output.mp4", fps=8)
+export_to_video(output, "astronaut_animation.mp4", fps=16)
 ```
 
 </hfoption>
@@ -264,41 +207,41 @@ export_to_video(output, "output.mp4", fps=8)
 
 ### Video-to-Video Generation
 
-The example below demonstrates how to use the video-to-video pipeline to generate a video based on an existing video and text prompt.
+The example below demonstrates how to use the video-to-video pipeline to extend or continue an existing video using text prompts.
 
 <hfoptions id="V2V usage">
 <hfoption id="usage">
 
 ```python
 import torch
-import numpy as np
-from diffusers import AutoencoderKLMagi1, Magi1VideoToVideoPipeline
+from diffusers import Magi1VideoToVideoPipeline, AutoencoderKLMagi1
 from diffusers.utils import export_to_video, load_video
-from transformers import T5EncoderModel
 
-model_id = "sand-ai/MAGI-1"
-text_encoder = T5EncoderModel.from_pretrained(model_id, subfolder="text_encoder", torch_dtype=torch.bfloat16)
+model_id = "sand-ai/MAGI-1-V2V"
 vae = AutoencoderKLMagi1.from_pretrained(model_id, subfolder="vae", torch_dtype=torch.float32)
-pipe = Magi1VideoToVideoPipeline.from_pretrained(
-    model_id, vae=vae, text_encoder=text_encoder, torch_dtype=torch.bfloat16
-)
+pipe = Magi1VideoToVideoPipeline.from_pretrained(model_id, vae=vae, torch_dtype=torch.bfloat16)
 pipe.to("cuda")
 
-# Load input video
-video_path = "input_video.mp4"
-video = load_video(video_path)
+# Load prefix video (e.g., first 24 frames of a video)
+video = load_video("path/to/input_video.mp4", num_frames=24)
 
-prompt = "Convert this video to an anime style with vibrant colors and exaggerated features"
-negative_prompt = "Poor quality, blurry, distorted, unrealistic lighting, bad composition"
+prompt = (
+    "Continue this video with smooth camera motion and consistent style. "
+    "The scene evolves naturally with coherent motion and lighting."
+)
+negative_prompt = "Bright tones, overexposed, static, blurred details, worst quality, low quality, jumpy motion"
 
 output = pipe(
+    video=video,
     prompt=prompt,
     negative_prompt=negative_prompt,
-    video=video,
-    strength=0.7,  # Controls how much to preserve from original video
-    guidance_scale=7.5,
+    height=480,
+    width=832,
+    num_frames=81,  # Total frames including prefix (24 prefix + 57 generated)
+    guidance_scale=5.0,
+    num_inference_steps=50,
 ).frames[0]
-export_to_video(output, "output.mp4", fps=8)
+export_to_video(output, "video_continuation.mp4", fps=16)
 ```
 
 </hfoption>
@@ -306,4 +249,9 @@ export_to_video(output, "output.mp4", fps=8)
 
 ## Notes
 
-- MAGI-1 supports LoRAs with [`~loaders.MagiLoraLoaderMixin.load_lora_weights`].
+- MAGI-1 uses autoregressive chunked generation with `chunk_width=6` and `window_size=4`, enabling efficient long video generation.
+- The model supports special tokens for quality control (HQ_TOKEN), style (THREE_D_MODEL_TOKEN, TWO_D_ANIME_TOKEN), and motion guidance (STATIC_FIRST_FRAMES_TOKEN, DYNAMIC_FIRST_FRAMES_TOKEN).
+- For I2V, the input image is encoded as a clean prefix chunk to condition the video generation.
+- For V2V, input video frames (typically 24 frames or ~1.5 seconds) are encoded as clean prefix chunks, and the model generates a continuation.
+- MAGI-1 supports LoRAs with [`~loaders.Magi1LoraLoaderMixin.load_lora_weights`].
+- Distillation mode can be enabled for faster inference with `enable_distillation=True` (requires distilled model checkpoint).

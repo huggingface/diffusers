@@ -12,15 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# MAGI-1 I2V Pipeline with Autoregressive Chunked Generation
+# MAGI-1 V2V Pipeline with Autoregressive Chunked Generation
 #
 # ✅ IMPLEMENTED:
-# - Image-to-Video generation using prefix video conditioning
+# - Video-to-Video generation using prefix video conditioning
 # - Autoregressive chunked generation (always enabled, matching original MAGI-1)
 # - Window-based scheduling: chunk_width=6, window_size=4
 # - Progressive denoising across overlapping temporal windows
 # - Proper CFG with separate forward passes (diffusers style)
-# - Input image encoding to VAE latent as clean prefix chunk
+# - Input video frames encoding to VAE latent as clean prefix chunks
 #
 # ⚠️ CURRENT LIMITATION:
 # - No KV caching: attention is recomputed for previous chunks
@@ -53,7 +53,6 @@ import torch
 from transformers import AutoTokenizer, UMT5EncoderModel
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
-from ...image_processor import PipelineImageInput
 from ...loaders import Magi1LoraLoaderMixin
 from ...models import AutoencoderKLMagi1, Magi1Transformer3DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
@@ -259,7 +258,7 @@ def prepend_special_tokens(
     return prompt_embeds
 
 
-def prepare_i2v_embeddings(
+def prepare_v2v_embeddings(
     prompt_embeds: torch.Tensor,
     negative_prompt_embeds: Optional[torch.Tensor],
     num_chunks: int,
@@ -267,9 +266,9 @@ def prepare_i2v_embeddings(
     max_sequence_length: int = 800,
 ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
     """
-    Prepare per-chunk text embeddings for I2V generation.
+    Prepare per-chunk text embeddings for V2V generation.
 
-    In I2V, clean prefix chunks (from the input image) use null embeddings,
+    In V2V, clean prefix chunks (from the input video) use null embeddings,
     while chunks to be denoised use the actual text embeddings.
 
     Args:
@@ -325,30 +324,29 @@ EXAMPLE_DOC_STRING = """
     Examples:
         ```python
         >>> import torch
-        >>> from diffusers import Magi1ImageToVideoPipeline, AutoencoderKLMagi1
-        >>> from diffusers.utils import export_to_video, load_image
+        >>> from diffusers import Magi1VideoToVideoPipeline, AutoencoderKLMagi1
+        >>> from diffusers.utils import export_to_video, load_video
 
-        >>> model_id = "SandAI/Magi1-I2V-14B-480P-Diffusers"
+        >>> model_id = "SandAI/Magi1-V2V-14B-480P-Diffusers"
         >>> vae = AutoencoderKLMagi1.from_pretrained(model_id, subfolder="vae", torch_dtype=torch.float32)
-        >>> pipe = Magi1ImageToVideoPipeline.from_pretrained(model_id, vae=vae, torch_dtype=torch.bfloat16)
+        >>> pipe = Magi1VideoToVideoPipeline.from_pretrained(model_id, vae=vae, torch_dtype=torch.bfloat16)
         >>> pipe.to("cuda")
 
-        >>> image = load_image(
-        ...     "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/astronaut.jpg"
-        ... )
+        >>> # Load prefix video (e.g., 24 frames)
+        >>> video = load_video("path/to/input_video.mp4", num_frames=24)
         >>> prompt = (
-        ...     "An astronaut walking on the moon's surface, with the Earth visible in the background. "
-        ...     "The astronaut moves slowly in a low-gravity environment."
+        ...     "Continue this video with smooth camera motion and consistent style. "
+        ...     "The scene evolves naturally with coherent motion."
         ... )
         >>> negative_prompt = "Bright tones, overexposed, static, blurred details, worst quality, low quality"
 
         >>> output = pipe(
-        ...     image=image,
+        ...     video=video,
         ...     prompt=prompt,
         ...     negative_prompt=negative_prompt,
-        ...     height=720,
-        ...     width=1280,
-        ...     num_frames=81,
+        ...     height=480,
+        ...     width=832,
+        ...     num_frames=81,  # Total frames including prefix
         ...     guidance_scale=5.0,
         ...     num_inference_steps=50,
         ... ).frames[0]
@@ -357,16 +355,16 @@ EXAMPLE_DOC_STRING = """
 """
 
 
-class Magi1ImageToVideoPipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
+class Magi1VideoToVideoPipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
     r"""
-    Pipeline for image-to-video generation using Magi1.
+    Pipeline for video-to-video generation using Magi1.
 
     MAGI-1 is a DiT-based video generation model that supports autoregressive chunked generation for long videos. This
-    I2V pipeline takes an input image and generates a video animation starting from that image.
+    V2V pipeline takes an input video and generates a continuation or extension of that video.
 
     **Note**: This implementation uses autoregressive chunked generation (chunk_width=6, window_size=4) as in the
-    original MAGI-1 paper. The input image is encoded to a latent representation and used as a clean prefix chunk to
-    condition the generation. Text prompts provide additional semantic guidance for the animation.
+    original MAGI-1 paper. The input video frames are encoded to latent representations and used as clean prefix chunks
+    to condition the generation. Text prompts provide additional semantic guidance for the video continuation.
 
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods
     implemented for all pipelines (downloading, saving, running on a particular device, etc.).
@@ -551,19 +549,19 @@ class Magi1ImageToVideoPipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
         self,
         prompt,
         negative_prompt,
-        image,
+        video,
         height,
         width,
         prompt_embeds=None,
         negative_prompt_embeds=None,
         callback_on_step_end_tensor_inputs=None,
     ):
-        if image is None:
+        if video is None:
             raise ValueError(
-                "Provide `image` for image-to-video generation. Cannot leave `image` undefined for I2V pipeline."
+                "Provide `video` for video-to-video generation. Cannot leave `video` undefined for V2V pipeline."
             )
-        if image is not None and not isinstance(image, torch.Tensor) and not isinstance(image, PIL.Image.Image):
-            raise ValueError(f"`image` has to be of type `torch.Tensor` or `PIL.Image.Image` but is {type(image)}")
+        if video is not None and not isinstance(video, list):
+            raise ValueError(f"`video` has to be of type `list` (list of PIL Images or tensors) but is {type(video)}")
 
         if height % 16 != 0 or width % 16 != 0:
             raise ValueError(f"`height` and `width` have to be divisible by 16 but are {height} and {width}.")
@@ -598,7 +596,7 @@ class Magi1ImageToVideoPipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
 
     def prepare_latents(
         self,
-        image: Optional[PipelineImageInput],
+        video: Optional[List[PIL.Image.Image]],
         batch_size: int,
         num_channels_latents: int = 16,
         height: int = 480,
@@ -610,15 +608,15 @@ class Magi1ImageToVideoPipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
         latents: Optional[torch.Tensor] = None,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
         """
-        Prepare latents for I2V generation, including encoding the input image as prefix_video.
+        Prepare latents for V2V generation, including encoding the input video frames as prefix_video.
 
         Args:
-            image: Input image for I2V generation
+            video: Input video frames for V2V generation (list of PIL Images)
             batch_size: Batch size
             num_channels_latents: Number of latent channels
             height: Video height
             width: Video width
-            num_frames: Total number of frames to generate
+            num_frames: Total number of frames to generate (including prefix)
             dtype: Data type
             device: Device
             generator: Random generator
@@ -627,7 +625,7 @@ class Magi1ImageToVideoPipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
         Returns:
             Tuple of (latents, prefix_video) where:
             - latents: Random noise tensor for generation [batch, channels, num_latent_frames, H, W]
-            - prefix_video: Encoded image as clean latent [batch, channels, 1, H, W] (or None if no image)
+            - prefix_video: Encoded video frames as clean latent [batch, channels, prefix_frames, H, W]
         """
         num_latent_frames = (num_frames - 1) // self.vae_scale_factor_temporal + 1
         latent_height = height // self.vae_scale_factor_spatial
@@ -646,26 +644,33 @@ class Magi1ImageToVideoPipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
         else:
             latents = latents.to(device=device, dtype=dtype)
 
-        # Encode input image to latent as prefix_video
+        # Encode input video frames to latent as prefix_video
         prefix_video = None
-        if image is not None:
-            # Preprocess image to target size
-            image = self.video_processor.preprocess(image, height=height, width=width).to(device, dtype=torch.float32)
+        if video is not None and len(video) > 0:
+            # Preprocess video frames to target size
+            # video_processor.preprocess_video expects list of PIL Images
+            video_tensor = self.video_processor.preprocess_video(video, height=height, width=width).to(
+                device, dtype=torch.float32
+            )
 
-            # Add temporal dimension: [batch, channels, height, width] -> [batch, channels, 1, height, width]
-            if image.ndim == 4:
-                image = image.unsqueeze(2)
+            # video_tensor shape: [batch, channels, num_frames, height, width]
+            # For single batch, expand if needed
+            if video_tensor.ndim == 4:
+                # [channels, num_frames, height, width] -> [1, channels, num_frames, height, width]
+                video_tensor = video_tensor.unsqueeze(0)
 
             # Encode to latent space using VAE
             # VAE expects [batch, channels, frames, height, width]
             if isinstance(generator, list):
                 prefix_video = [
-                    retrieve_latents(self.vae.encode(image), sample_mode="sample", generator=g) for g in generator
+                    retrieve_latents(self.vae.encode(vid.unsqueeze(0)), sample_mode="sample", generator=g)
+                    for g, vid in zip(generator, video_tensor)
                 ]
                 prefix_video = torch.cat(prefix_video)
             else:
-                prefix_video = retrieve_latents(self.vae.encode(image), sample_mode="sample", generator=generator)
-                prefix_video = prefix_video.repeat(batch_size, 1, 1, 1, 1)
+                prefix_video = retrieve_latents(self.vae.encode(video_tensor), sample_mode="sample", generator=generator)
+                if prefix_video.shape[0] < batch_size:
+                    prefix_video = prefix_video.repeat(batch_size, 1, 1, 1, 1)
 
             # Normalize latent using VAE's latent statistics
             latents_mean = (
@@ -709,7 +714,7 @@ class Magi1ImageToVideoPipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        image: PipelineImageInput,
+        video: List[PIL.Image.Image],
         prompt: Union[str, List[str]] = None,
         negative_prompt: Union[str, List[str]] = None,
         height: int = 480,
@@ -739,18 +744,18 @@ class Magi1ImageToVideoPipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
         distill_nearly_clean_chunk_threshold: float = 0.3,
     ):
         r"""
-        The call function to the pipeline for image-to-video generation.
+        The call function to the pipeline for video-to-video generation.
 
         **Note**: This implementation uses autoregressive chunked generation (chunk_width=6, window_size=4) as in the
-        original MAGI-1 paper. The input image is encoded to a VAE latent and used as a clean prefix chunk to condition
-        the video generation. The implementation currently works without KV caching (attention is recomputed for
-        previous chunks), which is less efficient than the original but still functional. KV caching optimization will
-        be added when diffusers implements generic caching support for transformers.
+        original MAGI-1 paper. The input video frames are encoded to VAE latents and used as clean prefix chunks to
+        condition the video generation. The implementation currently works without KV caching (attention is recomputed
+        for previous chunks), which is less efficient than the original but still functional. KV caching optimization
+        will be added when diffusers implements generic caching support for transformers.
 
         Args:
-            image (`PipelineImageInput`):
-                The input image to condition the video generation on. Must be an image, a list of images, or a
-                `torch.Tensor`.
+            video (`List[PIL.Image.Image]`):
+                The input video frames to condition the video generation on. Must be a list of PIL Images representing
+                the prefix video (e.g., first 24 frames of a video).
             prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts to guide the video generation. If not defined, pass `prompt_embeds` instead.
             negative_prompt (`str` or `List[str]`, *optional*):
@@ -846,7 +851,7 @@ class Magi1ImageToVideoPipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
         self.check_inputs(
             prompt,
             negative_prompt,
-            image,
+            video,
             height,
             width,
             prompt_embeds,
@@ -927,7 +932,7 @@ class Magi1ImageToVideoPipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
         # 5. Prepare latent variables
         num_channels_latents = self.transformer.config.in_channels
         latents, prefix_video = self.prepare_latents(
-            image,
+            video,
             batch_size * num_videos_per_prompt,
             num_channels_latents,
             height,
@@ -939,9 +944,9 @@ class Magi1ImageToVideoPipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
             latents,
         )
 
-        # 6. Denoising loop (autoregressive chunked generation with I2V prefix conditioning)
-        # MAGI-1 I2V uses autoregressive generation with chunk_width=6 and window_size=4
-        # The input image is encoded as a clean prefix chunk and used to condition the generation
+        # 6. Denoising loop (autoregressive chunked generation with V2V prefix conditioning)
+        # MAGI-1 V2V uses autoregressive generation with chunk_width=6 and window_size=4
+        # The input video frames are encoded as clean prefix chunks and used to condition the generation
         # Note: num_warmup_steps is calculated for compatibility but not used in progress bar logic
         # because autoregressive generation has a different iteration structure (stages × steps)
         # For FlowMatchEulerDiscreteScheduler (order=1), this doesn't affect the results
@@ -955,10 +960,10 @@ class Magi1ImageToVideoPipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
         num_latent_frames = latents.shape[2]
         num_chunks = (num_latent_frames + chunk_width - 1) // chunk_width
 
-        # Calculate chunk_offset from prefix_video (for I2V, this is the clean image chunk)
+        # Calculate chunk_offset from prefix_video (for V2V, these are the clean video frame chunks)
         chunk_offset = 0
         if prefix_video is not None:
-            # prefix_video has shape [batch, channels, 1, height, width] for I2V
+            # prefix_video has shape [batch, channels, num_prefix_frames, height, width] for V2V
             # Calculate how many chunks are covered by the prefix
             prefix_latent_frames = prefix_video.shape[2]
             chunk_offset = prefix_latent_frames // chunk_width
@@ -974,9 +979,9 @@ class Magi1ImageToVideoPipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
         clip_start, clip_end, t_start, t_end = generate_chunk_sequences(num_chunks, window_size, chunk_offset)
         num_stages = len(clip_start)
 
-        # Prepare per-chunk text embeddings for I2V
-        # Clean chunks (from input image) use null embeddings, denoise chunks use text embeddings
-        prompt_embeds_per_chunk, negative_prompt_embeds_per_chunk = prepare_i2v_embeddings(
+        # Prepare per-chunk text embeddings for V2V
+        # Clean chunks (from input video) use null embeddings, denoise chunks use text embeddings
+        prompt_embeds_per_chunk, negative_prompt_embeds_per_chunk = prepare_v2v_embeddings(
             prompt_embeds=prompt_embeds,
             negative_prompt_embeds=negative_prompt_embeds,
             num_chunks=num_chunks,
