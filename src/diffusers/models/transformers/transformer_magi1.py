@@ -114,6 +114,8 @@ class Magi1AttnProcessor:
         key = attn.norm_k(key)
         key = key.transpose(0, 1)
 
+        # Apply RoPE only for self-attention (when both query and key should use RoPE)
+        # Cross-attention doesn't use RoPE as the keys come from text embeddings
         if rotary_emb is not None:
 
             def apply_rotary_emb(
@@ -164,13 +166,13 @@ class Magi1AttnProcessor:
             backend=self._attention_backend,
             parallel_config=self._parallel_config,
         )
-        # Convert [b, nh, sq, hd] -> [sq, b, (hn hd)]
+        # Convert [b, nh, sq, hd] -> [sq, b, (nh hd)]
         hidden_states = hidden_states.permute(2, 0, 1, 3)
         hidden_states = hidden_states.flatten(2, 3)
         hidden_states = hidden_states.type_as(query)
 
-        hidden_states = attn.to_out[0](hidden_states)
-        hidden_states = attn.to_out[1](hidden_states)
+        # Note: Output projection is handled in Magi1TransformerBlock
+        # to match original architecture where outputs are concatenated and rearranged before projection
         return hidden_states
 
 
@@ -203,13 +205,8 @@ class Magi1Attention(torch.nn.Module, AttentionModuleMixin):
         self.to_q = torch.nn.Linear(dim, self.inner_dim, bias=False)
         self.to_k = torch.nn.Linear(dim, self.kv_inner_dim, bias=False)
         self.to_v = torch.nn.Linear(dim, self.kv_inner_dim, bias=False)
-        # TODO: Verify here: 2*to_out =? linear_proj of magi1
-        self.to_out = torch.nn.ModuleList(
-            [
-                torch.nn.Linear(2 * self.inner_dim, dim, bias=False),
-                torch.nn.Dropout(dropout),
-            ]
-        )
+        # Note: Output projection is handled in Magi1TransformerBlock to match original architecture
+        # where [self_attn, cross_attn] outputs are concatenated, rearranged, then projected together
         self.norm_q = FP32LayerNorm(dim_head, eps)
         self.norm_k = FP32LayerNorm(dim_head, eps)
 
@@ -482,6 +479,10 @@ class Magi1TransformerBlock(nn.Module):
             processor=Magi1AttnProcessor(),
         )
 
+        # Combined output projection for concatenated [self_attn, cross_attn] outputs
+        # Matches original architecture: concat -> rearrange -> project
+        self.attn_proj = nn.Linear(2 * dim, dim, bias=False)
+
         self.ada_modulate_layer = nn.Sequential(
             nn.SiLU(),
             nn.Linear(
@@ -519,9 +520,28 @@ class Magi1TransformerBlock(nn.Module):
         self_attn_output = self.attn1(mixed_qqkv, None, None, rotary_emb)
 
         # 2. Cross-attention
-        cross_attn_output = self.attn2(mixed_qqkv, encoder_hidden_states, None, None)
+        # Note: y_encoder_attention_flat is the flattened text embeddings for cross-attention
+        cross_attn_output = self.attn2(mixed_qqkv, y_encoder_attention_flat, None, None)
 
+        # 3. Concatenate attention outputs
+        # Shape: [sq, b, num_heads * head_dim + num_heads * head_dim] = [sq, b, 2 * dim]
         hidden_states = torch.concat([self_attn_output, cross_attn_output], dim=2)
+
+        # 4. Rearrange to interleave heads from self and cross attention
+        # This matches the original: rearrange(attn_out, "sq b (n hn hd) -> sq b (hn n hd)", n=2, hn=num_heads)
+        # Interleaving pattern: [self_h0, cross_h0, self_h1, cross_h1, ..., self_hn, cross_hn]
+        seq_len, batch_size, _ = hidden_states.shape
+        num_heads = self.attn1.heads
+        head_dim = self_attn_output.shape[2] // num_heads
+        # Reshape to [sq, b, 2, num_heads, head_dim]
+        hidden_states = hidden_states.reshape(seq_len, batch_size, 2, num_heads, head_dim)
+        # Permute to [sq, b, num_heads, 2, head_dim] to interleave
+        hidden_states = hidden_states.permute(0, 1, 3, 2, 4)
+        # Flatten back to [sq, b, num_heads * 2 * head_dim]
+        hidden_states = hidden_states.reshape(seq_len, batch_size, -1)
+
+        # 5. Apply combined projection
+        hidden_states = self.attn_proj(hidden_states)
 
         gate_output = self.ada_modulate_layer(temb)
         # Softcap with 1.0
