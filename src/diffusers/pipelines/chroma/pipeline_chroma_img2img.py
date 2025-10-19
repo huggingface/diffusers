@@ -25,7 +25,6 @@ from ...models import AutoencoderKL, ChromaTransformer2DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import (
     USE_PEFT_BACKEND,
-    deprecate,
     is_torch_xla_available,
     logging,
     replace_example_docstring,
@@ -247,20 +246,23 @@ class ChromaImg2ImgPipeline(
             return_tensors="pt",
         )
         text_input_ids = text_inputs.input_ids
-        attention_mask = text_inputs.attention_mask.clone()
+        tokenizer_mask = text_inputs.attention_mask
 
-        # Chroma requires the attention mask to include one padding token
-        seq_lengths = attention_mask.sum(dim=1)
-        mask_indices = torch.arange(attention_mask.size(1)).unsqueeze(0).expand(batch_size, -1)
-        attention_mask = (mask_indices <= seq_lengths.unsqueeze(1)).long()
+        tokenizer_mask_device = tokenizer_mask.to(device)
 
         prompt_embeds = self.text_encoder(
-            text_input_ids.to(device), output_hidden_states=False, attention_mask=attention_mask.to(device)
+            text_input_ids.to(device),
+            output_hidden_states=False,
+            attention_mask=tokenizer_mask_device,
         )[0]
 
-        dtype = self.text_encoder.dtype
         prompt_embeds = prompt_embeds.to(dtype=dtype, device=device)
-        attention_mask = attention_mask.to(dtype=dtype, device=device)
+
+        seq_lengths = tokenizer_mask_device.sum(dim=1)
+        mask_indices = torch.arange(tokenizer_mask_device.size(1), device=device).unsqueeze(0).expand(
+            batch_size, -1
+        )
+        attention_mask = (mask_indices <= seq_lengths.unsqueeze(1)).to(dtype=dtype, device=device)
 
         _, seq_len, _ = prompt_embeds.shape
 
@@ -543,12 +545,6 @@ class ChromaImg2ImgPipeline(
         Enable sliced VAE decoding. When this option is enabled, the VAE will split the input tensor in slices to
         compute decoding in several steps. This is useful to save some memory and allow larger batch sizes.
         """
-        depr_message = f"Calling `enable_vae_slicing()` on a `{self.__class__.__name__}` is deprecated and this method will be removed in a future version. Please use `pipe.vae.enable_slicing()`."
-        deprecate(
-            "enable_vae_slicing",
-            "0.40.0",
-            depr_message,
-        )
         self.vae.enable_slicing()
 
     def disable_vae_slicing(self):
@@ -556,12 +552,6 @@ class ChromaImg2ImgPipeline(
         Disable sliced VAE decoding. If `enable_vae_slicing` was previously enabled, this method will go back to
         computing decoding in one step.
         """
-        depr_message = f"Calling `disable_vae_slicing()` on a `{self.__class__.__name__}` is deprecated and this method will be removed in a future version. Please use `pipe.vae.disable_slicing()`."
-        deprecate(
-            "disable_vae_slicing",
-            "0.40.0",
-            depr_message,
-        )
         self.vae.disable_slicing()
 
     def enable_vae_tiling(self):
@@ -570,12 +560,6 @@ class ChromaImg2ImgPipeline(
         compute decoding and encoding in several steps. This is useful for saving a large amount of memory and to allow
         processing larger images.
         """
-        depr_message = f"Calling `enable_vae_tiling()` on a `{self.__class__.__name__}` is deprecated and this method will be removed in a future version. Please use `pipe.vae.enable_tiling()`."
-        deprecate(
-            "enable_vae_tiling",
-            "0.40.0",
-            depr_message,
-        )
         self.vae.enable_tiling()
 
     def disable_vae_tiling(self):
@@ -583,12 +567,6 @@ class ChromaImg2ImgPipeline(
         Disable tiled VAE decoding. If `enable_vae_tiling` was previously enabled, this method will go back to
         computing decoding in one step.
         """
-        depr_message = f"Calling `disable_vae_tiling()` on a `{self.__class__.__name__}` is deprecated and this method will be removed in a future version. Please use `pipe.vae.disable_tiling()`."
-        deprecate(
-            "disable_vae_tiling",
-            "0.40.0",
-            depr_message,
-        )
         self.vae.disable_tiling()
 
     # Copied from diffusers.pipelines.stable_diffusion_3.pipeline_stable_diffusion_3_img2img.StableDiffusion3Img2ImgPipeline.get_timesteps
@@ -749,12 +727,12 @@ class ChromaImg2ImgPipeline(
                 Custom sigmas to use for the denoising process with schedulers which support a `sigmas` argument in
                 their `set_timesteps` method. If not defined, the default behavior when `num_inference_steps` is passed
                 will be used.
-            guidance_scale (`float`, *optional*, defaults to 3.5):
-                Guidance scale as defined in [Classifier-Free Diffusion
-                Guidance](https://huggingface.co/papers/2207.12598). `guidance_scale` is defined as `w` of equation 2.
-                of [Imagen Paper](https://huggingface.co/papers/2205.11487). Guidance scale is enabled by setting
-                `guidance_scale > 1`. Higher guidance scale encourages to generate images that are closely linked to
-                the text `prompt`, usually at the expense of lower image quality.
+            guidance_scale (`float`, *optional*, defaults to 5.0):
+                Embedded guiddance scale is enabled by setting `guidance_scale` > 1. Higher `guidance_scale` encourages
+                a model to generate images more aligned with `prompt` at the expense of lower image quality.
+
+                Guidance-distilled models approximates true classifer-free guidance for `guidance_scale` > 1. Refer to
+                the [paper](https://huggingface.co/papers/2210.03142) to learn more.
             strength (`float, *optional*, defaults to 0.9):
                 Conceptually, indicates how much to transform the reference image. Must be between 0 and 1. image will
                 be used as a starting point, adding more noise to it the larger the strength. The number of denoising
@@ -769,7 +747,7 @@ class ChromaImg2ImgPipeline(
             latents (`torch.Tensor`, *optional*):
                 Pre-generated noisy latents, sampled from a Gaussian distribution, to be used as inputs for image
                 generation. Can be used to tweak the same generation with different prompts. If not provided, a latents
-                tensor will be generated by sampling using the supplied random `generator`.
+                tensor will ge generated by sampling using the supplied random `generator`.
             prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
                 provided, text embeddings will be generated from `prompt` input argument.
