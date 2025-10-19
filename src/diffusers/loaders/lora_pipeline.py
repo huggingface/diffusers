@@ -4134,7 +4134,11 @@ class Magi1LoraLoaderMixin(LoraBaseMixin):
                 Adapter names to be used for fusing. If nothing is passed, all active adapters will be fused.
         """
         super().fuse_lora(
-            components=components, lora_scale=lora_scale, safe_fusing=safe_fusing, adapter_names=adapter_names, **kwargs
+            components=components,
+            lora_scale=lora_scale,
+            safe_fusing=safe_fusing,
+            adapter_names=adapter_names,
+            **kwargs,
         )
 
     def unfuse_lora(self, components: List[str] = ["transformer"], **kwargs):

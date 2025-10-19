@@ -90,6 +90,7 @@ def prompt_clean(text):
     text = whitespace_clean(basic_clean(text))
     return text
 
+
 def generate_chunk_sequences(chunk_num: int, window_size: int, chunk_offset: int = 0):
     """
     Generate chunk scheduling sequences for autoregressive video generation.
@@ -100,18 +101,23 @@ def generate_chunk_sequences(chunk_num: int, window_size: int, chunk_offset: int
         chunk_offset: Number of clean prefix chunks (for I2V/V2V)
 
     Returns:
+        ```
         clip_start: Start index of chunks to process
         clip_end: End index of chunks to process
         t_start: Start index in time dimension
         t_end: End index in time dimension
+        ```
 
-    Example: chunk_num=8, window_size=4, chunk_offset=0
+    Examples:
+        ```
+        chunk_num=8, window_size=4, chunk_offset=0
         Stage 0: Process chunks [0:1], denoise chunk 0
         Stage 1: Process chunks [0:2], denoise chunk 1
         Stage 2: Process chunks [0:3], denoise chunk 2
         Stage 3: Process chunks [0:4], denoise chunk 3
         Stage 4: Process chunks [1:5], denoise chunk 4
         ...
+        ```
     """
     start_index = chunk_offset
     end_index = chunk_num + window_size - 1
@@ -143,6 +149,7 @@ def load_special_tokens(special_tokens_path: Optional[str] = None) -> Optional[D
 
     try:
         import os
+
         import numpy as np
 
         if not os.path.exists(special_tokens_path):
@@ -168,7 +175,7 @@ def load_special_tokens(special_tokens_path: Optional[str] = None) -> Optional[D
 
         # Duration tokens (8 total, representing 1-8 chunks remaining)
         for i in range(8):
-            tokens[f"DURATION_TOKEN_{i+1}"] = torch.tensor(other_tokens[i+7:i+8].astype(np.float16))
+            tokens[f"DURATION_TOKEN_{i + 1}"] = torch.tensor(other_tokens[i + 7 : i + 8].astype(np.float16))
 
         logger.info(f"Loaded {len(tokens)} special tokens from {special_tokens_path}")
         return tokens
@@ -273,8 +280,8 @@ class Magi1Pipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
     **Note**: This implementation uses autoregressive chunked generation (chunk_width=6, window_size=4) as in the
     original MAGI-1 paper, with support for special conditioning tokens for quality, style, and motion control.
 
-    This model inherits from [`DiffusionPipeline`]. Check the superclass documentation
-    for the generic methods implemented for all pipelines (downloading, saving, running on a particular device, etc.).
+    This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods
+    implemented for all pipelines (downloading, saving, running on a particular device, etc.).
 
     Args:
         tokenizer ([`T5Tokenizer`]):
@@ -313,9 +320,7 @@ class Magi1Pipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
         )
 
         self.vae_scale_factor_temporal = (
-            self.vae.config.temporal_compression_ratio
-            if hasattr(self.vae.config, "temporal_compression_ratio")
-            else 4
+            self.vae.config.temporal_compression_ratio if hasattr(self.vae.config, "temporal_compression_ratio") else 4
         )
         self.vae_scale_factor_spatial = (
             self.vae.config.spatial_compression_ratio if hasattr(self.vae.config, "spatial_compression_ratio") else 8
@@ -650,24 +655,26 @@ class Magi1Pipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
                 will be passed as `callback_kwargs` argument. You will only be able to include variables listed in the
                 `._callback_tensor_inputs` attribute of your pipeline class.
             max_sequence_length (`int`, defaults to `800`):
-                The maximum sequence length for the text encoder. Sequences longer than this will be truncated.
-                MAGI-1 uses a max length of 800 tokens.
+                The maximum sequence length for the text encoder. Sequences longer than this will be truncated. MAGI-1
+                uses a max length of 800 tokens.
             use_hq_token (`bool`, *optional*, defaults to `False`):
                 Whether to prepend the high-quality control token to the text embeddings. This token conditions the
                 model to generate higher quality outputs. Requires special tokens to be loaded via
                 `load_special_tokens_from_file`.
             use_3d_style (`bool`, *optional*, defaults to `False`):
-                Whether to prepend the 3D model style token to the text embeddings. This token conditions the model
-                to generate outputs with 3D modeling aesthetics. Requires special tokens to be loaded.
+                Whether to prepend the 3D model style token to the text embeddings. This token conditions the model to
+                generate outputs with 3D modeling aesthetics. Requires special tokens to be loaded.
             use_2d_anime_style (`bool`, *optional*, defaults to `False`):
-                Whether to prepend the 2D anime style token to the text embeddings. This token conditions the model
-                to generate outputs with 2D anime aesthetics. Requires special tokens to be loaded.
+                Whether to prepend the 2D anime style token to the text embeddings. This token conditions the model to
+                generate outputs with 2D anime aesthetics. Requires special tokens to be loaded.
             use_static_first_frames (`bool`, *optional*, defaults to `False`):
                 Whether to prepend the static first frames token to the text embeddings. This token conditions the
-                model to start the video with minimal motion in the first few frames. Requires special tokens to be loaded.
+                model to start the video with minimal motion in the first few frames. Requires special tokens to be
+                loaded.
             use_dynamic_first_frames (`bool`, *optional*, defaults to `False`):
                 Whether to prepend the dynamic first frames token to the text embeddings. This token conditions the
-                model to start the video with significant motion in the first few frames. Requires special tokens to be loaded.
+                model to start the video with significant motion in the first few frames. Requires special tokens to be
+                loaded.
             enable_distillation (`bool`, *optional*, defaults to `False`):
                 Whether to enable distillation mode. In distillation mode, the model uses modified timestep embeddings
                 to support distilled (faster) inference. This requires a distilled model checkpoint.
@@ -736,8 +743,9 @@ class Magi1Pipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
         )
 
         # 3.5. Prepend special tokens if requested
-        if self.special_tokens is not None and any([use_hq_token, use_3d_style, use_2d_anime_style,
-                                                     use_static_first_frames, use_dynamic_first_frames]):
+        if self.special_tokens is not None and any(
+            [use_hq_token, use_3d_style, use_2d_anime_style, use_static_first_frames, use_dynamic_first_frames]
+        ):
             prompt_embeds = prepend_special_tokens(
                 prompt_embeds=prompt_embeds,
                 special_tokens=self.special_tokens,
@@ -854,7 +862,9 @@ class Magi1Pipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
 
                         if "BORDERNESS_TOKEN" in self.special_tokens:
                             borderness_token = self.special_tokens["BORDERNESS_TOKEN"]
-                            borderness_token = borderness_token.to(device=prompt_embeds.device, dtype=prompt_embeds.dtype)
+                            borderness_token = borderness_token.to(
+                                device=prompt_embeds.device, dtype=prompt_embeds.dtype
+                            )
                             borderness_token = borderness_token.unsqueeze(0).expand(batch_size, -1, -1)
                             token_embeds = torch.cat([borderness_token, token_embeds], dim=1)
 
@@ -869,13 +879,17 @@ class Magi1Pipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
                             neg_token_embeds = negative_prompt_embeds.clone()
                             if f"DURATION_TOKEN_{duration_idx}" in self.special_tokens:
                                 duration_token = self.special_tokens[f"DURATION_TOKEN_{duration_idx}"]
-                                duration_token = duration_token.to(device=negative_prompt_embeds.device, dtype=negative_prompt_embeds.dtype)
+                                duration_token = duration_token.to(
+                                    device=negative_prompt_embeds.device, dtype=negative_prompt_embeds.dtype
+                                )
                                 duration_token = duration_token.unsqueeze(0).expand(batch_size, -1, -1)
                                 neg_token_embeds = torch.cat([duration_token, neg_token_embeds], dim=1)
 
                             if "BORDERNESS_TOKEN" in self.special_tokens:
                                 borderness_token = self.special_tokens["BORDERNESS_TOKEN"]
-                                borderness_token = borderness_token.to(device=negative_prompt_embeds.device, dtype=negative_prompt_embeds.dtype)
+                                borderness_token = borderness_token.to(
+                                    device=negative_prompt_embeds.device, dtype=negative_prompt_embeds.dtype
+                                )
                                 borderness_token = borderness_token.unsqueeze(0).expand(batch_size, -1, -1)
                                 neg_token_embeds = torch.cat([borderness_token, neg_token_embeds], dim=1)
 
@@ -958,7 +972,9 @@ class Magi1Pipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
                         chunk_prompt_embeds = chunk_prompt_embeds.flatten(0, 1)
 
                         if negative_prompt_embeds is not None:
-                            chunk_negative_prompt_embeds = negative_prompt_embeds.unsqueeze(1).repeat(1, num_chunks_in_window, 1, 1)
+                            chunk_negative_prompt_embeds = negative_prompt_embeds.unsqueeze(1).repeat(
+                                1, num_chunks_in_window, 1, 1
+                            )
                             chunk_negative_prompt_embeds = chunk_negative_prompt_embeds.flatten(0, 1)
                         else:
                             chunk_negative_prompt_embeds = None
@@ -967,9 +983,12 @@ class Magi1Pipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
                     # Shape: [batch_size * num_chunks_in_window, 1, 1, seq_len]
                     # All ones because we don't mask any tokens (text encoder handles padding)
                     encoder_attention_mask = torch.ones(
-                        batch_size * num_chunks_in_window, 1, 1, chunk_prompt_embeds.shape[1],
+                        batch_size * num_chunks_in_window,
+                        1,
+                        1,
+                        chunk_prompt_embeds.shape[1],
                         dtype=chunk_prompt_embeds.dtype,
-                        device=chunk_prompt_embeds.device
+                        device=chunk_prompt_embeds.device,
                     )
 
                     # Generate KV range for autoregressive attention

@@ -229,17 +229,13 @@ class Magi1Attention(torch.nn.Module, AttentionModuleMixin):
             out_features, in_features = concatenated_weights.shape
             with torch.device("meta"):
                 self.to_qkv = nn.Linear(in_features, out_features, bias=False)
-            self.to_qkv.load_state_dict(
-                {"weight": concatenated_weights}, strict=True, assign=True
-            )
+            self.to_qkv.load_state_dict({"weight": concatenated_weights}, strict=True, assign=True)
         else:
             concatenated_weights = torch.cat([self.to_k.weight.data, self.to_v.weight.data])
             out_features, in_features = concatenated_weights.shape
             with torch.device("meta"):
                 self.to_kv = nn.Linear(in_features, out_features, bias=False)
-            self.to_kv.load_state_dict(
-                {"weight": concatenated_weights}, strict=True, assign=True
-            )
+            self.to_kv.load_state_dict({"weight": concatenated_weights}, strict=True, assign=True)
 
         if self.added_kv_proj_dim is not None:
             concatenated_weights = torch.cat([self.add_k_proj.weight.data, self.add_v_proj.weight.data])
@@ -605,8 +601,8 @@ class Magi1Transformer3DModel(
         eps (`float`, defaults to `1e-6`):
             Epsilon value for normalization layers.
         gated_linear_unit (`bool`, defaults to `False`):
-            Whether to use gated linear units (SwiGLU activation) in the feed-forward network.
-            If True, uses SwiGLU activation; if False, uses GELU activation.
+            Whether to use gated linear units (SwiGLU activation) in the feed-forward network. If True, uses SwiGLU
+            activation; if False, uses GELU activation.
     """
 
     _supports_gradient_checkpointing = True
@@ -716,16 +712,16 @@ class Magi1Transformer3DModel(
             attention_kwargs (`dict`, *optional*):
                 Additional keyword arguments for attention processors (e.g., LoRA scale).
             denoising_range_num (`int`, *optional*):
-                Number of denoising ranges for autoregressive video generation. Each range represents
-                a chunk of video frames being denoised in parallel.
+                Number of denoising ranges for autoregressive video generation. Each range represents a chunk of video
+                frames being denoised in parallel.
             range_num (`int`, *optional*):
                 Total number of ranges in the video generation process.
             slice_point (`int`, *optional*, defaults to 0):
-                Index indicating how many clean (already generated) frames precede the current
-                denoising chunks. Used for autoregressive context.
+                Index indicating how many clean (already generated) frames precede the current denoising chunks. Used
+                for autoregressive context.
             kv_range (`Tuple[int, int]`, *optional*):
-                Key-value attention ranges for each denoising chunk, defining which frames each
-                chunk can attend to. Required for MAGI-1's autoregressive attention pattern.
+                Key-value attention ranges for each denoising chunk, defining which frames each chunk can attend to.
+                Required for MAGI-1's autoregressive attention pattern.
             num_steps (`int`, *optional*):
                 Number of diffusion sampling steps. Used for distillation timestep adjustments.
             distill_interval (`int`, *optional*):
@@ -739,14 +735,13 @@ class Magi1Transformer3DModel(
 
         Returns:
             `Transformer2DModelOutput` or `tuple`:
-                If `return_dict` is True, returns a `Transformer2DModelOutput` containing the sample.
-                Otherwise, returns a tuple with the sample as the first element.
+                If `return_dict` is True, returns a `Transformer2DModelOutput` containing the sample. Otherwise,
+                returns a tuple with the sample as the first element.
 
         Note:
-            MAGI-1 uses an autoregressive video generation approach where video frames are generated
-            in chunks. The `denoising_range_num`, `kv_range`, and related parameters control this
-            autoregressive pattern, allowing each chunk to attend to previously generated (clean)
-            frames while maintaining causal constraints.
+            MAGI-1 uses an autoregressive video generation approach where video frames are generated in chunks. The
+            `denoising_range_num`, `kv_range`, and related parameters control this autoregressive pattern, allowing
+            each chunk to attend to previously generated (clean) frames while maintaining causal constraints.
         """
         if attention_kwargs is not None:
             attention_kwargs = attention_kwargs.copy()
