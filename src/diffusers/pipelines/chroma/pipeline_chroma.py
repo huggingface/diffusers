@@ -232,9 +232,8 @@ class ChromaPipeline(
             return_overflowing_tokens=False,
             return_tensors="pt",
         )
-
         text_input_ids = text_inputs.input_ids
-        tokenizer_mask = text_inputs.attention_mask  # keep the raw tokenizer mask
+        tokenizer_mask = text_inputs.attention_mask
 
         tokenizer_mask_device = tokenizer_mask.to(device)
 
@@ -247,9 +246,7 @@ class ChromaPipeline(
         prompt_embeds = prompt_embeds.to(dtype=dtype, device=device)
 
         seq_lengths = tokenizer_mask_device.sum(dim=1)
-        mask_indices = torch.arange(tokenizer_mask_device.size(1), device=device).unsqueeze(0).expand(
-            batch_size, -1
-        )
+        mask_indices = torch.arange(tokenizer_mask_device.size(1), device=device).unsqueeze(0).expand(batch_size, -1)
         attention_mask = (mask_indices <= seq_lengths.unsqueeze(1)).to(dtype=dtype, device=device)
 
         _, seq_len, _ = prompt_embeds.shape
