@@ -226,21 +226,19 @@ class Magi1Attention(torch.nn.Module, AttentionModuleMixin):
 
         if self.cross_attention_dim_head is None:
             concatenated_weights = torch.cat([self.to_q.weight.data, self.to_k.weight.data, self.to_v.weight.data])
-            concatenated_bias = torch.cat([self.to_q.bias.data, self.to_k.bias.data, self.to_v.bias.data])
             out_features, in_features = concatenated_weights.shape
             with torch.device("meta"):
-                self.to_qkv = nn.Linear(in_features, out_features, bias=True)
+                self.to_qkv = nn.Linear(in_features, out_features, bias=False)
             self.to_qkv.load_state_dict(
-                {"weight": concatenated_weights, "bias": concatenated_bias}, strict=True, assign=True
+                {"weight": concatenated_weights}, strict=True, assign=True
             )
         else:
             concatenated_weights = torch.cat([self.to_k.weight.data, self.to_v.weight.data])
-            concatenated_bias = torch.cat([self.to_k.bias.data, self.to_v.bias.data])
             out_features, in_features = concatenated_weights.shape
             with torch.device("meta"):
-                self.to_kv = nn.Linear(in_features, out_features, bias=True)
+                self.to_kv = nn.Linear(in_features, out_features, bias=False)
             self.to_kv.load_state_dict(
-                {"weight": concatenated_weights, "bias": concatenated_bias}, strict=True, assign=True
+                {"weight": concatenated_weights}, strict=True, assign=True
             )
 
         if self.added_kv_proj_dim is not None:
@@ -444,6 +442,8 @@ class Magi1TransformerBlock(nn.Module):
         num_heads (`int`): The number of attention heads.
         num_kv_heads (`int`): The number of key-value attention heads.
         eps (`float`): The epsilon value for layer normalization.
+        gated_linear_unit (`bool`, defaults to `False`):
+            Whether to use gated linear units (SwiGLU) in the feed-forward network.
     """
 
     def __init__(
@@ -453,6 +453,7 @@ class Magi1TransformerBlock(nn.Module):
         num_heads: int,
         num_kv_heads: int,
         eps: float = 1e-6,
+        gated_linear_unit: bool = False,
     ):
         super().__init__()
 
@@ -494,7 +495,9 @@ class Magi1TransformerBlock(nn.Module):
         self.norm3 = FP32LayerNorm(dim, eps)
 
         # 3. Feed-forward
-        self.ffn = FeedForward(dim, inner_dim=ffn_dim, activation_fn="gelu", bias=False)
+        # Use SwiGLU activation for gated linear units, GELU otherwise
+        activation_fn = "swiglu" if gated_linear_unit else "gelu"
+        self.ffn = FeedForward(dim, inner_dim=ffn_dim, activation_fn=activation_fn, bias=False)
 
         self.norm4 = FP32LayerNorm(dim, eps)
         with torch.no_grad():
@@ -527,17 +530,19 @@ class Magi1TransformerBlock(nn.Module):
         # Shape: [sq, b, num_heads * head_dim + num_heads * head_dim] = [sq, b, 2 * dim]
         hidden_states = torch.concat([self_attn_output, cross_attn_output], dim=2)
 
-        # 4. Rearrange to interleave heads from self and cross attention
-        # This matches the original: rearrange(attn_out, "sq b (n hn hd) -> sq b (hn n hd)", n=2, hn=num_heads)
-        # Interleaving pattern: [self_h0, cross_h0, self_h1, cross_h1, ..., self_hn, cross_hn]
+        # 4. Rearrange to interleave query groups from self and cross attention
+        # This matches the original: rearrange(attn_out, "sq b (n hn hd) -> sq b (hn n hd)", n=2, hn=num_query_groups)
+        # The interleaving is done at the query group level (not per-head level)
+        # For 48 heads with 8 query groups: each group has 6 heads = 768 dims
+        # Interleaving pattern: [self_g0, cross_g0, self_g1, cross_g1, ..., self_g7, cross_g7]
         seq_len, batch_size, _ = hidden_states.shape
-        num_heads = self.attn1.heads
-        head_dim = self_attn_output.shape[2] // num_heads
-        # Reshape to [sq, b, 2, num_heads, head_dim]
-        hidden_states = hidden_states.reshape(seq_len, batch_size, 2, num_heads, head_dim)
-        # Permute to [sq, b, num_heads, 2, head_dim] to interleave
+        num_query_groups = self.attn1.kv_heads if self.attn1.kv_heads is not None else self.attn1.heads
+        group_dim = self_attn_output.shape[2] // num_query_groups
+        # Reshape to [sq, b, 2, num_query_groups, group_dim]
+        hidden_states = hidden_states.reshape(seq_len, batch_size, 2, num_query_groups, group_dim)
+        # Permute to [sq, b, num_query_groups, 2, group_dim] to interleave at group level
         hidden_states = hidden_states.permute(0, 1, 3, 2, 4)
-        # Flatten back to [sq, b, num_heads * 2 * head_dim]
+        # Flatten back to [sq, b, num_query_groups * 2 * group_dim]
         hidden_states = hidden_states.reshape(seq_len, batch_size, -1)
 
         # 5. Apply combined projection
@@ -599,6 +604,9 @@ class Magi1Transformer3DModel(
             The number of transformer layers to use.
         eps (`float`, defaults to `1e-6`):
             Epsilon value for normalization layers.
+        gated_linear_unit (`bool`, defaults to `False`):
+            Whether to use gated linear units (SwiGLU activation) in the feed-forward network.
+            If True, uses SwiGLU activation; if False, uses GELU activation.
     """
 
     _supports_gradient_checkpointing = True
@@ -633,6 +641,7 @@ class Magi1Transformer3DModel(
         x_rescale_factor: int = 1,
         half_channel_vae: bool = False,
         enable_distillation: bool = False,
+        gated_linear_unit: bool = False,
     ) -> None:
         super().__init__()
 
@@ -660,6 +669,7 @@ class Magi1Transformer3DModel(
                     num_attention_heads,
                     num_kv_heads,
                     eps,
+                    gated_linear_unit,
                 )
                 for _ in range(num_layers)
             ]
@@ -689,6 +699,55 @@ class Magi1Transformer3DModel(
         fwd_extra_1st_chunk: Optional[bool] = False,
         distill_nearly_clean_chunk: Optional[bool] = False,
     ) -> Union[torch.Tensor, Dict[str, torch.Tensor]]:
+        """
+        Forward pass of the MAGI-1 transformer.
+
+        Args:
+            hidden_states (`torch.Tensor`):
+                Input tensor of shape `(batch_size, num_channels, num_frames, height, width)`.
+            timestep (`torch.LongTensor`):
+                Timesteps for diffusion process. Shape: `(batch_size, denoising_range_num)`.
+            encoder_hidden_states (`torch.Tensor`):
+                Text embeddings from the text encoder for cross-attention conditioning.
+            encoder_attention_mask (`torch.Tensor`, *optional*):
+                Attention mask for text embeddings to handle variable-length sequences.
+            return_dict (`bool`, *optional*, defaults to `True`):
+                Whether to return a dictionary or a tuple.
+            attention_kwargs (`dict`, *optional*):
+                Additional keyword arguments for attention processors (e.g., LoRA scale).
+            denoising_range_num (`int`, *optional*):
+                Number of denoising ranges for autoregressive video generation. Each range represents
+                a chunk of video frames being denoised in parallel.
+            range_num (`int`, *optional*):
+                Total number of ranges in the video generation process.
+            slice_point (`int`, *optional*, defaults to 0):
+                Index indicating how many clean (already generated) frames precede the current
+                denoising chunks. Used for autoregressive context.
+            kv_range (`Tuple[int, int]`, *optional*):
+                Key-value attention ranges for each denoising chunk, defining which frames each
+                chunk can attend to. Required for MAGI-1's autoregressive attention pattern.
+            num_steps (`int`, *optional*):
+                Number of diffusion sampling steps. Used for distillation timestep adjustments.
+            distill_interval (`int`, *optional*):
+                Interval for distillation when using distilled models. Used with `num_steps`.
+            extract_prefix_video_feature (`bool`, *optional*, defaults to `False`):
+                Whether to extract features from prefix (clean) video frames.
+            fwd_extra_1st_chunk (`bool`, *optional*, defaults to `False`):
+                Whether to forward an extra first chunk in the current iteration.
+            distill_nearly_clean_chunk (`bool`, *optional*, defaults to `False`):
+                Whether to apply distillation to nearly clean chunks during generation.
+
+        Returns:
+            `Transformer2DModelOutput` or `tuple`:
+                If `return_dict` is True, returns a `Transformer2DModelOutput` containing the sample.
+                Otherwise, returns a tuple with the sample as the first element.
+
+        Note:
+            MAGI-1 uses an autoregressive video generation approach where video frames are generated
+            in chunks. The `denoising_range_num`, `kv_range`, and related parameters control this
+            autoregressive pattern, allowing each chunk to attend to previously generated (clean)
+            frames while maintaining causal constraints.
+        """
         if attention_kwargs is not None:
             attention_kwargs = attention_kwargs.copy()
             lora_scale = attention_kwargs.pop("scale", 1.0)
