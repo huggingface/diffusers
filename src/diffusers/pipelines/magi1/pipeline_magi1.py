@@ -319,12 +319,8 @@ class Magi1Pipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
             scheduler=scheduler,
         )
 
-        self.vae_scale_factor_temporal = (
-            self.vae.config.temporal_compression_ratio if hasattr(self.vae.config, "temporal_compression_ratio") else 4
-        )
-        self.vae_scale_factor_spatial = (
-            self.vae.config.spatial_compression_ratio if hasattr(self.vae.config, "spatial_compression_ratio") else 8
-        )
+        self.vae_scale_factor_temporal = self.vae.config.temporal_compression_ratio if getattr(self, "vae", None) else 4
+        self.vae_scale_factor_spatial = self.vae.config.spatial_compression_ratio if getattr(self, "vae", None) else 8
         self.video_processor = VideoProcessor(vae_scale_factor=self.vae_scale_factor_spatial)
 
         # Special tokens for conditioning (optional)
@@ -591,7 +587,6 @@ class Magi1Pipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
         use_dynamic_first_frames: bool = False,
         enable_distillation: bool = False,
         distill_nearly_clean_chunk_threshold: float = 0.3,
-        clean_t: float = 1.0,
     ):
         r"""
         The call function to the pipeline for generation.
@@ -681,9 +676,6 @@ class Magi1Pipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
             distill_nearly_clean_chunk_threshold (`float`, *optional*, defaults to `0.3`):
                 Threshold for identifying nearly-clean chunks in distillation mode. Chunks with timestep > threshold
                 are considered nearly clean and processed differently. Only used when `enable_distillation=True`.
-            clean_t (`float`, *optional*, defaults to `1.0`):
-                Timestep value to use for already-clean chunks (e.g., prefix frames in I2V/V2V). Setting to 1.0
-                indicates these chunks are already denoised and should not be modified during generation.
 
         Examples:
 
@@ -805,13 +797,6 @@ class Magi1Pipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
 
         num_latent_frames = latents.shape[2]
         num_chunks = (num_latent_frames + chunk_width - 1) // chunk_width
-
-        # Note about clean-t scheduling:
-        # The clean_t parameter is primarily used for I2V/V2V pipelines where prefix frames
-        # are already denoised. In those cases, timesteps for clean chunks should be set to clean_t=1.0
-        # to indicate they don't need denoising. For pure T2V (this pipeline), all frames start
-        # from noise so clean_t is not actively used. It's included as a parameter for consistency
-        # with I2V/V2V variants.
 
         # Calculate chunk scheduling: which chunks to process at each stage
         clip_start, clip_end, t_start, t_end = generate_chunk_sequences(num_chunks, window_size, chunk_offset=0)
