@@ -210,7 +210,7 @@ def prepend_special_tokens(
     dtype = prompt_embeds.dtype
     batch_size, seq_len, hidden_dim = prompt_embeds.shape
 
-    # Collect tokens to prepend
+    # Collect tokens to prepend (in order: motion, quality, style)
     tokens_to_add = []
     if use_static_first_frames and "STATIC_FIRST_FRAMES_TOKEN" in special_tokens:
         tokens_to_add.append(special_tokens["STATIC_FIRST_FRAMES_TOKEN"])
@@ -739,7 +739,7 @@ class Magi1Pipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
         if self.special_tokens is not None and any([use_hq_token, use_3d_style, use_2d_anime_style,
                                                      use_static_first_frames, use_dynamic_first_frames]):
             prompt_embeds = prepend_special_tokens(
-                embeddings=prompt_embeds,
+                prompt_embeds=prompt_embeds,
                 special_tokens=self.special_tokens,
                 use_hq_token=use_hq_token,
                 use_3d_style=use_3d_style,
@@ -750,7 +750,7 @@ class Magi1Pipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
             )
             if negative_prompt_embeds is not None:
                 negative_prompt_embeds = prepend_special_tokens(
-                    embeddings=negative_prompt_embeds,
+                    prompt_embeds=negative_prompt_embeds,
                     special_tokens=self.special_tokens,
                     use_hq_token=use_hq_token,
                     use_3d_style=use_3d_style,
@@ -827,19 +827,18 @@ class Magi1Pipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
                 latent_start = chunk_start_idx * chunk_width
                 latent_end = min(chunk_end_idx * chunk_width, num_latent_frames)
 
+                # Number of chunks in current window
+                num_chunks_in_window = chunk_end_idx - chunk_start_idx
+
                 # Prepare per-chunk conditioning with duration/borderness tokens
                 # Duration tokens indicate how many chunks remain in the video
                 # Borderness tokens condition on chunk boundaries
-                chunk_prompt_embeds = prompt_embeds
-                chunk_negative_prompt_embeds = negative_prompt_embeds
+                chunk_prompt_embeds_list = []
+                chunk_negative_prompt_embeds_list = []
 
                 if self.special_tokens is not None:
                     # Prepare per-chunk embeddings with duration tokens
                     # Each chunk gets a different duration token based on chunks remaining
-                    num_chunks_in_window = chunk_end_idx - chunk_start_idx
-                    chunk_embeds_list = []
-                    chunk_neg_embeds_list = []
-
                     for i, chunk_idx in enumerate(range(chunk_start_idx, chunk_end_idx)):
                         chunks_remaining = num_chunks - chunk_idx - 1
                         # Duration token ranges from 1-8 chunks
@@ -863,7 +862,7 @@ class Magi1Pipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
                         if token_embeds.shape[1] > max_sequence_length:
                             token_embeds = token_embeds[:, :max_sequence_length, :]
 
-                        chunk_embeds_list.append(token_embeds)
+                        chunk_prompt_embeds_list.append(token_embeds)
 
                         # Same for negative prompts
                         if self.do_classifier_free_guidance:
@@ -883,13 +882,7 @@ class Magi1Pipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
                             if neg_token_embeds.shape[1] > max_sequence_length:
                                 neg_token_embeds = neg_token_embeds[:, :max_sequence_length, :]
 
-                            chunk_neg_embeds_list.append(neg_token_embeds)
-
-                    # For simplicity, use first chunk's embeddings for the whole window
-                    # (More sophisticated: use per-chunk embeddings, but requires broadcasting)
-                    chunk_prompt_embeds = chunk_embeds_list[0]
-                    if self.do_classifier_free_guidance:
-                        chunk_negative_prompt_embeds = chunk_neg_embeds_list[0]
+                            chunk_negative_prompt_embeds_list.append(neg_token_embeds)
 
                 # Denoise this chunk range for denoise_step_per_stage steps
                 for denoise_idx in range(denoise_step_per_stage):
@@ -897,31 +890,37 @@ class Magi1Pipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
                         break
 
                     # Calculate timestep index for each chunk in the current window
-                    # Chunks at different stages get different timesteps
+                    # Chunks at different stages get different timesteps based on their denoise progress
                     timestep_indices = []
-                    for chunk_idx in range(chunk_start_idx, chunk_end_idx):
-                        offset = chunk_idx - chunk_start_idx
-                        if offset < t_end_idx - t_start_idx:
-                            t_idx = (t_start_idx + offset) * denoise_step_per_stage + denoise_idx
-                            timestep_indices.append(t_idx)
+                    for offset in range(num_chunks_in_window):
+                        # Map offset within window to time index
+                        t_idx_within_window = t_start_idx + offset
+                        if t_idx_within_window < t_end_idx:
+                            # This chunk is actively being denoised in this window
+                            t_idx = t_idx_within_window * denoise_step_per_stage + denoise_idx
                         else:
-                            timestep_indices.append(timestep_indices[-1])
+                            # This chunk is beyond the active window, use max timestep (it's already cleaner)
+                            t_idx = min((window_size - 1) * denoise_step_per_stage + denoise_idx, len(timesteps) - 1)
+                        timestep_indices.append(t_idx)
+
+                    # Reverse order: chunks further from start are noisier
+                    timestep_indices.reverse()
 
                     # Get actual timesteps (reversed order: high noise to low noise)
-                    timestep_indices.reverse()
                     current_timesteps = timesteps[timestep_indices]
 
-                    # For simplicity, use the first timestep for the whole chunk range
-                    # (Original implementation uses per-chunk timesteps, which requires more complex implementation)
-                    t = current_timesteps[0]
-                    self._current_timestep = t
+                    # Create per-chunk timestep tensor: [batch_size, num_chunks_in_window]
+                    # Each chunk gets its own timestep based on how many times it's been denoised
+                    timestep_per_chunk = current_timesteps.unsqueeze(0).expand(batch_size, -1)
+
+                    # Store first timestep for progress tracking
+                    self._current_timestep = current_timesteps[0]
 
                     # Extract chunk
                     latent_chunk = latents[:, :, latent_start:latent_end].to(transformer_dtype)
 
-                    # Create per-frame timesteps (broadcast to match temporal dimension)
-                    num_chunk_frames = latent_chunk.shape[2]
-                    timestep_expanded = t.expand(batch_size, num_chunk_frames)
+                    # Extract chunk
+                    latent_chunk = latents[:, :, latent_start:latent_end].to(transformer_dtype)
 
                     # Prepare distillation parameters if enabled
                     num_steps = None
@@ -929,25 +928,80 @@ class Magi1Pipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
                     distill_nearly_clean_chunk = None
 
                     if enable_distillation:
-                        # Calculate distill_interval based on current denoising step
-                        # This represents the time interval between denoising steps
-                        current_step = stage_idx * denoise_step_per_stage + denoise_idx
+                        # distill_interval represents the time interval between denoising steps
                         distill_interval = len(timesteps) / num_inference_steps
 
-                        # Determine if this chunk is nearly clean (low noise)
-                        # Nearly clean chunks are processed differently in distillation mode
-                        nearly_clean_chunk_t = t.item()
+                        # Determine if chunks are nearly clean (low noise) based on their timesteps
+                        # Check the first active chunk's timestep (after reversing, this is the noisiest chunk being actively denoised)
+                        nearly_clean_chunk_t = current_timesteps[0].item()
                         distill_nearly_clean_chunk = nearly_clean_chunk_t > distill_nearly_clean_chunk_threshold
 
                         num_steps = num_inference_steps
 
+                    # Prepare per-chunk embeddings
+                    # The transformer expects embeddings in shape [batch_size * num_chunks_in_window, seq_len, hidden_dim]
+                    # Each chunk gets its own embedding with appropriate duration/borderness tokens
+                    if chunk_prompt_embeds_list:
+                        # Stack per-chunk embeddings: [num_chunks_in_window, batch_size, seq_len, hidden_dim]
+                        chunk_prompt_embeds = torch.stack(chunk_prompt_embeds_list, dim=0)
+                        # Reshape to [batch_size * num_chunks_in_window, seq_len, hidden_dim]
+                        chunk_prompt_embeds = chunk_prompt_embeds.transpose(0, 1).flatten(0, 1)
+
+                        if chunk_negative_prompt_embeds_list:
+                            chunk_negative_prompt_embeds = torch.stack(chunk_negative_prompt_embeds_list, dim=0)
+                            chunk_negative_prompt_embeds = chunk_negative_prompt_embeds.transpose(0, 1).flatten(0, 1)
+                        else:
+                            chunk_negative_prompt_embeds = None
+                    else:
+                        # Fallback: repeat shared embeddings for each chunk
+                        chunk_prompt_embeds = prompt_embeds.unsqueeze(1).repeat(1, num_chunks_in_window, 1, 1)
+                        chunk_prompt_embeds = chunk_prompt_embeds.flatten(0, 1)
+
+                        if negative_prompt_embeds is not None:
+                            chunk_negative_prompt_embeds = negative_prompt_embeds.unsqueeze(1).repeat(1, num_chunks_in_window, 1, 1)
+                            chunk_negative_prompt_embeds = chunk_negative_prompt_embeds.flatten(0, 1)
+                        else:
+                            chunk_negative_prompt_embeds = None
+
+                    # Create encoder attention mask for per-chunk embeddings
+                    # Shape: [batch_size * num_chunks_in_window, 1, 1, seq_len]
+                    # All ones because we don't mask any tokens (text encoder handles padding)
+                    encoder_attention_mask = torch.ones(
+                        batch_size * num_chunks_in_window, 1, 1, chunk_prompt_embeds.shape[1],
+                        dtype=chunk_prompt_embeds.dtype,
+                        device=chunk_prompt_embeds.device
+                    )
+
+                    # Generate KV range for autoregressive attention
+                    # Each chunk can attend to itself and all previous chunks in the sequence
+                    # Shape: [batch_size * num_chunks_in_window, 2] where each row is [start_token_idx, end_token_idx]
+                    chunk_token_nums = (
+                        (latent_chunk.shape[2] // num_chunks_in_window)  # frames per chunk
+                        * (latent_chunk.shape[3] // self.transformer.config.patch_size[1])  # height tokens
+                        * (latent_chunk.shape[4] // self.transformer.config.patch_size[2])  # width tokens
+                    )
+                    kv_range = []
+                    for b in range(batch_size):
+                        batch_offset = b * chunk_end_idx
+                        for c in range(num_chunks_in_window):
+                            # This chunk can attend from the start of the video up to its own end
+                            chunk_global_idx = chunk_start_idx + c
+                            k_start = batch_offset * chunk_token_nums
+                            k_end = (batch_offset + chunk_global_idx + 1) * chunk_token_nums
+                            kv_range.append([k_start, k_end])
+                    kv_range = torch.tensor(kv_range, dtype=torch.int32, device=device)
+
                     # Predict noise (conditional)
-                    # Use per-chunk embeddings with duration/borderness tokens if available
                     noise_pred = self.transformer(
                         hidden_states=latent_chunk,
-                        timestep=timestep_expanded,
+                        timestep=timestep_per_chunk,
                         encoder_hidden_states=chunk_prompt_embeds,
+                        encoder_attention_mask=encoder_attention_mask,
                         attention_kwargs=attention_kwargs,
+                        denoising_range_num=num_chunks_in_window,
+                        range_num=chunk_end_idx,
+                        slice_point=chunk_start_idx,
+                        kv_range=kv_range,
                         num_steps=num_steps,
                         distill_interval=distill_interval,
                         distill_nearly_clean_chunk=distill_nearly_clean_chunk,
@@ -958,9 +1012,14 @@ class Magi1Pipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
                     if self.do_classifier_free_guidance:
                         noise_pred_uncond = self.transformer(
                             hidden_states=latent_chunk,
-                            timestep=timestep_expanded,
+                            timestep=timestep_per_chunk,
                             encoder_hidden_states=chunk_negative_prompt_embeds,
+                            encoder_attention_mask=encoder_attention_mask,
                             attention_kwargs=attention_kwargs,
+                            denoising_range_num=num_chunks_in_window,
+                            range_num=chunk_end_idx,
+                            slice_point=chunk_start_idx,
+                            kv_range=kv_range,
                             num_steps=num_steps,
                             distill_interval=distill_interval,
                             distill_nearly_clean_chunk=distill_nearly_clean_chunk,
@@ -969,17 +1028,25 @@ class Magi1Pipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
                         noise_pred = noise_pred_uncond + guidance_scale * (noise_pred - noise_pred_uncond)
 
                     # Update latent chunk using scheduler
-                    latent_chunk = self.scheduler.step(noise_pred, t, latent_chunk, return_dict=False)[0]
+                    # Note: scheduler.step processes each timestep separately, so we need to apply it carefully
+                    # For autoregressive generation, different chunks are at different noise levels
+                    # We apply the scheduler step using the first (most relevant) timestep
+                    t_for_scheduler = current_timesteps[0]
+                    latent_chunk = self.scheduler.step(noise_pred, t_for_scheduler, latent_chunk, return_dict=False)[0]
 
                     # Write back to full latents
                     latents[:, :, latent_start:latent_end] = latent_chunk
+
+                    # Update chunk denoise counts
+                    for chunk_idx in range(chunk_start_idx, chunk_end_idx):
+                        chunk_denoise_count[chunk_idx] += 1
 
                     if callback_on_step_end is not None:
                         callback_kwargs = {}
                         for k in callback_on_step_end_tensor_inputs:
                             callback_kwargs[k] = locals()[k]
                         callback_outputs = callback_on_step_end(
-                            self, stage_idx * denoise_step_per_stage + denoise_idx, t, callback_kwargs
+                            self, stage_idx * denoise_step_per_stage + denoise_idx, t_for_scheduler, callback_kwargs
                         )
 
                         latents = callback_outputs.pop("latents", latents)
