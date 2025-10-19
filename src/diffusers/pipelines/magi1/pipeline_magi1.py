@@ -986,7 +986,8 @@ class Magi1Pipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
                     )
                     kv_range = []
                     for b in range(batch_size):
-                        batch_offset = b * chunk_end_idx
+                        # batch_offset should be based on total chunks in the video, not chunk_end_idx
+                        batch_offset = b * num_chunks
                         for c in range(num_chunks_in_window):
                             # This chunk can attend from the start of the video up to its own end
                             chunk_global_idx = chunk_start_idx + c
@@ -1031,12 +1032,22 @@ class Magi1Pipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
                         )[0]
                         noise_pred = noise_pred_uncond + guidance_scale * (noise_pred - noise_pred_uncond)
 
-                    # Update latent chunk using scheduler
-                    # Note: scheduler.step processes each timestep separately, so we need to apply it carefully
-                    # For autoregressive generation, different chunks are at different noise levels
-                    # We apply the scheduler step using the first (most relevant) timestep
-                    t_for_scheduler = current_timesteps[0]
-                    latent_chunk = self.scheduler.step(noise_pred, t_for_scheduler, latent_chunk, return_dict=False)[0]
+                    # Update latent chunk using scheduler step
+                    # FlowMatchEulerDiscreteScheduler implements: x_new = x_old + dt * velocity
+                    # Since we have per-chunk timesteps, we need to apply scheduler.step() per chunk
+                    # or use the manual integration formula with per-chunk dt
+
+                    # Use per_token_timesteps feature of the scheduler to handle per-chunk timesteps
+                    # This will compute dt per chunk internally
+                    latent_chunk = self.scheduler.step(
+                        noise_pred,
+                        current_timesteps[0],  # Reference timestep
+                        latent_chunk,
+                        per_token_timesteps=timestep_per_chunk.flatten().repeat_interleave(
+                            latent_chunk.shape[2] * latent_chunk.shape[3] * latent_chunk.shape[4] // num_chunks_in_window
+                        ).reshape(batch_size, -1),
+                        return_dict=False,
+                    )[0]
 
                     # Write back to full latents
                     latents[:, :, latent_start:latent_end] = latent_chunk
@@ -1050,7 +1061,7 @@ class Magi1Pipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
                         for k in callback_on_step_end_tensor_inputs:
                             callback_kwargs[k] = locals()[k]
                         callback_outputs = callback_on_step_end(
-                            self, stage_idx * denoise_step_per_stage + denoise_idx, t_for_scheduler, callback_kwargs
+                            self, stage_idx * denoise_step_per_stage + denoise_idx, current_timesteps[0], callback_kwargs
                         )
 
                         latents = callback_outputs.pop("latents", latents)
@@ -1061,10 +1072,6 @@ class Magi1Pipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
 
                     if XLA_AVAILABLE:
                         xm.mark_step()
-
-                # Update denoise counts
-                for chunk_idx in range(chunk_start_idx, chunk_end_idx):
-                    chunk_denoise_count[chunk_idx] += denoise_step_per_stage
 
         self._current_timestep = None
 

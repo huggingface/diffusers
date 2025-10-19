@@ -1198,7 +1198,8 @@ class Magi1VideoToVideoPipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
                     )
                     kv_range = []
                     for b in range(batch_size):
-                        batch_offset = b * chunk_end_idx
+                        # batch_offset should be based on total chunks in the video, not chunk_end_idx
+                        batch_offset = b * num_chunks
                         for c in range(num_chunks_in_window):
                             # This chunk can attend from the start of the video up to its own end
                             chunk_global_idx = chunk_start_idx + c
@@ -1354,10 +1355,6 @@ class Magi1VideoToVideoPipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
 
                     if XLA_AVAILABLE:
                         xm.mark_step()
-
-                # Update denoise counts
-                for chunk_idx in range(chunk_start_idx, chunk_end_idx):
-                    chunk_denoise_count[chunk_idx] += denoise_step_per_stage
 
         self._current_timestep = None
 

@@ -201,6 +201,68 @@ def load_special_tokens(special_tokens_path: Optional[str] = None) -> Optional[D
         return None
 
 
+def prepare_i2v_embeddings(
+    prompt_embeds: torch.Tensor,
+    negative_prompt_embeds: Optional[torch.Tensor],
+    num_chunks: int,
+    clean_chunk_num: int,
+    max_sequence_length: int = 800,
+) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
+    """
+    Prepare per-chunk text embeddings for I2V generation.
+
+    In I2V, clean prefix chunks (from the input image) use null embeddings,
+    while chunks to be denoised use the actual text embeddings.
+
+    Args:
+        prompt_embeds: Text embeddings [batch_size, seq_len, hidden_dim]
+        negative_prompt_embeds: Negative text embeddings (optional)
+        num_chunks: Total number of chunks
+        clean_chunk_num: Number of clean prefix chunks (typically 1 for I2V single image)
+        max_sequence_length: Maximum sequence length
+
+    Returns:
+        Tuple of (prompt_embeds_per_chunk, negative_prompt_embeds_per_chunk)
+        Each has shape [batch_size, num_chunks, seq_len, hidden_dim]
+    """
+    batch_size = prompt_embeds.shape[0]
+    seq_len = prompt_embeds.shape[1]
+    hidden_dim = prompt_embeds.shape[2]
+    device = prompt_embeds.device
+    dtype = prompt_embeds.dtype
+
+    # Number of chunks that need denoising
+    denoise_chunk_num = num_chunks - clean_chunk_num
+
+    # Create null embeddings (zeros) for clean chunks
+    null_embeds = torch.zeros(batch_size, 1, seq_len, hidden_dim, device=device, dtype=dtype)
+
+    # Expand prompt embeddings for denoise chunks
+    # Shape: [batch_size, denoise_chunk_num, seq_len, hidden_dim]
+    denoise_embeds = prompt_embeds.unsqueeze(1).repeat(1, denoise_chunk_num, 1, 1)
+
+    # Concatenate: [null_embeds for clean chunks] + [text_embeds for denoise chunks]
+    # Shape: [batch_size, num_chunks, seq_len, hidden_dim]
+    if clean_chunk_num > 0:
+        null_embeds_expanded = null_embeds.repeat(1, clean_chunk_num, 1, 1)
+        prompt_embeds_per_chunk = torch.cat([null_embeds_expanded, denoise_embeds], dim=1)
+    else:
+        prompt_embeds_per_chunk = denoise_embeds
+
+    # Same for negative embeddings
+    if negative_prompt_embeds is not None:
+        denoise_neg_embeds = negative_prompt_embeds.unsqueeze(1).repeat(1, denoise_chunk_num, 1, 1)
+        if clean_chunk_num > 0:
+            null_neg_embeds_expanded = null_embeds.repeat(1, clean_chunk_num, 1, 1)
+            negative_prompt_embeds_per_chunk = torch.cat([null_neg_embeds_expanded, denoise_neg_embeds], dim=1)
+        else:
+            negative_prompt_embeds_per_chunk = denoise_neg_embeds
+    else:
+        negative_prompt_embeds_per_chunk = None
+
+    return prompt_embeds_per_chunk, negative_prompt_embeds_per_chunk
+
+
 def prepend_special_tokens(
     prompt_embeds: torch.Tensor,
     special_tokens: Optional[Dict[str, torch.Tensor]],
@@ -257,68 +319,6 @@ def prepend_special_tokens(
         prompt_embeds = prompt_embeds[:, :max_sequence_length, :]
 
     return prompt_embeds
-
-
-def prepare_i2v_embeddings(
-    prompt_embeds: torch.Tensor,
-    negative_prompt_embeds: Optional[torch.Tensor],
-    num_chunks: int,
-    clean_chunk_num: int,
-    max_sequence_length: int = 800,
-) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
-    """
-    Prepare per-chunk text embeddings for I2V generation.
-
-    In I2V, clean prefix chunks (from the input image) use null embeddings,
-    while chunks to be denoised use the actual text embeddings.
-
-    Args:
-        prompt_embeds: Text embeddings [batch_size, seq_len, hidden_dim]
-        negative_prompt_embeds: Negative text embeddings (optional)
-        num_chunks: Total number of chunks
-        clean_chunk_num: Number of clean prefix chunks
-        max_sequence_length: Maximum sequence length
-
-    Returns:
-        Tuple of (prompt_embeds_per_chunk, negative_prompt_embeds_per_chunk)
-        Each has shape [batch_size, num_chunks, seq_len, hidden_dim]
-    """
-    batch_size = prompt_embeds.shape[0]
-    seq_len = prompt_embeds.shape[1]
-    hidden_dim = prompt_embeds.shape[2]
-    device = prompt_embeds.device
-    dtype = prompt_embeds.dtype
-
-    # Number of chunks that need denoising
-    denoise_chunk_num = num_chunks - clean_chunk_num
-
-    # Create null embeddings (zeros) for clean chunks
-    null_embeds = torch.zeros(batch_size, 1, seq_len, hidden_dim, device=device, dtype=dtype)
-
-    # Expand prompt embeddings for denoise chunks
-    # Shape: [batch_size, denoise_chunk_num, seq_len, hidden_dim]
-    denoise_embeds = prompt_embeds.unsqueeze(1).repeat(1, denoise_chunk_num, 1, 1)
-
-    # Concatenate: [null_embeds for clean chunks] + [text_embeds for denoise chunks]
-    # Shape: [batch_size, num_chunks, seq_len, hidden_dim]
-    if clean_chunk_num > 0:
-        null_embeds_expanded = null_embeds.repeat(1, clean_chunk_num, 1, 1)
-        prompt_embeds_per_chunk = torch.cat([null_embeds_expanded, denoise_embeds], dim=1)
-    else:
-        prompt_embeds_per_chunk = denoise_embeds
-
-    # Same for negative embeddings
-    if negative_prompt_embeds is not None:
-        denoise_neg_embeds = negative_prompt_embeds.unsqueeze(1).repeat(1, denoise_chunk_num, 1, 1)
-        if clean_chunk_num > 0:
-            null_neg_embeds_expanded = null_embeds.repeat(1, clean_chunk_num, 1, 1)
-            negative_prompt_embeds_per_chunk = torch.cat([null_neg_embeds_expanded, denoise_neg_embeds], dim=1)
-        else:
-            negative_prompt_embeds_per_chunk = denoise_neg_embeds
-    else:
-        negative_prompt_embeds_per_chunk = None
-
-    return prompt_embeds_per_chunk, negative_prompt_embeds_per_chunk
 
 
 EXAMPLE_DOC_STRING = """
@@ -1193,7 +1193,8 @@ class Magi1ImageToVideoPipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
                     )
                     kv_range = []
                     for b in range(batch_size):
-                        batch_offset = b * chunk_end_idx
+                        # batch_offset should be based on total chunks in the video, not chunk_end_idx
+                        batch_offset = b * num_chunks
                         for c in range(num_chunks_in_window):
                             # This chunk can attend from the start of the video up to its own end
                             chunk_global_idx = chunk_start_idx + c
@@ -1349,10 +1350,6 @@ class Magi1ImageToVideoPipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
 
                     if XLA_AVAILABLE:
                         xm.mark_step()
-
-                # Update denoise counts
-                for chunk_idx in range(chunk_start_idx, chunk_end_idx):
-                    chunk_denoise_count[chunk_idx] += denoise_step_per_stage
 
         self._current_timestep = None
 
