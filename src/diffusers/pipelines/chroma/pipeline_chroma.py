@@ -53,8 +53,8 @@ EXAMPLE_DOC_STRING = """
         >>> import torch
         >>> from diffusers import ChromaPipeline
 
-        >>> model_id = "lodestones/Chroma"
-        >>> ckpt_path = "https://huggingface.co/lodestones/Chroma/blob/main/chroma-unlocked-v37.safetensors"
+        >>> model_id = "lodestones/Chroma1-HD"
+        >>> ckpt_path = "https://huggingface.co/lodestones/Chroma1-HD/blob/main/Chroma1-HD.safetensors"
         >>> transformer = ChromaTransformer2DModel.from_single_file(ckpt_path, torch_dtype=torch.bfloat16)
         >>> pipe = ChromaPipeline.from_pretrained(
         ...     model_id,
@@ -158,7 +158,7 @@ class ChromaPipeline(
     r"""
     The Chroma pipeline for text-to-image generation.
 
-    Reference: https://huggingface.co/lodestones/Chroma/
+    Reference: https://huggingface.co/lodestones/Chroma1-HD/
 
     Args:
         transformer ([`ChromaTransformer2DModel`]):
