@@ -237,6 +237,7 @@ class ChromaPipeline(
 
         tokenizer_mask_device = tokenizer_mask.to(device)
 
+        # unlike FLUX, Chroma uses the attention mask when generating the T5 embedding
         prompt_embeds = self.text_encoder(
             text_input_ids.to(device),
             output_hidden_states=False,
@@ -245,6 +246,7 @@ class ChromaPipeline(
 
         prompt_embeds = prompt_embeds.to(dtype=dtype, device=device)
 
+        # for the text tokens, chroma requires that all except the first padding token are masked out during the forward pass through the transformer
         seq_lengths = tokenizer_mask_device.sum(dim=1)
         mask_indices = torch.arange(tokenizer_mask_device.size(1), device=device).unsqueeze(0).expand(batch_size, -1)
         attention_mask = (mask_indices <= seq_lengths.unsqueeze(1)).to(dtype=dtype, device=device)
