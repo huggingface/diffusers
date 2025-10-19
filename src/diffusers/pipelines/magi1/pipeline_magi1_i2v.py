@@ -12,13 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# MAGI-1 T2V Pipeline with Autoregressive Chunked Generation
+# MAGI-1 I2V Pipeline with Autoregressive Chunked Generation
 #
 # ✅ IMPLEMENTED:
+# - Image-to-Video generation using prefix video conditioning
 # - Autoregressive chunked generation (always enabled, matching original MAGI-1)
 # - Window-based scheduling: chunk_width=6, window_size=4
 # - Progressive denoising across overlapping temporal windows
 # - Proper CFG with separate forward passes (diffusers style)
+# - Input image encoding to VAE latent as clean prefix chunk
 #
 # ⚠️ CURRENT LIMITATION:
 # - No KV caching: attention is recomputed for previous chunks
@@ -44,13 +46,14 @@
 
 import html
 import re
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
-import ftfy
+import PIL.Image
 import torch
 from transformers import AutoTokenizer, UMT5EncoderModel
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
+from ...image_processor import PipelineImageInput
 from ...loaders import Magi1LoraLoaderMixin
 from ...models import AutoencoderKLMagi1, Magi1Transformer3DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
@@ -89,6 +92,20 @@ def whitespace_clean(text):
 def prompt_clean(text):
     text = whitespace_clean(basic_clean(text))
     return text
+
+
+# Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.retrieve_latents
+def retrieve_latents(
+    encoder_output: torch.Tensor, generator: Optional[torch.Generator] = None, sample_mode: str = "sample"
+):
+    if hasattr(encoder_output, "latent_dist") and sample_mode == "sample":
+        return encoder_output.latent_dist.sample(generator)
+    elif hasattr(encoder_output, "latent_dist") and sample_mode == "argmax":
+        return encoder_output.latent_dist.mode()
+    elif hasattr(encoder_output, "latents"):
+        return encoder_output.latents
+    else:
+        raise AttributeError("Could not access latents of provided encoder_output")
 
 
 def generate_chunk_sequences(chunk_num: int, window_size: int, chunk_offset: int = 0):
@@ -242,22 +259,91 @@ def prepend_special_tokens(
     return prompt_embeds
 
 
+def prepare_i2v_embeddings(
+    prompt_embeds: torch.Tensor,
+    negative_prompt_embeds: Optional[torch.Tensor],
+    num_chunks: int,
+    clean_chunk_num: int,
+    max_sequence_length: int = 800,
+) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
+    """
+    Prepare per-chunk text embeddings for I2V generation.
+
+    In I2V, clean prefix chunks (from the input image) use null embeddings,
+    while chunks to be denoised use the actual text embeddings.
+
+    Args:
+        prompt_embeds: Text embeddings [batch_size, seq_len, hidden_dim]
+        negative_prompt_embeds: Negative text embeddings (optional)
+        num_chunks: Total number of chunks
+        clean_chunk_num: Number of clean prefix chunks
+        max_sequence_length: Maximum sequence length
+
+    Returns:
+        Tuple of (prompt_embeds_per_chunk, negative_prompt_embeds_per_chunk)
+        Each has shape [batch_size, num_chunks, seq_len, hidden_dim]
+    """
+    batch_size = prompt_embeds.shape[0]
+    seq_len = prompt_embeds.shape[1]
+    hidden_dim = prompt_embeds.shape[2]
+    device = prompt_embeds.device
+    dtype = prompt_embeds.dtype
+
+    # Number of chunks that need denoising
+    denoise_chunk_num = num_chunks - clean_chunk_num
+
+    # Create null embeddings (zeros) for clean chunks
+    null_embeds = torch.zeros(batch_size, 1, seq_len, hidden_dim, device=device, dtype=dtype)
+
+    # Expand prompt embeddings for denoise chunks
+    # Shape: [batch_size, denoise_chunk_num, seq_len, hidden_dim]
+    denoise_embeds = prompt_embeds.unsqueeze(1).repeat(1, denoise_chunk_num, 1, 1)
+
+    # Concatenate: [null_embeds for clean chunks] + [text_embeds for denoise chunks]
+    # Shape: [batch_size, num_chunks, seq_len, hidden_dim]
+    if clean_chunk_num > 0:
+        null_embeds_expanded = null_embeds.repeat(1, clean_chunk_num, 1, 1)
+        prompt_embeds_per_chunk = torch.cat([null_embeds_expanded, denoise_embeds], dim=1)
+    else:
+        prompt_embeds_per_chunk = denoise_embeds
+
+    # Same for negative embeddings
+    if negative_prompt_embeds is not None:
+        denoise_neg_embeds = negative_prompt_embeds.unsqueeze(1).repeat(1, denoise_chunk_num, 1, 1)
+        if clean_chunk_num > 0:
+            null_neg_embeds_expanded = null_embeds.repeat(1, clean_chunk_num, 1, 1)
+            negative_prompt_embeds_per_chunk = torch.cat([null_neg_embeds_expanded, denoise_neg_embeds], dim=1)
+        else:
+            negative_prompt_embeds_per_chunk = denoise_neg_embeds
+    else:
+        negative_prompt_embeds_per_chunk = None
+
+    return prompt_embeds_per_chunk, negative_prompt_embeds_per_chunk
+
+
 EXAMPLE_DOC_STRING = """
     Examples:
         ```python
         >>> import torch
-        >>> from diffusers import Magi1Pipeline, AutoencoderKLMagi1
-        >>> from diffusers.utils import export_to_video
+        >>> from diffusers import Magi1ImageToVideoPipeline, AutoencoderKLMagi1
+        >>> from diffusers.utils import export_to_video, load_image
 
-        >>> model_id = "SandAI/Magi1-T2V-14B-480P-Diffusers"
+        >>> model_id = "SandAI/Magi1-I2V-14B-480P-Diffusers"
         >>> vae = AutoencoderKLMagi1.from_pretrained(model_id, subfolder="vae", torch_dtype=torch.float32)
-        >>> pipe = Magi1Pipeline.from_pretrained(model_id, vae=vae, torch_dtype=torch.bfloat16)
+        >>> pipe = Magi1ImageToVideoPipeline.from_pretrained(model_id, vae=vae, torch_dtype=torch.bfloat16)
         >>> pipe.to("cuda")
 
-        >>> prompt = "A cat and a dog baking a cake together in a kitchen."
+        >>> image = load_image(
+        ...     "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/astronaut.jpg"
+        ... )
+        >>> prompt = (
+        ...     "An astronaut walking on the moon's surface, with the Earth visible in the background. "
+        ...     "The astronaut moves slowly in a low-gravity environment."
+        ... )
         >>> negative_prompt = "Bright tones, overexposed, static, blurred details, worst quality, low quality"
 
         >>> output = pipe(
+        ...     image=image,
         ...     prompt=prompt,
         ...     negative_prompt=negative_prompt,
         ...     height=720,
@@ -271,14 +357,16 @@ EXAMPLE_DOC_STRING = """
 """
 
 
-class Magi1Pipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
+class Magi1ImageToVideoPipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
     r"""
-    Pipeline for text-to-video generation using Magi1.
+    Pipeline for image-to-video generation using Magi1.
 
-    MAGI-1 is a DiT-based video generation model that supports autoregressive chunked generation for long videos.
+    MAGI-1 is a DiT-based video generation model that supports autoregressive chunked generation for long videos. This
+    I2V pipeline takes an input image and generates a video animation starting from that image.
 
     **Note**: This implementation uses autoregressive chunked generation (chunk_width=6, window_size=4) as in the
-    original MAGI-1 paper, with support for special conditioning tokens for quality, style, and motion control.
+    original MAGI-1 paper. The input image is encoded to a latent representation and used as a clean prefix chunk to
+    condition the generation. Text prompts provide additional semantic guidance for the animation.
 
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods
     implemented for all pipelines (downloading, saving, running on a particular device, etc.).
@@ -463,12 +551,20 @@ class Magi1Pipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
         self,
         prompt,
         negative_prompt,
+        image,
         height,
         width,
         prompt_embeds=None,
         negative_prompt_embeds=None,
         callback_on_step_end_tensor_inputs=None,
     ):
+        if image is None:
+            raise ValueError(
+                "Provide `image` for image-to-video generation. Cannot leave `image` undefined for I2V pipeline."
+            )
+        if image is not None and not isinstance(image, torch.Tensor) and not isinstance(image, PIL.Image.Image):
+            raise ValueError(f"`image` has to be of type `torch.Tensor` or `PIL.Image.Image` but is {type(image)}")
+
         if height % 16 != 0 or width % 16 != 0:
             raise ValueError(f"`height` and `width` have to be divisible by 16 but are {height} and {width}.")
 
@@ -502,6 +598,7 @@ class Magi1Pipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
 
     def prepare_latents(
         self,
+        image: Optional[PipelineImageInput],
         batch_size: int,
         num_channels_latents: int = 16,
         height: int = 480,
@@ -511,26 +608,78 @@ class Magi1Pipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
         device: Optional[torch.device] = None,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.Tensor] = None,
-    ) -> torch.Tensor:
-        if latents is not None:
-            return latents.to(device=device, dtype=dtype)
+    ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
+        """
+        Prepare latents for I2V generation, including encoding the input image as prefix_video.
 
+        Args:
+            image: Input image for I2V generation
+            batch_size: Batch size
+            num_channels_latents: Number of latent channels
+            height: Video height
+            width: Video width
+            num_frames: Total number of frames to generate
+            dtype: Data type
+            device: Device
+            generator: Random generator
+            latents: Pre-generated latents (optional)
+
+        Returns:
+            Tuple of (latents, prefix_video) where:
+            - latents: Random noise tensor for generation [batch, channels, num_latent_frames, H, W]
+            - prefix_video: Encoded image as clean latent [batch, channels, 1, H, W] (or None if no image)
+        """
         num_latent_frames = (num_frames - 1) // self.vae_scale_factor_temporal + 1
-        shape = (
-            batch_size,
-            num_channels_latents,
-            num_latent_frames,
-            int(height) // self.vae_scale_factor_spatial,
-            int(width) // self.vae_scale_factor_spatial,
-        )
+        latent_height = height // self.vae_scale_factor_spatial
+        latent_width = width // self.vae_scale_factor_spatial
+
+        shape = (batch_size, num_channels_latents, num_latent_frames, latent_height, latent_width)
         if isinstance(generator, list) and len(generator) != batch_size:
             raise ValueError(
                 f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
                 f" size of {batch_size}. Make sure the batch size matches the length of the generators."
             )
 
-        latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
-        return latents
+        # Prepare random latents for generation
+        if latents is None:
+            latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
+        else:
+            latents = latents.to(device=device, dtype=dtype)
+
+        # Encode input image to latent as prefix_video
+        prefix_video = None
+        if image is not None:
+            # Preprocess image to target size
+            image = self.video_processor.preprocess(image, height=height, width=width).to(device, dtype=torch.float32)
+
+            # Add temporal dimension: [batch, channels, height, width] -> [batch, channels, 1, height, width]
+            if image.ndim == 4:
+                image = image.unsqueeze(2)
+
+            # Encode to latent space using VAE
+            # VAE expects [batch, channels, frames, height, width]
+            if isinstance(generator, list):
+                prefix_video = [
+                    retrieve_latents(self.vae.encode(image), sample_mode="sample", generator=g) for g in generator
+                ]
+                prefix_video = torch.cat(prefix_video)
+            else:
+                prefix_video = retrieve_latents(self.vae.encode(image), sample_mode="sample", generator=generator)
+                prefix_video = prefix_video.repeat(batch_size, 1, 1, 1, 1)
+
+            # Normalize latent using VAE's latent statistics
+            latents_mean = (
+                torch.tensor(self.vae.config.latents_mean)
+                .view(1, self.vae.config.z_dim, 1, 1, 1)
+                .to(prefix_video.device, dtype)
+            )
+            latents_std = 1.0 / torch.tensor(self.vae.config.latents_std).view(1, self.vae.config.z_dim, 1, 1, 1).to(
+                prefix_video.device, dtype
+            )
+            prefix_video = prefix_video.to(dtype)
+            prefix_video = (prefix_video - latents_mean) * latents_std
+
+        return latents, prefix_video
 
     @property
     def guidance_scale(self):
@@ -560,6 +709,7 @@ class Magi1Pipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
+        image: PipelineImageInput,
         prompt: Union[str, List[str]] = None,
         negative_prompt: Union[str, List[str]] = None,
         height: int = 480,
@@ -589,18 +739,22 @@ class Magi1Pipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
         distill_nearly_clean_chunk_threshold: float = 0.3,
     ):
         r"""
-        The call function to the pipeline for generation.
+        The call function to the pipeline for image-to-video generation.
 
         **Note**: This implementation uses autoregressive chunked generation (chunk_width=6, window_size=4) as in the
-        original MAGI-1 paper. The implementation currently works without KV caching (attention is recomputed for
+        original MAGI-1 paper. The input image is encoded to a VAE latent and used as a clean prefix chunk to condition
+        the video generation. The implementation currently works without KV caching (attention is recomputed for
         previous chunks), which is less efficient than the original but still functional. KV caching optimization will
         be added when diffusers implements generic caching support for transformers.
 
         Args:
+            image (`PipelineImageInput`):
+                The input image to condition the video generation on. Must be an image, a list of images, or a
+                `torch.Tensor`.
             prompt (`str` or `List[str]`, *optional*):
-                The prompt or prompts to guide the image generation. If not defined, pass `prompt_embeds` instead.
+                The prompt or prompts to guide the video generation. If not defined, pass `prompt_embeds` instead.
             negative_prompt (`str` or `List[str]`, *optional*):
-                The prompt or prompts to avoid during image generation. If not defined, pass `negative_prompt_embeds`
+                The prompt or prompts to avoid during video generation. If not defined, pass `negative_prompt_embeds`
                 instead. Ignored when not using guidance (`guidance_scale` < `1`).
             height (`int`, defaults to `480`):
                 The height in pixels of the generated image.
@@ -692,6 +846,7 @@ class Magi1Pipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
         self.check_inputs(
             prompt,
             negative_prompt,
+            image,
             height,
             width,
             prompt_embeds,
@@ -771,7 +926,8 @@ class Magi1Pipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
 
         # 5. Prepare latent variables
         num_channels_latents = self.transformer.config.in_channels
-        latents = self.prepare_latents(
+        latents, prefix_video = self.prepare_latents(
+            image,
             batch_size * num_videos_per_prompt,
             num_channels_latents,
             height,
@@ -783,8 +939,9 @@ class Magi1Pipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
             latents,
         )
 
-        # 6. Denoising loop (autoregressive chunked generation)
-        # MAGI-1 always uses autoregressive generation with chunk_width=6 and window_size=4
+        # 6. Denoising loop (autoregressive chunked generation with I2V prefix conditioning)
+        # MAGI-1 I2V uses autoregressive generation with chunk_width=6 and window_size=4
+        # The input image is encoded as a clean prefix chunk and used to condition the generation
         # Note: num_warmup_steps is calculated for compatibility but not used in progress bar logic
         # because autoregressive generation has a different iteration structure (stages × steps)
         # For FlowMatchEulerDiscreteScheduler (order=1), this doesn't affect the results
@@ -798,9 +955,34 @@ class Magi1Pipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
         num_latent_frames = latents.shape[2]
         num_chunks = (num_latent_frames + chunk_width - 1) // chunk_width
 
+        # Calculate chunk_offset from prefix_video (for I2V, this is the clean image chunk)
+        chunk_offset = 0
+        if prefix_video is not None:
+            # prefix_video has shape [batch, channels, 1, height, width] for I2V
+            # Calculate how many chunks are covered by the prefix
+            prefix_latent_frames = prefix_video.shape[2]
+            chunk_offset = prefix_latent_frames // chunk_width
+
+            # Pad prefix_video into latents at the beginning
+            # The prefix frames are already clean and don't need denoising
+            if prefix_latent_frames > 0:
+                prefix_video = prefix_video.to(latents.dtype)
+                latents[:, :, :prefix_latent_frames] = prefix_video
+
         # Calculate chunk scheduling: which chunks to process at each stage
-        clip_start, clip_end, t_start, t_end = generate_chunk_sequences(num_chunks, window_size, chunk_offset=0)
+        # chunk_offset skips the clean prefix chunks
+        clip_start, clip_end, t_start, t_end = generate_chunk_sequences(num_chunks, window_size, chunk_offset)
         num_stages = len(clip_start)
+
+        # Prepare per-chunk text embeddings for I2V
+        # Clean chunks (from input image) use null embeddings, denoise chunks use text embeddings
+        prompt_embeds_per_chunk, negative_prompt_embeds_per_chunk = prepare_i2v_embeddings(
+            prompt_embeds=prompt_embeds,
+            negative_prompt_embeds=negative_prompt_embeds,
+            num_chunks=num_chunks,
+            clean_chunk_num=chunk_offset,
+            max_sequence_length=max_sequence_length,
+        )
 
         # Number of denoising steps per stage
         denoise_step_per_stage = len(timesteps) // window_size
@@ -837,18 +1019,20 @@ class Magi1Pipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
                         # Duration token ranges from 1-8 chunks
                         duration_idx = min(chunks_remaining, 7) + 1
 
+                        # Get base embeddings for this chunk (clean chunks have null embeds, denoise chunks have text embeds)
+                        token_embeds = prompt_embeds_per_chunk[:, chunk_idx].clone()
+
                         # Add duration and borderness tokens for this chunk
-                        token_embeds = prompt_embeds.clone()
                         if f"DURATION_TOKEN_{duration_idx}" in self.special_tokens:
                             duration_token = self.special_tokens[f"DURATION_TOKEN_{duration_idx}"]
-                            duration_token = duration_token.to(device=prompt_embeds.device, dtype=prompt_embeds.dtype)
+                            duration_token = duration_token.to(device=token_embeds.device, dtype=token_embeds.dtype)
                             duration_token = duration_token.unsqueeze(0).expand(batch_size, -1, -1)
                             token_embeds = torch.cat([duration_token, token_embeds], dim=1)
 
                         if "BORDERNESS_TOKEN" in self.special_tokens:
                             borderness_token = self.special_tokens["BORDERNESS_TOKEN"]
                             borderness_token = borderness_token.to(
-                                device=prompt_embeds.device, dtype=prompt_embeds.dtype
+                                device=token_embeds.device, dtype=token_embeds.dtype
                             )
                             borderness_token = borderness_token.unsqueeze(0).expand(batch_size, -1, -1)
                             token_embeds = torch.cat([borderness_token, token_embeds], dim=1)
@@ -860,12 +1044,13 @@ class Magi1Pipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
                         chunk_prompt_embeds_list.append(token_embeds)
 
                         # Same for negative prompts
-                        if self.do_classifier_free_guidance:
-                            neg_token_embeds = negative_prompt_embeds.clone()
+                        if self.do_classifier_free_guidance and negative_prompt_embeds_per_chunk is not None:
+                            neg_token_embeds = negative_prompt_embeds_per_chunk[:, chunk_idx].clone()
+
                             if f"DURATION_TOKEN_{duration_idx}" in self.special_tokens:
                                 duration_token = self.special_tokens[f"DURATION_TOKEN_{duration_idx}"]
                                 duration_token = duration_token.to(
-                                    device=negative_prompt_embeds.device, dtype=negative_prompt_embeds.dtype
+                                    device=neg_token_embeds.device, dtype=neg_token_embeds.dtype
                                 )
                                 duration_token = duration_token.unsqueeze(0).expand(batch_size, -1, -1)
                                 neg_token_embeds = torch.cat([duration_token, neg_token_embeds], dim=1)
@@ -873,7 +1058,7 @@ class Magi1Pipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
                             if "BORDERNESS_TOKEN" in self.special_tokens:
                                 borderness_token = self.special_tokens["BORDERNESS_TOKEN"]
                                 borderness_token = borderness_token.to(
-                                    device=negative_prompt_embeds.device, dtype=negative_prompt_embeds.dtype
+                                    device=neg_token_embeds.device, dtype=neg_token_embeds.dtype
                                 )
                                 borderness_token = borderness_token.unsqueeze(0).expand(batch_size, -1, -1)
                                 neg_token_embeds = torch.cat([borderness_token, neg_token_embeds], dim=1)
@@ -952,14 +1137,13 @@ class Magi1Pipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
                         else:
                             chunk_negative_prompt_embeds = None
                     else:
-                        # Fallback: repeat shared embeddings for each chunk
-                        chunk_prompt_embeds = prompt_embeds.unsqueeze(1).repeat(1, num_chunks_in_window, 1, 1)
+                        # Fallback: use per-chunk embeddings without special tokens
+                        # Extract embeddings for the current chunk range
+                        chunk_prompt_embeds = prompt_embeds_per_chunk[:, chunk_start_idx:chunk_end_idx]
                         chunk_prompt_embeds = chunk_prompt_embeds.flatten(0, 1)
 
-                        if negative_prompt_embeds is not None:
-                            chunk_negative_prompt_embeds = negative_prompt_embeds.unsqueeze(1).repeat(
-                                1, num_chunks_in_window, 1, 1
-                            )
+                        if negative_prompt_embeds_per_chunk is not None:
+                            chunk_negative_prompt_embeds = negative_prompt_embeds_per_chunk[:, chunk_start_idx:chunk_end_idx]
                             chunk_negative_prompt_embeds = chunk_negative_prompt_embeds.flatten(0, 1)
                         else:
                             chunk_negative_prompt_embeds = None
@@ -975,6 +1159,29 @@ class Magi1Pipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
                         dtype=chunk_prompt_embeds.dtype,
                         device=chunk_prompt_embeds.device,
                     )
+
+                    # Pad prefix video into latent_chunk if applicable (I2V)
+                    # This ensures clean prefix frames are maintained during denoising
+                    if prefix_video is not None:
+                        prefix_length = prefix_video.shape[2]
+                        prefix_video_start = chunk_start_idx * chunk_width
+
+                        if prefix_length > prefix_video_start:
+                            # Calculate how many frames to pad
+                            padding_length = min(prefix_length - prefix_video_start, latent_chunk.shape[2])
+                            prefix_video_end = prefix_video_start + padding_length
+
+                            # Pad clean prefix frames into latent_chunk
+                            latent_chunk = latent_chunk.clone()
+                            latent_chunk[:, :, :padding_length] = prefix_video[:, :, prefix_video_start:prefix_video_end]
+
+                            # Set timesteps for clean prefix chunks to maximum (indicates "already clean")
+                            # This matches original MAGI-1's try_pad_prefix_video logic
+                            num_clean_chunks_in_window = padding_length // chunk_width
+                            if num_clean_chunks_in_window > 0:
+                                # Get max timestep from scheduler
+                                max_timestep = timesteps[0]
+                                timestep_per_chunk[:, :num_clean_chunks_in_window] = max_timestep
 
                     # Generate KV range for autoregressive attention
                     # Each chunk can attend to itself and all previous chunks in the sequence
@@ -996,6 +1203,8 @@ class Magi1Pipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
                     kv_range = torch.tensor(kv_range, dtype=torch.int32, device=device)
 
                     # Predict noise (conditional)
+                    # Note: MAGI-1 uses velocity field (flow matching), but following diffusers convention
+                    # we use noise_pred naming for consistency across all pipelines
                     noise_pred = self.transformer(
                         hidden_states=latent_chunk,
                         timestep=timestep_per_chunk,
@@ -1012,7 +1221,7 @@ class Magi1Pipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
                         return_dict=False,
                     )[0]
 
-                    # Classifier-free guidance
+                    # Classifier-free guidance: separate forward pass for unconditional
                     if self.do_classifier_free_guidance:
                         noise_pred_uncond = self.transformer(
                             hidden_states=latent_chunk,
@@ -1029,14 +1238,91 @@ class Magi1Pipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
                             distill_nearly_clean_chunk=distill_nearly_clean_chunk,
                             return_dict=False,
                         )[0]
+                        # Apply classifier-free guidance
                         noise_pred = noise_pred_uncond + guidance_scale * (noise_pred - noise_pred_uncond)
 
-                    # Update latent chunk using scheduler
-                    # Note: scheduler.step processes each timestep separately, so we need to apply it carefully
-                    # For autoregressive generation, different chunks are at different noise levels
-                    # We apply the scheduler step using the first (most relevant) timestep
-                    t_for_scheduler = current_timesteps[0]
-                    latent_chunk = self.scheduler.step(noise_pred, t_for_scheduler, latent_chunk, return_dict=False)[0]
+                    # CRITICAL: Apply per-chunk Euler integration with different delta_t for each chunk
+                    # This matches the original MAGI-1's integrate() function
+                    # Each chunk in the window is at a different noise level and needs its own time step
+
+                    # Calculate per-chunk timesteps for integration
+                    # Get current timesteps (t_before)
+                    current_timesteps = timesteps[timestep_indices]
+
+                    # Get next timesteps (t_after) - one step forward for each chunk
+                    next_timestep_indices = [min(idx + 1, len(timesteps) - 1) for idx in timestep_indices]
+                    next_timesteps = timesteps[next_timestep_indices]
+
+                    # Convert timesteps to sigmas (matching FlowMatchEulerDiscreteScheduler)
+                    current_sigmas = current_timesteps / self.scheduler.config.num_train_timesteps
+                    next_sigmas = next_timesteps / self.scheduler.config.num_train_timesteps
+
+                    # Calculate delta_t for each chunk: [num_chunks_in_window]
+                    delta_t = next_sigmas - current_sigmas
+
+                    # Reshape latent_chunk and noise_pred to separate chunks
+                    # From: [batch, channels, frames, height, width]
+                    # To: [batch, channels, num_chunks, chunk_width, height, width]
+                    batch_size_actual, num_channels, total_frames, height_latent, width_latent = latent_chunk.shape
+
+                    # Ensure total_frames is divisible by chunk_width for reshaping
+                    # (it should be, but let's handle edge cases)
+                    num_complete_chunks = total_frames // chunk_width
+                    remainder_frames = total_frames % chunk_width
+
+                    if remainder_frames == 0:
+                        # Perfect division: reshape and apply per-chunk delta_t
+                        latent_chunk = latent_chunk.reshape(
+                            batch_size_actual, num_channels, num_complete_chunks, chunk_width, height_latent, width_latent
+                        )
+                        noise_pred = noise_pred.reshape(
+                            batch_size_actual, num_channels, num_complete_chunks, chunk_width, height_latent, width_latent
+                        )
+
+                        # Apply Euler integration: x_chunk = x_chunk + velocity * delta_t
+                        # delta_t shape: [num_chunks] -> broadcast to [1, 1, num_chunks, 1, 1, 1]
+                        delta_t_broadcast = delta_t.reshape(1, 1, -1, 1, 1, 1).to(latent_chunk.device, latent_chunk.dtype)
+                        latent_chunk = latent_chunk + noise_pred * delta_t_broadcast
+
+                        # Reshape back to original dimensions
+                        latent_chunk = latent_chunk.reshape(
+                            batch_size_actual, num_channels, total_frames, height_latent, width_latent
+                        )
+                    else:
+                        # Handle remainder frames separately (edge case for last incomplete chunk)
+                        complete_frames = num_complete_chunks * chunk_width
+
+                        # Process complete chunks
+                        latent_chunk_complete = latent_chunk[:, :, :complete_frames]
+                        noise_pred_complete = noise_pred[:, :, :complete_frames]
+
+                        latent_chunk_complete = latent_chunk_complete.reshape(
+                            batch_size_actual, num_channels, num_complete_chunks, chunk_width, height_latent, width_latent
+                        )
+                        noise_pred_complete = noise_pred_complete.reshape(
+                            batch_size_actual, num_channels, num_complete_chunks, chunk_width, height_latent, width_latent
+                        )
+
+                        # Apply per-chunk delta_t to complete chunks
+                        delta_t_broadcast = delta_t[:num_complete_chunks].reshape(1, 1, -1, 1, 1, 1).to(
+                            latent_chunk.device, latent_chunk.dtype
+                        )
+                        latent_chunk_complete = latent_chunk_complete + noise_pred_complete * delta_t_broadcast
+                        latent_chunk_complete = latent_chunk_complete.reshape(
+                            batch_size_actual, num_channels, complete_frames, height_latent, width_latent
+                        )
+
+                        # Process remainder frames with last delta_t
+                        if remainder_frames > 0:
+                            latent_chunk_remainder = latent_chunk[:, :, complete_frames:]
+                            noise_pred_remainder = noise_pred[:, :, complete_frames:]
+                            delta_t_remainder = delta_t[-1].to(latent_chunk.device, latent_chunk.dtype)
+                            latent_chunk_remainder = latent_chunk_remainder + noise_pred_remainder * delta_t_remainder
+
+                            # Concatenate complete and remainder
+                            latent_chunk = torch.cat([latent_chunk_complete, latent_chunk_remainder], dim=2)
+                        else:
+                            latent_chunk = latent_chunk_complete
 
                     # Write back to full latents
                     latents[:, :, latent_start:latent_end] = latent_chunk
@@ -1049,8 +1335,10 @@ class Magi1Pipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
                         callback_kwargs = {}
                         for k in callback_on_step_end_tensor_inputs:
                             callback_kwargs[k] = locals()[k]
+                        # Use first timestep for callback (most representative)
+                        callback_timestep = current_timesteps[0]
                         callback_outputs = callback_on_step_end(
-                            self, stage_idx * denoise_step_per_stage + denoise_idx, t_for_scheduler, callback_kwargs
+                            self, stage_idx * denoise_step_per_stage + denoise_idx, callback_timestep, callback_kwargs
                         )
 
                         latents = callback_outputs.pop("latents", latents)
