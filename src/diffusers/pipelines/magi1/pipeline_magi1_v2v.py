@@ -268,8 +268,8 @@ def prepare_v2v_embeddings(
     """
     Prepare per-chunk text embeddings for V2V generation.
 
-    In V2V, clean prefix chunks (from the input video) use null embeddings,
-    while chunks to be denoised use the actual text embeddings.
+    In V2V, clean prefix chunks (from the input video) use null embeddings, while chunks to be denoised use the actual
+    text embeddings.
 
     Args:
         prompt_embeds: Text embeddings [batch_size, seq_len, hidden_dim]
@@ -279,8 +279,8 @@ def prepare_v2v_embeddings(
         max_sequence_length: Maximum sequence length
 
     Returns:
-        Tuple of (prompt_embeds_per_chunk, negative_prompt_embeds_per_chunk)
-        Each has shape [batch_size, num_chunks, seq_len, hidden_dim]
+        Tuple of (prompt_embeds_per_chunk, negative_prompt_embeds_per_chunk) Each has shape [batch_size, num_chunks,
+        seq_len, hidden_dim]
     """
     batch_size = prompt_embeds.shape[0]
     seq_len = prompt_embeds.shape[1]
@@ -405,7 +405,9 @@ class Magi1VideoToVideoPipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
             scheduler=scheduler,
         )
 
-        self.vae_scale_factor_temporal = self.vae.config.temporal_compression_ratio if getattr(self, "vae", None) else 4
+        self.vae_scale_factor_temporal = (
+            self.vae.config.temporal_compression_ratio if getattr(self, "vae", None) else 4
+        )
         self.vae_scale_factor_spatial = self.vae.config.spatial_compression_ratio if getattr(self, "vae", None) else 8
         self.video_processor = VideoProcessor(vae_scale_factor=self.vae_scale_factor_spatial)
 
@@ -668,7 +670,9 @@ class Magi1VideoToVideoPipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
                 ]
                 prefix_video = torch.cat(prefix_video)
             else:
-                prefix_video = retrieve_latents(self.vae.encode(video_tensor), sample_mode="sample", generator=generator)
+                prefix_video = retrieve_latents(
+                    self.vae.encode(video_tensor), sample_mode="sample", generator=generator
+                )
                 if prefix_video.shape[0] < batch_size:
                     prefix_video = prefix_video.repeat(batch_size, 1, 1, 1, 1)
 
@@ -1148,7 +1152,9 @@ class Magi1VideoToVideoPipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
                         chunk_prompt_embeds = chunk_prompt_embeds.flatten(0, 1)
 
                         if negative_prompt_embeds_per_chunk is not None:
-                            chunk_negative_prompt_embeds = negative_prompt_embeds_per_chunk[:, chunk_start_idx:chunk_end_idx]
+                            chunk_negative_prompt_embeds = negative_prompt_embeds_per_chunk[
+                                :, chunk_start_idx:chunk_end_idx
+                            ]
                             chunk_negative_prompt_embeds = chunk_negative_prompt_embeds.flatten(0, 1)
                         else:
                             chunk_negative_prompt_embeds = None
@@ -1178,7 +1184,9 @@ class Magi1VideoToVideoPipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
 
                             # Pad clean prefix frames into latent_chunk
                             latent_chunk = latent_chunk.clone()
-                            latent_chunk[:, :, :padding_length] = prefix_video[:, :, prefix_video_start:prefix_video_end]
+                            latent_chunk[:, :, :padding_length] = prefix_video[
+                                :, :, prefix_video_start:prefix_video_end
+                            ]
 
                             # Set timesteps for clean prefix chunks to maximum (indicates "already clean")
                             # This matches original MAGI-1's try_pad_prefix_video logic
@@ -1279,15 +1287,27 @@ class Magi1VideoToVideoPipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
                     if remainder_frames == 0:
                         # Perfect division: reshape and apply per-chunk delta_t
                         latent_chunk = latent_chunk.reshape(
-                            batch_size_actual, num_channels, num_complete_chunks, chunk_width, height_latent, width_latent
+                            batch_size_actual,
+                            num_channels,
+                            num_complete_chunks,
+                            chunk_width,
+                            height_latent,
+                            width_latent,
                         )
                         noise_pred = noise_pred.reshape(
-                            batch_size_actual, num_channels, num_complete_chunks, chunk_width, height_latent, width_latent
+                            batch_size_actual,
+                            num_channels,
+                            num_complete_chunks,
+                            chunk_width,
+                            height_latent,
+                            width_latent,
                         )
 
                         # Apply Euler integration: x_chunk = x_chunk + velocity * delta_t
                         # delta_t shape: [num_chunks] -> broadcast to [1, 1, num_chunks, 1, 1, 1]
-                        delta_t_broadcast = delta_t.reshape(1, 1, -1, 1, 1, 1).to(latent_chunk.device, latent_chunk.dtype)
+                        delta_t_broadcast = delta_t.reshape(1, 1, -1, 1, 1, 1).to(
+                            latent_chunk.device, latent_chunk.dtype
+                        )
                         latent_chunk = latent_chunk + noise_pred * delta_t_broadcast
 
                         # Reshape back to original dimensions
@@ -1303,15 +1323,27 @@ class Magi1VideoToVideoPipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
                         noise_pred_complete = noise_pred[:, :, :complete_frames]
 
                         latent_chunk_complete = latent_chunk_complete.reshape(
-                            batch_size_actual, num_channels, num_complete_chunks, chunk_width, height_latent, width_latent
+                            batch_size_actual,
+                            num_channels,
+                            num_complete_chunks,
+                            chunk_width,
+                            height_latent,
+                            width_latent,
                         )
                         noise_pred_complete = noise_pred_complete.reshape(
-                            batch_size_actual, num_channels, num_complete_chunks, chunk_width, height_latent, width_latent
+                            batch_size_actual,
+                            num_channels,
+                            num_complete_chunks,
+                            chunk_width,
+                            height_latent,
+                            width_latent,
                         )
 
                         # Apply per-chunk delta_t to complete chunks
-                        delta_t_broadcast = delta_t[:num_complete_chunks].reshape(1, 1, -1, 1, 1, 1).to(
-                            latent_chunk.device, latent_chunk.dtype
+                        delta_t_broadcast = (
+                            delta_t[:num_complete_chunks]
+                            .reshape(1, 1, -1, 1, 1, 1)
+                            .to(latent_chunk.device, latent_chunk.dtype)
                         )
                         latent_chunk_complete = latent_chunk_complete + noise_pred_complete * delta_t_broadcast
                         latent_chunk_complete = latent_chunk_complete.reshape(

@@ -319,7 +319,9 @@ class Magi1Pipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
             scheduler=scheduler,
         )
 
-        self.vae_scale_factor_temporal = self.vae.config.temporal_compression_ratio if getattr(self, "vae", None) else 4
+        self.vae_scale_factor_temporal = (
+            self.vae.config.temporal_compression_ratio if getattr(self, "vae", None) else 4
+        )
         self.vae_scale_factor_spatial = self.vae.config.spatial_compression_ratio if getattr(self, "vae", None) else 8
         self.video_processor = VideoProcessor(vae_scale_factor=self.vae_scale_factor_spatial)
 
@@ -1043,9 +1045,14 @@ class Magi1Pipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
                         noise_pred,
                         current_timesteps[0],  # Reference timestep
                         latent_chunk,
-                        per_token_timesteps=timestep_per_chunk.flatten().repeat_interleave(
-                            latent_chunk.shape[2] * latent_chunk.shape[3] * latent_chunk.shape[4] // num_chunks_in_window
-                        ).reshape(batch_size, -1),
+                        per_token_timesteps=timestep_per_chunk.flatten()
+                        .repeat_interleave(
+                            latent_chunk.shape[2]
+                            * latent_chunk.shape[3]
+                            * latent_chunk.shape[4]
+                            // num_chunks_in_window
+                        )
+                        .reshape(batch_size, -1),
                         return_dict=False,
                     )[0]
 
@@ -1061,7 +1068,10 @@ class Magi1Pipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
                         for k in callback_on_step_end_tensor_inputs:
                             callback_kwargs[k] = locals()[k]
                         callback_outputs = callback_on_step_end(
-                            self, stage_idx * denoise_step_per_stage + denoise_idx, current_timesteps[0], callback_kwargs
+                            self,
+                            stage_idx * denoise_step_per_stage + denoise_idx,
+                            current_timesteps[0],
+                            callback_kwargs,
                         )
 
                         latents = callback_outputs.pop("latents", latents)
