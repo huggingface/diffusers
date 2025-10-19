@@ -216,13 +216,13 @@ class ChromaPipeline(
     ):
         device = device or self._execution_device
         dtype = dtype or self.text_encoder.dtype
-    
+
         prompt = [prompt] if isinstance(prompt, str) else prompt
         batch_size = len(prompt)
-    
+
         if isinstance(self, TextualInversionLoaderMixin):
             prompt = self.maybe_convert_prompt(prompt, self.tokenizer)
-    
+
         text_inputs = self.tokenizer(
             prompt,
             padding="max_length",
@@ -232,7 +232,7 @@ class ChromaPipeline(
             return_overflowing_tokens=False,
             return_tensors="pt",
         )
-    
+
         text_input_ids = text_inputs.input_ids
         tokenizer_mask = text_inputs.attention_mask  # keep the raw tokenizer mask
 
@@ -262,7 +262,6 @@ class ChromaPipeline(
         attention_mask = attention_mask.view(batch_size * num_images_per_prompt, seq_len)
 
         return prompt_embeds, attention_mask
-
 
     def encode_prompt(
         self,
