@@ -32,6 +32,7 @@ warnings.simplefilter(action="ignore", category=FutureWarning)
 
 def pytest_configure(config):
     config.addinivalue_line("markers", "big_accelerator: marks tests as requiring big accelerator resources")
+    config.addinivalue_line("markers", "is_torch_compile: marks torch compilation tests")
 
 
 def pytest_addoption(parser):

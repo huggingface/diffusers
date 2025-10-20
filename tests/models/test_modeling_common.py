@@ -69,13 +69,13 @@ from ..testing_utils import (
     backend_synchronize,
     check_if_dicts_are_equal,
     get_python_version,
-    is_torch_compile,
     numpy_cosine_similarity_distance,
     require_peft_backend,
     require_peft_version_greater,
     require_torch_2,
     require_torch_accelerator,
     require_torch_accelerator_with_training,
+    require_torch_compile,
     require_torch_multi_accelerator,
     require_torch_version_greater,
     run_test_in_subprocess,
@@ -783,7 +783,7 @@ class ModelTesterMixin:
         max_diff = (image - new_image).abs().max().item()
         self.assertLessEqual(max_diff, expected_max_diff, "Models give different forward passes")
 
-    @is_torch_compile
+    @require_torch_compile
     @require_torch_2
     @unittest.skipIf(
         get_python_version == (3, 12),
@@ -2038,7 +2038,7 @@ class ModelPushToHubTester(unittest.TestCase):
 
 @require_torch_accelerator
 @require_torch_2
-@is_torch_compile
+@require_torch_compile
 @slow
 @require_torch_version_greater("2.7.1")
 class TorchCompileTesterMixin:
@@ -2162,7 +2162,7 @@ class TorchCompileTesterMixin:
 @require_peft_backend
 @require_peft_version_greater("0.14.0")
 @require_torch_version_greater("2.7.1")
-@is_torch_compile
+@require_torch_compile
 class LoraHotSwappingForModelTesterMixin:
     """Test that hotswapping does not result in recompilation on the model directly.
 

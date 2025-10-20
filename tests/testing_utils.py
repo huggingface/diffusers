@@ -447,6 +447,25 @@ def require_big_accelerator(test_case):
     )(test_case)
 
 
+def require_torch_compile(test_case):
+    """
+    Decorator marking compilation test.
+    """
+    import pytest
+
+    test_case = pytest.mark.is_torch_compile(test_case)
+
+    if not is_torch_available():
+        return unittest.skip("test requires PyTorch")(test_case)
+
+    import torch
+
+    if not (torch.cuda.is_available() or torch.xpu.is_available()):
+        return unittest.skip("test requires PyTorch CUDA")(test_case)
+
+    return unittest.skipUnless(_run_compile_tests, "test is torch compile")(test_case)
+
+
 def require_torch_accelerator_with_training(test_case):
     """Decorator marking a test that requires an accelerator with support for training."""
     return unittest.skipUnless(
