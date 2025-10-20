@@ -215,7 +215,7 @@ from diffusers import AutoPipelineForInpainting, LCMScheduler
 from diffusers.utils import load_image, make_image_grid
 
 pipe = AutoPipelineForInpainting.from_pretrained(
-    "runwayml/stable-diffusion-inpainting",
+    "stable-diffusion-v1-5/stable-diffusion-inpainting",
     torch_dtype=torch.float16,
     variant="fp16",
 ).to("cuda")
