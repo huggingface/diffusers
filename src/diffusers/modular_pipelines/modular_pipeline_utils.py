@@ -183,8 +183,8 @@ class ComponentSpec:
     @property
     def load_id(self) -> str:
         """
-        Unique identifier for this spec's pretrained load, composed of pretrained_model_name_or_path|subfolder|variant|revision (no empty
-        segments).
+        Unique identifier for this spec's pretrained load, composed of
+        pretrained_model_name_or_path|subfolder|variant|revision (no empty segments).
         """
         if self.default_creation_method == "from_config":
             return "null"
@@ -203,7 +203,8 @@ class ComponentSpec:
 
         Returns:
             Dict mapping loading field names to their values. e.g. {
-                "pretrained_model_name_or_path": "path/to/repo", "subfolder": "subfolder", "variant": "variant", "revision": "revision"
+                "pretrained_model_name_or_path": "path/to/repo", "subfolder": "subfolder", "variant": "variant",
+                "revision": "revision"
             } If a segment value is "null", it's replaced with None. Returns None if load_id is "null" (indicating
             component not created with `load` method).
         """
