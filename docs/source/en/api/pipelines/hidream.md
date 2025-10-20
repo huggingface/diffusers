@@ -21,7 +21,7 @@
 
 ## Available models
 
-The following models are available for the [`HiDreamImagePipeline`](text-to-image) pipeline:
+The following models are available for the [`HiDreamImagePipeline`] pipeline:
 
 | Model name | Description |
 |:---|:---|

@@ -220,6 +220,7 @@ else:
             "HunyuanVideoTransformer3DModel",
             "I2VGenXLUNet",
             "Kandinsky3UNet",
+            "Kandinsky5Transformer3DModel",
             "LatteTransformer3DModel",
             "LTXVideoTransformer3DModel",
             "Lumina2Transformer2DModel",
@@ -386,6 +387,8 @@ else:
     _import_structure["modular_pipelines"].extend(
         [
             "FluxAutoBlocks",
+            "FluxKontextAutoBlocks",
+            "FluxKontextModularPipeline",
             "FluxModularPipeline",
             "QwenImageAutoBlocks",
             "QwenImageEditAutoBlocks",
@@ -472,6 +475,7 @@ else:
             "ImageTextPipelineOutput",
             "Kandinsky3Img2ImgPipeline",
             "Kandinsky3Pipeline",
+            "Kandinsky5T2VPipeline",
             "KandinskyCombinedPipeline",
             "KandinskyImg2ImgCombinedPipeline",
             "KandinskyImg2ImgPipeline",
@@ -910,6 +914,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             HunyuanVideoTransformer3DModel,
             I2VGenXLUNet,
             Kandinsky3UNet,
+            Kandinsky5Transformer3DModel,
             LatteTransformer3DModel,
             LTXVideoTransformer3DModel,
             Lumina2Transformer2DModel,
@@ -1050,6 +1055,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     else:
         from .modular_pipelines import (
             FluxAutoBlocks,
+            FluxKontextAutoBlocks,
+            FluxKontextModularPipeline,
             FluxModularPipeline,
             QwenImageAutoBlocks,
             QwenImageEditAutoBlocks,
@@ -1132,6 +1139,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             ImageTextPipelineOutput,
             Kandinsky3Img2ImgPipeline,
             Kandinsky3Pipeline,
+            Kandinsky5T2VPipeline,
             KandinskyCombinedPipeline,
             KandinskyImg2ImgCombinedPipeline,
             KandinskyImg2ImgPipeline,
