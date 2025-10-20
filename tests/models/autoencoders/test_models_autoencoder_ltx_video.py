@@ -24,13 +24,14 @@ from ...testing_utils import (
     floats_tensor,
     torch_device,
 )
-from ..test_modeling_common import ModelTesterMixin, UNetTesterMixin
+from ..test_modeling_common import ModelTesterMixin
+from .testing_utils import AutoencoderTesterMixin
 
 
 enable_full_determinism()
 
 
-class AutoencoderKLLTXVideo090Tests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
+class AutoencoderKLLTXVideo090Tests(ModelTesterMixin, AutoencoderTesterMixin, unittest.TestCase):
     model_class = AutoencoderKLLTXVideo
     main_input_name = "sample"
     base_precision = 1e-2
@@ -99,7 +100,7 @@ class AutoencoderKLLTXVideo090Tests(ModelTesterMixin, UNetTesterMixin, unittest.
         pass
 
 
-class AutoencoderKLLTXVideo091Tests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
+class AutoencoderKLLTXVideo091Tests(ModelTesterMixin, unittest.TestCase):
     model_class = AutoencoderKLLTXVideo
     main_input_name = "sample"
     base_precision = 1e-2
@@ -167,34 +168,3 @@ class AutoencoderKLLTXVideo091Tests(ModelTesterMixin, UNetTesterMixin, unittest.
     @unittest.skip("AutoencoderKLLTXVideo does not support `norm_num_groups` because it does not use GroupNorm.")
     def test_forward_with_norm_groups(self):
         pass
-
-    def test_enable_disable_tiling(self):
-        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
-
-        torch.manual_seed(0)
-        model = self.model_class(**init_dict).to(torch_device)
-
-        inputs_dict.update({"return_dict": False})
-
-        torch.manual_seed(0)
-        output_without_tiling = model(**inputs_dict, generator=torch.manual_seed(0))[0]
-
-        torch.manual_seed(0)
-        model.enable_tiling()
-        output_with_tiling = model(**inputs_dict, generator=torch.manual_seed(0))[0]
-
-        self.assertLess(
-            (output_without_tiling.detach().cpu().numpy() - output_with_tiling.detach().cpu().numpy()).max(),
-            0.5,
-            "VAE tiling should not affect the inference results",
-        )
-
-        torch.manual_seed(0)
-        model.disable_tiling()
-        output_without_tiling_2 = model(**inputs_dict, generator=torch.manual_seed(0))[0]
-
-        self.assertEqual(
-            output_without_tiling.detach().cpu().numpy().all(),
-            output_without_tiling_2.detach().cpu().numpy().all(),
-            "Without tiling outputs should match with the outputs when tiling is manually disabled.",
-        )

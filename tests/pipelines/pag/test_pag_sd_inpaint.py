@@ -255,7 +255,7 @@ class StableDiffusionPAGInpaintPipelineFastTests(
 @require_torch_accelerator
 class StableDiffusionPAGPipelineIntegrationTests(unittest.TestCase):
     pipeline_class = StableDiffusionPAGInpaintPipeline
-    repo_id = "runwayml/stable-diffusion-v1-5"
+    repo_id = "stable-diffusion-v1-5/stable-diffusion-v1-5"
 
     def setUp(self):
         super().setUp()
