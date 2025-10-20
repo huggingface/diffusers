@@ -162,12 +162,9 @@ ANIMATE_TRANSFORMER_KEYS_RENAME_DICT = {
     "motion_encoder.enc.fc": "condition_embedder.motion_embedder.linears",
     "motion_encoder.dec.direction.weight": "condition_embedder.motion_embedder.motion_synthesis_weight",
     # Face encoder mappings - CausalConv1d has a .conv submodule that we need to flatten
-    "face_encoder.conv1_local.conv.weight": "condition_embedder.face_embedder.conv1_local.weight",
-    "face_encoder.conv1_local.conv.bias": "condition_embedder.face_embedder.conv1_local.bias",
-    "face_encoder.conv2.conv.weight": "condition_embedder.face_embedder.conv2.weight",
-    "face_encoder.conv2.conv.bias": "condition_embedder.face_embedder.conv2.bias",
-    "face_encoder.conv3.conv.weight": "condition_embedder.face_embedder.conv3.weight",
-    "face_encoder.conv3.conv.bias": "condition_embedder.face_embedder.conv3.bias",
+    "face_encoder.conv1_local.conv": "condition_embedder.face_embedder.conv1_local",
+    "face_encoder.conv2.conv": "condition_embedder.face_embedder.conv2",
+    "face_encoder.conv3.conv": "condition_embedder.face_embedder.conv3",
     "face_encoder.out_proj": "condition_embedder.face_embedder.out_proj",
     "face_encoder.norm1": "condition_embedder.face_embedder.norm1",
     "face_encoder.norm2": "condition_embedder.face_embedder.norm2",
@@ -222,7 +219,7 @@ def convert_animate_motion_encoder_weights(key: str, state_dict: Dict[str, Any])
     2. Rename sequential indices to named components (e.g., 0 -> conv2d, 1 -> bias_leaky_relu)
     3. Scale EqualLinear and EqualConv2d weights
     """
-    """
+
 
 TRANSFORMER_SPECIAL_KEYS_REMAP = {}
 VACE_TRANSFORMER_SPECIAL_KEYS_REMAP = {}
