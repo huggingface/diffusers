@@ -115,7 +115,7 @@ class StableDiffusionXLInpaintLoopBeforeDenoiser(ModularPipelineBlocks):
     def check_inputs(components, block_state):
         num_channels_unet = components.num_channels_unet
         if num_channels_unet == 9:
-            # default case for runwayml/stable-diffusion-inpainting
+            # default case for stable-diffusion-v1-5/stable-diffusion-inpainting
             if block_state.mask is None or block_state.masked_image_latents is None:
                 raise ValueError("mask and masked_image_latents must be provided for inpainting-specific Unet")
             num_channels_latents = block_state.latents.shape[1]
@@ -183,14 +183,14 @@ class StableDiffusionXLLoopDenoiser(ModularPipelineBlocks):
                 description="The guidance scale embedding to use for Latent Consistency Models(LCMs). Can be generated in prepare_additional_conditioning step.",
             ),
             InputParam(
-                kwargs_type="guider_input_fields",
+                kwargs_type="denoiser_input_fields",
                 description=(
                     "All conditional model inputs that need to be prepared with guider. "
                     "It should contain prompt_embeds/negative_prompt_embeds, "
                     "add_time_ids/negative_add_time_ids, "
                     "pooled_prompt_embeds/negative_pooled_prompt_embeds, "
                     "and ip_adapter_embeds/negative_ip_adapter_embeds (optional)."
-                    "please add `kwargs_type=guider_input_fields` to their parameter spec (`OutputParam`) when they are created and added to the pipeline state"
+                    "please add `kwargs_type=denoiser_input_fields` to their parameter spec (`OutputParam`) when they are created and added to the pipeline state"
                 ),
             ),
         ]
@@ -307,14 +307,14 @@ class StableDiffusionXLControlNetLoopDenoiser(ModularPipelineBlocks):
                 description="The number of inference steps to use for the denoising process. Can be generated in set_timesteps step.",
             ),
             InputParam(
-                kwargs_type="guider_input_fields",
+                kwargs_type="denoiser_input_fields",
                 description=(
                     "All conditional model inputs that need to be prepared with guider. "
                     "It should contain prompt_embeds/negative_prompt_embeds, "
                     "add_time_ids/negative_add_time_ids, "
                     "pooled_prompt_embeds/negative_pooled_prompt_embeds, "
                     "and ip_adapter_embeds/negative_ip_adapter_embeds (optional)."
-                    "please add `kwargs_type=guider_input_fields` to their parameter spec (`OutputParam`) when they are created and added to the pipeline state"
+                    "please add `kwargs_type=denoiser_input_fields` to their parameter spec (`OutputParam`) when they are created and added to the pipeline state"
                 ),
             ),
             InputParam(

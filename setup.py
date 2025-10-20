@@ -102,7 +102,8 @@ _deps = [
     "filelock",
     "flax>=0.4.1",
     "hf-doc-builder>=0.3.0",
-    "huggingface-hub>=0.34.0",
+    "httpx<1.0.0",
+    "huggingface-hub>=0.34.0,<2.0",
     "requests-mock==1.10.0",
     "importlib_metadata",
     "invisible-watermark>=0.2.0",
@@ -144,6 +145,7 @@ _deps = [
     "black",
     "phonemizer",
     "opencv-python",
+    "timm",
 ]
 
 # this is a lookup table with items like:
@@ -217,7 +219,7 @@ class DepsTableUpdateCommand(Command):
 extras = {}
 extras["quality"] = deps_list("urllib3", "isort", "ruff", "hf-doc-builder")
 extras["docs"] = deps_list("hf-doc-builder")
-extras["training"] = deps_list("accelerate", "datasets", "protobuf", "tensorboard", "Jinja2", "peft")
+extras["training"] = deps_list("accelerate", "datasets", "protobuf", "tensorboard", "Jinja2", "peft", "timm")
 extras["test"] = deps_list(
     "compel",
     "GitPython",
@@ -259,6 +261,7 @@ extras["dev"] = (
 install_requires = [
     deps["importlib_metadata"],
     deps["filelock"],
+    deps["httpx"],
     deps["huggingface-hub"],
     deps["numpy"],
     deps["regex"],

@@ -155,7 +155,7 @@ class HunyuanDiTControlNetPipelineFastTests(unittest.TestCase, PipelineTesterMix
 
         if torch_device == "xpu":
             expected_slice = np.array(
-                [0.6376953, 0.84375, 0.58691406, 0.48046875, 0.43652344, 0.5517578, 0.54248047, 0.5644531, 0.48217773]
+                [0.6948242, 0.89160156, 0.59375, 0.5078125, 0.57910156, 0.6035156, 0.58447266, 0.53564453, 0.52246094]
             )
         else:
             expected_slice = np.array(

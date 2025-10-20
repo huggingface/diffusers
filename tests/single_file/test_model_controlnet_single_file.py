@@ -13,8 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import gc
-import unittest
 
 import torch
 
@@ -23,45 +21,18 @@ from diffusers import (
 )
 
 from ..testing_utils import (
-    backend_empty_cache,
     enable_full_determinism,
-    require_torch_accelerator,
-    slow,
-    torch_device,
 )
+from .single_file_testing_utils import SingleFileModelTesterMixin
 
 
 enable_full_determinism()
 
 
-@slow
-@require_torch_accelerator
-class ControlNetModelSingleFileTests(unittest.TestCase):
+class TestControlNetModelSingleFile(SingleFileModelTesterMixin):
     model_class = ControlNetModel
     ckpt_path = "https://huggingface.co/lllyasviel/ControlNet-v1-1/blob/main/control_v11p_sd15_canny.pth"
     repo_id = "lllyasviel/control_v11p_sd15_canny"
-
-    def setUp(self):
-        super().setUp()
-        gc.collect()
-        backend_empty_cache(torch_device)
-
-    def tearDown(self):
-        super().tearDown()
-        gc.collect()
-        backend_empty_cache(torch_device)
-
-    def test_single_file_components(self):
-        model = self.model_class.from_pretrained(self.repo_id)
-        model_single_file = self.model_class.from_single_file(self.ckpt_path)
-
-        PARAMS_TO_IGNORE = ["torch_dtype", "_name_or_path", "_use_default_values", "_diffusers_version"]
-        for param_name, param_value in model_single_file.config.items():
-            if param_name in PARAMS_TO_IGNORE:
-                continue
-            assert model.config[param_name] == param_value, (
-                f"{param_name} differs between single file loading and pretrained loading"
-            )
 
     def test_single_file_arguments(self):
         model_default = self.model_class.from_single_file(self.ckpt_path)

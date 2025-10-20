@@ -171,7 +171,7 @@ Also, say 👋 in our public Discord channel <a href="https://discord.gg/G7tWnz9
   <tr style="border-top: 2px solid black">
     <td>Text-guided Image Inpainting</td>
     <td><a href="https://huggingface.co/docs/diffusers/api/pipelines/stable_diffusion/inpaint">Stable Diffusion Inpainting</a></td>
-      <td><a href="https://huggingface.co/runwayml/stable-diffusion-inpainting"> runwayml/stable-diffusion-inpainting </a></td>
+      <td><a href="https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-inpainting"> stable-diffusion-v1-5/stable-diffusion-inpainting </a></td>
   </tr>
   <tr style="border-top: 2px solid black">
     <td>Image Variation</td>

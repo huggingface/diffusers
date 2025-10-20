@@ -31,11 +31,8 @@ cd examples/instruct_pix2pix
 pip install -r requirements.txt
 ```
 
-<Tip>
-
-🤗 Accelerate 是一个库，用于帮助您在多个 GPU/TPU 上或使用混合精度进行训练。它将根据您的硬件和环境自动配置训练设置。查看 🤗 Accelerate [快速导览](https://huggingface.co/docs/accelerate/quicktour) 以了解更多信息。
-
-</Tip>
+> [!TIP]
+> 🤗 Accelerate 是一个库，用于帮助您在多个 GPU/TPU 上或使用混合精度进行训练。它将根据您的硬件和环境自动配置训练设置。查看 🤗 Accelerate [快速导览](https://huggingface.co/docs/accelerate/quicktour) 以了解更多信息。
 
 初始化一个 🤗 Accelerate 环境：
 
@@ -59,11 +56,8 @@ write_basic_config()
 
 最后，如果您想在自己的数据集上训练模型，请查看 [创建用于训练的数据集](create_dataset) 指南，了解如何创建与训练脚本兼容的数据集。
 
-<Tip>
-
-以下部分重点介绍了训练脚本中对于理解如何修改它很重要的部分，但并未详细涵盖脚本的每个方面。如果您有兴趣了解更多，请随时阅读 [脚本](https://github.com/huggingface/diffusers/blob/main/examples/instruct_pix2pix/train_instruct_pix2pix.py)，并告诉我们如果您有任何问题或疑虑。
-
-</Tip>
+> [!TIP]
+> 以下部分重点介绍了训练脚本中对于理解如何修改它很重要的部分，但并未详细涵盖脚本的每个方面。如果您有兴趣了解更多，请随时阅读 [脚本](https://github.com/huggingface/diffusers/blob/main/examples/instruct_pix2pix/train_instruct_pix2pix.py)，并告诉我们如果您有任何问题或疑虑。
 
 ## 脚本参数
 
@@ -176,15 +170,12 @@ if args.conditioning_dropout_prob is not None:
 
 将 `MODEL_NAME` 环境变量设置为模型名称（可以是 Hub 上的模型 ID 或本地模型的路径），并将 `DATASET_ID` 设置为 Hub 上数据集的名称。脚本会创建并保存所有组件（特征提取器、调度器、文本编码器、UNet 等）到您的仓库中的一个子文件夹。
 
-<Tip>
-
-为了获得更好的结果，尝试使用更大的数据集进行更长时间的训练。我们只在较小规模的数据集上测试过此训练脚本。
-
-<br>
-
-要使用 Weights and Biases 监控训练进度，请将 `--report_to=wandb` 参数添加到训练命令中，并使用 `--val_image_url` 指定验证图像，使用 `--validation_prompt` 指定验证提示。这对于调试模型非常有用。
-
-</Tip>
+> [!TIP]
+> 为了获得更好的结果，尝试使用更大的数据集进行更长时间的训练。我们只在较小规模的数据集上测试过此训练脚本。
+>
+> <br>
+>
+> 要使用 Weights and Biases 监控训练进度，请将 `--report_to=wandb` 参数添加到训练命令中，并使用 `--val_image_url` 指定验证图像，使用 `--validation_prompt` 指定验证提示。这对于调试模型非常有用。
 
 如果您在多个 GPU 上训练，请将 `--multi_gpu` 参数添加到 `accelerate launch` 命令中。
 
