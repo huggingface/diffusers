@@ -7,7 +7,15 @@ import torch
 from accelerate import init_empty_weights
 from huggingface_hub import hf_hub_download, snapshot_download
 from safetensors.torch import load_file
-from transformers import AutoProcessor, AutoTokenizer, CLIPVisionModelWithProjection, UMT5EncoderModel, CLIPVisionModel
+from transformers import (
+    AutoProcessor,
+    AutoTokenizer,
+    CLIPImageProcessor,
+    CLIPVisionConfig,
+    CLIPVisionModel,
+    CLIPVisionModelWithProjection,
+    UMT5EncoderModel,
+)
 
 from diffusers import (
     AutoencoderKLWan,
@@ -142,17 +150,24 @@ ANIMATE_TRANSFORMER_KEYS_RENAME_DICT = {
     "cross_attn.o": "attn2.to_out.0",
     "cross_attn.norm_q": "attn2.norm_q",
     "cross_attn.norm_k": "attn2.norm_k",
+    "cross_attn.k_img": "attn2.to_k_img",
+    "cross_attn.v_img": "attn2.to_v_img",
+    "cross_attn.norm_k_img": "attn2.norm_k_img",
+    # After cross_attn -> attn2 rename, we need to rename the img keys
     "attn2.to_k_img": "attn2.add_k_proj",
     "attn2.to_v_img": "attn2.add_v_proj",
     "attn2.norm_k_img": "attn2.norm_added_k",
     # Motion encoder mappings
     "motion_encoder.enc.net_app.convs": "condition_embedder.motion_embedder.convs",
     "motion_encoder.enc.fc": "condition_embedder.motion_embedder.linears",
-    "motion_encoder.dec.direction.weight": "condition_embedder.motion_embedder.weight",
-    # Face encoder mappings
-    "face_encoder.conv1_local": "condition_embedder.face_embedder.conv1_local",
-    "face_encoder.conv2": "condition_embedder.face_embedder.conv2",
-    "face_encoder.conv3": "condition_embedder.face_embedder.conv3",
+    "motion_encoder.dec.direction.weight": "condition_embedder.motion_embedder.motion_synthesis_weight",
+    # Face encoder mappings - CausalConv1d has a .conv submodule that we need to flatten
+    "face_encoder.conv1_local.conv.weight": "condition_embedder.face_embedder.conv1_local.weight",
+    "face_encoder.conv1_local.conv.bias": "condition_embedder.face_embedder.conv1_local.bias",
+    "face_encoder.conv2.conv.weight": "condition_embedder.face_embedder.conv2.weight",
+    "face_encoder.conv2.conv.bias": "condition_embedder.face_embedder.conv2.bias",
+    "face_encoder.conv3.conv.weight": "condition_embedder.face_embedder.conv3.weight",
+    "face_encoder.conv3.conv.bias": "condition_embedder.face_embedder.conv3.bias",
     "face_encoder.out_proj": "condition_embedder.face_embedder.out_proj",
     "face_encoder.norm1": "condition_embedder.face_embedder.norm1",
     "face_encoder.norm2": "condition_embedder.face_embedder.norm2",
@@ -162,12 +177,20 @@ ANIMATE_TRANSFORMER_KEYS_RENAME_DICT = {
     "face_adapter.fuser_blocks": "face_adapter",
 }
 
+
 def convert_equal_linear_weight(key: str, state_dict: Dict[str, Any]) -> None:
     """
     Convert EqualLinear weights to standard Linear weights by applying the scale factor.
-    EqualLinear uses: F.linear(input, self.weight * self.scale, bias=self.bias * self.lr_mul)
-    where scale = (1 / sqrt(in_dim)) * lr_mul
+    EqualLinear uses: F.linear(input, self.weight * self.scale, bias=self.bias)
+    where scale = (1 / sqrt(in_dim))
     """
+    if ".weight" not in key:
+        return
+
+    in_dim = state_dict[key].shape[1]
+    scale = 1.0 / math.sqrt(in_dim)
+    state_dict[key] = state_dict[key] * scale
+
 
 def convert_equal_conv2d_weight(key: str, state_dict: Dict[str, Any]) -> None:
     """
@@ -175,16 +198,30 @@ def convert_equal_conv2d_weight(key: str, state_dict: Dict[str, Any]) -> None:
     EqualConv2d uses: F.conv2d(input, self.weight * self.scale, bias=self.bias, ...)
     where scale = 1 / sqrt(in_channel * kernel_size^2)
     """
+    if ".weight" not in key or len(state_dict[key].shape) != 4:
+        return
+
+    out_channel, in_channel, kernel_size, kernel_size = state_dict[key].shape
+    scale = 1.0 / math.sqrt(in_channel * kernel_size**2)
+    state_dict[key] = state_dict[key] * scale
+
 
 def convert_animate_motion_encoder_weights(key: str, state_dict: Dict[str, Any]) -> None:
     """
     Convert all motion encoder weights for Animate model.
-    This handles both EqualLinear (in fc/linears) and EqualConv2d (in conv layers).
+    This handles both EqualLinear (in linears) and EqualConv2d (in convs).
 
     In the original model:
     - All Linear layers in fc use EqualLinear
     - All Conv2d layers in convs use EqualConv2d (except blur_conv which is initialized separately)
     - Blur kernels are stored as buffers in Sequential modules
+    - ConvLayer is nn.Sequential with indices: [Blur (optional), EqualConv2d, FusedLeakyReLU (optional)]
+
+    Conversion strategy:
+    1. Drop .kernel buffers (blur kernels)
+    2. Rename sequential indices to named components (e.g., 0 -> conv2d, 1 -> bias_leaky_relu)
+    3. Scale EqualLinear and EqualConv2d weights
+    """
     """
 
 TRANSFORMER_SPECIAL_KEYS_REMAP = {}
@@ -507,7 +544,24 @@ def convert_transformer(model_type: str, stage: str = None):
                 continue
             handler_fn_inplace(key, original_state_dict)
 
+    # For Animate model, add blur_conv weights from the initialized model
+    # These are procedurally generated in the diffusers ConvLayer and not present in original checkpoint
+    if "Animate" in model_type:
+        # Create a temporary model on CPU to get the blur_conv weights
+        with torch.device("cpu"):
+            temp_transformer = WanAnimateTransformer3DModel.from_config(diffusers_config)
+        temp_model_state = temp_transformer.state_dict()
+        for key in temp_model_state.keys():
+            if "blur_conv.weight" in key and "motion_embedder" in key:
+                original_state_dict[key] = temp_model_state[key]
+        del temp_transformer
+
+    # Load state dict into the meta model, which will materialize the tensors
     transformer.load_state_dict(original_state_dict, strict=True, assign=True)
+
+    # Move to CPU to ensure all tensors are materialized
+    transformer = transformer.to("cpu")
+
     return transformer
 
 
@@ -1018,6 +1072,163 @@ def convert_vae_22():
     return vae
 
 
+def convert_openclip_xlm_roberta_vit_to_clip_vision_model():
+    """
+    Convert OpenCLIP XLM-RoBERTa-CLIP vision encoder to HuggingFace CLIPVisionModel format.
+
+    The original checkpoint contains a multimodal XLM-RoBERTa-CLIP model with:
+    - Vision encoder: ViT-Huge/14 (1280 dim, 32 layers, 16 heads, patch_size=14)
+    - Text encoder: XLM-RoBERTa-Large (not used in Wan2.2-Animate)
+
+    We extract only the vision encoder and convert it to CLIPVisionModel format.
+
+    IMPORTANT: The original uses use_31_block=True (returns features from first 31 blocks only).
+    We convert only the first 31 layers to match this behavior exactly.
+    """
+    # Download the OpenCLIP checkpoint
+    checkpoint_path = hf_hub_download(
+        "Wan-AI/Wan2.2-Animate-14B", "models_clip_open-clip-xlm-roberta-large-vit-huge-14.pth"
+    )
+
+    # Load the checkpoint
+    openclip_state_dict = torch.load(checkpoint_path, map_location="cpu", weights_only=True)
+
+    # Create mapping from OpenCLIP vision encoder to CLIPVisionModel
+    # OpenCLIP uses "visual." prefix, we need to map to CLIPVisionModel structure
+    clip_vision_state_dict = {}
+
+    # Mapping rules:
+    # visual.patch_embedding.weight -> vision_model.embeddings.patch_embedding.weight
+    # visual.patch_embedding.bias -> vision_model.embeddings.patch_embedding.bias
+    # visual.cls_embedding -> vision_model.embeddings.class_embedding
+    # visual.pos_embedding -> vision_model.embeddings.position_embedding.weight
+    # visual.transformer.{i}.norm1.weight -> vision_model.encoder.layers.{i}.layer_norm1.weight
+    # visual.transformer.{i}.norm1.bias -> vision_model.encoder.layers.{i}.layer_norm1.bias
+    # visual.transformer.{i}.attn.to_qkv.weight -> split into to_q, to_k, to_v
+    # visual.transformer.{i}.attn.proj.weight -> vision_model.encoder.layers.{i}.self_attn.out_proj.weight
+    # visual.transformer.{i}.norm2.weight -> vision_model.encoder.layers.{i}.layer_norm2.weight
+    # visual.transformer.{i}.mlp.0.weight -> vision_model.encoder.layers.{i}.mlp.fc1.weight
+    # visual.transformer.{i}.mlp.2.weight -> vision_model.encoder.layers.{i}.mlp.fc2.weight
+    # visual.pre_norm -> vision_model.pre_layrnorm (if exists)
+    # visual.post_norm -> vision_model.post_layernorm (if exists)
+
+    for key, value in openclip_state_dict.items():
+        if not key.startswith("visual."):
+            # Skip text encoder and other components
+            continue
+
+        # Remove "visual." prefix
+        new_key = key[7:]  # Remove "visual."
+
+        # Embeddings
+        if new_key == "patch_embedding.weight":
+            clip_vision_state_dict["vision_model.embeddings.patch_embedding.weight"] = value
+        elif new_key == "patch_embedding.bias":
+            clip_vision_state_dict["vision_model.embeddings.patch_embedding.bias"] = value
+        elif new_key == "cls_embedding":
+            # Remove extra batch dimension: [1, 1, 1280] -> [1280]
+            clip_vision_state_dict["vision_model.embeddings.class_embedding"] = value.squeeze()
+        elif new_key == "pos_embedding":
+            # Remove extra batch dimension: [1, 257, 1280] -> [257, 1280]
+            clip_vision_state_dict["vision_model.embeddings.position_embedding.weight"] = value.squeeze(0)
+
+        # Pre-norm (if exists)
+        elif new_key == "pre_norm.weight":
+            clip_vision_state_dict["vision_model.pre_layrnorm.weight"] = value
+        elif new_key == "pre_norm.bias":
+            clip_vision_state_dict["vision_model.pre_layrnorm.bias"] = value
+
+        # Post-norm - final layer norm after transformer blocks
+        elif new_key == "post_norm.weight":
+            clip_vision_state_dict["vision_model.post_layernorm.weight"] = value
+        elif new_key == "post_norm.bias":
+            clip_vision_state_dict["vision_model.post_layernorm.bias"] = value
+
+        # Transformer layers (only first 31 layers, skip layer 31 which is index 31)
+        elif new_key.startswith("transformer."):
+            parts = new_key.split(".")
+            if len(parts) >= 3:
+                layer_idx = int(parts[1])
+
+                # Skip the 32nd layer (index 31) to match use_31_block=True
+                if layer_idx >= 31:
+                    continue
+
+                component = ".".join(parts[2:])
+
+                # Layer norm 1
+                if component == "norm1.weight":
+                    clip_vision_state_dict[f"vision_model.encoder.layers.{layer_idx}.layer_norm1.weight"] = value
+                elif component == "norm1.bias":
+                    clip_vision_state_dict[f"vision_model.encoder.layers.{layer_idx}.layer_norm1.bias"] = value
+
+                # Attention - QKV split
+                elif component == "attn.to_qkv.weight":
+                    # Split QKV into separate Q, K, V
+                    qkv = value
+                    q, k, v = qkv.chunk(3, dim=0)
+                    clip_vision_state_dict[f"vision_model.encoder.layers.{layer_idx}.self_attn.q_proj.weight"] = q
+                    clip_vision_state_dict[f"vision_model.encoder.layers.{layer_idx}.self_attn.k_proj.weight"] = k
+                    clip_vision_state_dict[f"vision_model.encoder.layers.{layer_idx}.self_attn.v_proj.weight"] = v
+                elif component == "attn.to_qkv.bias":
+                    # Split QKV bias
+                    qkv_bias = value
+                    q_bias, k_bias, v_bias = qkv_bias.chunk(3, dim=0)
+                    clip_vision_state_dict[f"vision_model.encoder.layers.{layer_idx}.self_attn.q_proj.bias"] = q_bias
+                    clip_vision_state_dict[f"vision_model.encoder.layers.{layer_idx}.self_attn.k_proj.bias"] = k_bias
+                    clip_vision_state_dict[f"vision_model.encoder.layers.{layer_idx}.self_attn.v_proj.bias"] = v_bias
+
+                # Attention output projection
+                elif component == "attn.proj.weight":
+                    clip_vision_state_dict[f"vision_model.encoder.layers.{layer_idx}.self_attn.out_proj.weight"] = (
+                        value
+                    )
+                elif component == "attn.proj.bias":
+                    clip_vision_state_dict[f"vision_model.encoder.layers.{layer_idx}.self_attn.out_proj.bias"] = value
+
+                # Layer norm 2
+                elif component == "norm2.weight":
+                    clip_vision_state_dict[f"vision_model.encoder.layers.{layer_idx}.layer_norm2.weight"] = value
+                elif component == "norm2.bias":
+                    clip_vision_state_dict[f"vision_model.encoder.layers.{layer_idx}.layer_norm2.bias"] = value
+
+                # MLP
+                elif component.startswith("mlp.0."):
+                    # First linear layer
+                    mlp_component = component[6:]  # Remove "mlp.0."
+                    clip_vision_state_dict[f"vision_model.encoder.layers.{layer_idx}.mlp.fc1.{mlp_component}"] = value
+                elif component.startswith("mlp.2."):
+                    # Second linear layer (after activation)
+                    mlp_component = component[6:]  # Remove "mlp.2."
+                    clip_vision_state_dict[f"vision_model.encoder.layers.{layer_idx}.mlp.fc2.{mlp_component}"] = value
+
+    # Create CLIPVisionModel with matching config
+    # Use 31 layers to match the original use_31_block=True behavior
+    config = CLIPVisionConfig(
+        hidden_size=1280,
+        intermediate_size=5120,  # 1280 * 4 (mlp_ratio)
+        num_hidden_layers=31,  # Only first 31 layers, matching use_31_block=True
+        num_attention_heads=16,
+        image_size=224,
+        patch_size=14,
+        hidden_act="gelu",
+        layer_norm_eps=1e-5,
+        attention_dropout=0.0,
+        projection_dim=1024,  # embed_dim from original config
+    )
+
+    with init_empty_weights():
+        vision_model = CLIPVisionModel(config)
+
+    # Load state dict into the meta model, which will materialize the tensors
+    vision_model.load_state_dict(clip_vision_state_dict, strict=True, assign=True)
+
+    # Move to CPU to ensure all tensors are materialized
+    vision_model = vision_model.to("cpu")
+
+    return vision_model
+
+
 def get_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--model_type", type=str, default=None)
@@ -1129,10 +1340,24 @@ if __name__ == "__main__":
             scheduler=scheduler,
         )
     elif "Animate" in args.model_type:
-        image_encoder = CLIPVisionModel.from_pretrained(
-            "laion/CLIP-ViT-H-14-laion2B-s32B-b79K", torch_dtype=torch.bfloat16
+        # Convert OpenCLIP XLM-RoBERTa-CLIP vision encoder to CLIPVisionModel
+        print("Converting XLM-RoBERTa-CLIP vision encoder from OpenCLIP checkpoint...")
+        image_encoder = convert_openclip_xlm_roberta_vit_to_clip_vision_model()
+
+        # Create image processor for ViT-Huge/14 with 224x224 images
+        image_processor = CLIPImageProcessor(
+            size={"shortest_edge": 224},
+            crop_size={"height": 224, "width": 224},
+            do_center_crop=True,
+            do_normalize=True,
+            do_rescale=True,
+            do_resize=True,
+            image_mean=[0.48145466, 0.4578275, 0.40821073],
+            image_std=[0.26862954, 0.26130258, 0.27577711],
+            resample=3,  # PIL.Image.BICUBIC
+            rescale_factor=0.00392156862745098,  # 1/255
         )
-        image_processor = AutoProcessor.from_pretrained("laion/CLIP-ViT-H-14-laion2B-s32B-b79K")
+
         pipe = WanAnimatePipeline(
             transformer=transformer,
             text_encoder=text_encoder,

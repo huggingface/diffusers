@@ -22,8 +22,7 @@ import torch.nn.functional as F
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
 from ...utils import USE_PEFT_BACKEND, logging, scale_lora_layers, unscale_lora_layers
-from ...utils.torch_utils import maybe_allow_in_graph
-from ..attention import AttentionMixin, FeedForward
+from ..attention import AttentionMixin
 from ..attention_dispatch import dispatch_attention_fn
 from ..cache_utils import CacheMixin
 from ..embeddings import PixArtAlphaTextProjection, TimestepEmbedding, Timesteps
@@ -31,9 +30,9 @@ from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin, get_parameter_dtype
 from ..normalization import FP32LayerNorm
 from .transformer_wan import (
-    WanAttention,
-    WanAttnProcessor,
+    WanImageEmbedding,
     WanRotaryPosEmbed,
+    WanTransformerBlock,
 )
 
 
@@ -94,7 +93,6 @@ class ConvLayer(nn.Module):
 
         self.conv2d = nn.Conv2d(in_channel, out_channel, kernel_size, stride, padding, bias=bias and not activate)
 
-
     def forward(self, input: torch.Tensor) -> torch.Tensor:
         if self.downsample:
             input = self.blur_conv(input)
@@ -127,7 +125,7 @@ class ResBlock(nn.Module):
 
 
 class WanAnimateMotionEmbedder(nn.Module):
-    def __init__(self, size: int = 512, dim: int = 512, dim_motion: int = 20):
+    def __init__(self, size: int = 512, style_dim: int = 512, motion_dim: int = 20):
         super().__init__()
 
         # Appearance encoder: conv layers
@@ -143,17 +141,16 @@ class WanAnimateMotionEmbedder(nn.Module):
             self.convs.append(ResBlock(in_channel, out_channel))
             in_channel = out_channel
 
-        self.convs.append(nn.Conv2d(in_channel, dim, 4, padding=0, bias=False))
+        self.convs.append(nn.Conv2d(in_channel, style_dim, 4, padding=0, bias=False))
 
         # Motion encoder: linear layers
         linears = []
         for _ in range(4):
-            linears.append(nn.Linear(dim, dim))
-        linears.append(nn.Linear(dim, dim_motion))
+            linears.append(nn.Linear(style_dim, style_dim))
+        linears.append(nn.Linear(style_dim, motion_dim))
         self.linears = nn.Sequential(*linears)
 
-        # Motion synthesis weight
-        self.weight = nn.Parameter(torch.randn(512, 20))
+        self.motion_synthesis_weight = nn.Parameter(torch.randn(512, 20))
 
     def forward(self, face_image: torch.Tensor) -> torch.Tensor:
         # Appearance encoding through convs
@@ -165,12 +162,12 @@ class WanAnimateMotionEmbedder(nn.Module):
         motion_feat = self.linears(face_image)
 
         # Motion synthesis via QR decomposition
-        weight = self.weight + 1e-8
-        Q = torch.linalg.qr(weight.to(torch.float32))[0].to(weight.dtype)
+        weight = self.motion_synthesis_weight + 1e-8
+        Q = torch.linalg.qr(weight.to(torch.float32))[0]
 
         input_diag = torch.diag_embed(motion_feat)  # Alpha, diagonal matrix
         out = torch.matmul(input_diag, Q.T)
-        out = torch.sum(out, dim=1)
+        out = torch.sum(out, dim=1).to(motion_feat.dtype)
         return out
 
 
@@ -224,30 +221,15 @@ class WanAnimateFaceEmbedder(nn.Module):
         return x_local
 
 
-class WanImageEmbedding(torch.nn.Module):
-    def __init__(self, in_features: int, out_features: int):
-        super().__init__()
-
-        self.norm1 = FP32LayerNorm(in_features)
-        self.ff = FeedForward(in_features, out_features, mult=1, activation_fn="gelu")
-        self.norm2 = FP32LayerNorm(out_features)
-
-    def forward(self, encoder_hidden_states_image: torch.Tensor) -> torch.Tensor:
-        hidden_states = self.norm1(encoder_hidden_states_image)
-        hidden_states = self.ff(hidden_states)
-        hidden_states = self.norm2(hidden_states)
-        return hidden_states
-
-
-class WanTimeTextImageMotionEmbedding(nn.Module):
+class WanTimeTextImageMotionFaceEmbedding(nn.Module):
     def __init__(
         self,
         dim: int,
         time_freq_dim: int,
         time_proj_dim: int,
         text_embed_dim: int,
-        motion_encoder_dim: int,
         image_embed_dim: int,
+        motion_encoder_dim: int,
     ):
         super().__init__()
 
@@ -256,21 +238,18 @@ class WanTimeTextImageMotionEmbedding(nn.Module):
         self.act_fn = nn.SiLU()
         self.time_proj = nn.Linear(dim, time_proj_dim)
         self.text_embedder = PixArtAlphaTextProjection(text_embed_dim, dim, act_fn="gelu_tanh")
-        self.motion_embedder = WanAnimateMotionEmbedder()
-        self.face_embedder = WanAnimateFaceEmbedder(in_dim=motion_encoder_dim, hidden_dim=dim, num_heads=4)
         self.image_embedder = WanImageEmbedding(image_embed_dim, dim)
+        self.motion_embedder = WanAnimateMotionEmbedder(size=512, style_dim=512, motion_dim=20)
+        self.face_embedder = WanAnimateFaceEmbedder(in_dim=motion_encoder_dim, hidden_dim=dim, num_heads=4)
 
     def forward(
         self,
         timestep: torch.Tensor,
         encoder_hidden_states: torch.Tensor,
-        face_pixel_values: torch.Tensor,
         encoder_hidden_states_image: Optional[torch.Tensor] = None,
-        timestep_seq_len: Optional[int] = None,
+        face_pixel_values: Optional[torch.Tensor] = None,
     ):
         timestep = self.timesteps_proj(timestep)
-        if timestep_seq_len is not None:
-            timestep = timestep.unflatten(0, (-1, timestep_seq_len))
 
         time_embedder_dtype = get_parameter_dtype(self.time_embedder)
         if timestep.dtype != time_embedder_dtype and time_embedder_dtype != torch.int8:
@@ -283,98 +262,23 @@ class WanTimeTextImageMotionEmbedding(nn.Module):
             encoder_hidden_states_image = self.image_embedder(encoder_hidden_states_image)
 
         # Motion vector computation from face pixel values
-        batch_size, channels, num_frames_face, height, width = face_pixel_values.shape
+        batch_size, channels, num_face_frames, height, width = face_pixel_values.shape
         # Rearrange from (B, C, T, H, W) to (B*T, C, H, W)
         face_pixel_values_flat = face_pixel_values.permute(0, 2, 1, 3, 4).reshape(-1, channels, height, width)
 
         # Extract motion features using motion embedder
         motion_vec = self.motion_embedder(face_pixel_values_flat)
-        motion_vec = motion_vec.view(batch_size, num_frames_face, -1)
+        motion_vec = motion_vec.view(batch_size, num_face_frames, -1)
 
         # Encode motion vectors through face embedder
         motion_vec = self.face_embedder(motion_vec)
 
         # Add padding at the beginning (prepend zeros)
-        B, T_motion, N_motion, C_motion = motion_vec.shape
-        pad_motion = torch.zeros(B, 1, N_motion, C_motion, dtype=motion_vec.dtype, device=motion_vec.device)
-        motion_vec = torch.cat([pad_motion, motion_vec], dim=1)
+        batch_size, T_motion, N_motion, C_motion = motion_vec.shape
+        pad_face = torch.zeros(batch_size, 1, N_motion, C_motion, dtype=motion_vec.dtype, device=motion_vec.device)
+        motion_vec = torch.cat([pad_face, motion_vec], dim=1)
 
         return temb, timestep_proj, encoder_hidden_states, encoder_hidden_states_image, motion_vec
-
-
-@maybe_allow_in_graph
-class WanAnimateTransformerBlock(nn.Module):
-    def __init__(
-        self,
-        dim: int,
-        ffn_dim: int,
-        num_heads: int,
-        qk_norm: str = "rms_norm_across_heads",
-        cross_attn_norm: bool = False,
-        eps: float = 1e-6,
-        added_kv_proj_dim: Optional[int] = None,
-    ):
-        super().__init__()
-
-        # 1. Self-attention
-        self.norm1 = FP32LayerNorm(dim, eps, elementwise_affine=False)
-        self.attn1 = WanAttention(
-            dim=dim,
-            heads=num_heads,
-            dim_head=dim // num_heads,
-            eps=eps,
-            cross_attention_dim_head=None,
-            processor=WanAttnProcessor(),
-        )
-
-        # 2. Cross-attention
-        self.attn2 = WanAttention(
-            dim=dim,
-            heads=num_heads,
-            dim_head=dim // num_heads,
-            eps=eps,
-            added_kv_proj_dim=added_kv_proj_dim,
-            cross_attention_dim_head=dim // num_heads,
-            processor=WanAttnProcessor(),
-        )
-        self.norm2 = FP32LayerNorm(dim, eps, elementwise_affine=True) if cross_attn_norm else nn.Identity()
-
-        # 3. Feed-forward
-        self.ffn = FeedForward(dim, inner_dim=ffn_dim, activation_fn="gelu-approximate")
-        self.norm3 = FP32LayerNorm(dim, eps, elementwise_affine=False)
-
-        self.scale_shift_table = nn.Parameter(torch.randn(1, 6, dim) / dim**0.5)
-
-    def forward(
-        self,
-        hidden_states: torch.Tensor,
-        encoder_hidden_states: torch.Tensor,
-        temb: torch.Tensor,
-        rotary_emb: torch.Tensor,
-    ) -> torch.Tensor:
-        # temb: batch_size, 6, inner_dim (like wan2.1/wan2.2 14B)
-        shift_msa, scale_msa, gate_msa, c_shift_msa, c_scale_msa, c_gate_msa = (
-            self.scale_shift_table + temb.float()
-        ).chunk(6, dim=1)
-
-        # 1. Self-attention
-        norm_hidden_states = (self.norm1(hidden_states.float()) * (1 + scale_msa) + shift_msa).type_as(hidden_states)
-        attn_output = self.attn1(norm_hidden_states, None, None, rotary_emb)
-        hidden_states = (hidden_states.float() + attn_output * gate_msa).type_as(hidden_states)
-
-        # 2. Cross-attention
-        norm_hidden_states = self.norm2(hidden_states.float()).type_as(hidden_states)
-        attn_output = self.attn2(norm_hidden_states, encoder_hidden_states, None, None)
-        hidden_states = hidden_states + attn_output
-
-        # 3. Feed-forward
-        norm_hidden_states = (self.norm3(hidden_states.float()) * (1 + c_scale_msa) + c_shift_msa).type_as(
-            hidden_states
-        )
-        ff_output = self.ffn(norm_hidden_states)
-        hidden_states = (hidden_states.float() + ff_output.float() * c_gate_msa).type_as(hidden_states)
-
-        return hidden_states
 
 
 class WanAnimateFaceBlock(nn.Module):
@@ -385,6 +289,7 @@ class WanAnimateFaceBlock(nn.Module):
         self,
         hidden_size: int,
         heads_num: int,
+        eps: float = 1e-6,
     ):
         super().__init__()
         self.heads_num = heads_num
@@ -394,11 +299,19 @@ class WanAnimateFaceBlock(nn.Module):
         self.linear1_q = nn.Linear(hidden_size, hidden_size)
         self.linear2 = nn.Linear(hidden_size, hidden_size)
 
-        self.q_norm = nn.RMSNorm(head_dim, eps=1e-6)
-        self.k_norm = nn.RMSNorm(head_dim, eps=1e-6)
+        self.q_norm = nn.RMSNorm(head_dim, eps)
+        self.k_norm = nn.RMSNorm(head_dim, eps)
 
-        self.pre_norm_feat = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
-        self.pre_norm_motion = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
+        self.pre_norm_feat = nn.LayerNorm(hidden_size, eps, elementwise_affine=False)
+        self.pre_norm_motion = nn.LayerNorm(hidden_size, eps, elementwise_affine=False)
+
+    def set_attention_backend(self, backend):
+        """Set the attention backend for this face block."""
+        self._attention_backend = backend
+
+    def set_parallel_config(self, config):
+        """Set the parallel configuration for this face block."""
+        self._parallel_config = config
 
     def forward(
         self,
@@ -484,7 +397,14 @@ class WanAnimateTransformer3DModel(
     _supports_gradient_checkpointing = True
     _skip_layerwise_casting_patterns = ["patch_embedding", "condition_embedder", "norm"]
     _no_split_modules = ["WanAnimateTransformerBlock"]
-    _keep_in_fp32_modules = ["time_embedder", "scale_shift_table", "norm1", "norm2", "norm3"]
+    _keep_in_fp32_modules = [
+        "time_embedder",
+        "scale_shift_table",
+        "norm1",
+        "norm2",
+        "norm3",
+        "motion_synthesis_weight",
+    ]
     _keys_to_ignore_on_load_unexpected = ["norm_added_q"]
 
     @register_to_config
@@ -518,19 +438,19 @@ class WanAnimateTransformer3DModel(
         self.pose_patch_embedding = nn.Conv3d(16, inner_dim, kernel_size=patch_size, stride=patch_size)
 
         # 2. Condition embeddings
-        self.condition_embedder = WanTimeTextImageMotionEmbedding(
+        self.condition_embedder = WanTimeTextImageMotionFaceEmbedding(
             dim=inner_dim,
             time_freq_dim=freq_dim,
             time_proj_dim=inner_dim * 6,
             text_embed_dim=text_dim,
-            motion_encoder_dim=motion_encoder_dim,
             image_embed_dim=image_dim,
+            motion_encoder_dim=motion_encoder_dim,
         )
 
         # 3. Transformer blocks
         self.blocks = nn.ModuleList(
             [
-                WanAnimateTransformerBlock(
+                WanTransformerBlock(
                     inner_dim, ffn_dim, num_attention_heads, qk_norm, cross_attn_norm, eps, added_kv_proj_dim
                 )
                 for _ in range(num_layers)
@@ -553,6 +473,39 @@ class WanAnimateTransformer3DModel(
         self.scale_shift_table = nn.Parameter(torch.randn(1, 2, inner_dim) / inner_dim**0.5)
 
         self.gradient_checkpointing = False
+
+    def set_attention_backend(self, backend: str):
+        """
+        Set the attention backend for the transformer and all face adapter blocks.
+
+        Args:
+            backend (`str`): The attention backend to use (e.g., 'flash', 'sdpa', 'xformers').
+        """
+        from ..attention_dispatch import AttentionBackendName
+
+        # Validate backend
+        available_backends = {x.value for x in AttentionBackendName.__members__.values()}
+        if backend not in available_backends:
+            raise ValueError(f"`{backend=}` must be one of the following: " + ", ".join(available_backends))
+
+        backend_enum = AttentionBackendName(backend.lower())
+
+        # Call parent ModelMixin method to set backend for all attention modules
+        super().set_attention_backend(backend)
+
+        # Also set backend for all face adapter blocks (which use dispatch_attention_fn directly)
+        for face_block in self.face_adapter:
+            face_block.set_attention_backend(backend_enum)
+
+    def set_parallel_config(self, config):
+        """
+        Set the parallel configuration for all face adapter blocks.
+
+        Args:
+            config: The parallel configuration to use.
+        """
+        for face_block in self.face_adapter:
+            face_block.set_parallel_config(config)
 
     def forward(
         self,
@@ -592,17 +545,16 @@ class WanAnimateTransformer3DModel(
         # 2. Patch embedding
         hidden_states = self.patch_embedding(hidden_states)
         pose_hidden_states = self.pose_patch_embedding(pose_hidden_states)
+        # Add pose embeddings to hidden states
+        hidden_states[:, :, 1:] = hidden_states[:, :, 1:] + pose_hidden_states[:, :, 1:]
         hidden_states = hidden_states.flatten(2).transpose(1, 2)
+        # sequence_length = int(math.ceil(np.prod([post_patch_num_frames, post_patch_height, post_patch_width]) // 4))
+        # hidden_states = torch.cat([hidden_states, hidden_states.new_zeros(hidden_states.shape[0], sequence_length - hidden_states.shape[1], hidden_states.shape[2])], dim=1)
         pose_hidden_states = pose_hidden_states.flatten(2).transpose(1, 2)
-
-        # Add pose embeddings to hidden states (skip first position based on original implementation)
-        # Original: x_[:, :, 1:] += pose_latents_
-        # After flattening, dimension 1 is the sequence dimension
-        hidden_states[:, 1:, :] = hidden_states[:, 1:, :] + pose_hidden_states[:, 1:, :]
 
         # 3. Condition embeddings (time, text, image, motion)
         temb, timestep_proj, encoder_hidden_states, encoder_hidden_states_image, motion_vec = self.condition_embedder(
-            timestep, encoder_hidden_states, face_pixel_values, encoder_hidden_states_image
+            timestep, encoder_hidden_states, encoder_hidden_states_image, face_pixel_values
         )
         timestep_proj = timestep_proj.unflatten(1, (6, -1))
 
@@ -620,7 +572,7 @@ class WanAnimateTransformer3DModel(
                 # Face adapter integration: apply after every 5th block (0, 5, 10, 15, ...)
                 if block_idx % 5 == 0:
                     face_adapter_output = self.face_adapter[block_idx // 5](hidden_states, motion_vec)
-                    hidden_states = hidden_states + face_adapter_output
+                    hidden_states = face_adapter_output + hidden_states
         else:
             for block_idx, block in enumerate(self.blocks):
                 hidden_states = block(hidden_states, encoder_hidden_states, timestep_proj, rotary_emb)
@@ -628,7 +580,7 @@ class WanAnimateTransformer3DModel(
                 # Face adapter integration: apply after every 5th block (0, 5, 10, 15, ...)
                 if block_idx % 5 == 0:
                     face_adapter_output = self.face_adapter[block_idx // 5](hidden_states, motion_vec)
-                    hidden_states = hidden_states + face_adapter_output
+                    hidden_states = face_adapter_output + hidden_states
 
         # 6. Output norm, projection & unpatchify
         shift, scale = (self.scale_shift_table.to(temb.device) + temb.unsqueeze(1)).chunk(2, dim=1)

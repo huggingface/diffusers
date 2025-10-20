@@ -26,7 +26,7 @@ from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...image_processor import PipelineImageInput
 from ...loaders import WanLoraLoaderMixin
 from ...models import AutoencoderKLWan, WanAnimateTransformer3DModel
-from ...schedulers import FlowMatchEulerDiscreteScheduler
+from ...schedulers import UniPCMultistepScheduler
 from ...utils import is_ftfy_available, is_torch_xla_available, logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from ...video_processor import VideoProcessor
@@ -163,14 +163,13 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
 
     model_cpu_offload_seq = "text_encoder->image_encoder->transformer->vae"
     _callback_tensor_inputs = ["latents", "prompt_embeds", "negative_prompt_embeds"]
-    _optional_components = ["transformer", "image_encoder", "image_processor"]
 
     def __init__(
         self,
         tokenizer: AutoTokenizer,
         text_encoder: UMT5EncoderModel,
         vae: AutoencoderKLWan,
-        scheduler: FlowMatchEulerDiscreteScheduler,
+        scheduler: UniPCMultistepScheduler,
         image_processor: CLIPImageProcessor,
         image_encoder: CLIPVisionModel,
         transformer: WanAnimateTransformer3DModel,
@@ -190,6 +189,9 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
         self.vae_scale_factor_temporal = self.vae.config.scale_factor_temporal if getattr(self, "vae", None) else 4
         self.vae_scale_factor_spatial = self.vae.config.scale_factor_spatial if getattr(self, "vae", None) else 8
         self.video_processor = VideoProcessor(vae_scale_factor=self.vae_scale_factor_spatial)
+        self.video_processor_for_mask = VideoProcessor(
+            vae_scale_factor=self.vae_scale_factor_spatial, do_normalize=False
+        )
         self.image_processor = image_processor
 
     def _get_t5_prompt_embeds(
@@ -408,10 +410,10 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
             )
 
         if num_frames_for_temporal_guidance is not None and (
-            not isinstance(num_frames_for_temporal_guidance, int) or num_frames_for_temporal_guidance <= 0
+            not isinstance(num_frames_for_temporal_guidance, int) or num_frames_for_temporal_guidance not in (1, 5)
         ):
             raise ValueError(
-                f"`num_frames_for_temporal_guidance` has to be of type `int` and > 0 but its type is {type(num_frames_for_temporal_guidance)} and value is {num_frames_for_temporal_guidance}"
+                f"`num_frames_for_temporal_guidance` has to be of type `int` and 1 or 5 but its type is {type(num_frames_for_temporal_guidance)} and value is {num_frames_for_temporal_guidance}"
             )
 
     def prepare_latents(
@@ -427,13 +429,12 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.Tensor] = None,
         conditioning_pixel_values: Optional[torch.Tensor] = None,
-        refer_pixel_values: Optional[torch.Tensor] = None,
         refer_t_pixel_values: Optional[torch.Tensor] = None,
-        bg_pixel_values: Optional[torch.Tensor] = None,
+        background_pixel_values: Optional[torch.Tensor] = None,
         mask_pixel_values: Optional[torch.Tensor] = None,
         mask_reft_len: Optional[int] = None,
         mode: Optional[str] = None,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         num_latent_frames = num_frames // self.vae_scale_factor_temporal + 1
         latent_height = height // self.vae_scale_factor_spatial
         latent_width = width // self.vae_scale_factor_spatial
@@ -450,16 +451,7 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
         else:
             latents = latents.to(device=device, dtype=dtype)
 
-        image = image.unsqueeze(2)  # [batch_size, channels, 1, height, width]
-
-        video_condition = torch.cat(
-            [image, image.new_zeros(image.shape[0], image.shape[1], num_frames - 1, height, width)], dim=2
-        )
-
-        video_condition = video_condition.to(device=device, dtype=self.vae.dtype)
-        conditioning_pixel_values = conditioning_pixel_values.to(device=device, dtype=self.vae.dtype)
-        refer_pixel_values = refer_pixel_values.to(device=device, dtype=self.vae.dtype)
-
+        # Prepare latent normalization parameters
         latents_mean = (
             torch.tensor(self.vae.config.latents_mean)
             .view(1, self.vae.config.z_dim, 1, 1, 1)
@@ -469,28 +461,41 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
             latents.device, latents.dtype
         )
 
+        # Encode reference image for y_ref (single frame, not video)
+        ref_image = image.unsqueeze(2)  # [batch_size, channels, 1, height, width]
+        ref_image = ref_image.to(device=device, dtype=self.vae.dtype)
+
         if isinstance(generator, list):
-            latent_condition = [
-                retrieve_latents(self.vae.encode(video_condition), sample_mode="argmax") for _ in generator
-            ]
-            latent_condition = torch.cat(latent_condition)
+            ref_latents = [retrieve_latents(self.vae.encode(ref_image), sample_mode="argmax") for _ in generator]
+            ref_latents = torch.cat(ref_latents)
+        else:
+            ref_latents = retrieve_latents(self.vae.encode(ref_image), sample_mode="argmax")
+            ref_latents = ref_latents.repeat(batch_size, 1, 1, 1, 1)
+
+        # Encode conditioning (pose) video
+        conditioning_pixel_values = conditioning_pixel_values.to(device=device, dtype=self.vae.dtype)
+
+        if isinstance(generator, list):
             pose_latents_no_ref = [
                 retrieve_latents(self.vae.encode(conditioning_pixel_values), sample_mode="argmax") for _ in generator
             ]
             pose_latents_no_ref = torch.cat(pose_latents_no_ref)
         else:
-            latent_condition = retrieve_latents(self.vae.encode(video_condition), sample_mode="argmax")
-            latent_condition = latent_condition.repeat(batch_size, 1, 1, 1, 1)
             pose_latents_no_ref = retrieve_latents(
                 self.vae.encode(conditioning_pixel_values.to(self.vae.dtype)), sample_mode="argmax"
             )
             pose_latents_no_ref = pose_latents_no_ref.repeat(batch_size, 1, 1, 1, 1)
 
-        latent_condition = latent_condition.to(dtype)
-        latent_condition = (latent_condition - latents_mean) * latents_std
+        ref_latents = ref_latents.to(dtype)
+        ref_latents = (ref_latents - latents_mean) * latents_std
         pose_latents_no_ref = pose_latents_no_ref.to(dtype)
         pose_latents = (pose_latents_no_ref - latents_mean) * latents_std
-        # pose_latents = torch.cat([pose_latents_no_ref], dim=2)
+
+        # Create y_ref from ref_latents (equivalent to original's mask_ref + ref_latents)
+        # mask_ref has 1 frame, ref_latents has 1 frame
+        # Concatenate along channel dimension (dim=0 after indexing)
+        mask_ref = self.get_i2v_mask(batch_size, 1, latent_height, latent_width, 1, None, device)
+        y_ref = torch.concat([mask_ref, ref_latents[0]], dim=0).to(dtype=dtype, device=device)
 
         if mode == "replacement":
             mask_pixel_values = 1 - mask_pixel_values
@@ -503,7 +508,11 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 y_reft = retrieve_latents(
                     self.vae.encode(
                         torch.concat(
-                            [refer_t_pixel_values[0, :, :mask_reft_len], bg_pixel_values[0, :, mask_reft_len:]], dim=1
+                            [
+                                refer_t_pixel_values[0, :, :mask_reft_len],
+                                background_pixel_values[0, :, mask_reft_len:],
+                            ],
+                            dim=1,
                         )
                     ),
                     sample_mode="argmax",
@@ -527,7 +536,7 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
         else:
             if mode == "replacement":
                 y_reft = retrieve_latents(
-                    self.vae.encode(bg_pixel_values[0].to(dtype=self.vae.dtype)), sample_mode="argmax"
+                    self.vae.encode(background_pixel_values[0].to(dtype=self.vae.dtype)), sample_mode="argmax"
                 )
             else:
                 y_reft = retrieve_latents(
@@ -540,8 +549,10 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
             batch_size, num_latent_frames, latent_height, latent_width, mask_reft_len, mask_pixel_values, device
         )
 
-        y_reft = torch.concat([msk_reft, y_reft]).to(dtype=dtype, device=device)
-        y = torch.concat([pose_latents, y_reft], dim=1)
+        # Concatenate along channel dimension (dim=0)
+        y_reft = torch.concat([msk_reft, y_reft[0]], dim=0).to(dtype=dtype, device=device)
+        # Concatenate along temporal dimension (dim=1)
+        y = torch.concat([y_ref, y_reft], dim=1)
 
         return latents, pose_latents, y
 
@@ -556,10 +567,11 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
         first_frame_mask = mask_lat_size[:, :, 0:1]
         first_frame_mask = torch.repeat_interleave(first_frame_mask, dim=2, repeats=self.vae_scale_factor_temporal)
         mask_lat_size = torch.concat([first_frame_mask, mask_lat_size[:, :, 1:, :]], dim=2)
-        mask_lat_size = mask_lat_size.view(batch_size, -1, self.vae_scale_factor_temporal, latent_h, latent_w)
-        mask_lat_size = mask_lat_size.transpose(1, 2)
+        mask_lat_size = mask_lat_size.view(
+            batch_size, -1, self.vae_scale_factor_temporal, latent_h, latent_w
+        ).transpose(1, 2)
 
-        return mask_lat_size
+        return mask_lat_size[0]
 
     def pad_video(self, frames, num_target_frames):
         """
@@ -816,7 +828,9 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
 
         # 5. Prepare latent variables
         num_channels_latents = self.vae.config.z_dim
-        height, width = pose_video[0].shape[:2]
+        # Get dimensions from the first frame of pose_video (PIL Image.size returns (width, height))
+        width, height = pose_video[0].size
+        # TODO: Verify this preprocessing is correct
         image = self.video_processor.preprocess(image, height=height, width=width).to(device, dtype=torch.float32)
 
         pose_video = self.video_processor.preprocess_video(pose_video, height=height, width=width).to(
@@ -829,13 +843,14 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
             background_video = self.video_processor.preprocess_video(background_video, height=height, width=width).to(
                 device, dtype=torch.float32
             )
-            mask_video = self.video_processor.preprocess_video(mask_video, height=height, width=width).to(
+            mask_video = self.video_processor_for_mask.preprocess_video(mask_video, height=height, width=width).to(
                 device, dtype=torch.float32
             )
 
         start = 0
         end = num_frames
         all_out_frames = []
+        out_frames = None  # TODO: Is this necessary?
 
         while True:
             if start + num_frames_for_temporal_guidance >= len(pose_video):
@@ -849,30 +864,22 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
             conditioning_pixel_values = pose_video[start:end]
             face_pixel_values = face_video[start:end]
 
-            refer_pixel_values = image
-
-            out_frames = None
             if start == 0:
+                # TODO: Verify if batch size is 1 or image.shape[0]
                 refer_t_pixel_values = torch.zeros(image.shape[0], 3, num_frames_for_temporal_guidance, height, width)
             elif start > 0:
+                # TODO: Verify if removing  and adding the first dim necessary
                 refer_t_pixel_values = (
-                    out_frames[0, :, -num_frames_for_temporal_guidance:].clone().detach().permute(1, 0, 2, 3)
+                    out_frames[0, :, -num_frames_for_temporal_guidance:].clone().detach().unsqueeze(0)
                 )
 
-            refer_t_pixel_values = refer_t_pixel_values.permute(1, 0, 2, 3).unsqueeze(0)
-
             if mode == "replacement":
-                bg_pixel_values = background_video[start:end]
-                mask_pixel_values = mask_video[start:end]  # .permute(0, 3, 1, 2).unsqueeze(0)
-                mask_pixel_values = mask_pixel_values.to(device=device, dtype=torch.bfloat16)
+                background_pixel_values = background_video[start:end]
+                # TODO: Verify if mask_video's channel dimension is 1
+                mask_pixel_values = mask_video[start:end].permute(0, 2, 1, 3, 4)
             else:
                 mask_pixel_values = None
-
-            conditioning_pixel_values = conditioning_pixel_values.to(device=device, dtype=torch.bfloat16)
-            face_pixel_values = face_pixel_values.to(device=device, dtype=torch.bfloat16)
-            refer_pixel_values = refer_pixel_values.to(device=device, dtype=torch.bfloat16)
-            refer_t_pixel_values = refer_t_pixel_values.to(device=device, dtype=torch.bfloat16)
-            bg_pixel_values = bg_pixel_values.to(device=device, dtype=torch.bfloat16)
+                background_pixel_values = None
 
             latents_outputs = self.prepare_latents(
                 image,
@@ -886,9 +893,8 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 generator,
                 latents,
                 conditioning_pixel_values,
-                refer_pixel_values,
                 refer_t_pixel_values,
-                bg_pixel_values,
+                background_pixel_values,
                 mask_pixel_values,
                 mask_reft_len,
                 mode,
@@ -922,13 +928,15 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
                         )[0]
 
                     if self.do_classifier_free_guidance:
+                        # Blank out face for unconditional guidance (set all pixels to -1)
+                        face_pixel_values_uncond = face_pixel_values * 0 - 1
                         with self.transformer.cache_context("uncond"):
                             noise_uncond = self.transformer(
                                 hidden_states=latent_model_input,
                                 pose_hidden_states=pose_latents,
                                 timestep=timestep,
                                 encoder_hidden_states=negative_prompt_embeds,
-                                face_pixel_values=face_pixel_values,
+                                face_pixel_values=face_pixel_values_uncond,
                                 encoder_hidden_states_image=image_embeds,
                                 attention_kwargs=attention_kwargs,
                                 return_dict=False,
@@ -967,7 +975,8 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 x0.device, x0.dtype
             )
             x0 = x0 / latents_std + latents_mean
-            out_frames = self.vae.decode(x0, return_dict=False)[0]
+            # Skip the first latent frame (used for conditioning)
+            out_frames = self.vae.decode(x0[:, :, 1:], return_dict=False)[0]
 
             if start > 0:
                 out_frames = out_frames[:, :, num_frames_for_temporal_guidance:]
