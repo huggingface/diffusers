@@ -504,9 +504,9 @@
         title: DiffEdit
       - local: api/pipelines/dit
         title: DiT
-      - local: api/pipelines/flux
       - local: api/pipelines/easyanimate
         title: EasyAnimate
+      - local: api/pipelines/flux
         title: Flux
       - local: api/pipelines/control_flux_inpaint
         title: FluxControlInpaint
