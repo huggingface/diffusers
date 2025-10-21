@@ -22,13 +22,13 @@ from ...testing_utils import (
     enable_full_determinism,
     torch_device,
 )
-from ..test_modeling_common import ModelTesterMixin, TorchCompileTesterMixin
+from ..test_modeling_common import ModelTesterMixin
 
 
 enable_full_determinism()
 
 
-class SkyReelsV2Transformer3DTests(ModelTesterMixin, TorchCompileTesterMixin, unittest.TestCase):
+class SkyReelsV2Transformer3DTests(ModelTesterMixin, unittest.TestCase):
     model_class = SkyReelsV2Transformer3DModel
     main_input_name = "hidden_states"
     uses_custom_attn_processor = True
