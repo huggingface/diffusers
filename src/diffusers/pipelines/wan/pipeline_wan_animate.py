@@ -290,7 +290,7 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
         device = device or self._execution_device
         image = self.image_processor(images=image, return_tensors="pt").to(device)
         image_embeds = self.image_encoder(**image, output_hidden_states=True)
-        return image_embeds.hidden_states[-2]
+        return image_embeds.hidden_states[-1]
 
     # Copied from diffusers.pipelines.wan.pipeline_wan.WanPipeline.encode_prompt
     def encode_prompt(
