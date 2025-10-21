@@ -1034,20 +1034,18 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
                     if XLA_AVAILABLE:
                         xm.mark_step()
 
-                    x0 = latents
-
-            x0 = x0.to(self.vae.dtype)
+            latents = latents.to(self.vae.dtype)
             latents_mean = (
                 torch.tensor(self.vae.config.latents_mean)
                 .view(1, self.vae.config.z_dim, 1, 1, 1)
-                .to(x0.device, x0.dtype)
+                .to(latents.device, latents.dtype)
             )
             latents_std = 1.0 / torch.tensor(self.vae.config.latents_std).view(1, self.vae.config.z_dim, 1, 1, 1).to(
-                x0.device, x0.dtype
+                latents.device, latents.dtype
             )
-            x0 = x0 / latents_std + latents_mean
+            latents = latents / latents_std + latents_mean
             # Skip the first latent frame (used for conditioning)
-            out_frames = self.vae.decode(x0[:, :, 1:], return_dict=False)[0]
+            out_frames = self.vae.decode(latents[:, :, 1:], return_dict=False)[0]
 
             if start > 0:
                 out_frames = out_frames[:, :, num_frames_for_temporal_guidance:]
