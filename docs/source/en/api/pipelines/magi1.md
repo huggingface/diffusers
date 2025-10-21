@@ -26,9 +26,13 @@
 
 *MAGI-1 is an autoregressive video generation model that generates videos chunk-by-chunk instead of as a whole. Each chunk (24 frames) is denoised holistically, and the generation of the next chunk begins as soon as the current one reaches a certain level of denoising. This pipeline design enables concurrent processing of up to four chunks for efficient video generation. The model leverages a specialized architecture with a transformer-based VAE with 8x spatial and 4x temporal compression, and a diffusion transformer with several key innovations including Block-Causal Attention, Parallel Attention Block, QK-Norm and GQA, Sandwich Normalization in FFN, SwiGLU, and Softcap Modulation.*
 
+The original repo: https://github.com/SandAI-org/MAGI-1
+
+This model was contributed by [M. Tolga Cangöz](https://github.com/tolgacangoz).
+
 You can find the MAGI-1 checkpoints under the [sand-ai](https://huggingface.co/sand-ai) organization.
 
-The following MAGI models are supported in Diffusers:
+The following MAGI-1 models are supported in Diffusers:
 
 **Base Models:**
 - [MAGI-1 24B](https://huggingface.co/sand-ai/MAGI-1)
