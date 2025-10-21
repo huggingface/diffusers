@@ -167,8 +167,10 @@ ANIMATE_TRANSFORMER_KEYS_RENAME_DICT = {
     "face_encoder.conv3.conv": "condition_embedder.face_embedder.conv3",
     "face_encoder.out_proj": "condition_embedder.face_embedder.out_proj",
     "face_encoder.norm1": "condition_embedder.face_embedder.norm1",
-    "face_encoder.norm2": "condition_embedder.face_embedder.norm2",
-    "face_encoder.norm3": "condition_embedder.face_embedder.norm3",
+    # Return to the original order for face_embedder norms
+    "face_encoder.norm2": "face_embedder_norm__placeholder",
+    "face_encoder.norm3": "condition_embedder.face_embedder.norm2",
+    "face_embedder_norm__placeholder": "condition_embedder.face_embedder.norm3",
     "face_encoder.padding_tokens": "condition_embedder.face_embedder.padding_tokens",
     # Face adapter mappings
     "face_adapter.fuser_blocks": "face_adapter",
