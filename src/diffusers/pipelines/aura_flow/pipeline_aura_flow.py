@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import inspect
-from typing import Any, Callable, Dict, Optional, tuple
+from typing import Any, Callable, Dict, Optional
 
 import torch
 from transformers import T5Tokenizer, UMT5EncoderModel

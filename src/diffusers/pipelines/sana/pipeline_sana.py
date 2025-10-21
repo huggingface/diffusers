@@ -17,7 +17,7 @@ import inspect
 import re
 import urllib.parse as ul
 import warnings
-from typing import Any, Callable, Dict, Optional, tuple
+from typing import Any, Callable, Dict, Optional
 
 import torch
 from transformers import Gemma2PreTrainedModel, GemmaTokenizer, GemmaTokenizerFast

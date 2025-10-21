@@ -18,7 +18,7 @@
 
 import math
 from dataclasses import dataclass
-from typing import Optional, tuple
+from typing import Optional
 
 import numpy as np
 import torch

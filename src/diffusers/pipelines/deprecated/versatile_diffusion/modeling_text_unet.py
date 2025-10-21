@@ -1,4 +1,4 @@
-from typing import Any, Optional, tuple
+from typing import Any, Optional
 
 import numpy as np
 import torch

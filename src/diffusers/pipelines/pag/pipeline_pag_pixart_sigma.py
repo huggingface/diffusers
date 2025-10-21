@@ -16,7 +16,7 @@ import html
 import inspect
 import re
 import urllib.parse as ul
-from typing import Callable, Optional, tuple
+from typing import Callable, Optional
 
 import torch
 from transformers import T5EncoderModel, T5Tokenizer

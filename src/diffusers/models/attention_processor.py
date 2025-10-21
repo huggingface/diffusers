@@ -13,7 +13,7 @@
 # limitations under the License.
 import inspect
 import math
-from typing import Callable, Optional, list
+from typing import Callable, Optional
 
 import torch
 import torch.nn.functional as F

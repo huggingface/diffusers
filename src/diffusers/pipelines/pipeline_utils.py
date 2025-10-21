@@ -21,7 +21,7 @@ import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Dict, Optional, Union, get_args, get_origin, list
+from typing import Any, Callable, Dict, Optional, Union, get_args, get_origin
 
 import httpx
 import numpy as np

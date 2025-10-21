@@ -15,7 +15,7 @@
 # DISCLAIMER: This file is strongly influenced by https://github.com/LuChengTHU/dpm-solver
 
 from dataclasses import dataclass
-from typing import Optional, tuple
+from typing import Optional
 
 import flax
 import jax

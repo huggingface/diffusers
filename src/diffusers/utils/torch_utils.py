@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import functools
 import os
-from typing import Callable, Optional, list, tuple
+from typing import Callable, Optional
 
 from . import logging
 from .import_utils import is_torch_available, is_torch_npu_available, is_torch_version

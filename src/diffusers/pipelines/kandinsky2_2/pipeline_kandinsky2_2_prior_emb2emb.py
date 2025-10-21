@@ -1,4 +1,4 @@
-from typing import Optional, list
+from typing import Optional
 
 import PIL.Image
 import torch

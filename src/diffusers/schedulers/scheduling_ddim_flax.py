@@ -16,7 +16,7 @@
 # and https://github.com/hojonathanho/diffusion
 
 from dataclasses import dataclass
-from typing import Optional, tuple
+from typing import Optional
 
 import flax
 import jax.numpy as jnp

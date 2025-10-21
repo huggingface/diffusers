@@ -14,7 +14,7 @@
 import math
 import warnings
 from dataclasses import dataclass
-from typing import Optional, tuple
+from typing import Optional
 
 import numpy as np
 import scipy.stats

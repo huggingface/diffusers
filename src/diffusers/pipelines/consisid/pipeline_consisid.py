@@ -14,7 +14,7 @@
 
 import inspect
 import math
-from typing import Any, Callable, Dict, Optional, tuple
+from typing import Any, Callable, Dict, Optional
 
 import numpy as np
 import PIL

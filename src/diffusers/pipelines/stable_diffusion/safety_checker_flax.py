@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Optional, tuple
+from typing import Optional
 
 import jax
 import jax.numpy as jnp

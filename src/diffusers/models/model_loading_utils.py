@@ -22,7 +22,7 @@ from array import array
 from collections import OrderedDict, defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from typing import Dict, Optional, list
+from typing import Dict, Optional
 from zipfile import is_zipfile
 
 import safetensors

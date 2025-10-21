@@ -13,7 +13,7 @@
 # limitations under the License.
 
 
-from typing import Optional, list, tuple
+from typing import Optional
 
 import numpy as np
 import PIL.Image

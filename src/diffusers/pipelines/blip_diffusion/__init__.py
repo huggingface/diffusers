@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Optional, Union, list
+from typing import Optional, Union
 
 import numpy as np
 import PIL

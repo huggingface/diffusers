@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import inspect
-from typing import Callable, Optional, tuple
+from typing import Callable, Optional
 
 import numpy as np
 import PIL.Image

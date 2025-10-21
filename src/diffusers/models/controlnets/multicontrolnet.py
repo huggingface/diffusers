@@ -1,5 +1,5 @@
 import os
-from typing import Any, Callable, Optional, tuple
+from typing import Any, Callable, Optional
 
 import torch
 from torch import nn

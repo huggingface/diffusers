@@ -13,7 +13,7 @@
 # limitations under the License.
 
 from dataclasses import dataclass
-from typing import Optional, list
+from typing import Optional
 
 import numpy as np
 import PIL.Image

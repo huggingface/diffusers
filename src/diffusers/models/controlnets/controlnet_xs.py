@@ -13,7 +13,7 @@
 # limitations under the License.
 from dataclasses import dataclass
 from math import gcd
-from typing import Any, Dict, Optional, tuple
+from typing import Any, Dict, Optional
 
 import torch
 from torch import Tensor, nn

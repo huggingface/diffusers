@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import inspect
-from typing import Optional, tuple
+from typing import Optional
 
 import torch
 from torch.nn import functional as F

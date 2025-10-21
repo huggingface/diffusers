@@ -15,7 +15,7 @@
 
 import inspect
 import math
-from typing import Any, Callable, Dict, Optional, tuple
+from typing import Any, Callable, Dict, Optional
 
 import torch
 from transformers import T5EncoderModel, T5Tokenizer

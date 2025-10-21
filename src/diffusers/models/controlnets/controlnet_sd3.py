@@ -14,7 +14,7 @@
 
 
 from dataclasses import dataclass
-from typing import Any, Optional, tuple
+from typing import Any, Optional
 
 import torch
 import torch.nn as nn

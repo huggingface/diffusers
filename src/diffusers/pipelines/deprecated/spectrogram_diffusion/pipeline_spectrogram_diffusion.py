@@ -14,7 +14,7 @@
 # limitations under the License.
 
 import math
-from typing import Any, Callable, Optional, tuple
+from typing import Any, Callable, Optional
 
 import numpy as np
 import torch

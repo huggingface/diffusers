@@ -15,7 +15,7 @@
 # DISCLAIMER: This file is strongly influenced by https://github.com/yang-song/score_sde_pytorch
 
 from dataclasses import dataclass
-from typing import Optional, tuple
+from typing import Optional
 
 import flax
 import jax

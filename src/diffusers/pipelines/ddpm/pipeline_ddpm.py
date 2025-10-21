@@ -13,7 +13,7 @@
 # limitations under the License.
 
 
-from typing import Optional, tuple
+from typing import Optional
 
 import torch
 

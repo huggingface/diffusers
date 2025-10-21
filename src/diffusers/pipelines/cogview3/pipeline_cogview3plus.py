@@ -14,7 +14,7 @@
 # limitations under the License.
 
 import inspect
-from typing import Callable, Dict, Optional, tuple
+from typing import Callable, Dict, Optional
 
 import torch
 from transformers import T5EncoderModel, T5Tokenizer

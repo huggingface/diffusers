@@ -16,7 +16,7 @@
 # The codebase is modified based on https://github.com/huggingface/diffusers/blob/main/src/diffusers/schedulers/scheduling_dpmsolver_multistep.py
 
 import math
-from typing import Callable, Optional, tuple
+from typing import Callable, Optional
 
 import numpy as np
 import torch
