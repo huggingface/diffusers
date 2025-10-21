@@ -1,5 +1,4 @@
-- title: Get started
-  sections:
+- sections:
   - local: index
     title: Diffusers
   - local: installation
@@ -8,9 +7,8 @@
     title: Quickstart
   - local: stable_diffusion
     title: Basic performance
-
-- title: Pipelines
-  isExpanded: false
+  title: Get started
+- isExpanded: false
   sections:
   - local: using-diffusers/loading
     title: DiffusionPipeline
@@ -28,9 +26,8 @@
     title: Model formats
   - local: using-diffusers/push_to_hub
     title: Sharing pipelines and models
-
-- title: Adapters
-  isExpanded: false
+  title: Pipelines
+- isExpanded: false
   sections:
   - local: tutorials/using_peft_for_inference
     title: LoRA
@@ -44,9 +41,8 @@
     title: DreamBooth
   - local: using-diffusers/textual_inversion_inference
     title: Textual inversion
-
-- title: Inference
-  isExpanded: false
+  title: Adapters
+- isExpanded: false
   sections:
   - local: using-diffusers/weighted_prompts
     title: Prompting
@@ -56,9 +52,8 @@
     title: Batch inference
   - local: training/distributed_inference
     title: Distributed inference
-
-- title: Inference optimization
-  isExpanded: false
+  title: Inference
+- isExpanded: false
   sections:
   - local: optimization/fp16
     title: Accelerate inference
@@ -70,8 +65,7 @@
     title: Reduce memory usage
   - local: optimization/speed-memory-optims
     title: Compiling and offloading quantized models
-  - title: Community optimizations
-    sections:
+  - sections:
     - local: optimization/pruna
       title: Pruna
     - local: optimization/xformers
@@ -90,9 +84,9 @@
       title: ParaAttention
     - local: using-diffusers/image_quality
       title: FreeU
-
-- title: Hybrid Inference
-  isExpanded: false
+    title: Community optimizations
+  title: Inference optimization
+- isExpanded: false
   sections:
   - local: hybrid_inference/overview
     title: Overview
@@ -102,9 +96,8 @@
     title: VAE Encode
   - local: hybrid_inference/api_reference
     title: API Reference
-
-- title: Modular Diffusers
-  isExpanded: false
+  title: Hybrid Inference
+- isExpanded: false
   sections:
   - local: modular_diffusers/overview
     title: Overview
@@ -126,9 +119,8 @@
     title: ComponentsManager
   - local: modular_diffusers/guiders
     title: Guiders
-
-- title: Training
-  isExpanded: false
+  title: Modular Diffusers
+- isExpanded: false
   sections:
   - local: training/overview
     title: Overview
@@ -138,8 +130,7 @@
     title: Adapt a model to a new task
   - local: tutorials/basic_training
     title: Train a diffusion model
-  - title: Models
-    sections:
+  - sections:
     - local: training/unconditional_training
       title: Unconditional image generation
     - local: training/text2image
@@ -158,8 +149,8 @@
       title: InstructPix2Pix
     - local: training/cogvideox
       title: CogVideoX
-  - title: Methods
-    sections:
+    title: Models
+  - sections:
     - local: training/text_inversion
       title: Textual Inversion
     - local: training/dreambooth
@@ -172,9 +163,9 @@
       title: Latent Consistency Distillation
     - local: training/ddpo
       title: Reinforcement learning training with DDPO
-
-- title: Quantization
-  isExpanded: false
+    title: Methods
+  title: Training
+- isExpanded: false
   sections:
   - local: quantization/overview
     title: Getting started
@@ -188,9 +179,8 @@
     title: quanto
   - local: quantization/modelopt
     title: NVIDIA ModelOpt
-
-- title: Model accelerators and hardware
-  isExpanded: false
+  title: Quantization
+- isExpanded: false
   sections:
   - local: optimization/onnx
     title: ONNX
@@ -204,9 +194,8 @@
     title: Intel Gaudi
   - local: optimization/neuron
     title: AWS Neuron
-
-- title: Specific pipeline examples
-  isExpanded: false
+  title: Model accelerators and hardware
+- isExpanded: false
   sections:
   - local: using-diffusers/consisid
     title: ConsisID
@@ -232,12 +221,10 @@
     title: Stable Video Diffusion
   - local: using-diffusers/marigold_usage
     title: Marigold Computer Vision
-
-- title: Resources
-  isExpanded: false
+  title: Specific pipeline examples
+- isExpanded: false
   sections:
-  - title: Task recipes
-    sections:
+  - sections:
     - local: using-diffusers/unconditional_image_generation
       title: Unconditional image generation
     - local: using-diffusers/conditional_image_generation
@@ -252,6 +239,7 @@
       title: Video generation
     - local: using-diffusers/depth2img
       title: Depth-to-image
+    title: Task recipes
   - local: using-diffusers/write_own_pipeline
     title: Understanding pipelines, models and schedulers
   - local: community_projects
@@ -266,12 +254,10 @@
     title: Diffusers' Ethical Guidelines
   - local: conceptual/evaluation
     title: Evaluating Diffusion Models
-
-- title: API
-  isExpanded: false
+  title: Resources
+- isExpanded: false
   sections:
-  - title: Main Classes
-    sections:
+  - sections:
     - local: api/configuration
       title: Configuration
     - local: api/logging
@@ -282,8 +268,8 @@
       title: Quantization
     - local: api/parallel
       title: Parallel inference
-  - title: Modular
-    sections:
+    title: Main Classes
+  - sections:
     - local: api/modular_diffusers/pipeline
       title: Pipeline
     - local: api/modular_diffusers/pipeline_blocks
@@ -294,8 +280,8 @@
       title: Components and configs
     - local: api/modular_diffusers/guiders
       title: Guiders
-  - title: Loaders
-    sections:
+    title: Modular
+  - sections:
     - local: api/loaders/ip_adapter
       title: IP-Adapter
     - local: api/loaders/lora
@@ -310,14 +296,13 @@
       title: SD3Transformer2D
     - local: api/loaders/peft
       title: PEFT
-  - title: Models
-    sections:
+    title: Loaders
+  - sections:
     - local: api/models/overview
       title: Overview
     - local: api/models/auto_model
       title: AutoModel
-    - title: ControlNets
-      sections:
+    - sections:
       - local: api/models/controlnet
         title: ControlNetModel
       - local: api/models/controlnet_union
@@ -332,8 +317,8 @@
         title: SD3ControlNetModel
       - local: api/models/controlnet_sparsectrl
         title: SparseControlNetModel
-    - title: Transformers
-      sections:
+      title: ControlNets
+    - sections:
       - local: api/models/allegro_transformer3d
         title: AllegroTransformer3DModel
       - local: api/models/aura_flow_transformer2d
@@ -396,8 +381,8 @@
         title: TransformerTemporalModel
       - local: api/models/wan_transformer_3d
         title: WanTransformer3DModel
-    - title: UNets
-      sections:
+      title: Transformers
+    - sections:
       - local: api/models/stable_cascade_unet
         title: StableCascadeUNet
       - local: api/models/unet
@@ -412,8 +397,8 @@
         title: UNetMotionModel
       - local: api/models/uvit2d
         title: UViT2DModel
-    - title: VAEs
-      sections:
+      title: UNets
+    - sections:
       - local: api/models/asymmetricautoencoderkl
         title: AsymmetricAutoencoderKL
       - local: api/models/autoencoder_dc
@@ -446,14 +431,26 @@
         title: Tiny AutoEncoder
       - local: api/models/vq
         title: VQModel
-  - title: Pipelines
-    sections:
+      title: VAEs
+    title: Models
+  - sections:
     - local: api/pipelines/overview
       title: Overview
+    - sections:
+      - local: api/pipelines/audioldm
+        title: AudioLDM
+      - local: api/pipelines/audioldm2
+        title: AudioLDM 2
+      - local: api/pipelines/dance_diffusion
+        title: Dance Diffusion
+      - local: api/pipelines/musicldm
+        title: MusicLDM
+      - local: api/pipelines/stable_audio
+        title: Stable Audio
+      title: Audio
     - local: api/pipelines/auto_pipeline
       title: AutoPipeline
-    - title: Image
-      sections:
+    - sections:
       - local: api/pipelines/amused
         title: aMUSEd
       - local: api/pipelines/animatediff
@@ -562,8 +559,7 @@
         title: Shap-E
       - local: api/pipelines/stable_cascade
         title: Stable Cascade
-      - title: Stable Diffusion
-        sections:
+      - sections:
         - local: api/pipelines/stable_diffusion/overview
           title: Overview
         - local: api/pipelines/stable_diffusion/depth2img
@@ -581,7 +577,8 @@
         - local: api/pipelines/stable_diffusion/latent_upscale
           title: Latent upscaler
         - local: api/pipelines/stable_diffusion/ldm3d_diffusion
-          title: LDM3D Text-to-(RGB, Depth), Text-to-(RGB-pano, Depth-pano), LDM3D Upscaler
+          title: LDM3D Text-to-(RGB, Depth), Text-to-(RGB-pano, Depth-pano), LDM3D
+            Upscaler
         - local: api/pipelines/stable_diffusion/stable_diffusion_safe
           title: Safe Stable Diffusion
         - local: api/pipelines/stable_diffusion/sdxl_turbo
@@ -598,6 +595,7 @@
           title: T2I-Adapter
         - local: api/pipelines/stable_diffusion/text2img
           title: Text-to-image
+        title: Stable Diffusion
       - local: api/pipelines/stable_unclip
         title: Stable unCLIP
       - local: api/pipelines/unclip
@@ -610,8 +608,8 @@
         title: VisualCloze
       - local: api/pipelines/wuerstchen
         title: Wuerstchen
-    - title: Video
-      sections:
+      title: Image
+    - sections:
       - local: api/pipelines/allegro
         title: Allegro
       - local: api/pipelines/cogvideox
@@ -642,20 +640,9 @@
         title: Text2Video-Zero
       - local: api/pipelines/wan
         title: Wan
-    - title: Audio
-      sections:
-      - local: api/pipelines/audioldm
-        title: AudioLDM
-      - local: api/pipelines/audioldm2
-        title: AudioLDM 2
-      - local: api/pipelines/dance_diffusion
-        title: Dance Diffusion
-      - local: api/pipelines/musicldm
-        title: MusicLDM
-      - local: api/pipelines/stable_audio
-        title: Stable Audio
-  - title: Schedulers
-    sections:
+      title: Video
+    title: Pipelines
+  - sections:
     - local: api/schedulers/overview
       title: Overview
     - local: api/schedulers/cm_stochastic_iterative
@@ -724,8 +711,8 @@
       title: UniPCMultistepScheduler
     - local: api/schedulers/vq_diffusion
       title: VQDiffusionScheduler
-  - title: Internal classes
-    sections:
+    title: Schedulers
+  - sections:
     - local: api/internal_classes_overview
       title: Overview
     - local: api/attnprocessor
@@ -742,3 +729,5 @@
       title: VAE Image Processor
     - local: api/video_processor
       title: Video Processor
+    title: Internal classes
+  title: API
