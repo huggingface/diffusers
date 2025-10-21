@@ -450,204 +450,210 @@
     sections:
     - local: api/pipelines/overview
       title: Overview
-    - local: api/pipelines/allegro
-      title: Allegro
-    - local: api/pipelines/amused
-      title: aMUSEd
-    - local: api/pipelines/animatediff
-      title: AnimateDiff
-    - local: api/pipelines/attend_and_excite
-      title: Attend-and-Excite
-    - local: api/pipelines/audioldm
-      title: AudioLDM
-    - local: api/pipelines/audioldm2
-      title: AudioLDM 2
-    - local: api/pipelines/aura_flow
-      title: AuraFlow
     - local: api/pipelines/auto_pipeline
       title: AutoPipeline
-    - local: api/pipelines/blip_diffusion
-      title: BLIP-Diffusion
-    - local: api/pipelines/bria_3_2
-      title: Bria 3.2
-    - local: api/pipelines/chroma
-      title: Chroma
-    - local: api/pipelines/cogvideox
-      title: CogVideoX
-    - local: api/pipelines/cogview3
-      title: CogView3
-    - local: api/pipelines/cogview4
-      title: CogView4
-    - local: api/pipelines/consisid
-      title: ConsisID
-    - local: api/pipelines/consistency_models
-      title: Consistency Models
-    - local: api/pipelines/controlnet
-      title: ControlNet
-    - local: api/pipelines/controlnet_flux
-      title: ControlNet with Flux.1
-    - local: api/pipelines/controlnet_hunyuandit
-      title: ControlNet with Hunyuan-DiT
-    - local: api/pipelines/controlnet_sd3
-      title: ControlNet with Stable Diffusion 3
-    - local: api/pipelines/controlnet_sdxl
-      title: ControlNet with Stable Diffusion XL
-    - local: api/pipelines/controlnet_sana
-      title: ControlNet-Sana
-    - local: api/pipelines/controlnetxs
-      title: ControlNet-XS
-    - local: api/pipelines/controlnetxs_sdxl
-      title: ControlNet-XS with Stable Diffusion XL
-    - local: api/pipelines/controlnet_union
-      title: ControlNetUnion
-    - local: api/pipelines/cosmos
-      title: Cosmos
-    - local: api/pipelines/dance_diffusion
-      title: Dance Diffusion
-    - local: api/pipelines/ddim
-      title: DDIM
-    - local: api/pipelines/ddpm
-      title: DDPM
-    - local: api/pipelines/deepfloyd_if
-      title: DeepFloyd IF
-    - local: api/pipelines/diffedit
-      title: DiffEdit
-    - local: api/pipelines/dit
-      title: DiT
-    - local: api/pipelines/easyanimate
-      title: EasyAnimate
-    - local: api/pipelines/flux
-      title: Flux
-    - local: api/pipelines/control_flux_inpaint
-      title: FluxControlInpaint
-    - local: api/pipelines/framepack
-      title: Framepack
-    - local: api/pipelines/hidream
-      title: HiDream-I1
-    - local: api/pipelines/hunyuandit
-      title: Hunyuan-DiT
-    - local: api/pipelines/hunyuan_video
-      title: HunyuanVideo
-    - local: api/pipelines/i2vgenxl
-      title: I2VGen-XL
-    - local: api/pipelines/pix2pix
-      title: InstructPix2Pix
-    - local: api/pipelines/kandinsky
-      title: Kandinsky 2.1
-    - local: api/pipelines/kandinsky_v22
-      title: Kandinsky 2.2
-    - local: api/pipelines/kandinsky3
-      title: Kandinsky 3
-    - local: api/pipelines/kolors
-      title: Kolors
-    - local: api/pipelines/latent_consistency_models
-      title: Latent Consistency Models
-    - local: api/pipelines/latent_diffusion
-      title: Latent Diffusion
-    - local: api/pipelines/latte
-      title: Latte
-    - local: api/pipelines/ledits_pp
-      title: LEDITS++
-    - local: api/pipelines/ltx_video
-      title: LTXVideo
-    - local: api/pipelines/lumina2
-      title: Lumina 2.0
-    - local: api/pipelines/lumina
-      title: Lumina-T2X
-    - local: api/pipelines/marigold
-      title: Marigold
-    - local: api/pipelines/mochi
-      title: Mochi
-    - local: api/pipelines/panorama
-      title: MultiDiffusion
-    - local: api/pipelines/musicldm
-      title: MusicLDM
-    - local: api/pipelines/omnigen
-      title: OmniGen
-    - local: api/pipelines/pag
-      title: PAG
-    - local: api/pipelines/paint_by_example
-      title: Paint by Example
-    - local: api/pipelines/pia
-      title: Personalized Image Animator (PIA)
-    - local: api/pipelines/pixart
-      title: PixArt-α
-    - local: api/pipelines/pixart_sigma
-      title: PixArt-Σ
-    - local: api/pipelines/qwenimage
-      title: QwenImage
-    - local: api/pipelines/sana
-      title: Sana
-    - local: api/pipelines/sana_sprint
-      title: Sana Sprint
-    - local: api/pipelines/self_attention_guidance
-      title: Self-Attention Guidance
-    - local: api/pipelines/semantic_stable_diffusion
-      title: Semantic Guidance
-    - local: api/pipelines/shap_e
-      title: Shap-E
-    - local: api/pipelines/skyreels_v2
-      title: SkyReels-V2
-    - local: api/pipelines/stable_audio
-      title: Stable Audio
-    - local: api/pipelines/stable_cascade
-      title: Stable Cascade
-    - title: Stable Diffusion
+    - title: Image
       sections:
-      - local: api/pipelines/stable_diffusion/overview
-        title: Overview
-      - local: api/pipelines/stable_diffusion/depth2img
-        title: Depth-to-image
-      - local: api/pipelines/stable_diffusion/gligen
-        title: GLIGEN (Grounded Language-to-Image Generation)
-      - local: api/pipelines/stable_diffusion/image_variation
-        title: Image variation
-      - local: api/pipelines/stable_diffusion/img2img
-        title: Image-to-image
+      - local: api/pipelines/amused
+        title: aMUSEd
+      - local: api/pipelines/animatediff
+        title: AnimateDiff
+      - local: api/pipelines/attend_and_excite
+        title: Attend-and-Excite
+      - local: api/pipelines/aura_flow
+        title: AuraFlow
+      - local: api/pipelines/blip_diffusion
+        title: BLIP-Diffusion
+      - local: api/pipelines/bria_3_2
+        title: Bria 3.2
+      - local: api/pipelines/chroma
+        title: Chroma
+      - local: api/pipelines/cogview3
+        title: CogView3
+      - local: api/pipelines/cogview4
+        title: CogView4
+      - local: api/pipelines/consistency_models
+        title: Consistency Models
+      - local: api/pipelines/controlnet
+        title: ControlNet
+      - local: api/pipelines/controlnet_flux
+        title: ControlNet with Flux.1
+      - local: api/pipelines/controlnet_hunyuandit
+        title: ControlNet with Hunyuan-DiT
+      - local: api/pipelines/controlnet_sd3
+        title: ControlNet with Stable Diffusion 3
+      - local: api/pipelines/controlnet_sdxl
+        title: ControlNet with Stable Diffusion XL
+      - local: api/pipelines/controlnet_sana
+        title: ControlNet-Sana
+      - local: api/pipelines/controlnetxs
+        title: ControlNet-XS
+      - local: api/pipelines/controlnetxs_sdxl
+        title: ControlNet-XS with Stable Diffusion XL
+      - local: api/pipelines/controlnet_union
+        title: ControlNetUnion
+      - local: api/pipelines/cosmos
+        title: Cosmos
+      - local: api/pipelines/ddim
+        title: DDIM
+      - local: api/pipelines/ddpm
+        title: DDPM
+      - local: api/pipelines/deepfloyd_if
+        title: DeepFloyd IF
+      - local: api/pipelines/diffedit
+        title: DiffEdit
+      - local: api/pipelines/dit
+        title: DiT
+      - local: api/pipelines/easyanimate
+        title: EasyAnimate
+      - local: api/pipelines/flux
+        title: Flux
+      - local: api/pipelines/control_flux_inpaint
+        title: FluxControlInpaint
+      - local: api/pipelines/hidream
+        title: HiDream-I1
+      - local: api/pipelines/hunyuandit
+        title: Hunyuan-DiT
+      - local: api/pipelines/pix2pix
+        title: InstructPix2Pix
+      - local: api/pipelines/kandinsky
+        title: Kandinsky 2.1
+      - local: api/pipelines/kandinsky_v22
+        title: Kandinsky 2.2
+      - local: api/pipelines/kandinsky3
+        title: Kandinsky 3
+      - local: api/pipelines/kolors
+        title: Kolors
+      - local: api/pipelines/latent_consistency_models
+        title: Latent Consistency Models
+      - local: api/pipelines/latent_diffusion
+        title: Latent Diffusion
+      - local: api/pipelines/ledits_pp
+        title: LEDITS++
+      - local: api/pipelines/lumina2
+        title: Lumina 2.0
+      - local: api/pipelines/lumina
+        title: Lumina-T2X
+      - local: api/pipelines/marigold
+        title: Marigold
+      - local: api/pipelines/panorama
+        title: MultiDiffusion
+      - local: api/pipelines/omnigen
+        title: OmniGen
+      - local: api/pipelines/pag
+        title: PAG
+      - local: api/pipelines/paint_by_example
+        title: Paint by Example
+      - local: api/pipelines/pixart
+        title: PixArt-α
+      - local: api/pipelines/pixart_sigma
+        title: PixArt-Σ
+      - local: api/pipelines/qwenimage
+        title: QwenImage
+      - local: api/pipelines/sana
+        title: Sana
+      - local: api/pipelines/sana_sprint
+        title: Sana Sprint
+      - local: api/pipelines/self_attention_guidance
+        title: Self-Attention Guidance
+      - local: api/pipelines/semantic_stable_diffusion
+        title: Semantic Guidance
+      - local: api/pipelines/shap_e
+        title: Shap-E
+      - local: api/pipelines/stable_cascade
+        title: Stable Cascade
+      - title: Stable Diffusion
+        sections:
+        - local: api/pipelines/stable_diffusion/overview
+          title: Overview
+        - local: api/pipelines/stable_diffusion/depth2img
+          title: Depth-to-image
+        - local: api/pipelines/stable_diffusion/gligen
+          title: GLIGEN (Grounded Language-to-Image Generation)
+        - local: api/pipelines/stable_diffusion/image_variation
+          title: Image variation
+        - local: api/pipelines/stable_diffusion/img2img
+          title: Image-to-image
+        - local: api/pipelines/stable_diffusion/inpaint
+          title: Inpainting
+        - local: api/pipelines/stable_diffusion/k_diffusion
+          title: K-Diffusion
+        - local: api/pipelines/stable_diffusion/latent_upscale
+          title: Latent upscaler
+        - local: api/pipelines/stable_diffusion/ldm3d_diffusion
+          title: LDM3D Text-to-(RGB, Depth), Text-to-(RGB-pano, Depth-pano), LDM3D Upscaler
+        - local: api/pipelines/stable_diffusion/stable_diffusion_safe
+          title: Safe Stable Diffusion
+        - local: api/pipelines/stable_diffusion/sdxl_turbo
+          title: SDXL Turbo
+        - local: api/pipelines/stable_diffusion/stable_diffusion_2
+          title: Stable Diffusion 2
+        - local: api/pipelines/stable_diffusion/stable_diffusion_3
+          title: Stable Diffusion 3
+        - local: api/pipelines/stable_diffusion/stable_diffusion_xl
+          title: Stable Diffusion XL
+        - local: api/pipelines/stable_diffusion/upscale
+          title: Super-resolution
+        - local: api/pipelines/stable_diffusion/adapter
+          title: T2I-Adapter
+        - local: api/pipelines/stable_diffusion/text2img
+          title: Text-to-image
+      - local: api/pipelines/stable_unclip
+        title: Stable unCLIP
+      - local: api/pipelines/unclip
+        title: unCLIP
+      - local: api/pipelines/unidiffuser
+        title: UniDiffuser
+      - local: api/pipelines/value_guided_sampling
+        title: Value-guided sampling
+      - local: api/pipelines/visualcloze
+        title: VisualCloze
+      - local: api/pipelines/wuerstchen
+        title: Wuerstchen
+    - title: Video
+      sections:
+      - local: api/pipelines/allegro
+        title: Allegro
+      - local: api/pipelines/cogvideox
+        title: CogVideoX
+      - local: api/pipelines/consisid
+        title: ConsisID
+      - local: api/pipelines/framepack
+        title: Framepack
+      - local: api/pipelines/hunyuan_video
+        title: HunyuanVideo
+      - local: api/pipelines/i2vgenxl
+        title: I2VGen-XL
+      - local: api/pipelines/latte
+        title: Latte
+      - local: api/pipelines/ltx_video
+        title: LTXVideo
+      - local: api/pipelines/mochi
+        title: Mochi
+      - local: api/pipelines/pia
+        title: Personalized Image Animator (PIA)
+      - local: api/pipelines/skyreels_v2
+        title: SkyReels-V2
       - local: api/pipelines/stable_diffusion/svd
-        title: Image-to-video
-      - local: api/pipelines/stable_diffusion/inpaint
-        title: Inpainting
-      - local: api/pipelines/stable_diffusion/k_diffusion
-        title: K-Diffusion
-      - local: api/pipelines/stable_diffusion/latent_upscale
-        title: Latent upscaler
-      - local: api/pipelines/stable_diffusion/ldm3d_diffusion
-        title: LDM3D Text-to-(RGB, Depth), Text-to-(RGB-pano, Depth-pano), LDM3D Upscaler
-      - local: api/pipelines/stable_diffusion/stable_diffusion_safe
-        title: Safe Stable Diffusion
-      - local: api/pipelines/stable_diffusion/sdxl_turbo
-        title: SDXL Turbo
-      - local: api/pipelines/stable_diffusion/stable_diffusion_2
-        title: Stable Diffusion 2
-      - local: api/pipelines/stable_diffusion/stable_diffusion_3
-        title: Stable Diffusion 3
-      - local: api/pipelines/stable_diffusion/stable_diffusion_xl
-        title: Stable Diffusion XL
-      - local: api/pipelines/stable_diffusion/upscale
-        title: Super-resolution
-      - local: api/pipelines/stable_diffusion/adapter
-        title: T2I-Adapter
-      - local: api/pipelines/stable_diffusion/text2img
-        title: Text-to-image
-    - local: api/pipelines/stable_unclip
-      title: Stable unCLIP
-    - local: api/pipelines/text_to_video
-      title: Text-to-video
-    - local: api/pipelines/text_to_video_zero
-      title: Text2Video-Zero
-    - local: api/pipelines/unclip
-      title: unCLIP
-    - local: api/pipelines/unidiffuser
-      title: UniDiffuser
-    - local: api/pipelines/value_guided_sampling
-      title: Value-guided sampling
-    - local: api/pipelines/visualcloze
-      title: VisualCloze
-    - local: api/pipelines/wan
-      title: Wan
-    - local: api/pipelines/wuerstchen
-      title: Wuerstchen
+        title: Stable Video Diffusion
+      - local: api/pipelines/text_to_video
+        title: Text-to-video
+      - local: api/pipelines/text_to_video_zero
+        title: Text2Video-Zero
+      - local: api/pipelines/wan
+        title: Wan
+    - title: Audio
+      sections:
+      - local: api/pipelines/audioldm
+        title: AudioLDM
+      - local: api/pipelines/audioldm2
+        title: AudioLDM 2
+      - local: api/pipelines/dance_diffusion
+        title: Dance Diffusion
+      - local: api/pipelines/musicldm
+        title: MusicLDM
+      - local: api/pipelines/stable_audio
+        title: Stable Audio
   - title: Schedulers
     sections:
     - local: api/schedulers/overview
