@@ -1847,7 +1847,7 @@ class PaintByExamplePipeline(metaclass=DummyObject):
         requires_backends(cls, ["torch", "transformers"])
 
 
-class PhotonPipeline(metaclass=DummyObject):
+class PRXPipeline(metaclass=DummyObject):
     _backends = ["torch", "transformers"]
 
     def __init__(self, *args, **kwargs):
