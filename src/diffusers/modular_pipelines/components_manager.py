@@ -16,7 +16,7 @@ import copy
 import time
 from collections import OrderedDict
 from itertools import combinations
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Optional, Union
 
 import torch
 
@@ -54,7 +54,7 @@ class CustomOffloadHook(ModelHook):
     def __init__(
         self,
         execution_device: Optional[Union[str, int, torch.device]] = None,
-        other_hooks: Optional[List["UserCustomOffloadHook"]] = None,
+        other_hooks: Optional[list["UserCustomOffloadHook"]] = None,
         offload_strategy: Optional["AutoOffloadStrategy"] = None,
     ):
         self.execution_device = execution_device if execution_device is not None else PartialState().default_device
@@ -219,7 +219,7 @@ class AutoOffloadStrategy:
 
 # utils for display component info in a readable format
 # TODO: move to a different file
-def summarize_dict_by_value_and_parts(d: Dict[str, Any]) -> Dict[str, Any]:
+def summarize_dict_by_value_and_parts(d: dict[str, Any]) -> dict[str, Any]:
     """Summarizes a dictionary by finding common prefixes that share the same value.
 
     For a dictionary with dot-separated keys like: {
@@ -240,7 +240,7 @@ def summarize_dict_by_value_and_parts(d: Dict[str, Any]) -> Dict[str, Any]:
             value_to_keys[value_tuple] = []
         value_to_keys[value_tuple].append(key)
 
-    def find_common_prefix(keys: List[str]) -> str:
+    def find_common_prefix(keys: list[str]) -> str:
         """Find the shortest common prefix among a list of dot-separated keys."""
         if not keys:
             return ""
@@ -746,13 +746,13 @@ class ComponentsManager:
     def get_model_info(
         self,
         component_id: str,
-        fields: Optional[Union[str, List[str]]] = None,
-    ) -> Optional[Dict[str, Any]]:
+        fields: Optional[Union[str, list[str]]] = None,
+    ) -> Optional[dict[str, Any]]:
         """Get comprehensive information about a component.
 
         Args:
             component_id (str): Name of the component to get info for
-            fields (Optional[Union[str, List[str]]]):
+            fields (Optional[Union[str, list[str]]]):
                    Field(s) to return. Can be a string for single field or list of fields. If None, uses the
                    available_info_fields setting.
 
@@ -1002,16 +1002,16 @@ class ComponentsManager:
 
         return next(iter(results.values()))
 
-    def get_ids(self, names: Union[str, List[str]] = None, collection: Optional[str] = None):
+    def get_ids(self, names: Union[str, list[str]] = None, collection: Optional[str] = None):
         """
         Get component IDs by a list of names, optionally filtered by collection.
 
         Args:
-            names (Union[str, List[str]]): List of component names
+            names (Union[str, list[str]]): List of component names
             collection (Optional[str]): Optional collection to filter by
 
         Returns:
-            List[str]: List of component IDs
+            list[str]: List of component IDs
         """
         ids = set()
         if not isinstance(names, list):
@@ -1020,18 +1020,18 @@ class ComponentsManager:
             ids.update(self._lookup_ids(name=name, collection=collection))
         return list(ids)
 
-    def get_components_by_ids(self, ids: List[str], return_dict_with_names: Optional[bool] = True):
+    def get_components_by_ids(self, ids: list[str], return_dict_with_names: Optional[bool] = True):
         """
         Get components by a list of IDs.
 
         Args:
-            ids (List[str]):
+            ids (list[str]):
                 List of component IDs
             return_dict_with_names (Optional[bool]):
                 Whether to return a dictionary with component names as keys:
 
         Returns:
-            Dict[str, Any]: Dictionary of components.
+            dict[str, Any]: Dictionary of components.
                 - If return_dict_with_names=True, keys are component names.
                 - If return_dict_with_names=False, keys are component IDs.
 
@@ -1053,16 +1053,16 @@ class ComponentsManager:
         else:
             return components
 
-    def get_components_by_names(self, names: List[str], collection: Optional[str] = None):
+    def get_components_by_names(self, names: list[str], collection: Optional[str] = None):
         """
         Get components by a list of names, optionally filtered by collection.
 
         Args:
-            names (List[str]): List of component names
+            names (list[str]): List of component names
             collection (Optional[str]): Optional collection to filter by
 
         Returns:
-            Dict[str, Any]: Dictionary of components with component names as keys
+            dict[str, Any]: Dictionary of components with component names as keys
 
         Raises:
             ValueError: If duplicate component names are found in the search results

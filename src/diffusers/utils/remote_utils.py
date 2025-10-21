@@ -15,7 +15,7 @@
 
 import io
 import json
-from typing import List, Literal, Optional, Union, cast
+from typing import Literal, Optional, Union, cast
 
 import requests
 
@@ -117,7 +117,7 @@ def postprocess_decode(
             else:
                 if isinstance(processor, VideoProcessor):
                     output = cast(
-                        List[Image.Image],
+                        list[Image.Image],
                         processor.postprocess_video(output_tensor, output_type="pil")[0],
                     )
                 else:
@@ -200,7 +200,7 @@ def remote_decode(
     output_tensor_type: Literal["binary"] = "binary",
     height: Optional[int] = None,
     width: Optional[int] = None,
-) -> Union[Image.Image, List[Image.Image], bytes, "torch.Tensor"]:
+) -> Union[Image.Image, list[Image.Image], bytes, "torch.Tensor"]:
     """
     Hugging Face Hybrid Inference that allow running VAE decode remotely.
 
@@ -275,7 +275,7 @@ def remote_decode(
             Required for `"packed"` latents.
 
     Returns:
-        output (`Image.Image` or `List[Image.Image]` or `bytes` or `torch.Tensor`).
+        output (`Image.Image` or `list[Image.Image]` or `bytes` or `torch.Tensor`).
     """
     if input_tensor_type == "base64":
         deprecate(

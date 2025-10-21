@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import List, Optional, Tuple, Union
+from typing import Optional, Union
 
 import torch
 import torch.nn.functional as F
@@ -58,7 +58,7 @@ class EasyAnimateLayerNormZero(nn.Module):
 
     def forward(
         self, hidden_states: torch.Tensor, encoder_hidden_states: torch.Tensor, temb: torch.Tensor
-    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         shift, scale, gate, enc_shift, enc_scale, enc_gate = self.linear(self.silu(temb)).chunk(6, dim=1)
         hidden_states = self.norm(hidden_states) * (1 + scale.unsqueeze(1)) + shift.unsqueeze(1)
         encoder_hidden_states = self.norm(encoder_hidden_states) * (1 + enc_scale.unsqueeze(1)) + enc_shift.unsqueeze(
@@ -68,7 +68,7 @@ class EasyAnimateLayerNormZero(nn.Module):
 
 
 class EasyAnimateRotaryPosEmbed(nn.Module):
-    def __init__(self, patch_size: int, rope_dim: List[int]) -> None:
+    def __init__(self, patch_size: int, rope_dim: list[int]) -> None:
         super().__init__()
 
         self.patch_size = patch_size
@@ -280,8 +280,8 @@ class EasyAnimateTransformerBlock(nn.Module):
         hidden_states: torch.Tensor,
         encoder_hidden_states: torch.Tensor,
         temb: torch.Tensor,
-        image_rotary_emb: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        image_rotary_emb: Optional[tuple[torch.Tensor, torch.Tensor]] = None,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         # 1. Attention
         norm_hidden_states, norm_encoder_hidden_states, gate_msa, enc_gate_msa = self.norm1(
             hidden_states, encoder_hidden_states, temb
@@ -470,7 +470,7 @@ class EasyAnimateTransformer3DModel(ModelMixin, ConfigMixin):
         inpaint_latents: Optional[torch.Tensor] = None,
         control_latents: Optional[torch.Tensor] = None,
         return_dict: bool = True,
-    ) -> Union[Tuple[torch.Tensor], Transformer2DModelOutput]:
+    ) -> Union[tuple[torch.Tensor], Transformer2DModelOutput]:
         batch_size, channels, video_length, height, width = hidden_states.size()
         p = self.config.patch_size
         post_patch_height = height // p

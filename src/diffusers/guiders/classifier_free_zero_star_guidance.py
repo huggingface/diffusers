@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import math
-from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Optional, Union
 
 import torch
 
@@ -77,8 +77,8 @@ class ClassifierFreeZeroStarGuidance(BaseGuidance):
         self.use_original_formulation = use_original_formulation
 
     def prepare_inputs(
-        self, data: "BlockState", input_fields: Optional[Dict[str, Union[str, Tuple[str, str]]]] = None
-    ) -> List["BlockState"]:
+        self, data: "BlockState", input_fields: Optional[dict[str, Union[str, tuple[str, str]]]] = None
+    ) -> list["BlockState"]:
         if input_fields is None:
             input_fields = self._input_fields
 

@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from typing import Optional, Tuple, Union
+from typing import Optional, Union
 
 import torch
 import torch.nn as nn
@@ -34,15 +34,15 @@ class AsymmetricAutoencoderKL(ModelMixin, ConfigMixin):
     Parameters:
         in_channels (int, *optional*, defaults to 3): Number of channels in the input image.
         out_channels (int,  *optional*, defaults to 3): Number of channels in the output.
-        down_block_types (`Tuple[str]`, *optional*, defaults to `("DownEncoderBlock2D",)`):
+        down_block_types (`tuple[str]`, *optional*, defaults to `("DownEncoderBlock2D",)`):
             Tuple of downsample block types.
-        down_block_out_channels (`Tuple[int]`, *optional*, defaults to `(64,)`):
+        down_block_out_channels (`tuple[int]`, *optional*, defaults to `(64,)`):
             Tuple of down block output channels.
         layers_per_down_block (`int`, *optional*, defaults to `1`):
             Number layers for down block.
-        up_block_types (`Tuple[str]`, *optional*, defaults to `("UpDecoderBlock2D",)`):
+        up_block_types (`tuple[str]`, *optional*, defaults to `("UpDecoderBlock2D",)`):
             Tuple of upsample block types.
-        up_block_out_channels (`Tuple[int]`, *optional*, defaults to `(64,)`):
+        up_block_out_channels (`tuple[int]`, *optional*, defaults to `(64,)`):
             Tuple of up block output channels.
         layers_per_up_block (`int`, *optional*, defaults to `1`):
             Number layers for up block.
@@ -67,11 +67,11 @@ class AsymmetricAutoencoderKL(ModelMixin, ConfigMixin):
         self,
         in_channels: int = 3,
         out_channels: int = 3,
-        down_block_types: Tuple[str, ...] = ("DownEncoderBlock2D",),
-        down_block_out_channels: Tuple[int, ...] = (64,),
+        down_block_types: tuple[str, ...] = ("DownEncoderBlock2D",),
+        down_block_out_channels: tuple[int, ...] = (64,),
         layers_per_down_block: int = 1,
-        up_block_types: Tuple[str, ...] = ("UpDecoderBlock2D",),
-        up_block_out_channels: Tuple[int, ...] = (64,),
+        up_block_types: tuple[str, ...] = ("UpDecoderBlock2D",),
+        up_block_out_channels: tuple[int, ...] = (64,),
         layers_per_up_block: int = 1,
         act_fn: str = "silu",
         latent_channels: int = 4,
@@ -114,7 +114,7 @@ class AsymmetricAutoencoderKL(ModelMixin, ConfigMixin):
         self.register_to_config(force_upcast=False)
 
     @apply_forward_hook
-    def encode(self, x: torch.Tensor, return_dict: bool = True) -> Union[AutoencoderKLOutput, Tuple[torch.Tensor]]:
+    def encode(self, x: torch.Tensor, return_dict: bool = True) -> Union[AutoencoderKLOutput, tuple[torch.Tensor]]:
         h = self.encoder(x)
         moments = self.quant_conv(h)
         posterior = DiagonalGaussianDistribution(moments)
@@ -130,7 +130,7 @@ class AsymmetricAutoencoderKL(ModelMixin, ConfigMixin):
         image: Optional[torch.Tensor] = None,
         mask: Optional[torch.Tensor] = None,
         return_dict: bool = True,
-    ) -> Union[DecoderOutput, Tuple[torch.Tensor]]:
+    ) -> Union[DecoderOutput, tuple[torch.Tensor]]:
         z = self.post_quant_conv(z)
         dec = self.decoder(z, image, mask)
 
@@ -147,7 +147,7 @@ class AsymmetricAutoencoderKL(ModelMixin, ConfigMixin):
         image: Optional[torch.Tensor] = None,
         mask: Optional[torch.Tensor] = None,
         return_dict: bool = True,
-    ) -> Union[DecoderOutput, Tuple[torch.Tensor]]:
+    ) -> Union[DecoderOutput, tuple[torch.Tensor]]:
         decoded = self._decode(z, image, mask).sample
 
         if not return_dict:
@@ -162,7 +162,7 @@ class AsymmetricAutoencoderKL(ModelMixin, ConfigMixin):
         sample_posterior: bool = False,
         return_dict: bool = True,
         generator: Optional[torch.Generator] = None,
-    ) -> Union[DecoderOutput, Tuple[torch.Tensor]]:
+    ) -> Union[DecoderOutput, tuple[torch.Tensor]]:
         r"""
         Args:
             sample (`torch.Tensor`): Input sample.

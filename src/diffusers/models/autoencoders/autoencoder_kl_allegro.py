@@ -14,7 +14,7 @@
 # limitations under the License.
 
 import math
-from typing import Optional, Tuple, Union
+from typing import Optional, Union
 
 import torch
 import torch.nn as nn
@@ -416,14 +416,14 @@ class AllegroEncoder3D(nn.Module):
         self,
         in_channels: int = 3,
         out_channels: int = 3,
-        down_block_types: Tuple[str, ...] = (
+        down_block_types: tuple[str, ...] = (
             "AllegroDownBlock3D",
             "AllegroDownBlock3D",
             "AllegroDownBlock3D",
             "AllegroDownBlock3D",
         ),
-        block_out_channels: Tuple[int, ...] = (128, 256, 512, 512),
-        temporal_downsample_blocks: Tuple[bool, ...] = [True, True, False, False],
+        block_out_channels: tuple[int, ...] = (128, 256, 512, 512),
+        temporal_downsample_blocks: tuple[bool, ...] = [True, True, False, False],
         layers_per_block: int = 2,
         norm_num_groups: int = 32,
         act_fn: str = "silu",
@@ -543,14 +543,14 @@ class AllegroDecoder3D(nn.Module):
         self,
         in_channels: int = 4,
         out_channels: int = 3,
-        up_block_types: Tuple[str, ...] = (
+        up_block_types: tuple[str, ...] = (
             "AllegroUpBlock3D",
             "AllegroUpBlock3D",
             "AllegroUpBlock3D",
             "AllegroUpBlock3D",
         ),
-        temporal_upsample_blocks: Tuple[bool, ...] = [False, True, True, False],
-        block_out_channels: Tuple[int, ...] = (128, 256, 512, 512),
+        temporal_upsample_blocks: tuple[bool, ...] = [False, True, True, False],
+        block_out_channels: tuple[int, ...] = (128, 256, 512, 512),
         layers_per_block: int = 2,
         norm_num_groups: int = 32,
         act_fn: str = "silu",
@@ -686,13 +686,13 @@ class AutoencoderKLAllegro(ModelMixin, ConfigMixin):
             Number of channels in the input image.
         out_channels (int, defaults to `3`):
             Number of channels in the output.
-        down_block_types (`Tuple[str, ...]`, defaults to `("AllegroDownBlock3D", "AllegroDownBlock3D", "AllegroDownBlock3D", "AllegroDownBlock3D")`):
+        down_block_types (`tuple[str, ...]`, defaults to `("AllegroDownBlock3D", "AllegroDownBlock3D", "AllegroDownBlock3D", "AllegroDownBlock3D")`):
             Tuple of strings denoting which types of down blocks to use.
-        up_block_types (`Tuple[str, ...]`, defaults to `("AllegroUpBlock3D", "AllegroUpBlock3D", "AllegroUpBlock3D", "AllegroUpBlock3D")`):
+        up_block_types (`tuple[str, ...]`, defaults to `("AllegroUpBlock3D", "AllegroUpBlock3D", "AllegroUpBlock3D", "AllegroUpBlock3D")`):
             Tuple of strings denoting which types of up blocks to use.
-        block_out_channels (`Tuple[int, ...]`, defaults to `(128, 256, 512, 512)`):
+        block_out_channels (`tuple[int, ...]`, defaults to `(128, 256, 512, 512)`):
             Tuple of integers denoting number of output channels in each block.
-        temporal_downsample_blocks (`Tuple[bool, ...]`, defaults to `(True, True, False, False)`):
+        temporal_downsample_blocks (`tuple[bool, ...]`, defaults to `(True, True, False, False)`):
             Tuple of booleans denoting which blocks to enable temporal downsampling in.
         latent_channels (`int`, defaults to `4`):
             Number of channels in latents.
@@ -726,21 +726,21 @@ class AutoencoderKLAllegro(ModelMixin, ConfigMixin):
         self,
         in_channels: int = 3,
         out_channels: int = 3,
-        down_block_types: Tuple[str, ...] = (
+        down_block_types: tuple[str, ...] = (
             "AllegroDownBlock3D",
             "AllegroDownBlock3D",
             "AllegroDownBlock3D",
             "AllegroDownBlock3D",
         ),
-        up_block_types: Tuple[str, ...] = (
+        up_block_types: tuple[str, ...] = (
             "AllegroUpBlock3D",
             "AllegroUpBlock3D",
             "AllegroUpBlock3D",
             "AllegroUpBlock3D",
         ),
-        block_out_channels: Tuple[int, ...] = (128, 256, 512, 512),
-        temporal_downsample_blocks: Tuple[bool, ...] = (True, True, False, False),
-        temporal_upsample_blocks: Tuple[bool, ...] = (False, True, True, False),
+        block_out_channels: tuple[int, ...] = (128, 256, 512, 512),
+        temporal_downsample_blocks: tuple[bool, ...] = (True, True, False, False),
+        temporal_upsample_blocks: tuple[bool, ...] = (False, True, True, False),
         latent_channels: int = 4,
         layers_per_block: int = 2,
         act_fn: str = "silu",
@@ -835,7 +835,7 @@ class AutoencoderKLAllegro(ModelMixin, ConfigMixin):
     @apply_forward_hook
     def encode(
         self, x: torch.Tensor, return_dict: bool = True
-    ) -> Union[AutoencoderKLOutput, Tuple[DiagonalGaussianDistribution]]:
+    ) -> Union[AutoencoderKLOutput, tuple[DiagonalGaussianDistribution]]:
         r"""
         Encode a batch of videos into latents.
 

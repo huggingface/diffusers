@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Optional, Tuple, Union
+from typing import Optional, Union
 
 import torch
 import torch.nn as nn
@@ -68,7 +68,7 @@ class EfficientViTBlock(nn.Module):
         in_channels: int,
         mult: float = 1.0,
         attention_head_dim: int = 32,
-        qkv_multiscales: Tuple[int, ...] = (5,),
+        qkv_multiscales: tuple[int, ...] = (5,),
         norm_type: str = "batch_norm",
     ) -> None:
         super().__init__()
@@ -102,7 +102,7 @@ def get_block(
     attention_head_dim: int,
     norm_type: str,
     act_fn: str,
-    qkv_mutliscales: Tuple[int] = (),
+    qkv_mutliscales: tuple[int] = (),
 ):
     if block_type == "ResBlock":
         block = ResBlock(in_channels, out_channels, norm_type, act_fn)
@@ -205,10 +205,10 @@ class Encoder(nn.Module):
         in_channels: int,
         latent_channels: int,
         attention_head_dim: int = 32,
-        block_type: Union[str, Tuple[str]] = "ResBlock",
-        block_out_channels: Tuple[int] = (128, 256, 512, 512, 1024, 1024),
-        layers_per_block: Tuple[int] = (2, 2, 2, 2, 2, 2),
-        qkv_multiscales: Tuple[Tuple[int, ...], ...] = ((), (), (), (5,), (5,), (5,)),
+        block_type: Union[str, tuple[str]] = "ResBlock",
+        block_out_channels: tuple[int] = (128, 256, 512, 512, 1024, 1024),
+        layers_per_block: tuple[int] = (2, 2, 2, 2, 2, 2),
+        qkv_multiscales: tuple[tuple[int, ...], ...] = ((), (), (), (5,), (5,), (5,)),
         downsample_block_type: str = "pixel_unshuffle",
         out_shortcut: bool = True,
     ):
@@ -291,12 +291,12 @@ class Decoder(nn.Module):
         in_channels: int,
         latent_channels: int,
         attention_head_dim: int = 32,
-        block_type: Union[str, Tuple[str]] = "ResBlock",
-        block_out_channels: Tuple[int] = (128, 256, 512, 512, 1024, 1024),
-        layers_per_block: Tuple[int] = (2, 2, 2, 2, 2, 2),
-        qkv_multiscales: Tuple[Tuple[int, ...], ...] = ((), (), (), (5,), (5,), (5,)),
-        norm_type: Union[str, Tuple[str]] = "rms_norm",
-        act_fn: Union[str, Tuple[str]] = "silu",
+        block_type: Union[str, tuple[str]] = "ResBlock",
+        block_out_channels: tuple[int] = (128, 256, 512, 512, 1024, 1024),
+        layers_per_block: tuple[int] = (2, 2, 2, 2, 2, 2),
+        qkv_multiscales: tuple[tuple[int, ...], ...] = ((), (), (), (5,), (5,), (5,)),
+        norm_type: Union[str, tuple[str]] = "rms_norm",
+        act_fn: Union[str, tuple[str]] = "silu",
         upsample_block_type: str = "pixel_shuffle",
         in_shortcut: bool = True,
         conv_act_fn: str = "relu",
@@ -391,29 +391,29 @@ class AutoencoderDC(ModelMixin, ConfigMixin, FromOriginalModelMixin):
             The number of input channels in samples.
         latent_channels (`int`, defaults to `32`):
             The number of channels in the latent space representation.
-        encoder_block_types (`Union[str, Tuple[str]]`, defaults to `"ResBlock"`):
+        encoder_block_types (`Union[str, tuple[str]]`, defaults to `"ResBlock"`):
             The type(s) of block to use in the encoder.
-        decoder_block_types (`Union[str, Tuple[str]]`, defaults to `"ResBlock"`):
+        decoder_block_types (`Union[str, tuple[str]]`, defaults to `"ResBlock"`):
             The type(s) of block to use in the decoder.
-        encoder_block_out_channels (`Tuple[int, ...]`, defaults to `(128, 256, 512, 512, 1024, 1024)`):
+        encoder_block_out_channels (`tuple[int, ...]`, defaults to `(128, 256, 512, 512, 1024, 1024)`):
             The number of output channels for each block in the encoder.
-        decoder_block_out_channels (`Tuple[int, ...]`, defaults to `(128, 256, 512, 512, 1024, 1024)`):
+        decoder_block_out_channels (`tuple[int, ...]`, defaults to `(128, 256, 512, 512, 1024, 1024)`):
             The number of output channels for each block in the decoder.
-        encoder_layers_per_block (`Tuple[int]`, defaults to `(2, 2, 2, 3, 3, 3)`):
+        encoder_layers_per_block (`tuple[int]`, defaults to `(2, 2, 2, 3, 3, 3)`):
             The number of layers per block in the encoder.
-        decoder_layers_per_block (`Tuple[int]`, defaults to `(3, 3, 3, 3, 3, 3)`):
+        decoder_layers_per_block (`tuple[int]`, defaults to `(3, 3, 3, 3, 3, 3)`):
             The number of layers per block in the decoder.
-        encoder_qkv_multiscales (`Tuple[Tuple[int, ...], ...]`, defaults to `((), (), (), (5,), (5,), (5,))`):
+        encoder_qkv_multiscales (`tuple[tuple[int, ...], ...]`, defaults to `((), (), (), (5,), (5,), (5,))`):
             Multi-scale configurations for the encoder's QKV (query-key-value) transformations.
-        decoder_qkv_multiscales (`Tuple[Tuple[int, ...], ...]`, defaults to `((), (), (), (5,), (5,), (5,))`):
+        decoder_qkv_multiscales (`tuple[tuple[int, ...], ...]`, defaults to `((), (), (), (5,), (5,), (5,))`):
             Multi-scale configurations for the decoder's QKV (query-key-value) transformations.
         upsample_block_type (`str`, defaults to `"pixel_shuffle"`):
             The type of block to use for upsampling in the decoder.
         downsample_block_type (`str`, defaults to `"pixel_unshuffle"`):
             The type of block to use for downsampling in the encoder.
-        decoder_norm_types (`Union[str, Tuple[str]]`, defaults to `"rms_norm"`):
+        decoder_norm_types (`Union[str, tuple[str]]`, defaults to `"rms_norm"`):
             The normalization type(s) to use in the decoder.
-        decoder_act_fns (`Union[str, Tuple[str]]`, defaults to `"silu"`):
+        decoder_act_fns (`Union[str, tuple[str]]`, defaults to `"silu"`):
             The activation function(s) to use in the decoder.
         encoder_out_shortcut  (`bool`, defaults to `True`):
             Whether to use shortcut at the end of the encoder.
@@ -436,18 +436,18 @@ class AutoencoderDC(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         in_channels: int = 3,
         latent_channels: int = 32,
         attention_head_dim: int = 32,
-        encoder_block_types: Union[str, Tuple[str]] = "ResBlock",
-        decoder_block_types: Union[str, Tuple[str]] = "ResBlock",
-        encoder_block_out_channels: Tuple[int, ...] = (128, 256, 512, 512, 1024, 1024),
-        decoder_block_out_channels: Tuple[int, ...] = (128, 256, 512, 512, 1024, 1024),
-        encoder_layers_per_block: Tuple[int] = (2, 2, 2, 3, 3, 3),
-        decoder_layers_per_block: Tuple[int] = (3, 3, 3, 3, 3, 3),
-        encoder_qkv_multiscales: Tuple[Tuple[int, ...], ...] = ((), (), (), (5,), (5,), (5,)),
-        decoder_qkv_multiscales: Tuple[Tuple[int, ...], ...] = ((), (), (), (5,), (5,), (5,)),
+        encoder_block_types: Union[str, tuple[str]] = "ResBlock",
+        decoder_block_types: Union[str, tuple[str]] = "ResBlock",
+        encoder_block_out_channels: tuple[int, ...] = (128, 256, 512, 512, 1024, 1024),
+        decoder_block_out_channels: tuple[int, ...] = (128, 256, 512, 512, 1024, 1024),
+        encoder_layers_per_block: tuple[int] = (2, 2, 2, 3, 3, 3),
+        decoder_layers_per_block: tuple[int] = (3, 3, 3, 3, 3, 3),
+        encoder_qkv_multiscales: tuple[tuple[int, ...], ...] = ((), (), (), (5,), (5,), (5,)),
+        decoder_qkv_multiscales: tuple[tuple[int, ...], ...] = ((), (), (), (5,), (5,), (5,)),
         upsample_block_type: str = "pixel_shuffle",
         downsample_block_type: str = "pixel_unshuffle",
-        decoder_norm_types: Union[str, Tuple[str]] = "rms_norm",
-        decoder_act_fns: Union[str, Tuple[str]] = "silu",
+        decoder_norm_types: Union[str, tuple[str]] = "rms_norm",
+        decoder_act_fns: Union[str, tuple[str]] = "silu",
         encoder_out_shortcut: bool = True,
         decoder_in_shortcut: bool = True,
         decoder_conv_act_fn: str = "relu",
@@ -568,7 +568,7 @@ class AutoencoderDC(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         return encoded
 
     @apply_forward_hook
-    def encode(self, x: torch.Tensor, return_dict: bool = True) -> Union[EncoderOutput, Tuple[torch.Tensor]]:
+    def encode(self, x: torch.Tensor, return_dict: bool = True) -> Union[EncoderOutput, tuple[torch.Tensor]]:
         r"""
         Encode a batch of images into latents.
 
@@ -602,7 +602,7 @@ class AutoencoderDC(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         return decoded
 
     @apply_forward_hook
-    def decode(self, z: torch.Tensor, return_dict: bool = True) -> Union[DecoderOutput, Tuple[torch.Tensor]]:
+    def decode(self, z: torch.Tensor, return_dict: bool = True) -> Union[DecoderOutput, tuple[torch.Tensor]]:
         r"""
         Decode a batch of images.
 

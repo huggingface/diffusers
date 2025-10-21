@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import html
-from typing import List, Optional, Union
+from typing import Optional, Union
 
 import regex as re
 import torch
@@ -90,7 +90,7 @@ class FluxProcessImagesInputStep(ModularPipelineBlocks):
         return "Image Preprocess step."
 
     @property
-    def expected_components(self) -> List[ComponentSpec]:
+    def expected_components(self) -> list[ComponentSpec]:
         return [
             ComponentSpec(
                 "image_processor",
@@ -101,11 +101,11 @@ class FluxProcessImagesInputStep(ModularPipelineBlocks):
         ]
 
     @property
-    def inputs(self) -> List[InputParam]:
+    def inputs(self) -> list[InputParam]:
         return [InputParam("resized_image"), InputParam("image"), InputParam("height"), InputParam("width")]
 
     @property
-    def intermediate_outputs(self) -> List[OutputParam]:
+    def intermediate_outputs(self) -> list[OutputParam]:
         return [OutputParam(name="processed_image")]
 
     @staticmethod
@@ -155,7 +155,7 @@ class FluxKontextProcessImagesInputStep(ModularPipelineBlocks):
         )
 
     @property
-    def expected_components(self) -> List[ComponentSpec]:
+    def expected_components(self) -> list[ComponentSpec]:
         return [
             ComponentSpec(
                 "image_processor",
@@ -166,11 +166,11 @@ class FluxKontextProcessImagesInputStep(ModularPipelineBlocks):
         ]
 
     @property
-    def inputs(self) -> List[InputParam]:
+    def inputs(self) -> list[InputParam]:
         return [InputParam("image")]
 
     @property
-    def intermediate_outputs(self) -> List[OutputParam]:
+    def intermediate_outputs(self) -> list[OutputParam]:
         return [OutputParam(name="processed_image")]
 
     @torch.no_grad()
@@ -244,17 +244,17 @@ class FluxVaeEncoderDynamicStep(ModularPipelineBlocks):
         return f"Dynamic VAE Encoder step that converts {self._image_input_name} into latent representations {self._image_latents_output_name}.\n"
 
     @property
-    def expected_components(self) -> List[ComponentSpec]:
+    def expected_components(self) -> list[ComponentSpec]:
         components = [ComponentSpec("vae", AutoencoderKL)]
         return components
 
     @property
-    def inputs(self) -> List[InputParam]:
+    def inputs(self) -> list[InputParam]:
         inputs = [InputParam(self._image_input_name), InputParam("generator")]
         return inputs
 
     @property
-    def intermediate_outputs(self) -> List[OutputParam]:
+    def intermediate_outputs(self) -> list[OutputParam]:
         return [
             OutputParam(
                 self._image_latents_output_name,
@@ -294,7 +294,7 @@ class FluxTextEncoderStep(ModularPipelineBlocks):
         return "Text Encoder step that generate text_embeddings to guide the image generation"
 
     @property
-    def expected_components(self) -> List[ComponentSpec]:
+    def expected_components(self) -> list[ComponentSpec]:
         return [
             ComponentSpec("text_encoder", CLIPTextModel),
             ComponentSpec("tokenizer", CLIPTokenizer),
@@ -303,7 +303,7 @@ class FluxTextEncoderStep(ModularPipelineBlocks):
         ]
 
     @property
-    def inputs(self) -> List[InputParam]:
+    def inputs(self) -> list[InputParam]:
         return [
             InputParam("prompt"),
             InputParam("prompt_2"),
@@ -312,7 +312,7 @@ class FluxTextEncoderStep(ModularPipelineBlocks):
         ]
 
     @property
-    def intermediate_outputs(self) -> List[OutputParam]:
+    def intermediate_outputs(self) -> list[OutputParam]:
         return [
             OutputParam(
                 "prompt_embeds",
@@ -336,7 +336,7 @@ class FluxTextEncoderStep(ModularPipelineBlocks):
 
     @staticmethod
     def _get_t5_prompt_embeds(
-        components, prompt: Union[str, List[str]], max_sequence_length: int, device: torch.device
+        components, prompt: Union[str, list[str]], max_sequence_length: int, device: torch.device
     ):
         dtype = components.text_encoder_2.dtype
         prompt = [prompt] if isinstance(prompt, str) else prompt
@@ -368,7 +368,7 @@ class FluxTextEncoderStep(ModularPipelineBlocks):
         return prompt_embeds
 
     @staticmethod
-    def _get_clip_prompt_embeds(components, prompt: Union[str, List[str]], device: torch.device):
+    def _get_clip_prompt_embeds(components, prompt: Union[str, list[str]], device: torch.device):
         prompt = [prompt] if isinstance(prompt, str) else prompt
 
         if isinstance(components, TextualInversionLoaderMixin):
@@ -404,8 +404,8 @@ class FluxTextEncoderStep(ModularPipelineBlocks):
     @staticmethod
     def encode_prompt(
         components,
-        prompt: Union[str, List[str]],
-        prompt_2: Union[str, List[str]],
+        prompt: Union[str, list[str]],
+        prompt_2: Union[str, list[str]],
         device: Optional[torch.device] = None,
         prompt_embeds: Optional[torch.FloatTensor] = None,
         pooled_prompt_embeds: Optional[torch.FloatTensor] = None,

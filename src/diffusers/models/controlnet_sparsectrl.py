@@ -13,7 +13,7 @@
 # limitations under the License.
 
 
-from typing import Optional, Tuple, Union
+from typing import Optional, Union
 
 from ..utils import deprecate, logging
 from .controlnets.controlnet_sparsectrl import (  # noqa
@@ -50,14 +50,14 @@ class SparseControlNetModel(SparseControlNetModel):
         conditioning_channels: int = 4,
         flip_sin_to_cos: bool = True,
         freq_shift: int = 0,
-        down_block_types: Tuple[str, ...] = (
+        down_block_types: tuple[str, ...] = (
             "CrossAttnDownBlockMotion",
             "CrossAttnDownBlockMotion",
             "CrossAttnDownBlockMotion",
             "DownBlockMotion",
         ),
-        only_cross_attention: Union[bool, Tuple[bool]] = False,
-        block_out_channels: Tuple[int, ...] = (320, 640, 1280, 1280),
+        only_cross_attention: Union[bool, tuple[bool]] = False,
+        block_out_channels: tuple[int, ...] = (320, 640, 1280, 1280),
         layers_per_block: int = 2,
         downsample_padding: int = 1,
         mid_block_scale_factor: float = 1,
@@ -65,15 +65,15 @@ class SparseControlNetModel(SparseControlNetModel):
         norm_num_groups: Optional[int] = 32,
         norm_eps: float = 1e-5,
         cross_attention_dim: int = 768,
-        transformer_layers_per_block: Union[int, Tuple[int, ...]] = 1,
-        transformer_layers_per_mid_block: Optional[Union[int, Tuple[int]]] = None,
-        temporal_transformer_layers_per_block: Union[int, Tuple[int, ...]] = 1,
-        attention_head_dim: Union[int, Tuple[int, ...]] = 8,
-        num_attention_heads: Optional[Union[int, Tuple[int, ...]]] = None,
+        transformer_layers_per_block: Union[int, tuple[int, ...]] = 1,
+        transformer_layers_per_mid_block: Optional[Union[int, tuple[int]]] = None,
+        temporal_transformer_layers_per_block: Union[int, tuple[int, ...]] = 1,
+        attention_head_dim: Union[int, tuple[int, ...]] = 8,
+        num_attention_heads: Optional[Union[int, tuple[int, ...]]] = None,
         use_linear_projection: bool = False,
         upcast_attention: bool = False,
         resnet_time_scale_shift: str = "default",
-        conditioning_embedding_out_channels: Optional[Tuple[int, ...]] = (16, 32, 96, 256),
+        conditioning_embedding_out_channels: Optional[tuple[int, ...]] = (16, 32, 96, 256),
         global_pool_conditions: bool = False,
         controlnet_conditioning_channel_order: str = "rgb",
         motion_max_seq_length: int = 32,

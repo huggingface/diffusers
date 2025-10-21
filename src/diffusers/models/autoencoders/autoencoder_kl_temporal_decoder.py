@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import itertools
-from typing import Dict, Optional, Tuple, Union
+from typing import Optional, Union
 
 import torch
 import torch.nn as nn
@@ -31,7 +31,7 @@ class TemporalDecoder(nn.Module):
         self,
         in_channels: int = 4,
         out_channels: int = 3,
-        block_out_channels: Tuple[int] = (128, 256, 512, 512),
+        block_out_channels: tuple[int] = (128, 256, 512, 512),
         layers_per_block: int = 2,
     ):
         super().__init__()
@@ -145,9 +145,9 @@ class AutoencoderKLTemporalDecoder(ModelMixin, ConfigMixin):
     Parameters:
         in_channels (int, *optional*, defaults to 3): Number of channels in the input image.
         out_channels (int,  *optional*, defaults to 3): Number of channels in the output.
-        down_block_types (`Tuple[str]`, *optional*, defaults to `("DownEncoderBlock2D",)`):
+        down_block_types (`tuple[str]`, *optional*, defaults to `("DownEncoderBlock2D",)`):
             Tuple of downsample block types.
-        block_out_channels (`Tuple[int]`, *optional*, defaults to `(64,)`):
+        block_out_channels (`tuple[int]`, *optional*, defaults to `(64,)`):
             Tuple of block output channels.
         layers_per_block: (`int`, *optional*, defaults to 1): Number of layers per block.
         latent_channels (`int`, *optional*, defaults to 4): Number of channels in the latent space.
@@ -172,8 +172,8 @@ class AutoencoderKLTemporalDecoder(ModelMixin, ConfigMixin):
         self,
         in_channels: int = 3,
         out_channels: int = 3,
-        down_block_types: Tuple[str] = ("DownEncoderBlock2D",),
-        block_out_channels: Tuple[int] = (64,),
+        down_block_types: tuple[str] = ("DownEncoderBlock2D",),
+        block_out_channels: tuple[int] = (64,),
         layers_per_block: int = 1,
         latent_channels: int = 4,
         sample_size: int = 32,
@@ -204,7 +204,7 @@ class AutoencoderKLTemporalDecoder(ModelMixin, ConfigMixin):
 
     @property
     # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.attn_processors
-    def attn_processors(self) -> Dict[str, AttentionProcessor]:
+    def attn_processors(self) -> dict[str, AttentionProcessor]:
         r"""
         Returns:
             `dict` of attention processors: A dictionary containing all attention processors used in the model with
@@ -213,7 +213,7 @@ class AutoencoderKLTemporalDecoder(ModelMixin, ConfigMixin):
         # set recursively
         processors = {}
 
-        def fn_recursive_add_processors(name: str, module: torch.nn.Module, processors: Dict[str, AttentionProcessor]):
+        def fn_recursive_add_processors(name: str, module: torch.nn.Module, processors: dict[str, AttentionProcessor]):
             if hasattr(module, "get_processor"):
                 processors[f"{name}.processor"] = module.get_processor()
 
@@ -228,7 +228,7 @@ class AutoencoderKLTemporalDecoder(ModelMixin, ConfigMixin):
         return processors
 
     # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.set_attn_processor
-    def set_attn_processor(self, processor: Union[AttentionProcessor, Dict[str, AttentionProcessor]]):
+    def set_attn_processor(self, processor: Union[AttentionProcessor, dict[str, AttentionProcessor]]):
         r"""
         Sets the attention processor to use to compute attention.
 
@@ -278,7 +278,7 @@ class AutoencoderKLTemporalDecoder(ModelMixin, ConfigMixin):
     @apply_forward_hook
     def encode(
         self, x: torch.Tensor, return_dict: bool = True
-    ) -> Union[AutoencoderKLOutput, Tuple[DiagonalGaussianDistribution]]:
+    ) -> Union[AutoencoderKLOutput, tuple[DiagonalGaussianDistribution]]:
         """
         Encode a batch of images into latents.
 

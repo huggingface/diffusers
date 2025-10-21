@@ -174,10 +174,10 @@ class ShapEImg2ImgPipeline(DiffusionPipeline):
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        image: Union[PIL.Image.Image, List[PIL.Image.Image]],
+        image: Union[PIL.Image.Image, list[PIL.Image.Image]],
         num_images_per_prompt: int = 1,
         num_inference_steps: int = 25,
-        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
+        generator: Optional[Union[torch.Generator, list[torch.Generator]]] = None,
         latents: Optional[torch.Tensor] = None,
         guidance_scale: float = 4.0,
         frame_size: int = 64,
@@ -188,7 +188,7 @@ class ShapEImg2ImgPipeline(DiffusionPipeline):
         The call function to the pipeline for generation.
 
         Args:
-            image (`torch.Tensor`, `PIL.Image.Image`, `np.ndarray`, `List[torch.Tensor]`, `List[PIL.Image.Image]`, or `List[np.ndarray]`):
+            image (`torch.Tensor`, `PIL.Image.Image`, `np.ndarray`, `list[torch.Tensor]`, `list[PIL.Image.Image]`, or `list[np.ndarray]`):
                 `Image` or tensor representing an image batch to be used as the starting point. Can also accept image
                 latents as image, but if passing latents directly it is not encoded again.
             num_images_per_prompt (`int`, *optional*, defaults to 1):
@@ -196,7 +196,7 @@ class ShapEImg2ImgPipeline(DiffusionPipeline):
             num_inference_steps (`int`, *optional*, defaults to 25):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
-            generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
+            generator (`torch.Generator` or `list[torch.Generator]`, *optional*):
                 A [`torch.Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make
                 generation deterministic.
             latents (`torch.Tensor`, *optional*):
@@ -231,7 +231,7 @@ class ShapEImg2ImgPipeline(DiffusionPipeline):
             batch_size = len(image)
         else:
             raise ValueError(
-                f"`image` has to be of type `PIL.Image.Image`, `torch.Tensor`, `List[PIL.Image.Image]` or `List[torch.Tensor]` but is {type(image)}"
+                f"`image` has to be of type `PIL.Image.Image`, `torch.Tensor`, `list[PIL.Image.Image]` or `list[torch.Tensor]` but is {type(image)}"
             )
 
         device = self._execution_device

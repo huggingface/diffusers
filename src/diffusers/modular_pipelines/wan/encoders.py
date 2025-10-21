@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import html
-from typing import List, Optional, Union
+from typing import Optional, Union
 
 import regex as re
 import torch
@@ -59,7 +59,7 @@ class WanTextEncoderStep(ModularPipelineBlocks):
         return "Text Encoder step that generate text_embeddings to guide the video generation"
 
     @property
-    def expected_components(self) -> List[ComponentSpec]:
+    def expected_components(self) -> list[ComponentSpec]:
         return [
             ComponentSpec("text_encoder", UMT5EncoderModel),
             ComponentSpec("tokenizer", AutoTokenizer),
@@ -72,11 +72,11 @@ class WanTextEncoderStep(ModularPipelineBlocks):
         ]
 
     @property
-    def expected_configs(self) -> List[ConfigSpec]:
+    def expected_configs(self) -> list[ConfigSpec]:
         return []
 
     @property
-    def inputs(self) -> List[InputParam]:
+    def inputs(self) -> list[InputParam]:
         return [
             InputParam("prompt"),
             InputParam("negative_prompt"),
@@ -84,7 +84,7 @@ class WanTextEncoderStep(ModularPipelineBlocks):
         ]
 
     @property
-    def intermediate_outputs(self) -> List[OutputParam]:
+    def intermediate_outputs(self) -> list[OutputParam]:
         return [
             OutputParam(
                 "prompt_embeds",
@@ -110,7 +110,7 @@ class WanTextEncoderStep(ModularPipelineBlocks):
     @staticmethod
     def _get_t5_prompt_embeds(
         components,
-        prompt: Union[str, List[str]],
+        prompt: Union[str, list[str]],
         max_sequence_length: int,
         device: torch.device,
     ):
@@ -154,7 +154,7 @@ class WanTextEncoderStep(ModularPipelineBlocks):
         Encodes the prompt into text encoder hidden states.
 
         Args:
-            prompt (`str` or `List[str]`, *optional*):
+            prompt (`str` or `list[str]`, *optional*):
                 prompt to be encoded
             device: (`torch.device`):
                 torch device
@@ -162,7 +162,7 @@ class WanTextEncoderStep(ModularPipelineBlocks):
                 number of videos that should be generated per prompt
             prepare_unconditional_embeds (`bool`):
                 whether to use prepare unconditional embeddings or not
-            negative_prompt (`str` or `List[str]`, *optional*):
+            negative_prompt (`str` or `list[str]`, *optional*):
                 The prompt or prompts not to guide the image generation. If not defined, one has to pass
                 `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
                 less than `1`).

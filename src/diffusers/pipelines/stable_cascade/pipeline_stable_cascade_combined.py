@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from typing import Callable, Dict, List, Optional, Union
+from typing import Callable, Dict, Optional, Union
 
 import PIL
 import torch
@@ -157,38 +157,38 @@ class StableCascadeCombinedPipeline(DiffusionPipeline):
     @replace_example_docstring(TEXT2IMAGE_EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        prompt: Optional[Union[str, List[str]]] = None,
-        images: Union[torch.Tensor, PIL.Image.Image, List[torch.Tensor], List[PIL.Image.Image]] = None,
+        prompt: Optional[Union[str, list[str]]] = None,
+        images: Union[torch.Tensor, PIL.Image.Image, list[torch.Tensor], list[PIL.Image.Image]] = None,
         height: int = 512,
         width: int = 512,
         prior_num_inference_steps: int = 60,
         prior_guidance_scale: float = 4.0,
         num_inference_steps: int = 12,
         decoder_guidance_scale: float = 0.0,
-        negative_prompt: Optional[Union[str, List[str]]] = None,
+        negative_prompt: Optional[Union[str, list[str]]] = None,
         prompt_embeds: Optional[torch.Tensor] = None,
         prompt_embeds_pooled: Optional[torch.Tensor] = None,
         negative_prompt_embeds: Optional[torch.Tensor] = None,
         negative_prompt_embeds_pooled: Optional[torch.Tensor] = None,
         num_images_per_prompt: int = 1,
-        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
+        generator: Optional[Union[torch.Generator, list[torch.Generator]]] = None,
         latents: Optional[torch.Tensor] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
         prior_callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
-        prior_callback_on_step_end_tensor_inputs: List[str] = ["latents"],
+        prior_callback_on_step_end_tensor_inputs: list[str] = ["latents"],
         callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
-        callback_on_step_end_tensor_inputs: List[str] = ["latents"],
+        callback_on_step_end_tensor_inputs: list[str] = ["latents"],
     ):
         """
         Function invoked when calling the pipeline for generation.
 
         Args:
-            prompt (`str` or `List[str]`):
+            prompt (`str` or `list[str]`):
                 The prompt or prompts to guide the image generation for the prior and decoder.
-            images (`torch.Tensor`, `PIL.Image.Image`, `List[torch.Tensor]`, `List[PIL.Image.Image]`, *optional*):
+            images (`torch.Tensor`, `PIL.Image.Image`, `list[torch.Tensor]`, `list[PIL.Image.Image]`, *optional*):
                 The images to guide the image generation for the prior.
-            negative_prompt (`str` or `List[str]`, *optional*):
+            negative_prompt (`str` or `list[str]`, *optional*):
                 The prompt or prompts not to guide the image generation. Ignored when not using guidance (i.e., ignored
                 if `guidance_scale` is less than `1`).
             prompt_embeds (`torch.Tensor`, *optional*):
@@ -217,7 +217,7 @@ class StableCascadeCombinedPipeline(DiffusionPipeline):
                 equation 2. of [Imagen Paper](https://huggingface.co/papers/2205.11487). Guidance scale is enabled by
                 setting `prior_guidance_scale > 1`. Higher guidance scale encourages to generate images that are
                 closely linked to the text `prompt`, usually at the expense of lower image quality.
-            prior_num_inference_steps (`Union[int, Dict[float, int]]`, *optional*, defaults to 60):
+            prior_num_inference_steps (`Union[int, dict[float, int]]`, *optional*, defaults to 60):
                 The number of prior denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference. For more specific timestep spacing, you can pass customized
                 `prior_timesteps`
@@ -231,7 +231,7 @@ class StableCascadeCombinedPipeline(DiffusionPipeline):
                 of [Imagen Paper](https://huggingface.co/papers/2205.11487). Guidance scale is enabled by setting
                 `guidance_scale > 1`. Higher guidance scale encourages to generate images that are closely linked to
                 the text `prompt`, usually at the expense of lower image quality.
-            generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
+            generator (`torch.Generator` or `list[torch.Generator]`, *optional*):
                 One or a list of [torch generator(s)](https://pytorch.org/docs/stable/generated/torch.Generator.html)
                 to make generation deterministic.
             latents (`torch.Tensor`, *optional*):

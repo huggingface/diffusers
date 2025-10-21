@@ -12,7 +12,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from typing import List, Optional, Union
+from typing import Optional, Union
 
 import PIL.Image
 import torch
@@ -126,8 +126,8 @@ class BlipDiffusionControlNetPipeline(DeprecatedPipelineMixin, DiffusionPipeline
         controlnet: ControlNetModel,
         image_processor: BlipImageProcessor,
         ctx_begin_pos: int = 2,
-        mean: List[float] = None,
-        std: List[float] = None,
+        mean: list[float] = None,
+        std: list[float] = None,
     ):
         super().__init__()
 
@@ -241,17 +241,17 @@ class BlipDiffusionControlNetPipeline(DeprecatedPipelineMixin, DiffusionPipeline
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        prompt: List[str],
+        prompt: list[str],
         reference_image: PIL.Image.Image,
         condtioning_image: PIL.Image.Image,
-        source_subject_category: List[str],
-        target_subject_category: List[str],
+        source_subject_category: list[str],
+        target_subject_category: list[str],
         latents: Optional[torch.Tensor] = None,
         guidance_scale: float = 7.5,
         height: int = 512,
         width: int = 512,
         num_inference_steps: int = 50,
-        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
+        generator: Optional[Union[torch.Generator, list[torch.Generator]]] = None,
         neg_prompt: Optional[str] = "",
         prompt_strength: float = 1.0,
         prompt_reps: int = 20,
@@ -262,15 +262,15 @@ class BlipDiffusionControlNetPipeline(DeprecatedPipelineMixin, DiffusionPipeline
         Function invoked when calling the pipeline for generation.
 
         Args:
-            prompt (`List[str]`):
+            prompt (`list[str]`):
                 The prompt or prompts to guide the image generation.
             reference_image (`PIL.Image.Image`):
                 The reference image to condition the generation on.
             condtioning_image (`PIL.Image.Image`):
                 The conditioning canny edge image to condition the generation on.
-            source_subject_category (`List[str]`):
+            source_subject_category (`list[str]`):
                 The source subject category.
-            target_subject_category (`List[str]`):
+            target_subject_category (`list[str]`):
                 The target subject category.
             latents (`torch.Tensor`, *optional*):
                 Pre-generated noisy latents, sampled from a Gaussian distribution, to be used as inputs for image
@@ -291,7 +291,7 @@ class BlipDiffusionControlNetPipeline(DeprecatedPipelineMixin, DiffusionPipeline
             num_inference_steps (`int`, *optional*, defaults to 50):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
-            generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
+            generator (`torch.Generator` or `list[torch.Generator]`, *optional*):
                 One or a list of [torch generator(s)](https://pytorch.org/docs/stable/generated/torch.Generator.html)
                 to make generation deterministic.
             neg_prompt (`str`, *optional*, defaults to ""):

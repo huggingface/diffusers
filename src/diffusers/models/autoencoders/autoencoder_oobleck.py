@@ -13,7 +13,7 @@
 # limitations under the License.
 import math
 from dataclasses import dataclass
-from typing import Optional, Tuple, Union
+from typing import Optional, Union
 
 import numpy as np
 import torch
@@ -302,9 +302,9 @@ class AutoencoderOobleck(ModelMixin, ConfigMixin):
     Parameters:
         encoder_hidden_size (`int`, *optional*, defaults to 128):
             Intermediate representation dimension for the encoder.
-        downsampling_ratios (`List[int]`, *optional*, defaults to `[2, 4, 4, 8, 8]`):
+        downsampling_ratios (`list[int]`, *optional*, defaults to `[2, 4, 4, 8, 8]`):
             Ratios for downsampling in the encoder. These are used in reverse order for upsampling in the decoder.
-        channel_multiples (`List[int]`, *optional*, defaults to `[1, 2, 4, 8, 16]`):
+        channel_multiples (`list[int]`, *optional*, defaults to `[1, 2, 4, 8, 16]`):
             Multiples used to determine the hidden sizes of the hidden layers.
         decoder_channels (`int`, *optional*, defaults to 128):
             Intermediate representation dimension for the decoder.
@@ -373,7 +373,7 @@ class AutoencoderOobleck(ModelMixin, ConfigMixin):
     @apply_forward_hook
     def encode(
         self, x: torch.Tensor, return_dict: bool = True
-    ) -> Union[AutoencoderOobleckOutput, Tuple[OobleckDiagonalGaussianDistribution]]:
+    ) -> Union[AutoencoderOobleckOutput, tuple[OobleckDiagonalGaussianDistribution]]:
         """
         Encode a batch of images into latents.
 

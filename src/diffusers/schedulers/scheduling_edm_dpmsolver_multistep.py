@@ -15,7 +15,7 @@
 # DISCLAIMER: This file is strongly influenced by https://github.com/LuChengTHU/dpm-solver and https://github.com/NVlabs/edm
 
 import math
-from typing import List, Optional, Tuple, Union
+from typing import Optional, Tuple, Union
 
 import numpy as np
 import torch
@@ -431,7 +431,7 @@ class EDMDPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
 
     def multistep_dpm_solver_second_order_update(
         self,
-        model_output_list: List[torch.Tensor],
+        model_output_list: list[torch.Tensor],
         sample: torch.Tensor = None,
         noise: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
@@ -439,7 +439,7 @@ class EDMDPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         One step for the second-order multistep DPMSolver.
 
         Args:
-            model_output_list (`List[torch.Tensor]`):
+            model_output_list (`list[torch.Tensor]`):
                 The direct outputs from learned diffusion model at current and latter timesteps.
             sample (`torch.Tensor`):
                 A current instance of a sample created by the diffusion process.
@@ -502,14 +502,14 @@ class EDMDPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
 
     def multistep_dpm_solver_third_order_update(
         self,
-        model_output_list: List[torch.Tensor],
+        model_output_list: list[torch.Tensor],
         sample: torch.Tensor = None,
     ) -> torch.Tensor:
         """
         One step for the third-order multistep DPMSolver.
 
         Args:
-            model_output_list (`List[torch.Tensor]`):
+            model_output_list (`list[torch.Tensor]`):
                 The direct outputs from learned diffusion model at current and latter timesteps.
             sample (`torch.Tensor`):
                 A current instance of a sample created by diffusion process.

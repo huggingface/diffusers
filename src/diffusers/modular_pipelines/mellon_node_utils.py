@@ -4,7 +4,7 @@ import os
 
 # Simple typed wrapper for parameter overrides
 from dataclasses import asdict, dataclass
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Optional, Union
 
 from huggingface_hub import create_repo, hf_hub_download
 from huggingface_hub.utils import (
@@ -323,12 +323,12 @@ class MellonParam:
     step: Optional[float] = None
     options: Any = None
     value: Any = None
-    fieldOptions: Optional[Dict[str, Any]] = None
+    fieldOptions: Optional[dict[str, Any]] = None
     onChange: Any = None
     onSignal: Any = None
     _map_to_input: Any = None  # the block input name this parameter maps to
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         data = asdict(self)
         return {k: v for k, v in data.items() if not k.startswith("_") and v is not None}
 
@@ -345,9 +345,9 @@ class MellonNodeConfig(PushToHubMixin):
     </Tip>
     """
 
-    inputs: List[Union[str, MellonParam]]
-    model_inputs: List[Union[str, MellonParam]]
-    outputs: List[Union[str, MellonParam]]
+    inputs: list[Union[str, MellonParam]]
+    model_inputs: list[Union[str, MellonParam]]
+    outputs: list[Union[str, MellonParam]]
     blocks_names: list[str]
     node_type: str
     config_name = "mellon_config.json"
@@ -362,11 +362,11 @@ class MellonNodeConfig(PushToHubMixin):
 
     @staticmethod
     def _resolve_params_list(
-        params: List[Union[str, MellonParam]], default_map: Dict[str, Dict[str, Any]]
-    ) -> Dict[str, Dict[str, Any]]:
+        params: list[Union[str, MellonParam]], default_map: dict[str, dict[str, Any]]
+    ) -> dict[str, dict[str, Any]]:
         def _resolve_param(
-            param: Union[str, MellonParam], default_params_map: Dict[str, Dict[str, Any]]
-        ) -> Tuple[str, Dict[str, Any]]:
+            param: Union[str, MellonParam], default_params_map: dict[str, dict[str, Any]]
+        ) -> tuple[str, dict[str, Any]]:
             if isinstance(param, str):
                 if param not in default_params_map:
                     raise ValueError(f"Unknown param '{param}', please define a `MellonParam` object instead")
@@ -397,7 +397,7 @@ class MellonNodeConfig(PushToHubMixin):
         return_unused_kwargs=False,
         return_commit_hash=False,
         **kwargs,
-    ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
         r"""
         Load a model or scheduler configuration.
 
@@ -416,7 +416,7 @@ class MellonNodeConfig(PushToHubMixin):
             force_download (`bool`, *optional*, defaults to `False`):
                 Whether or not to force the (re-)download of the model weights and configuration files, overriding the
                 cached versions if they exist.
-            proxies (`Dict[str, str]`, *optional*):
+            proxies (`dict[str, str]`, *optional*):
                 A dictionary of proxy servers to use by protocol or endpoint, for example, `{'http': 'foo.bar:3128',
                 'http://hostname': 'foo.bar:4012'}`. The proxies are used on each request.
             output_loading_info(`bool`, *optional*, defaults to `False`):
@@ -552,7 +552,7 @@ class MellonNodeConfig(PushToHubMixin):
                 Whether or not to push your model to the Hugging Face Hub after saving it. You can specify the
                 repository you want to push to with `repo_id` (will default to the name of `save_directory` in your
                 namespace).
-            kwargs (`Dict[str, Any]`, *optional*):
+            kwargs (`dict[str, Any]`, *optional*):
                 Additional keyword arguments passed along to the [`~utils.PushToHubMixin.push_to_hub`] method.
         """
         if os.path.isfile(save_directory):
@@ -607,7 +607,7 @@ class MellonNodeConfig(PushToHubMixin):
         mellon_dict = self.to_mellon_dict()
         return json.dumps(mellon_dict, indent=2, sort_keys=True) + "\n"
 
-    def to_mellon_dict(self) -> Dict[str, Any]:
+    def to_mellon_dict(self) -> dict[str, Any]:
         """Return a JSON-serializable dict focusing on the Mellon schema fields only.
 
         params is a single flat dict composed as: {**inputs, **model_inputs, **outputs}.
@@ -625,7 +625,7 @@ class MellonNodeConfig(PushToHubMixin):
         }
 
     @classmethod
-    def from_mellon_dict(cls, mellon_dict: Dict[str, Any]) -> "MellonNodeConfig":
+    def from_mellon_dict(cls, mellon_dict: dict[str, Any]) -> "MellonNodeConfig":
         """Create a config from a Mellon schema dict produced by to_mellon_dict().
 
         Splits the flat params dict back into inputs/model_inputs/outputs using the known key spaces from
@@ -634,9 +634,9 @@ class MellonNodeConfig(PushToHubMixin):
         """
         flat_params = mellon_dict.get("params", {})
 
-        inputs: Dict[str, Any] = {}
-        model_inputs: Dict[str, Any] = {}
-        outputs: Dict[str, Any] = {}
+        inputs: dict[str, Any] = {}
+        model_inputs: dict[str, Any] = {}
+        outputs: dict[str, Any] = {}
 
         for param_name, param_dict in flat_params.items():
             if param_dict.get("display", "") == "output":
@@ -667,9 +667,9 @@ class MellonNodeConfig(PushToHubMixin):
         blocks_names = list(blocks.sub_blocks.keys())
 
         default_node_config = NODE_TYPE_PARAMS_MAP[node_type]
-        inputs_list: List[Union[str, MellonParam]] = default_node_config.get("inputs", [])
-        model_inputs_list: List[Union[str, MellonParam]] = default_node_config.get("model_inputs", [])
-        outputs_list: List[Union[str, MellonParam]] = default_node_config.get("outputs", [])
+        inputs_list: list[Union[str, MellonParam]] = default_node_config.get("inputs", [])
+        model_inputs_list: list[Union[str, MellonParam]] = default_node_config.get("model_inputs", [])
+        outputs_list: list[Union[str, MellonParam]] = default_node_config.get("outputs", [])
 
         for required_input_name in blocks.required_inputs:
             if required_input_name not in inputs_list:
@@ -707,7 +707,7 @@ class ModularMellonNodeRegistry:
         self._registry = {}
         self._initialized = False
 
-    def register(self, pipeline_cls: type, node_params: Dict[str, MellonNodeConfig]):
+    def register(self, pipeline_cls: type, node_params: dict[str, MellonNodeConfig]):
         if not self._initialized:
             _initialize_registry(self)
         self._registry[pipeline_cls] = node_params
@@ -717,14 +717,14 @@ class ModularMellonNodeRegistry:
             _initialize_registry(self)
         return self._registry.get(pipeline_cls, None)
 
-    def get_all(self) -> Dict[type, Dict[str, MellonNodeConfig]]:
+    def get_all(self) -> dict[type, dict[str, MellonNodeConfig]]:
         if not self._initialized:
             _initialize_registry(self)
         return self._registry
 
 
 def _register_preset_node_types(
-    pipeline_cls, params_map: Dict[str, Dict[str, Any]], registry: ModularMellonNodeRegistry
+    pipeline_cls, params_map: dict[str, dict[str, Any]], registry: ModularMellonNodeRegistry
 ):
     """Register all node-type presets for a given pipeline class from a params map."""
     node_configs = {}

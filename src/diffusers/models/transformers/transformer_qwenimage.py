@@ -14,7 +14,7 @@
 
 import functools
 import math
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Optional, Union
 
 import numpy as np
 import torch
@@ -95,10 +95,10 @@ def get_timestep_embedding(
 
 def apply_rotary_emb_qwen(
     x: torch.Tensor,
-    freqs_cis: Union[torch.Tensor, Tuple[torch.Tensor]],
+    freqs_cis: Union[torch.Tensor, tuple[torch.Tensor]],
     use_real: bool = True,
     use_real_unbind_dim: int = -1,
-) -> Tuple[torch.Tensor, torch.Tensor]:
+) -> tuple[torch.Tensor, torch.Tensor]:
     """
     Apply rotary embeddings to input tensors using the given frequency tensor. This function applies rotary embeddings
     to the given query or key 'x' tensors using the provided frequency tensor 'freqs_cis'. The input tensors are
@@ -108,10 +108,10 @@ def apply_rotary_emb_qwen(
     Args:
         x (`torch.Tensor`):
             Query or key tensor to apply rotary embeddings. [B, S, H, D] xk (torch.Tensor): Key tensor to apply
-        freqs_cis (`Tuple[torch.Tensor]`): Precomputed frequency tensor for complex exponentials. ([S, D], [S, D],)
+        freqs_cis (`tuple[torch.Tensor]`): Precomputed frequency tensor for complex exponentials. ([S, D], [S, D],)
 
     Returns:
-        Tuple[torch.Tensor, torch.Tensor]: Tuple of modified query tensor and key tensor with rotary embeddings.
+        tuple[torch.Tensor, torch.Tensor]: Tuple of modified query tensor and key tensor with rotary embeddings.
     """
     if use_real:
         cos, sin = freqs_cis  # [S, D]
@@ -158,7 +158,7 @@ class QwenTimestepProjEmbeddings(nn.Module):
 
 
 class QwenEmbedRope(nn.Module):
-    def __init__(self, theta: int, axes_dim: List[int], scale_rope=False):
+    def __init__(self, theta: int, axes_dim: list[int], scale_rope=False):
         super().__init__()
         self.theta = theta
         self.axes_dim = axes_dim
@@ -196,15 +196,15 @@ class QwenEmbedRope(nn.Module):
 
     def forward(
         self,
-        video_fhw: Union[Tuple[int, int, int], List[Tuple[int, int, int]]],
-        txt_seq_lens: List[int],
+        video_fhw: Union[tuple[int, int, int], list[tuple[int, int, int]]],
+        txt_seq_lens: list[int],
         device: torch.device,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         """
         Args:
-            video_fhw (`Tuple[int, int, int]` or `List[Tuple[int, int, int]]`):
+            video_fhw (`tuple[int, int, int]` or `list[tuple[int, int, int]]`):
                 A list of 3 integers [frame, height, width] representing the shape of the video.
-            txt_seq_lens (`List[int]`):
+            txt_seq_lens (`list[int]`):
                 A list of integers of length batch_size representing the length of each text prompt.
             device: (`torch.device`):
                 The device on which to perform the RoPE computation.
@@ -414,9 +414,9 @@ class QwenImageTransformerBlock(nn.Module):
         encoder_hidden_states: torch.Tensor,
         encoder_hidden_states_mask: torch.Tensor,
         temb: torch.Tensor,
-        image_rotary_emb: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
-        joint_attention_kwargs: Optional[Dict[str, Any]] = None,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        image_rotary_emb: Optional[tuple[torch.Tensor, torch.Tensor]] = None,
+        joint_attention_kwargs: Optional[dict[str, Any]] = None,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         # Get modulation parameters for both streams
         img_mod_params = self.img_mod(temb)  # [B, 6*dim]
         txt_mod_params = self.txt_mod(temb)  # [B, 6*dim]
@@ -500,7 +500,7 @@ class QwenImageTransformer2DModel(
             `encoder_hidden_states`).
         guidance_embeds (`bool`, defaults to `False`):
             Whether to use guidance embeddings for guidance-distilled variant of the model.
-        axes_dims_rope (`Tuple[int]`, defaults to `(16, 56, 56)`):
+        axes_dims_rope (`tuple[int]`, defaults to `(16, 56, 56)`):
             The dimensions to use for the rotary positional embeddings.
     """
 
@@ -532,7 +532,7 @@ class QwenImageTransformer2DModel(
         num_attention_heads: int = 24,
         joint_attention_dim: int = 3584,
         guidance_embeds: bool = False,  # TODO: this should probably be removed
-        axes_dims_rope: Tuple[int, int, int] = (16, 56, 56),
+        axes_dims_rope: tuple[int, int, int] = (16, 56, 56),
     ):
         super().__init__()
         self.out_channels = out_channels or in_channels
@@ -569,10 +569,10 @@ class QwenImageTransformer2DModel(
         encoder_hidden_states: torch.Tensor = None,
         encoder_hidden_states_mask: torch.Tensor = None,
         timestep: torch.LongTensor = None,
-        img_shapes: Optional[List[Tuple[int, int, int]]] = None,
-        txt_seq_lens: Optional[List[int]] = None,
+        img_shapes: Optional[list[tuple[int, int, int]]] = None,
+        txt_seq_lens: Optional[list[int]] = None,
         guidance: torch.Tensor = None,  # TODO: this should probably be removed
-        attention_kwargs: Optional[Dict[str, Any]] = None,
+        attention_kwargs: Optional[dict[str, Any]] = None,
         controlnet_block_samples=None,
         return_dict: bool = True,
     ) -> Union[torch.Tensor, Transformer2DModelOutput]:

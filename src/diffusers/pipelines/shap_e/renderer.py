@@ -14,7 +14,7 @@
 
 import math
 from dataclasses import dataclass
-from typing import Dict, Optional, Tuple
+from typing import Optional, Tuple
 
 import numpy as np
 import torch
@@ -131,7 +131,7 @@ def _convert_srgb_to_linear(u: torch.Tensor):
 
 def _create_flat_edge_indices(
     flat_cube_indices: torch.Tensor,
-    grid_size: Tuple[int, int, int],
+    grid_size: tuple[int, int, int],
 ):
     num_xs = (grid_size[0] - 1) * grid_size[1] * grid_size[2]
     y_offset = num_xs
@@ -479,7 +479,7 @@ class MeshDecoderOutput(BaseOutput):
 
     verts: torch.Tensor
     faces: torch.Tensor
-    vertex_channels: Dict[str, torch.Tensor]
+    vertex_channels: dict[str, torch.Tensor]
 
 
 class MeshDecoder(nn.Module):
@@ -742,13 +742,13 @@ class ShapEParamsProjModel(ModelMixin, ConfigMixin):
     def __init__(
         self,
         *,
-        param_names: Tuple[str] = (
+        param_names: tuple[str] = (
             "nerstf.mlp.0.weight",
             "nerstf.mlp.1.weight",
             "nerstf.mlp.2.weight",
             "nerstf.mlp.3.weight",
         ),
-        param_shapes: Tuple[Tuple[int]] = (
+        param_shapes: tuple[tuple[int]] = (
             (256, 93),
             (256, 256),
             (256, 256),
@@ -786,13 +786,13 @@ class ShapERenderer(ModelMixin, ConfigMixin):
     def __init__(
         self,
         *,
-        param_names: Tuple[str] = (
+        param_names: tuple[str] = (
             "nerstf.mlp.0.weight",
             "nerstf.mlp.1.weight",
             "nerstf.mlp.2.weight",
             "nerstf.mlp.3.weight",
         ),
-        param_shapes: Tuple[Tuple[int]] = (
+        param_shapes: tuple[tuple[int]] = (
             (256, 93),
             (256, 256),
             (256, 256),
@@ -804,7 +804,7 @@ class ShapERenderer(ModelMixin, ConfigMixin):
         n_hidden_layers: int = 6,
         act_fn: str = "swish",
         insert_direction_at: int = 4,
-        background: Tuple[float] = (
+        background: tuple[float] = (
             255.0,
             255.0,
             255.0,

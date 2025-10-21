@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Any, List, Tuple, Union
+from typing import Any, Union
 
 import numpy as np
 import PIL
@@ -49,7 +49,7 @@ class FluxDecodeStep(ModularPipelineBlocks):
     model_name = "flux"
 
     @property
-    def expected_components(self) -> List[ComponentSpec]:
+    def expected_components(self) -> list[ComponentSpec]:
         return [
             ComponentSpec("vae", AutoencoderKL),
             ComponentSpec(
@@ -65,7 +65,7 @@ class FluxDecodeStep(ModularPipelineBlocks):
         return "Step that decodes the denoised latents into images"
 
     @property
-    def inputs(self) -> List[Tuple[str, Any]]:
+    def inputs(self) -> list[tuple[str, Any]]:
         return [
             InputParam("output_type", default="pil"),
             InputParam("height", default=1024),
@@ -79,11 +79,11 @@ class FluxDecodeStep(ModularPipelineBlocks):
         ]
 
     @property
-    def intermediate_outputs(self) -> List[str]:
+    def intermediate_outputs(self) -> list[str]:
         return [
             OutputParam(
                 "images",
-                type_hint=Union[List[PIL.Image.Image], torch.Tensor, np.ndarray],
+                type_hint=Union[list[PIL.Image.Image], torch.Tensor, np.ndarray],
                 description="The generated images, can be a list of PIL.Image.Image, torch.Tensor or a numpy array",
             )
         ]

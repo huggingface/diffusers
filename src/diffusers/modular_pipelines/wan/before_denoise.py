@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import inspect
-from typing import List, Optional, Union
+from typing import Optional, Union
 
 import torch
 
@@ -39,8 +39,8 @@ def retrieve_timesteps(
     scheduler,
     num_inference_steps: Optional[int] = None,
     device: Optional[Union[str, torch.device]] = None,
-    timesteps: Optional[List[int]] = None,
-    sigmas: Optional[List[float]] = None,
+    timesteps: Optional[list[int]] = None,
+    sigmas: Optional[list[float]] = None,
     **kwargs,
 ):
     r"""
@@ -55,15 +55,15 @@ def retrieve_timesteps(
             must be `None`.
         device (`str` or `torch.device`, *optional*):
             The device to which the timesteps should be moved to. If `None`, the timesteps are not moved.
-        timesteps (`List[int]`, *optional*):
+        timesteps (`list[int]`, *optional*):
             Custom timesteps used to override the timestep spacing strategy of the scheduler. If `timesteps` is passed,
             `num_inference_steps` and `sigmas` must be `None`.
-        sigmas (`List[float]`, *optional*):
+        sigmas (`list[float]`, *optional*):
             Custom sigmas used to override the timestep spacing strategy of the scheduler. If `sigmas` is passed,
             `num_inference_steps` and `timesteps` must be `None`.
 
     Returns:
-        `Tuple[torch.Tensor, int]`: A tuple where the first element is the timestep schedule from the scheduler and the
+        `tuple[torch.Tensor, int]`: A tuple where the first element is the timestep schedule from the scheduler and the
         second element is the number of inference steps.
     """
     if timesteps is not None and sigmas is not None:
@@ -109,13 +109,13 @@ class WanInputStep(ModularPipelineBlocks):
         )
 
     @property
-    def inputs(self) -> List[InputParam]:
+    def inputs(self) -> list[InputParam]:
         return [
             InputParam("num_videos_per_prompt", default=1),
         ]
 
     @property
-    def intermediate_inputs(self) -> List[str]:
+    def intermediate_inputs(self) -> list[str]:
         return [
             InputParam(
                 "prompt_embeds",
@@ -131,7 +131,7 @@ class WanInputStep(ModularPipelineBlocks):
         ]
 
     @property
-    def intermediate_outputs(self) -> List[str]:
+    def intermediate_outputs(self) -> list[str]:
         return [
             OutputParam(
                 "batch_size",
@@ -198,7 +198,7 @@ class WanSetTimestepsStep(ModularPipelineBlocks):
     model_name = "wan"
 
     @property
-    def expected_components(self) -> List[ComponentSpec]:
+    def expected_components(self) -> list[ComponentSpec]:
         return [
             ComponentSpec("scheduler", UniPCMultistepScheduler),
         ]
@@ -208,7 +208,7 @@ class WanSetTimestepsStep(ModularPipelineBlocks):
         return "Step that sets the scheduler's timesteps for inference"
 
     @property
-    def inputs(self) -> List[InputParam]:
+    def inputs(self) -> list[InputParam]:
         return [
             InputParam("num_inference_steps", default=50),
             InputParam("timesteps"),
@@ -216,7 +216,7 @@ class WanSetTimestepsStep(ModularPipelineBlocks):
         ]
 
     @property
-    def intermediate_outputs(self) -> List[OutputParam]:
+    def intermediate_outputs(self) -> list[OutputParam]:
         return [
             OutputParam("timesteps", type_hint=torch.Tensor, description="The timesteps to use for inference"),
             OutputParam(
@@ -247,7 +247,7 @@ class WanPrepareLatentsStep(ModularPipelineBlocks):
     model_name = "wan"
 
     @property
-    def expected_components(self) -> List[ComponentSpec]:
+    def expected_components(self) -> list[ComponentSpec]:
         return []
 
     @property
@@ -255,7 +255,7 @@ class WanPrepareLatentsStep(ModularPipelineBlocks):
         return "Prepare latents step that prepares the latents for the text-to-video generation process"
 
     @property
-    def inputs(self) -> List[InputParam]:
+    def inputs(self) -> list[InputParam]:
         return [
             InputParam("height", type_hint=int),
             InputParam("width", type_hint=int),
@@ -265,7 +265,7 @@ class WanPrepareLatentsStep(ModularPipelineBlocks):
         ]
 
     @property
-    def intermediate_inputs(self) -> List[InputParam]:
+    def intermediate_inputs(self) -> list[InputParam]:
         return [
             InputParam("generator"),
             InputParam(
@@ -278,7 +278,7 @@ class WanPrepareLatentsStep(ModularPipelineBlocks):
         ]
 
     @property
-    def intermediate_outputs(self) -> List[OutputParam]:
+    def intermediate_outputs(self) -> list[OutputParam]:
         return [
             OutputParam(
                 "latents", type_hint=torch.Tensor, description="The initial latents to use for the denoising process"
@@ -311,7 +311,7 @@ class WanPrepareLatentsStep(ModularPipelineBlocks):
         num_frames: int = 81,
         dtype: Optional[torch.dtype] = None,
         device: Optional[torch.device] = None,
-        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
+        generator: Optional[Union[torch.Generator, list[torch.Generator]]] = None,
         latents: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         if latents is not None:

@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 from dataclasses import dataclass
-from typing import Optional, Tuple, Union
+from typing import Optional, Union
 
 import torch
 import torch.nn as nn
@@ -47,11 +47,11 @@ class VQModel(ModelMixin, ConfigMixin):
     Parameters:
         in_channels (int, *optional*, defaults to 3): Number of channels in the input image.
         out_channels (int,  *optional*, defaults to 3): Number of channels in the output.
-        down_block_types (`Tuple[str]`, *optional*, defaults to `("DownEncoderBlock2D",)`):
+        down_block_types (`tuple[str]`, *optional*, defaults to `("DownEncoderBlock2D",)`):
             Tuple of downsample block types.
-        up_block_types (`Tuple[str]`, *optional*, defaults to `("UpDecoderBlock2D",)`):
+        up_block_types (`tuple[str]`, *optional*, defaults to `("UpDecoderBlock2D",)`):
             Tuple of upsample block types.
-        block_out_channels (`Tuple[int]`, *optional*, defaults to `(64,)`):
+        block_out_channels (`tuple[int]`, *optional*, defaults to `(64,)`):
             Tuple of block output channels.
         layers_per_block (`int`, *optional*, defaults to `1`): Number of layers per block.
         act_fn (`str`, *optional*, defaults to `"silu"`): The activation function to use.
@@ -79,9 +79,9 @@ class VQModel(ModelMixin, ConfigMixin):
         self,
         in_channels: int = 3,
         out_channels: int = 3,
-        down_block_types: Tuple[str, ...] = ("DownEncoderBlock2D",),
-        up_block_types: Tuple[str, ...] = ("UpDecoderBlock2D",),
-        block_out_channels: Tuple[int, ...] = (64,),
+        down_block_types: tuple[str, ...] = ("DownEncoderBlock2D",),
+        up_block_types: tuple[str, ...] = ("UpDecoderBlock2D",),
+        block_out_channels: tuple[int, ...] = (64,),
         layers_per_block: int = 1,
         act_fn: str = "silu",
         latent_channels: int = 3,
@@ -162,7 +162,7 @@ class VQModel(ModelMixin, ConfigMixin):
 
     def forward(
         self, sample: torch.Tensor, return_dict: bool = True
-    ) -> Union[DecoderOutput, Tuple[torch.Tensor, ...]]:
+    ) -> Union[DecoderOutput, tuple[torch.Tensor, ...]]:
         r"""
         The [`VQModel`] forward method.
 

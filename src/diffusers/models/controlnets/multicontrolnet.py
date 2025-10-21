@@ -1,5 +1,5 @@
 import os
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Optional, Tuple, Union
 
 import torch
 from torch import nn
@@ -20,12 +20,12 @@ class MultiControlNetModel(ModelMixin):
     compatible with `ControlNetModel`.
 
     Args:
-        controlnets (`List[ControlNetModel]`):
+        controlnets (`list[ControlNetModel]`):
             Provides additional conditioning to the unet during the denoising process. You must set multiple
             `ControlNetModel` as a list.
     """
 
-    def __init__(self, controlnets: Union[List[ControlNetModel], Tuple[ControlNetModel]]):
+    def __init__(self, controlnets: Union[list[ControlNetModel], tuple[ControlNetModel]]):
         super().__init__()
         self.nets = nn.ModuleList(controlnets)
 
@@ -34,13 +34,13 @@ class MultiControlNetModel(ModelMixin):
         sample: torch.Tensor,
         timestep: Union[torch.Tensor, float, int],
         encoder_hidden_states: torch.Tensor,
-        controlnet_cond: List[torch.tensor],
-        conditioning_scale: List[float],
+        controlnet_cond: list[torch.tensor],
+        conditioning_scale: list[float],
         class_labels: Optional[torch.Tensor] = None,
         timestep_cond: Optional[torch.Tensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
-        added_cond_kwargs: Optional[Dict[str, torch.Tensor]] = None,
-        cross_attention_kwargs: Optional[Dict[str, Any]] = None,
+        added_cond_kwargs: Optional[dict[str, torch.Tensor]] = None,
+        cross_attention_kwargs: Optional[dict[str, Any]] = None,
         guess_mode: bool = False,
         return_dict: bool = True,
     ) -> Union[ControlNetOutput, Tuple]:
@@ -134,7 +134,7 @@ class MultiControlNetModel(ModelMixin):
                 Override the default `torch.dtype` and load the model under this dtype.
             output_loading_info(`bool`, *optional*, defaults to `False`):
                 Whether or not to also return a dictionary containing missing keys, unexpected keys and error messages.
-            device_map (`str` or `Dict[str, Union[int, str, torch.device]]`, *optional*):
+            device_map (`str` or `dict[str, Union[int, str, torch.device]]`, *optional*):
                 A map that specifies where each submodule should go. It doesn't need to be refined to each
                 parameter/buffer name, once a given module name is inside, every submodule of it will be sent to the
                 same device.

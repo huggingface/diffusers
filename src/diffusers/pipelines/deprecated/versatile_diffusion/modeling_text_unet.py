@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Optional, Tuple, Union
 
 import numpy as np
 import torch
@@ -277,7 +277,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
     for all models (such as downloading or saving).
 
     Parameters:
-        sample_size (`int` or `Tuple[int, int]`, *optional*, defaults to `None`):
+        sample_size (`int` or `tuple[int, int]`, *optional*, defaults to `None`):
             Height and width of input/output sample.
         in_channels (`int`, *optional*, defaults to 4): Number of channels in the input sample.
         out_channels (`int`, *optional*, defaults to 4): Number of channels in the output.
@@ -285,17 +285,17 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
         flip_sin_to_cos (`bool`, *optional*, defaults to `False`):
             Whether to flip the sin to cos in the time embedding.
         freq_shift (`int`, *optional*, defaults to 0): The frequency shift to apply to the time embedding.
-        down_block_types (`Tuple[str]`, *optional*, defaults to `("CrossAttnDownBlockFlat", "CrossAttnDownBlockFlat", "CrossAttnDownBlockFlat", "DownBlockFlat")`):
+        down_block_types (`tuple[str]`, *optional*, defaults to `("CrossAttnDownBlockFlat", "CrossAttnDownBlockFlat", "CrossAttnDownBlockFlat", "DownBlockFlat")`):
             The tuple of downsample blocks to use.
         mid_block_type (`str`, *optional*, defaults to `"UNetMidBlockFlatCrossAttn"`):
             Block type for middle of UNet, it can be one of `UNetMidBlockFlatCrossAttn`, `UNetMidBlockFlat`, or
             `UNetMidBlockFlatSimpleCrossAttn`. If `None`, the mid block layer is skipped.
-        up_block_types (`Tuple[str]`, *optional*, defaults to `("UpBlockFlat", "CrossAttnUpBlockFlat", "CrossAttnUpBlockFlat", "CrossAttnUpBlockFlat")`):
+        up_block_types (`tuple[str]`, *optional*, defaults to `("UpBlockFlat", "CrossAttnUpBlockFlat", "CrossAttnUpBlockFlat", "CrossAttnUpBlockFlat")`):
             The tuple of upsample blocks to use.
-        only_cross_attention(`bool` or `Tuple[bool]`, *optional*, default to `False`):
+        only_cross_attention(`bool` or `tuple[bool]`, *optional*, default to `False`):
             Whether to include self-attention in the basic transformer blocks, see
             [`~models.attention.BasicTransformerBlock`].
-        block_out_channels (`Tuple[int]`, *optional*, defaults to `(320, 640, 1280, 1280)`):
+        block_out_channels (`tuple[int]`, *optional*, defaults to `(320, 640, 1280, 1280)`):
             The tuple of output channels for each block.
         layers_per_block (`int`, *optional*, defaults to 2): The number of layers per block.
         downsample_padding (`int`, *optional*, defaults to 1): The padding to use for the downsampling convolution.
@@ -305,15 +305,15 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
         norm_num_groups (`int`, *optional*, defaults to 32): The number of groups to use for the normalization.
             If `None`, normalization and activation layers is skipped in post-processing.
         norm_eps (`float`, *optional*, defaults to 1e-5): The epsilon to use for the normalization.
-        cross_attention_dim (`int` or `Tuple[int]`, *optional*, defaults to 1280):
+        cross_attention_dim (`int` or `tuple[int]`, *optional*, defaults to 1280):
             The dimension of the cross attention features.
-        transformer_layers_per_block (`int`, `Tuple[int]`, or `Tuple[Tuple]` , *optional*, defaults to 1):
+        transformer_layers_per_block (`int`, `tuple[int]`, or `tuple[Tuple]` , *optional*, defaults to 1):
             The number of transformer blocks of type [`~models.attention.BasicTransformerBlock`]. Only relevant for
             [`~models.unet_2d_blocks.CrossAttnDownBlockFlat`], [`~models.unet_2d_blocks.CrossAttnUpBlockFlat`],
             [`~models.unet_2d_blocks.UNetMidBlockFlatCrossAttn`].
-       reverse_transformer_layers_per_block : (`Tuple[Tuple]`, *optional*, defaults to None):
+       reverse_transformer_layers_per_block : (`tuple[Tuple]`, *optional*, defaults to None):
             The number of transformer blocks of type [`~models.attention.BasicTransformerBlock`], in the upsampling
-            blocks of the U-Net. Only relevant if `transformer_layers_per_block` is of type `Tuple[Tuple]` and for
+            blocks of the U-Net. Only relevant if `transformer_layers_per_block` is of type `tuple[Tuple]` and for
             [`~models.unet_2d_blocks.CrossAttnDownBlockFlat`], [`~models.unet_2d_blocks.CrossAttnUpBlockFlat`],
             [`~models.unet_2d_blocks.UNetMidBlockFlatCrossAttn`].
         encoder_hid_dim (`int`, *optional*, defaults to None):
@@ -374,35 +374,35 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
         center_input_sample: bool = False,
         flip_sin_to_cos: bool = True,
         freq_shift: int = 0,
-        down_block_types: Tuple[str] = (
+        down_block_types: tuple[str] = (
             "CrossAttnDownBlockFlat",
             "CrossAttnDownBlockFlat",
             "CrossAttnDownBlockFlat",
             "DownBlockFlat",
         ),
         mid_block_type: Optional[str] = "UNetMidBlockFlatCrossAttn",
-        up_block_types: Tuple[str] = (
+        up_block_types: tuple[str] = (
             "UpBlockFlat",
             "CrossAttnUpBlockFlat",
             "CrossAttnUpBlockFlat",
             "CrossAttnUpBlockFlat",
         ),
-        only_cross_attention: Union[bool, Tuple[bool]] = False,
-        block_out_channels: Tuple[int] = (320, 640, 1280, 1280),
-        layers_per_block: Union[int, Tuple[int]] = 2,
+        only_cross_attention: Union[bool, tuple[bool]] = False,
+        block_out_channels: tuple[int] = (320, 640, 1280, 1280),
+        layers_per_block: Union[int, tuple[int]] = 2,
         downsample_padding: int = 1,
         mid_block_scale_factor: float = 1,
         dropout: float = 0.0,
         act_fn: str = "silu",
         norm_num_groups: Optional[int] = 32,
         norm_eps: float = 1e-5,
-        cross_attention_dim: Union[int, Tuple[int]] = 1280,
-        transformer_layers_per_block: Union[int, Tuple[int], Tuple[Tuple]] = 1,
-        reverse_transformer_layers_per_block: Optional[Tuple[Tuple[int]]] = None,
+        cross_attention_dim: Union[int, tuple[int]] = 1280,
+        transformer_layers_per_block: Union[int, tuple[int], tuple[Tuple]] = 1,
+        reverse_transformer_layers_per_block: Optional[tuple[tuple[int]]] = None,
         encoder_hid_dim: Optional[int] = None,
         encoder_hid_dim_type: Optional[str] = None,
-        attention_head_dim: Union[int, Tuple[int]] = 8,
-        num_attention_heads: Optional[Union[int, Tuple[int]]] = None,
+        attention_head_dim: Union[int, tuple[int]] = 8,
+        num_attention_heads: Optional[Union[int, tuple[int]]] = None,
         dual_cross_attention: bool = False,
         use_linear_projection: bool = False,
         class_embed_type: Optional[str] = None,
@@ -826,7 +826,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
             )
 
     @property
-    def attn_processors(self) -> Dict[str, AttentionProcessor]:
+    def attn_processors(self) -> dict[str, AttentionProcessor]:
         r"""
         Returns:
             `dict` of attention processors: A dictionary containing all attention processors used in the model with
@@ -835,7 +835,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
         # set recursively
         processors = {}
 
-        def fn_recursive_add_processors(name: str, module: torch.nn.Module, processors: Dict[str, AttentionProcessor]):
+        def fn_recursive_add_processors(name: str, module: torch.nn.Module, processors: dict[str, AttentionProcessor]):
             if hasattr(module, "get_processor"):
                 processors[f"{name}.processor"] = module.get_processor()
 
@@ -849,7 +849,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
 
         return processors
 
-    def set_attn_processor(self, processor: Union[AttentionProcessor, Dict[str, AttentionProcessor]]):
+    def set_attn_processor(self, processor: Union[AttentionProcessor, dict[str, AttentionProcessor]]):
         r"""
         Sets the attention processor to use to compute attention.
 
@@ -952,7 +952,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
         # Recursively walk through all the children.
         # Any children which exposes the set_attention_slice method
         # gets the message
-        def fn_recursive_set_attention_slice(module: torch.nn.Module, slice_size: List[int]):
+        def fn_recursive_set_attention_slice(module: torch.nn.Module, slice_size: list[int]):
             if hasattr(module, "set_attention_slice"):
                 module.set_attention_slice(slice_size.pop())
 
@@ -1042,11 +1042,11 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
         class_labels: Optional[torch.Tensor] = None,
         timestep_cond: Optional[torch.Tensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
-        cross_attention_kwargs: Optional[Dict[str, Any]] = None,
-        added_cond_kwargs: Optional[Dict[str, torch.Tensor]] = None,
-        down_block_additional_residuals: Optional[Tuple[torch.Tensor]] = None,
+        cross_attention_kwargs: Optional[dict[str, Any]] = None,
+        added_cond_kwargs: Optional[dict[str, torch.Tensor]] = None,
+        down_block_additional_residuals: Optional[tuple[torch.Tensor]] = None,
         mid_block_additional_residual: Optional[torch.Tensor] = None,
-        down_intrablock_additional_residuals: Optional[Tuple[torch.Tensor]] = None,
+        down_intrablock_additional_residuals: Optional[tuple[torch.Tensor]] = None,
         encoder_attention_mask: Optional[torch.Tensor] = None,
         return_dict: bool = True,
     ) -> Union[UNet2DConditionOutput, Tuple]:
@@ -1580,7 +1580,7 @@ class DownBlockFlat(nn.Module):
 
     def forward(
         self, hidden_states: torch.Tensor, temb: Optional[torch.Tensor] = None
-    ) -> Tuple[torch.Tensor, Tuple[torch.Tensor, ...]]:
+    ) -> tuple[torch.Tensor, tuple[torch.Tensor, ...]]:
         output_states = ()
 
         for resnet in self.resnets:
@@ -1608,7 +1608,7 @@ class CrossAttnDownBlockFlat(nn.Module):
         temb_channels: int,
         dropout: float = 0.0,
         num_layers: int = 1,
-        transformer_layers_per_block: Union[int, Tuple[int]] = 1,
+        transformer_layers_per_block: Union[int, tuple[int]] = 1,
         resnet_eps: float = 1e-6,
         resnet_time_scale_shift: str = "default",
         resnet_act_fn: str = "swish",
@@ -1698,10 +1698,10 @@ class CrossAttnDownBlockFlat(nn.Module):
         temb: Optional[torch.Tensor] = None,
         encoder_hidden_states: Optional[torch.Tensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
-        cross_attention_kwargs: Optional[Dict[str, Any]] = None,
+        cross_attention_kwargs: Optional[dict[str, Any]] = None,
         encoder_attention_mask: Optional[torch.Tensor] = None,
         additional_residuals: Optional[torch.Tensor] = None,
-    ) -> Tuple[torch.Tensor, Tuple[torch.Tensor, ...]]:
+    ) -> tuple[torch.Tensor, tuple[torch.Tensor, ...]]:
         output_states = ()
 
         blocks = list(zip(self.resnets, self.attentions))
@@ -1797,7 +1797,7 @@ class UpBlockFlat(nn.Module):
     def forward(
         self,
         hidden_states: torch.Tensor,
-        res_hidden_states_tuple: Tuple[torch.Tensor, ...],
+        res_hidden_states_tuple: tuple[torch.Tensor, ...],
         temb: Optional[torch.Tensor] = None,
         upsample_size: Optional[int] = None,
         *args,
@@ -1856,7 +1856,7 @@ class CrossAttnUpBlockFlat(nn.Module):
         resolution_idx: Optional[int] = None,
         dropout: float = 0.0,
         num_layers: int = 1,
-        transformer_layers_per_block: Union[int, Tuple[int]] = 1,
+        transformer_layers_per_block: Union[int, tuple[int]] = 1,
         resnet_eps: float = 1e-6,
         resnet_time_scale_shift: str = "default",
         resnet_act_fn: str = "swish",
@@ -1940,10 +1940,10 @@ class CrossAttnUpBlockFlat(nn.Module):
     def forward(
         self,
         hidden_states: torch.Tensor,
-        res_hidden_states_tuple: Tuple[torch.Tensor, ...],
+        res_hidden_states_tuple: tuple[torch.Tensor, ...],
         temb: Optional[torch.Tensor] = None,
         encoder_hidden_states: Optional[torch.Tensor] = None,
-        cross_attention_kwargs: Optional[Dict[str, Any]] = None,
+        cross_attention_kwargs: Optional[dict[str, Any]] = None,
         upsample_size: Optional[int] = None,
         attention_mask: Optional[torch.Tensor] = None,
         encoder_attention_mask: Optional[torch.Tensor] = None,
@@ -2178,7 +2178,7 @@ class UNetMidBlockFlatCrossAttn(nn.Module):
         out_channels: Optional[int] = None,
         dropout: float = 0.0,
         num_layers: int = 1,
-        transformer_layers_per_block: Union[int, Tuple[int]] = 1,
+        transformer_layers_per_block: Union[int, tuple[int]] = 1,
         resnet_eps: float = 1e-6,
         resnet_time_scale_shift: str = "default",
         resnet_act_fn: str = "swish",
@@ -2279,7 +2279,7 @@ class UNetMidBlockFlatCrossAttn(nn.Module):
         temb: Optional[torch.Tensor] = None,
         encoder_hidden_states: Optional[torch.Tensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
-        cross_attention_kwargs: Optional[Dict[str, Any]] = None,
+        cross_attention_kwargs: Optional[dict[str, Any]] = None,
         encoder_attention_mask: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         if cross_attention_kwargs is not None:
@@ -2404,7 +2404,7 @@ class UNetMidBlockFlatSimpleCrossAttn(nn.Module):
         temb: Optional[torch.Tensor] = None,
         encoder_hidden_states: Optional[torch.Tensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
-        cross_attention_kwargs: Optional[Dict[str, Any]] = None,
+        cross_attention_kwargs: Optional[dict[str, Any]] = None,
         encoder_attention_mask: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         cross_attention_kwargs = cross_attention_kwargs if cross_attention_kwargs is not None else {}

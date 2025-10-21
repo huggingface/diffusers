@@ -14,7 +14,7 @@
 
 import math
 from dataclasses import dataclass
-from typing import List, Optional, Tuple, Union
+from typing import Optional, Tuple, Union
 
 import numpy as np
 import torch
@@ -96,7 +96,7 @@ class BrownianTreeNoiseSampler:
             random samples.
         sigma_min (float): The low end of the valid interval.
         sigma_max (float): The high end of the valid interval.
-        seed (int or List[int]): The random seed. If a list of seeds is
+        seed (int or list[int]): The random seed. If a list of seeds is
             supplied instead of a single integer, then the noise sampler will use one BrownianTree per batch item, each
             with its own seed.
         transform (callable): A function that maps sigma to the sampler's
@@ -209,7 +209,7 @@ class DPMSolverSDEScheduler(SchedulerMixin, ConfigMixin):
         beta_start: float = 0.00085,  # sensible defaults
         beta_end: float = 0.012,
         beta_schedule: str = "linear",
-        trained_betas: Optional[Union[np.ndarray, List[float]]] = None,
+        trained_betas: Optional[Union[np.ndarray, list[float]]] = None,
         prediction_type: str = "epsilon",
         use_karras_sigmas: Optional[bool] = False,
         use_exponential_sigmas: Optional[bool] = False,

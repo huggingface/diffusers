@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import warnings
-from typing import List, Optional, Union
+from typing import Optional, Union
 
 import numpy as np
 import PIL
@@ -30,7 +30,7 @@ class VideoProcessor(VaeImageProcessor):
         Preprocesses input video(s).
 
         Args:
-            video (`List[PIL.Image]`, `List[List[PIL.Image]]`, `torch.Tensor`, `np.array`, `List[torch.Tensor]`, `List[np.array]`):
+            video (`list[PIL.Image]`, `list[list[PIL.Image]]`, `torch.Tensor`, `np.array`, `list[torch.Tensor]`, `list[np.array]`):
                 The input video. It can be one of the following:
                 * List of the PIL images.
                 * List of list of PIL images.
@@ -88,7 +88,7 @@ class VideoProcessor(VaeImageProcessor):
 
     def postprocess_video(
         self, video: torch.Tensor, output_type: str = "np"
-    ) -> Union[np.ndarray, torch.Tensor, List[PIL.Image.Image]]:
+    ) -> Union[np.ndarray, torch.Tensor, list[PIL.Image.Image]]:
         r"""
         Converts a video tensor to a list of frames for export.
 

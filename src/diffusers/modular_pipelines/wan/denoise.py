@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Any, List, Tuple
+from typing import Any
 
 import torch
 
@@ -38,7 +38,7 @@ class WanLoopDenoiser(ModularPipelineBlocks):
     model_name = "wan"
 
     @property
-    def expected_components(self) -> List[ComponentSpec]:
+    def expected_components(self) -> list[ComponentSpec]:
         return [
             ComponentSpec(
                 "guider",
@@ -58,13 +58,13 @@ class WanLoopDenoiser(ModularPipelineBlocks):
         )
 
     @property
-    def inputs(self) -> List[Tuple[str, Any]]:
+    def inputs(self) -> list[tuple[str, Any]]:
         return [
             InputParam("attention_kwargs"),
         ]
 
     @property
-    def intermediate_inputs(self) -> List[str]:
+    def intermediate_inputs(self) -> list[str]:
         return [
             InputParam(
                 "latents",
@@ -136,7 +136,7 @@ class WanLoopAfterDenoiser(ModularPipelineBlocks):
     model_name = "wan"
 
     @property
-    def expected_components(self) -> List[ComponentSpec]:
+    def expected_components(self) -> list[ComponentSpec]:
         return [
             ComponentSpec("scheduler", UniPCMultistepScheduler),
         ]
@@ -150,17 +150,17 @@ class WanLoopAfterDenoiser(ModularPipelineBlocks):
         )
 
     @property
-    def inputs(self) -> List[Tuple[str, Any]]:
+    def inputs(self) -> list[tuple[str, Any]]:
         return []
 
     @property
-    def intermediate_inputs(self) -> List[str]:
+    def intermediate_inputs(self) -> list[str]:
         return [
             InputParam("generator"),
         ]
 
     @property
-    def intermediate_outputs(self) -> List[OutputParam]:
+    def intermediate_outputs(self) -> list[OutputParam]:
         return [OutputParam("latents", type_hint=torch.Tensor, description="The denoised latents")]
 
     @torch.no_grad()
@@ -191,7 +191,7 @@ class WanDenoiseLoopWrapper(LoopSequentialPipelineBlocks):
         )
 
     @property
-    def loop_expected_components(self) -> List[ComponentSpec]:
+    def loop_expected_components(self) -> list[ComponentSpec]:
         return [
             ComponentSpec(
                 "guider",
@@ -204,7 +204,7 @@ class WanDenoiseLoopWrapper(LoopSequentialPipelineBlocks):
         ]
 
     @property
-    def loop_intermediate_inputs(self) -> List[InputParam]:
+    def loop_intermediate_inputs(self) -> list[InputParam]:
         return [
             InputParam(
                 "timesteps",

@@ -120,12 +120,12 @@ class ImagePipelineOutput(BaseOutput):
     Output class for image pipelines.
 
     Args:
-        images (`List[PIL.Image.Image]` or `np.ndarray`)
+        images (`list[PIL.Image.Image]` or `np.ndarray`)
             List of denoised PIL images of length `batch_size` or NumPy array of shape `(batch_size, height, width,
             num_channels)`.
     """
 
-    images: Union[List[PIL.Image.Image], np.ndarray]
+    images: Union[list[PIL.Image.Image], np.ndarray]
 
 
 @dataclass
@@ -192,7 +192,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
         - **config_name** (`str`) -- The configuration filename that stores the class and module names of all the
           diffusion pipeline's components.
-        - **_optional_components** (`List[str]`) -- List of all optional components that don't have to be passed to the
+        - **_optional_components** (`list[str]`) -- List of all optional components that don't have to be passed to the
           pipeline to function (should be overridden by subclasses).
     """
 
@@ -267,7 +267,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 repository you want to push to with `repo_id` (will default to the name of `save_directory` in your
                 namespace).
 
-            kwargs (`Dict[str, Any]`, *optional*):
+            kwargs (`dict[str, Any]`, *optional*):
                 Additional keyword arguments passed along to the [`~utils.PushToHubMixin.push_to_hub`] method.
         """
         model_index_dict = dict(self.config)
@@ -648,7 +648,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 Path to a directory where a downloaded pretrained model configuration is cached if the standard cache
                 is not used.
 
-            proxies (`Dict[str, str]`, *optional*):
+            proxies (`dict[str, str]`, *optional*):
                 A dictionary of proxy servers to use by protocol or endpoint, for example, `{'http': 'foo.bar:3128',
                 'http://hostname': 'foo.bar:4012'}`. The proxies are used on each request.
             output_loading_info(`bool`, *optional*, defaults to `False`):
@@ -1341,7 +1341,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         record_stream: bool = False,
         low_cpu_mem_usage=False,
         offload_to_disk_path: Optional[str] = None,
-        exclude_modules: Optional[Union[str, List[str]]] = None,
+        exclude_modules: Optional[Union[str, list[str]]] = None,
     ) -> None:
         r"""
         Applies group offloading to the internal layers of a torch.nn.Module. To understand what group offloading is,
@@ -1401,7 +1401,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 If True, the CPU memory usage is minimized by pinning tensors on-the-fly instead of pre-pinning them.
                 This option only matters when using streamed CPU offloading (i.e. `use_stream=True`). This can be
                 useful when the CPU memory is a bottleneck but may counteract the benefits of using streams.
-            exclude_modules (`Union[str, List[str]]`, defaults to `None`): List of modules to exclude from offloading.
+            exclude_modules (`Union[str, list[str]]`, defaults to `None`): List of modules to exclude from offloading.
 
         Example:
             ```python
@@ -1505,7 +1505,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 Whether or not to force the (re-)download of the model weights and configuration files, overriding the
                 cached versions if they exist.
 
-            proxies (`Dict[str, str]`, *optional*):
+            proxies (`dict[str, str]`, *optional*):
                 A dictionary of proxy servers to use by protocol or endpoint, for example, `{'http': 'foo.bar:3128',
                 'http://hostname': 'foo.bar:4012'}`. The proxies are used on each request.
             output_loading_info(`bool`, *optional*, defaults to `False`):
@@ -1568,7 +1568,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         use_onnx = kwargs.pop("use_onnx", None)
         load_connected_pipeline = kwargs.pop("load_connected_pipeline", False)
         trust_remote_code = kwargs.pop("trust_remote_code", False)
-        dduf_file: Optional[Dict[str, DDUFEntry]] = kwargs.pop("dduf_file", None)
+        dduf_file: Optional[dict[str, DDUFEntry]] = kwargs.pop("dduf_file", None)
 
         if dduf_file:
             if custom_pipeline:
@@ -1825,7 +1825,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         return signature_types
 
     @property
-    def parameters(self) -> Dict[str, Any]:
+    def parameters(self) -> dict[str, Any]:
         r"""
         The `self.parameters` property can be useful to run different pipelines with the same weights and
         configurations without reallocating additional memory.
@@ -1855,7 +1855,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         return pipeline_parameters
 
     @property
-    def components(self) -> Dict[str, Any]:
+    def components(self) -> dict[str, Any]:
         r"""
         The `self.components` property can be useful to run different pipelines with the same weights and
         configurations without reallocating additional memory.

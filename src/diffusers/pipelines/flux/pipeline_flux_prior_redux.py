@@ -13,7 +13,7 @@
 # limitations under the License.
 
 
-from typing import List, Optional, Union
+from typing import Optional, Union
 
 import torch
 from PIL import Image
@@ -196,7 +196,7 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
     # Copied from diffusers.pipelines.flux.pipeline_flux.FluxPipeline._get_t5_prompt_embeds
     def _get_t5_prompt_embeds(
         self,
-        prompt: Union[str, List[str]] = None,
+        prompt: Union[str, list[str]] = None,
         num_images_per_prompt: int = 1,
         max_sequence_length: int = 512,
         device: Optional[torch.device] = None,
@@ -246,7 +246,7 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
     # Copied from diffusers.pipelines.flux.pipeline_flux.FluxPipeline._get_clip_prompt_embeds
     def _get_clip_prompt_embeds(
         self,
-        prompt: Union[str, List[str]],
+        prompt: Union[str, list[str]],
         num_images_per_prompt: int = 1,
         device: Optional[torch.device] = None,
     ):
@@ -291,8 +291,8 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
     # Copied from diffusers.pipelines.flux.pipeline_flux.FluxPipeline.encode_prompt
     def encode_prompt(
         self,
-        prompt: Union[str, List[str]],
-        prompt_2: Optional[Union[str, List[str]]] = None,
+        prompt: Union[str, list[str]],
+        prompt_2: Optional[Union[str, list[str]]] = None,
         device: Optional[torch.device] = None,
         num_images_per_prompt: int = 1,
         prompt_embeds: Optional[torch.FloatTensor] = None,
@@ -303,9 +303,9 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
         r"""
 
         Args:
-            prompt (`str` or `List[str]`, *optional*):
+            prompt (`str` or `list[str]`, *optional*):
                 prompt to be encoded
-            prompt_2 (`str` or `List[str]`, *optional*):
+            prompt_2 (`str` or `list[str]`, *optional*):
                 The prompt or prompts to be sent to the `tokenizer_2` and `text_encoder_2`. If not defined, `prompt` is
                 used in all text-encoders
             device: (`torch.device`):
@@ -373,28 +373,28 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
     def __call__(
         self,
         image: PipelineImageInput,
-        prompt: Union[str, List[str]] = None,
-        prompt_2: Optional[Union[str, List[str]]] = None,
+        prompt: Union[str, list[str]] = None,
+        prompt_2: Optional[Union[str, list[str]]] = None,
         prompt_embeds: Optional[torch.FloatTensor] = None,
         pooled_prompt_embeds: Optional[torch.FloatTensor] = None,
-        prompt_embeds_scale: Optional[Union[float, List[float]]] = 1.0,
-        pooled_prompt_embeds_scale: Optional[Union[float, List[float]]] = 1.0,
+        prompt_embeds_scale: Optional[Union[float, list[float]]] = 1.0,
+        pooled_prompt_embeds_scale: Optional[Union[float, list[float]]] = 1.0,
         return_dict: bool = True,
     ):
         r"""
         Function invoked when calling the pipeline for generation.
 
         Args:
-            image (`torch.Tensor`, `PIL.Image.Image`, `np.ndarray`, `List[torch.Tensor]`, `List[PIL.Image.Image]`, or `List[np.ndarray]`):
+            image (`torch.Tensor`, `PIL.Image.Image`, `np.ndarray`, `list[torch.Tensor]`, `list[PIL.Image.Image]`, or `list[np.ndarray]`):
                 `Image`, numpy array or tensor representing an image batch to be used as the starting point. For both
                 numpy array and pytorch tensor, the expected value range is between `[0, 1]` If it's a tensor or a list
                 or tensors, the expected shape should be `(B, C, H, W)` or `(C, H, W)`. If it is a numpy array or a
                 list of arrays, the expected shape should be `(B, H, W, C)` or `(H, W, C)`
-            prompt (`str` or `List[str]`, *optional*):
+            prompt (`str` or `list[str]`, *optional*):
                 The prompt or prompts to guide the image generation. **experimental feature**: to use this feature,
                 make sure to explicitly load text encoders to the pipeline. Prompts will be ignored if text encoders
                 are not loaded.
-            prompt_2 (`str` or `List[str]`, *optional*):
+            prompt_2 (`str` or `list[str]`, *optional*):
                 The prompt or prompts to be sent to the `tokenizer_2` and `text_encoder_2`.
             prompt_embeds (`torch.FloatTensor`, *optional*):
                 Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting.

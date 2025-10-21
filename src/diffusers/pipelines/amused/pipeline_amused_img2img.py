@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Optional, Union
 
 import torch
 from transformers import CLIPTextModelWithProjection, CLIPTokenizer
@@ -99,12 +99,12 @@ class AmusedImg2ImgPipeline(DeprecatedPipelineMixin, DiffusionPipeline):
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        prompt: Optional[Union[List[str], str]] = None,
+        prompt: Optional[Union[list[str], str]] = None,
         image: PipelineImageInput = None,
         strength: float = 0.5,
         num_inference_steps: int = 12,
         guidance_scale: float = 10.0,
-        negative_prompt: Optional[Union[str, List[str]]] = None,
+        negative_prompt: Optional[Union[str, list[str]]] = None,
         num_images_per_prompt: Optional[int] = 1,
         generator: Optional[torch.Generator] = None,
         prompt_embeds: Optional[torch.Tensor] = None,
@@ -115,18 +115,18 @@ class AmusedImg2ImgPipeline(DeprecatedPipelineMixin, DiffusionPipeline):
         return_dict: bool = True,
         callback: Optional[Callable[[int, int, torch.Tensor], None]] = None,
         callback_steps: int = 1,
-        cross_attention_kwargs: Optional[Dict[str, Any]] = None,
+        cross_attention_kwargs: Optional[dict[str, Any]] = None,
         micro_conditioning_aesthetic_score: int = 6,
-        micro_conditioning_crop_coord: Tuple[int, int] = (0, 0),
-        temperature: Union[int, Tuple[int, int], List[int]] = (2, 0),
+        micro_conditioning_crop_coord: tuple[int, int] = (0, 0),
+        temperature: Union[int, tuple[int, int], list[int]] = (2, 0),
     ):
         """
         The call function to the pipeline for generation.
 
         Args:
-            prompt (`str` or `List[str]`, *optional*):
+            prompt (`str` or `list[str]`, *optional*):
                 The prompt or prompts to guide image generation. If not defined, you need to pass `prompt_embeds`.
-            image (`torch.Tensor`, `PIL.Image.Image`, `np.ndarray`, `List[torch.Tensor]`, `List[PIL.Image.Image]`, or `List[np.ndarray]`):
+            image (`torch.Tensor`, `PIL.Image.Image`, `np.ndarray`, `list[torch.Tensor]`, `list[PIL.Image.Image]`, or `list[np.ndarray]`):
                 `Image`, numpy array or tensor representing an image batch to be used as the starting point. For both
                 numpy array and pytorch tensor, the expected value range is between `[0, 1]` If it's a tensor or a list
                 or tensors, the expected shape should be `(B, C, H, W)` or `(C, H, W)`. If it is a numpy array or a
@@ -144,7 +144,7 @@ class AmusedImg2ImgPipeline(DeprecatedPipelineMixin, DiffusionPipeline):
             guidance_scale (`float`, *optional*, defaults to 10.0):
                 A higher guidance scale value encourages the model to generate images closely linked to the text
                 `prompt` at the expense of lower image quality. Guidance scale is enabled when `guidance_scale > 1`.
-            negative_prompt (`str` or `List[str]`, *optional*):
+            negative_prompt (`str` or `list[str]`, *optional*):
                 The prompt or prompts to guide what to not include in image generation. If not defined, you need to
                 pass `negative_prompt_embeds` instead. Ignored when not using guidance (`guidance_scale < 1`).
             num_images_per_prompt (`int`, *optional*, defaults to 1):
@@ -181,10 +181,10 @@ class AmusedImg2ImgPipeline(DeprecatedPipelineMixin, DiffusionPipeline):
                 The targeted aesthetic score according to the laion aesthetic classifier. See
                 https://laion.ai/blog/laion-aesthetics/ and the micro-conditioning section of
                 https://huggingface.co/papers/2307.01952.
-            micro_conditioning_crop_coord (`Tuple[int]`, *optional*, defaults to (0, 0)):
+            micro_conditioning_crop_coord (`tuple[int]`, *optional*, defaults to (0, 0)):
                 The targeted height, width crop coordinates. See the micro-conditioning section of
                 https://huggingface.co/papers/2307.01952.
-            temperature (`Union[int, Tuple[int, int], List[int]]`, *optional*, defaults to (2, 0)):
+            temperature (`Union[int, tuple[int, int], list[int]]`, *optional*, defaults to (2, 0)):
                 Configures the temperature scheduler on `self.scheduler` see `AmusedScheduler#set_timesteps`.
 
         Examples:

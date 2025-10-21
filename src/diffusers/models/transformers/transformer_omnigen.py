@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import math
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Dict, Optional, Union
 
 import torch
 import torch.nn as nn
@@ -387,7 +387,7 @@ class OmniGenTransformer2DModel(ModelMixin, ConfigMixin):
         self.gradient_checkpointing = False
 
     def _get_multimodal_embeddings(
-        self, input_ids: torch.Tensor, input_img_latents: List[torch.Tensor], input_image_sizes: Dict
+        self, input_ids: torch.Tensor, input_img_latents: list[torch.Tensor], input_image_sizes: Dict
     ) -> Optional[torch.Tensor]:
         if input_ids is None:
             return None
@@ -410,12 +410,12 @@ class OmniGenTransformer2DModel(ModelMixin, ConfigMixin):
         hidden_states: torch.Tensor,
         timestep: Union[int, float, torch.FloatTensor],
         input_ids: torch.Tensor,
-        input_img_latents: List[torch.Tensor],
-        input_image_sizes: Dict[int, List[int]],
+        input_img_latents: list[torch.Tensor],
+        input_image_sizes: dict[int, list[int]],
         attention_mask: torch.Tensor,
         position_ids: torch.Tensor,
         return_dict: bool = True,
-    ) -> Union[Transformer2DModelOutput, Tuple[torch.Tensor]]:
+    ) -> Union[Transformer2DModelOutput, tuple[torch.Tensor]]:
         batch_size, num_channels, height, width = hidden_states.shape
         p = self.config.patch_size
         post_patch_height, post_patch_width = height // p, width // p

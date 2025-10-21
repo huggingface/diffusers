@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import html
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any, Callable, Dict, Optional, Union
 
 import PIL.Image
 import regex as re
@@ -201,7 +201,7 @@ class WanVACEPipeline(DiffusionPipeline, WanLoraLoaderMixin):
     # Copied from diffusers.pipelines.wan.pipeline_wan.WanPipeline._get_t5_prompt_embeds
     def _get_t5_prompt_embeds(
         self,
-        prompt: Union[str, List[str]] = None,
+        prompt: Union[str, list[str]] = None,
         num_videos_per_prompt: int = 1,
         max_sequence_length: int = 226,
         device: Optional[torch.device] = None,
@@ -243,8 +243,8 @@ class WanVACEPipeline(DiffusionPipeline, WanLoraLoaderMixin):
     # Copied from diffusers.pipelines.wan.pipeline_wan.WanPipeline.encode_prompt
     def encode_prompt(
         self,
-        prompt: Union[str, List[str]],
-        negative_prompt: Optional[Union[str, List[str]]] = None,
+        prompt: Union[str, list[str]],
+        negative_prompt: Optional[Union[str, list[str]]] = None,
         do_classifier_free_guidance: bool = True,
         num_videos_per_prompt: int = 1,
         prompt_embeds: Optional[torch.Tensor] = None,
@@ -257,9 +257,9 @@ class WanVACEPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         Encodes the prompt into text encoder hidden states.
 
         Args:
-            prompt (`str` or `List[str]`, *optional*):
+            prompt (`str` or `list[str]`, *optional*):
                 prompt to be encoded
-            negative_prompt (`str` or `List[str]`, *optional*):
+            negative_prompt (`str` or `list[str]`, *optional*):
                 The prompt or prompts not to guide the image generation. If not defined, one has to pass
                 `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
                 less than `1`).
@@ -403,9 +403,9 @@ class WanVACEPipeline(DiffusionPipeline, WanLoraLoaderMixin):
 
     def preprocess_conditions(
         self,
-        video: Optional[List[PipelineImageInput]] = None,
-        mask: Optional[List[PipelineImageInput]] = None,
-        reference_images: Optional[Union[PIL.Image.Image, List[PIL.Image.Image], List[List[PIL.Image.Image]]]] = None,
+        video: Optional[list[PipelineImageInput]] = None,
+        mask: Optional[list[PipelineImageInput]] = None,
+        reference_images: Optional[Union[PIL.Image.Image, list[PIL.Image.Image], list[list[PIL.Image.Image]]]] = None,
         batch_size: int = 1,
         height: int = 480,
         width: int = 832,
@@ -501,8 +501,8 @@ class WanVACEPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         self,
         video: torch.Tensor,
         mask: torch.Tensor,
-        reference_images: Optional[List[List[torch.Tensor]]] = None,
-        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
+        reference_images: Optional[list[list[torch.Tensor]]] = None,
+        generator: Optional[Union[torch.Generator, list[torch.Generator]]] = None,
         device: Optional[torch.device] = None,
     ) -> torch.Tensor:
         device = device or self._execution_device
@@ -567,8 +567,8 @@ class WanVACEPipeline(DiffusionPipeline, WanLoraLoaderMixin):
     def prepare_masks(
         self,
         mask: torch.Tensor,
-        reference_images: Optional[List[torch.Tensor]] = None,
-        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
+        reference_images: Optional[list[torch.Tensor]] = None,
+        generator: Optional[Union[torch.Generator, list[torch.Generator]]] = None,
     ) -> torch.Tensor:
         if isinstance(generator, list):
             # TODO: support this
@@ -621,7 +621,7 @@ class WanVACEPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         num_frames: int = 81,
         dtype: Optional[torch.dtype] = None,
         device: Optional[torch.device] = None,
-        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
+        generator: Optional[Union[torch.Generator, list[torch.Generator]]] = None,
         latents: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         if latents is not None:
@@ -672,12 +672,12 @@ class WanVACEPipeline(DiffusionPipeline, WanLoraLoaderMixin):
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        prompt: Union[str, List[str]] = None,
-        negative_prompt: Union[str, List[str]] = None,
-        video: Optional[List[PipelineImageInput]] = None,
-        mask: Optional[List[PipelineImageInput]] = None,
-        reference_images: Optional[List[PipelineImageInput]] = None,
-        conditioning_scale: Union[float, List[float], torch.Tensor] = 1.0,
+        prompt: Union[str, list[str]] = None,
+        negative_prompt: Union[str, list[str]] = None,
+        video: Optional[list[PipelineImageInput]] = None,
+        mask: Optional[list[PipelineImageInput]] = None,
+        reference_images: Optional[list[PipelineImageInput]] = None,
+        conditioning_scale: Union[float, list[float], torch.Tensor] = 1.0,
         height: int = 480,
         width: int = 832,
         num_frames: int = 81,
@@ -685,47 +685,47 @@ class WanVACEPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         guidance_scale: float = 5.0,
         guidance_scale_2: Optional[float] = None,
         num_videos_per_prompt: Optional[int] = 1,
-        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
+        generator: Optional[Union[torch.Generator, list[torch.Generator]]] = None,
         latents: Optional[torch.Tensor] = None,
         prompt_embeds: Optional[torch.Tensor] = None,
         negative_prompt_embeds: Optional[torch.Tensor] = None,
         output_type: Optional[str] = "np",
         return_dict: bool = True,
-        attention_kwargs: Optional[Dict[str, Any]] = None,
+        attention_kwargs: Optional[dict[str, Any]] = None,
         callback_on_step_end: Optional[
             Union[Callable[[int, int, Dict], None], PipelineCallback, MultiPipelineCallbacks]
         ] = None,
-        callback_on_step_end_tensor_inputs: List[str] = ["latents"],
+        callback_on_step_end_tensor_inputs: list[str] = ["latents"],
         max_sequence_length: int = 512,
     ):
         r"""
         The call function to the pipeline for generation.
 
         Args:
-            prompt (`str` or `List[str]`, *optional*):
+            prompt (`str` or `list[str]`, *optional*):
                 The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds`
                 instead.
-            negative_prompt (`str` or `List[str]`, *optional*):
+            negative_prompt (`str` or `list[str]`, *optional*):
                 The prompt or prompts not to guide the image generation. If not defined, one has to pass
                 `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
                 less than `1`).
-            video (`List[PIL.Image.Image]`, *optional*):
+            video (`list[PIL.Image.Image]`, *optional*):
                 The input video or videos to be used as a starting point for the generation. The video should be a list
                 of PIL images, a numpy array, or a torch tensor. Currently, the pipeline only supports generating one
                 video at a time.
-            mask (`List[PIL.Image.Image]`, *optional*):
+            mask (`list[PIL.Image.Image]`, *optional*):
                 The input mask defines which video regions to condition on and which to generate. Black areas in the
                 mask indicate conditioning regions, while white areas indicate regions for generation. The mask should
                 be a list of PIL images, a numpy array, or a torch tensor. Currently supports generating a single video
                 at a time.
-            reference_images (`List[PIL.Image.Image]`, *optional*):
+            reference_images (`list[PIL.Image.Image]`, *optional*):
                 A list of one or more reference images as extra conditioning for the generation. For example, if you
                 are trying to inpaint a video to change the character, you can pass reference images of the new
                 character here. Refer to the Diffusers [examples](https://github.com/huggingface/diffusers/pull/11582)
                 and original [user
                 guide](https://github.com/ali-vilab/VACE/blob/0897c6d055d7d9ea9e191dce763006664d9780f8/UserGuide.md)
                 for a full list of supported tasks and use cases.
-            conditioning_scale (`float`, `List[float]`, `torch.Tensor`, defaults to `1.0`):
+            conditioning_scale (`float`, `list[float]`, `torch.Tensor`, defaults to `1.0`):
                 The conditioning scale to be applied when adding the control conditioning latent stream to the
                 denoising latent stream in each control layer of the model. If a float is provided, it will be applied
                 uniformly to all layers. If a list or tensor is provided, it should have the same length as the number
@@ -751,7 +751,7 @@ class WanVACEPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 and the pipeline's `boundary_ratio` are not None.
             num_videos_per_prompt (`int`, *optional*, defaults to 1):
                 The number of images to generate per prompt.
-            generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
+            generator (`torch.Generator` or `list[torch.Generator]`, *optional*):
                 A [`torch.Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make
                 generation deterministic.
             latents (`torch.Tensor`, *optional*):

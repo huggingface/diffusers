@@ -14,7 +14,7 @@
 # limitations under the License.
 
 from functools import partial
-from typing import Optional, Tuple, Union
+from typing import Optional, Union
 
 import torch
 import torch.nn as nn
@@ -401,7 +401,7 @@ class Conv1dBlock(nn.Module):
         self,
         inp_channels: int,
         out_channels: int,
-        kernel_size: Union[int, Tuple[int, int]],
+        kernel_size: Union[int, tuple[int, int]],
         n_groups: int = 8,
         activation: str = "mish",
     ):
@@ -438,7 +438,7 @@ class ResidualTemporalBlock1D(nn.Module):
         inp_channels: int,
         out_channels: int,
         embed_dim: int,
-        kernel_size: Union[int, Tuple[int, int]] = 5,
+        kernel_size: Union[int, tuple[int, int]] = 5,
         activation: str = "mish",
     ):
         super().__init__()

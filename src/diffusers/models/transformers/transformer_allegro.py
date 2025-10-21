@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Optional, Tuple
+from typing import Optional
 
 import torch
 import torch.nn as nn
@@ -311,7 +311,7 @@ class AllegroTransformer3DModel(ModelMixin, ConfigMixin, CacheMixin):
         timestep: torch.LongTensor,
         attention_mask: Optional[torch.Tensor] = None,
         encoder_attention_mask: Optional[torch.Tensor] = None,
-        image_rotary_emb: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
+        image_rotary_emb: Optional[tuple[torch.Tensor, torch.Tensor]] = None,
         return_dict: bool = True,
     ):
         batch_size, num_channels, num_frames, height, width = hidden_states.shape

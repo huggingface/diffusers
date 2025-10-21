@@ -14,7 +14,7 @@
 
 import math
 from dataclasses import dataclass
-from typing import List, Optional, Tuple, Union
+from typing import Optional, Tuple, Union
 
 import torch
 
@@ -216,7 +216,7 @@ class EDMEulerScheduler(SchedulerMixin, ConfigMixin):
         self,
         num_inference_steps: int = None,
         device: Union[str, torch.device] = None,
-        sigmas: Optional[Union[torch.Tensor, List[float]]] = None,
+        sigmas: Optional[Union[torch.Tensor, list[float]]] = None,
     ):
         """
         Sets the discrete timesteps used for the diffusion chain (to be run before inference).
@@ -226,7 +226,7 @@ class EDMEulerScheduler(SchedulerMixin, ConfigMixin):
                 The number of diffusion steps used when generating samples with a pre-trained model.
             device (`str` or `torch.device`, *optional*):
                 The device to which the timesteps should be moved to. If `None`, the timesteps are not moved.
-            sigmas (`Union[torch.Tensor, List[float]]`, *optional*):
+            sigmas (`Union[torch.Tensor, list[float]]`, *optional*):
                 Custom sigmas to use for the denoising process. If not defined, the default behavior when
                 `num_inference_steps` is passed will be used.
         """

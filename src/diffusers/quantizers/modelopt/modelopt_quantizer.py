@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Any, Dict, List, Union
+from typing import TYPE_CHECKING, Any, Union
 
 from ...utils import (
     get_module_from_name,
@@ -61,7 +61,7 @@ class NVIDIAModelOptQuantizer(DiffusersQuantizer):
         model: "ModelMixin",
         param_value: "torch.Tensor",
         param_name: str,
-        state_dict: Dict[str, Any],
+        state_dict: dict[str, Any],
         **kwargs,
     ):
         # ModelOpt imports diffusers internally. This is here to prevent circular imports
@@ -101,7 +101,7 @@ class NVIDIAModelOptQuantizer(DiffusersQuantizer):
             mtq.compress(module)
             module.weight.requires_grad = False
 
-    def adjust_max_memory(self, max_memory: Dict[str, Union[int, str]]) -> Dict[str, Union[int, str]]:
+    def adjust_max_memory(self, max_memory: dict[str, Union[int, str]]) -> dict[str, Union[int, str]]:
         max_memory = {key: val * 0.90 for key, val in max_memory.items()}
         return max_memory
 
@@ -116,7 +116,7 @@ class NVIDIAModelOptQuantizer(DiffusersQuantizer):
             torch_dtype = torch.float32
         return torch_dtype
 
-    def get_conv_param_names(self, model: "ModelMixin") -> List[str]:
+    def get_conv_param_names(self, model: "ModelMixin") -> list[str]:
         """
         Get parameter names for all convolutional layers in a HuggingFace ModelMixin. Includes Conv1d/2d/3d and
         ConvTranspose1d/2d/3d.
@@ -142,7 +142,7 @@ class NVIDIAModelOptQuantizer(DiffusersQuantizer):
         self,
         model: "ModelMixin",
         device_map,
-        keep_in_fp32_modules: List[str] = [],
+        keep_in_fp32_modules: list[str] = [],
         **kwargs,
     ):
         # ModelOpt imports diffusers internally. This is here to prevent circular imports

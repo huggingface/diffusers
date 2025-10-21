@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 from dataclasses import dataclass
-from typing import Dict, Optional, Tuple, Union
+from typing import Optional, Tuple, Union
 
 import torch
 import torch.nn.functional as F
@@ -77,9 +77,9 @@ class ConsistencyDecoderVAE(ModelMixin, ConfigMixin):
         latent_channels: int = 4,
         sample_size: int = 32,
         encoder_act_fn: str = "silu",
-        encoder_block_out_channels: Tuple[int, ...] = (128, 256, 512, 512),
+        encoder_block_out_channels: tuple[int, ...] = (128, 256, 512, 512),
         encoder_double_z: bool = True,
-        encoder_down_block_types: Tuple[str, ...] = (
+        encoder_down_block_types: tuple[str, ...] = (
             "DownEncoderBlock2D",
             "DownEncoderBlock2D",
             "DownEncoderBlock2D",
@@ -90,8 +90,8 @@ class ConsistencyDecoderVAE(ModelMixin, ConfigMixin):
         encoder_norm_num_groups: int = 32,
         encoder_out_channels: int = 4,
         decoder_add_attention: bool = False,
-        decoder_block_out_channels: Tuple[int, ...] = (320, 640, 1024, 1024),
-        decoder_down_block_types: Tuple[str, ...] = (
+        decoder_block_out_channels: tuple[int, ...] = (320, 640, 1024, 1024),
+        decoder_down_block_types: tuple[str, ...] = (
             "ResnetDownsampleBlock2D",
             "ResnetDownsampleBlock2D",
             "ResnetDownsampleBlock2D",
@@ -106,7 +106,7 @@ class ConsistencyDecoderVAE(ModelMixin, ConfigMixin):
         decoder_out_channels: int = 6,
         decoder_resnet_time_scale_shift: str = "scale_shift",
         decoder_time_embedding_type: str = "learned",
-        decoder_up_block_types: Tuple[str, ...] = (
+        decoder_up_block_types: tuple[str, ...] = (
             "ResnetUpsampleBlock2D",
             "ResnetUpsampleBlock2D",
             "ResnetUpsampleBlock2D",
@@ -202,7 +202,7 @@ class ConsistencyDecoderVAE(ModelMixin, ConfigMixin):
 
     @property
     # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.attn_processors
-    def attn_processors(self) -> Dict[str, AttentionProcessor]:
+    def attn_processors(self) -> dict[str, AttentionProcessor]:
         r"""
         Returns:
             `dict` of attention processors: A dictionary containing all attention processors used in the model with
@@ -211,7 +211,7 @@ class ConsistencyDecoderVAE(ModelMixin, ConfigMixin):
         # set recursively
         processors = {}
 
-        def fn_recursive_add_processors(name: str, module: torch.nn.Module, processors: Dict[str, AttentionProcessor]):
+        def fn_recursive_add_processors(name: str, module: torch.nn.Module, processors: dict[str, AttentionProcessor]):
             if hasattr(module, "get_processor"):
                 processors[f"{name}.processor"] = module.get_processor()
 
@@ -226,7 +226,7 @@ class ConsistencyDecoderVAE(ModelMixin, ConfigMixin):
         return processors
 
     # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.set_attn_processor
-    def set_attn_processor(self, processor: Union[AttentionProcessor, Dict[str, AttentionProcessor]]):
+    def set_attn_processor(self, processor: Union[AttentionProcessor, dict[str, AttentionProcessor]]):
         r"""
         Sets the attention processor to use to compute attention.
 
@@ -279,7 +279,7 @@ class ConsistencyDecoderVAE(ModelMixin, ConfigMixin):
     @apply_forward_hook
     def encode(
         self, x: torch.Tensor, return_dict: bool = True
-    ) -> Union[ConsistencyDecoderVAEOutput, Tuple[DiagonalGaussianDistribution]]:
+    ) -> Union[ConsistencyDecoderVAEOutput, tuple[DiagonalGaussianDistribution]]:
         """
         Encode a batch of images into latents.
 
@@ -318,7 +318,7 @@ class ConsistencyDecoderVAE(ModelMixin, ConfigMixin):
         generator: Optional[torch.Generator] = None,
         return_dict: bool = True,
         num_inference_steps: int = 2,
-    ) -> Union[DecoderOutput, Tuple[torch.Tensor]]:
+    ) -> Union[DecoderOutput, tuple[torch.Tensor]]:
         """
         Decodes the input latent vector `z` using the consistency decoder VAE model.
 
@@ -329,7 +329,7 @@ class ConsistencyDecoderVAE(ModelMixin, ConfigMixin):
             num_inference_steps (int): The number of inference steps. Default is 2.
 
         Returns:
-            Union[DecoderOutput, Tuple[torch.Tensor]]: The decoded output.
+            Union[DecoderOutput, tuple[torch.Tensor]]: The decoded output.
 
         """
         z = (z * self.config.scaling_factor - self.means) / self.stds
@@ -433,7 +433,7 @@ class ConsistencyDecoderVAE(ModelMixin, ConfigMixin):
         sample_posterior: bool = False,
         return_dict: bool = True,
         generator: Optional[torch.Generator] = None,
-    ) -> Union[DecoderOutput, Tuple[torch.Tensor]]:
+    ) -> Union[DecoderOutput, tuple[torch.Tensor]]:
         r"""
         Args:
             sample (`torch.Tensor`): Input sample.

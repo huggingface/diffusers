@@ -30,7 +30,7 @@ import warnings
 from dataclasses import dataclass, is_dataclass
 from enum import Enum
 from functools import partial
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any, Callable, Optional, Union
 
 from packaging import version
 
@@ -76,12 +76,12 @@ class QuantizationConfigMixin:
         Instantiates a [`QuantizationConfigMixin`] from a Python dictionary of parameters.
 
         Args:
-            config_dict (`Dict[str, Any]`):
+            config_dict (`dict[str, Any]`):
                 Dictionary that will be used to instantiate the configuration object.
             return_unused_kwargs (`bool`, *optional*, defaults to `False`):
                 Whether or not to return a list of unused keyword arguments. Used for `from_pretrained` method in
                 `PreTrainedModel`.
-            kwargs (`Dict[str, Any]`):
+            kwargs (`dict[str, Any]`):
                 Additional parameters from which to initialize the configuration object.
 
         Returns:
@@ -120,10 +120,10 @@ class QuantizationConfigMixin:
 
             writer.write(json_string)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """
         Serializes this instance to a Python dictionary. Returns:
-            `Dict[str, Any]`: Dictionary of all the attributes that make up this configuration instance.
+            `dict[str, Any]`: Dictionary of all the attributes that make up this configuration instance.
         """
         return copy.deepcopy(self.__dict__)
 
@@ -159,11 +159,11 @@ class QuantizationConfigMixin:
         returning all the unused kwargs.
 
         Args:
-            kwargs (`Dict[str, Any]`):
+            kwargs (`dict[str, Any]`):
                 Dictionary of attributes to tentatively update this class.
 
         Returns:
-            `Dict[str, Any]`: Dictionary containing all the key-value pairs that were not used to update the instance.
+            `dict[str, Any]`: Dictionary containing all the key-value pairs that were not used to update the instance.
         """
         to_remove = []
         for key, value in kwargs.items():
@@ -202,7 +202,7 @@ class BitsAndBytesConfig(QuantizationConfigMixin):
             These outliers are often in the interval [-60, -6] or [6, 60]. Int8 quantization works well for values of
             magnitude ~5, but beyond that, there is a significant performance penalty. A good default threshold is 6,
             but a lower threshold might be needed for more unstable models (small models, fine-tuning).
-        llm_int8_skip_modules (`List[str]`, *optional*):
+        llm_int8_skip_modules (`list[str]`, *optional*):
             An explicit list of the modules that we do not want to convert in 8-bit. This is useful for models such as
             Jukebox that has several heads in different places and not necessarily at the last position. For example
             for `CausalLM` models, the last `lm_head` is typically kept in its original `dtype`.
@@ -225,7 +225,7 @@ class BitsAndBytesConfig(QuantizationConfigMixin):
             quantized again.
         bnb_4bit_quant_storage (`torch.dtype` or str, *optional*, defaults to `torch.uint8`):
             This sets the storage type to pack the quanitzed 4-bit prarams.
-        kwargs (`Dict[str, Any]`, *optional*):
+        kwargs (`dict[str, Any]`, *optional*):
             Additional parameters from which to initialize the configuration object.
     """
 
@@ -376,10 +376,10 @@ class BitsAndBytesConfig(QuantizationConfigMixin):
         else:
             return None
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """
         Serializes this instance to a Python dictionary. Returns:
-            `Dict[str, Any]`: Dictionary of all the attributes that make up this configuration instance.
+            `dict[str, Any]`: Dictionary of all the attributes that make up this configuration instance.
         """
         output = copy.deepcopy(self.__dict__)
         output["bnb_4bit_compute_dtype"] = str(output["bnb_4bit_compute_dtype"]).split(".")[1]
@@ -393,13 +393,13 @@ class BitsAndBytesConfig(QuantizationConfigMixin):
         config_dict = self.to_dict()
         return f"{self.__class__.__name__} {json.dumps(config_dict, indent=2, sort_keys=True)}\n"
 
-    def to_diff_dict(self) -> Dict[str, Any]:
+    def to_diff_dict(self) -> dict[str, Any]:
         """
         Removes all attributes from config which correspond to the default config attributes for better readability and
         serializes to a Python dictionary.
 
         Returns:
-            `Dict[str, Any]`: Dictionary of all the attributes that make up this configuration instance,
+            `dict[str, Any]`: Dictionary of all the attributes that make up this configuration instance,
         """
         config_dict = self.to_dict()
 
@@ -467,10 +467,10 @@ class TorchAoConfig(QuantizationConfigMixin):
                     - Full function names: `uintx_weight_only`
                     - Shorthands: `uint1wo`, `uint2wo`, `uint3wo`, `uint4wo`, `uint5wo`, `uint6wo`, `uint7wo`
                 - An AOBaseConfig instance: for more advanced configuration options.
-        modules_to_not_convert (`List[str]`, *optional*, default to `None`):
+        modules_to_not_convert (`list[str]`, *optional*, default to `None`):
             The list of modules to not quantize, useful for quantizing models that explicitly require to have some
             modules left in their original precision.
-        kwargs (`Dict[str, Any]`, *optional*):
+        kwargs (`dict[str, Any]`, *optional*):
             The keyword arguments for the chosen type of quantization, for example, int4_weight_only quantization
             supports two keyword arguments `group_size` and `inner_k_tiles` currently. More API examples and
             documentation of arguments can be found in
@@ -499,7 +499,7 @@ class TorchAoConfig(QuantizationConfigMixin):
     def __init__(
         self,
         quant_type: Union[str, "AOBaseConfig"],  # noqa: F821
-        modules_to_not_convert: Optional[List[str]] = None,
+        modules_to_not_convert: Optional[list[str]] = None,
         **kwargs,
     ) -> None:
         self.quant_method = QuantizationMethod.TORCHAO
@@ -829,7 +829,7 @@ class QuantoConfig(QuantizationConfigMixin):
     def __init__(
         self,
         weights_dtype: str = "int8",
-        modules_to_not_convert: Optional[List[str]] = None,
+        modules_to_not_convert: Optional[list[str]] = None,
         **kwargs,
     ):
         self.quant_method = QuantizationMethod.QUANTO
@@ -861,7 +861,7 @@ class NVIDIAModelOptConfig(QuantizationConfigMixin):
                     - INT4
                     - NF4
                     - NVFP4
-        modules_to_not_convert (`List[str]`, *optional*, default to `None`):
+        modules_to_not_convert (`list[str]`, *optional*, default to `None`):
             The list of modules to not quantize, useful for quantizing models that explicitly require to have some
         weight_only (`bool`, *optional*, default to `False`):
             If set to `True`, the quantization will be applied only to the weights of the model.
@@ -881,7 +881,7 @@ class NVIDIAModelOptConfig(QuantizationConfigMixin):
             The modelopt config, useful for passing custom configs to modelopt.
         disable_conv_quantization (`bool`, *optional*, default to `False`):
             If set to `True`, the quantization will be disabled for convolutional layers.
-        kwargs (`Dict[str, Any]`, *optional*):
+        kwargs (`dict[str, Any]`, *optional*):
             Additional parameters which are to be used for calibration.
     """
 
@@ -900,7 +900,7 @@ class NVIDIAModelOptConfig(QuantizationConfigMixin):
     def __init__(
         self,
         quant_type: str,
-        modules_to_not_convert: Optional[List[str]] = None,
+        modules_to_not_convert: Optional[list[str]] = None,
         weight_only: bool = True,
         channel_quantize: Optional[int] = None,
         block_quantize: Optional[int] = None,
@@ -970,7 +970,7 @@ class NVIDIAModelOptConfig(QuantizationConfigMixin):
                 act_type = None
         self.quant_type = w_type + ("_" + act_type if act_type is not None else "")
 
-    def get_config_from_quant_type(self) -> Dict[str, Any]:
+    def get_config_from_quant_type(self) -> dict[str, Any]:
         """
         Get the config from the quantization type.
         """

@@ -14,7 +14,7 @@
 
 
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
@@ -36,7 +36,7 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 @dataclass
 class SD3ControlNetOutput(BaseOutput):
-    controlnet_block_samples: Tuple[torch.Tensor]
+    controlnet_block_samples: tuple[torch.Tensor]
 
 
 class SD3ControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginalModelMixin):
@@ -69,7 +69,7 @@ class SD3ControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginal
             The maximum latent height/width of positional embeddings.
         extra_conditioning_channels (`int`, defaults to `0`):
             The number of extra channels to use for conditioning for patch embedding.
-        dual_attention_layers (`Tuple[int, ...]`, defaults to `()`):
+        dual_attention_layers (`tuple[int, ...]`, defaults to `()`):
             The number of dual-stream transformer blocks to use.
         qk_norm (`str`, *optional*, defaults to `None`):
             The normalization to use for query and key in the attention layer. If `None`, no normalization is used.
@@ -99,7 +99,7 @@ class SD3ControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginal
         out_channels: int = 16,
         pos_embed_max_size: int = 96,
         extra_conditioning_channels: int = 0,
-        dual_attention_layers: Tuple[int, ...] = (),
+        dual_attention_layers: tuple[int, ...] = (),
         qk_norm: Optional[str] = None,
         pos_embed_type: Optional[str] = "sincos",
         use_pos_embed: bool = True,
@@ -206,7 +206,7 @@ class SD3ControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginal
 
     @property
     # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.attn_processors
-    def attn_processors(self) -> Dict[str, AttentionProcessor]:
+    def attn_processors(self) -> dict[str, AttentionProcessor]:
         r"""
         Returns:
             `dict` of attention processors: A dictionary containing all attention processors used in the model with
@@ -215,7 +215,7 @@ class SD3ControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginal
         # set recursively
         processors = {}
 
-        def fn_recursive_add_processors(name: str, module: torch.nn.Module, processors: Dict[str, AttentionProcessor]):
+        def fn_recursive_add_processors(name: str, module: torch.nn.Module, processors: dict[str, AttentionProcessor]):
             if hasattr(module, "get_processor"):
                 processors[f"{name}.processor"] = module.get_processor()
 
@@ -230,7 +230,7 @@ class SD3ControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginal
         return processors
 
     # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.set_attn_processor
-    def set_attn_processor(self, processor: Union[AttentionProcessor, Dict[str, AttentionProcessor]]):
+    def set_attn_processor(self, processor: Union[AttentionProcessor, dict[str, AttentionProcessor]]):
         r"""
         Sets the attention processor to use to compute attention.
 
@@ -337,7 +337,7 @@ class SD3ControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginal
         encoder_hidden_states: torch.Tensor = None,
         pooled_projections: torch.Tensor = None,
         timestep: torch.LongTensor = None,
-        joint_attention_kwargs: Optional[Dict[str, Any]] = None,
+        joint_attention_kwargs: Optional[dict[str, Any]] = None,
         return_dict: bool = True,
     ) -> Union[torch.Tensor, Transformer2DModelOutput]:
         """
@@ -460,7 +460,7 @@ class SD3MultiControlNetModel(ModelMixin):
     compatible with `SD3ControlNetModel`.
 
     Args:
-        controlnets (`List[SD3ControlNetModel]`):
+        controlnets (`list[SD3ControlNetModel]`):
             Provides additional conditioning to the unet during the denoising process. You must set multiple
             `SD3ControlNetModel` as a list.
     """
@@ -472,12 +472,12 @@ class SD3MultiControlNetModel(ModelMixin):
     def forward(
         self,
         hidden_states: torch.Tensor,
-        controlnet_cond: List[torch.tensor],
-        conditioning_scale: List[float],
+        controlnet_cond: list[torch.tensor],
+        conditioning_scale: list[float],
         pooled_projections: torch.Tensor,
         encoder_hidden_states: torch.Tensor = None,
         timestep: torch.LongTensor = None,
-        joint_attention_kwargs: Optional[Dict[str, Any]] = None,
+        joint_attention_kwargs: Optional[dict[str, Any]] = None,
         return_dict: bool = True,
     ) -> Union[SD3ControlNetOutput, Tuple]:
         for i, (image, scale, controlnet) in enumerate(zip(controlnet_cond, conditioning_scale, self.nets)):

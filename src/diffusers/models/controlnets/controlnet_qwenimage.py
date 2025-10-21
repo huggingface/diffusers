@@ -13,7 +13,7 @@
 # limitations under the License.
 
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
@@ -39,7 +39,7 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 @dataclass
 class QwenImageControlNetOutput(BaseOutput):
-    controlnet_block_samples: Tuple[torch.Tensor]
+    controlnet_block_samples: tuple[torch.Tensor]
 
 
 class QwenImageControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginalModelMixin, CacheMixin):
@@ -55,7 +55,7 @@ class QwenImageControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
         attention_head_dim: int = 128,
         num_attention_heads: int = 24,
         joint_attention_dim: int = 3584,
-        axes_dims_rope: Tuple[int, int, int] = (16, 56, 56),
+        axes_dims_rope: tuple[int, int, int] = (16, 56, 56),
         extra_condition_channels: int = 0,  # for controlnet-inpainting
     ):
         super().__init__()
@@ -103,7 +103,7 @@ class QwenImageControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
         # set recursively
         processors = {}
 
-        def fn_recursive_add_processors(name: str, module: torch.nn.Module, processors: Dict[str, AttentionProcessor]):
+        def fn_recursive_add_processors(name: str, module: torch.nn.Module, processors: dict[str, AttentionProcessor]):
             if hasattr(module, "get_processor"):
                 processors[f"{name}.processor"] = module.get_processor()
 
@@ -188,9 +188,9 @@ class QwenImageControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
         encoder_hidden_states: torch.Tensor = None,
         encoder_hidden_states_mask: torch.Tensor = None,
         timestep: torch.LongTensor = None,
-        img_shapes: Optional[List[Tuple[int, int, int]]] = None,
-        txt_seq_lens: Optional[List[int]] = None,
-        joint_attention_kwargs: Optional[Dict[str, Any]] = None,
+        img_shapes: Optional[list[tuple[int, int, int]]] = None,
+        txt_seq_lens: Optional[list[int]] = None,
+        joint_attention_kwargs: Optional[dict[str, Any]] = None,
         return_dict: bool = True,
     ) -> Union[torch.FloatTensor, Transformer2DModelOutput]:
         """
@@ -303,7 +303,7 @@ class QwenImageMultiControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, F
     to be compatible with `QwenImageControlNetModel`.
 
     Args:
-        controlnets (`List[QwenImageControlNetModel]`):
+        controlnets (`list[QwenImageControlNetModel]`):
             Provides additional conditioning to the unet during the denoising process. You must set multiple
             `QwenImageControlNetModel` as a list.
     """
@@ -315,14 +315,14 @@ class QwenImageMultiControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, F
     def forward(
         self,
         hidden_states: torch.FloatTensor,
-        controlnet_cond: List[torch.tensor],
-        conditioning_scale: List[float],
+        controlnet_cond: list[torch.tensor],
+        conditioning_scale: list[float],
         encoder_hidden_states: torch.Tensor = None,
         encoder_hidden_states_mask: torch.Tensor = None,
         timestep: torch.LongTensor = None,
-        img_shapes: Optional[List[Tuple[int, int, int]]] = None,
-        txt_seq_lens: Optional[List[int]] = None,
-        joint_attention_kwargs: Optional[Dict[str, Any]] = None,
+        img_shapes: Optional[list[tuple[int, int, int]]] = None,
+        txt_seq_lens: Optional[list[int]] = None,
+        joint_attention_kwargs: Optional[dict[str, Any]] = None,
         return_dict: bool = True,
     ) -> Union[QwenImageControlNetOutput, Tuple]:
         # ControlNet-Union with multiple conditions

@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from typing import Any, Dict, Optional, Union
+from typing import Any, Optional, Union
 
 import torch
 from torch import nn
@@ -186,7 +186,7 @@ class PixArtTransformer2DModel(ModelMixin, ConfigMixin):
 
     @property
     # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.attn_processors
-    def attn_processors(self) -> Dict[str, AttentionProcessor]:
+    def attn_processors(self) -> dict[str, AttentionProcessor]:
         r"""
         Returns:
             `dict` of attention processors: A dictionary containing all attention processors used in the model with
@@ -195,7 +195,7 @@ class PixArtTransformer2DModel(ModelMixin, ConfigMixin):
         # set recursively
         processors = {}
 
-        def fn_recursive_add_processors(name: str, module: torch.nn.Module, processors: Dict[str, AttentionProcessor]):
+        def fn_recursive_add_processors(name: str, module: torch.nn.Module, processors: dict[str, AttentionProcessor]):
             if hasattr(module, "get_processor"):
                 processors[f"{name}.processor"] = module.get_processor()
 
@@ -210,7 +210,7 @@ class PixArtTransformer2DModel(ModelMixin, ConfigMixin):
         return processors
 
     # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.set_attn_processor
-    def set_attn_processor(self, processor: Union[AttentionProcessor, Dict[str, AttentionProcessor]]):
+    def set_attn_processor(self, processor: Union[AttentionProcessor, dict[str, AttentionProcessor]]):
         r"""
         Sets the attention processor to use to compute attention.
 
@@ -289,8 +289,8 @@ class PixArtTransformer2DModel(ModelMixin, ConfigMixin):
         hidden_states: torch.Tensor,
         encoder_hidden_states: Optional[torch.Tensor] = None,
         timestep: Optional[torch.LongTensor] = None,
-        added_cond_kwargs: Dict[str, torch.Tensor] = None,
-        cross_attention_kwargs: Dict[str, Any] = None,
+        added_cond_kwargs: dict[str, torch.Tensor] = None,
+        cross_attention_kwargs: dict[str, Any] = None,
         attention_mask: Optional[torch.Tensor] = None,
         encoder_attention_mask: Optional[torch.Tensor] = None,
         return_dict: bool = True,
@@ -306,8 +306,8 @@ class PixArtTransformer2DModel(ModelMixin, ConfigMixin):
                 self-attention.
             timestep (`torch.LongTensor`, *optional*):
                 Used to indicate denoising step. Optional timestep to be applied as an embedding in `AdaLayerNorm`.
-            added_cond_kwargs: (`Dict[str, Any]`, *optional*): Additional conditions to be used as inputs.
-            cross_attention_kwargs ( `Dict[str, Any]`, *optional*):
+            added_cond_kwargs: (`dict[str, Any]`, *optional*): Additional conditions to be used as inputs.
+            cross_attention_kwargs ( `dict[str, Any]`, *optional*):
                 A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
                 `self.processor` in
                 [diffusers.models.attention_processor](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).

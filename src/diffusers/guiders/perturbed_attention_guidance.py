@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import math
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, Optional, Union
 
 import torch
 
@@ -58,10 +58,10 @@ class PerturbedAttentionGuidance(BaseGuidance):
             The fraction of the total number of denoising steps after which perturbed attention guidance starts.
         perturbed_guidance_stop (`float`, defaults to `0.2`):
             The fraction of the total number of denoising steps after which perturbed attention guidance stops.
-        perturbed_guidance_layers (`int` or `List[int]`, *optional*):
+        perturbed_guidance_layers (`int` or `list[int]`, *optional*):
             The layer indices to apply perturbed attention guidance to. Can be a single integer or a list of integers.
             If not provided, `perturbed_guidance_config` must be provided.
-        perturbed_guidance_config (`LayerSkipConfig` or `List[LayerSkipConfig]`, *optional*):
+        perturbed_guidance_config (`LayerSkipConfig` or `list[LayerSkipConfig]`, *optional*):
             The configuration for the perturbed attention guidance. Can be a single `LayerSkipConfig` or a list of
             `LayerSkipConfig`. If not provided, `perturbed_guidance_layers` must be provided.
         guidance_rescale (`float`, defaults to `0.0`):
@@ -92,8 +92,8 @@ class PerturbedAttentionGuidance(BaseGuidance):
         perturbed_guidance_scale: float = 2.8,
         perturbed_guidance_start: float = 0.01,
         perturbed_guidance_stop: float = 0.2,
-        perturbed_guidance_layers: Optional[Union[int, List[int]]] = None,
-        perturbed_guidance_config: Union[LayerSkipConfig, List[LayerSkipConfig], Dict[str, Any]] = None,
+        perturbed_guidance_layers: Optional[Union[int, list[int]]] = None,
+        perturbed_guidance_config: Union[LayerSkipConfig, list[LayerSkipConfig], dict[str, Any]] = None,
         guidance_rescale: float = 0.0,
         use_original_formulation: bool = False,
         start: float = 0.0,
@@ -169,8 +169,8 @@ class PerturbedAttentionGuidance(BaseGuidance):
 
     # Copied from diffusers.guiders.skip_layer_guidance.SkipLayerGuidance.prepare_inputs
     def prepare_inputs(
-        self, data: "BlockState", input_fields: Optional[Dict[str, Union[str, Tuple[str, str]]]] = None
-    ) -> List["BlockState"]:
+        self, data: "BlockState", input_fields: Optional[dict[str, Union[str, tuple[str, str]]]] = None
+    ) -> list["BlockState"]:
         if input_fields is None:
             input_fields = self._input_fields
 

@@ -14,7 +14,7 @@
 # limitations under the License.
 
 import math
-from typing import Any, Callable, List, Optional, Tuple, Union
+from typing import Any, Callable, Optional, Tuple, Union
 
 import numpy as np
 import torch
@@ -129,7 +129,7 @@ class SpectrogramDiffusionPipeline(DiffusionPipeline):
     @torch.no_grad()
     def __call__(
         self,
-        input_tokens: List[List[int]],
+        input_tokens: list[list[int]],
         generator: Optional[torch.Generator] = None,
         num_inference_steps: int = 100,
         return_dict: bool = True,
@@ -148,8 +148,8 @@ class SpectrogramDiffusionPipeline(DiffusionPipeline):
         The call function to the pipeline for generation.
 
         Args:
-            input_tokens (`List[List[int]]`):
-            generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
+            input_tokens (`list[list[int]]`):
+            generator (`torch.Generator` or `list[torch.Generator]`, *optional*):
                 A [`torch.Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make
                 generation deterministic.
             num_inference_steps (`int`, *optional*, defaults to 100):

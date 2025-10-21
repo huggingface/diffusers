@@ -1,7 +1,7 @@
 import copy
 import inspect
 from dataclasses import dataclass
-from typing import Callable, List, Optional, Union
+from typing import Callable, Optional, Union
 
 import numpy as np
 import PIL.Image
@@ -199,16 +199,16 @@ class TextToVideoPipelineOutput(BaseOutput):
     Output class for zero-shot text-to-video pipeline.
 
     Args:
-        images (`[List[PIL.Image.Image]`, `np.ndarray`]):
+        images (`[list[PIL.Image.Image]`, `np.ndarray`]):
             List of denoised PIL images of length `batch_size` or NumPy array of shape `(batch_size, height, width,
             num_channels)`.
-        nsfw_content_detected (`[List[bool]]`):
+        nsfw_content_detected (`[list[bool]]`):
             List indicating whether the corresponding generated image contains "not-safe-for-work" (nsfw) content or
             `None` if safety checking could not be performed.
     """
 
-    images: Union[List[PIL.Image.Image], np.ndarray]
-    nsfw_content_detected: Optional[List[bool]]
+    images: Union[list[PIL.Image.Image], np.ndarray]
+    nsfw_content_detected: Optional[list[bool]]
 
 
 def coords_grid(batch, ht, wd, device):
@@ -374,7 +374,7 @@ class TextToVideoZeroPipeline(
                 Timestep at t0.
             t1:
                 Timestamp at t1.
-            generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
+            generator (`torch.Generator` or `list[torch.Generator]`, *optional*):
                 A [`torch.Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make
                 generation deterministic.
 
@@ -545,16 +545,16 @@ class TextToVideoZeroPipeline(
     @torch.no_grad()
     def __call__(
         self,
-        prompt: Union[str, List[str]],
+        prompt: Union[str, list[str]],
         video_length: Optional[int] = 8,
         height: Optional[int] = None,
         width: Optional[int] = None,
         num_inference_steps: int = 50,
         guidance_scale: float = 7.5,
-        negative_prompt: Optional[Union[str, List[str]]] = None,
+        negative_prompt: Optional[Union[str, list[str]]] = None,
         num_videos_per_prompt: Optional[int] = 1,
         eta: float = 0.0,
-        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
+        generator: Optional[Union[torch.Generator, list[torch.Generator]]] = None,
         latents: Optional[torch.Tensor] = None,
         motion_field_strength_x: float = 12,
         motion_field_strength_y: float = 12,
@@ -564,13 +564,13 @@ class TextToVideoZeroPipeline(
         callback_steps: Optional[int] = 1,
         t0: int = 44,
         t1: int = 47,
-        frame_ids: Optional[List[int]] = None,
+        frame_ids: Optional[list[int]] = None,
     ):
         """
         The call function to the pipeline for generation.
 
         Args:
-            prompt (`str` or `List[str]`, *optional*):
+            prompt (`str` or `list[str]`, *optional*):
                 The prompt or prompts to guide image generation. If not defined, you need to pass `prompt_embeds`.
             video_length (`int`, *optional*, defaults to 8):
                 The number of generated video frames.
@@ -584,7 +584,7 @@ class TextToVideoZeroPipeline(
             guidance_scale (`float`, *optional*, defaults to 7.5):
                 A higher guidance scale value encourages the model to generate images closely linked to the text
                 `prompt` at the expense of lower image quality. Guidance scale is enabled when `guidance_scale > 1`.
-            negative_prompt (`str` or `List[str]`, *optional*):
+            negative_prompt (`str` or `list[str]`, *optional*):
                 The prompt or prompts to guide what to not include in video generation. If not defined, you need to
                 pass `negative_prompt_embeds` instead. Ignored when not using guidance (`guidance_scale < 1`).
             num_videos_per_prompt (`int`, *optional*, defaults to 1):
@@ -592,7 +592,7 @@ class TextToVideoZeroPipeline(
             eta (`float`, *optional*, defaults to 0.0):
                 Corresponds to parameter eta (η) from the [DDIM](https://huggingface.co/papers/2010.02502) paper. Only
                 applies to the [`~schedulers.DDIMScheduler`], and is ignored in other schedulers.
-            generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
+            generator (`torch.Generator` or `list[torch.Generator]`, *optional*):
                 A [`torch.Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make
                 generation deterministic.
             latents (`torch.Tensor`, *optional*):
@@ -623,7 +623,7 @@ class TextToVideoZeroPipeline(
             t1 (`int`, *optional*, defaults to 47):
                 Timestep t0. Should be in the range [t0 + 1, num_inference_steps - 1]. See the
                 [paper](https://huggingface.co/papers/2303.13439), Sect. 3.3.1.
-            frame_ids (`List[int]`, *optional*):
+            frame_ids (`list[int]`, *optional*):
                 Indexes of the frames that are being generated. This is used when generating longer videos
                 chunk-by-chunk.
 
@@ -830,7 +830,7 @@ class TextToVideoZeroPipeline(
         Encodes the prompt into text encoder hidden states.
 
         Args:
-            prompt (`str` or `List[str]`, *optional*):
+            prompt (`str` or `list[str]`, *optional*):
                 prompt to be encoded
             device: (`torch.device`):
                 torch device
@@ -838,7 +838,7 @@ class TextToVideoZeroPipeline(
                 number of images that should be generated per prompt
             do_classifier_free_guidance (`bool`):
                 whether to use classifier free guidance or not
-            negative_prompt (`str` or `List[str]`, *optional*):
+            negative_prompt (`str` or `list[str]`, *optional*):
                 The prompt or prompts not to guide the image generation. If not defined, one has to pass
                 `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
                 less than `1`).
@@ -937,7 +937,7 @@ class TextToVideoZeroPipeline(
 
         # get unconditional embeddings for classifier free guidance
         if do_classifier_free_guidance and negative_prompt_embeds is None:
-            uncond_tokens: List[str]
+            uncond_tokens: list[str]
             if negative_prompt is None:
                 uncond_tokens = [""] * batch_size
             elif prompt is not None and type(prompt) is not type(negative_prompt):

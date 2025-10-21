@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Any, Dict, Optional, Tuple, Union
+from typing import Any, Optional, Union
 
 import torch
 import torch.nn as nn
@@ -123,7 +123,7 @@ class LuminaNextDiTBlock(nn.Module):
         encoder_hidden_states: torch.Tensor,
         encoder_mask: torch.Tensor,
         temb: torch.Tensor,
-        cross_attention_kwargs: Optional[Dict[str, Any]] = None,
+        cross_attention_kwargs: Optional[dict[str, Any]] = None,
     ) -> torch.Tensor:
         """
         Perform a forward pass through the LuminaNextDiTBlock.
@@ -135,7 +135,7 @@ class LuminaNextDiTBlock(nn.Module):
             encoder_hidden_states: (`torch.Tensor`): The hidden_states of text prompt are processed by Gemma encoder.
             encoder_mask (`torch.Tensor`): The hidden_states of text prompt attention mask.
             temb (`torch.Tensor`): Timestep embedding with text prompt embedding.
-            cross_attention_kwargs (`Dict[str, Any]`): kwargs for cross attention.
+            cross_attention_kwargs (`dict[str, Any]`): kwargs for cross attention.
         """
         residual = hidden_states
 
@@ -295,9 +295,9 @@ class LuminaNextDiT2DModel(ModelMixin, ConfigMixin):
         encoder_hidden_states: torch.Tensor,
         encoder_mask: torch.Tensor,
         image_rotary_emb: torch.Tensor,
-        cross_attention_kwargs: Dict[str, Any] = None,
+        cross_attention_kwargs: dict[str, Any] = None,
         return_dict=True,
-    ) -> Union[Tuple[torch.Tensor], Transformer2DModelOutput]:
+    ) -> Union[tuple[torch.Tensor], Transformer2DModelOutput]:
         """
         Forward pass of LuminaNextDiT.
 

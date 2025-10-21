@@ -16,7 +16,7 @@
 import dataclasses
 import math
 import os
-from typing import Any, Callable, List, Mapping, MutableMapping, Optional, Sequence, Tuple, Union
+from typing import Any, Callable, Mapping, MutableMapping, Optional, Sequence, Union
 
 import numpy as np
 import torch
@@ -102,7 +102,7 @@ class NoteEncodingState:
     """Encoding state for note transcription, keeping track of active pitches."""
 
     # velocity bin for active pitches and programs
-    active_pitches: MutableMapping[Tuple[int, int], int] = dataclasses.field(default_factory=dict)
+    active_pitches: MutableMapping[tuple[int, int], int] = dataclasses.field(default_factory=dict)
 
 
 @dataclasses.dataclass
@@ -153,7 +153,7 @@ class Codec:
     and specified separately.
     """
 
-    def __init__(self, max_shift_steps: int, steps_per_second: float, event_ranges: List[EventRange]):
+    def __init__(self, max_shift_steps: int, steps_per_second: float, event_ranges: list[EventRange]):
         """Define Codec.
 
         Args:
@@ -197,7 +197,7 @@ class Codec:
 
         raise ValueError(f"Unknown event type: {event.type}")
 
-    def event_type_range(self, event_type: str) -> Tuple[int, int]:
+    def event_type_range(self, event_type: str) -> tuple[int, int]:
         """Return [min_id, max_id] for an event type."""
         offset = 0
         for er in self._event_ranges:
@@ -280,7 +280,7 @@ def audio_to_frames(
     samples,
     hop_size: int,
     frame_rate: int,
-) -> Tuple[Sequence[Sequence[int]], torch.Tensor]:
+) -> tuple[Sequence[Sequence[int]], torch.Tensor]:
     """Convert audio samples to non-overlapping frames and frame times."""
     frame_size = hop_size
     samples = np.pad(samples, [0, frame_size - len(samples) % frame_size], mode="constant")
@@ -301,7 +301,7 @@ def audio_to_frames(
 
 def note_sequence_to_onsets_and_offsets_and_programs(
     ns: note_seq.NoteSequence,
-) -> Tuple[Sequence[float], Sequence[NoteEventData]]:
+) -> tuple[Sequence[float], Sequence[NoteEventData]]:
     """Extract onset & offset times and pitches & programs from a NoteSequence.
 
     The onset & offset times will not necessarily be in sorted order.

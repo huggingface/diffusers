@@ -1,5 +1,5 @@
 import inspect
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Optional, Union
 
 import numpy as np
 import torch
@@ -266,7 +266,7 @@ class BriaAttention(torch.nn.Module, AttentionModuleMixin):
 
 class BriaEmbedND(torch.nn.Module):
     # modified from https://github.com/black-forest-labs/flux/blob/c00d7c60b085fce8058b9df845e036090873f2ce/src/flux/modules/layers.py#L11
-    def __init__(self, theta: int, axes_dim: List[int]):
+    def __init__(self, theta: int, axes_dim: list[int]):
         super().__init__()
         self.theta = theta
         self.axes_dim = axes_dim
@@ -334,7 +334,7 @@ class BriaTimestepProjEmbeddings(nn.Module):
 
 class BriaPosEmbed(torch.nn.Module):
     # modified from https://github.com/black-forest-labs/flux/blob/c00d7c60b085fce8058b9df845e036090873f2ce/src/flux/modules/layers.py#L11
-    def __init__(self, theta: int, axes_dim: List[int]):
+    def __init__(self, theta: int, axes_dim: list[int]):
         super().__init__()
         self.theta = theta
         self.axes_dim = axes_dim
@@ -395,9 +395,9 @@ class BriaTransformerBlock(nn.Module):
         hidden_states: torch.Tensor,
         encoder_hidden_states: torch.Tensor,
         temb: torch.Tensor,
-        image_rotary_emb: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
-        attention_kwargs: Optional[Dict[str, Any]] = None,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        image_rotary_emb: Optional[tuple[torch.Tensor, torch.Tensor]] = None,
+        attention_kwargs: Optional[dict[str, Any]] = None,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         norm_hidden_states, gate_msa, shift_mlp, scale_mlp, gate_mlp = self.norm1(hidden_states, emb=temb)
 
         norm_encoder_hidden_states, c_gate_msa, c_shift_mlp, c_scale_mlp, c_gate_mlp = self.norm1_context(
@@ -476,9 +476,9 @@ class BriaSingleTransformerBlock(nn.Module):
         hidden_states: torch.Tensor,
         encoder_hidden_states: torch.Tensor,
         temb: torch.Tensor,
-        image_rotary_emb: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
-        attention_kwargs: Optional[Dict[str, Any]] = None,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        image_rotary_emb: Optional[tuple[torch.Tensor, torch.Tensor]] = None,
+        attention_kwargs: Optional[dict[str, Any]] = None,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         text_seq_len = encoder_hidden_states.shape[1]
         hidden_states = torch.cat([encoder_hidden_states, hidden_states], dim=1)
 
@@ -537,7 +537,7 @@ class BriaTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrig
         joint_attention_dim: int = 4096,
         pooled_projection_dim: int = None,
         guidance_embeds: bool = False,
-        axes_dims_rope: List[int] = [16, 56, 56],
+        axes_dims_rope: list[int] = [16, 56, 56],
         rope_theta=10000,
         time_theta=10000,
     ):
@@ -590,11 +590,11 @@ class BriaTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrig
         img_ids: torch.Tensor = None,
         txt_ids: torch.Tensor = None,
         guidance: torch.Tensor = None,
-        attention_kwargs: Optional[Dict[str, Any]] = None,
+        attention_kwargs: Optional[dict[str, Any]] = None,
         return_dict: bool = True,
         controlnet_block_samples=None,
         controlnet_single_block_samples=None,
-    ) -> Union[Tuple[torch.Tensor], Transformer2DModelOutput]:
+    ) -> Union[tuple[torch.Tensor], Transformer2DModelOutput]:
         """
         The [`BriaTransformer2DModel`] forward method.
 

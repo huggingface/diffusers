@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Optional, Union
 
 import torch
 import torch.nn as nn
@@ -38,7 +38,7 @@ logger = logging.get_logger(__name__)
 
 class AttentionMixin:
     @property
-    def attn_processors(self) -> Dict[str, AttentionProcessor]:
+    def attn_processors(self) -> dict[str, AttentionProcessor]:
         r"""
         Returns:
             `dict` of attention processors: A dictionary containing all attention processors used in the model with
@@ -47,7 +47,7 @@ class AttentionMixin:
         # set recursively
         processors = {}
 
-        def fn_recursive_add_processors(name: str, module: torch.nn.Module, processors: Dict[str, AttentionProcessor]):
+        def fn_recursive_add_processors(name: str, module: torch.nn.Module, processors: dict[str, AttentionProcessor]):
             if hasattr(module, "get_processor"):
                 processors[f"{name}.processor"] = module.get_processor()
 
@@ -61,7 +61,7 @@ class AttentionMixin:
 
         return processors
 
-    def set_attn_processor(self, processor: Union[AttentionProcessor, Dict[str, AttentionProcessor]]):
+    def set_attn_processor(self, processor: Union[AttentionProcessor, dict[str, AttentionProcessor]]):
         r"""
         Sets the attention processor to use to compute attention.
 
@@ -184,7 +184,7 @@ class AttentionModuleMixin:
     def set_use_xla_flash_attention(
         self,
         use_xla_flash_attention: bool,
-        partition_spec: Optional[Tuple[Optional[str], ...]] = None,
+        partition_spec: Optional[tuple[Optional[str], ...]] = None,
         is_flux=False,
     ) -> None:
         """
@@ -193,7 +193,7 @@ class AttentionModuleMixin:
         Args:
             use_xla_flash_attention (`bool`):
                 Whether to use pallas flash attention kernel from `torch_xla` or not.
-            partition_spec (`Tuple[]`, *optional*):
+            partition_spec (`tuple[]`, *optional*):
                 Specify the partition specification if using SPMD. Otherwise None.
             is_flux (`bool`, *optional*, defaults to `False`):
                 Whether the model is a Flux model.
@@ -669,8 +669,8 @@ class JointTransformerBlock(nn.Module):
         hidden_states: torch.FloatTensor,
         encoder_hidden_states: torch.FloatTensor,
         temb: torch.FloatTensor,
-        joint_attention_kwargs: Optional[Dict[str, Any]] = None,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        joint_attention_kwargs: Optional[dict[str, Any]] = None,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         joint_attention_kwargs = joint_attention_kwargs or {}
         if self.use_dual_attention:
             norm_hidden_states, gate_msa, shift_mlp, scale_mlp, gate_mlp, norm_hidden_states2, gate_msa2 = self.norm1(
@@ -950,9 +950,9 @@ class BasicTransformerBlock(nn.Module):
         encoder_hidden_states: Optional[torch.Tensor] = None,
         encoder_attention_mask: Optional[torch.Tensor] = None,
         timestep: Optional[torch.LongTensor] = None,
-        cross_attention_kwargs: Dict[str, Any] = None,
+        cross_attention_kwargs: dict[str, Any] = None,
         class_labels: Optional[torch.LongTensor] = None,
-        added_cond_kwargs: Optional[Dict[str, torch.Tensor]] = None,
+        added_cond_kwargs: Optional[dict[str, torch.Tensor]] = None,
     ) -> torch.Tensor:
         if cross_attention_kwargs is not None:
             if cross_attention_kwargs.get("scale", None) is not None:
@@ -1487,7 +1487,7 @@ class FreeNoiseTransformerBlock(nn.Module):
         self._chunk_size = None
         self._chunk_dim = 0
 
-    def _get_frame_indices(self, num_frames: int) -> List[Tuple[int, int]]:
+    def _get_frame_indices(self, num_frames: int) -> list[tuple[int, int]]:
         frame_indices = []
         for i in range(0, num_frames - self.context_length + 1, self.context_stride):
             window_start = i
@@ -1495,7 +1495,7 @@ class FreeNoiseTransformerBlock(nn.Module):
             frame_indices.append((window_start, window_end))
         return frame_indices
 
-    def _get_frame_weights(self, num_frames: int, weighting_scheme: str = "pyramid") -> List[float]:
+    def _get_frame_weights(self, num_frames: int, weighting_scheme: str = "pyramid") -> list[float]:
         if weighting_scheme == "flat":
             weights = [1.0] * num_frames
 
@@ -1545,7 +1545,7 @@ class FreeNoiseTransformerBlock(nn.Module):
         attention_mask: Optional[torch.Tensor] = None,
         encoder_hidden_states: Optional[torch.Tensor] = None,
         encoder_attention_mask: Optional[torch.Tensor] = None,
-        cross_attention_kwargs: Dict[str, Any] = None,
+        cross_attention_kwargs: dict[str, Any] = None,
         *args,
         **kwargs,
     ) -> torch.Tensor:

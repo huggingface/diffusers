@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import List, Union
+from typing import Union
 
 import numpy as np
 import PIL.Image
@@ -17,7 +17,7 @@ class CosmosPipelineOutput(BaseOutput):
     Output class for Cosmos any-to-world/video pipelines.
 
     Args:
-        frames (`torch.Tensor`, `np.ndarray`, or List[List[PIL.Image.Image]]):
+        frames (`torch.Tensor`, `np.ndarray`, or list[list[PIL.Image.Image]]):
             List of video outputs - It can be a nested list of length `batch_size,` with each sub-list containing
             denoised PIL image sequences of length `num_frames.` It can also be a NumPy array or Torch tensor of shape
             `(batch_size, num_frames, channels, height, width)`.
@@ -32,9 +32,9 @@ class CosmosImagePipelineOutput(BaseOutput):
     Output class for Cosmos any-to-image pipelines.
 
     Args:
-        images (`List[PIL.Image.Image]` or `np.ndarray`)
+        images (`list[PIL.Image.Image]` or `np.ndarray`)
             List of denoised PIL images of length `batch_size` or numpy array of shape `(batch_size, height, width,
             num_channels)`. PIL images or numpy array present the denoised images of the diffusion pipeline.
     """
 
-    images: Union[List[PIL.Image.Image], np.ndarray]
+    images: Union[list[PIL.Image.Image], np.ndarray]

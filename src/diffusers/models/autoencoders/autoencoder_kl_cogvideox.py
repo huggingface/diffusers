@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Dict, Optional, Tuple, Union
+from typing import Optional, Union
 
 import numpy as np
 import torch
@@ -72,7 +72,7 @@ class CogVideoXCausalConv3d(nn.Module):
     Args:
         in_channels (`int`): Number of channels in the input tensor.
         out_channels (`int`): Number of output channels produced by the convolution.
-        kernel_size (`int` or `Tuple[int, int, int]`): Kernel size of the convolutional kernel.
+        kernel_size (`int` or `tuple[int, int, int]`): Kernel size of the convolutional kernel.
         stride (`int`, defaults to `1`): Stride of the convolution.
         dilation (`int`, defaults to `1`): Dilation rate of the convolution.
         pad_mode (`str`, defaults to `"constant"`): Padding mode.
@@ -82,7 +82,7 @@ class CogVideoXCausalConv3d(nn.Module):
         self,
         in_channels: int,
         out_channels: int,
-        kernel_size: Union[int, Tuple[int, int, int]],
+        kernel_size: Union[int, tuple[int, int, int]],
         stride: int = 1,
         dilation: int = 1,
         pad_mode: str = "constant",
@@ -174,7 +174,7 @@ class CogVideoXSpatialNorm3D(nn.Module):
         self.conv_b = CogVideoXCausalConv3d(zq_channels, f_channels, kernel_size=1, stride=1)
 
     def forward(
-        self, f: torch.Tensor, zq: torch.Tensor, conv_cache: Optional[Dict[str, torch.Tensor]] = None
+        self, f: torch.Tensor, zq: torch.Tensor, conv_cache: Optional[dict[str, torch.Tensor]] = None
     ) -> torch.Tensor:
         new_conv_cache = {}
         conv_cache = conv_cache or {}
@@ -289,7 +289,7 @@ class CogVideoXResnetBlock3D(nn.Module):
         inputs: torch.Tensor,
         temb: Optional[torch.Tensor] = None,
         zq: Optional[torch.Tensor] = None,
-        conv_cache: Optional[Dict[str, torch.Tensor]] = None,
+        conv_cache: Optional[dict[str, torch.Tensor]] = None,
     ) -> torch.Tensor:
         new_conv_cache = {}
         conv_cache = conv_cache or {}
@@ -411,7 +411,7 @@ class CogVideoXDownBlock3D(nn.Module):
         hidden_states: torch.Tensor,
         temb: Optional[torch.Tensor] = None,
         zq: Optional[torch.Tensor] = None,
-        conv_cache: Optional[Dict[str, torch.Tensor]] = None,
+        conv_cache: Optional[dict[str, torch.Tensor]] = None,
     ) -> torch.Tensor:
         r"""Forward method of the `CogVideoXDownBlock3D` class."""
 
@@ -506,7 +506,7 @@ class CogVideoXMidBlock3D(nn.Module):
         hidden_states: torch.Tensor,
         temb: Optional[torch.Tensor] = None,
         zq: Optional[torch.Tensor] = None,
-        conv_cache: Optional[Dict[str, torch.Tensor]] = None,
+        conv_cache: Optional[dict[str, torch.Tensor]] = None,
     ) -> torch.Tensor:
         r"""Forward method of the `CogVideoXMidBlock3D` class."""
 
@@ -613,7 +613,7 @@ class CogVideoXUpBlock3D(nn.Module):
         hidden_states: torch.Tensor,
         temb: Optional[torch.Tensor] = None,
         zq: Optional[torch.Tensor] = None,
-        conv_cache: Optional[Dict[str, torch.Tensor]] = None,
+        conv_cache: Optional[dict[str, torch.Tensor]] = None,
     ) -> torch.Tensor:
         r"""Forward method of the `CogVideoXUpBlock3D` class."""
 
@@ -652,10 +652,10 @@ class CogVideoXEncoder3D(nn.Module):
             The number of input channels.
         out_channels (`int`, *optional*, defaults to 3):
             The number of output channels.
-        down_block_types (`Tuple[str, ...]`, *optional*, defaults to `("DownEncoderBlock2D",)`):
+        down_block_types (`tuple[str, ...]`, *optional*, defaults to `("DownEncoderBlock2D",)`):
             The types of down blocks to use. See `~diffusers.models.unet_2d_blocks.get_down_block` for available
             options.
-        block_out_channels (`Tuple[int, ...]`, *optional*, defaults to `(64,)`):
+        block_out_channels (`tuple[int, ...]`, *optional*, defaults to `(64,)`):
             The number of output channels for each block.
         act_fn (`str`, *optional*, defaults to `"silu"`):
             The activation function to use. See `~diffusers.models.activations.get_activation` for available options.
@@ -671,13 +671,13 @@ class CogVideoXEncoder3D(nn.Module):
         self,
         in_channels: int = 3,
         out_channels: int = 16,
-        down_block_types: Tuple[str, ...] = (
+        down_block_types: tuple[str, ...] = (
             "CogVideoXDownBlock3D",
             "CogVideoXDownBlock3D",
             "CogVideoXDownBlock3D",
             "CogVideoXDownBlock3D",
         ),
-        block_out_channels: Tuple[int, ...] = (128, 256, 256, 512),
+        block_out_channels: tuple[int, ...] = (128, 256, 256, 512),
         layers_per_block: int = 3,
         act_fn: str = "silu",
         norm_eps: float = 1e-6,
@@ -744,7 +744,7 @@ class CogVideoXEncoder3D(nn.Module):
         self,
         sample: torch.Tensor,
         temb: Optional[torch.Tensor] = None,
-        conv_cache: Optional[Dict[str, torch.Tensor]] = None,
+        conv_cache: Optional[dict[str, torch.Tensor]] = None,
     ) -> torch.Tensor:
         r"""The forward method of the `CogVideoXEncoder3D` class."""
 
@@ -805,9 +805,9 @@ class CogVideoXDecoder3D(nn.Module):
             The number of input channels.
         out_channels (`int`, *optional*, defaults to 3):
             The number of output channels.
-        up_block_types (`Tuple[str, ...]`, *optional*, defaults to `("UpDecoderBlock2D",)`):
+        up_block_types (`tuple[str, ...]`, *optional*, defaults to `("UpDecoderBlock2D",)`):
             The types of up blocks to use. See `~diffusers.models.unet_2d_blocks.get_up_block` for available options.
-        block_out_channels (`Tuple[int, ...]`, *optional*, defaults to `(64,)`):
+        block_out_channels (`tuple[int, ...]`, *optional*, defaults to `(64,)`):
             The number of output channels for each block.
         act_fn (`str`, *optional*, defaults to `"silu"`):
             The activation function to use. See `~diffusers.models.activations.get_activation` for available options.
@@ -823,13 +823,13 @@ class CogVideoXDecoder3D(nn.Module):
         self,
         in_channels: int = 16,
         out_channels: int = 3,
-        up_block_types: Tuple[str, ...] = (
+        up_block_types: tuple[str, ...] = (
             "CogVideoXUpBlock3D",
             "CogVideoXUpBlock3D",
             "CogVideoXUpBlock3D",
             "CogVideoXUpBlock3D",
         ),
-        block_out_channels: Tuple[int, ...] = (128, 256, 256, 512),
+        block_out_channels: tuple[int, ...] = (128, 256, 256, 512),
         layers_per_block: int = 3,
         act_fn: str = "silu",
         norm_eps: float = 1e-6,
@@ -903,7 +903,7 @@ class CogVideoXDecoder3D(nn.Module):
         self,
         sample: torch.Tensor,
         temb: Optional[torch.Tensor] = None,
-        conv_cache: Optional[Dict[str, torch.Tensor]] = None,
+        conv_cache: Optional[dict[str, torch.Tensor]] = None,
     ) -> torch.Tensor:
         r"""The forward method of the `CogVideoXDecoder3D` class."""
 
@@ -966,11 +966,11 @@ class AutoencoderKLCogVideoX(ModelMixin, ConfigMixin, FromOriginalModelMixin):
     Parameters:
         in_channels (int, *optional*, defaults to 3): Number of channels in the input image.
         out_channels (int,  *optional*, defaults to 3): Number of channels in the output.
-        down_block_types (`Tuple[str]`, *optional*, defaults to `("DownEncoderBlock2D",)`):
+        down_block_types (`tuple[str]`, *optional*, defaults to `("DownEncoderBlock2D",)`):
             Tuple of downsample block types.
-        up_block_types (`Tuple[str]`, *optional*, defaults to `("UpDecoderBlock2D",)`):
+        up_block_types (`tuple[str]`, *optional*, defaults to `("UpDecoderBlock2D",)`):
             Tuple of upsample block types.
-        block_out_channels (`Tuple[int]`, *optional*, defaults to `(64,)`):
+        block_out_channels (`tuple[int]`, *optional*, defaults to `(64,)`):
             Tuple of block output channels.
         act_fn (`str`, *optional*, defaults to `"silu"`): The activation function to use.
         sample_size (`int`, *optional*, defaults to `32`): Sample input size.
@@ -995,19 +995,19 @@ class AutoencoderKLCogVideoX(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         self,
         in_channels: int = 3,
         out_channels: int = 3,
-        down_block_types: Tuple[str] = (
+        down_block_types: tuple[str] = (
             "CogVideoXDownBlock3D",
             "CogVideoXDownBlock3D",
             "CogVideoXDownBlock3D",
             "CogVideoXDownBlock3D",
         ),
-        up_block_types: Tuple[str] = (
+        up_block_types: tuple[str] = (
             "CogVideoXUpBlock3D",
             "CogVideoXUpBlock3D",
             "CogVideoXUpBlock3D",
             "CogVideoXUpBlock3D",
         ),
-        block_out_channels: Tuple[int] = (128, 256, 256, 512),
+        block_out_channels: tuple[int] = (128, 256, 256, 512),
         latent_channels: int = 16,
         layers_per_block: int = 3,
         act_fn: str = "silu",
@@ -1018,8 +1018,8 @@ class AutoencoderKLCogVideoX(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         sample_width: int = 720,
         scaling_factor: float = 1.15258426,
         shift_factor: Optional[float] = None,
-        latents_mean: Optional[Tuple[float]] = None,
-        latents_std: Optional[Tuple[float]] = None,
+        latents_mean: Optional[tuple[float]] = None,
+        latents_std: Optional[tuple[float]] = None,
         force_upcast: float = True,
         use_quant_conv: bool = False,
         use_post_quant_conv: bool = False,
@@ -1174,7 +1174,7 @@ class AutoencoderKLCogVideoX(ModelMixin, ConfigMixin, FromOriginalModelMixin):
     @apply_forward_hook
     def encode(
         self, x: torch.Tensor, return_dict: bool = True
-    ) -> Union[AutoencoderKLOutput, Tuple[DiagonalGaussianDistribution]]:
+    ) -> Union[AutoencoderKLOutput, tuple[DiagonalGaussianDistribution]]:
         """
         Encode a batch of images into latents.
 

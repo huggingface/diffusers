@@ -17,7 +17,7 @@
 
 import math
 from dataclasses import dataclass
-from typing import List, Optional, Tuple, Union
+from typing import Optional, Tuple, Union
 
 import numpy as np
 import torch
@@ -195,7 +195,7 @@ class DDIMParallelScheduler(SchedulerMixin, ConfigMixin):
         beta_start: float = 0.0001,
         beta_end: float = 0.02,
         beta_schedule: str = "linear",
-        trained_betas: Optional[Union[np.ndarray, List[float]]] = None,
+        trained_betas: Optional[Union[np.ndarray, list[float]]] = None,
         clip_sample: bool = True,
         set_alpha_to_one: bool = True,
         steps_offset: int = 0,
@@ -490,7 +490,7 @@ class DDIMParallelScheduler(SchedulerMixin, ConfigMixin):
     def batch_step_no_noise(
         self,
         model_output: torch.Tensor,
-        timesteps: List[int],
+        timesteps: list[int],
         sample: torch.Tensor,
         eta: float = 0.0,
         use_clipped_model_output: bool = False,
@@ -505,7 +505,7 @@ class DDIMParallelScheduler(SchedulerMixin, ConfigMixin):
 
         Args:
             model_output (`torch.Tensor`): direct output from learned diffusion model.
-            timesteps (`List[int]`):
+            timesteps (`list[int]`):
                 current discrete timesteps in the diffusion chain. This is now a list of integers.
             sample (`torch.Tensor`):
                 current instance of sample being created by diffusion process.

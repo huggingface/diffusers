@@ -1,6 +1,6 @@
 import math
 from dataclasses import dataclass
-from typing import List, Optional, Tuple, Union
+from typing import Optional, Tuple, Union
 
 import torch
 
@@ -58,7 +58,7 @@ class AmusedScheduler(SchedulerMixin, ConfigMixin):
     def set_timesteps(
         self,
         num_inference_steps: int,
-        temperature: Union[int, Tuple[int, int], List[int]] = (2, 0),
+        temperature: Union[int, tuple[int, int], list[int]] = (2, 0),
         device: Union[str, torch.device] = None,
     ):
         self.timesteps = torch.arange(num_inference_steps, device=device).flip(0)

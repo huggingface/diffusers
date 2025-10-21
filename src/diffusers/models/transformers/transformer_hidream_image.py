@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Optional, Union
 
 import torch
 import torch.nn as nn
@@ -114,7 +114,7 @@ def rope(pos: torch.Tensor, dim: int, theta: int) -> torch.Tensor:
 
 
 class HiDreamImageEmbedND(nn.Module):
-    def __init__(self, theta: int, axes_dim: List[int]):
+    def __init__(self, theta: int, axes_dim: list[int]):
         super().__init__()
         self.theta = theta
         self.axes_dim = axes_dim
@@ -128,7 +128,7 @@ class HiDreamImageEmbedND(nn.Module):
         return emb.unsqueeze(2)
 
 
-def apply_rope(xq: torch.Tensor, xk: torch.Tensor, freqs_cis: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+def apply_rope(xq: torch.Tensor, xk: torch.Tensor, freqs_cis: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
     xq_ = xq.float().reshape(*xq.shape[:-1], -1, 1, 2)
     xk_ = xk.float().reshape(*xk.shape[:-1], -1, 1, 2)
     xq_out = freqs_cis[..., 0] * xq_[..., 0] + freqs_cis[..., 1] * xq_[..., 1]
@@ -534,7 +534,7 @@ class HiDreamImageTransformerBlock(nn.Module):
         encoder_hidden_states: Optional[torch.Tensor] = None,
         temb: Optional[torch.Tensor] = None,
         image_rotary_emb: torch.Tensor = None,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         wtype = hidden_states.dtype
         (
             shift_msa_i,
@@ -592,7 +592,7 @@ class HiDreamBlock(nn.Module):
         encoder_hidden_states: Optional[torch.Tensor] = None,
         temb: Optional[torch.Tensor] = None,
         image_rotary_emb: torch.Tensor = None,
-    ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
+    ) -> Union[torch.Tensor, tuple[torch.Tensor, torch.Tensor]]:
         return self.block(
             hidden_states=hidden_states,
             hidden_states_masks=hidden_states_masks,
@@ -616,13 +616,13 @@ class HiDreamImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, 
         num_single_layers: int = 32,
         attention_head_dim: int = 128,
         num_attention_heads: int = 20,
-        caption_channels: List[int] = None,
+        caption_channels: list[int] = None,
         text_emb_dim: int = 2048,
         num_routed_experts: int = 4,
         num_activated_experts: int = 2,
-        axes_dims_rope: Tuple[int, int] = (32, 32),
-        max_resolution: Tuple[int, int] = (128, 128),
-        llama_layers: List[int] = None,
+        axes_dims_rope: tuple[int, int] = (32, 32),
+        max_resolution: tuple[int, int] = (128, 128),
+        llama_layers: list[int] = None,
         force_inference_output: bool = False,
     ):
         super().__init__()
@@ -681,7 +681,7 @@ class HiDreamImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, 
 
         self.gradient_checkpointing = False
 
-    def unpatchify(self, x: torch.Tensor, img_sizes: List[Tuple[int, int]], is_training: bool) -> List[torch.Tensor]:
+    def unpatchify(self, x: torch.Tensor, img_sizes: list[tuple[int, int]], is_training: bool) -> list[torch.Tensor]:
         if is_training and not self.config.force_inference_output:
             B, S, F = x.shape
             C = F // (self.config.patch_size * self.config.patch_size)
@@ -781,12 +781,12 @@ class HiDreamImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, 
         encoder_hidden_states_llama3: torch.Tensor = None,
         pooled_embeds: torch.Tensor = None,
         img_ids: Optional[torch.Tensor] = None,
-        img_sizes: Optional[List[Tuple[int, int]]] = None,
+        img_sizes: Optional[list[tuple[int, int]]] = None,
         hidden_states_masks: Optional[torch.Tensor] = None,
-        attention_kwargs: Optional[Dict[str, Any]] = None,
+        attention_kwargs: Optional[dict[str, Any]] = None,
         return_dict: bool = True,
         **kwargs,
-    ) -> Union[Tuple[torch.Tensor], Transformer2DModelOutput]:
+    ) -> Union[tuple[torch.Tensor], Transformer2DModelOutput]:
         encoder_hidden_states = kwargs.get("encoder_hidden_states", None)
 
         if encoder_hidden_states is not None:

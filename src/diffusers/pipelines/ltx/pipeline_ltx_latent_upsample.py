@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import List, Optional, Union
+from typing import Optional, Union
 
 import torch
 
@@ -243,15 +243,15 @@ class LTXLatentUpsamplePipeline(DiffusionPipeline):
     @torch.no_grad()
     def __call__(
         self,
-        video: Optional[List[PipelineImageInput]] = None,
+        video: Optional[list[PipelineImageInput]] = None,
         height: int = 512,
         width: int = 704,
         latents: Optional[torch.Tensor] = None,
-        decode_timestep: Union[float, List[float]] = 0.0,
-        decode_noise_scale: Optional[Union[float, List[float]]] = None,
+        decode_timestep: Union[float, list[float]] = 0.0,
+        decode_noise_scale: Optional[Union[float, list[float]]] = None,
         adain_factor: float = 0.0,
         tone_map_compression_ratio: float = 0.0,
-        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
+        generator: Optional[Union[torch.Generator, list[torch.Generator]]] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
     ):

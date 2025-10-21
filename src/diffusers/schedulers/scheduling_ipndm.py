@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import math
-from typing import List, Optional, Tuple, Union
+from typing import Optional, Tuple, Union
 
 import numpy as np
 import torch
@@ -40,7 +40,7 @@ class IPNDMScheduler(SchedulerMixin, ConfigMixin):
 
     @register_to_config
     def __init__(
-        self, num_train_timesteps: int = 1000, trained_betas: Optional[Union[np.ndarray, List[float]]] = None
+        self, num_train_timesteps: int = 1000, trained_betas: Optional[Union[np.ndarray, list[float]]] = None
     ):
         # set `betas`, `alphas`, `timesteps`
         self.set_timesteps(num_train_timesteps)

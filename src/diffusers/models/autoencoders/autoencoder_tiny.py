@@ -14,7 +14,7 @@
 
 
 from dataclasses import dataclass
-from typing import Optional, Tuple, Union
+from typing import Optional, Union
 
 import torch
 
@@ -50,10 +50,10 @@ class AutoencoderTiny(ModelMixin, ConfigMixin):
     Parameters:
         in_channels (`int`, *optional*, defaults to 3): Number of channels in the input image.
         out_channels (`int`,  *optional*, defaults to 3): Number of channels in the output.
-        encoder_block_out_channels (`Tuple[int]`, *optional*, defaults to `(64, 64, 64, 64)`):
+        encoder_block_out_channels (`tuple[int]`, *optional*, defaults to `(64, 64, 64, 64)`):
             Tuple of integers representing the number of output channels for each encoder block. The length of the
             tuple should be equal to the number of encoder blocks.
-        decoder_block_out_channels (`Tuple[int]`, *optional*, defaults to `(64, 64, 64, 64)`):
+        decoder_block_out_channels (`tuple[int]`, *optional*, defaults to `(64, 64, 64, 64)`):
             Tuple of integers representing the number of output channels for each decoder block. The length of the
             tuple should be equal to the number of decoder blocks.
         act_fn (`str`, *optional*, defaults to `"relu"`):
@@ -64,11 +64,11 @@ class AutoencoderTiny(ModelMixin, ConfigMixin):
         upsampling_scaling_factor (`int`, *optional*, defaults to 2):
             Scaling factor for upsampling in the decoder. It determines the size of the output image during the
             upsampling process.
-        num_encoder_blocks (`Tuple[int]`, *optional*, defaults to `(1, 3, 3, 3)`):
+        num_encoder_blocks (`tuple[int]`, *optional*, defaults to `(1, 3, 3, 3)`):
             Tuple of integers representing the number of encoder blocks at each stage of the encoding process. The
             length of the tuple should be equal to the number of stages in the encoder. Each stage has a different
             number of encoder blocks.
-        num_decoder_blocks (`Tuple[int]`, *optional*, defaults to `(3, 3, 3, 1)`):
+        num_decoder_blocks (`tuple[int]`, *optional*, defaults to `(3, 3, 3, 1)`):
             Tuple of integers representing the number of decoder blocks at each stage of the decoding process. The
             length of the tuple should be equal to the number of stages in the decoder. Each stage has a different
             number of decoder blocks.
@@ -99,14 +99,14 @@ class AutoencoderTiny(ModelMixin, ConfigMixin):
         self,
         in_channels: int = 3,
         out_channels: int = 3,
-        encoder_block_out_channels: Tuple[int, ...] = (64, 64, 64, 64),
-        decoder_block_out_channels: Tuple[int, ...] = (64, 64, 64, 64),
+        encoder_block_out_channels: tuple[int, ...] = (64, 64, 64, 64),
+        decoder_block_out_channels: tuple[int, ...] = (64, 64, 64, 64),
         act_fn: str = "relu",
         upsample_fn: str = "nearest",
         latent_channels: int = 4,
         upsampling_scaling_factor: int = 2,
-        num_encoder_blocks: Tuple[int, ...] = (1, 3, 3, 3),
-        num_decoder_blocks: Tuple[int, ...] = (3, 3, 3, 1),
+        num_encoder_blocks: tuple[int, ...] = (1, 3, 3, 3),
+        num_decoder_blocks: tuple[int, ...] = (3, 3, 3, 1),
         latent_magnitude: int = 3,
         latent_shift: float = 0.5,
         force_upcast: bool = False,
@@ -287,7 +287,7 @@ class AutoencoderTiny(ModelMixin, ConfigMixin):
         return out
 
     @apply_forward_hook
-    def encode(self, x: torch.Tensor, return_dict: bool = True) -> Union[AutoencoderTinyOutput, Tuple[torch.Tensor]]:
+    def encode(self, x: torch.Tensor, return_dict: bool = True) -> Union[AutoencoderTinyOutput, tuple[torch.Tensor]]:
         if self.use_slicing and x.shape[0] > 1:
             output = [
                 self._tiled_encode(x_slice) if self.use_tiling else self.encoder(x_slice) for x_slice in x.split(1)
@@ -304,7 +304,7 @@ class AutoencoderTiny(ModelMixin, ConfigMixin):
     @apply_forward_hook
     def decode(
         self, x: torch.Tensor, generator: Optional[torch.Generator] = None, return_dict: bool = True
-    ) -> Union[DecoderOutput, Tuple[torch.Tensor]]:
+    ) -> Union[DecoderOutput, tuple[torch.Tensor]]:
         if self.use_slicing and x.shape[0] > 1:
             output = [
                 self._tiled_decode(x_slice) if self.use_tiling else self.decoder(x_slice) for x_slice in x.split(1)
@@ -322,7 +322,7 @@ class AutoencoderTiny(ModelMixin, ConfigMixin):
         self,
         sample: torch.Tensor,
         return_dict: bool = True,
-    ) -> Union[DecoderOutput, Tuple[torch.Tensor]]:
+    ) -> Union[DecoderOutput, tuple[torch.Tensor]]:
         r"""
         Args:
             sample (`torch.Tensor`): Input sample.

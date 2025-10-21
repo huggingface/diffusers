@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import math
-from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Optional, Union
 
 import torch
 
@@ -54,11 +54,11 @@ class SmoothedEnergyGuidance(BaseGuidance):
             The fraction of the total number of denoising steps after which smoothed energy guidance starts.
         seg_guidance_stop (`float`, defaults to `1.0`):
             The fraction of the total number of denoising steps after which smoothed energy guidance stops.
-        seg_guidance_layers (`int` or `List[int]`, *optional*):
+        seg_guidance_layers (`int` or `list[int]`, *optional*):
             The layer indices to apply smoothed energy guidance to. Can be a single integer or a list of integers. If
             not provided, `seg_guidance_config` must be provided. The recommended values are `[7, 8, 9]` for Stable
             Diffusion 3.5 Medium.
-        seg_guidance_config (`SmoothedEnergyGuidanceConfig` or `List[SmoothedEnergyGuidanceConfig]`, *optional*):
+        seg_guidance_config (`SmoothedEnergyGuidanceConfig` or `list[SmoothedEnergyGuidanceConfig]`, *optional*):
             The configuration for the smoothed energy layer guidance. Can be a single `SmoothedEnergyGuidanceConfig` or
             a list of `SmoothedEnergyGuidanceConfig`. If not provided, `seg_guidance_layers` must be provided.
         guidance_rescale (`float`, defaults to `0.0`):
@@ -86,8 +86,8 @@ class SmoothedEnergyGuidance(BaseGuidance):
         seg_blur_threshold_inf: float = 9999.0,
         seg_guidance_start: float = 0.0,
         seg_guidance_stop: float = 1.0,
-        seg_guidance_layers: Optional[Union[int, List[int]]] = None,
-        seg_guidance_config: Union[SmoothedEnergyGuidanceConfig, List[SmoothedEnergyGuidanceConfig]] = None,
+        seg_guidance_layers: Optional[Union[int, list[int]]] = None,
+        seg_guidance_config: Union[SmoothedEnergyGuidanceConfig, list[SmoothedEnergyGuidanceConfig]] = None,
         guidance_rescale: float = 0.0,
         use_original_formulation: bool = False,
         start: float = 0.0,
@@ -154,8 +154,8 @@ class SmoothedEnergyGuidance(BaseGuidance):
                 registry.remove_hook(hook_name, recurse=True)
 
     def prepare_inputs(
-        self, data: "BlockState", input_fields: Optional[Dict[str, Union[str, Tuple[str, str]]]] = None
-    ) -> List["BlockState"]:
+        self, data: "BlockState", input_fields: Optional[dict[str, Union[str, tuple[str, str]]]] = None
+    ) -> list["BlockState"]:
         if input_fields is None:
             input_fields = self._input_fields
 

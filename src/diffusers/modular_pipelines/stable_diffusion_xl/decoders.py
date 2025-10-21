@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Any, List, Tuple, Union
+from typing import Any, Union
 
 import numpy as np
 import PIL
@@ -37,7 +37,7 @@ class StableDiffusionXLDecodeStep(ModularPipelineBlocks):
     model_name = "stable-diffusion-xl"
 
     @property
-    def expected_components(self) -> List[ComponentSpec]:
+    def expected_components(self) -> list[ComponentSpec]:
         return [
             ComponentSpec("vae", AutoencoderKL),
             ComponentSpec(
@@ -53,7 +53,7 @@ class StableDiffusionXLDecodeStep(ModularPipelineBlocks):
         return "Step that decodes the denoised latents into images"
 
     @property
-    def inputs(self) -> List[Tuple[str, Any]]:
+    def inputs(self) -> list[tuple[str, Any]]:
         return [
             InputParam("output_type", default="pil"),
             InputParam(
@@ -65,11 +65,11 @@ class StableDiffusionXLDecodeStep(ModularPipelineBlocks):
         ]
 
     @property
-    def intermediate_outputs(self) -> List[str]:
+    def intermediate_outputs(self) -> list[str]:
         return [
             OutputParam(
                 "images",
-                type_hint=Union[List[PIL.Image.Image], List[torch.Tensor], List[np.array]],
+                type_hint=Union[list[PIL.Image.Image], list[torch.Tensor], list[np.array]],
                 description="The generated images, can be a PIL.Image.Image, torch.Tensor or a numpy array",
             )
         ]
@@ -163,7 +163,7 @@ class StableDiffusionXLInpaintOverlayMaskStep(ModularPipelineBlocks):
         )
 
     @property
-    def expected_components(self) -> List[ComponentSpec]:
+    def expected_components(self) -> list[ComponentSpec]:
         return [
             ComponentSpec(
                 "image_processor",
@@ -174,19 +174,19 @@ class StableDiffusionXLInpaintOverlayMaskStep(ModularPipelineBlocks):
         ]
 
     @property
-    def inputs(self) -> List[Tuple[str, Any]]:
+    def inputs(self) -> list[tuple[str, Any]]:
         return [
             InputParam("image"),
             InputParam("mask_image"),
             InputParam("padding_mask_crop"),
             InputParam(
                 "images",
-                type_hint=Union[List[PIL.Image.Image], List[torch.Tensor], List[np.array]],
+                type_hint=Union[list[PIL.Image.Image], list[torch.Tensor], list[np.array]],
                 description="The generated images from the decode step",
             ),
             InputParam(
                 "crops_coords",
-                type_hint=Tuple[int, int],
+                type_hint=tuple[int, int],
                 description="The crop coordinates to use for preprocess/postprocess the image and mask, for inpainting task only. Can be generated in vae_encode step.",
             ),
         ]

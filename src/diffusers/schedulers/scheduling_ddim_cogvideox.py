@@ -18,7 +18,7 @@
 
 import math
 from dataclasses import dataclass
-from typing import List, Optional, Tuple, Union
+from typing import Optional, Tuple, Union
 
 import numpy as np
 import torch
@@ -183,7 +183,7 @@ class CogVideoXDDIMScheduler(SchedulerMixin, ConfigMixin):
         beta_start: float = 0.00085,
         beta_end: float = 0.0120,
         beta_schedule: str = "scaled_linear",
-        trained_betas: Optional[Union[np.ndarray, List[float]]] = None,
+        trained_betas: Optional[Union[np.ndarray, list[float]]] = None,
         clip_sample: bool = True,
         set_alpha_to_one: bool = True,
         steps_offset: int = 0,

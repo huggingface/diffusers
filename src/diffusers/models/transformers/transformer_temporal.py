@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 from dataclasses import dataclass
-from typing import Any, Dict, Optional
+from typing import Any, Optional
 
 import torch
 from torch import nn
@@ -127,7 +127,7 @@ class TransformerTemporalModel(ModelMixin, ConfigMixin):
         timestep: Optional[torch.LongTensor] = None,
         class_labels: torch.LongTensor = None,
         num_frames: int = 1,
-        cross_attention_kwargs: Optional[Dict[str, Any]] = None,
+        cross_attention_kwargs: Optional[dict[str, Any]] = None,
         return_dict: bool = True,
     ) -> TransformerTemporalModelOutput:
         """

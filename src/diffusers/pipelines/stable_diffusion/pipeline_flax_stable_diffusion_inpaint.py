@@ -14,7 +14,7 @@
 
 import warnings
 from functools import partial
-from typing import Dict, List, Optional, Union
+from typing import Dict, Optional, Union
 
 import jax
 import jax.numpy as jnp
@@ -193,9 +193,9 @@ class FlaxStableDiffusionInpaintPipeline(FlaxDiffusionPipeline):
 
     def prepare_inputs(
         self,
-        prompt: Union[str, List[str]],
-        image: Union[Image.Image, List[Image.Image]],
-        mask: Union[Image.Image, List[Image.Image]],
+        prompt: Union[str, list[str]],
+        image: Union[Image.Image, list[Image.Image]],
+        mask: Union[Image.Image, list[Image.Image]],
     ):
         if not isinstance(prompt, (str, list)):
             raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
@@ -412,7 +412,7 @@ class FlaxStableDiffusionInpaintPipeline(FlaxDiffusionPipeline):
         Function invoked when calling the pipeline for generation.
 
         Args:
-            prompt (`str` or `List[str]`):
+            prompt (`str` or `list[str]`):
                 The prompt or prompts to guide image generation.
             height (`int`, *optional*, defaults to `self.unet.config.sample_size * self.vae_scale_factor`):
                 The height in pixels of the generated image.

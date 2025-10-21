@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import re
-from typing import Optional, Tuple, Type, Union
+from typing import Optional, Type, Union
 
 import torch
 
@@ -102,8 +102,8 @@ def apply_layerwise_casting(
     module: torch.nn.Module,
     storage_dtype: torch.dtype,
     compute_dtype: torch.dtype,
-    skip_modules_pattern: Union[str, Tuple[str, ...]] = "auto",
-    skip_modules_classes: Optional[Tuple[Type[torch.nn.Module], ...]] = None,
+    skip_modules_pattern: Union[str, tuple[str, ...]] = "auto",
+    skip_modules_classes: Optional[tuple[Type[torch.nn.Module], ...]] = None,
     non_blocking: bool = False,
 ) -> None:
     r"""
@@ -137,12 +137,12 @@ def apply_layerwise_casting(
             The dtype to cast the module to before/after the forward pass for storage.
         compute_dtype (`torch.dtype`):
             The dtype to cast the module to during the forward pass for computation.
-        skip_modules_pattern (`Tuple[str, ...]`, defaults to `"auto"`):
+        skip_modules_pattern (`tuple[str, ...]`, defaults to `"auto"`):
             A list of patterns to match the names of the modules to skip during the layerwise casting process. If set
             to `"auto"`, the default patterns are used. If set to `None`, no modules are skipped. If set to `None`
             alongside `skip_modules_classes` being `None`, the layerwise casting is applied directly to the module
             instead of its internal submodules.
-        skip_modules_classes (`Tuple[Type[torch.nn.Module], ...]`, defaults to `None`):
+        skip_modules_classes (`tuple[Type[torch.nn.Module], ...]`, defaults to `None`):
             A list of module classes to skip during the layerwise casting process.
         non_blocking (`bool`, defaults to `False`):
             If `True`, the weight casting operations are non-blocking.
@@ -169,8 +169,8 @@ def _apply_layerwise_casting(
     module: torch.nn.Module,
     storage_dtype: torch.dtype,
     compute_dtype: torch.dtype,
-    skip_modules_pattern: Optional[Tuple[str, ...]] = None,
-    skip_modules_classes: Optional[Tuple[Type[torch.nn.Module], ...]] = None,
+    skip_modules_pattern: Optional[tuple[str, ...]] = None,
+    skip_modules_classes: Optional[tuple[Type[torch.nn.Module], ...]] = None,
     non_blocking: bool = False,
     _prefix: str = "",
 ) -> None:

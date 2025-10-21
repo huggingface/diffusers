@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import math
-from typing import Optional, Tuple
+from typing import Optional
 
 import torch
 from torch import nn
@@ -201,7 +201,7 @@ class DecoderLayer(nn.Module):
         encoder_hidden_states: Optional[torch.Tensor] = None,
         encoder_attention_mask: Optional[torch.Tensor] = None,
         encoder_decoder_position_bias=None,
-    ) -> Tuple[torch.Tensor]:
+    ) -> tuple[torch.Tensor]:
         hidden_states = self.layer[0](
             hidden_states,
             conditioning_emb=conditioning_emb,

@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import inspect
-from typing import Callable, List, Optional, Tuple, Union
+from typing import Callable, Optional, Tuple, Union
 
 import numpy as np
 import PIL.Image
@@ -158,7 +158,7 @@ class VersatileDiffusionDualGuidedPipeline(DiffusionPipeline):
         Encodes the prompt into text encoder hidden states.
 
         Args:
-            prompt (`str` or `List[str]`):
+            prompt (`str` or `list[str]`):
                 prompt to be encoded
             device: (`torch.device`):
                 torch device
@@ -249,7 +249,7 @@ class VersatileDiffusionDualGuidedPipeline(DiffusionPipeline):
         Encodes the prompt into text encoder hidden states.
 
         Args:
-            prompt (`str` or `List[str]`):
+            prompt (`str` or `list[str]`):
                 prompt to be encoded
             device: (`torch.device`):
                 torch device
@@ -385,8 +385,8 @@ class VersatileDiffusionDualGuidedPipeline(DiffusionPipeline):
     @torch.no_grad()
     def __call__(
         self,
-        prompt: Union[PIL.Image.Image, List[PIL.Image.Image]],
-        image: Union[str, List[str]],
+        prompt: Union[PIL.Image.Image, list[PIL.Image.Image]],
+        image: Union[str, list[str]],
         text_to_image_strength: float = 0.5,
         height: Optional[int] = None,
         width: Optional[int] = None,
@@ -394,7 +394,7 @@ class VersatileDiffusionDualGuidedPipeline(DiffusionPipeline):
         guidance_scale: float = 7.5,
         num_images_per_prompt: Optional[int] = 1,
         eta: float = 0.0,
-        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
+        generator: Optional[Union[torch.Generator, list[torch.Generator]]] = None,
         latents: Optional[torch.Tensor] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
@@ -406,7 +406,7 @@ class VersatileDiffusionDualGuidedPipeline(DiffusionPipeline):
         The call function to the pipeline for generation.
 
         Args:
-            prompt (`str` or `List[str]`):
+            prompt (`str` or `list[str]`):
                 The prompt or prompts to guide image generation.
             height (`int`, *optional*, defaults to `self.image_unet.config.sample_size * self.vae_scale_factor`):
                 The height in pixels of the generated image.
@@ -418,7 +418,7 @@ class VersatileDiffusionDualGuidedPipeline(DiffusionPipeline):
             guidance_scale (`float`, *optional*, defaults to 7.5):
                 A higher guidance scale value encourages the model to generate images closely linked to the text
                 `prompt` at the expense of lower image quality. Guidance scale is enabled when `guidance_scale > 1`.
-            negative_prompt (`str` or `List[str]`, *optional*):
+            negative_prompt (`str` or `list[str]`, *optional*):
                 The prompt or prompts to guide what to not include in image generation. If not defined, you need to
                 pass `negative_prompt_embeds` instead. Ignored when not using guidance (`guidance_scale < 1`).
             num_images_per_prompt (`int`, *optional*, defaults to 1):
@@ -426,7 +426,7 @@ class VersatileDiffusionDualGuidedPipeline(DiffusionPipeline):
             eta (`float`, *optional*, defaults to 0.0):
                 Corresponds to parameter eta (η) from the [DDIM](https://huggingface.co/papers/2010.02502) paper. Only
                 applies to the [`~schedulers.DDIMScheduler`], and is ignored in other schedulers.
-            generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
+            generator (`torch.Generator` or `list[torch.Generator]`, *optional*):
                 A [`torch.Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make
                 generation deterministic.
             latents (`torch.Tensor`, *optional*):

@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Callable, List, Optional, Union
+from typing import Callable, Optional, Union
 
 import PIL.Image
 import torch
@@ -200,9 +200,9 @@ class KandinskyV22ControlnetImg2ImgPipeline(DiffusionPipeline):
     @torch.no_grad()
     def __call__(
         self,
-        image_embeds: Union[torch.Tensor, List[torch.Tensor]],
-        image: Union[torch.Tensor, PIL.Image.Image, List[torch.Tensor], List[PIL.Image.Image]],
-        negative_image_embeds: Union[torch.Tensor, List[torch.Tensor]],
+        image_embeds: Union[torch.Tensor, list[torch.Tensor]],
+        image: Union[torch.Tensor, PIL.Image.Image, list[torch.Tensor], list[PIL.Image.Image]],
+        negative_image_embeds: Union[torch.Tensor, list[torch.Tensor]],
         hint: torch.Tensor,
         height: int = 512,
         width: int = 512,
@@ -210,7 +210,7 @@ class KandinskyV22ControlnetImg2ImgPipeline(DiffusionPipeline):
         guidance_scale: float = 4.0,
         strength: float = 0.3,
         num_images_per_prompt: int = 1,
-        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
+        generator: Optional[Union[torch.Generator, list[torch.Generator]]] = None,
         output_type: Optional[str] = "pil",
         callback: Optional[Callable[[int, int, torch.Tensor], None]] = None,
         callback_steps: int = 1,
@@ -220,9 +220,9 @@ class KandinskyV22ControlnetImg2ImgPipeline(DiffusionPipeline):
         Function invoked when calling the pipeline for generation.
 
         Args:
-            image_embeds (`torch.Tensor` or `List[torch.Tensor]`):
+            image_embeds (`torch.Tensor` or `list[torch.Tensor]`):
                 The clip image embeddings for text prompt, that will be used to condition the image generation.
-            image (`torch.Tensor`, `PIL.Image.Image`, `np.ndarray`, `List[torch.Tensor]`, `List[PIL.Image.Image]`, or `List[np.ndarray]`):
+            image (`torch.Tensor`, `PIL.Image.Image`, `np.ndarray`, `list[torch.Tensor]`, `list[PIL.Image.Image]`, or `list[np.ndarray]`):
                 `Image`, or tensor representing an image batch, that will be used as the starting point for the
                 process. Can also accept image latents as `image`, if passing latents directly, it will not be encoded
                 again.
@@ -234,7 +234,7 @@ class KandinskyV22ControlnetImg2ImgPipeline(DiffusionPipeline):
                 `num_inference_steps`. A value of 1, therefore, essentially ignores `image`.
             hint (`torch.Tensor`):
                 The controlnet condition.
-            negative_image_embeds (`torch.Tensor` or `List[torch.Tensor]`):
+            negative_image_embeds (`torch.Tensor` or `list[torch.Tensor]`):
                 The clip image embeddings for negative text prompt, will be used to condition the image generation.
             height (`int`, *optional*, defaults to 512):
                 The height in pixels of the generated image.
@@ -251,7 +251,7 @@ class KandinskyV22ControlnetImg2ImgPipeline(DiffusionPipeline):
                 the text `prompt`, usually at the expense of lower image quality.
             num_images_per_prompt (`int`, *optional*, defaults to 1):
                 The number of images to generate per prompt.
-            generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
+            generator (`torch.Generator` or `list[torch.Generator]`, *optional*):
                 One or a list of [torch generator(s)](https://pytorch.org/docs/stable/generated/torch.Generator.html)
                 to make generation deterministic.
             output_type (`str`, *optional*, defaults to `"pil"`):

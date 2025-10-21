@@ -18,7 +18,7 @@
 # --------------------------------------------------------------------------
 from dataclasses import dataclass
 from functools import partial
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Optional, Union
 
 import numpy as np
 import torch
@@ -202,9 +202,9 @@ class MarigoldDepthPipeline(DiffusionPipeline):
         resample_method_input: str,
         resample_method_output: str,
         batch_size: int,
-        ensembling_kwargs: Optional[Dict[str, Any]],
+        ensembling_kwargs: Optional[dict[str, Any]],
         latents: Optional[torch.Tensor],
-        generator: Optional[Union[torch.Generator, List[torch.Generator]]],
+        generator: Optional[Union[torch.Generator, list[torch.Generator]]],
         output_type: str,
         output_uncertainty: bool,
     ) -> int:
@@ -356,9 +356,9 @@ class MarigoldDepthPipeline(DiffusionPipeline):
         resample_method_input: str = "bilinear",
         resample_method_output: str = "bilinear",
         batch_size: int = 1,
-        ensembling_kwargs: Optional[Dict[str, Any]] = None,
-        latents: Optional[Union[torch.Tensor, List[torch.Tensor]]] = None,
-        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
+        ensembling_kwargs: Optional[dict[str, Any]] = None,
+        latents: Optional[Union[torch.Tensor, list[torch.Tensor]]] = None,
+        generator: Optional[Union[torch.Generator, list[torch.Generator]]] = None,
         output_type: str = "np",
         output_uncertainty: bool = False,
         output_latent: bool = False,
@@ -368,8 +368,8 @@ class MarigoldDepthPipeline(DiffusionPipeline):
         Function invoked when calling the pipeline.
 
         Args:
-            image (`PIL.Image.Image`, `np.ndarray`, `torch.Tensor`, `List[PIL.Image.Image]`, `List[np.ndarray]`),
-                `List[torch.Tensor]`: An input image or images used as an input for the depth estimation task. For
+            image (`PIL.Image.Image`, `np.ndarray`, `torch.Tensor`, `list[PIL.Image.Image]`, `list[np.ndarray]`),
+                `list[torch.Tensor]`: An input image or images used as an input for the depth estimation task. For
                 arrays and tensors, the expected value range is between `[0, 1]`. Passing a batch of images is possible
                 by providing a four-dimensional array or a tensor. Additionally, a list of images of two- or
                 three-dimensional arrays or tensors can be passed. In the latter case, all list elements must have the
@@ -406,10 +406,10 @@ class MarigoldDepthPipeline(DiffusionPipeline):
                   tolerance is reached.
                 - max_res (`int`, *optional*, defaults to `None`): Resolution at which the alignment is performed;
                   `None` matches the `processing_resolution`.
-            latents (`torch.Tensor`, or `List[torch.Tensor]`, *optional*, defaults to `None`):
+            latents (`torch.Tensor`, or `list[torch.Tensor]`, *optional*, defaults to `None`):
                 Latent noise tensors to replace the random initialization. These can be taken from the previous
                 function call's output.
-            generator (`torch.Generator`, or `List[torch.Generator]`, *optional*, defaults to `None`):
+            generator (`torch.Generator`, or `list[torch.Generator]`, *optional*, defaults to `None`):
                 Random number generator object to ensure reproducibility.
             output_type (`str`, *optional*, defaults to `"np"`):
                 Preferred format of the output's `prediction` and the optional `uncertainty` fields. The accepted
@@ -625,7 +625,7 @@ class MarigoldDepthPipeline(DiffusionPipeline):
         generator: Optional[torch.Generator],
         ensemble_size: int,
         batch_size: int,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         def retrieve_latents(encoder_output):
             if hasattr(encoder_output, "latent_dist"):
                 return encoder_output.latent_dist.mode()
@@ -680,7 +680,7 @@ class MarigoldDepthPipeline(DiffusionPipeline):
         max_iter: int = 2,
         tol: float = 1e-3,
         max_res: int = 1024,
-    ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
+    ) -> tuple[torch.Tensor, Optional[torch.Tensor]]:
         """
         Ensembles the depth maps represented by the `depth` tensor with expected shape `(B, 1, H, W)`, where B is the
         number of ensemble members for a given prediction of size `(H x W)`. Even though the function is designed for
@@ -754,7 +754,7 @@ class MarigoldDepthPipeline(DiffusionPipeline):
 
         def ensemble(
             depth_aligned: torch.Tensor, return_uncertainty: bool = False
-        ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
+        ) -> tuple[torch.Tensor, Optional[torch.Tensor]]:
             uncertainty = None
             if reduction == "mean":
                 prediction = torch.mean(depth_aligned, dim=0, keepdim=True)

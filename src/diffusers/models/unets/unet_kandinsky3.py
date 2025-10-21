@@ -13,7 +13,7 @@
 # limitations under the License.
 
 from dataclasses import dataclass
-from typing import Dict, Tuple, Union
+from typing import Union
 
 import torch
 from torch import nn
@@ -53,9 +53,9 @@ class Kandinsky3UNet(ModelMixin, ConfigMixin):
         time_embedding_dim: int = 1536,
         groups: int = 32,
         attention_head_dim: int = 64,
-        layers_per_block: Union[int, Tuple[int]] = 3,
-        block_out_channels: Tuple[int] = (384, 768, 1536, 3072),
-        cross_attention_dim: Union[int, Tuple[int]] = 4096,
+        layers_per_block: Union[int, tuple[int]] = 3,
+        block_out_channels: tuple[int] = (384, 768, 1536, 3072),
+        cross_attention_dim: Union[int, tuple[int]] = 4096,
         encoder_hid_dim: int = 4096,
     ):
         super().__init__()
@@ -141,7 +141,7 @@ class Kandinsky3UNet(ModelMixin, ConfigMixin):
         self.conv_out = nn.Conv2d(init_channels, out_channels, kernel_size=3, padding=1)
 
     @property
-    def attn_processors(self) -> Dict[str, AttentionProcessor]:
+    def attn_processors(self) -> dict[str, AttentionProcessor]:
         r"""
         Returns:
             `dict` of attention processors: A dictionary containing all attention processors used in the model with
@@ -150,7 +150,7 @@ class Kandinsky3UNet(ModelMixin, ConfigMixin):
         # set recursively
         processors = {}
 
-        def fn_recursive_add_processors(name: str, module: torch.nn.Module, processors: Dict[str, AttentionProcessor]):
+        def fn_recursive_add_processors(name: str, module: torch.nn.Module, processors: dict[str, AttentionProcessor]):
             if hasattr(module, "set_processor"):
                 processors[f"{name}.processor"] = module.processor
 
@@ -164,7 +164,7 @@ class Kandinsky3UNet(ModelMixin, ConfigMixin):
 
         return processors
 
-    def set_attn_processor(self, processor: Union[AttentionProcessor, Dict[str, AttentionProcessor]]):
+    def set_attn_processor(self, processor: Union[AttentionProcessor, dict[str, AttentionProcessor]]):
         r"""
         Sets the attention processor to use to compute attention.
 

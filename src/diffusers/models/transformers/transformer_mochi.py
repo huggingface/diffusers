@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Optional
 
 import torch
 import torch.nn as nn
@@ -104,7 +104,7 @@ class MochiRMSNormZero(nn.Module):
 
     def forward(
         self, hidden_states: torch.Tensor, emb: torch.Tensor
-    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         hidden_states_dtype = hidden_states.dtype
 
         emb = self.linear(self.silu(emb))
@@ -206,7 +206,7 @@ class MochiTransformerBlock(nn.Module):
         temb: torch.Tensor,
         encoder_attention_mask: torch.Tensor,
         image_rotary_emb: Optional[torch.Tensor] = None,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         norm_hidden_states, gate_msa, scale_mlp, gate_mlp = self.norm1(hidden_states, temb)
 
         if not self.context_pre_only:
@@ -299,7 +299,7 @@ class MochiRoPE(nn.Module):
         width: int,
         device: Optional[torch.device] = None,
         dtype: Optional[torch.dtype] = None,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         pos = self._get_positions(num_frames, height, width, device, dtype)
         rope_cos, rope_sin = self._create_rope(pos_frequencies, pos)
         return rope_cos, rope_sin
@@ -410,7 +410,7 @@ class MochiTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOri
         encoder_hidden_states: torch.Tensor,
         timestep: torch.LongTensor,
         encoder_attention_mask: torch.Tensor,
-        attention_kwargs: Optional[Dict[str, Any]] = None,
+        attention_kwargs: Optional[dict[str, Any]] = None,
         return_dict: bool = True,
     ) -> torch.Tensor:
         if attention_kwargs is not None:

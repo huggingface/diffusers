@@ -15,7 +15,7 @@
 # DISCLAIMER: This file is strongly influenced by https://github.com/LuChengTHU/dpm-solver
 
 from dataclasses import dataclass
-from typing import List, Optional, Tuple, Union
+from typing import Optional, Tuple, Union
 
 import flax
 import jax
@@ -365,7 +365,7 @@ class FlaxDPMSolverMultistepScheduler(FlaxSchedulerMixin, ConfigMixin):
         self,
         state: DPMSolverMultistepSchedulerState,
         model_output_list: jnp.ndarray,
-        timestep_list: List[int],
+        timestep_list: list[int],
         prev_timestep: int,
         sample: jnp.ndarray,
     ) -> jnp.ndarray:
@@ -373,7 +373,7 @@ class FlaxDPMSolverMultistepScheduler(FlaxSchedulerMixin, ConfigMixin):
         One step for the second-order multistep DPM-Solver.
 
         Args:
-            model_output_list (`List[jnp.ndarray]`):
+            model_output_list (`list[jnp.ndarray]`):
                 direct outputs from learned diffusion model at current and latter timesteps.
             timestep (`int`): current and latter discrete timestep in the diffusion chain.
             prev_timestep (`int`): previous discrete timestep in the diffusion chain.
@@ -425,7 +425,7 @@ class FlaxDPMSolverMultistepScheduler(FlaxSchedulerMixin, ConfigMixin):
         self,
         state: DPMSolverMultistepSchedulerState,
         model_output_list: jnp.ndarray,
-        timestep_list: List[int],
+        timestep_list: list[int],
         prev_timestep: int,
         sample: jnp.ndarray,
     ) -> jnp.ndarray:
@@ -433,7 +433,7 @@ class FlaxDPMSolverMultistepScheduler(FlaxSchedulerMixin, ConfigMixin):
         One step for the third-order multistep DPM-Solver.
 
         Args:
-            model_output_list (`List[jnp.ndarray]`):
+            model_output_list (`list[jnp.ndarray]`):
                 direct outputs from learned diffusion model at current and latter timesteps.
             timestep (`int`): current and latter discrete timestep in the diffusion chain.
             prev_timestep (`int`): previous discrete timestep in the diffusion chain.

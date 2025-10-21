@@ -27,7 +27,7 @@ from collections import OrderedDict
 from contextlib import ExitStack, contextmanager
 from functools import wraps
 from pathlib import Path
-from typing import Any, Callable, ContextManager, Dict, List, Optional, Tuple, Type, Union
+from typing import Any, Callable, ContextManager, Optional, Type, Union
 
 import safetensors
 import torch
@@ -84,7 +84,7 @@ class ContextManagers:
     in the `fastcore` library.
     """
 
-    def __init__(self, context_managers: List[ContextManager]):
+    def __init__(self, context_managers: list[ContextManager]):
         self.context_managers = context_managers
         self.stack = ExitStack()
 
@@ -146,7 +146,7 @@ def get_parameter_device(parameter: torch.nn.Module) -> torch.device:
     except StopIteration:
         # For torch.nn.DataParallel compatibility in PyTorch 1.5
 
-        def find_tensor_attributes(module: torch.nn.Module) -> List[Tuple[str, Tensor]]:
+        def find_tensor_attributes(module: torch.nn.Module) -> list[tuple[str, Tensor]]:
             tuples = [(k, v) for k, v in module.__dict__.items() if torch.is_tensor(v)]
             return tuples
 
@@ -194,7 +194,7 @@ def get_parameter_dtype(parameter: torch.nn.Module) -> torch.dtype:
         return last_dtype
 
     # For nn.DataParallel compatibility in PyTorch > 1.5
-    def find_tensor_attributes(module: nn.Module) -> List[Tuple[str, Tensor]]:
+    def find_tensor_attributes(module: nn.Module) -> list[tuple[str, Tensor]]:
         tuples = [(k, v) for k, v in module.__dict__.items() if torch.is_tensor(v)]
         return tuples
 
@@ -438,8 +438,8 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         self,
         storage_dtype: torch.dtype = torch.float8_e4m3fn,
         compute_dtype: Optional[torch.dtype] = None,
-        skip_modules_pattern: Optional[Tuple[str, ...]] = None,
-        skip_modules_classes: Optional[Tuple[Type[torch.nn.Module], ...]] = None,
+        skip_modules_pattern: Optional[tuple[str, ...]] = None,
+        skip_modules_classes: Optional[tuple[Type[torch.nn.Module], ...]] = None,
         non_blocking: bool = False,
     ) -> None:
         r"""
@@ -475,11 +475,11 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 The dtype to which the model should be cast for storage.
             compute_dtype (`torch.dtype`):
                 The dtype to which the model weights should be cast during the forward pass.
-            skip_modules_pattern (`Tuple[str, ...]`, *optional*):
+            skip_modules_pattern (`tuple[str, ...]`, *optional*):
                 A list of patterns to match the names of the modules to skip during the layerwise casting process. If
                 set to `None`, default skip patterns are used to ignore certain internal layers of modules and PEFT
                 layers.
-            skip_modules_classes (`Tuple[Type[torch.nn.Module], ...]`, *optional*):
+            skip_modules_classes (`tuple[Type[torch.nn.Module], ...]`, *optional*):
                 A list of module classes to skip during the layerwise casting process.
             non_blocking (`bool`, *optional*, defaults to `False`):
                 If `True`, the weight casting operations are non-blocking.
@@ -677,7 +677,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 Whether or not to push your model to the Hugging Face Hub after saving it. You can specify the
                 repository you want to push to with `repo_id` (will default to the name of `save_directory` in your
                 namespace).
-            kwargs (`Dict[str, Any]`, *optional*):
+            kwargs (`dict[str, Any]`, *optional*):
                 Additional keyword arguments passed along to the [`~utils.PushToHubMixin.push_to_hub`] method.
         """
         if os.path.isfile(save_directory):
@@ -829,7 +829,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             force_download (`bool`, *optional*, defaults to `False`):
                 Whether or not to force the (re-)download of the model weights and configuration files, overriding the
                 cached versions if they exist.
-            proxies (`Dict[str, str]`, *optional*):
+            proxies (`dict[str, str]`, *optional*):
                 A dictionary of proxy servers to use by protocol or endpoint, for example, `{'http': 'foo.bar:3128',
                 'http://hostname': 'foo.bar:4012'}`. The proxies are used on each request.
             output_loading_info (`bool`, *optional*, defaults to `False`):
@@ -851,7 +851,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 Mirror source to resolve accessibility issues if you're downloading a model in China. We do not
                 guarantee the timeliness or safety of the source, and you should refer to the mirror site for more
                 information.
-            device_map (`Union[int, str, torch.device]` or `Dict[str, Union[int, str, torch.device]]`, *optional*):
+            device_map (`Union[int, str, torch.device]` or `dict[str, Union[int, str, torch.device]]`, *optional*):
                 A map that specifies where each submodule should go. It doesn't need to be defined for each
                 parameter/buffer name; once a given module name is inside, every submodule of it will be sent to the
                 same device. Defaults to `None`, meaning that the model will be loaded on CPU.
@@ -953,7 +953,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         variant = kwargs.pop("variant", None)
         use_safetensors = kwargs.pop("use_safetensors", None)
         quantization_config = kwargs.pop("quantization_config", None)
-        dduf_entries: Optional[Dict[str, DDUFEntry]] = kwargs.pop("dduf_entries", None)
+        dduf_entries: Optional[dict[str, DDUFEntry]] = kwargs.pop("dduf_entries", None)
         disable_mmap = kwargs.pop("disable_mmap", False)
         parallel_config: Optional[Union[ParallelConfig, ContextParallelConfig]] = kwargs.pop("parallel_config", None)
 
@@ -1481,7 +1481,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         self,
         *,
         config: Union[ParallelConfig, ContextParallelConfig],
-        cp_plan: Optional[Dict[str, ContextParallelModelPlan]] = None,
+        cp_plan: Optional[dict[str, ContextParallelModelPlan]] = None,
     ):
         from ..hooks.context_parallel import apply_context_parallel
         from .attention import AttentionModuleMixin
@@ -1549,19 +1549,19 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         cls,
         model,
         state_dict: OrderedDict,
-        resolved_model_file: List[str],
+        resolved_model_file: list[str],
         pretrained_model_name_or_path: Union[str, os.PathLike],
-        loaded_keys: List[str],
+        loaded_keys: list[str],
         ignore_mismatched_sizes: bool = False,
         assign_to_params_buffers: bool = False,
         hf_quantizer: Optional[DiffusersQuantizer] = None,
         low_cpu_mem_usage: bool = True,
         dtype: Optional[Union[str, torch.dtype]] = None,
-        keep_in_fp32_modules: Optional[List[str]] = None,
-        device_map: Union[str, int, torch.device, Dict[str, Union[int, str, torch.device]]] = None,
+        keep_in_fp32_modules: Optional[list[str]] = None,
+        device_map: Union[str, int, torch.device, dict[str, Union[int, str, torch.device]]] = None,
         offload_state_dict: Optional[bool] = None,
         offload_folder: Optional[Union[str, os.PathLike]] = None,
-        dduf_entries: Optional[Dict[str, DDUFEntry]] = None,
+        dduf_entries: Optional[dict[str, DDUFEntry]] = None,
         is_parallel_loading_enabled: Optional[bool] = False,
     ):
         model_state_dict = model.state_dict()
@@ -1721,7 +1721,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 The device map value. Options are ["auto", "balanced", "balanced_low_0", "sequential"]
 
         Returns:
-            `List[str]`: List of modules that should not be split
+            `list[str]`: List of modules that should not be split
         """
         _no_split_modules = set()
         modules_to_check = [self]

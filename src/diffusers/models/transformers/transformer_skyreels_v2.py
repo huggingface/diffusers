@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import math
-from typing import Any, Dict, Optional, Tuple, Union
+from typing import Any, Optional, Union
 
 import torch
 import torch.nn as nn
@@ -87,7 +87,7 @@ class SkyReelsV2AttnProcessor:
         hidden_states: torch.Tensor,
         encoder_hidden_states: Optional[torch.Tensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
-        rotary_emb: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
+        rotary_emb: Optional[tuple[torch.Tensor, torch.Tensor]] = None,
     ) -> torch.Tensor:
         encoder_hidden_states_img = None
         if attn.add_k_proj is not None:
@@ -277,7 +277,7 @@ class SkyReelsV2Attention(torch.nn.Module, AttentionModuleMixin):
         hidden_states: torch.Tensor,
         encoder_hidden_states: Optional[torch.Tensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
-        rotary_emb: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
+        rotary_emb: Optional[tuple[torch.Tensor, torch.Tensor]] = None,
         **kwargs,
     ) -> torch.Tensor:
         return self.processor(self, hidden_states, encoder_hidden_states, attention_mask, rotary_emb, **kwargs)
@@ -375,7 +375,7 @@ class SkyReelsV2RotaryPosEmbed(nn.Module):
     def __init__(
         self,
         attention_head_dim: int,
-        patch_size: Tuple[int, int, int],
+        patch_size: tuple[int, int, int],
         max_seq_len: int,
         theta: float = 10000.0,
     ):
@@ -522,7 +522,7 @@ class SkyReelsV2Transformer3DModel(
     A Transformer model for video-like data used in the Wan-based SkyReels-V2 model.
 
     Args:
-        patch_size (`Tuple[int]`, defaults to `(1, 2, 2)`):
+        patch_size (`tuple[int]`, defaults to `(1, 2, 2)`):
             3D patch dimensions for video embedding (t_patch, h_patch, w_patch).
         num_attention_heads (`int`, defaults to `16`):
             Fixed length for text embeddings.
@@ -540,7 +540,7 @@ class SkyReelsV2Transformer3DModel(
             Intermediate dimension in feed-forward network.
         num_layers (`int`, defaults to `32`):
             The number of layers of transformer blocks to use.
-        window_size (`Tuple[int]`, defaults to `(-1, -1)`):
+        window_size (`tuple[int]`, defaults to `(-1, -1)`):
             Window size for local attention (-1 indicates global attention).
         cross_attn_norm (`bool`, defaults to `True`):
             Enable cross-attention normalization.
@@ -570,7 +570,7 @@ class SkyReelsV2Transformer3DModel(
     @register_to_config
     def __init__(
         self,
-        patch_size: Tuple[int] = (1, 2, 2),
+        patch_size: tuple[int] = (1, 2, 2),
         num_attention_heads: int = 16,
         attention_head_dim: int = 128,
         in_channels: int = 16,
@@ -639,8 +639,8 @@ class SkyReelsV2Transformer3DModel(
         enable_diffusion_forcing: bool = False,
         fps: Optional[torch.Tensor] = None,
         return_dict: bool = True,
-        attention_kwargs: Optional[Dict[str, Any]] = None,
-    ) -> Union[torch.Tensor, Dict[str, torch.Tensor]]:
+        attention_kwargs: Optional[dict[str, Any]] = None,
+    ) -> Union[torch.Tensor, dict[str, torch.Tensor]]:
         if attention_kwargs is not None:
             attention_kwargs = attention_kwargs.copy()
             lora_scale = attention_kwargs.pop("scale", 1.0)

@@ -13,7 +13,7 @@
 # limitations under the License.
 
 
-from typing import List, Optional, Tuple, Union
+from typing import Optional, Tuple, Union
 
 import torch
 
@@ -61,7 +61,7 @@ class DanceDiffusionPipeline(DeprecatedPipelineMixin, DiffusionPipeline):
         self,
         batch_size: int = 1,
         num_inference_steps: int = 100,
-        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
+        generator: Optional[Union[torch.Generator, list[torch.Generator]]] = None,
         audio_length_in_s: Optional[float] = None,
         return_dict: bool = True,
     ) -> Union[AudioPipelineOutput, Tuple]:

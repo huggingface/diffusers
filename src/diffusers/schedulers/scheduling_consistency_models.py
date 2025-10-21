@@ -13,7 +13,7 @@
 # limitations under the License.
 
 from dataclasses import dataclass
-from typing import List, Optional, Tuple, Union
+from typing import Optional, Tuple, Union
 
 import numpy as np
 import torch
@@ -174,7 +174,7 @@ class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
         self,
         num_inference_steps: Optional[int] = None,
         device: Union[str, torch.device] = None,
-        timesteps: Optional[List[int]] = None,
+        timesteps: Optional[list[int]] = None,
     ):
         """
         Sets the timesteps used for the diffusion chain (to be run before inference).
@@ -184,7 +184,7 @@ class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
                 The number of diffusion steps used when generating samples with a pre-trained model.
             device (`str` or `torch.device`, *optional*):
                 The device to which the timesteps should be moved to. If `None`, the timesteps are not moved.
-            timesteps (`List[int]`, *optional*):
+            timesteps (`list[int]`, *optional*):
                 Custom timesteps used to support arbitrary spacing between timesteps. If `None`, then the default
                 timestep spacing strategy of equal spacing between timesteps is used. If `timesteps` is passed,
                 `num_inference_steps` must be `None`.

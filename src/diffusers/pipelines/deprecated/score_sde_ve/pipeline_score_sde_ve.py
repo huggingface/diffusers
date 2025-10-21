@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import List, Optional, Tuple, Union
+from typing import Optional, Tuple, Union
 
 import torch
 
@@ -48,7 +48,7 @@ class ScoreSdeVePipeline(DiffusionPipeline):
         self,
         batch_size: int = 1,
         num_inference_steps: int = 2000,
-        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
+        generator: Optional[Union[torch.Generator, list[torch.Generator]]] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
         **kwargs,

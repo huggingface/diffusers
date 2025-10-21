@@ -15,7 +15,7 @@
 
 import inspect
 import math
-from typing import Any, Dict, Optional, Tuple, Union
+from typing import Any, Optional, Union
 
 import torch
 import torch.nn as nn
@@ -203,7 +203,7 @@ class LTXVideoRotaryPosEmbed(nn.Module):
         num_frames: int,
         height: int,
         width: int,
-        rope_interpolation_scale: Tuple[torch.Tensor, float, float],
+        rope_interpolation_scale: tuple[torch.Tensor, float, float],
         device: torch.device,
     ) -> torch.Tensor:
         # Always compute rope in fp32
@@ -229,9 +229,9 @@ class LTXVideoRotaryPosEmbed(nn.Module):
         num_frames: Optional[int] = None,
         height: Optional[int] = None,
         width: Optional[int] = None,
-        rope_interpolation_scale: Optional[Tuple[torch.Tensor, float, float]] = None,
+        rope_interpolation_scale: Optional[tuple[torch.Tensor, float, float]] = None,
         video_coords: Optional[torch.Tensor] = None,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         batch_size = hidden_states.size(0)
 
         if video_coords is None:
@@ -346,7 +346,7 @@ class LTXVideoTransformerBlock(nn.Module):
         hidden_states: torch.Tensor,
         encoder_hidden_states: torch.Tensor,
         temb: torch.Tensor,
-        image_rotary_emb: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
+        image_rotary_emb: Optional[tuple[torch.Tensor, torch.Tensor]] = None,
         encoder_attention_mask: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         batch_size = hidden_states.size(0)
@@ -500,9 +500,9 @@ class LTXVideoTransformer3DModel(
         num_frames: Optional[int] = None,
         height: Optional[int] = None,
         width: Optional[int] = None,
-        rope_interpolation_scale: Optional[Union[Tuple[float, float, float], torch.Tensor]] = None,
+        rope_interpolation_scale: Optional[Union[tuple[float, float, float], torch.Tensor]] = None,
         video_coords: Optional[torch.Tensor] = None,
-        attention_kwargs: Optional[Dict[str, Any]] = None,
+        attention_kwargs: Optional[dict[str, Any]] = None,
         return_dict: bool = True,
     ) -> torch.Tensor:
         if attention_kwargs is not None:

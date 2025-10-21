@@ -16,7 +16,7 @@ import inspect
 import re
 from collections import OrderedDict
 from dataclasses import dataclass, field, fields
-from typing import Any, Dict, List, Literal, Optional, Type, Union
+from typing import Any, Literal, Optional, Type, Union
 
 import torch
 
@@ -92,7 +92,7 @@ class ComponentSpec:
     description: Optional[str] = None
     config: Optional[FrozenDict] = None
     # YiYi Notes: should we change it to pretrained_model_name_or_path for consistency? a bit long for a field name
-    repo: Optional[Union[str, List[str]]] = field(default=None, metadata={"loading": True})
+    repo: Optional[Union[str, list[str]]] = field(default=None, metadata={"loading": True})
     subfolder: Optional[str] = field(default="", metadata={"loading": True})
     variant: Optional[str] = field(default=None, metadata={"loading": True})
     revision: Optional[str] = field(default=None, metadata={"loading": True})
@@ -173,7 +173,7 @@ class ComponentSpec:
         )
 
     @classmethod
-    def loading_fields(cls) -> List[str]:
+    def loading_fields(cls) -> list[str]:
         """
         Return the names of all loading‐related fields (i.e. those whose field.metadata["loading"] is True).
         """
@@ -192,7 +192,7 @@ class ComponentSpec:
         return "|".join(p for p in parts if p)
 
     @classmethod
-    def decode_load_id(cls, load_id: str) -> Dict[str, Optional[str]]:
+    def decode_load_id(cls, load_id: str) -> dict[str, Optional[str]]:
         """
         Decode a load_id string back into a dictionary of loading fields and values.
 
@@ -229,7 +229,7 @@ class ComponentSpec:
     # otherwise we cannot do spec -> spec.create() -> component -> ComponentSpec.from_component(component)
     # the config info is lost in the process
     # remove error check in from_component spec and ModularPipeline.update_components() if we remove support for non configmixin in `create()` method
-    def create(self, config: Optional[Union[FrozenDict, Dict[str, Any]]] = None, **kwargs) -> Any:
+    def create(self, config: Optional[Union[FrozenDict, dict[str, Any]]] = None, **kwargs) -> Any:
         """Create component using from_config with config."""
 
         if self.type_hint is None or not isinstance(self.type_hint, type):
@@ -633,8 +633,8 @@ def make_doc_string(
         outputs: List of output parameters
         description (str, *optional*): Description of the block
         class_name (str, *optional*): Name of the class to include in the documentation
-        expected_components (List[ComponentSpec], *optional*): List of expected components
-        expected_configs (List[ConfigSpec], *optional*): List of expected configurations
+        expected_components (list[ComponentSpec], *optional*): List of expected components
+        expected_configs (list[ConfigSpec], *optional*): List of expected configurations
 
     Returns:
         str: A formatted string containing information about components, configs, call parameters,

@@ -14,7 +14,7 @@
 
 import inspect
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any, Callable, Optional, Union
 
 import numpy as np
 import PIL.Image
@@ -54,16 +54,16 @@ else:
 class StableDiffusionAdapterPipelineOutput(BaseOutput):
     """
     Args:
-        images (`List[PIL.Image.Image]` or `np.ndarray`)
+        images (`list[PIL.Image.Image]` or `np.ndarray`)
             List of denoised PIL images of length `batch_size` or numpy array of shape `(batch_size, height, width,
             num_channels)`. PIL images or numpy array present the denoised images of the diffusion pipeline.
-        nsfw_content_detected (`List[bool]`)
+        nsfw_content_detected (`list[bool]`)
             List of flags denoting whether the corresponding generated image likely represents "not-safe-for-work"
             (nsfw) content, or `None` if safety checking could not be performed.
     """
 
-    images: Union[List[PIL.Image.Image], np.ndarray]
-    nsfw_content_detected: Optional[List[bool]]
+    images: Union[list[PIL.Image.Image], np.ndarray]
+    nsfw_content_detected: Optional[list[bool]]
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -133,8 +133,8 @@ def retrieve_timesteps(
     scheduler,
     num_inference_steps: Optional[int] = None,
     device: Optional[Union[str, torch.device]] = None,
-    timesteps: Optional[List[int]] = None,
-    sigmas: Optional[List[float]] = None,
+    timesteps: Optional[list[int]] = None,
+    sigmas: Optional[list[float]] = None,
     **kwargs,
 ):
     r"""
@@ -149,15 +149,15 @@ def retrieve_timesteps(
             must be `None`.
         device (`str` or `torch.device`, *optional*):
             The device to which the timesteps should be moved to. If `None`, the timesteps are not moved.
-        timesteps (`List[int]`, *optional*):
+        timesteps (`list[int]`, *optional*):
             Custom timesteps used to override the timestep spacing strategy of the scheduler. If `timesteps` is passed,
             `num_inference_steps` and `sigmas` must be `None`.
-        sigmas (`List[float]`, *optional*):
+        sigmas (`list[float]`, *optional*):
             Custom sigmas used to override the timestep spacing strategy of the scheduler. If `sigmas` is passed,
             `num_inference_steps` and `timesteps` must be `None`.
 
     Returns:
-        `Tuple[torch.Tensor, int]`: A tuple where the first element is the timestep schedule from the scheduler and the
+        `tuple[torch.Tensor, int]`: A tuple where the first element is the timestep schedule from the scheduler and the
         second element is the number of inference steps.
     """
     if timesteps is not None and sigmas is not None:
@@ -197,10 +197,10 @@ class StableDiffusionAdapterPipeline(DiffusionPipeline, StableDiffusionMixin, Fr
     library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
 
     Args:
-        adapter ([`T2IAdapter`] or [`MultiAdapter`] or `List[T2IAdapter]`):
+        adapter ([`T2IAdapter`] or [`MultiAdapter`] or `list[T2IAdapter]`):
             Provides additional conditioning to the unet during the denoising process. If you set multiple Adapter as a
             list, the outputs from each Adapter are added together to create one combined additional conditioning.
-        adapter_weights (`List[float]`, *optional*, defaults to None):
+        adapter_weights (`list[float]`, *optional*, defaults to None):
             List of floats representing the weight which will be multiply to each adapter's output before adding them
             together.
         vae ([`AutoencoderKL`]):
@@ -233,7 +233,7 @@ class StableDiffusionAdapterPipeline(DiffusionPipeline, StableDiffusionMixin, Fr
         text_encoder: CLIPTextModel,
         tokenizer: CLIPTokenizer,
         unet: UNet2DConditionModel,
-        adapter: Union[T2IAdapter, MultiAdapter, List[T2IAdapter]],
+        adapter: Union[T2IAdapter, MultiAdapter, list[T2IAdapter]],
         scheduler: KarrasDiffusionSchedulers,
         safety_checker: StableDiffusionSafetyChecker,
         feature_extractor: CLIPImageProcessor,
@@ -324,7 +324,7 @@ class StableDiffusionAdapterPipeline(DiffusionPipeline, StableDiffusionMixin, Fr
         Encodes the prompt into text encoder hidden states.
 
         Args:
-            prompt (`str` or `List[str]`, *optional*):
+            prompt (`str` or `list[str]`, *optional*):
                 prompt to be encoded
             device: (`torch.device`):
                 torch device
@@ -332,7 +332,7 @@ class StableDiffusionAdapterPipeline(DiffusionPipeline, StableDiffusionMixin, Fr
                 number of images that should be generated per prompt
             do_classifier_free_guidance (`bool`):
                 whether to use classifier free guidance or not
-            negative_prompt (`str` or `List[str]`, *optional*):
+            negative_prompt (`str` or `list[str]`, *optional*):
                 The prompt or prompts not to guide the image generation. If not defined, one has to pass
                 `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
                 less than `1`).
@@ -431,7 +431,7 @@ class StableDiffusionAdapterPipeline(DiffusionPipeline, StableDiffusionMixin, Fr
 
         # get unconditional embeddings for classifier free guidance
         if do_classifier_free_guidance and negative_prompt_embeds is None:
-            uncond_tokens: List[str]
+            uncond_tokens: list[str]
             if negative_prompt is None:
                 uncond_tokens = [""] * batch_size
             elif prompt is not None and type(prompt) is not type(negative_prompt):
@@ -690,18 +690,18 @@ class StableDiffusionAdapterPipeline(DiffusionPipeline, StableDiffusionMixin, Fr
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        prompt: Union[str, List[str]] = None,
-        image: Union[torch.Tensor, PIL.Image.Image, List[PIL.Image.Image]] = None,
+        prompt: Union[str, list[str]] = None,
+        image: Union[torch.Tensor, PIL.Image.Image, list[PIL.Image.Image]] = None,
         height: Optional[int] = None,
         width: Optional[int] = None,
         num_inference_steps: int = 50,
-        timesteps: List[int] = None,
-        sigmas: List[float] = None,
+        timesteps: list[int] = None,
+        sigmas: list[float] = None,
         guidance_scale: float = 7.5,
-        negative_prompt: Optional[Union[str, List[str]]] = None,
+        negative_prompt: Optional[Union[str, list[str]]] = None,
         num_images_per_prompt: Optional[int] = 1,
         eta: float = 0.0,
-        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
+        generator: Optional[Union[torch.Generator, list[torch.Generator]]] = None,
         latents: Optional[torch.Tensor] = None,
         prompt_embeds: Optional[torch.Tensor] = None,
         negative_prompt_embeds: Optional[torch.Tensor] = None,
@@ -709,18 +709,18 @@ class StableDiffusionAdapterPipeline(DiffusionPipeline, StableDiffusionMixin, Fr
         return_dict: bool = True,
         callback: Optional[Callable[[int, int, torch.Tensor], None]] = None,
         callback_steps: int = 1,
-        cross_attention_kwargs: Optional[Dict[str, Any]] = None,
-        adapter_conditioning_scale: Union[float, List[float]] = 1.0,
+        cross_attention_kwargs: Optional[dict[str, Any]] = None,
+        adapter_conditioning_scale: Union[float, list[float]] = 1.0,
         clip_skip: Optional[int] = None,
     ):
         r"""
         Function invoked when calling the pipeline for generation.
 
         Args:
-            prompt (`str` or `List[str]`, *optional*):
+            prompt (`str` or `list[str]`, *optional*):
                 The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds`.
                 instead.
-            image (`torch.Tensor`, `PIL.Image.Image`, `List[torch.Tensor]` or `List[PIL.Image.Image]` or `List[List[PIL.Image.Image]]`):
+            image (`torch.Tensor`, `PIL.Image.Image`, `list[torch.Tensor]` or `list[PIL.Image.Image]` or `list[list[PIL.Image.Image]]`):
                 The Adapter input condition. Adapter uses this input condition to generate guidance to Unet. If the
                 type is specified as `torch.Tensor`, it is passed to Adapter as is. PIL.Image.Image` can also be
                 accepted as an image. The control image is automatically resized to fit the output image.
@@ -731,11 +731,11 @@ class StableDiffusionAdapterPipeline(DiffusionPipeline, StableDiffusionMixin, Fr
             num_inference_steps (`int`, *optional*, defaults to 50):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
-            timesteps (`List[int]`, *optional*):
+            timesteps (`list[int]`, *optional*):
                 Custom timesteps to use for the denoising process with schedulers which support a `timesteps` argument
                 in their `set_timesteps` method. If not defined, the default behavior when `num_inference_steps` is
                 passed will be used. Must be in descending order.
-            sigmas (`List[float]`, *optional*):
+            sigmas (`list[float]`, *optional*):
                 Custom sigmas to use for the denoising process with schedulers which support a `sigmas` argument in
                 their `set_timesteps` method. If not defined, the default behavior when `num_inference_steps` is passed
                 will be used.
@@ -745,7 +745,7 @@ class StableDiffusionAdapterPipeline(DiffusionPipeline, StableDiffusionMixin, Fr
                 of [Imagen Paper](https://huggingface.co/papers/2205.11487). Guidance scale is enabled by setting
                 `guidance_scale > 1`. Higher guidance scale encourages to generate images that are closely linked to
                 the text `prompt`, usually at the expense of lower image quality.
-            negative_prompt (`str` or `List[str]`, *optional*):
+            negative_prompt (`str` or `list[str]`, *optional*):
                 The prompt or prompts not to guide the image generation. If not defined, one has to pass
                 `negative_prompt_embeds`. instead. If not defined, one has to pass `negative_prompt_embeds`. instead.
                 Ignored when not using guidance (i.e., ignored if `guidance_scale` is less than `1`).
@@ -754,7 +754,7 @@ class StableDiffusionAdapterPipeline(DiffusionPipeline, StableDiffusionMixin, Fr
             eta (`float`, *optional*, defaults to 0.0):
                 Corresponds to parameter eta (η) in the DDIM paper: https://huggingface.co/papers/2010.02502. Only
                 applies to [`schedulers.DDIMScheduler`], will be ignored for others.
-            generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
+            generator (`torch.Generator` or `list[torch.Generator]`, *optional*):
                 One or a list of [torch generator(s)](https://pytorch.org/docs/stable/generated/torch.Generator.html)
                 to make generation deterministic.
             latents (`torch.Tensor`, *optional*):
@@ -784,7 +784,7 @@ class StableDiffusionAdapterPipeline(DiffusionPipeline, StableDiffusionMixin, Fr
                 A kwargs dictionary that if specified is passed along to the `AttnProcessor` as defined under
                 `self.processor` in
                 [diffusers.models.attention_processor](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
-            adapter_conditioning_scale (`float` or `List[float]`, *optional*, defaults to 1.0):
+            adapter_conditioning_scale (`float` or `list[float]`, *optional*, defaults to 1.0):
                 The outputs of the adapter are multiplied by `adapter_conditioning_scale` before they are added to the
                 residual in the original unet. If multiple adapters are specified in init, you can set the
                 corresponding scale as a list.

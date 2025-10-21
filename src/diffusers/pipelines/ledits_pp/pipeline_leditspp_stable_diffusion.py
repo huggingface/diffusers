@@ -1,7 +1,7 @@
 import inspect
 import math
 from itertools import repeat
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, Optional, Union
 
 import torch
 import torch.nn.functional as F
@@ -115,7 +115,7 @@ class LeditsAttentionStore:
         return attention
 
     def aggregate_attention(
-        self, attention_maps, prompts, res: Union[int, Tuple[int]], from_where: List[str], is_cross: bool, select: int
+        self, attention_maps, prompts, res: Union[int, tuple[int]], from_where: list[str], is_cross: bool, select: int
     ):
         out = [[] for x in range(self.batch_size)]
         if isinstance(res, int):
@@ -540,11 +540,11 @@ class LEditsPPPipelineStableDiffusion(
                 number of images that should be generated per prompt
             enable_edit_guidance (`bool`):
                 whether to perform any editing or reconstruct the input image instead
-            negative_prompt (`str` or `List[str]`, *optional*):
+            negative_prompt (`str` or `list[str]`, *optional*):
                 The prompt or prompts not to guide the image generation. If not defined, one has to pass
                 `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
                 less than `1`).
-            editing_prompt (`str` or `List[str]`, *optional*):
+            editing_prompt (`str` or `list[str]`, *optional*):
                 Editing prompt(s) to be encoded. If not defined, one has to pass `editing_prompt_embeds` instead.
             editing_prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
@@ -574,7 +574,7 @@ class LEditsPPPipelineStableDiffusion(
         num_edit_tokens = None
 
         if negative_prompt_embeds is None:
-            uncond_tokens: List[str]
+            uncond_tokens: list[str]
             if negative_prompt is None:
                 uncond_tokens = [""] * batch_size
             elif isinstance(negative_prompt, str):
@@ -774,29 +774,29 @@ class LEditsPPPipelineStableDiffusion(
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        negative_prompt: Optional[Union[str, List[str]]] = None,
-        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
+        negative_prompt: Optional[Union[str, list[str]]] = None,
+        generator: Optional[Union[torch.Generator, list[torch.Generator]]] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
-        editing_prompt: Optional[Union[str, List[str]]] = None,
+        editing_prompt: Optional[Union[str, list[str]]] = None,
         editing_prompt_embeds: Optional[torch.Tensor] = None,
         negative_prompt_embeds: Optional[torch.Tensor] = None,
-        reverse_editing_direction: Optional[Union[bool, List[bool]]] = False,
-        edit_guidance_scale: Optional[Union[float, List[float]]] = 5,
-        edit_warmup_steps: Optional[Union[int, List[int]]] = 0,
-        edit_cooldown_steps: Optional[Union[int, List[int]]] = None,
-        edit_threshold: Optional[Union[float, List[float]]] = 0.9,
+        reverse_editing_direction: Optional[Union[bool, list[bool]]] = False,
+        edit_guidance_scale: Optional[Union[float, list[float]]] = 5,
+        edit_warmup_steps: Optional[Union[int, list[int]]] = 0,
+        edit_cooldown_steps: Optional[Union[int, list[int]]] = None,
+        edit_threshold: Optional[Union[float, list[float]]] = 0.9,
         user_mask: Optional[torch.Tensor] = None,
-        sem_guidance: Optional[List[torch.Tensor]] = None,
+        sem_guidance: Optional[list[torch.Tensor]] = None,
         use_cross_attn_mask: bool = False,
         use_intersect_mask: bool = True,
-        attn_store_steps: Optional[List[int]] = [],
+        attn_store_steps: Optional[list[int]] = [],
         store_averaged_over_steps: bool = True,
-        cross_attention_kwargs: Optional[Dict[str, Any]] = None,
+        cross_attention_kwargs: Optional[dict[str, Any]] = None,
         guidance_rescale: float = 0.0,
         clip_skip: Optional[int] = None,
         callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
-        callback_on_step_end_tensor_inputs: List[str] = ["latents"],
+        callback_on_step_end_tensor_inputs: list[str] = ["latents"],
         **kwargs,
     ):
         r"""
@@ -805,7 +805,7 @@ class LEditsPPPipelineStableDiffusion(
         always be performed for the last inverted image(s).
 
         Args:
-            negative_prompt (`str` or `List[str]`, *optional*):
+            negative_prompt (`str` or `list[str]`, *optional*):
                 The prompt or prompts not to guide the image generation. Ignored when not using guidance (i.e., ignored
                 if `guidance_scale` is less than `1`).
             generator (`torch.Generator`, *optional*):
@@ -817,7 +817,7 @@ class LEditsPPPipelineStableDiffusion(
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipelines.ledits_pp.LEditsPPDiffusionPipelineOutput`] instead of a plain
                 tuple.
-            editing_prompt (`str` or `List[str]`, *optional*):
+            editing_prompt (`str` or `list[str]`, *optional*):
                 The prompt or prompts to guide the image generation. The image is reconstructed by setting
                 `editing_prompt = None`. Guidance direction of prompt should be specified via
                 `reverse_editing_direction`.
@@ -827,24 +827,24 @@ class LEditsPPPipelineStableDiffusion(
             negative_prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated negative text embeddings. Can be used to easily tweak text inputs (prompt weighting). If
                 not provided, `negative_prompt_embeds` are generated from the `negative_prompt` input argument.
-            reverse_editing_direction (`bool` or `List[bool]`, *optional*, defaults to `False`):
+            reverse_editing_direction (`bool` or `list[bool]`, *optional*, defaults to `False`):
                 Whether the corresponding prompt in `editing_prompt` should be increased or decreased.
-            edit_guidance_scale (`float` or `List[float]`, *optional*, defaults to 5):
+            edit_guidance_scale (`float` or `list[float]`, *optional*, defaults to 5):
                 Guidance scale for guiding the image generation. If provided as list values should correspond to
                 `editing_prompt`. `edit_guidance_scale` is defined as `s_e` of equation 12 of [LEDITS++
                 Paper](https://huggingface.co/papers/2301.12247).
-            edit_warmup_steps (`float` or `List[float]`, *optional*, defaults to 10):
+            edit_warmup_steps (`float` or `list[float]`, *optional*, defaults to 10):
                 Number of diffusion steps (for each prompt) for which guidance will not be applied.
-            edit_cooldown_steps (`float` or `List[float]`, *optional*, defaults to `None`):
+            edit_cooldown_steps (`float` or `list[float]`, *optional*, defaults to `None`):
                 Number of diffusion steps (for each prompt) after which guidance will no longer be applied.
-            edit_threshold (`float` or `List[float]`, *optional*, defaults to 0.9):
+            edit_threshold (`float` or `list[float]`, *optional*, defaults to 0.9):
                 Masking threshold of guidance. Threshold should be proportional to the image region that is modified.
                 'edit_threshold' is defined as 'λ' of equation 12 of [LEDITS++
                 Paper](https://huggingface.co/papers/2301.12247).
             user_mask (`torch.Tensor`, *optional*):
                 User-provided mask for even better control over the editing process. This is helpful when LEDITS++'s
                 implicit masks do not meet user preferences.
-            sem_guidance (`List[torch.Tensor]`, *optional*):
+            sem_guidance (`list[torch.Tensor]`, *optional*):
                 List of pre-generated guidance vectors to be applied at generation. Length of the list has to
                 correspond to `num_inference_steps`.
             use_cross_attn_mask (`bool`, defaults to `False`):
@@ -855,7 +855,7 @@ class LEditsPPPipelineStableDiffusion(
                 Whether the masking term is calculated as intersection of cross-attention masks and masks derived from
                 the noise estimate. Cross-attention mask are defined as 'M^1' and masks derived from the noise estimate
                 are defined as 'M^2' of equation 12 of [LEDITS++ paper](https://huggingface.co/papers/2311.16711).
-            attn_store_steps (`List[int]`, *optional*):
+            attn_store_steps (`list[int]`, *optional*):
                 Steps for which the attention maps are stored in the AttentionStore. Just for visualization purposes.
             store_averaged_over_steps (`bool`, defaults to `True`):
                 Whether the attention maps for the 'attn_store_steps' are stored averaged over the diffusion steps. If
@@ -1283,12 +1283,12 @@ class LEditsPPPipelineStableDiffusion(
         num_inversion_steps: int = 30,
         skip: float = 0.15,
         generator: Optional[torch.Generator] = None,
-        cross_attention_kwargs: Optional[Dict[str, Any]] = None,
+        cross_attention_kwargs: Optional[dict[str, Any]] = None,
         clip_skip: Optional[int] = None,
         height: Optional[int] = None,
         width: Optional[int] = None,
         resize_mode: Optional[str] = "default",
-        crops_coords: Optional[Tuple[int, int, int, int]] = None,
+        crops_coords: Optional[tuple[int, int, int, int]] = None,
     ):
         r"""
         The function to the pipeline for image inversion as described by the [LEDITS++
@@ -1331,7 +1331,7 @@ class LEditsPPPipelineStableDiffusion(
                 image to fit within the specified width and height, maintaining the aspect ratio, and then center the
                 image within the dimensions, cropping the excess. Note that resize_mode `fill` and `crop` are only
                 supported for PIL image input.
-            crops_coords (`List[Tuple[int, int, int, int]]`, *optional*, defaults to `None`):
+            crops_coords (`list[tuple[int, int, int, int]]`, *optional*, defaults to `None`):
                 The crop coordinates for each image in the batch. If `None`, will not crop the image.
 
         Returns:

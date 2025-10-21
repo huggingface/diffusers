@@ -14,7 +14,7 @@
 
 import inspect
 import math
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Optional, Union
 
 import numpy as np
 import torch
@@ -111,7 +111,7 @@ class AttentionStore:
         average_attention = self.attention_store
         return average_attention
 
-    def aggregate_attention(self, from_where: List[str]) -> torch.Tensor:
+    def aggregate_attention(self, from_where: list[str]) -> torch.Tensor:
         """Aggregates the attention across the different layers and heads at the specified resolution."""
         out = []
         attention_maps = self.get_average_attention()
@@ -309,7 +309,7 @@ class StableDiffusionAttendAndExcitePipeline(
         Encodes the prompt into text encoder hidden states.
 
         Args:
-            prompt (`str` or `List[str]`, *optional*):
+            prompt (`str` or `list[str]`, *optional*):
                 prompt to be encoded
             device: (`torch.device`):
                 torch device
@@ -317,7 +317,7 @@ class StableDiffusionAttendAndExcitePipeline(
                 number of images that should be generated per prompt
             do_classifier_free_guidance (`bool`):
                 whether to use classifier free guidance or not
-            negative_prompt (`str` or `List[str]`, *optional*):
+            negative_prompt (`str` or `list[str]`, *optional*):
                 The prompt or prompts not to guide the image generation. If not defined, one has to pass
                 `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
                 less than `1`).
@@ -416,7 +416,7 @@ class StableDiffusionAttendAndExcitePipeline(
 
         # get unconditional embeddings for classifier free guidance
         if do_classifier_free_guidance and negative_prompt_embeds is None:
-            uncond_tokens: List[str]
+            uncond_tokens: list[str]
             if negative_prompt is None:
                 uncond_tokens = [""] * batch_size
             elif prompt is not None and type(prompt) is not type(negative_prompt):
@@ -619,8 +619,8 @@ class StableDiffusionAttendAndExcitePipeline(
     @staticmethod
     def _compute_max_attention_per_index(
         attention_maps: torch.Tensor,
-        indices: List[int],
-    ) -> List[torch.Tensor]:
+        indices: list[int],
+    ) -> list[torch.Tensor]:
         """Computes the maximum attention value for each of the tokens we wish to alter."""
         attention_for_text = attention_maps[:, :, 1:-1]
         attention_for_text *= 100
@@ -641,7 +641,7 @@ class StableDiffusionAttendAndExcitePipeline(
 
     def _aggregate_and_get_max_attention_per_token(
         self,
-        indices: List[int],
+        indices: list[int],
     ):
         """Aggregates the attention for each token and computes the max activation value for each token to alter."""
         attention_maps = self.attention_store.aggregate_attention(
@@ -654,7 +654,7 @@ class StableDiffusionAttendAndExcitePipeline(
         return max_attention_per_index
 
     @staticmethod
-    def _compute_loss(max_attention_per_index: List[torch.Tensor]) -> torch.Tensor:
+    def _compute_loss(max_attention_per_index: list[torch.Tensor]) -> torch.Tensor:
         """Computes the attend-and-excite loss using the maximum attention value for each token."""
         losses = [max(0, 1.0 - curr_max) for curr_max in max_attention_per_index]
         loss = max(losses)
@@ -670,7 +670,7 @@ class StableDiffusionAttendAndExcitePipeline(
     def _perform_iterative_refinement_step(
         self,
         latents: torch.Tensor,
-        indices: List[int],
+        indices: list[int],
         loss: torch.Tensor,
         threshold: float,
         text_embeddings: torch.Tensor,
@@ -740,7 +740,7 @@ class StableDiffusionAttendAndExcitePipeline(
         self.unet.set_attn_processor(attn_procs)
         self.attention_store.num_att_layers = cross_att_count
 
-    def get_indices(self, prompt: str) -> Dict[str, int]:
+    def get_indices(self, prompt: str) -> dict[str, int]:
         """Utility function to list the indices of the tokens you wish to alte"""
         ids = self.tokenizer(prompt).input_ids
         indices = {i: tok for tok, i in zip(self.tokenizer.convert_ids_to_tokens(ids), range(len(ids)))}
@@ -750,16 +750,16 @@ class StableDiffusionAttendAndExcitePipeline(
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        prompt: Union[str, List[str]],
-        token_indices: Union[List[int], List[List[int]]],
+        prompt: Union[str, list[str]],
+        token_indices: Union[list[int], list[list[int]]],
         height: Optional[int] = None,
         width: Optional[int] = None,
         num_inference_steps: int = 50,
         guidance_scale: float = 7.5,
-        negative_prompt: Optional[Union[str, List[str]]] = None,
+        negative_prompt: Optional[Union[str, list[str]]] = None,
         num_images_per_prompt: int = 1,
         eta: float = 0.0,
-        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
+        generator: Optional[Union[torch.Generator, list[torch.Generator]]] = None,
         latents: Optional[torch.Tensor] = None,
         prompt_embeds: Optional[torch.Tensor] = None,
         negative_prompt_embeds: Optional[torch.Tensor] = None,
@@ -767,20 +767,20 @@ class StableDiffusionAttendAndExcitePipeline(
         return_dict: bool = True,
         callback: Optional[Callable[[int, int, torch.Tensor], None]] = None,
         callback_steps: int = 1,
-        cross_attention_kwargs: Optional[Dict[str, Any]] = None,
+        cross_attention_kwargs: Optional[dict[str, Any]] = None,
         max_iter_to_alter: int = 25,
         thresholds: dict = {0: 0.05, 10: 0.5, 20: 0.8},
         scale_factor: int = 20,
-        attn_res: Optional[Tuple[int]] = (16, 16),
+        attn_res: Optional[tuple[int]] = (16, 16),
         clip_skip: Optional[int] = None,
     ):
         r"""
         The call function to the pipeline for generation.
 
         Args:
-            prompt (`str` or `List[str]`, *optional*):
+            prompt (`str` or `list[str]`, *optional*):
                 The prompt or prompts to guide image generation. If not defined, you need to pass `prompt_embeds`.
-            token_indices (`List[int]`):
+            token_indices (`list[int]`):
                 The token indices to alter with attend-and-excite.
             height (`int`, *optional*, defaults to `self.unet.config.sample_size * self.vae_scale_factor`):
                 The height in pixels of the generated image.
@@ -792,7 +792,7 @@ class StableDiffusionAttendAndExcitePipeline(
             guidance_scale (`float`, *optional*, defaults to 7.5):
                 A higher guidance scale value encourages the model to generate images closely linked to the text
                 `prompt` at the expense of lower image quality. Guidance scale is enabled when `guidance_scale > 1`.
-            negative_prompt (`str` or `List[str]`, *optional*):
+            negative_prompt (`str` or `list[str]`, *optional*):
                 The prompt or prompts to guide what to not include in image generation. If not defined, you need to
                 pass `negative_prompt_embeds` instead. Ignored when not using guidance (`guidance_scale < 1`).
             num_images_per_prompt (`int`, *optional*, defaults to 1):
@@ -800,7 +800,7 @@ class StableDiffusionAttendAndExcitePipeline(
             eta (`float`, *optional*, defaults to 0.0):
                 Corresponds to parameter eta (η) from the [DDIM](https://huggingface.co/papers/2010.02502) paper. Only
                 applies to the [`~schedulers.DDIMScheduler`], and is ignored in other schedulers.
-            generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
+            generator (`torch.Generator` or `list[torch.Generator]`, *optional*):
                 A [`torch.Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make
                 generation deterministic.
             latents (`torch.Tensor`, *optional*):

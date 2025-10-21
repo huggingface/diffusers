@@ -24,7 +24,7 @@ import os
 import re
 from collections import OrderedDict
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple, Union
+from typing import Any, Optional, Union
 
 import numpy as np
 from huggingface_hub import DDUFEntry, create_repo, hf_hub_download
@@ -94,10 +94,10 @@ class ConfigMixin:
     Class attributes:
         - **config_name** (`str`) -- A filename under which the config should stored when calling
           [`~ConfigMixin.save_config`] (should be overridden by parent class).
-        - **ignore_for_config** (`List[str]`) -- A list of attributes that should not be saved in the config (should be
+        - **ignore_for_config** (`list[str]`) -- A list of attributes that should not be saved in the config (should be
           overridden by subclass).
         - **has_compatibles** (`bool`) -- Whether the class has compatible classes (should be overridden by subclass).
-        - **_deprecated_kwargs** (`List[str]`) -- Keyword arguments that are deprecated. Note that the `init` function
+        - **_deprecated_kwargs** (`list[str]`) -- Keyword arguments that are deprecated. Note that the `init` function
           should only have a `kwargs` argument if at least one argument is deprecated (should be overridden by
           subclass).
     """
@@ -155,7 +155,7 @@ class ConfigMixin:
                 Whether or not to push your model to the Hugging Face Hub after saving it. You can specify the
                 repository you want to push to with `repo_id` (will default to the name of `save_directory` in your
                 namespace).
-            kwargs (`Dict[str, Any]`, *optional*):
+            kwargs (`dict[str, Any]`, *optional*):
                 Additional keyword arguments passed along to the [`~utils.PushToHubMixin.push_to_hub`] method.
         """
         if os.path.isfile(save_directory):
@@ -189,13 +189,13 @@ class ConfigMixin:
 
     @classmethod
     def from_config(
-        cls, config: Union[FrozenDict, Dict[str, Any]] = None, return_unused_kwargs=False, **kwargs
-    ) -> Union[Self, Tuple[Self, Dict[str, Any]]]:
+        cls, config: Union[FrozenDict, dict[str, Any]] = None, return_unused_kwargs=False, **kwargs
+    ) -> Union[Self, tuple[Self, dict[str, Any]]]:
         r"""
         Instantiate a Python class from a config dictionary.
 
         Parameters:
-            config (`Dict[str, Any]`):
+            config (`dict[str, Any]`):
                 A config dictionary from which the Python class is instantiated. Make sure to only load configuration
                 files of compatible classes.
             return_unused_kwargs (`bool`, *optional*, defaults to `False`):
@@ -296,7 +296,7 @@ class ConfigMixin:
         return_unused_kwargs=False,
         return_commit_hash=False,
         **kwargs,
-    ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
         r"""
         Load a model or scheduler configuration.
 
@@ -315,7 +315,7 @@ class ConfigMixin:
             force_download (`bool`, *optional*, defaults to `False`):
                 Whether or not to force the (re-)download of the model weights and configuration files, overriding the
                 cached versions if they exist.
-            proxies (`Dict[str, str]`, *optional*):
+            proxies (`dict[str, str]`, *optional*):
                 A dictionary of proxy servers to use by protocol or endpoint, for example, `{'http': 'foo.bar:3128',
                 'http://hostname': 'foo.bar:4012'}`. The proxies are used on each request.
             output_loading_info(`bool`, *optional*, defaults to `False`):
@@ -352,7 +352,7 @@ class ConfigMixin:
         _ = kwargs.pop("mirror", None)
         subfolder = kwargs.pop("subfolder", None)
         user_agent = kwargs.pop("user_agent", {})
-        dduf_entries: Optional[Dict[str, DDUFEntry]] = kwargs.pop("dduf_entries", None)
+        dduf_entries: Optional[dict[str, DDUFEntry]] = kwargs.pop("dduf_entries", None)
 
         user_agent = {**user_agent, "file_type": "config"}
         user_agent = http_user_agent(user_agent)
@@ -564,7 +564,7 @@ class ConfigMixin:
 
     @classmethod
     def _dict_from_json_file(
-        cls, json_file: Union[str, os.PathLike], dduf_entries: Optional[Dict[str, DDUFEntry]] = None
+        cls, json_file: Union[str, os.PathLike], dduf_entries: Optional[dict[str, DDUFEntry]] = None
     ):
         if dduf_entries:
             text = dduf_entries[json_file].read_text()
@@ -577,12 +577,12 @@ class ConfigMixin:
         return f"{self.__class__.__name__} {self.to_json_string()}"
 
     @property
-    def config(self) -> Dict[str, Any]:
+    def config(self) -> dict[str, Any]:
         """
         Returns the config of the class as a frozen dictionary
 
         Returns:
-            `Dict[str, Any]`: Config of the class.
+            `dict[str, Any]`: Config of the class.
         """
         return self._internal_dict
 
@@ -637,7 +637,7 @@ class ConfigMixin:
             writer.write(self.to_json_string())
 
     @classmethod
-    def _get_config_file_from_dduf(cls, pretrained_model_name_or_path: str, dduf_entries: Dict[str, DDUFEntry]):
+    def _get_config_file_from_dduf(cls, pretrained_model_name_or_path: str, dduf_entries: dict[str, DDUFEntry]):
         # paths inside a DDUF file must always be "/"
         config_file = (
             cls.config_name
@@ -756,7 +756,7 @@ class LegacyConfigMixin(ConfigMixin):
     """
 
     @classmethod
-    def from_config(cls, config: Union[FrozenDict, Dict[str, Any]] = None, return_unused_kwargs=False, **kwargs):
+    def from_config(cls, config: Union[FrozenDict, dict[str, Any]] = None, return_unused_kwargs=False, **kwargs):
         # To prevent dependency import problem.
         from .models.model_loading_utils import _fetch_remapped_cls_from_config
 

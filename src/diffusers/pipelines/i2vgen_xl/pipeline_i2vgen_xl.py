@@ -14,7 +14,7 @@
 
 import inspect
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Optional, Union
 
 import numpy as np
 import PIL
@@ -86,14 +86,14 @@ class I2VGenXLPipelineOutput(BaseOutput):
      Output class for image-to-video pipeline.
 
     Args:
-         frames (`torch.Tensor`, `np.ndarray`, or List[List[PIL.Image.Image]]):
+         frames (`torch.Tensor`, `np.ndarray`, or list[list[PIL.Image.Image]]):
              List of video outputs - It can be a nested list of length `batch_size,` with each sub-list containing
              denoised
      PIL image sequences of length `num_frames.` It can also be a NumPy array or Torch tensor of shape
     `(batch_size, num_frames, channels, height, width)`
     """
 
-    frames: Union[torch.Tensor, np.ndarray, List[List[PIL.Image.Image]]]
+    frames: Union[torch.Tensor, np.ndarray, list[list[PIL.Image.Image]]]
 
 
 class I2VGenXLPipeline(
@@ -173,7 +173,7 @@ class I2VGenXLPipeline(
         Encodes the prompt into text encoder hidden states.
 
         Args:
-            prompt (`str` or `List[str]`, *optional*):
+            prompt (`str` or `list[str]`, *optional*):
                 prompt to be encoded
             device: (`torch.device`):
                 torch device
@@ -181,7 +181,7 @@ class I2VGenXLPipeline(
                 number of images that should be generated per prompt
             do_classifier_free_guidance (`bool`):
                 whether to use classifier free guidance or not
-            negative_prompt (`str` or `List[str]`, *optional*):
+            negative_prompt (`str` or `list[str]`, *optional*):
                 The prompt or prompts not to guide the image generation. If not defined, one has to pass
                 `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
                 less than `1`).
@@ -263,7 +263,7 @@ class I2VGenXLPipeline(
 
         # get unconditional embeddings for classifier free guidance
         if self.do_classifier_free_guidance and negative_prompt_embeds is None:
-            uncond_tokens: List[str]
+            uncond_tokens: list[str]
             if negative_prompt is None:
                 uncond_tokens = [""] * batch_size
             elif prompt is not None and type(prompt) is not type(negative_prompt):
@@ -445,7 +445,7 @@ class I2VGenXLPipeline(
             and not isinstance(image, list)
         ):
             raise ValueError(
-                "`image` has to be of type `torch.Tensor` or `PIL.Image.Image` or `List[PIL.Image.Image]` but is"
+                "`image` has to be of type `torch.Tensor` or `PIL.Image.Image` or `list[PIL.Image.Image]` but is"
                 f" {type(image)}"
             )
 
@@ -511,7 +511,7 @@ class I2VGenXLPipeline(
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        prompt: Union[str, List[str]] = None,
+        prompt: Union[str, list[str]] = None,
         image: PipelineImageInput = None,
         height: Optional[int] = 704,
         width: Optional[int] = 1280,
@@ -519,26 +519,26 @@ class I2VGenXLPipeline(
         num_frames: int = 16,
         num_inference_steps: int = 50,
         guidance_scale: float = 9.0,
-        negative_prompt: Optional[Union[str, List[str]]] = None,
+        negative_prompt: Optional[Union[str, list[str]]] = None,
         eta: float = 0.0,
         num_videos_per_prompt: Optional[int] = 1,
         decode_chunk_size: Optional[int] = 1,
-        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
+        generator: Optional[Union[torch.Generator, list[torch.Generator]]] = None,
         latents: Optional[torch.Tensor] = None,
         prompt_embeds: Optional[torch.Tensor] = None,
         negative_prompt_embeds: Optional[torch.Tensor] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
-        cross_attention_kwargs: Optional[Dict[str, Any]] = None,
+        cross_attention_kwargs: Optional[dict[str, Any]] = None,
         clip_skip: Optional[int] = 1,
     ):
         r"""
         The call function to the pipeline for image-to-video generation with [`I2VGenXLPipeline`].
 
         Args:
-            prompt (`str` or `List[str]`, *optional*):
+            prompt (`str` or `list[str]`, *optional*):
                 The prompt or prompts to guide image generation. If not defined, you need to pass `prompt_embeds`.
-            image (`PIL.Image.Image` or `List[PIL.Image.Image]` or `torch.Tensor`):
+            image (`PIL.Image.Image` or `list[PIL.Image.Image]` or `torch.Tensor`):
                 Image or images to guide image generation. If you provide a tensor, it needs to be compatible with
                 [`CLIPImageProcessor`](https://huggingface.co/lambdalabs/sd-image-variations-diffusers/blob/main/feature_extractor/preprocessor_config.json).
             height (`int`, *optional*, defaults to `self.unet.config.sample_size * self.vae_scale_factor`):
@@ -555,7 +555,7 @@ class I2VGenXLPipeline(
             guidance_scale (`float`, *optional*, defaults to 7.5):
                 A higher guidance scale value encourages the model to generate images closely linked to the text
                 `prompt` at the expense of lower image quality. Guidance scale is enabled when `guidance_scale > 1`.
-            negative_prompt (`str` or `List[str]`, *optional*):
+            negative_prompt (`str` or `list[str]`, *optional*):
                 The prompt or prompts to guide what to not include in image generation. If not defined, you need to
                 pass `negative_prompt_embeds` instead. Ignored when not using guidance (`guidance_scale < 1`).
             eta (`float`, *optional*):
@@ -567,7 +567,7 @@ class I2VGenXLPipeline(
                 The number of frames to decode at a time. The higher the chunk size, the higher the temporal
                 consistency between frames, but also the higher the memory consumption. By default, the decoder will
                 decode all frames at once for maximal quality. Reduce `decode_chunk_size` to reduce memory usage.
-            generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
+            generator (`torch.Generator` or `list[torch.Generator]`, *optional*):
                 A [`torch.Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make
                 generation deterministic.
             latents (`torch.Tensor`, *optional*):
@@ -745,7 +745,7 @@ class I2VGenXLPipeline(
 # https://github.com/ali-vilab/i2vgen-xl/blob/main/utils/transforms.py.
 
 
-def _convert_pt_to_pil(image: Union[torch.Tensor, List[torch.Tensor]]):
+def _convert_pt_to_pil(image: Union[torch.Tensor, list[torch.Tensor]]):
     if isinstance(image, list) and isinstance(image[0], torch.Tensor):
         image = torch.cat(image, 0)
 
@@ -761,7 +761,7 @@ def _convert_pt_to_pil(image: Union[torch.Tensor, List[torch.Tensor]]):
 
 
 def _resize_bilinear(
-    image: Union[torch.Tensor, List[torch.Tensor], PIL.Image.Image, List[PIL.Image.Image]], resolution: Tuple[int, int]
+    image: Union[torch.Tensor, list[torch.Tensor], PIL.Image.Image, list[PIL.Image.Image]], resolution: tuple[int, int]
 ):
     # First convert the images to PIL in case they are float tensors (only relevant for tests now).
     image = _convert_pt_to_pil(image)
@@ -774,7 +774,7 @@ def _resize_bilinear(
 
 
 def _center_crop_wide(
-    image: Union[torch.Tensor, List[torch.Tensor], PIL.Image.Image, List[PIL.Image.Image]], resolution: Tuple[int, int]
+    image: Union[torch.Tensor, list[torch.Tensor], PIL.Image.Image, list[PIL.Image.Image]], resolution: tuple[int, int]
 ):
     # First convert the images to PIL in case they are float tensors (only relevant for tests now).
     image = _convert_pt_to_pil(image)

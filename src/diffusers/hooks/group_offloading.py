@@ -17,7 +17,7 @@ import os
 from contextlib import contextmanager, nullcontext
 from dataclasses import dataclass
 from enum import Enum
-from typing import Dict, List, Optional, Set, Tuple, Union
+from typing import Optional, Set, Union
 
 import safetensors.torch
 import torch
@@ -64,13 +64,13 @@ class GroupOffloadingConfig:
 class ModuleGroup:
     def __init__(
         self,
-        modules: List[torch.nn.Module],
+        modules: list[torch.nn.Module],
         offload_device: torch.device,
         onload_device: torch.device,
         offload_leader: torch.nn.Module,
         onload_leader: Optional[torch.nn.Module] = None,
-        parameters: Optional[List[torch.nn.Parameter]] = None,
-        buffers: Optional[List[torch.Tensor]] = None,
+        parameters: Optional[list[torch.nn.Parameter]] = None,
+        buffers: Optional[list[torch.Tensor]] = None,
         non_blocking: bool = False,
         stream: Union[torch.cuda.Stream, torch.Stream, None] = None,
         record_stream: Optional[bool] = False,
@@ -340,7 +340,7 @@ class LazyPrefetchGroupOffloadingHook(ModelHook):
     _is_stateful = False
 
     def __init__(self):
-        self.execution_order: List[Tuple[str, torch.nn.Module]] = []
+        self.execution_order: list[tuple[str, torch.nn.Module]] = []
         self._layer_execution_tracker_module_names = set()
 
     def initialize_hook(self, module):
@@ -787,7 +787,7 @@ def _apply_lazy_group_offloading_hook(
 
 def _gather_parameters_with_no_group_offloading_parent(
     module: torch.nn.Module, modules_with_group_offloading: Set[str]
-) -> List[torch.nn.Parameter]:
+) -> list[torch.nn.Parameter]:
     parameters = []
     for name, parameter in module.named_parameters():
         has_parent_with_group_offloading = False
@@ -805,7 +805,7 @@ def _gather_parameters_with_no_group_offloading_parent(
 
 def _gather_buffers_with_no_group_offloading_parent(
     module: torch.nn.Module, modules_with_group_offloading: Set[str]
-) -> List[torch.Tensor]:
+) -> list[torch.Tensor]:
     buffers = []
     for name, buffer in module.named_buffers():
         has_parent_with_group_offloading = False
@@ -821,7 +821,7 @@ def _gather_buffers_with_no_group_offloading_parent(
     return buffers
 
 
-def _find_parent_module_in_module_dict(name: str, module_dict: Dict[str, torch.nn.Module]) -> str:
+def _find_parent_module_in_module_dict(name: str, module_dict: dict[str, torch.nn.Module]) -> str:
     atoms = name.split(".")
     while len(atoms) > 0:
         parent_name = ".".join(atoms)

@@ -14,7 +14,7 @@
 
 import inspect
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any, Callable, Optional, Union
 
 import numpy as np
 import PIL.Image
@@ -63,14 +63,14 @@ class DiffEditInversionPipelineOutput(BaseOutput):
     Args:
         latents (`torch.Tensor`)
             inverted latents tensor
-        images (`List[PIL.Image.Image]` or `np.ndarray`)
+        images (`list[PIL.Image.Image]` or `np.ndarray`)
             List of denoised PIL images of length `num_timesteps * batch_size` or numpy array of shape `(num_timesteps,
             batch_size, height, width, num_channels)`. PIL images or numpy array present the denoised images of the
             diffusion pipeline.
     """
 
     latents: torch.Tensor
-    images: Union[List[PIL.Image.Image], np.ndarray]
+    images: Union[list[PIL.Image.Image], np.ndarray]
 
 
 EXAMPLE_DOC_STRING = """
@@ -435,7 +435,7 @@ class StableDiffusionDiffEditPipeline(
         Encodes the prompt into text encoder hidden states.
 
         Args:
-            prompt (`str` or `List[str]`, *optional*):
+            prompt (`str` or `list[str]`, *optional*):
                 prompt to be encoded
             device: (`torch.device`):
                 torch device
@@ -443,7 +443,7 @@ class StableDiffusionDiffEditPipeline(
                 number of images that should be generated per prompt
             do_classifier_free_guidance (`bool`):
                 whether to use classifier free guidance or not
-            negative_prompt (`str` or `List[str]`, *optional*):
+            negative_prompt (`str` or `list[str]`, *optional*):
                 The prompt or prompts not to guide the image generation. If not defined, one has to pass
                 `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
                 less than `1`).
@@ -542,7 +542,7 @@ class StableDiffusionDiffEditPipeline(
 
         # get unconditional embeddings for classifier free guidance
         if do_classifier_free_guidance and negative_prompt_embeds is None:
-            uncond_tokens: List[str]
+            uncond_tokens: list[str]
             if negative_prompt is None:
                 uncond_tokens = [""] * batch_size
             elif prompt is not None and type(prompt) is not type(negative_prompt):
@@ -845,12 +845,12 @@ class StableDiffusionDiffEditPipeline(
     def generate_mask(
         self,
         image: Union[torch.Tensor, PIL.Image.Image] = None,
-        target_prompt: Optional[Union[str, List[str]]] = None,
-        target_negative_prompt: Optional[Union[str, List[str]]] = None,
+        target_prompt: Optional[Union[str, list[str]]] = None,
+        target_negative_prompt: Optional[Union[str, list[str]]] = None,
         target_prompt_embeds: Optional[torch.Tensor] = None,
         target_negative_prompt_embeds: Optional[torch.Tensor] = None,
-        source_prompt: Optional[Union[str, List[str]]] = None,
-        source_negative_prompt: Optional[Union[str, List[str]]] = None,
+        source_prompt: Optional[Union[str, list[str]]] = None,
+        source_negative_prompt: Optional[Union[str, list[str]]] = None,
         source_prompt_embeds: Optional[torch.Tensor] = None,
         source_negative_prompt_embeds: Optional[torch.Tensor] = None,
         num_maps_per_mask: Optional[int] = 10,
@@ -858,9 +858,9 @@ class StableDiffusionDiffEditPipeline(
         mask_thresholding_ratio: Optional[float] = 3.0,
         num_inference_steps: int = 50,
         guidance_scale: float = 7.5,
-        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
+        generator: Optional[Union[torch.Generator, list[torch.Generator]]] = None,
         output_type: Optional[str] = "np",
-        cross_attention_kwargs: Optional[Dict[str, Any]] = None,
+        cross_attention_kwargs: Optional[dict[str, Any]] = None,
     ):
         r"""
         Generate a latent mask given a mask prompt, a target prompt, and an image.
@@ -868,10 +868,10 @@ class StableDiffusionDiffEditPipeline(
         Args:
             image (`PIL.Image.Image`):
                 `Image` or tensor representing an image batch to be used for computing the mask.
-            target_prompt (`str` or `List[str]`, *optional*):
+            target_prompt (`str` or `list[str]`, *optional*):
                 The prompt or prompts to guide semantic mask generation. If not defined, you need to pass
                 `prompt_embeds`.
-            target_negative_prompt (`str` or `List[str]`, *optional*):
+            target_negative_prompt (`str` or `list[str]`, *optional*):
                 The prompt or prompts to guide what to not include in image generation. If not defined, you need to
                 pass `negative_prompt_embeds` instead. Ignored when not using guidance (`guidance_scale < 1`).
             target_prompt_embeds (`torch.Tensor`, *optional*):
@@ -880,10 +880,10 @@ class StableDiffusionDiffEditPipeline(
             target_negative_prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated negative text embeddings. Can be used to easily tweak text inputs (prompt weighting). If
                 not provided, `negative_prompt_embeds` are generated from the `negative_prompt` input argument.
-            source_prompt (`str` or `List[str]`, *optional*):
+            source_prompt (`str` or `list[str]`, *optional*):
                 The prompt or prompts to guide semantic mask generation using DiffEdit. If not defined, you need to
                 pass `source_prompt_embeds` or `source_image` instead.
-            source_negative_prompt (`str` or `List[str]`, *optional*):
+            source_negative_prompt (`str` or `list[str]`, *optional*):
                 The prompt or prompts to guide semantic mask generation away from using DiffEdit. If not defined, you
                 need to pass `source_negative_prompt_embeds` or `source_image` instead.
             source_prompt_embeds (`torch.Tensor`, *optional*):
@@ -908,7 +908,7 @@ class StableDiffusionDiffEditPipeline(
             guidance_scale (`float`, *optional*, defaults to 7.5):
                 A higher guidance scale value encourages the model to generate images closely linked to the text
                 `prompt` at the expense of lower image quality. Guidance scale is enabled when `guidance_scale > 1`.
-            generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
+            generator (`torch.Generator` or `list[torch.Generator]`, *optional*):
                 A [`torch.Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make
                 generation deterministic.
             output_type (`str`, *optional*, defaults to `"pil"`):
@@ -921,8 +921,8 @@ class StableDiffusionDiffEditPipeline(
         Examples:
 
         Returns:
-            `List[PIL.Image.Image]` or `np.array`:
-                When returning a `List[PIL.Image.Image]`, the list consists of a batch of single-channel binary images
+            `list[PIL.Image.Image]` or `np.array`:
+                When returning a `list[PIL.Image.Image]`, the list consists of a batch of single-channel binary images
                 with dimensions `(height // self.vae_scale_factor, width // self.vae_scale_factor)`. If it's
                 `np.array`, the shape is `(batch_size, height // self.vae_scale_factor, width //
                 self.vae_scale_factor)`.
@@ -1063,13 +1063,13 @@ class StableDiffusionDiffEditPipeline(
     @replace_example_docstring(EXAMPLE_INVERT_DOC_STRING)
     def invert(
         self,
-        prompt: Optional[Union[str, List[str]]] = None,
+        prompt: Optional[Union[str, list[str]]] = None,
         image: Union[torch.Tensor, PIL.Image.Image] = None,
         num_inference_steps: int = 50,
         inpaint_strength: float = 0.8,
         guidance_scale: float = 7.5,
-        negative_prompt: Optional[Union[str, List[str]]] = None,
-        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
+        negative_prompt: Optional[Union[str, list[str]]] = None,
+        generator: Optional[Union[torch.Generator, list[torch.Generator]]] = None,
         prompt_embeds: Optional[torch.Tensor] = None,
         negative_prompt_embeds: Optional[torch.Tensor] = None,
         decode_latents: bool = False,
@@ -1077,7 +1077,7 @@ class StableDiffusionDiffEditPipeline(
         return_dict: bool = True,
         callback: Optional[Callable[[int, int, torch.Tensor], None]] = None,
         callback_steps: Optional[int] = 1,
-        cross_attention_kwargs: Optional[Dict[str, Any]] = None,
+        cross_attention_kwargs: Optional[dict[str, Any]] = None,
         lambda_auto_corr: float = 20.0,
         lambda_kl: float = 20.0,
         num_reg_steps: int = 0,
@@ -1087,7 +1087,7 @@ class StableDiffusionDiffEditPipeline(
         Generate inverted latents given a prompt and image.
 
         Args:
-            prompt (`str` or `List[str]`, *optional*):
+            prompt (`str` or `list[str]`, *optional*):
                 The prompt or prompts to guide image generation. If not defined, you need to pass `prompt_embeds`.
             image (`PIL.Image.Image`):
                 `Image` or tensor representing an image batch to produce the inverted latents guided by `prompt`.
@@ -1102,7 +1102,7 @@ class StableDiffusionDiffEditPipeline(
             guidance_scale (`float`, *optional*, defaults to 7.5):
                 A higher guidance scale value encourages the model to generate images closely linked to the text
                 `prompt` at the expense of lower image quality. Guidance scale is enabled when `guidance_scale > 1`.
-            negative_prompt (`str` or `List[str]`, *optional*):
+            negative_prompt (`str` or `list[str]`, *optional*):
                 The prompt or prompts to guide what to not include in image generation. If not defined, you need to
                 pass `negative_prompt_embeds` instead. Ignored when not using guidance (`guidance_scale < 1`).
             generator (`torch.Generator`, *optional*):
@@ -1301,16 +1301,16 @@ class StableDiffusionDiffEditPipeline(
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        prompt: Optional[Union[str, List[str]]] = None,
+        prompt: Optional[Union[str, list[str]]] = None,
         mask_image: Union[torch.Tensor, PIL.Image.Image] = None,
         image_latents: Union[torch.Tensor, PIL.Image.Image] = None,
         inpaint_strength: Optional[float] = 0.8,
         num_inference_steps: int = 50,
         guidance_scale: float = 7.5,
-        negative_prompt: Optional[Union[str, List[str]]] = None,
+        negative_prompt: Optional[Union[str, list[str]]] = None,
         num_images_per_prompt: Optional[int] = 1,
         eta: float = 0.0,
-        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
+        generator: Optional[Union[torch.Generator, list[torch.Generator]]] = None,
         latents: Optional[torch.Tensor] = None,
         prompt_embeds: Optional[torch.Tensor] = None,
         negative_prompt_embeds: Optional[torch.Tensor] = None,
@@ -1318,14 +1318,14 @@ class StableDiffusionDiffEditPipeline(
         return_dict: bool = True,
         callback: Optional[Callable[[int, int, torch.Tensor], None]] = None,
         callback_steps: int = 1,
-        cross_attention_kwargs: Optional[Dict[str, Any]] = None,
+        cross_attention_kwargs: Optional[dict[str, Any]] = None,
         clip_skip: int = None,
     ):
         r"""
         The call function to the pipeline for generation.
 
         Args:
-            prompt (`str` or `List[str]`, *optional*):
+            prompt (`str` or `list[str]`, *optional*):
                 The prompt or prompts to guide image generation. If not defined, you need to pass `prompt_embeds`.
             mask_image (`PIL.Image.Image`):
                 `Image` or tensor representing an image batch to mask the generated image. White pixels in the mask are
@@ -1345,7 +1345,7 @@ class StableDiffusionDiffEditPipeline(
             guidance_scale (`float`, *optional*, defaults to 7.5):
                 A higher guidance scale value encourages the model to generate images closely linked to the text
                 `prompt` at the expense of lower image quality. Guidance scale is enabled when `guidance_scale > 1`.
-            negative_prompt (`str` or `List[str]`, *optional*):
+            negative_prompt (`str` or `list[str]`, *optional*):
                 The prompt or prompts to guide what to not include in image generation. If not defined, you need to
                 pass `negative_prompt_embeds` instead. Ignored when not using guidance (`guidance_scale < 1`).
             num_images_per_prompt (`int`, *optional*, defaults to 1):

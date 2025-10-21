@@ -13,8 +13,6 @@
 # limitations under the License.
 
 
-from typing import List
-
 from ..utils import deprecate, logging
 from .controlnets.controlnet_flux import FluxControlNetModel, FluxControlNetOutput, FluxMultiControlNetModel
 
@@ -41,7 +39,7 @@ class FluxControlNetModel(FluxControlNetModel):
         joint_attention_dim: int = 4096,
         pooled_projection_dim: int = 768,
         guidance_embeds: bool = False,
-        axes_dims_rope: List[int] = [16, 56, 56],
+        axes_dims_rope: list[int] = [16, 56, 56],
         num_mode: int = None,
         conditioning_embedding_channels: int = None,
     ):

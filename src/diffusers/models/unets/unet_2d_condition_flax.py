@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from typing import Dict, Optional, Tuple, Union
+from typing import Dict, Optional, Union
 
 import flax
 import flax.linen as nn
@@ -74,20 +74,20 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
             The number of channels in the input sample.
         out_channels (`int`, *optional*, defaults to 4):
             The number of channels in the output.
-        down_block_types (`Tuple[str]`, *optional*, defaults to `("FlaxCrossAttnDownBlock2D", "FlaxCrossAttnDownBlock2D", "FlaxCrossAttnDownBlock2D", "FlaxDownBlock2D")`):
+        down_block_types (`tuple[str]`, *optional*, defaults to `("FlaxCrossAttnDownBlock2D", "FlaxCrossAttnDownBlock2D", "FlaxCrossAttnDownBlock2D", "FlaxDownBlock2D")`):
             The tuple of downsample blocks to use.
-        up_block_types (`Tuple[str]`, *optional*, defaults to `("FlaxUpBlock2D", "FlaxCrossAttnUpBlock2D", "FlaxCrossAttnUpBlock2D", "FlaxCrossAttnUpBlock2D")`):
+        up_block_types (`tuple[str]`, *optional*, defaults to `("FlaxUpBlock2D", "FlaxCrossAttnUpBlock2D", "FlaxCrossAttnUpBlock2D", "FlaxCrossAttnUpBlock2D")`):
             The tuple of upsample blocks to use.
         mid_block_type (`str`, *optional*, defaults to `"UNetMidBlock2DCrossAttn"`):
             Block type for middle of UNet, it can be one of `UNetMidBlock2DCrossAttn`. If `None`, the mid block layer
             is skipped.
-        block_out_channels (`Tuple[int]`, *optional*, defaults to `(320, 640, 1280, 1280)`):
+        block_out_channels (`tuple[int]`, *optional*, defaults to `(320, 640, 1280, 1280)`):
             The tuple of output channels for each block.
         layers_per_block (`int`, *optional*, defaults to 2):
             The number of layers per block.
-        attention_head_dim (`int` or `Tuple[int]`, *optional*, defaults to 8):
+        attention_head_dim (`int` or `tuple[int]`, *optional*, defaults to 8):
             The dimension of the attention heads.
-        num_attention_heads (`int` or `Tuple[int]`, *optional*):
+        num_attention_heads (`int` or `tuple[int]`, *optional*):
             The number of attention heads.
         cross_attention_dim (`int`, *optional*, defaults to 768):
             The dimension of the cross attention features.
@@ -106,19 +106,19 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
     sample_size: int = 32
     in_channels: int = 4
     out_channels: int = 4
-    down_block_types: Tuple[str, ...] = (
+    down_block_types: tuple[str, ...] = (
         "CrossAttnDownBlock2D",
         "CrossAttnDownBlock2D",
         "CrossAttnDownBlock2D",
         "DownBlock2D",
     )
-    up_block_types: Tuple[str, ...] = ("UpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D")
+    up_block_types: tuple[str, ...] = ("UpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D")
     mid_block_type: Optional[str] = "UNetMidBlock2DCrossAttn"
-    only_cross_attention: Union[bool, Tuple[bool]] = False
-    block_out_channels: Tuple[int, ...] = (320, 640, 1280, 1280)
+    only_cross_attention: Union[bool, tuple[bool]] = False
+    block_out_channels: tuple[int, ...] = (320, 640, 1280, 1280)
     layers_per_block: int = 2
-    attention_head_dim: Union[int, Tuple[int, ...]] = 8
-    num_attention_heads: Optional[Union[int, Tuple[int, ...]]] = None
+    attention_head_dim: Union[int, tuple[int, ...]] = 8
+    num_attention_heads: Optional[Union[int, tuple[int, ...]]] = None
     cross_attention_dim: int = 1280
     dropout: float = 0.0
     use_linear_projection: bool = False
@@ -127,7 +127,7 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
     freq_shift: int = 0
     use_memory_efficient_attention: bool = False
     split_head_dim: bool = False
-    transformer_layers_per_block: Union[int, Tuple[int, ...]] = 1
+    transformer_layers_per_block: Union[int, tuple[int, ...]] = 1
     addition_embed_type: Optional[str] = None
     addition_time_embed_dim: Optional[int] = None
     addition_embed_type_num_heads: int = 64
@@ -341,11 +341,11 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
         timesteps: Union[jnp.ndarray, float, int],
         encoder_hidden_states: jnp.ndarray,
         added_cond_kwargs: Optional[Union[Dict, FrozenDict]] = None,
-        down_block_additional_residuals: Optional[Tuple[jnp.ndarray, ...]] = None,
+        down_block_additional_residuals: Optional[tuple[jnp.ndarray, ...]] = None,
         mid_block_additional_residual: Optional[jnp.ndarray] = None,
         return_dict: bool = True,
         train: bool = False,
-    ) -> Union[FlaxUNet2DConditionOutput, Tuple[jnp.ndarray]]:
+    ) -> Union[FlaxUNet2DConditionOutput, tuple[jnp.ndarray]]:
         r"""
         Args:
             sample (`jnp.ndarray`): (batch, channel, height, width) noisy inputs tensor

@@ -24,7 +24,7 @@ from collections import OrderedDict, defaultdict
 from functools import lru_cache as cache
 from itertools import chain
 from types import ModuleType
-from typing import Any, Tuple, Union
+from typing import Any, Union
 
 from huggingface_hub.utils import is_jinja_available  # noqa: F401
 from packaging.version import Version, parse
@@ -59,7 +59,7 @@ STR_OPERATION_TO_FUNC = {">": op.gt, ">=": op.ge, "==": op.eq, "!=": op.ne, "<="
 _is_google_colab = "google.colab" in sys.modules or any(k.startswith("COLAB_") for k in os.environ)
 
 
-def _is_package_available(pkg_name: str, get_dist_name: bool = False) -> Tuple[bool, str]:
+def _is_package_available(pkg_name: str, get_dist_name: bool = False) -> tuple[bool, str]:
     global _package_map
     pkg_exists = importlib.util.find_spec(pkg_name) is not None
     pkg_version = "N/A"

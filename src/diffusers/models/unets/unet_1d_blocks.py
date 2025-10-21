@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import math
-from typing import Optional, Tuple, Union
+from typing import Optional, Union
 
 import torch
 import torch.nn.functional as F
@@ -129,7 +129,7 @@ class UpResnetBlock1D(nn.Module):
     def forward(
         self,
         hidden_states: torch.Tensor,
-        res_hidden_states_tuple: Optional[Tuple[torch.Tensor, ...]] = None,
+        res_hidden_states_tuple: Optional[tuple[torch.Tensor, ...]] = None,
         temb: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         if res_hidden_states_tuple is not None:
@@ -543,7 +543,7 @@ class AttnUpBlock1D(nn.Module):
     def forward(
         self,
         hidden_states: torch.Tensor,
-        res_hidden_states_tuple: Tuple[torch.Tensor, ...],
+        res_hidden_states_tuple: tuple[torch.Tensor, ...],
         temb: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         res_hidden_states = res_hidden_states_tuple[-1]
@@ -575,7 +575,7 @@ class UpBlock1D(nn.Module):
     def forward(
         self,
         hidden_states: torch.Tensor,
-        res_hidden_states_tuple: Tuple[torch.Tensor, ...],
+        res_hidden_states_tuple: tuple[torch.Tensor, ...],
         temb: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         res_hidden_states = res_hidden_states_tuple[-1]
@@ -605,7 +605,7 @@ class UpBlock1DNoSkip(nn.Module):
     def forward(
         self,
         hidden_states: torch.Tensor,
-        res_hidden_states_tuple: Tuple[torch.Tensor, ...],
+        res_hidden_states_tuple: tuple[torch.Tensor, ...],
         temb: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         res_hidden_states = res_hidden_states_tuple[-1]

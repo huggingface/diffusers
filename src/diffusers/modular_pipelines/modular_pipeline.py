@@ -19,7 +19,7 @@ import warnings
 from collections import OrderedDict
 from copy import deepcopy
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Optional, Union
 
 import torch
 from huggingface_hub import create_repo
@@ -71,8 +71,8 @@ class PipelineState:
     [`PipelineState`] stores the state of a pipeline. It is used to pass data between pipeline blocks.
     """
 
-    values: Dict[str, Any] = field(default_factory=dict)
-    kwargs_mapping: Dict[str, List[str]] = field(default_factory=dict)
+    values: dict[str, Any] = field(default_factory=dict)
+    kwargs_mapping: dict[str, list[str]] = field(default_factory=dict)
 
     def set(self, key: str, value: Any, kwargs_type: str = None):
         """
@@ -91,22 +91,22 @@ class PipelineState:
             else:
                 self.kwargs_mapping[kwargs_type].append(key)
 
-    def get(self, keys: Union[str, List[str]], default: Any = None) -> Union[Any, Dict[str, Any]]:
+    def get(self, keys: Union[str, list[str]], default: Any = None) -> Union[Any, dict[str, Any]]:
         """
         Get one or multiple values from the pipeline state.
 
         Args:
-            keys (Union[str, List[str]]): Key or list of keys for the values
+            keys (Union[str, list[str]]): Key or list of keys for the values
             default (Any): The default value to return if not found
 
         Returns:
-            Union[Any, Dict[str, Any]]: Single value if keys is str, dictionary of values if keys is list
+            Union[Any, dict[str, Any]]: Single value if keys is str, dictionary of values if keys is list
         """
         if isinstance(keys, str):
             return self.values.get(keys, default)
         return {key: self.values.get(key, default) for key in keys}
 
-    def get_by_kwargs(self, kwargs_type: str) -> Dict[str, Any]:
+    def get_by_kwargs(self, kwargs_type: str) -> dict[str, Any]:
         """
         Get all values with matching kwargs_type.
 
@@ -114,12 +114,12 @@ class PipelineState:
             kwargs_type (str): The kwargs_type to filter by
 
         Returns:
-            Dict[str, Any]: Dictionary of values with matching kwargs_type
+            dict[str, Any]: Dictionary of values with matching kwargs_type
         """
         value_names = self.kwargs_mapping.get(kwargs_type, [])
         return self.get(value_names)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """
         Convert PipelineState to a dictionary.
         """
@@ -172,7 +172,7 @@ class BlockState:
         Convert BlockState to a dictionary.
 
         Returns:
-            Dict[str, Any]: Dictionary containing all attributes of the BlockState
+            dict[str, Any]: Dictionary containing all attributes of the BlockState
         """
         return dict(self.__dict__.items())
 
@@ -186,14 +186,14 @@ class BlockState:
             elif isinstance(v, list):
                 if len(v) > 0 and hasattr(v[0], "shape") and hasattr(v[0], "dtype"):
                     shapes = [t.shape for t in v]
-                    return f"List[{len(v)}] of Tensors with shapes {shapes}"
+                    return f"list[{len(v)}] of Tensors with shapes {shapes}"
                 return repr(v)
 
             # Handle tuples of tensors
             elif isinstance(v, tuple):
                 if len(v) > 0 and hasattr(v[0], "shape") and hasattr(v[0], "dtype"):
                     shapes = [t.shape for t in v]
-                    return f"Tuple[{len(v)}] of Tensors with shapes {shapes}"
+                    return f"tuple[{len(v)}] of Tensors with shapes {shapes}"
                 return repr(v)
 
             # Handle dicts with tensor values
@@ -209,7 +209,7 @@ class BlockState:
                         and hasattr(val[0], "dtype")
                     ):
                         shapes = [t.shape for t in val]
-                        formatted_dict[k] = f"List[{len(val)}] of Tensors with shapes {shapes}"
+                        formatted_dict[k] = f"list[{len(val)}] of Tensors with shapes {shapes}"
                     else:
                         formatted_dict[k] = repr(val)
                 return formatted_dict
@@ -252,15 +252,15 @@ class ModularPipelineBlocks(ConfigMixin, PushToHubMixin):
         return ""
 
     @property
-    def expected_components(self) -> List[ComponentSpec]:
+    def expected_components(self) -> list[ComponentSpec]:
         return []
 
     @property
-    def expected_configs(self) -> List[ConfigSpec]:
+    def expected_configs(self) -> list[ConfigSpec]:
         return []
 
     @property
-    def inputs(self) -> List[InputParam]:
+    def inputs(self) -> list[InputParam]:
         """List of input parameters. Must be implemented by subclasses."""
         return []
 
@@ -273,11 +273,11 @@ class ModularPipelineBlocks(ConfigMixin, PushToHubMixin):
         return input_names
 
     @property
-    def required_inputs(self) -> List[InputParam]:
+    def required_inputs(self) -> list[InputParam]:
         return self._get_required_inputs()
 
     @property
-    def intermediate_outputs(self) -> List[OutputParam]:
+    def intermediate_outputs(self) -> list[OutputParam]:
         """List of intermediate output parameters. Must be implemented by subclasses."""
         return []
 
@@ -285,7 +285,7 @@ class ModularPipelineBlocks(ConfigMixin, PushToHubMixin):
         return self.intermediate_outputs
 
     @property
-    def outputs(self) -> List[OutputParam]:
+    def outputs(self) -> list[OutputParam]:
         return self._get_outputs()
 
     @classmethod
@@ -427,7 +427,7 @@ class ModularPipelineBlocks(ConfigMixin, PushToHubMixin):
                         state.set(param_name, param, input_param.kwargs_type)
 
     @staticmethod
-    def combine_inputs(*named_input_lists: List[Tuple[str, List[InputParam]]]) -> List[InputParam]:
+    def combine_inputs(*named_input_lists: list[tuple[str, list[InputParam]]]) -> list[InputParam]:
         """
         Combines multiple lists of InputParam objects from different blocks. For duplicate inputs, updates only if
         current default value is None and new default value is not None. Warns if multiple non-None default values
@@ -437,7 +437,7 @@ class ModularPipelineBlocks(ConfigMixin, PushToHubMixin):
             named_input_lists: List of tuples containing (block_name, input_param_list) pairs
 
         Returns:
-            List[InputParam]: Combined list of unique InputParam objects
+            list[InputParam]: Combined list of unique InputParam objects
         """
         combined_dict = {}  # name -> InputParam
         value_sources = {}  # name -> block_name
@@ -470,7 +470,7 @@ class ModularPipelineBlocks(ConfigMixin, PushToHubMixin):
         return list(combined_dict.values())
 
     @staticmethod
-    def combine_outputs(*named_output_lists: List[Tuple[str, List[OutputParam]]]) -> List[OutputParam]:
+    def combine_outputs(*named_output_lists: list[tuple[str, list[OutputParam]]]) -> list[OutputParam]:
         """
         Combines multiple lists of OutputParam objects from different blocks. For duplicate outputs, keeps the first
         occurrence of each output name.
@@ -479,7 +479,7 @@ class ModularPipelineBlocks(ConfigMixin, PushToHubMixin):
             named_output_lists: List of tuples containing (block_name, output_param_list) pairs
 
         Returns:
-            List[OutputParam]: Combined list of unique OutputParam objects
+            list[OutputParam]: Combined list of unique OutputParam objects
         """
         combined_dict = {}  # name -> OutputParam
 
@@ -493,15 +493,15 @@ class ModularPipelineBlocks(ConfigMixin, PushToHubMixin):
         return list(combined_dict.values())
 
     @property
-    def input_names(self) -> List[str]:
+    def input_names(self) -> list[str]:
         return [input_param.name for input_param in self.inputs]
 
     @property
-    def intermediate_output_names(self) -> List[str]:
+    def intermediate_output_names(self) -> list[str]:
         return [output_param.name for output_param in self.intermediate_outputs]
 
     @property
-    def output_names(self) -> List[str]:
+    def output_names(self) -> list[str]:
         return [output_param.name for output_param in self.outputs]
 
     @property
@@ -590,7 +590,7 @@ class AutoPipelineBlocks(ModularPipelineBlocks):
         return expected_configs
 
     @property
-    def required_inputs(self) -> List[str]:
+    def required_inputs(self) -> list[str]:
         if None not in self.block_trigger_inputs:
             return []
         first_block = next(iter(self.sub_blocks.values()))
@@ -605,7 +605,7 @@ class AutoPipelineBlocks(ModularPipelineBlocks):
 
     # YiYi TODO: add test for this
     @property
-    def inputs(self) -> List[Tuple[str, Any]]:
+    def inputs(self) -> list[tuple[str, Any]]:
         named_inputs = [(name, block.inputs) for name, block in self.sub_blocks.items()]
         combined_inputs = self.combine_inputs(*named_inputs)
         # mark Required inputs only if that input is required by all the blocks
@@ -617,13 +617,13 @@ class AutoPipelineBlocks(ModularPipelineBlocks):
         return combined_inputs
 
     @property
-    def intermediate_outputs(self) -> List[str]:
+    def intermediate_outputs(self) -> list[str]:
         named_outputs = [(name, block.intermediate_outputs) for name, block in self.sub_blocks.items()]
         combined_outputs = self.combine_outputs(*named_outputs)
         return combined_outputs
 
     @property
-    def outputs(self) -> List[str]:
+    def outputs(self) -> list[str]:
         named_outputs = [(name, block.outputs) for name, block in self.sub_blocks.items()]
         combined_outputs = self.combine_outputs(*named_outputs)
         return combined_outputs
@@ -819,7 +819,7 @@ class SequentialPipelineBlocks(ModularPipelineBlocks):
 
     @classmethod
     def from_blocks_dict(
-        cls, blocks_dict: Dict[str, Any], description: Optional[str] = None
+        cls, blocks_dict: dict[str, Any], description: Optional[str] = None
     ) -> "SequentialPipelineBlocks":
         """Creates a SequentialPipelineBlocks instance from a dictionary of blocks.
 
@@ -882,11 +882,11 @@ class SequentialPipelineBlocks(ModularPipelineBlocks):
 
     # YiYi TODO: add test for this
     @property
-    def inputs(self) -> List[Tuple[str, Any]]:
+    def inputs(self) -> list[tuple[str, Any]]:
         return self._get_inputs()
 
     @property
-    def required_inputs(self) -> List[str]:
+    def required_inputs(self) -> list[str]:
         # Get the first block from the dictionary
         first_block = next(iter(self.sub_blocks.values()))
         required_by_any = set(getattr(first_block, "required_inputs", set()))
@@ -899,7 +899,7 @@ class SequentialPipelineBlocks(ModularPipelineBlocks):
         return list(required_by_any)
 
     @property
-    def intermediate_outputs(self) -> List[str]:
+    def intermediate_outputs(self) -> list[str]:
         named_outputs = []
         for name, block in self.sub_blocks.items():
             inp_names = {inp.name for inp in block.inputs}
@@ -912,7 +912,7 @@ class SequentialPipelineBlocks(ModularPipelineBlocks):
 
     # YiYi TODO: I think we can remove the outputs property
     @property
-    def outputs(self) -> List[str]:
+    def outputs(self) -> list[str]:
         # return next(reversed(self.sub_blocks.values())).intermediate_outputs
         return self.intermediate_outputs
 
@@ -1153,20 +1153,20 @@ class LoopSequentialPipelineBlocks(ModularPipelineBlocks):
         raise NotImplementedError("description method must be implemented in subclasses")
 
     @property
-    def loop_expected_components(self) -> List[ComponentSpec]:
+    def loop_expected_components(self) -> list[ComponentSpec]:
         return []
 
     @property
-    def loop_expected_configs(self) -> List[ConfigSpec]:
+    def loop_expected_configs(self) -> list[ConfigSpec]:
         return []
 
     @property
-    def loop_inputs(self) -> List[InputParam]:
+    def loop_inputs(self) -> list[InputParam]:
         """List of input parameters. Must be implemented by subclasses."""
         return []
 
     @property
-    def loop_required_inputs(self) -> List[str]:
+    def loop_required_inputs(self) -> list[str]:
         input_names = []
         for input_param in self.loop_inputs:
             if input_param.required:
@@ -1174,7 +1174,7 @@ class LoopSequentialPipelineBlocks(ModularPipelineBlocks):
         return input_names
 
     @property
-    def loop_intermediate_outputs(self) -> List[OutputParam]:
+    def loop_intermediate_outputs(self) -> list[OutputParam]:
         """List of intermediate output parameters. Must be implemented by subclasses."""
         return []
 
@@ -1240,7 +1240,7 @@ class LoopSequentialPipelineBlocks(ModularPipelineBlocks):
 
     # modified from SequentialPipelineBlocks, if any additionan input required by the loop is required by the block
     @property
-    def required_inputs(self) -> List[str]:
+    def required_inputs(self) -> list[str]:
         # Get the first block from the dictionary
         first_block = next(iter(self.sub_blocks.values()))
         required_by_any = set(getattr(first_block, "required_inputs", set()))
@@ -1258,7 +1258,7 @@ class LoopSequentialPipelineBlocks(ModularPipelineBlocks):
     # YiYi TODO: this need to be thought about more
     # modified from SequentialPipelineBlocks to include loop_intermediate_outputs
     @property
-    def intermediate_outputs(self) -> List[str]:
+    def intermediate_outputs(self) -> list[str]:
         named_outputs = [(name, block.intermediate_outputs) for name, block in self.sub_blocks.items()]
         combined_outputs = self.combine_outputs(*named_outputs)
         for output in self.loop_intermediate_outputs:
@@ -1268,7 +1268,7 @@ class LoopSequentialPipelineBlocks(ModularPipelineBlocks):
 
     # YiYi TODO: this need to be thought about more
     @property
-    def outputs(self) -> List[str]:
+    def outputs(self) -> list[str]:
         return next(reversed(self.sub_blocks.values())).intermediate_outputs
 
     def __init__(self):
@@ -1281,7 +1281,7 @@ class LoopSequentialPipelineBlocks(ModularPipelineBlocks):
         self.sub_blocks = sub_blocks
 
     @classmethod
-    def from_blocks_dict(cls, blocks_dict: Dict[str, Any]) -> "LoopSequentialPipelineBlocks":
+    def from_blocks_dict(cls, blocks_dict: dict[str, Any]) -> "LoopSequentialPipelineBlocks":
         """
         Creates a LoopSequentialPipelineBlocks instance from a dictionary of blocks.
 
@@ -1586,7 +1586,7 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
         self.register_to_config(_blocks_class_name=self.blocks.__class__.__name__ if self.blocks is not None else None)
 
     @property
-    def default_call_parameters(self) -> Dict[str, Any]:
+    def default_call_parameters(self) -> dict[str, Any]:
         """
         Returns:
             - Dictionary mapping input names to their default values
@@ -1890,7 +1890,7 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
         return torch.float32
 
     @property
-    def null_component_names(self) -> List[str]:
+    def null_component_names(self) -> list[str]:
         """
         Returns:
             - List of names for components that needs to be loaded
@@ -1898,7 +1898,7 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
         return [name for name in self._component_specs.keys() if hasattr(self, name) and getattr(self, name) is None]
 
     @property
-    def component_names(self) -> List[str]:
+    def component_names(self) -> list[str]:
         """
         Returns:
             - List of names for all components
@@ -1906,7 +1906,7 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
         return list(self.components.keys())
 
     @property
-    def pretrained_component_names(self) -> List[str]:
+    def pretrained_component_names(self) -> list[str]:
         """
         Returns:
             - List of names for from_pretrained components
@@ -1918,7 +1918,7 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
         ]
 
     @property
-    def config_component_names(self) -> List[str]:
+    def config_component_names(self) -> list[str]:
         """
         Returns:
             - List of names for from_config components
@@ -1930,7 +1930,7 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
         ]
 
     @property
-    def components(self) -> Dict[str, Any]:
+    def components(self) -> dict[str, Any]:
         """
         Returns:
             - Dictionary mapping component names to their objects (include both from_pretrained and from_config
@@ -2077,7 +2077,7 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
         self.register_to_config(**config_to_register)
 
     # YiYi TODO: support map for additional from_pretrained kwargs
-    def load_components(self, names: Optional[Union[List[str], str]] = None, **kwargs):
+    def load_components(self, names: Optional[Union[list[str], str]] = None, **kwargs):
         """
         Load selected components from specs.
 
@@ -2345,7 +2345,7 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
         the `default_creation_method` is not `from_pretrained`, return None.
 
         This dict contains:
-          - "type_hint": Tuple[str, str]
+          - "type_hint": tuple[str, str]
               Library name and class name of the component. (e.g. ("diffusers", "UNet2DConditionModel"))
           - All loading fields defined by `component_spec.loading_fields()`, typically:
               - "repo": Optional[str]
@@ -2363,7 +2363,7 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
                 The spec object describing one pipeline component.
 
         Returns:
-            Dict[str, Any]: A mapping suitable for JSON serialization.
+            dict[str, Any]: A mapping suitable for JSON serialization.
 
         Example:
             >>> from diffusers.pipelines.modular_pipeline_utils import ComponentSpec >>> from diffusers import
@@ -2393,13 +2393,13 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
     @staticmethod
     def _dict_to_component_spec(
         name: str,
-        spec_dict: Dict[str, Any],
+        spec_dict: dict[str, Any],
     ) -> ComponentSpec:
         """
         Reconstruct a ComponentSpec from a loading specdict.
 
         This method converts a dictionary representation back into a ComponentSpec object. The dict should contain:
-          - "type_hint": Tuple[str, str]
+          - "type_hint": tuple[str, str]
               Library name and class name of the component. (e.g. ("diffusers", "UNet2DConditionModel"))
           - All loading fields defined by `component_spec.loading_fields()`, typically:
               - "repo": Optional[str]
@@ -2415,7 +2415,7 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
         Args:
             name (str):
                 The name of the component.
-            specdict (Dict[str, Any]):
+            specdict (dict[str, Any]):
                 A dictionary containing the component specification data.
 
         Returns:
@@ -2450,7 +2450,7 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
             if hasattr(sub_block, "set_progress_bar_config"):
                 sub_block.set_progress_bar_config(**kwargs)
 
-    def __call__(self, state: PipelineState = None, output: Union[str, List[str]] = None, **kwargs):
+    def __call__(self, state: PipelineState = None, output: Union[str, list[str]] = None, **kwargs):
         """
         Execute the pipeline by running the pipeline blocks with the given inputs.
 
@@ -2458,11 +2458,11 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
             state (`PipelineState`, optional):
                 PipelineState instance contains inputs and intermediate values. If None, a new `PipelineState` will be
                 created based on the user inputs and the pipeline blocks's requirement.
-            output (`str` or `List[str]`, optional):
+            output (`str` or `list[str]`, optional):
                 Optional specification of what to return:
                    - None: Returns the complete `PipelineState` with all inputs and intermediates (default)
                    - str: Returns a specific intermediate value from the state (e.g. `output="image"`)
-                   - List[str]: Returns a dictionary of specific intermediate values (e.g. `output=["image",
+                   - list[str]: Returns a dictionary of specific intermediate values (e.g. `output=["image",
                      "latents"]`)
 
 
@@ -2487,7 +2487,7 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
         Returns:
             - If `output` is None: Complete `PipelineState` containing all inputs and intermediates
             - If `output` is str: The specific intermediate value from the state (e.g. `output="image"`)
-            - If `output` is List[str]: Dictionary mapping output names to their values from the state (e.g.
+            - If `output` is list[str]: Dictionary mapping output names to their values from the state (e.g.
               `output=["image", "latents"]`)
         """
         if state is None:

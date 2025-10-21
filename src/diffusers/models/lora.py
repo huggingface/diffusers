@@ -21,7 +21,7 @@
 # ----------------------------------------------------------------#
 ###################################################################
 
-from typing import Optional, Tuple, Union
+from typing import Optional, Union
 
 import torch
 import torch.nn.functional as F
@@ -260,9 +260,9 @@ class LoRAConv2dLayer(nn.Module):
         in_features: int,
         out_features: int,
         rank: int = 4,
-        kernel_size: Union[int, Tuple[int, int]] = (1, 1),
-        stride: Union[int, Tuple[int, int]] = (1, 1),
-        padding: Union[int, Tuple[int, int], str] = 0,
+        kernel_size: Union[int, tuple[int, int]] = (1, 1),
+        stride: Union[int, tuple[int, int]] = (1, 1),
+        padding: Union[int, tuple[int, int], str] = 0,
         network_alpha: Optional[float] = None,
     ):
         super().__init__()

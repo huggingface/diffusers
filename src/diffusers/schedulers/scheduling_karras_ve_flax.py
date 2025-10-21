@@ -141,7 +141,7 @@ class FlaxKarrasVeScheduler(FlaxSchedulerMixin, ConfigMixin):
         sample: jnp.ndarray,
         sigma: float,
         key: jax.Array,
-    ) -> Tuple[jnp.ndarray, float]:
+    ) -> tuple[jnp.ndarray, float]:
         """
         Explicit Langevin-like "churn" step of adding noise to the sample according to a factor gamma_i ≥ 0 to reach a
         higher noise level sigma_hat = sigma_i + gamma_i*sigma_i.

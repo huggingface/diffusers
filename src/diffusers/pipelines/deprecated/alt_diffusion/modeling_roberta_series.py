@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Optional, Tuple
+from typing import Optional
 
 import torch
 from torch import nn
@@ -32,8 +32,8 @@ class TransformationModelOutput(ModelOutput):
 
     projection_state: Optional[torch.Tensor] = None
     last_hidden_state: torch.Tensor = None
-    hidden_states: Optional[Tuple[torch.Tensor]] = None
-    attentions: Optional[Tuple[torch.Tensor]] = None
+    hidden_states: Optional[tuple[torch.Tensor]] = None
+    attentions: Optional[tuple[torch.Tensor]] = None
 
 
 class RobertaSeriesConfig(XLMRobertaConfig):

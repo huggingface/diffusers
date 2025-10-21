@@ -16,7 +16,7 @@ import math
 import os
 from dataclasses import dataclass
 from enum import Enum
-from typing import Optional, Tuple, Union
+from typing import Optional, Union
 
 import flax
 import jax.numpy as jnp
@@ -62,7 +62,7 @@ class FlaxSchedulerMixin(PushToHubMixin):
     Mixin containing common functions for the schedulers.
 
     Class attributes:
-        - **_compatibles** (`List[str]`) -- A list of classes that are compatible with the parent class, so that
+        - **_compatibles** (`list[str]`) -- A list of classes that are compatible with the parent class, so that
           `from_config` can be used from a class different than the one used to save the config (should be overridden
           by parent class).
     """
@@ -105,7 +105,7 @@ class FlaxSchedulerMixin(PushToHubMixin):
                 Whether or not to force the (re-)download of the model weights and configuration files, overriding the
                 cached versions if they exist.
 
-            proxies (`Dict[str, str]`, *optional*):
+            proxies (`dict[str, str]`, *optional*):
                 A dictionary of proxy servers to use by protocol or endpoint, e.g., `{'http': 'foo.bar:3128',
                 'http://hostname': 'foo.bar:4012'}`. The proxies are used on each request.
             output_loading_info(`bool`, *optional*, defaults to `False`):
@@ -160,7 +160,7 @@ class FlaxSchedulerMixin(PushToHubMixin):
                 Whether or not to push your model to the Hugging Face Hub after saving it. You can specify the
                 repository you want to push to with `repo_id` (will default to the name of `save_directory` in your
                 namespace).
-            kwargs (`Dict[str, Any]`, *optional*):
+            kwargs (`dict[str, Any]`, *optional*):
                 Additional keyword arguments passed along to the [`~utils.PushToHubMixin.push_to_hub`] method.
         """
         self.save_config(save_directory=save_directory, push_to_hub=push_to_hub, **kwargs)
@@ -171,7 +171,7 @@ class FlaxSchedulerMixin(PushToHubMixin):
         Returns all schedulers that are compatible with this scheduler
 
         Returns:
-            `List[SchedulerMixin]`: List of compatible schedulers
+            `list[SchedulerMixin]`: List of compatible schedulers
         """
         return self._get_compatibles()
 
@@ -185,7 +185,7 @@ class FlaxSchedulerMixin(PushToHubMixin):
         return compatible_classes
 
 
-def broadcast_to_shape_from_left(x: jnp.ndarray, shape: Tuple[int]) -> jnp.ndarray:
+def broadcast_to_shape_from_left(x: jnp.ndarray, shape: tuple[int]) -> jnp.ndarray:
     assert len(shape) >= x.ndim
     return jnp.broadcast_to(x.reshape(x.shape + (1,) * (len(shape) - x.ndim)), shape)
 

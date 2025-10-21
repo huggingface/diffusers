@@ -104,7 +104,7 @@ class RePaintPipeline(DiffusionPipeline):
         eta: float = 0.0,
         jump_length: int = 10,
         jump_n_sample: int = 10,
-        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
+        generator: Optional[Union[torch.Generator, list[torch.Generator]]] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
     ) -> Union[ImagePipelineOutput, Tuple]:

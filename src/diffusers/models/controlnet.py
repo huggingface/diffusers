@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from typing import Optional, Tuple, Union
+from typing import Optional, Union
 
 from ..utils import deprecate
 from .controlnets.controlnet import (  # noqa
@@ -36,15 +36,15 @@ class ControlNetModel(ControlNetModel):
         conditioning_channels: int = 3,
         flip_sin_to_cos: bool = True,
         freq_shift: int = 0,
-        down_block_types: Tuple[str, ...] = (
+        down_block_types: tuple[str, ...] = (
             "CrossAttnDownBlock2D",
             "CrossAttnDownBlock2D",
             "CrossAttnDownBlock2D",
             "DownBlock2D",
         ),
         mid_block_type: Optional[str] = "UNetMidBlock2DCrossAttn",
-        only_cross_attention: Union[bool, Tuple[bool]] = False,
-        block_out_channels: Tuple[int, ...] = (320, 640, 1280, 1280),
+        only_cross_attention: Union[bool, tuple[bool]] = False,
+        block_out_channels: tuple[int, ...] = (320, 640, 1280, 1280),
         layers_per_block: int = 2,
         downsample_padding: int = 1,
         mid_block_scale_factor: float = 1,
@@ -52,11 +52,11 @@ class ControlNetModel(ControlNetModel):
         norm_num_groups: Optional[int] = 32,
         norm_eps: float = 1e-5,
         cross_attention_dim: int = 1280,
-        transformer_layers_per_block: Union[int, Tuple[int, ...]] = 1,
+        transformer_layers_per_block: Union[int, tuple[int, ...]] = 1,
         encoder_hid_dim: Optional[int] = None,
         encoder_hid_dim_type: Optional[str] = None,
-        attention_head_dim: Union[int, Tuple[int, ...]] = 8,
-        num_attention_heads: Optional[Union[int, Tuple[int, ...]]] = None,
+        attention_head_dim: Union[int, tuple[int, ...]] = 8,
+        num_attention_heads: Optional[Union[int, tuple[int, ...]]] = None,
         use_linear_projection: bool = False,
         class_embed_type: Optional[str] = None,
         addition_embed_type: Optional[str] = None,
@@ -66,7 +66,7 @@ class ControlNetModel(ControlNetModel):
         resnet_time_scale_shift: str = "default",
         projection_class_embeddings_input_dim: Optional[int] = None,
         controlnet_conditioning_channel_order: str = "rgb",
-        conditioning_embedding_out_channels: Optional[Tuple[int, ...]] = (16, 32, 96, 256),
+        conditioning_embedding_out_channels: Optional[tuple[int, ...]] = (16, 32, 96, 256),
         global_pool_conditions: bool = False,
         addition_embed_type_num_heads: int = 64,
     ):

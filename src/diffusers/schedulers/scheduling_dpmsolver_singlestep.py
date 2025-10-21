@@ -15,7 +15,7 @@
 # DISCLAIMER: This file is strongly influenced by https://github.com/LuChengTHU/dpm-solver
 
 import math
-from typing import List, Optional, Tuple, Union
+from typing import Optional, Tuple, Union
 
 import numpy as np
 import torch
@@ -234,7 +234,7 @@ class DPMSolverSinglestepScheduler(SchedulerMixin, ConfigMixin):
         self._begin_index = None
         self.sigmas = self.sigmas.to("cpu")  # to avoid too much CPU/GPU communication
 
-    def get_order_list(self, num_inference_steps: int) -> List[int]:
+    def get_order_list(self, num_inference_steps: int) -> list[int]:
         """
         Computes the solver order at each time step.
 
@@ -304,7 +304,7 @@ class DPMSolverSinglestepScheduler(SchedulerMixin, ConfigMixin):
         num_inference_steps: int = None,
         device: Union[str, torch.device] = None,
         mu: Optional[float] = None,
-        timesteps: Optional[List[int]] = None,
+        timesteps: Optional[list[int]] = None,
     ):
         """
         Sets the discrete timesteps used for the diffusion chain (to be run before inference).
@@ -314,7 +314,7 @@ class DPMSolverSinglestepScheduler(SchedulerMixin, ConfigMixin):
                 The number of diffusion steps used when generating samples with a pre-trained model.
             device (`str` or `torch.device`, *optional*):
                 The device to which the timesteps should be moved to. If `None`, the timesteps are not moved.
-            timesteps (`List[int]`, *optional*):
+            timesteps (`list[int]`, *optional*):
                 Custom timesteps used to support arbitrary spacing between timesteps. If `None`, then the default
                 timestep spacing strategy of equal spacing between timesteps schedule is used. If `timesteps` is
                 passed, `num_inference_steps` must be `None`.
@@ -718,7 +718,7 @@ class DPMSolverSinglestepScheduler(SchedulerMixin, ConfigMixin):
 
     def singlestep_dpm_solver_second_order_update(
         self,
-        model_output_list: List[torch.Tensor],
+        model_output_list: list[torch.Tensor],
         *args,
         sample: torch.Tensor = None,
         noise: Optional[torch.Tensor] = None,
@@ -729,7 +729,7 @@ class DPMSolverSinglestepScheduler(SchedulerMixin, ConfigMixin):
         time `timestep_list[-2]`.
 
         Args:
-            model_output_list (`List[torch.Tensor]`):
+            model_output_list (`list[torch.Tensor]`):
                 The direct outputs from learned diffusion model at current and latter timesteps.
             timestep (`int`):
                 The current and latter discrete timestep in the diffusion chain.
@@ -829,7 +829,7 @@ class DPMSolverSinglestepScheduler(SchedulerMixin, ConfigMixin):
 
     def singlestep_dpm_solver_third_order_update(
         self,
-        model_output_list: List[torch.Tensor],
+        model_output_list: list[torch.Tensor],
         *args,
         sample: torch.Tensor = None,
         noise: Optional[torch.Tensor] = None,
@@ -840,7 +840,7 @@ class DPMSolverSinglestepScheduler(SchedulerMixin, ConfigMixin):
         time `timestep_list[-3]`.
 
         Args:
-            model_output_list (`List[torch.Tensor]`):
+            model_output_list (`list[torch.Tensor]`):
                 The direct outputs from learned diffusion model at current and latter timesteps.
             timestep (`int`):
                 The current and latter discrete timestep in the diffusion chain.
@@ -951,7 +951,7 @@ class DPMSolverSinglestepScheduler(SchedulerMixin, ConfigMixin):
 
     def singlestep_dpm_solver_update(
         self,
-        model_output_list: List[torch.Tensor],
+        model_output_list: list[torch.Tensor],
         *args,
         sample: torch.Tensor = None,
         order: int = None,
@@ -962,7 +962,7 @@ class DPMSolverSinglestepScheduler(SchedulerMixin, ConfigMixin):
         One step for the singlestep DPMSolver.
 
         Args:
-            model_output_list (`List[torch.Tensor]`):
+            model_output_list (`list[torch.Tensor]`):
                 The direct outputs from learned diffusion model at current and latter timesteps.
             timestep (`int`):
                 The current and latter discrete timestep in the diffusion chain.

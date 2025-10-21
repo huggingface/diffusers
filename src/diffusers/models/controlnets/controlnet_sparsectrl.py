@@ -13,7 +13,7 @@
 # limitations under the License.
 
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Optional, Union
 
 import torch
 from torch import nn
@@ -55,7 +55,7 @@ class SparseControlNetOutput(BaseOutput):
             Output can be used to condition the original UNet's middle block activation.
     """
 
-    down_block_res_samples: Tuple[torch.Tensor]
+    down_block_res_samples: tuple[torch.Tensor]
     mid_block_res_sample: torch.Tensor
 
 
@@ -64,7 +64,7 @@ class SparseControlNetConditioningEmbedding(nn.Module):
         self,
         conditioning_embedding_channels: int,
         conditioning_channels: int = 3,
-        block_out_channels: Tuple[int, ...] = (16, 32, 96, 256),
+        block_out_channels: tuple[int, ...] = (16, 32, 96, 256),
     ):
         super().__init__()
 
@@ -110,7 +110,7 @@ class SparseControlNetModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
             The frequency shift to apply to the time embedding.
         down_block_types (`tuple[str]`, defaults to `("CrossAttnDownBlock2D", "CrossAttnDownBlock2D", "CrossAttnDownBlock2D", "DownBlock2D")`):
             The tuple of downsample blocks to use.
-        only_cross_attention (`Union[bool, Tuple[bool]]`, defaults to `False`):
+        only_cross_attention (`Union[bool, tuple[bool]]`, defaults to `False`):
         block_out_channels (`tuple[int]`, defaults to `(320, 640, 1280, 1280)`):
             The tuple of output channels for each block.
         layers_per_block (`int`, defaults to 2):
@@ -128,28 +128,28 @@ class SparseControlNetModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
             The epsilon to use for the normalization.
         cross_attention_dim (`int`, defaults to 1280):
             The dimension of the cross attention features.
-        transformer_layers_per_block (`int` or `Tuple[int]`, *optional*, defaults to 1):
+        transformer_layers_per_block (`int` or `tuple[int]`, *optional*, defaults to 1):
             The number of transformer blocks of type [`~models.attention.BasicTransformerBlock`]. Only relevant for
             [`~models.unet_2d_blocks.CrossAttnDownBlock2D`], [`~models.unet_2d_blocks.CrossAttnUpBlock2D`],
             [`~models.unet_2d_blocks.UNetMidBlock2DCrossAttn`].
-        transformer_layers_per_mid_block (`int` or `Tuple[int]`, *optional*, defaults to 1):
+        transformer_layers_per_mid_block (`int` or `tuple[int]`, *optional*, defaults to 1):
             The number of transformer layers to use in each layer in the middle block.
-        attention_head_dim (`int` or `Tuple[int]`, defaults to 8):
+        attention_head_dim (`int` or `tuple[int]`, defaults to 8):
             The dimension of the attention heads.
-        num_attention_heads (`int` or `Tuple[int]`, *optional*):
+        num_attention_heads (`int` or `tuple[int]`, *optional*):
             The number of heads to use for multi-head attention.
         use_linear_projection (`bool`, defaults to `False`):
         upcast_attention (`bool`, defaults to `False`):
         resnet_time_scale_shift (`str`, defaults to `"default"`):
             Time scale shift config for ResNet blocks (see `ResnetBlock2D`). Choose from `default` or `scale_shift`.
-        conditioning_embedding_out_channels (`Tuple[int]`, defaults to `(16, 32, 96, 256)`):
+        conditioning_embedding_out_channels (`tuple[int]`, defaults to `(16, 32, 96, 256)`):
             The tuple of output channel for each block in the `conditioning_embedding` layer.
         global_pool_conditions (`bool`, defaults to `False`):
             TODO(Patrick) - unused parameter
         controlnet_conditioning_channel_order (`str`, defaults to `rgb`):
         motion_max_seq_length (`int`, defaults to `32`):
             The maximum sequence length to use in the motion module.
-        motion_num_attention_heads (`int` or `Tuple[int]`, defaults to `8`):
+        motion_num_attention_heads (`int` or `tuple[int]`, defaults to `8`):
             The number of heads to use in each attention layer of the motion module.
         concat_conditioning_mask (`bool`, defaults to `True`):
         use_simplified_condition_embedding (`bool`, defaults to `True`):
@@ -164,14 +164,14 @@ class SparseControlNetModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         conditioning_channels: int = 4,
         flip_sin_to_cos: bool = True,
         freq_shift: int = 0,
-        down_block_types: Tuple[str, ...] = (
+        down_block_types: tuple[str, ...] = (
             "CrossAttnDownBlockMotion",
             "CrossAttnDownBlockMotion",
             "CrossAttnDownBlockMotion",
             "DownBlockMotion",
         ),
-        only_cross_attention: Union[bool, Tuple[bool]] = False,
-        block_out_channels: Tuple[int, ...] = (320, 640, 1280, 1280),
+        only_cross_attention: Union[bool, tuple[bool]] = False,
+        block_out_channels: tuple[int, ...] = (320, 640, 1280, 1280),
         layers_per_block: int = 2,
         downsample_padding: int = 1,
         mid_block_scale_factor: float = 1,
@@ -179,15 +179,15 @@ class SparseControlNetModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         norm_num_groups: Optional[int] = 32,
         norm_eps: float = 1e-5,
         cross_attention_dim: int = 768,
-        transformer_layers_per_block: Union[int, Tuple[int, ...]] = 1,
-        transformer_layers_per_mid_block: Optional[Union[int, Tuple[int]]] = None,
-        temporal_transformer_layers_per_block: Union[int, Tuple[int, ...]] = 1,
-        attention_head_dim: Union[int, Tuple[int, ...]] = 8,
-        num_attention_heads: Optional[Union[int, Tuple[int, ...]]] = None,
+        transformer_layers_per_block: Union[int, tuple[int, ...]] = 1,
+        transformer_layers_per_mid_block: Optional[Union[int, tuple[int]]] = None,
+        temporal_transformer_layers_per_block: Union[int, tuple[int, ...]] = 1,
+        attention_head_dim: Union[int, tuple[int, ...]] = 8,
+        num_attention_heads: Optional[Union[int, tuple[int, ...]]] = None,
         use_linear_projection: bool = False,
         upcast_attention: bool = False,
         resnet_time_scale_shift: str = "default",
-        conditioning_embedding_out_channels: Optional[Tuple[int, ...]] = (16, 32, 96, 256),
+        conditioning_embedding_out_channels: Optional[tuple[int, ...]] = (16, 32, 96, 256),
         global_pool_conditions: bool = False,
         controlnet_conditioning_channel_order: str = "rgb",
         motion_max_seq_length: int = 32,
@@ -389,7 +389,7 @@ class SparseControlNetModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         cls,
         unet: UNet2DConditionModel,
         controlnet_conditioning_channel_order: str = "rgb",
-        conditioning_embedding_out_channels: Optional[Tuple[int, ...]] = (16, 32, 96, 256),
+        conditioning_embedding_out_channels: Optional[tuple[int, ...]] = (16, 32, 96, 256),
         load_weights_from_unet: bool = True,
         conditioning_channels: int = 3,
     ) -> "SparseControlNetModel":
@@ -450,7 +450,7 @@ class SparseControlNetModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
 
     @property
     # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.attn_processors
-    def attn_processors(self) -> Dict[str, AttentionProcessor]:
+    def attn_processors(self) -> dict[str, AttentionProcessor]:
         r"""
         Returns:
             `dict` of attention processors: A dictionary containing all attention processors used in the model with
@@ -459,7 +459,7 @@ class SparseControlNetModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         # set recursively
         processors = {}
 
-        def fn_recursive_add_processors(name: str, module: torch.nn.Module, processors: Dict[str, AttentionProcessor]):
+        def fn_recursive_add_processors(name: str, module: torch.nn.Module, processors: dict[str, AttentionProcessor]):
             if hasattr(module, "get_processor"):
                 processors[f"{name}.processor"] = module.get_processor()
 
@@ -474,7 +474,7 @@ class SparseControlNetModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         return processors
 
     # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.set_attn_processor
-    def set_attn_processor(self, processor: Union[AttentionProcessor, Dict[str, AttentionProcessor]]):
+    def set_attn_processor(self, processor: Union[AttentionProcessor, dict[str, AttentionProcessor]]):
         r"""
         Sets the attention processor to use to compute attention.
 
@@ -525,7 +525,7 @@ class SparseControlNetModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         self.set_attn_processor(processor)
 
     # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.set_attention_slice
-    def set_attention_slice(self, slice_size: Union[str, int, List[int]]) -> None:
+    def set_attention_slice(self, slice_size: Union[str, int, list[int]]) -> None:
         r"""
         Enable sliced attention computation.
 
@@ -579,7 +579,7 @@ class SparseControlNetModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         # Recursively walk through all the children.
         # Any children which exposes the set_attention_slice method
         # gets the message
-        def fn_recursive_set_attention_slice(module: torch.nn.Module, slice_size: List[int]):
+        def fn_recursive_set_attention_slice(module: torch.nn.Module, slice_size: list[int]):
             if hasattr(module, "set_attention_slice"):
                 module.set_attention_slice(slice_size.pop())
 
@@ -599,11 +599,11 @@ class SparseControlNetModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         conditioning_scale: float = 1.0,
         timestep_cond: Optional[torch.Tensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
-        cross_attention_kwargs: Optional[Dict[str, Any]] = None,
+        cross_attention_kwargs: Optional[dict[str, Any]] = None,
         conditioning_mask: Optional[torch.Tensor] = None,
         guess_mode: bool = False,
         return_dict: bool = True,
-    ) -> Union[SparseControlNetOutput, Tuple[Tuple[torch.Tensor, ...], torch.Tensor]]:
+    ) -> Union[SparseControlNetOutput, tuple[tuple[torch.Tensor, ...], torch.Tensor]]:
         """
         The [`SparseControlNetModel`] forward method.
 

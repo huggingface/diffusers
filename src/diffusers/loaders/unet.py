@@ -15,7 +15,7 @@ import os
 from collections import defaultdict
 from contextlib import nullcontext
 from pathlib import Path
-from typing import Callable, Dict, Union
+from typing import Callable, Union
 
 import safetensors
 import torch
@@ -66,7 +66,7 @@ class UNet2DConditionLoadersMixin:
     unet_name = UNET_NAME
 
     @validate_hf_hub_args
-    def load_attn_procs(self, pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]], **kwargs):
+    def load_attn_procs(self, pretrained_model_name_or_path_or_dict: Union[str, dict[str, torch.Tensor]], **kwargs):
         r"""
         Load pretrained attention processor layers into [`UNet2DConditionModel`]. Attention processor layers have to be
         defined in
@@ -92,7 +92,7 @@ class UNet2DConditionLoadersMixin:
                 Whether or not to force the (re-)download of the model weights and configuration files, overriding the
                 cached versions if they exist.
 
-            proxies (`Dict[str, str]`, *optional*):
+            proxies (`dict[str, str]`, *optional*):
                 A dictionary of proxy servers to use by protocol or endpoint, for example, `{'http': 'foo.bar:3128',
                 'http://hostname': 'foo.bar:4012'}`. The proxies are used on each request.
             local_files_only (`bool`, *optional*, defaults to `False`):
@@ -106,7 +106,7 @@ class UNet2DConditionLoadersMixin:
                 allowed by Git.
             subfolder (`str`, *optional*, defaults to `""`):
                 The subfolder location of a model file within a larger model repository on the Hub or locally.
-            network_alphas (`Dict[str, float]`):
+            network_alphas (`dict[str, float]`):
                 The value of the network alpha used for stable learning and preventing underflow. This value has the
                 same meaning as the `--network_alpha` option in the kohya-ss trainer script. Refer to [this
                 link](https://github.com/darkstorm2150/sd-scripts/blob/main/docs/train_network_README-en.md#execute-learning).

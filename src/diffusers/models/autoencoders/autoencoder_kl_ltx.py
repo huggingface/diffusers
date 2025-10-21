@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Optional, Tuple, Union
+from typing import Optional, Union
 
 import torch
 import torch.nn as nn
@@ -34,9 +34,9 @@ class LTXVideoCausalConv3d(nn.Module):
         self,
         in_channels: int,
         out_channels: int,
-        kernel_size: Union[int, Tuple[int, int, int]] = 3,
-        stride: Union[int, Tuple[int, int, int]] = 1,
-        dilation: Union[int, Tuple[int, int, int]] = 1,
+        kernel_size: Union[int, tuple[int, int, int]] = 3,
+        stride: Union[int, tuple[int, int, int]] = 1,
+        dilation: Union[int, tuple[int, int, int]] = 1,
         groups: int = 1,
         padding_mode: str = "zeros",
         is_causal: bool = True,
@@ -201,7 +201,7 @@ class LTXVideoDownsampler3d(nn.Module):
         self,
         in_channels: int,
         out_channels: int,
-        stride: Union[int, Tuple[int, int, int]] = 1,
+        stride: Union[int, tuple[int, int, int]] = 1,
         is_causal: bool = True,
         padding_mode: str = "zeros",
     ) -> None:
@@ -249,7 +249,7 @@ class LTXVideoUpsampler3d(nn.Module):
     def __init__(
         self,
         in_channels: int,
-        stride: Union[int, Tuple[int, int, int]] = 1,
+        stride: Union[int, tuple[int, int, int]] = 1,
         is_causal: bool = True,
         residual: bool = False,
         upscale_factor: int = 1,
@@ -735,11 +735,11 @@ class LTXVideoEncoder3d(nn.Module):
             Number of input channels.
         out_channels (`int`, defaults to 128):
             Number of latent channels.
-        block_out_channels (`Tuple[int, ...]`, defaults to `(128, 256, 512, 512)`):
+        block_out_channels (`tuple[int, ...]`, defaults to `(128, 256, 512, 512)`):
             The number of output channels for each block.
-        spatio_temporal_scaling (`Tuple[bool, ...], defaults to `(True, True, True, False)`:
+        spatio_temporal_scaling (`tuple[bool, ...], defaults to `(True, True, True, False)`:
             Whether a block should contain spatio-temporal downscaling layers or not.
-        layers_per_block (`Tuple[int, ...]`, defaults to `(4, 3, 3, 3, 4)`):
+        layers_per_block (`tuple[int, ...]`, defaults to `(4, 3, 3, 3, 4)`):
             The number of layers per block.
         patch_size (`int`, defaults to `4`):
             The size of spatial patches.
@@ -755,16 +755,16 @@ class LTXVideoEncoder3d(nn.Module):
         self,
         in_channels: int = 3,
         out_channels: int = 128,
-        block_out_channels: Tuple[int, ...] = (128, 256, 512, 512),
-        down_block_types: Tuple[str, ...] = (
+        block_out_channels: tuple[int, ...] = (128, 256, 512, 512),
+        down_block_types: tuple[str, ...] = (
             "LTXVideoDownBlock3D",
             "LTXVideoDownBlock3D",
             "LTXVideoDownBlock3D",
             "LTXVideoDownBlock3D",
         ),
-        spatio_temporal_scaling: Tuple[bool, ...] = (True, True, True, False),
-        layers_per_block: Tuple[int, ...] = (4, 3, 3, 3, 4),
-        downsample_type: Tuple[str, ...] = ("conv", "conv", "conv", "conv"),
+        spatio_temporal_scaling: tuple[bool, ...] = (True, True, True, False),
+        layers_per_block: tuple[int, ...] = (4, 3, 3, 3, 4),
+        downsample_type: tuple[str, ...] = ("conv", "conv", "conv", "conv"),
         patch_size: int = 4,
         patch_size_t: int = 1,
         resnet_norm_eps: float = 1e-6,
@@ -888,11 +888,11 @@ class LTXVideoDecoder3d(nn.Module):
             Number of latent channels.
         out_channels (`int`, defaults to 3):
             Number of output channels.
-        block_out_channels (`Tuple[int, ...]`, defaults to `(128, 256, 512, 512)`):
+        block_out_channels (`tuple[int, ...]`, defaults to `(128, 256, 512, 512)`):
             The number of output channels for each block.
-        spatio_temporal_scaling (`Tuple[bool, ...], defaults to `(True, True, True, False)`:
+        spatio_temporal_scaling (`tuple[bool, ...], defaults to `(True, True, True, False)`:
             Whether a block should contain spatio-temporal upscaling layers or not.
-        layers_per_block (`Tuple[int, ...]`, defaults to `(4, 3, 3, 3, 4)`):
+        layers_per_block (`tuple[int, ...]`, defaults to `(4, 3, 3, 3, 4)`):
             The number of layers per block.
         patch_size (`int`, defaults to `4`):
             The size of spatial patches.
@@ -910,17 +910,17 @@ class LTXVideoDecoder3d(nn.Module):
         self,
         in_channels: int = 128,
         out_channels: int = 3,
-        block_out_channels: Tuple[int, ...] = (128, 256, 512, 512),
-        spatio_temporal_scaling: Tuple[bool, ...] = (True, True, True, False),
-        layers_per_block: Tuple[int, ...] = (4, 3, 3, 3, 4),
+        block_out_channels: tuple[int, ...] = (128, 256, 512, 512),
+        spatio_temporal_scaling: tuple[bool, ...] = (True, True, True, False),
+        layers_per_block: tuple[int, ...] = (4, 3, 3, 3, 4),
         patch_size: int = 4,
         patch_size_t: int = 1,
         resnet_norm_eps: float = 1e-6,
         is_causal: bool = False,
-        inject_noise: Tuple[bool, ...] = (False, False, False, False),
+        inject_noise: tuple[bool, ...] = (False, False, False, False),
         timestep_conditioning: bool = False,
-        upsample_residual: Tuple[bool, ...] = (False, False, False, False),
-        upsample_factor: Tuple[bool, ...] = (1, 1, 1, 1),
+        upsample_residual: tuple[bool, ...] = (False, False, False, False),
+        upsample_factor: tuple[bool, ...] = (1, 1, 1, 1),
     ) -> None:
         super().__init__()
 
@@ -1049,11 +1049,11 @@ class AutoencoderKLLTXVideo(ModelMixin, ConfigMixin, FromOriginalModelMixin):
             Number of output channels.
         latent_channels (`int`, defaults to `128`):
             Number of latent channels.
-        block_out_channels (`Tuple[int, ...]`, defaults to `(128, 256, 512, 512)`):
+        block_out_channels (`tuple[int, ...]`, defaults to `(128, 256, 512, 512)`):
             The number of output channels for each block.
-        spatio_temporal_scaling (`Tuple[bool, ...], defaults to `(True, True, True, False)`:
+        spatio_temporal_scaling (`tuple[bool, ...], defaults to `(True, True, True, False)`:
             Whether a block should contain spatio-temporal downscaling or not.
-        layers_per_block (`Tuple[int, ...]`, defaults to `(4, 3, 3, 3, 4)`):
+        layers_per_block (`tuple[int, ...]`, defaults to `(4, 3, 3, 3, 4)`):
             The number of layers per block.
         patch_size (`int`, defaults to `4`):
             The size of spatial patches.
@@ -1082,22 +1082,22 @@ class AutoencoderKLLTXVideo(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         in_channels: int = 3,
         out_channels: int = 3,
         latent_channels: int = 128,
-        block_out_channels: Tuple[int, ...] = (128, 256, 512, 512),
-        down_block_types: Tuple[str, ...] = (
+        block_out_channels: tuple[int, ...] = (128, 256, 512, 512),
+        down_block_types: tuple[str, ...] = (
             "LTXVideoDownBlock3D",
             "LTXVideoDownBlock3D",
             "LTXVideoDownBlock3D",
             "LTXVideoDownBlock3D",
         ),
-        decoder_block_out_channels: Tuple[int, ...] = (128, 256, 512, 512),
-        layers_per_block: Tuple[int, ...] = (4, 3, 3, 3, 4),
-        decoder_layers_per_block: Tuple[int, ...] = (4, 3, 3, 3, 4),
-        spatio_temporal_scaling: Tuple[bool, ...] = (True, True, True, False),
-        decoder_spatio_temporal_scaling: Tuple[bool, ...] = (True, True, True, False),
-        decoder_inject_noise: Tuple[bool, ...] = (False, False, False, False, False),
-        downsample_type: Tuple[str, ...] = ("conv", "conv", "conv", "conv"),
-        upsample_residual: Tuple[bool, ...] = (False, False, False, False),
-        upsample_factor: Tuple[int, ...] = (1, 1, 1, 1),
+        decoder_block_out_channels: tuple[int, ...] = (128, 256, 512, 512),
+        layers_per_block: tuple[int, ...] = (4, 3, 3, 3, 4),
+        decoder_layers_per_block: tuple[int, ...] = (4, 3, 3, 3, 4),
+        spatio_temporal_scaling: tuple[bool, ...] = (True, True, True, False),
+        decoder_spatio_temporal_scaling: tuple[bool, ...] = (True, True, True, False),
+        decoder_inject_noise: tuple[bool, ...] = (False, False, False, False, False),
+        downsample_type: tuple[str, ...] = ("conv", "conv", "conv", "conv"),
+        upsample_residual: tuple[bool, ...] = (False, False, False, False),
+        upsample_factor: tuple[int, ...] = (1, 1, 1, 1),
         timestep_conditioning: bool = False,
         patch_size: int = 4,
         patch_size_t: int = 1,
@@ -1256,7 +1256,7 @@ class AutoencoderKLLTXVideo(ModelMixin, ConfigMixin, FromOriginalModelMixin):
     @apply_forward_hook
     def encode(
         self, x: torch.Tensor, return_dict: bool = True
-    ) -> Union[AutoencoderKLOutput, Tuple[DiagonalGaussianDistribution]]:
+    ) -> Union[AutoencoderKLOutput, tuple[DiagonalGaussianDistribution]]:
         """
         Encode a batch of images into latents.
 

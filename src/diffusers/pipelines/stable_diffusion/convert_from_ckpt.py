@@ -17,7 +17,7 @@
 import re
 from contextlib import nullcontext
 from io import BytesIO
-from typing import Dict, Optional, Union
+from typing import Optional, Union
 
 import requests
 import torch
@@ -1144,7 +1144,7 @@ def convert_controlnet_checkpoint(
 
 
 def download_from_original_stable_diffusion_ckpt(
-    checkpoint_path_or_dict: Union[str, Dict[str, torch.Tensor]],
+    checkpoint_path_or_dict: Union[str, dict[str, torch.Tensor]],
     original_config_file: str = None,
     image_size: Optional[int] = None,
     prediction_type: str = None,
@@ -1237,7 +1237,7 @@ def download_from_original_stable_diffusion_ckpt(
             [CLIPTokenizer](https://huggingface.co/docs/transformers/v4.21.0/en/model_doc/clip#transformers.CLIPTokenizer)
             to use. If this parameter is `None`, the function will load a new instance of [CLIPTokenizer] by itself, if
             needed.
-        config_files (`Dict[str, str]`, *optional*, defaults to `None`):
+        config_files (`dict[str, str]`, *optional*, defaults to `None`):
             A dictionary mapping from config file names to their contents. If this parameter is `None`, the function
             will load the config files by itself, if needed. Valid keys are:
                 - `v1`: Config file for Stable Diffusion v1

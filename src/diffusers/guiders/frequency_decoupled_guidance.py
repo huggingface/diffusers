@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import math
-from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Optional, Union
 
 import torch
 
@@ -37,7 +37,7 @@ else:
     build_laplacian_pyramid_func = None
 
 
-def project(v0: torch.Tensor, v1: torch.Tensor, upcast_to_double: bool = True) -> Tuple[torch.Tensor, torch.Tensor]:
+def project(v0: torch.Tensor, v1: torch.Tensor, upcast_to_double: bool = True) -> tuple[torch.Tensor, torch.Tensor]:
     """
     Project vector v0 onto vector v1, returning the parallel and orthogonal components of v0. Implementation from paper
     (Algorithm 2).
@@ -58,7 +58,7 @@ def project(v0: torch.Tensor, v1: torch.Tensor, upcast_to_double: bool = True) -
     return v0_parallel, v0_orthogonal
 
 
-def build_image_from_pyramid(pyramid: List[torch.Tensor]) -> torch.Tensor:
+def build_image_from_pyramid(pyramid: list[torch.Tensor]) -> torch.Tensor:
     """
     Recovers the data space latents from the Laplacian pyramid frequency space. Implementation from the paper
     (Algorithm 2).
@@ -99,19 +99,19 @@ class FrequencyDecoupledGuidance(BaseGuidance):
     paper. By default, we use the diffusers-native implementation that has been in the codebase for a long time.
 
     Args:
-        guidance_scales (`List[float]`, defaults to `[10.0, 5.0]`):
+        guidance_scales (`list[float]`, defaults to `[10.0, 5.0]`):
             The scale parameter for frequency-decoupled guidance for each frequency component, listed from highest
             frequency level to lowest. Higher values result in stronger conditioning on the text prompt, while lower
             values allow for more freedom in generation. Higher values may lead to saturation and deterioration of
             image quality. The FDG authors recommend using higher guidance scales for higher frequency components and
             lower guidance scales for lower frequency components (so `guidance_scales` should typically be sorted in
             descending order).
-        guidance_rescale (`float` or `List[float]`, defaults to `0.0`):
+        guidance_rescale (`float` or `list[float]`, defaults to `0.0`):
             The rescale factor applied to the noise predictions. This is used to improve image quality and fix
             overexposure. Based on Section 3.4 from [Common Diffusion Noise Schedules and Sample Steps are
             Flawed](https://huggingface.co/papers/2305.08891). If a list is supplied, it should be the same length as
             `guidance_scales`.
-        parallel_weights (`float` or `List[float]`, *optional*):
+        parallel_weights (`float` or `list[float]`, *optional*):
             Optional weights for the parallel component of each frequency component of the projected CFG shift. If not
             set, the weights will default to `1.0` for all components, which corresponds to using the normal CFG shift
             (that is, equal weights for the parallel and orthogonal components). If set, a value in `[0, 1]` is
@@ -120,10 +120,10 @@ class FrequencyDecoupledGuidance(BaseGuidance):
             Whether to use the original formulation of classifier-free guidance as proposed in the paper. By default,
             we use the diffusers-native implementation that has been in the codebase for a long time. See
             [~guiders.classifier_free_guidance.ClassifierFreeGuidance] for more details.
-        start (`float` or `List[float]`, defaults to `0.0`):
+        start (`float` or `list[float]`, defaults to `0.0`):
             The fraction of the total number of denoising steps after which guidance starts. If a list is supplied, it
             should be the same length as `guidance_scales`.
-        stop (`float` or `List[float]`, defaults to `1.0`):
+        stop (`float` or `list[float]`, defaults to `1.0`):
             The fraction of the total number of denoising steps after which guidance stops. If a list is supplied, it
             should be the same length as `guidance_scales`.
         guidance_rescale_space (`str`, defaults to `"data"`):
@@ -141,12 +141,12 @@ class FrequencyDecoupledGuidance(BaseGuidance):
     @register_to_config
     def __init__(
         self,
-        guidance_scales: Union[List[float], Tuple[float]] = [10.0, 5.0],
-        guidance_rescale: Union[float, List[float], Tuple[float]] = 0.0,
-        parallel_weights: Optional[Union[float, List[float], Tuple[float]]] = None,
+        guidance_scales: Union[list[float], tuple[float]] = [10.0, 5.0],
+        guidance_rescale: Union[float, list[float], tuple[float]] = 0.0,
+        parallel_weights: Optional[Union[float, list[float], tuple[float]]] = None,
         use_original_formulation: bool = False,
-        start: Union[float, List[float], Tuple[float]] = 0.0,
-        stop: Union[float, List[float], Tuple[float]] = 1.0,
+        start: Union[float, list[float], tuple[float]] = 0.0,
+        stop: Union[float, list[float], tuple[float]] = 1.0,
         guidance_rescale_space: str = "data",
         upcast_to_double: bool = True,
     ):
@@ -218,8 +218,8 @@ class FrequencyDecoupledGuidance(BaseGuidance):
             )
 
     def prepare_inputs(
-        self, data: "BlockState", input_fields: Optional[Dict[str, Union[str, Tuple[str, str]]]] = None
-    ) -> List["BlockState"]:
+        self, data: "BlockState", input_fields: Optional[dict[str, Union[str, tuple[str, str]]]] = None
+    ) -> list["BlockState"]:
         if input_fields is None:
             input_fields = self._input_fields
 

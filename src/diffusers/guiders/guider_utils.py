@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import os
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, Optional, Union
 
 import torch
 from huggingface_hub.utils import validate_hf_hub_args
@@ -47,7 +47,7 @@ class BaseGuidance(ConfigMixin, PushToHubMixin):
         self._num_inference_steps: int = None
         self._timestep: torch.LongTensor = None
         self._count_prepared = 0
-        self._input_fields: Dict[str, Union[str, Tuple[str, str]]] = None
+        self._input_fields: dict[str, Union[str, tuple[str, str]]] = None
         self._enabled = True
 
         if not (0.0 <= start < 1.0):
@@ -72,14 +72,14 @@ class BaseGuidance(ConfigMixin, PushToHubMixin):
         self._timestep = timestep
         self._count_prepared = 0
 
-    def set_input_fields(self, **kwargs: Dict[str, Union[str, Tuple[str, str]]]) -> None:
+    def set_input_fields(self, **kwargs: dict[str, Union[str, tuple[str, str]]]) -> None:
         """
         Set the input fields for the guidance technique. The input fields are used to specify the names of the returned
         attributes containing the prepared data after `prepare_inputs` is called. The prepared data is obtained from
         the values of the provided keyword arguments to this method.
 
         Args:
-            **kwargs (`Dict[str, Union[str, Tuple[str, str]]]`):
+            **kwargs (`dict[str, Union[str, tuple[str, str]]]`):
                 A dictionary where the keys are the names of the fields that will be used to store the data once it is
                 prepared with `prepare_inputs`. The values can be either a string or a tuple of length 2, which is used
                 to look up the required data provided for preparation.
@@ -124,10 +124,10 @@ class BaseGuidance(ConfigMixin, PushToHubMixin):
         """
         pass
 
-    def prepare_inputs(self, data: "BlockState") -> List["BlockState"]:
+    def prepare_inputs(self, data: "BlockState") -> list["BlockState"]:
         raise NotImplementedError("BaseGuidance::prepare_inputs must be implemented in subclasses.")
 
-    def __call__(self, data: List["BlockState"]) -> Any:
+    def __call__(self, data: list["BlockState"]) -> Any:
         if not all(hasattr(d, "noise_pred") for d in data):
             raise ValueError("Expected all data to have `noise_pred` attribute.")
         if len(data) != self.num_conditions:
@@ -155,7 +155,7 @@ class BaseGuidance(ConfigMixin, PushToHubMixin):
     @classmethod
     def _prepare_batch(
         cls,
-        input_fields: Dict[str, Union[str, Tuple[str, str]]],
+        input_fields: dict[str, Union[str, tuple[str, str]]],
         data: "BlockState",
         tuple_index: int,
         identifier: str,
@@ -165,7 +165,7 @@ class BaseGuidance(ConfigMixin, PushToHubMixin):
         `BaseGuidance` class. It prepares the batch based on the provided tuple index.
 
         Args:
-            input_fields (`Dict[str, Union[str, Tuple[str, str]]]`):
+            input_fields (`dict[str, Union[str, tuple[str, str]]]`):
                 A dictionary where the keys are the names of the fields that will be used to store the data once it is
                 prepared with `prepare_inputs`. The values can be either a string or a tuple of length 2, which is used
                 to look up the required data provided for preparation. If a string is provided, it will be used as the
@@ -232,7 +232,7 @@ class BaseGuidance(ConfigMixin, PushToHubMixin):
                 Whether or not to force the (re-)download of the model weights and configuration files, overriding the
                 cached versions if they exist.
 
-            proxies (`Dict[str, str]`, *optional*):
+            proxies (`dict[str, str]`, *optional*):
                 A dictionary of proxy servers to use by protocol or endpoint, for example, `{'http': 'foo.bar:3128',
                 'http://hostname': 'foo.bar:4012'}`. The proxies are used on each request.
             output_loading_info(`bool`, *optional*, defaults to `False`):
@@ -274,7 +274,7 @@ class BaseGuidance(ConfigMixin, PushToHubMixin):
                 Whether or not to push your model to the Hugging Face Hub after saving it. You can specify the
                 repository you want to push to with `repo_id` (will default to the name of `save_directory` in your
                 namespace).
-            kwargs (`Dict[str, Any]`, *optional*):
+            kwargs (`dict[str, Any]`, *optional*):
                 Additional keyword arguments passed along to the [`~utils.PushToHubMixin.push_to_hub`] method.
         """
         self.save_config(save_directory=save_directory, push_to_hub=push_to_hub, **kwargs)

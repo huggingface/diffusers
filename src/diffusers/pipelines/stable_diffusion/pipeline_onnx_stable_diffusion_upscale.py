@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import inspect
-from typing import Any, Callable, List, Optional, Union
+from typing import Any, Callable, Optional, Union
 
 import numpy as np
 import PIL.Image
@@ -144,7 +144,7 @@ class OnnxStableDiffusionUpscalePipeline(DiffusionPipeline):
 
     def check_inputs(
         self,
-        prompt: Union[str, List[str]],
+        prompt: Union[str, list[str]],
         image,
         noise_level,
         callback_steps,
@@ -245,7 +245,7 @@ class OnnxStableDiffusionUpscalePipeline(DiffusionPipeline):
 
     def _encode_prompt(
         self,
-        prompt: Union[str, List[str]],
+        prompt: Union[str, list[str]],
         num_images_per_prompt: Optional[int],
         do_classifier_free_guidance: bool,
         negative_prompt: Optional[str],
@@ -256,13 +256,13 @@ class OnnxStableDiffusionUpscalePipeline(DiffusionPipeline):
         Encodes the prompt into text encoder hidden states.
 
         Args:
-            prompt (`str` or `List[str]`):
+            prompt (`str` or `list[str]`):
                 prompt to be encoded
             num_images_per_prompt (`int`):
                 number of images that should be generated per prompt
             do_classifier_free_guidance (`bool`):
                 whether to use classifier free guidance or not
-            negative_prompt (`str` or `List[str]`):
+            negative_prompt (`str` or `list[str]`):
                 The prompt or prompts not to guide the image generation. Ignored when not using guidance (i.e., ignored
                 if `guidance_scale` is less than `1`).
             prompt_embeds (`np.ndarray`, *optional*):
@@ -307,7 +307,7 @@ class OnnxStableDiffusionUpscalePipeline(DiffusionPipeline):
 
         # get unconditional embeddings for classifier free guidance
         if do_classifier_free_guidance and negative_prompt_embeds is None:
-            uncond_tokens: List[str]
+            uncond_tokens: list[str]
             if negative_prompt is None:
                 uncond_tokens = [""] * batch_size
             elif type(prompt) is not type(negative_prompt):
@@ -348,15 +348,15 @@ class OnnxStableDiffusionUpscalePipeline(DiffusionPipeline):
 
     def __call__(
         self,
-        prompt: Union[str, List[str]],
-        image: Union[np.ndarray, PIL.Image.Image, List[PIL.Image.Image]],
+        prompt: Union[str, list[str]],
+        image: Union[np.ndarray, PIL.Image.Image, list[PIL.Image.Image]],
         num_inference_steps: int = 75,
         guidance_scale: float = 9.0,
         noise_level: int = 20,
-        negative_prompt: Optional[Union[str, List[str]]] = None,
+        negative_prompt: Optional[Union[str, list[str]]] = None,
         num_images_per_prompt: Optional[int] = 1,
         eta: float = 0.0,
-        generator: Optional[Union[np.random.RandomState, List[np.random.RandomState]]] = None,
+        generator: Optional[Union[np.random.RandomState, list[np.random.RandomState]]] = None,
         latents: Optional[np.ndarray] = None,
         prompt_embeds: Optional[np.ndarray] = None,
         negative_prompt_embeds: Optional[np.ndarray] = None,
@@ -369,7 +369,7 @@ class OnnxStableDiffusionUpscalePipeline(DiffusionPipeline):
         Function invoked when calling the pipeline for generation.
 
         Args:
-            prompt (`str` or `List[str]`):
+            prompt (`str` or `list[str]`):
                 The prompt or prompts to guide the image generation.
             image (`np.ndarray` or `PIL.Image.Image`):
                 `Image`, or tensor representing an image batch, that will be used as the starting point for the
@@ -385,7 +385,7 @@ class OnnxStableDiffusionUpscalePipeline(DiffusionPipeline):
                 the text `prompt`, usually at the expense of lower image quality.
             noise_level (`float`, defaults to 0.2):
                 Deteremines the amount of noise to add to the initial image before performing upscaling.
-            negative_prompt (`str` or `List[str]`, *optional*):
+            negative_prompt (`str` or `list[str]`, *optional*):
                 The prompt or prompts not to guide the image generation. Ignored when not using guidance (i.e., ignored
                 if `guidance_scale` is less than `1`).
             num_images_per_prompt (`int`, *optional*, defaults to 1):

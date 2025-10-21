@@ -17,7 +17,7 @@ PyTorch utilities: Utilities related to PyTorch
 
 import functools
 import os
-from typing import Callable, Dict, List, Optional, Tuple, Union
+from typing import Callable, List, Optional, Tuple, Union
 
 from . import logging
 from .import_utils import is_torch_available, is_torch_npu_available, is_torch_version
@@ -88,7 +88,7 @@ except (ImportError, ModuleNotFoundError):
 
 
 # This dispatches a defined function according to the accelerator from the function definitions.
-def _device_agnostic_dispatch(device: str, dispatch_table: Dict[str, Callable], *args, **kwargs):
+def _device_agnostic_dispatch(device: str, dispatch_table: dict[str, Callable], *args, **kwargs):
     if device not in dispatch_table:
         return dispatch_table["default"](*args, **kwargs)
 
@@ -145,7 +145,7 @@ def backend_supports_training(device: str):
 
 def randn_tensor(
     shape: Union[Tuple, List],
-    generator: Optional[Union[List["torch.Generator"], "torch.Generator"]] = None,
+    generator: Optional[Union[list["torch.Generator"], "torch.Generator"]] = None,
     device: Optional[Union[str, "torch.device"]] = None,
     dtype: Optional["torch.dtype"] = None,
     layout: Optional["torch.layout"] = None,
@@ -241,7 +241,7 @@ def fourier_filter(x_in: "torch.Tensor", threshold: int, scale: int) -> "torch.T
 
 def apply_freeu(
     resolution_idx: int, hidden_states: "torch.Tensor", res_hidden_states: "torch.Tensor", **freeu_kwargs
-) -> Tuple["torch.Tensor", "torch.Tensor"]:
+) -> tuple["torch.Tensor", "torch.Tensor"]:
     """Applies the FreeU mechanism as introduced in https:
     //arxiv.org/abs/2309.11497. Adapted from the official code repository: https://github.com/ChenyangSi/FreeU.
 

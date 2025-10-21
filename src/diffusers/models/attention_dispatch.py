@@ -17,7 +17,7 @@ import functools
 import inspect
 import math
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Literal, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, Callable, Literal, Optional, Union
 
 import torch
 
@@ -215,7 +215,7 @@ class _AttentionBackendRegistry:
     def register(
         cls,
         backend: AttentionBackendName,
-        constraints: Optional[List[Callable]] = None,
+        constraints: Optional[list[Callable]] = None,
         supports_context_parallel: bool = False,
     ):
         logger.debug(f"Registering attention backend: {backend} with constraints: {constraints}")
@@ -278,7 +278,7 @@ def dispatch_attention_fn(
     is_causal: bool = False,
     scale: Optional[float] = None,
     enable_gqa: bool = False,
-    attention_kwargs: Optional[Dict[str, Any]] = None,
+    attention_kwargs: Optional[dict[str, Any]] = None,
     *,
     backend: Optional[AttentionBackendName] = None,
     parallel_config: Optional["ParallelConfig"] = None,
@@ -576,7 +576,7 @@ def _wrapped_flash_attn_3(
     pack_gqa: Optional[bool] = None,
     deterministic: bool = False,
     sm_margin: int = 0,
-) -> Tuple[torch.Tensor, torch.Tensor]:
+) -> tuple[torch.Tensor, torch.Tensor]:
     # Hardcoded for now because pytorch does not support tuple/int type hints
     window_size = (-1, -1)
     out, lse, *_ = flash_attn_3_func(
@@ -618,7 +618,7 @@ def _(
     pack_gqa: Optional[bool] = None,
     deterministic: bool = False,
     sm_margin: int = 0,
-) -> Tuple[torch.Tensor, torch.Tensor]:
+) -> tuple[torch.Tensor, torch.Tensor]:
     window_size = (-1, -1)  # noqa: F841
     # A lot of the parameters here are not yet used in any way within diffusers.
     # We can safely ignore for now and keep the fake op shape propagation simple.
@@ -1316,7 +1316,7 @@ def _flash_attention_3_hub(
     value: torch.Tensor,
     scale: Optional[float] = None,
     is_causal: bool = False,
-    window_size: Tuple[int, int] = (-1, -1),
+    window_size: tuple[int, int] = (-1, -1),
     softcap: float = 0.0,
     deterministic: bool = False,
     return_attn_probs: bool = False,

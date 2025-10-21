@@ -83,7 +83,7 @@ class SchedulerMixin(PushToHubMixin):
     the scheduler's `__init__` function, and the attributes can be accessed by `scheduler.config.num_train_timesteps`.
 
     Class attributes:
-        - **_compatibles** (`List[str]`) -- A list of scheduler classes that are compatible with the parent scheduler
+        - **_compatibles** (`list[str]`) -- A list of scheduler classes that are compatible with the parent scheduler
           class. Use [`~ConfigMixin.from_config`] to load a different compatible scheduler class (should be overridden
           by parent class).
     """
@@ -123,7 +123,7 @@ class SchedulerMixin(PushToHubMixin):
                 Whether or not to force the (re-)download of the model weights and configuration files, overriding the
                 cached versions if they exist.
 
-            proxies (`Dict[str, str]`, *optional*):
+            proxies (`dict[str, str]`, *optional*):
                 A dictionary of proxy servers to use by protocol or endpoint, for example, `{'http': 'foo.bar:3128',
                 'http://hostname': 'foo.bar:4012'}`. The proxies are used on each request.
             output_loading_info(`bool`, *optional*, defaults to `False`):
@@ -165,7 +165,7 @@ class SchedulerMixin(PushToHubMixin):
                 Whether or not to push your model to the Hugging Face Hub after saving it. You can specify the
                 repository you want to push to with `repo_id` (will default to the name of `save_directory` in your
                 namespace).
-            kwargs (`Dict[str, Any]`, *optional*):
+            kwargs (`dict[str, Any]`, *optional*):
                 Additional keyword arguments passed along to the [`~utils.PushToHubMixin.push_to_hub`] method.
         """
         self.save_config(save_directory=save_directory, push_to_hub=push_to_hub, **kwargs)
@@ -176,7 +176,7 @@ class SchedulerMixin(PushToHubMixin):
         Returns all schedulers that are compatible with this scheduler
 
         Returns:
-            `List[SchedulerMixin]`: List of compatible schedulers
+            `list[SchedulerMixin]`: List of compatible schedulers
         """
         return self._get_compatibles()
 

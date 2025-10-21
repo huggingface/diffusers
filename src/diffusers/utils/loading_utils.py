@@ -1,6 +1,6 @@
 import os
 import tempfile
-from typing import Any, Callable, List, Optional, Tuple, Union
+from typing import Any, Callable, Optional, Union
 from urllib.parse import unquote, urlparse
 
 import PIL.Image
@@ -56,20 +56,20 @@ def load_image(
 
 def load_video(
     video: str,
-    convert_method: Optional[Callable[[List[PIL.Image.Image]], List[PIL.Image.Image]]] = None,
-) -> List[PIL.Image.Image]:
+    convert_method: Optional[Callable[[list[PIL.Image.Image]], list[PIL.Image.Image]]] = None,
+) -> list[PIL.Image.Image]:
     """
     Loads `video` to a list of PIL Image.
 
     Args:
         video (`str`):
             A URL or Path to a video to convert to a list of PIL Image format.
-        convert_method (Callable[[List[PIL.Image.Image]], List[PIL.Image.Image]], *optional*):
+        convert_method (Callable[[list[PIL.Image.Image]], list[PIL.Image.Image]], *optional*):
             A conversion method to apply to the video after loading it. When set to `None` the images will be converted
             to "RGB".
 
     Returns:
-        `List[PIL.Image.Image]`:
+        `list[PIL.Image.Image]`:
             The video as a list of PIL images.
     """
     is_url = video.startswith("http://") or video.startswith("https://")
@@ -139,7 +139,7 @@ def load_video(
 
 
 # Taken from `transformers`.
-def get_module_from_name(module, tensor_name: str) -> Tuple[Any, str]:
+def get_module_from_name(module, tensor_name: str) -> tuple[Any, str]:
     if "." in tensor_name:
         splits = tensor_name.split(".")
         for split in splits[:-1]:

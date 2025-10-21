@@ -13,7 +13,7 @@
 # limitations under the License.
 import inspect
 import math
-from typing import Callable, List, Optional, Tuple, Union
+from typing import Callable, List, Optional, Union
 
 import torch
 import torch.nn.functional as F
@@ -309,7 +309,7 @@ class Attention(nn.Module):
     def set_use_xla_flash_attention(
         self,
         use_xla_flash_attention: bool,
-        partition_spec: Optional[Tuple[Optional[str], ...]] = None,
+        partition_spec: Optional[tuple[Optional[str], ...]] = None,
         is_flux=False,
     ) -> None:
         r"""
@@ -318,7 +318,7 @@ class Attention(nn.Module):
         Args:
             use_xla_flash_attention (`bool`):
                 Whether to use pallas flash attention kernel from `torch_xla` or not.
-            partition_spec (`Tuple[]`, *optional*):
+            partition_spec (`tuple[]`, *optional*):
                 Specify the partition specification if using SPMD. Otherwise None.
         """
         if use_xla_flash_attention:
@@ -872,7 +872,7 @@ class SanaMultiscaleLinearAttention(nn.Module):
         attention_head_dim: int = 8,
         mult: float = 1.0,
         norm_type: str = "batch_norm",
-        kernel_sizes: Tuple[int, ...] = (5,),
+        kernel_sizes: tuple[int, ...] = (5,),
         eps: float = 1e-15,
         residual_connection: bool = False,
     ):
@@ -2790,7 +2790,7 @@ class XLAFlashAttnProcessor2_0:
     Processor for implementing scaled dot-product attention with pallas flash attention kernel if using `torch_xla`.
     """
 
-    def __init__(self, partition_spec: Optional[Tuple[Optional[str], ...]] = None):
+    def __init__(self, partition_spec: Optional[tuple[Optional[str], ...]] = None):
         if not hasattr(F, "scaled_dot_product_attention"):
             raise ImportError(
                 "XLAFlashAttnProcessor2_0 requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0."
@@ -3001,7 +3001,7 @@ class StableAudioAttnProcessor2_0:
     def apply_partial_rotary_emb(
         self,
         x: torch.Tensor,
-        freqs_cis: Tuple[torch.Tensor],
+        freqs_cis: tuple[torch.Tensor],
     ) -> torch.Tensor:
         from .embeddings import apply_rotary_emb
 
@@ -4212,9 +4212,9 @@ class IPAdapterAttnProcessor(nn.Module):
             The hidden size of the attention layer.
         cross_attention_dim (`int`):
             The number of channels in the `encoder_hidden_states`.
-        num_tokens (`int`, `Tuple[int]` or `List[int]`, defaults to `(4,)`):
+        num_tokens (`int`, `tuple[int]` or `list[int]`, defaults to `(4,)`):
             The context length of the image features.
-        scale (`float` or List[`float`], defaults to 1.0):
+        scale (`float` or list[`float`], defaults to 1.0):
             the weight scale of image prompt.
     """
 
@@ -4412,9 +4412,9 @@ class IPAdapterAttnProcessor2_0(torch.nn.Module):
             The hidden size of the attention layer.
         cross_attention_dim (`int`):
             The number of channels in the `encoder_hidden_states`.
-        num_tokens (`int`, `Tuple[int]` or `List[int]`, defaults to `(4,)`):
+        num_tokens (`int`, `tuple[int]` or `list[int]`, defaults to `(4,)`):
             The context length of the image features.
-        scale (`float` or `List[float]`, defaults to 1.0):
+        scale (`float` or `list[float]`, defaults to 1.0):
             the weight scale of image prompt.
     """
 
@@ -4644,9 +4644,9 @@ class IPAdapterXFormersAttnProcessor(torch.nn.Module):
             The hidden size of the attention layer.
         cross_attention_dim (`int`):
             The number of channels in the `encoder_hidden_states`.
-        num_tokens (`int`, `Tuple[int]` or `List[int]`, defaults to `(4,)`):
+        num_tokens (`int`, `tuple[int]` or `list[int]`, defaults to `(4,)`):
             The context length of the image features.
-        scale (`float` or `List[float]`, defaults to 1.0):
+        scale (`float` or `list[float]`, defaults to 1.0):
             the weight scale of image prompt.
         attention_op (`Callable`, *optional*, defaults to `None`):
             The base

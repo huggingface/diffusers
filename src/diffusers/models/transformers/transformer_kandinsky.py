@@ -14,7 +14,7 @@
 
 import inspect
 import math
-from typing import Any, Dict, Optional, Tuple, Union
+from typing import Any, Optional, Union
 
 import torch
 import torch.nn as nn
@@ -368,7 +368,7 @@ class Kandinsky5Attention(nn.Module, AttentionModuleMixin):
         hidden_states: torch.Tensor,
         encoder_hidden_states: Optional[torch.Tensor] = None,
         sparse_params: Optional[torch.Tensor] = None,
-        rotary_emb: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
+        rotary_emb: Optional[tuple[torch.Tensor, torch.Tensor]] = None,
         **kwargs,
     ) -> torch.Tensor:
         attn_parameters = set(inspect.signature(self.processor.__call__).parameters.keys())
@@ -595,10 +595,10 @@ class Kandinsky5Transformer3DModel(
         encoder_hidden_states: torch.Tensor,  # text_embed
         timestep: torch.Tensor,  # time
         pooled_projections: torch.Tensor,  # pooled_text_embed
-        visual_rope_pos: Tuple[int, int, int],
+        visual_rope_pos: tuple[int, int, int],
         text_rope_pos: torch.LongTensor,
-        scale_factor: Tuple[float, float, float] = (1.0, 1.0, 1.0),
-        sparse_params: Optional[Dict[str, Any]] = None,
+        scale_factor: tuple[float, float, float] = (1.0, 1.0, 1.0),
+        sparse_params: Optional[dict[str, Any]] = None,
         return_dict: bool = True,
     ) -> Union[Transformer2DModelOutput, torch.FloatTensor]:
         """
@@ -609,10 +609,10 @@ class Kandinsky5Transformer3DModel(
             encoder_hidden_states (`torch.FloatTensor`): Text embeddings
             timestep (`torch.Tensor` or `float` or `int`): Current timestep
             pooled_projections (`torch.FloatTensor`): Pooled text embeddings
-            visual_rope_pos (`Tuple[int, int, int]`): Position for visual RoPE
+            visual_rope_pos (`tuple[int, int, int]`): Position for visual RoPE
             text_rope_pos (`torch.LongTensor`): Position for text RoPE
-            scale_factor (`Tuple[float, float, float]`, optional): Scale factor for RoPE
-            sparse_params (`Dict[str, Any]`, optional): Parameters for sparse attention
+            scale_factor (`tuple[float, float, float]`, optional): Scale factor for RoPE
+            sparse_params (`dict[str, Any]`, optional): Parameters for sparse attention
             return_dict (`bool`, optional): Whether to return a dictionary
 
         Returns:

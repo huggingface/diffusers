@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import inspect
-from typing import Callable, List, Optional, Union
+from typing import Callable, Optional, Union
 
 import numpy as np
 import PIL.Image
@@ -84,7 +84,7 @@ class VersatileDiffusionImageVariationPipeline(DiffusionPipeline):
         Encodes the prompt into text encoder hidden states.
 
         Args:
-            prompt (`str` or `List[str]`):
+            prompt (`str` or `list[str]`):
                 prompt to be encoded
             device: (`torch.device`):
                 torch device
@@ -92,7 +92,7 @@ class VersatileDiffusionImageVariationPipeline(DiffusionPipeline):
                 number of images that should be generated per prompt
             do_classifier_free_guidance (`bool`):
                 whether to use classifier free guidance or not
-            negative_prompt (`str` or `List[str]`):
+            negative_prompt (`str` or `list[str]`):
                 The prompt or prompts not to guide the image generation. Ignored when not using guidance (i.e., ignored
                 if `guidance_scale` is less than `1`).
         """
@@ -122,7 +122,7 @@ class VersatileDiffusionImageVariationPipeline(DiffusionPipeline):
 
         # get unconditional embeddings for classifier free guidance
         if do_classifier_free_guidance:
-            uncond_images: List[str]
+            uncond_images: list[str]
             if negative_prompt is None:
                 uncond_images = [np.zeros((512, 512, 3)) + 0.5] * batch_size
             elif type(prompt) is not type(negative_prompt):
@@ -196,7 +196,7 @@ class VersatileDiffusionImageVariationPipeline(DiffusionPipeline):
             and not isinstance(image, list)
         ):
             raise ValueError(
-                "`image` has to be of type `torch.Tensor` or `PIL.Image.Image` or `List[PIL.Image.Image]` but is"
+                "`image` has to be of type `torch.Tensor` or `PIL.Image.Image` or `list[PIL.Image.Image]` but is"
                 f" {type(image)}"
             )
 
@@ -237,15 +237,15 @@ class VersatileDiffusionImageVariationPipeline(DiffusionPipeline):
     @torch.no_grad()
     def __call__(
         self,
-        image: Union[PIL.Image.Image, List[PIL.Image.Image], torch.Tensor],
+        image: Union[PIL.Image.Image, list[PIL.Image.Image], torch.Tensor],
         height: Optional[int] = None,
         width: Optional[int] = None,
         num_inference_steps: int = 50,
         guidance_scale: float = 7.5,
-        negative_prompt: Optional[Union[str, List[str]]] = None,
+        negative_prompt: Optional[Union[str, list[str]]] = None,
         num_images_per_prompt: Optional[int] = 1,
         eta: float = 0.0,
-        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
+        generator: Optional[Union[torch.Generator, list[torch.Generator]]] = None,
         latents: Optional[torch.Tensor] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
@@ -257,7 +257,7 @@ class VersatileDiffusionImageVariationPipeline(DiffusionPipeline):
         The call function to the pipeline for generation.
 
         Args:
-            image (`PIL.Image.Image`, `List[PIL.Image.Image]` or `torch.Tensor`):
+            image (`PIL.Image.Image`, `list[PIL.Image.Image]` or `torch.Tensor`):
                 The image prompt or prompts to guide the image generation.
             height (`int`, *optional*, defaults to `self.image_unet.config.sample_size * self.vae_scale_factor`):
                 The height in pixels of the generated image.
@@ -269,7 +269,7 @@ class VersatileDiffusionImageVariationPipeline(DiffusionPipeline):
             guidance_scale (`float`, *optional*, defaults to 7.5):
                 A higher guidance scale value encourages the model to generate images closely linked to the text
                 `prompt` at the expense of lower image quality. Guidance scale is enabled when `guidance_scale > 1`.
-            negative_prompt (`str` or `List[str]`, *optional*):
+            negative_prompt (`str` or `list[str]`, *optional*):
                 The prompt or prompts to guide what to not include in image generation. If not defined, you need to
                 pass `negative_prompt_embeds` instead. Ignored when not using guidance (`guidance_scale < 1`).
             num_images_per_prompt (`int`, *optional*, defaults to 1):

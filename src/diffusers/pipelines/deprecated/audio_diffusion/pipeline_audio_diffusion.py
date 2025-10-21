@@ -14,7 +14,7 @@
 
 
 from math import acos, sin
-from typing import List, Tuple, Union
+from typing import Union
 
 import numpy as np
 import torch
@@ -86,7 +86,7 @@ class AudioDiffusionPipeline(DiffusionPipeline):
         return_dict=True,
     ) -> Union[
         Union[AudioPipelineOutput, ImagePipelineOutput],
-        Tuple[List[Image.Image], Tuple[int, List[np.ndarray]]],
+        tuple[list[Image.Image], tuple[int, list[np.ndarray]]],
     ]:
         """
         The call function to the pipeline for generation.
@@ -170,8 +170,8 @@ class AudioDiffusionPipeline(DiffusionPipeline):
         ```
 
         Returns:
-            `List[PIL Image]`:
-                A list of Mel spectrograms (`float`, `List[np.ndarray]`) with the sample rate and raw audio.
+            `list[PIL Image]`:
+                A list of Mel spectrograms (`float`, `list[np.ndarray]`) with the sample rate and raw audio.
         """
 
         steps = steps or self.get_default_steps()
@@ -268,12 +268,12 @@ class AudioDiffusionPipeline(DiffusionPipeline):
         return BaseOutput(**AudioPipelineOutput(np.array(audios)[:, np.newaxis, :]), **ImagePipelineOutput(images))
 
     @torch.no_grad()
-    def encode(self, images: List[Image.Image], steps: int = 50) -> np.ndarray:
+    def encode(self, images: list[Image.Image], steps: int = 50) -> np.ndarray:
         """
         Reverse the denoising step process to recover a noisy image from the generated image.
 
         Args:
-            images (`List[PIL Image]`):
+            images (`list[PIL Image]`):
                 List of images to encode.
             steps (`int`):
                 Number of encoding steps to perform (defaults to `50`).

@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, List, Optional, Union
 
 import torch
 import torch.nn as nn
@@ -107,7 +107,7 @@ class SD3Transformer2DModel(
             The number of latent channels in the output.
         pos_embed_max_size (`int`, defaults to `96`):
             The maximum latent height/width of positional embeddings.
-        dual_attention_layers (`Tuple[int, ...]`, defaults to `()`):
+        dual_attention_layers (`tuple[int, ...]`, defaults to `()`):
             The number of dual-stream transformer blocks to use.
         qk_norm (`str`, *optional*, defaults to `None`):
             The normalization to use for query and key in the attention layer. If `None`, no normalization is used.
@@ -131,7 +131,7 @@ class SD3Transformer2DModel(
         pooled_projection_dim: int = 2048,
         out_channels: int = 16,
         pos_embed_max_size: int = 96,
-        dual_attention_layers: Tuple[
+        dual_attention_layers: tuple[
             int, ...
         ] = (),  # () for sd3.0; (0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12) for sd3.5
         qk_norm: Optional[str] = None,
@@ -216,7 +216,7 @@ class SD3Transformer2DModel(
 
     @property
     # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.attn_processors
-    def attn_processors(self) -> Dict[str, AttentionProcessor]:
+    def attn_processors(self) -> dict[str, AttentionProcessor]:
         r"""
         Returns:
             `dict` of attention processors: A dictionary containing all attention processors used in the model with
@@ -225,7 +225,7 @@ class SD3Transformer2DModel(
         # set recursively
         processors = {}
 
-        def fn_recursive_add_processors(name: str, module: torch.nn.Module, processors: Dict[str, AttentionProcessor]):
+        def fn_recursive_add_processors(name: str, module: torch.nn.Module, processors: dict[str, AttentionProcessor]):
             if hasattr(module, "get_processor"):
                 processors[f"{name}.processor"] = module.get_processor()
 
@@ -240,7 +240,7 @@ class SD3Transformer2DModel(
         return processors
 
     # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.set_attn_processor
-    def set_attn_processor(self, processor: Union[AttentionProcessor, Dict[str, AttentionProcessor]]):
+    def set_attn_processor(self, processor: Union[AttentionProcessor, dict[str, AttentionProcessor]]):
         r"""
         Sets the attention processor to use to compute attention.
 
@@ -313,9 +313,9 @@ class SD3Transformer2DModel(
         pooled_projections: torch.Tensor = None,
         timestep: torch.LongTensor = None,
         block_controlnet_hidden_states: List = None,
-        joint_attention_kwargs: Optional[Dict[str, Any]] = None,
+        joint_attention_kwargs: Optional[dict[str, Any]] = None,
         return_dict: bool = True,
-        skip_layers: Optional[List[int]] = None,
+        skip_layers: Optional[list[int]] = None,
     ) -> Union[torch.Tensor, Transformer2DModelOutput]:
         """
         The [`SD3Transformer2DModel`] forward method.

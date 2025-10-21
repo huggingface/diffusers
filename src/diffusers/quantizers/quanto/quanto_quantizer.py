@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Any, Dict, List, Union
+from typing import TYPE_CHECKING, Any, Union
 
 from diffusers.utils.import_utils import is_optimum_quanto_version
 
@@ -68,7 +68,7 @@ class QuantoQuantizer(DiffusersQuantizer):
         model: "ModelMixin",
         param_value: "torch.Tensor",
         param_name: str,
-        state_dict: Dict[str, Any],
+        state_dict: dict[str, Any],
         **kwargs,
     ):
         # Quanto imports diffusers internally. This is here to prevent circular imports
@@ -105,7 +105,7 @@ class QuantoQuantizer(DiffusersQuantizer):
             module.freeze()
             module.weight.requires_grad = False
 
-    def adjust_max_memory(self, max_memory: Dict[str, Union[int, str]]) -> Dict[str, Union[int, str]]:
+    def adjust_max_memory(self, max_memory: dict[str, Union[int, str]]) -> dict[str, Union[int, str]]:
         max_memory = {key: val * 0.90 for key, val in max_memory.items()}
         return max_memory
 
@@ -127,7 +127,7 @@ class QuantoQuantizer(DiffusersQuantizer):
             torch_dtype = torch.float32
         return torch_dtype
 
-    def update_missing_keys(self, model, missing_keys: List[str], prefix: str) -> List[str]:
+    def update_missing_keys(self, model, missing_keys: list[str], prefix: str) -> list[str]:
         # Quanto imports diffusers internally. This is here to prevent circular imports
         from optimum.quanto import QModuleMixin
 
@@ -147,7 +147,7 @@ class QuantoQuantizer(DiffusersQuantizer):
         self,
         model: "ModelMixin",
         device_map,
-        keep_in_fp32_modules: List[str] = [],
+        keep_in_fp32_modules: list[str] = [],
         **kwargs,
     ):
         self.modules_to_not_convert = self.quantization_config.modules_to_not_convert

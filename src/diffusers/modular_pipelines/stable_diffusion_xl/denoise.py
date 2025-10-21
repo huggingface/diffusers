@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import inspect
-from typing import Any, List, Optional, Tuple
+from typing import Any, Optional
 
 import torch
 
@@ -41,7 +41,7 @@ class StableDiffusionXLLoopBeforeDenoiser(ModularPipelineBlocks):
     model_name = "stable-diffusion-xl"
 
     @property
-    def expected_components(self) -> List[ComponentSpec]:
+    def expected_components(self) -> list[ComponentSpec]:
         return [
             ComponentSpec("scheduler", EulerDiscreteScheduler),
         ]
@@ -55,7 +55,7 @@ class StableDiffusionXLLoopBeforeDenoiser(ModularPipelineBlocks):
         )
 
     @property
-    def inputs(self) -> List[str]:
+    def inputs(self) -> list[str]:
         return [
             InputParam(
                 "latents",
@@ -77,7 +77,7 @@ class StableDiffusionXLInpaintLoopBeforeDenoiser(ModularPipelineBlocks):
     model_name = "stable-diffusion-xl"
 
     @property
-    def expected_components(self) -> List[ComponentSpec]:
+    def expected_components(self) -> list[ComponentSpec]:
         return [
             ComponentSpec("scheduler", EulerDiscreteScheduler),
             ComponentSpec("unet", UNet2DConditionModel),
@@ -91,7 +91,7 @@ class StableDiffusionXLInpaintLoopBeforeDenoiser(ModularPipelineBlocks):
         )
 
     @property
-    def inputs(self) -> List[str]:
+    def inputs(self) -> list[str]:
         return [
             InputParam(
                 "latents",
@@ -148,7 +148,7 @@ class StableDiffusionXLLoopDenoiser(ModularPipelineBlocks):
     model_name = "stable-diffusion-xl"
 
     @property
-    def expected_components(self) -> List[ComponentSpec]:
+    def expected_components(self) -> list[ComponentSpec]:
         return [
             ComponentSpec(
                 "guider",
@@ -168,7 +168,7 @@ class StableDiffusionXLLoopDenoiser(ModularPipelineBlocks):
         )
 
     @property
-    def inputs(self) -> List[Tuple[str, Any]]:
+    def inputs(self) -> list[tuple[str, Any]]:
         return [
             InputParam("cross_attention_kwargs"),
             InputParam(
@@ -248,7 +248,7 @@ class StableDiffusionXLControlNetLoopDenoiser(ModularPipelineBlocks):
     model_name = "stable-diffusion-xl"
 
     @property
-    def expected_components(self) -> List[ComponentSpec]:
+    def expected_components(self) -> list[ComponentSpec]:
         return [
             ComponentSpec(
                 "guider",
@@ -269,7 +269,7 @@ class StableDiffusionXLControlNetLoopDenoiser(ModularPipelineBlocks):
         )
 
     @property
-    def inputs(self) -> List[Tuple[str, Any]]:
+    def inputs(self) -> list[tuple[str, Any]]:
         return [
             InputParam("cross_attention_kwargs"),
             InputParam(
@@ -292,7 +292,7 @@ class StableDiffusionXLControlNetLoopDenoiser(ModularPipelineBlocks):
             InputParam(
                 "controlnet_keep",
                 required=True,
-                type_hint=List[float],
+                type_hint=list[float],
                 description="The controlnet keep values to use for the denoising process. Can be generated in prepare_controlnet_inputs step.",
             ),
             InputParam(
@@ -443,7 +443,7 @@ class StableDiffusionXLLoopAfterDenoiser(ModularPipelineBlocks):
     model_name = "stable-diffusion-xl"
 
     @property
-    def expected_components(self) -> List[ComponentSpec]:
+    def expected_components(self) -> list[ComponentSpec]:
         return [
             ComponentSpec("scheduler", EulerDiscreteScheduler),
         ]
@@ -457,14 +457,14 @@ class StableDiffusionXLLoopAfterDenoiser(ModularPipelineBlocks):
         )
 
     @property
-    def inputs(self) -> List[Tuple[str, Any]]:
+    def inputs(self) -> list[tuple[str, Any]]:
         return [
             InputParam("eta", default=0.0),
             InputParam("generator"),
         ]
 
     @property
-    def intermediate_outputs(self) -> List[OutputParam]:
+    def intermediate_outputs(self) -> list[OutputParam]:
         return [OutputParam("latents", type_hint=torch.Tensor, description="The denoised latents")]
 
     # YiYi TODO: move this out of here
@@ -508,7 +508,7 @@ class StableDiffusionXLInpaintLoopAfterDenoiser(ModularPipelineBlocks):
     model_name = "stable-diffusion-xl"
 
     @property
-    def expected_components(self) -> List[ComponentSpec]:
+    def expected_components(self) -> list[ComponentSpec]:
         return [
             ComponentSpec("scheduler", EulerDiscreteScheduler),
             ComponentSpec("unet", UNet2DConditionModel),
@@ -523,7 +523,7 @@ class StableDiffusionXLInpaintLoopAfterDenoiser(ModularPipelineBlocks):
         )
 
     @property
-    def inputs(self) -> List[Tuple[str, Any]]:
+    def inputs(self) -> list[tuple[str, Any]]:
         return [
             InputParam("eta", default=0.0),
             InputParam("generator"),
@@ -551,7 +551,7 @@ class StableDiffusionXLInpaintLoopAfterDenoiser(ModularPipelineBlocks):
         ]
 
     @property
-    def intermediate_outputs(self) -> List[OutputParam]:
+    def intermediate_outputs(self) -> list[OutputParam]:
         return [OutputParam("latents", type_hint=torch.Tensor, description="The denoised latents")]
 
     @staticmethod
@@ -625,7 +625,7 @@ class StableDiffusionXLDenoiseLoopWrapper(LoopSequentialPipelineBlocks):
         )
 
     @property
-    def loop_expected_components(self) -> List[ComponentSpec]:
+    def loop_expected_components(self) -> list[ComponentSpec]:
         return [
             ComponentSpec(
                 "guider",
@@ -638,7 +638,7 @@ class StableDiffusionXLDenoiseLoopWrapper(LoopSequentialPipelineBlocks):
         ]
 
     @property
-    def loop_inputs(self) -> List[InputParam]:
+    def loop_inputs(self) -> list[InputParam]:
         return [
             InputParam(
                 "timesteps",

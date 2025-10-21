@@ -14,7 +14,7 @@
 # limitations under the License.
 
 import math
-from typing import Optional, Tuple, Union
+from typing import Optional, Union
 
 import torch
 import torch.nn as nn
@@ -37,10 +37,10 @@ class EasyAnimateCausalConv3d(nn.Conv3d):
         self,
         in_channels: int,
         out_channels: int,
-        kernel_size: Union[int, Tuple[int, ...]] = 3,
-        stride: Union[int, Tuple[int, ...]] = 1,
-        padding: Union[int, Tuple[int, ...]] = 1,
-        dilation: Union[int, Tuple[int, ...]] = 1,
+        kernel_size: Union[int, tuple[int, ...]] = 3,
+        stride: Union[int, tuple[int, ...]] = 1,
+        padding: Union[int, tuple[int, ...]] = 1,
+        dilation: Union[int, tuple[int, ...]] = 1,
         groups: int = 1,
         bias: bool = True,
         padding_mode: str = "zeros",
@@ -437,13 +437,13 @@ class EasyAnimateEncoder(nn.Module):
         self,
         in_channels: int = 3,
         out_channels: int = 8,
-        down_block_types: Tuple[str, ...] = (
+        down_block_types: tuple[str, ...] = (
             "SpatialDownBlock3D",
             "SpatialTemporalDownBlock3D",
             "SpatialTemporalDownBlock3D",
             "SpatialTemporalDownBlock3D",
         ),
-        block_out_channels: Tuple[int, ...] = [128, 256, 512, 512],
+        block_out_channels: tuple[int, ...] = [128, 256, 512, 512],
         layers_per_block: int = 2,
         norm_num_groups: int = 32,
         act_fn: str = "silu",
@@ -553,13 +553,13 @@ class EasyAnimateDecoder(nn.Module):
         self,
         in_channels: int = 8,
         out_channels: int = 3,
-        up_block_types: Tuple[str, ...] = (
+        up_block_types: tuple[str, ...] = (
             "SpatialUpBlock3D",
             "SpatialTemporalUpBlock3D",
             "SpatialTemporalUpBlock3D",
             "SpatialTemporalUpBlock3D",
         ),
-        block_out_channels: Tuple[int, ...] = [128, 256, 512, 512],
+        block_out_channels: tuple[int, ...] = [128, 256, 512, 512],
         layers_per_block: int = 2,
         norm_num_groups: int = 32,
         act_fn: str = "silu",
@@ -680,14 +680,14 @@ class AutoencoderKLMagvit(ModelMixin, ConfigMixin):
         in_channels: int = 3,
         latent_channels: int = 16,
         out_channels: int = 3,
-        block_out_channels: Tuple[int, ...] = [128, 256, 512, 512],
-        down_block_types: Tuple[str, ...] = [
+        block_out_channels: tuple[int, ...] = [128, 256, 512, 512],
+        down_block_types: tuple[str, ...] = [
             "SpatialDownBlock3D",
             "SpatialTemporalDownBlock3D",
             "SpatialTemporalDownBlock3D",
             "SpatialTemporalDownBlock3D",
         ],
-        up_block_types: Tuple[str, ...] = [
+        up_block_types: tuple[str, ...] = [
             "SpatialUpBlock3D",
             "SpatialTemporalUpBlock3D",
             "SpatialTemporalUpBlock3D",
@@ -829,7 +829,7 @@ class AutoencoderKLMagvit(ModelMixin, ConfigMixin):
     @apply_forward_hook
     def _encode(
         self, x: torch.Tensor, return_dict: bool = True
-    ) -> Union[AutoencoderKLOutput, Tuple[DiagonalGaussianDistribution]]:
+    ) -> Union[AutoencoderKLOutput, tuple[DiagonalGaussianDistribution]]:
         """
         Encode a batch of images into latents.
 
@@ -859,7 +859,7 @@ class AutoencoderKLMagvit(ModelMixin, ConfigMixin):
     @apply_forward_hook
     def encode(
         self, x: torch.Tensor, return_dict: bool = True
-    ) -> Union[AutoencoderKLOutput, Tuple[DiagonalGaussianDistribution]]:
+    ) -> Union[AutoencoderKLOutput, tuple[DiagonalGaussianDistribution]]:
         """
         Encode a batch of images into latents.
 

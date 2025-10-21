@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import re
-from typing import Dict, List, Tuple, Union
+from typing import Union
 
 import torch
 import torch.nn as nn
@@ -112,7 +112,7 @@ class PAGMixin:
             return_pred_text (bool): Whether to return the text noise prediction.
 
         Returns:
-            Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]: The updated noise prediction tensor after applying
+            Union[torch.Tensor, tuple[torch.Tensor, torch.Tensor]]: The updated noise prediction tensor after applying
             perturbed attention guidance and the text noise prediction.
         """
         pag_scale = self._get_pag_scale(t)
@@ -151,8 +151,8 @@ class PAGMixin:
 
     def set_pag_applied_layers(
         self,
-        pag_applied_layers: Union[str, List[str]],
-        pag_attn_processors: Tuple[AttentionProcessor, AttentionProcessor] = (
+        pag_applied_layers: Union[str, list[str]],
+        pag_attn_processors: tuple[AttentionProcessor, AttentionProcessor] = (
             PAGCFGIdentitySelfAttnProcessor2_0(),
             PAGIdentitySelfAttnProcessor2_0(),
         ),
@@ -161,7 +161,7 @@ class PAGMixin:
         Set the self-attention layers to apply PAG. Raise ValueError if the input is invalid.
 
         Args:
-            pag_applied_layers (`str` or `List[str]`):
+            pag_applied_layers (`str` or `list[str]`):
                 One or more strings identifying the layer names, or a simple regex for matching multiple layers, where
                 PAG is to be applied. A few ways of expected usage are as follows:
                   - Single layers specified as - "blocks.{layer_index}"
@@ -169,7 +169,7 @@ class PAGMixin:
                   - Multiple layers as a block name - "mid"
                   - Multiple layers as regex - "blocks.({layer_index_1}|{layer_index_2})"
             pag_attn_processors:
-                (`Tuple[AttentionProcessor, AttentionProcessor]`, defaults to `(PAGCFGIdentitySelfAttnProcessor2_0(),
+                (`tuple[AttentionProcessor, AttentionProcessor]`, defaults to `(PAGCFGIdentitySelfAttnProcessor2_0(),
                 PAGIdentitySelfAttnProcessor2_0())`): A tuple of two attention processors. The first attention
                 processor is for PAG with Classifier-free guidance enabled (conditional and unconditional). The second
                 attention processor is for PAG with CFG disabled (unconditional only).
@@ -214,7 +214,7 @@ class PAGMixin:
         return self._pag_scale > 0 and len(self.pag_applied_layers) > 0
 
     @property
-    def pag_attn_processors(self) -> Dict[str, AttentionProcessor]:
+    def pag_attn_processors(self) -> dict[str, AttentionProcessor]:
         r"""
         Returns:
             `dict` of PAG attention processors: A dictionary contains all PAG attention processors used in the model

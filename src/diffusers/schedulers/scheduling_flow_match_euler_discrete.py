@@ -14,7 +14,7 @@
 
 import math
 from dataclasses import dataclass
-from typing import List, Optional, Tuple, Union
+from typing import Optional, Tuple, Union
 
 import numpy as np
 import torch
@@ -250,9 +250,9 @@ class FlowMatchEulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         self,
         num_inference_steps: Optional[int] = None,
         device: Union[str, torch.device] = None,
-        sigmas: Optional[List[float]] = None,
+        sigmas: Optional[list[float]] = None,
         mu: Optional[float] = None,
-        timesteps: Optional[List[float]] = None,
+        timesteps: Optional[list[float]] = None,
     ):
         """
         Sets the discrete timesteps used for the diffusion chain (to be run before inference).
@@ -262,13 +262,13 @@ class FlowMatchEulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
                 The number of diffusion steps used when generating samples with a pre-trained model.
             device (`str` or `torch.device`, *optional*):
                 The device to which the timesteps should be moved to. If `None`, the timesteps are not moved.
-            sigmas (`List[float]`, *optional*):
+            sigmas (`list[float]`, *optional*):
                 Custom values for sigmas to be used for each diffusion step. If `None`, the sigmas are computed
                 automatically.
             mu (`float`, *optional*):
                 Determines the amount of shifting applied to sigmas when performing resolution-dependent timestep
                 shifting.
-            timesteps (`List[float]`, *optional*):
+            timesteps (`list[float]`, *optional*):
                 Custom values for timesteps to be used for each diffusion step. If `None`, the timesteps are computed
                 automatically.
         """

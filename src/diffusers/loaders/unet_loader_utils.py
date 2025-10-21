@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import copy
-from typing import TYPE_CHECKING, Dict, List, Union
+from typing import TYPE_CHECKING, Dict, Union
 
 from torch import nn
 
@@ -41,7 +41,7 @@ def _translate_into_actual_layer_name(name):
 
 
 def _maybe_expand_lora_scales(
-    unet: "UNet2DConditionModel", weight_scales: List[Union[float, Dict]], default_scale=1.0
+    unet: "UNet2DConditionModel", weight_scales: list[Union[float, Dict]], default_scale=1.0
 ):
     blocks_with_transformer = {
         "down": [i for i, block in enumerate(unet.down_blocks) if hasattr(block, "attentions")],
@@ -65,8 +65,8 @@ def _maybe_expand_lora_scales(
 
 def _maybe_expand_lora_scales_for_one_adapter(
     scales: Union[float, Dict],
-    blocks_with_transformer: Dict[str, int],
-    transformer_per_block: Dict[str, int],
+    blocks_with_transformer: dict[str, int],
+    transformer_per_block: dict[str, int],
     model: nn.Module,
     default_scale: float = 1.0,
 ):
@@ -76,9 +76,9 @@ def _maybe_expand_lora_scales_for_one_adapter(
     Parameters:
         scales (`Union[float, Dict]`):
             Scales dict to expand.
-        blocks_with_transformer (`Dict[str, int]`):
+        blocks_with_transformer (`dict[str, int]`):
             Dict with keys 'up' and 'down', showing which blocks have transformer layers
-        transformer_per_block (`Dict[str, int]`):
+        transformer_per_block (`dict[str, int]`):
             Dict with keys 'up' and 'down', showing how many transformer layers each block has
 
     E.g. turns

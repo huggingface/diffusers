@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from typing import Optional, Tuple, Union
+from typing import Optional, Union
 
 import flax
 import flax.linen as nn
@@ -49,7 +49,7 @@ class FlaxControlNetOutput(BaseOutput):
 
 class FlaxControlNetConditioningEmbedding(nn.Module):
     conditioning_embedding_channels: int
-    block_out_channels: Tuple[int, ...] = (16, 32, 96, 256)
+    block_out_channels: tuple[int, ...] = (16, 32, 96, 256)
     dtype: jnp.dtype = jnp.float32
 
     def setup(self) -> None:
@@ -132,15 +132,15 @@ class FlaxControlNetModel(nn.Module, FlaxModelMixin, ConfigMixin):
             The size of the input sample.
         in_channels (`int`, *optional*, defaults to 4):
             The number of channels in the input sample.
-        down_block_types (`Tuple[str]`, *optional*, defaults to `("FlaxCrossAttnDownBlock2D", "FlaxCrossAttnDownBlock2D", "FlaxCrossAttnDownBlock2D", "FlaxDownBlock2D")`):
+        down_block_types (`tuple[str]`, *optional*, defaults to `("FlaxCrossAttnDownBlock2D", "FlaxCrossAttnDownBlock2D", "FlaxCrossAttnDownBlock2D", "FlaxDownBlock2D")`):
             The tuple of downsample blocks to use.
-        block_out_channels (`Tuple[int]`, *optional*, defaults to `(320, 640, 1280, 1280)`):
+        block_out_channels (`tuple[int]`, *optional*, defaults to `(320, 640, 1280, 1280)`):
             The tuple of output channels for each block.
         layers_per_block (`int`, *optional*, defaults to 2):
             The number of layers per block.
-        attention_head_dim (`int` or `Tuple[int]`, *optional*, defaults to 8):
+        attention_head_dim (`int` or `tuple[int]`, *optional*, defaults to 8):
             The dimension of the attention heads.
-        num_attention_heads (`int` or `Tuple[int]`, *optional*):
+        num_attention_heads (`int` or `tuple[int]`, *optional*):
             The number of attention heads.
         cross_attention_dim (`int`, *optional*, defaults to 768):
             The dimension of the cross attention features.
@@ -157,17 +157,17 @@ class FlaxControlNetModel(nn.Module, FlaxModelMixin, ConfigMixin):
 
     sample_size: int = 32
     in_channels: int = 4
-    down_block_types: Tuple[str, ...] = (
+    down_block_types: tuple[str, ...] = (
         "CrossAttnDownBlock2D",
         "CrossAttnDownBlock2D",
         "CrossAttnDownBlock2D",
         "DownBlock2D",
     )
-    only_cross_attention: Union[bool, Tuple[bool, ...]] = False
-    block_out_channels: Tuple[int, ...] = (320, 640, 1280, 1280)
+    only_cross_attention: Union[bool, tuple[bool, ...]] = False
+    block_out_channels: tuple[int, ...] = (320, 640, 1280, 1280)
     layers_per_block: int = 2
-    attention_head_dim: Union[int, Tuple[int, ...]] = 8
-    num_attention_heads: Optional[Union[int, Tuple[int, ...]]] = None
+    attention_head_dim: Union[int, tuple[int, ...]] = 8
+    num_attention_heads: Optional[Union[int, tuple[int, ...]]] = None
     cross_attention_dim: int = 1280
     dropout: float = 0.0
     use_linear_projection: bool = False
@@ -175,7 +175,7 @@ class FlaxControlNetModel(nn.Module, FlaxModelMixin, ConfigMixin):
     flip_sin_to_cos: bool = True
     freq_shift: int = 0
     controlnet_conditioning_channel_order: str = "rgb"
-    conditioning_embedding_out_channels: Tuple[int, ...] = (16, 32, 96, 256)
+    conditioning_embedding_out_channels: tuple[int, ...] = (16, 32, 96, 256)
 
     def init_weights(self, rng: jax.Array) -> FrozenDict:
         # init input tensors
@@ -333,7 +333,7 @@ class FlaxControlNetModel(nn.Module, FlaxModelMixin, ConfigMixin):
         conditioning_scale: float = 1.0,
         return_dict: bool = True,
         train: bool = False,
-    ) -> Union[FlaxControlNetOutput, Tuple[Tuple[jnp.ndarray, ...], jnp.ndarray]]:
+    ) -> Union[FlaxControlNetOutput, tuple[tuple[jnp.ndarray, ...], jnp.ndarray]]:
         r"""
         Args:
             sample (`jnp.ndarray`): (batch, channel, height, width) noisy inputs tensor

@@ -15,10 +15,10 @@
 Typing utilities: Utilities related to type checking and validation
 """
 
-from typing import Any, Dict, List, Set, Tuple, Type, Union, get_args, get_origin
+from typing import Any, List, Set, Type, Union, get_args, get_origin
 
 
-def _is_valid_type(obj: Any, class_or_tuple: Union[Type, Tuple[Type, ...]]) -> bool:
+def _is_valid_type(obj: Any, class_or_tuple: Union[Type, tuple[Type, ...]]) -> bool:
     """
     Checks if an object is an instance of any of the provided types. For collections, it checks if every element is of
     the correct type as well.
@@ -43,7 +43,7 @@ def _is_valid_type(obj: Any, class_or_tuple: Union[Type, Tuple[Type, ...]]) -> b
     class_or_tuple = {t for t in class_or_tuple if isinstance(obj, get_origin(t) or t)}
 
     # Singular types (e.g. int, ControlNet, ...)
-    # Untyped collections (e.g. List, but not List[int])
+    # Untyped collections (e.g. List, but not list[int])
     elem_class_or_tuple = {get_args(t) for t in class_or_tuple}
     if () in elem_class_or_tuple:
         return True
@@ -53,10 +53,10 @@ def _is_valid_type(obj: Any, class_or_tuple: Union[Type, Tuple[Type, ...]]) -> b
     # Typed tuples
     elif obj_type is tuple:
         return any(
-            # Tuples with any length and single type (e.g. Tuple[int, ...])
+            # Tuples with any length and single type (e.g. tuple[int, ...])
             (len(t) == 2 and t[-1] is Ellipsis and all(_is_valid_type(x, t[0]) for x in obj))
             or
-            # Tuples with fixed length and any types (e.g. Tuple[int, str])
+            # Tuples with fixed length and any types (e.g. tuple[int, str])
             (len(obj) == len(t) and all(_is_valid_type(x, tt) for x, tt in zip(obj, t)))
             for t in elem_class_or_tuple
         )
@@ -82,10 +82,10 @@ def _get_detailed_type(obj: Any) -> Type:
         elems_type = Union[tuple({_get_detailed_type(x) for x in obj})]
         return obj_origin_type[elems_type]
     elif obj_type is tuple:
-        return Tuple[tuple(_get_detailed_type(x) for x in obj)]
+        return tuple[tuple(_get_detailed_type(x) for x in obj)]
     elif obj_type is dict:
         keys_type = Union[tuple({_get_detailed_type(k) for k in obj.keys()})]
         values_type = Union[tuple({_get_detailed_type(k) for k in obj.values()})]
-        return Dict[keys_type, values_type]
+        return dict[keys_type, values_type]
     else:
         return obj_type

@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Optional, Union
 
 import torch
 from torch import nn
@@ -267,7 +267,7 @@ class PhotonEmbedND(nn.Module):
         List of embedding dimensions for each axis (each must be even).
     """
 
-    def __init__(self, dim: int, theta: int, axes_dim: List[int]):
+    def __init__(self, dim: int, theta: int, axes_dim: list[int]):
         super().__init__()
         self.dim = dim
         self.theta = theta
@@ -342,7 +342,7 @@ class Modulation(nn.Module):
 
     def forward(
         self, vec: torch.Tensor
-    ) -> Tuple[Tuple[torch.Tensor, torch.Tensor, torch.Tensor], Tuple[torch.Tensor, torch.Tensor, torch.Tensor]]:
+    ) -> tuple[tuple[torch.Tensor, torch.Tensor, torch.Tensor], tuple[torch.Tensor, torch.Tensor, torch.Tensor]]:
         out = self.lin(nn.functional.silu(vec))[:, None, :].chunk(6, dim=-1)
         return tuple(out[:3]), tuple(out[3:])
 
@@ -427,7 +427,7 @@ class PhotonBlock(nn.Module):
         temb: torch.Tensor,
         image_rotary_emb: torch.Tensor,
         attention_mask: Optional[torch.Tensor] = None,
-        **kwargs: Dict[str, Any],
+        **kwargs: dict[str, Any],
     ) -> torch.Tensor:
         r"""
         Runs modulation-gated cross-attention and MLP, with residual connections.
@@ -698,9 +698,9 @@ class PhotonTransformer2DModel(ModelMixin, ConfigMixin, AttentionMixin):
         timestep: torch.Tensor,
         encoder_hidden_states: torch.Tensor,
         attention_mask: Optional[torch.Tensor] = None,
-        attention_kwargs: Optional[Dict[str, Any]] = None,
+        attention_kwargs: Optional[dict[str, Any]] = None,
         return_dict: bool = True,
-    ) -> Union[Tuple[torch.Tensor, ...], Transformer2DModelOutput]:
+    ) -> Union[tuple[torch.Tensor, ...], Transformer2DModelOutput]:
         r"""
         Forward pass of the PhotonTransformer2DModel.
 

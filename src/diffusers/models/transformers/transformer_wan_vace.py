@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import math
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Optional, Union
 
 import torch
 import torch.nn as nn
@@ -141,7 +141,7 @@ class WanVACETransformer3DModel(
     A Transformer model for video-like data used in the Wan model.
 
     Args:
-        patch_size (`Tuple[int]`, defaults to `(1, 2, 2)`):
+        patch_size (`tuple[int]`, defaults to `(1, 2, 2)`):
             3D patch dimensions for video embedding (t_patch, h_patch, w_patch).
         num_attention_heads (`int`, defaults to `40`):
             Fixed length for text embeddings.
@@ -159,7 +159,7 @@ class WanVACETransformer3DModel(
             Intermediate dimension in feed-forward network.
         num_layers (`int`, defaults to `40`):
             The number of layers of transformer blocks to use.
-        window_size (`Tuple[int]`, defaults to `(-1, -1)`):
+        window_size (`tuple[int]`, defaults to `(-1, -1)`):
             Window size for local attention (-1 indicates global attention).
         cross_attn_norm (`bool`, defaults to `True`):
             Enable cross-attention normalization.
@@ -182,7 +182,7 @@ class WanVACETransformer3DModel(
     @register_to_config
     def __init__(
         self,
-        patch_size: Tuple[int] = (1, 2, 2),
+        patch_size: tuple[int] = (1, 2, 2),
         num_attention_heads: int = 40,
         attention_head_dim: int = 128,
         in_channels: int = 16,
@@ -198,7 +198,7 @@ class WanVACETransformer3DModel(
         added_kv_proj_dim: Optional[int] = None,
         rope_max_seq_len: int = 1024,
         pos_embed_seq_len: Optional[int] = None,
-        vace_layers: List[int] = [0, 5, 10, 15, 20, 25, 30, 35],
+        vace_layers: list[int] = [0, 5, 10, 15, 20, 25, 30, 35],
         vace_in_channels: int = 96,
     ) -> None:
         super().__init__()
@@ -270,8 +270,8 @@ class WanVACETransformer3DModel(
         control_hidden_states: torch.Tensor = None,
         control_hidden_states_scale: torch.Tensor = None,
         return_dict: bool = True,
-        attention_kwargs: Optional[Dict[str, Any]] = None,
-    ) -> Union[torch.Tensor, Dict[str, torch.Tensor]]:
+        attention_kwargs: Optional[dict[str, Any]] = None,
+    ) -> Union[torch.Tensor, dict[str, torch.Tensor]]:
         if attention_kwargs is not None:
             attention_kwargs = attention_kwargs.copy()
             lora_scale = attention_kwargs.pop("scale", 1.0)

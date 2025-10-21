@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import inspect
-from typing import List, Optional, Union
+from typing import Optional, Union
 
 import PIL.Image
 import torch
@@ -207,7 +207,7 @@ class UnCLIPImageVariationPipeline(DeprecatedPipelineMixin, DiffusionPipeline):
     @torch.no_grad()
     def __call__(
         self,
-        image: Optional[Union[PIL.Image.Image, List[PIL.Image.Image], torch.Tensor]] = None,
+        image: Optional[Union[PIL.Image.Image, list[PIL.Image.Image], torch.Tensor]] = None,
         num_images_per_prompt: int = 1,
         decoder_num_inference_steps: int = 25,
         super_res_num_inference_steps: int = 7,
@@ -223,7 +223,7 @@ class UnCLIPImageVariationPipeline(DeprecatedPipelineMixin, DiffusionPipeline):
         The call function to the pipeline for generation.
 
         Args:
-            image (`PIL.Image.Image` or `List[PIL.Image.Image]` or `torch.Tensor`):
+            image (`PIL.Image.Image` or `list[PIL.Image.Image]` or `torch.Tensor`):
                 `Image` or tensor representing an image batch to be used as the starting point. If you provide a
                 tensor, it needs to be compatible with the [`CLIPImageProcessor`]
                 [configuration](https://huggingface.co/fusing/karlo-image-variations-diffusers/blob/main/feature_extractor/preprocessor_config.json).

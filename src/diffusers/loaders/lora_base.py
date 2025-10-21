@@ -17,7 +17,7 @@ import inspect
 import json
 import os
 from pathlib import Path
-from typing import Callable, Dict, List, Optional, Union
+from typing import Callable, Dict, Optional, Union
 
 import safetensors
 import torch
@@ -77,7 +77,7 @@ def fuse_text_encoder_lora(text_encoder, lora_scale=1.0, safe_fusing=False, adap
             Controls how much to influence the outputs with the LoRA parameters.
         safe_fusing (`bool`, defaults to `False`):
             Whether to check fused weights for NaN values before fusing and if values are NaN not fusing them.
-        adapter_names (`List[str]` or `str`):
+        adapter_names (`list[str]` or `str`):
             The names of the adapters to use.
     """
     merge_kwargs = {"safe_merge": safe_fusing}
@@ -116,20 +116,20 @@ def unfuse_text_encoder_lora(text_encoder):
 
 
 def set_adapters_for_text_encoder(
-    adapter_names: Union[List[str], str],
+    adapter_names: Union[list[str], str],
     text_encoder: Optional["PreTrainedModel"] = None,  # noqa: F821
-    text_encoder_weights: Optional[Union[float, List[float], List[None]]] = None,
+    text_encoder_weights: Optional[Union[float, list[float], list[None]]] = None,
 ):
     """
     Sets the adapter layers for the text encoder.
 
     Args:
-        adapter_names (`List[str]` or `str`):
+        adapter_names (`list[str]` or `str`):
             The names of the adapters to use.
         text_encoder (`torch.nn.Module`, *optional*):
             The text encoder module to set the adapter layers for. If `None`, it will try to get the `text_encoder`
             attribute.
-        text_encoder_weights (`List[float]`, *optional*):
+        text_encoder_weights (`list[float]`, *optional*):
             The weights to use for the text encoder. If `None`, the weights are set to `1.0` for all the adapters.
     """
     if text_encoder is None:
@@ -535,10 +535,10 @@ class LoraBaseMixin:
 
     def fuse_lora(
         self,
-        components: List[str] = [],
+        components: list[str] = [],
         lora_scale: float = 1.0,
         safe_fusing: bool = False,
-        adapter_names: Optional[List[str]] = None,
+        adapter_names: Optional[list[str]] = None,
         **kwargs,
     ):
         r"""
@@ -547,12 +547,12 @@ class LoraBaseMixin:
         > [!WARNING] > This is an experimental API.
 
         Args:
-            components: (`List[str]`): List of LoRA-injectable components to fuse the LoRAs into.
+            components: (`list[str]`): List of LoRA-injectable components to fuse the LoRAs into.
             lora_scale (`float`, defaults to 1.0):
                 Controls how much to influence the outputs with the LoRA parameters.
             safe_fusing (`bool`, defaults to `False`):
                 Whether to check fused weights for NaN values before fusing and if values are NaN not fusing them.
-            adapter_names (`List[str]`, *optional*):
+            adapter_names (`list[str]`, *optional*):
                 Adapter names to be used for fusing. If nothing is passed, all active adapters will be fused.
 
         Example:
@@ -619,7 +619,7 @@ class LoraBaseMixin:
 
         self._merged_adapters = self._merged_adapters | merged_adapter_names
 
-    def unfuse_lora(self, components: List[str] = [], **kwargs):
+    def unfuse_lora(self, components: list[str] = [], **kwargs):
         r"""
         Reverses the effect of
         [`pipe.fuse_lora()`](https://huggingface.co/docs/diffusers/main/en/api/loaders#diffusers.loaders.LoraBaseMixin.fuse_lora).
@@ -627,7 +627,7 @@ class LoraBaseMixin:
         > [!WARNING] > This is an experimental API.
 
         Args:
-            components (`List[str]`): List of LoRA-injectable components to unfuse LoRA from.
+            components (`list[str]`): List of LoRA-injectable components to unfuse LoRA from.
             unfuse_unet (`bool`, defaults to `True`): Whether to unfuse the UNet LoRA parameters.
             unfuse_text_encoder (`bool`, defaults to `True`):
                 Whether to unfuse the text encoder LoRA parameters. If the text encoder wasn't monkey-patched with the
@@ -674,16 +674,16 @@ class LoraBaseMixin:
 
     def set_adapters(
         self,
-        adapter_names: Union[List[str], str],
-        adapter_weights: Optional[Union[float, Dict, List[float], List[Dict]]] = None,
+        adapter_names: Union[list[str], str],
+        adapter_weights: Optional[Union[float, Dict, list[float], list[Dict]]] = None,
     ):
         """
         Set the currently active adapters for use in the pipeline.
 
         Args:
-            adapter_names (`List[str]` or `str`):
+            adapter_names (`list[str]` or `str`):
                 The names of the adapters to use.
-            adapter_weights (`Union[List[float], float]`, *optional*):
+            adapter_weights (`Union[list[float], float]`, *optional*):
                 The adapter(s) weights to use with the UNet. If `None`, the weights are set to `1.0` for all the
                 adapters.
 
@@ -835,12 +835,12 @@ class LoraBaseMixin:
                 elif issubclass(model.__class__, PreTrainedModel):
                     enable_lora_for_text_encoder(model)
 
-    def delete_adapters(self, adapter_names: Union[List[str], str]):
+    def delete_adapters(self, adapter_names: Union[list[str], str]):
         """
         Delete an adapter's LoRA layers from the pipeline.
 
         Args:
-            adapter_names (`Union[List[str], str]`):
+            adapter_names (`Union[list[str], str]`):
                 The names of the adapters to delete.
 
         Example:
@@ -873,7 +873,7 @@ class LoraBaseMixin:
                     for adapter_name in adapter_names:
                         delete_adapter_layers(model, adapter_name)
 
-    def get_active_adapters(self) -> List[str]:
+    def get_active_adapters(self) -> list[str]:
         """
         Gets the list of the current active adapters.
 
@@ -906,7 +906,7 @@ class LoraBaseMixin:
 
         return active_adapters
 
-    def get_list_adapters(self) -> Dict[str, List[str]]:
+    def get_list_adapters(self) -> dict[str, list[str]]:
         """
         Gets the current list of all available adapters in the pipeline.
         """
@@ -928,7 +928,7 @@ class LoraBaseMixin:
 
         return set_adapters
 
-    def set_lora_device(self, adapter_names: List[str], device: Union[torch.device, str, int]) -> None:
+    def set_lora_device(self, adapter_names: list[str], device: Union[torch.device, str, int]) -> None:
         """
         Moves the LoRAs listed in `adapter_names` to a target device. Useful for offloading the LoRA to the CPU in case
         you want to load multiple adapters and free some GPU memory.
@@ -955,7 +955,7 @@ class LoraBaseMixin:
         ```
 
         Args:
-            adapter_names (`List[str]`):
+            adapter_names (`list[str]`):
                 List of adapters to send device to.
             device (`Union[torch.device, str, int]`):
                 Device to send the adapters to. Can be either a torch device, a str or an integer.
@@ -1007,7 +1007,7 @@ class LoraBaseMixin:
 
     @staticmethod
     def write_lora_layers(
-        state_dict: Dict[str, torch.Tensor],
+        state_dict: dict[str, torch.Tensor],
         save_directory: str,
         is_main_process: bool,
         weight_name: str,
@@ -1060,8 +1060,8 @@ class LoraBaseMixin:
     def _save_lora_weights(
         cls,
         save_directory: Union[str, os.PathLike],
-        lora_layers: Dict[str, Dict[str, Union[torch.nn.Module, torch.Tensor]]],
-        lora_metadata: Dict[str, Optional[dict]],
+        lora_layers: dict[str, dict[str, Union[torch.nn.Module, torch.Tensor]]],
+        lora_metadata: dict[str, Optional[dict]],
         is_main_process: bool = True,
         weight_name: str = None,
         save_function: Callable = None,

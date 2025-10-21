@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import List, Union
+from typing import Union
 
 import numpy as np
 import PIL.Image
@@ -14,7 +14,7 @@ class HunyuanVideoPipelineOutput(BaseOutput):
     Output class for HunyuanVideo pipelines.
 
     Args:
-        frames (`torch.Tensor`, `np.ndarray`, or List[List[PIL.Image.Image]]):
+        frames (`torch.Tensor`, `np.ndarray`, or list[list[PIL.Image.Image]]):
             List of video outputs - It can be a nested list of length `batch_size,` with each sub-list containing
             denoised PIL image sequences of length `num_frames.` It can also be a NumPy array or Torch tensor of shape
             `(batch_size, num_frames, channels, height, width)`.
@@ -29,11 +29,11 @@ class HunyuanVideoFramepackPipelineOutput(BaseOutput):
     Output class for HunyuanVideo pipelines.
 
     Args:
-        frames (`torch.Tensor`, `np.ndarray`, or List[List[PIL.Image.Image]]):
+        frames (`torch.Tensor`, `np.ndarray`, or list[list[PIL.Image.Image]]):
             List of video outputs - It can be a nested list of length `batch_size,` with each sub-list containing
             denoised PIL image sequences of length `num_frames.` It can also be a NumPy array or Torch tensor of shape
             `(batch_size, num_frames, channels, height, width)`. Or, a list of torch tensors where each tensor
             corresponds to a latent that decodes to multiple frames.
     """
 
-    frames: Union[torch.Tensor, np.ndarray, List[List[PIL.Image.Image]], List[torch.Tensor]]
+    frames: Union[torch.Tensor, np.ndarray, list[list[PIL.Image.Image]], list[torch.Tensor]]

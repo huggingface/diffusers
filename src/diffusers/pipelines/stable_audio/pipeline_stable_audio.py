@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import inspect
-from typing import Callable, List, Optional, Union
+from typing import Callable, Optional, Union
 
 import torch
 from transformers import (
@@ -206,7 +206,7 @@ class StableAudioPipeline(DiffusionPipeline):
             prompt_embeds = prompt_embeds[0]
 
         if do_classifier_free_guidance and negative_prompt is not None:
-            uncond_tokens: List[str]
+            uncond_tokens: list[str]
             if type(prompt) is not type(negative_prompt):
                 raise TypeError(
                     f"`negative_prompt` should be the same type to `prompt`, but got {type(negative_prompt)} !="
@@ -491,15 +491,15 @@ class StableAudioPipeline(DiffusionPipeline):
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        prompt: Union[str, List[str]] = None,
+        prompt: Union[str, list[str]] = None,
         audio_end_in_s: Optional[float] = None,
         audio_start_in_s: Optional[float] = 0.0,
         num_inference_steps: int = 100,
         guidance_scale: float = 7.0,
-        negative_prompt: Optional[Union[str, List[str]]] = None,
+        negative_prompt: Optional[Union[str, list[str]]] = None,
         num_waveforms_per_prompt: Optional[int] = 1,
         eta: float = 0.0,
-        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
+        generator: Optional[Union[torch.Generator, list[torch.Generator]]] = None,
         latents: Optional[torch.Tensor] = None,
         initial_audio_waveforms: Optional[torch.Tensor] = None,
         initial_audio_sampling_rate: Optional[torch.Tensor] = None,
@@ -516,7 +516,7 @@ class StableAudioPipeline(DiffusionPipeline):
         The call function to the pipeline for generation.
 
         Args:
-            prompt (`str` or `List[str]`, *optional*):
+            prompt (`str` or `list[str]`, *optional*):
                 The prompt or prompts to guide audio generation. If not defined, you need to pass `prompt_embeds`.
             audio_end_in_s (`float`, *optional*, defaults to 47.55):
                 Audio end index in seconds.
@@ -528,7 +528,7 @@ class StableAudioPipeline(DiffusionPipeline):
             guidance_scale (`float`, *optional*, defaults to 7.0):
                 A higher guidance scale value encourages the model to generate audio that is closely linked to the text
                 `prompt` at the expense of lower sound quality. Guidance scale is enabled when `guidance_scale > 1`.
-            negative_prompt (`str` or `List[str]`, *optional*):
+            negative_prompt (`str` or `list[str]`, *optional*):
                 The prompt or prompts to guide what to not include in audio generation. If not defined, you need to
                 pass `negative_prompt_embeds` instead. Ignored when not using guidance (`guidance_scale < 1`).
             num_waveforms_per_prompt (`int`, *optional*, defaults to 1):
@@ -536,7 +536,7 @@ class StableAudioPipeline(DiffusionPipeline):
             eta (`float`, *optional*, defaults to 0.0):
                 Corresponds to parameter eta (η) from the [DDIM](https://huggingface.co/papers/2010.02502) paper. Only
                 applies to the [`~schedulers.DDIMScheduler`], and is ignored in other schedulers.
-            generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
+            generator (`torch.Generator` or `list[torch.Generator]`, *optional*):
                 A [`torch.Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make
                 generation deterministic.
             latents (`torch.Tensor`, *optional*):

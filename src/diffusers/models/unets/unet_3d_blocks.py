@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Any, Dict, Optional, Tuple, Union
+from typing import Any, Optional, Union
 
 import torch
 from torch import nn
@@ -99,8 +99,8 @@ def get_down_block(
     resnet_time_scale_shift: str = "default",
     temporal_num_attention_heads: int = 8,
     temporal_max_seq_length: int = 32,
-    transformer_layers_per_block: Union[int, Tuple[int]] = 1,
-    temporal_transformer_layers_per_block: Union[int, Tuple[int]] = 1,
+    transformer_layers_per_block: Union[int, tuple[int]] = 1,
+    temporal_transformer_layers_per_block: Union[int, tuple[int]] = 1,
     dropout: float = 0.0,
 ) -> Union[
     "DownBlock3D",
@@ -193,8 +193,8 @@ def get_up_block(
     temporal_num_attention_heads: int = 8,
     temporal_cross_attention_dim: Optional[int] = None,
     temporal_max_seq_length: int = 32,
-    transformer_layers_per_block: Union[int, Tuple[int]] = 1,
-    temporal_transformer_layers_per_block: Union[int, Tuple[int]] = 1,
+    transformer_layers_per_block: Union[int, tuple[int]] = 1,
+    temporal_transformer_layers_per_block: Union[int, tuple[int]] = 1,
     dropout: float = 0.0,
 ) -> Union[
     "UpBlock3D",
@@ -380,7 +380,7 @@ class UNetMidBlock3DCrossAttn(nn.Module):
         encoder_hidden_states: Optional[torch.Tensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
         num_frames: int = 1,
-        cross_attention_kwargs: Optional[Dict[str, Any]] = None,
+        cross_attention_kwargs: Optional[dict[str, Any]] = None,
     ) -> torch.Tensor:
         hidden_states = self.resnets[0](hidden_states, temb)
         hidden_states = self.temp_convs[0](hidden_states, num_frames=num_frames)
@@ -513,8 +513,8 @@ class CrossAttnDownBlock3D(nn.Module):
         encoder_hidden_states: Optional[torch.Tensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
         num_frames: int = 1,
-        cross_attention_kwargs: Dict[str, Any] = None,
-    ) -> Union[torch.Tensor, Tuple[torch.Tensor, ...]]:
+        cross_attention_kwargs: dict[str, Any] = None,
+    ) -> Union[torch.Tensor, tuple[torch.Tensor, ...]]:
         # TODO(Patrick, William) - attention mask is not used
         output_states = ()
 
@@ -618,7 +618,7 @@ class DownBlock3D(nn.Module):
         hidden_states: torch.Tensor,
         temb: Optional[torch.Tensor] = None,
         num_frames: int = 1,
-    ) -> Union[torch.Tensor, Tuple[torch.Tensor, ...]]:
+    ) -> Union[torch.Tensor, tuple[torch.Tensor, ...]]:
         output_states = ()
 
         for resnet, temp_conv in zip(self.resnets, self.temp_convs):
@@ -734,13 +734,13 @@ class CrossAttnUpBlock3D(nn.Module):
     def forward(
         self,
         hidden_states: torch.Tensor,
-        res_hidden_states_tuple: Tuple[torch.Tensor, ...],
+        res_hidden_states_tuple: tuple[torch.Tensor, ...],
         temb: Optional[torch.Tensor] = None,
         encoder_hidden_states: Optional[torch.Tensor] = None,
         upsample_size: Optional[int] = None,
         attention_mask: Optional[torch.Tensor] = None,
         num_frames: int = 1,
-        cross_attention_kwargs: Dict[str, Any] = None,
+        cross_attention_kwargs: dict[str, Any] = None,
     ) -> torch.Tensor:
         is_freeu_enabled = (
             getattr(self, "s1", None)
@@ -856,7 +856,7 @@ class UpBlock3D(nn.Module):
     def forward(
         self,
         hidden_states: torch.Tensor,
-        res_hidden_states_tuple: Tuple[torch.Tensor, ...],
+        res_hidden_states_tuple: tuple[torch.Tensor, ...],
         temb: Optional[torch.Tensor] = None,
         upsample_size: Optional[int] = None,
         num_frames: int = 1,
@@ -1015,7 +1015,7 @@ class UNetMidBlockSpatioTemporal(nn.Module):
         in_channels: int,
         temb_channels: int,
         num_layers: int = 1,
-        transformer_layers_per_block: Union[int, Tuple[int]] = 1,
+        transformer_layers_per_block: Union[int, tuple[int]] = 1,
         num_attention_heads: int = 1,
         cross_attention_dim: int = 1280,
     ):
@@ -1144,7 +1144,7 @@ class DownBlockSpatioTemporal(nn.Module):
         hidden_states: torch.Tensor,
         temb: Optional[torch.Tensor] = None,
         image_only_indicator: Optional[torch.Tensor] = None,
-    ) -> Tuple[torch.Tensor, Tuple[torch.Tensor, ...]]:
+    ) -> tuple[torch.Tensor, tuple[torch.Tensor, ...]]:
         output_states = ()
         for resnet in self.resnets:
             if torch.is_grad_enabled() and self.gradient_checkpointing:
@@ -1170,7 +1170,7 @@ class CrossAttnDownBlockSpatioTemporal(nn.Module):
         out_channels: int,
         temb_channels: int,
         num_layers: int = 1,
-        transformer_layers_per_block: Union[int, Tuple[int]] = 1,
+        transformer_layers_per_block: Union[int, tuple[int]] = 1,
         num_attention_heads: int = 1,
         cross_attention_dim: int = 1280,
         add_downsample: bool = True,
@@ -1230,7 +1230,7 @@ class CrossAttnDownBlockSpatioTemporal(nn.Module):
         temb: Optional[torch.Tensor] = None,
         encoder_hidden_states: Optional[torch.Tensor] = None,
         image_only_indicator: Optional[torch.Tensor] = None,
-    ) -> Tuple[torch.Tensor, Tuple[torch.Tensor, ...]]:
+    ) -> tuple[torch.Tensor, tuple[torch.Tensor, ...]]:
         output_states = ()
 
         blocks = list(zip(self.resnets, self.attentions))
@@ -1305,7 +1305,7 @@ class UpBlockSpatioTemporal(nn.Module):
     def forward(
         self,
         hidden_states: torch.Tensor,
-        res_hidden_states_tuple: Tuple[torch.Tensor, ...],
+        res_hidden_states_tuple: tuple[torch.Tensor, ...],
         temb: Optional[torch.Tensor] = None,
         image_only_indicator: Optional[torch.Tensor] = None,
         upsample_size: Optional[int] = None,
@@ -1338,7 +1338,7 @@ class CrossAttnUpBlockSpatioTemporal(nn.Module):
         temb_channels: int,
         resolution_idx: Optional[int] = None,
         num_layers: int = 1,
-        transformer_layers_per_block: Union[int, Tuple[int]] = 1,
+        transformer_layers_per_block: Union[int, tuple[int]] = 1,
         resnet_eps: float = 1e-6,
         num_attention_heads: int = 1,
         cross_attention_dim: int = 1280,
@@ -1390,7 +1390,7 @@ class CrossAttnUpBlockSpatioTemporal(nn.Module):
     def forward(
         self,
         hidden_states: torch.Tensor,
-        res_hidden_states_tuple: Tuple[torch.Tensor, ...],
+        res_hidden_states_tuple: tuple[torch.Tensor, ...],
         temb: Optional[torch.Tensor] = None,
         encoder_hidden_states: Optional[torch.Tensor] = None,
         image_only_indicator: Optional[torch.Tensor] = None,

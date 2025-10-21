@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import List
 
 import torch
 
@@ -42,7 +41,7 @@ class FluxTextInputStep(ModularPipelineBlocks):
         )
 
     @property
-    def inputs(self) -> List[InputParam]:
+    def inputs(self) -> list[InputParam]:
         return [
             InputParam("num_images_per_prompt", default=1),
             InputParam(
@@ -62,7 +61,7 @@ class FluxTextInputStep(ModularPipelineBlocks):
         ]
 
     @property
-    def intermediate_outputs(self) -> List[str]:
+    def intermediate_outputs(self) -> list[str]:
         return [
             OutputParam(
                 "batch_size",
@@ -123,8 +122,8 @@ class FluxInputsDynamicStep(ModularPipelineBlocks):
 
     def __init__(
         self,
-        image_latent_inputs: List[str] = ["image_latents"],
-        additional_batch_inputs: List[str] = [],
+        image_latent_inputs: list[str] = ["image_latents"],
+        additional_batch_inputs: list[str] = [],
     ):
         if not isinstance(image_latent_inputs, list):
             image_latent_inputs = [image_latent_inputs]
@@ -159,7 +158,7 @@ class FluxInputsDynamicStep(ModularPipelineBlocks):
         return summary_section + inputs_info + placement_section
 
     @property
-    def inputs(self) -> List[InputParam]:
+    def inputs(self) -> list[InputParam]:
         inputs = [
             InputParam(name="num_images_per_prompt", default=1),
             InputParam(name="batch_size", required=True),
@@ -178,7 +177,7 @@ class FluxInputsDynamicStep(ModularPipelineBlocks):
         return inputs
 
     @property
-    def intermediate_outputs(self) -> List[OutputParam]:
+    def intermediate_outputs(self) -> list[OutputParam]:
         return [
             OutputParam(name="image_height", type_hint=int, description="The height of the image latents"),
             OutputParam(name="image_width", type_hint=int, description="The width of the image latents"),
@@ -307,7 +306,7 @@ class FluxKontextSetResolutionStep(ModularPipelineBlocks):
         )
 
     @property
-    def inputs(self) -> List[InputParam]:
+    def inputs(self) -> list[InputParam]:
         inputs = [
             InputParam(name="height"),
             InputParam(name="width"),
@@ -316,7 +315,7 @@ class FluxKontextSetResolutionStep(ModularPipelineBlocks):
         return inputs
 
     @property
-    def intermediate_outputs(self) -> List[OutputParam]:
+    def intermediate_outputs(self) -> list[OutputParam]:
         return [
             OutputParam(name="height", type_hint=int, description="The height of the initial noisy latents"),
             OutputParam(name="width", type_hint=int, description="The width of the initial noisy latents"),

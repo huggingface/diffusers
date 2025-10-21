@@ -14,7 +14,7 @@
 
 import re
 from dataclasses import dataclass
-from typing import Any, Callable, Optional, Tuple, Union
+from typing import Any, Callable, Optional, Union
 
 import torch
 
@@ -54,20 +54,20 @@ class PyramidAttentionBroadcastConfig:
             The number of times a specific cross-attention broadcast is skipped before computing the attention states
             to re-use. If this is set to the value `N`, the attention computation will be skipped `N - 1` times (i.e.,
             old attention states will be reused) before computing the new attention states again.
-        spatial_attention_timestep_skip_range (`Tuple[int, int]`, defaults to `(100, 800)`):
+        spatial_attention_timestep_skip_range (`tuple[int, int]`, defaults to `(100, 800)`):
             The range of timesteps to skip in the spatial attention layer. The attention computations will be
             conditionally skipped if the current timestep is within the specified range.
-        temporal_attention_timestep_skip_range (`Tuple[int, int]`, defaults to `(100, 800)`):
+        temporal_attention_timestep_skip_range (`tuple[int, int]`, defaults to `(100, 800)`):
             The range of timesteps to skip in the temporal attention layer. The attention computations will be
             conditionally skipped if the current timestep is within the specified range.
-        cross_attention_timestep_skip_range (`Tuple[int, int]`, defaults to `(100, 800)`):
+        cross_attention_timestep_skip_range (`tuple[int, int]`, defaults to `(100, 800)`):
             The range of timesteps to skip in the cross-attention layer. The attention computations will be
             conditionally skipped if the current timestep is within the specified range.
-        spatial_attention_block_identifiers (`Tuple[str, ...]`):
+        spatial_attention_block_identifiers (`tuple[str, ...]`):
             The identifiers to match against the layer names to determine if the layer is a spatial attention layer.
-        temporal_attention_block_identifiers (`Tuple[str, ...]`):
+        temporal_attention_block_identifiers (`tuple[str, ...]`):
             The identifiers to match against the layer names to determine if the layer is a temporal attention layer.
-        cross_attention_block_identifiers (`Tuple[str, ...]`):
+        cross_attention_block_identifiers (`tuple[str, ...]`):
             The identifiers to match against the layer names to determine if the layer is a cross-attention layer.
     """
 
@@ -75,13 +75,13 @@ class PyramidAttentionBroadcastConfig:
     temporal_attention_block_skip_range: Optional[int] = None
     cross_attention_block_skip_range: Optional[int] = None
 
-    spatial_attention_timestep_skip_range: Tuple[int, int] = (100, 800)
-    temporal_attention_timestep_skip_range: Tuple[int, int] = (100, 800)
-    cross_attention_timestep_skip_range: Tuple[int, int] = (100, 800)
+    spatial_attention_timestep_skip_range: tuple[int, int] = (100, 800)
+    temporal_attention_timestep_skip_range: tuple[int, int] = (100, 800)
+    cross_attention_timestep_skip_range: tuple[int, int] = (100, 800)
 
-    spatial_attention_block_identifiers: Tuple[str, ...] = _SPATIAL_TRANSFORMER_BLOCK_IDENTIFIERS
-    temporal_attention_block_identifiers: Tuple[str, ...] = _TEMPORAL_TRANSFORMER_BLOCK_IDENTIFIERS
-    cross_attention_block_identifiers: Tuple[str, ...] = _CROSS_TRANSFORMER_BLOCK_IDENTIFIERS
+    spatial_attention_block_identifiers: tuple[str, ...] = _SPATIAL_TRANSFORMER_BLOCK_IDENTIFIERS
+    temporal_attention_block_identifiers: tuple[str, ...] = _TEMPORAL_TRANSFORMER_BLOCK_IDENTIFIERS
+    cross_attention_block_identifiers: tuple[str, ...] = _CROSS_TRANSFORMER_BLOCK_IDENTIFIERS
 
     current_timestep_callback: Callable[[], int] = None
 
@@ -141,7 +141,7 @@ class PyramidAttentionBroadcastHook(ModelHook):
     _is_stateful = True
 
     def __init__(
-        self, timestep_skip_range: Tuple[int, int], block_skip_range: int, current_timestep_callback: Callable[[], int]
+        self, timestep_skip_range: tuple[int, int], block_skip_range: int, current_timestep_callback: Callable[[], int]
     ) -> None:
         super().__init__()
 
@@ -289,7 +289,7 @@ def _apply_pyramid_attention_broadcast_on_attention_class(
 
 def _apply_pyramid_attention_broadcast_hook(
     module: Union[Attention, MochiAttention],
-    timestep_skip_range: Tuple[int, int],
+    timestep_skip_range: tuple[int, int],
     block_skip_range: int,
     current_timestep_callback: Callable[[], int],
 ):
@@ -299,7 +299,7 @@ def _apply_pyramid_attention_broadcast_hook(
     Args:
         module (`torch.nn.Module`):
             The module to apply Pyramid Attention Broadcast to.
-        timestep_skip_range (`Tuple[int, int]`):
+        timestep_skip_range (`tuple[int, int]`):
             The range of timesteps to skip in the attention layer. The attention computations will be conditionally
             skipped if the current timestep is within the specified range.
         block_skip_range (`int`):

@@ -14,7 +14,7 @@
 
 import inspect
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, Type
+from typing import Any, Callable, Type
 
 
 @dataclass
@@ -28,7 +28,7 @@ class TransformerBlockMetadata:
     return_encoder_hidden_states_index: int = None
 
     _cls: Type = None
-    _cached_parameter_indices: Dict[str, int] = None
+    _cached_parameter_indices: dict[str, int] = None
 
     def _get_parameter_from_args_kwargs(self, identifier: str, args=(), kwargs=None):
         kwargs = kwargs or {}

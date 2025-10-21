@@ -180,7 +180,7 @@ class UniDiffuserTextDecoder(ModelMixin, ConfigMixin, ModuleUtilsMixin):
                 Device to perform text generation on.
 
         Returns:
-            `List[str]`: A list of strings generated from the decoder model.
+            `list[str]`: A list of strings generated from the decoder model.
         """
 
         features = torch.split(features, 1, dim=0)

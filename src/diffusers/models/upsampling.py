@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Optional, Tuple
+from typing import Optional
 
 import torch
 import torch.nn as nn
@@ -211,7 +211,7 @@ class FirUpsample2D(nn.Module):
         channels: Optional[int] = None,
         out_channels: Optional[int] = None,
         use_conv: bool = False,
-        fir_kernel: Tuple[int, int, int, int] = (1, 3, 3, 1),
+        fir_kernel: tuple[int, int, int, int] = (1, 3, 3, 1),
     ):
         super().__init__()
         out_channels = out_channels if out_channels else channels
@@ -425,7 +425,7 @@ def upfirdn2d_native(
     kernel: torch.Tensor,
     up: int = 1,
     down: int = 1,
-    pad: Tuple[int, int] = (0, 0),
+    pad: tuple[int, int] = (0, 0),
 ) -> torch.Tensor:
     up_x = up_y = up
     down_x = down_y = down

@@ -45,7 +45,7 @@ class UNet2DModel(ModelMixin, ConfigMixin):
     for all models (such as downloading or saving).
 
     Parameters:
-        sample_size (`int` or `Tuple[int, int]`, *optional*, defaults to `None`):
+        sample_size (`int` or `tuple[int, int]`, *optional*, defaults to `None`):
             Height and width of input/output sample. Dimensions must be a multiple of `2 ** (len(block_out_channels) -
             1)`.
         in_channels (`int`, *optional*, defaults to 3): Number of channels in the input sample.
@@ -55,13 +55,13 @@ class UNet2DModel(ModelMixin, ConfigMixin):
         freq_shift (`int`, *optional*, defaults to 0): Frequency shift for Fourier time embedding.
         flip_sin_to_cos (`bool`, *optional*, defaults to `True`):
             Whether to flip sin to cos for Fourier time embedding.
-        down_block_types (`Tuple[str]`, *optional*, defaults to `("DownBlock2D", "AttnDownBlock2D", "AttnDownBlock2D", "AttnDownBlock2D")`):
+        down_block_types (`tuple[str]`, *optional*, defaults to `("DownBlock2D", "AttnDownBlock2D", "AttnDownBlock2D", "AttnDownBlock2D")`):
             Tuple of downsample block types.
         mid_block_type (`str`, *optional*, defaults to `"UNetMidBlock2D"`):
             Block type for middle of UNet, it can be either `UNetMidBlock2D` or `None`.
-        up_block_types (`Tuple[str]`, *optional*, defaults to `("AttnUpBlock2D", "AttnUpBlock2D", "AttnUpBlock2D", "UpBlock2D")`):
+        up_block_types (`tuple[str]`, *optional*, defaults to `("AttnUpBlock2D", "AttnUpBlock2D", "AttnUpBlock2D", "UpBlock2D")`):
             Tuple of upsample block types.
-        block_out_channels (`Tuple[int]`, *optional*, defaults to `(224, 448, 672, 896)`):
+        block_out_channels (`tuple[int]`, *optional*, defaults to `(224, 448, 672, 896)`):
             Tuple of block output channels.
         layers_per_block (`int`, *optional*, defaults to `2`): The number of layers per block.
         mid_block_scale_factor (`float`, *optional*, defaults to `1`): The scale factor for the mid block.
@@ -95,7 +95,7 @@ class UNet2DModel(ModelMixin, ConfigMixin):
     @register_to_config
     def __init__(
         self,
-        sample_size: Optional[Union[int, Tuple[int, int]]] = None,
+        sample_size: Optional[Union[int, tuple[int, int]]] = None,
         in_channels: int = 3,
         out_channels: int = 3,
         center_input_sample: bool = False,
@@ -103,10 +103,10 @@ class UNet2DModel(ModelMixin, ConfigMixin):
         time_embedding_dim: Optional[int] = None,
         freq_shift: int = 0,
         flip_sin_to_cos: bool = True,
-        down_block_types: Tuple[str, ...] = ("DownBlock2D", "AttnDownBlock2D", "AttnDownBlock2D", "AttnDownBlock2D"),
+        down_block_types: tuple[str, ...] = ("DownBlock2D", "AttnDownBlock2D", "AttnDownBlock2D", "AttnDownBlock2D"),
         mid_block_type: Optional[str] = "UNetMidBlock2D",
-        up_block_types: Tuple[str, ...] = ("AttnUpBlock2D", "AttnUpBlock2D", "AttnUpBlock2D", "UpBlock2D"),
-        block_out_channels: Tuple[int, ...] = (224, 448, 672, 896),
+        up_block_types: tuple[str, ...] = ("AttnUpBlock2D", "AttnUpBlock2D", "AttnUpBlock2D", "UpBlock2D"),
+        block_out_channels: tuple[int, ...] = (224, 448, 672, 896),
         layers_per_block: int = 2,
         mid_block_scale_factor: float = 1,
         downsample_padding: int = 1,

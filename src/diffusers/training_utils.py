@@ -6,7 +6,7 @@ import random
 import re
 import warnings
 from contextlib import contextmanager
-from typing import Any, Dict, Iterable, List, Optional, Tuple, Union
+from typing import Any, Iterable, Optional, Union
 
 import numpy as np
 import torch
@@ -151,7 +151,7 @@ def compute_dream_and_update_latents(
     target: torch.Tensor,
     encoder_hidden_states: torch.Tensor,
     dream_detail_preservation: float = 1.0,
-) -> Tuple[Optional[torch.Tensor], Optional[torch.Tensor]]:
+) -> tuple[Optional[torch.Tensor], Optional[torch.Tensor]]:
     """
     Implements "DREAM (Diffusion Rectification and Estimation-Adaptive Models)" from
     https://huggingface.co/papers/2312.00210. DREAM helps align training with sampling to help training be more
@@ -196,7 +196,7 @@ def compute_dream_and_update_latents(
     return _noisy_latents, _target
 
 
-def unet_lora_state_dict(unet: UNet2DConditionModel) -> Dict[str, torch.Tensor]:
+def unet_lora_state_dict(unet: UNet2DConditionModel) -> dict[str, torch.Tensor]:
     r"""
     Returns:
         A state dict containing just the LoRA parameters.
@@ -215,7 +215,7 @@ def unet_lora_state_dict(unet: UNet2DConditionModel) -> Dict[str, torch.Tensor]:
     return lora_state_dict
 
 
-def cast_training_params(model: Union[torch.nn.Module, List[torch.nn.Module]], dtype=torch.float32):
+def cast_training_params(model: Union[torch.nn.Module, list[torch.nn.Module]], dtype=torch.float32):
     """
     Casts the training parameters of the model to the specified data type.
 
@@ -233,7 +233,7 @@ def cast_training_params(model: Union[torch.nn.Module, List[torch.nn.Module]], d
 
 
 def _set_state_dict_into_text_encoder(
-    lora_state_dict: Dict[str, torch.Tensor], prefix: str, text_encoder: torch.nn.Module
+    lora_state_dict: dict[str, torch.Tensor], prefix: str, text_encoder: torch.nn.Module
 ):
     """
     Sets the `lora_state_dict` into `text_encoder` coming from `transformers`.
@@ -251,7 +251,7 @@ def _set_state_dict_into_text_encoder(
     set_peft_model_state_dict(text_encoder, text_encoder_state_dict, adapter_name="default")
 
 
-def _collate_lora_metadata(modules_to_save: Dict[str, torch.nn.Module]) -> Dict[str, Any]:
+def _collate_lora_metadata(modules_to_save: dict[str, torch.nn.Module]) -> dict[str, Any]:
     metadatas = {}
     for module_name, module in modules_to_save.items():
         if module is not None:
@@ -411,7 +411,7 @@ class EMAModel:
         power: Union[float, int] = 2 / 3,
         foreach: bool = False,
         model_cls: Optional[Any] = None,
-        model_config: Dict[str, Any] = None,
+        model_config: dict[str, Any] = None,
         **kwargs,
     ):
         """

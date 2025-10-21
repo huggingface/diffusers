@@ -16,7 +16,7 @@ import html
 import inspect
 import re
 import urllib.parse as ul
-from typing import Callable, Dict, List, Optional, Union
+from typing import Callable, Dict, Optional, Union
 
 import ftfy
 import torch
@@ -337,7 +337,7 @@ class PhotonPipeline(
 
     def encode_prompt(
         self,
-        prompt: Union[str, List[str]],
+        prompt: Union[str, list[str]],
         device: Optional[torch.device] = None,
         do_classifier_free_guidance: bool = True,
         negative_prompt: str = "",
@@ -387,7 +387,7 @@ class PhotonPipeline(
             negative_prompt_attention_mask if do_classifier_free_guidance else None,
         )
 
-    def _tokenize_prompts(self, prompts: List[str], device: torch.device):
+    def _tokenize_prompts(self, prompts: list[str], device: torch.device):
         """Tokenize and clean prompts."""
         cleaned = [self.text_preprocessor.clean_text(text) for text in prompts]
         tokens = self.tokenizer(
@@ -402,7 +402,7 @@ class PhotonPipeline(
 
     def _encode_prompt_standard(
         self,
-        prompt: List[str],
+        prompt: list[str],
         device: torch.device,
         do_classifier_free_guidance: bool = True,
         negative_prompt: str = "",
@@ -440,11 +440,11 @@ class PhotonPipeline(
 
     def check_inputs(
         self,
-        prompt: Union[str, List[str]],
+        prompt: Union[str, list[str]],
         height: int,
         width: int,
         guidance_scale: float,
-        callback_on_step_end_tensor_inputs: Optional[List[str]] = None,
+        callback_on_step_end_tensor_inputs: Optional[list[str]] = None,
         prompt_embeds: Optional[torch.FloatTensor] = None,
         negative_prompt_embeds: Optional[torch.FloatTensor] = None,
     ):
@@ -494,15 +494,15 @@ class PhotonPipeline(
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        prompt: Union[str, List[str]] = None,
+        prompt: Union[str, list[str]] = None,
         negative_prompt: str = "",
         height: Optional[int] = None,
         width: Optional[int] = None,
         num_inference_steps: int = 28,
-        timesteps: List[int] = None,
+        timesteps: list[int] = None,
         guidance_scale: float = 4.0,
         num_images_per_prompt: Optional[int] = 1,
-        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
+        generator: Optional[Union[torch.Generator, list[torch.Generator]]] = None,
         latents: Optional[torch.Tensor] = None,
         prompt_embeds: Optional[torch.FloatTensor] = None,
         negative_prompt_embeds: Optional[torch.FloatTensor] = None,
@@ -512,13 +512,13 @@ class PhotonPipeline(
         return_dict: bool = True,
         use_resolution_binning: bool = True,
         callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
-        callback_on_step_end_tensor_inputs: List[str] = ["latents"],
+        callback_on_step_end_tensor_inputs: list[str] = ["latents"],
     ):
         """
         Function invoked when calling the pipeline for generation.
 
         Args:
-            prompt (`str` or `List[str]`, *optional*):
+            prompt (`str` or `list[str]`, *optional*):
                 The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds`
                 instead.
             negative_prompt (`str`, *optional*, defaults to `""`):
@@ -531,7 +531,7 @@ class PhotonPipeline(
             num_inference_steps (`int`, *optional*, defaults to 28):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
-            timesteps (`List[int]`, *optional*):
+            timesteps (`list[int]`, *optional*):
                 Custom timesteps to use for the denoising process with schedulers which support a `timesteps` argument
                 in their `set_timesteps` method. If not defined, the default behavior when `num_inference_steps` is
                 passed will be used. Must be in descending order.
@@ -543,7 +543,7 @@ class PhotonPipeline(
                 usually at the expense of lower image quality.
             num_images_per_prompt (`int`, *optional*, defaults to 1):
                 The number of images to generate per prompt.
-            generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
+            generator (`torch.Generator` or `list[torch.Generator]`, *optional*):
                 One or a list of [torch generator(s)](https://pytorch.org/docs/stable/generated/torch.Generator.html)
                 to make generation deterministic.
             latents (`torch.Tensor`, *optional*):

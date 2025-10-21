@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import functools
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Optional
 
 import torch
 
@@ -86,19 +86,19 @@ class ModelHook:
         """
         return module
 
-    def pre_forward(self, module: torch.nn.Module, *args, **kwargs) -> Tuple[Tuple[Any], Dict[str, Any]]:
+    def pre_forward(self, module: torch.nn.Module, *args, **kwargs) -> tuple[tuple[Any], dict[str, Any]]:
         r"""
         Hook that is executed just before the forward method of the model.
 
         Args:
             module (`torch.nn.Module`):
                 The module whose forward pass will be executed just after this event.
-            args (`Tuple[Any]`):
+            args (`tuple[Any]`):
                 The positional arguments passed to the module.
-            kwargs (`Dict[Str, Any]`):
+            kwargs (`dict[Str, Any]`):
                 The keyword arguments passed to the module.
         Returns:
-            `Tuple[Tuple[Any], Dict[Str, Any]]`:
+            `tuple[tuple[Any], dict[Str, Any]]`:
                 A tuple with the treated `args` and `kwargs`.
         """
         return args, kwargs
@@ -168,7 +168,7 @@ class HookRegistry:
     def __init__(self, module_ref: torch.nn.Module) -> None:
         super().__init__()
 
-        self.hooks: Dict[str, ModelHook] = {}
+        self.hooks: dict[str, ModelHook] = {}
 
         self._module_ref = module_ref
         self._hook_order = []

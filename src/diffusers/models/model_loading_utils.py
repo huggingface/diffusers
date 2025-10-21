@@ -135,7 +135,7 @@ def _fetch_remapped_cls_from_config(config, old_class):
         return old_class
 
 
-def _determine_param_device(param_name: str, device_map: Optional[Dict[str, Union[int, str, torch.device]]]):
+def _determine_param_device(param_name: str, device_map: Optional[dict[str, Union[int, str, torch.device]]]):
     """
     Find the device of param_name from the device_map.
     """
@@ -154,7 +154,7 @@ def _determine_param_device(param_name: str, device_map: Optional[Dict[str, Unio
 
 def load_state_dict(
     checkpoint_file: Union[str, os.PathLike],
-    dduf_entries: Optional[Dict[str, DDUFEntry]] = None,
+    dduf_entries: Optional[dict[str, DDUFEntry]] = None,
     disable_mmap: bool = False,
     map_location: Union[str, torch.device] = "cpu",
 ):
@@ -217,13 +217,13 @@ def load_model_dict_into_meta(
     model_name_or_path: Optional[str] = None,
     hf_quantizer: Optional[DiffusersQuantizer] = None,
     keep_in_fp32_modules: Optional[List] = None,
-    device_map: Optional[Dict[str, Union[int, str, torch.device]]] = None,
-    unexpected_keys: Optional[List[str]] = None,
+    device_map: Optional[dict[str, Union[int, str, torch.device]]] = None,
+    unexpected_keys: Optional[list[str]] = None,
     offload_folder: Optional[Union[str, os.PathLike]] = None,
     offload_index: Optional[Dict] = None,
     state_dict_index: Optional[Dict] = None,
     state_dict_folder: Optional[Union[str, os.PathLike]] = None,
-) -> List[str]:
+) -> list[str]:
     """
     This is somewhat similar to `_load_state_dict_into_model`, but deals with a model that has some or all of its
     params on a `meta` device. It replaces the model params with the data from the `state_dict`
@@ -466,7 +466,7 @@ def _find_mismatched_keys(
 
 def _load_state_dict_into_model(
     model_to_load, state_dict: OrderedDict, assign_to_params_buffers: bool = False
-) -> List[str]:
+) -> list[str]:
     # Convert old format to new format if needed from a PyTorch state_dict
     # copy state_dict so _load_from_state_dict can modify it
     state_dict = state_dict.copy()
@@ -505,7 +505,7 @@ def _fetch_index_file(
     revision,
     user_agent,
     commit_hash,
-    dduf_entries: Optional[Dict[str, DDUFEntry]] = None,
+    dduf_entries: Optional[dict[str, DDUFEntry]] = None,
 ):
     if is_local:
         index_file = Path(
@@ -555,7 +555,7 @@ def _fetch_index_file_legacy(
     revision,
     user_agent,
     commit_hash,
-    dduf_entries: Optional[Dict[str, DDUFEntry]] = None,
+    dduf_entries: Optional[dict[str, DDUFEntry]] = None,
 ):
     if is_local:
         index_file = Path(
@@ -714,7 +714,7 @@ def _expand_device_map(device_map, param_names):
 
 # Adapted from: https://github.com/huggingface/transformers/blob/0687d481e2c71544501ef9cb3eef795a6e79b1de/src/transformers/modeling_utils.py#L5859
 def _caching_allocator_warmup(
-    model, expanded_device_map: Dict[str, torch.device], dtype: torch.dtype, hf_quantizer: Optional[DiffusersQuantizer]
+    model, expanded_device_map: dict[str, torch.device], dtype: torch.dtype, hf_quantizer: Optional[DiffusersQuantizer]
 ) -> None:
     """
     This function warm-ups the caching allocator based on the size of the model tensors that will reside on each

@@ -19,7 +19,7 @@ from collections import UserDict
 from contextlib import contextmanager
 from io import BytesIO, StringIO
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Set, Tuple, Union
+from typing import TYPE_CHECKING, Any, Callable, Optional, Set, Union
 
 import numpy as np
 import PIL.Image
@@ -750,7 +750,7 @@ def preprocess_image(image: PIL.Image, batch_size: int):
     return 2.0 * image - 1.0
 
 
-def export_to_gif(image: List[PIL.Image.Image], output_gif_path: str = None) -> str:
+def export_to_gif(image: list[PIL.Image.Image], output_gif_path: str = None) -> str:
     if output_gif_path is None:
         output_gif_path = tempfile.NamedTemporaryFile(suffix=".gif").name
 
@@ -843,7 +843,7 @@ def export_to_obj(mesh, output_obj_path: str = None):
         f.writelines("\n".join(combined_data))
 
 
-def export_to_video(video_frames: List[np.ndarray], output_video_path: str = None) -> str:
+def export_to_video(video_frames: list[np.ndarray], output_video_path: str = None) -> str:
     if is_opencv_available():
         import cv2
     else:
@@ -1281,7 +1281,7 @@ if is_torch_available():
 
 
 # This dispatches a defined function according to the accelerator from the function definitions.
-def _device_agnostic_dispatch(device: str, dispatch_table: Dict[str, Callable], *args, **kwargs):
+def _device_agnostic_dispatch(device: str, dispatch_table: dict[str, Callable], *args, **kwargs):
     if device not in dispatch_table:
         return dispatch_table["default"](*args, **kwargs)
 
@@ -1381,7 +1381,7 @@ def backend_supports_training(device: str):
 # Guard for when Torch is not available
 if is_torch_available():
     # Update device function dict mapping
-    def update_mapping_from_spec(device_fn_dict: Dict[str, Callable], attribute_name: str):
+    def update_mapping_from_spec(device_fn_dict: dict[str, Callable], attribute_name: str):
         try:
             # Try to import the function directly
             spec_fn = getattr(device_spec_module, attribute_name)
@@ -1430,7 +1430,7 @@ if is_torch_available():
 # Modified from https://github.com/huggingface/transformers/blob/cdfb018d0300fef3b07d9220f3efe9c2a9974662/src/transformers/testing_utils.py#L3090
 
 # Type definition of key used in `Expectations` class.
-DeviceProperties = Tuple[Union[str, None], Union[int, None]]
+DeviceProperties = tuple[Union[str, None], Union[int, None]]
 
 
 @functools.lru_cache
