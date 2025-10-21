@@ -104,11 +104,11 @@ EXAMPLE_DOC_STRING = """
         ...     negative_prompt=negative_prompt,
         ...     height=height,
         ...     width=width,
-        ...     num_frames=81,
-        ...     guidance_scale=5.0,
+        ...     num_frames=77,
+        ...     guidance_scale=1.0,
         ...     mode="animation",
         ... ).frames[0]
-        >>> export_to_video(output, "output_animation.mp4", fps=16)
+        >>> export_to_video(output, "output_animation.mp4", fps=30)
 
         >>> # Replacement mode: Replace a character in the background video
         >>> # Requires additional background_video and mask_video inputs
@@ -124,11 +124,11 @@ EXAMPLE_DOC_STRING = """
         ...     negative_prompt=negative_prompt,
         ...     height=height,
         ...     width=width,
-        ...     num_frames=81,
-        ...     guidance_scale=5.0,
+        ...     num_frames=76,
+        ...     guidance_scale=1.0,
         ...     mode="replacement",
         ... ).frames[0]
-        >>> export_to_video(output, "output_replacement.mp4", fps=16)
+        >>> export_to_video(output, "output_replacement.mp4", fps=30)
         ```
 """
 
