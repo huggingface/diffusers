@@ -383,7 +383,7 @@ class PhotonBlock(nn.Module):
         hidden_size: int,
         num_heads: int,
         mlp_ratio: float = 4.0,
-        qk_scale: float | None = None,
+        qk_scale: Optional[float] = None,
     ):
         super().__init__()
 
@@ -424,7 +424,7 @@ class PhotonBlock(nn.Module):
         encoder_hidden_states: Tensor,
         temb: Tensor,
         image_rotary_emb: Tensor,
-        attention_mask: Tensor | None = None,
+        attention_mask: Optional[Tensor] = None,
         **kwargs: dict[str, Any],
     ) -> Tensor:
         r"""
