@@ -427,7 +427,7 @@ class PhotonBlock(nn.Module):
         temb: torch.Tensor,
         image_rotary_emb: torch.Tensor,
         attention_mask: Optional[torch.Tensor] = None,
-        **kwargs: dict[str, Any],
+        **kwargs: Dict[str, Any],
     ) -> torch.Tensor:
         r"""
         Runs modulation-gated cross-attention and MLP, with residual connections.
