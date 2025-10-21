@@ -10,7 +10,7 @@ deps = {
     "flax": "flax>=0.4.1",
     "hf-doc-builder": "hf-doc-builder>=0.3.0",
     "httpx": "httpx<1.0.0",
-    "huggingface-hub": "huggingface-hub>=0.34.0,<2.0",
+    "huggingface-hub": "huggingface-hub==v0.36.0.rc0",
     "requests-mock": "requests-mock==1.10.0",
     "importlib_metadata": "importlib_metadata",
     "invisible-watermark": "invisible-watermark>=0.2.0",
