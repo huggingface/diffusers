@@ -39,29 +39,56 @@ from .transformer_wan import (
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
+class FusedLeakyReLU(nn.Module):
+    """
+    Fused LeakyRelu with scale factor and channel-wise bias.
+    """
+
+    def __init__(self, negative_slope: float = 0.2, scale: float = 1.0, channels: Optional[int] = None):
+        super().__init__()
+        self.negative_slope = negative_slope
+        self.scale = scale
+        self.channels = channels
+
+        if self.channels is not None:
+            self.bias = nn.Parameter(torch.zeros(self.channels,))
+        else:
+            self.bias = None
+
+    def forward(self, x: torch.Tensor, channel_dim: int = 1) -> torch.Tensor:
+        if self.bias is not None:
+            # Expand self.bias to have all singleton dims except at self.channel_dim
+            expanded_shape = [1] * x.ndim
+            expanded_shape[channel_dim] = self.bias.shape[0]
+            bias = self.bias.reshape(*expanded_shape)
+            x = x + bias
+        return F.leaky_relu(x, self.negative_slope) * self.scale
+
+
 class ConvLayer(nn.Module):
     def __init__(
         self,
         in_channel: int,
         out_channel: int,
         kernel_size: int,
-        downsample: bool = False,
+        downsample_factor: Optional[int] = None,
+        blur_kernel: Tuple[int] = (1, 3, 3, 1),
         bias: bool = True,
         activate: bool = True,
     ):
         super().__init__()
 
-        self.downsample = downsample
+        self.downsample_factor = downsample_factor
+        self.blur_kernel = blur_kernel
         self.activate = activate
 
         if activate:
-            self.act = nn.LeakyReLU(0.2)
-            self.bias_leaky_relu = nn.Parameter(torch.zeros(1, out_channel, 1, 1))
+            act_fn_channels = out_channel if bias else None
+            act_fn_scale = 2**0.5 if bias else 1.0
+            self.act = FusedLeakyReLU(scale=act_fn_scale, channels=act_fn_channels, channel_dim=1)
 
-        if downsample:
-            factor = 2
-            blur_kernel = (1, 3, 3, 1)
-            p = (len(blur_kernel) - factor) + (kernel_size - 1)
+        if self.downsample_factor is not None:
+            p = (len(self.blur_kernel) - self.downsample_factor) + (kernel_size - 1)
             pad0 = (p + 1) // 2
             pad1 = p // 2
 
