@@ -11,6 +11,7 @@ from diffusers.models import AutoencoderDC, AutoencoderKL
 from diffusers.models.transformers.transformer_photon import PhotonTransformer2DModel
 from diffusers.pipelines.photon.pipeline_photon import PhotonPipeline
 from diffusers.schedulers import FlowMatchEulerDiscreteScheduler
+from diffusers.utils import is_transformers_version
 
 from ..pipeline_params import TEXT_TO_IMAGE_PARAMS
 from ..test_pipelines_common import PipelineTesterMixin
