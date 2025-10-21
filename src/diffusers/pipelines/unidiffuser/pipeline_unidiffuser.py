@@ -51,10 +51,10 @@ class ImageTextPipelineOutput(BaseOutput):
 
     Args:
         images (`list[PIL.Image.Image]` or `np.ndarray`)
-            List of denoised PIL images of length `batch_size` or NumPy array of shape `(batch_size, height, width,
+            list of denoised PIL images of length `batch_size` or NumPy array of shape `(batch_size, height, width,
             num_channels)`.
         text (`list[str]` or `list[list[str]]`)
-            List of generated text strings of length `batch_size` or a list of list of strings whose outer list has
+            list of generated text strings of length `batch_size` or a list of list of strings whose outer list has
             length `batch_size`.
     """
 

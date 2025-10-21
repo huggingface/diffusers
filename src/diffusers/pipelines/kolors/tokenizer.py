@@ -206,7 +206,7 @@ class ChatGLMTokenizer(PreTrainedTokenizer):
                 An optional prefix to add to the named of the saved files.
 
         Returns:
-            `Tuple(str)`: Paths to the files saved.
+            `tuple(str)`: Paths to the files saved.
         """
         if os.path.isdir(save_directory):
             vocab_file = os.path.join(save_directory, self.vocab_files_names["vocab_file"])
@@ -257,12 +257,12 @@ class ChatGLMTokenizer(PreTrainedTokenizer):
 
         Args:
             token_ids_0 (`list[int]`):
-                List of IDs to which the special tokens will be added.
+                list of IDs to which the special tokens will be added.
             token_ids_1 (`list[int]`, *optional*):
                 Optional second list of IDs for sequence pairs.
 
         Returns:
-            `list[int]`: List of [input IDs](../glossary#input-ids) with the appropriate special tokens.
+            `list[int]`: list of [input IDs](../glossary#input-ids) with the appropriate special tokens.
         """
         prefix_tokens = self.get_prefix_tokens()
         token_ids_0 = prefix_tokens + token_ids_0

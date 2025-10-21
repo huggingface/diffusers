@@ -1,6 +1,6 @@
 import math
 from dataclasses import dataclass
-from typing import Optional, Tuple
+from typing import Optional, tuple
 
 import torch
 
@@ -137,7 +137,7 @@ class ConsistencyDecoderScheduler(SchedulerMixin, ConfigMixin):
         sample: torch.Tensor,
         generator: Optional[torch.Generator] = None,
         return_dict: bool = True,
-    ) -> ConsistencyDecoderSchedulerOutput | Tuple:
+    ) -> ConsistencyDecoderSchedulerOutput | tuple:
         """
         Predict the sample from the previous timestep by reversing the SDE. This function propagates the diffusion
         process from the learned model outputs (most often the predicted noise).

@@ -46,7 +46,7 @@ class TemporalDecoder(nn.Module):
         )
 
         # up
-        self.up_blocks = nn.ModuleList([])
+        self.up_blocks = nn.Modulelist([])
         reversed_block_out_channels = list(reversed(block_out_channels))
         output_channel = reversed_block_out_channels[0]
         for i in range(len(block_out_channels)):
@@ -146,9 +146,9 @@ class AutoencoderKLTemporalDecoder(ModelMixin, ConfigMixin):
         in_channels (int, *optional*, defaults to 3): Number of channels in the input image.
         out_channels (int,  *optional*, defaults to 3): Number of channels in the output.
         down_block_types (`tuple[str]`, *optional*, defaults to `("DownEncoderBlock2D",)`):
-            Tuple of downsample block types.
+            tuple of downsample block types.
         block_out_channels (`tuple[int]`, *optional*, defaults to `(64,)`):
-            Tuple of block output channels.
+            tuple of block output channels.
         layers_per_block: (`int`, *optional*, defaults to 1): Number of layers per block.
         latent_channels (`int`, *optional*, defaults to 4): Number of channels in the latent space.
         sample_size (`int`, *optional*, defaults to `32`): Sample input size.

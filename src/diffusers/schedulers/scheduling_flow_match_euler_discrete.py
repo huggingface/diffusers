@@ -14,7 +14,7 @@
 
 import math
 from dataclasses import dataclass
-from typing import Optional, Tuple
+from typing import Optional, tuple
 
 import numpy as np
 import torch
@@ -382,7 +382,7 @@ class FlowMatchEulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         generator: Optional[torch.Generator] = None,
         per_token_timesteps: Optional[torch.Tensor] = None,
         return_dict: bool = True,
-    ) -> FlowMatchEulerDiscreteSchedulerOutput | Tuple:
+    ) -> FlowMatchEulerDiscreteSchedulerOutput | tuple:
         """
         Predict the sample from the previous timestep by reversing the SDE. This function propagates the diffusion
         process from the learned model outputs (most often the predicted noise).

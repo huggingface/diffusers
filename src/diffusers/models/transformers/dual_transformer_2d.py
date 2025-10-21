@@ -62,7 +62,7 @@ class DualTransformer2DModel(nn.Module):
         num_embeds_ada_norm: Optional[int] = None,
     ):
         super().__init__()
-        self.transformers = nn.ModuleList(
+        self.transformers = nn.Modulelist(
             [
                 Transformer2DModel(
                     num_attention_heads=num_attention_heads,

@@ -13,7 +13,7 @@
 # limitations under the License.
 
 from dataclasses import dataclass
-from typing import Optional, Tuple
+from typing import Optional, tuple
 
 import torch
 import torch.nn as nn
@@ -57,11 +57,11 @@ class UNet1DModel(ModelMixin, ConfigMixin):
         flip_sin_to_cos (`bool`, *optional*, defaults to `False`):
             Whether to flip sin to cos for Fourier time embedding.
         down_block_types (`tuple[str]`, *optional*, defaults to `("DownBlock1DNoSkip", "DownBlock1D", "AttnDownBlock1D")`):
-            Tuple of downsample block types.
+            tuple of downsample block types.
         up_block_types (`tuple[str]`, *optional*, defaults to `("AttnUpBlock1D", "UpBlock1D", "UpBlock1DNoSkip")`):
-            Tuple of upsample block types.
+            tuple of upsample block types.
         block_out_channels (`tuple[int]`, *optional*, defaults to `(32, 32, 64)`):
-            Tuple of block output channels.
+            tuple of block output channels.
         mid_block_type (`str`, *optional*, defaults to `"UNetMidBlock1D"`): Block type for middle of UNet.
         out_block_type (`str`, *optional*, defaults to `None`): Optional output processing block of UNet.
         act_fn (`str`, *optional*, defaults to `None`): Optional activation function in UNet blocks.
@@ -128,9 +128,9 @@ class UNet1DModel(ModelMixin, ConfigMixin):
                 out_dim=block_out_channels[0],
             )
 
-        self.down_blocks = nn.ModuleList([])
+        self.down_blocks = nn.Modulelist([])
         self.mid_block = None
-        self.up_blocks = nn.ModuleList([])
+        self.up_blocks = nn.Modulelist([])
         self.out_block = None
 
         # down
@@ -208,7 +208,7 @@ class UNet1DModel(ModelMixin, ConfigMixin):
         sample: torch.Tensor,
         timestep: torch.Tensor | float | int,
         return_dict: bool = True,
-    ) -> UNet1DOutput | Tuple:
+    ) -> UNet1DOutput | tuple:
         r"""
         The [`UNet1DModel`] forward method.
 

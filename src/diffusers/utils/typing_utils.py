@@ -15,7 +15,7 @@
 Typing utilities: Utilities related to type checking and validation
 """
 
-from typing import Any, List, Set, Type, Union, get_args, get_origin
+from typing import Any, Set, Type, Union, get_args, get_origin, list
 
 
 def _is_valid_type(obj: Any, class_or_tuple: Type | tuple[Type, ...]) -> bool:
@@ -43,7 +43,7 @@ def _is_valid_type(obj: Any, class_or_tuple: Type | tuple[Type, ...]) -> bool:
     class_or_tuple = {t for t in class_or_tuple if isinstance(obj, get_origin(t) or t)}
 
     # Singular types (e.g. int, ControlNet, ...)
-    # Untyped collections (e.g. List, but not list[int])
+    # Untyped collections (e.g. list, but not list[int])
     elem_class_or_tuple = {get_args(t) for t in class_or_tuple}
     if () in elem_class_or_tuple:
         return True
@@ -53,10 +53,10 @@ def _is_valid_type(obj: Any, class_or_tuple: Type | tuple[Type, ...]) -> bool:
     # Typed tuples
     elif obj_type is tuple:
         return any(
-            # Tuples with any length and single type (e.g. tuple[int, ...])
+            # tuples with any length and single type (e.g. tuple[int, ...])
             (len(t) == 2 and t[-1] is Ellipsis and all(_is_valid_type(x, t[0]) for x in obj))
             or
-            # Tuples with fixed length and any types (e.g. tuple[int, str])
+            # tuples with fixed length and any types (e.g. tuple[int, str])
             (len(obj) == len(t) and all(_is_valid_type(x, tt) for x, tt in zip(obj, t)))
             for t in elem_class_or_tuple
         )
@@ -78,7 +78,7 @@ def _get_detailed_type(obj: Any) -> Type:
     obj_type = type(obj)
 
     if obj_type in (list, set):
-        obj_origin_type = List if obj_type is list else Set
+        obj_origin_type = list if obj_type is list else Set
         elems_type = tuple({_get_detailed_type(x) for x in obj})
         return obj_origin_type[elems_type]
     elif obj_type is tuple:

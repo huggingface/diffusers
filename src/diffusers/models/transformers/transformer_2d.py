@@ -181,7 +181,7 @@ class Transformer2DModel(LegacyModelMixin, LegacyConfigMixin):
         else:
             self.proj_in = torch.nn.Conv2d(self.in_channels, self.inner_dim, kernel_size=1, stride=1, padding=0)
 
-        self.transformer_blocks = nn.ModuleList(
+        self.transformer_blocks = nn.Modulelist(
             [
                 BasicTransformerBlock(
                     self.inner_dim,
@@ -223,7 +223,7 @@ class Transformer2DModel(LegacyModelMixin, LegacyConfigMixin):
             num_embed=self.config.num_vector_embeds, embed_dim=self.inner_dim, height=self.height, width=self.width
         )
 
-        self.transformer_blocks = nn.ModuleList(
+        self.transformer_blocks = nn.Modulelist(
             [
                 BasicTransformerBlock(
                     self.inner_dim,
@@ -270,7 +270,7 @@ class Transformer2DModel(LegacyModelMixin, LegacyConfigMixin):
             interpolation_scale=interpolation_scale,
         )
 
-        self.transformer_blocks = nn.ModuleList(
+        self.transformer_blocks = nn.Modulelist(
             [
                 BasicTransformerBlock(
                     self.inner_dim,

@@ -343,7 +343,7 @@ def format_inputs_short(inputs):
     Format input parameters into a string representation, with required params first followed by optional ones.
 
     Args:
-        inputs: List of input parameters with 'required' and 'name' attributes, and 'default' for optional params
+        inputs: list of input parameters with 'required' and 'name' attributes, and 'default' for optional params
 
     Returns:
         str: Formatted string of input parameters
@@ -372,9 +372,9 @@ def format_intermediates_short(intermediate_inputs, required_intermediate_inputs
     Formats intermediate inputs and outputs of a block into a string representation.
 
     Args:
-        intermediate_inputs: List of intermediate input parameters
-        required_intermediate_inputs: List of required intermediate input names
-        intermediate_outputs: List of intermediate output parameters
+        intermediate_inputs: list of intermediate input parameters
+        required_intermediate_inputs: list of required intermediate input names
+        intermediate_outputs: list of intermediate output parameters
 
     Returns:
         str: Formatted string like:
@@ -421,7 +421,7 @@ def format_params(params, header="Args", indent_level=4, max_line_length=115):
     """Format a list of InputParam or OutputParam objects into a readable string representation.
 
     Args:
-        params: List of InputParam or OutputParam objects to format
+        params: list of InputParam or OutputParam objects to format
         header: Header text to use (e.g. "Args" or "Returns")
         indent_level: Number of spaces to indent each parameter line (default: 4)
         max_line_length: Maximum length for each line before wrapping (default: 115)
@@ -499,7 +499,7 @@ def format_input_params(input_params, indent_level=4, max_line_length=115):
     """Format a list of InputParam objects into a readable string representation.
 
     Args:
-        input_params: List of InputParam objects to format
+        input_params: list of InputParam objects to format
         indent_level: Number of spaces to indent each parameter line (default: 4)
         max_line_length: Maximum length for each line before wrapping (default: 115)
 
@@ -513,7 +513,7 @@ def format_output_params(output_params, indent_level=4, max_line_length=115):
     """Format a list of OutputParam objects into a readable string representation.
 
     Args:
-        output_params: List of OutputParam objects to format
+        output_params: list of OutputParam objects to format
         indent_level: Number of spaces to indent each parameter line (default: 4)
         max_line_length: Maximum length for each line before wrapping (default: 115)
 
@@ -527,7 +527,7 @@ def format_components(components, indent_level=4, max_line_length=115, add_empty
     """Format a list of ComponentSpec objects into a readable string representation.
 
     Args:
-        components: List of ComponentSpec objects to format
+        components: list of ComponentSpec objects to format
         indent_level: Number of spaces to indent each component line (default: 4)
         max_line_length: Maximum length for each line before wrapping (default: 115)
         add_empty_lines: Whether to add empty lines between components (default: True)
@@ -582,7 +582,7 @@ def format_configs(configs, indent_level=4, max_line_length=115, add_empty_lines
     """Format a list of ConfigSpec objects into a readable string representation.
 
     Args:
-        configs: List of ConfigSpec objects to format
+        configs: list of ConfigSpec objects to format
         indent_level: Number of spaces to indent each config line (default: 4)
         max_line_length: Maximum length for each line before wrapping (default: 115)
         add_empty_lines: Whether to add empty lines between configs (default: True)
@@ -628,13 +628,13 @@ def make_doc_string(
     Generates a formatted documentation string describing the pipeline block's parameters and structure.
 
     Args:
-        inputs: List of input parameters
-        intermediate_inputs: List of intermediate input parameters
-        outputs: List of output parameters
+        inputs: list of input parameters
+        intermediate_inputs: list of intermediate input parameters
+        outputs: list of output parameters
         description (str, *optional*): Description of the block
         class_name (str, *optional*): Name of the class to include in the documentation
-        expected_components (list[ComponentSpec], *optional*): List of expected components
-        expected_configs (list[ConfigSpec], *optional*): List of expected configurations
+        expected_components (list[ComponentSpec], *optional*): list of expected components
+        expected_configs (list[ConfigSpec], *optional*): list of expected configurations
 
     Returns:
         str: A formatted string containing information about components, configs, call parameters,

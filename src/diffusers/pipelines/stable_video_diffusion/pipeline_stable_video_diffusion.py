@@ -137,7 +137,7 @@ class StableVideoDiffusionPipelineOutput(BaseOutput):
 
     Args:
         frames (`[list[list[PIL.Image.Image]]`, `np.ndarray`, `torch.Tensor`]):
-            List of denoised PIL images of length `batch_size` or numpy array or torch tensor of shape `(batch_size,
+            list of denoised PIL images of length `batch_size` or numpy array or torch tensor of shape `(batch_size,
             num_frames, height, width, num_channels)`.
     """
 
@@ -460,7 +460,7 @@ class StableVideoDiffusionPipeline(DiffusionPipeline):
                     `callback_on_step_end(self: DiffusionPipeline, step: int, timestep: int, callback_kwargs: Dict)`.
                 `callback_kwargs` will include a list of all tensors as specified by
                 `callback_on_step_end_tensor_inputs`.
-            callback_on_step_end_tensor_inputs (`List`, *optional*):
+            callback_on_step_end_tensor_inputs (`list`, *optional*):
                 The list of tensor inputs for the `callback_on_step_end` function. The tensors specified in the list
                 will be passed as `callback_kwargs` argument. You will only be able to include variables listed in the
                 `._callback_tensor_inputs` attribute of your pipeline class.

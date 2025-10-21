@@ -111,7 +111,7 @@ def apply_rotary_emb_qwen(
         freqs_cis (`tuple[torch.Tensor]`): Precomputed frequency tensor for complex exponentials. ([S, D], [S, D],)
 
     Returns:
-        tuple[torch.Tensor, torch.Tensor]: Tuple of modified query tensor and key tensor with rotary embeddings.
+        tuple[torch.Tensor, torch.Tensor]: tuple of modified query tensor and key tensor with rotary embeddings.
     """
     if use_real:
         cos, sin = freqs_cis  # [S, D]
@@ -547,7 +547,7 @@ class QwenImageTransformer2DModel(
         self.img_in = nn.Linear(in_channels, self.inner_dim)
         self.txt_in = nn.Linear(joint_attention_dim, self.inner_dim)
 
-        self.transformer_blocks = nn.ModuleList(
+        self.transformer_blocks = nn.Modulelist(
             [
                 QwenImageTransformerBlock(
                     dim=self.inner_dim,

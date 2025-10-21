@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Callable, Optional, Tuple
+from typing import Callable, Optional, tuple
 
 import torch
 from transformers import CLIPTextModel, CLIPTokenizer
@@ -174,7 +174,7 @@ class VQDiffusionPipeline(DiffusionPipeline):
         return_dict: bool = True,
         callback: Optional[Callable[[int, int, torch.Tensor], None]] = None,
         callback_steps: int = 1,
-    ) -> ImagePipelineOutput | Tuple:
+    ) -> ImagePipelineOutput | tuple:
         """
         The call function to the pipeline for generation.
 

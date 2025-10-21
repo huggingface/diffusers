@@ -51,7 +51,7 @@ class WuerstchenDiffNeXt(ModelMixin, ConfigMixin):
 
         # CONDITIONING
         self.clip_mapper = nn.Linear(clip_embd, c_cond)
-        self.effnet_mappers = nn.ModuleList(
+        self.effnet_mappers = nn.Modulelist(
             [
                 nn.Conv2d(effnet_embd, c_cond, kernel_size=1) if inject else None
                 for inject in inject_effnet + list(reversed(inject_effnet))
@@ -77,9 +77,9 @@ class WuerstchenDiffNeXt(ModelMixin, ConfigMixin):
 
         # BLOCKS
         # -- down blocks
-        self.down_blocks = nn.ModuleList()
+        self.down_blocks = nn.Modulelist()
         for i in range(len(c_hidden)):
-            down_block = nn.ModuleList()
+            down_block = nn.Modulelist()
             if i > 0:
                 down_block.append(
                     nn.Sequential(
@@ -94,9 +94,9 @@ class WuerstchenDiffNeXt(ModelMixin, ConfigMixin):
             self.down_blocks.append(down_block)
 
         # -- up blocks
-        self.up_blocks = nn.ModuleList()
+        self.up_blocks = nn.Modulelist()
         for i in reversed(range(len(c_hidden))):
-            up_block = nn.ModuleList()
+            up_block = nn.Modulelist()
             for j in range(blocks[i]):
                 for k, block_type in enumerate(level_config[i]):
                     c_skip = c_hidden[i] if i < len(c_hidden) - 1 and j == k == 0 else 0

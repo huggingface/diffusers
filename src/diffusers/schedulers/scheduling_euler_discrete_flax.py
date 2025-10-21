@@ -13,7 +13,7 @@
 # limitations under the License.
 
 from dataclasses import dataclass
-from typing import Optional, Tuple
+from typing import Optional, tuple
 
 import flax
 import jax.numpy as jnp
@@ -146,7 +146,7 @@ class FlaxEulerDiscreteScheduler(FlaxSchedulerMixin, ConfigMixin):
         return sample
 
     def set_timesteps(
-        self, state: EulerDiscreteSchedulerState, num_inference_steps: int, shape: Tuple = ()
+        self, state: EulerDiscreteSchedulerState, num_inference_steps: int, shape: tuple = ()
     ) -> EulerDiscreteSchedulerState:
         """
         Sets the timesteps used for the diffusion chain. Supporting function to be run before inference.
@@ -193,7 +193,7 @@ class FlaxEulerDiscreteScheduler(FlaxSchedulerMixin, ConfigMixin):
         timestep: int,
         sample: jnp.ndarray,
         return_dict: bool = True,
-    ) -> FlaxEulerDiscreteSchedulerOutput | Tuple:
+    ) -> FlaxEulerDiscreteSchedulerOutput | tuple:
         """
         Predict the sample at the previous timestep by reversing the SDE. Core function to propagate the diffusion
         process from the learned model outputs (most often the predicted noise).

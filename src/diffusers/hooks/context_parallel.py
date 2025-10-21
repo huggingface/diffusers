@@ -283,8 +283,8 @@ def _find_submodule_by_name(model: torch.nn.Module, name: str) -> torch.nn.Modul
         return model
     first_atom, remaining_name = name.split(".", 1) if "." in name else (name, "")
     if first_atom == "*":
-        if not isinstance(model, torch.nn.ModuleList):
-            raise ValueError("Wildcard '*' can only be used with ModuleList")
+        if not isinstance(model, torch.nn.Modulelist):
+            raise ValueError("Wildcard '*' can only be used with Modulelist")
         submodules = []
         for submodule in model:
             subsubmodules = _find_submodule_by_name(submodule, remaining_name)

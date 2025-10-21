@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import math
-from typing import Optional, Tuple
+from typing import Optional, tuple
 
 import numpy as np
 import torch
@@ -139,7 +139,7 @@ class IPNDMScheduler(SchedulerMixin, ConfigMixin):
         timestep: int | torch.Tensor,
         sample: torch.Tensor,
         return_dict: bool = True,
-    ) -> SchedulerOutput | Tuple:
+    ) -> SchedulerOutput | tuple:
         """
         Predict the sample from the previous timestep by reversing the SDE. This function propagates the sample with
         the linear multistep method. It performs one forward pass multiple times to approximate the solution.

@@ -14,10 +14,10 @@ class LEditsPPDiffusionPipelineOutput(BaseOutput):
 
     Args:
         images (`list[PIL.Image.Image]` or `np.ndarray`)
-            List of denoised PIL images of length `batch_size` or NumPy array of shape `(batch_size, height, width,
+            list of denoised PIL images of length `batch_size` or NumPy array of shape `(batch_size, height, width,
             num_channels)`.
         nsfw_content_detected (`list[bool]`)
-            List indicating whether the corresponding generated image contains “not-safe-for-work” (nsfw) content or
+            list indicating whether the corresponding generated image contains “not-safe-for-work” (nsfw) content or
             `None` if safety checking could not be performed.
     """
 
@@ -32,10 +32,10 @@ class LEditsPPInversionPipelineOutput(BaseOutput):
 
     Args:
         input_images (`list[PIL.Image.Image]` or `np.ndarray`)
-            List of the cropped and resized input images as PIL images of length `batch_size` or NumPy array of shape `
+            list of the cropped and resized input images as PIL images of length `batch_size` or NumPy array of shape `
             (batch_size, height, width, num_channels)`.
         vae_reconstruction_images (`list[PIL.Image.Image]` or `np.ndarray`)
-            List of VAE reconstruction of all input images as PIL images of length `batch_size` or NumPy array of shape
+            list of VAE reconstruction of all input images as PIL images of length `batch_size` or NumPy array of shape
             ` (batch_size, height, width, num_channels)`.
     """
 

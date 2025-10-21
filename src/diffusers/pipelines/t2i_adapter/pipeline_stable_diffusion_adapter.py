@@ -55,10 +55,10 @@ class StableDiffusionAdapterPipelineOutput(BaseOutput):
     """
     Args:
         images (`list[PIL.Image.Image]` or `np.ndarray`)
-            List of denoised PIL images of length `batch_size` or numpy array of shape `(batch_size, height, width,
+            list of denoised PIL images of length `batch_size` or numpy array of shape `(batch_size, height, width,
             num_channels)`. PIL images or numpy array present the denoised images of the diffusion pipeline.
         nsfw_content_detected (`list[bool]`)
-            List of flags denoting whether the corresponding generated image likely represents "not-safe-for-work"
+            list of flags denoting whether the corresponding generated image likely represents "not-safe-for-work"
             (nsfw) content, or `None` if safety checking could not be performed.
     """
 
@@ -201,7 +201,7 @@ class StableDiffusionAdapterPipeline(DiffusionPipeline, StableDiffusionMixin, Fr
             Provides additional conditioning to the unet during the denoising process. If you set multiple Adapter as a
             list, the outputs from each Adapter are added together to create one combined additional conditioning.
         adapter_weights (`list[float]`, *optional*, defaults to None):
-            List of floats representing the weight which will be multiply to each adapter's output before adding them
+            list of floats representing the weight which will be multiply to each adapter's output before adding them
             together.
         vae ([`AutoencoderKL`]):
             Variational Auto-Encoder (VAE) Model to encode and decode images to and from latent representations.

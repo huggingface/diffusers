@@ -121,7 +121,7 @@ class UpDownBlock2d(nn.Module):
             else nn.Identity()
         )
         mapping = nn.Conv2d(in_channels, out_channels, kernel_size=1)
-        self.blocks = nn.ModuleList([interpolation, mapping] if mode == "up" else [mapping, interpolation])
+        self.blocks = nn.Modulelist([interpolation, mapping] if mode == "up" else [mapping, interpolation])
 
     def forward(self, x):
         for block in self.blocks:
@@ -184,7 +184,7 @@ class StableCascadeUNet(ModelMixin, ConfigMixin, FromOriginalModelMixin):
             conditioning_dim (`int`, defaults to 2048):
                 Dimension of the image and text conditional embedding.
             block_out_channels (tuple[int], defaults to (2048, 2048)):
-                Tuple of output channels for each block.
+                tuple of output channels for each block.
             num_attention_heads (tuple[int], defaults to (32, 32)):
                 Number of attention heads in each attention block. Set to -1 to if block types in a layer do not have
                 attention.
@@ -217,11 +217,11 @@ class StableCascadeUNet(ModelMixin, ConfigMixin, FromOriginalModelMixin):
             dropout (tuple[float], *optional*, defaults to (0.1, 0.1)):
                 Dropout to use per block.
             self_attn (Union[bool, tuple[bool]]):
-                Tuple of booleans that determine whether to use self attention in a block or not.
+                tuple of booleans that determine whether to use self attention in a block or not.
             timestep_conditioning_type (tuple[str], defaults to ("sca", "crp")):
                 Timestep conditioning type.
             switch_level (Optional[tuple[bool]], *optional*, defaults to `None`):
-                Tuple that indicates whether upsampling or downsampling should be applied in a block
+                tuple that indicates whether upsampling or downsampling should be applied in a block
         """
 
         super().__init__()
@@ -299,9 +299,9 @@ class StableCascadeUNet(ModelMixin, ConfigMixin, FromOriginalModelMixin):
 
         # BLOCKS
         # -- down blocks
-        self.down_blocks = nn.ModuleList()
-        self.down_downscalers = nn.ModuleList()
-        self.down_repeat_mappers = nn.ModuleList()
+        self.down_blocks = nn.Modulelist()
+        self.down_downscalers = nn.Modulelist()
+        self.down_repeat_mappers = nn.Modulelist()
         for i in range(len(block_out_channels)):
             if i > 0:
                 self.down_downscalers.append(
@@ -317,7 +317,7 @@ class StableCascadeUNet(ModelMixin, ConfigMixin, FromOriginalModelMixin):
             else:
                 self.down_downscalers.append(nn.Identity())
 
-            down_block = nn.ModuleList()
+            down_block = nn.Modulelist()
             for _ in range(down_num_layers_per_block[i]):
                 for block_type in block_types_per_layer[i]:
                     block = get_block(
@@ -331,15 +331,15 @@ class StableCascadeUNet(ModelMixin, ConfigMixin, FromOriginalModelMixin):
             self.down_blocks.append(down_block)
 
             if down_blocks_repeat_mappers is not None:
-                block_repeat_mappers = nn.ModuleList()
+                block_repeat_mappers = nn.Modulelist()
                 for _ in range(down_blocks_repeat_mappers[i] - 1):
                     block_repeat_mappers.append(nn.Conv2d(block_out_channels[i], block_out_channels[i], kernel_size=1))
                 self.down_repeat_mappers.append(block_repeat_mappers)
 
         # -- up blocks
-        self.up_blocks = nn.ModuleList()
-        self.up_upscalers = nn.ModuleList()
-        self.up_repeat_mappers = nn.ModuleList()
+        self.up_blocks = nn.Modulelist()
+        self.up_upscalers = nn.Modulelist()
+        self.up_repeat_mappers = nn.Modulelist()
         for i in reversed(range(len(block_out_channels))):
             if i > 0:
                 self.up_upscalers.append(
@@ -357,7 +357,7 @@ class StableCascadeUNet(ModelMixin, ConfigMixin, FromOriginalModelMixin):
             else:
                 self.up_upscalers.append(nn.Identity())
 
-            up_block = nn.ModuleList()
+            up_block = nn.Modulelist()
             for j in range(up_num_layers_per_block[::-1][i]):
                 for k, block_type in enumerate(block_types_per_layer[i]):
                     c_skip = block_out_channels[i] if i < len(block_out_channels) - 1 and j == k == 0 else 0
@@ -373,7 +373,7 @@ class StableCascadeUNet(ModelMixin, ConfigMixin, FromOriginalModelMixin):
             self.up_blocks.append(up_block)
 
             if up_blocks_repeat_mappers is not None:
-                block_repeat_mappers = nn.ModuleList()
+                block_repeat_mappers = nn.Modulelist()
                 for _ in range(up_blocks_repeat_mappers[::-1][i] - 1):
                     block_repeat_mappers.append(nn.Conv2d(block_out_channels[i], block_out_channels[i], kernel_size=1))
                 self.up_repeat_mappers.append(block_repeat_mappers)

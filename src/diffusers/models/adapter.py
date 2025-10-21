@@ -42,7 +42,7 @@ class MultiAdapter(ModelMixin):
         super(MultiAdapter, self).__init__()
 
         self.num_adapter = len(adapters)
-        self.adapters = nn.ModuleList(adapters)
+        self.adapters = nn.Modulelist(adapters)
 
         if len(adapters) == 0:
             raise ValueError("Expecting at least one adapter")
@@ -306,7 +306,7 @@ class FullAdapter(nn.Module):
         self.unshuffle = nn.PixelUnshuffle(downscale_factor)
         self.conv_in = nn.Conv2d(in_channels, channels[0], kernel_size=3, padding=1)
 
-        self.body = nn.ModuleList(
+        self.body = nn.Modulelist(
             [
                 AdapterBlock(channels[0], channels[0], num_res_blocks),
                 *[
@@ -366,7 +366,7 @@ class FullAdapterXL(nn.Module):
             else:
                 self.body.append(AdapterBlock(channels[i], channels[i], num_res_blocks))
 
-        self.body = nn.ModuleList(self.body)
+        self.body = nn.Modulelist(self.body)
         # XL has only one downsampling AdapterBlock.
         self.total_downscale_factor = downscale_factor * 2
 
@@ -483,7 +483,7 @@ class LightAdapter(nn.Module):
 
         self.unshuffle = nn.PixelUnshuffle(downscale_factor)
 
-        self.body = nn.ModuleList(
+        self.body = nn.Modulelist(
             [
                 LightAdapterBlock(in_channels, channels[0], num_res_blocks),
                 *[

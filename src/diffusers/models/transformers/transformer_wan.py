@@ -197,7 +197,7 @@ class WanAttention(torch.nn.Module, AttentionModuleMixin):
         self.to_q = torch.nn.Linear(dim, self.inner_dim, bias=True)
         self.to_k = torch.nn.Linear(dim, self.kv_inner_dim, bias=True)
         self.to_v = torch.nn.Linear(dim, self.kv_inner_dim, bias=True)
-        self.to_out = torch.nn.ModuleList(
+        self.to_out = torch.nn.Modulelist(
             [
                 torch.nn.Linear(self.inner_dim, dim, bias=True),
                 torch.nn.Dropout(dropout),
@@ -598,7 +598,7 @@ class WanTransformer3DModel(
         )
 
         # 3. Transformer blocks
-        self.blocks = nn.ModuleList(
+        self.blocks = nn.Modulelist(
             [
                 WanTransformerBlock(
                     inner_dim, ffn_dim, num_attention_heads, qk_norm, cross_attn_norm, eps, added_kv_proj_dim

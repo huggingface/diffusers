@@ -92,10 +92,10 @@ class HunyuanDiT2DControlNetModel(ModelMixin, ConfigMixin):
         )
 
         # controlnet_blocks
-        self.controlnet_blocks = nn.ModuleList([])
+        self.controlnet_blocks = nn.Modulelist([])
 
         # HunyuanDiT Blocks
-        self.blocks = nn.ModuleList(
+        self.blocks = nn.Modulelist(
             [
                 HunyuanDiTBlock(
                     dim=self.inner_dim,
@@ -324,7 +324,7 @@ class HunyuanDiT2DMultiControlNetModel(ModelMixin):
 
     def __init__(self, controlnets):
         super().__init__()
-        self.nets = nn.ModuleList(controlnets)
+        self.nets = nn.Modulelist(controlnets)
 
     def forward(
         self,

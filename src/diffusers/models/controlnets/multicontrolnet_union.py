@@ -1,5 +1,5 @@
 import os
-from typing import Any, Callable, Optional, Tuple
+from typing import Any, Callable, Optional, tuple
 
 import torch
 from torch import nn
@@ -28,7 +28,7 @@ class MultiControlNetUnionModel(ModelMixin):
 
     def __init__(self, controlnets: list[ControlNetUnionModel] | tuple[ControlNetUnionModel]):
         super().__init__()
-        self.nets = nn.ModuleList(controlnets)
+        self.nets = nn.Modulelist(controlnets)
 
     def forward(
         self,
@@ -46,7 +46,7 @@ class MultiControlNetUnionModel(ModelMixin):
         cross_attention_kwargs: Optional[dict[str, Any]] = None,
         guess_mode: bool = False,
         return_dict: bool = True,
-    ) -> ControlNetOutput | Tuple:
+    ) -> ControlNetOutput | tuple:
         down_block_res_samples, mid_block_res_sample = None, None
         for i, (image, ctype, ctype_idx, scale, controlnet) in enumerate(
             zip(controlnet_cond, control_type, control_type_idx, conditioning_scale, self.nets)

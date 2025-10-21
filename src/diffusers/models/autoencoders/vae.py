@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 from dataclasses import dataclass
-from typing import Optional, Tuple
+from typing import Optional, tuple
 
 import numpy as np
 import torch
@@ -104,7 +104,7 @@ class Encoder(nn.Module):
             padding=1,
         )
 
-        self.down_blocks = nn.ModuleList([])
+        self.down_blocks = nn.Modulelist([])
 
         # down
         output_channel = block_out_channels[0]
@@ -224,7 +224,7 @@ class Decoder(nn.Module):
             padding=1,
         )
 
-        self.up_blocks = nn.ModuleList([])
+        self.up_blocks = nn.Modulelist([])
 
         temb_channels = in_channels if norm_type == "spatial" else None
 
@@ -441,7 +441,7 @@ class MaskConditionDecoder(nn.Module):
             padding=1,
         )
 
-        self.up_blocks = nn.ModuleList([])
+        self.up_blocks = nn.Modulelist([])
 
         temb_channels = in_channels if norm_type == "spatial" else None
 
@@ -636,7 +636,7 @@ class VectorQuantizer(nn.Module):
         back = torch.gather(used[None, :][inds.shape[0] * [0], :], 1, inds)
         return back.reshape(ishape)
 
-    def forward(self, z: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, Tuple]:
+    def forward(self, z: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, tuple]:
         # reshape z -> (batch, height, width, channel) and flatten
         z = z.permute(0, 2, 3, 1).contiguous()
         z_flattened = z.view(-1, self.vq_embed_dim)

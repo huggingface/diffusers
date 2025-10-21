@@ -1,6 +1,6 @@
 import math
 from dataclasses import dataclass
-from typing import Optional, Tuple
+from typing import Optional, tuple
 
 import torch
 
@@ -76,7 +76,7 @@ class AmusedScheduler(SchedulerMixin, ConfigMixin):
         starting_mask_ratio: int = 1,
         generator: Optional[torch.Generator] = None,
         return_dict: bool = True,
-    ) -> AmusedSchedulerOutput | Tuple:
+    ) -> AmusedSchedulerOutput | tuple:
         two_dim_input = sample.ndim == 3 and model_output.ndim == 4
 
         if two_dim_input:

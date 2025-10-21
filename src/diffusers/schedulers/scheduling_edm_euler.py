@@ -14,7 +14,7 @@
 
 import math
 from dataclasses import dataclass
-from typing import Optional, Tuple
+from typing import Optional, tuple
 
 import torch
 
@@ -319,7 +319,7 @@ class EDMEulerScheduler(SchedulerMixin, ConfigMixin):
         generator: Optional[torch.Generator] = None,
         return_dict: bool = True,
         pred_original_sample: Optional[torch.Tensor] = None,
-    ) -> EDMEulerSchedulerOutput | Tuple:
+    ) -> EDMEulerSchedulerOutput | tuple:
         """
         Predict the sample from the previous timestep by reversing the SDE. This function propagates the diffusion
         process from the learned model outputs (most often the predicted noise).

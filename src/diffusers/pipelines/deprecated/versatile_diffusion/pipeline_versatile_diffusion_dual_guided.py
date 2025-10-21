@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import inspect
-from typing import Callable, Optional, Tuple
+from typing import Callable, Optional, tuple
 
 import numpy as np
 import PIL.Image
@@ -369,7 +369,7 @@ class VersatileDiffusionDualGuidedPipeline(DiffusionPipeline):
         latents = latents * self.scheduler.init_noise_sigma
         return latents
 
-    def set_transformer_params(self, mix_ratio: float = 0.5, condition_types: Tuple = ("text", "image")):
+    def set_transformer_params(self, mix_ratio: float = 0.5, condition_types: tuple = ("text", "image")):
         for name, module in self.image_unet.named_modules():
             if isinstance(module, DualTransformer2DModel):
                 module.mix_ratio = mix_ratio

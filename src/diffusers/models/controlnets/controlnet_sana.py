@@ -87,7 +87,7 @@ class SanaControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         self.caption_norm = RMSNorm(inner_dim, eps=1e-5, elementwise_affine=True)
 
         # 3. Transformer blocks
-        self.transformer_blocks = nn.ModuleList(
+        self.transformer_blocks = nn.Modulelist(
             [
                 SanaTransformerBlock(
                     inner_dim,
@@ -107,7 +107,7 @@ class SanaControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         )
 
         # controlnet_blocks
-        self.controlnet_blocks = nn.ModuleList([])
+        self.controlnet_blocks = nn.Modulelist([])
 
         self.input_block = zero_module(nn.Linear(inner_dim, inner_dim))
         for _ in range(len(self.transformer_blocks)):

@@ -15,7 +15,7 @@
 # DISCLAIMER: This file is strongly influenced by https://github.com/yang-song/score_sde_pytorch
 
 from dataclasses import dataclass
-from typing import Optional, Tuple
+from typing import Optional, tuple
 
 import flax
 import jax
@@ -108,7 +108,7 @@ class FlaxScoreSdeVeScheduler(FlaxSchedulerMixin, ConfigMixin):
         )
 
     def set_timesteps(
-        self, state: ScoreSdeVeSchedulerState, num_inference_steps: int, shape: Tuple = (), sampling_eps: float = None
+        self, state: ScoreSdeVeSchedulerState, num_inference_steps: int, shape: tuple = (), sampling_eps: float = None
     ) -> ScoreSdeVeSchedulerState:
         """
         Sets the continuous timesteps used for the diffusion chain. Supporting function to be run before inference.
@@ -172,7 +172,7 @@ class FlaxScoreSdeVeScheduler(FlaxSchedulerMixin, ConfigMixin):
         sample: jnp.ndarray,
         key: jax.Array,
         return_dict: bool = True,
-    ) -> FlaxSdeVeOutput | Tuple:
+    ) -> FlaxSdeVeOutput | tuple:
         """
         Predict the sample at the previous timestep by reversing the SDE. Core function to propagate the diffusion
         process from the learned model outputs (most often the predicted noise).
@@ -231,7 +231,7 @@ class FlaxScoreSdeVeScheduler(FlaxSchedulerMixin, ConfigMixin):
         sample: jnp.ndarray,
         key: jax.Array,
         return_dict: bool = True,
-    ) -> FlaxSdeVeOutput | Tuple:
+    ) -> FlaxSdeVeOutput | tuple:
         """
         Correct the predicted sample based on the output model_output of the network. This is often run repeatedly
         after making the prediction for the previous timestep.

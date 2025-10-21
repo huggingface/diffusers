@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import inspect
-from typing import Optional, Tuple
+from typing import Optional, tuple
 
 import torch
 
@@ -53,7 +53,7 @@ class LDMPipeline(DiffusionPipeline):
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
         **kwargs,
-    ) -> Tuple | ImagePipelineOutput:
+    ) -> tuple | ImagePipelineOutput:
         r"""
         The call function to the pipeline for generation.
 

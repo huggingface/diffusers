@@ -15,9 +15,11 @@
 PyTorch utilities: Utilities related to PyTorch
 """
 
+from __future__ import annotations
+
 import functools
 import os
-from typing import Callable, List, Optional, Tuple
+from typing import Callable, Optional, list, tuple
 
 from . import logging
 from .import_utils import is_torch_available, is_torch_npu_available, is_torch_version
@@ -144,7 +146,7 @@ def backend_supports_training(device: str):
 
 
 def randn_tensor(
-    shape: Tuple | List,
+    shape: tuple | list,
     generator: Optional[list["torch.Generator"] | "torch.Generator"] = None,
     device: Optional[str | "torch.device"] = None,
     dtype: Optional["torch.dtype"] = None,

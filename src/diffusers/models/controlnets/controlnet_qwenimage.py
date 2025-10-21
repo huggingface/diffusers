@@ -13,7 +13,7 @@
 # limitations under the License.
 
 from dataclasses import dataclass
-from typing import Any, Optional, Tuple
+from typing import Any, Optional, tuple
 
 import torch
 import torch.nn as nn
@@ -71,7 +71,7 @@ class QwenImageControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
         self.img_in = nn.Linear(in_channels, self.inner_dim)
         self.txt_in = nn.Linear(joint_attention_dim, self.inner_dim)
 
-        self.transformer_blocks = nn.ModuleList(
+        self.transformer_blocks = nn.Modulelist(
             [
                 QwenImageTransformerBlock(
                     dim=self.inner_dim,
@@ -83,7 +83,7 @@ class QwenImageControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
         )
 
         # controlnet_blocks
-        self.controlnet_blocks = nn.ModuleList([])
+        self.controlnet_blocks = nn.Modulelist([])
         for _ in range(len(self.transformer_blocks)):
             self.controlnet_blocks.append(zero_module(nn.Linear(self.inner_dim, self.inner_dim)))
         self.controlnet_x_embedder = zero_module(
@@ -310,7 +310,7 @@ class QwenImageMultiControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, F
 
     def __init__(self, controlnets):
         super().__init__()
-        self.nets = nn.ModuleList(controlnets)
+        self.nets = nn.Modulelist(controlnets)
 
     def forward(
         self,
@@ -324,7 +324,7 @@ class QwenImageMultiControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, F
         txt_seq_lens: Optional[list[int]] = None,
         joint_attention_kwargs: Optional[dict[str, Any]] = None,
         return_dict: bool = True,
-    ) -> QwenImageControlNetOutput | Tuple:
+    ) -> QwenImageControlNetOutput | tuple:
         # ControlNet-Union with multiple conditions
         # only load one ControlNet for saving memories
         if len(self.nets) == 1:

@@ -150,7 +150,7 @@ class LTXAttention(torch.nn.Module, AttentionModuleMixin):
         self.to_q = torch.nn.Linear(query_dim, self.inner_dim, bias=bias)
         self.to_k = torch.nn.Linear(self.cross_attention_dim, self.inner_kv_dim, bias=bias)
         self.to_v = torch.nn.Linear(self.cross_attention_dim, self.inner_kv_dim, bias=bias)
-        self.to_out = torch.nn.ModuleList([])
+        self.to_out = torch.nn.Modulelist([])
         self.to_out.append(torch.nn.Linear(self.inner_dim, self.out_dim, bias=out_bias))
         self.to_out.append(torch.nn.Dropout(dropout))
 
@@ -468,7 +468,7 @@ class LTXVideoTransformer3DModel(
             theta=10000.0,
         )
 
-        self.transformer_blocks = nn.ModuleList(
+        self.transformer_blocks = nn.Modulelist(
             [
                 LTXVideoTransformerBlock(
                     dim=inner_dim,

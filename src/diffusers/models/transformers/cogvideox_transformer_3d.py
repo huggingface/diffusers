@@ -293,7 +293,7 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Cac
             )  # same as time embeddings, for ofs
 
         # 3. Define spatio-temporal transformers blocks
-        self.transformer_blocks = nn.ModuleList(
+        self.transformer_blocks = nn.Modulelist(
             [
                 CogVideoXBlock(
                     dim=inner_dim,

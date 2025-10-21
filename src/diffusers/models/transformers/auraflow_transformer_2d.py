@@ -335,7 +335,7 @@ class AuraFlowTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, From
         self.time_step_embed = Timesteps(num_channels=256, downscale_freq_shift=0, scale=1000, flip_sin_to_cos=True)
         self.time_step_proj = TimestepEmbedding(in_channels=256, time_embed_dim=self.inner_dim)
 
-        self.joint_transformer_blocks = nn.ModuleList(
+        self.joint_transformer_blocks = nn.Modulelist(
             [
                 AuraFlowJointTransformerBlock(
                     dim=self.inner_dim,
@@ -345,7 +345,7 @@ class AuraFlowTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, From
                 for i in range(self.config.num_mmdit_layers)
             ]
         )
-        self.single_transformer_blocks = nn.ModuleList(
+        self.single_transformer_blocks = nn.Modulelist(
             [
                 AuraFlowSingleTransformerBlock(
                     dim=self.inner_dim,

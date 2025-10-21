@@ -233,7 +233,7 @@ class UniDiffuserTextDecoder(ModelMixin, ConfigMixin, ModuleUtilsMixin):
                 The temperature to use when performing the softmax over logits from the decoding model.
 
         Returns:
-            `Tuple(torch.Tensor, torch.Tensor)`: A tuple of tensors where the first element is a tensor of generated
+            `tuple(torch.Tensor, torch.Tensor)`: A tuple of tensors where the first element is a tensor of generated
             token sequences sorted by score in descending order, and the second element is the sequence lengths
             corresponding to those sequences.
         """

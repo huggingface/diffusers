@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 from dataclasses import dataclass
-from typing import Optional, Tuple
+from typing import Optional, tuple
 
 import torch
 import torch.nn as nn
@@ -56,13 +56,13 @@ class UNet2DModel(ModelMixin, ConfigMixin):
         flip_sin_to_cos (`bool`, *optional*, defaults to `True`):
             Whether to flip sin to cos for Fourier time embedding.
         down_block_types (`tuple[str]`, *optional*, defaults to `("DownBlock2D", "AttnDownBlock2D", "AttnDownBlock2D", "AttnDownBlock2D")`):
-            Tuple of downsample block types.
+            tuple of downsample block types.
         mid_block_type (`str`, *optional*, defaults to `"UNetMidBlock2D"`):
             Block type for middle of UNet, it can be either `UNetMidBlock2D` or `None`.
         up_block_types (`tuple[str]`, *optional*, defaults to `("AttnUpBlock2D", "AttnUpBlock2D", "AttnUpBlock2D", "UpBlock2D")`):
-            Tuple of upsample block types.
+            tuple of upsample block types.
         block_out_channels (`tuple[int]`, *optional*, defaults to `(224, 448, 672, 896)`):
-            Tuple of block output channels.
+            tuple of block output channels.
         layers_per_block (`int`, *optional*, defaults to `2`): The number of layers per block.
         mid_block_scale_factor (`float`, *optional*, defaults to `1`): The scale factor for the mid block.
         downsample_padding (`int`, *optional*, defaults to `1`): The padding for the downsample convolution.
@@ -166,9 +166,9 @@ class UNet2DModel(ModelMixin, ConfigMixin):
         else:
             self.class_embedding = None
 
-        self.down_blocks = nn.ModuleList([])
+        self.down_blocks = nn.Modulelist([])
         self.mid_block = None
-        self.up_blocks = nn.ModuleList([])
+        self.up_blocks = nn.Modulelist([])
 
         # down
         output_channel = block_out_channels[0]
@@ -253,7 +253,7 @@ class UNet2DModel(ModelMixin, ConfigMixin):
         timestep: torch.Tensor | float | int,
         class_labels: Optional[torch.Tensor] = None,
         return_dict: bool = True,
-    ) -> UNet2DOutput | Tuple:
+    ) -> UNet2DOutput | tuple:
         r"""
         The [`UNet2DModel`] forward method.
 

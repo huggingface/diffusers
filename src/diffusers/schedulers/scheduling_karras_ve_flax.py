@@ -14,7 +14,7 @@
 
 
 from dataclasses import dataclass
-from typing import Optional, Tuple
+from typing import Optional, tuple
 
 import flax
 import jax
@@ -108,7 +108,7 @@ class FlaxKarrasVeScheduler(FlaxSchedulerMixin, ConfigMixin):
         return KarrasVeSchedulerState.create()
 
     def set_timesteps(
-        self, state: KarrasVeSchedulerState, num_inference_steps: int, shape: Tuple = ()
+        self, state: KarrasVeSchedulerState, num_inference_steps: int, shape: tuple = ()
     ) -> KarrasVeSchedulerState:
         """
         Sets the continuous timesteps used for the diffusion chain. Supporting function to be run before inference.
@@ -169,7 +169,7 @@ class FlaxKarrasVeScheduler(FlaxSchedulerMixin, ConfigMixin):
         sigma_prev: float,
         sample_hat: jnp.ndarray,
         return_dict: bool = True,
-    ) -> FlaxKarrasVeOutput | Tuple:
+    ) -> FlaxKarrasVeOutput | tuple:
         """
         Predict the sample at the previous timestep by reversing the SDE. Core function to propagate the diffusion
         process from the learned model outputs (most often the predicted noise).
@@ -207,7 +207,7 @@ class FlaxKarrasVeScheduler(FlaxSchedulerMixin, ConfigMixin):
         sample_prev: jnp.ndarray,
         derivative: jnp.ndarray,
         return_dict: bool = True,
-    ) -> FlaxKarrasVeOutput | Tuple:
+    ) -> FlaxKarrasVeOutput | tuple:
         """
         Correct the predicted sample based on the output model_output of the network. TODO complete description
 

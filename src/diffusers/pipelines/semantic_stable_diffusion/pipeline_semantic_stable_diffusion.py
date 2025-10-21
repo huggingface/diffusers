@@ -322,7 +322,7 @@ class SemanticStableDiffusionPipeline(DeprecatedPipelineMixin, DiffusionPipeline
                 Indicates how much each individual concept should influence the overall guidance. If no weights are
                 provided all concepts are applied equally.
             sem_guidance (`list[torch.Tensor]`, *optional*):
-                List of pre-generated guidance vectors to be applied at generation. Length of the list has to
+                list of pre-generated guidance vectors to be applied at generation. Length of the list has to
                 correspond to `num_inference_steps`.
 
         Examples:

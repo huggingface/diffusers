@@ -119,7 +119,7 @@ class LTXLatentUpsamplerModel(ModelMixin, ConfigMixin):
         self.initial_norm = torch.nn.GroupNorm(32, mid_channels)
         self.initial_activation = torch.nn.SiLU()
 
-        self.res_blocks = torch.nn.ModuleList([ResBlock(mid_channels, dims=dims) for _ in range(num_blocks_per_stage)])
+        self.res_blocks = torch.nn.Modulelist([ResBlock(mid_channels, dims=dims) for _ in range(num_blocks_per_stage)])
 
         if spatial_upsample and temporal_upsample:
             self.upsampler = torch.nn.Sequential(
@@ -139,7 +139,7 @@ class LTXLatentUpsamplerModel(ModelMixin, ConfigMixin):
         else:
             raise ValueError("Either spatial_upsample or temporal_upsample must be True")
 
-        self.post_upsample_res_blocks = torch.nn.ModuleList(
+        self.post_upsample_res_blocks = torch.nn.Modulelist(
             [ResBlock(mid_channels, dims=dims) for _ in range(num_blocks_per_stage)]
         )
 

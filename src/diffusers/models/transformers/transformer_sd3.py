@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from typing import Any, List, Optional
+from typing import Any, Optional, list
 
 import torch
 import torch.nn as nn
@@ -153,7 +153,7 @@ class SD3Transformer2DModel(
         )
         self.context_embedder = nn.Linear(joint_attention_dim, caption_projection_dim)
 
-        self.transformer_blocks = nn.ModuleList(
+        self.transformer_blocks = nn.Modulelist(
             [
                 JointTransformerBlock(
                     dim=self.inner_dim,
@@ -312,7 +312,7 @@ class SD3Transformer2DModel(
         encoder_hidden_states: torch.Tensor = None,
         pooled_projections: torch.Tensor = None,
         timestep: torch.LongTensor = None,
-        block_controlnet_hidden_states: List = None,
+        block_controlnet_hidden_states: list = None,
         joint_attention_kwargs: Optional[dict[str, Any]] = None,
         return_dict: bool = True,
         skip_layers: Optional[list[int]] = None,

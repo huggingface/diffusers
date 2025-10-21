@@ -61,7 +61,7 @@ class VisualClozeProcessor(VaeImageProcessor):
                 The scale factor used by the VAE for resizing images
 
         Returns:
-            Tuple containing:
+            tuple containing:
             - list[list[torch.Tensor]]: Preprocessed images in tensor format
             - list[list[list[int]]]: Dimensions of each processed image [height, width]
             - list[int]: Target positions indicating which images are to be generated
@@ -167,7 +167,7 @@ class VisualClozeProcessor(VaeImageProcessor):
             width: Target width
 
         Returns:
-            Tuple of processed image and its size
+            tuple of processed image and its size
         """
         image = self.resize(input_images[0][0], height, width)
         image = self.pil_to_numpy(image)  # to np
@@ -202,7 +202,7 @@ class VisualClozeProcessor(VaeImageProcessor):
         Args:
             task_prompt: Task description(s)
             content_prompt: Content description(s)
-            input_images: List of images or None for the target images
+            input_images: list of images or None for the target images
             height: Optional target height for upsampling stage
             width: Optional target width for upsampling stage
             upsampling: Whether this is in the upsampling processing stage

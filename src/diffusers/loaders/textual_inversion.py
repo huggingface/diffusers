@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from typing import List, Optional
+from typing import Optional, list
 
 import safetensors
 import torch
@@ -127,14 +127,14 @@ class TextualInversionLoaderMixin:
         Returns:
             `str` or list of `str`: The converted prompt
         """
-        if not isinstance(prompt, List):
+        if not isinstance(prompt, list):
             prompts = [prompt]
         else:
             prompts = prompt
 
         prompts = [self._maybe_convert_prompt(p, tokenizer) for p in prompts]
 
-        if not isinstance(prompt, List):
+        if not isinstance(prompt, list):
             return prompts[0]
 
         return prompts

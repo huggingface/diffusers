@@ -16,7 +16,7 @@ import html
 import inspect
 import re
 import urllib.parse as ul
-from typing import Callable, Optional, Tuple
+from typing import Callable, Optional, tuple
 
 import torch
 from transformers import T5EncoderModel, T5Tokenizer
@@ -711,7 +711,7 @@ class PixArtAlphaPipeline(DiffusionPipeline):
         use_resolution_binning: bool = True,
         max_sequence_length: int = 120,
         **kwargs,
-    ) -> ImagePipelineOutput | Tuple:
+    ) -> ImagePipelineOutput | tuple:
         """
         Function invoked when calling the pipeline for generation.
 

@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import inspect
-from typing import Optional, Tuple
+from typing import Optional, tuple
 
 import torch
 import torch.nn as nn
@@ -86,7 +86,7 @@ class LDMTextToImagePipeline(DiffusionPipeline):
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
         **kwargs,
-    ) -> Tuple | ImagePipelineOutput:
+    ) -> tuple | ImagePipelineOutput:
         r"""
         The call function to the pipeline for generation.
 
@@ -236,7 +236,7 @@ class LDMTextToImagePipeline(DiffusionPipeline):
 
 logger = logging.get_logger(__name__)
 
-LDMBERT_PRETRAINED_MODEL_ARCHIVE_LIST = [
+LDMBERT_PRETRAINED_MODEL_ARCHIVE_list = [
     "ldm-bert",
     # See all LDMBert models at https://huggingface.co/models?filter=ldmbert
 ]
@@ -382,10 +382,10 @@ class LDMBertAttention(nn.Module):
             value_states = self._shape(self.v_proj(hidden_states), -1, bsz)
 
         if self.is_decoder:
-            # if cross_attention save Tuple(torch.Tensor, torch.Tensor) of all cross attention key/value_states.
+            # if cross_attention save tuple(torch.Tensor, torch.Tensor) of all cross attention key/value_states.
             # Further calls to cross_attention layer can then reuse all cross-attention
             # key/value_states (first "if" case)
-            # if uni-directional self-attention (decoder) save Tuple(torch.Tensor, torch.Tensor) of
+            # if uni-directional self-attention (decoder) save tuple(torch.Tensor, torch.Tensor) of
             # all previous decoder key/value_states. Further calls to uni-directional self-attention
             # can concat previous decoder key/value_states to current projected key/value_states (third "elif" case)
             # if encoder bi-directional self-attention `past_key_value` is always `None`
@@ -575,7 +575,7 @@ class LDMBertEncoder(LDMBertPreTrainedModel):
 
         self.embed_tokens = nn.Embedding(config.vocab_size, embed_dim)
         self.embed_positions = nn.Embedding(config.max_position_embeddings, embed_dim)
-        self.layers = nn.ModuleList([LDMBertEncoderLayer(config) for _ in range(config.encoder_layers)])
+        self.layers = nn.Modulelist([LDMBertEncoderLayer(config) for _ in range(config.encoder_layers)])
         self.layer_norm = nn.LayerNorm(embed_dim)
 
         self.gradient_checkpointing = False
@@ -598,7 +598,7 @@ class LDMBertEncoder(LDMBertPreTrainedModel):
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
-    ) -> Tuple | BaseModelOutput:
+    ) -> tuple | BaseModelOutput:
         r"""
         Args:
             input_ids (`torch.LongTensor` of shape `(batch_size, sequence_length)`):

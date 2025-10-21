@@ -14,7 +14,7 @@
 
 import inspect
 import math
-from typing import Any, Callable, Dict, Optional, Tuple
+from typing import Any, Callable, Dict, Optional, tuple
 
 import numpy as np
 import PIL
@@ -102,7 +102,7 @@ def draw_kps(image_pil, kps, color_list=[(255, 0, 0), (0, 255, 0), (0, 0, 255), 
     Parameters:
     - image_pil (PIL.Image): Input image as a PIL object.
     - kps (list of tuples): A list of keypoints where each keypoint is a tuple of (x, y) coordinates.
-    - color_list (list of tuples, optional): List of colors (in RGB format) for each keypoint. Default is a set of five
+    - color_list (list of tuples, optional): list of colors (in RGB format) for each keypoint. Default is a set of five
       colors.
 
     Returns:
@@ -688,7 +688,7 @@ class ConsisIDPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
         id_vit_hidden: Optional[torch.Tensor] = None,
         id_cond: Optional[torch.Tensor] = None,
         kps_cond: Optional[torch.Tensor] = None,
-    ) -> ConsisIDPipelineOutput | Tuple:
+    ) -> ConsisIDPipelineOutput | tuple:
         """
         Function invoked when calling the pipeline for generation.
 
@@ -756,7 +756,7 @@ class ConsisIDPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
                 with the following arguments: `callback_on_step_end(self: DiffusionPipeline, step: int, timestep: int,
                 callback_kwargs: Dict)`. `callback_kwargs` will include a list of all tensors as specified by
                 `callback_on_step_end_tensor_inputs`.
-            callback_on_step_end_tensor_inputs (`List`, *optional*):
+            callback_on_step_end_tensor_inputs (`list`, *optional*):
                 The list of tensor inputs for the `callback_on_step_end` function. The tensors specified in the list
                 will be passed as `callback_kwargs` argument. You will only be able to include variables listed in the
                 `._callback_tensor_inputs` attribute of your pipeline class.

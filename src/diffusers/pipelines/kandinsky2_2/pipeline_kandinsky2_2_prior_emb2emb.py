@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import Optional, list
 
 import PIL.Image
 import torch
@@ -480,7 +480,7 @@ class KandinskyV22PriorEmb2EmbPipeline(DiffusionPipeline):
             prompt, device, num_images_per_prompt, do_classifier_free_guidance, negative_prompt
         )
 
-        if not isinstance(image, List):
+        if not isinstance(image, list):
             image = [image]
 
         if isinstance(image[0], torch.Tensor):

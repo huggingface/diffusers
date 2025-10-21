@@ -185,10 +185,10 @@ class ChromaApproximator(nn.Module):
     def __init__(self, in_dim: int, out_dim: int, hidden_dim: int, n_layers: int = 5):
         super().__init__()
         self.in_proj = nn.Linear(in_dim, hidden_dim, bias=True)
-        self.layers = nn.ModuleList(
+        self.layers = nn.Modulelist(
             [PixArtAlphaTextProjection(hidden_dim, hidden_dim, act_fn="silu") for _ in range(n_layers)]
         )
-        self.norms = nn.ModuleList([nn.RMSNorm(hidden_dim) for _ in range(n_layers)])
+        self.norms = nn.Modulelist([nn.RMSNorm(hidden_dim) for _ in range(n_layers)])
         self.out_proj = nn.Linear(hidden_dim, out_dim)
 
     def forward(self, x):
@@ -444,7 +444,7 @@ class ChromaTransformer2DModel(
         self.context_embedder = nn.Linear(joint_attention_dim, self.inner_dim)
         self.x_embedder = nn.Linear(in_channels, self.inner_dim)
 
-        self.transformer_blocks = nn.ModuleList(
+        self.transformer_blocks = nn.Modulelist(
             [
                 ChromaTransformerBlock(
                     dim=self.inner_dim,
@@ -455,7 +455,7 @@ class ChromaTransformer2DModel(
             ]
         )
 
-        self.single_transformer_blocks = nn.ModuleList(
+        self.single_transformer_blocks = nn.Modulelist(
             [
                 ChromaSingleTransformerBlock(
                     dim=self.inner_dim,

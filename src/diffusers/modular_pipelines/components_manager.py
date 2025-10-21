@@ -1007,11 +1007,11 @@ class ComponentsManager:
         Get component IDs by a list of names, optionally filtered by collection.
 
         Args:
-            names (Union[str, list[str]]): List of component names
+            names (Union[str, list[str]]): list of component names
             collection (Optional[str]): Optional collection to filter by
 
         Returns:
-            list[str]: List of component IDs
+            list[str]: list of component IDs
         """
         ids = set()
         if not isinstance(names, list):
@@ -1026,7 +1026,7 @@ class ComponentsManager:
 
         Args:
             ids (list[str]):
-                List of component IDs
+                list of component IDs
             return_dict_with_names (Optional[bool]):
                 Whether to return a dictionary with component names as keys:
 
@@ -1058,7 +1058,7 @@ class ComponentsManager:
         Get components by a list of names, optionally filtered by collection.
 
         Args:
-            names (list[str]): List of component names
+            names (list[str]): list of component names
             collection (Optional[str]): Optional collection to filter by
 
         Returns:

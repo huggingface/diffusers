@@ -270,7 +270,7 @@ class AudioDiffusionPipeline(DiffusionPipeline):
 
         Args:
             images (`list[PIL Image]`):
-                List of images to encode.
+                list of images to encode.
             steps (`int`):
                 Number of encoding steps to perform (defaults to `50`).
 

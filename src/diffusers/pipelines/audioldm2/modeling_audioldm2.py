@@ -13,7 +13,7 @@
 # limitations under the License.
 
 from dataclasses import dataclass
-from typing import Any, Optional, Tuple
+from typing import Any, Optional, tuple
 
 import torch
 import torch.nn as nn
@@ -390,8 +390,8 @@ class AudioLDM2UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoad
         else:
             self.time_embed_act = get_activation(time_embedding_act_fn)
 
-        self.down_blocks = nn.ModuleList([])
-        self.up_blocks = nn.ModuleList([])
+        self.down_blocks = nn.Modulelist([])
+        self.up_blocks = nn.Modulelist([])
 
         if isinstance(only_cross_attention, bool):
             only_cross_attention = [only_cross_attention] * len(down_block_types)
@@ -685,7 +685,7 @@ class AudioLDM2UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoad
         return_dict: bool = True,
         encoder_hidden_states_1: Optional[torch.Tensor] = None,
         encoder_attention_mask_1: Optional[torch.Tensor] = None,
-    ) -> UNet2DConditionOutput | Tuple:
+    ) -> UNet2DConditionOutput | tuple:
         r"""
         The [`AudioLDM2UNet2DConditionModel`] forward method.
 
@@ -1068,11 +1068,11 @@ class CrossAttnDownBlock2D(nn.Module):
                         double_self_attention=True if cross_attention_dim[j] is None else False,
                     )
                 )
-        self.attentions = nn.ModuleList(attentions)
-        self.resnets = nn.ModuleList(resnets)
+        self.attentions = nn.Modulelist(attentions)
+        self.resnets = nn.Modulelist(resnets)
 
         if add_downsample:
-            self.downsamplers = nn.ModuleList(
+            self.downsamplers = nn.Modulelist(
                 [
                     Downsample2D(
                         out_channels, use_conv=True, out_channels=out_channels, padding=downsample_padding, name="op"
@@ -1241,8 +1241,8 @@ class UNetMidBlock2DCrossAttn(nn.Module):
                 )
             )
 
-        self.attentions = nn.ModuleList(attentions)
-        self.resnets = nn.ModuleList(resnets)
+        self.attentions = nn.Modulelist(attentions)
+        self.resnets = nn.Modulelist(resnets)
 
         self.gradient_checkpointing = False
 
@@ -1386,11 +1386,11 @@ class CrossAttnUpBlock2D(nn.Module):
                         double_self_attention=True if cross_attention_dim[j] is None else False,
                     )
                 )
-        self.attentions = nn.ModuleList(attentions)
-        self.resnets = nn.ModuleList(resnets)
+        self.attentions = nn.Modulelist(attentions)
+        self.resnets = nn.Modulelist(resnets)
 
         if add_upsample:
-            self.upsamplers = nn.ModuleList([Upsample2D(out_channels, use_conv=True, out_channels=out_channels)])
+            self.upsamplers = nn.Modulelist([Upsample2D(out_channels, use_conv=True, out_channels=out_channels)])
         else:
             self.upsamplers = None
 

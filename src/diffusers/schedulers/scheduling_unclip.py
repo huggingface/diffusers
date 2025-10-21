@@ -14,7 +14,7 @@
 
 import math
 from dataclasses import dataclass
-from typing import Optional, Tuple
+from typing import Optional, tuple
 
 import numpy as np
 import torch
@@ -221,7 +221,7 @@ class UnCLIPScheduler(SchedulerMixin, ConfigMixin):
         prev_timestep: Optional[int] = None,
         generator=None,
         return_dict: bool = True,
-    ) -> UnCLIPSchedulerOutput | Tuple:
+    ) -> UnCLIPSchedulerOutput | tuple:
         """
         Predict the sample at the previous timestep by reversing the SDE. Core function to propagate the diffusion
         process from the learned model outputs (most often the predicted noise).

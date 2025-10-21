@@ -218,10 +218,10 @@ def _apply_layer_skip_hook(module: torch.nn.Module, config: LayerSkipConfig, nam
             )
 
     transformer_blocks = _get_submodule_from_fqn(module, config.fqn)
-    if transformer_blocks is None or not isinstance(transformer_blocks, torch.nn.ModuleList):
+    if transformer_blocks is None or not isinstance(transformer_blocks, torch.nn.Modulelist):
         raise ValueError(
             f"Could not find {config.fqn} in the provided module, or configured `fqn` (fully qualified name) does not identify "
-            f"a `torch.nn.ModuleList`. Please provide a valid `fqn` that identifies a stack of transformer blocks."
+            f"a `torch.nn.Modulelist`. Please provide a valid `fqn` that identifies a stack of transformer blocks."
         )
     if len(config.indices) == 0:
         raise ValueError("Layer index list is empty. Please provide a non-empty list of layer indices to skip.")

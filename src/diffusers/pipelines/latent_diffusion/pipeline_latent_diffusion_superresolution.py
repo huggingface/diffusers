@@ -1,5 +1,5 @@
 import inspect
-from typing import Optional, Tuple
+from typing import Optional, tuple
 
 import numpy as np
 import PIL.Image
@@ -79,7 +79,7 @@ class LDMSuperResolutionPipeline(DiffusionPipeline):
         generator: Optional[torch.Generator | list[torch.Generator]] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
-    ) -> Tuple | ImagePipelineOutput:
+    ) -> tuple | ImagePipelineOutput:
         r"""
         The call function to the pipeline for generation.
 

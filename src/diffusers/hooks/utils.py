@@ -21,7 +21,7 @@ def _get_identifiable_transformer_blocks_in_module(module: torch.nn.Module):
     module_list_with_transformer_blocks = []
     for name, submodule in module.named_modules():
         name_endswith_identifier = any(name.endswith(identifier) for identifier in _ALL_TRANSFORMER_BLOCK_IDENTIFIERS)
-        is_modulelist = isinstance(submodule, torch.nn.ModuleList)
+        is_modulelist = isinstance(submodule, torch.nn.Modulelist)
         if name_endswith_identifier and is_modulelist:
             module_list_with_transformer_blocks.append((name, submodule))
     return module_list_with_transformer_blocks

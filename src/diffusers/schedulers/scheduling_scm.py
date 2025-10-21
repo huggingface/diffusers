@@ -16,7 +16,7 @@
 # and https://github.com/hojonathanho/diffusion
 
 from dataclasses import dataclass
-from typing import Optional, Tuple
+from typing import Optional, tuple
 
 import numpy as np
 import torch
@@ -203,7 +203,7 @@ class SCMScheduler(SchedulerMixin, ConfigMixin):
         sample: torch.FloatTensor,
         generator: torch.Generator = None,
         return_dict: bool = True,
-    ) -> SCMSchedulerOutput | Tuple:
+    ) -> SCMSchedulerOutput | tuple:
         """
         Predict the sample from the previous timestep by reversing the SDE. This function propagates the diffusion
         process from the learned model outputs (most often the predicted noise).

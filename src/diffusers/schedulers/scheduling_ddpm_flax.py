@@ -15,7 +15,7 @@
 # DISCLAIMER: This file is strongly influenced by https://github.com/ermongroup/ddim
 
 from dataclasses import dataclass
-from typing import Optional, Tuple
+from typing import Optional, tuple
 
 import flax
 import jax
@@ -137,7 +137,7 @@ class FlaxDDPMScheduler(FlaxSchedulerMixin, ConfigMixin):
         return sample
 
     def set_timesteps(
-        self, state: DDPMSchedulerState, num_inference_steps: int, shape: Tuple = ()
+        self, state: DDPMSchedulerState, num_inference_steps: int, shape: tuple = ()
     ) -> DDPMSchedulerState:
         """
         Sets the discrete timesteps used for the diffusion chain. Supporting function to be run before inference.
@@ -200,7 +200,7 @@ class FlaxDDPMScheduler(FlaxSchedulerMixin, ConfigMixin):
         sample: jnp.ndarray,
         key: Optional[jax.Array] = None,
         return_dict: bool = True,
-    ) -> FlaxDDPMSchedulerOutput | Tuple:
+    ) -> FlaxDDPMSchedulerOutput | tuple:
         """
         Predict the sample at the previous timestep by reversing the SDE. Core function to propagate the diffusion
         process from the learned model outputs (most often the predicted noise).

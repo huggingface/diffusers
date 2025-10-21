@@ -14,7 +14,7 @@
 
 import math
 from dataclasses import dataclass
-from typing import Optional, Tuple
+from typing import Optional, tuple
 
 import numpy as np
 import torch
@@ -463,7 +463,7 @@ class KDPM2DiscreteScheduler(SchedulerMixin, ConfigMixin):
         timestep: float | torch.Tensor,
         sample: torch.Tensor | np.ndarray,
         return_dict: bool = True,
-    ) -> KDPM2DiscreteSchedulerOutput | Tuple:
+    ) -> KDPM2DiscreteSchedulerOutput | tuple:
         """
         Predict the sample from the previous timestep by reversing the SDE. This function propagates the diffusion
         process from the learned model outputs (most often the predicted noise).

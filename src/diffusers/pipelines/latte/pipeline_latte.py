@@ -18,7 +18,7 @@ import inspect
 import re
 import urllib.parse as ul
 from dataclasses import dataclass
-from typing import Callable, Dict, Optional, Tuple
+from typing import Callable, Dict, Optional, tuple
 
 import torch
 from transformers import T5EncoderModel, T5Tokenizer
@@ -638,7 +638,7 @@ class LattePipeline(DiffusionPipeline):
         mask_feature: bool = True,
         enable_temporal_attentions: bool = True,
         decode_chunk_size: int = 14,
-    ) -> LattePipelineOutput | Tuple:
+    ) -> LattePipelineOutput | tuple:
         """
         Function invoked when calling the pipeline for generation.
 

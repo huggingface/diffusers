@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Optional, Tuple
+from typing import Optional, tuple
 
 import jax
 import jax.numpy as jnp
@@ -76,7 +76,7 @@ class FlaxStableDiffusionSafetyChecker(FlaxPreTrainedModel):
     def __init__(
         self,
         config: CLIPConfig,
-        input_shape: Optional[Tuple] = None,
+        input_shape: Optional[tuple] = None,
         seed: int = 0,
         dtype: jnp.dtype = jnp.float32,
         _do_init: bool = True,
@@ -87,7 +87,7 @@ class FlaxStableDiffusionSafetyChecker(FlaxPreTrainedModel):
         module = self.module_class(config=config, dtype=dtype, **kwargs)
         super().__init__(config, module, input_shape=input_shape, seed=seed, dtype=dtype, _do_init=_do_init)
 
-    def init_weights(self, rng: jax.Array, input_shape: Tuple, params: FrozenDict = None) -> FrozenDict:
+    def init_weights(self, rng: jax.Array, input_shape: tuple, params: FrozenDict = None) -> FrozenDict:
         # init input tensor
         clip_input = jax.random.normal(rng, input_shape)
 

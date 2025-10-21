@@ -350,11 +350,11 @@ class LTXVideoDownBlock3D(nn.Module):
                     is_causal=is_causal,
                 )
             )
-        self.resnets = nn.ModuleList(resnets)
+        self.resnets = nn.Modulelist(resnets)
 
         self.downsamplers = None
         if spatio_temporal_scale:
-            self.downsamplers = nn.ModuleList(
+            self.downsamplers = nn.Modulelist(
                 [
                     LTXVideoCausalConv3d(
                         in_channels=in_channels,
@@ -457,11 +457,11 @@ class LTXVideo095DownBlock3D(nn.Module):
                     is_causal=is_causal,
                 )
             )
-        self.resnets = nn.ModuleList(resnets)
+        self.resnets = nn.Modulelist(resnets)
 
         self.downsamplers = None
         if spatio_temporal_scale:
-            self.downsamplers = nn.ModuleList()
+            self.downsamplers = nn.Modulelist()
 
             if downsample_type == "conv":
                 self.downsamplers.append(
@@ -568,7 +568,7 @@ class LTXVideoMidBlock3d(nn.Module):
                     timestep_conditioning=timestep_conditioning,
                 )
             )
-        self.resnets = nn.ModuleList(resnets)
+        self.resnets = nn.Modulelist(resnets)
 
         self.gradient_checkpointing = False
 
@@ -663,7 +663,7 @@ class LTXVideoUpBlock3d(nn.Module):
 
         self.upsamplers = None
         if spatio_temporal_scale:
-            self.upsamplers = nn.ModuleList(
+            self.upsamplers = nn.Modulelist(
                 [
                     LTXVideoUpsampler3d(
                         out_channels * upscale_factor,
@@ -689,7 +689,7 @@ class LTXVideoUpBlock3d(nn.Module):
                     timestep_conditioning=timestep_conditioning,
                 )
             )
-        self.resnets = nn.ModuleList(resnets)
+        self.resnets = nn.Modulelist(resnets)
 
         self.gradient_checkpointing = False
 
@@ -789,7 +789,7 @@ class LTXVideoEncoder3d(nn.Module):
         # down blocks
         is_ltx_095 = down_block_types[-1] == "LTXVideo095DownBlock3D"
         num_block_out_channels = len(block_out_channels) - (1 if is_ltx_095 else 0)
-        self.down_blocks = nn.ModuleList([])
+        self.down_blocks = nn.Modulelist([])
         for i in range(num_block_out_channels):
             input_channel = output_channel
             if not is_ltx_095:
@@ -951,7 +951,7 @@ class LTXVideoDecoder3d(nn.Module):
 
         # up blocks
         num_block_out_channels = len(block_out_channels)
-        self.up_blocks = nn.ModuleList([])
+        self.up_blocks = nn.Modulelist([])
         for i in range(num_block_out_channels):
             input_channel = output_channel // upsample_factor[i]
             output_channel = block_out_channels[i] // upsample_factor[i]

@@ -728,8 +728,8 @@ class UNetMidBlock2D(nn.Module):
                     )
                 )
 
-        self.attentions = nn.ModuleList(attentions)
-        self.resnets = nn.ModuleList(resnets)
+        self.attentions = nn.Modulelist(attentions)
+        self.resnets = nn.Modulelist(resnets)
 
         self.gradient_checkpointing = False
 
@@ -846,8 +846,8 @@ class UNetMidBlock2DCrossAttn(nn.Module):
                 )
             )
 
-        self.attentions = nn.ModuleList(attentions)
-        self.resnets = nn.ModuleList(resnets)
+        self.attentions = nn.Modulelist(attentions)
+        self.resnets = nn.Modulelist(resnets)
 
         self.gradient_checkpointing = False
 
@@ -972,8 +972,8 @@ class UNetMidBlock2DSimpleCrossAttn(nn.Module):
                 )
             )
 
-        self.attentions = nn.ModuleList(attentions)
-        self.resnets = nn.ModuleList(resnets)
+        self.attentions = nn.Modulelist(attentions)
+        self.resnets = nn.Modulelist(resnets)
 
     def forward(
         self,
@@ -1075,11 +1075,11 @@ class AttnDownBlock2D(nn.Module):
                 )
             )
 
-        self.attentions = nn.ModuleList(attentions)
-        self.resnets = nn.ModuleList(resnets)
+        self.attentions = nn.Modulelist(attentions)
+        self.resnets = nn.Modulelist(resnets)
 
         if downsample_type == "conv":
-            self.downsamplers = nn.ModuleList(
+            self.downsamplers = nn.Modulelist(
                 [
                     Downsample2D(
                         out_channels, use_conv=True, out_channels=out_channels, padding=downsample_padding, name="op"
@@ -1087,7 +1087,7 @@ class AttnDownBlock2D(nn.Module):
                 ]
             )
         elif downsample_type == "resnet":
-            self.downsamplers = nn.ModuleList(
+            self.downsamplers = nn.Modulelist(
                 [
                     ResnetBlock2D(
                         in_channels=out_channels,
@@ -1220,11 +1220,11 @@ class CrossAttnDownBlock2D(nn.Module):
                         norm_num_groups=resnet_groups,
                     )
                 )
-        self.attentions = nn.ModuleList(attentions)
-        self.resnets = nn.ModuleList(resnets)
+        self.attentions = nn.Modulelist(attentions)
+        self.resnets = nn.Modulelist(resnets)
 
         if add_downsample:
-            self.downsamplers = nn.ModuleList(
+            self.downsamplers = nn.Modulelist(
                 [
                     Downsample2D(
                         out_channels, use_conv=True, out_channels=out_channels, padding=downsample_padding, name="op"
@@ -1328,10 +1328,10 @@ class DownBlock2D(nn.Module):
                 )
             )
 
-        self.resnets = nn.ModuleList(resnets)
+        self.resnets = nn.Modulelist(resnets)
 
         if add_downsample:
-            self.downsamplers = nn.ModuleList(
+            self.downsamplers = nn.Modulelist(
                 [
                     Downsample2D(
                         out_channels, use_conv=True, out_channels=out_channels, padding=downsample_padding, name="op"
@@ -1420,10 +1420,10 @@ class DownEncoderBlock2D(nn.Module):
                     )
                 )
 
-        self.resnets = nn.ModuleList(resnets)
+        self.resnets = nn.Modulelist(resnets)
 
         if add_downsample:
-            self.downsamplers = nn.ModuleList(
+            self.downsamplers = nn.Modulelist(
                 [
                     Downsample2D(
                         out_channels, use_conv=True, out_channels=out_channels, padding=downsample_padding, name="op"
@@ -1521,11 +1521,11 @@ class AttnDownEncoderBlock2D(nn.Module):
                 )
             )
 
-        self.attentions = nn.ModuleList(attentions)
-        self.resnets = nn.ModuleList(resnets)
+        self.attentions = nn.Modulelist(attentions)
+        self.resnets = nn.Modulelist(resnets)
 
         if add_downsample:
-            self.downsamplers = nn.ModuleList(
+            self.downsamplers = nn.Modulelist(
                 [
                     Downsample2D(
                         out_channels, use_conv=True, out_channels=out_channels, padding=downsample_padding, name="op"
@@ -1568,8 +1568,8 @@ class AttnSkipDownBlock2D(nn.Module):
         add_downsample: bool = True,
     ):
         super().__init__()
-        self.attentions = nn.ModuleList([])
-        self.resnets = nn.ModuleList([])
+        self.attentions = nn.Modulelist([])
+        self.resnets = nn.Modulelist([])
 
         if attention_head_dim is None:
             logger.warning(
@@ -1625,7 +1625,7 @@ class AttnSkipDownBlock2D(nn.Module):
                 down=True,
                 kernel="fir",
             )
-            self.downsamplers = nn.ModuleList([FirDownsample2D(out_channels, out_channels=out_channels)])
+            self.downsamplers = nn.Modulelist([FirDownsample2D(out_channels, out_channels=out_channels)])
             self.skip_conv = nn.Conv2d(3, out_channels, kernel_size=(1, 1), stride=(1, 1))
         else:
             self.resnet_down = None
@@ -1680,7 +1680,7 @@ class SkipDownBlock2D(nn.Module):
         downsample_padding: int = 1,
     ):
         super().__init__()
-        self.resnets = nn.ModuleList([])
+        self.resnets = nn.Modulelist([])
 
         for i in range(num_layers):
             in_channels = in_channels if i == 0 else out_channels
@@ -1716,7 +1716,7 @@ class SkipDownBlock2D(nn.Module):
                 down=True,
                 kernel="fir",
             )
-            self.downsamplers = nn.ModuleList([FirDownsample2D(out_channels, out_channels=out_channels)])
+            self.downsamplers = nn.Modulelist([FirDownsample2D(out_channels, out_channels=out_channels)])
             self.skip_conv = nn.Conv2d(3, out_channels, kernel_size=(1, 1), stride=(1, 1))
         else:
             self.resnet_down = None
@@ -1791,10 +1791,10 @@ class ResnetDownsampleBlock2D(nn.Module):
                 )
             )
 
-        self.resnets = nn.ModuleList(resnets)
+        self.resnets = nn.Modulelist(resnets)
 
         if add_downsample:
-            self.downsamplers = nn.ModuleList(
+            self.downsamplers = nn.Modulelist(
                 [
                     ResnetBlock2D(
                         in_channels=out_channels,
@@ -1911,11 +1911,11 @@ class SimpleCrossAttnDownBlock2D(nn.Module):
                     processor=processor,
                 )
             )
-        self.attentions = nn.ModuleList(attentions)
-        self.resnets = nn.ModuleList(resnets)
+        self.attentions = nn.Modulelist(attentions)
+        self.resnets = nn.Modulelist(resnets)
 
         if add_downsample:
-            self.downsamplers = nn.ModuleList(
+            self.downsamplers = nn.Modulelist(
                 [
                     ResnetBlock2D(
                         in_channels=out_channels,
@@ -2030,11 +2030,11 @@ class KDownBlock2D(nn.Module):
                 )
             )
 
-        self.resnets = nn.ModuleList(resnets)
+        self.resnets = nn.Modulelist(resnets)
 
         if add_downsample:
             # YiYi's comments- might be able to use FirDownsample2D, look into details later
-            self.downsamplers = nn.ModuleList([KDownsample2D()])
+            self.downsamplers = nn.Modulelist([KDownsample2D()])
         else:
             self.downsamplers = None
 
@@ -2119,11 +2119,11 @@ class KCrossAttnDownBlock2D(nn.Module):
                 )
             )
 
-        self.resnets = nn.ModuleList(resnets)
-        self.attentions = nn.ModuleList(attentions)
+        self.resnets = nn.Modulelist(resnets)
+        self.attentions = nn.Modulelist(attentions)
 
         if add_downsample:
-            self.downsamplers = nn.ModuleList([KDownsample2D()])
+            self.downsamplers = nn.Modulelist([KDownsample2D()])
         else:
             self.downsamplers = None
 
@@ -2246,13 +2246,13 @@ class AttnUpBlock2D(nn.Module):
                 )
             )
 
-        self.attentions = nn.ModuleList(attentions)
-        self.resnets = nn.ModuleList(resnets)
+        self.attentions = nn.Modulelist(attentions)
+        self.resnets = nn.Modulelist(resnets)
 
         if upsample_type == "conv":
-            self.upsamplers = nn.ModuleList([Upsample2D(out_channels, use_conv=True, out_channels=out_channels)])
+            self.upsamplers = nn.Modulelist([Upsample2D(out_channels, use_conv=True, out_channels=out_channels)])
         elif upsample_type == "resnet":
-            self.upsamplers = nn.ModuleList(
+            self.upsamplers = nn.Modulelist(
                 [
                     ResnetBlock2D(
                         in_channels=out_channels,
@@ -2391,11 +2391,11 @@ class CrossAttnUpBlock2D(nn.Module):
                         norm_num_groups=resnet_groups,
                     )
                 )
-        self.attentions = nn.ModuleList(attentions)
-        self.resnets = nn.ModuleList(resnets)
+        self.attentions = nn.Modulelist(attentions)
+        self.resnets = nn.Modulelist(resnets)
 
         if add_upsample:
-            self.upsamplers = nn.ModuleList([Upsample2D(out_channels, use_conv=True, out_channels=out_channels)])
+            self.upsamplers = nn.Modulelist([Upsample2D(out_channels, use_conv=True, out_channels=out_channels)])
         else:
             self.upsamplers = None
 
@@ -2511,10 +2511,10 @@ class UpBlock2D(nn.Module):
                 )
             )
 
-        self.resnets = nn.ModuleList(resnets)
+        self.resnets = nn.Modulelist(resnets)
 
         if add_upsample:
-            self.upsamplers = nn.ModuleList([Upsample2D(out_channels, use_conv=True, out_channels=out_channels)])
+            self.upsamplers = nn.Modulelist([Upsample2D(out_channels, use_conv=True, out_channels=out_channels)])
         else:
             self.upsamplers = None
 
@@ -2625,10 +2625,10 @@ class UpDecoderBlock2D(nn.Module):
                     )
                 )
 
-        self.resnets = nn.ModuleList(resnets)
+        self.resnets = nn.Modulelist(resnets)
 
         if add_upsample:
-            self.upsamplers = nn.ModuleList([Upsample2D(out_channels, use_conv=True, out_channels=out_channels)])
+            self.upsamplers = nn.Modulelist([Upsample2D(out_channels, use_conv=True, out_channels=out_channels)])
         else:
             self.upsamplers = None
 
@@ -2722,11 +2722,11 @@ class AttnUpDecoderBlock2D(nn.Module):
                 )
             )
 
-        self.attentions = nn.ModuleList(attentions)
-        self.resnets = nn.ModuleList(resnets)
+        self.attentions = nn.Modulelist(attentions)
+        self.resnets = nn.Modulelist(resnets)
 
         if add_upsample:
-            self.upsamplers = nn.ModuleList([Upsample2D(out_channels, use_conv=True, out_channels=out_channels)])
+            self.upsamplers = nn.Modulelist([Upsample2D(out_channels, use_conv=True, out_channels=out_channels)])
         else:
             self.upsamplers = None
 
@@ -2763,8 +2763,8 @@ class AttnSkipUpBlock2D(nn.Module):
         add_upsample: bool = True,
     ):
         super().__init__()
-        self.attentions = nn.ModuleList([])
-        self.resnets = nn.ModuleList([])
+        self.attentions = nn.Modulelist([])
+        self.resnets = nn.Modulelist([])
 
         for i in range(num_layers):
             res_skip_channels = in_channels if (i == num_layers - 1) else out_channels
@@ -2897,7 +2897,7 @@ class SkipUpBlock2D(nn.Module):
         upsample_padding: int = 1,
     ):
         super().__init__()
-        self.resnets = nn.ModuleList([])
+        self.resnets = nn.Modulelist([])
 
         for i in range(num_layers):
             res_skip_channels = in_channels if (i == num_layers - 1) else out_channels
@@ -3030,10 +3030,10 @@ class ResnetUpsampleBlock2D(nn.Module):
                 )
             )
 
-        self.resnets = nn.ModuleList(resnets)
+        self.resnets = nn.Modulelist(resnets)
 
         if add_upsample:
-            self.upsamplers = nn.ModuleList(
+            self.upsamplers = nn.Modulelist(
                 [
                     ResnetBlock2D(
                         in_channels=out_channels,
@@ -3159,11 +3159,11 @@ class SimpleCrossAttnUpBlock2D(nn.Module):
                     processor=processor,
                 )
             )
-        self.attentions = nn.ModuleList(attentions)
-        self.resnets = nn.ModuleList(resnets)
+        self.attentions = nn.Modulelist(attentions)
+        self.resnets = nn.Modulelist(resnets)
 
         if add_upsample:
-            self.upsamplers = nn.ModuleList(
+            self.upsamplers = nn.Modulelist(
                 [
                     ResnetBlock2D(
                         in_channels=out_channels,
@@ -3285,10 +3285,10 @@ class KUpBlock2D(nn.Module):
                 )
             )
 
-        self.resnets = nn.ModuleList(resnets)
+        self.resnets = nn.Modulelist(resnets)
 
         if add_upsample:
-            self.upsamplers = nn.ModuleList([KUpsample2D()])
+            self.upsamplers = nn.Modulelist([KUpsample2D()])
         else:
             self.upsamplers = None
 
@@ -3400,11 +3400,11 @@ class KCrossAttnUpBlock2D(nn.Module):
                 )
             )
 
-        self.resnets = nn.ModuleList(resnets)
-        self.attentions = nn.ModuleList(attentions)
+        self.resnets = nn.Modulelist(resnets)
+        self.attentions = nn.Modulelist(attentions)
 
         if add_upsample:
-            self.upsamplers = nn.ModuleList([KUpsample2D()])
+            self.upsamplers = nn.Modulelist([KUpsample2D()])
         else:
             self.upsamplers = None
 

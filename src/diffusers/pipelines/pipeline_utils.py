@@ -21,7 +21,7 @@ import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Union, get_args, get_origin
+from typing import Any, Callable, Dict, Optional, Union, get_args, get_origin, list
 
 import httpx
 import numpy as np
@@ -121,7 +121,7 @@ class ImagePipelineOutput(BaseOutput):
 
     Args:
         images (`list[PIL.Image.Image]` or `np.ndarray`)
-            List of denoised PIL images of length `batch_size` or NumPy array of shape `(batch_size, height, width,
+            list of denoised PIL images of length `batch_size` or NumPy array of shape `(batch_size, height, width,
             num_channels)`.
     """
 
@@ -135,7 +135,7 @@ class AudioPipelineOutput(BaseOutput):
 
     Args:
         audios (`np.ndarray`)
-            List of denoised audio samples of a NumPy array of shape `(batch_size, num_channels, sample_rate)`.
+            list of denoised audio samples of a NumPy array of shape `(batch_size, num_channels, sample_rate)`.
     """
 
     audios: np.ndarray
@@ -192,7 +192,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
         - **config_name** (`str`) -- The configuration filename that stores the class and module names of all the
           diffusion pipeline's components.
-        - **_optional_components** (`list[str]`) -- List of all optional components that don't have to be passed to the
+        - **_optional_components** (`list[str]`) -- list of all optional components that don't have to be passed to the
           pipeline to function (should be overridden by subclasses).
     """
 
@@ -1362,7 +1362,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         memory, but can be slower due to the excessive number of device synchronizations.
 
         Group offloading is a middle ground between the two methods. It works by offloading groups of internal layers,
-        (either `torch.nn.ModuleList` or `torch.nn.Sequential`). This method uses lower memory than module-level
+        (either `torch.nn.Modulelist` or `torch.nn.Sequential`). This method uses lower memory than module-level
         offloading. It is also faster than leaf-level/sequential offloading, as the number of device synchronizations
         is reduced.
 
@@ -1401,7 +1401,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 If True, the CPU memory usage is minimized by pinning tensors on-the-fly instead of pre-pinning them.
                 This option only matters when using streamed CPU offloading (i.e. `use_stream=True`). This can be
                 useful when the CPU memory is a bottleneck but may counteract the benefits of using streams.
-            exclude_modules (`Union[str, list[str]]`, defaults to `None`): List of modules to exclude from offloading.
+            exclude_modules (`Union[str, list[str]]`, defaults to `None`): list of modules to exclude from offloading.
 
         Example:
             ```python
@@ -1818,7 +1818,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 signature_types[k] = (v.annotation,)
             elif get_origin(v.annotation) == Union:
                 signature_types[k] = get_args(v.annotation)
-            elif get_origin(v.annotation) in [List, Dict, list, dict]:
+            elif get_origin(v.annotation) in [list, Dict, list, dict]:
                 signature_types[k] = (v.annotation,)
             else:
                 logger.warning(f"cannot get type annotation for Parameter {k} of {cls}.")

@@ -224,7 +224,7 @@ class PhotonAttention(nn.Module, AttentionModuleMixin):
         self.txt_kv_proj = nn.Linear(query_dim, query_dim * 2, bias=bias)
         self.norm_added_k = RMSNorm(self.head_dim, eps=eps, elementwise_affine=True)
 
-        self.to_out = nn.ModuleList([])
+        self.to_out = nn.Modulelist([])
         self.to_out.append(nn.Linear(self.inner_dim, query_dim, bias=out_bias))
         self.to_out.append(nn.Dropout(0.0))
 
@@ -264,7 +264,7 @@ class PhotonEmbedND(nn.Module):
         theta (int):
         Scaling factor that controls the frequency spectrum of the rotary embeddings.
         axes_dim (list[int]):
-        List of embedding dimensions for each axis (each must be even).
+        list of embedding dimensions for each axis (each must be even).
     """
 
     def __init__(self, dim: int, theta: int, axes_dim: list[int]):
@@ -577,7 +577,7 @@ class PhotonTransformer2DModel(ModelMixin, ConfigMixin, AttentionMixin):
         depth (`int`, *optional*, defaults to 16):
             Number of transformer blocks.
         axes_dim (`list[int]`, *optional*):
-            List of dimensions for each positional embedding axis. Defaults to `[32, 32]`.
+            list of dimensions for each positional embedding axis. Defaults to `[32, 32]`.
         theta (`int`, *optional*, defaults to 10000):
             Frequency scaling factor for rotary embeddings.
         time_factor (`float`, *optional*, defaults to 1000.0):
@@ -594,7 +594,7 @@ class PhotonTransformer2DModel(ModelMixin, ConfigMixin, AttentionMixin):
             Embedding layer for timestep embeddings.
         txt_in (`nn.Linear`):
             Projection layer for text conditioning.
-        blocks (`nn.ModuleList`):
+        blocks (`nn.Modulelist`):
             Stack of transformer blocks (`PhotonBlock`).
         final_layer (`LastLayer`):
             Projection layer mapping hidden tokens back to patch outputs.
@@ -666,7 +666,7 @@ class PhotonTransformer2DModel(ModelMixin, ConfigMixin, AttentionMixin):
         self.time_in = MLPEmbedder(in_dim=256, hidden_dim=self.hidden_size)
         self.txt_in = nn.Linear(context_in_dim, self.hidden_size)
 
-        self.blocks = nn.ModuleList(
+        self.blocks = nn.Modulelist(
             [
                 PhotonBlock(
                     self.hidden_size,

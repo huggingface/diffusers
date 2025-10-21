@@ -300,15 +300,15 @@ class ControlNetUnionModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
 
         task_scale_factor = num_trans_channel**0.5
         self.task_embedding = nn.Parameter(task_scale_factor * torch.randn(num_control_type, num_trans_channel))
-        self.transformer_layes = nn.ModuleList(
+        self.transformer_layes = nn.Modulelist(
             [ResidualAttentionBlock(num_trans_channel, num_trans_head) for _ in range(num_trans_layer)]
         )
         self.spatial_ch_projs = zero_module(nn.Linear(num_trans_channel, num_proj_channel))
         self.control_type_proj = Timesteps(addition_time_embed_dim, flip_sin_to_cos, freq_shift)
         self.control_add_embedding = TimestepEmbedding(addition_time_embed_dim * num_control_type, time_embed_dim)
 
-        self.down_blocks = nn.ModuleList([])
-        self.controlnet_down_blocks = nn.ModuleList([])
+        self.down_blocks = nn.Modulelist([])
+        self.controlnet_down_blocks = nn.Modulelist([])
 
         if isinstance(only_cross_attention, bool):
             only_cross_attention = [only_cross_attention] * len(down_block_types)

@@ -1195,7 +1195,7 @@ def apply_rotary_emb(
         freqs_cis (`tuple[torch.Tensor]`): Precomputed frequency tensor for complex exponentials. ([S, D], [S, D],)
 
     Returns:
-        tuple[torch.Tensor, torch.Tensor]: Tuple of modified query tensor and key tensor with rotary embeddings.
+        tuple[torch.Tensor, torch.Tensor]: tuple of modified query tensor and key tensor with rotary embeddings.
     """
     if use_real:
         cos, sin = freqs_cis  # [S, D]
@@ -2278,7 +2278,7 @@ class IPAdapterPlusImageProjection(nn.Module):
         self.proj_out = nn.Linear(hidden_dims, output_dims)
         self.norm_out = nn.LayerNorm(output_dims)
 
-        self.layers = nn.ModuleList(
+        self.layers = nn.Modulelist(
             [IPAdapterPlusImageProjectionBlock(hidden_dims, dim_head, heads, ffn_ratio) for _ in range(depth)]
         )
 
@@ -2350,7 +2350,7 @@ class IPAdapterFaceIDPlusImageProjection(nn.Module):
         self.proj_out = nn.Linear(embed_dims, output_dims)
         self.norm_out = nn.LayerNorm(output_dims)
 
-        self.layers = nn.ModuleList(
+        self.layers = nn.Modulelist(
             [IPAdapterPlusImageProjectionBlock(embed_dims, dim_head, heads, ffn_ratio) for _ in range(depth)]
         )
 
@@ -2529,7 +2529,7 @@ class IPAdapterTimeImageProjection(nn.Module):
         self.proj_in = nn.Linear(embed_dim, hidden_dim)
         self.proj_out = nn.Linear(hidden_dim, output_dim)
         self.norm_out = nn.LayerNorm(output_dim)
-        self.layers = nn.ModuleList(
+        self.layers = nn.Modulelist(
             [IPAdapterTimeImageProjectionBlock(hidden_dim, dim_head, heads, ffn_ratio) for _ in range(depth)]
         )
         self.time_proj = Timesteps(timestep_in_dim, timestep_flip_sin_to_cos, timestep_freq_shift)
@@ -2544,7 +2544,7 @@ class IPAdapterTimeImageProjection(nn.Module):
             timestep (`torch.Tensor`):
                 Timestep in denoising process.
         Returns:
-            `Tuple`[`torch.Tensor`, `torch.Tensor`]: The pair (latents, timestep_emb).
+            `tuple`[`torch.Tensor`, `torch.Tensor`]: The pair (latents, timestep_emb).
         """
         timestep_emb = self.time_proj(timestep).to(dtype=x.dtype)
         timestep_emb = self.time_embedding(timestep_emb)
@@ -2566,7 +2566,7 @@ class IPAdapterTimeImageProjection(nn.Module):
 class MultiIPAdapterImageProjection(nn.Module):
     def __init__(self, IPAdapterImageProjectionLayers: list[nn.Module] | tuple[nn.Module]):
         super().__init__()
-        self.image_projection_layers = nn.ModuleList(IPAdapterImageProjectionLayers)
+        self.image_projection_layers = nn.Modulelist(IPAdapterImageProjectionLayers)
 
     @property
     def num_ip_adapters(self) -> int:

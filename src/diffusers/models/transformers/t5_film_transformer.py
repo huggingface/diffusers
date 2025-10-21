@@ -75,7 +75,7 @@ class T5FilmDecoder(ModelMixin, ConfigMixin):
 
         self.dropout = nn.Dropout(p=dropout_rate)
 
-        self.decoders = nn.ModuleList()
+        self.decoders = nn.Modulelist()
         for lyr_num in range(num_layers):
             # FiLM conditional T5 decoder
             lyr = DecoderLayer(d_model=d_model, d_kv=d_kv, num_heads=num_heads, d_ff=d_ff, dropout_rate=dropout_rate)
@@ -170,7 +170,7 @@ class DecoderLayer(nn.Module):
         self, d_model: int, d_kv: int, num_heads: int, d_ff: int, dropout_rate: float, layer_norm_epsilon: float = 1e-6
     ):
         super().__init__()
-        self.layer = nn.ModuleList()
+        self.layer = nn.Modulelist()
 
         # cond self attention: layer 0
         self.layer.append(

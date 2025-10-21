@@ -91,7 +91,7 @@ class FlaxImagePipelineOutput(BaseOutput):
 
     Args:
         images (`list[PIL.Image.Image]` or `np.ndarray`)
-            List of denoised PIL images of length `batch_size` or NumPy array of shape `(batch_size, height, width,
+            list of denoised PIL images of length `batch_size` or NumPy array of shape `(batch_size, height, width,
             num_channels)`.
     """
 

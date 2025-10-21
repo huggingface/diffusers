@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import inspect
-from typing import Any, Callable, Optional, Tuple
+from typing import Any, Callable, Optional, tuple
 
 import torch
 from transformers import CLIPTextModel, CLIPTextModelWithProjection, CLIPTokenizer
@@ -173,7 +173,7 @@ class StableUnCLIPPipeline(
         device,
         num_images_per_prompt,
         do_classifier_free_guidance,
-        text_model_output: Optional[CLIPTextModelOutput | Tuple] = None,
+        text_model_output: Optional[CLIPTextModelOutput | tuple] = None,
         text_attention_mask: Optional[torch.Tensor] = None,
     ):
         if text_model_output is None:

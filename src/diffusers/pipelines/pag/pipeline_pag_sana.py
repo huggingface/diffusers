@@ -17,7 +17,7 @@ import inspect
 import re
 import urllib.parse as ul
 import warnings
-from typing import Callable, Dict, Optional, Tuple
+from typing import Callable, Dict, Optional, tuple
 
 import torch
 from transformers import Gemma2PreTrainedModel, GemmaTokenizer, GemmaTokenizerFast
@@ -684,7 +684,7 @@ class SanaPAGPipeline(DiffusionPipeline, PAGMixin):
         ],
         pag_scale: float = 3.0,
         pag_adaptive_scale: float = 0.0,
-    ) -> ImagePipelineOutput | Tuple:
+    ) -> ImagePipelineOutput | tuple:
         """
         Function invoked when calling the pipeline for generation.
 
@@ -756,7 +756,7 @@ class SanaPAGPipeline(DiffusionPipeline, PAGMixin):
                 with the following arguments: `callback_on_step_end(self: DiffusionPipeline, step: int, timestep: int,
                 callback_kwargs: Dict)`. `callback_kwargs` will include a list of all tensors as specified by
                 `callback_on_step_end_tensor_inputs`.
-            callback_on_step_end_tensor_inputs (`List`, *optional*):
+            callback_on_step_end_tensor_inputs (`list`, *optional*):
                 The list of tensor inputs for the `callback_on_step_end` function. The tensors specified in the list
                 will be passed as `callback_kwargs` argument. You will only be able to include variables listed in the
                 `._callback_tensor_inputs` attribute of your pipeline class.

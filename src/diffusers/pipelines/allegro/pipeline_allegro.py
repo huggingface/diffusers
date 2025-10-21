@@ -18,7 +18,7 @@ import inspect
 import math
 import re
 import urllib.parse as ul
-from typing import Callable, Dict, Optional, Tuple
+from typing import Callable, Dict, Optional, tuple
 
 import torch
 from transformers import T5EncoderModel, T5Tokenizer
@@ -743,7 +743,7 @@ class AllegroPipeline(DiffusionPipeline):
         callback_on_step_end_tensor_inputs: list[str] = ["latents"],
         clean_caption: bool = True,
         max_sequence_length: int = 512,
-    ) -> AllegroPipelineOutput | Tuple:
+    ) -> AllegroPipelineOutput | tuple:
         """
         Function invoked when calling the pipeline for generation.
 

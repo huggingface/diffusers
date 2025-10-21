@@ -1489,10 +1489,10 @@ if is_torch_available():
             if num_blocks_per_group is None:
                 raise ValueError("num_blocks_per_group must be provided for 'block_level' offloading.")
 
-            # Handle groups of ModuleList and Sequential blocks
+            # Handle groups of Modulelist and Sequential blocks
             unmatched_modules = []
             for name, submodule in module.named_children():
-                if not isinstance(submodule, (torch.nn.ModuleList, torch.nn.Sequential)):
+                if not isinstance(submodule, (torch.nn.Modulelist, torch.nn.Sequential)):
                     unmatched_modules.append(module)
                     continue
 

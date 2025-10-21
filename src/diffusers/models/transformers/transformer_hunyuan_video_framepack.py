@@ -173,7 +173,7 @@ class HunyuanVideoFramepackTransformer3DModel(
         self.rope = HunyuanVideoFramepackRotaryPosEmbed(patch_size, patch_size_t, rope_axes_dim, rope_theta)
 
         # 3. Dual stream transformer blocks
-        self.transformer_blocks = nn.ModuleList(
+        self.transformer_blocks = nn.Modulelist(
             [
                 HunyuanVideoTransformerBlock(
                     num_attention_heads, attention_head_dim, mlp_ratio=mlp_ratio, qk_norm=qk_norm
@@ -183,7 +183,7 @@ class HunyuanVideoFramepackTransformer3DModel(
         )
 
         # 4. Single stream transformer blocks
-        self.single_transformer_blocks = nn.ModuleList(
+        self.single_transformer_blocks = nn.Modulelist(
             [
                 HunyuanVideoSingleTransformerBlock(
                     num_attention_heads, attention_head_dim, mlp_ratio=mlp_ratio, qk_norm=qk_norm

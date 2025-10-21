@@ -358,10 +358,10 @@ class UNetMidBlock3DCrossAttn(nn.Module):
                 )
             )
 
-        self.resnets = nn.ModuleList(resnets)
-        self.temp_convs = nn.ModuleList(temp_convs)
-        self.attentions = nn.ModuleList(attentions)
-        self.temp_attentions = nn.ModuleList(temp_attentions)
+        self.resnets = nn.Modulelist(resnets)
+        self.temp_convs = nn.Modulelist(temp_convs)
+        self.attentions = nn.Modulelist(attentions)
+        self.temp_attentions = nn.Modulelist(temp_attentions)
 
     def forward(
         self,
@@ -474,13 +474,13 @@ class CrossAttnDownBlock3D(nn.Module):
                     norm_num_groups=resnet_groups,
                 )
             )
-        self.resnets = nn.ModuleList(resnets)
-        self.temp_convs = nn.ModuleList(temp_convs)
-        self.attentions = nn.ModuleList(attentions)
-        self.temp_attentions = nn.ModuleList(temp_attentions)
+        self.resnets = nn.Modulelist(resnets)
+        self.temp_convs = nn.Modulelist(temp_convs)
+        self.attentions = nn.Modulelist(attentions)
+        self.temp_attentions = nn.Modulelist(temp_attentions)
 
         if add_downsample:
-            self.downsamplers = nn.ModuleList(
+            self.downsamplers = nn.Modulelist(
                 [
                     Downsample2D(
                         out_channels,
@@ -583,11 +583,11 @@ class DownBlock3D(nn.Module):
                 )
             )
 
-        self.resnets = nn.ModuleList(resnets)
-        self.temp_convs = nn.ModuleList(temp_convs)
+        self.resnets = nn.Modulelist(resnets)
+        self.temp_convs = nn.Modulelist(temp_convs)
 
         if add_downsample:
-            self.downsamplers = nn.ModuleList(
+            self.downsamplers = nn.Modulelist(
                 [
                     Downsample2D(
                         out_channels,
@@ -708,13 +708,13 @@ class CrossAttnUpBlock3D(nn.Module):
                     norm_num_groups=resnet_groups,
                 )
             )
-        self.resnets = nn.ModuleList(resnets)
-        self.temp_convs = nn.ModuleList(temp_convs)
-        self.attentions = nn.ModuleList(attentions)
-        self.temp_attentions = nn.ModuleList(temp_attentions)
+        self.resnets = nn.Modulelist(resnets)
+        self.temp_convs = nn.Modulelist(temp_convs)
+        self.attentions = nn.Modulelist(attentions)
+        self.temp_attentions = nn.Modulelist(temp_attentions)
 
         if add_upsample:
-            self.upsamplers = nn.ModuleList([Upsample2D(out_channels, use_conv=True, out_channels=out_channels)])
+            self.upsamplers = nn.Modulelist([Upsample2D(out_channels, use_conv=True, out_channels=out_channels)])
         else:
             self.upsamplers = None
 
@@ -832,11 +832,11 @@ class UpBlock3D(nn.Module):
                 )
             )
 
-        self.resnets = nn.ModuleList(resnets)
-        self.temp_convs = nn.ModuleList(temp_convs)
+        self.resnets = nn.Modulelist(resnets)
+        self.temp_convs = nn.Modulelist(temp_convs)
 
         if add_upsample:
-            self.upsamplers = nn.ModuleList([Upsample2D(out_channels, use_conv=True, out_channels=out_channels)])
+            self.upsamplers = nn.Modulelist([Upsample2D(out_channels, use_conv=True, out_channels=out_channels)])
         else:
             self.upsamplers = None
 
@@ -927,8 +927,8 @@ class MidBlockTemporalDecoder(nn.Module):
             )
         )
 
-        self.attentions = nn.ModuleList(attentions)
-        self.resnets = nn.ModuleList(resnets)
+        self.attentions = nn.Modulelist(attentions)
+        self.resnets = nn.Modulelist(resnets)
 
     def forward(
         self,
@@ -974,10 +974,10 @@ class UpBlockTemporalDecoder(nn.Module):
                     switch_spatial_to_temporal_mix=True,
                 )
             )
-        self.resnets = nn.ModuleList(resnets)
+        self.resnets = nn.Modulelist(resnets)
 
         if add_upsample:
-            self.upsamplers = nn.ModuleList([Upsample2D(out_channels, use_conv=True, out_channels=out_channels)])
+            self.upsamplers = nn.Modulelist([Upsample2D(out_channels, use_conv=True, out_channels=out_channels)])
         else:
             self.upsamplers = None
 
@@ -1049,8 +1049,8 @@ class UNetMidBlockSpatioTemporal(nn.Module):
                 )
             )
 
-        self.attentions = nn.ModuleList(attentions)
-        self.resnets = nn.ModuleList(resnets)
+        self.attentions = nn.Modulelist(attentions)
+        self.resnets = nn.Modulelist(resnets)
 
         self.gradient_checkpointing = False
 
@@ -1111,10 +1111,10 @@ class DownBlockSpatioTemporal(nn.Module):
                 )
             )
 
-        self.resnets = nn.ModuleList(resnets)
+        self.resnets = nn.Modulelist(resnets)
 
         if add_downsample:
-            self.downsamplers = nn.ModuleList(
+            self.downsamplers = nn.Modulelist(
                 [
                     Downsample2D(
                         out_channels,
@@ -1194,11 +1194,11 @@ class CrossAttnDownBlockSpatioTemporal(nn.Module):
                 )
             )
 
-        self.attentions = nn.ModuleList(attentions)
-        self.resnets = nn.ModuleList(resnets)
+        self.attentions = nn.Modulelist(attentions)
+        self.resnets = nn.Modulelist(resnets)
 
         if add_downsample:
-            self.downsamplers = nn.ModuleList(
+            self.downsamplers = nn.Modulelist(
                 [
                     Downsample2D(
                         out_channels,
@@ -1282,10 +1282,10 @@ class UpBlockSpatioTemporal(nn.Module):
                 )
             )
 
-        self.resnets = nn.ModuleList(resnets)
+        self.resnets = nn.Modulelist(resnets)
 
         if add_upsample:
-            self.upsamplers = nn.ModuleList([Upsample2D(out_channels, use_conv=True, out_channels=out_channels)])
+            self.upsamplers = nn.Modulelist([Upsample2D(out_channels, use_conv=True, out_channels=out_channels)])
         else:
             self.upsamplers = None
 
@@ -1366,11 +1366,11 @@ class CrossAttnUpBlockSpatioTemporal(nn.Module):
                 )
             )
 
-        self.attentions = nn.ModuleList(attentions)
-        self.resnets = nn.ModuleList(resnets)
+        self.attentions = nn.Modulelist(attentions)
+        self.resnets = nn.Modulelist(resnets)
 
         if add_upsample:
-            self.upsamplers = nn.ModuleList([Upsample2D(out_channels, use_conv=True, out_channels=out_channels)])
+            self.upsamplers = nn.Modulelist([Upsample2D(out_channels, use_conv=True, out_channels=out_channels)])
         else:
             self.upsamplers = None
 

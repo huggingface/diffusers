@@ -13,7 +13,7 @@
 # limitations under the License.
 
 from dataclasses import dataclass
-from typing import Optional, Tuple
+from typing import Optional, tuple
 
 import numpy as np
 import torch
@@ -204,7 +204,7 @@ class VQDiffusionScheduler(SchedulerMixin, ConfigMixin):
         sample: torch.LongTensor,
         generator: Optional[torch.Generator] = None,
         return_dict: bool = True,
-    ) -> VQDiffusionSchedulerOutput | Tuple:
+    ) -> VQDiffusionSchedulerOutput | tuple:
         """
         Predict the sample from the previous timestep by the reverse transition distribution. See
         [`~VQDiffusionScheduler.q_posterior`] for more details about how the distribution is computer.

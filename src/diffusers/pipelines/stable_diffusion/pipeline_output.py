@@ -14,10 +14,10 @@ class StableDiffusionPipelineOutput(BaseOutput):
 
     Args:
         images (`list[PIL.Image.Image]` or `np.ndarray`)
-            List of denoised PIL images of length `batch_size` or NumPy array of shape `(batch_size, height, width,
+            list of denoised PIL images of length `batch_size` or NumPy array of shape `(batch_size, height, width,
             num_channels)`.
         nsfw_content_detected (`list[bool]`)
-            List indicating whether the corresponding generated image contains "not-safe-for-work" (nsfw) content or
+            list indicating whether the corresponding generated image contains "not-safe-for-work" (nsfw) content or
             `None` if safety checking could not be performed.
     """
 
@@ -37,7 +37,7 @@ if is_flax_available():
             images (`np.ndarray`):
                 Denoised images of array shape of `(batch_size, height, width, num_channels)`.
             nsfw_content_detected (`list[bool]`):
-                List indicating whether the corresponding generated image contains "not-safe-for-work" (nsfw) content
+                list indicating whether the corresponding generated image contains "not-safe-for-work" (nsfw) content
                 or `None` if safety checking could not be performed.
         """
 

@@ -247,7 +247,7 @@ class StableCascadeCombinedPipeline(DiffusionPipeline):
                 A function that calls at the end of each denoising steps during the inference. The function is called
                 with the following arguments: `prior_callback_on_step_end(self: DiffusionPipeline, step: int, timestep:
                 int, callback_kwargs: Dict)`.
-            prior_callback_on_step_end_tensor_inputs (`List`, *optional*):
+            prior_callback_on_step_end_tensor_inputs (`list`, *optional*):
                 The list of tensor inputs for the `prior_callback_on_step_end` function. The tensors specified in the
                 list will be passed as `callback_kwargs` argument. You will only be able to include variables listed in
                 the `._callback_tensor_inputs` attribute of your pipeline class.
@@ -256,7 +256,7 @@ class StableCascadeCombinedPipeline(DiffusionPipeline):
                 with the following arguments: `callback_on_step_end(self: DiffusionPipeline, step: int, timestep: int,
                 callback_kwargs: Dict)`. `callback_kwargs` will include a list of all tensors as specified by
                 `callback_on_step_end_tensor_inputs`.
-            callback_on_step_end_tensor_inputs (`List`, *optional*):
+            callback_on_step_end_tensor_inputs (`list`, *optional*):
                 The list of tensor inputs for the `callback_on_step_end` function. The tensors specified in the list
                 will be passed as `callback_kwargs` argument. You will only be able to include variables listed in the
                 `._callback_tensor_inputs` attribute of your pipeline class.

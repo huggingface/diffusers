@@ -51,10 +51,10 @@ class AutoencoderTiny(ModelMixin, ConfigMixin):
         in_channels (`int`, *optional*, defaults to 3): Number of channels in the input image.
         out_channels (`int`,  *optional*, defaults to 3): Number of channels in the output.
         encoder_block_out_channels (`tuple[int]`, *optional*, defaults to `(64, 64, 64, 64)`):
-            Tuple of integers representing the number of output channels for each encoder block. The length of the
+            tuple of integers representing the number of output channels for each encoder block. The length of the
             tuple should be equal to the number of encoder blocks.
         decoder_block_out_channels (`tuple[int]`, *optional*, defaults to `(64, 64, 64, 64)`):
-            Tuple of integers representing the number of output channels for each decoder block. The length of the
+            tuple of integers representing the number of output channels for each decoder block. The length of the
             tuple should be equal to the number of decoder blocks.
         act_fn (`str`, *optional*, defaults to `"relu"`):
             Activation function to be used throughout the model.
@@ -65,11 +65,11 @@ class AutoencoderTiny(ModelMixin, ConfigMixin):
             Scaling factor for upsampling in the decoder. It determines the size of the output image during the
             upsampling process.
         num_encoder_blocks (`tuple[int]`, *optional*, defaults to `(1, 3, 3, 3)`):
-            Tuple of integers representing the number of encoder blocks at each stage of the encoding process. The
+            tuple of integers representing the number of encoder blocks at each stage of the encoding process. The
             length of the tuple should be equal to the number of stages in the encoder. Each stage has a different
             number of encoder blocks.
         num_decoder_blocks (`tuple[int]`, *optional*, defaults to `(3, 3, 3, 1)`):
-            Tuple of integers representing the number of decoder blocks at each stage of the decoding process. The
+            tuple of integers representing the number of decoder blocks at each stage of the decoding process. The
             length of the tuple should be equal to the number of stages in the decoder. Each stage has a different
             number of decoder blocks.
         latent_magnitude (`float`, *optional*, defaults to 3.0):

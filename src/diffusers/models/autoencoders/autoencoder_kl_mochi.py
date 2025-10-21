@@ -184,9 +184,9 @@ class MochiDownBlock3D(nn.Module):
                 norms.append(None)
                 attentions.append(None)
 
-        self.resnets = nn.ModuleList(resnets)
-        self.norms = nn.ModuleList(norms)
-        self.attentions = nn.ModuleList(attentions)
+        self.resnets = nn.Modulelist(resnets)
+        self.norms = nn.Modulelist(norms)
+        self.attentions = nn.Modulelist(attentions)
 
         self.gradient_checkpointing = False
 
@@ -285,9 +285,9 @@ class MochiMidBlock3D(nn.Module):
                 norms.append(None)
                 attentions.append(None)
 
-        self.resnets = nn.ModuleList(resnets)
-        self.norms = nn.ModuleList(norms)
-        self.attentions = nn.ModuleList(attentions)
+        self.resnets = nn.Modulelist(resnets)
+        self.norms = nn.Modulelist(norms)
+        self.attentions = nn.Modulelist(attentions)
 
         self.gradient_checkpointing = False
 
@@ -359,7 +359,7 @@ class MochiUpBlock3D(nn.Module):
         resnets = []
         for _ in range(num_layers):
             resnets.append(MochiResnetBlock3D(in_channels=in_channels))
-        self.resnets = nn.ModuleList(resnets)
+        self.resnets = nn.Modulelist(resnets)
 
         self.proj = nn.Linear(in_channels, out_channels * temporal_expansion * spatial_expansion**2)
 
@@ -489,7 +489,7 @@ class MochiEncoder3D(nn.Module):
                 add_attention=add_attention_block[i + 1],
             )
             down_blocks.append(down_block)
-        self.down_blocks = nn.ModuleList(down_blocks)
+        self.down_blocks = nn.Modulelist(down_blocks)
 
         self.block_out = MochiMidBlock3D(
             in_channels=block_out_channels[-1], num_layers=layers_per_block[-1], add_attention=add_attention_block[-1]
@@ -601,7 +601,7 @@ class MochiDecoder3D(nn.Module):
                 spatial_expansion=spatial_expansions[-i - 1],
             )
             up_blocks.append(up_block)
-        self.up_blocks = nn.ModuleList(up_blocks)
+        self.up_blocks = nn.Modulelist(up_blocks)
 
         self.block_out = MochiMidBlock3D(
             in_channels=block_out_channels[0],
@@ -669,7 +669,7 @@ class AutoencoderKLMochi(ModelMixin, ConfigMixin):
         in_channels (int, *optional*, defaults to 3): Number of channels in the input image.
         out_channels (int,  *optional*, defaults to 3): Number of channels in the output.
         block_out_channels (`tuple[int]`, *optional*, defaults to `(64,)`):
-            Tuple of block output channels.
+            tuple of block output channels.
         act_fn (`str`, *optional*, defaults to `"silu"`): The activation function to use.
         scaling_factor (`float`, *optional*, defaults to `1.15258426`):
             The component-wise standard deviation of the trained latent space computed using the first batch of the

@@ -256,7 +256,7 @@ class StableAudioDiTModel(ModelMixin, ConfigMixin):
         self.preprocess_conv = nn.Conv1d(in_channels, in_channels, 1, bias=False)
         self.proj_in = nn.Linear(in_channels, self.inner_dim, bias=False)
 
-        self.transformer_blocks = nn.ModuleList(
+        self.transformer_blocks = nn.Modulelist(
             [
                 StableAudioDiTBlock(
                     dim=self.inner_dim,

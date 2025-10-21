@@ -13,7 +13,7 @@
 # limitations under the License.
 
 from dataclasses import dataclass
-from typing import List, Optional
+from typing import Optional, list
 
 import numpy as np
 import PIL.Image
@@ -147,7 +147,7 @@ class ShapEImg2ImgPipeline(DiffusionPipeline):
         num_images_per_prompt,
         do_classifier_free_guidance,
     ):
-        if isinstance(image, List) and isinstance(image[0], torch.Tensor):
+        if isinstance(image, list) and isinstance(image[0], torch.Tensor):
             image = torch.cat(image, axis=0) if image[0].ndim == 4 else torch.stack(image, axis=0)
 
         if not isinstance(image, torch.Tensor):

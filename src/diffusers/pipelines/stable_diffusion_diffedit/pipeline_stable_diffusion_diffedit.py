@@ -64,7 +64,7 @@ class DiffEditInversionPipelineOutput(BaseOutput):
         latents (`torch.Tensor`)
             inverted latents tensor
         images (`list[PIL.Image.Image]` or `np.ndarray`)
-            List of denoised PIL images of length `num_timesteps * batch_size` or numpy array of shape `(num_timesteps,
+            list of denoised PIL images of length `num_timesteps * batch_size` or numpy array of shape `(num_timesteps,
             batch_size, height, width, num_channels)`. PIL images or numpy array present the denoised images of the
             diffusion pipeline.
     """

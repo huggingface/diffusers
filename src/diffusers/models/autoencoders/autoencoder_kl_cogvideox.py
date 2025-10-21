@@ -392,11 +392,11 @@ class CogVideoXDownBlock3D(nn.Module):
                 )
             )
 
-        self.resnets = nn.ModuleList(resnets)
+        self.resnets = nn.Modulelist(resnets)
         self.downsamplers = None
 
         if add_downsample:
-            self.downsamplers = nn.ModuleList(
+            self.downsamplers = nn.Modulelist(
                 [
                     CogVideoXDownsample3D(
                         out_channels, out_channels, padding=downsample_padding, compress_time=compress_time
@@ -497,7 +497,7 @@ class CogVideoXMidBlock3D(nn.Module):
                     pad_mode=pad_mode,
                 )
             )
-        self.resnets = nn.ModuleList(resnets)
+        self.resnets = nn.Modulelist(resnets)
 
         self.gradient_checkpointing = False
 
@@ -594,11 +594,11 @@ class CogVideoXUpBlock3D(nn.Module):
                 )
             )
 
-        self.resnets = nn.ModuleList(resnets)
+        self.resnets = nn.Modulelist(resnets)
         self.upsamplers = None
 
         if add_upsample:
-            self.upsamplers = nn.ModuleList(
+            self.upsamplers = nn.Modulelist(
                 [
                     CogVideoXUpsample3D(
                         out_channels, out_channels, padding=upsample_padding, compress_time=compress_time
@@ -692,7 +692,7 @@ class CogVideoXEncoder3D(nn.Module):
         temporal_compress_level = int(np.log2(temporal_compression_ratio))
 
         self.conv_in = CogVideoXCausalConv3d(in_channels, block_out_channels[0], kernel_size=3, pad_mode=pad_mode)
-        self.down_blocks = nn.ModuleList([])
+        self.down_blocks = nn.Modulelist([])
 
         # down blocks
         output_channel = block_out_channels[0]
@@ -859,7 +859,7 @@ class CogVideoXDecoder3D(nn.Module):
         )
 
         # up blocks
-        self.up_blocks = nn.ModuleList([])
+        self.up_blocks = nn.Modulelist([])
 
         output_channel = reversed_block_out_channels[0]
         temporal_compress_level = int(np.log2(temporal_compression_ratio))
@@ -967,11 +967,11 @@ class AutoencoderKLCogVideoX(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         in_channels (int, *optional*, defaults to 3): Number of channels in the input image.
         out_channels (int,  *optional*, defaults to 3): Number of channels in the output.
         down_block_types (`tuple[str]`, *optional*, defaults to `("DownEncoderBlock2D",)`):
-            Tuple of downsample block types.
+            tuple of downsample block types.
         up_block_types (`tuple[str]`, *optional*, defaults to `("UpDecoderBlock2D",)`):
-            Tuple of upsample block types.
+            tuple of upsample block types.
         block_out_channels (`tuple[int]`, *optional*, defaults to `(64,)`):
-            Tuple of block output channels.
+            tuple of block output channels.
         act_fn (`str`, *optional*, defaults to `"silu"`): The activation function to use.
         sample_size (`int`, *optional*, defaults to `32`): Sample input size.
         scaling_factor (`float`, *optional*, defaults to `1.15258426`):

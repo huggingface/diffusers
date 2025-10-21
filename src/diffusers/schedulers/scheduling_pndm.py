@@ -15,7 +15,7 @@
 # DISCLAIMER: This file is strongly influenced by https://github.com/ermongroup/ddim
 
 import math
-from typing import Optional, Tuple
+from typing import Optional, tuple
 
 import numpy as np
 import torch
@@ -229,7 +229,7 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
         timestep: int,
         sample: torch.Tensor,
         return_dict: bool = True,
-    ) -> SchedulerOutput | Tuple:
+    ) -> SchedulerOutput | tuple:
         """
         Predict the sample from the previous timestep by reversing the SDE. This function propagates the diffusion
         process from the learned model outputs (most often the predicted noise), and calls [`~PNDMScheduler.step_prk`]
@@ -262,7 +262,7 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
         timestep: int,
         sample: torch.Tensor,
         return_dict: bool = True,
-    ) -> SchedulerOutput | Tuple:
+    ) -> SchedulerOutput | tuple:
         """
         Predict the sample from the previous timestep by reversing the SDE. This function propagates the sample with
         the Runge-Kutta method. It performs four forward passes to approximate the solution to the differential
@@ -322,7 +322,7 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
         timestep: int,
         sample: torch.Tensor,
         return_dict: bool = True,
-    ) -> SchedulerOutput | Tuple:
+    ) -> SchedulerOutput | tuple:
         """
         Predict the sample from the previous timestep by reversing the SDE. This function propagates the sample with
         the linear multistep method. It performs one forward pass multiple times to approximate the solution.

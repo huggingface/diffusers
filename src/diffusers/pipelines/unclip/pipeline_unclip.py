@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import inspect
-from typing import Optional, Tuple
+from typing import Optional, tuple
 
 import torch
 from torch.nn import functional as F
@@ -131,7 +131,7 @@ class UnCLIPPipeline(DeprecatedPipelineMixin, DiffusionPipeline):
         device,
         num_images_per_prompt,
         do_classifier_free_guidance,
-        text_model_output: Optional[CLIPTextModelOutput | Tuple] = None,
+        text_model_output: Optional[CLIPTextModelOutput | tuple] = None,
         text_attention_mask: Optional[torch.Tensor] = None,
     ):
         if text_model_output is None:
@@ -228,7 +228,7 @@ class UnCLIPPipeline(DeprecatedPipelineMixin, DiffusionPipeline):
         prior_latents: Optional[torch.Tensor] = None,
         decoder_latents: Optional[torch.Tensor] = None,
         super_res_latents: Optional[torch.Tensor] = None,
-        text_model_output: Optional[CLIPTextModelOutput | Tuple] = None,
+        text_model_output: Optional[CLIPTextModelOutput | tuple] = None,
         text_attention_mask: Optional[torch.Tensor] = None,
         prior_guidance_scale: float = 4.0,
         decoder_guidance_scale: float = 8.0,

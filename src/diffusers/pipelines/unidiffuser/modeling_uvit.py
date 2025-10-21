@@ -648,7 +648,7 @@ class UTransformer2DModel(ModelMixin, ConfigMixin):
             block_cls = UniDiffuserBlock
         else:
             block_cls = UTransformerBlock
-        self.transformer_in_blocks = nn.ModuleList(
+        self.transformer_in_blocks = nn.Modulelist(
             [
                 block_cls(
                     inner_dim,
@@ -689,7 +689,7 @@ class UTransformer2DModel(ModelMixin, ConfigMixin):
 
         # For each skip connection, we use a SkipBlock (concatenation + Linear + LayerNorm) to process the inputs
         # before each transformer out_block.
-        self.transformer_out_blocks = nn.ModuleList(
+        self.transformer_out_blocks = nn.Modulelist(
             [
                 nn.ModuleDict(
                     {

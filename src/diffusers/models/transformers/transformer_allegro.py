@@ -274,7 +274,7 @@ class AllegroTransformer3DModel(ModelMixin, ConfigMixin, CacheMixin):
         )
 
         # 2. Transformer blocks
-        self.transformer_blocks = nn.ModuleList(
+        self.transformer_blocks = nn.Modulelist(
             [
                 AllegroTransformerBlock(
                     self.inner_dim,

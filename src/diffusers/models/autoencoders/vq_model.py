@@ -48,11 +48,11 @@ class VQModel(ModelMixin, ConfigMixin):
         in_channels (int, *optional*, defaults to 3): Number of channels in the input image.
         out_channels (int,  *optional*, defaults to 3): Number of channels in the output.
         down_block_types (`tuple[str]`, *optional*, defaults to `("DownEncoderBlock2D",)`):
-            Tuple of downsample block types.
+            tuple of downsample block types.
         up_block_types (`tuple[str]`, *optional*, defaults to `("UpDecoderBlock2D",)`):
-            Tuple of upsample block types.
+            tuple of upsample block types.
         block_out_channels (`tuple[int]`, *optional*, defaults to `(64,)`):
-            Tuple of block output channels.
+            tuple of block output channels.
         layers_per_block (`int`, *optional*, defaults to `1`): Number of layers per block.
         act_fn (`str`, *optional*, defaults to `"silu"`): The activation function to use.
         latent_channels (`int`, *optional*, defaults to `3`): Number of channels in the latent space.

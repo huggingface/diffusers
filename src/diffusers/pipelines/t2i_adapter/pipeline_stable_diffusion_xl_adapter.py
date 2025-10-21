@@ -240,7 +240,7 @@ class StableDiffusionXLAdapterPipeline(
             Provides additional conditioning to the unet during the denoising process. If you set multiple Adapter as a
             list, the outputs from each Adapter are added together to create one combined additional conditioning.
         adapter_weights (`list[float]`, *optional*, defaults to None):
-            List of floats representing the weight which will be multiply to each adapter's output before adding them
+            list of floats representing the weight which will be multiply to each adapter's output before adding them
             together.
         vae ([`AutoencoderKL`]):
             Variational Auto-Encoder (VAE) Model to encode and decode images to and from latent representations.

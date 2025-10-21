@@ -464,7 +464,7 @@ class CosmosTransformer3DModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         self.time_embed = CosmosEmbedding(hidden_size, hidden_size)
 
         # 4. Transformer Blocks
-        self.transformer_blocks = nn.ModuleList(
+        self.transformer_blocks = nn.Modulelist(
             [
                 CosmosTransformerBlock(
                     num_attention_heads=num_attention_heads,

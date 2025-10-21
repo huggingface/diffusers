@@ -178,8 +178,8 @@ class AllegroDownBlock3D(nn.Module):
                 )
             )
 
-        self.resnets = nn.ModuleList(resnets)
-        self.temp_convs = nn.ModuleList(temp_convs)
+        self.resnets = nn.Modulelist(resnets)
+        self.temp_convs = nn.Modulelist(temp_convs)
 
         if temporal_downsample:
             self.temp_convs_down = AllegroTemporalConvLayer(
@@ -188,7 +188,7 @@ class AllegroDownBlock3D(nn.Module):
         self.add_temp_downsample = temporal_downsample
 
         if spatial_downsample:
-            self.downsamplers = nn.ModuleList(
+            self.downsamplers = nn.Modulelist(
                 [
                     Downsample2D(
                         out_channels, use_conv=True, out_channels=out_channels, padding=downsample_padding, name="op"
@@ -266,8 +266,8 @@ class AllegroUpBlock3D(nn.Module):
                 )
             )
 
-        self.resnets = nn.ModuleList(resnets)
-        self.temp_convs = nn.ModuleList(temp_convs)
+        self.resnets = nn.Modulelist(resnets)
+        self.temp_convs = nn.Modulelist(temp_convs)
 
         self.add_temp_upsample = temporal_upsample
         if temporal_upsample:
@@ -276,7 +276,7 @@ class AllegroUpBlock3D(nn.Module):
             )
 
         if spatial_upsample:
-            self.upsamplers = nn.ModuleList([Upsample2D(out_channels, use_conv=True, out_channels=out_channels)])
+            self.upsamplers = nn.Modulelist([Upsample2D(out_channels, use_conv=True, out_channels=out_channels)])
         else:
             self.upsamplers = None
 
@@ -390,9 +390,9 @@ class AllegroMidBlock3DConv(nn.Module):
                 )
             )
 
-        self.resnets = nn.ModuleList(resnets)
-        self.temp_convs = nn.ModuleList(temp_convs)
-        self.attentions = nn.ModuleList(attentions)
+        self.resnets = nn.Modulelist(resnets)
+        self.temp_convs = nn.Modulelist(temp_convs)
+        self.attentions = nn.Modulelist(attentions)
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         batch_size = hidden_states.shape[0]
@@ -446,7 +446,7 @@ class AllegroEncoder3D(nn.Module):
             padding=(1, 0, 0),
         )
 
-        self.down_blocks = nn.ModuleList([])
+        self.down_blocks = nn.Modulelist([])
 
         # down
         output_channel = block_out_channels[0]
@@ -569,7 +569,7 @@ class AllegroDecoder3D(nn.Module):
         self.temp_conv_in = nn.Conv3d(block_out_channels[-1], block_out_channels[-1], (3, 1, 1), padding=(1, 0, 0))
 
         self.mid_block = None
-        self.up_blocks = nn.ModuleList([])
+        self.up_blocks = nn.Modulelist([])
 
         temb_channels = in_channels if norm_type == "spatial" else None
 
@@ -687,13 +687,13 @@ class AutoencoderKLAllegro(ModelMixin, ConfigMixin):
         out_channels (int, defaults to `3`):
             Number of channels in the output.
         down_block_types (`tuple[str, ...]`, defaults to `("AllegroDownBlock3D", "AllegroDownBlock3D", "AllegroDownBlock3D", "AllegroDownBlock3D")`):
-            Tuple of strings denoting which types of down blocks to use.
+            tuple of strings denoting which types of down blocks to use.
         up_block_types (`tuple[str, ...]`, defaults to `("AllegroUpBlock3D", "AllegroUpBlock3D", "AllegroUpBlock3D", "AllegroUpBlock3D")`):
-            Tuple of strings denoting which types of up blocks to use.
+            tuple of strings denoting which types of up blocks to use.
         block_out_channels (`tuple[int, ...]`, defaults to `(128, 256, 512, 512)`):
-            Tuple of integers denoting number of output channels in each block.
+            tuple of integers denoting number of output channels in each block.
         temporal_downsample_blocks (`tuple[bool, ...]`, defaults to `(True, True, False, False)`):
-            Tuple of booleans denoting which blocks to enable temporal downsampling in.
+            tuple of booleans denoting which blocks to enable temporal downsampling in.
         latent_channels (`int`, defaults to `4`):
             Number of channels in latents.
         layers_per_block (`int`, defaults to `2`):

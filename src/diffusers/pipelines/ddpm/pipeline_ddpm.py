@@ -13,7 +13,7 @@
 # limitations under the License.
 
 
-from typing import Optional, Tuple
+from typing import Optional, tuple
 
 import torch
 
@@ -61,7 +61,7 @@ class DDPMPipeline(DiffusionPipeline):
         num_inference_steps: int = 1000,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
-    ) -> ImagePipelineOutput | Tuple:
+    ) -> ImagePipelineOutput | tuple:
         r"""
         The call function to the pipeline for generation.
 

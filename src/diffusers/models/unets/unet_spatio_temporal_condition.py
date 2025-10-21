@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Optional, Tuple
+from typing import Optional, tuple
 
 import torch
 import torch.nn as nn
@@ -55,7 +55,7 @@ class UNetSpatioTemporalConditionModel(ModelMixin, ConfigMixin, UNet2DConditionL
         layers_per_block (`int`, *optional*, defaults to 2): The number of layers per block.
         cross_attention_dim (`int` or `tuple[int]`, *optional*, defaults to 1280):
             The dimension of the cross attention features.
-        transformer_layers_per_block (`int`, `tuple[int]`, or `tuple[Tuple]` , *optional*, defaults to 1):
+        transformer_layers_per_block (`int`, `tuple[int]`, or `tuple[tuple]` , *optional*, defaults to 1):
             The number of transformer blocks of type [`~models.attention.BasicTransformerBlock`]. Only relevant for
             [`~models.unets.unet_3d_blocks.CrossAttnDownBlockSpatioTemporal`],
             [`~models.unets.unet_3d_blocks.CrossAttnUpBlockSpatioTemporal`],
@@ -90,7 +90,7 @@ class UNetSpatioTemporalConditionModel(ModelMixin, ConfigMixin, UNet2DConditionL
         projection_class_embeddings_input_dim: int = 768,
         layers_per_block: int | tuple[int] = 2,
         cross_attention_dim: int | tuple[int] = 1024,
-        transformer_layers_per_block: int | tuple[int] | tuple[Tuple] = 1,
+        transformer_layers_per_block: int | tuple[int] | tuple[tuple] = 1,
         num_attention_heads: int | tuple[int] = (5, 10, 20, 20),
         num_frames: int = 25,
     ):
@@ -143,8 +143,8 @@ class UNetSpatioTemporalConditionModel(ModelMixin, ConfigMixin, UNet2DConditionL
         self.add_time_proj = Timesteps(addition_time_embed_dim, True, downscale_freq_shift=0)
         self.add_embedding = TimestepEmbedding(projection_class_embeddings_input_dim, time_embed_dim)
 
-        self.down_blocks = nn.ModuleList([])
-        self.up_blocks = nn.ModuleList([])
+        self.down_blocks = nn.Modulelist([])
+        self.up_blocks = nn.Modulelist([])
 
         if isinstance(num_attention_heads, int):
             num_attention_heads = (num_attention_heads,) * len(down_block_types)
@@ -357,7 +357,7 @@ class UNetSpatioTemporalConditionModel(ModelMixin, ConfigMixin, UNet2DConditionL
         encoder_hidden_states: torch.Tensor,
         added_time_ids: torch.Tensor,
         return_dict: bool = True,
-    ) -> UNetSpatioTemporalConditionOutput | Tuple:
+    ) -> UNetSpatioTemporalConditionOutput | tuple:
         r"""
         The [`UNetSpatioTemporalConditionModel`] forward method.
 

@@ -373,7 +373,7 @@ class OmniGenTransformer2DModel(ModelMixin, ConfigMixin):
             rope_scaling=rope_scaling,
         )
 
-        self.layers = nn.ModuleList(
+        self.layers = nn.Modulelist(
             [
                 OmniGenBlock(hidden_size, num_attention_heads, num_key_value_heads, intermediate_size, rms_norm_eps)
                 for _ in range(num_layers)

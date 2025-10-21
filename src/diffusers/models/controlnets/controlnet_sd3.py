@@ -14,7 +14,7 @@
 
 
 from dataclasses import dataclass
-from typing import Any, Optional, Tuple
+from typing import Any, Optional, tuple
 
 import torch
 import torch.nn as nn
@@ -130,7 +130,7 @@ class SD3ControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginal
 
             # `attention_head_dim` is doubled to account for the mixing.
             # It needs to crafted when we get the actual checkpoints.
-            self.transformer_blocks = nn.ModuleList(
+            self.transformer_blocks = nn.Modulelist(
                 [
                     JointTransformerBlock(
                         dim=self.inner_dim,
@@ -145,7 +145,7 @@ class SD3ControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginal
             )
         else:
             self.context_embedder = None
-            self.transformer_blocks = nn.ModuleList(
+            self.transformer_blocks = nn.Modulelist(
                 [
                     SD3SingleTransformerBlock(
                         dim=self.inner_dim,
@@ -157,7 +157,7 @@ class SD3ControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginal
             )
 
         # controlnet_blocks
-        self.controlnet_blocks = nn.ModuleList([])
+        self.controlnet_blocks = nn.Modulelist([])
         for _ in range(len(self.transformer_blocks)):
             controlnet_block = nn.Linear(self.inner_dim, self.inner_dim)
             controlnet_block = zero_module(controlnet_block)
@@ -467,7 +467,7 @@ class SD3MultiControlNetModel(ModelMixin):
 
     def __init__(self, controlnets):
         super().__init__()
-        self.nets = nn.ModuleList(controlnets)
+        self.nets = nn.Modulelist(controlnets)
 
     def forward(
         self,
@@ -479,7 +479,7 @@ class SD3MultiControlNetModel(ModelMixin):
         timestep: torch.LongTensor = None,
         joint_attention_kwargs: Optional[dict[str, Any]] = None,
         return_dict: bool = True,
-    ) -> SD3ControlNetOutput | Tuple:
+    ) -> SD3ControlNetOutput | tuple:
         for i, (image, scale, controlnet) in enumerate(zip(controlnet_cond, conditioning_scale, self.nets)):
             block_samples = controlnet(
                 hidden_states=hidden_states,

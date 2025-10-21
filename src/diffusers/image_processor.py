@@ -63,7 +63,7 @@ def is_valid_image_imagelist(images):
     - A list of valid images.
 
     Args:
-        images (`Union[np.ndarray, torch.Tensor, PIL.Image.Image, List]`):
+        images (`Union[np.ndarray, torch.Tensor, PIL.Image.Image, list]`):
             The image(s) to check. Can be a batch of images (4D tensor/array), a single image, or a list of valid
             images.
 

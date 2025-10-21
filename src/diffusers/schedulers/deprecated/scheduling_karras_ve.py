@@ -14,7 +14,7 @@
 
 
 from dataclasses import dataclass
-from typing import Optional, Tuple
+from typing import Optional, tuple
 
 import numpy as np
 import torch
@@ -165,7 +165,7 @@ class KarrasVeScheduler(SchedulerMixin, ConfigMixin):
         sigma_prev: float,
         sample_hat: torch.Tensor,
         return_dict: bool = True,
-    ) -> KarrasVeOutput | Tuple:
+    ) -> KarrasVeOutput | tuple:
         """
         Predict the sample from the previous timestep by reversing the SDE. This function propagates the diffusion
         process from the learned model outputs (most often the predicted noise).
@@ -206,7 +206,7 @@ class KarrasVeScheduler(SchedulerMixin, ConfigMixin):
         sample_prev: torch.Tensor,
         derivative: torch.Tensor,
         return_dict: bool = True,
-    ) -> KarrasVeOutput | Tuple:
+    ) -> KarrasVeOutput | tuple:
         """
         Corrects the predicted sample based on the `model_output` of the network.
 

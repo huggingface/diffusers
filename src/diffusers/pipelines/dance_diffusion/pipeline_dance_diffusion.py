@@ -13,7 +13,7 @@
 # limitations under the License.
 
 
-from typing import Optional, Tuple
+from typing import Optional, tuple
 
 import torch
 
@@ -64,7 +64,7 @@ class DanceDiffusionPipeline(DeprecatedPipelineMixin, DiffusionPipeline):
         generator: Optional[torch.Generator | list[torch.Generator]] = None,
         audio_length_in_s: Optional[float] = None,
         return_dict: bool = True,
-    ) -> AudioPipelineOutput | Tuple:
+    ) -> AudioPipelineOutput | tuple:
         r"""
         The call function to the pipeline for generation.
 

@@ -55,7 +55,7 @@ class DownResnetBlock1D(nn.Module):
         for _ in range(num_layers):
             resnets.append(ResidualTemporalBlock1D(out_channels, out_channels, embed_dim=temb_channels))
 
-        self.resnets = nn.ModuleList(resnets)
+        self.resnets = nn.Modulelist(resnets)
 
         if non_linearity is None:
             self.nonlinearity = None
@@ -115,7 +115,7 @@ class UpResnetBlock1D(nn.Module):
         for _ in range(num_layers):
             resnets.append(ResidualTemporalBlock1D(out_channels, out_channels, embed_dim=temb_channels))
 
-        self.resnets = nn.ModuleList(resnets)
+        self.resnets = nn.Modulelist(resnets)
 
         if non_linearity is None:
             self.nonlinearity = None
@@ -191,7 +191,7 @@ class MidResTemporalBlock1D(nn.Module):
         for _ in range(num_layers):
             resnets.append(ResidualTemporalBlock1D(out_channels, out_channels, embed_dim=embed_dim))
 
-        self.resnets = nn.ModuleList(resnets)
+        self.resnets = nn.Modulelist(resnets)
 
         if non_linearity is None:
             self.nonlinearity = None
@@ -243,7 +243,7 @@ class OutConv1DBlock(nn.Module):
 class OutValueFunctionBlock(nn.Module):
     def __init__(self, fc_dim: int, embed_dim: int, act_fn: str = "mish"):
         super().__init__()
-        self.final_block = nn.ModuleList(
+        self.final_block = nn.Modulelist(
             [
                 nn.Linear(fc_dim + embed_dim, fc_dim // 2),
                 get_activation(act_fn),
@@ -432,8 +432,8 @@ class UNetMidBlock1D(nn.Module):
         ]
         self.up = Upsample1d(kernel="cubic")
 
-        self.attentions = nn.ModuleList(attentions)
-        self.resnets = nn.ModuleList(resnets)
+        self.attentions = nn.Modulelist(attentions)
+        self.resnets = nn.Modulelist(resnets)
 
     def forward(self, hidden_states: torch.Tensor, temb: Optional[torch.Tensor] = None) -> torch.Tensor:
         hidden_states = self.down(hidden_states)
@@ -463,8 +463,8 @@ class AttnDownBlock1D(nn.Module):
             SelfAttention1d(out_channels, out_channels // 32),
         ]
 
-        self.attentions = nn.ModuleList(attentions)
-        self.resnets = nn.ModuleList(resnets)
+        self.attentions = nn.Modulelist(attentions)
+        self.resnets = nn.Modulelist(resnets)
 
     def forward(self, hidden_states: torch.Tensor, temb: Optional[torch.Tensor] = None) -> torch.Tensor:
         hidden_states = self.down(hidden_states)
@@ -488,7 +488,7 @@ class DownBlock1D(nn.Module):
             ResConvBlock(mid_channels, mid_channels, out_channels),
         ]
 
-        self.resnets = nn.ModuleList(resnets)
+        self.resnets = nn.Modulelist(resnets)
 
     def forward(self, hidden_states: torch.Tensor, temb: Optional[torch.Tensor] = None) -> torch.Tensor:
         hidden_states = self.down(hidden_states)
@@ -510,7 +510,7 @@ class DownBlock1DNoSkip(nn.Module):
             ResConvBlock(mid_channels, mid_channels, out_channels),
         ]
 
-        self.resnets = nn.ModuleList(resnets)
+        self.resnets = nn.Modulelist(resnets)
 
     def forward(self, hidden_states: torch.Tensor, temb: Optional[torch.Tensor] = None) -> torch.Tensor:
         hidden_states = torch.cat([hidden_states, temb], dim=1)
@@ -536,8 +536,8 @@ class AttnUpBlock1D(nn.Module):
             SelfAttention1d(out_channels, out_channels // 32),
         ]
 
-        self.attentions = nn.ModuleList(attentions)
-        self.resnets = nn.ModuleList(resnets)
+        self.attentions = nn.Modulelist(attentions)
+        self.resnets = nn.Modulelist(resnets)
         self.up = Upsample1d(kernel="cubic")
 
     def forward(
@@ -569,7 +569,7 @@ class UpBlock1D(nn.Module):
             ResConvBlock(mid_channels, mid_channels, out_channels),
         ]
 
-        self.resnets = nn.ModuleList(resnets)
+        self.resnets = nn.Modulelist(resnets)
         self.up = Upsample1d(kernel="cubic")
 
     def forward(
@@ -600,7 +600,7 @@ class UpBlock1DNoSkip(nn.Module):
             ResConvBlock(mid_channels, mid_channels, out_channels, is_last=True),
         ]
 
-        self.resnets = nn.ModuleList(resnets)
+        self.resnets = nn.Modulelist(resnets)
 
     def forward(
         self,

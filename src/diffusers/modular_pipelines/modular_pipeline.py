@@ -261,7 +261,7 @@ class ModularPipelineBlocks(ConfigMixin, PushToHubMixin):
 
     @property
     def inputs(self) -> list[InputParam]:
-        """List of input parameters. Must be implemented by subclasses."""
+        """list of input parameters. Must be implemented by subclasses."""
         return []
 
     def _get_required_inputs(self):
@@ -278,7 +278,7 @@ class ModularPipelineBlocks(ConfigMixin, PushToHubMixin):
 
     @property
     def intermediate_outputs(self) -> list[OutputParam]:
-        """List of intermediate output parameters. Must be implemented by subclasses."""
+        """list of intermediate output parameters. Must be implemented by subclasses."""
         return []
 
     def _get_outputs(self):
@@ -434,7 +434,7 @@ class ModularPipelineBlocks(ConfigMixin, PushToHubMixin):
         exist for the same input.
 
         Args:
-            named_input_lists: List of tuples containing (block_name, input_param_list) pairs
+            named_input_lists: list of tuples containing (block_name, input_param_list) pairs
 
         Returns:
             list[InputParam]: Combined list of unique InputParam objects
@@ -476,7 +476,7 @@ class ModularPipelineBlocks(ConfigMixin, PushToHubMixin):
         occurrence of each output name.
 
         Args:
-            named_output_lists: List of tuples containing (block_name, output_param_list) pairs
+            named_output_lists: list of tuples containing (block_name, output_param_list) pairs
 
         Returns:
             list[OutputParam]: Combined list of unique OutputParam objects
@@ -526,9 +526,9 @@ class AutoPipelineBlocks(ModularPipelineBlocks):
     > [!WARNING] > This is an experimental feature and is likely to change in the future.
 
     Attributes:
-        block_classes: List of block classes to be used
-        block_names: List of prefixes for each block
-        block_trigger_inputs: List of input names that trigger specific blocks, with None for default
+        block_classes: list of block classes to be used
+        block_names: list of prefixes for each block
+        block_trigger_inputs: list of input names that trigger specific blocks, with None for default
     """
 
     block_classes = []
@@ -784,8 +784,8 @@ class SequentialPipelineBlocks(ModularPipelineBlocks):
     > [!WARNING] > This is an experimental feature and is likely to change in the future.
 
     Attributes:
-        block_classes: List of block classes to be used
-        block_names: List of prefixes for each block
+        block_classes: list of block classes to be used
+        block_names: list of prefixes for each block
     """
 
     block_classes = []
@@ -1139,8 +1139,8 @@ class LoopSequentialPipelineBlocks(ModularPipelineBlocks):
     > [!WARNING] > This is an experimental feature and is likely to change in the future.
 
     Attributes:
-        block_classes: List of block classes to be used
-        block_names: List of prefixes for each block
+        block_classes: list of block classes to be used
+        block_names: list of prefixes for each block
     """
 
     model_name = None
@@ -1162,7 +1162,7 @@ class LoopSequentialPipelineBlocks(ModularPipelineBlocks):
 
     @property
     def loop_inputs(self) -> list[InputParam]:
-        """List of input parameters. Must be implemented by subclasses."""
+        """list of input parameters. Must be implemented by subclasses."""
         return []
 
     @property
@@ -1175,7 +1175,7 @@ class LoopSequentialPipelineBlocks(ModularPipelineBlocks):
 
     @property
     def loop_intermediate_outputs(self) -> list[OutputParam]:
-        """List of intermediate output parameters. Must be implemented by subclasses."""
+        """list of intermediate output parameters. Must be implemented by subclasses."""
         return []
 
     # modified from SequentialPipelineBlocks to include loop_expected_components
@@ -1893,7 +1893,7 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
     def null_component_names(self) -> list[str]:
         """
         Returns:
-            - List of names for components that needs to be loaded
+            - list of names for components that needs to be loaded
         """
         return [name for name in self._component_specs.keys() if hasattr(self, name) and getattr(self, name) is None]
 
@@ -1901,7 +1901,7 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
     def component_names(self) -> list[str]:
         """
         Returns:
-            - List of names for all components
+            - list of names for all components
         """
         return list(self.components.keys())
 
@@ -1909,7 +1909,7 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
     def pretrained_component_names(self) -> list[str]:
         """
         Returns:
-            - List of names for from_pretrained components
+            - list of names for from_pretrained components
         """
         return [
             name
@@ -1921,7 +1921,7 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
     def config_component_names(self) -> list[str]:
         """
         Returns:
-            - List of names for from_config components
+            - list of names for from_config components
         """
         return [
             name
@@ -2082,7 +2082,7 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
         Load selected components from specs.
 
         Args:
-            names: List of component names to load. If None, will load all components with
+            names: list of component names to load. If None, will load all components with
                    default_creation_method == "from_pretrained". If provided as a list or string, will load only the
                    specified components.
             **kwargs: additional kwargs to be passed to `from_pretrained()`.Can be:

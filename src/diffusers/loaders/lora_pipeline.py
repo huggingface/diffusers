@@ -543,7 +543,7 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
         > [!WARNING] > This is an experimental API.
 
         Args:
-            components: (`list[str]`): List of LoRA-injectable components to fuse the LoRAs into.
+            components: (`list[str]`): list of LoRA-injectable components to fuse the LoRAs into.
             lora_scale (`float`, defaults to 1.0):
                 Controls how much to influence the outputs with the LoRA parameters.
             safe_fusing (`bool`, defaults to `False`):
@@ -580,7 +580,7 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
         > [!WARNING] > This is an experimental API.
 
         Args:
-            components (`list[str]`): List of LoRA-injectable components to unfuse LoRA from.
+            components (`list[str]`): list of LoRA-injectable components to unfuse LoRA from.
             unfuse_unet (`bool`, defaults to `True`): Whether to unfuse the UNet LoRA parameters.
             unfuse_text_encoder (`bool`, defaults to `True`):
                 Whether to unfuse the text encoder LoRA parameters. If the text encoder wasn't monkey-patched with the
@@ -1992,7 +1992,7 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
         > [!WARNING] > This is an experimental API.
 
         Args:
-            components (`list[str]`): List of LoRA-injectable components to unfuse LoRA from.
+            components (`list[str]`): list of LoRA-injectable components to unfuse LoRA from.
         """
         transformer = getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer
         if hasattr(transformer, "_transformer_norm_layers") and transformer._transformer_norm_layers:
@@ -3889,7 +3889,7 @@ class KandinskyLoraLoaderMixin(LoraBaseMixin):
         Fuses the LoRA parameters into the original parameters of the corresponding blocks.
 
         Args:
-            components: (`list[str]`): List of LoRA-injectable components to fuse the LoRAs into.
+            components: (`list[str]`): list of LoRA-injectable components to fuse the LoRAs into.
             lora_scale (`float`, defaults to 1.0):
                 Controls how much to influence the outputs with the LoRA parameters.
             safe_fusing (`bool`, defaults to `False`):
@@ -3919,7 +3919,7 @@ class KandinskyLoraLoaderMixin(LoraBaseMixin):
         Reverses the effect of [`pipe.fuse_lora()`].
 
         Args:
-            components (`list[str]`): List of LoRA-injectable components to unfuse LoRA from.
+            components (`list[str]`): list of LoRA-injectable components to unfuse LoRA from.
         """
         super().unfuse_lora(components=components, **kwargs)
 

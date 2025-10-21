@@ -1721,7 +1721,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 The device map value. Options are ["auto", "balanced", "balanced_low_0", "sequential"]
 
         Returns:
-            `list[str]`: List of modules that should not be split
+            `list[str]`: list of modules that should not be split
         """
         _no_split_modules = set()
         modules_to_check = [self]

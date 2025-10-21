@@ -16,7 +16,7 @@
 # and https://github.com/hojonathanho/diffusion
 
 from dataclasses import dataclass
-from typing import Optional, Tuple
+from typing import Optional, tuple
 
 import flax
 import jax.numpy as jnp
@@ -166,7 +166,7 @@ class FlaxDDIMScheduler(FlaxSchedulerMixin, ConfigMixin):
         return sample
 
     def set_timesteps(
-        self, state: DDIMSchedulerState, num_inference_steps: int, shape: Tuple = ()
+        self, state: DDIMSchedulerState, num_inference_steps: int, shape: tuple = ()
     ) -> DDIMSchedulerState:
         """
         Sets the discrete timesteps used for the diffusion chain. Supporting function to be run before inference.
@@ -207,7 +207,7 @@ class FlaxDDIMScheduler(FlaxSchedulerMixin, ConfigMixin):
         sample: jnp.ndarray,
         eta: float = 0.0,
         return_dict: bool = True,
-    ) -> FlaxDDIMSchedulerOutput | Tuple:
+    ) -> FlaxDDIMSchedulerOutput | tuple:
         """
         Predict the sample at the previous timestep by reversing the SDE. Core function to propagate the diffusion
         process from the learned model outputs (most often the predicted noise).

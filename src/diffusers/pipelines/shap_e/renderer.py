@@ -14,7 +14,7 @@
 
 import math
 from dataclasses import dataclass
-from typing import Optional, Tuple
+from typing import Optional, tuple
 
 import numpy as np
 import torch
@@ -632,7 +632,7 @@ class MLPNeRSTFModel(ModelMixin, ConfigMixin):
         if insert_direction_at is not None:
             input_widths[insert_direction_at] += d_posenc_dir
 
-        self.mlp = nn.ModuleList([nn.Linear(d_in, d_out) for d_in, d_out in zip(input_widths, output_widths)])
+        self.mlp = nn.Modulelist([nn.Linear(d_in, d_out) for d_in, d_out in zip(input_widths, output_widths)])
 
         if act_fn == "swish":
             # self.activation = swish
@@ -953,7 +953,7 @@ class ShapERenderer(ModelMixin, ConfigMixin):
         device,
         grid_size: int = 128,
         query_batch_size: int = 4096,
-        texture_channels: Tuple = ("R", "G", "B"),
+        texture_channels: tuple = ("R", "G", "B"),
     ):
         # 1. project the parameters from the generated latents
         projected_params = self.params_proj(latents)

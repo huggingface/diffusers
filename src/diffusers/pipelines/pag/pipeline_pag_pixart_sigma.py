@@ -16,7 +16,7 @@ import html
 import inspect
 import re
 import urllib.parse as ul
-from typing import Callable, Optional, Tuple
+from typing import Callable, Optional, tuple
 
 import torch
 from transformers import T5EncoderModel, T5Tokenizer
@@ -600,7 +600,7 @@ class PixArtSigmaPAGPipeline(DiffusionPipeline, PAGMixin):
         max_sequence_length: int = 300,
         pag_scale: float = 3.0,
         pag_adaptive_scale: float = 0.0,
-    ) -> ImagePipelineOutput | Tuple:
+    ) -> ImagePipelineOutput | tuple:
         """
         Function invoked when calling the pipeline for generation.
 

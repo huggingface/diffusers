@@ -1,4 +1,4 @@
-from typing import Any, Optional, Tuple
+from typing import Any, Optional, tuple
 
 import numpy as np
 import torch
@@ -307,13 +307,13 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
         norm_eps (`float`, *optional*, defaults to 1e-5): The epsilon to use for the normalization.
         cross_attention_dim (`int` or `tuple[int]`, *optional*, defaults to 1280):
             The dimension of the cross attention features.
-        transformer_layers_per_block (`int`, `tuple[int]`, or `tuple[Tuple]` , *optional*, defaults to 1):
+        transformer_layers_per_block (`int`, `tuple[int]`, or `tuple[tuple]` , *optional*, defaults to 1):
             The number of transformer blocks of type [`~models.attention.BasicTransformerBlock`]. Only relevant for
             [`~models.unet_2d_blocks.CrossAttnDownBlockFlat`], [`~models.unet_2d_blocks.CrossAttnUpBlockFlat`],
             [`~models.unet_2d_blocks.UNetMidBlockFlatCrossAttn`].
-       reverse_transformer_layers_per_block : (`tuple[Tuple]`, *optional*, defaults to None):
+       reverse_transformer_layers_per_block : (`tuple[tuple]`, *optional*, defaults to None):
             The number of transformer blocks of type [`~models.attention.BasicTransformerBlock`], in the upsampling
-            blocks of the U-Net. Only relevant if `transformer_layers_per_block` is of type `tuple[Tuple]` and for
+            blocks of the U-Net. Only relevant if `transformer_layers_per_block` is of type `tuple[tuple]` and for
             [`~models.unet_2d_blocks.CrossAttnDownBlockFlat`], [`~models.unet_2d_blocks.CrossAttnUpBlockFlat`],
             [`~models.unet_2d_blocks.UNetMidBlockFlatCrossAttn`].
         encoder_hid_dim (`int`, *optional*, defaults to None):
@@ -397,7 +397,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
         norm_num_groups: Optional[int] = 32,
         norm_eps: float = 1e-5,
         cross_attention_dim: int | tuple[int] = 1280,
-        transformer_layers_per_block: int | tuple[int] | tuple[Tuple] = 1,
+        transformer_layers_per_block: int | tuple[int] | tuple[tuple] = 1,
         reverse_transformer_layers_per_block: Optional[tuple[tuple[int]]] = None,
         encoder_hid_dim: Optional[int] = None,
         encoder_hid_dim_type: Optional[str] = None,
@@ -613,8 +613,8 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
         else:
             self.time_embed_act = get_activation(time_embedding_act_fn)
 
-        self.down_blocks = nn.ModuleList([])
-        self.up_blocks = nn.ModuleList([])
+        self.down_blocks = nn.Modulelist([])
+        self.up_blocks = nn.Modulelist([])
 
         if isinstance(only_cross_attention, bool):
             if mid_block_only_cross_attention is None:
@@ -1049,7 +1049,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
         down_intrablock_additional_residuals: Optional[tuple[torch.Tensor]] = None,
         encoder_attention_mask: Optional[torch.Tensor] = None,
         return_dict: bool = True,
-    ) -> UNet2DConditionOutput | Tuple:
+    ) -> UNet2DConditionOutput | tuple:
         r"""
         The [`UNetFlatConditionModel`] forward method.
 
@@ -1563,10 +1563,10 @@ class DownBlockFlat(nn.Module):
                 )
             )
 
-        self.resnets = nn.ModuleList(resnets)
+        self.resnets = nn.Modulelist(resnets)
 
         if add_downsample:
-            self.downsamplers = nn.ModuleList(
+            self.downsamplers = nn.Modulelist(
                 [
                     LinearMultiDim(
                         out_channels, use_conv=True, out_channels=out_channels, padding=downsample_padding, name="op"
@@ -1676,11 +1676,11 @@ class CrossAttnDownBlockFlat(nn.Module):
                         norm_num_groups=resnet_groups,
                     )
                 )
-        self.attentions = nn.ModuleList(attentions)
-        self.resnets = nn.ModuleList(resnets)
+        self.attentions = nn.Modulelist(attentions)
+        self.resnets = nn.Modulelist(resnets)
 
         if add_downsample:
-            self.downsamplers = nn.ModuleList(
+            self.downsamplers = nn.Modulelist(
                 [
                     LinearMultiDim(
                         out_channels, use_conv=True, out_channels=out_channels, padding=downsample_padding, name="op"
@@ -1784,10 +1784,10 @@ class UpBlockFlat(nn.Module):
                 )
             )
 
-        self.resnets = nn.ModuleList(resnets)
+        self.resnets = nn.Modulelist(resnets)
 
         if add_upsample:
-            self.upsamplers = nn.ModuleList([LinearMultiDim(out_channels, use_conv=True, out_channels=out_channels)])
+            self.upsamplers = nn.Modulelist([LinearMultiDim(out_channels, use_conv=True, out_channels=out_channels)])
         else:
             self.upsamplers = None
 
@@ -1926,11 +1926,11 @@ class CrossAttnUpBlockFlat(nn.Module):
                         norm_num_groups=resnet_groups,
                     )
                 )
-        self.attentions = nn.ModuleList(attentions)
-        self.resnets = nn.ModuleList(resnets)
+        self.attentions = nn.Modulelist(attentions)
+        self.resnets = nn.Modulelist(resnets)
 
         if add_upsample:
-            self.upsamplers = nn.ModuleList([LinearMultiDim(out_channels, use_conv=True, out_channels=out_channels)])
+            self.upsamplers = nn.Modulelist([LinearMultiDim(out_channels, use_conv=True, out_channels=out_channels)])
         else:
             self.upsamplers = None
 
@@ -2149,8 +2149,8 @@ class UNetMidBlockFlat(nn.Module):
                     )
                 )
 
-        self.attentions = nn.ModuleList(attentions)
-        self.resnets = nn.ModuleList(resnets)
+        self.attentions = nn.Modulelist(attentions)
+        self.resnets = nn.Modulelist(resnets)
 
         self.gradient_checkpointing = False
 
@@ -2268,8 +2268,8 @@ class UNetMidBlockFlatCrossAttn(nn.Module):
                 )
             )
 
-        self.attentions = nn.ModuleList(attentions)
-        self.resnets = nn.ModuleList(resnets)
+        self.attentions = nn.Modulelist(attentions)
+        self.resnets = nn.Modulelist(resnets)
 
         self.gradient_checkpointing = False
 
@@ -2395,8 +2395,8 @@ class UNetMidBlockFlatSimpleCrossAttn(nn.Module):
                 )
             )
 
-        self.attentions = nn.ModuleList(attentions)
-        self.resnets = nn.ModuleList(resnets)
+        self.attentions = nn.Modulelist(attentions)
+        self.resnets = nn.Modulelist(resnets)
 
     def forward(
         self,

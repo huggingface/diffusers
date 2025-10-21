@@ -176,7 +176,7 @@ class SchedulerMixin(PushToHubMixin):
         Returns all schedulers that are compatible with this scheduler
 
         Returns:
-            `list[SchedulerMixin]`: List of compatible schedulers
+            `list[SchedulerMixin]`: list of compatible schedulers
         """
         return self._get_compatibles()
 

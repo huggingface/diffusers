@@ -22,7 +22,7 @@ from array import array
 from collections import OrderedDict, defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, Optional, list
 from zipfile import is_zipfile
 
 import safetensors
@@ -216,7 +216,7 @@ def load_model_dict_into_meta(
     dtype: Optional[str | torch.dtype] = None,
     model_name_or_path: Optional[str] = None,
     hf_quantizer: Optional[DiffusersQuantizer] = None,
-    keep_in_fp32_modules: Optional[List] = None,
+    keep_in_fp32_modules: Optional[list] = None,
     device_map: Optional[dict[str, int | str | torch.device]] = None,
     unexpected_keys: Optional[list[str]] = None,
     offload_folder: Optional[str | os.PathLike] = None,

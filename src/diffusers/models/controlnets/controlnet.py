@@ -81,7 +81,7 @@ class ControlNetConditioningEmbedding(nn.Module):
 
         self.conv_in = nn.Conv2d(conditioning_channels, block_out_channels[0], kernel_size=3, padding=1)
 
-        self.blocks = nn.ModuleList([])
+        self.blocks = nn.Modulelist([])
 
         for i in range(len(block_out_channels) - 1):
             channel_in = block_out_channels[i]
@@ -346,8 +346,8 @@ class ControlNetModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
             conditioning_channels=conditioning_channels,
         )
 
-        self.down_blocks = nn.ModuleList([])
-        self.controlnet_down_blocks = nn.ModuleList([])
+        self.down_blocks = nn.Modulelist([])
+        self.controlnet_down_blocks = nn.Modulelist([])
 
         if isinstance(only_cross_attention, bool):
             only_cross_attention = [only_cross_attention] * len(down_block_types)

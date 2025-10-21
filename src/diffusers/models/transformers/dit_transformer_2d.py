@@ -119,7 +119,7 @@ class DiTTransformer2DModel(ModelMixin, ConfigMixin):
             embed_dim=self.inner_dim,
         )
 
-        self.transformer_blocks = nn.ModuleList(
+        self.transformer_blocks = nn.Modulelist(
             [
                 BasicTransformerBlock(
                     self.inner_dim,

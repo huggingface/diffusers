@@ -85,7 +85,7 @@ EXAMPLE_DOC_STRING = """
         ```
 """
 
-RANGE_LIST = [
+RANGE_list = [
     [1.0, 0.9, 0.85, 0.85, 0.85, 0.8],  # 0 Small Motion
     [1.0, 0.8, 0.8, 0.8, 0.79, 0.78, 0.75],  # Moderate Motion
     [1.0, 0.8, 0.7, 0.7, 0.7, 0.7, 0.7, 0.7, 0.7, 0.7, 0.6, 0.5, 0.5],  # Large Motion
@@ -103,7 +103,7 @@ def prepare_mask_coef_by_statistics(num_frames: int, cond_frame: int, motion_sca
 
     assert num_frames > cond_frame, "video_length should be greater than cond_frame"
 
-    range_list = RANGE_LIST
+    range_list = RANGE_list
 
     assert motion_scale < len(range_list), f"motion_scale type{motion_scale} not implemented"
 
@@ -767,7 +767,7 @@ class PIAPipeline(
                 with the following arguments: `callback_on_step_end(self: DiffusionPipeline, step: int, timestep: int,
                 callback_kwargs: Dict)`. `callback_kwargs` will include a list of all tensors as specified by
                 `callback_on_step_end_tensor_inputs`.
-            callback_on_step_end_tensor_inputs (`List`, *optional*):
+            callback_on_step_end_tensor_inputs (`list`, *optional*):
                 The list of tensor inputs for the `callback_on_step_end` function. The tensors specified in the list
                 will be passed as `callback_kwargs` argument. You will only be able to include variables listed in the
                 `._callback_tensor_inputs` attribute of your pipeline class.

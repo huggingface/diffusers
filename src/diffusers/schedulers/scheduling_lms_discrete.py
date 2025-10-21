@@ -14,7 +14,7 @@
 import math
 import warnings
 from dataclasses import dataclass
-from typing import Optional, Tuple
+from typing import Optional, tuple
 
 import numpy as np
 import scipy.stats
@@ -441,7 +441,7 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
         sample: torch.Tensor,
         order: int = 4,
         return_dict: bool = True,
-    ) -> LMSDiscreteSchedulerOutput | Tuple:
+    ) -> LMSDiscreteSchedulerOutput | tuple:
         """
         Predict the sample from the previous timestep by reversing the SDE. This function propagates the diffusion
         process from the learned model outputs (most often the predicted noise).

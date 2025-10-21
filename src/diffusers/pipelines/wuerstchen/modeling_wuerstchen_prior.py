@@ -47,7 +47,7 @@ class WuerstchenPrior(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin, Peft
             nn.Linear(c, c),
         )
 
-        self.blocks = nn.ModuleList()
+        self.blocks = nn.Modulelist()
         for _ in range(depth):
             self.blocks.append(ResBlock(c, dropout=dropout))
             self.blocks.append(TimestepBlock(c, c_r))

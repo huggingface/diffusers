@@ -830,7 +830,7 @@ class FluxIPAdapterMixin:
         # Single value for all layers of all IP-Adapters
         if isinstance(scale, scale_type):
             scale = [scale for _ in range(num_ip_adapters)]
-        # List of per-layer scales for a single IP-Adapter
+        # list of per-layer scales for a single IP-Adapter
         elif _is_valid_type(scale, list[scale_type]) and num_ip_adapters == 1:
             scale = [scale]
         # Invalid scale type

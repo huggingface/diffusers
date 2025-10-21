@@ -300,7 +300,7 @@ class HunyuanDiT2DModel(ModelMixin, ConfigMixin):
         )
 
         # HunyuanDiT Blocks
-        self.blocks = nn.ModuleList(
+        self.blocks = nn.Modulelist(
             [
                 HunyuanDiTBlock(
                     dim=self.inner_dim,

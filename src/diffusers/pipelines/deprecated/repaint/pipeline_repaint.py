@@ -13,7 +13,7 @@
 # limitations under the License.
 
 
-from typing import List, Optional, Tuple
+from typing import Optional, list, tuple
 
 import numpy as np
 import PIL.Image
@@ -30,7 +30,7 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.preprocess
-def _preprocess_image(image: List | PIL.Image.Image | torch.Tensor):
+def _preprocess_image(image: list | PIL.Image.Image | torch.Tensor):
     deprecation_message = "The preprocess method is deprecated and will be removed in diffusers 1.0.0. Please use VaeImageProcessor.preprocess(...) instead"
     deprecate("preprocess", "1.0.0", deprecation_message, standard_warn=False)
     if isinstance(image, torch.Tensor):
@@ -53,7 +53,7 @@ def _preprocess_image(image: List | PIL.Image.Image | torch.Tensor):
     return image
 
 
-def _preprocess_mask(mask: List | PIL.Image.Image | torch.Tensor):
+def _preprocess_mask(mask: list | PIL.Image.Image | torch.Tensor):
     if isinstance(mask, torch.Tensor):
         return mask
     elif isinstance(mask, PIL.Image.Image):
@@ -107,7 +107,7 @@ class RePaintPipeline(DiffusionPipeline):
         generator: Optional[torch.Generator | list[torch.Generator]] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
-    ) -> ImagePipelineOutput | Tuple:
+    ) -> ImagePipelineOutput | tuple:
         r"""
         The call function to the pipeline for generation.
 

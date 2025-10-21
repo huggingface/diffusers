@@ -429,7 +429,7 @@ class EasyAnimateTransformer3DModel(ModelMixin, ConfigMixin):
                 )
 
         # 4. Transformer blocks
-        self.transformer_blocks = nn.ModuleList(
+        self.transformer_blocks = nn.Modulelist(
             [
                 EasyAnimateTransformerBlock(
                     dim=inner_dim,
