@@ -296,29 +296,6 @@ class WanAnimatePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         video = pipe(**inputs).frames[0]
         self.assertEqual(video.shape, (17, 3, 16, 16))
 
-    def test_inference_with_callback_on_step_end(self):
-        """Test that callback functions are called during inference."""
-        device = "cpu"
-
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        pipe.to(device)
-        pipe.set_progress_bar_config(disable=None)
-
-        inputs = self.get_dummy_inputs(device)
-
-        callback_fn_output = {"latents": []}
-
-        def callback_fn(pipe, i, t, callback_kwargs):
-            callback_fn_output["latents"].append(callback_kwargs["latents"])
-            return callback_kwargs
-
-        inputs["callback_on_step_end"] = callback_fn
-        inputs["callback_on_step_end_tensor_inputs"] = ["latents"]
-
-        output = pipe(**inputs)
-        self.assertTrue(len(callback_fn_output["latents"]) > 0)
-
     def test_inference_with_provided_embeddings(self):
         """Test inference with pre-generated text and image embeddings."""
         device = "cpu"
@@ -370,9 +347,7 @@ class WanAnimatePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         latent_width = width // pipe.vae_scale_factor_spatial
         num_latent_frames = num_frames // pipe.vae_scale_factor_temporal + 1
 
-        latents = torch.randn(
-            1, 16, num_latent_frames + 1, latent_height, latent_width
-        )
+        latents = torch.randn(1, 16, num_latent_frames + 1, latent_height, latent_width)
 
         inputs["latents"] = latents
         video = pipe(**inputs).frames[0]

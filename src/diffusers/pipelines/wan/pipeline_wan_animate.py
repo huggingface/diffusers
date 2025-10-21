@@ -177,8 +177,8 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
 
     2. **Replacement mode**: The model replaces a character in a background video with the provided character image,
        using the pose and face videos for motion control. This mode requires additional `background_video` and
-       `mask_video` inputs. The mask video should have black regions where the original content should be preserved
-       and white regions where the new character should be generated.
+       `mask_video` inputs. The mask video should have black regions where the original content should be preserved and
+       white regions where the new character should be generated.
 
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods
     implemented for all pipelines (downloading, saving, running on a particular device, etc.).
