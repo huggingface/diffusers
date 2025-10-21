@@ -1,6 +1,7 @@
 import unittest
 
 import numpy as np
+import pytest
 import torch
 from transformers import AutoTokenizer
 from transformers.models.t5gemma.configuration_t5gemma import T5GemmaConfig, T5GemmaModuleConfig
