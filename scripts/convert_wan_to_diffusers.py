@@ -203,6 +203,7 @@ def convert_equal_conv2d_weight(key: str, state_dict: Dict[str, Any]) -> None:
     state_dict[key] = state_dict[key] * scale
 
 
+# TODO: Verify this and simplify if possible.
 def convert_animate_motion_encoder_weights(key: str, state_dict: Dict[str, Any]) -> None:
     """
     Convert all motion encoder weights for Animate model.
@@ -219,6 +220,82 @@ def convert_animate_motion_encoder_weights(key: str, state_dict: Dict[str, Any])
     2. Rename sequential indices to named components (e.g., 0 -> conv2d, 1 -> bias_leaky_relu)
     3. Scale EqualLinear and EqualConv2d weights
     """
+    # Skip if not a weight, bias, or kernel
+    if ".weight" not in key and ".bias" not in key and ".kernel" not in key:
+        return
+
+    # Handle Blur kernel buffers from original implementation.
+    # After renaming, these appear under: condition_embedder.motion_embedder.convs.*.conv{1,2}.0.kernel
+    # Diffusers constructs blur kernels procedurally (ConvLayer.blur_conv) so we must drop these keys
+    if ".kernel" in key and "condition_embedder.motion_embedder.convs" in key:
+        # Remove unexpected blur kernel buffers to avoid strict load errors
+        state_dict.pop(key, None)
+        return
+
+    # Rename Sequential indices to named components in ConvLayer and ResBlock
+    # This must happen BEFORE weight scaling because we need to rename the keys first
+    # Original: convs.X.Y.weight/bias or convs.X.conv1/conv2/skip.Y.weight/bias
+    # Target: convs.X.conv2d.weight or convs.X.conv1/conv2/skip.conv2d.weight or .bias_leaky_relu
+    if ".convs." in key and (".weight" in key or ".bias" in key):
+        parts = key.split(".")
+
+        # Find the sequential index (digit) after convs or after conv1/conv2/skip
+        # Examples:
+        # - convs.0.0.weight -> convs.0.conv2d.weight (ConvLayer, no blur)
+        # - convs.0.1.weight -> convs.0.conv2d.weight (ConvLayer, with blur at index 0)
+        # - convs.0.1.bias -> convs.0.bias_leaky_relu (FusedLeakyReLU)
+        # - convs.1.conv1.1.weight -> convs.1.conv1.conv2d.weight (ResBlock ConvLayer)
+        # - convs.1.conv1.2.bias -> convs.1.conv1.bias_leaky_relu (ResBlock FusedLeakyReLU)
+        # - convs.8.weight -> unchanged (final Conv2d, not in Sequential)
+
+        # Check if we have a digit as second-to-last part before .weight or .bias
+        # But we need to distinguish between Sequential indices (convs.X.Y.weight)
+        # and ModuleList indices (convs.X.weight)
+        # We only rename if there are at least 3 parts after finding 'convs'
+        convs_idx = parts.index("convs") if "convs" in parts else -1
+        if (
+            convs_idx >= 0 and len(parts) - convs_idx > 3
+        ):  # e.g., ['convs', '0', '0', 'weight'] has 4 parts after convs
+            if len(parts) >= 2 and parts[-2].isdigit():
+                if key.endswith(".weight"):
+                    # Replace digit index with 'conv2d' for EqualConv2d weight parameters
+                    parts[-2] = "conv2d"
+                    new_key = ".".join(parts)
+                    state_dict[new_key] = state_dict.pop(key)
+                    # Update key for subsequent processing
+                    key = new_key
+                elif key.endswith(".bias"):
+                    # Replace digit index + .bias with 'bias_leaky_relu' for FusedLeakyReLU bias
+                    new_key = ".".join(parts[:-2]) + ".bias_leaky_relu"
+                    state_dict[new_key] = state_dict.pop(key)
+                    # Bias doesn't need scaling, we're done
+                    return
+
+    # Skip blur_conv weights that are already initialized in diffusers
+    if "blur_conv.weight" in key:
+        return
+
+    # Skip bias_leaky_relu as it doesn't need any transformation
+    if "bias_leaky_relu" in key:
+        return
+
+    # Scale EqualLinear weights in linear layers
+    if ".linears." in key and ".weight" in key:
+        convert_equal_linear_weight(key, state_dict)
+        return
+
+    # Scale EqualConv2d weights in convolution layers
+    if ".convs." in key and ".weight" in key:
+        # Two cases:
+        # 1. ConvLayer with EqualConv2d: convs.<i>.conv2d.weight (after renaming)
+        # 2. Direct EqualConv2d (last conv): convs.<i>.weight (where <i> is a single digit)
+        if ".conv2d.weight" in key:
+            convert_equal_conv2d_weight(key, state_dict)
+            return
+        elif key.split(".")[-2].isdigit() and key.endswith(".weight"):
+            # This handles keys like "convs.7.weight" where the second-to-last part is a digit
+            convert_equal_conv2d_weight(key, state_dict)
+            return
 
 
 TRANSFORMER_SPECIAL_KEYS_REMAP = {}
@@ -1069,6 +1146,7 @@ def convert_vae_22():
     return vae
 
 
+# TODO: Verify this and simplify if possible.
 def convert_openclip_xlm_roberta_vit_to_clip_vision_model():
     """
     Convert OpenCLIP XLM-RoBERTa-CLIP vision encoder to HuggingFace CLIPVisionModel format.
