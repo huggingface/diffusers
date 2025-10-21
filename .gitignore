@@ -179,25 +179,3 @@ tags
 
 # wandb
 wandb
-convert_checkpoints.py
-dcae_mirage_generated_image_.png
-dcae_prx_generated_image.png
-example_usage.py
-META_TENSOR_FIX.md
-mirage_generated_image__.png
-mirage_generated_image_.png
-prx_generated_image.png
-plan.md
-test_existing_checkpoints_with_timestep_change.py
-test_timestep_embedding.py
-test_updated_checkpoint.png
-test_updated_checkpoint.py
-testhf.ipynb
-update_checkpoint_parameters.py
-verify_checkpoint_parameters.py
-for_claude/mirage_layers.py
-for_claude/mirage.py
-for_claude/text_tower.py
-for_claude/vae_tower.py
-prx_/prx_layers.py
-prx_/prx.py
