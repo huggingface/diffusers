@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import inspect
-from typing import Callable, Dict, Optional, Union
+from typing import Callable, Dict, Optional
 
 import numpy as np
 import torch
@@ -209,7 +209,7 @@ class HunyuanDiTPAGPipeline(DiffusionPipeline, PAGMixin):
         requires_safety_checker: bool = True,
         text_encoder_2: Optional[T5EncoderModel] = None,
         tokenizer_2: Optional[MT5Tokenizer] = None,
-        pag_applied_layers: Union[str, list[str]] = "blocks.1",  # "blocks.16.attn1", "blocks.16", "16", 16
+        pag_applied_layers: str | list[str] = "blocks.1",  # "blocks.16.attn1", "blocks.16", "16", 16
     ):
         super().__init__()
 
@@ -580,15 +580,15 @@ class HunyuanDiTPAGPipeline(DiffusionPipeline, PAGMixin):
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        prompt: Union[str, list[str]] = None,
+        prompt: str | list[str] = None,
         height: Optional[int] = None,
         width: Optional[int] = None,
         num_inference_steps: Optional[int] = 50,
         guidance_scale: Optional[float] = 5.0,
-        negative_prompt: Optional[Union[str, list[str]]] = None,
+        negative_prompt: Optional[str | list[str]] = None,
         num_images_per_prompt: Optional[int] = 1,
         eta: Optional[float] = 0.0,
-        generator: Optional[Union[torch.Generator, list[torch.Generator]]] = None,
+        generator: Optional[torch.Generator | list[torch.Generator]] = None,
         latents: Optional[torch.Tensor] = None,
         prompt_embeds: Optional[torch.Tensor] = None,
         prompt_embeds_2: Optional[torch.Tensor] = None,
@@ -601,7 +601,7 @@ class HunyuanDiTPAGPipeline(DiffusionPipeline, PAGMixin):
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
         callback_on_step_end: Optional[
-            Union[Callable[[int, int, Dict], None], PipelineCallback, MultiPipelineCallbacks]
+            Callable[[int, int, Dict], None] | PipelineCallback | MultiPipelineCallbacks
         ] = None,
         callback_on_step_end_tensor_inputs: list[str] = ["latents"],
         guidance_rescale: float = 0.0,

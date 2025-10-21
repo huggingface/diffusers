@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Callable, Dict, Optional, Union
+from typing import Callable, Dict, Optional
 
 import PIL.Image
 import torch
@@ -183,16 +183,16 @@ class KandinskyV22Img2ImgPipeline(DiffusionPipeline):
     @torch.no_grad()
     def __call__(
         self,
-        image_embeds: Union[torch.Tensor, list[torch.Tensor]],
-        image: Union[torch.Tensor, PIL.Image.Image, list[torch.Tensor], list[PIL.Image.Image]],
-        negative_image_embeds: Union[torch.Tensor, list[torch.Tensor]],
+        image_embeds: torch.Tensor | list[torch.Tensor],
+        image: torch.Tensor | PIL.Image.Image | list[torch.Tensor] | list[PIL.Image.Image],
+        negative_image_embeds: torch.Tensor | list[torch.Tensor],
         height: int = 512,
         width: int = 512,
         num_inference_steps: int = 100,
         guidance_scale: float = 4.0,
         strength: float = 0.3,
         num_images_per_prompt: int = 1,
-        generator: Optional[Union[torch.Generator, list[torch.Generator]]] = None,
+        generator: Optional[torch.Generator | list[torch.Generator]] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
         callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,

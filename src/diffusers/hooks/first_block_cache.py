@@ -13,7 +13,6 @@
 # limitations under the License.
 
 from dataclasses import dataclass
-from typing import Union
 
 import torch
 
@@ -53,9 +52,9 @@ class FBCSharedBlockState(BaseState):
     def __init__(self) -> None:
         super().__init__()
 
-        self.head_block_output: Union[torch.Tensor, tuple[torch.Tensor, ...]] = None
+        self.head_block_output: torch.Tensor | tuple[torch.Tensor, ...] = None
         self.head_block_residual: torch.Tensor = None
-        self.tail_block_residuals: Union[torch.Tensor, tuple[torch.Tensor, ...]] = None
+        self.tail_block_residuals: torch.Tensor | tuple[torch.Tensor, ...] = None
         self.should_compute: bool = True
 
     def reset(self):

@@ -13,7 +13,6 @@
 # limitations under the License.
 
 import re
-from typing import Union
 
 import torch
 import torch.nn as nn
@@ -151,7 +150,7 @@ class PAGMixin:
 
     def set_pag_applied_layers(
         self,
-        pag_applied_layers: Union[str, list[str]],
+        pag_applied_layers: str | list[str],
         pag_attn_processors: tuple[AttentionProcessor, AttentionProcessor] = (
             PAGCFGIdentitySelfAttnProcessor2_0(),
             PAGIdentitySelfAttnProcessor2_0(),

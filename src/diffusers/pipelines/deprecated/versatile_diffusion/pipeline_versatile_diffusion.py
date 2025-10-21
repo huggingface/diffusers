@@ -1,5 +1,5 @@
 import inspect
-from typing import Callable, Optional, Union
+from typing import Callable, Optional
 
 import PIL.Image
 import torch
@@ -81,15 +81,15 @@ class VersatileDiffusionPipeline(DiffusionPipeline):
     @torch.no_grad()
     def image_variation(
         self,
-        image: Union[torch.Tensor, PIL.Image.Image],
+        image: torch.Tensor | PIL.Image.Image,
         height: Optional[int] = None,
         width: Optional[int] = None,
         num_inference_steps: int = 50,
         guidance_scale: float = 7.5,
-        negative_prompt: Optional[Union[str, list[str]]] = None,
+        negative_prompt: Optional[str | list[str]] = None,
         num_images_per_prompt: Optional[int] = 1,
         eta: float = 0.0,
-        generator: Optional[Union[torch.Generator, list[torch.Generator]]] = None,
+        generator: Optional[torch.Generator | list[torch.Generator]] = None,
         latents: Optional[torch.Tensor] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
@@ -193,15 +193,15 @@ class VersatileDiffusionPipeline(DiffusionPipeline):
     @torch.no_grad()
     def text_to_image(
         self,
-        prompt: Union[str, list[str]],
+        prompt: str | list[str],
         height: Optional[int] = None,
         width: Optional[int] = None,
         num_inference_steps: int = 50,
         guidance_scale: float = 7.5,
-        negative_prompt: Optional[Union[str, list[str]]] = None,
+        negative_prompt: Optional[str | list[str]] = None,
         num_images_per_prompt: Optional[int] = 1,
         eta: float = 0.0,
-        generator: Optional[Union[torch.Generator, list[torch.Generator]]] = None,
+        generator: Optional[torch.Generator | list[torch.Generator]] = None,
         latents: Optional[torch.Tensor] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
@@ -301,8 +301,8 @@ class VersatileDiffusionPipeline(DiffusionPipeline):
     @torch.no_grad()
     def dual_guided(
         self,
-        prompt: Union[PIL.Image.Image, list[PIL.Image.Image]],
-        image: Union[str, list[str]],
+        prompt: PIL.Image.Image | list[PIL.Image.Image],
+        image: str | list[str],
         text_to_image_strength: float = 0.5,
         height: Optional[int] = None,
         width: Optional[int] = None,
@@ -310,7 +310,7 @@ class VersatileDiffusionPipeline(DiffusionPipeline):
         guidance_scale: float = 7.5,
         num_images_per_prompt: Optional[int] = 1,
         eta: float = 0.0,
-        generator: Optional[Union[torch.Generator, list[torch.Generator]]] = None,
+        generator: Optional[torch.Generator | list[torch.Generator]] = None,
         latents: Optional[torch.Tensor] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,

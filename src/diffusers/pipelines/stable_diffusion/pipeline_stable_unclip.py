@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import inspect
-from typing import Any, Callable, Optional, Tuple, Union
+from typing import Any, Callable, Optional, Tuple
 
 import torch
 from transformers import CLIPTextModel, CLIPTextModelWithProjection, CLIPTokenizer
@@ -173,7 +173,7 @@ class StableUnCLIPPipeline(
         device,
         num_images_per_prompt,
         do_classifier_free_guidance,
-        text_model_output: Optional[Union[CLIPTextModelOutput, Tuple]] = None,
+        text_model_output: Optional[CLIPTextModelOutput | Tuple] = None,
         text_attention_mask: Optional[torch.Tensor] = None,
     ):
         if text_model_output is None:
@@ -647,12 +647,12 @@ class StableUnCLIPPipeline(
     def __call__(
         self,
         # regular denoising process args
-        prompt: Optional[Union[str, list[str]]] = None,
+        prompt: Optional[str | list[str]] = None,
         height: Optional[int] = None,
         width: Optional[int] = None,
         num_inference_steps: int = 20,
         guidance_scale: float = 10.0,
-        negative_prompt: Optional[Union[str, list[str]]] = None,
+        negative_prompt: Optional[str | list[str]] = None,
         num_images_per_prompt: Optional[int] = 1,
         eta: float = 0.0,
         generator: Optional[torch.Generator] = None,

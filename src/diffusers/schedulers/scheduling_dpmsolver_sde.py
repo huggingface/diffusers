@@ -14,7 +14,7 @@
 
 import math
 from dataclasses import dataclass
-from typing import Optional, Tuple, Union
+from typing import Optional, Tuple
 
 import numpy as np
 import torch
@@ -209,7 +209,7 @@ class DPMSolverSDEScheduler(SchedulerMixin, ConfigMixin):
         beta_start: float = 0.00085,  # sensible defaults
         beta_end: float = 0.012,
         beta_schedule: str = "linear",
-        trained_betas: Optional[Union[np.ndarray, list[float]]] = None,
+        trained_betas: Optional[np.ndarray | list[float]] = None,
         prediction_type: str = "epsilon",
         use_karras_sigmas: Optional[bool] = False,
         use_exponential_sigmas: Optional[bool] = False,
@@ -309,7 +309,7 @@ class DPMSolverSDEScheduler(SchedulerMixin, ConfigMixin):
     def scale_model_input(
         self,
         sample: torch.Tensor,
-        timestep: Union[float, torch.Tensor],
+        timestep: float | torch.Tensor,
     ) -> torch.Tensor:
         """
         Ensures interchangeability with schedulers that need to scale the denoising model input depending on the
@@ -336,7 +336,7 @@ class DPMSolverSDEScheduler(SchedulerMixin, ConfigMixin):
     def set_timesteps(
         self,
         num_inference_steps: int,
-        device: Union[str, torch.device] = None,
+        device: str | torch.device = None,
         num_train_timesteps: Optional[int] = None,
     ):
         """
@@ -525,12 +525,12 @@ class DPMSolverSDEScheduler(SchedulerMixin, ConfigMixin):
 
     def step(
         self,
-        model_output: Union[torch.Tensor, np.ndarray],
-        timestep: Union[float, torch.Tensor],
-        sample: Union[torch.Tensor, np.ndarray],
+        model_output: torch.Tensor | np.ndarray,
+        timestep: float | torch.Tensor,
+        sample: torch.Tensor | np.ndarray,
         return_dict: bool = True,
         s_noise: float = 1.0,
-    ) -> Union[DPMSolverSDESchedulerOutput, Tuple]:
+    ) -> DPMSolverSDESchedulerOutput | Tuple:
         """
         Predict the sample from the previous timestep by reversing the SDE. This function propagates the diffusion
         process from the learned model outputs (most often the predicted noise).

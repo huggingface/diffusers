@@ -24,7 +24,7 @@ from collections import OrderedDict, defaultdict
 from functools import lru_cache as cache
 from itertools import chain
 from types import ModuleType
-from typing import Any, Union
+from typing import Any
 
 from huggingface_hub.utils import is_jinja_available  # noqa: F401
 from packaging.version import Version, parse
@@ -653,7 +653,7 @@ class DummyObject(type):
 
 
 # This function was copied from: https://github.com/huggingface/accelerate/blob/874c4967d94badd24f893064cc3bef45f57cadf7/src/accelerate/utils/versions.py#L319
-def compare_versions(library_or_version: Union[str, Version], operation: str, requirement_version: str):
+def compare_versions(library_or_version: str | Version, operation: str, requirement_version: str):
     """
     Compares a library version to some requirement using a given operation.
 

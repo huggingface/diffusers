@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import html
-from typing import Optional, Union
+from typing import Optional
 
 import regex as re
 import torch
@@ -110,7 +110,7 @@ class WanTextEncoderStep(ModularPipelineBlocks):
     @staticmethod
     def _get_t5_prompt_embeds(
         components,
-        prompt: Union[str, list[str]],
+        prompt: str | list[str],
         max_sequence_length: int,
         device: torch.device,
     ):

@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from typing import Optional, Union
+from typing import Optional
 
 import torch
 import torch.nn as nn
@@ -114,7 +114,7 @@ class AsymmetricAutoencoderKL(ModelMixin, ConfigMixin):
         self.register_to_config(force_upcast=False)
 
     @apply_forward_hook
-    def encode(self, x: torch.Tensor, return_dict: bool = True) -> Union[AutoencoderKLOutput, tuple[torch.Tensor]]:
+    def encode(self, x: torch.Tensor, return_dict: bool = True) -> AutoencoderKLOutput | tuple[torch.Tensor]:
         h = self.encoder(x)
         moments = self.quant_conv(h)
         posterior = DiagonalGaussianDistribution(moments)
@@ -130,7 +130,7 @@ class AsymmetricAutoencoderKL(ModelMixin, ConfigMixin):
         image: Optional[torch.Tensor] = None,
         mask: Optional[torch.Tensor] = None,
         return_dict: bool = True,
-    ) -> Union[DecoderOutput, tuple[torch.Tensor]]:
+    ) -> DecoderOutput | tuple[torch.Tensor]:
         z = self.post_quant_conv(z)
         dec = self.decoder(z, image, mask)
 
@@ -147,7 +147,7 @@ class AsymmetricAutoencoderKL(ModelMixin, ConfigMixin):
         image: Optional[torch.Tensor] = None,
         mask: Optional[torch.Tensor] = None,
         return_dict: bool = True,
-    ) -> Union[DecoderOutput, tuple[torch.Tensor]]:
+    ) -> DecoderOutput | tuple[torch.Tensor]:
         decoded = self._decode(z, image, mask).sample
 
         if not return_dict:
@@ -162,7 +162,7 @@ class AsymmetricAutoencoderKL(ModelMixin, ConfigMixin):
         sample_posterior: bool = False,
         return_dict: bool = True,
         generator: Optional[torch.Generator] = None,
-    ) -> Union[DecoderOutput, tuple[torch.Tensor]]:
+    ) -> DecoderOutput | tuple[torch.Tensor]:
         r"""
         Args:
             sample (`torch.Tensor`): Input sample.

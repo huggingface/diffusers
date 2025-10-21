@@ -13,7 +13,7 @@
 # limitations under the License.
 
 from dataclasses import dataclass
-from typing import Optional, Tuple, Union
+from typing import Optional, Tuple
 
 import numpy as np
 import torch
@@ -126,7 +126,7 @@ class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
         """
         self._begin_index = begin_index
 
-    def scale_model_input(self, sample: torch.Tensor, timestep: Union[float, torch.Tensor]) -> torch.Tensor:
+    def scale_model_input(self, sample: torch.Tensor, timestep: float | torch.Tensor) -> torch.Tensor:
         """
         Scales the consistency model input by `(sigma**2 + sigma_data**2) ** 0.5`.
 
@@ -151,7 +151,7 @@ class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
         self.is_scale_input_called = True
         return sample
 
-    def sigma_to_t(self, sigmas: Union[float, np.ndarray]):
+    def sigma_to_t(self, sigmas: float | np.ndarray):
         """
         Gets scaled timesteps from the Karras sigmas for input to the consistency model.
 
@@ -173,7 +173,7 @@ class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
     def set_timesteps(
         self,
         num_inference_steps: Optional[int] = None,
-        device: Union[str, torch.device] = None,
+        device: str | torch.device = None,
         timesteps: Optional[list[int]] = None,
     ):
         """
@@ -313,11 +313,11 @@ class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
     def step(
         self,
         model_output: torch.Tensor,
-        timestep: Union[float, torch.Tensor],
+        timestep: float | torch.Tensor,
         sample: torch.Tensor,
         generator: Optional[torch.Generator] = None,
         return_dict: bool = True,
-    ) -> Union[CMStochasticIterativeSchedulerOutput, Tuple]:
+    ) -> CMStochasticIterativeSchedulerOutput | Tuple:
         """
         Predict the sample from the previous timestep by reversing the SDE. This function propagates the diffusion
         process from the learned model outputs (most often the predicted noise).

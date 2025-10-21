@@ -14,7 +14,7 @@
 # limitations under the License.
 
 import math
-from typing import Any, Callable, Optional, Tuple, Union
+from typing import Any, Callable, Optional, Tuple
 
 import numpy as np
 import torch
@@ -136,7 +136,7 @@ class SpectrogramDiffusionPipeline(DiffusionPipeline):
         output_type: str = "np",
         callback: Optional[Callable[[int, int, torch.Tensor], None]] = None,
         callback_steps: int = 1,
-    ) -> Union[AudioPipelineOutput, Tuple]:
+    ) -> AudioPipelineOutput | Tuple:
         if (callback_steps is None) or (
             callback_steps is not None and (not isinstance(callback_steps, int) or callback_steps <= 0)
         ):

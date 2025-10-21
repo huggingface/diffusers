@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Any, Optional, Union
+from typing import Any, Optional
 
 import torch
 from torch import nn
@@ -700,7 +700,7 @@ class PhotonTransformer2DModel(ModelMixin, ConfigMixin, AttentionMixin):
         attention_mask: Optional[torch.Tensor] = None,
         attention_kwargs: Optional[dict[str, Any]] = None,
         return_dict: bool = True,
-    ) -> Union[tuple[torch.Tensor, ...], Transformer2DModelOutput]:
+    ) -> tuple[torch.Tensor, ...] | Transformer2DModelOutput:
         r"""
         Forward pass of the PhotonTransformer2DModel.
 

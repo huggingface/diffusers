@@ -14,7 +14,7 @@
 
 import math
 from dataclasses import dataclass
-from typing import Optional, Tuple, Union
+from typing import Optional, Tuple
 
 import numpy as np
 import torch
@@ -160,7 +160,7 @@ class UnCLIPScheduler(SchedulerMixin, ConfigMixin):
         """
         return sample
 
-    def set_timesteps(self, num_inference_steps: int, device: Union[str, torch.device] = None):
+    def set_timesteps(self, num_inference_steps: int, device: str | torch.device = None):
         """
         Sets the discrete timesteps used for the diffusion chain. Supporting function to be run before inference.
 
@@ -221,7 +221,7 @@ class UnCLIPScheduler(SchedulerMixin, ConfigMixin):
         prev_timestep: Optional[int] = None,
         generator=None,
         return_dict: bool = True,
-    ) -> Union[UnCLIPSchedulerOutput, Tuple]:
+    ) -> UnCLIPSchedulerOutput | Tuple:
         """
         Predict the sample at the previous timestep by reversing the SDE. Core function to propagate the diffusion
         process from the learned model outputs (most often the predicted noise).

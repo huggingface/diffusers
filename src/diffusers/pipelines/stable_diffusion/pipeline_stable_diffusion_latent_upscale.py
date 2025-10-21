@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import warnings
-from typing import Callable, Optional, Union
+from typing import Callable, Optional
 
 import numpy as np
 import PIL.Image
@@ -396,12 +396,12 @@ class StableDiffusionLatentUpscalePipeline(DiffusionPipeline, StableDiffusionMix
     @torch.no_grad()
     def __call__(
         self,
-        prompt: Union[str, list[str]] = None,
+        prompt: str | list[str] = None,
         image: PipelineImageInput = None,
         num_inference_steps: int = 75,
         guidance_scale: float = 9.0,
-        negative_prompt: Optional[Union[str, list[str]]] = None,
-        generator: Optional[Union[torch.Generator, list[torch.Generator]]] = None,
+        negative_prompt: Optional[str | list[str]] = None,
+        generator: Optional[torch.Generator | list[torch.Generator]] = None,
         latents: Optional[torch.Tensor] = None,
         prompt_embeds: Optional[torch.Tensor] = None,
         negative_prompt_embeds: Optional[torch.Tensor] = None,

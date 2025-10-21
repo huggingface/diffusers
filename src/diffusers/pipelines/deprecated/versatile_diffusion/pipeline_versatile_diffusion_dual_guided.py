@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import inspect
-from typing import Callable, Optional, Tuple, Union
+from typing import Callable, Optional, Tuple
 
 import numpy as np
 import PIL.Image
@@ -385,8 +385,8 @@ class VersatileDiffusionDualGuidedPipeline(DiffusionPipeline):
     @torch.no_grad()
     def __call__(
         self,
-        prompt: Union[PIL.Image.Image, list[PIL.Image.Image]],
-        image: Union[str, list[str]],
+        prompt: PIL.Image.Image | list[PIL.Image.Image],
+        image: str | list[str],
         text_to_image_strength: float = 0.5,
         height: Optional[int] = None,
         width: Optional[int] = None,
@@ -394,7 +394,7 @@ class VersatileDiffusionDualGuidedPipeline(DiffusionPipeline):
         guidance_scale: float = 7.5,
         num_images_per_prompt: Optional[int] = 1,
         eta: float = 0.0,
-        generator: Optional[Union[torch.Generator, list[torch.Generator]]] = None,
+        generator: Optional[torch.Generator | list[torch.Generator]] = None,
         latents: Optional[torch.Tensor] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,

@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Any, Callable, Optional, Union
+from typing import Any, Callable, Optional
 
 import torch
 import torch.nn as nn
@@ -61,7 +61,7 @@ class AttentionMixin:
 
         return processors
 
-    def set_attn_processor(self, processor: Union[AttentionProcessor, dict[str, AttentionProcessor]]):
+    def set_attn_processor(self, processor: AttentionProcessor | dict[str, AttentionProcessor]):
         r"""
         Sets the attention processor to use to compute attention.
 

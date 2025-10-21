@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import math
-from typing import Any, Optional, Union
+from typing import Any, Optional
 
 import torch
 import torch.nn as nn
@@ -463,7 +463,7 @@ class Lumina2Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromO
         encoder_attention_mask: torch.Tensor,
         attention_kwargs: Optional[dict[str, Any]] = None,
         return_dict: bool = True,
-    ) -> Union[torch.Tensor, Transformer2DModelOutput]:
+    ) -> torch.Tensor | Transformer2DModelOutput:
         if attention_kwargs is not None:
             attention_kwargs = attention_kwargs.copy()
             lora_scale = attention_kwargs.pop("scale", 1.0)

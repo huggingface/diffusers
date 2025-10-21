@@ -16,7 +16,7 @@ import html
 import inspect
 import re
 import urllib.parse as ul
-from typing import Callable, Dict, Optional, Union
+from typing import Callable, Dict, Optional
 
 import ftfy
 import torch
@@ -251,8 +251,8 @@ class PhotonPipeline(
         transformer: PhotonTransformer2DModel,
         scheduler: FlowMatchEulerDiscreteScheduler,
         text_encoder: T5GemmaEncoder,
-        tokenizer: Union[T5TokenizerFast, GemmaTokenizerFast, AutoTokenizer],
-        vae: Optional[Union[AutoencoderKL, AutoencoderDC]] = None,
+        tokenizer: T5TokenizerFast | GemmaTokenizerFast | AutoTokenizer,
+        vae: Optional[AutoencoderKL | AutoencoderDC] = None,
         default_sample_size: Optional[int] = DEFAULT_RESOLUTION,
     ):
         super().__init__()
@@ -337,7 +337,7 @@ class PhotonPipeline(
 
     def encode_prompt(
         self,
-        prompt: Union[str, list[str]],
+        prompt: str | list[str],
         device: Optional[torch.device] = None,
         do_classifier_free_guidance: bool = True,
         negative_prompt: str = "",
@@ -440,7 +440,7 @@ class PhotonPipeline(
 
     def check_inputs(
         self,
-        prompt: Union[str, list[str]],
+        prompt: str | list[str],
         height: int,
         width: int,
         guidance_scale: float,
@@ -494,7 +494,7 @@ class PhotonPipeline(
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        prompt: Union[str, list[str]] = None,
+        prompt: str | list[str] = None,
         negative_prompt: str = "",
         height: Optional[int] = None,
         width: Optional[int] = None,
@@ -502,7 +502,7 @@ class PhotonPipeline(
         timesteps: list[int] = None,
         guidance_scale: float = 4.0,
         num_images_per_prompt: Optional[int] = 1,
-        generator: Optional[Union[torch.Generator, list[torch.Generator]]] = None,
+        generator: Optional[torch.Generator | list[torch.Generator]] = None,
         latents: Optional[torch.Tensor] = None,
         prompt_embeds: Optional[torch.FloatTensor] = None,
         negative_prompt_embeds: Optional[torch.FloatTensor] = None,

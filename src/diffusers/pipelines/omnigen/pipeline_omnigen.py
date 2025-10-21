@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import inspect
-from typing import Callable, Dict, Optional, Union
+from typing import Callable, Dict, Optional
 
 import numpy as np
 import torch
@@ -60,7 +60,7 @@ EXAMPLE_DOC_STRING = """
 def retrieve_timesteps(
     scheduler,
     num_inference_steps: Optional[int] = None,
-    device: Optional[Union[str, torch.device]] = None,
+    device: Optional[str | torch.device] = None,
     timesteps: Optional[list[int]] = None,
     sigmas: Optional[list[float]] = None,
     **kwargs,
@@ -331,8 +331,8 @@ class OmniGenPipeline(
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        prompt: Union[str, list[str]],
-        input_images: Union[PipelineImageInput, list[PipelineImageInput]] = None,
+        prompt: str | list[str],
+        input_images: PipelineImageInput | list[PipelineImageInput] = None,
         height: Optional[int] = None,
         width: Optional[int] = None,
         num_inference_steps: int = 50,
@@ -342,7 +342,7 @@ class OmniGenPipeline(
         img_guidance_scale: float = 1.6,
         use_input_image_size_as_output: bool = False,
         num_images_per_prompt: Optional[int] = 1,
-        generator: Optional[Union[torch.Generator, list[torch.Generator]]] = None,
+        generator: Optional[torch.Generator | list[torch.Generator]] = None,
         latents: Optional[torch.Tensor] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,

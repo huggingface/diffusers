@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Callable, Optional, Union
+from typing import Callable, Optional
 
 import torch
 
@@ -173,10 +173,10 @@ class ConsistencyModelPipeline(DiffusionPipeline):
     def __call__(
         self,
         batch_size: int = 1,
-        class_labels: Optional[Union[torch.Tensor, list[int], int]] = None,
+        class_labels: Optional[torch.Tensor | list[int] | int] = None,
         num_inference_steps: int = 1,
         timesteps: list[int] = None,
-        generator: Optional[Union[torch.Generator, list[torch.Generator]]] = None,
+        generator: Optional[torch.Generator | list[torch.Generator]] = None,
         latents: Optional[torch.Tensor] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,

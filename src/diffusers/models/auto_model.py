@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import os
-from typing import Optional, Union
+from typing import Optional
 
 from huggingface_hub.utils import validate_hf_hub_args
 
@@ -37,7 +37,7 @@ class AutoModel(ConfigMixin):
 
     @classmethod
     @validate_hf_hub_args
-    def from_pretrained(cls, pretrained_model_or_path: Optional[Union[str, os.PathLike]] = None, **kwargs):
+    def from_pretrained(cls, pretrained_model_or_path: Optional[str | os.PathLike] = None, **kwargs):
         r"""
         Instantiate a pretrained PyTorch model from a pretrained model configuration.
 

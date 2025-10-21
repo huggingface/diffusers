@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import math
-from typing import Optional, Union
+from typing import Optional
 
 import torch
 import torch.nn as nn
@@ -47,9 +47,9 @@ class CosmosCausalConv3d(nn.Conv3d):
         self,
         in_channels: int = 1,
         out_channels: int = 1,
-        kernel_size: Union[int, tuple[int, int, int]] = (3, 3, 3),
-        dilation: Union[int, tuple[int, int, int]] = (1, 1, 1),
-        stride: Union[int, tuple[int, int, int]] = (1, 1, 1),
+        kernel_size: int | tuple[int, int, int] = (3, 3, 3),
+        dilation: int | tuple[int, int, int] = (1, 1, 1),
+        stride: int | tuple[int, int, int] = (1, 1, 1),
         padding: int = 1,
         pad_mode: str = "constant",
     ) -> None:
@@ -419,7 +419,7 @@ class CosmosCausalAttention(nn.Module):
         attention_head_dim: int,
         num_groups: int = 1,
         dropout: float = 0.0,
-        processor: Union["CosmosSpatialAttentionProcessor2_0", "CosmosTemporalAttentionProcessor2_0"] = None,
+        processor: "CosmosSpatialAttentionProcessor2_0" | "CosmosTemporalAttentionProcessor2_0" = None,
     ) -> None:
         super().__init__()
         self.num_attention_heads = num_attention_heads
@@ -1071,7 +1071,7 @@ class AutoencoderKLCosmos(ModelMixin, ConfigMixin):
             return (posterior,)
         return AutoencoderKLOutput(latent_dist=posterior)
 
-    def _decode(self, z: torch.Tensor, return_dict: bool = True) -> Union[DecoderOutput, tuple[torch.Tensor]]:
+    def _decode(self, z: torch.Tensor, return_dict: bool = True) -> DecoderOutput | tuple[torch.Tensor]:
         z = self.post_quant_conv(z)
         dec = self.decoder(z)
 
@@ -1080,7 +1080,7 @@ class AutoencoderKLCosmos(ModelMixin, ConfigMixin):
         return DecoderOutput(sample=dec)
 
     @apply_forward_hook
-    def decode(self, z: torch.Tensor, return_dict: bool = True) -> Union[DecoderOutput, tuple[torch.Tensor]]:
+    def decode(self, z: torch.Tensor, return_dict: bool = True) -> DecoderOutput | tuple[torch.Tensor]:
         if self.use_slicing and z.shape[0] > 1:
             decoded_slices = [self._decode(z_slice).sample for z_slice in z.split(1)]
             decoded = torch.cat(decoded_slices)
@@ -1097,7 +1097,7 @@ class AutoencoderKLCosmos(ModelMixin, ConfigMixin):
         sample_posterior: bool = False,
         return_dict: bool = True,
         generator: Optional[torch.Generator] = None,
-    ) -> Union[tuple[torch.Tensor], DecoderOutput]:
+    ) -> tuple[torch.Tensor] | DecoderOutput:
         x = sample
         posterior = self.encode(x).latent_dist
         if sample_posterior:

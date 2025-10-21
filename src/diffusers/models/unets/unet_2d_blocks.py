@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from typing import Any, Optional, Union
+from typing import Any, Optional
 
 import numpy as np
 import torch
@@ -756,7 +756,7 @@ class UNetMidBlock2DCrossAttn(nn.Module):
         out_channels: Optional[int] = None,
         dropout: float = 0.0,
         num_layers: int = 1,
-        transformer_layers_per_block: Union[int, tuple[int]] = 1,
+        transformer_layers_per_block: int | tuple[int] = 1,
         resnet_eps: float = 1e-6,
         resnet_time_scale_shift: str = "default",
         resnet_act_fn: str = "swish",
@@ -1152,7 +1152,7 @@ class CrossAttnDownBlock2D(nn.Module):
         temb_channels: int,
         dropout: float = 0.0,
         num_layers: int = 1,
-        transformer_layers_per_block: Union[int, tuple[int]] = 1,
+        transformer_layers_per_block: int | tuple[int] = 1,
         resnet_eps: float = 1e-6,
         resnet_time_scale_shift: str = "default",
         resnet_act_fn: str = "swish",
@@ -2321,7 +2321,7 @@ class CrossAttnUpBlock2D(nn.Module):
         resolution_idx: Optional[int] = None,
         dropout: float = 0.0,
         num_layers: int = 1,
-        transformer_layers_per_block: Union[int, tuple[int]] = 1,
+        transformer_layers_per_block: int | tuple[int] = 1,
         resnet_eps: float = 1e-6,
         resnet_time_scale_shift: str = "default",
         resnet_act_fn: str = "swish",

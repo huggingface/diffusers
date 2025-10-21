@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import inspect
-from typing import Any, Callable, Dict, Optional, Union
+from typing import Any, Callable, Dict, Optional
 
 import numpy as np
 import PIL
@@ -176,7 +176,7 @@ class AnimateDiffSparseControlNetPipeline(
         vae: AutoencoderKL,
         text_encoder: CLIPTextModel,
         tokenizer: CLIPTokenizer,
-        unet: Union[UNet2DConditionModel, UNetMotionModel],
+        unet: UNet2DConditionModel | UNetMotionModel,
         motion_adapter: MotionAdapter,
         controlnet: SparseControlNetModel,
         scheduler: KarrasDiffusionSchedulers,
@@ -713,16 +713,16 @@ class AnimateDiffSparseControlNetPipeline(
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        prompt: Optional[Union[str, list[str]]] = None,
+        prompt: Optional[str | list[str]] = None,
         height: Optional[int] = None,
         width: Optional[int] = None,
         num_frames: int = 16,
         num_inference_steps: int = 50,
         guidance_scale: float = 7.5,
-        negative_prompt: Optional[Union[str, list[str]]] = None,
+        negative_prompt: Optional[str | list[str]] = None,
         num_videos_per_prompt: int = 1,
         eta: float = 0.0,
-        generator: Optional[Union[torch.Generator, list[torch.Generator]]] = None,
+        generator: Optional[torch.Generator | list[torch.Generator]] = None,
         latents: Optional[torch.Tensor] = None,
         prompt_embeds: Optional[torch.Tensor] = None,
         negative_prompt_embeds: Optional[torch.Tensor] = None,
@@ -732,7 +732,7 @@ class AnimateDiffSparseControlNetPipeline(
         output_type: str = "pil",
         return_dict: bool = True,
         cross_attention_kwargs: Optional[dict[str, Any]] = None,
-        controlnet_conditioning_scale: Union[float, list[float]] = 1.0,
+        controlnet_conditioning_scale: float | list[float] = 1.0,
         controlnet_frame_indices: list[int] = [0],
         guess_mode: bool = False,
         clip_skip: Optional[int] = None,

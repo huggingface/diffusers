@@ -13,7 +13,7 @@
 # limitations under the License.
 
 from dataclasses import dataclass
-from typing import Optional, Tuple, Union
+from typing import Optional, Tuple
 
 import torch
 import torch.nn as nn
@@ -206,9 +206,9 @@ class UNet1DModel(ModelMixin, ConfigMixin):
     def forward(
         self,
         sample: torch.Tensor,
-        timestep: Union[torch.Tensor, float, int],
+        timestep: torch.Tensor | float | int,
         return_dict: bool = True,
-    ) -> Union[UNet1DOutput, Tuple]:
+    ) -> UNet1DOutput | Tuple:
         r"""
         The [`UNet1DModel`] forward method.
 

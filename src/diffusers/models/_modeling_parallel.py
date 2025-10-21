@@ -16,7 +16,7 @@
 # limitations under the License.
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Literal, Optional, Union
+from typing import TYPE_CHECKING, Literal, Optional
 
 import torch
 
@@ -188,18 +188,16 @@ class ContextParallelOutput:
 # If the key is an integer, split_output must be set to True, and it denotes the index of the output
 # to be split across context parallel region.
 ContextParallelInputType = dict[
-    Union[str, int], Union[ContextParallelInput, list[ContextParallelInput], tuple[ContextParallelInput, ...]]
+    str | int, ContextParallelInput | list[ContextParallelInput] | tuple[ContextParallelInput, ...]
 ]
 
 # A dictionary where keys denote the output to be gathered across context parallel region, and the
 # value denotes the gathering configuration.
-ContextParallelOutputType = Union[
-    ContextParallelOutput, list[ContextParallelOutput], tuple[ContextParallelOutput, ...]
-]
+ContextParallelOutputType = ContextParallelOutput | list[ContextParallelOutput] | tuple[ContextParallelOutput, ...]
 
 # A dictionary where keys denote the module id, and the value denotes how the inputs/outputs of
 # the module should be split/gathered across context parallel region.
-ContextParallelModelPlan = dict[str, Union[ContextParallelInputType, ContextParallelOutputType]]
+ContextParallelModelPlan = dict[str, ContextParallelInputType | ContextParallelOutputType]
 
 
 # Example of a ContextParallelModelPlan (QwenImageTransformer2DModel):

@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import inspect
-from typing import Any, Optional, Union
+from typing import Any, Optional
 
 import PIL
 import torch
@@ -47,7 +47,7 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 def retrieve_timesteps(
     scheduler,
     num_inference_steps: Optional[int] = None,
-    device: Optional[Union[str, torch.device]] = None,
+    device: Optional[str | torch.device] = None,
     timesteps: Optional[list[int]] = None,
     sigmas: Optional[list[float]] = None,
     **kwargs,

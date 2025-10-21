@@ -14,7 +14,7 @@
 
 import inspect
 import math
-from typing import Any, Callable, Dict, Optional, Union
+from typing import Any, Callable, Dict, Optional
 
 import torch
 from transformers import (
@@ -101,7 +101,7 @@ def calculate_shift(
 def retrieve_timesteps(
     scheduler,
     num_inference_steps: Optional[int] = None,
-    device: Optional[Union[str, torch.device]] = None,
+    device: Optional[str | torch.device] = None,
     timesteps: Optional[list[int]] = None,
     sigmas: Optional[list[float]] = None,
     **kwargs,
@@ -202,7 +202,7 @@ class HiDreamImagePipeline(DiffusionPipeline, HiDreamImageLoraLoaderMixin):
 
     def _get_t5_prompt_embeds(
         self,
-        prompt: Union[str, list[str]] = None,
+        prompt: str | list[str] = None,
         max_sequence_length: int = 128,
         device: Optional[torch.device] = None,
         dtype: Optional[torch.dtype] = None,
@@ -241,7 +241,7 @@ class HiDreamImagePipeline(DiffusionPipeline, HiDreamImageLoraLoaderMixin):
         self,
         tokenizer,
         text_encoder,
-        prompt: Union[str, list[str]],
+        prompt: str | list[str],
         max_sequence_length: int = 128,
         device: Optional[torch.device] = None,
         dtype: Optional[torch.dtype] = None,
@@ -276,7 +276,7 @@ class HiDreamImagePipeline(DiffusionPipeline, HiDreamImageLoraLoaderMixin):
 
     def _get_llama3_prompt_embeds(
         self,
-        prompt: Union[str, list[str]] = None,
+        prompt: str | list[str] = None,
         max_sequence_length: int = 128,
         device: Optional[torch.device] = None,
         dtype: Optional[torch.dtype] = None,
@@ -320,18 +320,18 @@ class HiDreamImagePipeline(DiffusionPipeline, HiDreamImageLoraLoaderMixin):
 
     def encode_prompt(
         self,
-        prompt: Optional[Union[str, list[str]]] = None,
-        prompt_2: Optional[Union[str, list[str]]] = None,
-        prompt_3: Optional[Union[str, list[str]]] = None,
-        prompt_4: Optional[Union[str, list[str]]] = None,
+        prompt: Optional[str | list[str]] = None,
+        prompt_2: Optional[str | list[str]] = None,
+        prompt_3: Optional[str | list[str]] = None,
+        prompt_4: Optional[str | list[str]] = None,
         device: Optional[torch.device] = None,
         dtype: Optional[torch.dtype] = None,
         num_images_per_prompt: int = 1,
         do_classifier_free_guidance: bool = True,
-        negative_prompt: Optional[Union[str, list[str]]] = None,
-        negative_prompt_2: Optional[Union[str, list[str]]] = None,
-        negative_prompt_3: Optional[Union[str, list[str]]] = None,
-        negative_prompt_4: Optional[Union[str, list[str]]] = None,
+        negative_prompt: Optional[str | list[str]] = None,
+        negative_prompt_2: Optional[str | list[str]] = None,
+        negative_prompt_3: Optional[str | list[str]] = None,
+        negative_prompt_4: Optional[str | list[str]] = None,
         prompt_embeds_t5: Optional[list[torch.FloatTensor]] = None,
         prompt_embeds_llama3: Optional[list[torch.FloatTensor]] = None,
         negative_prompt_embeds_t5: Optional[list[torch.FloatTensor]] = None,
@@ -729,21 +729,21 @@ class HiDreamImagePipeline(DiffusionPipeline, HiDreamImageLoraLoaderMixin):
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        prompt: Union[str, list[str]] = None,
-        prompt_2: Optional[Union[str, list[str]]] = None,
-        prompt_3: Optional[Union[str, list[str]]] = None,
-        prompt_4: Optional[Union[str, list[str]]] = None,
+        prompt: str | list[str] = None,
+        prompt_2: Optional[str | list[str]] = None,
+        prompt_3: Optional[str | list[str]] = None,
+        prompt_4: Optional[str | list[str]] = None,
         height: Optional[int] = None,
         width: Optional[int] = None,
         num_inference_steps: int = 50,
         sigmas: Optional[list[float]] = None,
         guidance_scale: float = 5.0,
-        negative_prompt: Optional[Union[str, list[str]]] = None,
-        negative_prompt_2: Optional[Union[str, list[str]]] = None,
-        negative_prompt_3: Optional[Union[str, list[str]]] = None,
-        negative_prompt_4: Optional[Union[str, list[str]]] = None,
+        negative_prompt: Optional[str | list[str]] = None,
+        negative_prompt_2: Optional[str | list[str]] = None,
+        negative_prompt_3: Optional[str | list[str]] = None,
+        negative_prompt_4: Optional[str | list[str]] = None,
         num_images_per_prompt: Optional[int] = 1,
-        generator: Optional[Union[torch.Generator, list[torch.Generator]]] = None,
+        generator: Optional[torch.Generator | list[torch.Generator]] = None,
         latents: Optional[torch.FloatTensor] = None,
         prompt_embeds_t5: Optional[torch.FloatTensor] = None,
         prompt_embeds_llama3: Optional[torch.FloatTensor] = None,

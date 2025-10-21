@@ -15,7 +15,7 @@
 # DISCLAIMER: This file is strongly influenced by https://github.com/LuChengTHU/dpm-solver and https://github.com/NVlabs/edm
 
 import math
-from typing import Optional, Tuple, Union
+from typing import Optional, Tuple
 
 import numpy as np
 import torch
@@ -171,7 +171,7 @@ class CosineDPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         return denoised
 
     # Copied from diffusers.schedulers.scheduling_edm_euler.EDMEulerScheduler.scale_model_input
-    def scale_model_input(self, sample: torch.Tensor, timestep: Union[float, torch.Tensor]) -> torch.Tensor:
+    def scale_model_input(self, sample: torch.Tensor, timestep: float | torch.Tensor) -> torch.Tensor:
         """
         Ensures interchangeability with schedulers that need to scale the denoising model input depending on the
         current timestep. Scales the denoising model input by `(sigma**2 + 1) ** 0.5` to match the Euler algorithm.
@@ -195,7 +195,7 @@ class CosineDPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         self.is_scale_input_called = True
         return sample
 
-    def set_timesteps(self, num_inference_steps: int = None, device: Union[str, torch.device] = None):
+    def set_timesteps(self, num_inference_steps: int = None, device: str | torch.device = None):
         """
         Sets the discrete timesteps used for the diffusion chain (to be run before inference).
 
@@ -451,11 +451,11 @@ class CosineDPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
     def step(
         self,
         model_output: torch.Tensor,
-        timestep: Union[int, torch.Tensor],
+        timestep: int | torch.Tensor,
         sample: torch.Tensor,
         generator=None,
         return_dict: bool = True,
-    ) -> Union[SchedulerOutput, Tuple]:
+    ) -> SchedulerOutput | Tuple:
         """
         Predict the sample from the previous timestep by reversing the SDE. This function propagates the sample with
         the multistep DPMSolver.

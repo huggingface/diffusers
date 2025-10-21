@@ -13,7 +13,6 @@
 # limitations under the License.
 
 from dataclasses import dataclass
-from typing import Union
 
 import torch
 from torch import nn
@@ -53,9 +52,9 @@ class Kandinsky3UNet(ModelMixin, ConfigMixin):
         time_embedding_dim: int = 1536,
         groups: int = 32,
         attention_head_dim: int = 64,
-        layers_per_block: Union[int, tuple[int]] = 3,
+        layers_per_block: int | tuple[int] = 3,
         block_out_channels: tuple[int] = (384, 768, 1536, 3072),
-        cross_attention_dim: Union[int, tuple[int]] = 4096,
+        cross_attention_dim: int | tuple[int] = 4096,
         encoder_hid_dim: int = 4096,
     ):
         super().__init__()
@@ -164,7 +163,7 @@ class Kandinsky3UNet(ModelMixin, ConfigMixin):
 
         return processors
 
-    def set_attn_processor(self, processor: Union[AttentionProcessor, dict[str, AttentionProcessor]]):
+    def set_attn_processor(self, processor: AttentionProcessor | dict[str, AttentionProcessor]):
         r"""
         Sets the attention processor to use to compute attention.
 

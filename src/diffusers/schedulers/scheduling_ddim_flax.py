@@ -16,7 +16,7 @@
 # and https://github.com/hojonathanho/diffusion
 
 from dataclasses import dataclass
-from typing import Optional, Tuple, Union
+from typing import Optional, Tuple
 
 import flax
 import jax.numpy as jnp
@@ -207,7 +207,7 @@ class FlaxDDIMScheduler(FlaxSchedulerMixin, ConfigMixin):
         sample: jnp.ndarray,
         eta: float = 0.0,
         return_dict: bool = True,
-    ) -> Union[FlaxDDIMSchedulerOutput, Tuple]:
+    ) -> FlaxDDIMSchedulerOutput | Tuple:
         """
         Predict the sample at the previous timestep by reversing the SDE. Core function to propagate the diffusion
         process from the learned model outputs (most often the predicted noise).

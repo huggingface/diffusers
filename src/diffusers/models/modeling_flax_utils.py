@@ -15,7 +15,7 @@
 
 import os
 from pickle import UnpicklingError
-from typing import Any, Dict, Union
+from typing import Any, Dict
 
 import jax
 import jax.numpy as jnp
@@ -68,7 +68,7 @@ class FlaxModelMixin(PushToHubMixin):
         """
         return cls(config, **kwargs)
 
-    def _cast_floating_to(self, params: Union[Dict, FrozenDict], dtype: jnp.dtype, mask: Any = None) -> Any:
+    def _cast_floating_to(self, params: Dict | FrozenDict, dtype: jnp.dtype, mask: Any = None) -> Any:
         """
         Helper method to cast floating-point values of given parameter `PyTree` to given `dtype`.
         """
@@ -92,7 +92,7 @@ class FlaxModelMixin(PushToHubMixin):
 
         return unflatten_dict(flat_params)
 
-    def to_bf16(self, params: Union[Dict, FrozenDict], mask: Any = None):
+    def to_bf16(self, params: Dict | FrozenDict, mask: Any = None):
         r"""
         Cast the floating-point `params` to `jax.numpy.bfloat16`. This returns a new `params` tree and does not cast
         the `params` in place.
@@ -131,7 +131,7 @@ class FlaxModelMixin(PushToHubMixin):
         ```"""
         return self._cast_floating_to(params, jnp.bfloat16, mask)
 
-    def to_fp32(self, params: Union[Dict, FrozenDict], mask: Any = None):
+    def to_fp32(self, params: Dict | FrozenDict, mask: Any = None):
         r"""
         Cast the floating-point `params` to `jax.numpy.float32`. This method can be used to explicitly convert the
         model parameters to fp32 precision. This returns a new `params` tree and does not cast the `params` in place.
@@ -158,7 +158,7 @@ class FlaxModelMixin(PushToHubMixin):
         ```"""
         return self._cast_floating_to(params, jnp.float32, mask)
 
-    def to_fp16(self, params: Union[Dict, FrozenDict], mask: Any = None):
+    def to_fp16(self, params: Dict | FrozenDict, mask: Any = None):
         r"""
         Cast the floating-point `params` to `jax.numpy.float16`. This returns a new `params` tree and does not cast the
         `params` in place.
@@ -204,7 +204,7 @@ class FlaxModelMixin(PushToHubMixin):
     @validate_hf_hub_args
     def from_pretrained(
         cls,
-        pretrained_model_name_or_path: Union[str, os.PathLike],
+        pretrained_model_name_or_path: str | os.PathLike,
         dtype: jnp.dtype = jnp.float32,
         *model_args,
         **kwargs,
@@ -493,8 +493,8 @@ class FlaxModelMixin(PushToHubMixin):
 
     def save_pretrained(
         self,
-        save_directory: Union[str, os.PathLike],
-        params: Union[Dict, FrozenDict],
+        save_directory: str | os.PathLike,
+        params: Dict | FrozenDict,
         is_main_process: bool = True,
         push_to_hub: bool = False,
         **kwargs,

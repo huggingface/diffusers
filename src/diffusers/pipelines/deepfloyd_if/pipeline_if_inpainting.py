@@ -2,7 +2,7 @@ import html
 import inspect
 import re
 import urllib.parse as ul
-from typing import Any, Callable, Optional, Union
+from typing import Any, Callable, Optional
 
 import numpy as np
 import PIL.Image
@@ -196,11 +196,11 @@ class IFInpaintingPipeline(DiffusionPipeline, StableDiffusionLoraLoaderMixin):
     # Copied from diffusers.pipelines.deepfloyd_if.pipeline_if.IFPipeline.encode_prompt
     def encode_prompt(
         self,
-        prompt: Union[str, list[str]],
+        prompt: str | list[str],
         do_classifier_free_guidance: bool = True,
         num_images_per_prompt: int = 1,
         device: Optional[torch.device] = None,
-        negative_prompt: Optional[Union[str, list[str]]] = None,
+        negative_prompt: Optional[str | list[str]] = None,
         prompt_embeds: Optional[torch.Tensor] = None,
         negative_prompt_embeds: Optional[torch.Tensor] = None,
         clean_caption: bool = False,
@@ -754,21 +754,27 @@ class IFInpaintingPipeline(DiffusionPipeline, StableDiffusionLoraLoaderMixin):
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        prompt: Union[str, list[str]] = None,
-        image: Union[
-            PIL.Image.Image, torch.Tensor, np.ndarray, list[PIL.Image.Image], list[torch.Tensor], list[np.ndarray]
-        ] = None,
-        mask_image: Union[
-            PIL.Image.Image, torch.Tensor, np.ndarray, list[PIL.Image.Image], list[torch.Tensor], list[np.ndarray]
-        ] = None,
+        prompt: str | list[str] = None,
+        image: PIL.Image.Image
+        | torch.Tensor
+        | np.ndarray
+        | list[PIL.Image.Image]
+        | list[torch.Tensor]
+        | list[np.ndarray] = None,
+        mask_image: PIL.Image.Image
+        | torch.Tensor
+        | np.ndarray
+        | list[PIL.Image.Image]
+        | list[torch.Tensor]
+        | list[np.ndarray] = None,
         strength: float = 1.0,
         num_inference_steps: int = 50,
         timesteps: list[int] = None,
         guidance_scale: float = 7.0,
-        negative_prompt: Optional[Union[str, list[str]]] = None,
+        negative_prompt: Optional[str | list[str]] = None,
         num_images_per_prompt: Optional[int] = 1,
         eta: float = 0.0,
-        generator: Optional[Union[torch.Generator, list[torch.Generator]]] = None,
+        generator: Optional[torch.Generator | list[torch.Generator]] = None,
         prompt_embeds: Optional[torch.Tensor] = None,
         negative_prompt_embeds: Optional[torch.Tensor] = None,
         output_type: Optional[str] = "pil",

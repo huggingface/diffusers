@@ -14,7 +14,7 @@
 
 import inspect
 import warnings
-from typing import Any, Callable, Optional, Union
+from typing import Any, Callable, Optional
 
 import PIL.Image
 import torch
@@ -540,7 +540,7 @@ class StableDiffusionGLIGENPipeline(DeprecatedPipelineMixin, DiffusionPipeline, 
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        prompt: Union[str, list[str]] = None,
+        prompt: str | list[str] = None,
         height: Optional[int] = None,
         width: Optional[int] = None,
         num_inference_steps: int = 50,
@@ -549,10 +549,10 @@ class StableDiffusionGLIGENPipeline(DeprecatedPipelineMixin, DiffusionPipeline, 
         gligen_phrases: list[str] = None,
         gligen_boxes: list[list[float]] = None,
         gligen_inpaint_image: Optional[PIL.Image.Image] = None,
-        negative_prompt: Optional[Union[str, list[str]]] = None,
+        negative_prompt: Optional[str | list[str]] = None,
         num_images_per_prompt: Optional[int] = 1,
         eta: float = 0.0,
-        generator: Optional[Union[torch.Generator, list[torch.Generator]]] = None,
+        generator: Optional[torch.Generator | list[torch.Generator]] = None,
         latents: Optional[torch.Tensor] = None,
         prompt_embeds: Optional[torch.Tensor] = None,
         negative_prompt_embeds: Optional[torch.Tensor] = None,

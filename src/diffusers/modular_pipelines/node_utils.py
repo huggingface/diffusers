@@ -2,7 +2,7 @@ import json
 import logging
 import os
 from pathlib import Path
-from typing import Optional, Union
+from typing import Optional
 
 import numpy as np
 import PIL
@@ -19,21 +19,21 @@ logger = logging.getLogger(__name__)
 # YiYi Notes: this is actually for SDXL, put it here for now
 SDXL_INPUTS_SCHEMA = {
     "prompt": InputParam(
-        "prompt", type_hint=Union[str, list[str]], description="The prompt or prompts to guide the image generation"
+        "prompt", type_hint=str | list[str], description="The prompt or prompts to guide the image generation"
     ),
     "prompt_2": InputParam(
         "prompt_2",
-        type_hint=Union[str, list[str]],
+        type_hint=str | list[str],
         description="The prompt or prompts to be sent to the tokenizer_2 and text_encoder_2",
     ),
     "negative_prompt": InputParam(
         "negative_prompt",
-        type_hint=Union[str, list[str]],
+        type_hint=str | list[str],
         description="The prompt or prompts not to guide the image generation",
     ),
     "negative_prompt_2": InputParam(
         "negative_prompt_2",
-        type_hint=Union[str, list[str]],
+        type_hint=str | list[str],
         description="The negative prompt or prompts for text_encoder_2",
     ),
     "cross_attention_kwargs": InputParam(
@@ -58,7 +58,7 @@ SDXL_INPUTS_SCHEMA = {
     ),
     "generator": InputParam(
         "generator",
-        type_hint=Optional[Union[torch.Generator, list[torch.Generator]]],
+        type_hint=Optional[torch.Generator | list[torch.Generator]],
         description="Generator(s) for deterministic generation",
     ),
     "height": InputParam("height", type_hint=Optional[int], description="Height in pixels of the generated image"),
@@ -146,19 +146,19 @@ SDXL_INPUTS_SCHEMA = {
     ),
     "control_guidance_start": InputParam(
         "control_guidance_start",
-        type_hint=Union[float, list[float]],
+        type_hint=float | list[float],
         default=0.0,
         description="When ControlNet starts applying",
     ),
     "control_guidance_end": InputParam(
         "control_guidance_end",
-        type_hint=Union[float, list[float]],
+        type_hint=float | list[float],
         default=1.0,
         description="When ControlNet stops applying",
     ),
     "controlnet_conditioning_scale": InputParam(
         "controlnet_conditioning_scale",
-        type_hint=Union[float, list[float]],
+        type_hint=float | list[float],
         default=1.0,
         description="Scale factor for ControlNet outputs",
     ),
@@ -230,7 +230,7 @@ SDXL_INTERMEDIATE_INPUTS_SCHEMA = {
     ),
     "images": InputParam(
         "images",
-        type_hint=Union[list[PIL.Image.Image], list[torch.Tensor], list[np.array]],
+        type_hint=list[PIL.Image.Image] | list[torch.Tensor] | list[np.array],
         required=True,
         description="Generated images",
     ),

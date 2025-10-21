@@ -14,7 +14,7 @@
 
 import inspect
 import math
-from typing import Any, Callable, Dict, Optional, Union
+from typing import Any, Callable, Dict, Optional
 
 import torch
 import torch.nn.functional as F
@@ -147,7 +147,7 @@ class LeditsAttentionStore:
         return attention
 
     def aggregate_attention(
-        self, attention_maps, prompts, res: Union[int, tuple[int]], from_where: list[str], is_cross: bool, select: int
+        self, attention_maps, prompts, res: int | tuple[int], from_where: list[str], is_cross: bool, select: int
     ):
         out = [[] for x in range(self.batch_size)]
         if isinstance(res, int):
@@ -353,7 +353,7 @@ class LEditsPPPipelineStableDiffusionXL(
         tokenizer: CLIPTokenizer,
         tokenizer_2: CLIPTokenizer,
         unet: UNet2DConditionModel,
-        scheduler: Union[DPMSolverMultistepScheduler, DDIMScheduler],
+        scheduler: DPMSolverMultistepScheduler | DDIMScheduler,
         image_encoder: CLIPVisionModelWithProjection = None,
         feature_extractor: CLIPImageProcessor = None,
         force_zeros_for_empty_prompt: bool = True,
@@ -849,8 +849,8 @@ class LEditsPPPipelineStableDiffusionXL(
     def __call__(
         self,
         denoising_end: Optional[float] = None,
-        negative_prompt: Optional[Union[str, list[str]]] = None,
-        negative_prompt_2: Optional[Union[str, list[str]]] = None,
+        negative_prompt: Optional[str | list[str]] = None,
+        negative_prompt_2: Optional[str | list[str]] = None,
         negative_prompt_embeds: Optional[torch.Tensor] = None,
         negative_pooled_prompt_embeds: Optional[torch.Tensor] = None,
         ip_adapter_image: Optional[PipelineImageInput] = None,
@@ -860,14 +860,14 @@ class LEditsPPPipelineStableDiffusionXL(
         guidance_rescale: float = 0.0,
         crops_coords_top_left: tuple[int, int] = (0, 0),
         target_size: Optional[tuple[int, int]] = None,
-        editing_prompt: Optional[Union[str, list[str]]] = None,
+        editing_prompt: Optional[str | list[str]] = None,
         editing_prompt_embeddings: Optional[torch.Tensor] = None,
         editing_pooled_prompt_embeds: Optional[torch.Tensor] = None,
-        reverse_editing_direction: Optional[Union[bool, list[bool]]] = False,
-        edit_guidance_scale: Optional[Union[float, list[float]]] = 5,
-        edit_warmup_steps: Optional[Union[int, list[int]]] = 0,
-        edit_cooldown_steps: Optional[Union[int, list[int]]] = None,
-        edit_threshold: Optional[Union[float, list[float]]] = 0.9,
+        reverse_editing_direction: Optional[bool | list[bool]] = False,
+        edit_guidance_scale: Optional[float | list[float]] = 5,
+        edit_warmup_steps: Optional[int | list[int]] = 0,
+        edit_cooldown_steps: Optional[int | list[int]] = None,
+        edit_threshold: Optional[float | list[float]] = 0.9,
         sem_guidance: Optional[list[torch.Tensor]] = None,
         use_cross_attn_mask: bool = False,
         use_intersect_mask: bool = False,

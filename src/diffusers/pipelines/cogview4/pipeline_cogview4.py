@@ -14,7 +14,7 @@
 # limitations under the License.
 
 import inspect
-from typing import Any, Callable, Dict, Optional, Tuple, Union
+from typing import Any, Callable, Dict, Optional, Tuple
 
 import numpy as np
 import torch
@@ -70,7 +70,7 @@ def calculate_shift(
 def retrieve_timesteps(
     scheduler,
     num_inference_steps: Optional[int] = None,
-    device: Optional[Union[str, torch.device]] = None,
+    device: Optional[str | torch.device] = None,
     timesteps: Optional[list[int]] = None,
     sigmas: Optional[list[float]] = None,
     **kwargs,
@@ -177,7 +177,7 @@ class CogView4Pipeline(DiffusionPipeline, CogView4LoraLoaderMixin):
 
     def _get_glm_embeds(
         self,
-        prompt: Union[str, list[str]] = None,
+        prompt: str | list[str] = None,
         max_sequence_length: int = 1024,
         device: Optional[torch.device] = None,
         dtype: Optional[torch.dtype] = None,
@@ -220,8 +220,8 @@ class CogView4Pipeline(DiffusionPipeline, CogView4LoraLoaderMixin):
 
     def encode_prompt(
         self,
-        prompt: Union[str, list[str]],
-        negative_prompt: Optional[Union[str, list[str]]] = None,
+        prompt: str | list[str],
+        negative_prompt: Optional[str | list[str]] = None,
         do_classifier_free_guidance: bool = True,
         num_images_per_prompt: int = 1,
         prompt_embeds: Optional[torch.Tensor] = None,
@@ -403,8 +403,8 @@ class CogView4Pipeline(DiffusionPipeline, CogView4LoraLoaderMixin):
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        prompt: Optional[Union[str, list[str]]] = None,
-        negative_prompt: Optional[Union[str, list[str]]] = None,
+        prompt: Optional[str | list[str]] = None,
+        negative_prompt: Optional[str | list[str]] = None,
         height: Optional[int] = None,
         width: Optional[int] = None,
         num_inference_steps: int = 50,
@@ -412,7 +412,7 @@ class CogView4Pipeline(DiffusionPipeline, CogView4LoraLoaderMixin):
         sigmas: Optional[list[float]] = None,
         guidance_scale: float = 5.0,
         num_images_per_prompt: int = 1,
-        generator: Optional[Union[torch.Generator, list[torch.Generator]]] = None,
+        generator: Optional[torch.Generator | list[torch.Generator]] = None,
         latents: Optional[torch.FloatTensor] = None,
         prompt_embeds: Optional[torch.FloatTensor] = None,
         negative_prompt_embeds: Optional[torch.FloatTensor] = None,
@@ -422,11 +422,11 @@ class CogView4Pipeline(DiffusionPipeline, CogView4LoraLoaderMixin):
         return_dict: bool = True,
         attention_kwargs: Optional[dict[str, Any]] = None,
         callback_on_step_end: Optional[
-            Union[Callable[[int, int, Dict], None], PipelineCallback, MultiPipelineCallbacks]
+            Callable[[int, int, Dict], None] | PipelineCallback | MultiPipelineCallbacks
         ] = None,
         callback_on_step_end_tensor_inputs: list[str] = ["latents"],
         max_sequence_length: int = 1024,
-    ) -> Union[CogView4PipelineOutput, Tuple]:
+    ) -> CogView4PipelineOutput | Tuple:
         """
         Function invoked when calling the pipeline for generation.
 

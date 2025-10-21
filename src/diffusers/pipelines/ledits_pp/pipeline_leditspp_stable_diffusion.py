@@ -1,7 +1,7 @@
 import inspect
 import math
 from itertools import repeat
-from typing import Any, Callable, Dict, Optional, Union
+from typing import Any, Callable, Dict, Optional
 
 import torch
 import torch.nn.functional as F
@@ -115,7 +115,7 @@ class LeditsAttentionStore:
         return attention
 
     def aggregate_attention(
-        self, attention_maps, prompts, res: Union[int, tuple[int]], from_where: list[str], is_cross: bool, select: int
+        self, attention_maps, prompts, res: int | tuple[int], from_where: list[str], is_cross: bool, select: int
     ):
         out = [[] for x in range(self.batch_size)]
         if isinstance(res, int):
@@ -309,7 +309,7 @@ class LEditsPPPipelineStableDiffusion(
         text_encoder: CLIPTextModel,
         tokenizer: CLIPTokenizer,
         unet: UNet2DConditionModel,
-        scheduler: Union[DDIMScheduler, DPMSolverMultistepScheduler],
+        scheduler: DDIMScheduler | DPMSolverMultistepScheduler,
         safety_checker: StableDiffusionSafetyChecker,
         feature_extractor: CLIPImageProcessor,
         requires_safety_checker: bool = True,
@@ -774,18 +774,18 @@ class LEditsPPPipelineStableDiffusion(
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        negative_prompt: Optional[Union[str, list[str]]] = None,
-        generator: Optional[Union[torch.Generator, list[torch.Generator]]] = None,
+        negative_prompt: Optional[str | list[str]] = None,
+        generator: Optional[torch.Generator | list[torch.Generator]] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
-        editing_prompt: Optional[Union[str, list[str]]] = None,
+        editing_prompt: Optional[str | list[str]] = None,
         editing_prompt_embeds: Optional[torch.Tensor] = None,
         negative_prompt_embeds: Optional[torch.Tensor] = None,
-        reverse_editing_direction: Optional[Union[bool, list[bool]]] = False,
-        edit_guidance_scale: Optional[Union[float, list[float]]] = 5,
-        edit_warmup_steps: Optional[Union[int, list[int]]] = 0,
-        edit_cooldown_steps: Optional[Union[int, list[int]]] = None,
-        edit_threshold: Optional[Union[float, list[float]]] = 0.9,
+        reverse_editing_direction: Optional[bool | list[bool]] = False,
+        edit_guidance_scale: Optional[float | list[float]] = 5,
+        edit_warmup_steps: Optional[int | list[int]] = 0,
+        edit_cooldown_steps: Optional[int | list[int]] = None,
+        edit_threshold: Optional[float | list[float]] = 0.9,
         user_mask: Optional[torch.Tensor] = None,
         sem_guidance: Optional[list[torch.Tensor]] = None,
         use_cross_attn_mask: bool = False,

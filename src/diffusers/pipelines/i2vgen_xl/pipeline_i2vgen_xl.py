@@ -14,7 +14,7 @@
 
 import inspect
 from dataclasses import dataclass
-from typing import Any, Optional, Union
+from typing import Any, Optional
 
 import numpy as np
 import PIL
@@ -93,7 +93,7 @@ class I2VGenXLPipelineOutput(BaseOutput):
     `(batch_size, num_frames, channels, height, width)`
     """
 
-    frames: Union[torch.Tensor, np.ndarray, list[list[PIL.Image.Image]]]
+    frames: torch.Tensor | np.ndarray | list[list[PIL.Image.Image]]
 
 
 class I2VGenXLPipeline(
@@ -511,7 +511,7 @@ class I2VGenXLPipeline(
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        prompt: Union[str, list[str]] = None,
+        prompt: str | list[str] = None,
         image: PipelineImageInput = None,
         height: Optional[int] = 704,
         width: Optional[int] = 1280,
@@ -519,11 +519,11 @@ class I2VGenXLPipeline(
         num_frames: int = 16,
         num_inference_steps: int = 50,
         guidance_scale: float = 9.0,
-        negative_prompt: Optional[Union[str, list[str]]] = None,
+        negative_prompt: Optional[str | list[str]] = None,
         eta: float = 0.0,
         num_videos_per_prompt: Optional[int] = 1,
         decode_chunk_size: Optional[int] = 1,
-        generator: Optional[Union[torch.Generator, list[torch.Generator]]] = None,
+        generator: Optional[torch.Generator | list[torch.Generator]] = None,
         latents: Optional[torch.Tensor] = None,
         prompt_embeds: Optional[torch.Tensor] = None,
         negative_prompt_embeds: Optional[torch.Tensor] = None,
@@ -745,7 +745,7 @@ class I2VGenXLPipeline(
 # https://github.com/ali-vilab/i2vgen-xl/blob/main/utils/transforms.py.
 
 
-def _convert_pt_to_pil(image: Union[torch.Tensor, list[torch.Tensor]]):
+def _convert_pt_to_pil(image: torch.Tensor | list[torch.Tensor]):
     if isinstance(image, list) and isinstance(image[0], torch.Tensor):
         image = torch.cat(image, 0)
 
@@ -761,7 +761,7 @@ def _convert_pt_to_pil(image: Union[torch.Tensor, list[torch.Tensor]]):
 
 
 def _resize_bilinear(
-    image: Union[torch.Tensor, list[torch.Tensor], PIL.Image.Image, list[PIL.Image.Image]], resolution: tuple[int, int]
+    image: torch.Tensor | list[torch.Tensor] | PIL.Image.Image | list[PIL.Image.Image], resolution: tuple[int, int]
 ):
     # First convert the images to PIL in case they are float tensors (only relevant for tests now).
     image = _convert_pt_to_pil(image)
@@ -774,7 +774,7 @@ def _resize_bilinear(
 
 
 def _center_crop_wide(
-    image: Union[torch.Tensor, list[torch.Tensor], PIL.Image.Image, list[PIL.Image.Image]], resolution: tuple[int, int]
+    image: torch.Tensor | list[torch.Tensor] | PIL.Image.Image | list[PIL.Image.Image], resolution: tuple[int, int]
 ):
     # First convert the images to PIL in case they are float tensors (only relevant for tests now).
     image = _convert_pt_to_pil(image)

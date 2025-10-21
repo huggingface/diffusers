@@ -16,7 +16,7 @@
 
 import math
 from dataclasses import dataclass
-from typing import Optional, Tuple, Union
+from typing import Optional, Tuple
 
 import numpy as np
 import torch
@@ -192,7 +192,7 @@ class DDPMParallelScheduler(SchedulerMixin, ConfigMixin):
         beta_start: float = 0.0001,
         beta_end: float = 0.02,
         beta_schedule: str = "linear",
-        trained_betas: Optional[Union[np.ndarray, list[float]]] = None,
+        trained_betas: Optional[np.ndarray | list[float]] = None,
         variance_type: str = "fixed_small",
         clip_sample: bool = True,
         prediction_type: str = "epsilon",
@@ -261,7 +261,7 @@ class DDPMParallelScheduler(SchedulerMixin, ConfigMixin):
     def set_timesteps(
         self,
         num_inference_steps: Optional[int] = None,
-        device: Union[str, torch.device] = None,
+        device: str | torch.device = None,
         timesteps: Optional[list[int]] = None,
     ):
         """
@@ -414,7 +414,7 @@ class DDPMParallelScheduler(SchedulerMixin, ConfigMixin):
         sample: torch.Tensor,
         generator=None,
         return_dict: bool = True,
-    ) -> Union[DDPMParallelSchedulerOutput, Tuple]:
+    ) -> DDPMParallelSchedulerOutput | Tuple:
         """
         Predict the sample at the previous timestep by reversing the SDE. Core function to propagate the diffusion
         process from the learned model outputs (most often the predicted noise).

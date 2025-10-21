@@ -13,7 +13,7 @@
 # limitations under the License.
 
 from dataclasses import dataclass
-from typing import Optional, Tuple, Union
+from typing import Optional, Tuple
 
 import flax
 import jax.numpy as jnp
@@ -193,7 +193,7 @@ class FlaxEulerDiscreteScheduler(FlaxSchedulerMixin, ConfigMixin):
         timestep: int,
         sample: jnp.ndarray,
         return_dict: bool = True,
-    ) -> Union[FlaxEulerDiscreteSchedulerOutput, Tuple]:
+    ) -> FlaxEulerDiscreteSchedulerOutput | Tuple:
         """
         Predict the sample at the previous timestep by reversing the SDE. Core function to propagate the diffusion
         process from the learned model outputs (most often the predicted noise).

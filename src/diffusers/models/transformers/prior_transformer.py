@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Optional, Union
+from typing import Optional
 
 import torch
 import torch.nn.functional as F
@@ -192,7 +192,7 @@ class PriorTransformer(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin, Pef
         return processors
 
     # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.set_attn_processor
-    def set_attn_processor(self, processor: Union[AttentionProcessor, dict[str, AttentionProcessor]]):
+    def set_attn_processor(self, processor: AttentionProcessor | dict[str, AttentionProcessor]):
         r"""
         Sets the attention processor to use to compute attention.
 
@@ -245,7 +245,7 @@ class PriorTransformer(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin, Pef
     def forward(
         self,
         hidden_states,
-        timestep: Union[torch.Tensor, float, int],
+        timestep: torch.Tensor | float | int,
         proj_embedding: torch.Tensor,
         encoder_hidden_states: Optional[torch.Tensor] = None,
         attention_mask: Optional[torch.BoolTensor] = None,

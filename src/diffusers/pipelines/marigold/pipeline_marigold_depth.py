@@ -18,7 +18,7 @@
 # --------------------------------------------------------------------------
 from dataclasses import dataclass
 from functools import partial
-from typing import Any, Optional, Union
+from typing import Any, Optional
 
 import numpy as np
 import torch
@@ -96,9 +96,9 @@ class MarigoldDepthOutput(BaseOutput):
             The shape is `numimages * numensemble × 4 × latentheight × latentwidth`.
     """
 
-    prediction: Union[np.ndarray, torch.Tensor]
-    uncertainty: Union[None, np.ndarray, torch.Tensor]
-    latent: Union[None, torch.Tensor]
+    prediction: np.ndarray | torch.Tensor
+    uncertainty: None | np.ndarray | torch.Tensor
+    latent: None | torch.Tensor
 
 
 class MarigoldDepthPipeline(DiffusionPipeline):
@@ -150,7 +150,7 @@ class MarigoldDepthPipeline(DiffusionPipeline):
         self,
         unet: UNet2DConditionModel,
         vae: AutoencoderKL,
-        scheduler: Union[DDIMScheduler, LCMScheduler],
+        scheduler: DDIMScheduler | LCMScheduler,
         text_encoder: CLIPTextModel,
         tokenizer: CLIPTokenizer,
         prediction_type: Optional[str] = None,
@@ -204,7 +204,7 @@ class MarigoldDepthPipeline(DiffusionPipeline):
         batch_size: int,
         ensembling_kwargs: Optional[dict[str, Any]],
         latents: Optional[torch.Tensor],
-        generator: Optional[Union[torch.Generator, list[torch.Generator]]],
+        generator: Optional[torch.Generator | list[torch.Generator]],
         output_type: str,
         output_uncertainty: bool,
     ) -> int:
@@ -357,8 +357,8 @@ class MarigoldDepthPipeline(DiffusionPipeline):
         resample_method_output: str = "bilinear",
         batch_size: int = 1,
         ensembling_kwargs: Optional[dict[str, Any]] = None,
-        latents: Optional[Union[torch.Tensor, list[torch.Tensor]]] = None,
-        generator: Optional[Union[torch.Generator, list[torch.Generator]]] = None,
+        latents: Optional[torch.Tensor | list[torch.Tensor]] = None,
+        generator: Optional[torch.Generator | list[torch.Generator]] = None,
         output_type: str = "np",
         output_uncertainty: bool = False,
         output_latent: bool = False,

@@ -14,7 +14,7 @@
 
 import math
 from dataclasses import dataclass
-from typing import Optional, Tuple, Union
+from typing import Optional, Tuple
 
 import numpy as np
 import torch
@@ -190,7 +190,7 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         beta_start: float = 0.0001,
         beta_end: float = 0.02,
         beta_schedule: str = "linear",
-        trained_betas: Optional[Union[np.ndarray, list[float]]] = None,
+        trained_betas: Optional[np.ndarray | list[float]] = None,
         prediction_type: str = "epsilon",
         interpolation_type: str = "linear",
         use_karras_sigmas: Optional[bool] = False,
@@ -292,7 +292,7 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         """
         self._begin_index = begin_index
 
-    def scale_model_input(self, sample: torch.Tensor, timestep: Union[float, torch.Tensor]) -> torch.Tensor:
+    def scale_model_input(self, sample: torch.Tensor, timestep: float | torch.Tensor) -> torch.Tensor:
         """
         Ensures interchangeability with schedulers that need to scale the denoising model input depending on the
         current timestep. Scales the denoising model input by `(sigma**2 + 1) ** 0.5` to match the Euler algorithm.
@@ -319,7 +319,7 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
     def set_timesteps(
         self,
         num_inference_steps: int = None,
-        device: Union[str, torch.device] = None,
+        device: str | torch.device = None,
         timesteps: Optional[list[int]] = None,
         sigmas: Optional[list[float]] = None,
     ):
@@ -576,7 +576,7 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
     def step(
         self,
         model_output: torch.Tensor,
-        timestep: Union[float, torch.Tensor],
+        timestep: float | torch.Tensor,
         sample: torch.Tensor,
         s_churn: float = 0.0,
         s_tmin: float = 0.0,
@@ -584,7 +584,7 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         s_noise: float = 1.0,
         generator: Optional[torch.Generator] = None,
         return_dict: bool = True,
-    ) -> Union[EulerDiscreteSchedulerOutput, Tuple]:
+    ) -> EulerDiscreteSchedulerOutput | Tuple:
         """
         Predict the sample from the previous timestep by reversing the SDE. This function propagates the diffusion
         process from the learned model outputs (most often the predicted noise).

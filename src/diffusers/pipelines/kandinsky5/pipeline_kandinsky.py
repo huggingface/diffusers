@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import html
-from typing import Callable, Dict, Optional, Union
+from typing import Callable, Dict, Optional
 
 import regex as re
 import torch
@@ -263,7 +263,7 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
 
     def _encode_prompt_qwen(
         self,
-        prompt: Union[str, list[str]],
+        prompt: str | list[str],
         device: Optional[torch.device] = None,
         max_sequence_length: int = 256,
         dtype: Optional[torch.dtype] = None,
@@ -313,7 +313,7 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
 
     def _encode_prompt_clip(
         self,
-        prompt: Union[str, list[str]],
+        prompt: str | list[str],
         device: Optional[torch.device] = None,
         dtype: Optional[torch.dtype] = None,
     ):
@@ -350,7 +350,7 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
 
     def encode_prompt(
         self,
-        prompt: Union[str, list[str]],
+        prompt: str | list[str],
         num_videos_per_prompt: int = 1,
         max_sequence_length: int = 512,
         device: Optional[torch.device] = None,
@@ -528,7 +528,7 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
         num_frames: int = 81,
         dtype: Optional[torch.dtype] = None,
         device: Optional[torch.device] = None,
-        generator: Optional[Union[torch.Generator, list[torch.Generator]]] = None,
+        generator: Optional[torch.Generator | list[torch.Generator]] = None,
         latents: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         """
@@ -611,15 +611,15 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        prompt: Union[str, list[str]] = None,
-        negative_prompt: Optional[Union[str, list[str]]] = None,
+        prompt: str | list[str] = None,
+        negative_prompt: Optional[str | list[str]] = None,
         height: int = 512,
         width: int = 768,
         num_frames: int = 121,
         num_inference_steps: int = 50,
         guidance_scale: float = 5.0,
         num_videos_per_prompt: Optional[int] = 1,
-        generator: Optional[Union[torch.Generator, list[torch.Generator]]] = None,
+        generator: Optional[torch.Generator | list[torch.Generator]] = None,
         latents: Optional[torch.Tensor] = None,
         prompt_embeds_qwen: Optional[torch.Tensor] = None,
         prompt_embeds_clip: Optional[torch.Tensor] = None,
@@ -630,7 +630,7 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
         callback_on_step_end: Optional[
-            Union[Callable[[int, int, Dict], None], PipelineCallback, MultiPipelineCallbacks]
+            Callable[[int, int, Dict], None] | PipelineCallback | MultiPipelineCallbacks
         ] = None,
         callback_on_step_end_tensor_inputs: list[str] = ["latents"],
         max_sequence_length: int = 512,

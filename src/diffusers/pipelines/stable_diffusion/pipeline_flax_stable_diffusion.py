@@ -14,7 +14,7 @@
 
 import warnings
 from functools import partial
-from typing import Dict, Optional, Union
+from typing import Dict, Optional
 
 import jax
 import jax.numpy as jnp
@@ -112,9 +112,7 @@ class FlaxStableDiffusionPipeline(FlaxDiffusionPipeline):
         text_encoder: FlaxCLIPTextModel,
         tokenizer: CLIPTokenizer,
         unet: FlaxUNet2DConditionModel,
-        scheduler: Union[
-            FlaxDDIMScheduler, FlaxPNDMScheduler, FlaxLMSDiscreteScheduler, FlaxDPMSolverMultistepScheduler
-        ],
+        scheduler: FlaxDDIMScheduler | FlaxPNDMScheduler | FlaxLMSDiscreteScheduler | FlaxDPMSolverMultistepScheduler,
         safety_checker: FlaxStableDiffusionSafetyChecker,
         feature_extractor: CLIPImageProcessor,
         dtype: jnp.dtype = jnp.float32,
@@ -168,7 +166,7 @@ class FlaxStableDiffusionPipeline(FlaxDiffusionPipeline):
         )
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1) if getattr(self, "vae", None) else 8
 
-    def prepare_inputs(self, prompt: Union[str, list[str]]):
+    def prepare_inputs(self, prompt: str | list[str]):
         if not isinstance(prompt, (str, list)):
             raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
 
@@ -218,7 +216,7 @@ class FlaxStableDiffusionPipeline(FlaxDiffusionPipeline):
     def _generate(
         self,
         prompt_ids: jnp.array,
-        params: Union[Dict, FrozenDict],
+        params: Dict | FrozenDict,
         prng_seed: jax.Array,
         num_inference_steps: int,
         height: int,
@@ -315,12 +313,12 @@ class FlaxStableDiffusionPipeline(FlaxDiffusionPipeline):
     def __call__(
         self,
         prompt_ids: jnp.array,
-        params: Union[Dict, FrozenDict],
+        params: Dict | FrozenDict,
         prng_seed: jax.Array,
         num_inference_steps: int = 50,
         height: Optional[int] = None,
         width: Optional[int] = None,
-        guidance_scale: Union[float, jnp.ndarray] = 7.5,
+        guidance_scale: float | jnp.ndarray = 7.5,
         latents: jnp.ndarray = None,
         neg_prompt_ids: jnp.ndarray = None,
         return_dict: bool = True,

@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import inspect
-from typing import Any, Callable, Optional, Union
+from typing import Any, Callable, Optional
 
 import numpy as np
 import PIL.Image
@@ -633,8 +633,8 @@ class CycleDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Sta
     @torch.no_grad()
     def __call__(
         self,
-        prompt: Union[str, list[str]],
-        source_prompt: Union[str, list[str]],
+        prompt: str | list[str],
+        source_prompt: str | list[str],
         image: PipelineImageInput = None,
         strength: float = 0.8,
         num_inference_steps: Optional[int] = 50,
@@ -642,7 +642,7 @@ class CycleDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Sta
         source_guidance_scale: Optional[float] = 1,
         num_images_per_prompt: Optional[int] = 1,
         eta: Optional[float] = 0.1,
-        generator: Optional[Union[torch.Generator, list[torch.Generator]]] = None,
+        generator: Optional[torch.Generator | list[torch.Generator]] = None,
         prompt_embeds: Optional[torch.Tensor] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,

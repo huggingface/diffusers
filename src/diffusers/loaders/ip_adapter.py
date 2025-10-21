@@ -13,7 +13,7 @@
 # limitations under the License.
 
 from pathlib import Path
-from typing import Optional, Union
+from typing import Optional
 
 import torch
 import torch.nn.functional as F
@@ -57,9 +57,9 @@ class IPAdapterMixin:
     @validate_hf_hub_args
     def load_ip_adapter(
         self,
-        pretrained_model_name_or_path_or_dict: Union[str, list[str], dict[str, torch.Tensor]],
-        subfolder: Union[str, list[str]],
-        weight_name: Union[str, list[str]],
+        pretrained_model_name_or_path_or_dict: str | list[str] | dict[str, torch.Tensor],
+        subfolder: str | list[str],
+        weight_name: str | list[str],
         image_encoder_folder: Optional[str] = "image_encoder",
         **kwargs,
     ):
@@ -358,9 +358,9 @@ class ModularIPAdapterMixin:
     @validate_hf_hub_args
     def load_ip_adapter(
         self,
-        pretrained_model_name_or_path_or_dict: Union[str, list[str], dict[str, torch.Tensor]],
-        subfolder: Union[str, list[str]],
-        weight_name: Union[str, list[str]],
+        pretrained_model_name_or_path_or_dict: str | list[str] | dict[str, torch.Tensor],
+        subfolder: str | list[str],
+        weight_name: str | list[str],
         **kwargs,
     ):
         """
@@ -608,9 +608,9 @@ class FluxIPAdapterMixin:
     @validate_hf_hub_args
     def load_ip_adapter(
         self,
-        pretrained_model_name_or_path_or_dict: Union[str, list[str], dict[str, torch.Tensor]],
-        weight_name: Union[str, list[str]],
-        subfolder: Optional[Union[str, list[str]]] = "",
+        pretrained_model_name_or_path_or_dict: str | list[str] | dict[str, torch.Tensor],
+        weight_name: str | list[str],
+        subfolder: Optional[str | list[str]] = "",
         image_encoder_pretrained_model_name_or_path: Optional[str] = "image_encoder",
         image_encoder_subfolder: Optional[str] = "",
         image_encoder_dtype: torch.dtype = torch.float16,
@@ -797,7 +797,7 @@ class FluxIPAdapterMixin:
         # load ip-adapter into transformer
         self.transformer._load_ip_adapter_weights(state_dicts, low_cpu_mem_usage=low_cpu_mem_usage)
 
-    def set_ip_adapter_scale(self, scale: Union[float, list[float], list[list[float]]]):
+    def set_ip_adapter_scale(self, scale: float | list[float] | list[list[float]]):
         """
         Set IP-Adapter scales per-transformer block. Input `scale` could be a single config or a list of configs for
         granular control over each IP-Adapter behavior. A config can be a float or a list.
@@ -823,7 +823,7 @@ class FluxIPAdapterMixin:
         ```
         """
 
-        scale_type = Union[int, float]
+        scale_type = int | float
         num_ip_adapters = self.transformer.encoder_hid_proj.num_ip_adapters
         num_layers = self.transformer.config.num_layers
 
@@ -834,7 +834,7 @@ class FluxIPAdapterMixin:
         elif _is_valid_type(scale, list[scale_type]) and num_ip_adapters == 1:
             scale = [scale]
         # Invalid scale type
-        elif not _is_valid_type(scale, list[Union[scale_type, list[scale_type]]]):
+        elif not _is_valid_type(scale, list[scale_type | list[scale_type]]):
             raise TypeError(f"Unexpected type {_get_detailed_type(scale)} for scale.")
 
         if len(scale) != num_ip_adapters:
@@ -918,7 +918,7 @@ class SD3IPAdapterMixin:
     @validate_hf_hub_args
     def load_ip_adapter(
         self,
-        pretrained_model_name_or_path_or_dict: Union[str, dict[str, torch.Tensor]],
+        pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor],
         weight_name: str = "ip-adapter.safetensors",
         subfolder: Optional[str] = None,
         image_encoder_folder: Optional[str] = "image_encoder",

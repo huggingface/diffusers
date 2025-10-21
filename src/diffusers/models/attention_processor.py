@@ -13,7 +13,7 @@
 # limitations under the License.
 import inspect
 import math
-from typing import Callable, List, Optional, Union
+from typing import Callable, List, Optional
 
 import torch
 import torch.nn.functional as F
@@ -5622,56 +5622,56 @@ CROSS_ATTENTION_PROCESSORS = (
     FluxIPAdapterJointAttnProcessor2_0,
 )
 
-AttentionProcessor = Union[
-    AttnProcessor,
-    CustomDiffusionAttnProcessor,
-    AttnAddedKVProcessor,
-    AttnAddedKVProcessor2_0,
-    JointAttnProcessor2_0,
-    PAGJointAttnProcessor2_0,
-    PAGCFGJointAttnProcessor2_0,
-    FusedJointAttnProcessor2_0,
-    AllegroAttnProcessor2_0,
-    AuraFlowAttnProcessor2_0,
-    FusedAuraFlowAttnProcessor2_0,
-    FluxAttnProcessor2_0,
-    FluxAttnProcessor2_0_NPU,
-    FusedFluxAttnProcessor2_0,
-    FusedFluxAttnProcessor2_0_NPU,
-    CogVideoXAttnProcessor2_0,
-    FusedCogVideoXAttnProcessor2_0,
-    XFormersAttnAddedKVProcessor,
-    XFormersAttnProcessor,
-    XLAFlashAttnProcessor2_0,
-    AttnProcessorNPU,
-    AttnProcessor2_0,
-    MochiVaeAttnProcessor2_0,
-    MochiAttnProcessor2_0,
-    StableAudioAttnProcessor2_0,
-    HunyuanAttnProcessor2_0,
-    FusedHunyuanAttnProcessor2_0,
-    PAGHunyuanAttnProcessor2_0,
-    PAGCFGHunyuanAttnProcessor2_0,
-    LuminaAttnProcessor2_0,
-    FusedAttnProcessor2_0,
-    CustomDiffusionXFormersAttnProcessor,
-    CustomDiffusionAttnProcessor2_0,
-    SlicedAttnProcessor,
-    SlicedAttnAddedKVProcessor,
-    SanaLinearAttnProcessor2_0,
-    PAGCFGSanaLinearAttnProcessor2_0,
-    PAGIdentitySanaLinearAttnProcessor2_0,
-    SanaMultiscaleLinearAttention,
-    SanaMultiscaleAttnProcessor2_0,
-    SanaMultiscaleAttentionProjection,
-    IPAdapterAttnProcessor,
-    IPAdapterAttnProcessor2_0,
-    IPAdapterXFormersAttnProcessor,
-    SD3IPAdapterJointAttnProcessor2_0,
-    PAGIdentitySelfAttnProcessor2_0,
-    PAGCFGIdentitySelfAttnProcessor2_0,
-    LoRAAttnProcessor,
-    LoRAAttnProcessor2_0,
-    LoRAXFormersAttnProcessor,
-    LoRAAttnAddedKVProcessor,
-]
+AttentionProcessor = (
+    AttnProcessor
+    | CustomDiffusionAttnProcessor
+    | AttnAddedKVProcessor
+    | AttnAddedKVProcessor2_0
+    | JointAttnProcessor2_0
+    | PAGJointAttnProcessor2_0
+    | PAGCFGJointAttnProcessor2_0
+    | FusedJointAttnProcessor2_0
+    | AllegroAttnProcessor2_0
+    | AuraFlowAttnProcessor2_0
+    | FusedAuraFlowAttnProcessor2_0
+    | FluxAttnProcessor2_0
+    | FluxAttnProcessor2_0_NPU
+    | FusedFluxAttnProcessor2_0
+    | FusedFluxAttnProcessor2_0_NPU
+    | CogVideoXAttnProcessor2_0
+    | FusedCogVideoXAttnProcessor2_0
+    | XFormersAttnAddedKVProcessor
+    | XFormersAttnProcessor
+    | XLAFlashAttnProcessor2_0
+    | AttnProcessorNPU
+    | AttnProcessor2_0
+    | MochiVaeAttnProcessor2_0
+    | MochiAttnProcessor2_0
+    | StableAudioAttnProcessor2_0
+    | HunyuanAttnProcessor2_0
+    | FusedHunyuanAttnProcessor2_0
+    | PAGHunyuanAttnProcessor2_0
+    | PAGCFGHunyuanAttnProcessor2_0
+    | LuminaAttnProcessor2_0
+    | FusedAttnProcessor2_0
+    | CustomDiffusionXFormersAttnProcessor
+    | CustomDiffusionAttnProcessor2_0
+    | SlicedAttnProcessor
+    | SlicedAttnAddedKVProcessor
+    | SanaLinearAttnProcessor2_0
+    | PAGCFGSanaLinearAttnProcessor2_0
+    | PAGIdentitySanaLinearAttnProcessor2_0
+    | SanaMultiscaleLinearAttention
+    | SanaMultiscaleAttnProcessor2_0
+    | SanaMultiscaleAttentionProjection
+    | IPAdapterAttnProcessor
+    | IPAdapterAttnProcessor2_0
+    | IPAdapterXFormersAttnProcessor
+    | SD3IPAdapterJointAttnProcessor2_0
+    | PAGIdentitySelfAttnProcessor2_0
+    | PAGCFGIdentitySelfAttnProcessor2_0
+    | LoRAAttnProcessor
+    | LoRAAttnProcessor2_0
+    | LoRAXFormersAttnProcessor
+    | LoRAAttnAddedKVProcessor
+)

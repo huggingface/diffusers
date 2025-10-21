@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import inspect
-from typing import Optional, Union
+from typing import Optional
 
 import torch
 
@@ -38,7 +38,7 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 def retrieve_timesteps(
     scheduler,
     num_inference_steps: Optional[int] = None,
-    device: Optional[Union[str, torch.device]] = None,
+    device: Optional[str | torch.device] = None,
     timesteps: Optional[list[int]] = None,
     sigmas: Optional[list[float]] = None,
     **kwargs,
@@ -311,7 +311,7 @@ class WanPrepareLatentsStep(ModularPipelineBlocks):
         num_frames: int = 81,
         dtype: Optional[torch.dtype] = None,
         device: Optional[torch.device] = None,
-        generator: Optional[Union[torch.Generator, list[torch.Generator]]] = None,
+        generator: Optional[torch.Generator | list[torch.Generator]] = None,
         latents: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         if latents is not None:

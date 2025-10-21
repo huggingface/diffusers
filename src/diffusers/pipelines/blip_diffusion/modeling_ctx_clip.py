@@ -12,7 +12,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from typing import Optional, Tuple, Union
+from typing import Optional, Tuple
 
 import torch
 from torch import nn
@@ -60,7 +60,7 @@ class ContextCLIPTextModel(CLIPPreTrainedModel):
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
-    ) -> Union[Tuple, BaseModelOutputWithPooling]:
+    ) -> Tuple | BaseModelOutputWithPooling:
         return self.text_model(
             ctx_embeddings=ctx_embeddings,
             ctx_begin_pos=ctx_begin_pos,
@@ -92,7 +92,7 @@ class ContextCLIPTextTransformer(nn.Module):
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
-    ) -> Union[Tuple, BaseModelOutputWithPooling]:
+    ) -> Tuple | BaseModelOutputWithPooling:
         r"""
         Returns:
 

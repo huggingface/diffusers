@@ -13,7 +13,7 @@
 # limitations under the License.
 
 
-from typing import Optional, Union
+from typing import Optional
 
 from ..utils import deprecate, logging
 from .controlnets.controlnet_sparsectrl import (  # noqa
@@ -56,7 +56,7 @@ class SparseControlNetModel(SparseControlNetModel):
             "CrossAttnDownBlockMotion",
             "DownBlockMotion",
         ),
-        only_cross_attention: Union[bool, tuple[bool]] = False,
+        only_cross_attention: bool | tuple[bool] = False,
         block_out_channels: tuple[int, ...] = (320, 640, 1280, 1280),
         layers_per_block: int = 2,
         downsample_padding: int = 1,
@@ -65,11 +65,11 @@ class SparseControlNetModel(SparseControlNetModel):
         norm_num_groups: Optional[int] = 32,
         norm_eps: float = 1e-5,
         cross_attention_dim: int = 768,
-        transformer_layers_per_block: Union[int, tuple[int, ...]] = 1,
-        transformer_layers_per_mid_block: Optional[Union[int, tuple[int]]] = None,
-        temporal_transformer_layers_per_block: Union[int, tuple[int, ...]] = 1,
-        attention_head_dim: Union[int, tuple[int, ...]] = 8,
-        num_attention_heads: Optional[Union[int, tuple[int, ...]]] = None,
+        transformer_layers_per_block: int | tuple[int, ...] = 1,
+        transformer_layers_per_mid_block: Optional[int | tuple[int]] = None,
+        temporal_transformer_layers_per_block: int | tuple[int, ...] = 1,
+        attention_head_dim: int | tuple[int, ...] = 8,
+        num_attention_heads: Optional[int | tuple[int, ...]] = None,
         use_linear_projection: bool = False,
         upcast_attention: bool = False,
         resnet_time_scale_shift: str = "default",

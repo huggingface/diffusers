@@ -17,7 +17,7 @@ import json
 import os
 from functools import partial
 from pathlib import Path
-from typing import Dict, Literal, Optional, Union
+from typing import Dict, Literal, Optional
 
 import safetensors
 import torch
@@ -447,8 +447,8 @@ class PeftAdapterMixin:
 
     def set_adapters(
         self,
-        adapter_names: Union[list[str], str],
-        weights: Optional[Union[float, Dict, list[float], list[Dict], list[None]]] = None,
+        adapter_names: list[str] | str,
+        weights: Optional[float | Dict | list[float] | list[Dict] | list[None]] = None,
     ):
         """
         Set the currently active adapters for use in the diffusion network (e.g. unet, transformer, etc.).
@@ -539,7 +539,7 @@ class PeftAdapterMixin:
         inject_adapter_in_model(adapter_config, self, adapter_name)
         self.set_adapter(adapter_name)
 
-    def set_adapter(self, adapter_name: Union[str, list[str]]) -> None:
+    def set_adapter(self, adapter_name: str | list[str]) -> None:
         """
         Sets a specific adapter by forcing the model to only use that adapter and disables the other adapters.
 
@@ -756,7 +756,7 @@ class PeftAdapterMixin:
             raise ValueError("PEFT backend is required for this method.")
         set_adapter_layers(self, enabled=True)
 
-    def delete_adapters(self, adapter_names: Union[list[str], str]):
+    def delete_adapters(self, adapter_names: list[str] | str):
         """
         Delete an adapter's LoRA layers from the underlying model.
 

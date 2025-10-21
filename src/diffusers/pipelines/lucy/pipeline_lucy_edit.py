@@ -17,7 +17,7 @@
 # - Based on pipeline_wan.py, but with supports recieving a condition video appended to the channel dimension.
 
 import html
-from typing import Any, Callable, Dict, Optional, Union
+from typing import Any, Callable, Dict, Optional
 
 import regex as re
 import torch
@@ -196,7 +196,7 @@ class LucyEditPipeline(DiffusionPipeline, WanLoraLoaderMixin):
     # Copied from diffusers.pipelines.wan.pipeline_wan.WanPipeline._get_t5_prompt_embeds
     def _get_t5_prompt_embeds(
         self,
-        prompt: Union[str, list[str]] = None,
+        prompt: str | list[str] = None,
         num_videos_per_prompt: int = 1,
         max_sequence_length: int = 226,
         device: Optional[torch.device] = None,
@@ -238,8 +238,8 @@ class LucyEditPipeline(DiffusionPipeline, WanLoraLoaderMixin):
     # Copied from diffusers.pipelines.wan.pipeline_wan.WanPipeline.encode_prompt
     def encode_prompt(
         self,
-        prompt: Union[str, list[str]],
-        negative_prompt: Optional[Union[str, list[str]]] = None,
+        prompt: str | list[str],
+        negative_prompt: Optional[str | list[str]] = None,
         do_classifier_free_guidance: bool = True,
         num_videos_per_prompt: int = 1,
         prompt_embeds: Optional[torch.Tensor] = None,
@@ -452,8 +452,8 @@ class LucyEditPipeline(DiffusionPipeline, WanLoraLoaderMixin):
     def __call__(
         self,
         video: list[Image.Image],
-        prompt: Union[str, list[str]] = None,
-        negative_prompt: Union[str, list[str]] = None,
+        prompt: str | list[str] = None,
+        negative_prompt: str | list[str] = None,
         height: int = 480,
         width: int = 832,
         num_frames: int = 81,
@@ -461,7 +461,7 @@ class LucyEditPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         guidance_scale: float = 5.0,
         guidance_scale_2: Optional[float] = None,
         num_videos_per_prompt: Optional[int] = 1,
-        generator: Optional[Union[torch.Generator, list[torch.Generator]]] = None,
+        generator: Optional[torch.Generator | list[torch.Generator]] = None,
         latents: Optional[torch.Tensor] = None,
         prompt_embeds: Optional[torch.Tensor] = None,
         negative_prompt_embeds: Optional[torch.Tensor] = None,
@@ -469,7 +469,7 @@ class LucyEditPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         return_dict: bool = True,
         attention_kwargs: Optional[dict[str, Any]] = None,
         callback_on_step_end: Optional[
-            Union[Callable[[int, int, Dict], None], PipelineCallback, MultiPipelineCallbacks]
+            Callable[[int, int, Dict], None] | PipelineCallback | MultiPipelineCallbacks
         ] = None,
         callback_on_step_end_tensor_inputs: list[str] = ["latents"],
         max_sequence_length: int = 512,

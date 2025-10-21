@@ -15,7 +15,7 @@
 import json
 import os
 import re
-from typing import Optional, Union
+from typing import Optional
 
 from sentencepiece import SentencePieceProcessor
 from transformers import PreTrainedTokenizer
@@ -272,7 +272,7 @@ class ChatGLMTokenizer(PreTrainedTokenizer):
 
     def _pad(
         self,
-        encoded_inputs: Union[dict[str, EncodedInput], BatchEncoding],
+        encoded_inputs: dict[str, EncodedInput] | BatchEncoding,
         max_length: Optional[int] = None,
         padding_strategy: PaddingStrategy = PaddingStrategy.DO_NOT_PAD,
         pad_to_multiple_of: Optional[int] = None,

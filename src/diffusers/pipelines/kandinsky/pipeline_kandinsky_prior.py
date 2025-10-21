@@ -13,7 +13,7 @@
 # limitations under the License.
 
 from dataclasses import dataclass
-from typing import Optional, Union
+from typing import Optional
 
 import numpy as np
 import PIL.Image
@@ -130,8 +130,8 @@ class KandinskyPriorPipelineOutput(BaseOutput):
             clip image embeddings for unconditional tokens
     """
 
-    image_embeds: Union[torch.Tensor, np.ndarray]
-    negative_image_embeds: Union[torch.Tensor, np.ndarray]
+    image_embeds: torch.Tensor | np.ndarray
+    negative_image_embeds: torch.Tensor | np.ndarray
 
 
 class KandinskyPriorPipeline(DiffusionPipeline):
@@ -182,11 +182,11 @@ class KandinskyPriorPipeline(DiffusionPipeline):
     @replace_example_docstring(EXAMPLE_INTERPOLATE_DOC_STRING)
     def interpolate(
         self,
-        images_and_prompts: list[Union[str, PIL.Image.Image, torch.Tensor]],
+        images_and_prompts: list[str | PIL.Image.Image | torch.Tensor],
         weights: list[float],
         num_images_per_prompt: int = 1,
         num_inference_steps: int = 25,
-        generator: Optional[Union[torch.Generator, list[torch.Generator]]] = None,
+        generator: Optional[torch.Generator | list[torch.Generator]] = None,
         latents: Optional[torch.Tensor] = None,
         negative_prior_prompt: Optional[str] = None,
         negative_prompt: str = "",
@@ -407,11 +407,11 @@ class KandinskyPriorPipeline(DiffusionPipeline):
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        prompt: Union[str, list[str]],
-        negative_prompt: Optional[Union[str, list[str]]] = None,
+        prompt: str | list[str],
+        negative_prompt: Optional[str | list[str]] = None,
         num_images_per_prompt: int = 1,
         num_inference_steps: int = 25,
-        generator: Optional[Union[torch.Generator, list[torch.Generator]]] = None,
+        generator: Optional[torch.Generator | list[torch.Generator]] = None,
         latents: Optional[torch.Tensor] = None,
         guidance_scale: float = 4.0,
         output_type: Optional[str] = "pt",

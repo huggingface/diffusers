@@ -14,7 +14,7 @@
 
 
 from dataclasses import dataclass
-from typing import Optional, Union
+from typing import Optional
 
 import torch
 
@@ -287,7 +287,7 @@ class AutoencoderTiny(ModelMixin, ConfigMixin):
         return out
 
     @apply_forward_hook
-    def encode(self, x: torch.Tensor, return_dict: bool = True) -> Union[AutoencoderTinyOutput, tuple[torch.Tensor]]:
+    def encode(self, x: torch.Tensor, return_dict: bool = True) -> AutoencoderTinyOutput | tuple[torch.Tensor]:
         if self.use_slicing and x.shape[0] > 1:
             output = [
                 self._tiled_encode(x_slice) if self.use_tiling else self.encoder(x_slice) for x_slice in x.split(1)
@@ -304,7 +304,7 @@ class AutoencoderTiny(ModelMixin, ConfigMixin):
     @apply_forward_hook
     def decode(
         self, x: torch.Tensor, generator: Optional[torch.Generator] = None, return_dict: bool = True
-    ) -> Union[DecoderOutput, tuple[torch.Tensor]]:
+    ) -> DecoderOutput | tuple[torch.Tensor]:
         if self.use_slicing and x.shape[0] > 1:
             output = [
                 self._tiled_decode(x_slice) if self.use_tiling else self.decoder(x_slice) for x_slice in x.split(1)
@@ -322,7 +322,7 @@ class AutoencoderTiny(ModelMixin, ConfigMixin):
         self,
         sample: torch.Tensor,
         return_dict: bool = True,
-    ) -> Union[DecoderOutput, tuple[torch.Tensor]]:
+    ) -> DecoderOutput | tuple[torch.Tensor]:
         r"""
         Args:
             sample (`torch.Tensor`): Input sample.

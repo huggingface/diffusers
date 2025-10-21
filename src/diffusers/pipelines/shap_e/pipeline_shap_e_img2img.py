@@ -13,7 +13,7 @@
 # limitations under the License.
 
 from dataclasses import dataclass
-from typing import List, Optional, Union
+from typing import List, Optional
 
 import numpy as np
 import PIL.Image
@@ -83,7 +83,7 @@ class ShapEPipelineOutput(BaseOutput):
             A list of images for 3D rendering.
     """
 
-    images: Union[PIL.Image.Image, np.ndarray]
+    images: PIL.Image.Image | np.ndarray
 
 
 class ShapEImg2ImgPipeline(DiffusionPipeline):
@@ -174,10 +174,10 @@ class ShapEImg2ImgPipeline(DiffusionPipeline):
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        image: Union[PIL.Image.Image, list[PIL.Image.Image]],
+        image: PIL.Image.Image | list[PIL.Image.Image],
         num_images_per_prompt: int = 1,
         num_inference_steps: int = 25,
-        generator: Optional[Union[torch.Generator, list[torch.Generator]]] = None,
+        generator: Optional[torch.Generator | list[torch.Generator]] = None,
         latents: Optional[torch.Tensor] = None,
         guidance_scale: float = 4.0,
         frame_size: int = 64,

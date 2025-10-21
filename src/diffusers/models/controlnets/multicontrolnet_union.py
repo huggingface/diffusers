@@ -1,5 +1,5 @@
 import os
-from typing import Any, Callable, Optional, Tuple, Union
+from typing import Any, Callable, Optional, Tuple
 
 import torch
 from torch import nn
@@ -26,14 +26,14 @@ class MultiControlNetUnionModel(ModelMixin):
             `ControlNetUnionModel` as a list.
     """
 
-    def __init__(self, controlnets: Union[list[ControlNetUnionModel], tuple[ControlNetUnionModel]]):
+    def __init__(self, controlnets: list[ControlNetUnionModel] | tuple[ControlNetUnionModel]):
         super().__init__()
         self.nets = nn.ModuleList(controlnets)
 
     def forward(
         self,
         sample: torch.Tensor,
-        timestep: Union[torch.Tensor, float, int],
+        timestep: torch.Tensor | float | int,
         encoder_hidden_states: torch.Tensor,
         controlnet_cond: list[torch.tensor],
         control_type: list[torch.Tensor],
@@ -46,7 +46,7 @@ class MultiControlNetUnionModel(ModelMixin):
         cross_attention_kwargs: Optional[dict[str, Any]] = None,
         guess_mode: bool = False,
         return_dict: bool = True,
-    ) -> Union[ControlNetOutput, Tuple]:
+    ) -> ControlNetOutput | Tuple:
         down_block_res_samples, mid_block_res_sample = None, None
         for i, (image, ctype, ctype_idx, scale, controlnet) in enumerate(
             zip(controlnet_cond, control_type, control_type_idx, conditioning_scale, self.nets)
@@ -86,7 +86,7 @@ class MultiControlNetUnionModel(ModelMixin):
     # Copied from diffusers.models.controlnets.multicontrolnet.MultiControlNetModel.save_pretrained with ControlNet->ControlNetUnion
     def save_pretrained(
         self,
-        save_directory: Union[str, os.PathLike],
+        save_directory: str | os.PathLike,
         is_main_process: bool = True,
         save_function: Callable = None,
         safe_serialization: bool = True,
@@ -124,7 +124,7 @@ class MultiControlNetUnionModel(ModelMixin):
 
     @classmethod
     # Copied from diffusers.models.controlnets.multicontrolnet.MultiControlNetModel.from_pretrained with ControlNet->ControlNetUnion
-    def from_pretrained(cls, pretrained_model_path: Optional[Union[str, os.PathLike]], **kwargs):
+    def from_pretrained(cls, pretrained_model_path: Optional[str | os.PathLike], **kwargs):
         r"""
         Instantiate a pretrained MultiControlNetUnion model from multiple pre-trained controlnet models.
 

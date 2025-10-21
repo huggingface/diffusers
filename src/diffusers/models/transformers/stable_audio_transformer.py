@@ -13,7 +13,7 @@
 # limitations under the License.
 
 
-from typing import Optional, Union
+from typing import Optional
 
 import numpy as np
 import torch
@@ -300,7 +300,7 @@ class StableAudioDiTModel(ModelMixin, ConfigMixin):
         return processors
 
     # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.set_attn_processor
-    def set_attn_processor(self, processor: Union[AttentionProcessor, dict[str, AttentionProcessor]]):
+    def set_attn_processor(self, processor: AttentionProcessor | dict[str, AttentionProcessor]):
         r"""
         Sets the attention processor to use to compute attention.
 
@@ -351,7 +351,7 @@ class StableAudioDiTModel(ModelMixin, ConfigMixin):
         return_dict: bool = True,
         attention_mask: Optional[torch.LongTensor] = None,
         encoder_attention_mask: Optional[torch.LongTensor] = None,
-    ) -> Union[torch.FloatTensor, Transformer2DModelOutput]:
+    ) -> torch.FloatTensor | Transformer2DModelOutput:
         """
         The [`StableAudioDiTModel`] forward method.
 

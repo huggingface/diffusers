@@ -14,7 +14,7 @@
 
 import math
 import warnings
-from typing import Optional, Union
+from typing import Optional
 
 import numpy as np
 import PIL.Image
@@ -26,14 +26,9 @@ from .configuration_utils import ConfigMixin, register_to_config
 from .utils import CONFIG_NAME, PIL_INTERPOLATION, deprecate
 
 
-PipelineImageInput = Union[
-    PIL.Image.Image,
-    np.ndarray,
-    torch.Tensor,
-    list[PIL.Image.Image],
-    list[np.ndarray],
-    list[torch.Tensor],
-]
+PipelineImageInput = (
+    PIL.Image.Image | np.ndarray | torch.Tensor | list[PIL.Image.Image] | list[np.ndarray] | list[torch.Tensor]
+)
 
 PipelineDepthInput = PipelineImageInput
 
@@ -155,7 +150,7 @@ class VaeImageProcessor(ConfigMixin):
         return pil_images
 
     @staticmethod
-    def pil_to_numpy(images: Union[list[PIL.Image.Image], PIL.Image.Image]) -> np.ndarray:
+    def pil_to_numpy(images: list[PIL.Image.Image] | PIL.Image.Image) -> np.ndarray:
         r"""
         Convert a PIL image or a list of PIL images to NumPy arrays.
 
@@ -210,7 +205,7 @@ class VaeImageProcessor(ConfigMixin):
         return images
 
     @staticmethod
-    def normalize(images: Union[np.ndarray, torch.Tensor]) -> Union[np.ndarray, torch.Tensor]:
+    def normalize(images: np.ndarray | torch.Tensor) -> np.ndarray | torch.Tensor:
         r"""
         Normalize an image array to [-1,1].
 
@@ -225,7 +220,7 @@ class VaeImageProcessor(ConfigMixin):
         return 2.0 * images - 1.0
 
     @staticmethod
-    def denormalize(images: Union[np.ndarray, torch.Tensor]) -> Union[np.ndarray, torch.Tensor]:
+    def denormalize(images: np.ndarray | torch.Tensor) -> np.ndarray | torch.Tensor:
         r"""
         Denormalize an image array to [0,1].
 
@@ -467,11 +462,11 @@ class VaeImageProcessor(ConfigMixin):
 
     def resize(
         self,
-        image: Union[PIL.Image.Image, np.ndarray, torch.Tensor],
+        image: PIL.Image.Image | np.ndarray | torch.Tensor,
         height: int,
         width: int,
         resize_mode: str = "default",  # "default", "fill", "crop"
-    ) -> Union[PIL.Image.Image, np.ndarray, torch.Tensor]:
+    ) -> PIL.Image.Image | np.ndarray | torch.Tensor:
         """
         Resize image.
 
@@ -565,7 +560,7 @@ class VaeImageProcessor(ConfigMixin):
 
     def get_default_height_width(
         self,
-        image: Union[PIL.Image.Image, np.ndarray, torch.Tensor],
+        image: PIL.Image.Image | np.ndarray | torch.Tensor,
         height: Optional[int] = None,
         width: Optional[int] = None,
     ) -> tuple[int, int]:
@@ -746,7 +741,7 @@ class VaeImageProcessor(ConfigMixin):
         image: torch.Tensor,
         output_type: str = "pil",
         do_denormalize: Optional[list[bool]] = None,
-    ) -> Union[PIL.Image.Image, np.ndarray, torch.Tensor]:
+    ) -> PIL.Image.Image | np.ndarray | torch.Tensor:
         """
         Postprocess the image output from tensor to `output_type`.
 
@@ -1022,7 +1017,7 @@ class VaeImageProcessorLDM3D(VaeImageProcessor):
         return pil_images
 
     @staticmethod
-    def depth_pil_to_numpy(images: Union[list[PIL.Image.Image], PIL.Image.Image]) -> np.ndarray:
+    def depth_pil_to_numpy(images: list[PIL.Image.Image] | PIL.Image.Image) -> np.ndarray:
         r"""
         Convert a PIL image or a list of PIL images to NumPy arrays.
 
@@ -1042,7 +1037,7 @@ class VaeImageProcessorLDM3D(VaeImageProcessor):
         return images
 
     @staticmethod
-    def rgblike_to_depthmap(image: Union[np.ndarray, torch.Tensor]) -> Union[np.ndarray, torch.Tensor]:
+    def rgblike_to_depthmap(image: np.ndarray | torch.Tensor) -> np.ndarray | torch.Tensor:
         r"""
         Convert an RGB-like depth image to a depth map.
 
@@ -1089,7 +1084,7 @@ class VaeImageProcessorLDM3D(VaeImageProcessor):
         image: torch.Tensor,
         output_type: str = "pil",
         do_denormalize: Optional[list[bool]] = None,
-    ) -> Union[PIL.Image.Image, np.ndarray, torch.Tensor]:
+    ) -> PIL.Image.Image | np.ndarray | torch.Tensor:
         """
         Postprocess the image output from tensor to `output_type`.
 
@@ -1136,8 +1131,8 @@ class VaeImageProcessorLDM3D(VaeImageProcessor):
 
     def preprocess(
         self,
-        rgb: Union[torch.Tensor, PIL.Image.Image, np.ndarray],
-        depth: Union[torch.Tensor, PIL.Image.Image, np.ndarray],
+        rgb: torch.Tensor | PIL.Image.Image | np.ndarray,
+        depth: torch.Tensor | PIL.Image.Image | np.ndarray,
         height: Optional[int] = None,
         width: Optional[int] = None,
         target_res: Optional[int] = None,

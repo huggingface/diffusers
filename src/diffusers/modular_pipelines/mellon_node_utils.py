@@ -4,7 +4,7 @@ import os
 
 # Simple typed wrapper for parameter overrides
 from dataclasses import asdict, dataclass
-from typing import Any, Optional, Union
+from typing import Any, Optional
 
 from huggingface_hub import create_repo, hf_hub_download
 from huggingface_hub.utils import (
@@ -345,9 +345,9 @@ class MellonNodeConfig(PushToHubMixin):
     </Tip>
     """
 
-    inputs: list[Union[str, MellonParam]]
-    model_inputs: list[Union[str, MellonParam]]
-    outputs: list[Union[str, MellonParam]]
+    inputs: list[str | MellonParam]
+    model_inputs: list[str | MellonParam]
+    outputs: list[str | MellonParam]
     blocks_names: list[str]
     node_type: str
     config_name = "mellon_config.json"
@@ -362,10 +362,10 @@ class MellonNodeConfig(PushToHubMixin):
 
     @staticmethod
     def _resolve_params_list(
-        params: list[Union[str, MellonParam]], default_map: dict[str, dict[str, Any]]
+        params: list[str | MellonParam], default_map: dict[str, dict[str, Any]]
     ) -> dict[str, dict[str, Any]]:
         def _resolve_param(
-            param: Union[str, MellonParam], default_params_map: dict[str, dict[str, Any]]
+            param: str | MellonParam, default_params_map: dict[str, dict[str, Any]]
         ) -> tuple[str, dict[str, Any]]:
             if isinstance(param, str):
                 if param not in default_params_map:
@@ -393,7 +393,7 @@ class MellonNodeConfig(PushToHubMixin):
     @validate_hf_hub_args
     def load_mellon_config(
         cls,
-        pretrained_model_name_or_path: Union[str, os.PathLike],
+        pretrained_model_name_or_path: str | os.PathLike,
         return_unused_kwargs=False,
         return_commit_hash=False,
         **kwargs,
@@ -541,7 +541,7 @@ class MellonNodeConfig(PushToHubMixin):
 
         return outputs
 
-    def save_mellon_config(self, save_directory: Union[str, os.PathLike], push_to_hub: bool = False, **kwargs):
+    def save_mellon_config(self, save_directory: str | os.PathLike, push_to_hub: bool = False, **kwargs):
         """
         Save the Mellon node definition to a JSON file.
 
@@ -584,7 +584,7 @@ class MellonNodeConfig(PushToHubMixin):
                 subfolder=subfolder,
             )
 
-    def to_json_file(self, json_file_path: Union[str, os.PathLike]):
+    def to_json_file(self, json_file_path: str | os.PathLike):
         """
         Save the Mellon schema dictionary to a JSON file.
 
@@ -667,9 +667,9 @@ class MellonNodeConfig(PushToHubMixin):
         blocks_names = list(blocks.sub_blocks.keys())
 
         default_node_config = NODE_TYPE_PARAMS_MAP[node_type]
-        inputs_list: list[Union[str, MellonParam]] = default_node_config.get("inputs", [])
-        model_inputs_list: list[Union[str, MellonParam]] = default_node_config.get("model_inputs", [])
-        outputs_list: list[Union[str, MellonParam]] = default_node_config.get("outputs", [])
+        inputs_list: list[str | MellonParam] = default_node_config.get("inputs", [])
+        model_inputs_list: list[str | MellonParam] = default_node_config.get("model_inputs", [])
+        outputs_list: list[str | MellonParam] = default_node_config.get("outputs", [])
 
         for required_input_name in blocks.required_inputs:
             if required_input_name not in inputs_list:

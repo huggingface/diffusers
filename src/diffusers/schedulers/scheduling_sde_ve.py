@@ -16,7 +16,7 @@
 
 import math
 from dataclasses import dataclass
-from typing import Optional, Tuple, Union
+from typing import Optional, Tuple
 
 import torch
 
@@ -103,9 +103,7 @@ class ScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
         """
         return sample
 
-    def set_timesteps(
-        self, num_inference_steps: int, sampling_eps: float = None, device: Union[str, torch.device] = None
-    ):
+    def set_timesteps(self, num_inference_steps: int, sampling_eps: float = None, device: str | torch.device = None):
         """
         Sets the continuous timesteps used for the diffusion chain (to be run before inference).
 
@@ -164,7 +162,7 @@ class ScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
         sample: torch.Tensor,
         generator: Optional[torch.Generator] = None,
         return_dict: bool = True,
-    ) -> Union[SdeVeOutput, Tuple]:
+    ) -> SdeVeOutput | Tuple:
         """
         Predict the sample from the previous timestep by reversing the SDE. This function propagates the diffusion
         process from the learned model outputs (most often the predicted noise).
@@ -231,7 +229,7 @@ class ScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
         sample: torch.Tensor,
         generator: Optional[torch.Generator] = None,
         return_dict: bool = True,
-    ) -> Union[SchedulerOutput, Tuple]:
+    ) -> SchedulerOutput | Tuple:
         """
         Correct the predicted sample based on the `model_output` of the network. This is often run repeatedly after
         making the prediction for the previous timestep.

@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Any, Union
+from typing import TYPE_CHECKING, Any
 
 from ...utils import (
     get_module_from_name,
@@ -101,7 +101,7 @@ class NVIDIAModelOptQuantizer(DiffusersQuantizer):
             mtq.compress(module)
             module.weight.requires_grad = False
 
-    def adjust_max_memory(self, max_memory: dict[str, Union[int, str]]) -> dict[str, Union[int, str]]:
+    def adjust_max_memory(self, max_memory: dict[str, int | str]) -> dict[str, int | str]:
         max_memory = {key: val * 0.90 for key, val in max_memory.items()}
         return max_memory
 

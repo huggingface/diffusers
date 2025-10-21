@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import inspect
-from typing import Any, Callable, Optional, Union
+from typing import Any, Callable, Optional
 
 import PIL.Image
 import torch
@@ -611,8 +611,8 @@ class StableDiffusionXLInstructPix2PixPipeline(
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        prompt: Union[str, list[str]] = None,
-        prompt_2: Optional[Union[str, list[str]]] = None,
+        prompt: str | list[str] = None,
+        prompt_2: Optional[str | list[str]] = None,
         image: PipelineImageInput = None,
         height: Optional[int] = None,
         width: Optional[int] = None,
@@ -620,11 +620,11 @@ class StableDiffusionXLInstructPix2PixPipeline(
         denoising_end: Optional[float] = None,
         guidance_scale: float = 5.0,
         image_guidance_scale: float = 1.5,
-        negative_prompt: Optional[Union[str, list[str]]] = None,
-        negative_prompt_2: Optional[Union[str, list[str]]] = None,
+        negative_prompt: Optional[str | list[str]] = None,
+        negative_prompt_2: Optional[str | list[str]] = None,
         num_images_per_prompt: Optional[int] = 1,
         eta: float = 0.0,
-        generator: Optional[Union[torch.Generator, list[torch.Generator]]] = None,
+        generator: Optional[torch.Generator | list[torch.Generator]] = None,
         latents: Optional[torch.Tensor] = None,
         prompt_embeds: Optional[torch.Tensor] = None,
         negative_prompt_embeds: Optional[torch.Tensor] = None,

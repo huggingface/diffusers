@@ -1,4 +1,4 @@
-from typing import Callable, Dict, Optional, Union
+from typing import Callable, Dict, Optional
 
 import torch
 from transformers import T5EncoderModel, T5Tokenizer
@@ -335,14 +335,14 @@ class Kandinsky3Pipeline(DiffusionPipeline, StableDiffusionLoraLoaderMixin):
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        prompt: Union[str, list[str]] = None,
+        prompt: str | list[str] = None,
         num_inference_steps: int = 25,
         guidance_scale: float = 3.0,
-        negative_prompt: Optional[Union[str, list[str]]] = None,
+        negative_prompt: Optional[str | list[str]] = None,
         num_images_per_prompt: Optional[int] = 1,
         height: Optional[int] = 1024,
         width: Optional[int] = 1024,
-        generator: Optional[Union[torch.Generator, list[torch.Generator]]] = None,
+        generator: Optional[torch.Generator | list[torch.Generator]] = None,
         prompt_embeds: Optional[torch.Tensor] = None,
         negative_prompt_embeds: Optional[torch.Tensor] = None,
         attention_mask: Optional[torch.Tensor] = None,

@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Any, Optional, Union
+from typing import TYPE_CHECKING, Any, Optional
 
 from ..base import DiffusersQuantizer
 
@@ -57,7 +57,7 @@ class GGUFQuantizer(DiffusersQuantizer):
             )
 
     # Copied from diffusers.quantizers.bitsandbytes.bnb_quantizer.BnB4BitDiffusersQuantizer.adjust_max_memory
-    def adjust_max_memory(self, max_memory: dict[str, Union[int, str]]) -> dict[str, Union[int, str]]:
+    def adjust_max_memory(self, max_memory: dict[str, int | str]) -> dict[str, int | str]:
         # need more space for buffers that are created during quantization
         max_memory = {key: val * 0.90 for key, val in max_memory.items()}
         return max_memory
@@ -90,7 +90,7 @@ class GGUFQuantizer(DiffusersQuantizer):
     def check_if_quantized_param(
         self,
         model: "ModelMixin",
-        param_value: Union["GGUFParameter", "torch.Tensor"],
+        param_value: "GGUFParameter" | "torch.Tensor",
         param_name: str,
         state_dict: dict[str, Any],
         **kwargs,
@@ -103,7 +103,7 @@ class GGUFQuantizer(DiffusersQuantizer):
     def create_quantized_param(
         self,
         model: "ModelMixin",
-        param_value: Union["GGUFParameter", "torch.Tensor"],
+        param_value: "GGUFParameter" | "torch.Tensor",
         param_name: str,
         target_device: "torch.device",
         state_dict: Optional[dict[str, Any]] = None,

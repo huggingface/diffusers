@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Any, Optional, Union
+from typing import Any, Optional
 
 import torch
 from torch import nn
@@ -99,15 +99,10 @@ def get_down_block(
     resnet_time_scale_shift: str = "default",
     temporal_num_attention_heads: int = 8,
     temporal_max_seq_length: int = 32,
-    transformer_layers_per_block: Union[int, tuple[int]] = 1,
-    temporal_transformer_layers_per_block: Union[int, tuple[int]] = 1,
+    transformer_layers_per_block: int | tuple[int] = 1,
+    temporal_transformer_layers_per_block: int | tuple[int] = 1,
     dropout: float = 0.0,
-) -> Union[
-    "DownBlock3D",
-    "CrossAttnDownBlock3D",
-    "DownBlockSpatioTemporal",
-    "CrossAttnDownBlockSpatioTemporal",
-]:
+) -> "DownBlock3D" | "CrossAttnDownBlock3D" | "DownBlockSpatioTemporal" | "CrossAttnDownBlockSpatioTemporal":
     if down_block_type == "DownBlock3D":
         return DownBlock3D(
             num_layers=num_layers,
@@ -193,15 +188,10 @@ def get_up_block(
     temporal_num_attention_heads: int = 8,
     temporal_cross_attention_dim: Optional[int] = None,
     temporal_max_seq_length: int = 32,
-    transformer_layers_per_block: Union[int, tuple[int]] = 1,
-    temporal_transformer_layers_per_block: Union[int, tuple[int]] = 1,
+    transformer_layers_per_block: int | tuple[int] = 1,
+    temporal_transformer_layers_per_block: int | tuple[int] = 1,
     dropout: float = 0.0,
-) -> Union[
-    "UpBlock3D",
-    "CrossAttnUpBlock3D",
-    "UpBlockSpatioTemporal",
-    "CrossAttnUpBlockSpatioTemporal",
-]:
+) -> "UpBlock3D" | "CrossAttnUpBlock3D" | "UpBlockSpatioTemporal" | "CrossAttnUpBlockSpatioTemporal":
     if up_block_type == "UpBlock3D":
         return UpBlock3D(
             num_layers=num_layers,
@@ -514,7 +504,7 @@ class CrossAttnDownBlock3D(nn.Module):
         attention_mask: Optional[torch.Tensor] = None,
         num_frames: int = 1,
         cross_attention_kwargs: dict[str, Any] = None,
-    ) -> Union[torch.Tensor, tuple[torch.Tensor, ...]]:
+    ) -> torch.Tensor | tuple[torch.Tensor, ...]:
         # TODO(Patrick, William) - attention mask is not used
         output_states = ()
 
@@ -618,7 +608,7 @@ class DownBlock3D(nn.Module):
         hidden_states: torch.Tensor,
         temb: Optional[torch.Tensor] = None,
         num_frames: int = 1,
-    ) -> Union[torch.Tensor, tuple[torch.Tensor, ...]]:
+    ) -> torch.Tensor | tuple[torch.Tensor, ...]:
         output_states = ()
 
         for resnet, temp_conv in zip(self.resnets, self.temp_convs):
@@ -1015,7 +1005,7 @@ class UNetMidBlockSpatioTemporal(nn.Module):
         in_channels: int,
         temb_channels: int,
         num_layers: int = 1,
-        transformer_layers_per_block: Union[int, tuple[int]] = 1,
+        transformer_layers_per_block: int | tuple[int] = 1,
         num_attention_heads: int = 1,
         cross_attention_dim: int = 1280,
     ):
@@ -1170,7 +1160,7 @@ class CrossAttnDownBlockSpatioTemporal(nn.Module):
         out_channels: int,
         temb_channels: int,
         num_layers: int = 1,
-        transformer_layers_per_block: Union[int, tuple[int]] = 1,
+        transformer_layers_per_block: int | tuple[int] = 1,
         num_attention_heads: int = 1,
         cross_attention_dim: int = 1280,
         add_downsample: bool = True,
@@ -1338,7 +1328,7 @@ class CrossAttnUpBlockSpatioTemporal(nn.Module):
         temb_channels: int,
         resolution_idx: Optional[int] = None,
         num_layers: int = 1,
-        transformer_layers_per_block: Union[int, tuple[int]] = 1,
+        transformer_layers_per_block: int | tuple[int] = 1,
         resnet_eps: float = 1e-6,
         num_attention_heads: int = 1,
         cross_attention_dim: int = 1280,

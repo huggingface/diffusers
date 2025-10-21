@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import inspect
-from typing import Optional, Union
+from typing import Optional
 
 import PIL.Image
 import torch
@@ -207,7 +207,7 @@ class UnCLIPImageVariationPipeline(DeprecatedPipelineMixin, DiffusionPipeline):
     @torch.no_grad()
     def __call__(
         self,
-        image: Optional[Union[PIL.Image.Image, list[PIL.Image.Image], torch.Tensor]] = None,
+        image: Optional[PIL.Image.Image | list[PIL.Image.Image] | torch.Tensor] = None,
         num_images_per_prompt: int = 1,
         decoder_num_inference_steps: int = 25,
         super_res_num_inference_steps: int = 7,

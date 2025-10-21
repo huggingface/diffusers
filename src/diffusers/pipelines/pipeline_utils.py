@@ -125,7 +125,7 @@ class ImagePipelineOutput(BaseOutput):
             num_channels)`.
     """
 
-    images: Union[list[PIL.Image.Image], np.ndarray]
+    images: list[PIL.Image.Image] | np.ndarray
 
 
 @dataclass
@@ -236,10 +236,10 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
     def save_pretrained(
         self,
-        save_directory: Union[str, os.PathLike],
+        save_directory: str | os.PathLike,
         safe_serialization: bool = True,
         variant: Optional[str] = None,
-        max_shard_size: Optional[Union[int, str]] = None,
+        max_shard_size: Optional[int | str] = None,
         push_to_hub: bool = False,
         **kwargs,
     ):
@@ -591,7 +591,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
     @classmethod
     @validate_hf_hub_args
-    def from_pretrained(cls, pretrained_model_name_or_path: Optional[Union[str, os.PathLike]], **kwargs) -> Self:
+    def from_pretrained(cls, pretrained_model_name_or_path: Optional[str | os.PathLike], **kwargs) -> Self:
         r"""
         Instantiate a PyTorch diffusion pipeline from pretrained pipeline weights.
 
@@ -1147,7 +1147,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 accelerate.hooks.remove_hook_from_module(model, recurse=True)
         self._all_hooks = []
 
-    def enable_model_cpu_offload(self, gpu_id: Optional[int] = None, device: Union[torch.device, str] = None):
+    def enable_model_cpu_offload(self, gpu_id: Optional[int] = None, device: torch.device | str = None):
         r"""
         Offloads all models to CPU using accelerate, reducing memory usage with a low impact on performance. Compared
         to `enable_sequential_cpu_offload`, this method moves one whole model at a time to the accelerator when its
@@ -1263,7 +1263,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         # make sure the model is in the same state as before calling it
         self.enable_model_cpu_offload(device=getattr(self, "_offload_device", "cuda"))
 
-    def enable_sequential_cpu_offload(self, gpu_id: Optional[int] = None, device: Union[torch.device, str] = None):
+    def enable_sequential_cpu_offload(self, gpu_id: Optional[int] = None, device: torch.device | str = None):
         r"""
         Offloads all models to CPU using 🤗 Accelerate, significantly reducing memory usage. When called, the state
         dicts of all `torch.nn.Module` components (except those in `self._exclude_from_cpu_offload`) are saved to CPU
@@ -1341,7 +1341,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         record_stream: bool = False,
         low_cpu_mem_usage=False,
         offload_to_disk_path: Optional[str] = None,
-        exclude_modules: Optional[Union[str, list[str]]] = None,
+        exclude_modules: Optional[str | list[str]] = None,
     ) -> None:
         r"""
         Applies group offloading to the internal layers of a torch.nn.Module. To understand what group offloading is,
@@ -1472,7 +1472,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
     @classmethod
     @validate_hf_hub_args
-    def download(cls, pretrained_model_name, **kwargs) -> Union[str, os.PathLike]:
+    def download(cls, pretrained_model_name, **kwargs) -> str | os.PathLike:
         r"""
         Download and cache a PyTorch diffusion pipeline from pretrained pipeline weights.
 
@@ -1975,7 +1975,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         for module in modules:
             fn_recursive_set_mem_eff(module)
 
-    def enable_attention_slicing(self, slice_size: Optional[Union[str, int]] = "auto"):
+    def enable_attention_slicing(self, slice_size: Optional[str | int] = "auto"):
         r"""
         Enable sliced attention computation. When this option is enabled, the attention module splits the input tensor
         in slices to compute attention in several steps. For more than one attention head, the computation is performed

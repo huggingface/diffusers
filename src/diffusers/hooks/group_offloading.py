@@ -17,7 +17,7 @@ import os
 from contextlib import contextmanager, nullcontext
 from dataclasses import dataclass
 from enum import Enum
-from typing import Optional, Set, Union
+from typing import Optional, Set
 
 import safetensors.torch
 import torch
@@ -58,7 +58,7 @@ class GroupOffloadingConfig:
     low_cpu_mem_usage: bool
     num_blocks_per_group: Optional[int] = None
     offload_to_disk_path: Optional[str] = None
-    stream: Optional[Union[torch.cuda.Stream, torch.Stream]] = None
+    stream: Optional[torch.cuda.Stream | torch.Stream] = None
 
 
 class ModuleGroup:
@@ -72,7 +72,7 @@ class ModuleGroup:
         parameters: Optional[list[torch.nn.Parameter]] = None,
         buffers: Optional[list[torch.Tensor]] = None,
         non_blocking: bool = False,
-        stream: Union[torch.cuda.Stream, torch.Stream, None] = None,
+        stream: torch.cuda.Stream | torch.Stream | None = None,
         record_stream: Optional[bool] = False,
         low_cpu_mem_usage: bool = False,
         onload_self: bool = True,
@@ -444,9 +444,9 @@ class LayerExecutionTrackerHook(ModelHook):
 
 def apply_group_offloading(
     module: torch.nn.Module,
-    onload_device: Union[str, torch.device],
-    offload_device: Union[str, torch.device] = torch.device("cpu"),
-    offload_type: Union[str, GroupOffloadingType] = "block_level",
+    onload_device: str | torch.device,
+    offload_device: str | torch.device = torch.device("cpu"),
+    offload_type: str | GroupOffloadingType = "block_level",
     num_blocks_per_group: Optional[int] = None,
     non_blocking: bool = False,
     use_stream: bool = False,

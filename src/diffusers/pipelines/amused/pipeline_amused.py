@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Any, Callable, Optional, Union
+from typing import Any, Callable, Optional
 
 import torch
 from transformers import CLIPTextModelWithProjection, CLIPTokenizer
@@ -84,12 +84,12 @@ class AmusedPipeline(DeprecatedPipelineMixin, DiffusionPipeline):
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        prompt: Optional[Union[list[str], str]] = None,
+        prompt: Optional[list[str] | str] = None,
         height: Optional[int] = None,
         width: Optional[int] = None,
         num_inference_steps: int = 12,
         guidance_scale: float = 10.0,
-        negative_prompt: Optional[Union[str, list[str]]] = None,
+        negative_prompt: Optional[str | list[str]] = None,
         num_images_per_prompt: Optional[int] = 1,
         generator: Optional[torch.Generator] = None,
         latents: Optional[torch.IntTensor] = None,
@@ -104,7 +104,7 @@ class AmusedPipeline(DeprecatedPipelineMixin, DiffusionPipeline):
         cross_attention_kwargs: Optional[dict[str, Any]] = None,
         micro_conditioning_aesthetic_score: int = 6,
         micro_conditioning_crop_coord: tuple[int, int] = (0, 0),
-        temperature: Union[int, tuple[int, int], list[int]] = (2, 0),
+        temperature: int | tuple[int, int] | list[int] = (2, 0),
     ):
         """
         The call function to the pipeline for generation.

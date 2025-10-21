@@ -18,7 +18,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Optional, Tuple, Union
+from typing import Optional, Tuple
 
 import torch
 
@@ -75,7 +75,7 @@ class DiTPipeline(DiffusionPipeline):
                     self.labels[label.lstrip().rstrip()] = int(key)
             self.labels = dict(sorted(self.labels.items()))
 
-    def get_label_ids(self, label: Union[str, list[str]]) -> list[int]:
+    def get_label_ids(self, label: str | list[str]) -> list[int]:
         r"""
 
         Map label strings from ImageNet to corresponding class ids.
@@ -105,11 +105,11 @@ class DiTPipeline(DiffusionPipeline):
         self,
         class_labels: list[int],
         guidance_scale: float = 4.0,
-        generator: Optional[Union[torch.Generator, list[torch.Generator]]] = None,
+        generator: Optional[torch.Generator | list[torch.Generator]] = None,
         num_inference_steps: int = 50,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
-    ) -> Union[ImagePipelineOutput, Tuple]:
+    ) -> ImagePipelineOutput | Tuple:
         r"""
         The call function to the pipeline for generation.
 

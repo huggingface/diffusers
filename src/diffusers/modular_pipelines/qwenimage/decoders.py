@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Union
 
 import numpy as np
 import PIL
@@ -64,7 +63,7 @@ class QwenImageDecoderStep(ModularPipelineBlocks):
         return [
             OutputParam(
                 "images",
-                type_hint=Union[list[PIL.Image.Image], list[torch.Tensor], list[np.array]],
+                type_hint=list[PIL.Image.Image] | list[torch.Tensor] | list[np.array],
                 description="The generated images, can be a PIL.Image.Image, torch.Tensor or a numpy array",
             )
         ]

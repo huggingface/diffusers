@@ -14,7 +14,7 @@
 
 import inspect
 from dataclasses import dataclass
-from typing import Callable, Dict, Optional, Union
+from typing import Callable, Dict, Optional
 
 import numpy as np
 import PIL.Image
@@ -74,7 +74,7 @@ def _append_dims(x, target_dims):
 def retrieve_timesteps(
     scheduler,
     num_inference_steps: Optional[int] = None,
-    device: Optional[Union[str, torch.device]] = None,
+    device: Optional[str | torch.device] = None,
     timesteps: Optional[list[int]] = None,
     sigmas: Optional[list[float]] = None,
     **kwargs,
@@ -141,7 +141,7 @@ class StableVideoDiffusionPipelineOutput(BaseOutput):
             num_frames, height, width, num_channels)`.
     """
 
-    frames: Union[list[list[PIL.Image.Image]], np.ndarray, torch.Tensor]
+    frames: list[list[PIL.Image.Image]] | np.ndarray | torch.Tensor
 
 
 class StableVideoDiffusionPipeline(DiffusionPipeline):
@@ -191,7 +191,7 @@ class StableVideoDiffusionPipeline(DiffusionPipeline):
     def _encode_image(
         self,
         image: PipelineImageInput,
-        device: Union[str, torch.device],
+        device: str | torch.device,
         num_videos_per_prompt: int,
         do_classifier_free_guidance: bool,
     ) -> torch.Tensor:
@@ -239,7 +239,7 @@ class StableVideoDiffusionPipeline(DiffusionPipeline):
     def _encode_vae_image(
         self,
         image: torch.Tensor,
-        device: Union[str, torch.device],
+        device: str | torch.device,
         num_videos_per_prompt: int,
         do_classifier_free_guidance: bool,
     ):
@@ -338,7 +338,7 @@ class StableVideoDiffusionPipeline(DiffusionPipeline):
         height: int,
         width: int,
         dtype: torch.dtype,
-        device: Union[str, torch.device],
+        device: str | torch.device,
         generator: torch.Generator,
         latents: Optional[torch.Tensor] = None,
     ):
@@ -385,7 +385,7 @@ class StableVideoDiffusionPipeline(DiffusionPipeline):
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        image: Union[PIL.Image.Image, list[PIL.Image.Image], torch.Tensor],
+        image: PIL.Image.Image | list[PIL.Image.Image] | torch.Tensor,
         height: int = 576,
         width: int = 1024,
         num_frames: Optional[int] = None,
@@ -398,7 +398,7 @@ class StableVideoDiffusionPipeline(DiffusionPipeline):
         noise_aug_strength: float = 0.02,
         decode_chunk_size: Optional[int] = None,
         num_videos_per_prompt: Optional[int] = 1,
-        generator: Optional[Union[torch.Generator, list[torch.Generator]]] = None,
+        generator: Optional[torch.Generator | list[torch.Generator]] = None,
         latents: Optional[torch.Tensor] = None,
         output_type: Optional[str] = "pil",
         callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,

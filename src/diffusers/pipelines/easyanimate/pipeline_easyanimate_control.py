@@ -14,7 +14,7 @@
 # limitations under the License.
 
 import inspect
-from typing import Callable, Dict, Optional, Union
+from typing import Callable, Dict, Optional
 
 import numpy as np
 import torch
@@ -229,7 +229,7 @@ def resize_mask(mask, latent, process_first_frame_only=True):
 def retrieve_timesteps(
     scheduler,
     num_inference_steps: Optional[int] = None,
-    device: Optional[Union[str, torch.device]] = None,
+    device: Optional[str | torch.device] = None,
     timesteps: Optional[list[int]] = None,
     sigmas: Optional[list[float]] = None,
     **kwargs,
@@ -313,8 +313,8 @@ class EasyAnimateControlPipeline(DiffusionPipeline):
     def __init__(
         self,
         vae: AutoencoderKLMagvit,
-        text_encoder: Union[Qwen2VLForConditionalGeneration, BertModel],
-        tokenizer: Union[Qwen2Tokenizer, BertTokenizer],
+        text_encoder: Qwen2VLForConditionalGeneration | BertModel,
+        tokenizer: Qwen2Tokenizer | BertTokenizer,
         transformer: EasyAnimateTransformer3DModel,
         scheduler: FlowMatchEulerDiscreteScheduler,
     ):
@@ -351,10 +351,10 @@ class EasyAnimateControlPipeline(DiffusionPipeline):
     # Copied from diffusers.pipelines.easyanimate.pipeline_easyanimate.EasyAnimatePipeline.encode_prompt
     def encode_prompt(
         self,
-        prompt: Union[str, list[str]],
+        prompt: str | list[str],
         num_images_per_prompt: int = 1,
         do_classifier_free_guidance: bool = True,
-        negative_prompt: Optional[Union[str, list[str]]] = None,
+        negative_prompt: Optional[str | list[str]] = None,
         prompt_embeds: Optional[torch.Tensor] = None,
         negative_prompt_embeds: Optional[torch.Tensor] = None,
         prompt_attention_mask: Optional[torch.Tensor] = None,
@@ -671,19 +671,19 @@ class EasyAnimateControlPipeline(DiffusionPipeline):
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        prompt: Union[str, list[str]] = None,
+        prompt: str | list[str] = None,
         num_frames: Optional[int] = 49,
         height: Optional[int] = 512,
         width: Optional[int] = 512,
-        control_video: Union[torch.FloatTensor] = None,
-        control_camera_video: Union[torch.FloatTensor] = None,
-        ref_image: Union[torch.FloatTensor] = None,
+        control_video: torch.FloatTensor = None,
+        control_camera_video: torch.FloatTensor = None,
+        ref_image: torch.FloatTensor = None,
         num_inference_steps: Optional[int] = 50,
         guidance_scale: Optional[float] = 5.0,
-        negative_prompt: Optional[Union[str, list[str]]] = None,
+        negative_prompt: Optional[str | list[str]] = None,
         num_images_per_prompt: Optional[int] = 1,
         eta: Optional[float] = 0.0,
-        generator: Optional[Union[torch.Generator, list[torch.Generator]]] = None,
+        generator: Optional[torch.Generator | list[torch.Generator]] = None,
         latents: Optional[torch.Tensor] = None,
         prompt_embeds: Optional[torch.Tensor] = None,
         negative_prompt_embeds: Optional[torch.Tensor] = None,
@@ -692,7 +692,7 @@ class EasyAnimateControlPipeline(DiffusionPipeline):
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
         callback_on_step_end: Optional[
-            Union[Callable[[int, int, Dict], None], PipelineCallback, MultiPipelineCallbacks]
+            Callable[[int, int, Dict], None] | PipelineCallback | MultiPipelineCallbacks
         ] = None,
         callback_on_step_end_tensor_inputs: list[str] = ["latents"],
         guidance_rescale: float = 0.0,

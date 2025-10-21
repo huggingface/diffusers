@@ -13,7 +13,7 @@
 # limitations under the License.
 import math
 from dataclasses import dataclass
-from typing import Optional, Union
+from typing import Optional
 
 import numpy as np
 import torch
@@ -373,7 +373,7 @@ class AutoencoderOobleck(ModelMixin, ConfigMixin):
     @apply_forward_hook
     def encode(
         self, x: torch.Tensor, return_dict: bool = True
-    ) -> Union[AutoencoderOobleckOutput, tuple[OobleckDiagonalGaussianDistribution]]:
+    ) -> AutoencoderOobleckOutput | tuple[OobleckDiagonalGaussianDistribution]:
         """
         Encode a batch of images into latents.
 
@@ -399,7 +399,7 @@ class AutoencoderOobleck(ModelMixin, ConfigMixin):
 
         return AutoencoderOobleckOutput(latent_dist=posterior)
 
-    def _decode(self, z: torch.Tensor, return_dict: bool = True) -> Union[OobleckDecoderOutput, torch.Tensor]:
+    def _decode(self, z: torch.Tensor, return_dict: bool = True) -> OobleckDecoderOutput | torch.Tensor:
         dec = self.decoder(z)
 
         if not return_dict:
@@ -410,7 +410,7 @@ class AutoencoderOobleck(ModelMixin, ConfigMixin):
     @apply_forward_hook
     def decode(
         self, z: torch.FloatTensor, return_dict: bool = True, generator=None
-    ) -> Union[OobleckDecoderOutput, torch.FloatTensor]:
+    ) -> OobleckDecoderOutput | torch.FloatTensor:
         """
         Decode a batch of images.
 
@@ -442,7 +442,7 @@ class AutoencoderOobleck(ModelMixin, ConfigMixin):
         sample_posterior: bool = False,
         return_dict: bool = True,
         generator: Optional[torch.Generator] = None,
-    ) -> Union[OobleckDecoderOutput, torch.Tensor]:
+    ) -> OobleckDecoderOutput | torch.Tensor:
         r"""
         Args:
             sample (`torch.Tensor`): Input sample.

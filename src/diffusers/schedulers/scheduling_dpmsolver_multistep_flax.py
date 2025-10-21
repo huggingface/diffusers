@@ -15,7 +15,7 @@
 # DISCLAIMER: This file is strongly influenced by https://github.com/LuChengTHU/dpm-solver
 
 from dataclasses import dataclass
-from typing import Optional, Tuple, Union
+from typing import Optional, Tuple
 
 import flax
 import jax
@@ -484,7 +484,7 @@ class FlaxDPMSolverMultistepScheduler(FlaxSchedulerMixin, ConfigMixin):
         timestep: int,
         sample: jnp.ndarray,
         return_dict: bool = True,
-    ) -> Union[FlaxDPMSolverMultistepSchedulerOutput, Tuple]:
+    ) -> FlaxDPMSolverMultistepSchedulerOutput | Tuple:
         """
         Predict the sample at the previous timestep by DPM-Solver. Core function to propagate the diffusion process
         from the learned model outputs (most often the predicted noise).

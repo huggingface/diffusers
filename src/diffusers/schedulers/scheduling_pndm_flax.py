@@ -15,7 +15,7 @@
 # DISCLAIMER: This file is strongly influenced by https://github.com/ermongroup/ddim
 
 from dataclasses import dataclass
-from typing import Optional, Tuple, Union
+from typing import Optional, Tuple
 
 import flax
 import jax
@@ -241,7 +241,7 @@ class FlaxPNDMScheduler(FlaxSchedulerMixin, ConfigMixin):
         timestep: int,
         sample: jnp.ndarray,
         return_dict: bool = True,
-    ) -> Union[FlaxPNDMSchedulerOutput, Tuple]:
+    ) -> FlaxPNDMSchedulerOutput | Tuple:
         """
         Predict the sample at the previous timestep by reversing the SDE. Core function to propagate the diffusion
         process from the learned model outputs (most often the predicted noise).
@@ -295,7 +295,7 @@ class FlaxPNDMScheduler(FlaxSchedulerMixin, ConfigMixin):
         model_output: jnp.ndarray,
         timestep: int,
         sample: jnp.ndarray,
-    ) -> Union[FlaxPNDMSchedulerOutput, Tuple]:
+    ) -> FlaxPNDMSchedulerOutput | Tuple:
         """
         Step function propagating the sample with the Runge-Kutta method. RK takes 4 forward passes to approximate the
         solution to the differential equation.
@@ -363,7 +363,7 @@ class FlaxPNDMScheduler(FlaxSchedulerMixin, ConfigMixin):
         model_output: jnp.ndarray,
         timestep: int,
         sample: jnp.ndarray,
-    ) -> Union[FlaxPNDMSchedulerOutput, Tuple]:
+    ) -> FlaxPNDMSchedulerOutput | Tuple:
         """
         Step function propagating the sample with the linear multi-step method. This has one forward pass with multiple
         times to approximate the solution.

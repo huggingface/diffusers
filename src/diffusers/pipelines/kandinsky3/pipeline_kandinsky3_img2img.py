@@ -1,5 +1,5 @@
 import inspect
-from typing import Callable, Dict, Optional, Union
+from typing import Callable, Dict, Optional
 
 import PIL
 import PIL.Image
@@ -401,14 +401,14 @@ class Kandinsky3Img2ImgPipeline(DiffusionPipeline, StableDiffusionLoraLoaderMixi
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        prompt: Union[str, list[str]] = None,
-        image: Union[torch.Tensor, PIL.Image.Image, list[torch.Tensor], list[PIL.Image.Image]] = None,
+        prompt: str | list[str] = None,
+        image: torch.Tensor | PIL.Image.Image | list[torch.Tensor] | list[PIL.Image.Image] = None,
         strength: float = 0.3,
         num_inference_steps: int = 25,
         guidance_scale: float = 3.0,
-        negative_prompt: Optional[Union[str, list[str]]] = None,
+        negative_prompt: Optional[str | list[str]] = None,
         num_images_per_prompt: Optional[int] = 1,
-        generator: Optional[Union[torch.Generator, list[torch.Generator]]] = None,
+        generator: Optional[torch.Generator | list[torch.Generator]] = None,
         prompt_embeds: Optional[torch.Tensor] = None,
         negative_prompt_embeds: Optional[torch.Tensor] = None,
         attention_mask: Optional[torch.Tensor] = None,

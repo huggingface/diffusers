@@ -14,7 +14,7 @@
 
 import re
 from dataclasses import dataclass
-from typing import Any, Callable, Optional, Union
+from typing import Any, Callable, Optional
 
 import torch
 
@@ -288,7 +288,7 @@ def _apply_pyramid_attention_broadcast_on_attention_class(
 
 
 def _apply_pyramid_attention_broadcast_hook(
-    module: Union[Attention, MochiAttention],
+    module: Attention | MochiAttention,
     timestep_skip_range: tuple[int, int],
     block_skip_range: int,
     current_timestep_callback: Callable[[], int],

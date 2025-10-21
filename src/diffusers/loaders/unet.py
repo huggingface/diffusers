@@ -15,7 +15,7 @@ import os
 from collections import defaultdict
 from contextlib import nullcontext
 from pathlib import Path
-from typing import Callable, Union
+from typing import Callable
 
 import safetensors
 import torch
@@ -66,7 +66,7 @@ class UNet2DConditionLoadersMixin:
     unet_name = UNET_NAME
 
     @validate_hf_hub_args
-    def load_attn_procs(self, pretrained_model_name_or_path_or_dict: Union[str, dict[str, torch.Tensor]], **kwargs):
+    def load_attn_procs(self, pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor], **kwargs):
         r"""
         Load pretrained attention processor layers into [`UNet2DConditionModel`]. Attention processor layers have to be
         defined in
@@ -412,7 +412,7 @@ class UNet2DConditionLoadersMixin:
 
     def save_attn_procs(
         self,
-        save_directory: Union[str, os.PathLike],
+        save_directory: str | os.PathLike,
         is_main_process: bool = True,
         weight_name: str = None,
         save_function: Callable = None,

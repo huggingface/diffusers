@@ -1,5 +1,5 @@
 import inspect
-from typing import Optional, Tuple, Union
+from typing import Optional, Tuple
 
 import numpy as np
 import PIL.Image
@@ -59,14 +59,12 @@ class LDMSuperResolutionPipeline(DiffusionPipeline):
         self,
         vqvae: VQModel,
         unet: UNet2DModel,
-        scheduler: Union[
-            DDIMScheduler,
-            PNDMScheduler,
-            LMSDiscreteScheduler,
-            EulerDiscreteScheduler,
-            EulerAncestralDiscreteScheduler,
-            DPMSolverMultistepScheduler,
-        ],
+        scheduler: DDIMScheduler
+        | PNDMScheduler
+        | LMSDiscreteScheduler
+        | EulerDiscreteScheduler
+        | EulerAncestralDiscreteScheduler
+        | DPMSolverMultistepScheduler,
     ):
         super().__init__()
         self.register_modules(vqvae=vqvae, unet=unet, scheduler=scheduler)
@@ -74,14 +72,14 @@ class LDMSuperResolutionPipeline(DiffusionPipeline):
     @torch.no_grad()
     def __call__(
         self,
-        image: Union[torch.Tensor, PIL.Image.Image] = None,
+        image: torch.Tensor | PIL.Image.Image = None,
         batch_size: Optional[int] = 1,
         num_inference_steps: Optional[int] = 100,
         eta: Optional[float] = 0.0,
-        generator: Optional[Union[torch.Generator, list[torch.Generator]]] = None,
+        generator: Optional[torch.Generator | list[torch.Generator]] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
-    ) -> Union[Tuple, ImagePipelineOutput]:
+    ) -> Tuple | ImagePipelineOutput:
         r"""
         The call function to the pipeline for generation.
 

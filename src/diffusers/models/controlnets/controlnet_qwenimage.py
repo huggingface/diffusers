@@ -13,7 +13,7 @@
 # limitations under the License.
 
 from dataclasses import dataclass
-from typing import Any, Optional, Tuple, Union
+from typing import Any, Optional, Tuple
 
 import torch
 import torch.nn as nn
@@ -192,7 +192,7 @@ class QwenImageControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
         txt_seq_lens: Optional[list[int]] = None,
         joint_attention_kwargs: Optional[dict[str, Any]] = None,
         return_dict: bool = True,
-    ) -> Union[torch.FloatTensor, Transformer2DModelOutput]:
+    ) -> torch.FloatTensor | Transformer2DModelOutput:
         """
         The [`FluxTransformer2DModel`] forward method.
 
@@ -324,7 +324,7 @@ class QwenImageMultiControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, F
         txt_seq_lens: Optional[list[int]] = None,
         joint_attention_kwargs: Optional[dict[str, Any]] = None,
         return_dict: bool = True,
-    ) -> Union[QwenImageControlNetOutput, Tuple]:
+    ) -> QwenImageControlNetOutput | Tuple:
         # ControlNet-Union with multiple conditions
         # only load one ControlNet for saving memories
         if len(self.nets) == 1:

@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import math
-from typing import TYPE_CHECKING, Any, Optional, Union
+from typing import TYPE_CHECKING, Any, Optional
 
 import torch
 
@@ -92,8 +92,8 @@ class PerturbedAttentionGuidance(BaseGuidance):
         perturbed_guidance_scale: float = 2.8,
         perturbed_guidance_start: float = 0.01,
         perturbed_guidance_stop: float = 0.2,
-        perturbed_guidance_layers: Optional[Union[int, list[int]]] = None,
-        perturbed_guidance_config: Union[LayerSkipConfig, list[LayerSkipConfig], dict[str, Any]] = None,
+        perturbed_guidance_layers: Optional[int | list[int]] = None,
+        perturbed_guidance_config: LayerSkipConfig | list[LayerSkipConfig] | dict[str, Any] = None,
         guidance_rescale: float = 0.0,
         use_original_formulation: bool = False,
         start: float = 0.0,
@@ -169,7 +169,7 @@ class PerturbedAttentionGuidance(BaseGuidance):
 
     # Copied from diffusers.guiders.skip_layer_guidance.SkipLayerGuidance.prepare_inputs
     def prepare_inputs(
-        self, data: "BlockState", input_fields: Optional[dict[str, Union[str, tuple[str, str]]]] = None
+        self, data: "BlockState", input_fields: Optional[dict[str, str | tuple[str, str]]] = None
     ) -> list["BlockState"]:
         if input_fields is None:
             input_fields = self._input_fields

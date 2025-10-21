@@ -1,4 +1,4 @@
-from typing import Any, Optional, Union
+from typing import Any, Optional
 
 import torch
 import torch.nn as nn
@@ -581,7 +581,7 @@ class HiDreamImageTransformerBlock(nn.Module):
 
 
 class HiDreamBlock(nn.Module):
-    def __init__(self, block: Union[HiDreamImageTransformerBlock, HiDreamImageSingleTransformerBlock]):
+    def __init__(self, block: HiDreamImageTransformerBlock | HiDreamImageSingleTransformerBlock):
         super().__init__()
         self.block = block
 
@@ -592,7 +592,7 @@ class HiDreamBlock(nn.Module):
         encoder_hidden_states: Optional[torch.Tensor] = None,
         temb: Optional[torch.Tensor] = None,
         image_rotary_emb: torch.Tensor = None,
-    ) -> Union[torch.Tensor, tuple[torch.Tensor, torch.Tensor]]:
+    ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
         return self.block(
             hidden_states=hidden_states,
             hidden_states_masks=hidden_states_masks,
@@ -786,7 +786,7 @@ class HiDreamImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, 
         attention_kwargs: Optional[dict[str, Any]] = None,
         return_dict: bool = True,
         **kwargs,
-    ) -> Union[tuple[torch.Tensor], Transformer2DModelOutput]:
+    ) -> tuple[torch.Tensor] | Transformer2DModelOutput:
         encoder_hidden_states = kwargs.get("encoder_hidden_states", None)
 
         if encoder_hidden_states is not None:

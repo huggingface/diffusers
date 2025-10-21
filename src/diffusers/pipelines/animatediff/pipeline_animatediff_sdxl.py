@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import inspect
-from typing import Any, Callable, Dict, Optional, Union
+from typing import Any, Callable, Dict, Optional
 
 import torch
 from transformers import (
@@ -151,7 +151,7 @@ def rescale_noise_cfg(noise_cfg, noise_pred_text, guidance_rescale=0.0):
 def retrieve_timesteps(
     scheduler,
     num_inference_steps: Optional[int] = None,
-    device: Optional[Union[str, torch.device]] = None,
+    device: Optional[str | torch.device] = None,
     timesteps: Optional[list[int]] = None,
     sigmas: Optional[list[float]] = None,
     **kwargs,
@@ -284,16 +284,14 @@ class AnimateDiffSDXLPipeline(
         text_encoder_2: CLIPTextModelWithProjection,
         tokenizer: CLIPTokenizer,
         tokenizer_2: CLIPTokenizer,
-        unet: Union[UNet2DConditionModel, UNetMotionModel],
+        unet: UNet2DConditionModel | UNetMotionModel,
         motion_adapter: MotionAdapter,
-        scheduler: Union[
-            DDIMScheduler,
-            PNDMScheduler,
-            LMSDiscreteScheduler,
-            EulerDiscreteScheduler,
-            EulerAncestralDiscreteScheduler,
-            DPMSolverMultistepScheduler,
-        ],
+        scheduler: DDIMScheduler
+        | PNDMScheduler
+        | LMSDiscreteScheduler
+        | EulerDiscreteScheduler
+        | EulerAncestralDiscreteScheduler
+        | DPMSolverMultistepScheduler,
         image_encoder: CLIPVisionModelWithProjection = None,
         feature_extractor: CLIPImageProcessor = None,
         force_zeros_for_empty_prompt: bool = True,
@@ -870,8 +868,8 @@ class AnimateDiffSDXLPipeline(
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        prompt: Union[str, list[str]] = None,
-        prompt_2: Optional[Union[str, list[str]]] = None,
+        prompt: str | list[str] = None,
+        prompt_2: Optional[str | list[str]] = None,
         num_frames: int = 16,
         height: Optional[int] = None,
         width: Optional[int] = None,
@@ -880,11 +878,11 @@ class AnimateDiffSDXLPipeline(
         sigmas: list[float] = None,
         denoising_end: Optional[float] = None,
         guidance_scale: float = 5.0,
-        negative_prompt: Optional[Union[str, list[str]]] = None,
-        negative_prompt_2: Optional[Union[str, list[str]]] = None,
+        negative_prompt: Optional[str | list[str]] = None,
+        negative_prompt_2: Optional[str | list[str]] = None,
         num_videos_per_prompt: Optional[int] = 1,
         eta: float = 0.0,
-        generator: Optional[Union[torch.Generator, list[torch.Generator]]] = None,
+        generator: Optional[torch.Generator | list[torch.Generator]] = None,
         latents: Optional[torch.Tensor] = None,
         prompt_embeds: Optional[torch.Tensor] = None,
         negative_prompt_embeds: Optional[torch.Tensor] = None,

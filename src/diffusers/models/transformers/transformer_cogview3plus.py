@@ -13,8 +13,6 @@
 # limitations under the License.
 
 
-from typing import Union
-
 import torch
 import torch.nn as nn
 
@@ -250,7 +248,7 @@ class CogView3PlusTransformer2DModel(ModelMixin, ConfigMixin):
         return processors
 
     # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.set_attn_processor
-    def set_attn_processor(self, processor: Union[AttentionProcessor, dict[str, AttentionProcessor]]):
+    def set_attn_processor(self, processor: AttentionProcessor | dict[str, AttentionProcessor]):
         r"""
         Sets the attention processor to use to compute attention.
 
@@ -293,7 +291,7 @@ class CogView3PlusTransformer2DModel(ModelMixin, ConfigMixin):
         target_size: torch.Tensor,
         crop_coords: torch.Tensor,
         return_dict: bool = True,
-    ) -> Union[tuple[torch.Tensor], Transformer2DModelOutput]:
+    ) -> tuple[torch.Tensor] | Transformer2DModelOutput:
         """
         The [`CogView3PlusTransformer2DModel`] forward method.
 

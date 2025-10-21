@@ -17,7 +17,7 @@ import os
 import re
 import warnings
 from pathlib import Path
-from typing import Any, Callable, Optional, Union
+from typing import Any, Callable, Optional
 
 import httpx
 import requests
@@ -208,7 +208,7 @@ def filter_with_regex(filenames, pattern_re):
     return {f for f in filenames if pattern_re.match(f.split("/")[-1]) is not None}
 
 
-def variant_compatible_siblings(filenames, variant=None, ignore_patterns=None) -> Union[list[os.PathLike], str]:
+def variant_compatible_siblings(filenames, variant=None, ignore_patterns=None) -> list[os.PathLike] | str:
     weight_names = [
         WEIGHTS_NAME,
         SAFETENSORS_WEIGHTS_NAME,
@@ -513,8 +513,8 @@ def _load_empty_model(
     pipelines: Any,
     is_pipeline_module: bool,
     name: str,
-    torch_dtype: Union[str, torch.dtype],
-    cached_folder: Union[str, os.PathLike],
+    torch_dtype: str | torch.dtype,
+    cached_folder: str | os.PathLike,
     **kwargs,
 ):
     # retrieve class objects.
@@ -729,16 +729,16 @@ def load_sub_model(
     torch_dtype: torch.dtype,
     provider: Any,
     sess_options: Any,
-    device_map: Optional[Union[dict[str, torch.device], str]],
-    max_memory: Optional[dict[Union[int, str], Union[int, str]]],
-    offload_folder: Optional[Union[str, os.PathLike]],
+    device_map: Optional[dict[str, torch.device] | str],
+    max_memory: Optional[dict[int | str, int | str]],
+    offload_folder: Optional[str | os.PathLike],
     offload_state_dict: bool,
     model_variants: dict[str, str],
     name: str,
     from_flax: bool,
     variant: str,
     low_cpu_mem_usage: bool,
-    cached_folder: Union[str, os.PathLike],
+    cached_folder: str | os.PathLike,
     use_safetensors: bool,
     dduf_entries: Optional[dict[str, DDUFEntry]],
     provider_options: Any,

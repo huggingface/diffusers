@@ -16,7 +16,7 @@
 # and https://github.com/hojonathanho/diffusion
 
 import inspect
-from typing import Any, Callable, Dict, Optional, Union
+from typing import Any, Callable, Dict, Optional
 
 import torch
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer, CLIPVisionModelWithProjection
@@ -74,7 +74,7 @@ EXAMPLE_DOC_STRING = """
 def retrieve_timesteps(
     scheduler,
     num_inference_steps: Optional[int] = None,
-    device: Optional[Union[str, torch.device]] = None,
+    device: Optional[str | torch.device] = None,
     timesteps: Optional[list[int]] = None,
     sigmas: Optional[list[float]] = None,
     **kwargs,
@@ -565,7 +565,7 @@ class LatentConsistencyModelPipeline(
     # Currently StableDiffusionPipeline.check_inputs with negative prompt stuff removed
     def check_inputs(
         self,
-        prompt: Union[str, list[str]],
+        prompt: str | list[str],
         height: int,
         width: int,
         callback_steps: int,
@@ -641,7 +641,7 @@ class LatentConsistencyModelPipeline(
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        prompt: Union[str, list[str]] = None,
+        prompt: str | list[str] = None,
         height: Optional[int] = None,
         width: Optional[int] = None,
         num_inference_steps: int = 4,
@@ -649,7 +649,7 @@ class LatentConsistencyModelPipeline(
         timesteps: list[int] = None,
         guidance_scale: float = 8.5,
         num_images_per_prompt: Optional[int] = 1,
-        generator: Optional[Union[torch.Generator, list[torch.Generator]]] = None,
+        generator: Optional[torch.Generator | list[torch.Generator]] = None,
         latents: Optional[torch.Tensor] = None,
         prompt_embeds: Optional[torch.Tensor] = None,
         ip_adapter_image: Optional[PipelineImageInput] = None,

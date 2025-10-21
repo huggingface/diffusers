@@ -16,7 +16,7 @@ import html
 import math
 import re
 from copy import deepcopy
-from typing import Any, Callable, Dict, Optional, Union
+from typing import Any, Callable, Dict, Optional
 
 import ftfy
 import PIL
@@ -181,7 +181,7 @@ class SkyReelsV2DiffusionForcingImageToVideoPipeline(DiffusionPipeline, SkyReels
     # Copied from diffusers.pipelines.wan.pipeline_wan.WanPipeline._get_t5_prompt_embeds
     def _get_t5_prompt_embeds(
         self,
-        prompt: Union[str, list[str]] = None,
+        prompt: str | list[str] = None,
         num_videos_per_prompt: int = 1,
         max_sequence_length: int = 226,
         device: Optional[torch.device] = None,
@@ -223,8 +223,8 @@ class SkyReelsV2DiffusionForcingImageToVideoPipeline(DiffusionPipeline, SkyReels
     # Copied from diffusers.pipelines.wan.pipeline_wan.WanPipeline.encode_prompt
     def encode_prompt(
         self,
-        prompt: Union[str, list[str]],
-        negative_prompt: Optional[Union[str, list[str]]] = None,
+        prompt: str | list[str],
+        negative_prompt: Optional[str | list[str]] = None,
         do_classifier_free_guidance: bool = True,
         num_videos_per_prompt: int = 1,
         prompt_embeds: Optional[torch.Tensor] = None,
@@ -375,7 +375,7 @@ class SkyReelsV2DiffusionForcingImageToVideoPipeline(DiffusionPipeline, SkyReels
         num_frames: int = 97,
         dtype: Optional[torch.dtype] = None,
         device: Optional[torch.device] = None,
-        generator: Optional[Union[torch.Generator, list[torch.Generator]]] = None,
+        generator: Optional[torch.Generator | list[torch.Generator]] = None,
         latents: Optional[torch.Tensor] = None,
         last_image: Optional[torch.Tensor] = None,
         video_latents: Optional[torch.Tensor] = None,
@@ -646,15 +646,15 @@ class SkyReelsV2DiffusionForcingImageToVideoPipeline(DiffusionPipeline, SkyReels
     def __call__(
         self,
         image: PipelineImageInput,
-        prompt: Union[str, list[str]] = None,
-        negative_prompt: Union[str, list[str]] = None,
+        prompt: str | list[str] = None,
+        negative_prompt: str | list[str] = None,
         height: int = 544,
         width: int = 960,
         num_frames: int = 97,
         num_inference_steps: int = 50,
         guidance_scale: float = 5.0,
         num_videos_per_prompt: Optional[int] = 1,
-        generator: Optional[Union[torch.Generator, list[torch.Generator]]] = None,
+        generator: Optional[torch.Generator | list[torch.Generator]] = None,
         latents: Optional[torch.Tensor] = None,
         prompt_embeds: Optional[torch.Tensor] = None,
         negative_prompt_embeds: Optional[torch.Tensor] = None,
@@ -664,7 +664,7 @@ class SkyReelsV2DiffusionForcingImageToVideoPipeline(DiffusionPipeline, SkyReels
         return_dict: bool = True,
         attention_kwargs: Optional[dict[str, Any]] = None,
         callback_on_step_end: Optional[
-            Union[Callable[[int, int, Dict], None], PipelineCallback, MultiPipelineCallbacks]
+            Callable[[int, int, Dict], None] | PipelineCallback | MultiPipelineCallbacks
         ] = None,
         callback_on_step_end_tensor_inputs: list[str] = ["latents"],
         max_sequence_length: int = 512,

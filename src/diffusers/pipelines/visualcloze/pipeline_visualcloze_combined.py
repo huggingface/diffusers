@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Any, Callable, Dict, Optional, Union
+from typing import Any, Callable, Dict, Optional
 
 import torch
 from PIL import Image
@@ -250,8 +250,8 @@ class VisualClozePipeline(
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        task_prompt: Union[str, list[str]] = None,
-        content_prompt: Union[str, list[str]] = None,
+        task_prompt: str | list[str] = None,
+        content_prompt: str | list[str] = None,
         image: Optional[torch.FloatTensor] = None,
         upsampling_height: Optional[int] = None,
         upsampling_width: Optional[int] = None,
@@ -259,7 +259,7 @@ class VisualClozePipeline(
         sigmas: Optional[list[float]] = None,
         guidance_scale: float = 30.0,
         num_images_per_prompt: Optional[int] = 1,
-        generator: Optional[Union[torch.Generator, list[torch.Generator]]] = None,
+        generator: Optional[torch.Generator | list[torch.Generator]] = None,
         latents: Optional[torch.FloatTensor] = None,
         prompt_embeds: Optional[torch.FloatTensor] = None,
         pooled_prompt_embeds: Optional[torch.FloatTensor] = None,

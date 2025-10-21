@@ -14,7 +14,7 @@
 
 import inspect
 from dataclasses import dataclass
-from typing import Any, Callable, Optional, Union
+from typing import Any, Callable, Optional
 
 import numpy as np
 import PIL.Image
@@ -70,7 +70,7 @@ class DiffEditInversionPipelineOutput(BaseOutput):
     """
 
     latents: torch.Tensor
-    images: Union[list[PIL.Image.Image], np.ndarray]
+    images: list[PIL.Image.Image] | np.ndarray
 
 
 EXAMPLE_DOC_STRING = """
@@ -844,13 +844,13 @@ class StableDiffusionDiffEditPipeline(
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def generate_mask(
         self,
-        image: Union[torch.Tensor, PIL.Image.Image] = None,
-        target_prompt: Optional[Union[str, list[str]]] = None,
-        target_negative_prompt: Optional[Union[str, list[str]]] = None,
+        image: torch.Tensor | PIL.Image.Image = None,
+        target_prompt: Optional[str | list[str]] = None,
+        target_negative_prompt: Optional[str | list[str]] = None,
         target_prompt_embeds: Optional[torch.Tensor] = None,
         target_negative_prompt_embeds: Optional[torch.Tensor] = None,
-        source_prompt: Optional[Union[str, list[str]]] = None,
-        source_negative_prompt: Optional[Union[str, list[str]]] = None,
+        source_prompt: Optional[str | list[str]] = None,
+        source_negative_prompt: Optional[str | list[str]] = None,
         source_prompt_embeds: Optional[torch.Tensor] = None,
         source_negative_prompt_embeds: Optional[torch.Tensor] = None,
         num_maps_per_mask: Optional[int] = 10,
@@ -858,7 +858,7 @@ class StableDiffusionDiffEditPipeline(
         mask_thresholding_ratio: Optional[float] = 3.0,
         num_inference_steps: int = 50,
         guidance_scale: float = 7.5,
-        generator: Optional[Union[torch.Generator, list[torch.Generator]]] = None,
+        generator: Optional[torch.Generator | list[torch.Generator]] = None,
         output_type: Optional[str] = "np",
         cross_attention_kwargs: Optional[dict[str, Any]] = None,
     ):
@@ -1063,13 +1063,13 @@ class StableDiffusionDiffEditPipeline(
     @replace_example_docstring(EXAMPLE_INVERT_DOC_STRING)
     def invert(
         self,
-        prompt: Optional[Union[str, list[str]]] = None,
-        image: Union[torch.Tensor, PIL.Image.Image] = None,
+        prompt: Optional[str | list[str]] = None,
+        image: torch.Tensor | PIL.Image.Image = None,
         num_inference_steps: int = 50,
         inpaint_strength: float = 0.8,
         guidance_scale: float = 7.5,
-        negative_prompt: Optional[Union[str, list[str]]] = None,
-        generator: Optional[Union[torch.Generator, list[torch.Generator]]] = None,
+        negative_prompt: Optional[str | list[str]] = None,
+        generator: Optional[torch.Generator | list[torch.Generator]] = None,
         prompt_embeds: Optional[torch.Tensor] = None,
         negative_prompt_embeds: Optional[torch.Tensor] = None,
         decode_latents: bool = False,
@@ -1301,16 +1301,16 @@ class StableDiffusionDiffEditPipeline(
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        prompt: Optional[Union[str, list[str]]] = None,
-        mask_image: Union[torch.Tensor, PIL.Image.Image] = None,
-        image_latents: Union[torch.Tensor, PIL.Image.Image] = None,
+        prompt: Optional[str | list[str]] = None,
+        mask_image: torch.Tensor | PIL.Image.Image = None,
+        image_latents: torch.Tensor | PIL.Image.Image = None,
         inpaint_strength: Optional[float] = 0.8,
         num_inference_steps: int = 50,
         guidance_scale: float = 7.5,
-        negative_prompt: Optional[Union[str, list[str]]] = None,
+        negative_prompt: Optional[str | list[str]] = None,
         num_images_per_prompt: Optional[int] = 1,
         eta: float = 0.0,
-        generator: Optional[Union[torch.Generator, list[torch.Generator]]] = None,
+        generator: Optional[torch.Generator | list[torch.Generator]] = None,
         latents: Optional[torch.Tensor] = None,
         prompt_embeds: Optional[torch.Tensor] = None,
         negative_prompt_embeds: Optional[torch.Tensor] = None,

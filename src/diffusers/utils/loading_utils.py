@@ -1,6 +1,6 @@
 import os
 import tempfile
-from typing import Any, Callable, Optional, Union
+from typing import Any, Callable, Optional
 from urllib.parse import unquote, urlparse
 
 import PIL.Image
@@ -12,7 +12,7 @@ from .import_utils import BACKENDS_MAPPING, is_imageio_available
 
 
 def load_image(
-    image: Union[str, PIL.Image.Image], convert_method: Optional[Callable[[PIL.Image.Image], PIL.Image.Image]] = None
+    image: str | PIL.Image.Image, convert_method: Optional[Callable[[PIL.Image.Image], PIL.Image.Image]] = None
 ) -> PIL.Image.Image:
     """
     Loads `image` to a PIL Image.

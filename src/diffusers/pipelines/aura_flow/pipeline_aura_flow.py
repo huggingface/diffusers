@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import inspect
-from typing import Any, Callable, Dict, Optional, Tuple, Union
+from typing import Any, Callable, Dict, Optional, Tuple
 
 import torch
 from transformers import T5Tokenizer, UMT5EncoderModel
@@ -64,7 +64,7 @@ EXAMPLE_DOC_STRING = """
 def retrieve_timesteps(
     scheduler,
     num_inference_steps: Optional[int] = None,
-    device: Optional[Union[str, torch.device]] = None,
+    device: Optional[str | torch.device] = None,
     timesteps: Optional[list[int]] = None,
     sigmas: Optional[list[float]] = None,
     **kwargs,
@@ -231,8 +231,8 @@ class AuraFlowPipeline(DiffusionPipeline, AuraFlowLoraLoaderMixin):
 
     def encode_prompt(
         self,
-        prompt: Union[str, list[str]],
-        negative_prompt: Union[str, list[str]] = None,
+        prompt: str | list[str],
+        negative_prompt: str | list[str] = None,
         do_classifier_free_guidance: bool = True,
         num_images_per_prompt: int = 1,
         device: Optional[torch.device] = None,
@@ -439,15 +439,15 @@ class AuraFlowPipeline(DiffusionPipeline, AuraFlowLoraLoaderMixin):
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        prompt: Union[str, list[str]] = None,
-        negative_prompt: Union[str, list[str]] = None,
+        prompt: str | list[str] = None,
+        negative_prompt: str | list[str] = None,
         num_inference_steps: int = 50,
         sigmas: list[float] = None,
         guidance_scale: float = 3.5,
         num_images_per_prompt: Optional[int] = 1,
         height: Optional[int] = 1024,
         width: Optional[int] = 1024,
-        generator: Optional[Union[torch.Generator, list[torch.Generator]]] = None,
+        generator: Optional[torch.Generator | list[torch.Generator]] = None,
         latents: Optional[torch.Tensor] = None,
         prompt_embeds: Optional[torch.Tensor] = None,
         prompt_attention_mask: Optional[torch.Tensor] = None,
@@ -458,10 +458,10 @@ class AuraFlowPipeline(DiffusionPipeline, AuraFlowLoraLoaderMixin):
         return_dict: bool = True,
         attention_kwargs: Optional[dict[str, Any]] = None,
         callback_on_step_end: Optional[
-            Union[Callable[[int, int, Dict], None], PipelineCallback, MultiPipelineCallbacks]
+            Callable[[int, int, Dict], None] | PipelineCallback | MultiPipelineCallbacks
         ] = None,
         callback_on_step_end_tensor_inputs: list[str] = ["latents"],
-    ) -> Union[ImagePipelineOutput, Tuple]:
+    ) -> ImagePipelineOutput | Tuple:
         r"""
         Function invoked when calling the pipeline for generation.
 

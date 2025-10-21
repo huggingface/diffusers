@@ -14,7 +14,7 @@
 
 import math
 from dataclasses import dataclass
-from typing import Optional, Tuple, Union
+from typing import Optional, Tuple
 
 import numpy as np
 import torch
@@ -192,7 +192,7 @@ class FlowMatchLCMScheduler(SchedulerMixin, ConfigMixin):
     def scale_noise(
         self,
         sample: torch.FloatTensor,
-        timestep: Union[float, torch.FloatTensor],
+        timestep: float | torch.FloatTensor,
         noise: Optional[torch.FloatTensor] = None,
     ) -> torch.FloatTensor:
         """
@@ -270,7 +270,7 @@ class FlowMatchLCMScheduler(SchedulerMixin, ConfigMixin):
     def set_timesteps(
         self,
         num_inference_steps: Optional[int] = None,
-        device: Union[str, torch.device] = None,
+        device: str | torch.device = None,
         sigmas: Optional[list[float]] = None,
         mu: Optional[float] = None,
         timesteps: Optional[list[float]] = None,
@@ -394,11 +394,11 @@ class FlowMatchLCMScheduler(SchedulerMixin, ConfigMixin):
     def step(
         self,
         model_output: torch.FloatTensor,
-        timestep: Union[float, torch.FloatTensor],
+        timestep: float | torch.FloatTensor,
         sample: torch.FloatTensor,
         generator: Optional[torch.Generator] = None,
         return_dict: bool = True,
-    ) -> Union[FlowMatchLCMSchedulerOutput, Tuple]:
+    ) -> FlowMatchLCMSchedulerOutput | Tuple:
         """
         Predict the sample from the previous timestep by reversing the SDE. This function propagates the diffusion
         process from the learned model outputs (most often the predicted noise).

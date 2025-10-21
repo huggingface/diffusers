@@ -1,5 +1,4 @@
 from dataclasses import dataclass
-from typing import Union
 
 import numpy as np
 import PIL.Image
@@ -21,7 +20,7 @@ class FluxPipelineOutput(BaseOutput):
             passed to the decoder.
     """
 
-    images: Union[list[PIL.Image.Image], np.ndarray]
+    images: list[PIL.Image.Image] | np.ndarray
 
 
 @dataclass

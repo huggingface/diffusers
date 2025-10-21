@@ -13,7 +13,7 @@
 
 import copy
 import inspect
-from typing import Any, Callable, Optional, Union
+from typing import Any, Callable, Optional
 
 import torch
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer
@@ -614,15 +614,15 @@ class StableDiffusionModelEditingPipeline(
     @torch.no_grad()
     def __call__(
         self,
-        prompt: Union[str, list[str]] = None,
+        prompt: str | list[str] = None,
         height: Optional[int] = None,
         width: Optional[int] = None,
         num_inference_steps: int = 50,
         guidance_scale: float = 7.5,
-        negative_prompt: Optional[Union[str, list[str]]] = None,
+        negative_prompt: Optional[str | list[str]] = None,
         num_images_per_prompt: Optional[int] = 1,
         eta: float = 0.0,
-        generator: Optional[Union[torch.Generator, list[torch.Generator]]] = None,
+        generator: Optional[torch.Generator | list[torch.Generator]] = None,
         latents: Optional[torch.Tensor] = None,
         prompt_embeds: Optional[torch.Tensor] = None,
         negative_prompt_embeds: Optional[torch.Tensor] = None,

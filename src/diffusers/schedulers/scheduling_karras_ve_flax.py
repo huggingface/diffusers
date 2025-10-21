@@ -14,7 +14,7 @@
 
 
 from dataclasses import dataclass
-from typing import Optional, Tuple, Union
+from typing import Optional, Tuple
 
 import flax
 import jax
@@ -169,7 +169,7 @@ class FlaxKarrasVeScheduler(FlaxSchedulerMixin, ConfigMixin):
         sigma_prev: float,
         sample_hat: jnp.ndarray,
         return_dict: bool = True,
-    ) -> Union[FlaxKarrasVeOutput, Tuple]:
+    ) -> FlaxKarrasVeOutput | Tuple:
         """
         Predict the sample at the previous timestep by reversing the SDE. Core function to propagate the diffusion
         process from the learned model outputs (most often the predicted noise).
@@ -207,7 +207,7 @@ class FlaxKarrasVeScheduler(FlaxSchedulerMixin, ConfigMixin):
         sample_prev: jnp.ndarray,
         derivative: jnp.ndarray,
         return_dict: bool = True,
-    ) -> Union[FlaxKarrasVeOutput, Tuple]:
+    ) -> FlaxKarrasVeOutput | Tuple:
         """
         Correct the predicted sample based on the output model_output of the network. TODO complete description
 

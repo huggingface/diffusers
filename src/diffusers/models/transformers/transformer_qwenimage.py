@@ -14,7 +14,7 @@
 
 import functools
 import math
-from typing import Any, Optional, Union
+from typing import Any, Optional
 
 import numpy as np
 import torch
@@ -95,7 +95,7 @@ def get_timestep_embedding(
 
 def apply_rotary_emb_qwen(
     x: torch.Tensor,
-    freqs_cis: Union[torch.Tensor, tuple[torch.Tensor]],
+    freqs_cis: torch.Tensor | tuple[torch.Tensor],
     use_real: bool = True,
     use_real_unbind_dim: int = -1,
 ) -> tuple[torch.Tensor, torch.Tensor]:
@@ -196,7 +196,7 @@ class QwenEmbedRope(nn.Module):
 
     def forward(
         self,
-        video_fhw: Union[tuple[int, int, int], list[tuple[int, int, int]]],
+        video_fhw: tuple[int, int, int] | list[tuple[int, int, int]],
         txt_seq_lens: list[int],
         device: torch.device,
     ) -> tuple[torch.Tensor, torch.Tensor]:
@@ -575,7 +575,7 @@ class QwenImageTransformer2DModel(
         attention_kwargs: Optional[dict[str, Any]] = None,
         controlnet_block_samples=None,
         return_dict: bool = True,
-    ) -> Union[torch.Tensor, Transformer2DModelOutput]:
+    ) -> torch.Tensor | Transformer2DModelOutput:
         """
         The [`QwenTransformer2DModel`] forward method.
 

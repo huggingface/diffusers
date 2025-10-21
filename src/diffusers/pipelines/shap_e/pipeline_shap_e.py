@@ -14,7 +14,7 @@
 
 import math
 from dataclasses import dataclass
-from typing import Optional, Union
+from typing import Optional
 
 import numpy as np
 import PIL.Image
@@ -82,7 +82,7 @@ class ShapEPipelineOutput(BaseOutput):
             A list of images for 3D rendering.
     """
 
-    images: Union[list[list[PIL.Image.Image]], list[list[np.ndarray]]]
+    images: list[list[PIL.Image.Image]] | list[list[np.ndarray]]
 
 
 class ShapEPipeline(DiffusionPipeline):
@@ -195,7 +195,7 @@ class ShapEPipeline(DiffusionPipeline):
         prompt: str,
         num_images_per_prompt: int = 1,
         num_inference_steps: int = 25,
-        generator: Optional[Union[torch.Generator, list[torch.Generator]]] = None,
+        generator: Optional[torch.Generator | list[torch.Generator]] = None,
         latents: Optional[torch.Tensor] = None,
         guidance_scale: float = 4.0,
         frame_size: int = 64,

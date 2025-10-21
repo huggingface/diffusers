@@ -21,7 +21,7 @@ import sys
 import tempfile
 import warnings
 from pathlib import Path
-from typing import Dict, Optional, Union
+from typing import Dict, Optional
 from uuid import uuid4
 
 from huggingface_hub import (
@@ -72,7 +72,7 @@ MODEL_CARD_TEMPLATE_PATH = Path(__file__).parent / "model_card_template.md"
 SESSION_ID = uuid4().hex
 
 
-def http_user_agent(user_agent: Union[Dict, str, None] = None) -> str:
+def http_user_agent(user_agent: Dict | str | None = None) -> str:
     """
     Formats a user-agent string with basic info about a request.
     """
@@ -167,7 +167,7 @@ def load_or_create_model_card(
     return model_card
 
 
-def populate_model_card(model_card: ModelCard, tags: Union[str, list[str]] = None) -> ModelCard:
+def populate_model_card(model_card: ModelCard, tags: str | list[str] = None) -> ModelCard:
     """Populates the `model_card` with library name and optional tags."""
     if model_card.data.library_name is None:
         model_card.data.library_name = "diffusers"
@@ -208,7 +208,7 @@ def _add_variant(weights_name: str, variant: Optional[str] = None) -> str:
 
 @validate_hf_hub_args
 def _get_model_file(
-    pretrained_model_name_or_path: Union[str, Path],
+    pretrained_model_name_or_path: str | Path,
     *,
     weights_name: str,
     subfolder: Optional[str] = None,
@@ -217,7 +217,7 @@ def _get_model_file(
     proxies: Optional[Dict] = None,
     local_files_only: bool = False,
     token: Optional[str] = None,
-    user_agent: Optional[Union[Dict, str]] = None,
+    user_agent: Optional[Dict | str] = None,
     revision: Optional[str] = None,
     commit_hash: Optional[str] = None,
     dduf_entries: Optional[dict[str, DDUFEntry]] = None,
@@ -469,7 +469,7 @@ class PushToHubMixin:
 
     def _upload_folder(
         self,
-        working_dir: Union[str, os.PathLike],
+        working_dir: str | os.PathLike,
         repo_id: str,
         token: Optional[str] = None,
         commit_message: Optional[str] = None,

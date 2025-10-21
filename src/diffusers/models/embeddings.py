@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import math
-from typing import Optional, Union
+from typing import Optional
 
 import numpy as np
 import torch
@@ -80,7 +80,7 @@ def get_timestep_embedding(
 
 def get_3d_sincos_pos_embed(
     embed_dim: int,
-    spatial_size: Union[int, tuple[int, int]],
+    spatial_size: int | tuple[int, int],
     temporal_size: int,
     spatial_interpolation_scale: float = 1.0,
     temporal_interpolation_scale: float = 1.0,
@@ -154,7 +154,7 @@ def get_3d_sincos_pos_embed(
 
 def _get_3d_sincos_pos_embed_np(
     embed_dim: int,
-    spatial_size: Union[int, tuple[int, int]],
+    spatial_size: int | tuple[int, int],
     temporal_size: int,
     spatial_interpolation_scale: float = 1.0,
     temporal_interpolation_scale: float = 1.0,
@@ -830,7 +830,7 @@ def get_3d_rotary_pos_embed(
     grid_type: str = "linspace",
     max_size: Optional[tuple[int, int]] = None,
     device: Optional[torch.device] = None,
-) -> Union[torch.Tensor, tuple[torch.Tensor, torch.Tensor]]:
+) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
     """
     RoPE for video tokens with 3D structure.
 
@@ -929,7 +929,7 @@ def get_3d_rotary_pos_embed_allegro(
     interpolation_scale: tuple[float, float, float] = (1.0, 1.0, 1.0),
     theta: int = 10000,
     device: Optional[torch.device] = None,
-) -> Union[torch.Tensor, tuple[torch.Tensor, torch.Tensor]]:
+) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
     # TODO(aryan): docs
     start, stop = crops_coords
     grid_size_h, grid_size_w = grid_size
@@ -1111,7 +1111,7 @@ def get_2d_rotary_pos_embed_lumina(embed_dim, len_h, len_w, linear_factor=1.0, n
 
 def get_1d_rotary_pos_embed(
     dim: int,
-    pos: Union[np.ndarray, int],
+    pos: np.ndarray | int,
     theta: float = 10000.0,
     use_real=False,
     linear_factor=1.0,
@@ -1178,7 +1178,7 @@ def get_1d_rotary_pos_embed(
 
 def apply_rotary_emb(
     x: torch.Tensor,
-    freqs_cis: Union[torch.Tensor, tuple[torch.Tensor]],
+    freqs_cis: torch.Tensor | tuple[torch.Tensor],
     use_real: bool = True,
     use_real_unbind_dim: int = -1,
     sequence_dim: int = 2,
@@ -2564,7 +2564,7 @@ class IPAdapterTimeImageProjection(nn.Module):
 
 
 class MultiIPAdapterImageProjection(nn.Module):
-    def __init__(self, IPAdapterImageProjectionLayers: Union[list[nn.Module], tuple[nn.Module]]):
+    def __init__(self, IPAdapterImageProjectionLayers: list[nn.Module] | tuple[nn.Module]):
         super().__init__()
         self.image_projection_layers = nn.ModuleList(IPAdapterImageProjectionLayers)
 

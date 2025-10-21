@@ -17,7 +17,7 @@ import functools
 import inspect
 import math
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Callable, Literal, Optional, Union
+from typing import TYPE_CHECKING, Any, Callable, Literal, Optional
 
 import torch
 
@@ -250,7 +250,7 @@ class _AttentionBackendRegistry:
 
 
 @contextlib.contextmanager
-def attention_backend(backend: Union[str, AttentionBackendName] = AttentionBackendName.NATIVE):
+def attention_backend(backend: str | AttentionBackendName = AttentionBackendName.NATIVE):
     """
     Context manager to set the active attention backend.
     """
@@ -1405,7 +1405,7 @@ def _native_flex_attention(
     query: torch.Tensor,
     key: torch.Tensor,
     value: torch.Tensor,
-    attn_mask: Optional[Union[torch.Tensor, "flex_attention.BlockMask"]] = None,
+    attn_mask: Optional[torch.Tensor | "flex_attention.BlockMask"] = None,
     is_causal: bool = False,
     scale: Optional[float] = None,
     enable_gqa: bool = False,

@@ -30,7 +30,7 @@ import warnings
 from dataclasses import dataclass, is_dataclass
 from enum import Enum
 from functools import partial
-from typing import Any, Callable, Optional, Union
+from typing import Any, Callable, Optional
 
 from packaging import version
 
@@ -103,7 +103,7 @@ class QuantizationConfigMixin:
         else:
             return config
 
-    def to_json_file(self, json_file_path: Union[str, os.PathLike]):
+    def to_json_file(self, json_file_path: str | os.PathLike):
         """
         Save this instance to a JSON file.
 
@@ -498,7 +498,7 @@ class TorchAoConfig(QuantizationConfigMixin):
 
     def __init__(
         self,
-        quant_type: Union[str, "AOBaseConfig"],  # noqa: F821
+        quant_type: str | "AOBaseConfig",  # noqa: F821
         modules_to_not_convert: Optional[list[str]] = None,
         **kwargs,
     ) -> None:

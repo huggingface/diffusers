@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import inspect
-from typing import Any, Callable, Dict, Optional, Union
+from typing import Any, Callable, Dict, Optional
 
 import numpy as np
 import PIL.Image
@@ -150,7 +150,7 @@ class StableDiffusionControlNetXSPipeline(
         vae: AutoencoderKL,
         text_encoder: CLIPTextModel,
         tokenizer: CLIPTokenizer,
-        unet: Union[UNet2DConditionModel, UNetControlNetXSModel],
+        unet: UNet2DConditionModel | UNetControlNetXSModel,
         controlnet: ControlNetXSAdapter,
         scheduler: KarrasDiffusionSchedulers,
         safety_checker: StableDiffusionSafetyChecker,
@@ -644,28 +644,28 @@ class StableDiffusionControlNetXSPipeline(
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        prompt: Union[str, list[str]] = None,
+        prompt: str | list[str] = None,
         image: PipelineImageInput = None,
         height: Optional[int] = None,
         width: Optional[int] = None,
         num_inference_steps: int = 50,
         guidance_scale: float = 7.5,
-        negative_prompt: Optional[Union[str, list[str]]] = None,
+        negative_prompt: Optional[str | list[str]] = None,
         num_images_per_prompt: Optional[int] = 1,
         eta: float = 0.0,
-        generator: Optional[Union[torch.Generator, list[torch.Generator]]] = None,
+        generator: Optional[torch.Generator | list[torch.Generator]] = None,
         latents: Optional[torch.Tensor] = None,
         prompt_embeds: Optional[torch.Tensor] = None,
         negative_prompt_embeds: Optional[torch.Tensor] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
         cross_attention_kwargs: Optional[dict[str, Any]] = None,
-        controlnet_conditioning_scale: Union[float, list[float]] = 1.0,
+        controlnet_conditioning_scale: float | list[float] = 1.0,
         control_guidance_start: float = 0.0,
         control_guidance_end: float = 1.0,
         clip_skip: Optional[int] = None,
         callback_on_step_end: Optional[
-            Union[Callable[[int, int, Dict], None], PipelineCallback, MultiPipelineCallbacks]
+            Callable[[int, int, Dict], None] | PipelineCallback | MultiPipelineCallbacks
         ] = None,
         callback_on_step_end_tensor_inputs: list[str] = ["latents"],
     ):

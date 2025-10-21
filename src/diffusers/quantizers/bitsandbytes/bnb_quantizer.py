@@ -16,7 +16,7 @@ Adapted from
 https://github.com/huggingface/transformers/blob/c409cd81777fb27aadc043ed3d8339dbc020fb3b/src/transformers/quantizers/quantizer_bnb_4bit.py
 """
 
-from typing import TYPE_CHECKING, Any, Optional, Union
+from typing import TYPE_CHECKING, Any, Optional
 
 from ...utils import get_module_from_name
 from ..base import DiffusersQuantizer
@@ -218,7 +218,7 @@ class BnB4BitDiffusersQuantizer(DiffusersQuantizer):
         else:
             return True
 
-    def adjust_max_memory(self, max_memory: dict[str, Union[int, str]]) -> dict[str, Union[int, str]]:
+    def adjust_max_memory(self, max_memory: dict[str, int | str]) -> dict[str, int | str]:
         # need more space for buffers that are created during quantization
         max_memory = {key: val * 0.90 for key, val in max_memory.items()}
         return max_memory
@@ -387,7 +387,7 @@ class BnB8BitDiffusersQuantizer(DiffusersQuantizer):
                 )
 
     # Copied from diffusers.quantizers.bitsandbytes.bnb_quantizer.BnB4BitDiffusersQuantizer.adjust_max_memory
-    def adjust_max_memory(self, max_memory: dict[str, Union[int, str]]) -> dict[str, Union[int, str]]:
+    def adjust_max_memory(self, max_memory: dict[str, int | str]) -> dict[str, int | str]:
         # need more space for buffers that are created during quantization
         max_memory = {key: val * 0.90 for key, val in max_memory.items()}
         return max_memory

@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Any, Union
+from typing import Any
 
 import numpy as np
 import PIL
@@ -70,7 +70,7 @@ class WanDecodeStep(ModularPipelineBlocks):
         return [
             OutputParam(
                 "videos",
-                type_hint=Union[list[list[PIL.Image.Image]], list[torch.Tensor], list[np.ndarray]],
+                type_hint=list[list[PIL.Image.Image]] | list[torch.Tensor] | list[np.ndarray],
                 description="The generated videos, can be a PIL.Image.Image, torch.Tensor or a numpy array",
             )
         ]

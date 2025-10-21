@@ -14,7 +14,7 @@
 
 import inspect
 import math
-from typing import Any, Optional, Union
+from typing import Any, Optional
 
 import torch
 import torch.nn as nn
@@ -600,7 +600,7 @@ class Kandinsky5Transformer3DModel(
         scale_factor: tuple[float, float, float] = (1.0, 1.0, 1.0),
         sparse_params: Optional[dict[str, Any]] = None,
         return_dict: bool = True,
-    ) -> Union[Transformer2DModelOutput, torch.FloatTensor]:
+    ) -> Transformer2DModelOutput | torch.FloatTensor:
         """
         Forward pass of the Kandinsky5 3D Transformer.
 

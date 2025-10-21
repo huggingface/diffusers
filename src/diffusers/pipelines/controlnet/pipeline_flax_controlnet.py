@@ -14,7 +14,7 @@
 
 import warnings
 from functools import partial
-from typing import Dict, Optional, Union
+from typing import Dict, Optional
 
 import jax
 import jax.numpy as jnp
@@ -148,9 +148,7 @@ class FlaxStableDiffusionControlNetPipeline(FlaxDiffusionPipeline):
         tokenizer: CLIPTokenizer,
         unet: FlaxUNet2DConditionModel,
         controlnet: FlaxControlNetModel,
-        scheduler: Union[
-            FlaxDDIMScheduler, FlaxPNDMScheduler, FlaxLMSDiscreteScheduler, FlaxDPMSolverMultistepScheduler
-        ],
+        scheduler: FlaxDDIMScheduler | FlaxPNDMScheduler | FlaxLMSDiscreteScheduler | FlaxDPMSolverMultistepScheduler,
         safety_checker: FlaxStableDiffusionSafetyChecker,
         feature_extractor: CLIPImageProcessor,
         dtype: jnp.dtype = jnp.float32,
@@ -180,7 +178,7 @@ class FlaxStableDiffusionControlNetPipeline(FlaxDiffusionPipeline):
         )
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1) if getattr(self, "vae", None) else 8
 
-    def prepare_text_inputs(self, prompt: Union[str, list[str]]):
+    def prepare_text_inputs(self, prompt: str | list[str]):
         if not isinstance(prompt, (str, list)):
             raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
 
@@ -194,7 +192,7 @@ class FlaxStableDiffusionControlNetPipeline(FlaxDiffusionPipeline):
 
         return text_input.input_ids
 
-    def prepare_image_inputs(self, image: Union[Image.Image, list[Image.Image]]):
+    def prepare_image_inputs(self, image: Image.Image | list[Image.Image]):
         if not isinstance(image, (Image.Image, list)):
             raise ValueError(f"image has to be of type `PIL.Image.Image` or list but is {type(image)}")
 
@@ -243,7 +241,7 @@ class FlaxStableDiffusionControlNetPipeline(FlaxDiffusionPipeline):
         self,
         prompt_ids: jnp.ndarray,
         image: jnp.ndarray,
-        params: Union[Dict, FrozenDict],
+        params: Dict | FrozenDict,
         prng_seed: jax.Array,
         num_inference_steps: int,
         guidance_scale: float,
@@ -353,13 +351,13 @@ class FlaxStableDiffusionControlNetPipeline(FlaxDiffusionPipeline):
         self,
         prompt_ids: jnp.ndarray,
         image: jnp.ndarray,
-        params: Union[Dict, FrozenDict],
+        params: Dict | FrozenDict,
         prng_seed: jax.Array,
         num_inference_steps: int = 50,
-        guidance_scale: Union[float, jnp.ndarray] = 7.5,
+        guidance_scale: float | jnp.ndarray = 7.5,
         latents: jnp.ndarray = None,
         neg_prompt_ids: jnp.ndarray = None,
-        controlnet_conditioning_scale: Union[float, jnp.ndarray] = 1.0,
+        controlnet_conditioning_scale: float | jnp.ndarray = 1.0,
         return_dict: bool = True,
         jit: bool = False,
     ):

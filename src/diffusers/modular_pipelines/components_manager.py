@@ -16,7 +16,7 @@ import copy
 import time
 from collections import OrderedDict
 from itertools import combinations
-from typing import Any, Optional, Union
+from typing import Any, Optional
 
 import torch
 
@@ -53,7 +53,7 @@ class CustomOffloadHook(ModelHook):
 
     def __init__(
         self,
-        execution_device: Optional[Union[str, int, torch.device]] = None,
+        execution_device: Optional[str | int | torch.device] = None,
         other_hooks: Optional[list["UserCustomOffloadHook"]] = None,
         offload_strategy: Optional["AutoOffloadStrategy"] = None,
     ):
@@ -135,7 +135,7 @@ class UserCustomOffloadHook:
 def custom_offload_with_hook(
     model_id: str,
     model: torch.nn.Module,
-    execution_device: Union[str, int, torch.device] = None,
+    execution_device: str | int | torch.device = None,
     offload_strategy: Optional["AutoOffloadStrategy"] = None,
 ):
     hook = CustomOffloadHook(execution_device=execution_device, offload_strategy=offload_strategy)
@@ -679,7 +679,7 @@ class ComponentsManager:
 
         return get_return_dict(matches, return_dict_with_names)
 
-    def enable_auto_cpu_offload(self, device: Union[str, int, torch.device] = None, memory_reserve_margin="3GB"):
+    def enable_auto_cpu_offload(self, device: str | int | torch.device = None, memory_reserve_margin="3GB"):
         """
         Enable automatic CPU offloading for all components.
 
@@ -746,7 +746,7 @@ class ComponentsManager:
     def get_model_info(
         self,
         component_id: str,
-        fields: Optional[Union[str, list[str]]] = None,
+        fields: Optional[str | list[str]] = None,
     ) -> Optional[dict[str, Any]]:
         """Get comprehensive information about a component.
 
@@ -1002,7 +1002,7 @@ class ComponentsManager:
 
         return next(iter(results.values()))
 
-    def get_ids(self, names: Union[str, list[str]] = None, collection: Optional[str] = None):
+    def get_ids(self, names: str | list[str] = None, collection: Optional[str] = None):
         """
         Get component IDs by a list of names, optionally filtered by collection.
 

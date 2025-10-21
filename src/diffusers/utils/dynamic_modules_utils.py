@@ -24,7 +24,7 @@ import sys
 import threading
 from pathlib import Path
 from types import ModuleType
-from typing import Optional, Union
+from typing import Optional
 from urllib import request
 
 from huggingface_hub import hf_hub_download, model_info
@@ -65,7 +65,7 @@ def init_hf_modules():
         init_path.touch()
 
 
-def create_dynamic_module(name: Union[str, os.PathLike]):
+def create_dynamic_module(name: str | os.PathLike):
     """
     Creates a dynamic module in the cache directory for modules.
     """
@@ -245,13 +245,13 @@ def find_pipeline_class(loaded_module):
 
 @validate_hf_hub_args
 def get_cached_module_file(
-    pretrained_model_name_or_path: Union[str, os.PathLike],
+    pretrained_model_name_or_path: str | os.PathLike,
     module_file: str,
     subfolder: Optional[str] = None,
-    cache_dir: Optional[Union[str, os.PathLike]] = None,
+    cache_dir: Optional[str | os.PathLike] = None,
     force_download: bool = False,
     proxies: Optional[dict[str, str]] = None,
-    token: Optional[Union[bool, str]] = None,
+    token: Optional[bool | str] = None,
     revision: Optional[str] = None,
     local_files_only: bool = False,
 ):
@@ -421,14 +421,14 @@ def get_cached_module_file(
 
 @validate_hf_hub_args
 def get_class_from_dynamic_module(
-    pretrained_model_name_or_path: Union[str, os.PathLike],
+    pretrained_model_name_or_path: str | os.PathLike,
     module_file: str,
     subfolder: Optional[str] = None,
     class_name: Optional[str] = None,
-    cache_dir: Optional[Union[str, os.PathLike]] = None,
+    cache_dir: Optional[str | os.PathLike] = None,
     force_download: bool = False,
     proxies: Optional[dict[str, str]] = None,
-    token: Optional[Union[bool, str]] = None,
+    token: Optional[bool | str] = None,
     revision: Optional[str] = None,
     local_files_only: bool = False,
     **kwargs,

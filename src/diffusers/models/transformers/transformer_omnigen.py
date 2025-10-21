@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import math
-from typing import Dict, Optional, Union
+from typing import Dict, Optional
 
 import torch
 import torch.nn as nn
@@ -408,14 +408,14 @@ class OmniGenTransformer2DModel(ModelMixin, ConfigMixin):
     def forward(
         self,
         hidden_states: torch.Tensor,
-        timestep: Union[int, float, torch.FloatTensor],
+        timestep: int | float | torch.FloatTensor,
         input_ids: torch.Tensor,
         input_img_latents: list[torch.Tensor],
         input_image_sizes: dict[int, list[int]],
         attention_mask: torch.Tensor,
         position_ids: torch.Tensor,
         return_dict: bool = True,
-    ) -> Union[Transformer2DModelOutput, tuple[torch.Tensor]]:
+    ) -> Transformer2DModelOutput | tuple[torch.Tensor]:
         batch_size, num_channels, height, width = hidden_states.shape
         p = self.config.patch_size
         post_patch_height, post_patch_width = height // p, width // p

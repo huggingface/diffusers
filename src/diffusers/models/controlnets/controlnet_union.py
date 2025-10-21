@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from typing import Any, Optional, Union
+from typing import Any, Optional
 
 import torch
 from torch import nn
@@ -162,7 +162,7 @@ class ControlNetUnionModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
             "CrossAttnDownBlock2D",
             "DownBlock2D",
         ),
-        only_cross_attention: Union[bool, tuple[bool]] = False,
+        only_cross_attention: bool | tuple[bool] = False,
         block_out_channels: tuple[int, ...] = (320, 640, 1280, 1280),
         layers_per_block: int = 2,
         downsample_padding: int = 1,
@@ -171,11 +171,11 @@ class ControlNetUnionModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         norm_num_groups: Optional[int] = 32,
         norm_eps: float = 1e-5,
         cross_attention_dim: int = 1280,
-        transformer_layers_per_block: Union[int, tuple[int, ...]] = 1,
+        transformer_layers_per_block: int | tuple[int, ...] = 1,
         encoder_hid_dim: Optional[int] = None,
         encoder_hid_dim_type: Optional[str] = None,
-        attention_head_dim: Union[int, tuple[int, ...]] = 8,
-        num_attention_heads: Optional[Union[int, tuple[int, ...]]] = None,
+        attention_head_dim: int | tuple[int, ...] = 8,
+        num_attention_heads: Optional[int | tuple[int, ...]] = None,
         use_linear_projection: bool = False,
         class_embed_type: Optional[str] = None,
         addition_embed_type: Optional[str] = None,
@@ -481,7 +481,7 @@ class ControlNetUnionModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         return processors
 
     # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.set_attn_processor
-    def set_attn_processor(self, processor: Union[AttentionProcessor, dict[str, AttentionProcessor]]):
+    def set_attn_processor(self, processor: AttentionProcessor | dict[str, AttentionProcessor]):
         r"""
         Sets the attention processor to use to compute attention.
 
@@ -532,7 +532,7 @@ class ControlNetUnionModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         self.set_attn_processor(processor)
 
     # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.set_attention_slice
-    def set_attention_slice(self, slice_size: Union[str, int, list[int]]) -> None:
+    def set_attention_slice(self, slice_size: str | int | list[int]) -> None:
         r"""
         Enable sliced attention computation.
 
@@ -600,12 +600,12 @@ class ControlNetUnionModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
     def forward(
         self,
         sample: torch.Tensor,
-        timestep: Union[torch.Tensor, float, int],
+        timestep: torch.Tensor | float | int,
         encoder_hidden_states: torch.Tensor,
         controlnet_cond: list[torch.Tensor],
         control_type: torch.Tensor,
         control_type_idx: list[int],
-        conditioning_scale: Union[float, list[float]] = 1.0,
+        conditioning_scale: float | list[float] = 1.0,
         class_labels: Optional[torch.Tensor] = None,
         timestep_cond: Optional[torch.Tensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
@@ -614,7 +614,7 @@ class ControlNetUnionModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         from_multi: bool = False,
         guess_mode: bool = False,
         return_dict: bool = True,
-    ) -> Union[ControlNetOutput, tuple[tuple[torch.Tensor, ...], torch.Tensor]]:
+    ) -> ControlNetOutput | tuple[tuple[torch.Tensor, ...], torch.Tensor]:
         """
         The [`ControlNetUnionModel`] forward method.
 

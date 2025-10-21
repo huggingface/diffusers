@@ -1,5 +1,5 @@
 import inspect
-from typing import Any, Optional, Union
+from typing import Any, Optional
 
 import numpy as np
 import torch
@@ -54,7 +54,7 @@ def _get_qkv_projections(attn: "BriaAttention", hidden_states, encoder_hidden_st
 
 def get_1d_rotary_pos_embed(
     dim: int,
-    pos: Union[np.ndarray, int],
+    pos: np.ndarray | int,
     theta: float = 10000.0,
     use_real=False,
     linear_factor=1.0,
@@ -594,7 +594,7 @@ class BriaTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrig
         return_dict: bool = True,
         controlnet_block_samples=None,
         controlnet_single_block_samples=None,
-    ) -> Union[tuple[torch.Tensor], Transformer2DModelOutput]:
+    ) -> tuple[torch.Tensor] | Transformer2DModelOutput:
         """
         The [`BriaTransformer2DModel`] forward method.
 

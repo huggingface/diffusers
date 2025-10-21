@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import inspect
-from typing import Any, Callable, Optional, Union
+from typing import Any, Callable, Optional
 
 import numpy as np
 import torch
@@ -196,11 +196,11 @@ class AudioLDM2Pipeline(DiffusionPipeline):
         self,
         vae: AutoencoderKL,
         text_encoder: ClapModel,
-        text_encoder_2: Union[T5EncoderModel, VitsModel],
+        text_encoder_2: T5EncoderModel | VitsModel,
         projection_model: AudioLDM2ProjectionModel,
         language_model: GPT2LMHeadModel,
-        tokenizer: Union[RobertaTokenizer, RobertaTokenizerFast],
-        tokenizer_2: Union[T5Tokenizer, T5TokenizerFast, VitsTokenizer],
+        tokenizer: RobertaTokenizer | RobertaTokenizerFast,
+        tokenizer_2: T5Tokenizer | T5TokenizerFast | VitsTokenizer,
         feature_extractor: ClapFeatureExtractor,
         unet: AudioLDM2UNet2DConditionModel,
         scheduler: KarrasDiffusionSchedulers,
@@ -251,7 +251,7 @@ class AudioLDM2Pipeline(DiffusionPipeline):
         )
         self.vae.disable_slicing()
 
-    def enable_model_cpu_offload(self, gpu_id: Optional[int] = None, device: Union[torch.device, str] = "cuda"):
+    def enable_model_cpu_offload(self, gpu_id: Optional[int] = None, device: torch.device | str = "cuda"):
         r"""
         Offloads all models to CPU using accelerate, reducing memory usage with a low impact on performance. Compared
         to `enable_sequential_cpu_offload`, this method moves one whole model at a time to the GPU when its `forward`
@@ -862,15 +862,15 @@ class AudioLDM2Pipeline(DiffusionPipeline):
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        prompt: Union[str, list[str]] = None,
-        transcription: Union[str, list[str]] = None,
+        prompt: str | list[str] = None,
+        transcription: str | list[str] = None,
         audio_length_in_s: Optional[float] = None,
         num_inference_steps: int = 200,
         guidance_scale: float = 3.5,
-        negative_prompt: Optional[Union[str, list[str]]] = None,
+        negative_prompt: Optional[str | list[str]] = None,
         num_waveforms_per_prompt: Optional[int] = 1,
         eta: float = 0.0,
-        generator: Optional[Union[torch.Generator, list[torch.Generator]]] = None,
+        generator: Optional[torch.Generator | list[torch.Generator]] = None,
         latents: Optional[torch.Tensor] = None,
         prompt_embeds: Optional[torch.Tensor] = None,
         negative_prompt_embeds: Optional[torch.Tensor] = None,

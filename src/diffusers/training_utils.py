@@ -6,7 +6,7 @@ import random
 import re
 import warnings
 from contextlib import contextmanager
-from typing import Any, Iterable, Optional, Union
+from typing import Any, Iterable, Optional
 
 import numpy as np
 import torch
@@ -215,7 +215,7 @@ def unet_lora_state_dict(unet: UNet2DConditionModel) -> dict[str, torch.Tensor]:
     return lora_state_dict
 
 
-def cast_training_params(model: Union[torch.nn.Module, list[torch.nn.Module]], dtype=torch.float32):
+def cast_training_params(model: torch.nn.Module | list[torch.nn.Module], dtype=torch.float32):
     """
     Casts the training parameters of the model to the specified data type.
 
@@ -265,7 +265,7 @@ def compute_density_for_timestep_sampling(
     logit_mean: float = None,
     logit_std: float = None,
     mode_scale: float = None,
-    device: Union[torch.device, str] = "cpu",
+    device: torch.device | str = "cpu",
     generator: Optional[torch.Generator] = None,
 ):
     """
@@ -321,9 +321,7 @@ def free_memory():
 
 
 @contextmanager
-def offload_models(
-    *modules: Union[torch.nn.Module, DiffusionPipeline], device: Union[str, torch.device], offload: bool = True
-):
+def offload_models(*modules: torch.nn.Module | DiffusionPipeline, device: str | torch.device, offload: bool = True):
     """
     Context manager that, if offload=True, moves each module to `device` on enter, then moves it back to its original
     device on exit.
@@ -407,8 +405,8 @@ class EMAModel:
         min_decay: float = 0.0,
         update_after_step: int = 0,
         use_ema_warmup: bool = False,
-        inv_gamma: Union[float, int] = 1.0,
-        power: Union[float, int] = 2 / 3,
+        inv_gamma: float | int = 1.0,
+        power: float | int = 2 / 3,
         foreach: bool = False,
         model_cls: Optional[Any] = None,
         model_config: dict[str, Any] = None,

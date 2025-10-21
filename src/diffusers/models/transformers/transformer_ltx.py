@@ -15,7 +15,7 @@
 
 import inspect
 import math
-from typing import Any, Optional, Union
+from typing import Any, Optional
 
 import torch
 import torch.nn as nn
@@ -500,7 +500,7 @@ class LTXVideoTransformer3DModel(
         num_frames: Optional[int] = None,
         height: Optional[int] = None,
         width: Optional[int] = None,
-        rope_interpolation_scale: Optional[Union[tuple[float, float, float], torch.Tensor]] = None,
+        rope_interpolation_scale: Optional[tuple[float, float, float] | torch.Tensor] = None,
         video_coords: Optional[torch.Tensor] = None,
         attention_kwargs: Optional[dict[str, Any]] = None,
         return_dict: bool = True,

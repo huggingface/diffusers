@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Callable, Optional, Union
+from typing import Callable, Optional
 
 import torch
 import torch.nn as nn
@@ -89,7 +89,7 @@ class SplitInferenceModule(nn.Module):
         self.split_dim = split_dim
         self.input_kwargs_to_split = set(input_kwargs_to_split)
 
-    def forward(self, *args, **kwargs) -> Union[torch.Tensor, tuple[torch.Tensor]]:
+    def forward(self, *args, **kwargs) -> torch.Tensor | tuple[torch.Tensor]:
         r"""Forward method for the `SplitInferenceModule`.
 
         This method processes the input by splitting specified keyword arguments along a given dimension, running the
@@ -145,7 +145,7 @@ class SplitInferenceModule(nn.Module):
 class AnimateDiffFreeNoiseMixin:
     r"""Mixin class for [FreeNoise](https://huggingface.co/papers/2310.15169)."""
 
-    def _enable_free_noise_in_block(self, block: Union[CrossAttnDownBlockMotion, DownBlockMotion, UpBlockMotion]):
+    def _enable_free_noise_in_block(self, block: CrossAttnDownBlockMotion | DownBlockMotion | UpBlockMotion):
         r"""Helper function to enable FreeNoise in transformer blocks."""
 
         for motion_module in block.motion_modules:
@@ -186,7 +186,7 @@ class AnimateDiffFreeNoiseMixin:
                         basic_transfomer_block._chunk_size, basic_transfomer_block._chunk_dim
                     )
 
-    def _disable_free_noise_in_block(self, block: Union[CrossAttnDownBlockMotion, DownBlockMotion, UpBlockMotion]):
+    def _disable_free_noise_in_block(self, block: CrossAttnDownBlockMotion | DownBlockMotion | UpBlockMotion):
         r"""Helper function to disable FreeNoise in transformer blocks."""
 
         for motion_module in block.motion_modules:
@@ -255,12 +255,12 @@ class AnimateDiffFreeNoiseMixin:
 
     def _encode_prompt_free_noise(
         self,
-        prompt: Union[str, dict[int, str]],
+        prompt: str | dict[int, str],
         num_frames: int,
         device: torch.device,
         num_videos_per_prompt: int,
         do_classifier_free_guidance: bool,
-        negative_prompt: Optional[Union[str, dict[int, str]]] = None,
+        negative_prompt: Optional[str | dict[int, str]] = None,
         prompt_embeds: Optional[torch.Tensor] = None,
         negative_prompt_embeds: Optional[torch.Tensor] = None,
         lora_scale: Optional[float] = None,
@@ -557,7 +557,7 @@ class AnimateDiffFreeNoiseMixin:
             resnets[i] = SplitInferenceModule(resnets[i], temporal_split_size, 0, ["input_tensor", "temb"])
 
     def _enable_split_inference_samplers_(
-        self, samplers: Union[list[Downsample2D], list[Upsample2D]], temporal_split_size: int
+        self, samplers: list[Downsample2D] | list[Upsample2D], temporal_split_size: int
     ) -> None:
         for i in range(len(samplers)):
             samplers[i] = SplitInferenceModule(samplers[i], temporal_split_size, 0, ["hidden_states"])

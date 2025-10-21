@@ -14,7 +14,7 @@
 # limitations under the License.
 
 import math
-from typing import Optional, Union
+from typing import Optional
 
 import torch
 import torch.nn as nn
@@ -835,7 +835,7 @@ class AutoencoderKLAllegro(ModelMixin, ConfigMixin):
     @apply_forward_hook
     def encode(
         self, x: torch.Tensor, return_dict: bool = True
-    ) -> Union[AutoencoderKLOutput, tuple[DiagonalGaussianDistribution]]:
+    ) -> AutoencoderKLOutput | tuple[DiagonalGaussianDistribution]:
         r"""
         Encode a batch of videos into latents.
 
@@ -870,7 +870,7 @@ class AutoencoderKLAllegro(ModelMixin, ConfigMixin):
         raise NotImplementedError("Decoding without tiling has not been implemented yet.")
 
     @apply_forward_hook
-    def decode(self, z: torch.Tensor, return_dict: bool = True) -> Union[DecoderOutput, torch.Tensor]:
+    def decode(self, z: torch.Tensor, return_dict: bool = True) -> DecoderOutput | torch.Tensor:
         """
         Decode a batch of videos.
 
@@ -1073,7 +1073,7 @@ class AutoencoderKLAllegro(ModelMixin, ConfigMixin):
         sample_posterior: bool = False,
         return_dict: bool = True,
         generator: Optional[torch.Generator] = None,
-    ) -> Union[DecoderOutput, torch.Tensor]:
+    ) -> DecoderOutput | torch.Tensor:
         r"""
         Args:
             sample (`torch.Tensor`): Input sample.

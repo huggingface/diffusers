@@ -17,7 +17,7 @@
 import re
 from contextlib import nullcontext
 from io import BytesIO
-from typing import Optional, Union
+from typing import Optional
 
 import requests
 import torch
@@ -1144,7 +1144,7 @@ def convert_controlnet_checkpoint(
 
 
 def download_from_original_stable_diffusion_ckpt(
-    checkpoint_path_or_dict: Union[str, dict[str, torch.Tensor]],
+    checkpoint_path_or_dict: str | dict[str, torch.Tensor],
     original_config_file: str = None,
     image_size: Optional[int] = None,
     prediction_type: str = None,

@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from typing import Optional, Union
+from typing import Optional
 
 import torch
 import torch.nn as nn
@@ -193,7 +193,7 @@ class AutoencoderKL(ModelMixin, ConfigMixin, FromOriginalModelMixin, PeftAdapter
         return processors
 
     # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.set_attn_processor
-    def set_attn_processor(self, processor: Union[AttentionProcessor, dict[str, AttentionProcessor]]):
+    def set_attn_processor(self, processor: AttentionProcessor | dict[str, AttentionProcessor]):
         r"""
         Sets the attention processor to use to compute attention.
 
@@ -258,7 +258,7 @@ class AutoencoderKL(ModelMixin, ConfigMixin, FromOriginalModelMixin, PeftAdapter
     @apply_forward_hook
     def encode(
         self, x: torch.Tensor, return_dict: bool = True
-    ) -> Union[AutoencoderKLOutput, tuple[DiagonalGaussianDistribution]]:
+    ) -> AutoencoderKLOutput | tuple[DiagonalGaussianDistribution]:
         """
         Encode a batch of images into latents.
 
@@ -284,7 +284,7 @@ class AutoencoderKL(ModelMixin, ConfigMixin, FromOriginalModelMixin, PeftAdapter
 
         return AutoencoderKLOutput(latent_dist=posterior)
 
-    def _decode(self, z: torch.Tensor, return_dict: bool = True) -> Union[DecoderOutput, torch.Tensor]:
+    def _decode(self, z: torch.Tensor, return_dict: bool = True) -> DecoderOutput | torch.Tensor:
         if self.use_tiling and (z.shape[-1] > self.tile_latent_min_size or z.shape[-2] > self.tile_latent_min_size):
             return self.tiled_decode(z, return_dict=return_dict)
 
@@ -301,7 +301,7 @@ class AutoencoderKL(ModelMixin, ConfigMixin, FromOriginalModelMixin, PeftAdapter
     @apply_forward_hook
     def decode(
         self, z: torch.FloatTensor, return_dict: bool = True, generator=None
-    ) -> Union[DecoderOutput, torch.FloatTensor]:
+    ) -> DecoderOutput | torch.FloatTensor:
         """
         Decode a batch of images.
 
@@ -449,7 +449,7 @@ class AutoencoderKL(ModelMixin, ConfigMixin, FromOriginalModelMixin, PeftAdapter
 
         return AutoencoderKLOutput(latent_dist=posterior)
 
-    def tiled_decode(self, z: torch.Tensor, return_dict: bool = True) -> Union[DecoderOutput, torch.Tensor]:
+    def tiled_decode(self, z: torch.Tensor, return_dict: bool = True) -> DecoderOutput | torch.Tensor:
         r"""
         Decode a batch of images using a tiled decoder.
 
@@ -504,7 +504,7 @@ class AutoencoderKL(ModelMixin, ConfigMixin, FromOriginalModelMixin, PeftAdapter
         sample_posterior: bool = False,
         return_dict: bool = True,
         generator: Optional[torch.Generator] = None,
-    ) -> Union[DecoderOutput, torch.Tensor]:
+    ) -> DecoderOutput | torch.Tensor:
         r"""
         Args:
             sample (`torch.Tensor`): Input sample.

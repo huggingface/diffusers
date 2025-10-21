@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Dict, Optional, Union
+from typing import Dict, Optional
 
 import PIL
 import torch
@@ -44,7 +44,7 @@ def _extract_masked_hidden(hidden_states: torch.Tensor, mask: torch.Tensor):
 def get_qwen_prompt_embeds(
     text_encoder,
     tokenizer,
-    prompt: Union[str, list[str]] = None,
+    prompt: str | list[str] = None,
     prompt_template_encode: str = "<|im_start|>system\nDescribe the image by detailing the color, shape, size, texture, quantity, text, spatial relationships of the objects and background:<|im_end|>\n<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n",
     prompt_template_encode_start_idx: int = 34,
     tokenizer_max_length: int = 1024,
@@ -84,7 +84,7 @@ def get_qwen_prompt_embeds(
 def get_qwen_prompt_embeds_edit(
     text_encoder,
     processor,
-    prompt: Union[str, list[str]] = None,
+    prompt: str | list[str] = None,
     image: Optional[torch.Tensor] = None,
     prompt_template_encode: str = "<|im_start|>system\nDescribe the key features of the input image (color, shape, size, texture, objects, background), then explain how the user's text instruction should alter or modify the image. Generate a new image that meets the user's requirements while maintaining consistency with the original input where appropriate.<|im_end|>\n<|im_start|>user\n<|vision_start|><|image_pad|><|vision_end|>{}<|im_end|>\n<|im_start|>assistant\n",
     prompt_template_encode_start_idx: int = 64,
@@ -131,8 +131,8 @@ def get_qwen_prompt_embeds_edit(
 def get_qwen_prompt_embeds_edit_plus(
     text_encoder,
     processor,
-    prompt: Union[str, list[str]] = None,
-    image: Optional[Union[torch.Tensor, list[PIL.Image.Image], PIL.Image.Image]] = None,
+    prompt: str | list[str] = None,
+    image: Optional[torch.Tensor | list[PIL.Image.Image] | PIL.Image.Image] = None,
     prompt_template_encode: str = "<|im_start|>system\nDescribe the key features of the input image (color, shape, size, texture, objects, background), then explain how the user's text instruction should alter or modify the image. Generate a new image that meets the user's requirements while maintaining consistency with the original input where appropriate.<|im_end|>\n<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n",
     img_template_encode: str = "Picture {}: <|vision_start|><|image_pad|><|vision_end|>",
     prompt_template_encode_start_idx: int = 64,

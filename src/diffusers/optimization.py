@@ -16,7 +16,7 @@
 
 import math
 from enum import Enum
-from typing import Optional, Union
+from typing import Optional
 
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import LambdaLR
@@ -287,7 +287,7 @@ TYPE_TO_SCHEDULER_FUNCTION = {
 
 
 def get_scheduler(
-    name: Union[str, SchedulerType],
+    name: str | SchedulerType,
     optimizer: Optimizer,
     step_rules: Optional[str] = None,
     num_warmup_steps: Optional[int] = None,

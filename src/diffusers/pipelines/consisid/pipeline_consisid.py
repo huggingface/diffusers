@@ -14,7 +14,7 @@
 
 import inspect
 import math
-from typing import Any, Callable, Dict, Optional, Tuple, Union
+from typing import Any, Callable, Dict, Optional, Tuple
 
 import numpy as np
 import PIL
@@ -177,7 +177,7 @@ def get_resize_crop_region_for_grid(src, tgt_width, tgt_height):
 def retrieve_timesteps(
     scheduler,
     num_inference_steps: Optional[int] = None,
-    device: Optional[Union[str, torch.device]] = None,
+    device: Optional[str | torch.device] = None,
     timesteps: Optional[list[int]] = None,
     sigmas: Optional[list[float]] = None,
     **kwargs,
@@ -311,7 +311,7 @@ class ConsisIDPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
     # Copied from diffusers.pipelines.cogvideo.pipeline_cogvideox.CogVideoXPipeline._get_t5_prompt_embeds
     def _get_t5_prompt_embeds(
         self,
-        prompt: Union[str, list[str]] = None,
+        prompt: str | list[str] = None,
         num_videos_per_prompt: int = 1,
         max_sequence_length: int = 226,
         device: Optional[torch.device] = None,
@@ -354,8 +354,8 @@ class ConsisIDPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
     # Copied from diffusers.pipelines.cogvideo.pipeline_cogvideox.CogVideoXPipeline.encode_prompt
     def encode_prompt(
         self,
-        prompt: Union[str, list[str]],
-        negative_prompt: Optional[Union[str, list[str]]] = None,
+        prompt: str | list[str],
+        negative_prompt: Optional[str | list[str]] = None,
         do_classifier_free_guidance: bool = True,
         num_videos_per_prompt: int = 1,
         prompt_embeds: Optional[torch.Tensor] = None,
@@ -663,8 +663,8 @@ class ConsisIDPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
     def __call__(
         self,
         image: PipelineImageInput,
-        prompt: Optional[Union[str, list[str]]] = None,
-        negative_prompt: Optional[Union[str, list[str]]] = None,
+        prompt: Optional[str | list[str]] = None,
+        negative_prompt: Optional[str | list[str]] = None,
         height: int = 480,
         width: int = 720,
         num_frames: int = 49,
@@ -673,7 +673,7 @@ class ConsisIDPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
         use_dynamic_cfg: bool = False,
         num_videos_per_prompt: int = 1,
         eta: float = 0.0,
-        generator: Optional[Union[torch.Generator, list[torch.Generator]]] = None,
+        generator: Optional[torch.Generator | list[torch.Generator]] = None,
         latents: Optional[torch.FloatTensor] = None,
         prompt_embeds: Optional[torch.FloatTensor] = None,
         negative_prompt_embeds: Optional[torch.FloatTensor] = None,
@@ -681,14 +681,14 @@ class ConsisIDPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
         return_dict: bool = True,
         attention_kwargs: Optional[dict[str, Any]] = None,
         callback_on_step_end: Optional[
-            Union[Callable[[int, int, Dict], None], PipelineCallback, MultiPipelineCallbacks]
+            Callable[[int, int, Dict], None] | PipelineCallback | MultiPipelineCallbacks
         ] = None,
         callback_on_step_end_tensor_inputs: list[str] = ["latents"],
         max_sequence_length: int = 226,
         id_vit_hidden: Optional[torch.Tensor] = None,
         id_cond: Optional[torch.Tensor] = None,
         kps_cond: Optional[torch.Tensor] = None,
-    ) -> Union[ConsisIDPipelineOutput, Tuple]:
+    ) -> ConsisIDPipelineOutput | Tuple:
         """
         Function invoked when calling the pipeline for generation.
 

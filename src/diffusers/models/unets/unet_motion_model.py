@@ -13,7 +13,7 @@
 # limitations under the License.
 
 from dataclasses import dataclass
-from typing import Any, Optional, Tuple, Union
+from typing import Any, Optional, Tuple
 
 import torch
 import torch.nn as nn
@@ -228,10 +228,10 @@ class DownBlockMotion(nn.Module):
         output_scale_factor: float = 1.0,
         add_downsample: bool = True,
         downsample_padding: int = 1,
-        temporal_num_attention_heads: Union[int, tuple[int]] = 1,
+        temporal_num_attention_heads: int | tuple[int] = 1,
         temporal_cross_attention_dim: Optional[int] = None,
         temporal_max_seq_length: int = 32,
-        temporal_transformer_layers_per_block: Union[int, tuple[int]] = 1,
+        temporal_transformer_layers_per_block: int | tuple[int] = 1,
         temporal_double_self_attention: bool = True,
     ):
         super().__init__()
@@ -313,7 +313,7 @@ class DownBlockMotion(nn.Module):
         num_frames: int = 1,
         *args,
         **kwargs,
-    ) -> Union[torch.Tensor, tuple[torch.Tensor, ...]]:
+    ) -> torch.Tensor | tuple[torch.Tensor, ...]:
         if len(args) > 0 or kwargs.get("scale", None) is not None:
             deprecation_message = "The `scale` argument is deprecated and will be ignored. Please remove it, as passing it will raise an error in the future. `scale` should directly be passed while calling the underlying pipeline component i.e., via `cross_attention_kwargs`."
             deprecate("scale", "1.0.0", deprecation_message)
@@ -348,7 +348,7 @@ class CrossAttnDownBlockMotion(nn.Module):
         temb_channels: int,
         dropout: float = 0.0,
         num_layers: int = 1,
-        transformer_layers_per_block: Union[int, tuple[int]] = 1,
+        transformer_layers_per_block: int | tuple[int] = 1,
         resnet_eps: float = 1e-6,
         resnet_time_scale_shift: str = "default",
         resnet_act_fn: str = "swish",
@@ -367,7 +367,7 @@ class CrossAttnDownBlockMotion(nn.Module):
         temporal_cross_attention_dim: Optional[int] = None,
         temporal_num_attention_heads: int = 8,
         temporal_max_seq_length: int = 32,
-        temporal_transformer_layers_per_block: Union[int, tuple[int]] = 1,
+        temporal_transformer_layers_per_block: int | tuple[int] = 1,
         temporal_double_self_attention: bool = True,
     ):
         super().__init__()
@@ -535,7 +535,7 @@ class CrossAttnUpBlockMotion(nn.Module):
         resolution_idx: Optional[int] = None,
         dropout: float = 0.0,
         num_layers: int = 1,
-        transformer_layers_per_block: Union[int, tuple[int]] = 1,
+        transformer_layers_per_block: int | tuple[int] = 1,
         resnet_eps: float = 1e-6,
         resnet_time_scale_shift: str = "default",
         resnet_act_fn: str = "swish",
@@ -553,7 +553,7 @@ class CrossAttnUpBlockMotion(nn.Module):
         temporal_cross_attention_dim: Optional[int] = None,
         temporal_num_attention_heads: int = 8,
         temporal_max_seq_length: int = 32,
-        temporal_transformer_layers_per_block: Union[int, tuple[int]] = 1,
+        temporal_transformer_layers_per_block: int | tuple[int] = 1,
     ):
         super().__init__()
         resnets = []
@@ -737,7 +737,7 @@ class UpBlockMotion(nn.Module):
         temporal_cross_attention_dim: Optional[int] = None,
         temporal_num_attention_heads: int = 8,
         temporal_max_seq_length: int = 32,
-        temporal_transformer_layers_per_block: Union[int, tuple[int]] = 1,
+        temporal_transformer_layers_per_block: int | tuple[int] = 1,
     ):
         super().__init__()
         resnets = []
@@ -859,7 +859,7 @@ class UNetMidBlockCrossAttnMotion(nn.Module):
         temb_channels: int,
         dropout: float = 0.0,
         num_layers: int = 1,
-        transformer_layers_per_block: Union[int, tuple[int]] = 1,
+        transformer_layers_per_block: int | tuple[int] = 1,
         resnet_eps: float = 1e-6,
         resnet_time_scale_shift: str = "default",
         resnet_act_fn: str = "swish",
@@ -875,7 +875,7 @@ class UNetMidBlockCrossAttnMotion(nn.Module):
         temporal_num_attention_heads: int = 1,
         temporal_cross_attention_dim: Optional[int] = None,
         temporal_max_seq_length: int = 32,
-        temporal_transformer_layers_per_block: Union[int, tuple[int]] = 1,
+        temporal_transformer_layers_per_block: int | tuple[int] = 1,
     ):
         super().__init__()
 
@@ -1022,8 +1022,8 @@ class MotionModules(nn.Module):
         self,
         in_channels: int,
         layers_per_block: int = 2,
-        transformer_layers_per_block: Union[int, tuple[int]] = 8,
-        num_attention_heads: Union[int, tuple[int]] = 8,
+        transformer_layers_per_block: int | tuple[int] = 8,
+        num_attention_heads: int | tuple[int] = 8,
         attention_bias: bool = False,
         cross_attention_dim: Optional[int] = None,
         activation_fn: str = "geglu",
@@ -1063,11 +1063,11 @@ class MotionAdapter(ModelMixin, ConfigMixin, FromOriginalModelMixin):
     def __init__(
         self,
         block_out_channels: tuple[int, ...] = (320, 640, 1280, 1280),
-        motion_layers_per_block: Union[int, tuple[int]] = 2,
-        motion_transformer_layers_per_block: Union[int, tuple[int], tuple[tuple[int]]] = 1,
+        motion_layers_per_block: int | tuple[int] = 2,
+        motion_transformer_layers_per_block: int | tuple[int] | tuple[tuple[int]] = 1,
         motion_mid_block_layers_per_block: int = 1,
-        motion_transformer_layers_per_mid_block: Union[int, tuple[int]] = 1,
-        motion_num_attention_heads: Union[int, tuple[int]] = 8,
+        motion_transformer_layers_per_mid_block: int | tuple[int] = 1,
+        motion_num_attention_heads: int | tuple[int] = 8,
         motion_norm_num_groups: int = 32,
         motion_max_seq_length: int = 32,
         use_motion_mid_block: bool = True,
@@ -1226,24 +1226,24 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin, Peft
             "CrossAttnUpBlockMotion",
         ),
         block_out_channels: tuple[int, ...] = (320, 640, 1280, 1280),
-        layers_per_block: Union[int, tuple[int]] = 2,
+        layers_per_block: int | tuple[int] = 2,
         downsample_padding: int = 1,
         mid_block_scale_factor: float = 1,
         act_fn: str = "silu",
         norm_num_groups: int = 32,
         norm_eps: float = 1e-5,
         cross_attention_dim: int = 1280,
-        transformer_layers_per_block: Union[int, tuple[int], tuple[Tuple]] = 1,
-        reverse_transformer_layers_per_block: Optional[Union[int, tuple[int], tuple[Tuple]]] = None,
-        temporal_transformer_layers_per_block: Union[int, tuple[int], tuple[Tuple]] = 1,
-        reverse_temporal_transformer_layers_per_block: Optional[Union[int, tuple[int], tuple[Tuple]]] = None,
-        transformer_layers_per_mid_block: Optional[Union[int, tuple[int]]] = None,
-        temporal_transformer_layers_per_mid_block: Optional[Union[int, tuple[int]]] = 1,
+        transformer_layers_per_block: int | tuple[int] | tuple[Tuple] = 1,
+        reverse_transformer_layers_per_block: Optional[int | tuple[int] | tuple[Tuple]] = None,
+        temporal_transformer_layers_per_block: int | tuple[int] | tuple[Tuple] = 1,
+        reverse_temporal_transformer_layers_per_block: Optional[int | tuple[int] | tuple[Tuple]] = None,
+        transformer_layers_per_mid_block: Optional[int | tuple[int]] = None,
+        temporal_transformer_layers_per_mid_block: Optional[int | tuple[int]] = 1,
         use_linear_projection: bool = False,
-        num_attention_heads: Union[int, tuple[int, ...]] = 8,
+        num_attention_heads: int | tuple[int, ...] = 8,
         motion_max_seq_length: int = 32,
-        motion_num_attention_heads: Union[int, tuple[int, ...]] = 8,
-        reverse_motion_num_attention_heads: Optional[Union[int, tuple[int, ...], tuple[tuple[int, ...], ...]]] = None,
+        motion_num_attention_heads: int | tuple[int, ...] = 8,
+        reverse_motion_num_attention_heads: Optional[int | tuple[int, ...] | tuple[tuple[int, ...], ...]] = None,
         use_motion_mid_block: bool = True,
         mid_block_layers: int = 1,
         encoder_hid_dim: Optional[int] = None,
@@ -1780,7 +1780,7 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin, Peft
         return processors
 
     # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.set_attn_processor
-    def set_attn_processor(self, processor: Union[AttentionProcessor, dict[str, AttentionProcessor]]):
+    def set_attn_processor(self, processor: AttentionProcessor | dict[str, AttentionProcessor]):
         r"""
         Sets the attention processor to use to compute attention.
 
@@ -1939,7 +1939,7 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin, Peft
     def forward(
         self,
         sample: torch.Tensor,
-        timestep: Union[torch.Tensor, float, int],
+        timestep: torch.Tensor | float | int,
         encoder_hidden_states: torch.Tensor,
         timestep_cond: Optional[torch.Tensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
@@ -1948,7 +1948,7 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin, Peft
         down_block_additional_residuals: Optional[tuple[torch.Tensor]] = None,
         mid_block_additional_residual: Optional[torch.Tensor] = None,
         return_dict: bool = True,
-    ) -> Union[UNetMotionOutput, tuple[torch.Tensor]]:
+    ) -> UNetMotionOutput | tuple[torch.Tensor]:
         r"""
         The [`UNetMotionModel`] forward method.
 

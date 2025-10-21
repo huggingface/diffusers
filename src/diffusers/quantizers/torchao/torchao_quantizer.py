@@ -21,7 +21,7 @@ import importlib
 import re
 import types
 from fnmatch import fnmatch
-from typing import TYPE_CHECKING, Any, Optional, Union
+from typing import TYPE_CHECKING, Any, Optional
 
 from packaging import version
 
@@ -263,7 +263,7 @@ class TorchAoHfQuantizer(DiffusersQuantizer):
             f"dtype you are using should be supported, please open an issue at https://github.com/huggingface/diffusers/issues."
         )
 
-    def adjust_max_memory(self, max_memory: dict[str, Union[int, str]]) -> dict[str, Union[int, str]]:
+    def adjust_max_memory(self, max_memory: dict[str, int | str]) -> dict[str, int | str]:
         max_memory = {key: val * 0.9 for key, val in max_memory.items()}
         return max_memory
 

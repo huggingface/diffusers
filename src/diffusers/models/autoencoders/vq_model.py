@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 from dataclasses import dataclass
-from typing import Optional, Union
+from typing import Optional
 
 import torch
 import torch.nn as nn
@@ -142,7 +142,7 @@ class VQModel(ModelMixin, ConfigMixin):
     @apply_forward_hook
     def decode(
         self, h: torch.Tensor, force_not_quantize: bool = False, return_dict: bool = True, shape=None
-    ) -> Union[DecoderOutput, torch.Tensor]:
+    ) -> DecoderOutput | torch.Tensor:
         # also go through quantization layer
         if not force_not_quantize:
             quant, commit_loss, _ = self.quantize(h)
@@ -160,9 +160,7 @@ class VQModel(ModelMixin, ConfigMixin):
 
         return DecoderOutput(sample=dec, commit_loss=commit_loss)
 
-    def forward(
-        self, sample: torch.Tensor, return_dict: bool = True
-    ) -> Union[DecoderOutput, tuple[torch.Tensor, ...]]:
+    def forward(self, sample: torch.Tensor, return_dict: bool = True) -> DecoderOutput | tuple[torch.Tensor, ...]:
         r"""
         The [`VQModel`] forward method.
 

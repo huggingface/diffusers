@@ -1,5 +1,4 @@
 from dataclasses import dataclass
-from typing import Union
 
 import numpy as np
 import PIL.Image
@@ -18,7 +17,7 @@ class StableDiffusionXLPipelineOutput(BaseOutput):
             num_channels)`. PIL images or numpy array present the denoised images of the diffusion pipeline.
     """
 
-    images: Union[list[PIL.Image.Image], np.ndarray]
+    images: list[PIL.Image.Image] | np.ndarray
 
 
 if is_flax_available():

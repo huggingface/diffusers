@@ -17,7 +17,7 @@ import inspect
 import re
 import urllib.parse as ul
 import warnings
-from typing import Callable, Dict, Optional, Tuple, Union
+from typing import Callable, Dict, Optional, Tuple
 
 import torch
 from transformers import Gemma2PreTrainedModel, GemmaTokenizer, GemmaTokenizerFast
@@ -89,7 +89,7 @@ EXAMPLE_DOC_STRING = """
 def retrieve_timesteps(
     scheduler,
     num_inference_steps: Optional[int] = None,
-    device: Optional[Union[str, torch.device]] = None,
+    device: Optional[str | torch.device] = None,
     timesteps: Optional[list[int]] = None,
     sigmas: Optional[list[float]] = None,
     **kwargs,
@@ -161,12 +161,12 @@ class SanaPAGPipeline(DiffusionPipeline, PAGMixin):
 
     def __init__(
         self,
-        tokenizer: Union[GemmaTokenizer, GemmaTokenizerFast],
+        tokenizer: GemmaTokenizer | GemmaTokenizerFast,
         text_encoder: Gemma2PreTrainedModel,
         vae: AutoencoderDC,
         transformer: SanaTransformer2DModel,
         scheduler: FlowMatchEulerDiscreteScheduler,
-        pag_applied_layers: Union[str, list[str]] = "transformer_blocks.0",
+        pag_applied_layers: str | list[str] = "transformer_blocks.0",
     ):
         super().__init__()
 
@@ -241,7 +241,7 @@ class SanaPAGPipeline(DiffusionPipeline, PAGMixin):
 
     def encode_prompt(
         self,
-        prompt: Union[str, list[str]],
+        prompt: str | list[str],
         do_classifier_free_guidance: bool = True,
         negative_prompt: str = "",
         num_images_per_prompt: int = 1,
@@ -649,7 +649,7 @@ class SanaPAGPipeline(DiffusionPipeline, PAGMixin):
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        prompt: Union[str, list[str]] = None,
+        prompt: str | list[str] = None,
         negative_prompt: str = "",
         num_inference_steps: int = 20,
         timesteps: list[int] = None,
@@ -659,7 +659,7 @@ class SanaPAGPipeline(DiffusionPipeline, PAGMixin):
         height: int = 1024,
         width: int = 1024,
         eta: float = 0.0,
-        generator: Optional[Union[torch.Generator, list[torch.Generator]]] = None,
+        generator: Optional[torch.Generator | list[torch.Generator]] = None,
         latents: Optional[torch.Tensor] = None,
         prompt_embeds: Optional[torch.Tensor] = None,
         prompt_attention_mask: Optional[torch.Tensor] = None,
@@ -684,7 +684,7 @@ class SanaPAGPipeline(DiffusionPipeline, PAGMixin):
         ],
         pag_scale: float = 3.0,
         pag_adaptive_scale: float = 0.0,
-    ) -> Union[ImagePipelineOutput, Tuple]:
+    ) -> ImagePipelineOutput | Tuple:
         """
         Function invoked when calling the pipeline for generation.
 

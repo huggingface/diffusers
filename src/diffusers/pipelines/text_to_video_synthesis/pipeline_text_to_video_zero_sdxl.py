@@ -1,7 +1,7 @@
 import copy
 import inspect
 from dataclasses import dataclass
-from typing import Any, Callable, Optional, Union
+from typing import Any, Callable, Optional
 
 import numpy as np
 import PIL
@@ -227,7 +227,7 @@ class TextToVideoSDXLPipelineOutput(BaseOutput):
             num_channels)`. PIL images or numpy array present the denoised images of the diffusion pipeline.
     """
 
-    images: Union[list[PIL.Image.Image], np.ndarray]
+    images: list[PIL.Image.Image] | np.ndarray
 
 
 # Copied from diffusers.pipelines.text_to_video_synthesis.pipeline_text_to_video_zero.coords_grid
@@ -951,19 +951,19 @@ class TextToVideoZeroSDXLPipeline(
     @torch.no_grad()
     def __call__(
         self,
-        prompt: Union[str, list[str]],
-        prompt_2: Optional[Union[str, list[str]]] = None,
+        prompt: str | list[str],
+        prompt_2: Optional[str | list[str]] = None,
         video_length: Optional[int] = 8,
         height: Optional[int] = None,
         width: Optional[int] = None,
         num_inference_steps: int = 50,
         denoising_end: Optional[float] = None,
         guidance_scale: float = 7.5,
-        negative_prompt: Optional[Union[str, list[str]]] = None,
-        negative_prompt_2: Optional[Union[str, list[str]]] = None,
+        negative_prompt: Optional[str | list[str]] = None,
+        negative_prompt_2: Optional[str | list[str]] = None,
         num_videos_per_prompt: Optional[int] = 1,
         eta: float = 0.0,
-        generator: Optional[Union[torch.Generator, list[torch.Generator]]] = None,
+        generator: Optional[torch.Generator | list[torch.Generator]] = None,
         frame_ids: Optional[list[int]] = None,
         prompt_embeds: Optional[torch.Tensor] = None,
         negative_prompt_embeds: Optional[torch.Tensor] = None,

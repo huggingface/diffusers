@@ -15,7 +15,7 @@
 
 import io
 import json
-from typing import Literal, Optional, Union, cast
+from typing import Literal, Optional, cast
 
 import requests
 
@@ -58,7 +58,7 @@ def detect_image_type(data: bytes) -> str:
 def check_inputs_decode(
     endpoint: str,
     tensor: "torch.Tensor",
-    processor: Optional[Union["VaeImageProcessor", "VideoProcessor"]] = None,
+    processor: Optional["VaeImageProcessor" | "VideoProcessor"] = None,
     do_scaling: bool = True,
     scaling_factor: Optional[float] = None,
     shift_factor: Optional[float] = None,
@@ -91,7 +91,7 @@ def check_inputs_decode(
 
 def postprocess_decode(
     response: requests.Response,
-    processor: Optional[Union["VaeImageProcessor", "VideoProcessor"]] = None,
+    processor: Optional["VaeImageProcessor" | "VideoProcessor"] = None,
     output_type: Literal["mp4", "pil", "pt"] = "pil",
     return_type: Literal["mp4", "pil", "pt"] = "pil",
     partial_postprocess: bool = False,
@@ -144,7 +144,7 @@ def postprocess_decode(
 
 def prepare_decode(
     tensor: "torch.Tensor",
-    processor: Optional[Union["VaeImageProcessor", "VideoProcessor"]] = None,
+    processor: Optional["VaeImageProcessor" | "VideoProcessor"] = None,
     do_scaling: bool = True,
     scaling_factor: Optional[float] = None,
     shift_factor: Optional[float] = None,
@@ -188,7 +188,7 @@ def prepare_decode(
 def remote_decode(
     endpoint: str,
     tensor: "torch.Tensor",
-    processor: Optional[Union["VaeImageProcessor", "VideoProcessor"]] = None,
+    processor: Optional["VaeImageProcessor" | "VideoProcessor"] = None,
     do_scaling: bool = True,
     scaling_factor: Optional[float] = None,
     shift_factor: Optional[float] = None,
@@ -200,7 +200,7 @@ def remote_decode(
     output_tensor_type: Literal["binary"] = "binary",
     height: Optional[int] = None,
     width: Optional[int] = None,
-) -> Union[Image.Image, list[Image.Image], bytes, "torch.Tensor"]:
+) -> Image.Image | list[Image.Image] | bytes | "torch.Tensor":
     """
     Hugging Face Hybrid Inference that allow running VAE decode remotely.
 
@@ -336,7 +336,7 @@ def remote_decode(
 
 def check_inputs_encode(
     endpoint: str,
-    image: Union["torch.Tensor", Image.Image],
+    image: "torch.Tensor" | Image.Image,
     scaling_factor: Optional[float] = None,
     shift_factor: Optional[float] = None,
 ):
@@ -356,7 +356,7 @@ def postprocess_encode(
 
 
 def prepare_encode(
-    image: Union["torch.Tensor", Image.Image],
+    image: "torch.Tensor" | Image.Image,
     scaling_factor: Optional[float] = None,
     shift_factor: Optional[float] = None,
 ):
@@ -379,7 +379,7 @@ def prepare_encode(
 
 def remote_encode(
     endpoint: str,
-    image: Union["torch.Tensor", Image.Image],
+    image: "torch.Tensor" | Image.Image,
     scaling_factor: Optional[float] = None,
     shift_factor: Optional[float] = None,
 ) -> "torch.Tensor":

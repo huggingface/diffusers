@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import math
-from typing import Any, Optional, Union
+from typing import Any, Optional
 
 import torch
 import torch.nn as nn
@@ -640,7 +640,7 @@ class SkyReelsV2Transformer3DModel(
         fps: Optional[torch.Tensor] = None,
         return_dict: bool = True,
         attention_kwargs: Optional[dict[str, Any]] = None,
-    ) -> Union[torch.Tensor, dict[str, torch.Tensor]]:
+    ) -> torch.Tensor | dict[str, torch.Tensor]:
         if attention_kwargs is not None:
             attention_kwargs = attention_kwargs.copy()
             lora_scale = attention_kwargs.pop("scale", 1.0)

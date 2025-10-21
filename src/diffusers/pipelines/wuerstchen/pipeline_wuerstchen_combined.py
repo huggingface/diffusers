@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from typing import Callable, Dict, Optional, Union
+from typing import Callable, Dict, Optional
 
 import torch
 from transformers import CLIPTextModel, CLIPTokenizer
@@ -113,7 +113,7 @@ class WuerstchenCombinedPipeline(DeprecatedPipelineMixin, DiffusionPipeline):
     def enable_xformers_memory_efficient_attention(self, attention_op: Optional[Callable] = None):
         self.decoder_pipe.enable_xformers_memory_efficient_attention(attention_op)
 
-    def enable_model_cpu_offload(self, gpu_id: Optional[int] = None, device: Union[torch.device, str] = None):
+    def enable_model_cpu_offload(self, gpu_id: Optional[int] = None, device: torch.device | str = None):
         r"""
         Offloads all models to CPU using accelerate, reducing memory usage with a low impact on performance. Compared
         to `enable_sequential_cpu_offload`, this method moves one whole model at a time to the GPU when its `forward`
@@ -123,7 +123,7 @@ class WuerstchenCombinedPipeline(DeprecatedPipelineMixin, DiffusionPipeline):
         self.prior_pipe.enable_model_cpu_offload(gpu_id=gpu_id, device=device)
         self.decoder_pipe.enable_model_cpu_offload(gpu_id=gpu_id, device=device)
 
-    def enable_sequential_cpu_offload(self, gpu_id: Optional[int] = None, device: Union[torch.device, str] = None):
+    def enable_sequential_cpu_offload(self, gpu_id: Optional[int] = None, device: torch.device | str = None):
         r"""
         Offloads all models (`unet`, `text_encoder`, `vae`, and `safety checker` state dicts) to CPU using 🤗
         Accelerate, significantly reducing memory usage. Models are moved to a `torch.device('meta')` and loaded on a
@@ -145,7 +145,7 @@ class WuerstchenCombinedPipeline(DeprecatedPipelineMixin, DiffusionPipeline):
     @replace_example_docstring(TEXT2IMAGE_EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        prompt: Optional[Union[str, list[str]]] = None,
+        prompt: Optional[str | list[str]] = None,
         height: int = 512,
         width: int = 512,
         prior_num_inference_steps: int = 60,
@@ -154,11 +154,11 @@ class WuerstchenCombinedPipeline(DeprecatedPipelineMixin, DiffusionPipeline):
         num_inference_steps: int = 12,
         decoder_timesteps: Optional[list[float]] = None,
         decoder_guidance_scale: float = 0.0,
-        negative_prompt: Optional[Union[str, list[str]]] = None,
+        negative_prompt: Optional[str | list[str]] = None,
         prompt_embeds: Optional[torch.Tensor] = None,
         negative_prompt_embeds: Optional[torch.Tensor] = None,
         num_images_per_prompt: int = 1,
-        generator: Optional[Union[torch.Generator, list[torch.Generator]]] = None,
+        generator: Optional[torch.Generator | list[torch.Generator]] = None,
         latents: Optional[torch.Tensor] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,

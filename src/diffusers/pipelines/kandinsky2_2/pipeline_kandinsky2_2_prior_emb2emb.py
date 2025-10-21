@@ -1,4 +1,4 @@
-from typing import List, Optional, Union
+from typing import List, Optional
 
 import PIL.Image
 import torch
@@ -161,11 +161,11 @@ class KandinskyV22PriorEmb2EmbPipeline(DiffusionPipeline):
     @replace_example_docstring(EXAMPLE_INTERPOLATE_DOC_STRING)
     def interpolate(
         self,
-        images_and_prompts: list[Union[str, PIL.Image.Image, torch.Tensor]],
+        images_and_prompts: list[str | PIL.Image.Image | torch.Tensor],
         weights: list[float],
         num_images_per_prompt: int = 1,
         num_inference_steps: int = 25,
-        generator: Optional[Union[torch.Generator, list[torch.Generator]]] = None,
+        generator: Optional[torch.Generator | list[torch.Generator]] = None,
         latents: Optional[torch.Tensor] = None,
         negative_prior_prompt: Optional[str] = None,
         negative_prompt: str = "",
@@ -249,7 +249,7 @@ class KandinskyV22PriorEmb2EmbPipeline(DiffusionPipeline):
 
     def _encode_image(
         self,
-        image: Union[torch.Tensor, list[PIL.Image.Image]],
+        image: torch.Tensor | list[PIL.Image.Image],
         device,
         num_images_per_prompt,
     ):
@@ -402,13 +402,13 @@ class KandinskyV22PriorEmb2EmbPipeline(DiffusionPipeline):
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        prompt: Union[str, list[str]],
-        image: Union[torch.Tensor, list[torch.Tensor], PIL.Image.Image, list[PIL.Image.Image]],
+        prompt: str | list[str],
+        image: torch.Tensor | list[torch.Tensor] | PIL.Image.Image | list[PIL.Image.Image],
         strength: float = 0.3,
-        negative_prompt: Optional[Union[str, list[str]]] = None,
+        negative_prompt: Optional[str | list[str]] = None,
         num_images_per_prompt: int = 1,
         num_inference_steps: int = 25,
-        generator: Optional[Union[torch.Generator, list[torch.Generator]]] = None,
+        generator: Optional[torch.Generator | list[torch.Generator]] = None,
         guidance_scale: float = 4.0,
         output_type: Optional[str] = "pt",  # pt only
         return_dict: bool = True,

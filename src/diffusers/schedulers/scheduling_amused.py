@@ -1,6 +1,6 @@
 import math
 from dataclasses import dataclass
-from typing import Optional, Tuple, Union
+from typing import Optional, Tuple
 
 import torch
 
@@ -58,8 +58,8 @@ class AmusedScheduler(SchedulerMixin, ConfigMixin):
     def set_timesteps(
         self,
         num_inference_steps: int,
-        temperature: Union[int, tuple[int, int], list[int]] = (2, 0),
-        device: Union[str, torch.device] = None,
+        temperature: int | tuple[int, int] | list[int] = (2, 0),
+        device: str | torch.device = None,
     ):
         self.timesteps = torch.arange(num_inference_steps, device=device).flip(0)
 
@@ -76,7 +76,7 @@ class AmusedScheduler(SchedulerMixin, ConfigMixin):
         starting_mask_ratio: int = 1,
         generator: Optional[torch.Generator] = None,
         return_dict: bool = True,
-    ) -> Union[AmusedSchedulerOutput, Tuple]:
+    ) -> AmusedSchedulerOutput | Tuple:
         two_dim_input = sample.ndim == 3 and model_output.ndim == 4
 
         if two_dim_input:

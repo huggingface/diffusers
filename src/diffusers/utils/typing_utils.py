@@ -18,7 +18,7 @@ Typing utilities: Utilities related to type checking and validation
 from typing import Any, List, Set, Type, Union, get_args, get_origin
 
 
-def _is_valid_type(obj: Any, class_or_tuple: Union[Type, tuple[Type, ...]]) -> bool:
+def _is_valid_type(obj: Any, class_or_tuple: Type | tuple[Type, ...]) -> bool:
     """
     Checks if an object is an instance of any of the provided types. For collections, it checks if every element is of
     the correct type as well.
@@ -79,13 +79,13 @@ def _get_detailed_type(obj: Any) -> Type:
 
     if obj_type in (list, set):
         obj_origin_type = List if obj_type is list else Set
-        elems_type = Union[tuple({_get_detailed_type(x) for x in obj})]
+        elems_type = tuple({_get_detailed_type(x) for x in obj})
         return obj_origin_type[elems_type]
     elif obj_type is tuple:
         return tuple[tuple(_get_detailed_type(x) for x in obj)]
     elif obj_type is dict:
-        keys_type = Union[tuple({_get_detailed_type(k) for k in obj.keys()})]
-        values_type = Union[tuple({_get_detailed_type(k) for k in obj.values()})]
+        keys_type = tuple({_get_detailed_type(k) for k in obj.keys()})
+        values_type = tuple({_get_detailed_type(k) for k in obj.values()})
         return dict[keys_type, values_type]
     else:
         return obj_type

@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Optional, Union
+from typing import Optional
 
 import numpy as np
 import PIL.Image
@@ -21,7 +21,7 @@ class LEditsPPDiffusionPipelineOutput(BaseOutput):
             `None` if safety checking could not be performed.
     """
 
-    images: Union[list[PIL.Image.Image], np.ndarray]
+    images: list[PIL.Image.Image] | np.ndarray
     nsfw_content_detected: Optional[list[bool]]
 
 
@@ -39,5 +39,5 @@ class LEditsPPInversionPipelineOutput(BaseOutput):
             ` (batch_size, height, width, num_channels)`.
     """
 
-    images: Union[list[PIL.Image.Image], np.ndarray]
-    vae_reconstruction_images: Union[list[PIL.Image.Image], np.ndarray]
+    images: list[PIL.Image.Image] | np.ndarray
+    vae_reconstruction_images: list[PIL.Image.Image] | np.ndarray

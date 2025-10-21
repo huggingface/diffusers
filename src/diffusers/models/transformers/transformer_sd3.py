@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from typing import Any, List, Optional, Union
+from typing import Any, List, Optional
 
 import torch
 import torch.nn as nn
@@ -240,7 +240,7 @@ class SD3Transformer2DModel(
         return processors
 
     # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.set_attn_processor
-    def set_attn_processor(self, processor: Union[AttentionProcessor, dict[str, AttentionProcessor]]):
+    def set_attn_processor(self, processor: AttentionProcessor | dict[str, AttentionProcessor]):
         r"""
         Sets the attention processor to use to compute attention.
 
@@ -316,7 +316,7 @@ class SD3Transformer2DModel(
         joint_attention_kwargs: Optional[dict[str, Any]] = None,
         return_dict: bool = True,
         skip_layers: Optional[list[int]] = None,
-    ) -> Union[torch.Tensor, Transformer2DModelOutput]:
+    ) -> torch.Tensor | Transformer2DModelOutput:
         """
         The [`SD3Transformer2DModel`] forward method.
 

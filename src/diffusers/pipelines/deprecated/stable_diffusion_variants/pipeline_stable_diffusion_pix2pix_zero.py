@@ -14,7 +14,7 @@
 
 import inspect
 from dataclasses import dataclass
-from typing import Any, Callable, Optional, Union
+from typing import Any, Callable, Optional
 
 import numpy as np
 import PIL.Image
@@ -68,7 +68,7 @@ class Pix2PixInversionPipelineOutput(BaseOutput, TextualInversionLoaderMixin):
     """
 
     latents: torch.Tensor
-    images: Union[list[PIL.Image.Image], np.ndarray]
+    images: list[PIL.Image.Image] | np.ndarray
 
 
 EXAMPLE_DOC_STRING = """
@@ -328,7 +328,7 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline, StableDiffusionMixin
         text_encoder: CLIPTextModel,
         tokenizer: CLIPTokenizer,
         unet: UNet2DConditionModel,
-        scheduler: Union[DDPMScheduler, DDIMScheduler, EulerAncestralDiscreteScheduler, LMSDiscreteScheduler],
+        scheduler: DDPMScheduler | DDIMScheduler | EulerAncestralDiscreteScheduler | LMSDiscreteScheduler,
         feature_extractor: CLIPImageProcessor,
         safety_checker: StableDiffusionSafetyChecker,
         inverse_scheduler: DDIMInverseScheduler,
@@ -818,17 +818,17 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline, StableDiffusionMixin
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        prompt: Optional[Union[str, list[str]]] = None,
+        prompt: Optional[str | list[str]] = None,
         source_embeds: torch.Tensor = None,
         target_embeds: torch.Tensor = None,
         height: Optional[int] = None,
         width: Optional[int] = None,
         num_inference_steps: int = 50,
         guidance_scale: float = 7.5,
-        negative_prompt: Optional[Union[str, list[str]]] = None,
+        negative_prompt: Optional[str | list[str]] = None,
         num_images_per_prompt: Optional[int] = 1,
         eta: float = 0.0,
-        generator: Optional[Union[torch.Generator, list[torch.Generator]]] = None,
+        generator: Optional[torch.Generator | list[torch.Generator]] = None,
         latents: Optional[torch.Tensor] = None,
         prompt_embeds: Optional[torch.Tensor] = None,
         negative_prompt_embeds: Optional[torch.Tensor] = None,
@@ -1113,7 +1113,7 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline, StableDiffusionMixin
         image: PipelineImageInput = None,
         num_inference_steps: int = 50,
         guidance_scale: float = 1,
-        generator: Optional[Union[torch.Generator, list[torch.Generator]]] = None,
+        generator: Optional[torch.Generator | list[torch.Generator]] = None,
         latents: Optional[torch.Tensor] = None,
         prompt_embeds: Optional[torch.Tensor] = None,
         cross_attention_guidance_amount: float = 0.1,

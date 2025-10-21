@@ -17,7 +17,7 @@ import inspect
 import json
 import os
 from pathlib import Path
-from typing import Callable, Dict, Optional, Union
+from typing import Callable, Dict, Optional
 
 import safetensors
 import torch
@@ -116,9 +116,9 @@ def unfuse_text_encoder_lora(text_encoder):
 
 
 def set_adapters_for_text_encoder(
-    adapter_names: Union[list[str], str],
+    adapter_names: list[str] | str,
     text_encoder: Optional["PreTrainedModel"] = None,  # noqa: F821
-    text_encoder_weights: Optional[Union[float, list[float], list[None]]] = None,
+    text_encoder_weights: Optional[float | list[float] | list[None]] = None,
 ):
     """
     Sets the adapter layers for the text encoder.
@@ -674,8 +674,8 @@ class LoraBaseMixin:
 
     def set_adapters(
         self,
-        adapter_names: Union[list[str], str],
-        adapter_weights: Optional[Union[float, Dict, list[float], list[Dict]]] = None,
+        adapter_names: list[str] | str,
+        adapter_weights: Optional[float | Dict | list[float] | list[Dict]] = None,
     ):
         """
         Set the currently active adapters for use in the pipeline.
@@ -835,7 +835,7 @@ class LoraBaseMixin:
                 elif issubclass(model.__class__, PreTrainedModel):
                     enable_lora_for_text_encoder(model)
 
-    def delete_adapters(self, adapter_names: Union[list[str], str]):
+    def delete_adapters(self, adapter_names: list[str] | str):
         """
         Delete an adapter's LoRA layers from the pipeline.
 
@@ -928,7 +928,7 @@ class LoraBaseMixin:
 
         return set_adapters
 
-    def set_lora_device(self, adapter_names: list[str], device: Union[torch.device, str, int]) -> None:
+    def set_lora_device(self, adapter_names: list[str], device: torch.device | str | int) -> None:
         """
         Moves the LoRAs listed in `adapter_names` to a target device. Useful for offloading the LoRA to the CPU in case
         you want to load multiple adapters and free some GPU memory.
@@ -1059,8 +1059,8 @@ class LoraBaseMixin:
     @classmethod
     def _save_lora_weights(
         cls,
-        save_directory: Union[str, os.PathLike],
-        lora_layers: dict[str, dict[str, Union[torch.nn.Module, torch.Tensor]]],
+        save_directory: str | os.PathLike,
+        lora_layers: dict[str, dict[str, torch.nn.Module | torch.Tensor]],
         lora_metadata: dict[str, Optional[dict]],
         is_main_process: bool = True,
         weight_name: str = None,

@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import inspect
-from typing import Any, Callable, Dict, Optional, Union
+from typing import Any, Callable, Dict, Optional
 
 import torch
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer, CLIPVisionModelWithProjection
@@ -122,7 +122,7 @@ def retrieve_latents(
 def retrieve_timesteps(
     scheduler,
     num_inference_steps: Optional[int] = None,
-    device: Optional[Union[str, torch.device]] = None,
+    device: Optional[str | torch.device] = None,
     timesteps: Optional[list[int]] = None,
     sigmas: Optional[list[float]] = None,
     **kwargs,
@@ -225,16 +225,14 @@ class AnimateDiffVideoToVideoPipeline(
         vae: AutoencoderKL,
         text_encoder: CLIPTextModel,
         tokenizer: CLIPTokenizer,
-        unet: Union[UNet2DConditionModel, UNetMotionModel],
+        unet: UNet2DConditionModel | UNetMotionModel,
         motion_adapter: MotionAdapter,
-        scheduler: Union[
-            DDIMScheduler,
-            PNDMScheduler,
-            LMSDiscreteScheduler,
-            EulerDiscreteScheduler,
-            EulerAncestralDiscreteScheduler,
-            DPMSolverMultistepScheduler,
-        ],
+        scheduler: DDIMScheduler
+        | PNDMScheduler
+        | LMSDiscreteScheduler
+        | EulerDiscreteScheduler
+        | EulerAncestralDiscreteScheduler
+        | DPMSolverMultistepScheduler,
         feature_extractor: CLIPImageProcessor = None,
         image_encoder: CLIPVisionModelWithProjection = None,
     ):
@@ -644,7 +642,7 @@ class AnimateDiffVideoToVideoPipeline(
         timestep: Optional[int] = None,
         dtype: Optional[torch.dtype] = None,
         device: Optional[torch.device] = None,
-        generator: Optional[Union[torch.Generator, list[torch.Generator]]] = None,
+        generator: Optional[torch.Generator | list[torch.Generator]] = None,
         latents: Optional[torch.Tensor] = None,
         decode_chunk_size: int = 16,
         add_noise: bool = False,
@@ -747,7 +745,7 @@ class AnimateDiffVideoToVideoPipeline(
     def __call__(
         self,
         video: list[list[PipelineImageInput]] = None,
-        prompt: Optional[Union[str, list[str]]] = None,
+        prompt: Optional[str | list[str]] = None,
         height: Optional[int] = None,
         width: Optional[int] = None,
         num_inference_steps: int = 50,
@@ -756,10 +754,10 @@ class AnimateDiffVideoToVideoPipeline(
         sigmas: Optional[list[float]] = None,
         guidance_scale: float = 7.5,
         strength: float = 0.8,
-        negative_prompt: Optional[Union[str, list[str]]] = None,
+        negative_prompt: Optional[str | list[str]] = None,
         num_videos_per_prompt: Optional[int] = 1,
         eta: float = 0.0,
-        generator: Optional[Union[torch.Generator, list[torch.Generator]]] = None,
+        generator: Optional[torch.Generator | list[torch.Generator]] = None,
         latents: Optional[torch.Tensor] = None,
         prompt_embeds: Optional[torch.Tensor] = None,
         negative_prompt_embeds: Optional[torch.Tensor] = None,

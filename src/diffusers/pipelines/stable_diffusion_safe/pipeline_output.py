@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Optional, Union
+from typing import Optional
 
 import numpy as np
 import PIL.Image
@@ -28,7 +28,7 @@ class StableDiffusionSafePipelineOutput(BaseOutput):
             The safety concept that was applied for safety guidance, or `None` if safety guidance was disabled
     """
 
-    images: Union[list[PIL.Image.Image], np.ndarray]
+    images: list[PIL.Image.Image] | np.ndarray
     nsfw_content_detected: Optional[list[bool]]
-    unsafe_images: Optional[Union[list[PIL.Image.Image], np.ndarray]]
+    unsafe_images: Optional[list[PIL.Image.Image] | np.ndarray]
     applied_safety_concept: Optional[str]

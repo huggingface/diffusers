@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from typing import Optional, Union
+from typing import Optional
 
 from ..utils import deprecate
 from .controlnets.controlnet import (  # noqa
@@ -43,7 +43,7 @@ class ControlNetModel(ControlNetModel):
             "DownBlock2D",
         ),
         mid_block_type: Optional[str] = "UNetMidBlock2DCrossAttn",
-        only_cross_attention: Union[bool, tuple[bool]] = False,
+        only_cross_attention: bool | tuple[bool] = False,
         block_out_channels: tuple[int, ...] = (320, 640, 1280, 1280),
         layers_per_block: int = 2,
         downsample_padding: int = 1,
@@ -52,11 +52,11 @@ class ControlNetModel(ControlNetModel):
         norm_num_groups: Optional[int] = 32,
         norm_eps: float = 1e-5,
         cross_attention_dim: int = 1280,
-        transformer_layers_per_block: Union[int, tuple[int, ...]] = 1,
+        transformer_layers_per_block: int | tuple[int, ...] = 1,
         encoder_hid_dim: Optional[int] = None,
         encoder_hid_dim_type: Optional[str] = None,
-        attention_head_dim: Union[int, tuple[int, ...]] = 8,
-        num_attention_heads: Optional[Union[int, tuple[int, ...]]] = None,
+        attention_head_dim: int | tuple[int, ...] = 8,
+        num_attention_heads: Optional[int | tuple[int, ...]] = None,
         use_linear_projection: bool = False,
         class_embed_type: Optional[str] = None,
         addition_embed_type: Optional[str] = None,

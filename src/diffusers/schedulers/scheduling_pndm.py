@@ -15,7 +15,7 @@
 # DISCLAIMER: This file is strongly influenced by https://github.com/ermongroup/ddim
 
 import math
-from typing import Optional, Tuple, Union
+from typing import Optional, Tuple
 
 import numpy as np
 import torch
@@ -117,7 +117,7 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
         beta_start: float = 0.0001,
         beta_end: float = 0.02,
         beta_schedule: str = "linear",
-        trained_betas: Optional[Union[np.ndarray, list[float]]] = None,
+        trained_betas: Optional[np.ndarray | list[float]] = None,
         skip_prk_steps: bool = False,
         set_alpha_to_one: bool = False,
         prediction_type: str = "epsilon",
@@ -163,7 +163,7 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
         self.plms_timesteps = None
         self.timesteps = None
 
-    def set_timesteps(self, num_inference_steps: int, device: Union[str, torch.device] = None):
+    def set_timesteps(self, num_inference_steps: int, device: str | torch.device = None):
         """
         Sets the discrete timesteps used for the diffusion chain (to be run before inference).
 
@@ -229,7 +229,7 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
         timestep: int,
         sample: torch.Tensor,
         return_dict: bool = True,
-    ) -> Union[SchedulerOutput, Tuple]:
+    ) -> SchedulerOutput | Tuple:
         """
         Predict the sample from the previous timestep by reversing the SDE. This function propagates the diffusion
         process from the learned model outputs (most often the predicted noise), and calls [`~PNDMScheduler.step_prk`]
@@ -262,7 +262,7 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
         timestep: int,
         sample: torch.Tensor,
         return_dict: bool = True,
-    ) -> Union[SchedulerOutput, Tuple]:
+    ) -> SchedulerOutput | Tuple:
         """
         Predict the sample from the previous timestep by reversing the SDE. This function propagates the sample with
         the Runge-Kutta method. It performs four forward passes to approximate the solution to the differential
@@ -322,7 +322,7 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
         timestep: int,
         sample: torch.Tensor,
         return_dict: bool = True,
-    ) -> Union[SchedulerOutput, Tuple]:
+    ) -> SchedulerOutput | Tuple:
         """
         Predict the sample from the previous timestep by reversing the SDE. This function propagates the sample with
         the linear multistep method. It performs one forward pass multiple times to approximate the solution.

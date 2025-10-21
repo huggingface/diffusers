@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import inspect
-from typing import Any, Callable, Dict, Optional, Union
+from typing import Any, Callable, Dict, Optional
 
 import torch
 import torch.nn.functional as F
@@ -140,7 +140,7 @@ def retrieve_latents(
 def retrieve_timesteps(
     scheduler,
     num_inference_steps: Optional[int] = None,
-    device: Optional[Union[str, torch.device]] = None,
+    device: Optional[str | torch.device] = None,
     timesteps: Optional[list[int]] = None,
     sigmas: Optional[list[float]] = None,
     **kwargs,
@@ -247,17 +247,15 @@ class AnimateDiffVideoToVideoControlNetPipeline(
         vae: AutoencoderKL,
         text_encoder: CLIPTextModel,
         tokenizer: CLIPTokenizer,
-        unet: Union[UNet2DConditionModel, UNetMotionModel],
+        unet: UNet2DConditionModel | UNetMotionModel,
         motion_adapter: MotionAdapter,
-        controlnet: Union[ControlNetModel, list[ControlNetModel], tuple[ControlNetModel], MultiControlNetModel],
-        scheduler: Union[
-            DDIMScheduler,
-            PNDMScheduler,
-            LMSDiscreteScheduler,
-            EulerDiscreteScheduler,
-            EulerAncestralDiscreteScheduler,
-            DPMSolverMultistepScheduler,
-        ],
+        controlnet: ControlNetModel | list[ControlNetModel] | tuple[ControlNetModel] | MultiControlNetModel,
+        scheduler: DDIMScheduler
+        | PNDMScheduler
+        | LMSDiscreteScheduler
+        | EulerDiscreteScheduler
+        | EulerAncestralDiscreteScheduler
+        | DPMSolverMultistepScheduler,
         feature_extractor: CLIPImageProcessor = None,
         image_encoder: CLIPVisionModelWithProjection = None,
     ):
@@ -776,7 +774,7 @@ class AnimateDiffVideoToVideoControlNetPipeline(
         timestep: Optional[int] = None,
         dtype: Optional[torch.dtype] = None,
         device: Optional[torch.device] = None,
-        generator: Optional[Union[torch.Generator, list[torch.Generator]]] = None,
+        generator: Optional[torch.Generator | list[torch.Generator]] = None,
         latents: Optional[torch.Tensor] = None,
         decode_chunk_size: int = 16,
         add_noise: bool = False,
@@ -912,7 +910,7 @@ class AnimateDiffVideoToVideoControlNetPipeline(
     def __call__(
         self,
         video: list[list[PipelineImageInput]] = None,
-        prompt: Optional[Union[str, list[str]]] = None,
+        prompt: Optional[str | list[str]] = None,
         height: Optional[int] = None,
         width: Optional[int] = None,
         num_inference_steps: int = 50,
@@ -921,10 +919,10 @@ class AnimateDiffVideoToVideoControlNetPipeline(
         sigmas: Optional[list[float]] = None,
         guidance_scale: float = 7.5,
         strength: float = 0.8,
-        negative_prompt: Optional[Union[str, list[str]]] = None,
+        negative_prompt: Optional[str | list[str]] = None,
         num_videos_per_prompt: Optional[int] = 1,
         eta: float = 0.0,
-        generator: Optional[Union[torch.Generator, list[torch.Generator]]] = None,
+        generator: Optional[torch.Generator | list[torch.Generator]] = None,
         latents: Optional[torch.Tensor] = None,
         prompt_embeds: Optional[torch.Tensor] = None,
         negative_prompt_embeds: Optional[torch.Tensor] = None,
@@ -934,10 +932,10 @@ class AnimateDiffVideoToVideoControlNetPipeline(
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
         cross_attention_kwargs: Optional[dict[str, Any]] = None,
-        controlnet_conditioning_scale: Union[float, list[float]] = 1.0,
+        controlnet_conditioning_scale: float | list[float] = 1.0,
         guess_mode: bool = False,
-        control_guidance_start: Union[float, list[float]] = 0.0,
-        control_guidance_end: Union[float, list[float]] = 1.0,
+        control_guidance_start: float | list[float] = 0.0,
+        control_guidance_end: float | list[float] = 1.0,
         clip_skip: Optional[int] = None,
         callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
         callback_on_step_end_tensor_inputs: list[str] = ["latents"],

@@ -14,7 +14,7 @@
 # limitations under the License.
 
 from dataclasses import dataclass
-from typing import Any, Optional, Union
+from typing import Any, Optional
 
 import torch
 import torch.nn as nn
@@ -120,8 +120,8 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         norm_num_groups: Optional[int] = 32,
         norm_eps: float = 1e-5,
         cross_attention_dim: int = 1024,
-        attention_head_dim: Union[int, tuple[int]] = 64,
-        num_attention_heads: Optional[Union[int, tuple[int]]] = None,
+        attention_head_dim: int | tuple[int] = 64,
+        num_attention_heads: Optional[int | tuple[int]] = None,
         time_cond_proj_dim: Optional[int] = None,
     ):
         super().__init__()
@@ -311,7 +311,7 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         return processors
 
     # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.set_attention_slice
-    def set_attention_slice(self, slice_size: Union[str, int, list[int]]) -> None:
+    def set_attention_slice(self, slice_size: str | int | list[int]) -> None:
         r"""
         Enable sliced attention computation.
 
@@ -377,7 +377,7 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             fn_recursive_set_attention_slice(module, reversed_slice_size)
 
     # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.set_attn_processor
-    def set_attn_processor(self, processor: Union[AttentionProcessor, dict[str, AttentionProcessor]]):
+    def set_attn_processor(self, processor: AttentionProcessor | dict[str, AttentionProcessor]):
         r"""
         Sets the attention processor to use to compute attention.
 
@@ -536,7 +536,7 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
     def forward(
         self,
         sample: torch.Tensor,
-        timestep: Union[torch.Tensor, float, int],
+        timestep: torch.Tensor | float | int,
         encoder_hidden_states: torch.Tensor,
         class_labels: Optional[torch.Tensor] = None,
         timestep_cond: Optional[torch.Tensor] = None,
@@ -545,7 +545,7 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         down_block_additional_residuals: Optional[tuple[torch.Tensor]] = None,
         mid_block_additional_residual: Optional[torch.Tensor] = None,
         return_dict: bool = True,
-    ) -> Union[UNet3DConditionOutput, tuple[torch.Tensor]]:
+    ) -> UNet3DConditionOutput | tuple[torch.Tensor]:
         r"""
         The [`UNet3DConditionModel`] forward method.
 

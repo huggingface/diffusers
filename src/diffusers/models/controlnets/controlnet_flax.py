@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from typing import Optional, Union
+from typing import Optional
 
 import flax
 import flax.linen as nn
@@ -163,11 +163,11 @@ class FlaxControlNetModel(nn.Module, FlaxModelMixin, ConfigMixin):
         "CrossAttnDownBlock2D",
         "DownBlock2D",
     )
-    only_cross_attention: Union[bool, tuple[bool, ...]] = False
+    only_cross_attention: bool | tuple[bool, ...] = False
     block_out_channels: tuple[int, ...] = (320, 640, 1280, 1280)
     layers_per_block: int = 2
-    attention_head_dim: Union[int, tuple[int, ...]] = 8
-    num_attention_heads: Optional[Union[int, tuple[int, ...]]] = None
+    attention_head_dim: int | tuple[int, ...] = 8
+    num_attention_heads: Optional[int | tuple[int, ...]] = None
     cross_attention_dim: int = 1280
     dropout: float = 0.0
     use_linear_projection: bool = False
@@ -327,13 +327,13 @@ class FlaxControlNetModel(nn.Module, FlaxModelMixin, ConfigMixin):
     def __call__(
         self,
         sample: jnp.ndarray,
-        timesteps: Union[jnp.ndarray, float, int],
+        timesteps: jnp.ndarray | float | int,
         encoder_hidden_states: jnp.ndarray,
         controlnet_cond: jnp.ndarray,
         conditioning_scale: float = 1.0,
         return_dict: bool = True,
         train: bool = False,
-    ) -> Union[FlaxControlNetOutput, tuple[tuple[jnp.ndarray, ...], jnp.ndarray]]:
+    ) -> FlaxControlNetOutput | tuple[tuple[jnp.ndarray, ...], jnp.ndarray]:
         r"""
         Args:
             sample (`jnp.ndarray`): (batch, channel, height, width) noisy inputs tensor

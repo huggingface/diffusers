@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import inspect
-from typing import Optional, Union
+from typing import Optional
 
 from ..utils import is_transformers_available, logging
 from .quantization_config import QuantizationConfigMixin as DiffQuantConfigMixin
@@ -47,9 +47,9 @@ class PipelineQuantizationConfig:
     def __init__(
         self,
         quant_backend: str = None,
-        quant_kwargs: dict[str, Union[str, float, int, dict]] = None,
-        components_to_quantize: Optional[Union[list[str], str]] = None,
-        quant_mapping: dict[str, Union[DiffQuantConfigMixin, "TransformersQuantConfigMixin"]] = None,
+        quant_kwargs: dict[str, str | float | int | dict] = None,
+        components_to_quantize: Optional[list[str] | str] = None,
+        quant_mapping: dict[str, DiffQuantConfigMixin | "TransformersQuantConfigMixin"] = None,
     ):
         self.quant_backend = quant_backend
         # Initialize kwargs to be {} to set to the defaults.

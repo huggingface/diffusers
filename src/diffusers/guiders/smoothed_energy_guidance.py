@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import math
-from typing import TYPE_CHECKING, Optional, Union
+from typing import TYPE_CHECKING, Optional
 
 import torch
 
@@ -86,8 +86,8 @@ class SmoothedEnergyGuidance(BaseGuidance):
         seg_blur_threshold_inf: float = 9999.0,
         seg_guidance_start: float = 0.0,
         seg_guidance_stop: float = 1.0,
-        seg_guidance_layers: Optional[Union[int, list[int]]] = None,
-        seg_guidance_config: Union[SmoothedEnergyGuidanceConfig, list[SmoothedEnergyGuidanceConfig]] = None,
+        seg_guidance_layers: Optional[int | list[int]] = None,
+        seg_guidance_config: SmoothedEnergyGuidanceConfig | list[SmoothedEnergyGuidanceConfig] = None,
         guidance_rescale: float = 0.0,
         use_original_formulation: bool = False,
         start: float = 0.0,
@@ -154,7 +154,7 @@ class SmoothedEnergyGuidance(BaseGuidance):
                 registry.remove_hook(hook_name, recurse=True)
 
     def prepare_inputs(
-        self, data: "BlockState", input_fields: Optional[dict[str, Union[str, tuple[str, str]]]] = None
+        self, data: "BlockState", input_fields: Optional[dict[str, str | tuple[str, str]]] = None
     ) -> list["BlockState"]:
         if input_fields is None:
             input_fields = self._input_fields

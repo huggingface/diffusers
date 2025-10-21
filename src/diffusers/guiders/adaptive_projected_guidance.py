@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import math
-from typing import TYPE_CHECKING, Optional, Union
+from typing import TYPE_CHECKING, Optional
 
 import torch
 
@@ -77,7 +77,7 @@ class AdaptiveProjectedGuidance(BaseGuidance):
         self.momentum_buffer = None
 
     def prepare_inputs(
-        self, data: "BlockState", input_fields: Optional[dict[str, Union[str, tuple[str, str]]]] = None
+        self, data: "BlockState", input_fields: Optional[dict[str, str | tuple[str, str]]] = None
     ) -> list["BlockState"]:
         if input_fields is None:
             input_fields = self._input_fields

@@ -3,7 +3,7 @@ import random
 import struct
 import tempfile
 from contextlib import contextmanager
-from typing import Optional, Union
+from typing import Optional
 
 import numpy as np
 import PIL.Image
@@ -113,7 +113,7 @@ def export_to_obj(mesh, output_obj_path: str = None):
 
 
 def _legacy_export_to_video(
-    video_frames: Union[list[np.ndarray], list[PIL.Image.Image]], output_video_path: str = None, fps: int = 10
+    video_frames: list[np.ndarray] | list[PIL.Image.Image], output_video_path: str = None, fps: int = 10
 ):
     if is_opencv_available():
         import cv2
@@ -139,7 +139,7 @@ def _legacy_export_to_video(
 
 
 def export_to_video(
-    video_frames: Union[list[np.ndarray], list[PIL.Image.Image]],
+    video_frames: list[np.ndarray] | list[PIL.Image.Image],
     output_video_path: str = None,
     fps: int = 10,
     quality: float = 5.0,

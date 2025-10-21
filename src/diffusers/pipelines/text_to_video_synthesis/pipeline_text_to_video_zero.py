@@ -1,7 +1,7 @@
 import copy
 import inspect
 from dataclasses import dataclass
-from typing import Callable, Optional, Union
+from typing import Callable, Optional
 
 import numpy as np
 import PIL.Image
@@ -207,7 +207,7 @@ class TextToVideoPipelineOutput(BaseOutput):
             `None` if safety checking could not be performed.
     """
 
-    images: Union[list[PIL.Image.Image], np.ndarray]
+    images: list[PIL.Image.Image] | np.ndarray
     nsfw_content_detected: Optional[list[bool]]
 
 
@@ -545,16 +545,16 @@ class TextToVideoZeroPipeline(
     @torch.no_grad()
     def __call__(
         self,
-        prompt: Union[str, list[str]],
+        prompt: str | list[str],
         video_length: Optional[int] = 8,
         height: Optional[int] = None,
         width: Optional[int] = None,
         num_inference_steps: int = 50,
         guidance_scale: float = 7.5,
-        negative_prompt: Optional[Union[str, list[str]]] = None,
+        negative_prompt: Optional[str | list[str]] = None,
         num_videos_per_prompt: Optional[int] = 1,
         eta: float = 0.0,
-        generator: Optional[Union[torch.Generator, list[torch.Generator]]] = None,
+        generator: Optional[torch.Generator | list[torch.Generator]] = None,
         latents: Optional[torch.Tensor] = None,
         motion_field_strength_x: float = 12,
         motion_field_strength_y: float = 12,

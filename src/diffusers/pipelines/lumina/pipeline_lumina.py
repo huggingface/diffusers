@@ -17,7 +17,7 @@ import inspect
 import math
 import re
 import urllib.parse as ul
-from typing import Callable, Dict, Optional, Tuple, Union
+from typing import Callable, Dict, Optional, Tuple
 
 import torch
 from transformers import GemmaPreTrainedModel, GemmaTokenizer, GemmaTokenizerFast
@@ -77,7 +77,7 @@ EXAMPLE_DOC_STRING = """
 def retrieve_timesteps(
     scheduler,
     num_inference_steps: Optional[int] = None,
-    device: Optional[Union[str, torch.device]] = None,
+    device: Optional[str | torch.device] = None,
     timesteps: Optional[list[int]] = None,
     sigmas: Optional[list[float]] = None,
     **kwargs,
@@ -182,7 +182,7 @@ class LuminaPipeline(DiffusionPipeline):
         scheduler: FlowMatchEulerDiscreteScheduler,
         vae: AutoencoderKL,
         text_encoder: GemmaPreTrainedModel,
-        tokenizer: Union[GemmaTokenizer, GemmaTokenizerFast],
+        tokenizer: GemmaTokenizer | GemmaTokenizerFast,
     ):
         super().__init__()
 
@@ -205,7 +205,7 @@ class LuminaPipeline(DiffusionPipeline):
 
     def _get_gemma_prompt_embeds(
         self,
-        prompt: Union[str, list[str]],
+        prompt: str | list[str],
         num_images_per_prompt: int = 1,
         device: Optional[torch.device] = None,
         clean_caption: Optional[bool] = False,
@@ -261,9 +261,9 @@ class LuminaPipeline(DiffusionPipeline):
     # Adapted from diffusers.pipelines.deepfloyd_if.pipeline_if.encode_prompt
     def encode_prompt(
         self,
-        prompt: Union[str, list[str]],
+        prompt: str | list[str],
         do_classifier_free_guidance: bool = True,
-        negative_prompt: Union[str, list[str]] = None,
+        negative_prompt: str | list[str] = None,
         num_images_per_prompt: int = 1,
         device: Optional[torch.device] = None,
         prompt_embeds: Optional[torch.Tensor] = None,
@@ -633,15 +633,15 @@ class LuminaPipeline(DiffusionPipeline):
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        prompt: Union[str, list[str]] = None,
+        prompt: str | list[str] = None,
         width: Optional[int] = None,
         height: Optional[int] = None,
         num_inference_steps: int = 30,
         guidance_scale: float = 4.0,
-        negative_prompt: Union[str, list[str]] = None,
+        negative_prompt: str | list[str] = None,
         sigmas: list[float] = None,
         num_images_per_prompt: Optional[int] = 1,
-        generator: Optional[Union[torch.Generator, list[torch.Generator]]] = None,
+        generator: Optional[torch.Generator | list[torch.Generator]] = None,
         latents: Optional[torch.Tensor] = None,
         prompt_embeds: Optional[torch.Tensor] = None,
         negative_prompt_embeds: Optional[torch.Tensor] = None,
@@ -654,10 +654,10 @@ class LuminaPipeline(DiffusionPipeline):
         scaling_watershed: Optional[float] = 1.0,
         proportional_attn: Optional[bool] = True,
         callback_on_step_end: Optional[
-            Union[Callable[[int, int, Dict], None], PipelineCallback, MultiPipelineCallbacks]
+            Callable[[int, int, Dict], None] | PipelineCallback | MultiPipelineCallbacks
         ] = None,
         callback_on_step_end_tensor_inputs: list[str] = ["latents"],
-    ) -> Union[ImagePipelineOutput, Tuple]:
+    ) -> ImagePipelineOutput | Tuple:
         """
         Function invoked when calling the pipeline for generation.
 
@@ -940,7 +940,7 @@ class LuminaText2ImgPipeline(LuminaPipeline):
         scheduler: FlowMatchEulerDiscreteScheduler,
         vae: AutoencoderKL,
         text_encoder: GemmaPreTrainedModel,
-        tokenizer: Union[GemmaTokenizer, GemmaTokenizerFast],
+        tokenizer: GemmaTokenizer | GemmaTokenizerFast,
     ):
         deprecation_message = "`LuminaText2ImgPipeline` has been renamed to `LuminaPipeline` and will be removed in a future version. Please use `LuminaPipeline` instead."
         deprecate("diffusers.pipelines.lumina.pipeline_lumina.LuminaText2ImgPipeline", "0.34", deprecation_message)

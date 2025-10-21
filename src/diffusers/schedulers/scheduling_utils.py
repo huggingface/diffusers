@@ -15,7 +15,7 @@ import importlib
 import os
 from dataclasses import dataclass
 from enum import Enum
-from typing import Optional, Union
+from typing import Optional
 
 import torch
 from huggingface_hub.utils import validate_hf_hub_args
@@ -96,7 +96,7 @@ class SchedulerMixin(PushToHubMixin):
     @validate_hf_hub_args
     def from_pretrained(
         cls,
-        pretrained_model_name_or_path: Optional[Union[str, os.PathLike]] = None,
+        pretrained_model_name_or_path: Optional[str | os.PathLike] = None,
         subfolder: Optional[str] = None,
         return_unused_kwargs=False,
         **kwargs,
@@ -153,7 +153,7 @@ class SchedulerMixin(PushToHubMixin):
         )
         return cls.from_config(config, return_unused_kwargs=return_unused_kwargs, **kwargs)
 
-    def save_pretrained(self, save_directory: Union[str, os.PathLike], push_to_hub: bool = False, **kwargs):
+    def save_pretrained(self, save_directory: str | os.PathLike, push_to_hub: bool = False, **kwargs):
         """
         Save a scheduler configuration object to a directory so that it can be reloaded using the
         [`~SchedulerMixin.from_pretrained`] class method.

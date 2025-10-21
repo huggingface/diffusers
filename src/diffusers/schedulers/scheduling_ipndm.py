@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import math
-from typing import Optional, Tuple, Union
+from typing import Optional, Tuple
 
 import numpy as np
 import torch
@@ -39,9 +39,7 @@ class IPNDMScheduler(SchedulerMixin, ConfigMixin):
     order = 1
 
     @register_to_config
-    def __init__(
-        self, num_train_timesteps: int = 1000, trained_betas: Optional[Union[np.ndarray, list[float]]] = None
-    ):
+    def __init__(self, num_train_timesteps: int = 1000, trained_betas: Optional[np.ndarray | list[float]] = None):
         # set `betas`, `alphas`, `timesteps`
         self.set_timesteps(num_train_timesteps)
 
@@ -83,7 +81,7 @@ class IPNDMScheduler(SchedulerMixin, ConfigMixin):
         """
         self._begin_index = begin_index
 
-    def set_timesteps(self, num_inference_steps: int, device: Union[str, torch.device] = None):
+    def set_timesteps(self, num_inference_steps: int, device: str | torch.device = None):
         """
         Sets the discrete timesteps used for the diffusion chain (to be run before inference).
 
@@ -138,10 +136,10 @@ class IPNDMScheduler(SchedulerMixin, ConfigMixin):
     def step(
         self,
         model_output: torch.Tensor,
-        timestep: Union[int, torch.Tensor],
+        timestep: int | torch.Tensor,
         sample: torch.Tensor,
         return_dict: bool = True,
-    ) -> Union[SchedulerOutput, Tuple]:
+    ) -> SchedulerOutput | Tuple:
         """
         Predict the sample from the previous timestep by reversing the SDE. This function propagates the sample with
         the linear multistep method. It performs one forward pass multiple times to approximate the solution.

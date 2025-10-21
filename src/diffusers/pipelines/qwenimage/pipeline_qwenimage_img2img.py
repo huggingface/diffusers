@@ -1,5 +1,5 @@
 import inspect
-from typing import Any, Callable, Dict, Optional, Union
+from typing import Any, Callable, Dict, Optional
 
 import numpy as np
 import torch
@@ -75,7 +75,7 @@ def calculate_shift(
 def retrieve_timesteps(
     scheduler,
     num_inference_steps: Optional[int] = None,
-    device: Optional[Union[str, torch.device]] = None,
+    device: Optional[str | torch.device] = None,
     timesteps: Optional[list[int]] = None,
     sigmas: Optional[list[float]] = None,
     **kwargs,
@@ -194,7 +194,7 @@ class QwenImageImg2ImgPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
     # Copied from diffusers.pipelines.qwenimage.pipeline_qwenimage.QwenImagePipeline._get_qwen_prompt_embeds
     def _get_qwen_prompt_embeds(
         self,
-        prompt: Union[str, list[str]] = None,
+        prompt: str | list[str] = None,
         device: Optional[torch.device] = None,
         dtype: Optional[torch.dtype] = None,
     ):
@@ -268,7 +268,7 @@ class QwenImageImg2ImgPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
     # Copied fromCopied from diffusers.pipelines.qwenimage.pipeline_qwenimage.QwenImagePipeline.encode_prompt
     def encode_prompt(
         self,
-        prompt: Union[str, list[str]],
+        prompt: str | list[str],
         device: Optional[torch.device] = None,
         num_images_per_prompt: int = 1,
         prompt_embeds: Optional[torch.Tensor] = None,
@@ -526,8 +526,8 @@ class QwenImageImg2ImgPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        prompt: Union[str, list[str]] = None,
-        negative_prompt: Union[str, list[str]] = None,
+        prompt: str | list[str] = None,
+        negative_prompt: str | list[str] = None,
         true_cfg_scale: float = 4.0,
         image: PipelineImageInput = None,
         height: Optional[int] = None,
@@ -537,7 +537,7 @@ class QwenImageImg2ImgPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
         sigmas: Optional[list[float]] = None,
         guidance_scale: Optional[float] = None,
         num_images_per_prompt: int = 1,
-        generator: Optional[Union[torch.Generator, list[torch.Generator]]] = None,
+        generator: Optional[torch.Generator | list[torch.Generator]] = None,
         latents: Optional[torch.Tensor] = None,
         prompt_embeds: Optional[torch.Tensor] = None,
         prompt_embeds_mask: Optional[torch.Tensor] = None,

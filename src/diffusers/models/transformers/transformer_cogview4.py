@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Any, Optional, Union
+from typing import Any, Optional
 
 import torch
 import torch.nn as nn
@@ -214,9 +214,7 @@ class CogView4TrainingAttnProcessor:
         latent_attn_mask: Optional[torch.Tensor] = None,
         text_attn_mask: Optional[torch.Tensor] = None,
         batch_flag: Optional[torch.Tensor] = None,
-        image_rotary_emb: Optional[
-            Union[tuple[torch.Tensor, torch.Tensor], list[tuple[torch.Tensor, torch.Tensor]]]
-        ] = None,
+        image_rotary_emb: Optional[tuple[torch.Tensor, torch.Tensor] | list[tuple[torch.Tensor, torch.Tensor]]] = None,
         **kwargs,
     ) -> tuple[torch.Tensor, torch.Tensor]:
         """
@@ -489,9 +487,7 @@ class CogView4TransformerBlock(nn.Module):
         hidden_states: torch.Tensor,
         encoder_hidden_states: torch.Tensor,
         temb: Optional[torch.Tensor] = None,
-        image_rotary_emb: Optional[
-            Union[tuple[torch.Tensor, torch.Tensor], list[tuple[torch.Tensor, torch.Tensor]]]
-        ] = None,
+        image_rotary_emb: Optional[tuple[torch.Tensor, torch.Tensor] | list[tuple[torch.Tensor, torch.Tensor]]] = None,
         attention_mask: Optional[dict[str, torch.Tensor]] = None,
         attention_kwargs: Optional[dict[str, Any]] = None,
     ) -> tuple[torch.Tensor, torch.Tensor]:
@@ -714,10 +710,8 @@ class CogView4Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Cach
         attention_kwargs: Optional[dict[str, Any]] = None,
         return_dict: bool = True,
         attention_mask: Optional[torch.Tensor] = None,
-        image_rotary_emb: Optional[
-            Union[tuple[torch.Tensor, torch.Tensor], list[tuple[torch.Tensor, torch.Tensor]]]
-        ] = None,
-    ) -> Union[tuple[torch.Tensor], Transformer2DModelOutput]:
+        image_rotary_emb: Optional[tuple[torch.Tensor, torch.Tensor] | list[tuple[torch.Tensor, torch.Tensor]]] = None,
+    ) -> tuple[torch.Tensor] | Transformer2DModelOutput:
         if attention_kwargs is not None:
             attention_kwargs = attention_kwargs.copy()
             lora_scale = attention_kwargs.pop("scale", 1.0)

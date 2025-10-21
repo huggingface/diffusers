@@ -19,7 +19,7 @@ from collections import UserDict
 from contextlib import contextmanager
 from io import BytesIO, StringIO
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, Optional, Set, Union
+from typing import TYPE_CHECKING, Any, Callable, Optional, Set
 
 import numpy as np
 import PIL.Image
@@ -676,7 +676,7 @@ def get_python_version():
     return major, minor
 
 
-def load_numpy(arry: Union[str, np.ndarray], local_path: Optional[str] = None) -> np.ndarray:
+def load_numpy(arry: str | np.ndarray, local_path: Optional[str] = None) -> np.ndarray:
     if isinstance(arry, str):
         if local_path is not None:
             # local_path can be passed to correct images of tests
@@ -709,7 +709,7 @@ def load_pt(url: str, map_location: Optional[str] = None, weights_only: Optional
     return arry
 
 
-def load_image(image: Union[str, PIL.Image.Image]) -> PIL.Image.Image:
+def load_image(image: str | PIL.Image.Image) -> PIL.Image.Image:
     """
     Loads `image` to a PIL Image.
 
@@ -1430,7 +1430,7 @@ if is_torch_available():
 # Modified from https://github.com/huggingface/transformers/blob/cdfb018d0300fef3b07d9220f3efe9c2a9974662/src/transformers/testing_utils.py#L3090
 
 # Type definition of key used in `Expectations` class.
-DeviceProperties = tuple[Union[str, None], Union[int, None]]
+DeviceProperties = tuple[str | None, int | None]
 
 
 @functools.lru_cache

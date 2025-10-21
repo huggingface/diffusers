@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from typing import Callable, Optional, Union
+from typing import Callable, Optional
 
 import PIL.Image
 import torch
@@ -150,7 +150,7 @@ class KandinskyCombinedPipeline(DiffusionPipeline):
         text_encoder: MultilingualCLIP,
         tokenizer: XLMRobertaTokenizer,
         unet: UNet2DConditionModel,
-        scheduler: Union[DDIMScheduler, DDPMScheduler],
+        scheduler: DDIMScheduler | DDPMScheduler,
         movq: VQModel,
         prior_prior: PriorTransformer,
         prior_image_encoder: CLIPVisionModelWithProjection,
@@ -193,7 +193,7 @@ class KandinskyCombinedPipeline(DiffusionPipeline):
     def enable_xformers_memory_efficient_attention(self, attention_op: Optional[Callable] = None):
         self.decoder_pipe.enable_xformers_memory_efficient_attention(attention_op)
 
-    def enable_sequential_cpu_offload(self, gpu_id: Optional[int] = None, device: Union[torch.device, str] = None):
+    def enable_sequential_cpu_offload(self, gpu_id: Optional[int] = None, device: torch.device | str = None):
         r"""
         Offloads all models (`unet`, `text_encoder`, `vae`, and `safety checker` state dicts) to CPU using 🤗
         Accelerate, significantly reducing memory usage. Models are moved to a `torch.device('meta')` and loaded on a
@@ -216,8 +216,8 @@ class KandinskyCombinedPipeline(DiffusionPipeline):
     @replace_example_docstring(TEXT2IMAGE_EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        prompt: Union[str, list[str]],
-        negative_prompt: Optional[Union[str, list[str]]] = None,
+        prompt: str | list[str],
+        negative_prompt: Optional[str | list[str]] = None,
         num_inference_steps: int = 100,
         guidance_scale: float = 4.0,
         num_images_per_prompt: int = 1,
@@ -225,7 +225,7 @@ class KandinskyCombinedPipeline(DiffusionPipeline):
         width: int = 512,
         prior_guidance_scale: float = 4.0,
         prior_num_inference_steps: int = 25,
-        generator: Optional[Union[torch.Generator, list[torch.Generator]]] = None,
+        generator: Optional[torch.Generator | list[torch.Generator]] = None,
         latents: Optional[torch.Tensor] = None,
         output_type: Optional[str] = "pil",
         callback: Optional[Callable[[int, int, torch.Tensor], None]] = None,
@@ -368,7 +368,7 @@ class KandinskyImg2ImgCombinedPipeline(DiffusionPipeline):
         text_encoder: MultilingualCLIP,
         tokenizer: XLMRobertaTokenizer,
         unet: UNet2DConditionModel,
-        scheduler: Union[DDIMScheduler, DDPMScheduler],
+        scheduler: DDIMScheduler | DDPMScheduler,
         movq: VQModel,
         prior_prior: PriorTransformer,
         prior_image_encoder: CLIPVisionModelWithProjection,
@@ -411,7 +411,7 @@ class KandinskyImg2ImgCombinedPipeline(DiffusionPipeline):
     def enable_xformers_memory_efficient_attention(self, attention_op: Optional[Callable] = None):
         self.decoder_pipe.enable_xformers_memory_efficient_attention(attention_op)
 
-    def enable_sequential_cpu_offload(self, gpu_id: Optional[int] = None, device: Union[torch.device, str] = None):
+    def enable_sequential_cpu_offload(self, gpu_id: Optional[int] = None, device: torch.device | str = None):
         r"""
         Offloads all models to CPU using accelerate, significantly reducing memory usage. When called, unet,
         text_encoder, vae and safety checker have their state dicts saved to CPU and then are moved to a
@@ -435,9 +435,9 @@ class KandinskyImg2ImgCombinedPipeline(DiffusionPipeline):
     @replace_example_docstring(IMAGE2IMAGE_EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        prompt: Union[str, list[str]],
-        image: Union[torch.Tensor, PIL.Image.Image, list[torch.Tensor], list[PIL.Image.Image]],
-        negative_prompt: Optional[Union[str, list[str]]] = None,
+        prompt: str | list[str],
+        image: torch.Tensor | PIL.Image.Image | list[torch.Tensor] | list[PIL.Image.Image],
+        negative_prompt: Optional[str | list[str]] = None,
         num_inference_steps: int = 100,
         guidance_scale: float = 4.0,
         num_images_per_prompt: int = 1,
@@ -446,7 +446,7 @@ class KandinskyImg2ImgCombinedPipeline(DiffusionPipeline):
         width: int = 512,
         prior_guidance_scale: float = 4.0,
         prior_num_inference_steps: int = 25,
-        generator: Optional[Union[torch.Generator, list[torch.Generator]]] = None,
+        generator: Optional[torch.Generator | list[torch.Generator]] = None,
         latents: Optional[torch.Tensor] = None,
         output_type: Optional[str] = "pil",
         callback: Optional[Callable[[int, int, torch.Tensor], None]] = None,
@@ -609,7 +609,7 @@ class KandinskyInpaintCombinedPipeline(DiffusionPipeline):
         text_encoder: MultilingualCLIP,
         tokenizer: XLMRobertaTokenizer,
         unet: UNet2DConditionModel,
-        scheduler: Union[DDIMScheduler, DDPMScheduler],
+        scheduler: DDIMScheduler | DDPMScheduler,
         movq: VQModel,
         prior_prior: PriorTransformer,
         prior_image_encoder: CLIPVisionModelWithProjection,
@@ -652,7 +652,7 @@ class KandinskyInpaintCombinedPipeline(DiffusionPipeline):
     def enable_xformers_memory_efficient_attention(self, attention_op: Optional[Callable] = None):
         self.decoder_pipe.enable_xformers_memory_efficient_attention(attention_op)
 
-    def enable_sequential_cpu_offload(self, gpu_id: Optional[int] = None, device: Union[torch.device, str] = None):
+    def enable_sequential_cpu_offload(self, gpu_id: Optional[int] = None, device: torch.device | str = None):
         r"""
         Offloads all models to CPU using accelerate, significantly reducing memory usage. When called, unet,
         text_encoder, vae and safety checker have their state dicts saved to CPU and then are moved to a
@@ -676,10 +676,10 @@ class KandinskyInpaintCombinedPipeline(DiffusionPipeline):
     @replace_example_docstring(INPAINT_EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        prompt: Union[str, list[str]],
-        image: Union[torch.Tensor, PIL.Image.Image, list[torch.Tensor], list[PIL.Image.Image]],
-        mask_image: Union[torch.Tensor, PIL.Image.Image, list[torch.Tensor], list[PIL.Image.Image]],
-        negative_prompt: Optional[Union[str, list[str]]] = None,
+        prompt: str | list[str],
+        image: torch.Tensor | PIL.Image.Image | list[torch.Tensor] | list[PIL.Image.Image],
+        mask_image: torch.Tensor | PIL.Image.Image | list[torch.Tensor] | list[PIL.Image.Image],
+        negative_prompt: Optional[str | list[str]] = None,
         num_inference_steps: int = 100,
         guidance_scale: float = 4.0,
         num_images_per_prompt: int = 1,
@@ -687,7 +687,7 @@ class KandinskyInpaintCombinedPipeline(DiffusionPipeline):
         width: int = 512,
         prior_guidance_scale: float = 4.0,
         prior_num_inference_steps: int = 25,
-        generator: Optional[Union[torch.Generator, list[torch.Generator]]] = None,
+        generator: Optional[torch.Generator | list[torch.Generator]] = None,
         latents: Optional[torch.Tensor] = None,
         output_type: Optional[str] = "pil",
         callback: Optional[Callable[[int, int, torch.Tensor], None]] = None,

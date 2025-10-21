@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import inspect
-from typing import Callable, Optional, Union
+from typing import Callable, Optional
 
 import numpy as np
 import torch
@@ -36,7 +36,7 @@ class OnnxStableDiffusionPipeline(DiffusionPipeline):
     text_encoder: OnnxRuntimeModel
     tokenizer: CLIPTokenizer
     unet: OnnxRuntimeModel
-    scheduler: Union[DDIMScheduler, PNDMScheduler, LMSDiscreteScheduler]
+    scheduler: DDIMScheduler | PNDMScheduler | LMSDiscreteScheduler
     safety_checker: OnnxRuntimeModel
     feature_extractor: CLIPImageProcessor
 
@@ -50,7 +50,7 @@ class OnnxStableDiffusionPipeline(DiffusionPipeline):
         text_encoder: OnnxRuntimeModel,
         tokenizer: CLIPTokenizer,
         unet: OnnxRuntimeModel,
-        scheduler: Union[DDIMScheduler, PNDMScheduler, LMSDiscreteScheduler],
+        scheduler: DDIMScheduler | PNDMScheduler | LMSDiscreteScheduler,
         safety_checker: OnnxRuntimeModel,
         feature_extractor: CLIPImageProcessor,
         requires_safety_checker: bool = True,
@@ -114,7 +114,7 @@ class OnnxStableDiffusionPipeline(DiffusionPipeline):
 
     def _encode_prompt(
         self,
-        prompt: Union[str, list[str]],
+        prompt: str | list[str],
         num_images_per_prompt: Optional[int],
         do_classifier_free_guidance: bool,
         negative_prompt: Optional[str],
@@ -217,7 +217,7 @@ class OnnxStableDiffusionPipeline(DiffusionPipeline):
 
     def check_inputs(
         self,
-        prompt: Union[str, list[str]],
+        prompt: str | list[str],
         height: Optional[int],
         width: Optional[int],
         callback_steps: int,
@@ -264,12 +264,12 @@ class OnnxStableDiffusionPipeline(DiffusionPipeline):
 
     def __call__(
         self,
-        prompt: Union[str, list[str]] = None,
+        prompt: str | list[str] = None,
         height: Optional[int] = 512,
         width: Optional[int] = 512,
         num_inference_steps: Optional[int] = 50,
         guidance_scale: Optional[float] = 7.5,
-        negative_prompt: Optional[Union[str, list[str]]] = None,
+        negative_prompt: Optional[str | list[str]] = None,
         num_images_per_prompt: Optional[int] = 1,
         eta: Optional[float] = 0.0,
         generator: Optional[np.random.RandomState] = None,
@@ -470,7 +470,7 @@ class StableDiffusionOnnxPipeline(OnnxStableDiffusionPipeline):
         text_encoder: OnnxRuntimeModel,
         tokenizer: CLIPTokenizer,
         unet: OnnxRuntimeModel,
-        scheduler: Union[DDIMScheduler, PNDMScheduler, LMSDiscreteScheduler],
+        scheduler: DDIMScheduler | PNDMScheduler | LMSDiscreteScheduler,
         safety_checker: OnnxRuntimeModel,
         feature_extractor: CLIPImageProcessor,
     ):

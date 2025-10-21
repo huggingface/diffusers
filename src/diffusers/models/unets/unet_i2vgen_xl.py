@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Any, Optional, Union
+from typing import Any, Optional
 
 import torch
 import torch.nn as nn
@@ -144,8 +144,8 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         layers_per_block: int = 2,
         norm_num_groups: Optional[int] = 32,
         cross_attention_dim: int = 1024,
-        attention_head_dim: Union[int, tuple[int]] = 64,
-        num_attention_heads: Optional[Union[int, tuple[int]]] = None,
+        attention_head_dim: int | tuple[int] = 64,
+        num_attention_heads: Optional[int | tuple[int]] = None,
     ):
         super().__init__()
 
@@ -339,7 +339,7 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         return processors
 
     # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.set_attn_processor
-    def set_attn_processor(self, processor: Union[AttentionProcessor, dict[str, AttentionProcessor]]):
+    def set_attn_processor(self, processor: AttentionProcessor | dict[str, AttentionProcessor]):
         r"""
         Sets the attention processor to use to compute attention.
 
@@ -500,7 +500,7 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
     def forward(
         self,
         sample: torch.Tensor,
-        timestep: Union[torch.Tensor, float, int],
+        timestep: torch.Tensor | float | int,
         fps: torch.Tensor,
         image_latents: torch.Tensor,
         image_embeddings: Optional[torch.Tensor] = None,
@@ -508,7 +508,7 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         timestep_cond: Optional[torch.Tensor] = None,
         cross_attention_kwargs: Optional[dict[str, Any]] = None,
         return_dict: bool = True,
-    ) -> Union[UNet3DConditionOutput, tuple[torch.Tensor]]:
+    ) -> UNet3DConditionOutput | tuple[torch.Tensor]:
         r"""
         The [`I2VGenXLUNet`] forward method.
 

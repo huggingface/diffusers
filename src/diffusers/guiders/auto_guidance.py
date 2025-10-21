@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import math
-from typing import TYPE_CHECKING, Any, Optional, Union
+from typing import TYPE_CHECKING, Any, Optional
 
 import torch
 
@@ -65,8 +65,8 @@ class AutoGuidance(BaseGuidance):
     def __init__(
         self,
         guidance_scale: float = 7.5,
-        auto_guidance_layers: Optional[Union[int, list[int]]] = None,
-        auto_guidance_config: Union[LayerSkipConfig, list[LayerSkipConfig], dict[str, Any]] = None,
+        auto_guidance_layers: Optional[int | list[int]] = None,
+        auto_guidance_config: LayerSkipConfig | list[LayerSkipConfig] | dict[str, Any] = None,
         dropout: Optional[float] = None,
         guidance_rescale: float = 0.0,
         use_original_formulation: bool = False,
@@ -133,7 +133,7 @@ class AutoGuidance(BaseGuidance):
                 registry.remove_hook(name, recurse=True)
 
     def prepare_inputs(
-        self, data: "BlockState", input_fields: Optional[dict[str, Union[str, tuple[str, str]]]] = None
+        self, data: "BlockState", input_fields: Optional[dict[str, str | tuple[str, str]]] = None
     ) -> list["BlockState"]:
         if input_fields is None:
             input_fields = self._input_fields

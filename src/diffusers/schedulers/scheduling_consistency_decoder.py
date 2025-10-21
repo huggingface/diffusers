@@ -1,6 +1,6 @@
 import math
 from dataclasses import dataclass
-from typing import Optional, Tuple, Union
+from typing import Optional, Tuple
 
 import torch
 
@@ -97,7 +97,7 @@ class ConsistencyDecoderScheduler(SchedulerMixin, ConfigMixin):
     def set_timesteps(
         self,
         num_inference_steps: Optional[int] = None,
-        device: Union[str, torch.device] = None,
+        device: str | torch.device = None,
     ):
         if num_inference_steps != 2:
             raise ValueError("Currently more than 2 inference steps are not supported.")
@@ -133,11 +133,11 @@ class ConsistencyDecoderScheduler(SchedulerMixin, ConfigMixin):
     def step(
         self,
         model_output: torch.Tensor,
-        timestep: Union[float, torch.Tensor],
+        timestep: float | torch.Tensor,
         sample: torch.Tensor,
         generator: Optional[torch.Generator] = None,
         return_dict: bool = True,
-    ) -> Union[ConsistencyDecoderSchedulerOutput, Tuple]:
+    ) -> ConsistencyDecoderSchedulerOutput | Tuple:
         """
         Predict the sample from the previous timestep by reversing the SDE. This function propagates the diffusion
         process from the learned model outputs (most often the predicted noise).

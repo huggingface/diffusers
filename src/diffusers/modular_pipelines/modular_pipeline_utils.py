@@ -92,7 +92,7 @@ class ComponentSpec:
     description: Optional[str] = None
     config: Optional[FrozenDict] = None
     # YiYi Notes: should we change it to pretrained_model_name_or_path for consistency? a bit long for a field name
-    repo: Optional[Union[str, list[str]]] = field(default=None, metadata={"loading": True})
+    repo: Optional[str | list[str]] = field(default=None, metadata={"loading": True})
     subfolder: Optional[str] = field(default="", metadata={"loading": True})
     variant: Optional[str] = field(default=None, metadata={"loading": True})
     revision: Optional[str] = field(default=None, metadata={"loading": True})
@@ -229,7 +229,7 @@ class ComponentSpec:
     # otherwise we cannot do spec -> spec.create() -> component -> ComponentSpec.from_component(component)
     # the config info is lost in the process
     # remove error check in from_component spec and ModularPipeline.update_components() if we remove support for non configmixin in `create()` method
-    def create(self, config: Optional[Union[FrozenDict, dict[str, Any]]] = None, **kwargs) -> Any:
+    def create(self, config: Optional[FrozenDict | dict[str, Any]] = None, **kwargs) -> Any:
         """Create component using from_config with config."""
 
         if self.type_hint is None or not isinstance(self.type_hint, type):

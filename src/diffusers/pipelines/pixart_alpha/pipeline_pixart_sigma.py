@@ -16,7 +16,7 @@ import html
 import inspect
 import re
 import urllib.parse as ul
-from typing import Callable, Optional, Tuple, Union
+from typing import Callable, Optional, Tuple
 
 import torch
 from transformers import T5EncoderModel, T5Tokenizer
@@ -126,7 +126,7 @@ EXAMPLE_DOC_STRING = """
 def retrieve_timesteps(
     scheduler,
     num_inference_steps: Optional[int] = None,
-    device: Optional[Union[str, torch.device]] = None,
+    device: Optional[str | torch.device] = None,
     timesteps: Optional[list[int]] = None,
     sigmas: Optional[list[float]] = None,
     **kwargs,
@@ -246,7 +246,7 @@ class PixArtSigmaPipeline(DiffusionPipeline):
     # Copied from diffusers.pipelines.pixart_alpha.pipeline_pixart_alpha.PixArtAlphaPipeline.encode_prompt with 120->300
     def encode_prompt(
         self,
-        prompt: Union[str, list[str]],
+        prompt: str | list[str],
         do_classifier_free_guidance: bool = True,
         negative_prompt: str = "",
         num_images_per_prompt: int = 1,
@@ -632,7 +632,7 @@ class PixArtSigmaPipeline(DiffusionPipeline):
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        prompt: Union[str, list[str]] = None,
+        prompt: str | list[str] = None,
         negative_prompt: str = "",
         num_inference_steps: int = 20,
         timesteps: list[int] = None,
@@ -642,7 +642,7 @@ class PixArtSigmaPipeline(DiffusionPipeline):
         height: Optional[int] = None,
         width: Optional[int] = None,
         eta: float = 0.0,
-        generator: Optional[Union[torch.Generator, list[torch.Generator]]] = None,
+        generator: Optional[torch.Generator | list[torch.Generator]] = None,
         latents: Optional[torch.Tensor] = None,
         prompt_embeds: Optional[torch.Tensor] = None,
         prompt_attention_mask: Optional[torch.Tensor] = None,
@@ -656,7 +656,7 @@ class PixArtSigmaPipeline(DiffusionPipeline):
         use_resolution_binning: bool = True,
         max_sequence_length: int = 300,
         **kwargs,
-    ) -> Union[ImagePipelineOutput, Tuple]:
+    ) -> ImagePipelineOutput | Tuple:
         """
         Function invoked when calling the pipeline for generation.
 

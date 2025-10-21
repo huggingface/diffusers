@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import math
-from typing import TYPE_CHECKING, Optional, Union
+from typing import TYPE_CHECKING, Optional
 
 import torch
 
@@ -141,12 +141,12 @@ class FrequencyDecoupledGuidance(BaseGuidance):
     @register_to_config
     def __init__(
         self,
-        guidance_scales: Union[list[float], tuple[float]] = [10.0, 5.0],
-        guidance_rescale: Union[float, list[float], tuple[float]] = 0.0,
-        parallel_weights: Optional[Union[float, list[float], tuple[float]]] = None,
+        guidance_scales: list[float] | tuple[float] = [10.0, 5.0],
+        guidance_rescale: float | list[float] | tuple[float] = 0.0,
+        parallel_weights: Optional[float | list[float] | tuple[float]] = None,
         use_original_formulation: bool = False,
-        start: Union[float, list[float], tuple[float]] = 0.0,
-        stop: Union[float, list[float], tuple[float]] = 1.0,
+        start: float | list[float] | tuple[float] = 0.0,
+        stop: float | list[float] | tuple[float] = 1.0,
         guidance_rescale_space: str = "data",
         upcast_to_double: bool = True,
     ):
@@ -218,7 +218,7 @@ class FrequencyDecoupledGuidance(BaseGuidance):
             )
 
     def prepare_inputs(
-        self, data: "BlockState", input_fields: Optional[dict[str, Union[str, tuple[str, str]]]] = None
+        self, data: "BlockState", input_fields: Optional[dict[str, str | tuple[str, str]]] = None
     ) -> list["BlockState"]:
         if input_fields is None:
             input_fields = self._input_fields

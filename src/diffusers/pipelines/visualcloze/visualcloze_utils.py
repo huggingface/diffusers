@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Dict, Optional, Union
+from typing import Dict, Optional
 
 import torch
 from PIL import Image
@@ -189,8 +189,8 @@ class VisualClozeProcessor(VaeImageProcessor):
 
     def preprocess(
         self,
-        task_prompt: Union[str, list[str]],
-        content_prompt: Union[str, list[str]],
+        task_prompt: str | list[str],
+        content_prompt: str | list[str],
         input_images: Optional[list[list[list[Optional[str]]]]] = None,
         height: Optional[int] = None,
         width: Optional[int] = None,

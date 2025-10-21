@@ -1,5 +1,5 @@
 import math
-from typing import Optional, Union
+from typing import Optional
 
 import torch
 from torch import nn
@@ -1040,9 +1040,9 @@ class UniDiffuserModel(ModelMixin, ConfigMixin):
         latent_image_embeds: torch.Tensor,
         image_embeds: torch.Tensor,
         prompt_embeds: torch.Tensor,
-        timestep_img: Union[torch.Tensor, float, int],
-        timestep_text: Union[torch.Tensor, float, int],
-        data_type: Optional[Union[torch.Tensor, float, int]] = 1,
+        timestep_img: torch.Tensor | float | int,
+        timestep_text: torch.Tensor | float | int,
+        data_type: Optional[torch.Tensor | float | int] = 1,
         encoder_hidden_states=None,
         cross_attention_kwargs=None,
     ):

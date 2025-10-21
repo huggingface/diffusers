@@ -15,7 +15,7 @@
 import inspect
 import math
 from enum import Enum
-from typing import Any, Callable, Dict, Optional, Union
+from typing import Any, Callable, Dict, Optional
 
 import numpy as np
 import torch
@@ -179,7 +179,7 @@ def calculate_shift(
 def retrieve_timesteps(
     scheduler,
     num_inference_steps: Optional[int] = None,
-    device: Optional[Union[str, torch.device]] = None,
+    device: Optional[str | torch.device] = None,
     timesteps: Optional[list[int]] = None,
     sigmas: Optional[list[float]] = None,
     **kwargs,
@@ -302,7 +302,7 @@ class HunyuanVideoFramepackPipeline(DiffusionPipeline, HunyuanVideoLoraLoaderMix
     # Copied from diffusers.pipelines.hunyuan_video.pipeline_hunyuan_video.HunyuanVideoPipeline._get_llama_prompt_embeds
     def _get_llama_prompt_embeds(
         self,
-        prompt: Union[str, list[str]],
+        prompt: str | list[str],
         prompt_template: dict[str, Any],
         num_videos_per_prompt: int = 1,
         device: Optional[torch.device] = None,
@@ -369,7 +369,7 @@ class HunyuanVideoFramepackPipeline(DiffusionPipeline, HunyuanVideoLoraLoaderMix
     # Copied from diffusers.pipelines.hunyuan_video.pipeline_hunyuan_video.HunyuanVideoPipeline._get_clip_prompt_embeds
     def _get_clip_prompt_embeds(
         self,
-        prompt: Union[str, list[str]],
+        prompt: str | list[str],
         num_videos_per_prompt: int = 1,
         device: Optional[torch.device] = None,
         dtype: Optional[torch.dtype] = None,
@@ -409,8 +409,8 @@ class HunyuanVideoFramepackPipeline(DiffusionPipeline, HunyuanVideoLoraLoaderMix
     # Copied from diffusers.pipelines.hunyuan_video.pipeline_hunyuan_video.HunyuanVideoPipeline.encode_prompt
     def encode_prompt(
         self,
-        prompt: Union[str, list[str]],
-        prompt_2: Union[str, list[str]] = None,
+        prompt: str | list[str],
+        prompt_2: str | list[str] = None,
         prompt_template: dict[str, Any] = DEFAULT_PROMPT_TEMPLATE,
         num_videos_per_prompt: int = 1,
         prompt_embeds: Optional[torch.Tensor] = None,
@@ -530,7 +530,7 @@ class HunyuanVideoFramepackPipeline(DiffusionPipeline, HunyuanVideoLoraLoaderMix
         num_frames: int = 129,
         dtype: Optional[torch.dtype] = None,
         device: Optional[torch.device] = None,
-        generator: Optional[Union[torch.Generator, list[torch.Generator]]] = None,
+        generator: Optional[torch.Generator | list[torch.Generator]] = None,
         latents: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         if latents is not None:
@@ -555,7 +555,7 @@ class HunyuanVideoFramepackPipeline(DiffusionPipeline, HunyuanVideoLoraLoaderMix
         image: torch.Tensor,
         dtype: Optional[torch.dtype] = None,
         device: Optional[torch.device] = None,
-        generator: Optional[Union[torch.Generator, list[torch.Generator]]] = None,
+        generator: Optional[torch.Generator | list[torch.Generator]] = None,
         latents: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         device = device or self._execution_device
@@ -644,10 +644,10 @@ class HunyuanVideoFramepackPipeline(DiffusionPipeline, HunyuanVideoLoraLoaderMix
         self,
         image: PipelineImageInput,
         last_image: Optional[PipelineImageInput] = None,
-        prompt: Union[str, list[str]] = None,
-        prompt_2: Union[str, list[str]] = None,
-        negative_prompt: Union[str, list[str]] = None,
-        negative_prompt_2: Union[str, list[str]] = None,
+        prompt: str | list[str] = None,
+        prompt_2: str | list[str] = None,
+        negative_prompt: str | list[str] = None,
+        negative_prompt_2: str | list[str] = None,
         height: int = 720,
         width: int = 1280,
         num_frames: int = 129,
@@ -657,7 +657,7 @@ class HunyuanVideoFramepackPipeline(DiffusionPipeline, HunyuanVideoLoraLoaderMix
         true_cfg_scale: float = 1.0,
         guidance_scale: float = 6.0,
         num_videos_per_prompt: Optional[int] = 1,
-        generator: Optional[Union[torch.Generator, list[torch.Generator]]] = None,
+        generator: Optional[torch.Generator | list[torch.Generator]] = None,
         image_latents: Optional[torch.Tensor] = None,
         last_image_latents: Optional[torch.Tensor] = None,
         prompt_embeds: Optional[torch.Tensor] = None,
@@ -670,7 +670,7 @@ class HunyuanVideoFramepackPipeline(DiffusionPipeline, HunyuanVideoLoraLoaderMix
         return_dict: bool = True,
         attention_kwargs: Optional[dict[str, Any]] = None,
         callback_on_step_end: Optional[
-            Union[Callable[[int, int, Dict], None], PipelineCallback, MultiPipelineCallbacks]
+            Callable[[int, int, Dict], None] | PipelineCallback | MultiPipelineCallbacks
         ] = None,
         callback_on_step_end_tensor_inputs: list[str] = ["latents"],
         prompt_template: dict[str, Any] = DEFAULT_PROMPT_TEMPLATE,

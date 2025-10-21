@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Optional, Union
+from typing import Optional
 
 import torch
 import torch.nn.functional as F
@@ -470,7 +470,7 @@ class EasyAnimateTransformer3DModel(ModelMixin, ConfigMixin):
         inpaint_latents: Optional[torch.Tensor] = None,
         control_latents: Optional[torch.Tensor] = None,
         return_dict: bool = True,
-    ) -> Union[tuple[torch.Tensor], Transformer2DModelOutput]:
+    ) -> tuple[torch.Tensor] | Transformer2DModelOutput:
         batch_size, channels, video_length, height, width = hidden_states.size()
         p = self.config.patch_size
         post_patch_height = height // p

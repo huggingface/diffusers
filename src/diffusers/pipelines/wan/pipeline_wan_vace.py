@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import html
-from typing import Any, Callable, Dict, Optional, Union
+from typing import Any, Callable, Dict, Optional
 
 import PIL.Image
 import regex as re
@@ -201,7 +201,7 @@ class WanVACEPipeline(DiffusionPipeline, WanLoraLoaderMixin):
     # Copied from diffusers.pipelines.wan.pipeline_wan.WanPipeline._get_t5_prompt_embeds
     def _get_t5_prompt_embeds(
         self,
-        prompt: Union[str, list[str]] = None,
+        prompt: str | list[str] = None,
         num_videos_per_prompt: int = 1,
         max_sequence_length: int = 226,
         device: Optional[torch.device] = None,
@@ -243,8 +243,8 @@ class WanVACEPipeline(DiffusionPipeline, WanLoraLoaderMixin):
     # Copied from diffusers.pipelines.wan.pipeline_wan.WanPipeline.encode_prompt
     def encode_prompt(
         self,
-        prompt: Union[str, list[str]],
-        negative_prompt: Optional[Union[str, list[str]]] = None,
+        prompt: str | list[str],
+        negative_prompt: Optional[str | list[str]] = None,
         do_classifier_free_guidance: bool = True,
         num_videos_per_prompt: int = 1,
         prompt_embeds: Optional[torch.Tensor] = None,
@@ -405,7 +405,7 @@ class WanVACEPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         self,
         video: Optional[list[PipelineImageInput]] = None,
         mask: Optional[list[PipelineImageInput]] = None,
-        reference_images: Optional[Union[PIL.Image.Image, list[PIL.Image.Image], list[list[PIL.Image.Image]]]] = None,
+        reference_images: Optional[PIL.Image.Image | list[PIL.Image.Image] | list[list[PIL.Image.Image]]] = None,
         batch_size: int = 1,
         height: int = 480,
         width: int = 832,
@@ -502,7 +502,7 @@ class WanVACEPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         video: torch.Tensor,
         mask: torch.Tensor,
         reference_images: Optional[list[list[torch.Tensor]]] = None,
-        generator: Optional[Union[torch.Generator, list[torch.Generator]]] = None,
+        generator: Optional[torch.Generator | list[torch.Generator]] = None,
         device: Optional[torch.device] = None,
     ) -> torch.Tensor:
         device = device or self._execution_device
@@ -568,7 +568,7 @@ class WanVACEPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         self,
         mask: torch.Tensor,
         reference_images: Optional[list[torch.Tensor]] = None,
-        generator: Optional[Union[torch.Generator, list[torch.Generator]]] = None,
+        generator: Optional[torch.Generator | list[torch.Generator]] = None,
     ) -> torch.Tensor:
         if isinstance(generator, list):
             # TODO: support this
@@ -621,7 +621,7 @@ class WanVACEPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         num_frames: int = 81,
         dtype: Optional[torch.dtype] = None,
         device: Optional[torch.device] = None,
-        generator: Optional[Union[torch.Generator, list[torch.Generator]]] = None,
+        generator: Optional[torch.Generator | list[torch.Generator]] = None,
         latents: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         if latents is not None:
@@ -672,12 +672,12 @@ class WanVACEPipeline(DiffusionPipeline, WanLoraLoaderMixin):
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        prompt: Union[str, list[str]] = None,
-        negative_prompt: Union[str, list[str]] = None,
+        prompt: str | list[str] = None,
+        negative_prompt: str | list[str] = None,
         video: Optional[list[PipelineImageInput]] = None,
         mask: Optional[list[PipelineImageInput]] = None,
         reference_images: Optional[list[PipelineImageInput]] = None,
-        conditioning_scale: Union[float, list[float], torch.Tensor] = 1.0,
+        conditioning_scale: float | list[float] | torch.Tensor = 1.0,
         height: int = 480,
         width: int = 832,
         num_frames: int = 81,
@@ -685,7 +685,7 @@ class WanVACEPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         guidance_scale: float = 5.0,
         guidance_scale_2: Optional[float] = None,
         num_videos_per_prompt: Optional[int] = 1,
-        generator: Optional[Union[torch.Generator, list[torch.Generator]]] = None,
+        generator: Optional[torch.Generator | list[torch.Generator]] = None,
         latents: Optional[torch.Tensor] = None,
         prompt_embeds: Optional[torch.Tensor] = None,
         negative_prompt_embeds: Optional[torch.Tensor] = None,
@@ -693,7 +693,7 @@ class WanVACEPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         return_dict: bool = True,
         attention_kwargs: Optional[dict[str, Any]] = None,
         callback_on_step_end: Optional[
-            Union[Callable[[int, int, Dict], None], PipelineCallback, MultiPipelineCallbacks]
+            Callable[[int, int, Dict], None] | PipelineCallback | MultiPipelineCallbacks
         ] = None,
         callback_on_step_end_tensor_inputs: list[str] = ["latents"],
         max_sequence_length: int = 512,

@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import inspect
-from typing import Callable, Optional, Union
+from typing import Callable, Optional
 
 import numpy as np
 import PIL.Image
@@ -198,7 +198,7 @@ class PaintByExamplePipeline(DeprecatedPipelineMixin, DiffusionPipeline, StableD
         vae: AutoencoderKL,
         image_encoder: PaintByExampleImageEncoder,
         unet: UNet2DConditionModel,
-        scheduler: Union[DDIMScheduler, PNDMScheduler, LMSDiscreteScheduler],
+        scheduler: DDIMScheduler | PNDMScheduler | LMSDiscreteScheduler,
         safety_checker: StableDiffusionSafetyChecker,
         feature_extractor: CLIPImageProcessor,
         requires_safety_checker: bool = False,
@@ -397,17 +397,17 @@ class PaintByExamplePipeline(DeprecatedPipelineMixin, DiffusionPipeline, StableD
     @torch.no_grad()
     def __call__(
         self,
-        example_image: Union[torch.Tensor, PIL.Image.Image],
-        image: Union[torch.Tensor, PIL.Image.Image],
-        mask_image: Union[torch.Tensor, PIL.Image.Image],
+        example_image: torch.Tensor | PIL.Image.Image,
+        image: torch.Tensor | PIL.Image.Image,
+        mask_image: torch.Tensor | PIL.Image.Image,
         height: Optional[int] = None,
         width: Optional[int] = None,
         num_inference_steps: int = 50,
         guidance_scale: float = 5.0,
-        negative_prompt: Optional[Union[str, list[str]]] = None,
+        negative_prompt: Optional[str | list[str]] = None,
         num_images_per_prompt: Optional[int] = 1,
         eta: float = 0.0,
-        generator: Optional[Union[torch.Generator, list[torch.Generator]]] = None,
+        generator: Optional[torch.Generator | list[torch.Generator]] = None,
         latents: Optional[torch.Tensor] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,

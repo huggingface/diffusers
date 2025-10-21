@@ -16,7 +16,7 @@ import math
 import os
 from dataclasses import dataclass
 from enum import Enum
-from typing import Optional, Union
+from typing import Optional
 
 import flax
 import jax.numpy as jnp
@@ -76,7 +76,7 @@ class FlaxSchedulerMixin(PushToHubMixin):
     @validate_hf_hub_args
     def from_pretrained(
         cls,
-        pretrained_model_name_or_path: Optional[Union[str, os.PathLike]] = None,
+        pretrained_model_name_or_path: Optional[str | os.PathLike] = None,
         subfolder: Optional[str] = None,
         return_unused_kwargs=False,
         **kwargs,
@@ -148,7 +148,7 @@ class FlaxSchedulerMixin(PushToHubMixin):
 
         return scheduler, state
 
-    def save_pretrained(self, save_directory: Union[str, os.PathLike], push_to_hub: bool = False, **kwargs):
+    def save_pretrained(self, save_directory: str | os.PathLike, push_to_hub: bool = False, **kwargs):
         """
         Save a scheduler configuration object to the directory `save_directory`, so that it can be re-loaded using the
         [`~FlaxSchedulerMixin.from_pretrained`] class method.

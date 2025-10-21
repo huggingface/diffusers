@@ -14,7 +14,7 @@
 # limitations under the License.
 
 import functools
-from typing import Optional, Union
+from typing import Optional
 
 import torch
 import torch.nn as nn
@@ -881,7 +881,7 @@ class AutoencoderKLMochi(ModelMixin, ConfigMixin):
     @apply_forward_hook
     def encode(
         self, x: torch.Tensor, return_dict: bool = True
-    ) -> Union[AutoencoderKLOutput, tuple[DiagonalGaussianDistribution]]:
+    ) -> AutoencoderKLOutput | tuple[DiagonalGaussianDistribution]:
         """
         Encode a batch of images into latents.
 
@@ -906,7 +906,7 @@ class AutoencoderKLMochi(ModelMixin, ConfigMixin):
             return (posterior,)
         return AutoencoderKLOutput(latent_dist=posterior)
 
-    def _decode(self, z: torch.Tensor, return_dict: bool = True) -> Union[DecoderOutput, torch.Tensor]:
+    def _decode(self, z: torch.Tensor, return_dict: bool = True) -> DecoderOutput | torch.Tensor:
         batch_size, num_channels, num_frames, height, width = z.shape
         tile_latent_min_height = self.tile_sample_min_height // self.spatial_compression_ratio
         tile_latent_min_width = self.tile_sample_min_width // self.spatial_compression_ratio
@@ -936,7 +936,7 @@ class AutoencoderKLMochi(ModelMixin, ConfigMixin):
         return DecoderOutput(sample=dec)
 
     @apply_forward_hook
-    def decode(self, z: torch.Tensor, return_dict: bool = True) -> Union[DecoderOutput, torch.Tensor]:
+    def decode(self, z: torch.Tensor, return_dict: bool = True) -> DecoderOutput | torch.Tensor:
         """
         Decode a batch of images.
 
@@ -1034,7 +1034,7 @@ class AutoencoderKLMochi(ModelMixin, ConfigMixin):
         enc = torch.cat(result_rows, dim=3)[:, :, :, :latent_height, :latent_width]
         return enc
 
-    def tiled_decode(self, z: torch.Tensor, return_dict: bool = True) -> Union[DecoderOutput, torch.Tensor]:
+    def tiled_decode(self, z: torch.Tensor, return_dict: bool = True) -> DecoderOutput | torch.Tensor:
         r"""
         Decode a batch of images using a tiled decoder.
 
@@ -1118,7 +1118,7 @@ class AutoencoderKLMochi(ModelMixin, ConfigMixin):
         sample_posterior: bool = False,
         return_dict: bool = True,
         generator: Optional[torch.Generator] = None,
-    ) -> Union[torch.Tensor, torch.Tensor]:
+    ) -> torch.Tensor | torch.Tensor:
         x = sample
         posterior = self.encode(x).latent_dist
         if sample_posterior:

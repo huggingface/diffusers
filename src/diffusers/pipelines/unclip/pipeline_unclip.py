@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import inspect
-from typing import Optional, Tuple, Union
+from typing import Optional, Tuple
 
 import torch
 from torch.nn import functional as F
@@ -131,7 +131,7 @@ class UnCLIPPipeline(DeprecatedPipelineMixin, DiffusionPipeline):
         device,
         num_images_per_prompt,
         do_classifier_free_guidance,
-        text_model_output: Optional[Union[CLIPTextModelOutput, Tuple]] = None,
+        text_model_output: Optional[CLIPTextModelOutput | Tuple] = None,
         text_attention_mask: Optional[torch.Tensor] = None,
     ):
         if text_model_output is None:
@@ -219,16 +219,16 @@ class UnCLIPPipeline(DeprecatedPipelineMixin, DiffusionPipeline):
     @torch.no_grad()
     def __call__(
         self,
-        prompt: Optional[Union[str, list[str]]] = None,
+        prompt: Optional[str | list[str]] = None,
         num_images_per_prompt: int = 1,
         prior_num_inference_steps: int = 25,
         decoder_num_inference_steps: int = 25,
         super_res_num_inference_steps: int = 7,
-        generator: Optional[Union[torch.Generator, list[torch.Generator]]] = None,
+        generator: Optional[torch.Generator | list[torch.Generator]] = None,
         prior_latents: Optional[torch.Tensor] = None,
         decoder_latents: Optional[torch.Tensor] = None,
         super_res_latents: Optional[torch.Tensor] = None,
-        text_model_output: Optional[Union[CLIPTextModelOutput, Tuple]] = None,
+        text_model_output: Optional[CLIPTextModelOutput | Tuple] = None,
         text_attention_mask: Optional[torch.Tensor] = None,
         prior_guidance_scale: float = 4.0,
         decoder_guidance_scale: float = 8.0,

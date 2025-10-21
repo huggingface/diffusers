@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import inspect
-from typing import Any, Callable, Dict, Optional, Union
+from typing import Any, Callable, Dict, Optional
 
 import PIL.Image
 import torch
@@ -133,7 +133,7 @@ def retrieve_latents(
 def retrieve_timesteps(
     scheduler,
     num_inference_steps: Optional[int] = None,
-    device: Optional[Union[str, torch.device]] = None,
+    device: Optional[str | torch.device] = None,
     timesteps: Optional[list[int]] = None,
     sigmas: Optional[list[float]] = None,
     **kwargs,
@@ -987,8 +987,8 @@ class StableDiffusionXLImg2ImgPipeline(
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        prompt: Union[str, list[str]] = None,
-        prompt_2: Optional[Union[str, list[str]]] = None,
+        prompt: str | list[str] = None,
+        prompt_2: Optional[str | list[str]] = None,
         image: PipelineImageInput = None,
         strength: float = 0.3,
         num_inference_steps: int = 50,
@@ -997,11 +997,11 @@ class StableDiffusionXLImg2ImgPipeline(
         denoising_start: Optional[float] = None,
         denoising_end: Optional[float] = None,
         guidance_scale: float = 5.0,
-        negative_prompt: Optional[Union[str, list[str]]] = None,
-        negative_prompt_2: Optional[Union[str, list[str]]] = None,
+        negative_prompt: Optional[str | list[str]] = None,
+        negative_prompt_2: Optional[str | list[str]] = None,
         num_images_per_prompt: Optional[int] = 1,
         eta: float = 0.0,
-        generator: Optional[Union[torch.Generator, list[torch.Generator]]] = None,
+        generator: Optional[torch.Generator | list[torch.Generator]] = None,
         latents: Optional[torch.Tensor] = None,
         prompt_embeds: Optional[torch.Tensor] = None,
         negative_prompt_embeds: Optional[torch.Tensor] = None,
@@ -1023,7 +1023,7 @@ class StableDiffusionXLImg2ImgPipeline(
         negative_aesthetic_score: float = 2.5,
         clip_skip: Optional[int] = None,
         callback_on_step_end: Optional[
-            Union[Callable[[int, int, Dict], None], PipelineCallback, MultiPipelineCallbacks]
+            Callable[[int, int, Dict], None] | PipelineCallback | MultiPipelineCallbacks
         ] = None,
         callback_on_step_end_tensor_inputs: list[str] = ["latents"],
         **kwargs,

@@ -13,7 +13,7 @@
 # limitations under the License.
 from dataclasses import dataclass
 from math import gcd
-from typing import Any, Dict, Optional, Tuple, Union
+from typing import Any, Dict, Optional, Tuple
 
 import torch
 from torch import Tensor, nn
@@ -109,7 +109,7 @@ def get_down_block_adapter(
     temb_channels: int,
     max_norm_num_groups: Optional[int] = 32,
     has_crossattn=True,
-    transformer_layers_per_block: Optional[Union[int, tuple[int]]] = 1,
+    transformer_layers_per_block: Optional[int | tuple[int]] = 1,
     num_attention_heads: Optional[int] = 1,
     cross_attention_dim: Optional[int] = 1024,
     add_downsample: bool = True,
@@ -296,7 +296,7 @@ class ControlNetXSAdapter(ModelMixin, ConfigMixin):
         conditioning_embedding_out_channels: tuple[int] = (16, 32, 96, 256),
         time_embedding_mix: float = 1.0,
         learn_time_embedding: bool = False,
-        num_attention_heads: Union[int, tuple[int]] = 4,
+        num_attention_heads: int | tuple[int] = 4,
         block_out_channels: tuple[int] = (4, 8, 16, 16),
         base_block_out_channels: tuple[int] = (320, 640, 1280, 1280),
         cross_attention_dim: int = 1024,
@@ -307,7 +307,7 @@ class ControlNetXSAdapter(ModelMixin, ConfigMixin):
             "DownBlock2D",
         ),
         sample_size: Optional[int] = 96,
-        transformer_layers_per_block: Union[int, tuple[int]] = 1,
+        transformer_layers_per_block: int | tuple[int] = 1,
         upcast_attention: bool = True,
         max_norm_num_groups: int = 32,
         use_linear_projection: bool = True,
@@ -538,9 +538,9 @@ class UNetControlNetXSModel(ModelMixin, ConfigMixin):
         up_block_types: tuple[str] = ("UpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D"),
         block_out_channels: tuple[int] = (320, 640, 1280, 1280),
         norm_num_groups: Optional[int] = 32,
-        cross_attention_dim: Union[int, tuple[int]] = 1024,
-        transformer_layers_per_block: Union[int, tuple[int]] = 1,
-        num_attention_heads: Union[int, tuple[int]] = 8,
+        cross_attention_dim: int | tuple[int] = 1024,
+        transformer_layers_per_block: int | tuple[int] = 1,
+        num_attention_heads: int | tuple[int] = 8,
         addition_embed_type: Optional[str] = None,
         addition_time_embed_dim: Optional[int] = None,
         upcast_attention: bool = True,
@@ -554,7 +554,7 @@ class UNetControlNetXSModel(ModelMixin, ConfigMixin):
         ctrl_conditioning_channel_order: str = "rgb",
         ctrl_learn_time_embedding: bool = False,
         ctrl_block_out_channels: tuple[int] = (4, 8, 16, 16),
-        ctrl_num_attention_heads: Union[int, tuple[int]] = 4,
+        ctrl_num_attention_heads: int | tuple[int] = 4,
         ctrl_max_norm_num_groups: int = 32,
     ):
         super().__init__()
@@ -889,7 +889,7 @@ class UNetControlNetXSModel(ModelMixin, ConfigMixin):
         return processors
 
     # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.set_attn_processor
-    def set_attn_processor(self, processor: Union[AttentionProcessor, dict[str, AttentionProcessor]]):
+    def set_attn_processor(self, processor: AttentionProcessor | dict[str, AttentionProcessor]):
         r"""
         Sets the attention processor to use to compute attention.
 
@@ -1008,7 +1008,7 @@ class UNetControlNetXSModel(ModelMixin, ConfigMixin):
     def forward(
         self,
         sample: Tensor,
-        timestep: Union[torch.Tensor, float, int],
+        timestep: torch.Tensor | float | int,
         encoder_hidden_states: torch.Tensor,
         controlnet_cond: Optional[torch.Tensor] = None,
         conditioning_scale: Optional[float] = 1.0,
@@ -1019,7 +1019,7 @@ class UNetControlNetXSModel(ModelMixin, ConfigMixin):
         added_cond_kwargs: Optional[dict[str, torch.Tensor]] = None,
         return_dict: bool = True,
         apply_control: bool = True,
-    ) -> Union[ControlNetXSOutput, Tuple]:
+    ) -> ControlNetXSOutput | Tuple:
         """
         The [`ControlNetXSModel`] forward method.
 
@@ -1221,7 +1221,7 @@ class ControlNetXSCrossAttnDownBlock2D(nn.Module):
         norm_num_groups: int = 32,
         ctrl_max_norm_num_groups: int = 32,
         has_crossattn=True,
-        transformer_layers_per_block: Optional[Union[int, tuple[int]]] = 1,
+        transformer_layers_per_block: Optional[int | tuple[int]] = 1,
         base_num_attention_heads: Optional[int] = 1,
         ctrl_num_attention_heads: Optional[int] = 1,
         cross_attention_dim: Optional[int] = 1024,

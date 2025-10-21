@@ -18,7 +18,7 @@ import inspect
 import re
 import urllib.parse as ul
 from dataclasses import dataclass
-from typing import Callable, Dict, Optional, Tuple, Union
+from typing import Callable, Dict, Optional, Tuple
 
 import torch
 from transformers import T5EncoderModel, T5Tokenizer
@@ -81,7 +81,7 @@ EXAMPLE_DOC_STRING = """
 def retrieve_timesteps(
     scheduler,
     num_inference_steps: Optional[int] = None,
-    device: Optional[Union[str, torch.device]] = None,
+    device: Optional[str | torch.device] = None,
     timesteps: Optional[list[int]] = None,
     sigmas: Optional[list[float]] = None,
     **kwargs,
@@ -205,7 +205,7 @@ class LattePipeline(DiffusionPipeline):
     # Adapted from diffusers.pipelines.deepfloyd_if.pipeline_if.encode_prompt
     def encode_prompt(
         self,
-        prompt: Union[str, list[str]],
+        prompt: str | list[str],
         do_classifier_free_guidance: bool = True,
         negative_prompt: str = "",
         num_images_per_prompt: int = 1,
@@ -614,7 +614,7 @@ class LattePipeline(DiffusionPipeline):
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        prompt: Union[str, list[str]] = None,
+        prompt: str | list[str] = None,
         negative_prompt: str = "",
         num_inference_steps: int = 50,
         timesteps: Optional[list[int]] = None,
@@ -624,21 +624,21 @@ class LattePipeline(DiffusionPipeline):
         height: int = 512,
         width: int = 512,
         eta: float = 0.0,
-        generator: Optional[Union[torch.Generator, list[torch.Generator]]] = None,
+        generator: Optional[torch.Generator | list[torch.Generator]] = None,
         latents: Optional[torch.FloatTensor] = None,
         prompt_embeds: Optional[torch.FloatTensor] = None,
         negative_prompt_embeds: Optional[torch.FloatTensor] = None,
         output_type: str = "pil",
         return_dict: bool = True,
         callback_on_step_end: Optional[
-            Union[Callable[[int, int, Dict], None], PipelineCallback, MultiPipelineCallbacks]
+            Callable[[int, int, Dict], None] | PipelineCallback | MultiPipelineCallbacks
         ] = None,
         callback_on_step_end_tensor_inputs: list[str] = ["latents"],
         clean_caption: bool = True,
         mask_feature: bool = True,
         enable_temporal_attentions: bool = True,
         decode_chunk_size: int = 14,
-    ) -> Union[LattePipelineOutput, Tuple]:
+    ) -> LattePipelineOutput | Tuple:
         """
         Function invoked when calling the pipeline for generation.
 

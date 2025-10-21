@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import inspect
-from typing import Any, Callable, Dict, Optional, Union
+from typing import Any, Callable, Dict, Optional
 
 import PIL.Image
 import torch
@@ -93,7 +93,7 @@ def retrieve_latents(
 def retrieve_timesteps(
     scheduler,
     num_inference_steps: Optional[int] = None,
-    device: Optional[Union[str, torch.device]] = None,
+    device: Optional[str | torch.device] = None,
     timesteps: Optional[list[int]] = None,
     sigmas: Optional[list[float]] = None,
     **kwargs,
@@ -207,7 +207,7 @@ class StableDiffusionPAGImg2ImgPipeline(
         feature_extractor: CLIPImageProcessor,
         image_encoder: CLIPVisionModelWithProjection = None,
         requires_safety_checker: bool = True,
-        pag_applied_layers: Union[str, list[str]] = "mid",  # ["mid"], ["down.block_1", "up.block_0.attentions_0"]
+        pag_applied_layers: str | list[str] = "mid",  # ["mid"], ["down.block_1", "up.block_0.attentions_0"]
     ):
         super().__init__()
 
@@ -783,17 +783,17 @@ class StableDiffusionPAGImg2ImgPipeline(
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        prompt: Union[str, list[str]] = None,
+        prompt: str | list[str] = None,
         image: PipelineImageInput = None,
         strength: float = 0.8,
         num_inference_steps: Optional[int] = 50,
         timesteps: list[int] = None,
         sigmas: list[float] = None,
         guidance_scale: Optional[float] = 7.5,
-        negative_prompt: Optional[Union[str, list[str]]] = None,
+        negative_prompt: Optional[str | list[str]] = None,
         num_images_per_prompt: Optional[int] = 1,
         eta: Optional[float] = 0.0,
-        generator: Optional[Union[torch.Generator, list[torch.Generator]]] = None,
+        generator: Optional[torch.Generator | list[torch.Generator]] = None,
         prompt_embeds: Optional[torch.Tensor] = None,
         negative_prompt_embeds: Optional[torch.Tensor] = None,
         ip_adapter_image: Optional[PipelineImageInput] = None,
@@ -803,7 +803,7 @@ class StableDiffusionPAGImg2ImgPipeline(
         cross_attention_kwargs: Optional[dict[str, Any]] = None,
         clip_skip: int = None,
         callback_on_step_end: Optional[
-            Union[Callable[[int, int, Dict], None], PipelineCallback, MultiPipelineCallbacks]
+            Callable[[int, int, Dict], None] | PipelineCallback | MultiPipelineCallbacks
         ] = None,
         callback_on_step_end_tensor_inputs: list[str] = ["latents"],
         pag_scale: float = 3.0,

@@ -14,7 +14,7 @@
 
 import inspect
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, Optional, Union
+from typing import Any, Callable, Dict, Optional
 
 import numpy as np
 import PIL
@@ -128,7 +128,7 @@ class PIAPipelineOutput(BaseOutput):
             channels, height, width)`.
     """
 
-    frames: Union[torch.Tensor, np.ndarray, list[list[PIL.Image.Image]]]
+    frames: torch.Tensor | np.ndarray | list[list[PIL.Image.Image]]
 
 
 class PIAPipeline(
@@ -179,15 +179,13 @@ class PIAPipeline(
         vae: AutoencoderKL,
         text_encoder: CLIPTextModel,
         tokenizer: CLIPTokenizer,
-        unet: Union[UNet2DConditionModel, UNetMotionModel],
-        scheduler: Union[
-            DDIMScheduler,
-            PNDMScheduler,
-            LMSDiscreteScheduler,
-            EulerDiscreteScheduler,
-            EulerAncestralDiscreteScheduler,
-            DPMSolverMultistepScheduler,
-        ],
+        unet: UNet2DConditionModel | UNetMotionModel,
+        scheduler: DDIMScheduler
+        | PNDMScheduler
+        | LMSDiscreteScheduler
+        | EulerDiscreteScheduler
+        | EulerAncestralDiscreteScheduler
+        | DPMSolverMultistepScheduler,
         motion_adapter: Optional[MotionAdapter] = None,
         feature_extractor: CLIPImageProcessor = None,
         image_encoder: CLIPVisionModelWithProjection = None,
@@ -674,17 +672,17 @@ class PIAPipeline(
     def __call__(
         self,
         image: PipelineImageInput,
-        prompt: Union[str, list[str]] = None,
+        prompt: str | list[str] = None,
         strength: float = 1.0,
         num_frames: Optional[int] = 16,
         height: Optional[int] = None,
         width: Optional[int] = None,
         num_inference_steps: int = 50,
         guidance_scale: float = 7.5,
-        negative_prompt: Optional[Union[str, list[str]]] = None,
+        negative_prompt: Optional[str | list[str]] = None,
         num_videos_per_prompt: Optional[int] = 1,
         eta: float = 0.0,
-        generator: Optional[Union[torch.Generator, list[torch.Generator]]] = None,
+        generator: Optional[torch.Generator | list[torch.Generator]] = None,
         latents: Optional[torch.Tensor] = None,
         prompt_embeds: Optional[torch.Tensor] = None,
         negative_prompt_embeds: Optional[torch.Tensor] = None,

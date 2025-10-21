@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Optional, Union
+from typing import Optional
 
 import torch
 import torch.nn as nn
@@ -149,9 +149,9 @@ class WanCausalConv3d(nn.Conv3d):
         self,
         in_channels: int,
         out_channels: int,
-        kernel_size: Union[int, tuple[int, int, int]],
-        stride: Union[int, tuple[int, int, int]] = 1,
-        padding: Union[int, tuple[int, int, int]] = 0,
+        kernel_size: int | tuple[int, int, int],
+        stride: int | tuple[int, int, int] = 1,
+        padding: int | tuple[int, int, int] = 0,
     ) -> None:
         super().__init__(
             in_channels=in_channels,
@@ -1171,7 +1171,7 @@ class AutoencoderKLWan(ModelMixin, ConfigMixin, FromOriginalModelMixin):
     @apply_forward_hook
     def encode(
         self, x: torch.Tensor, return_dict: bool = True
-    ) -> Union[AutoencoderKLOutput, tuple[DiagonalGaussianDistribution]]:
+    ) -> AutoencoderKLOutput | tuple[DiagonalGaussianDistribution]:
         r"""
         Encode a batch of images into latents.
 
@@ -1227,7 +1227,7 @@ class AutoencoderKLWan(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         return DecoderOutput(sample=out)
 
     @apply_forward_hook
-    def decode(self, z: torch.Tensor, return_dict: bool = True) -> Union[DecoderOutput, torch.Tensor]:
+    def decode(self, z: torch.Tensor, return_dict: bool = True) -> DecoderOutput | torch.Tensor:
         r"""
         Decode a batch of images.
 
@@ -1333,7 +1333,7 @@ class AutoencoderKLWan(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         enc = torch.cat(result_rows, dim=3)[:, :, :, :latent_height, :latent_width]
         return enc
 
-    def tiled_decode(self, z: torch.Tensor, return_dict: bool = True) -> Union[DecoderOutput, torch.Tensor]:
+    def tiled_decode(self, z: torch.Tensor, return_dict: bool = True) -> DecoderOutput | torch.Tensor:
         r"""
         Decode a batch of images using a tiled decoder.
 
@@ -1402,7 +1402,7 @@ class AutoencoderKLWan(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         sample_posterior: bool = False,
         return_dict: bool = True,
         generator: Optional[torch.Generator] = None,
-    ) -> Union[DecoderOutput, torch.Tensor]:
+    ) -> DecoderOutput | torch.Tensor:
         """
         Args:
             sample (`torch.Tensor`): Input sample.

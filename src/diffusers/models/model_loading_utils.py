@@ -22,7 +22,7 @@ from array import array
 from collections import OrderedDict, defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from typing import Dict, List, Optional, Union
+from typing import Dict, List, Optional
 from zipfile import is_zipfile
 
 import safetensors
@@ -135,7 +135,7 @@ def _fetch_remapped_cls_from_config(config, old_class):
         return old_class
 
 
-def _determine_param_device(param_name: str, device_map: Optional[dict[str, Union[int, str, torch.device]]]):
+def _determine_param_device(param_name: str, device_map: Optional[dict[str, int | str | torch.device]]):
     """
     Find the device of param_name from the device_map.
     """
@@ -153,10 +153,10 @@ def _determine_param_device(param_name: str, device_map: Optional[dict[str, Unio
 
 
 def load_state_dict(
-    checkpoint_file: Union[str, os.PathLike],
+    checkpoint_file: str | os.PathLike,
     dduf_entries: Optional[dict[str, DDUFEntry]] = None,
     disable_mmap: bool = False,
-    map_location: Union[str, torch.device] = "cpu",
+    map_location: str | torch.device = "cpu",
 ):
     """
     Reads a checkpoint file, returning properly formatted errors if they arise.
@@ -213,16 +213,16 @@ def load_state_dict(
 def load_model_dict_into_meta(
     model,
     state_dict: OrderedDict,
-    dtype: Optional[Union[str, torch.dtype]] = None,
+    dtype: Optional[str | torch.dtype] = None,
     model_name_or_path: Optional[str] = None,
     hf_quantizer: Optional[DiffusersQuantizer] = None,
     keep_in_fp32_modules: Optional[List] = None,
-    device_map: Optional[dict[str, Union[int, str, torch.device]]] = None,
+    device_map: Optional[dict[str, int | str | torch.device]] = None,
     unexpected_keys: Optional[list[str]] = None,
-    offload_folder: Optional[Union[str, os.PathLike]] = None,
+    offload_folder: Optional[str | os.PathLike] = None,
     offload_index: Optional[Dict] = None,
     state_dict_index: Optional[Dict] = None,
-    state_dict_folder: Optional[Union[str, os.PathLike]] = None,
+    state_dict_folder: Optional[str | os.PathLike] = None,
 ) -> list[str]:
     """
     This is somewhat similar to `_load_state_dict_into_model`, but deals with a model that has some or all of its

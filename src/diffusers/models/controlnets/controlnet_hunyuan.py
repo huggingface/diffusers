@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 from dataclasses import dataclass
-from typing import Optional, Union
+from typing import Optional
 
 import torch
 from torch import nn
@@ -139,7 +139,7 @@ class HunyuanDiT2DControlNetModel(ModelMixin, ConfigMixin):
 
         return processors
 
-    def set_attn_processor(self, processor: Union[AttentionProcessor, dict[str, AttentionProcessor]]):
+    def set_attn_processor(self, processor: AttentionProcessor | dict[str, AttentionProcessor]):
         r"""
         Sets the attention processor to use to compute attention.
 

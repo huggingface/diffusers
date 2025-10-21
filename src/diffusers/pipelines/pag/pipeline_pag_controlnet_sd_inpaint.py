@@ -15,7 +15,7 @@
 # This model implementation is heavily inspired by https://github.com/haofanwang/ControlNet-for-Diffusers/
 
 import inspect
-from typing import Any, Callable, Dict, Optional, Union
+from typing import Any, Callable, Dict, Optional
 
 import numpy as np
 import PIL.Image
@@ -196,13 +196,13 @@ class StableDiffusionControlNetPAGInpaintPipeline(
         text_encoder: CLIPTextModel,
         tokenizer: CLIPTokenizer,
         unet: UNet2DConditionModel,
-        controlnet: Union[ControlNetModel, list[ControlNetModel], tuple[ControlNetModel], MultiControlNetModel],
+        controlnet: ControlNetModel | list[ControlNetModel] | tuple[ControlNetModel] | MultiControlNetModel,
         scheduler: KarrasDiffusionSchedulers,
         safety_checker: StableDiffusionSafetyChecker,
         feature_extractor: CLIPImageProcessor,
         image_encoder: CLIPVisionModelWithProjection = None,
         requires_safety_checker: bool = True,
-        pag_applied_layers: Union[str, list[str]] = "mid",
+        pag_applied_layers: str | list[str] = "mid",
     ):
         super().__init__()
 
@@ -973,7 +973,7 @@ class StableDiffusionControlNetPAGInpaintPipeline(
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        prompt: Union[str, list[str]] = None,
+        prompt: str | list[str] = None,
         image: PipelineImageInput = None,
         mask_image: PipelineImageInput = None,
         control_image: PipelineImageInput = None,
@@ -983,10 +983,10 @@ class StableDiffusionControlNetPAGInpaintPipeline(
         strength: float = 1.0,
         num_inference_steps: int = 50,
         guidance_scale: float = 7.5,
-        negative_prompt: Optional[Union[str, list[str]]] = None,
+        negative_prompt: Optional[str | list[str]] = None,
         num_images_per_prompt: Optional[int] = 1,
         eta: float = 0.0,
-        generator: Optional[Union[torch.Generator, list[torch.Generator]]] = None,
+        generator: Optional[torch.Generator | list[torch.Generator]] = None,
         latents: Optional[torch.Tensor] = None,
         prompt_embeds: Optional[torch.Tensor] = None,
         negative_prompt_embeds: Optional[torch.Tensor] = None,
@@ -995,12 +995,12 @@ class StableDiffusionControlNetPAGInpaintPipeline(
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
         cross_attention_kwargs: Optional[dict[str, Any]] = None,
-        controlnet_conditioning_scale: Union[float, list[float]] = 0.5,
-        control_guidance_start: Union[float, list[float]] = 0.0,
-        control_guidance_end: Union[float, list[float]] = 1.0,
+        controlnet_conditioning_scale: float | list[float] = 0.5,
+        control_guidance_start: float | list[float] = 0.0,
+        control_guidance_end: float | list[float] = 1.0,
         clip_skip: Optional[int] = None,
         callback_on_step_end: Optional[
-            Union[Callable[[int, int, Dict], None], PipelineCallback, MultiPipelineCallbacks]
+            Callable[[int, int, Dict], None] | PipelineCallback | MultiPipelineCallbacks
         ] = None,
         callback_on_step_end_tensor_inputs: list[str] = ["latents"],
         pag_scale: float = 3.0,

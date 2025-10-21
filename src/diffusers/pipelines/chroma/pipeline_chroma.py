@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import inspect
-from typing import Any, Callable, Dict, Optional, Union
+from typing import Any, Callable, Dict, Optional
 
 import numpy as np
 import torch
@@ -92,7 +92,7 @@ def calculate_shift(
 def retrieve_timesteps(
     scheduler,
     num_inference_steps: Optional[int] = None,
-    device: Optional[Union[str, torch.device]] = None,
+    device: Optional[str | torch.device] = None,
     timesteps: Optional[list[int]] = None,
     sigmas: Optional[list[float]] = None,
     **kwargs,
@@ -208,7 +208,7 @@ class ChromaPipeline(
 
     def _get_t5_prompt_embeds(
         self,
-        prompt: Union[str, list[str]] = None,
+        prompt: str | list[str] = None,
         num_images_per_prompt: int = 1,
         max_sequence_length: int = 512,
         device: Optional[torch.device] = None,
@@ -261,8 +261,8 @@ class ChromaPipeline(
 
     def encode_prompt(
         self,
-        prompt: Union[str, list[str]],
-        negative_prompt: Union[str, list[str]] = None,
+        prompt: str | list[str],
+        negative_prompt: str | list[str] = None,
         device: Optional[torch.device] = None,
         num_images_per_prompt: int = 1,
         prompt_embeds: Optional[torch.Tensor] = None,
@@ -639,15 +639,15 @@ class ChromaPipeline(
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        prompt: Union[str, list[str]] = None,
-        negative_prompt: Union[str, list[str]] = None,
+        prompt: str | list[str] = None,
+        negative_prompt: str | list[str] = None,
         height: Optional[int] = None,
         width: Optional[int] = None,
         num_inference_steps: int = 35,
         sigmas: Optional[list[float]] = None,
         guidance_scale: float = 5.0,
         num_images_per_prompt: Optional[int] = 1,
-        generator: Optional[Union[torch.Generator, list[torch.Generator]]] = None,
+        generator: Optional[torch.Generator | list[torch.Generator]] = None,
         latents: Optional[torch.Tensor] = None,
         prompt_embeds: Optional[torch.Tensor] = None,
         ip_adapter_image: Optional[PipelineImageInput] = None,

@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from typing import Optional, Union
+from typing import Optional
 
 import PIL.Image
 import torch
@@ -202,7 +202,7 @@ class BlipDiffusionPipeline(DeprecatedPipelineMixin, DiffusionPipeline):
         height: int = 512,
         width: int = 512,
         num_inference_steps: int = 50,
-        generator: Optional[Union[torch.Generator, list[torch.Generator]]] = None,
+        generator: Optional[torch.Generator | list[torch.Generator]] = None,
         neg_prompt: Optional[str] = "",
         prompt_strength: float = 1.0,
         prompt_reps: int = 20,

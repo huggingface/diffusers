@@ -14,7 +14,7 @@
 
 import math
 from dataclasses import dataclass
-from typing import Optional, Union
+from typing import Optional
 
 import numpy as np
 import torch
@@ -165,8 +165,8 @@ class StableCascadeUNet(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         effnet_in_channels: Optional[int] = None,
         pixel_mapper_in_channels: Optional[int] = None,
         kernel_size=3,
-        dropout: Union[float, tuple[float]] = (0.1, 0.1),
-        self_attn: Union[bool, tuple[bool]] = True,
+        dropout: float | tuple[float] = (0.1, 0.1),
+        self_attn: bool | tuple[bool] = True,
         timestep_conditioning_type: tuple[str] = ("sca", "crp"),
         switch_level: Optional[tuple[bool]] = None,
     ):

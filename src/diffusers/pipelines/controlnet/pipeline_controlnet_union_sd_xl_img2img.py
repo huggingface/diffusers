@@ -14,7 +14,7 @@
 
 
 import inspect
-from typing import Any, Callable, Dict, Optional, Union
+from typing import Any, Callable, Dict, Optional
 
 import numpy as np
 import PIL.Image
@@ -267,9 +267,10 @@ class StableDiffusionXLControlNetUnionImg2ImgPipeline(
         tokenizer: CLIPTokenizer,
         tokenizer_2: CLIPTokenizer,
         unet: UNet2DConditionModel,
-        controlnet: Union[
-            ControlNetUnionModel, list[ControlNetUnionModel], tuple[ControlNetUnionModel], MultiControlNetUnionModel
-        ],
+        controlnet: ControlNetUnionModel
+        | list[ControlNetUnionModel]
+        | tuple[ControlNetUnionModel]
+        | MultiControlNetUnionModel,
         scheduler: KarrasDiffusionSchedulers,
         requires_aesthetics_score: bool = False,
         force_zeros_for_empty_prompt: bool = True,
@@ -1079,20 +1080,20 @@ class StableDiffusionXLControlNetUnionImg2ImgPipeline(
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        prompt: Union[str, list[str]] = None,
-        prompt_2: Optional[Union[str, list[str]]] = None,
+        prompt: str | list[str] = None,
+        prompt_2: Optional[str | list[str]] = None,
         image: PipelineImageInput = None,
-        control_image: Union[PipelineImageInput, list[PipelineImageInput]] = None,
+        control_image: PipelineImageInput | list[PipelineImageInput] = None,
         height: Optional[int] = None,
         width: Optional[int] = None,
         strength: float = 0.8,
         num_inference_steps: int = 50,
         guidance_scale: float = 5.0,
-        negative_prompt: Optional[Union[str, list[str]]] = None,
-        negative_prompt_2: Optional[Union[str, list[str]]] = None,
+        negative_prompt: Optional[str | list[str]] = None,
+        negative_prompt_2: Optional[str | list[str]] = None,
         num_images_per_prompt: Optional[int] = 1,
         eta: float = 0.0,
-        generator: Optional[Union[torch.Generator, list[torch.Generator]]] = None,
+        generator: Optional[torch.Generator | list[torch.Generator]] = None,
         latents: Optional[torch.Tensor] = None,
         prompt_embeds: Optional[torch.Tensor] = None,
         negative_prompt_embeds: Optional[torch.Tensor] = None,
@@ -1103,11 +1104,11 @@ class StableDiffusionXLControlNetUnionImg2ImgPipeline(
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
         cross_attention_kwargs: Optional[dict[str, Any]] = None,
-        controlnet_conditioning_scale: Union[float, list[float]] = 0.8,
+        controlnet_conditioning_scale: float | list[float] = 0.8,
         guess_mode: bool = False,
-        control_guidance_start: Union[float, list[float]] = 0.0,
-        control_guidance_end: Union[float, list[float]] = 1.0,
-        control_mode: Optional[Union[int, list[int], list[list[int]]]] = None,
+        control_guidance_start: float | list[float] = 0.0,
+        control_guidance_end: float | list[float] = 1.0,
+        control_mode: Optional[int | list[int] | list[list[int]]] = None,
         original_size: tuple[int, int] = None,
         crops_coords_top_left: tuple[int, int] = (0, 0),
         target_size: tuple[int, int] = None,
@@ -1118,7 +1119,7 @@ class StableDiffusionXLControlNetUnionImg2ImgPipeline(
         negative_aesthetic_score: float = 2.5,
         clip_skip: Optional[int] = None,
         callback_on_step_end: Optional[
-            Union[Callable[[int, int, Dict], None], PipelineCallback, MultiPipelineCallbacks]
+            Callable[[int, int, Dict], None] | PipelineCallback | MultiPipelineCallbacks
         ] = None,
         callback_on_step_end_tensor_inputs: list[str] = ["latents"],
         **kwargs,

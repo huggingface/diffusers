@@ -24,7 +24,7 @@ import os
 import re
 from collections import OrderedDict
 from pathlib import Path
-from typing import Any, Optional, Union
+from typing import Any, Optional
 
 import numpy as np
 from huggingface_hub import DDUFEntry, create_repo, hf_hub_download
@@ -143,7 +143,7 @@ class ConfigMixin:
 
         raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
 
-    def save_config(self, save_directory: Union[str, os.PathLike], push_to_hub: bool = False, **kwargs):
+    def save_config(self, save_directory: str | os.PathLike, push_to_hub: bool = False, **kwargs):
         """
         Save a configuration object to the directory specified in `save_directory` so that it can be reloaded using the
         [`~ConfigMixin.from_config`] class method.
@@ -189,8 +189,8 @@ class ConfigMixin:
 
     @classmethod
     def from_config(
-        cls, config: Union[FrozenDict, dict[str, Any]] = None, return_unused_kwargs=False, **kwargs
-    ) -> Union[Self, tuple[Self, dict[str, Any]]]:
+        cls, config: FrozenDict | dict[str, Any] = None, return_unused_kwargs=False, **kwargs
+    ) -> Self | tuple[Self, dict[str, Any]]:
         r"""
         Instantiate a Python class from a config dictionary.
 
@@ -292,7 +292,7 @@ class ConfigMixin:
     @validate_hf_hub_args
     def load_config(
         cls,
-        pretrained_model_name_or_path: Union[str, os.PathLike],
+        pretrained_model_name_or_path: str | os.PathLike,
         return_unused_kwargs=False,
         return_commit_hash=False,
         **kwargs,
@@ -563,9 +563,7 @@ class ConfigMixin:
         return init_dict, unused_kwargs, hidden_config_dict
 
     @classmethod
-    def _dict_from_json_file(
-        cls, json_file: Union[str, os.PathLike], dduf_entries: Optional[dict[str, DDUFEntry]] = None
-    ):
+    def _dict_from_json_file(cls, json_file: str | os.PathLike, dduf_entries: Optional[dict[str, DDUFEntry]] = None):
         if dduf_entries:
             text = dduf_entries[json_file].read_text()
         else:
@@ -625,7 +623,7 @@ class ConfigMixin:
 
         return json.dumps(config_dict, indent=2, sort_keys=True) + "\n"
 
-    def to_json_file(self, json_file_path: Union[str, os.PathLike]):
+    def to_json_file(self, json_file_path: str | os.PathLike):
         """
         Save the configuration instance's parameters to a JSON file.
 
@@ -756,7 +754,7 @@ class LegacyConfigMixin(ConfigMixin):
     """
 
     @classmethod
-    def from_config(cls, config: Union[FrozenDict, dict[str, Any]] = None, return_unused_kwargs=False, **kwargs):
+    def from_config(cls, config: FrozenDict | dict[str, Any] = None, return_unused_kwargs=False, **kwargs):
         # To prevent dependency import problem.
         from .models.model_loading_utils import _fetch_remapped_cls_from_config
 

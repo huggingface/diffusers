@@ -13,7 +13,7 @@
 # limitations under the License.
 
 from dataclasses import dataclass
-from typing import Any, Optional, Tuple, Union
+from typing import Any, Optional, Tuple
 
 import torch
 import torch.nn as nn
@@ -253,18 +253,18 @@ class AudioLDM2UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoad
         ),
         mid_block_type: Optional[str] = "UNetMidBlock2DCrossAttn",
         up_block_types: tuple[str] = ("UpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D"),
-        only_cross_attention: Union[bool, tuple[bool]] = False,
+        only_cross_attention: bool | tuple[bool] = False,
         block_out_channels: tuple[int] = (320, 640, 1280, 1280),
-        layers_per_block: Union[int, tuple[int]] = 2,
+        layers_per_block: int | tuple[int] = 2,
         downsample_padding: int = 1,
         mid_block_scale_factor: float = 1,
         act_fn: str = "silu",
         norm_num_groups: Optional[int] = 32,
         norm_eps: float = 1e-5,
-        cross_attention_dim: Union[int, tuple[int]] = 1280,
-        transformer_layers_per_block: Union[int, tuple[int]] = 1,
-        attention_head_dim: Union[int, tuple[int]] = 8,
-        num_attention_heads: Optional[Union[int, tuple[int]]] = None,
+        cross_attention_dim: int | tuple[int] = 1280,
+        transformer_layers_per_block: int | tuple[int] = 1,
+        attention_head_dim: int | tuple[int] = 8,
+        num_attention_heads: Optional[int | tuple[int]] = None,
         use_linear_projection: bool = False,
         class_embed_type: Optional[str] = None,
         num_class_embeds: Optional[int] = None,
@@ -556,7 +556,7 @@ class AudioLDM2UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoad
         return processors
 
     # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.set_attn_processor
-    def set_attn_processor(self, processor: Union[AttentionProcessor, dict[str, AttentionProcessor]]):
+    def set_attn_processor(self, processor: AttentionProcessor | dict[str, AttentionProcessor]):
         r"""
         Sets the attention processor to use to compute attention.
 
@@ -675,7 +675,7 @@ class AudioLDM2UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoad
     def forward(
         self,
         sample: torch.Tensor,
-        timestep: Union[torch.Tensor, float, int],
+        timestep: torch.Tensor | float | int,
         encoder_hidden_states: torch.Tensor,
         class_labels: Optional[torch.Tensor] = None,
         timestep_cond: Optional[torch.Tensor] = None,
@@ -685,7 +685,7 @@ class AudioLDM2UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoad
         return_dict: bool = True,
         encoder_hidden_states_1: Optional[torch.Tensor] = None,
         encoder_attention_mask_1: Optional[torch.Tensor] = None,
-    ) -> Union[UNet2DConditionOutput, Tuple]:
+    ) -> UNet2DConditionOutput | Tuple:
         r"""
         The [`AudioLDM2UNet2DConditionModel`] forward method.
 

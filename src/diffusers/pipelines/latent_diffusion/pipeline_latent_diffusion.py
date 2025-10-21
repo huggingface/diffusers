@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import inspect
-from typing import Optional, Tuple, Union
+from typing import Optional, Tuple
 
 import torch
 import torch.nn as nn
@@ -62,11 +62,11 @@ class LDMTextToImagePipeline(DiffusionPipeline):
 
     def __init__(
         self,
-        vqvae: Union[VQModel, AutoencoderKL],
+        vqvae: VQModel | AutoencoderKL,
         bert: PreTrainedModel,
         tokenizer: PreTrainedTokenizer,
-        unet: Union[UNet2DModel, UNet2DConditionModel],
-        scheduler: Union[DDIMScheduler, PNDMScheduler, LMSDiscreteScheduler],
+        unet: UNet2DModel | UNet2DConditionModel,
+        scheduler: DDIMScheduler | PNDMScheduler | LMSDiscreteScheduler,
     ):
         super().__init__()
         self.register_modules(vqvae=vqvae, bert=bert, tokenizer=tokenizer, unet=unet, scheduler=scheduler)
@@ -75,18 +75,18 @@ class LDMTextToImagePipeline(DiffusionPipeline):
     @torch.no_grad()
     def __call__(
         self,
-        prompt: Union[str, list[str]],
+        prompt: str | list[str],
         height: Optional[int] = None,
         width: Optional[int] = None,
         num_inference_steps: Optional[int] = 50,
         guidance_scale: Optional[float] = 1.0,
         eta: Optional[float] = 0.0,
-        generator: Optional[Union[torch.Generator, list[torch.Generator]]] = None,
+        generator: Optional[torch.Generator | list[torch.Generator]] = None,
         latents: Optional[torch.Tensor] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
         **kwargs,
-    ) -> Union[Tuple, ImagePipelineOutput]:
+    ) -> Tuple | ImagePipelineOutput:
         r"""
         The call function to the pipeline for generation.
 
@@ -598,7 +598,7 @@ class LDMBertEncoder(LDMBertPreTrainedModel):
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
-    ) -> Union[Tuple, BaseModelOutput]:
+    ) -> Tuple | BaseModelOutput:
         r"""
         Args:
             input_ids (`torch.LongTensor` of shape `(batch_size, sequence_length)`):

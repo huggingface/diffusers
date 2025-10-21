@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import os
-from typing import TYPE_CHECKING, Any, Optional, Union
+from typing import TYPE_CHECKING, Any, Optional
 
 import torch
 from huggingface_hub.utils import validate_hf_hub_args
@@ -47,7 +47,7 @@ class BaseGuidance(ConfigMixin, PushToHubMixin):
         self._num_inference_steps: int = None
         self._timestep: torch.LongTensor = None
         self._count_prepared = 0
-        self._input_fields: dict[str, Union[str, tuple[str, str]]] = None
+        self._input_fields: dict[str, str | tuple[str, str]] = None
         self._enabled = True
 
         if not (0.0 <= start < 1.0):
@@ -72,7 +72,7 @@ class BaseGuidance(ConfigMixin, PushToHubMixin):
         self._timestep = timestep
         self._count_prepared = 0
 
-    def set_input_fields(self, **kwargs: dict[str, Union[str, tuple[str, str]]]) -> None:
+    def set_input_fields(self, **kwargs: dict[str, str | tuple[str, str]]) -> None:
         """
         Set the input fields for the guidance technique. The input fields are used to specify the names of the returned
         attributes containing the prepared data after `prepare_inputs` is called. The prepared data is obtained from
@@ -155,7 +155,7 @@ class BaseGuidance(ConfigMixin, PushToHubMixin):
     @classmethod
     def _prepare_batch(
         cls,
-        input_fields: dict[str, Union[str, tuple[str, str]]],
+        input_fields: dict[str, str | tuple[str, str]],
         data: "BlockState",
         tuple_index: int,
         identifier: str,
@@ -205,7 +205,7 @@ class BaseGuidance(ConfigMixin, PushToHubMixin):
     @validate_hf_hub_args
     def from_pretrained(
         cls,
-        pretrained_model_name_or_path: Optional[Union[str, os.PathLike]] = None,
+        pretrained_model_name_or_path: Optional[str | os.PathLike] = None,
         subfolder: Optional[str] = None,
         return_unused_kwargs=False,
         **kwargs,
@@ -262,7 +262,7 @@ class BaseGuidance(ConfigMixin, PushToHubMixin):
         )
         return cls.from_config(config, return_unused_kwargs=return_unused_kwargs, **kwargs)
 
-    def save_pretrained(self, save_directory: Union[str, os.PathLike], push_to_hub: bool = False, **kwargs):
+    def save_pretrained(self, save_directory: str | os.PathLike, push_to_hub: bool = False, **kwargs):
         """
         Save a guider configuration object to a directory so that it can be reloaded using the
         [`~BaseGuidance.from_pretrained`] class method.

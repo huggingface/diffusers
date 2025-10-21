@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import inspect
-from typing import Optional, Tuple, Union
+from typing import Optional, Tuple
 
 import torch
 
@@ -47,13 +47,13 @@ class LDMPipeline(DiffusionPipeline):
     def __call__(
         self,
         batch_size: int = 1,
-        generator: Optional[Union[torch.Generator, list[torch.Generator]]] = None,
+        generator: Optional[torch.Generator | list[torch.Generator]] = None,
         eta: float = 0.0,
         num_inference_steps: int = 50,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
         **kwargs,
-    ) -> Union[Tuple, ImagePipelineOutput]:
+    ) -> Tuple | ImagePipelineOutput:
         r"""
         The call function to the pipeline for generation.
 

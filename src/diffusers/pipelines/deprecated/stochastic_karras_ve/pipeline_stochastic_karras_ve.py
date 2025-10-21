@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Optional, Tuple, Union
+from typing import Optional, Tuple
 
 import torch
 
@@ -46,11 +46,11 @@ class KarrasVePipeline(DiffusionPipeline):
         self,
         batch_size: int = 1,
         num_inference_steps: int = 50,
-        generator: Optional[Union[torch.Generator, list[torch.Generator]]] = None,
+        generator: Optional[torch.Generator | list[torch.Generator]] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
         **kwargs,
-    ) -> Union[Tuple, ImagePipelineOutput]:
+    ) -> Tuple | ImagePipelineOutput:
         r"""
         The call function to the pipeline for generation.
 

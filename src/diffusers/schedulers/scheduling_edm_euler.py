@@ -14,7 +14,7 @@
 
 import math
 from dataclasses import dataclass
-from typing import Optional, Tuple, Union
+from typing import Optional, Tuple
 
 import torch
 
@@ -188,7 +188,7 @@ class EDMEulerScheduler(SchedulerMixin, ConfigMixin):
 
         return denoised
 
-    def scale_model_input(self, sample: torch.Tensor, timestep: Union[float, torch.Tensor]) -> torch.Tensor:
+    def scale_model_input(self, sample: torch.Tensor, timestep: float | torch.Tensor) -> torch.Tensor:
         """
         Ensures interchangeability with schedulers that need to scale the denoising model input depending on the
         current timestep. Scales the denoising model input by `(sigma**2 + 1) ** 0.5` to match the Euler algorithm.
@@ -215,8 +215,8 @@ class EDMEulerScheduler(SchedulerMixin, ConfigMixin):
     def set_timesteps(
         self,
         num_inference_steps: int = None,
-        device: Union[str, torch.device] = None,
-        sigmas: Optional[Union[torch.Tensor, list[float]]] = None,
+        device: str | torch.device = None,
+        sigmas: Optional[torch.Tensor | list[float]] = None,
     ):
         """
         Sets the discrete timesteps used for the diffusion chain (to be run before inference).
@@ -310,7 +310,7 @@ class EDMEulerScheduler(SchedulerMixin, ConfigMixin):
     def step(
         self,
         model_output: torch.Tensor,
-        timestep: Union[float, torch.Tensor],
+        timestep: float | torch.Tensor,
         sample: torch.Tensor,
         s_churn: float = 0.0,
         s_tmin: float = 0.0,
@@ -319,7 +319,7 @@ class EDMEulerScheduler(SchedulerMixin, ConfigMixin):
         generator: Optional[torch.Generator] = None,
         return_dict: bool = True,
         pred_original_sample: Optional[torch.Tensor] = None,
-    ) -> Union[EDMEulerSchedulerOutput, Tuple]:
+    ) -> EDMEulerSchedulerOutput | Tuple:
         """
         Predict the sample from the previous timestep by reversing the SDE. This function propagates the diffusion
         process from the learned model outputs (most often the predicted noise).

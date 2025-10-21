@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import inspect
-from typing import Callable, Optional, Union
+from typing import Callable, Optional
 
 import numpy as np
 import PIL.Image
@@ -87,7 +87,7 @@ class OnnxStableDiffusionInpaintPipeline(DiffusionPipeline):
     text_encoder: OnnxRuntimeModel
     tokenizer: CLIPTokenizer
     unet: OnnxRuntimeModel
-    scheduler: Union[DDIMScheduler, PNDMScheduler, LMSDiscreteScheduler]
+    scheduler: DDIMScheduler | PNDMScheduler | LMSDiscreteScheduler
     safety_checker: OnnxRuntimeModel
     feature_extractor: CLIPImageProcessor
 
@@ -101,7 +101,7 @@ class OnnxStableDiffusionInpaintPipeline(DiffusionPipeline):
         text_encoder: OnnxRuntimeModel,
         tokenizer: CLIPTokenizer,
         unet: OnnxRuntimeModel,
-        scheduler: Union[DDIMScheduler, PNDMScheduler, LMSDiscreteScheduler],
+        scheduler: DDIMScheduler | PNDMScheduler | LMSDiscreteScheduler,
         safety_checker: OnnxRuntimeModel,
         feature_extractor: CLIPImageProcessor,
         requires_safety_checker: bool = True,
@@ -167,7 +167,7 @@ class OnnxStableDiffusionInpaintPipeline(DiffusionPipeline):
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_onnx_stable_diffusion.OnnxStableDiffusionPipeline._encode_prompt
     def _encode_prompt(
         self,
-        prompt: Union[str, list[str]],
+        prompt: str | list[str],
         num_images_per_prompt: Optional[int],
         do_classifier_free_guidance: bool,
         negative_prompt: Optional[str],
@@ -271,7 +271,7 @@ class OnnxStableDiffusionInpaintPipeline(DiffusionPipeline):
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_onnx_stable_diffusion.OnnxStableDiffusionPipeline.check_inputs
     def check_inputs(
         self,
-        prompt: Union[str, list[str]],
+        prompt: str | list[str],
         height: Optional[int],
         width: Optional[int],
         callback_steps: int,
@@ -319,14 +319,14 @@ class OnnxStableDiffusionInpaintPipeline(DiffusionPipeline):
     @torch.no_grad()
     def __call__(
         self,
-        prompt: Union[str, list[str]],
+        prompt: str | list[str],
         image: PIL.Image.Image,
         mask_image: PIL.Image.Image,
         height: Optional[int] = 512,
         width: Optional[int] = 512,
         num_inference_steps: int = 50,
         guidance_scale: float = 7.5,
-        negative_prompt: Optional[Union[str, list[str]]] = None,
+        negative_prompt: Optional[str | list[str]] = None,
         num_images_per_prompt: Optional[int] = 1,
         eta: float = 0.0,
         generator: Optional[np.random.RandomState] = None,

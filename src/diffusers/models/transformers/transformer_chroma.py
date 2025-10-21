@@ -13,7 +13,7 @@
 # limitations under the License.
 
 
-from typing import Any, Optional, Union
+from typing import Any, Optional
 
 import numpy as np
 import torch
@@ -486,7 +486,7 @@ class ChromaTransformer2DModel(
         controlnet_single_block_samples=None,
         return_dict: bool = True,
         controlnet_blocks_repeat: bool = False,
-    ) -> Union[torch.Tensor, Transformer2DModelOutput]:
+    ) -> torch.Tensor | Transformer2DModelOutput:
         """
         The [`FluxTransformer2DModel`] forward method.
 

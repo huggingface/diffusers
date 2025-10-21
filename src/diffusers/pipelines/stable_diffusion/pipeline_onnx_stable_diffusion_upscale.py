@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import inspect
-from typing import Any, Callable, Optional, Union
+from typing import Any, Callable, Optional
 
 import numpy as np
 import PIL.Image
@@ -144,7 +144,7 @@ class OnnxStableDiffusionUpscalePipeline(DiffusionPipeline):
 
     def check_inputs(
         self,
-        prompt: Union[str, list[str]],
+        prompt: str | list[str],
         image,
         noise_level,
         callback_steps,
@@ -245,7 +245,7 @@ class OnnxStableDiffusionUpscalePipeline(DiffusionPipeline):
 
     def _encode_prompt(
         self,
-        prompt: Union[str, list[str]],
+        prompt: str | list[str],
         num_images_per_prompt: Optional[int],
         do_classifier_free_guidance: bool,
         negative_prompt: Optional[str],
@@ -348,15 +348,15 @@ class OnnxStableDiffusionUpscalePipeline(DiffusionPipeline):
 
     def __call__(
         self,
-        prompt: Union[str, list[str]],
-        image: Union[np.ndarray, PIL.Image.Image, list[PIL.Image.Image]],
+        prompt: str | list[str],
+        image: np.ndarray | PIL.Image.Image | list[PIL.Image.Image],
         num_inference_steps: int = 75,
         guidance_scale: float = 9.0,
         noise_level: int = 20,
-        negative_prompt: Optional[Union[str, list[str]]] = None,
+        negative_prompt: Optional[str | list[str]] = None,
         num_images_per_prompt: Optional[int] = 1,
         eta: float = 0.0,
-        generator: Optional[Union[np.random.RandomState, list[np.random.RandomState]]] = None,
+        generator: Optional[np.random.RandomState | list[np.random.RandomState]] = None,
         latents: Optional[np.ndarray] = None,
         prompt_embeds: Optional[np.ndarray] = None,
         negative_prompt_embeds: Optional[np.ndarray] = None,

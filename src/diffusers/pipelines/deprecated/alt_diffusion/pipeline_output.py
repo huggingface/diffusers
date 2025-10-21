@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Optional, Union
+from typing import Optional
 
 import numpy as np
 import PIL.Image
@@ -24,5 +24,5 @@ class AltDiffusionPipelineOutput(BaseOutput):
             `None` if safety checking could not be performed.
     """
 
-    images: Union[list[PIL.Image.Image], np.ndarray]
+    images: list[PIL.Image.Image] | np.ndarray
     nsfw_content_detected: Optional[list[bool]]

@@ -19,7 +19,7 @@ import warnings
 from collections import OrderedDict
 from copy import deepcopy
 from dataclasses import dataclass, field
-from typing import Any, Optional, Union
+from typing import Any, Optional
 
 import torch
 from huggingface_hub import create_repo
@@ -91,7 +91,7 @@ class PipelineState:
             else:
                 self.kwargs_mapping[kwargs_type].append(key)
 
-    def get(self, keys: Union[str, list[str]], default: Any = None) -> Union[Any, dict[str, Any]]:
+    def get(self, keys: str | list[str], default: Any = None) -> Any | dict[str, Any]:
         """
         Get one or multiple values from the pipeline state.
 
@@ -350,7 +350,7 @@ class ModularPipelineBlocks(ConfigMixin, PushToHubMixin):
 
     def init_pipeline(
         self,
-        pretrained_model_name_or_path: Optional[Union[str, os.PathLike]] = None,
+        pretrained_model_name_or_path: Optional[str | os.PathLike] = None,
         components_manager: Optional[ComponentsManager] = None,
         collection: Optional[str] = None,
     ) -> "ModularPipeline":
@@ -1433,7 +1433,7 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
     def __init__(
         self,
         blocks: Optional[ModularPipelineBlocks] = None,
-        pretrained_model_name_or_path: Optional[Union[str, os.PathLike]] = None,
+        pretrained_model_name_or_path: Optional[str | os.PathLike] = None,
         components_manager: Optional[ComponentsManager] = None,
         collection: Optional[str] = None,
         **kwargs,
@@ -1600,7 +1600,7 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
     @validate_hf_hub_args
     def from_pretrained(
         cls,
-        pretrained_model_name_or_path: Optional[Union[str, os.PathLike]],
+        pretrained_model_name_or_path: Optional[str | os.PathLike],
         trust_remote_code: Optional[bool] = None,
         components_manager: Optional[ComponentsManager] = None,
         collection: Optional[str] = None,
@@ -1690,7 +1690,7 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
         )
         return pipeline
 
-    def save_pretrained(self, save_directory: Union[str, os.PathLike], push_to_hub: bool = False, **kwargs):
+    def save_pretrained(self, save_directory: str | os.PathLike, push_to_hub: bool = False, **kwargs):
         """
         Save the pipeline to a directory. It does not save components, you need to save them separately.
 
@@ -2077,7 +2077,7 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
         self.register_to_config(**config_to_register)
 
     # YiYi TODO: support map for additional from_pretrained kwargs
-    def load_components(self, names: Optional[Union[list[str], str]] = None, **kwargs):
+    def load_components(self, names: Optional[list[str] | str] = None, **kwargs):
         """
         Load selected components from specs.
 
@@ -2450,7 +2450,7 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
             if hasattr(sub_block, "set_progress_bar_config"):
                 sub_block.set_progress_bar_config(**kwargs)
 
-    def __call__(self, state: PipelineState = None, output: Union[str, list[str]] = None, **kwargs):
+    def __call__(self, state: PipelineState = None, output: str | list[str] = None, **kwargs):
         """
         Execute the pipeline by running the pipeline blocks with the given inputs.
 

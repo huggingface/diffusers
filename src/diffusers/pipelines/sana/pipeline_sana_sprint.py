@@ -17,7 +17,7 @@ import inspect
 import re
 import urllib.parse as ul
 import warnings
-from typing import Any, Callable, Dict, Optional, Tuple, Union
+from typing import Any, Callable, Dict, Optional, Tuple
 
 import torch
 from transformers import Gemma2PreTrainedModel, GemmaTokenizer, GemmaTokenizerFast
@@ -82,7 +82,7 @@ EXAMPLE_DOC_STRING = """
 def retrieve_timesteps(
     scheduler,
     num_inference_steps: Optional[int] = None,
-    device: Optional[Union[str, torch.device]] = None,
+    device: Optional[str | torch.device] = None,
     timesteps: Optional[list[int]] = None,
     sigmas: Optional[list[float]] = None,
     **kwargs,
@@ -152,7 +152,7 @@ class SanaSprintPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
 
     def __init__(
         self,
-        tokenizer: Union[GemmaTokenizer, GemmaTokenizerFast],
+        tokenizer: GemmaTokenizer | GemmaTokenizerFast,
         text_encoder: Gemma2PreTrainedModel,
         vae: AutoencoderDC,
         transformer: SanaTransformer2DModel,
@@ -227,7 +227,7 @@ class SanaSprintPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
     # Copied from diffusers.pipelines.sana.pipeline_sana.SanaPipeline._get_gemma_prompt_embeds
     def _get_gemma_prompt_embeds(
         self,
-        prompt: Union[str, list[str]],
+        prompt: str | list[str],
         device: torch.device,
         dtype: torch.dtype,
         clean_caption: bool = False,
@@ -285,7 +285,7 @@ class SanaSprintPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
 
     def encode_prompt(
         self,
-        prompt: Union[str, list[str]],
+        prompt: str | list[str],
         num_images_per_prompt: int = 1,
         device: Optional[torch.device] = None,
         prompt_embeds: Optional[torch.Tensor] = None,
@@ -616,7 +616,7 @@ class SanaSprintPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        prompt: Union[str, list[str]] = None,
+        prompt: str | list[str] = None,
         num_inference_steps: int = 2,
         timesteps: list[int] = None,
         max_timesteps: float = 1.57080,
@@ -626,7 +626,7 @@ class SanaSprintPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
         height: int = 1024,
         width: int = 1024,
         eta: float = 0.0,
-        generator: Optional[Union[torch.Generator, list[torch.Generator]]] = None,
+        generator: Optional[torch.Generator | list[torch.Generator]] = None,
         latents: Optional[torch.Tensor] = None,
         prompt_embeds: Optional[torch.Tensor] = None,
         prompt_attention_mask: Optional[torch.Tensor] = None,
@@ -648,7 +648,7 @@ class SanaSprintPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
             "Please generate only the enhanced description for the prompt below and avoid including any additional commentary or evaluations:",
             "User Prompt: ",
         ],
-    ) -> Union[SanaPipelineOutput, Tuple]:
+    ) -> SanaPipelineOutput | Tuple:
         """
         Function invoked when calling the pipeline for generation.
 

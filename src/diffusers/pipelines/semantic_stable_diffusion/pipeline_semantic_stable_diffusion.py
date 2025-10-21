@@ -1,6 +1,6 @@
 import inspect
 from itertools import repeat
-from typing import Callable, Optional, Union
+from typing import Callable, Optional
 
 import torch
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer
@@ -223,27 +223,27 @@ class SemanticStableDiffusionPipeline(DeprecatedPipelineMixin, DiffusionPipeline
     @torch.no_grad()
     def __call__(
         self,
-        prompt: Union[str, list[str]],
+        prompt: str | list[str],
         height: Optional[int] = None,
         width: Optional[int] = None,
         num_inference_steps: int = 50,
         guidance_scale: float = 7.5,
-        negative_prompt: Optional[Union[str, list[str]]] = None,
+        negative_prompt: Optional[str | list[str]] = None,
         num_images_per_prompt: int = 1,
         eta: float = 0.0,
-        generator: Optional[Union[torch.Generator, list[torch.Generator]]] = None,
+        generator: Optional[torch.Generator | list[torch.Generator]] = None,
         latents: Optional[torch.Tensor] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
         callback: Optional[Callable[[int, int, torch.Tensor], None]] = None,
         callback_steps: int = 1,
-        editing_prompt: Optional[Union[str, list[str]]] = None,
+        editing_prompt: Optional[str | list[str]] = None,
         editing_prompt_embeddings: Optional[torch.Tensor] = None,
-        reverse_editing_direction: Optional[Union[bool, list[bool]]] = False,
-        edit_guidance_scale: Optional[Union[float, list[float]]] = 5,
-        edit_warmup_steps: Optional[Union[int, list[int]]] = 10,
-        edit_cooldown_steps: Optional[Union[int, list[int]]] = None,
-        edit_threshold: Optional[Union[float, list[float]]] = 0.9,
+        reverse_editing_direction: Optional[bool | list[bool]] = False,
+        edit_guidance_scale: Optional[float | list[float]] = 5,
+        edit_warmup_steps: Optional[int | list[int]] = 10,
+        edit_cooldown_steps: Optional[int | list[int]] = None,
+        edit_threshold: Optional[float | list[float]] = 0.9,
         edit_momentum_scale: Optional[float] = 0.1,
         edit_mom_beta: Optional[float] = 0.4,
         edit_weights: Optional[list[float]] = None,

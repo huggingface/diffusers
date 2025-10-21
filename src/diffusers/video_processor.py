@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import warnings
-from typing import Optional, Union
+from typing import Optional
 
 import numpy as np
 import PIL
@@ -88,7 +88,7 @@ class VideoProcessor(VaeImageProcessor):
 
     def postprocess_video(
         self, video: torch.Tensor, output_type: str = "np"
-    ) -> Union[np.ndarray, torch.Tensor, list[PIL.Image.Image]]:
+    ) -> np.ndarray | torch.Tensor | list[PIL.Image.Image]:
         r"""
         Converts a video tensor to a list of frames for export.
 

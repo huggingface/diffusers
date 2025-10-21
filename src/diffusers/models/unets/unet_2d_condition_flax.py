@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from typing import Dict, Optional, Union
+from typing import Dict, Optional
 
 import flax
 import flax.linen as nn
@@ -114,11 +114,11 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
     )
     up_block_types: tuple[str, ...] = ("UpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D")
     mid_block_type: Optional[str] = "UNetMidBlock2DCrossAttn"
-    only_cross_attention: Union[bool, tuple[bool]] = False
+    only_cross_attention: bool | tuple[bool] = False
     block_out_channels: tuple[int, ...] = (320, 640, 1280, 1280)
     layers_per_block: int = 2
-    attention_head_dim: Union[int, tuple[int, ...]] = 8
-    num_attention_heads: Optional[Union[int, tuple[int, ...]]] = None
+    attention_head_dim: int | tuple[int, ...] = 8
+    num_attention_heads: Optional[int | tuple[int, ...]] = None
     cross_attention_dim: int = 1280
     dropout: float = 0.0
     use_linear_projection: bool = False
@@ -127,7 +127,7 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
     freq_shift: int = 0
     use_memory_efficient_attention: bool = False
     split_head_dim: bool = False
-    transformer_layers_per_block: Union[int, tuple[int, ...]] = 1
+    transformer_layers_per_block: int | tuple[int, ...] = 1
     addition_embed_type: Optional[str] = None
     addition_time_embed_dim: Optional[int] = None
     addition_embed_type_num_heads: int = 64
@@ -338,14 +338,14 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
     def __call__(
         self,
         sample: jnp.ndarray,
-        timesteps: Union[jnp.ndarray, float, int],
+        timesteps: jnp.ndarray | float | int,
         encoder_hidden_states: jnp.ndarray,
-        added_cond_kwargs: Optional[Union[Dict, FrozenDict]] = None,
+        added_cond_kwargs: Optional[Dict | FrozenDict] = None,
         down_block_additional_residuals: Optional[tuple[jnp.ndarray, ...]] = None,
         mid_block_additional_residual: Optional[jnp.ndarray] = None,
         return_dict: bool = True,
         train: bool = False,
-    ) -> Union[FlaxUNet2DConditionOutput, tuple[jnp.ndarray]]:
+    ) -> FlaxUNet2DConditionOutput | tuple[jnp.ndarray]:
         r"""
         Args:
             sample (`jnp.ndarray`): (batch, channel, height, width) noisy inputs tensor

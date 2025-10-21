@@ -1,4 +1,4 @@
-from typing import Any, Callable, Dict, Optional, Union
+from typing import Any, Callable, Dict, Optional
 
 import numpy as np
 import torch
@@ -116,7 +116,7 @@ class BriaPipeline(DiffusionPipeline):
     def __init__(
         self,
         transformer: BriaTransformer2DModel,
-        scheduler: Union[FlowMatchEulerDiscreteScheduler, KarrasDiffusionSchedulers],
+        scheduler: FlowMatchEulerDiscreteScheduler | KarrasDiffusionSchedulers,
         vae: AutoencoderKL,
         text_encoder: T5EncoderModel,
         tokenizer: T5TokenizerFast,
@@ -145,11 +145,11 @@ class BriaPipeline(DiffusionPipeline):
 
     def encode_prompt(
         self,
-        prompt: Union[str, list[str]],
+        prompt: str | list[str],
         device: Optional[torch.device] = None,
         num_images_per_prompt: int = 1,
         do_classifier_free_guidance: bool = True,
-        negative_prompt: Optional[Union[str, list[str]]] = None,
+        negative_prompt: Optional[str | list[str]] = None,
         prompt_embeds: Optional[torch.FloatTensor] = None,
         negative_prompt_embeds: Optional[torch.FloatTensor] = None,
         max_sequence_length: int = 128,
@@ -320,7 +320,7 @@ class BriaPipeline(DiffusionPipeline):
 
     def _get_t5_prompt_embeds(
         self,
-        prompt: Union[str, list[str]] = None,
+        prompt: str | list[str] = None,
         num_images_per_prompt: int = 1,
         max_sequence_length: int = 128,
         device: Optional[torch.device] = None,
@@ -449,15 +449,15 @@ class BriaPipeline(DiffusionPipeline):
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        prompt: Union[str, list[str]] = None,
+        prompt: str | list[str] = None,
         height: Optional[int] = None,
         width: Optional[int] = None,
         num_inference_steps: int = 30,
         timesteps: list[int] = None,
         guidance_scale: float = 5,
-        negative_prompt: Optional[Union[str, list[str]]] = None,
+        negative_prompt: Optional[str | list[str]] = None,
         num_images_per_prompt: Optional[int] = 1,
-        generator: Optional[Union[torch.Generator, list[torch.Generator]]] = None,
+        generator: Optional[torch.Generator | list[torch.Generator]] = None,
         latents: Optional[torch.FloatTensor] = None,
         prompt_embeds: Optional[torch.FloatTensor] = None,
         negative_prompt_embeds: Optional[torch.FloatTensor] = None,
@@ -467,7 +467,7 @@ class BriaPipeline(DiffusionPipeline):
         callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
         callback_on_step_end_tensor_inputs: list[str] = ["latents"],
         max_sequence_length: int = 128,
-        clip_value: Union[None, float] = None,
+        clip_value: None | float = None,
         normalize: bool = False,
     ):
         r"""

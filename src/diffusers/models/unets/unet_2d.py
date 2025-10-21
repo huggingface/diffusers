@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 from dataclasses import dataclass
-from typing import Optional, Tuple, Union
+from typing import Optional, Tuple
 
 import torch
 import torch.nn as nn
@@ -95,7 +95,7 @@ class UNet2DModel(ModelMixin, ConfigMixin):
     @register_to_config
     def __init__(
         self,
-        sample_size: Optional[Union[int, tuple[int, int]]] = None,
+        sample_size: Optional[int | tuple[int, int]] = None,
         in_channels: int = 3,
         out_channels: int = 3,
         center_input_sample: bool = False,
@@ -250,10 +250,10 @@ class UNet2DModel(ModelMixin, ConfigMixin):
     def forward(
         self,
         sample: torch.Tensor,
-        timestep: Union[torch.Tensor, float, int],
+        timestep: torch.Tensor | float | int,
         class_labels: Optional[torch.Tensor] = None,
         return_dict: bool = True,
-    ) -> Union[UNet2DOutput, Tuple]:
+    ) -> UNet2DOutput | Tuple:
         r"""
         The [`UNet2DModel`] forward method.
 

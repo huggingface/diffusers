@@ -13,7 +13,7 @@
 # limitations under the License.
 
 from copy import deepcopy
-from typing import Callable, Optional, Union
+from typing import Callable, Optional
 
 import numpy as np
 import PIL.Image
@@ -402,18 +402,18 @@ class KandinskyInpaintPipeline(DiffusionPipeline):
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        prompt: Union[str, list[str]],
-        image: Union[torch.Tensor, PIL.Image.Image],
-        mask_image: Union[torch.Tensor, PIL.Image.Image, np.ndarray],
+        prompt: str | list[str],
+        image: torch.Tensor | PIL.Image.Image,
+        mask_image: torch.Tensor | PIL.Image.Image | np.ndarray,
         image_embeds: torch.Tensor,
         negative_image_embeds: torch.Tensor,
-        negative_prompt: Optional[Union[str, list[str]]] = None,
+        negative_prompt: Optional[str | list[str]] = None,
         height: int = 512,
         width: int = 512,
         num_inference_steps: int = 100,
         guidance_scale: float = 4.0,
         num_images_per_prompt: int = 1,
-        generator: Optional[Union[torch.Generator, list[torch.Generator]]] = None,
+        generator: Optional[torch.Generator | list[torch.Generator]] = None,
         latents: Optional[torch.Tensor] = None,
         output_type: Optional[str] = "pil",
         callback: Optional[Callable[[int, int, torch.Tensor], None]] = None,

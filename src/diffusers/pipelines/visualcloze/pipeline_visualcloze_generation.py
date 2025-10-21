@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Any, Callable, Dict, Optional, Union
+from typing import Any, Callable, Dict, Optional
 
 import numpy as np
 import torch
@@ -192,7 +192,7 @@ class VisualClozeGenerationPipeline(
     # Copied from diffusers.pipelines.flux.pipeline_flux.FluxPipeline._get_t5_prompt_embeds
     def _get_t5_prompt_embeds(
         self,
-        prompt: Union[str, list[str]] = None,
+        prompt: str | list[str] = None,
         num_images_per_prompt: int = 1,
         max_sequence_length: int = 512,
         device: Optional[torch.device] = None,
@@ -242,7 +242,7 @@ class VisualClozeGenerationPipeline(
     # Copied from diffusers.pipelines.flux.pipeline_flux.FluxPipeline._get_clip_prompt_embeds
     def _get_clip_prompt_embeds(
         self,
-        prompt: Union[str, list[str]],
+        prompt: str | list[str],
         num_images_per_prompt: int = 1,
         device: Optional[torch.device] = None,
     ):
@@ -287,9 +287,9 @@ class VisualClozeGenerationPipeline(
     # Modified from diffusers.pipelines.flux.pipeline_flux.FluxPipeline.encode_prompt
     def encode_prompt(
         self,
-        layout_prompt: Union[str, list[str]],
-        task_prompt: Union[str, list[str]],
-        content_prompt: Union[str, list[str]],
+        layout_prompt: str | list[str],
+        task_prompt: str | list[str],
+        content_prompt: str | list[str],
         device: Optional[torch.device] = None,
         num_images_per_prompt: int = 1,
         prompt_embeds: Optional[torch.FloatTensor] = None,
@@ -709,14 +709,14 @@ class VisualClozeGenerationPipeline(
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        task_prompt: Union[str, list[str]] = None,
-        content_prompt: Union[str, list[str]] = None,
+        task_prompt: str | list[str] = None,
+        content_prompt: str | list[str] = None,
         image: Optional[torch.FloatTensor] = None,
         num_inference_steps: int = 50,
         sigmas: Optional[list[float]] = None,
         guidance_scale: float = 30.0,
         num_images_per_prompt: Optional[int] = 1,
-        generator: Optional[Union[torch.Generator, list[torch.Generator]]] = None,
+        generator: Optional[torch.Generator | list[torch.Generator]] = None,
         latents: Optional[torch.FloatTensor] = None,
         prompt_embeds: Optional[torch.FloatTensor] = None,
         pooled_prompt_embeds: Optional[torch.FloatTensor] = None,

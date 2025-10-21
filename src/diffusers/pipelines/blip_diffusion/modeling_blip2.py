@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from typing import Optional, Tuple, Union
+from typing import Optional, Tuple
 
 import torch
 from torch import nn
@@ -376,7 +376,7 @@ class Blip2VisionModel(Blip2PreTrainedModel):
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
-    ) -> Union[Tuple, BaseModelOutputWithPooling]:
+    ) -> Tuple | BaseModelOutputWithPooling:
         r"""
         Returns:
 

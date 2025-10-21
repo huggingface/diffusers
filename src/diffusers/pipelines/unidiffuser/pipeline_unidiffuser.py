@@ -1,6 +1,6 @@
 import inspect
 from dataclasses import dataclass
-from typing import Callable, Optional, Union
+from typing import Callable, Optional
 
 import numpy as np
 import PIL.Image
@@ -58,8 +58,8 @@ class ImageTextPipelineOutput(BaseOutput):
             length `batch_size`.
     """
 
-    images: Optional[Union[list[PIL.Image.Image], np.ndarray]]
-    text: Optional[Union[list[str], list[list[str]]]]
+    images: Optional[list[PIL.Image.Image] | np.ndarray]
+    text: Optional[list[str] | list[list[str]]]
 
 
 class UniDiffuserPipeline(DeprecatedPipelineMixin, DiffusionPipeline):
@@ -1119,18 +1119,18 @@ class UniDiffuserPipeline(DeprecatedPipelineMixin, DiffusionPipeline):
     @torch.no_grad()
     def __call__(
         self,
-        prompt: Optional[Union[str, list[str]]] = None,
-        image: Optional[Union[torch.Tensor, PIL.Image.Image]] = None,
+        prompt: Optional[str | list[str]] = None,
+        image: Optional[torch.Tensor | PIL.Image.Image] = None,
         height: Optional[int] = None,
         width: Optional[int] = None,
         data_type: Optional[int] = 1,
         num_inference_steps: int = 50,
         guidance_scale: float = 8.0,
-        negative_prompt: Optional[Union[str, list[str]]] = None,
+        negative_prompt: Optional[str | list[str]] = None,
         num_images_per_prompt: Optional[int] = 1,
         num_prompts_per_image: Optional[int] = 1,
         eta: float = 0.0,
-        generator: Optional[Union[torch.Generator, list[torch.Generator]]] = None,
+        generator: Optional[torch.Generator | list[torch.Generator]] = None,
         latents: Optional[torch.Tensor] = None,
         prompt_latents: Optional[torch.Tensor] = None,
         vae_latents: Optional[torch.Tensor] = None,

@@ -13,7 +13,7 @@
 # limitations under the License.
 
 from dataclasses import dataclass
-from typing import Optional, Tuple, Union
+from typing import Optional, Tuple
 
 import numpy as np
 import torch
@@ -175,7 +175,7 @@ class VQDiffusionScheduler(SchedulerMixin, ConfigMixin):
         self.num_inference_steps = None
         self.timesteps = torch.from_numpy(np.arange(0, num_train_timesteps)[::-1].copy())
 
-    def set_timesteps(self, num_inference_steps: int, device: Union[str, torch.device] = None):
+    def set_timesteps(self, num_inference_steps: int, device: str | torch.device = None):
         """
         Sets the discrete timesteps used for the diffusion chain (to be run before inference).
 
@@ -204,7 +204,7 @@ class VQDiffusionScheduler(SchedulerMixin, ConfigMixin):
         sample: torch.LongTensor,
         generator: Optional[torch.Generator] = None,
         return_dict: bool = True,
-    ) -> Union[VQDiffusionSchedulerOutput, Tuple]:
+    ) -> VQDiffusionSchedulerOutput | Tuple:
         """
         Predict the sample from the previous timestep by the reverse transition distribution. See
         [`~VQDiffusionScheduler.q_posterior`] for more details about how the distribution is computer.

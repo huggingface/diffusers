@@ -13,7 +13,7 @@
 # limitations under the License.
 
 from dataclasses import dataclass
-from typing import Any, Optional, Union
+from typing import Any, Optional
 
 import torch
 from torch import nn
@@ -170,7 +170,7 @@ class SparseControlNetModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
             "CrossAttnDownBlockMotion",
             "DownBlockMotion",
         ),
-        only_cross_attention: Union[bool, tuple[bool]] = False,
+        only_cross_attention: bool | tuple[bool] = False,
         block_out_channels: tuple[int, ...] = (320, 640, 1280, 1280),
         layers_per_block: int = 2,
         downsample_padding: int = 1,
@@ -179,11 +179,11 @@ class SparseControlNetModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         norm_num_groups: Optional[int] = 32,
         norm_eps: float = 1e-5,
         cross_attention_dim: int = 768,
-        transformer_layers_per_block: Union[int, tuple[int, ...]] = 1,
-        transformer_layers_per_mid_block: Optional[Union[int, tuple[int]]] = None,
-        temporal_transformer_layers_per_block: Union[int, tuple[int, ...]] = 1,
-        attention_head_dim: Union[int, tuple[int, ...]] = 8,
-        num_attention_heads: Optional[Union[int, tuple[int, ...]]] = None,
+        transformer_layers_per_block: int | tuple[int, ...] = 1,
+        transformer_layers_per_mid_block: Optional[int | tuple[int]] = None,
+        temporal_transformer_layers_per_block: int | tuple[int, ...] = 1,
+        attention_head_dim: int | tuple[int, ...] = 8,
+        num_attention_heads: Optional[int | tuple[int, ...]] = None,
         use_linear_projection: bool = False,
         upcast_attention: bool = False,
         resnet_time_scale_shift: str = "default",
@@ -474,7 +474,7 @@ class SparseControlNetModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         return processors
 
     # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.set_attn_processor
-    def set_attn_processor(self, processor: Union[AttentionProcessor, dict[str, AttentionProcessor]]):
+    def set_attn_processor(self, processor: AttentionProcessor | dict[str, AttentionProcessor]):
         r"""
         Sets the attention processor to use to compute attention.
 
@@ -525,7 +525,7 @@ class SparseControlNetModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         self.set_attn_processor(processor)
 
     # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.set_attention_slice
-    def set_attention_slice(self, slice_size: Union[str, int, list[int]]) -> None:
+    def set_attention_slice(self, slice_size: str | int | list[int]) -> None:
         r"""
         Enable sliced attention computation.
 
@@ -593,7 +593,7 @@ class SparseControlNetModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
     def forward(
         self,
         sample: torch.Tensor,
-        timestep: Union[torch.Tensor, float, int],
+        timestep: torch.Tensor | float | int,
         encoder_hidden_states: torch.Tensor,
         controlnet_cond: torch.Tensor,
         conditioning_scale: float = 1.0,
@@ -603,7 +603,7 @@ class SparseControlNetModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         conditioning_mask: Optional[torch.Tensor] = None,
         guess_mode: bool = False,
         return_dict: bool = True,
-    ) -> Union[SparseControlNetOutput, tuple[tuple[torch.Tensor, ...], torch.Tensor]]:
+    ) -> SparseControlNetOutput | tuple[tuple[torch.Tensor, ...], torch.Tensor]:
         """
         The [`SparseControlNetModel`] forward method.
 

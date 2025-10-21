@@ -16,7 +16,7 @@
 
 import math
 from dataclasses import dataclass
-from typing import Optional, Tuple, Union
+from typing import Optional, Tuple
 
 import numpy as np
 import torch
@@ -184,7 +184,7 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
         beta_start: float = 0.0001,
         beta_end: float = 0.02,
         beta_schedule: str = "linear",
-        trained_betas: Optional[Union[np.ndarray, list[float]]] = None,
+        trained_betas: Optional[np.ndarray | list[float]] = None,
         variance_type: str = "fixed_small",
         clip_sample: bool = True,
         prediction_type: str = "epsilon",
@@ -251,7 +251,7 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
     def set_timesteps(
         self,
         num_inference_steps: Optional[int] = None,
-        device: Union[str, torch.device] = None,
+        device: str | torch.device = None,
         timesteps: Optional[list[int]] = None,
     ):
         """
@@ -402,7 +402,7 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
         sample: torch.Tensor,
         generator=None,
         return_dict: bool = True,
-    ) -> Union[DDPMSchedulerOutput, Tuple]:
+    ) -> DDPMSchedulerOutput | Tuple:
         """
         Predict the sample from the previous timestep by reversing the SDE. This function propagates the diffusion
         process from the learned model outputs (most often the predicted noise).

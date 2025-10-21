@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Optional, Union
+from typing import Optional
 
 import torch
 import torch.nn as nn
@@ -34,9 +34,9 @@ class LTXVideoCausalConv3d(nn.Module):
         self,
         in_channels: int,
         out_channels: int,
-        kernel_size: Union[int, tuple[int, int, int]] = 3,
-        stride: Union[int, tuple[int, int, int]] = 1,
-        dilation: Union[int, tuple[int, int, int]] = 1,
+        kernel_size: int | tuple[int, int, int] = 3,
+        stride: int | tuple[int, int, int] = 1,
+        dilation: int | tuple[int, int, int] = 1,
         groups: int = 1,
         padding_mode: str = "zeros",
         is_causal: bool = True,
@@ -201,7 +201,7 @@ class LTXVideoDownsampler3d(nn.Module):
         self,
         in_channels: int,
         out_channels: int,
-        stride: Union[int, tuple[int, int, int]] = 1,
+        stride: int | tuple[int, int, int] = 1,
         is_causal: bool = True,
         padding_mode: str = "zeros",
     ) -> None:
@@ -249,7 +249,7 @@ class LTXVideoUpsampler3d(nn.Module):
     def __init__(
         self,
         in_channels: int,
-        stride: Union[int, tuple[int, int, int]] = 1,
+        stride: int | tuple[int, int, int] = 1,
         is_causal: bool = True,
         residual: bool = False,
         upscale_factor: int = 1,
@@ -1256,7 +1256,7 @@ class AutoencoderKLLTXVideo(ModelMixin, ConfigMixin, FromOriginalModelMixin):
     @apply_forward_hook
     def encode(
         self, x: torch.Tensor, return_dict: bool = True
-    ) -> Union[AutoencoderKLOutput, tuple[DiagonalGaussianDistribution]]:
+    ) -> AutoencoderKLOutput | tuple[DiagonalGaussianDistribution]:
         """
         Encode a batch of images into latents.
 
@@ -1282,7 +1282,7 @@ class AutoencoderKLLTXVideo(ModelMixin, ConfigMixin, FromOriginalModelMixin):
 
     def _decode(
         self, z: torch.Tensor, temb: Optional[torch.Tensor] = None, return_dict: bool = True
-    ) -> Union[DecoderOutput, torch.Tensor]:
+    ) -> DecoderOutput | torch.Tensor:
         batch_size, num_channels, num_frames, height, width = z.shape
         tile_latent_min_height = self.tile_sample_min_height // self.spatial_compression_ratio
         tile_latent_min_width = self.tile_sample_min_width // self.spatial_compression_ratio
@@ -1304,7 +1304,7 @@ class AutoencoderKLLTXVideo(ModelMixin, ConfigMixin, FromOriginalModelMixin):
     @apply_forward_hook
     def decode(
         self, z: torch.Tensor, temb: Optional[torch.Tensor] = None, return_dict: bool = True
-    ) -> Union[DecoderOutput, torch.Tensor]:
+    ) -> DecoderOutput | torch.Tensor:
         """
         Decode a batch of images.
 
@@ -1411,7 +1411,7 @@ class AutoencoderKLLTXVideo(ModelMixin, ConfigMixin, FromOriginalModelMixin):
 
     def tiled_decode(
         self, z: torch.Tensor, temb: Optional[torch.Tensor], return_dict: bool = True
-    ) -> Union[DecoderOutput, torch.Tensor]:
+    ) -> DecoderOutput | torch.Tensor:
         r"""
         Decode a batch of images using a tiled decoder.
 
@@ -1501,7 +1501,7 @@ class AutoencoderKLLTXVideo(ModelMixin, ConfigMixin, FromOriginalModelMixin):
 
     def _temporal_tiled_decode(
         self, z: torch.Tensor, temb: Optional[torch.Tensor], return_dict: bool = True
-    ) -> Union[DecoderOutput, torch.Tensor]:
+    ) -> DecoderOutput | torch.Tensor:
         batch_size, num_channels, num_frames, height, width = z.shape
         num_sample_frames = (num_frames - 1) * self.temporal_compression_ratio + 1
 
@@ -1544,7 +1544,7 @@ class AutoencoderKLLTXVideo(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         sample_posterior: bool = False,
         return_dict: bool = True,
         generator: Optional[torch.Generator] = None,
-    ) -> Union[torch.Tensor, torch.Tensor]:
+    ) -> torch.Tensor | torch.Tensor:
         x = sample
         posterior = self.encode(x).latent_dist
         if sample_posterior:

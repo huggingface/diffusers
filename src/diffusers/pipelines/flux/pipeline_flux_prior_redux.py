@@ -13,7 +13,7 @@
 # limitations under the License.
 
 
-from typing import Optional, Union
+from typing import Optional
 
 import torch
 from PIL import Image
@@ -196,7 +196,7 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
     # Copied from diffusers.pipelines.flux.pipeline_flux.FluxPipeline._get_t5_prompt_embeds
     def _get_t5_prompt_embeds(
         self,
-        prompt: Union[str, list[str]] = None,
+        prompt: str | list[str] = None,
         num_images_per_prompt: int = 1,
         max_sequence_length: int = 512,
         device: Optional[torch.device] = None,
@@ -246,7 +246,7 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
     # Copied from diffusers.pipelines.flux.pipeline_flux.FluxPipeline._get_clip_prompt_embeds
     def _get_clip_prompt_embeds(
         self,
-        prompt: Union[str, list[str]],
+        prompt: str | list[str],
         num_images_per_prompt: int = 1,
         device: Optional[torch.device] = None,
     ):
@@ -291,8 +291,8 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
     # Copied from diffusers.pipelines.flux.pipeline_flux.FluxPipeline.encode_prompt
     def encode_prompt(
         self,
-        prompt: Union[str, list[str]],
-        prompt_2: Optional[Union[str, list[str]]] = None,
+        prompt: str | list[str],
+        prompt_2: Optional[str | list[str]] = None,
         device: Optional[torch.device] = None,
         num_images_per_prompt: int = 1,
         prompt_embeds: Optional[torch.FloatTensor] = None,
@@ -373,12 +373,12 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
     def __call__(
         self,
         image: PipelineImageInput,
-        prompt: Union[str, list[str]] = None,
-        prompt_2: Optional[Union[str, list[str]]] = None,
+        prompt: str | list[str] = None,
+        prompt_2: Optional[str | list[str]] = None,
         prompt_embeds: Optional[torch.FloatTensor] = None,
         pooled_prompt_embeds: Optional[torch.FloatTensor] = None,
-        prompt_embeds_scale: Optional[Union[float, list[float]]] = 1.0,
-        pooled_prompt_embeds_scale: Optional[Union[float, list[float]]] = 1.0,
+        prompt_embeds_scale: Optional[float | list[float]] = 1.0,
+        pooled_prompt_embeds_scale: Optional[float | list[float]] = 1.0,
         return_dict: bool = True,
     ):
         r"""

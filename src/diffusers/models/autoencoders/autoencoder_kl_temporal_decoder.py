@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import itertools
-from typing import Optional, Union
+from typing import Optional
 
 import torch
 import torch.nn as nn
@@ -228,7 +228,7 @@ class AutoencoderKLTemporalDecoder(ModelMixin, ConfigMixin):
         return processors
 
     # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.set_attn_processor
-    def set_attn_processor(self, processor: Union[AttentionProcessor, dict[str, AttentionProcessor]]):
+    def set_attn_processor(self, processor: AttentionProcessor | dict[str, AttentionProcessor]):
         r"""
         Sets the attention processor to use to compute attention.
 
@@ -278,7 +278,7 @@ class AutoencoderKLTemporalDecoder(ModelMixin, ConfigMixin):
     @apply_forward_hook
     def encode(
         self, x: torch.Tensor, return_dict: bool = True
-    ) -> Union[AutoencoderKLOutput, tuple[DiagonalGaussianDistribution]]:
+    ) -> AutoencoderKLOutput | tuple[DiagonalGaussianDistribution]:
         """
         Encode a batch of images into latents.
 
@@ -308,7 +308,7 @@ class AutoencoderKLTemporalDecoder(ModelMixin, ConfigMixin):
         z: torch.Tensor,
         num_frames: int,
         return_dict: bool = True,
-    ) -> Union[DecoderOutput, torch.Tensor]:
+    ) -> DecoderOutput | torch.Tensor:
         """
         Decode a batch of images.
 
@@ -339,7 +339,7 @@ class AutoencoderKLTemporalDecoder(ModelMixin, ConfigMixin):
         return_dict: bool = True,
         generator: Optional[torch.Generator] = None,
         num_frames: int = 1,
-    ) -> Union[DecoderOutput, torch.Tensor]:
+    ) -> DecoderOutput | torch.Tensor:
         r"""
         Args:
             sample (`torch.Tensor`): Input sample.

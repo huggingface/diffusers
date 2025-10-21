@@ -1,5 +1,4 @@
 from dataclasses import dataclass
-from typing import Union
 
 import numpy as np
 import PIL.Image
@@ -21,4 +20,4 @@ class AnimateDiffPipelineOutput(BaseOutput):
     `(batch_size, num_frames, channels, height, width)`
     """
 
-    frames: Union[torch.Tensor, np.ndarray, list[list[PIL.Image.Image]]]
+    frames: torch.Tensor | np.ndarray | list[list[PIL.Image.Image]]

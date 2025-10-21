@@ -14,7 +14,7 @@
 
 from dataclasses import dataclass
 from math import ceil
-from typing import Callable, Dict, Optional, Union
+from typing import Callable, Dict, Optional
 
 import numpy as np
 import torch
@@ -67,7 +67,7 @@ class WuerstchenPriorPipelineOutput(BaseOutput):
 
     """
 
-    image_embeddings: Union[torch.Tensor, np.ndarray]
+    image_embeddings: torch.Tensor | np.ndarray
 
 
 class WuerstchenPriorPipeline(DiffusionPipeline, StableDiffusionLoraLoaderMixin):
@@ -290,17 +290,17 @@ class WuerstchenPriorPipeline(DiffusionPipeline, StableDiffusionLoraLoaderMixin)
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        prompt: Optional[Union[str, list[str]]] = None,
+        prompt: Optional[str | list[str]] = None,
         height: int = 1024,
         width: int = 1024,
         num_inference_steps: int = 60,
         timesteps: list[float] = None,
         guidance_scale: float = 8.0,
-        negative_prompt: Optional[Union[str, list[str]]] = None,
+        negative_prompt: Optional[str | list[str]] = None,
         prompt_embeds: Optional[torch.Tensor] = None,
         negative_prompt_embeds: Optional[torch.Tensor] = None,
         num_images_per_prompt: Optional[int] = 1,
-        generator: Optional[Union[torch.Generator, list[torch.Generator]]] = None,
+        generator: Optional[torch.Generator | list[torch.Generator]] = None,
         latents: Optional[torch.Tensor] = None,
         output_type: Optional[str] = "pt",
         return_dict: bool = True,

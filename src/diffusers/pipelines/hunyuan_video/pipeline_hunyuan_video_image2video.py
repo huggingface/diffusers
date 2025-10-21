@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import inspect
-from typing import Any, Callable, Dict, Optional, Union
+from typing import Any, Callable, Dict, Optional
 
 import numpy as np
 import PIL.Image
@@ -148,7 +148,7 @@ def _expand_input_ids_with_image_tokens(
 def retrieve_timesteps(
     scheduler,
     num_inference_steps: Optional[int] = None,
-    device: Optional[Union[str, torch.device]] = None,
+    device: Optional[str | torch.device] = None,
     timesteps: Optional[list[int]] = None,
     sigmas: Optional[list[float]] = None,
     **kwargs,
@@ -279,7 +279,7 @@ class HunyuanVideoImageToVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoader
     def _get_llama_prompt_embeds(
         self,
         image: torch.Tensor,
-        prompt: Union[str, list[str]],
+        prompt: str | list[str],
         prompt_template: dict[str, Any],
         num_videos_per_prompt: int = 1,
         device: Optional[torch.device] = None,
@@ -417,7 +417,7 @@ class HunyuanVideoImageToVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoader
 
     def _get_clip_prompt_embeds(
         self,
-        prompt: Union[str, list[str]],
+        prompt: str | list[str],
         num_videos_per_prompt: int = 1,
         device: Optional[torch.device] = None,
         dtype: Optional[torch.dtype] = None,
@@ -451,8 +451,8 @@ class HunyuanVideoImageToVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoader
     def encode_prompt(
         self,
         image: torch.Tensor,
-        prompt: Union[str, list[str]],
-        prompt_2: Union[str, list[str]] = None,
+        prompt: str | list[str],
+        prompt_2: str | list[str] = None,
         prompt_template: dict[str, Any] = DEFAULT_PROMPT_TEMPLATE,
         num_videos_per_prompt: int = 1,
         prompt_embeds: Optional[torch.Tensor] = None,
@@ -554,7 +554,7 @@ class HunyuanVideoImageToVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoader
         num_frames: int = 129,
         dtype: Optional[torch.dtype] = None,
         device: Optional[torch.device] = None,
-        generator: Optional[Union[torch.Generator, list[torch.Generator]]] = None,
+        generator: Optional[torch.Generator | list[torch.Generator]] = None,
         latents: Optional[torch.Tensor] = None,
         image_condition_type: str = "latent_concat",
     ) -> torch.Tensor:
@@ -671,10 +671,10 @@ class HunyuanVideoImageToVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoader
     def __call__(
         self,
         image: PIL.Image.Image,
-        prompt: Union[str, list[str]] = None,
-        prompt_2: Union[str, list[str]] = None,
-        negative_prompt: Union[str, list[str]] = None,
-        negative_prompt_2: Union[str, list[str]] = None,
+        prompt: str | list[str] = None,
+        prompt_2: str | list[str] = None,
+        negative_prompt: str | list[str] = None,
+        negative_prompt_2: str | list[str] = None,
         height: int = 720,
         width: int = 1280,
         num_frames: int = 129,
@@ -683,7 +683,7 @@ class HunyuanVideoImageToVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoader
         true_cfg_scale: float = 1.0,
         guidance_scale: float = 1.0,
         num_videos_per_prompt: Optional[int] = 1,
-        generator: Optional[Union[torch.Generator, list[torch.Generator]]] = None,
+        generator: Optional[torch.Generator | list[torch.Generator]] = None,
         latents: Optional[torch.Tensor] = None,
         prompt_embeds: Optional[torch.Tensor] = None,
         pooled_prompt_embeds: Optional[torch.Tensor] = None,
@@ -695,7 +695,7 @@ class HunyuanVideoImageToVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoader
         return_dict: bool = True,
         attention_kwargs: Optional[dict[str, Any]] = None,
         callback_on_step_end: Optional[
-            Union[Callable[[int, int, Dict], None], PipelineCallback, MultiPipelineCallbacks]
+            Callable[[int, int, Dict], None] | PipelineCallback | MultiPipelineCallbacks
         ] = None,
         callback_on_step_end_tensor_inputs: list[str] = ["latents"],
         prompt_template: dict[str, Any] = DEFAULT_PROMPT_TEMPLATE,

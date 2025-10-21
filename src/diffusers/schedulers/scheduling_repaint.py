@@ -14,7 +14,7 @@
 
 import math
 from dataclasses import dataclass
-from typing import Optional, Tuple, Union
+from typing import Optional, Tuple
 
 import numpy as np
 import torch
@@ -182,7 +182,7 @@ class RePaintScheduler(SchedulerMixin, ConfigMixin):
         num_inference_steps: int,
         jump_length: int = 10,
         jump_n_sample: int = 10,
-        device: Union[str, torch.device] = None,
+        device: str | torch.device = None,
     ):
         """
         Sets the discrete timesteps used for the diffusion chain (to be run before inference).
@@ -252,7 +252,7 @@ class RePaintScheduler(SchedulerMixin, ConfigMixin):
         mask: torch.Tensor,
         generator: Optional[torch.Generator] = None,
         return_dict: bool = True,
-    ) -> Union[RePaintSchedulerOutput, Tuple]:
+    ) -> RePaintSchedulerOutput | Tuple:
         """
         Predict the sample from the previous timestep by reversing the SDE. This function propagates the diffusion
         process from the learned model outputs (most often the predicted noise).

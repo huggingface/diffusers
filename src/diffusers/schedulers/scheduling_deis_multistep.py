@@ -16,7 +16,7 @@
 # The codebase is modified based on https://github.com/huggingface/diffusers/blob/main/src/diffusers/schedulers/scheduling_dpmsolver_multistep.py
 
 import math
-from typing import Optional, Tuple, Union
+from typing import Optional, Tuple
 
 import numpy as np
 import torch
@@ -234,9 +234,7 @@ class DEISMultistepScheduler(SchedulerMixin, ConfigMixin):
         """
         self._begin_index = begin_index
 
-    def set_timesteps(
-        self, num_inference_steps: int, device: Union[str, torch.device] = None, mu: Optional[float] = None
-    ):
+    def set_timesteps(self, num_inference_steps: int, device: str | torch.device = None, mu: Optional[float] = None):
         """
         Sets the discrete timesteps used for the diffusion chain (to be run before inference).
 
@@ -777,10 +775,10 @@ class DEISMultistepScheduler(SchedulerMixin, ConfigMixin):
     def step(
         self,
         model_output: torch.Tensor,
-        timestep: Union[int, torch.Tensor],
+        timestep: int | torch.Tensor,
         sample: torch.Tensor,
         return_dict: bool = True,
-    ) -> Union[SchedulerOutput, Tuple]:
+    ) -> SchedulerOutput | Tuple:
         """
         Predict the sample from the previous timestep by reversing the SDE. This function propagates the sample with
         the multistep DEIS.

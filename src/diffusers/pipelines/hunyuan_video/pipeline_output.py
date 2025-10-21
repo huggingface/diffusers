@@ -1,5 +1,4 @@
 from dataclasses import dataclass
-from typing import Union
 
 import numpy as np
 import PIL.Image
@@ -36,4 +35,4 @@ class HunyuanVideoFramepackPipelineOutput(BaseOutput):
             corresponds to a latent that decodes to multiple frames.
     """
 
-    frames: Union[torch.Tensor, np.ndarray, list[list[PIL.Image.Image]], list[torch.Tensor]]
+    frames: torch.Tensor | np.ndarray | list[list[PIL.Image.Image]] | list[torch.Tensor]

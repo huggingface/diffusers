@@ -14,7 +14,7 @@
 
 
 from dataclasses import dataclass
-from typing import Any, Optional, Tuple, Union
+from typing import Any, Optional, Tuple
 
 import torch
 import torch.nn as nn
@@ -230,7 +230,7 @@ class SD3ControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginal
         return processors
 
     # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.set_attn_processor
-    def set_attn_processor(self, processor: Union[AttentionProcessor, dict[str, AttentionProcessor]]):
+    def set_attn_processor(self, processor: AttentionProcessor | dict[str, AttentionProcessor]):
         r"""
         Sets the attention processor to use to compute attention.
 
@@ -339,7 +339,7 @@ class SD3ControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginal
         timestep: torch.LongTensor = None,
         joint_attention_kwargs: Optional[dict[str, Any]] = None,
         return_dict: bool = True,
-    ) -> Union[torch.Tensor, Transformer2DModelOutput]:
+    ) -> torch.Tensor | Transformer2DModelOutput:
         """
         The [`SD3Transformer2DModel`] forward method.
 
@@ -479,7 +479,7 @@ class SD3MultiControlNetModel(ModelMixin):
         timestep: torch.LongTensor = None,
         joint_attention_kwargs: Optional[dict[str, Any]] = None,
         return_dict: bool = True,
-    ) -> Union[SD3ControlNetOutput, Tuple]:
+    ) -> SD3ControlNetOutput | Tuple:
         for i, (image, scale, controlnet) in enumerate(zip(controlnet_cond, conditioning_scale, self.nets)):
             block_samples = controlnet(
                 hidden_states=hidden_states,

@@ -14,7 +14,7 @@
 
 import inspect
 from dataclasses import dataclass
-from typing import Type, Union
+from typing import Type
 
 import torch
 
@@ -272,13 +272,13 @@ class EquipartitionSharder:
         return tensor
 
 
-def _get_submodule_by_name(model: torch.nn.Module, name: str) -> Union[torch.nn.Module, list[torch.nn.Module]]:
+def _get_submodule_by_name(model: torch.nn.Module, name: str) -> torch.nn.Module | list[torch.nn.Module]:
     if name.count("*") > 1:
         raise ValueError("Wildcard '*' can only be used once in the name")
     return _find_submodule_by_name(model, name)
 
 
-def _find_submodule_by_name(model: torch.nn.Module, name: str) -> Union[torch.nn.Module, list[torch.nn.Module]]:
+def _find_submodule_by_name(model: torch.nn.Module, name: str) -> torch.nn.Module | list[torch.nn.Module]:
     if name == "":
         return model
     first_atom, remaining_name = name.split(".", 1) if "." in name else (name, "")

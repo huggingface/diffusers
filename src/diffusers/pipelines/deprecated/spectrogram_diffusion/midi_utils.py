@@ -16,7 +16,7 @@
 import dataclasses
 import math
 import os
-from typing import Any, Callable, Mapping, MutableMapping, Optional, Sequence, Union
+from typing import Any, Callable, Mapping, MutableMapping, Optional, Sequence
 
 import numpy as np
 import torch
@@ -632,7 +632,7 @@ class MidiProcessor:
         self.tokenizer = Tokenizer(self.codec.num_classes)
         self.note_representation_config = NoteRepresentationConfig(onsets_only=False, include_ties=True)
 
-    def __call__(self, midi: Union[bytes, os.PathLike, str]):
+    def __call__(self, midi: bytes | os.PathLike | str):
         if not isinstance(midi, bytes):
             with open(midi, "rb") as f:
                 midi = f.read()

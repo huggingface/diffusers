@@ -16,7 +16,7 @@
 # and https://github.com/hojonathanho/diffusion
 
 import inspect
-from typing import Any, Callable, Dict, Optional, Union
+from typing import Any, Callable, Dict, Optional
 
 import PIL.Image
 import torch
@@ -69,7 +69,7 @@ def retrieve_latents(
 def retrieve_timesteps(
     scheduler,
     num_inference_steps: Optional[int] = None,
-    device: Optional[Union[str, torch.device]] = None,
+    device: Optional[str | torch.device] = None,
     timesteps: Optional[list[int]] = None,
     sigmas: Optional[list[float]] = None,
     **kwargs,
@@ -635,7 +635,7 @@ class LatentConsistencyModelImg2ImgPipeline(
 
     def check_inputs(
         self,
-        prompt: Union[str, list[str]],
+        prompt: str | list[str],
         strength: float,
         callback_steps: int,
         prompt_embeds: Optional[torch.Tensor] = None,
@@ -710,7 +710,7 @@ class LatentConsistencyModelImg2ImgPipeline(
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        prompt: Union[str, list[str]] = None,
+        prompt: str | list[str] = None,
         image: PipelineImageInput = None,
         num_inference_steps: int = 4,
         strength: float = 0.8,
@@ -718,7 +718,7 @@ class LatentConsistencyModelImg2ImgPipeline(
         timesteps: list[int] = None,
         guidance_scale: float = 8.5,
         num_images_per_prompt: Optional[int] = 1,
-        generator: Optional[Union[torch.Generator, list[torch.Generator]]] = None,
+        generator: Optional[torch.Generator | list[torch.Generator]] = None,
         latents: Optional[torch.Tensor] = None,
         prompt_embeds: Optional[torch.Tensor] = None,
         ip_adapter_image: Optional[PipelineImageInput] = None,

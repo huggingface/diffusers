@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Optional, Tuple, Union
+from typing import Optional, Tuple
 
 import torch
 import torch.nn as nn
@@ -88,10 +88,10 @@ class UNetSpatioTemporalConditionModel(ModelMixin, ConfigMixin, UNet2DConditionL
         block_out_channels: tuple[int] = (320, 640, 1280, 1280),
         addition_time_embed_dim: int = 256,
         projection_class_embeddings_input_dim: int = 768,
-        layers_per_block: Union[int, tuple[int]] = 2,
-        cross_attention_dim: Union[int, tuple[int]] = 1024,
-        transformer_layers_per_block: Union[int, tuple[int], tuple[Tuple]] = 1,
-        num_attention_heads: Union[int, tuple[int]] = (5, 10, 20, 20),
+        layers_per_block: int | tuple[int] = 2,
+        cross_attention_dim: int | tuple[int] = 1024,
+        transformer_layers_per_block: int | tuple[int] | tuple[Tuple] = 1,
+        num_attention_heads: int | tuple[int] = (5, 10, 20, 20),
         num_frames: int = 25,
     ):
         super().__init__()
@@ -273,7 +273,7 @@ class UNetSpatioTemporalConditionModel(ModelMixin, ConfigMixin, UNet2DConditionL
 
         return processors
 
-    def set_attn_processor(self, processor: Union[AttentionProcessor, dict[str, AttentionProcessor]]):
+    def set_attn_processor(self, processor: AttentionProcessor | dict[str, AttentionProcessor]):
         r"""
         Sets the attention processor to use to compute attention.
 
@@ -353,11 +353,11 @@ class UNetSpatioTemporalConditionModel(ModelMixin, ConfigMixin, UNet2DConditionL
     def forward(
         self,
         sample: torch.Tensor,
-        timestep: Union[torch.Tensor, float, int],
+        timestep: torch.Tensor | float | int,
         encoder_hidden_states: torch.Tensor,
         added_time_ids: torch.Tensor,
         return_dict: bool = True,
-    ) -> Union[UNetSpatioTemporalConditionOutput, Tuple]:
+    ) -> UNetSpatioTemporalConditionOutput | Tuple:
         r"""
         The [`UNetSpatioTemporalConditionModel`] forward method.
 

@@ -14,7 +14,7 @@
 
 import contextlib
 import inspect
-from typing import Any, Callable, Dict, Optional, Union
+from typing import Any, Callable, Dict, Optional
 
 import numpy as np
 import PIL.Image
@@ -634,16 +634,16 @@ class StableDiffusionDepth2ImgPipeline(DiffusionPipeline, TextualInversionLoader
     @torch.no_grad()
     def __call__(
         self,
-        prompt: Union[str, list[str]] = None,
+        prompt: str | list[str] = None,
         image: PipelineImageInput = None,
         depth_map: Optional[torch.Tensor] = None,
         strength: float = 0.8,
         num_inference_steps: Optional[int] = 50,
         guidance_scale: Optional[float] = 7.5,
-        negative_prompt: Optional[Union[str, list[str]]] = None,
+        negative_prompt: Optional[str | list[str]] = None,
         num_images_per_prompt: Optional[int] = 1,
         eta: Optional[float] = 0.0,
-        generator: Optional[Union[torch.Generator, list[torch.Generator]]] = None,
+        generator: Optional[torch.Generator | list[torch.Generator]] = None,
         prompt_embeds: Optional[torch.Tensor] = None,
         negative_prompt_embeds: Optional[torch.Tensor] = None,
         output_type: Optional[str] = "pil",

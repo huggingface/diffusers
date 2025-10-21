@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import math
-from typing import Optional, Union
+from typing import Optional
 
 import torch
 import torch.nn.functional as F
@@ -617,10 +617,10 @@ class UpBlock1DNoSkip(nn.Module):
         return hidden_states
 
 
-DownBlockType = Union[DownResnetBlock1D, DownBlock1D, AttnDownBlock1D, DownBlock1DNoSkip]
-MidBlockType = Union[MidResTemporalBlock1D, ValueFunctionMidBlock1D, UNetMidBlock1D]
-OutBlockType = Union[OutConv1DBlock, OutValueFunctionBlock]
-UpBlockType = Union[UpResnetBlock1D, UpBlock1D, AttnUpBlock1D, UpBlock1DNoSkip]
+DownBlockType = DownResnetBlock1D | DownBlock1D | AttnDownBlock1D | DownBlock1DNoSkip
+MidBlockType = MidResTemporalBlock1D | ValueFunctionMidBlock1D | UNetMidBlock1D
+OutBlockType = OutConv1DBlock | OutValueFunctionBlock
+UpBlockType = UpResnetBlock1D | UpBlock1D | AttnUpBlock1D | UpBlock1DNoSkip
 
 
 def get_down_block(

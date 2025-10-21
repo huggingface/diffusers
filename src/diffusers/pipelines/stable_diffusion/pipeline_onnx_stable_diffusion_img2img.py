@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import inspect
-from typing import Callable, Optional, Union
+from typing import Callable, Optional
 
 import numpy as np
 import PIL.Image
@@ -89,7 +89,7 @@ class OnnxStableDiffusionImg2ImgPipeline(DiffusionPipeline):
     text_encoder: OnnxRuntimeModel
     tokenizer: CLIPTokenizer
     unet: OnnxRuntimeModel
-    scheduler: Union[DDIMScheduler, PNDMScheduler, LMSDiscreteScheduler]
+    scheduler: DDIMScheduler | PNDMScheduler | LMSDiscreteScheduler
     safety_checker: OnnxRuntimeModel
     feature_extractor: CLIPImageProcessor
 
@@ -103,7 +103,7 @@ class OnnxStableDiffusionImg2ImgPipeline(DiffusionPipeline):
         text_encoder: OnnxRuntimeModel,
         tokenizer: CLIPTokenizer,
         unet: OnnxRuntimeModel,
-        scheduler: Union[DDIMScheduler, PNDMScheduler, LMSDiscreteScheduler],
+        scheduler: DDIMScheduler | PNDMScheduler | LMSDiscreteScheduler,
         safety_checker: OnnxRuntimeModel,
         feature_extractor: CLIPImageProcessor,
         requires_safety_checker: bool = True,
@@ -168,7 +168,7 @@ class OnnxStableDiffusionImg2ImgPipeline(DiffusionPipeline):
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_onnx_stable_diffusion.OnnxStableDiffusionPipeline._encode_prompt
     def _encode_prompt(
         self,
-        prompt: Union[str, list[str]],
+        prompt: str | list[str],
         num_images_per_prompt: Optional[int],
         do_classifier_free_guidance: bool,
         negative_prompt: Optional[str],
@@ -271,9 +271,9 @@ class OnnxStableDiffusionImg2ImgPipeline(DiffusionPipeline):
 
     def check_inputs(
         self,
-        prompt: Union[str, list[str]],
+        prompt: str | list[str],
         callback_steps: int,
-        negative_prompt: Optional[Union[str, list[str]]] = None,
+        negative_prompt: Optional[str | list[str]] = None,
         prompt_embeds: Optional[np.ndarray] = None,
         negative_prompt_embeds: Optional[np.ndarray] = None,
     ):
@@ -313,12 +313,12 @@ class OnnxStableDiffusionImg2ImgPipeline(DiffusionPipeline):
 
     def __call__(
         self,
-        prompt: Union[str, list[str]],
-        image: Union[np.ndarray, PIL.Image.Image] = None,
+        prompt: str | list[str],
+        image: np.ndarray | PIL.Image.Image = None,
         strength: float = 0.8,
         num_inference_steps: Optional[int] = 50,
         guidance_scale: Optional[float] = 7.5,
-        negative_prompt: Optional[Union[str, list[str]]] = None,
+        negative_prompt: Optional[str | list[str]] = None,
         num_images_per_prompt: Optional[int] = 1,
         eta: Optional[float] = 0.0,
         generator: Optional[np.random.RandomState] = None,

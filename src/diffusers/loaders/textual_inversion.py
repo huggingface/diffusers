@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from typing import List, Optional, Union
+from typing import List, Optional
 
 import safetensors
 import torch
@@ -112,7 +112,7 @@ class TextualInversionLoaderMixin:
     Load Textual Inversion tokens and embeddings to the tokenizer and text encoder.
     """
 
-    def maybe_convert_prompt(self, prompt: Union[str, list[str]], tokenizer: "PreTrainedTokenizer"):  # noqa: F821
+    def maybe_convert_prompt(self, prompt: str | list[str], tokenizer: "PreTrainedTokenizer"):  # noqa: F821
         r"""
         Processes prompts that include a special token corresponding to a multi-vector textual inversion embedding to
         be replaced with multiple special tokens each corresponding to one of the vectors. If the prompt has no textual
@@ -263,8 +263,8 @@ class TextualInversionLoaderMixin:
     @validate_hf_hub_args
     def load_textual_inversion(
         self,
-        pretrained_model_name_or_path: Union[str, list[str], dict[str, torch.Tensor], list[dict[str, torch.Tensor]]],
-        token: Optional[Union[str, list[str]]] = None,
+        pretrained_model_name_or_path: str | list[str] | dict[str, torch.Tensor] | list[dict[str, torch.Tensor]],
+        token: Optional[str | list[str]] = None,
         tokenizer: Optional["PreTrainedTokenizer"] = None,  # noqa: F821
         text_encoder: Optional["PreTrainedModel"] = None,  # noqa: F821
         **kwargs,
@@ -458,7 +458,7 @@ class TextualInversionLoaderMixin:
 
     def unload_textual_inversion(
         self,
-        tokens: Optional[Union[str, list[str]]] = None,
+        tokens: Optional[str | list[str]] = None,
         tokenizer: Optional["PreTrainedTokenizer"] = None,
         text_encoder: Optional["PreTrainedModel"] = None,
     ):

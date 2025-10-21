@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import os
-from typing import Callable, Optional, Union
+from typing import Callable, Optional
 
 import torch
 from huggingface_hub.utils import validate_hf_hub_args
@@ -137,7 +137,7 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
 
     def load_lora_weights(
         self,
-        pretrained_model_name_or_path_or_dict: Union[str, dict[str, torch.Tensor]],
+        pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor],
         adapter_name: Optional[str] = None,
         hotswap: bool = False,
         **kwargs,
@@ -240,7 +240,7 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
     @validate_hf_hub_args
     def lora_state_dict(
         cls,
-        pretrained_model_name_or_path_or_dict: Union[str, dict[str, torch.Tensor]],
+        pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor],
         **kwargs,
     ):
         r"""
@@ -469,8 +469,8 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
     @classmethod
     def save_lora_weights(
         cls,
-        save_directory: Union[str, os.PathLike],
-        unet_lora_layers: dict[str, Union[torch.nn.Module, torch.Tensor]] = None,
+        save_directory: str | os.PathLike,
+        unet_lora_layers: dict[str, torch.nn.Module | torch.Tensor] = None,
         text_encoder_lora_layers: dict[str, torch.nn.Module] = None,
         is_main_process: bool = True,
         weight_name: str = None,
@@ -602,7 +602,7 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
 
     def load_lora_weights(
         self,
-        pretrained_model_name_or_path_or_dict: Union[str, dict[str, torch.Tensor]],
+        pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor],
         adapter_name: Optional[str] = None,
         hotswap: bool = False,
         **kwargs,
@@ -679,7 +679,7 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
     # Copied from diffusers.loaders.lora_pipeline.StableDiffusionLoraLoaderMixin.lora_state_dict
     def lora_state_dict(
         cls,
-        pretrained_model_name_or_path_or_dict: Union[str, dict[str, torch.Tensor]],
+        pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor],
         **kwargs,
     ):
         r"""
@@ -910,10 +910,10 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
     @classmethod
     def save_lora_weights(
         cls,
-        save_directory: Union[str, os.PathLike],
-        unet_lora_layers: dict[str, Union[torch.nn.Module, torch.Tensor]] = None,
-        text_encoder_lora_layers: dict[str, Union[torch.nn.Module, torch.Tensor]] = None,
-        text_encoder_2_lora_layers: dict[str, Union[torch.nn.Module, torch.Tensor]] = None,
+        save_directory: str | os.PathLike,
+        unet_lora_layers: dict[str, torch.nn.Module | torch.Tensor] = None,
+        text_encoder_lora_layers: dict[str, torch.nn.Module | torch.Tensor] = None,
+        text_encoder_2_lora_layers: dict[str, torch.nn.Module | torch.Tensor] = None,
         is_main_process: bool = True,
         weight_name: str = None,
         save_function: Callable = None,
@@ -998,7 +998,7 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
     @validate_hf_hub_args
     def lora_state_dict(
         cls,
-        pretrained_model_name_or_path_or_dict: Union[str, dict[str, torch.Tensor]],
+        pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor],
         **kwargs,
     ):
         r"""
@@ -1050,7 +1050,7 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
 
     def load_lora_weights(
         self,
-        pretrained_model_name_or_path_or_dict: Union[str, dict[str, torch.Tensor]],
+        pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor],
         adapter_name=None,
         hotswap: bool = False,
         **kwargs,
@@ -1207,10 +1207,10 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
     # Copied from diffusers.loaders.lora_pipeline.StableDiffusionXLLoraLoaderMixin.save_lora_weights with unet->transformer
     def save_lora_weights(
         cls,
-        save_directory: Union[str, os.PathLike],
-        transformer_lora_layers: dict[str, Union[torch.nn.Module, torch.Tensor]] = None,
-        text_encoder_lora_layers: dict[str, Union[torch.nn.Module, torch.Tensor]] = None,
-        text_encoder_2_lora_layers: dict[str, Union[torch.nn.Module, torch.Tensor]] = None,
+        save_directory: str | os.PathLike,
+        transformer_lora_layers: dict[str, torch.nn.Module | torch.Tensor] = None,
+        text_encoder_lora_layers: dict[str, torch.nn.Module | torch.Tensor] = None,
+        text_encoder_2_lora_layers: dict[str, torch.nn.Module | torch.Tensor] = None,
         is_main_process: bool = True,
         weight_name: str = None,
         save_function: Callable = None,
@@ -1293,7 +1293,7 @@ class AuraFlowLoraLoaderMixin(LoraBaseMixin):
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.lora_state_dict
     def lora_state_dict(
         cls,
-        pretrained_model_name_or_path_or_dict: Union[str, dict[str, torch.Tensor]],
+        pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor],
         **kwargs,
     ):
         r"""
@@ -1346,7 +1346,7 @@ class AuraFlowLoraLoaderMixin(LoraBaseMixin):
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.load_lora_weights
     def load_lora_weights(
         self,
-        pretrained_model_name_or_path_or_dict: Union[str, dict[str, torch.Tensor]],
+        pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor],
         adapter_name: Optional[str] = None,
         hotswap: bool = False,
         **kwargs,
@@ -1421,8 +1421,8 @@ class AuraFlowLoraLoaderMixin(LoraBaseMixin):
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.save_lora_weights
     def save_lora_weights(
         cls,
-        save_directory: Union[str, os.PathLike],
-        transformer_lora_layers: dict[str, Union[torch.nn.Module, torch.Tensor]] = None,
+        save_directory: str | os.PathLike,
+        transformer_lora_layers: dict[str, torch.nn.Module | torch.Tensor] = None,
         is_main_process: bool = True,
         weight_name: str = None,
         save_function: Callable = None,
@@ -1497,7 +1497,7 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
     @validate_hf_hub_args
     def lora_state_dict(
         cls,
-        pretrained_model_name_or_path_or_dict: Union[str, dict[str, torch.Tensor]],
+        pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor],
         return_alphas: bool = False,
         **kwargs,
     ):
@@ -1620,7 +1620,7 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
 
     def load_lora_weights(
         self,
-        pretrained_model_name_or_path_or_dict: Union[str, dict[str, torch.Tensor]],
+        pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor],
         adapter_name: Optional[str] = None,
         hotswap: bool = False,
         **kwargs,
@@ -1892,8 +1892,8 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
     # Copied from diffusers.loaders.lora_pipeline.StableDiffusionLoraLoaderMixin.save_lora_weights with unet->transformer
     def save_lora_weights(
         cls,
-        save_directory: Union[str, os.PathLike],
-        transformer_lora_layers: dict[str, Union[torch.nn.Module, torch.Tensor]] = None,
+        save_directory: str | os.PathLike,
+        transformer_lora_layers: dict[str, torch.nn.Module | torch.Tensor] = None,
         text_encoder_lora_layers: dict[str, torch.nn.Module] = None,
         is_main_process: bool = True,
         weight_name: str = None,
@@ -2381,7 +2381,7 @@ class AmusedLoraLoaderMixin(StableDiffusionLoraLoaderMixin):
     @classmethod
     def save_lora_weights(
         cls,
-        save_directory: Union[str, os.PathLike],
+        save_directory: str | os.PathLike,
         text_encoder_lora_layers: dict[str, torch.nn.Module] = None,
         transformer_lora_layers: dict[str, torch.nn.Module] = None,
         is_main_process: bool = True,
@@ -2446,7 +2446,7 @@ class CogVideoXLoraLoaderMixin(LoraBaseMixin):
     # Copied from diffusers.loaders.lora_pipeline.SD3LoraLoaderMixin.lora_state_dict
     def lora_state_dict(
         cls,
-        pretrained_model_name_or_path_or_dict: Union[str, dict[str, torch.Tensor]],
+        pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor],
         **kwargs,
     ):
         r"""
@@ -2498,7 +2498,7 @@ class CogVideoXLoraLoaderMixin(LoraBaseMixin):
 
     def load_lora_weights(
         self,
-        pretrained_model_name_or_path_or_dict: Union[str, dict[str, torch.Tensor]],
+        pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor],
         adapter_name: Optional[str] = None,
         hotswap: bool = False,
         **kwargs,
@@ -2572,8 +2572,8 @@ class CogVideoXLoraLoaderMixin(LoraBaseMixin):
     @classmethod
     def save_lora_weights(
         cls,
-        save_directory: Union[str, os.PathLike],
-        transformer_lora_layers: dict[str, Union[torch.nn.Module, torch.Tensor]] = None,
+        save_directory: str | os.PathLike,
+        transformer_lora_layers: dict[str, torch.nn.Module | torch.Tensor] = None,
         is_main_process: bool = True,
         weight_name: str = None,
         save_function: Callable = None,
@@ -2642,7 +2642,7 @@ class Mochi1LoraLoaderMixin(LoraBaseMixin):
     # Copied from diffusers.loaders.lora_pipeline.SD3LoraLoaderMixin.lora_state_dict
     def lora_state_dict(
         cls,
-        pretrained_model_name_or_path_or_dict: Union[str, dict[str, torch.Tensor]],
+        pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor],
         **kwargs,
     ):
         r"""
@@ -2695,7 +2695,7 @@ class Mochi1LoraLoaderMixin(LoraBaseMixin):
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.load_lora_weights
     def load_lora_weights(
         self,
-        pretrained_model_name_or_path_or_dict: Union[str, dict[str, torch.Tensor]],
+        pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor],
         adapter_name: Optional[str] = None,
         hotswap: bool = False,
         **kwargs,
@@ -2770,8 +2770,8 @@ class Mochi1LoraLoaderMixin(LoraBaseMixin):
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.save_lora_weights
     def save_lora_weights(
         cls,
-        save_directory: Union[str, os.PathLike],
-        transformer_lora_layers: dict[str, Union[torch.nn.Module, torch.Tensor]] = None,
+        save_directory: str | os.PathLike,
+        transformer_lora_layers: dict[str, torch.nn.Module | torch.Tensor] = None,
         is_main_process: bool = True,
         weight_name: str = None,
         save_function: Callable = None,
@@ -2841,7 +2841,7 @@ class LTXVideoLoraLoaderMixin(LoraBaseMixin):
     @validate_hf_hub_args
     def lora_state_dict(
         cls,
-        pretrained_model_name_or_path_or_dict: Union[str, dict[str, torch.Tensor]],
+        pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor],
         **kwargs,
     ):
         r"""
@@ -2898,7 +2898,7 @@ class LTXVideoLoraLoaderMixin(LoraBaseMixin):
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.load_lora_weights
     def load_lora_weights(
         self,
-        pretrained_model_name_or_path_or_dict: Union[str, dict[str, torch.Tensor]],
+        pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor],
         adapter_name: Optional[str] = None,
         hotswap: bool = False,
         **kwargs,
@@ -2973,8 +2973,8 @@ class LTXVideoLoraLoaderMixin(LoraBaseMixin):
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.save_lora_weights
     def save_lora_weights(
         cls,
-        save_directory: Union[str, os.PathLike],
-        transformer_lora_layers: dict[str, Union[torch.nn.Module, torch.Tensor]] = None,
+        save_directory: str | os.PathLike,
+        transformer_lora_layers: dict[str, torch.nn.Module | torch.Tensor] = None,
         is_main_process: bool = True,
         weight_name: str = None,
         save_function: Callable = None,
@@ -3045,7 +3045,7 @@ class SanaLoraLoaderMixin(LoraBaseMixin):
     # Copied from diffusers.loaders.lora_pipeline.SD3LoraLoaderMixin.lora_state_dict
     def lora_state_dict(
         cls,
-        pretrained_model_name_or_path_or_dict: Union[str, dict[str, torch.Tensor]],
+        pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor],
         **kwargs,
     ):
         r"""
@@ -3098,7 +3098,7 @@ class SanaLoraLoaderMixin(LoraBaseMixin):
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.load_lora_weights
     def load_lora_weights(
         self,
-        pretrained_model_name_or_path_or_dict: Union[str, dict[str, torch.Tensor]],
+        pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor],
         adapter_name: Optional[str] = None,
         hotswap: bool = False,
         **kwargs,
@@ -3173,8 +3173,8 @@ class SanaLoraLoaderMixin(LoraBaseMixin):
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.save_lora_weights
     def save_lora_weights(
         cls,
-        save_directory: Union[str, os.PathLike],
-        transformer_lora_layers: dict[str, Union[torch.nn.Module, torch.Tensor]] = None,
+        save_directory: str | os.PathLike,
+        transformer_lora_layers: dict[str, torch.nn.Module | torch.Tensor] = None,
         is_main_process: bool = True,
         weight_name: str = None,
         save_function: Callable = None,
@@ -3244,7 +3244,7 @@ class HunyuanVideoLoraLoaderMixin(LoraBaseMixin):
     @validate_hf_hub_args
     def lora_state_dict(
         cls,
-        pretrained_model_name_or_path_or_dict: Union[str, dict[str, torch.Tensor]],
+        pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor],
         **kwargs,
     ):
         r"""
@@ -3301,7 +3301,7 @@ class HunyuanVideoLoraLoaderMixin(LoraBaseMixin):
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.load_lora_weights
     def load_lora_weights(
         self,
-        pretrained_model_name_or_path_or_dict: Union[str, dict[str, torch.Tensor]],
+        pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor],
         adapter_name: Optional[str] = None,
         hotswap: bool = False,
         **kwargs,
@@ -3376,8 +3376,8 @@ class HunyuanVideoLoraLoaderMixin(LoraBaseMixin):
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.save_lora_weights
     def save_lora_weights(
         cls,
-        save_directory: Union[str, os.PathLike],
-        transformer_lora_layers: dict[str, Union[torch.nn.Module, torch.Tensor]] = None,
+        save_directory: str | os.PathLike,
+        transformer_lora_layers: dict[str, torch.nn.Module | torch.Tensor] = None,
         is_main_process: bool = True,
         weight_name: str = None,
         save_function: Callable = None,
@@ -3447,7 +3447,7 @@ class Lumina2LoraLoaderMixin(LoraBaseMixin):
     @validate_hf_hub_args
     def lora_state_dict(
         cls,
-        pretrained_model_name_or_path_or_dict: Union[str, dict[str, torch.Tensor]],
+        pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor],
         **kwargs,
     ):
         r"""
@@ -3505,7 +3505,7 @@ class Lumina2LoraLoaderMixin(LoraBaseMixin):
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.load_lora_weights
     def load_lora_weights(
         self,
-        pretrained_model_name_or_path_or_dict: Union[str, dict[str, torch.Tensor]],
+        pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor],
         adapter_name: Optional[str] = None,
         hotswap: bool = False,
         **kwargs,
@@ -3580,8 +3580,8 @@ class Lumina2LoraLoaderMixin(LoraBaseMixin):
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.save_lora_weights
     def save_lora_weights(
         cls,
-        save_directory: Union[str, os.PathLike],
-        transformer_lora_layers: dict[str, Union[torch.nn.Module, torch.Tensor]] = None,
+        save_directory: str | os.PathLike,
+        transformer_lora_layers: dict[str, torch.nn.Module | torch.Tensor] = None,
         is_main_process: bool = True,
         weight_name: str = None,
         save_function: Callable = None,
@@ -3651,7 +3651,7 @@ class KandinskyLoraLoaderMixin(LoraBaseMixin):
     @validate_hf_hub_args
     def lora_state_dict(
         cls,
-        pretrained_model_name_or_path_or_dict: Union[str, dict[str, torch.Tensor]],
+        pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor],
         **kwargs,
     ):
         r"""
@@ -3731,7 +3731,7 @@ class KandinskyLoraLoaderMixin(LoraBaseMixin):
 
     def load_lora_weights(
         self,
-        pretrained_model_name_or_path_or_dict: Union[str, dict[str, torch.Tensor]],
+        pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor],
         adapter_name: Optional[str] = None,
         hotswap: bool = False,
         **kwargs,
@@ -3832,8 +3832,8 @@ class KandinskyLoraLoaderMixin(LoraBaseMixin):
     @classmethod
     def save_lora_weights(
         cls,
-        save_directory: Union[str, os.PathLike],
-        transformer_lora_layers: dict[str, Union[torch.nn.Module, torch.Tensor]] = None,
+        save_directory: str | os.PathLike,
+        transformer_lora_layers: dict[str, torch.nn.Module | torch.Tensor] = None,
         is_main_process: bool = True,
         weight_name: str = None,
         save_function: Callable = None,
@@ -3936,7 +3936,7 @@ class WanLoraLoaderMixin(LoraBaseMixin):
     @validate_hf_hub_args
     def lora_state_dict(
         cls,
-        pretrained_model_name_or_path_or_dict: Union[str, dict[str, torch.Tensor]],
+        pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor],
         **kwargs,
     ):
         r"""
@@ -4040,7 +4040,7 @@ class WanLoraLoaderMixin(LoraBaseMixin):
 
     def load_lora_weights(
         self,
-        pretrained_model_name_or_path_or_dict: Union[str, dict[str, torch.Tensor]],
+        pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor],
         adapter_name: Optional[str] = None,
         hotswap: bool = False,
         **kwargs,
@@ -4139,8 +4139,8 @@ class WanLoraLoaderMixin(LoraBaseMixin):
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.save_lora_weights
     def save_lora_weights(
         cls,
-        save_directory: Union[str, os.PathLike],
-        transformer_lora_layers: dict[str, Union[torch.nn.Module, torch.Tensor]] = None,
+        save_directory: str | os.PathLike,
+        transformer_lora_layers: dict[str, torch.nn.Module | torch.Tensor] = None,
         is_main_process: bool = True,
         weight_name: str = None,
         save_function: Callable = None,
@@ -4211,7 +4211,7 @@ class SkyReelsV2LoraLoaderMixin(LoraBaseMixin):
     # Copied from diffusers.loaders.lora_pipeline.WanLoraLoaderMixin.lora_state_dict
     def lora_state_dict(
         cls,
-        pretrained_model_name_or_path_or_dict: Union[str, dict[str, torch.Tensor]],
+        pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor],
         **kwargs,
     ):
         r"""
@@ -4317,7 +4317,7 @@ class SkyReelsV2LoraLoaderMixin(LoraBaseMixin):
     # Copied from diffusers.loaders.lora_pipeline.WanLoraLoaderMixin.load_lora_weights
     def load_lora_weights(
         self,
-        pretrained_model_name_or_path_or_dict: Union[str, dict[str, torch.Tensor]],
+        pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor],
         adapter_name: Optional[str] = None,
         hotswap: bool = False,
         **kwargs,
@@ -4416,8 +4416,8 @@ class SkyReelsV2LoraLoaderMixin(LoraBaseMixin):
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.save_lora_weights
     def save_lora_weights(
         cls,
-        save_directory: Union[str, os.PathLike],
-        transformer_lora_layers: dict[str, Union[torch.nn.Module, torch.Tensor]] = None,
+        save_directory: str | os.PathLike,
+        transformer_lora_layers: dict[str, torch.nn.Module | torch.Tensor] = None,
         is_main_process: bool = True,
         weight_name: str = None,
         save_function: Callable = None,
@@ -4488,7 +4488,7 @@ class CogView4LoraLoaderMixin(LoraBaseMixin):
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.lora_state_dict
     def lora_state_dict(
         cls,
-        pretrained_model_name_or_path_or_dict: Union[str, dict[str, torch.Tensor]],
+        pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor],
         **kwargs,
     ):
         r"""
@@ -4541,7 +4541,7 @@ class CogView4LoraLoaderMixin(LoraBaseMixin):
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.load_lora_weights
     def load_lora_weights(
         self,
-        pretrained_model_name_or_path_or_dict: Union[str, dict[str, torch.Tensor]],
+        pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor],
         adapter_name: Optional[str] = None,
         hotswap: bool = False,
         **kwargs,
@@ -4616,8 +4616,8 @@ class CogView4LoraLoaderMixin(LoraBaseMixin):
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.save_lora_weights
     def save_lora_weights(
         cls,
-        save_directory: Union[str, os.PathLike],
-        transformer_lora_layers: dict[str, Union[torch.nn.Module, torch.Tensor]] = None,
+        save_directory: str | os.PathLike,
+        transformer_lora_layers: dict[str, torch.nn.Module | torch.Tensor] = None,
         is_main_process: bool = True,
         weight_name: str = None,
         save_function: Callable = None,
@@ -4687,7 +4687,7 @@ class HiDreamImageLoraLoaderMixin(LoraBaseMixin):
     @validate_hf_hub_args
     def lora_state_dict(
         cls,
-        pretrained_model_name_or_path_or_dict: Union[str, dict[str, torch.Tensor]],
+        pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor],
         **kwargs,
     ):
         r"""
@@ -4744,7 +4744,7 @@ class HiDreamImageLoraLoaderMixin(LoraBaseMixin):
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.load_lora_weights
     def load_lora_weights(
         self,
-        pretrained_model_name_or_path_or_dict: Union[str, dict[str, torch.Tensor]],
+        pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor],
         adapter_name: Optional[str] = None,
         hotswap: bool = False,
         **kwargs,
@@ -4819,8 +4819,8 @@ class HiDreamImageLoraLoaderMixin(LoraBaseMixin):
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.save_lora_weights
     def save_lora_weights(
         cls,
-        save_directory: Union[str, os.PathLike],
-        transformer_lora_layers: dict[str, Union[torch.nn.Module, torch.Tensor]] = None,
+        save_directory: str | os.PathLike,
+        transformer_lora_layers: dict[str, torch.nn.Module | torch.Tensor] = None,
         is_main_process: bool = True,
         weight_name: str = None,
         save_function: Callable = None,
@@ -4890,7 +4890,7 @@ class QwenImageLoraLoaderMixin(LoraBaseMixin):
     @validate_hf_hub_args
     def lora_state_dict(
         cls,
-        pretrained_model_name_or_path_or_dict: Union[str, dict[str, torch.Tensor]],
+        pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor],
         **kwargs,
     ):
         r"""
@@ -4949,7 +4949,7 @@ class QwenImageLoraLoaderMixin(LoraBaseMixin):
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.load_lora_weights
     def load_lora_weights(
         self,
-        pretrained_model_name_or_path_or_dict: Union[str, dict[str, torch.Tensor]],
+        pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor],
         adapter_name: Optional[str] = None,
         hotswap: bool = False,
         **kwargs,
@@ -5024,8 +5024,8 @@ class QwenImageLoraLoaderMixin(LoraBaseMixin):
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.save_lora_weights
     def save_lora_weights(
         cls,
-        save_directory: Union[str, os.PathLike],
-        transformer_lora_layers: dict[str, Union[torch.nn.Module, torch.Tensor]] = None,
+        save_directory: str | os.PathLike,
+        transformer_lora_layers: dict[str, torch.nn.Module | torch.Tensor] = None,
         is_main_process: bool = True,
         weight_name: str = None,
         save_function: Callable = None,

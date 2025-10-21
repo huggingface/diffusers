@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import inspect
-from typing import Any, Callable, Optional, Union
+from typing import Any, Callable, Optional
 
 import PIL.Image
 import torch
@@ -625,13 +625,13 @@ class StableUnCLIPImg2ImgPipeline(
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        image: Union[torch.Tensor, PIL.Image.Image] = None,
-        prompt: Union[str, list[str]] = None,
+        image: torch.Tensor | PIL.Image.Image = None,
+        prompt: str | list[str] = None,
         height: Optional[int] = None,
         width: Optional[int] = None,
         num_inference_steps: int = 20,
         guidance_scale: float = 10,
-        negative_prompt: Optional[Union[str, list[str]]] = None,
+        negative_prompt: Optional[str | list[str]] = None,
         num_images_per_prompt: Optional[int] = 1,
         eta: float = 0.0,
         generator: Optional[torch.Generator] = None,

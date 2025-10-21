@@ -14,7 +14,7 @@
 # limitations under the License.
 
 import inspect
-from typing import Callable, Dict, Optional, Tuple, Union
+from typing import Callable, Dict, Optional, Tuple
 
 import torch
 from transformers import T5EncoderModel, T5Tokenizer
@@ -59,7 +59,7 @@ EXAMPLE_DOC_STRING = """
 def retrieve_timesteps(
     scheduler,
     num_inference_steps: Optional[int] = None,
-    device: Optional[Union[str, torch.device]] = None,
+    device: Optional[str | torch.device] = None,
     timesteps: Optional[list[int]] = None,
     sigmas: Optional[list[float]] = None,
     **kwargs,
@@ -153,7 +153,7 @@ class CogView3PlusPipeline(DiffusionPipeline):
         text_encoder: T5EncoderModel,
         vae: AutoencoderKL,
         transformer: CogView3PlusTransformer2DModel,
-        scheduler: Union[CogVideoXDDIMScheduler, CogVideoXDPMScheduler],
+        scheduler: CogVideoXDDIMScheduler | CogVideoXDPMScheduler,
     ):
         super().__init__()
 
@@ -167,7 +167,7 @@ class CogView3PlusPipeline(DiffusionPipeline):
     # Copied from diffusers.pipelines.cogvideo.pipeline_cogvideox.CogVideoXPipeline._get_t5_prompt_embeds with num_videos_per_prompt->num_images_per_prompt
     def _get_t5_prompt_embeds(
         self,
-        prompt: Union[str, list[str]] = None,
+        prompt: str | list[str] = None,
         num_images_per_prompt: int = 1,
         max_sequence_length: int = 226,
         device: Optional[torch.device] = None,
@@ -209,8 +209,8 @@ class CogView3PlusPipeline(DiffusionPipeline):
 
     def encode_prompt(
         self,
-        prompt: Union[str, list[str]],
-        negative_prompt: Optional[Union[str, list[str]]] = None,
+        prompt: str | list[str],
+        negative_prompt: Optional[str | list[str]] = None,
         do_classifier_free_guidance: bool = True,
         num_images_per_prompt: int = 1,
         prompt_embeds: Optional[torch.Tensor] = None,
@@ -408,8 +408,8 @@ class CogView3PlusPipeline(DiffusionPipeline):
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        prompt: Optional[Union[str, list[str]]] = None,
-        negative_prompt: Optional[Union[str, list[str]]] = None,
+        prompt: Optional[str | list[str]] = None,
+        negative_prompt: Optional[str | list[str]] = None,
         height: Optional[int] = None,
         width: Optional[int] = None,
         num_inference_steps: int = 50,
@@ -417,7 +417,7 @@ class CogView3PlusPipeline(DiffusionPipeline):
         guidance_scale: float = 5.0,
         num_images_per_prompt: int = 1,
         eta: float = 0.0,
-        generator: Optional[Union[torch.Generator, list[torch.Generator]]] = None,
+        generator: Optional[torch.Generator | list[torch.Generator]] = None,
         latents: Optional[torch.FloatTensor] = None,
         prompt_embeds: Optional[torch.FloatTensor] = None,
         negative_prompt_embeds: Optional[torch.FloatTensor] = None,
@@ -426,11 +426,11 @@ class CogView3PlusPipeline(DiffusionPipeline):
         output_type: str = "pil",
         return_dict: bool = True,
         callback_on_step_end: Optional[
-            Union[Callable[[int, int, Dict], None], PipelineCallback, MultiPipelineCallbacks]
+            Callable[[int, int, Dict], None] | PipelineCallback | MultiPipelineCallbacks
         ] = None,
         callback_on_step_end_tensor_inputs: list[str] = ["latents"],
         max_sequence_length: int = 224,
-    ) -> Union[CogView3PipelineOutput, Tuple]:
+    ) -> CogView3PipelineOutput | Tuple:
         """
         Function invoked when calling the pipeline for generation.
 

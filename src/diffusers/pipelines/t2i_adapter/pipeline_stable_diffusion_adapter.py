@@ -14,7 +14,7 @@
 
 import inspect
 from dataclasses import dataclass
-from typing import Any, Callable, Optional, Union
+from typing import Any, Callable, Optional
 
 import numpy as np
 import PIL.Image
@@ -62,7 +62,7 @@ class StableDiffusionAdapterPipelineOutput(BaseOutput):
             (nsfw) content, or `None` if safety checking could not be performed.
     """
 
-    images: Union[list[PIL.Image.Image], np.ndarray]
+    images: list[PIL.Image.Image] | np.ndarray
     nsfw_content_detected: Optional[list[bool]]
 
 
@@ -132,7 +132,7 @@ def _preprocess_adapter_image(image, height, width):
 def retrieve_timesteps(
     scheduler,
     num_inference_steps: Optional[int] = None,
-    device: Optional[Union[str, torch.device]] = None,
+    device: Optional[str | torch.device] = None,
     timesteps: Optional[list[int]] = None,
     sigmas: Optional[list[float]] = None,
     **kwargs,
@@ -233,7 +233,7 @@ class StableDiffusionAdapterPipeline(DiffusionPipeline, StableDiffusionMixin, Fr
         text_encoder: CLIPTextModel,
         tokenizer: CLIPTokenizer,
         unet: UNet2DConditionModel,
-        adapter: Union[T2IAdapter, MultiAdapter, list[T2IAdapter]],
+        adapter: T2IAdapter | MultiAdapter | list[T2IAdapter],
         scheduler: KarrasDiffusionSchedulers,
         safety_checker: StableDiffusionSafetyChecker,
         feature_extractor: CLIPImageProcessor,
@@ -690,18 +690,18 @@ class StableDiffusionAdapterPipeline(DiffusionPipeline, StableDiffusionMixin, Fr
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        prompt: Union[str, list[str]] = None,
-        image: Union[torch.Tensor, PIL.Image.Image, list[PIL.Image.Image]] = None,
+        prompt: str | list[str] = None,
+        image: torch.Tensor | PIL.Image.Image | list[PIL.Image.Image] = None,
         height: Optional[int] = None,
         width: Optional[int] = None,
         num_inference_steps: int = 50,
         timesteps: list[int] = None,
         sigmas: list[float] = None,
         guidance_scale: float = 7.5,
-        negative_prompt: Optional[Union[str, list[str]]] = None,
+        negative_prompt: Optional[str | list[str]] = None,
         num_images_per_prompt: Optional[int] = 1,
         eta: float = 0.0,
-        generator: Optional[Union[torch.Generator, list[torch.Generator]]] = None,
+        generator: Optional[torch.Generator | list[torch.Generator]] = None,
         latents: Optional[torch.Tensor] = None,
         prompt_embeds: Optional[torch.Tensor] = None,
         negative_prompt_embeds: Optional[torch.Tensor] = None,
@@ -710,7 +710,7 @@ class StableDiffusionAdapterPipeline(DiffusionPipeline, StableDiffusionMixin, Fr
         callback: Optional[Callable[[int, int, torch.Tensor], None]] = None,
         callback_steps: int = 1,
         cross_attention_kwargs: Optional[dict[str, Any]] = None,
-        adapter_conditioning_scale: Union[float, list[float]] = 1.0,
+        adapter_conditioning_scale: float | list[float] = 1.0,
         clip_skip: Optional[int] = None,
     ):
         r"""

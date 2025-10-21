@@ -15,7 +15,7 @@
 # DISCLAIMER: This file is strongly influenced by https://github.com/ermongroup/ddim
 
 from dataclasses import dataclass
-from typing import Optional, Tuple, Union
+from typing import Optional, Tuple
 
 import flax
 import jax
@@ -200,7 +200,7 @@ class FlaxDDPMScheduler(FlaxSchedulerMixin, ConfigMixin):
         sample: jnp.ndarray,
         key: Optional[jax.Array] = None,
         return_dict: bool = True,
-    ) -> Union[FlaxDDPMSchedulerOutput, Tuple]:
+    ) -> FlaxDDPMSchedulerOutput | Tuple:
         """
         Predict the sample at the previous timestep by reversing the SDE. Core function to propagate the diffusion
         process from the learned model outputs (most often the predicted noise).

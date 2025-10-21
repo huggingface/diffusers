@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import inspect
-from typing import Any, Callable, Optional, Union
+from typing import Any, Callable, Optional
 
 import numpy as np
 import PIL.Image
@@ -562,17 +562,17 @@ class StableDiffusionInpaintPipelineLegacy(
     @torch.no_grad()
     def __call__(
         self,
-        prompt: Union[str, list[str]] = None,
-        image: Union[torch.Tensor, PIL.Image.Image] = None,
-        mask_image: Union[torch.Tensor, PIL.Image.Image] = None,
+        prompt: str | list[str] = None,
+        image: torch.Tensor | PIL.Image.Image = None,
+        mask_image: torch.Tensor | PIL.Image.Image = None,
         strength: float = 0.8,
         num_inference_steps: Optional[int] = 50,
         guidance_scale: Optional[float] = 7.5,
-        negative_prompt: Optional[Union[str, list[str]]] = None,
+        negative_prompt: Optional[str | list[str]] = None,
         num_images_per_prompt: Optional[int] = 1,
         add_predicted_noise: Optional[bool] = False,
         eta: Optional[float] = 0.0,
-        generator: Optional[Union[torch.Generator, list[torch.Generator]]] = None,
+        generator: Optional[torch.Generator | list[torch.Generator]] = None,
         prompt_embeds: Optional[torch.Tensor] = None,
         negative_prompt_embeds: Optional[torch.Tensor] = None,
         output_type: Optional[str] = "pil",

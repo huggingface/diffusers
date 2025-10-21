@@ -15,7 +15,7 @@
 # DISCLAIMER: This file is strongly influenced by https://github.com/LuChengTHU/dpm-solver
 
 import math
-from typing import Optional, Tuple, Union
+from typing import Optional, Tuple
 
 import numpy as np
 import torch
@@ -302,7 +302,7 @@ class DPMSolverSinglestepScheduler(SchedulerMixin, ConfigMixin):
     def set_timesteps(
         self,
         num_inference_steps: int = None,
-        device: Union[str, torch.device] = None,
+        device: str | torch.device = None,
         mu: Optional[float] = None,
         timesteps: Optional[list[int]] = None,
     ):
@@ -1048,11 +1048,11 @@ class DPMSolverSinglestepScheduler(SchedulerMixin, ConfigMixin):
     def step(
         self,
         model_output: torch.Tensor,
-        timestep: Union[int, torch.Tensor],
+        timestep: int | torch.Tensor,
         sample: torch.Tensor,
         generator=None,
         return_dict: bool = True,
-    ) -> Union[SchedulerOutput, Tuple]:
+    ) -> SchedulerOutput | Tuple:
         """
         Predict the sample from the previous timestep by reversing the SDE. This function propagates the sample with
         the singlestep DPMSolver.

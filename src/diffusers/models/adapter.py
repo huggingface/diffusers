@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import os
-from typing import Callable, Optional, Union
+from typing import Callable, Optional
 
 import torch
 import torch.nn as nn
@@ -104,7 +104,7 @@ class MultiAdapter(ModelMixin):
 
     def save_pretrained(
         self,
-        save_directory: Union[str, os.PathLike],
+        save_directory: str | os.PathLike,
         is_main_process: bool = True,
         save_function: Callable = None,
         safe_serialization: bool = True,
@@ -145,7 +145,7 @@ class MultiAdapter(ModelMixin):
             model_path_to_save = model_path_to_save + f"_{idx}"
 
     @classmethod
-    def from_pretrained(cls, pretrained_model_path: Optional[Union[str, os.PathLike]], **kwargs):
+    def from_pretrained(cls, pretrained_model_path: Optional[str | os.PathLike], **kwargs):
         r"""
         Instantiate a pretrained `MultiAdapter` model from multiple pre-trained adapter models.
 

@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import inspect
-from typing import Any, Callable, Dict, Optional, Union
+from typing import Any, Callable, Dict, Optional
 
 import torch
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer, CLIPVisionModelWithProjection
@@ -135,12 +135,12 @@ class AnimateDiffPAGPipeline(
         vae: AutoencoderKL,
         text_encoder: CLIPTextModel,
         tokenizer: CLIPTokenizer,
-        unet: Union[UNet2DConditionModel, UNetMotionModel],
+        unet: UNet2DConditionModel | UNetMotionModel,
         motion_adapter: MotionAdapter,
         scheduler: KarrasDiffusionSchedulers,
         feature_extractor: CLIPImageProcessor = None,
         image_encoder: CLIPVisionModelWithProjection = None,
-        pag_applied_layers: Union[str, list[str]] = "mid_block.*attn1",  # ["mid"], ["down_blocks.1"]
+        pag_applied_layers: str | list[str] = "mid_block.*attn1",  # ["mid"], ["down_blocks.1"]
     ):
         super().__init__()
         if isinstance(unet, UNet2DConditionModel):
@@ -576,16 +576,16 @@ class AnimateDiffPAGPipeline(
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        prompt: Optional[Union[str, list[str]]] = None,
+        prompt: Optional[str | list[str]] = None,
         num_frames: Optional[int] = 16,
         height: Optional[int] = None,
         width: Optional[int] = None,
         num_inference_steps: int = 50,
         guidance_scale: float = 7.5,
-        negative_prompt: Optional[Union[str, list[str]]] = None,
+        negative_prompt: Optional[str | list[str]] = None,
         num_videos_per_prompt: Optional[int] = 1,
         eta: float = 0.0,
-        generator: Optional[Union[torch.Generator, list[torch.Generator]]] = None,
+        generator: Optional[torch.Generator | list[torch.Generator]] = None,
         latents: Optional[torch.Tensor] = None,
         prompt_embeds: Optional[torch.Tensor] = None,
         negative_prompt_embeds: Optional[torch.Tensor] = None,

@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import html
-from typing import Optional, Union
+from typing import Optional
 
 import regex as re
 import torch
@@ -335,9 +335,7 @@ class FluxTextEncoderStep(ModularPipelineBlocks):
                 raise ValueError(f"`prompt` or `prompt_2` has to be of type `str` or `list` but is {type(prompt)}")
 
     @staticmethod
-    def _get_t5_prompt_embeds(
-        components, prompt: Union[str, list[str]], max_sequence_length: int, device: torch.device
-    ):
+    def _get_t5_prompt_embeds(components, prompt: str | list[str], max_sequence_length: int, device: torch.device):
         dtype = components.text_encoder_2.dtype
         prompt = [prompt] if isinstance(prompt, str) else prompt
 
@@ -368,7 +366,7 @@ class FluxTextEncoderStep(ModularPipelineBlocks):
         return prompt_embeds
 
     @staticmethod
-    def _get_clip_prompt_embeds(components, prompt: Union[str, list[str]], device: torch.device):
+    def _get_clip_prompt_embeds(components, prompt: str | list[str], device: torch.device):
         prompt = [prompt] if isinstance(prompt, str) else prompt
 
         if isinstance(components, TextualInversionLoaderMixin):
@@ -404,8 +402,8 @@ class FluxTextEncoderStep(ModularPipelineBlocks):
     @staticmethod
     def encode_prompt(
         components,
-        prompt: Union[str, list[str]],
-        prompt_2: Union[str, list[str]],
+        prompt: str | list[str],
+        prompt_2: str | list[str],
         device: Optional[torch.device] = None,
         prompt_embeds: Optional[torch.FloatTensor] = None,
         pooled_prompt_embeds: Optional[torch.FloatTensor] = None,

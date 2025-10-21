@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import inspect
-from typing import Callable, Optional, Union
+from typing import Callable, Optional
 
 import torch
 from transformers import (
@@ -108,7 +108,7 @@ class StableAudioPipeline(DiffusionPipeline):
         vae: AutoencoderOobleck,
         text_encoder: T5EncoderModel,
         projection_model: StableAudioProjectionModel,
-        tokenizer: Union[T5Tokenizer, T5TokenizerFast],
+        tokenizer: T5Tokenizer | T5TokenizerFast,
         transformer: StableAudioDiTModel,
         scheduler: EDMDPMSolverMultistepScheduler,
     ):
@@ -491,15 +491,15 @@ class StableAudioPipeline(DiffusionPipeline):
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        prompt: Union[str, list[str]] = None,
+        prompt: str | list[str] = None,
         audio_end_in_s: Optional[float] = None,
         audio_start_in_s: Optional[float] = 0.0,
         num_inference_steps: int = 100,
         guidance_scale: float = 7.0,
-        negative_prompt: Optional[Union[str, list[str]]] = None,
+        negative_prompt: Optional[str | list[str]] = None,
         num_waveforms_per_prompt: Optional[int] = 1,
         eta: float = 0.0,
-        generator: Optional[Union[torch.Generator, list[torch.Generator]]] = None,
+        generator: Optional[torch.Generator | list[torch.Generator]] = None,
         latents: Optional[torch.Tensor] = None,
         initial_audio_waveforms: Optional[torch.Tensor] = None,
         initial_audio_sampling_rate: Optional[torch.Tensor] = None,

@@ -17,7 +17,7 @@
 
 import math
 from dataclasses import dataclass
-from typing import Optional, Tuple, Union
+from typing import Optional, Tuple
 
 import torch
 
@@ -143,7 +143,7 @@ class DDPMWuerstchenScheduler(SchedulerMixin, ConfigMixin):
         self,
         num_inference_steps: int = None,
         timesteps: Optional[list[int]] = None,
-        device: Union[str, torch.device] = None,
+        device: str | torch.device = None,
     ):
         """
         Sets the discrete timesteps used for the diffusion chain. Supporting function to be run before inference.
@@ -168,7 +168,7 @@ class DDPMWuerstchenScheduler(SchedulerMixin, ConfigMixin):
         sample: torch.Tensor,
         generator=None,
         return_dict: bool = True,
-    ) -> Union[DDPMWuerstchenSchedulerOutput, Tuple]:
+    ) -> DDPMWuerstchenSchedulerOutput | Tuple:
         """
         Predict the sample at the previous timestep by reversing the SDE. Core function to propagate the diffusion
         process from the learned model outputs (most often the predicted noise).

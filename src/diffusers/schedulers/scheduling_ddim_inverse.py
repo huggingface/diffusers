@@ -16,7 +16,7 @@
 # and https://github.com/hojonathanho/diffusion
 import math
 from dataclasses import dataclass
-from typing import Optional, Tuple, Union
+from typing import Optional, Tuple
 
 import numpy as np
 import torch
@@ -180,7 +180,7 @@ class DDIMInverseScheduler(SchedulerMixin, ConfigMixin):
         beta_start: float = 0.0001,
         beta_end: float = 0.02,
         beta_schedule: str = "linear",
-        trained_betas: Optional[Union[np.ndarray, list[float]]] = None,
+        trained_betas: Optional[np.ndarray | list[float]] = None,
         clip_sample: bool = True,
         set_alpha_to_one: bool = True,
         steps_offset: int = 0,
@@ -248,7 +248,7 @@ class DDIMInverseScheduler(SchedulerMixin, ConfigMixin):
         """
         return sample
 
-    def set_timesteps(self, num_inference_steps: int, device: Union[str, torch.device] = None):
+    def set_timesteps(self, num_inference_steps: int, device: str | torch.device = None):
         """
         Sets the discrete timesteps used for the diffusion chain (to be run before inference).
 
@@ -292,7 +292,7 @@ class DDIMInverseScheduler(SchedulerMixin, ConfigMixin):
         timestep: int,
         sample: torch.Tensor,
         return_dict: bool = True,
-    ) -> Union[DDIMSchedulerOutput, Tuple]:
+    ) -> DDIMSchedulerOutput | Tuple:
         """
         Predict the sample from the previous timestep by reversing the SDE. This function propagates the diffusion
         process from the learned model outputs (most often the predicted noise).

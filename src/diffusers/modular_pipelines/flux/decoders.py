@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Any, Union
+from typing import Any
 
 import numpy as np
 import PIL
@@ -83,7 +83,7 @@ class FluxDecodeStep(ModularPipelineBlocks):
         return [
             OutputParam(
                 "images",
-                type_hint=Union[list[PIL.Image.Image], torch.Tensor, np.ndarray],
+                type_hint=list[PIL.Image.Image] | torch.Tensor | np.ndarray,
                 description="The generated images, can be a list of PIL.Image.Image, torch.Tensor or a numpy array",
             )
         ]

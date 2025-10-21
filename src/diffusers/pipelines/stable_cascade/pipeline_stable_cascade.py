@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Callable, Dict, Optional, Union
+from typing import Callable, Dict, Optional
 
 import torch
 from transformers import CLIPTextModelWithProjection, CLIPTokenizer
@@ -303,17 +303,17 @@ class StableCascadeDecoderPipeline(DiffusionPipeline):
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        image_embeddings: Union[torch.Tensor, list[torch.Tensor]],
-        prompt: Union[str, list[str]] = None,
+        image_embeddings: torch.Tensor | list[torch.Tensor],
+        prompt: str | list[str] = None,
         num_inference_steps: int = 10,
         guidance_scale: float = 0.0,
-        negative_prompt: Optional[Union[str, list[str]]] = None,
+        negative_prompt: Optional[str | list[str]] = None,
         prompt_embeds: Optional[torch.Tensor] = None,
         prompt_embeds_pooled: Optional[torch.Tensor] = None,
         negative_prompt_embeds: Optional[torch.Tensor] = None,
         negative_prompt_embeds_pooled: Optional[torch.Tensor] = None,
         num_images_per_prompt: int = 1,
-        generator: Optional[Union[torch.Generator, list[torch.Generator]]] = None,
+        generator: Optional[torch.Generator | list[torch.Generator]] = None,
         latents: Optional[torch.Tensor] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,

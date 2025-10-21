@@ -27,7 +27,7 @@ from collections import OrderedDict
 from contextlib import ExitStack, contextmanager
 from functools import wraps
 from pathlib import Path
-from typing import Any, Callable, ContextManager, Optional, Type, Union
+from typing import Any, Callable, ContextManager, Optional, Type
 
 import safetensors
 import torch
@@ -638,12 +638,12 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
 
     def save_pretrained(
         self,
-        save_directory: Union[str, os.PathLike],
+        save_directory: str | os.PathLike,
         is_main_process: bool = True,
         save_function: Optional[Callable] = None,
         safe_serialization: bool = True,
         variant: Optional[str] = None,
-        max_shard_size: Union[int, str] = "10GB",
+        max_shard_size: int | str = "10GB",
         push_to_hub: bool = False,
         **kwargs,
     ):
@@ -805,7 +805,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
 
     @classmethod
     @validate_hf_hub_args
-    def from_pretrained(cls, pretrained_model_name_or_path: Optional[Union[str, os.PathLike]], **kwargs) -> Self:
+    def from_pretrained(cls, pretrained_model_name_or_path: Optional[str | os.PathLike], **kwargs) -> Self:
         r"""
         Instantiate a pretrained PyTorch model from a pretrained model configuration.
 
@@ -955,7 +955,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         quantization_config = kwargs.pop("quantization_config", None)
         dduf_entries: Optional[dict[str, DDUFEntry]] = kwargs.pop("dduf_entries", None)
         disable_mmap = kwargs.pop("disable_mmap", False)
-        parallel_config: Optional[Union[ParallelConfig, ContextParallelConfig]] = kwargs.pop("parallel_config", None)
+        parallel_config: Optional[ParallelConfig | ContextParallelConfig] = kwargs.pop("parallel_config", None)
 
         is_parallel_loading_enabled = HF_ENABLE_PARALLEL_LOADING
         if is_parallel_loading_enabled and not low_cpu_mem_usage:
@@ -1480,7 +1480,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
     def enable_parallelism(
         self,
         *,
-        config: Union[ParallelConfig, ContextParallelConfig],
+        config: ParallelConfig | ContextParallelConfig,
         cp_plan: Optional[dict[str, ContextParallelModelPlan]] = None,
     ):
         from ..hooks.context_parallel import apply_context_parallel
@@ -1550,17 +1550,17 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         model,
         state_dict: OrderedDict,
         resolved_model_file: list[str],
-        pretrained_model_name_or_path: Union[str, os.PathLike],
+        pretrained_model_name_or_path: str | os.PathLike,
         loaded_keys: list[str],
         ignore_mismatched_sizes: bool = False,
         assign_to_params_buffers: bool = False,
         hf_quantizer: Optional[DiffusersQuantizer] = None,
         low_cpu_mem_usage: bool = True,
-        dtype: Optional[Union[str, torch.dtype]] = None,
+        dtype: Optional[str | torch.dtype] = None,
         keep_in_fp32_modules: Optional[list[str]] = None,
-        device_map: Union[str, int, torch.device, dict[str, Union[int, str, torch.device]]] = None,
+        device_map: str | int | torch.device | dict[str, int | str | torch.device] = None,
         offload_state_dict: Optional[bool] = None,
-        offload_folder: Optional[Union[str, os.PathLike]] = None,
+        offload_folder: Optional[str | os.PathLike] = None,
         dduf_entries: Optional[dict[str, DDUFEntry]] = None,
         is_parallel_loading_enabled: Optional[bool] = False,
     ):
@@ -1942,7 +1942,7 @@ class LegacyModelMixin(ModelMixin):
 
     @classmethod
     @validate_hf_hub_args
-    def from_pretrained(cls, pretrained_model_name_or_path: Optional[Union[str, os.PathLike]], **kwargs):
+    def from_pretrained(cls, pretrained_model_name_or_path: Optional[str | os.PathLike], **kwargs):
         # To prevent dependency import problem.
         from .model_loading_utils import _fetch_remapped_cls_from_config
 

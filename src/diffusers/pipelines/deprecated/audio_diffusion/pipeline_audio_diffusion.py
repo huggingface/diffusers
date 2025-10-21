@@ -14,7 +14,6 @@
 
 
 from math import acos, sin
-from typing import Union
 
 import numpy as np
 import torch
@@ -53,7 +52,7 @@ class AudioDiffusionPipeline(DiffusionPipeline):
         vqvae: AutoencoderKL,
         unet: UNet2DConditionModel,
         mel: Mel,
-        scheduler: Union[DDIMScheduler, DDPMScheduler],
+        scheduler: DDIMScheduler | DDPMScheduler,
     ):
         super().__init__()
         self.register_modules(unet=unet, scheduler=scheduler, mel=mel, vqvae=vqvae)
@@ -84,10 +83,7 @@ class AudioDiffusionPipeline(DiffusionPipeline):
         noise: torch.Tensor = None,
         encoding: torch.Tensor = None,
         return_dict=True,
-    ) -> Union[
-        Union[AudioPipelineOutput, ImagePipelineOutput],
-        tuple[list[Image.Image], tuple[int, list[np.ndarray]]],
-    ]:
+    ) -> AudioPipelineOutput | ImagePipelineOutput | tuple[list[Image.Image], tuple[int, list[np.ndarray]]]:
         """
         The call function to the pipeline for generation.
 
