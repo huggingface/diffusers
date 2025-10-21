@@ -17,7 +17,7 @@ import unittest
 
 import torch
 
-from diffusers.models.transformers.transformer_photon import PhotonTransformer2DModel
+from diffusers.models.transformers.transformer_prx import PRXTransformer2DModel
 
 from ...testing_utils import enable_full_determinism, torch_device
 from ..test_modeling_common import ModelTesterMixin
@@ -26,8 +26,8 @@ from ..test_modeling_common import ModelTesterMixin
 enable_full_determinism()
 
 
-class PhotonTransformerTests(ModelTesterMixin, unittest.TestCase):
-    model_class = PhotonTransformer2DModel
+class PRXTransformerTests(ModelTesterMixin, unittest.TestCase):
+    model_class = PRXTransformer2DModel
     main_input_name = "hidden_states"
     uses_custom_attn_processor = True
 
@@ -75,7 +75,7 @@ class PhotonTransformerTests(ModelTesterMixin, unittest.TestCase):
         return init_dict, inputs_dict
 
     def test_gradient_checkpointing_is_applied(self):
-        expected_set = {"PhotonTransformer2DModel"}
+        expected_set = {"PRXTransformer2DModel"}
         super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
 
 
