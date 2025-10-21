@@ -65,23 +65,37 @@ EXAMPLE_DOC_STRING = """
         ... )
         >>> pipe.to("cuda")
 
+        >>> # Load the character image
         >>> image = load_image(
         ...     "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/astronaut.jpg"
         ... )
+
+        >>> # Load pose and face videos (preprocessed from reference video)
+        >>> # Note: Videos should be preprocessed to extract pose keypoints and face features
+        >>> # Refer to the Wan-Animate preprocessing documentation for details
         >>> pose_video = load_video("path/to/pose_video.mp4")
         >>> face_video = load_video("path/to/face_video.mp4")
+
+        >>> # Calculate optimal dimensions based on VAE constraints
         >>> max_area = 480 * 832
         >>> aspect_ratio = image.height / image.width
         >>> mod_value = pipe.vae_scale_factor_spatial * pipe.transformer.config.patch_size[1]
         >>> height = round(np.sqrt(max_area * aspect_ratio)) // mod_value * mod_value
         >>> width = round(np.sqrt(max_area / aspect_ratio)) // mod_value * mod_value
         >>> image = image.resize((width, height))
+
         >>> prompt = (
         ...     "An astronaut hatching from an egg, on the surface of the moon, the darkness and depth of space realised in "
         ...     "the background. High quality, ultrarealistic detail and breath-taking movie-like camera shot."
         ... )
-        >>> negative_prompt = "Bright tones, overexposed, static, blurred details, subtitles, style, works, paintings, images, static, overall gray, worst quality, low quality, JPEG compression residue, ugly, incomplete, extra fingers, poorly drawn hands, poorly drawn faces, deformed, disfigured, misshapen limbs, fused fingers, still picture, messy background, three legs, many people in the background, walking backwards"
+        >>> negative_prompt = (
+        ...     "Bright tones, overexposed, static, blurred details, subtitles, style, works, paintings, images, static, "
+        ...     "overall gray, worst quality, low quality, JPEG compression residue, ugly, incomplete, extra fingers, "
+        ...     "poorly drawn hands, poorly drawn faces, deformed, disfigured, misshapen limbs, fused fingers, still picture, "
+        ...     "messy background, three legs, many people in the background, walking backwards"
+        ... )
 
+        >>> # Animation mode: Animate the character with the motion from pose/face videos
         >>> output = pipe(
         ...     image=image,
         ...     pose_video=pose_video,
@@ -92,8 +106,29 @@ EXAMPLE_DOC_STRING = """
         ...     width=width,
         ...     num_frames=81,
         ...     guidance_scale=5.0,
+        ...     mode="animation",
         ... ).frames[0]
-        >>> export_to_video(output, "output.mp4", fps=16)
+        >>> export_to_video(output, "output_animation.mp4", fps=16)
+
+        >>> # Replacement mode: Replace a character in the background video
+        >>> # Requires additional background_video and mask_video inputs
+        >>> background_video = load_video("path/to/background_video.mp4")
+        >>> mask_video = load_video("path/to/mask_video.mp4")  # Black areas preserved, white areas generated
+        >>> output = pipe(
+        ...     image=image,
+        ...     pose_video=pose_video,
+        ...     face_video=face_video,
+        ...     background_video=background_video,
+        ...     mask_video=mask_video,
+        ...     prompt=prompt,
+        ...     negative_prompt=negative_prompt,
+        ...     height=height,
+        ...     width=width,
+        ...     num_frames=81,
+        ...     guidance_scale=5.0,
+        ...     mode="replacement",
+        ... ).frames[0]
+        >>> export_to_video(output, "output_replacement.mp4", fps=16)
         ```
 """
 
@@ -131,15 +166,25 @@ def retrieve_latents(
 
 class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
     r"""
-    WanAnimatePipeline takes a character image, pose video, and face video as input, and generates a video in these two
+    Pipeline for unified character animation and replacement using Wan-Animate.
+
+    WanAnimatePipeline takes a character image, pose video, and face video as input, and generates a video in two
     modes:
 
-    1. Animation mode: The model generates a video of the character image that mimics the human motion in the input
-       pose and face videos.
-    2. Replacement mode: The model replaces the character image with the input video, using background and mask videos.
+    1. **Animation mode**: The model generates a video of the character image that mimics the human motion in the input
+       pose and face videos. The character is animated based on the provided motion controls, creating a new animated
+       video of the character.
+
+    2. **Replacement mode**: The model replaces a character in a background video with the provided character image,
+       using the pose and face videos for motion control. This mode requires additional `background_video` and
+       `mask_video` inputs. The mask video should have black regions where the original content should be preserved
+       and white regions where the new character should be generated.
 
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods
     implemented for all pipelines (downloading, saving, running on a particular device, etc.).
+
+    The pipeline also inherits the following loading methods:
+        - [`~loaders.WanLoraLoaderMixin.load_lora_weights`] for loading LoRA weights
 
     Args:
         tokenizer ([`T5Tokenizer`]):
@@ -159,6 +204,8 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
             A scheduler to be used in combination with `transformer` to denoise the encoded image latents.
         vae ([`AutoencoderKLWan`]):
             Variational Auto-Encoder (VAE) Model to encode and decode videos to and from latent representations.
+        image_processor ([`CLIPImageProcessor`]):
+            Image processor for preprocessing images before encoding.
     """
 
     model_cpu_offload_seq = "text_encoder->image_encoder->transformer->vae"

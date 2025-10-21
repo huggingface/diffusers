@@ -12,6 +12,20 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""
+Tests for WanAnimatePipeline.
+
+This test suite covers:
+- Basic inference in animation mode
+- Inference with reference images (single and multiple)
+- Replacement mode with background and mask videos
+- Temporal guidance with different frame counts
+- Callback functionality
+- Pre-generated embeddings (prompt, negative_prompt, image)
+- Pre-generated latents
+- Various edge cases and parameter combinations
+"""
+
 import unittest
 
 import numpy as np
@@ -152,6 +166,7 @@ class WanAnimatePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         return inputs
 
     def test_inference(self):
+        """Test basic inference in animation mode."""
         device = "cpu"
 
         components = self.get_dummy_components()
@@ -173,6 +188,7 @@ class WanAnimatePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         self.assertTrue(np.allclose(video_slice, expected_slice, atol=1e-3))
 
     def test_inference_with_single_reference_image(self):
+        """Test inference with a single reference image for additional context."""
         device = "cpu"
 
         components = self.get_dummy_components()
@@ -195,6 +211,7 @@ class WanAnimatePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         self.assertTrue(np.allclose(video_slice, expected_slice, atol=1e-3))
 
     def test_inference_with_multiple_reference_image(self):
+        """Test inference with multiple reference images for richer context."""
         device = "cpu"
 
         components = self.get_dummy_components()
@@ -243,3 +260,120 @@ class WanAnimatePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     )
     def test_save_load_float16(self):
         pass
+
+    def test_inference_replacement_mode(self):
+        """Test the pipeline in replacement mode with background and mask videos."""
+        device = "cpu"
+
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe.to(device)
+        pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device)
+        inputs["mode"] = "replacement"
+        # Create background and mask videos for replacement mode
+        num_frames = 17
+        height = 16
+        width = 16
+        inputs["background_video"] = [Image.new("RGB", (height, width))] * num_frames
+        inputs["mask_video"] = [Image.new("RGB", (height, width))] * num_frames
+
+        video = pipe(**inputs).frames[0]
+        self.assertEqual(video.shape, (17, 3, 16, 16))
+
+    def test_inference_with_temporal_guidance_5_frames(self):
+        """Test inference with 5 frames for temporal guidance instead of default 1."""
+        device = "cpu"
+
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe.to(device)
+        pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device)
+        inputs["num_frames_for_temporal_guidance"] = 5
+        video = pipe(**inputs).frames[0]
+        self.assertEqual(video.shape, (17, 3, 16, 16))
+
+    def test_inference_with_callback_on_step_end(self):
+        """Test that callback functions are called during inference."""
+        device = "cpu"
+
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe.to(device)
+        pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device)
+
+        callback_fn_output = {"latents": []}
+
+        def callback_fn(pipe, i, t, callback_kwargs):
+            callback_fn_output["latents"].append(callback_kwargs["latents"])
+            return callback_kwargs
+
+        inputs["callback_on_step_end"] = callback_fn
+        inputs["callback_on_step_end_tensor_inputs"] = ["latents"]
+
+        output = pipe(**inputs)
+        self.assertTrue(len(callback_fn_output["latents"]) > 0)
+
+    def test_inference_with_provided_embeddings(self):
+        """Test inference with pre-generated text and image embeddings."""
+        device = "cpu"
+
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe.to(device)
+        pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device)
+
+        # Generate embeddings beforehand
+        prompt_embeds, negative_prompt_embeds = pipe.encode_prompt(
+            prompt=inputs["prompt"],
+            negative_prompt=inputs["negative_prompt"],
+            do_classifier_free_guidance=True,
+            num_videos_per_prompt=1,
+            device=device,
+        )
+
+        image_embeds = pipe.encode_image(inputs["image"], device)
+
+        # Remove text prompts and provide embeddings instead
+        inputs.pop("prompt")
+        inputs.pop("negative_prompt")
+        inputs["prompt_embeds"] = prompt_embeds
+        inputs["negative_prompt_embeds"] = negative_prompt_embeds
+        inputs["image_embeds"] = image_embeds
+
+        video = pipe(**inputs).frames[0]
+        self.assertEqual(video.shape, (17, 3, 16, 16))
+
+    def test_inference_with_provided_latents(self):
+        """Test inference with pre-generated latents for reproducibility."""
+        device = "cpu"
+
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe.to(device)
+        pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device)
+
+        # Generate random latents
+        num_frames = inputs["num_frames"]
+        height = inputs["height"]
+        width = inputs["width"]
+        latent_height = height // pipe.vae_scale_factor_spatial
+        latent_width = width // pipe.vae_scale_factor_spatial
+        num_latent_frames = num_frames // pipe.vae_scale_factor_temporal + 1
+
+        latents = torch.randn(
+            1, 16, num_latent_frames + 1, latent_height, latent_width
+        )
+
+        inputs["latents"] = latents
+        video = pipe(**inputs).frames[0]
+        self.assertEqual(video.shape, (17, 3, 16, 16))
