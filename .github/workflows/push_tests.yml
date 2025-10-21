@@ -156,48 +156,6 @@ jobs:
         name: torch_cuda_test_reports_${{ matrix.module }}
         path: reports
 
-  run_torch_compile_tests:
-    name: PyTorch Compile CUDA tests
-
-    runs-on:
-      group: aws-g4dn-2xlarge
-
-    container:
-      image: diffusers/diffusers-pytorch-cuda
-      options: --gpus all --shm-size "16gb" --ipc host
-
-    steps:
-    - name: Checkout diffusers
-      uses: actions/checkout@v3
-      with:
-        fetch-depth: 2
-
-    - name: NVIDIA-SMI
-      run: |
-        nvidia-smi
-    - name: Install dependencies
-      run: |
-        uv pip install -e ".[quality,training]"
-    - name: Environment
-      run: |
-        python utils/print_env.py
-    - name: Run example tests on GPU
-      env:
-        HF_TOKEN: ${{ secrets.DIFFUSERS_HF_HUB_READ_TOKEN }}
-        RUN_COMPILE: yes
-      run: |
-        pytest -n 1 --max-worker-restart=0 --dist=loadfile -s -v -k "compile" --make-reports=tests_torch_compile_cuda tests/
-    - name: Failure short reports
-      if: ${{ failure() }}
-      run: cat reports/tests_torch_compile_cuda_failures_short.txt
-
-    - name: Test suite reports artifacts
-      if: ${{ always() }}
-      uses: actions/upload-artifact@v4
-      with:
-        name: torch_compile_test_reports
-        path: reports
-
   run_xformers_tests:
     name: PyTorch xformers CUDA tests
 
