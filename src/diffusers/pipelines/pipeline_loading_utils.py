@@ -866,6 +866,9 @@ def load_sub_model(
         # remove hooks
         remove_hook_from_module(loaded_sub_model, recurse=True)
         needs_offloading_to_cpu = device_map[""] == "cpu"
+        skip_keys = None
+        if hasattr(loaded_sub_model, "_skip_keys") and loaded_sub_model._skip_keys is not None:
+            skip_keys = loaded_sub_model._skip_keys
 
         if needs_offloading_to_cpu:
             dispatch_model(
@@ -874,9 +877,10 @@ def load_sub_model(
                 device_map=device_map,
                 force_hooks=True,
                 main_device=0,
+                skip_keys=skip_keys,
             )
         else:
-            dispatch_model(loaded_sub_model, device_map=device_map, force_hooks=True)
+            dispatch_model(loaded_sub_model, device_map=device_map, force_hooks=True, skip_keys=skip_keys)
 
     return loaded_sub_model
 
