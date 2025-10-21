@@ -261,7 +261,7 @@ The general rule of thumb to keep in mind when preparing inputs for the VACE pip
 
 The project page: https://humanaigc.github.io/wan-animate
 
-This model was contributed by [M. Tolga Cangöz](https://github.com/tolgacangoz).
+This model was mostly contributed by [M. Tolga Cangöz](https://github.com/tolgacangoz).
 
 #### Usage
 
