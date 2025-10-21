@@ -1098,7 +1098,7 @@ class ParallelConfig(metaclass=DummyObject):
         requires_backends(cls, ["torch"])
 
 
-class PhotonTransformer2DModel(metaclass=DummyObject):
+class PRXTransformer2DModel(metaclass=DummyObject):
     _backends = ["torch"]
 
     def __init__(self, *args, **kwargs):
