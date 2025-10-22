@@ -80,9 +80,9 @@ def apply_rope(xq: torch.Tensor, freqs_cis: torch.Tensor) -> torch.Tensor:
     return xq_out.reshape(*xq.shape).type_as(xq)
 
 
-class PhotonAttnProcessor2_0:
+class PRXAttnProcessor2_0:
     r"""
-    Processor for implementing Photon-style attention with multi-source tokens and RoPE. Supports multiple attention
+    Processor for implementing PRX-style attention with multi-source tokens and RoPE. Supports multiple attention
     backends (Flash Attention, Sage Attention, etc.) via dispatch_attention_fn.
     """
 
@@ -91,11 +91,11 @@ class PhotonAttnProcessor2_0:
 
     def __init__(self):
         if not hasattr(torch.nn.functional, "scaled_dot_product_attention"):
-            raise ImportError("PhotonAttnProcessor2_0 requires PyTorch 2.0, please upgrade PyTorch to 2.0.")
+            raise ImportError("PRXAttnProcessor2_0 requires PyTorch 2.0, please upgrade PyTorch to 2.0.")
 
     def __call__(
         self,
-        attn: "PhotonAttention",
+        attn: "PRXAttention",
         hidden_states: torch.Tensor,
         encoder_hidden_states: Optional[torch.Tensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
@@ -103,10 +103,10 @@ class PhotonAttnProcessor2_0:
         **kwargs,
     ) -> torch.Tensor:
         """
-        Apply Photon attention using PhotonAttention module.
+        Apply PRX attention using PRXAttention module.
 
         Args:
-            attn: PhotonAttention module containing projection layers
+            attn: PRXAttention module containing projection layers
             hidden_states: Image tokens [B, L_img, D]
             encoder_hidden_states: Text tokens [B, L_txt, D]
             attention_mask: Boolean mask for text tokens [B, L_txt]
@@ -114,7 +114,7 @@ class PhotonAttnProcessor2_0:
         """
 
         if encoder_hidden_states is None:
-            raise ValueError("PhotonAttnProcessor2_0 requires 'encoder_hidden_states' containing text tokens.")
+            raise ValueError("PRXAttnProcessor2_0 requires 'encoder_hidden_states' containing text tokens.")
 
         # Project image tokens to Q, K, V
         img_qkv = attn.img_qkv_proj(hidden_states)
@@ -190,14 +190,14 @@ class PhotonAttnProcessor2_0:
         return attn_output
 
 
-class PhotonAttention(nn.Module, AttentionModuleMixin):
+class PRXAttention(nn.Module, AttentionModuleMixin):
     r"""
-    Photon-style attention module that handles multi-source tokens and RoPE. Similar to FluxAttention but adapted for
-    Photon's architecture.
+    PRX-style attention module that handles multi-source tokens and RoPE. Similar to FluxAttention but adapted for
+    PRX's architecture.
     """
 
-    _default_processor_cls = PhotonAttnProcessor2_0
-    _available_processors = [PhotonAttnProcessor2_0]
+    _default_processor_cls = PRXAttnProcessor2_0
+    _available_processors = [PRXAttnProcessor2_0]
 
     def __init__(
         self,
@@ -251,7 +251,7 @@ class PhotonAttention(nn.Module, AttentionModuleMixin):
 
 
 # inspired from https://github.com/black-forest-labs/flux/blob/main/src/flux/modules/layers.py
-class PhotonEmbedND(nn.Module):
+class PRXEmbedND(nn.Module):
     r"""
     N-dimensional rotary positional embedding.
 
@@ -347,7 +347,7 @@ class Modulation(nn.Module):
         return tuple(out[:3]), tuple(out[3:])
 
 
-class PhotonBlock(nn.Module):
+class PRXBlock(nn.Module):
     r"""
     Multimodal transformer block with text–image cross-attention, modulation, and MLP.
 
@@ -364,7 +364,7 @@ class PhotonBlock(nn.Module):
     Attributes:
         img_pre_norm (`nn.LayerNorm`):
             Pre-normalization applied to image tokens before attention.
-        attention (`PhotonAttention`):
+        attention (`PRXAttention`):
             Multi-head attention module with built-in QKV projections and normalizations for cross-attention between
             image and text tokens.
         post_attention_layernorm (`nn.LayerNorm`):
@@ -400,15 +400,15 @@ class PhotonBlock(nn.Module):
         # Pre-attention normalization for image tokens
         self.img_pre_norm = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
 
-        # PhotonAttention module with built-in projections and norms
-        self.attention = PhotonAttention(
+        # PRXAttention module with built-in projections and norms
+        self.attention = PRXAttention(
             query_dim=hidden_size,
             heads=num_heads,
             dim_head=self.head_dim,
             bias=False,
             out_bias=False,
             eps=1e-6,
-            processor=PhotonAttnProcessor2_0(),
+            processor=PRXAttnProcessor2_0(),
         )
 
         # mlp
@@ -557,7 +557,7 @@ def seq2img(seq: torch.Tensor, patch_size: int, shape: torch.Tensor) -> torch.Te
     return fold(seq.transpose(1, 2), shape, kernel_size=patch_size, stride=patch_size)
 
 
-class PhotonTransformer2DModel(ModelMixin, ConfigMixin, AttentionMixin):
+class PRXTransformer2DModel(ModelMixin, ConfigMixin, AttentionMixin):
     r"""
     Transformer-based 2D model for text to image generation.
 
@@ -595,7 +595,7 @@ class PhotonTransformer2DModel(ModelMixin, ConfigMixin, AttentionMixin):
         txt_in (`nn.Linear`):
             Projection layer for text conditioning.
         blocks (`nn.ModuleList`):
-            Stack of transformer blocks (`PhotonBlock`).
+            Stack of transformer blocks (`PRXBlock`).
         final_layer (`LastLayer`):
             Projection layer mapping hidden tokens back to patch outputs.
 
@@ -661,14 +661,14 @@ class PhotonTransformer2DModel(ModelMixin, ConfigMixin, AttentionMixin):
 
         self.hidden_size = hidden_size
         self.num_heads = num_heads
-        self.pe_embedder = PhotonEmbedND(dim=pe_dim, theta=theta, axes_dim=axes_dim)
+        self.pe_embedder = PRXEmbedND(dim=pe_dim, theta=theta, axes_dim=axes_dim)
         self.img_in = nn.Linear(self.in_channels * self.patch_size**2, self.hidden_size, bias=True)
         self.time_in = MLPEmbedder(in_dim=256, hidden_dim=self.hidden_size)
         self.txt_in = nn.Linear(context_in_dim, self.hidden_size)
 
         self.blocks = nn.ModuleList(
             [
-                PhotonBlock(
+                PRXBlock(
                     self.hidden_size,
                     self.num_heads,
                     mlp_ratio=mlp_ratio,
@@ -702,7 +702,7 @@ class PhotonTransformer2DModel(ModelMixin, ConfigMixin, AttentionMixin):
         return_dict: bool = True,
     ) -> Union[Tuple[torch.Tensor, ...], Transformer2DModelOutput]:
         r"""
-        Forward pass of the PhotonTransformer2DModel.
+        Forward pass of the PRXTransformer2DModel.
 
         The latent image is split into patch tokens, combined with text conditioning, and processed through a stack of
         transformer blocks modulated by the timestep. The output is reconstructed into the latent image space.

@@ -8,8 +8,8 @@ from transformers.models.t5gemma.configuration_t5gemma import T5GemmaConfig, T5G
 from transformers.models.t5gemma.modeling_t5gemma import T5GemmaEncoder
 
 from diffusers.models import AutoencoderDC, AutoencoderKL
-from diffusers.models.transformers.transformer_photon import PhotonTransformer2DModel
-from diffusers.pipelines.photon.pipeline_photon import PhotonPipeline
+from diffusers.models.transformers.transformer_prx import PRXTransformer2DModel
+from diffusers.pipelines.prx.pipeline_prx import PRXPipeline
 from diffusers.schedulers import FlowMatchEulerDiscreteScheduler
 from diffusers.utils import is_transformers_version
 
@@ -22,8 +22,8 @@ from ..test_pipelines_common import PipelineTesterMixin
     reason="See https://github.com/huggingface/diffusers/pull/12456#issuecomment-3424228544",
     strict=False,
 )
-class PhotonPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
-    pipeline_class = PhotonPipeline
+class PRXPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+    pipeline_class = PRXPipeline
     params = TEXT_TO_IMAGE_PARAMS - {"cross_attention_kwargs"}
     batch_params = frozenset(["prompt", "negative_prompt", "num_images_per_prompt"])
     test_xformers_attention = False
@@ -32,16 +32,16 @@ class PhotonPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        # Ensure PhotonPipeline has an _execution_device property expected by __call__
-        if not isinstance(getattr(PhotonPipeline, "_execution_device", None), property):
+        # Ensure PRXPipeline has an _execution_device property expected by __call__
+        if not isinstance(getattr(PRXPipeline, "_execution_device", None), property):
             try:
-                setattr(PhotonPipeline, "_execution_device", property(lambda self: torch.device("cpu")))
+                setattr(PRXPipeline, "_execution_device", property(lambda self: torch.device("cpu")))
             except Exception:
                 pass
 
     def get_dummy_components(self):
         torch.manual_seed(0)
-        transformer = PhotonTransformer2DModel(
+        transformer = PRXTransformer2DModel(
             patch_size=1,
             in_channels=4,
             context_in_dim=8,
@@ -129,7 +129,7 @@ class PhotonPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     def test_inference(self):
         device = "cpu"
         components = self.get_dummy_components()
-        pipe = PhotonPipeline(**components)
+        pipe = PRXPipeline(**components)
         pipe.to(device)
         pipe.set_progress_bar_config(disable=None)
         try:
@@ -148,7 +148,7 @@ class PhotonPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
     def test_callback_inputs(self):
         components = self.get_dummy_components()
-        pipe = PhotonPipeline(**components)
+        pipe = PRXPipeline(**components)
         pipe = pipe.to("cpu")
         pipe.set_progress_bar_config(disable=None)
         try:
@@ -157,7 +157,7 @@ class PhotonPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             pass
         self.assertTrue(
             hasattr(pipe, "_callback_tensor_inputs"),
-            f" {PhotonPipeline} should have `_callback_tensor_inputs` that defines a list of tensor variables its callback function can use as inputs",
+            f" {PRXPipeline} should have `_callback_tensor_inputs` that defines a list of tensor variables its callback function can use as inputs",
         )
 
         def callback_inputs_subset(pipe, i, t, callback_kwargs):
@@ -216,7 +216,7 @@ class PhotonPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         self.assertLess(max(max_diff1, max_diff2), expected_max_diff)
 
     def test_inference_with_autoencoder_dc(self):
-        """Test PhotonPipeline with AutoencoderDC (DCAE) instead of AutoencoderKL."""
+        """Test PRXPipeline with AutoencoderDC (DCAE) instead of AutoencoderKL."""
         device = "cpu"
 
         components = self.get_dummy_components()
@@ -248,7 +248,7 @@ class PhotonPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         components["vae"] = vae_dc
 
-        pipe = PhotonPipeline(**components)
+        pipe = PRXPipeline(**components)
         pipe.to(device)
         pipe.set_progress_bar_config(disable=None)
 
