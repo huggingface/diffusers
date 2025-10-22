@@ -1765,7 +1765,7 @@ class SDXLLongPromptWeightingPipeline(
 
             # Check that sizes of mask, masked image and latents match
             if num_channels_unet == 9:
-                # default case for runwayml/stable-diffusion-inpainting
+                # default case for stable-diffusion-v1-5/stable-diffusion-inpainting
                 num_channels_mask = mask.shape[1]
                 num_channels_masked_image = masked_image_latents.shape[1]
                 if num_channels_latents + num_channels_mask + num_channels_masked_image != num_channels_unet:

@@ -81,7 +81,7 @@ EXAMPLE_DOC_STRING = """
         >>> controlnet = ControlNetModel.from_pretrained("lllyasviel/sd-controlnet-seg", torch_dtype=torch.float16)
 
         >>> pipe = StableDiffusionControlNetInpaintPipeline.from_pretrained(
-                "runwayml/stable-diffusion-inpainting", controlnet=controlnet, safety_checker=None, torch_dtype=torch.float16
+                "stable-diffusion-v1-5/stable-diffusion-inpainting", controlnet=controlnet, safety_checker=None, torch_dtype=torch.float16
             )
 
         >>> pipe.scheduler = UniPCMultistepScheduler.from_config(pipe.scheduler.config)

@@ -16,7 +16,6 @@ import inspect
 from typing import Callable, List, Optional, Union
 
 import torch
-import torch.utils.checkpoint
 from transformers import CLIPImageProcessor, CLIPTextModelWithProjection, CLIPTokenizer
 
 from ....image_processor import VaeImageProcessor
