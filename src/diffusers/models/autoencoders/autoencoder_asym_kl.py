@@ -107,9 +107,6 @@ class AsymmetricAutoencoderKL(ModelMixin, AutoencoderMixin, ConfigMixin):
         self.quant_conv = nn.Conv2d(2 * latent_channels, 2 * latent_channels, 1)
         self.post_quant_conv = nn.Conv2d(latent_channels, latent_channels, 1)
 
-        self.use_slicing = False
-        self.use_tiling = False
-
         self.register_to_config(block_out_channels=up_block_out_channels)
         self.register_to_config(force_upcast=False)
 
