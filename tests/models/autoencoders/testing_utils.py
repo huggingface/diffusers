@@ -57,6 +57,9 @@ class AutoencoderTesterMixin:
         torch.manual_seed(0)
         model = self.model_class(**init_dict).to(torch_device)
 
+        if not hasattr(model, "use_tiling"):
+            pytest.skip(f"Skipping test as {self.model_class.__name__} doesn't support tiling.")
+
         inputs_dict.update({"return_dict": False})
         _ = inputs_dict.pop("generator", None)
         accepts_generator = self._accepts_generator(model)
@@ -102,6 +105,8 @@ class AutoencoderTesterMixin:
 
         torch.manual_seed(0)
         model = self.model_class(**init_dict).to(torch_device)
+        if not hasattr(model, "use_slicing"):
+            pytest.skip(f"Skipping test as {self.model_class.__name__} doesn't support tiling.")
 
         inputs_dict.update({"return_dict": False})
         _ = inputs_dict.pop("generator", None)

@@ -26,7 +26,7 @@ from ..activations import get_activation
 from ..attention_processor import Attention
 from ..modeling_outputs import AutoencoderKLOutput
 from ..modeling_utils import ModelMixin
-from .vae import DecoderOutput, DiagonalGaussianDistribution
+from .vae import AutoencoderMixin, DecoderOutput, DiagonalGaussianDistribution
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -624,7 +624,7 @@ class HunyuanVideoDecoder3D(nn.Module):
         return hidden_states
 
 
-class AutoencoderKLHunyuanVideo(ModelMixin, ConfigMixin):
+class AutoencoderKLHunyuanVideo(ModelMixin, AutoencoderMixin, ConfigMixin):
     r"""
     A VAE model with KL loss for encoding videos into latents and decoding latent representations into videos.
     Introduced in [HunyuanVideo](https://huggingface.co/papers/2412.03603).
@@ -762,27 +762,6 @@ class AutoencoderKLHunyuanVideo(ModelMixin, ConfigMixin):
         self.tile_sample_stride_height = tile_sample_stride_height or self.tile_sample_stride_height
         self.tile_sample_stride_width = tile_sample_stride_width or self.tile_sample_stride_width
         self.tile_sample_stride_num_frames = tile_sample_stride_num_frames or self.tile_sample_stride_num_frames
-
-    def disable_tiling(self) -> None:
-        r"""
-        Disable tiled VAE decoding. If `enable_tiling` was previously enabled, this method will go back to computing
-        decoding in one step.
-        """
-        self.use_tiling = False
-
-    def enable_slicing(self) -> None:
-        r"""
-        Enable sliced VAE decoding. When this option is enabled, the VAE will split the input tensor in slices to
-        compute decoding in several steps. This is useful to save some memory and allow larger batch sizes.
-        """
-        self.use_slicing = True
-
-    def disable_slicing(self) -> None:
-        r"""
-        Disable sliced VAE decoding. If `enable_slicing` was previously enabled, this method will go back to computing
-        decoding in one step.
-        """
-        self.use_slicing = False
 
     def _encode(self, x: torch.Tensor) -> torch.Tensor:
         batch_size, num_channels, num_frames, height, width = x.shape
