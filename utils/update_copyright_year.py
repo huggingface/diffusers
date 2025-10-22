@@ -2,10 +2,12 @@
 """
 Update copyright year in source files to the current year.
 """
+
 import re
 import sys
 from datetime import datetime
 from pathlib import Path
+
 
 # Set current year
 YEAR = str(datetime.now().year)
@@ -67,16 +69,16 @@ def update_file(file_path: Path) -> int:
 
 def main():
     repo_root = Path(".").resolve()
-    
+
     print(f"Updating copyright to {YEAR}...")
-    
+
     total_files = 0
     total_updates = 0
 
     for file_path in repo_root.rglob("*"):
         if not file_path.is_file() or should_exclude(file_path):
             continue
-        
+
         if file_path.suffix in EXTENSIONS:
             updates = update_file(file_path)
             if updates > 0:
@@ -84,7 +86,7 @@ def main():
                 total_updates += updates
 
     print(f"\nSummary: Updated {total_updates} line(s) in {total_files} file(s)")
-    
+
     # Exit with 0 if updates were made, 1 if no updates needed
     return 0 if total_updates > 0 else 1
 

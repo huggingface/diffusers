@@ -22,7 +22,7 @@ jobs:
           python-version: "3.11"
 
       - name: Update copyright year
-        run: python .github/scripts/update_copyright.py
+        run: python utils/update_copyright_year.py
 
       - name: Check for changes
         id: check_changes
