@@ -281,19 +281,6 @@ class Kandinsky5AttnProcessor:
     def __init__(self):
         if not hasattr(F, "scaled_dot_product_attention"):
             raise ImportError(f"{self.__class__.__name__} requires PyTorch 2.0. Please upgrade your pytorch version.")
-    
-    @torch.compile(mode="max-autotune-no-cudagraphs", dynamic=True)
-    def compiled_flex_attn(self, query, key, value, attn_mask, backend, parallel_config):
-        hidden_states = dispatch_attention_fn(
-            query,
-            key,
-            value,
-            attn_mask=attn_mask,
-            backend=backend,
-            parallel_config=parallel_config,
-        )
-        
-        return hidden_states
 
     def __call__(self, attn, hidden_states, encoder_hidden_states=None, rotary_emb=None, sparse_params=None):
         # query, key, value = self.get_qkv(x)
@@ -338,26 +325,17 @@ class Kandinsky5AttnProcessor:
                 thr=sparse_params["P"],
             )
             
-            hidden_states = self.compiled_flex_attn(
-                query, 
-                key, 
-                value, 
-                attn_mask=attn_mask, 
-                backend=self._attention_backend, 
-                parallel_config=self._parallel_config
-            )
-            
         else:
             attn_mask = None
             
-            hidden_states = dispatch_attention_fn(
-                query,
-                key,
-                value,
-                attn_mask=attn_mask,
-                backend=self._attention_backend,
-                parallel_config=self._parallel_config,
-            )
+        hidden_states = dispatch_attention_fn(
+            query,
+            key,
+            value,
+            attn_mask=attn_mask,
+            backend=self._attention_backend,
+            parallel_config=self._parallel_config,
+        )
 
         hidden_states = hidden_states.flatten(-2, -1)
 
