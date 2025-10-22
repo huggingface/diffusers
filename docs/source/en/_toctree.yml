@@ -541,12 +541,12 @@
         title: PAG
       - local: api/pipelines/paint_by_example
         title: Paint by Example
-      - local: api/pipelines/photon
-        title: Photon
       - local: api/pipelines/pixart
         title: PixArt-α
       - local: api/pipelines/pixart_sigma
         title: PixArt-Σ
+      - local: api/pipelines/prx
+        title: PRX
       - local: api/pipelines/qwenimage
         title: QwenImage
       - local: api/pipelines/sana

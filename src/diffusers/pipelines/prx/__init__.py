@@ -12,7 +12,7 @@ from ...utils import (
 
 _dummy_objects = {}
 _additional_imports = {}
-_import_structure = {"pipeline_output": ["PhotonPipelineOutput"]}
+_import_structure = {"pipeline_output": ["PRXPipelineOutput"]}
 
 try:
     if not (is_transformers_available() and is_torch_available()):
@@ -22,7 +22,7 @@ except OptionalDependencyNotAvailable:
 
     _dummy_objects.update(get_objects_from_module(dummy_torch_and_transformers_objects))
 else:
-    _import_structure["pipeline_photon"] = ["PhotonPipeline"]
+    _import_structure["pipeline_prx"] = ["PRXPipeline"]
 
 # Import T5GemmaEncoder for pipeline loading compatibility
 try:
@@ -44,8 +44,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     except OptionalDependencyNotAvailable:
         from ...utils.dummy_torch_and_transformers_objects import *  # noqa F403
     else:
-        from .pipeline_output import PhotonPipelineOutput
-        from .pipeline_photon import PhotonPipeline
+        from .pipeline_output import PRXPipelineOutput
+        from .pipeline_prx import PRXPipeline
 
 else:
     import sys

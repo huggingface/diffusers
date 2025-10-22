@@ -30,9 +30,9 @@ from transformers.models.t5gemma.modeling_t5gemma import T5GemmaEncoder
 from diffusers.image_processor import PixArtImageProcessor
 from diffusers.loaders import FromSingleFileMixin, LoraLoaderMixin, TextualInversionLoaderMixin
 from diffusers.models import AutoencoderDC, AutoencoderKL
-from diffusers.models.transformers.transformer_photon import PhotonTransformer2DModel
-from diffusers.pipelines.photon.pipeline_output import PhotonPipelineOutput
+from diffusers.models.transformers.transformer_prx import PRXTransformer2DModel
 from diffusers.pipelines.pipeline_utils import DiffusionPipeline
+from diffusers.pipelines.prx.pipeline_output import PRXPipelineOutput
 from diffusers.schedulers import FlowMatchEulerDiscreteScheduler
 from diffusers.utils import (
     logging,
@@ -73,7 +73,7 @@ logger = logging.get_logger(__name__)
 
 
 class TextPreprocessor:
-    """Text preprocessing utility for PhotonPipeline."""
+    """Text preprocessing utility for PRXPipeline."""
 
     def __init__(self):
         """Initialize text preprocessor."""
@@ -203,34 +203,34 @@ EXAMPLE_DOC_STRING = """
     Examples:
         ```py
         >>> import torch
-        >>> from diffusers import PhotonPipeline
+        >>> from diffusers import PRXPipeline
 
         >>> # Load pipeline with from_pretrained
-        >>> pipe = PhotonPipeline.from_pretrained("Photoroom/photon-512-t2i-sft")
+        >>> pipe = PRXPipeline.from_pretrained("Photoroom/prx-512-t2i-sft")
         >>> pipe.to("cuda")
 
         >>> prompt = "A digital painting of a rusty, vintage tram on a sandy beach"
         >>> image = pipe(prompt, num_inference_steps=28, guidance_scale=5.0).images[0]
-        >>> image.save("photon_output.png")
+        >>> image.save("prx_output.png")
         ```
 """
 
 
-class PhotonPipeline(
+class PRXPipeline(
     DiffusionPipeline,
     LoraLoaderMixin,
     FromSingleFileMixin,
     TextualInversionLoaderMixin,
 ):
     r"""
-    Pipeline for text-to-image generation using Photon Transformer.
+    Pipeline for text-to-image generation using PRX Transformer.
 
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods the
     library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
 
     Args:
-        transformer ([`PhotonTransformer2DModel`]):
-            The Photon transformer model to denoise the encoded image latents.
+        transformer ([`PRXTransformer2DModel`]):
+            The PRX transformer model to denoise the encoded image latents.
         scheduler ([`FlowMatchEulerDiscreteScheduler`]):
             A scheduler to be used in combination with `transformer` to denoise the encoded image latents.
         text_encoder ([`T5GemmaEncoder`]):
@@ -248,7 +248,7 @@ class PhotonPipeline(
 
     def __init__(
         self,
-        transformer: PhotonTransformer2DModel,
+        transformer: PRXTransformer2DModel,
         scheduler: FlowMatchEulerDiscreteScheduler,
         text_encoder: T5GemmaEncoder,
         tokenizer: Union[T5TokenizerFast, GemmaTokenizerFast, AutoTokenizer],
@@ -257,9 +257,9 @@ class PhotonPipeline(
     ):
         super().__init__()
 
-        if PhotonTransformer2DModel is None:
+        if PRXTransformer2DModel is None:
             raise ImportError(
-                "PhotonTransformer2DModel is not available. Please ensure the transformer_photon module is properly installed."
+                "PRXTransformer2DModel is not available. Please ensure the transformer_prx module is properly installed."
             )
 
         self.text_preprocessor = TextPreprocessor()
@@ -567,7 +567,7 @@ class PhotonPipeline(
                 The output format of the generate image. Choose between
                 [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
             return_dict (`bool`, *optional*, defaults to `True`):
-                Whether or not to return a [`~pipelines.photon.PhotonPipelineOutput`] instead of a plain tuple.
+                Whether or not to return a [`~pipelines.prx.PRXPipelineOutput`] instead of a plain tuple.
             use_resolution_binning (`bool`, *optional*, defaults to `True`):
                 If set to `True`, the requested height and width are first mapped to the closest resolutions using
                 predefined aspect ratio bins. After the produced latents are decoded into images, they are resized back
@@ -585,9 +585,8 @@ class PhotonPipeline(
         Examples:
 
         Returns:
-            [`~pipelines.photon.PhotonPipelineOutput`] or `tuple`: [`~pipelines.photon.PhotonPipelineOutput`] if
-            `return_dict` is True, otherwise a `tuple. When returning a tuple, the first element is a list with the
-            generated images.
+            [`~pipelines.prx.PRXPipelineOutput`] or `tuple`: [`~pipelines.prx.PRXPipelineOutput`] if `return_dict` is
+            True, otherwise a `tuple. When returning a tuple, the first element is a list with the generated images.
         """
 
         # 0. Set height and width
@@ -765,4 +764,4 @@ class PhotonPipeline(
         if not return_dict:
             return (image,)
 
-        return PhotonPipelineOutput(images=image)
+        return PRXPipelineOutput(images=image)
