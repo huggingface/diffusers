@@ -24,7 +24,7 @@ from ..attention_processor import CROSS_ATTENTION_PROCESSORS, AttnProcessor
 from ..modeling_outputs import AutoencoderKLOutput
 from ..modeling_utils import ModelMixin
 from ..unets.unet_3d_blocks import MidBlockTemporalDecoder, UpBlockTemporalDecoder
-from .vae import DecoderOutput, DiagonalGaussianDistribution, Encoder
+from .vae import AutoencoderMixin, DecoderOutput, DiagonalGaussianDistribution, Encoder
 
 
 class TemporalDecoder(nn.Module):
@@ -136,7 +136,7 @@ class TemporalDecoder(nn.Module):
         return sample
 
 
-class AutoencoderKLTemporalDecoder(ModelMixin, AttentionMixin, ConfigMixin):
+class AutoencoderKLTemporalDecoder(ModelMixin, AttentionMixin, AutoencoderMixin, ConfigMixin):
     r"""
     A VAE model with KL loss for encoding images into latents and decoding latent representations into images.
 
