@@ -744,11 +744,13 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
                 )
 
             if negative_prompt_embeds_qwen is None:
-                negative_prompt_embeds_qwen, negative_prompt_embeds_clip, negative_cu_seqlens = self.encode_prompt(
-                    prompt=negative_prompt,
-                    max_sequence_length=max_sequence_length,
-                    device=device,
-                    dtype=dtype,
+                negative_prompt_embeds_qwen, negative_prompt_embeds_clip, negative_prompt_cu_seqlens = (
+                    self.encode_prompt(
+                        prompt=negative_prompt,
+                        max_sequence_length=max_sequence_length,
+                        device=device,
+                        dtype=dtype,
+                    )
                 )
 
         # 4. Prepare timesteps
@@ -780,8 +782,8 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
         text_rope_pos = torch.arange(prompt_cu_seqlens.diff().max().item(), device=device)
 
         negative_text_rope_pos = (
-            torch.arange(negative_cu_seqlens.diff().max().item(), device=device)
-            if negative_cu_seqlens is not None
+            torch.arange(negative_prompt_cu_seqlens.diff().max().item(), device=device)
+            if negative_prompt_cu_seqlens is not None
             else None
         )
 
