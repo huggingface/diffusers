@@ -1362,7 +1362,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         memory, but can be slower due to the excessive number of device synchronizations.
 
         Group offloading is a middle ground between the two methods. It works by offloading groups of internal layers,
-        (either `torch.nn.Modulelist` or `torch.nn.Sequential`). This method uses lower memory than module-level
+        (either `torch.nn.ModuleList` or `torch.nn.Sequential`). This method uses lower memory than module-level
         offloading. It is also faster than leaf-level/sequential offloading, as the number of device synchronizations
         is reduced.
 

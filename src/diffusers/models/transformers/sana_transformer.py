@@ -387,7 +387,7 @@ class SanaTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrig
         self.caption_norm = RMSNorm(inner_dim, eps=1e-5, elementwise_affine=True)
 
         # 3. Transformer blocks
-        self.transformer_blocks = nn.Modulelist(
+        self.transformer_blocks = nn.ModuleList(
             [
                 SanaTransformerBlock(
                     inner_dim,

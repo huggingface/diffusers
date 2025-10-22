@@ -262,7 +262,7 @@ class Encoder(nn.Module):
 
             down_blocks.append(nn.Sequential(*down_block_list))
 
-        self.down_blocks = nn.Modulelist(down_blocks)
+        self.down_blocks = nn.ModuleList(down_blocks)
 
         self.conv_out = nn.Conv2d(block_out_channels[-1], latent_channels, 3, 1, 1)
 
@@ -345,7 +345,7 @@ class Decoder(nn.Module):
 
             up_blocks.insert(0, nn.Sequential(*up_block_list))
 
-        self.up_blocks = nn.Modulelist(up_blocks)
+        self.up_blocks = nn.ModuleList(up_blocks)
 
         channels = block_out_channels[0] if layers_per_block[0] > 0 else block_out_channels[1]
 

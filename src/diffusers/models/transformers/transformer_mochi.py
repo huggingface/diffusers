@@ -378,7 +378,7 @@ class MochiTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOri
         self.pos_frequencies = nn.Parameter(torch.full((3, num_attention_heads, attention_head_dim // 2), 0.0))
         self.rope = MochiRoPE()
 
-        self.transformer_blocks = nn.Modulelist(
+        self.transformer_blocks = nn.ModuleList(
             [
                 MochiTransformerBlock(
                     dim=inner_dim,

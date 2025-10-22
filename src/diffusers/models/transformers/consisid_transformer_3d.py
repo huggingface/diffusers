@@ -109,10 +109,10 @@ class LocalFacialExtractor(nn.Module):
         self.proj_out = nn.Parameter(scale * torch.randn(vit_dim, output_dim))
 
         # Attention and ConsisIDFeedForward layer stack
-        self.layers = nn.Modulelist([])
+        self.layers = nn.ModuleList([])
         for _ in range(depth):
             self.layers.append(
-                nn.Modulelist(
+                nn.ModuleList(
                     [
                         PerceiverAttention(dim=vit_dim, dim_head=dim_head, heads=heads),  # Perceiver Attention layer
                         nn.Sequential(
@@ -538,7 +538,7 @@ class ConsisIDTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         self.time_embedding = TimestepEmbedding(inner_dim, time_embed_dim, timestep_activation_fn)
 
         # 3. Define spatio-temporal transformers blocks
-        self.transformer_blocks = nn.Modulelist(
+        self.transformer_blocks = nn.ModuleList(
             [
                 ConsisIDBlock(
                     dim=inner_dim,
@@ -608,7 +608,7 @@ class ConsisIDTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
             ff_mult=self.LFE_ff_mult,
             num_scale=self.LFE_num_scale,
         )
-        self.perceiver_cross_attention = nn.Modulelist(
+        self.perceiver_cross_attention = nn.ModuleList(
             [
                 PerceiverCrossAttention(
                     dim=self.inner_dim,

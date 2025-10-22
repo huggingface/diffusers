@@ -200,7 +200,7 @@ class CogView3PlusTransformer2DModel(ModelMixin, ConfigMixin):
             timesteps_dim=self.inner_dim,
         )
 
-        self.transformer_blocks = nn.Modulelist(
+        self.transformer_blocks = nn.ModuleList(
             [
                 CogView3PlusTransformerBlock(
                     dim=self.inner_dim,

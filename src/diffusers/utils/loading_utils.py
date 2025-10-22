@@ -157,7 +157,7 @@ def get_submodule_by_name(root_module, module_path: str):
     for part in parts:
         if part.isdigit():
             idx = int(part)
-            current = current[idx]  # e.g., for nn.Modulelist or nn.Sequential
+            current = current[idx]  # e.g., for nn.ModuleList or nn.Sequential
         else:
             current = getattr(current, part)
     return current

@@ -244,8 +244,8 @@ class HunyuanVideoMidBlock3D(nn.Module):
                 )
             )
 
-        self.attentions = nn.Modulelist(attentions)
-        self.resnets = nn.Modulelist(resnets)
+        self.attentions = nn.ModuleList(attentions)
+        self.resnets = nn.ModuleList(resnets)
 
         self.gradient_checkpointing = False
 
@@ -313,10 +313,10 @@ class HunyuanVideoDownBlock3D(nn.Module):
                 )
             )
 
-        self.resnets = nn.Modulelist(resnets)
+        self.resnets = nn.ModuleList(resnets)
 
         if add_downsample:
-            self.downsamplers = nn.Modulelist(
+            self.downsamplers = nn.ModuleList(
                 [
                     HunyuanVideoDownsampleCausal3D(
                         out_channels,
@@ -376,10 +376,10 @@ class HunyuanVideoUpBlock3D(nn.Module):
                 )
             )
 
-        self.resnets = nn.Modulelist(resnets)
+        self.resnets = nn.ModuleList(resnets)
 
         if add_upsample:
-            self.upsamplers = nn.Modulelist(
+            self.upsamplers = nn.ModuleList(
                 [
                     HunyuanVideoUpsampleCausal3D(
                         out_channels,
@@ -437,7 +437,7 @@ class HunyuanVideoEncoder3D(nn.Module):
 
         self.conv_in = HunyuanVideoCausalConv3d(in_channels, block_out_channels[0], kernel_size=3, stride=1)
         self.mid_block = None
-        self.down_blocks = nn.Modulelist([])
+        self.down_blocks = nn.ModuleList([])
 
         output_channel = block_out_channels[0]
         for i, down_block_type in enumerate(down_block_types):
@@ -544,7 +544,7 @@ class HunyuanVideoDecoder3D(nn.Module):
         self.layers_per_block = layers_per_block
 
         self.conv_in = HunyuanVideoCausalConv3d(in_channels, block_out_channels[-1], kernel_size=3, stride=1)
-        self.up_blocks = nn.Modulelist([])
+        self.up_blocks = nn.ModuleList([])
 
         # mid
         self.mid_block = HunyuanVideoMidBlock3D(

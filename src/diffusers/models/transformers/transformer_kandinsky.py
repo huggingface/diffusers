@@ -574,11 +574,11 @@ class Kandinsky5Transformer3DModel(
         self.visual_rope_embeddings = Kandinsky5RoPE3D(axes_dims)
 
         # Initialize transformer blocks
-        self.text_transformer_blocks = nn.Modulelist(
+        self.text_transformer_blocks = nn.ModuleList(
             [Kandinsky5TransformerEncoderBlock(model_dim, time_dim, ff_dim, head_dim) for _ in range(num_text_blocks)]
         )
 
-        self.visual_transformer_blocks = nn.Modulelist(
+        self.visual_transformer_blocks = nn.ModuleList(
             [
                 Kandinsky5TransformerDecoderBlock(model_dim, time_dim, ff_dim, head_dim)
                 for _ in range(num_visual_blocks)

@@ -153,7 +153,7 @@ class SD3Transformer2DModel(
         )
         self.context_embedder = nn.Linear(joint_attention_dim, caption_projection_dim)
 
-        self.transformer_blocks = nn.Modulelist(
+        self.transformer_blocks = nn.ModuleList(
             [
                 JointTransformerBlock(
                     dim=self.inner_dim,

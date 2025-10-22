@@ -149,7 +149,7 @@ class PixArtTransformer2DModel(ModelMixin, ConfigMixin):
             interpolation_scale=interpolation_scale,
         )
 
-        self.transformer_blocks = nn.Modulelist(
+        self.transformer_blocks = nn.ModuleList(
             [
                 BasicTransformerBlock(
                     self.inner_dim,

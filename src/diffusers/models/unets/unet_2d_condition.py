@@ -312,8 +312,8 @@ class UNet2DConditionModel(
         else:
             self.time_embed_act = get_activation(time_embedding_act_fn)
 
-        self.down_blocks = nn.Modulelist([])
-        self.up_blocks = nn.Modulelist([])
+        self.down_blocks = nn.ModuleList([])
+        self.up_blocks = nn.ModuleList([])
 
         if isinstance(only_cross_attention, bool):
             if mid_block_only_cross_attention is None:

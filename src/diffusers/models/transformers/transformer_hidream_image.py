@@ -353,7 +353,7 @@ class MOEFeedForwardSwiGLU(nn.Module):
     ):
         super().__init__()
         self.shared_experts = HiDreamImageFeedForwardSwiGLU(dim, hidden_dim // 2)
-        self.experts = nn.Modulelist(
+        self.experts = nn.ModuleList(
             [HiDreamImageFeedForwardSwiGLU(dim, hidden_dim) for i in range(num_routed_experts)]
         )
         self._force_inference_output = _force_inference_output
@@ -638,7 +638,7 @@ class HiDreamImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, 
         )
         self.pe_embedder = HiDreamImageEmbedND(theta=10000, axes_dim=axes_dims_rope)
 
-        self.double_stream_blocks = nn.Modulelist(
+        self.double_stream_blocks = nn.ModuleList(
             [
                 HiDreamBlock(
                     HiDreamImageTransformerBlock(
@@ -654,7 +654,7 @@ class HiDreamImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, 
             ]
         )
 
-        self.single_stream_blocks = nn.Modulelist(
+        self.single_stream_blocks = nn.ModuleList(
             [
                 HiDreamBlock(
                     HiDreamImageSingleTransformerBlock(
@@ -676,7 +676,7 @@ class HiDreamImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, 
         caption_projection = []
         for caption_channel in caption_channels:
             caption_projection.append(TextProjection(in_features=caption_channel, hidden_size=self.inner_dim))
-        self.caption_projection = nn.Modulelist(caption_projection)
+        self.caption_projection = nn.ModuleList(caption_projection)
         self.max_seq = max_resolution[0] * max_resolution[1] // (patch_size * patch_size)
 
         self.gradient_checkpointing = False

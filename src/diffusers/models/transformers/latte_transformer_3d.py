@@ -108,7 +108,7 @@ class LatteTransformer3DModel(ModelMixin, ConfigMixin, CacheMixin):
         )
 
         # 2. Define spatial transformers blocks
-        self.transformer_blocks = nn.Modulelist(
+        self.transformer_blocks = nn.ModuleList(
             [
                 BasicTransformerBlock(
                     inner_dim,
@@ -128,7 +128,7 @@ class LatteTransformer3DModel(ModelMixin, ConfigMixin, CacheMixin):
         )
 
         # 3. Define temporal transformers blocks
-        self.temporal_transformer_blocks = nn.Modulelist(
+        self.temporal_transformer_blocks = nn.ModuleList(
             [
                 BasicTransformerBlock(
                     inner_dim,

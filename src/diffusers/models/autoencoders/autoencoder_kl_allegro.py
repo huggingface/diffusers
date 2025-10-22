@@ -178,8 +178,8 @@ class AllegroDownBlock3D(nn.Module):
                 )
             )
 
-        self.resnets = nn.Modulelist(resnets)
-        self.temp_convs = nn.Modulelist(temp_convs)
+        self.resnets = nn.ModuleList(resnets)
+        self.temp_convs = nn.ModuleList(temp_convs)
 
         if temporal_downsample:
             self.temp_convs_down = AllegroTemporalConvLayer(
@@ -188,7 +188,7 @@ class AllegroDownBlock3D(nn.Module):
         self.add_temp_downsample = temporal_downsample
 
         if spatial_downsample:
-            self.downsamplers = nn.Modulelist(
+            self.downsamplers = nn.ModuleList(
                 [
                     Downsample2D(
                         out_channels, use_conv=True, out_channels=out_channels, padding=downsample_padding, name="op"
@@ -266,8 +266,8 @@ class AllegroUpBlock3D(nn.Module):
                 )
             )
 
-        self.resnets = nn.Modulelist(resnets)
-        self.temp_convs = nn.Modulelist(temp_convs)
+        self.resnets = nn.ModuleList(resnets)
+        self.temp_convs = nn.ModuleList(temp_convs)
 
         self.add_temp_upsample = temporal_upsample
         if temporal_upsample:
@@ -276,7 +276,7 @@ class AllegroUpBlock3D(nn.Module):
             )
 
         if spatial_upsample:
-            self.upsamplers = nn.Modulelist([Upsample2D(out_channels, use_conv=True, out_channels=out_channels)])
+            self.upsamplers = nn.ModuleList([Upsample2D(out_channels, use_conv=True, out_channels=out_channels)])
         else:
             self.upsamplers = None
 
@@ -390,9 +390,9 @@ class AllegroMidBlock3DConv(nn.Module):
                 )
             )
 
-        self.resnets = nn.Modulelist(resnets)
-        self.temp_convs = nn.Modulelist(temp_convs)
-        self.attentions = nn.Modulelist(attentions)
+        self.resnets = nn.ModuleList(resnets)
+        self.temp_convs = nn.ModuleList(temp_convs)
+        self.attentions = nn.ModuleList(attentions)
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         batch_size = hidden_states.shape[0]
@@ -446,7 +446,7 @@ class AllegroEncoder3D(nn.Module):
             padding=(1, 0, 0),
         )
 
-        self.down_blocks = nn.Modulelist([])
+        self.down_blocks = nn.ModuleList([])
 
         # down
         output_channel = block_out_channels[0]
@@ -569,7 +569,7 @@ class AllegroDecoder3D(nn.Module):
         self.temp_conv_in = nn.Conv3d(block_out_channels[-1], block_out_channels[-1], (3, 1, 1), padding=(1, 0, 0))
 
         self.mid_block = None
-        self.up_blocks = nn.Modulelist([])
+        self.up_blocks = nn.ModuleList([])
 
         temb_channels = in_channels if norm_type == "spatial" else None
 

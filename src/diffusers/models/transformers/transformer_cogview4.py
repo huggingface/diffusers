@@ -686,7 +686,7 @@ class CogView4Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Cach
         )
 
         # 3. Transformer blocks
-        self.transformer_blocks = nn.Modulelist(
+        self.transformer_blocks = nn.ModuleList(
             [
                 CogView4TransformerBlock(inner_dim, num_attention_heads, attention_head_dim, time_embed_dim)
                 for _ in range(num_layers)

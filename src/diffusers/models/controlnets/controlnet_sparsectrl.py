@@ -69,7 +69,7 @@ class SparseControlNetConditioningEmbedding(nn.Module):
         super().__init__()
 
         self.conv_in = nn.Conv2d(conditioning_channels, block_out_channels[0], kernel_size=3, padding=1)
-        self.blocks = nn.Modulelist([])
+        self.blocks = nn.ModuleList([])
 
         for i in range(len(block_out_channels) - 1):
             channel_in = block_out_channels[i]
@@ -262,8 +262,8 @@ class SparseControlNetModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
             act_fn=act_fn,
         )
 
-        self.down_blocks = nn.Modulelist([])
-        self.controlnet_down_blocks = nn.Modulelist([])
+        self.down_blocks = nn.ModuleList([])
+        self.controlnet_down_blocks = nn.ModuleList([])
 
         if isinstance(cross_attention_dim, int):
             cross_attention_dim = (cross_attention_dim,) * len(down_block_types)

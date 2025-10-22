@@ -632,7 +632,7 @@ class MLPNeRSTFModel(ModelMixin, ConfigMixin):
         if insert_direction_at is not None:
             input_widths[insert_direction_at] += d_posenc_dir
 
-        self.mlp = nn.Modulelist([nn.Linear(d_in, d_out) for d_in, d_out in zip(input_widths, output_widths)])
+        self.mlp = nn.ModuleList([nn.Linear(d_in, d_out) for d_in, d_out in zip(input_widths, output_widths)])
 
         if act_fn == "swish":
             # self.activation = swish

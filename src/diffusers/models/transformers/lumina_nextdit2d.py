@@ -261,7 +261,7 @@ class LuminaNextDiT2DModel(ModelMixin, ConfigMixin):
             hidden_size=min(hidden_size, 1024), cross_attention_dim=cross_attention_dim
         )
 
-        self.layers = nn.Modulelist(
+        self.layers = nn.ModuleList(
             [
                 LuminaNextDiTBlock(
                     hidden_size,

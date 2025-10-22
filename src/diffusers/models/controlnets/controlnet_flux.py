@@ -72,7 +72,7 @@ class FluxControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         self.context_embedder = nn.Linear(joint_attention_dim, self.inner_dim)
         self.x_embedder = torch.nn.Linear(in_channels, self.inner_dim)
 
-        self.transformer_blocks = nn.Modulelist(
+        self.transformer_blocks = nn.ModuleList(
             [
                 FluxTransformerBlock(
                     dim=self.inner_dim,
@@ -83,7 +83,7 @@ class FluxControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
             ]
         )
 
-        self.single_transformer_blocks = nn.Modulelist(
+        self.single_transformer_blocks = nn.ModuleList(
             [
                 FluxSingleTransformerBlock(
                     dim=self.inner_dim,
@@ -95,11 +95,11 @@ class FluxControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         )
 
         # controlnet_blocks
-        self.controlnet_blocks = nn.Modulelist([])
+        self.controlnet_blocks = nn.ModuleList([])
         for _ in range(len(self.transformer_blocks)):
             self.controlnet_blocks.append(zero_module(nn.Linear(self.inner_dim, self.inner_dim)))
 
-        self.controlnet_single_blocks = nn.Modulelist([])
+        self.controlnet_single_blocks = nn.ModuleList([])
         for _ in range(len(self.single_transformer_blocks)):
             self.controlnet_single_blocks.append(zero_module(nn.Linear(self.inner_dim, self.inner_dim)))
 
@@ -411,7 +411,7 @@ class FluxMultiControlNetModel(ModelMixin):
 
     def __init__(self, controlnets):
         super().__init__()
-        self.nets = nn.Modulelist(controlnets)
+        self.nets = nn.ModuleList(controlnets)
 
     def forward(
         self,

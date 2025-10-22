@@ -119,7 +119,7 @@ class AnimateDiffTransformer3D(nn.Module):
         self.proj_in = nn.Linear(in_channels, inner_dim)
 
         # 3. Define transformers blocks
-        self.transformer_blocks = nn.Modulelist(
+        self.transformer_blocks = nn.ModuleList(
             [
                 BasicTransformerBlock(
                     inner_dim,
@@ -286,11 +286,11 @@ class DownBlockMotion(nn.Module):
                 )
             )
 
-        self.resnets = nn.Modulelist(resnets)
-        self.motion_modules = nn.Modulelist(motion_modules)
+        self.resnets = nn.ModuleList(resnets)
+        self.motion_modules = nn.ModuleList(motion_modules)
 
         if add_downsample:
-            self.downsamplers = nn.Modulelist(
+            self.downsamplers = nn.ModuleList(
                 [
                     Downsample2D(
                         out_channels,
@@ -454,12 +454,12 @@ class CrossAttnDownBlockMotion(nn.Module):
                 )
             )
 
-        self.attentions = nn.Modulelist(attentions)
-        self.resnets = nn.Modulelist(resnets)
-        self.motion_modules = nn.Modulelist(motion_modules)
+        self.attentions = nn.ModuleList(attentions)
+        self.resnets = nn.ModuleList(resnets)
+        self.motion_modules = nn.ModuleList(motion_modules)
 
         if add_downsample:
-            self.downsamplers = nn.Modulelist(
+            self.downsamplers = nn.ModuleList(
                 [
                     Downsample2D(
                         out_channels,
@@ -639,12 +639,12 @@ class CrossAttnUpBlockMotion(nn.Module):
                 )
             )
 
-        self.attentions = nn.Modulelist(attentions)
-        self.resnets = nn.Modulelist(resnets)
-        self.motion_modules = nn.Modulelist(motion_modules)
+        self.attentions = nn.ModuleList(attentions)
+        self.resnets = nn.ModuleList(resnets)
+        self.motion_modules = nn.ModuleList(motion_modules)
 
         if add_upsample:
-            self.upsamplers = nn.Modulelist([Upsample2D(out_channels, use_conv=True, out_channels=out_channels)])
+            self.upsamplers = nn.ModuleList([Upsample2D(out_channels, use_conv=True, out_channels=out_channels)])
         else:
             self.upsamplers = None
 
@@ -785,11 +785,11 @@ class UpBlockMotion(nn.Module):
                 )
             )
 
-        self.resnets = nn.Modulelist(resnets)
-        self.motion_modules = nn.Modulelist(motion_modules)
+        self.resnets = nn.ModuleList(resnets)
+        self.motion_modules = nn.ModuleList(motion_modules)
 
         if add_upsample:
-            self.upsamplers = nn.Modulelist([Upsample2D(out_channels, use_conv=True, out_channels=out_channels)])
+            self.upsamplers = nn.ModuleList([Upsample2D(out_channels, use_conv=True, out_channels=out_channels)])
         else:
             self.upsamplers = None
 
@@ -972,9 +972,9 @@ class UNetMidBlockCrossAttnMotion(nn.Module):
                 )
             )
 
-        self.attentions = nn.Modulelist(attentions)
-        self.resnets = nn.Modulelist(resnets)
-        self.motion_modules = nn.Modulelist(motion_modules)
+        self.attentions = nn.ModuleList(attentions)
+        self.resnets = nn.ModuleList(resnets)
+        self.motion_modules = nn.ModuleList(motion_modules)
 
         self.gradient_checkpointing = False
 
@@ -1031,7 +1031,7 @@ class MotionModules(nn.Module):
         max_seq_length: int = 32,
     ):
         super().__init__()
-        self.motion_modules = nn.Modulelist([])
+        self.motion_modules = nn.ModuleList([])
 
         if isinstance(transformer_layers_per_block, int):
             transformer_layers_per_block = (transformer_layers_per_block,) * layers_per_block
@@ -1188,8 +1188,8 @@ class MotionAdapter(ModelMixin, ConfigMixin, FromOriginalModelMixin):
                 )
             )
 
-        self.down_blocks = nn.Modulelist(down_blocks)
-        self.up_blocks = nn.Modulelist(up_blocks)
+        self.down_blocks = nn.ModuleList(down_blocks)
+        self.up_blocks = nn.ModuleList(up_blocks)
 
     def forward(self, sample):
         pass
@@ -1323,8 +1323,8 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin, Peft
             self.add_embedding = TimestepEmbedding(projection_class_embeddings_input_dim, time_embed_dim)
 
         # class embedding
-        self.down_blocks = nn.Modulelist([])
-        self.up_blocks = nn.Modulelist([])
+        self.down_blocks = nn.ModuleList([])
+        self.up_blocks = nn.ModuleList([])
 
         if isinstance(num_attention_heads, int):
             num_attention_heads = (num_attention_heads,) * len(down_block_types)

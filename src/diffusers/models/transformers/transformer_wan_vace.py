@@ -228,7 +228,7 @@ class WanVACETransformer3DModel(
         )
 
         # 3. Transformer blocks
-        self.blocks = nn.Modulelist(
+        self.blocks = nn.ModuleList(
             [
                 WanTransformerBlock(
                     inner_dim, ffn_dim, num_attention_heads, qk_norm, cross_attn_norm, eps, added_kv_proj_dim
@@ -237,7 +237,7 @@ class WanVACETransformer3DModel(
             ]
         )
 
-        self.vace_blocks = nn.Modulelist(
+        self.vace_blocks = nn.ModuleList(
             [
                 WanVACETransformerBlock(
                     inner_dim,

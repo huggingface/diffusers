@@ -471,7 +471,7 @@ def apply_group_offloading(
       memory, but can be slower due to the excessive number of device synchronizations.
 
     Group offloading is a middle ground between the two methods. It works by offloading groups of internal layers,
-    (either `torch.nn.Modulelist` or `torch.nn.Sequential`). This method uses lower memory than module-level
+    (either `torch.nn.ModuleList` or `torch.nn.Sequential`). This method uses lower memory than module-level
     offloading. It is also faster than leaf-level/sequential offloading, as the number of device synchronizations is
     reduced.
 
@@ -576,7 +576,7 @@ def _apply_group_offloading(module: torch.nn.Module, config: GroupOffloadingConf
 
 def _apply_group_offloading_block_level(module: torch.nn.Module, config: GroupOffloadingConfig) -> None:
     r"""
-    This function applies offloading to groups of torch.nn.Modulelist or torch.nn.Sequential blocks. In comparison to
+    This function applies offloading to groups of torch.nn.ModuleList or torch.nn.Sequential blocks. In comparison to
     the "leaf_level" offloading, which is more fine-grained, this offloading is done at the top-level blocks.
     """
 
@@ -586,12 +586,12 @@ def _apply_group_offloading_block_level(module: torch.nn.Module, config: GroupOf
         )
         config.num_blocks_per_group = 1
 
-    # Create module groups for Modulelist and Sequential blocks
+    # Create module groups for ModuleList and Sequential blocks
     modules_with_group_offloading = set()
     unmatched_modules = []
     matched_module_groups = []
     for name, submodule in module.named_children():
-        if not isinstance(submodule, (torch.nn.Modulelist, torch.nn.Sequential)):
+        if not isinstance(submodule, (torch.nn.ModuleList, torch.nn.Sequential)):
             unmatched_modules.append((name, submodule))
             modules_with_group_offloading.add(name)
             continue

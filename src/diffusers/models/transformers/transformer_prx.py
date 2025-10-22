@@ -224,7 +224,7 @@ class PRXAttention(nn.Module, AttentionModuleMixin):
         self.txt_kv_proj = nn.Linear(query_dim, query_dim * 2, bias=bias)
         self.norm_added_k = RMSNorm(self.head_dim, eps=eps, elementwise_affine=True)
 
-        self.to_out = nn.Modulelist([])
+        self.to_out = nn.ModuleList([])
         self.to_out.append(nn.Linear(self.inner_dim, query_dim, bias=out_bias))
         self.to_out.append(nn.Dropout(0.0))
 
@@ -666,7 +666,7 @@ class PRXTransformer2DModel(ModelMixin, ConfigMixin, AttentionMixin):
         self.time_in = MLPEmbedder(in_dim=256, hidden_dim=self.hidden_size)
         self.txt_in = nn.Linear(context_in_dim, self.hidden_size)
 
-        self.blocks = nn.Modulelist(
+        self.blocks = nn.ModuleList(
             [
                 PRXBlock(
                     self.hidden_size,

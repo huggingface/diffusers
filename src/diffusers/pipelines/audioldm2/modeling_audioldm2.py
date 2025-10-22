@@ -390,8 +390,8 @@ class AudioLDM2UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoad
         else:
             self.time_embed_act = get_activation(time_embedding_act_fn)
 
-        self.down_blocks = nn.Modulelist([])
-        self.up_blocks = nn.Modulelist([])
+        self.down_blocks = nn.ModuleList([])
+        self.up_blocks = nn.ModuleList([])
 
         if isinstance(only_cross_attention, bool):
             only_cross_attention = [only_cross_attention] * len(down_block_types)
@@ -1068,11 +1068,11 @@ class CrossAttnDownBlock2D(nn.Module):
                         double_self_attention=True if cross_attention_dim[j] is None else False,
                     )
                 )
-        self.attentions = nn.Modulelist(attentions)
-        self.resnets = nn.Modulelist(resnets)
+        self.attentions = nn.ModuleList(attentions)
+        self.resnets = nn.ModuleList(resnets)
 
         if add_downsample:
-            self.downsamplers = nn.Modulelist(
+            self.downsamplers = nn.ModuleList(
                 [
                     Downsample2D(
                         out_channels, use_conv=True, out_channels=out_channels, padding=downsample_padding, name="op"
@@ -1241,8 +1241,8 @@ class UNetMidBlock2DCrossAttn(nn.Module):
                 )
             )
 
-        self.attentions = nn.Modulelist(attentions)
-        self.resnets = nn.Modulelist(resnets)
+        self.attentions = nn.ModuleList(attentions)
+        self.resnets = nn.ModuleList(resnets)
 
         self.gradient_checkpointing = False
 
@@ -1386,11 +1386,11 @@ class CrossAttnUpBlock2D(nn.Module):
                         double_self_attention=True if cross_attention_dim[j] is None else False,
                     )
                 )
-        self.attentions = nn.Modulelist(attentions)
-        self.resnets = nn.Modulelist(resnets)
+        self.attentions = nn.ModuleList(attentions)
+        self.resnets = nn.ModuleList(resnets)
 
         if add_upsample:
-            self.upsamplers = nn.Modulelist([Upsample2D(out_channels, use_conv=True, out_channels=out_channels)])
+            self.upsamplers = nn.ModuleList([Upsample2D(out_channels, use_conv=True, out_channels=out_channels)])
         else:
             self.upsamplers = None
 

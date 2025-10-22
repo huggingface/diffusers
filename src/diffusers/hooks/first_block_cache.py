@@ -227,7 +227,7 @@ def apply_first_block_cache(module: torch.nn.Module, config: FirstBlockCacheConf
     remaining_blocks = []
 
     for name, submodule in module.named_children():
-        if name not in _ALL_TRANSFORMER_BLOCK_IDENTIFIERS or not isinstance(submodule, torch.nn.Modulelist):
+        if name not in _ALL_TRANSFORMER_BLOCK_IDENTIFIERS or not isinstance(submodule, torch.nn.ModuleList):
             continue
         for index, block in enumerate(submodule):
             remaining_blocks.append((f"{name}.{index}", block))

@@ -262,7 +262,7 @@ class Attention(nn.Module):
             self.add_v_proj = None
 
         if not self.pre_only:
-            self.to_out = nn.Modulelist([])
+            self.to_out = nn.ModuleList([])
             self.to_out.append(nn.Linear(self.inner_dim, self.out_dim, bias=out_bias))
             self.to_out.append(nn.Dropout(dropout))
         else:
@@ -895,7 +895,7 @@ class SanaMultiscaleLinearAttention(nn.Module):
         self.to_k = nn.Linear(in_channels, inner_dim, bias=False)
         self.to_v = nn.Linear(in_channels, inner_dim, bias=False)
 
-        self.to_qkv_multiscale = nn.Modulelist()
+        self.to_qkv_multiscale = nn.ModuleList()
         for kernel_size in kernel_sizes:
             self.to_qkv_multiscale.append(
                 SanaMultiscaleAttentionProjection(inner_dim, num_attention_heads, kernel_size)
@@ -968,7 +968,7 @@ class MochiAttention(nn.Module):
         if self.context_pre_only is not None:
             self.add_q_proj = nn.Linear(added_kv_proj_dim, self.inner_dim, bias=added_proj_bias)
 
-        self.to_out = nn.Modulelist([])
+        self.to_out = nn.ModuleList([])
         self.to_out.append(nn.Linear(self.inner_dim, self.out_dim, bias=out_bias))
         self.to_out.append(nn.Dropout(dropout))
 
@@ -1211,7 +1211,7 @@ class CustomDiffusionAttnProcessor(nn.Module):
             self.to_v_custom_diffusion = nn.Linear(cross_attention_dim or hidden_size, hidden_size, bias=False)
         if self.train_q_out:
             self.to_q_custom_diffusion = nn.Linear(hidden_size, hidden_size, bias=False)
-            self.to_out_custom_diffusion = nn.Modulelist([])
+            self.to_out_custom_diffusion = nn.ModuleList([])
             self.to_out_custom_diffusion.append(nn.Linear(hidden_size, hidden_size, bias=out_bias))
             self.to_out_custom_diffusion.append(nn.Dropout(dropout))
 
@@ -3812,7 +3812,7 @@ class CustomDiffusionXFormersAttnProcessor(nn.Module):
             self.to_v_custom_diffusion = nn.Linear(cross_attention_dim or hidden_size, hidden_size, bias=False)
         if self.train_q_out:
             self.to_q_custom_diffusion = nn.Linear(hidden_size, hidden_size, bias=False)
-            self.to_out_custom_diffusion = nn.Modulelist([])
+            self.to_out_custom_diffusion = nn.ModuleList([])
             self.to_out_custom_diffusion.append(nn.Linear(hidden_size, hidden_size, bias=out_bias))
             self.to_out_custom_diffusion.append(nn.Dropout(dropout))
 
@@ -3923,7 +3923,7 @@ class CustomDiffusionAttnProcessor2_0(nn.Module):
             self.to_v_custom_diffusion = nn.Linear(cross_attention_dim or hidden_size, hidden_size, bias=False)
         if self.train_q_out:
             self.to_q_custom_diffusion = nn.Linear(hidden_size, hidden_size, bias=False)
-            self.to_out_custom_diffusion = nn.Modulelist([])
+            self.to_out_custom_diffusion = nn.ModuleList([])
             self.to_out_custom_diffusion.append(nn.Linear(hidden_size, hidden_size, bias=out_bias))
             self.to_out_custom_diffusion.append(nn.Dropout(dropout))
 
@@ -4234,10 +4234,10 @@ class IPAdapterAttnProcessor(nn.Module):
             raise ValueError("`scale` should be a list of integers with the same length as `num_tokens`.")
         self.scale = scale
 
-        self.to_k_ip = nn.Modulelist(
+        self.to_k_ip = nn.ModuleList(
             [nn.Linear(cross_attention_dim, hidden_size, bias=False) for _ in range(len(num_tokens))]
         )
-        self.to_v_ip = nn.Modulelist(
+        self.to_v_ip = nn.ModuleList(
             [nn.Linear(cross_attention_dim, hidden_size, bias=False) for _ in range(len(num_tokens))]
         )
 
@@ -4439,10 +4439,10 @@ class IPAdapterAttnProcessor2_0(torch.nn.Module):
             raise ValueError("`scale` should be a list of integers with the same length as `num_tokens`.")
         self.scale = scale
 
-        self.to_k_ip = nn.Modulelist(
+        self.to_k_ip = nn.ModuleList(
             [nn.Linear(cross_attention_dim, hidden_size, bias=False) for _ in range(len(num_tokens))]
         )
-        self.to_v_ip = nn.Modulelist(
+        self.to_v_ip = nn.ModuleList(
             [nn.Linear(cross_attention_dim, hidden_size, bias=False) for _ in range(len(num_tokens))]
         )
 
@@ -4679,10 +4679,10 @@ class IPAdapterXFormersAttnProcessor(torch.nn.Module):
             raise ValueError("`scale` should be a list of integers with the same length as `num_tokens`.")
         self.scale = scale
 
-        self.to_k_ip = nn.Modulelist(
+        self.to_k_ip = nn.ModuleList(
             [nn.Linear(cross_attention_dim or hidden_size, hidden_size, bias=False) for _ in range(len(num_tokens))]
         )
-        self.to_v_ip = nn.Modulelist(
+        self.to_v_ip = nn.ModuleList(
             [nn.Linear(cross_attention_dim or hidden_size, hidden_size, bias=False) for _ in range(len(num_tokens))]
         )
 

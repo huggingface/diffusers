@@ -46,7 +46,7 @@ class TemporalDecoder(nn.Module):
         )
 
         # up
-        self.up_blocks = nn.Modulelist([])
+        self.up_blocks = nn.ModuleList([])
         reversed_block_out_channels = list(reversed(block_out_channels))
         output_channel = reversed_block_out_channels[0]
         for i in range(len(block_out_channels)):

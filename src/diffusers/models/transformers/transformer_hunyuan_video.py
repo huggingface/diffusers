@@ -372,7 +372,7 @@ class HunyuanVideoIndividualTokenRefiner(nn.Module):
     ) -> None:
         super().__init__()
 
-        self.refiner_blocks = nn.Modulelist(
+        self.refiner_blocks = nn.ModuleList(
             [
                 HunyuanVideoIndividualTokenRefinerBlock(
                     num_attention_heads=num_attention_heads,
@@ -924,7 +924,7 @@ class HunyuanVideoTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, 
 
         # 3. Dual stream transformer blocks
         if image_condition_type == "token_replace":
-            self.transformer_blocks = nn.Modulelist(
+            self.transformer_blocks = nn.ModuleList(
                 [
                     HunyuanVideoTokenReplaceTransformerBlock(
                         num_attention_heads, attention_head_dim, mlp_ratio=mlp_ratio, qk_norm=qk_norm
@@ -933,7 +933,7 @@ class HunyuanVideoTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, 
                 ]
             )
         else:
-            self.transformer_blocks = nn.Modulelist(
+            self.transformer_blocks = nn.ModuleList(
                 [
                     HunyuanVideoTransformerBlock(
                         num_attention_heads, attention_head_dim, mlp_ratio=mlp_ratio, qk_norm=qk_norm
@@ -944,7 +944,7 @@ class HunyuanVideoTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, 
 
         # 4. Single stream transformer blocks
         if image_condition_type == "token_replace":
-            self.single_transformer_blocks = nn.Modulelist(
+            self.single_transformer_blocks = nn.ModuleList(
                 [
                     HunyuanVideoTokenReplaceSingleTransformerBlock(
                         num_attention_heads, attention_head_dim, mlp_ratio=mlp_ratio, qk_norm=qk_norm
@@ -953,7 +953,7 @@ class HunyuanVideoTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, 
                 ]
             )
         else:
-            self.single_transformer_blocks = nn.Modulelist(
+            self.single_transformer_blocks = nn.ModuleList(
                 [
                     HunyuanVideoSingleTransformerBlock(
                         num_attention_heads, attention_head_dim, mlp_ratio=mlp_ratio, qk_norm=qk_norm

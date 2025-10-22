@@ -71,7 +71,7 @@ class QwenImageControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
         self.img_in = nn.Linear(in_channels, self.inner_dim)
         self.txt_in = nn.Linear(joint_attention_dim, self.inner_dim)
 
-        self.transformer_blocks = nn.Modulelist(
+        self.transformer_blocks = nn.ModuleList(
             [
                 QwenImageTransformerBlock(
                     dim=self.inner_dim,
@@ -83,7 +83,7 @@ class QwenImageControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
         )
 
         # controlnet_blocks
-        self.controlnet_blocks = nn.Modulelist([])
+        self.controlnet_blocks = nn.ModuleList([])
         for _ in range(len(self.transformer_blocks)):
             self.controlnet_blocks.append(zero_module(nn.Linear(self.inner_dim, self.inner_dim)))
         self.controlnet_x_embedder = zero_module(
@@ -310,7 +310,7 @@ class QwenImageMultiControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, F
 
     def __init__(self, controlnets):
         super().__init__()
-        self.nets = nn.Modulelist(controlnets)
+        self.nets = nn.ModuleList(controlnets)
 
     def forward(
         self,

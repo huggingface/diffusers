@@ -575,7 +575,7 @@ class LDMBertEncoder(LDMBertPreTrainedModel):
 
         self.embed_tokens = nn.Embedding(config.vocab_size, embed_dim)
         self.embed_positions = nn.Embedding(config.max_position_embeddings, embed_dim)
-        self.layers = nn.Modulelist([LDMBertEncoderLayer(config) for _ in range(config.encoder_layers)])
+        self.layers = nn.ModuleList([LDMBertEncoderLayer(config) for _ in range(config.encoder_layers)])
         self.layer_norm = nn.LayerNorm(embed_dim)
 
         self.gradient_checkpointing = False

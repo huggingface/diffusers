@@ -286,7 +286,7 @@ class EasyAnimateDownBlock3D(nn.Module):
     ):
         super().__init__()
 
-        self.convs = nn.Modulelist([])
+        self.convs = nn.ModuleList([])
         for i in range(num_layers):
             in_channels = in_channels if i == 0 else out_channels
             self.convs.append(
@@ -340,7 +340,7 @@ class EasyAnimateUpBlock3d(nn.Module):
     ):
         super().__init__()
 
-        self.convs = nn.Modulelist([])
+        self.convs = nn.ModuleList([])
         for i in range(num_layers):
             in_channels = in_channels if i == 0 else out_channels
             self.convs.append(
@@ -390,7 +390,7 @@ class EasyAnimateMidBlock3d(nn.Module):
 
         norm_num_groups = norm_num_groups if norm_num_groups is not None else min(in_channels // 4, 32)
 
-        self.convs = nn.Modulelist(
+        self.convs = nn.ModuleList(
             [
                 EasyAnimateResidualBlock3D(
                     in_channels=in_channels,
@@ -456,7 +456,7 @@ class EasyAnimateEncoder(nn.Module):
         self.conv_in = EasyAnimateCausalConv3d(in_channels, block_out_channels[0], kernel_size=3)
 
         # 2. Down blocks
-        self.down_blocks = nn.Modulelist([])
+        self.down_blocks = nn.ModuleList([])
         output_channels = block_out_channels[0]
         for i, down_block_type in enumerate(down_block_types):
             input_channels = output_channels
@@ -582,7 +582,7 @@ class EasyAnimateDecoder(nn.Module):
         )
 
         # 3. Up blocks
-        self.up_blocks = nn.Modulelist([])
+        self.up_blocks = nn.ModuleList([])
         reversed_block_out_channels = list(reversed(block_out_channels))
         output_channels = reversed_block_out_channels[0]
         for i, up_block_type in enumerate(up_block_types):

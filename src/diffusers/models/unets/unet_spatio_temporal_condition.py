@@ -143,8 +143,8 @@ class UNetSpatioTemporalConditionModel(ModelMixin, ConfigMixin, UNet2DConditionL
         self.add_time_proj = Timesteps(addition_time_embed_dim, True, downscale_freq_shift=0)
         self.add_embedding = TimestepEmbedding(projection_class_embeddings_input_dim, time_embed_dim)
 
-        self.down_blocks = nn.Modulelist([])
-        self.up_blocks = nn.Modulelist([])
+        self.down_blocks = nn.ModuleList([])
+        self.up_blocks = nn.ModuleList([])
 
         if isinstance(num_attention_heads, int):
             num_attention_heads = (num_attention_heads,) * len(down_block_types)

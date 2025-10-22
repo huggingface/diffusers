@@ -99,7 +99,7 @@ class TransformerTemporalModel(ModelMixin, ConfigMixin):
         self.proj_in = nn.Linear(in_channels, inner_dim)
 
         # 3. Define transformers blocks
-        self.transformer_blocks = nn.Modulelist(
+        self.transformer_blocks = nn.ModuleList(
             [
                 BasicTransformerBlock(
                     inner_dim,
@@ -239,7 +239,7 @@ class TransformerSpatioTemporalModel(nn.Module):
         self.proj_in = nn.Linear(in_channels, inner_dim)
 
         # 3. Define transformers blocks
-        self.transformer_blocks = nn.Modulelist(
+        self.transformer_blocks = nn.ModuleList(
             [
                 BasicTransformerBlock(
                     inner_dim,
@@ -252,7 +252,7 @@ class TransformerSpatioTemporalModel(nn.Module):
         )
 
         time_mix_inner_dim = inner_dim
-        self.temporal_transformer_blocks = nn.Modulelist(
+        self.temporal_transformer_blocks = nn.ModuleList(
             [
                 TemporalBasicTransformerBlock(
                     inner_dim,

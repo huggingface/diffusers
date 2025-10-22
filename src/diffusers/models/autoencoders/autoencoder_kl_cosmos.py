@@ -430,7 +430,7 @@ class CosmosCausalAttention(nn.Module):
         self.to_q = CosmosCausalConv3d(attention_head_dim, attention_head_dim, kernel_size=1, stride=1, padding=0)
         self.to_k = CosmosCausalConv3d(attention_head_dim, attention_head_dim, kernel_size=1, stride=1, padding=0)
         self.to_v = CosmosCausalConv3d(attention_head_dim, attention_head_dim, kernel_size=1, stride=1, padding=0)
-        self.to_out = nn.Modulelist([])
+        self.to_out = nn.ModuleList([])
         self.to_out.append(
             CosmosCausalConv3d(attention_head_dim, attention_head_dim, kernel_size=1, stride=1, padding=0)
         )
@@ -566,13 +566,13 @@ class CosmosDownBlock3d(nn.Module):
                 attentions.append(None)
                 temp_attentions.append(None)
 
-        self.resnets = nn.Modulelist(resnets)
-        self.attentions = nn.Modulelist(attentions)
-        self.temp_attentions = nn.Modulelist(temp_attentions)
+        self.resnets = nn.ModuleList(resnets)
+        self.attentions = nn.ModuleList(attentions)
+        self.temp_attentions = nn.ModuleList(temp_attentions)
 
         self.downsamplers = None
         if use_downsample:
-            self.downsamplers = nn.Modulelist([])
+            self.downsamplers = nn.ModuleList([])
             self.downsamplers.append(CosmosDownsample3d(out_channel, spatial_downsample, temporal_downsample))
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
@@ -620,9 +620,9 @@ class CosmosMidBlock3d(nn.Module):
             )
             resnets.append(CosmosResnetBlock3d(in_channels, in_channels, dropout, num_groups))
 
-        self.resnets = nn.Modulelist(resnets)
-        self.attentions = nn.Modulelist(attentions)
-        self.temp_attentions = nn.Modulelist(temp_attentions)
+        self.resnets = nn.ModuleList(resnets)
+        self.attentions = nn.ModuleList(attentions)
+        self.temp_attentions = nn.ModuleList(temp_attentions)
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         hidden_states = self.resnets[0](hidden_states)
@@ -682,13 +682,13 @@ class CosmosUpBlock3d(nn.Module):
                 attention.append(None)
                 temp_attentions.append(None)
 
-        self.resnets = nn.Modulelist(resnets)
-        self.attentions = nn.Modulelist(attention)
-        self.temp_attentions = nn.Modulelist(temp_attentions)
+        self.resnets = nn.ModuleList(resnets)
+        self.attentions = nn.ModuleList(attention)
+        self.temp_attentions = nn.ModuleList(temp_attentions)
 
         self.upsamplers = None
         if use_upsample:
-            self.upsamplers = nn.Modulelist([])
+            self.upsamplers = nn.ModuleList([])
             self.upsamplers.append(CosmosUpsample3d(out_channel, spatial_upsample, temporal_upsample))
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
@@ -762,7 +762,7 @@ class CosmosEncoder3d(nn.Module):
                     temporal_downsample,
                 )
             )
-        self.down_blocks = nn.Modulelist(down_blocks)
+        self.down_blocks = nn.ModuleList(down_blocks)
 
         # 3. Mid block
         self.mid_block = CosmosMidBlock3d(block_out_channels[-1], num_layers=1, dropout=dropout, num_groups=1)
@@ -850,7 +850,7 @@ class CosmosDecoder3d(nn.Module):
                     temporal_upsample,
                 )
             )
-        self.up_blocks = nn.Modulelist(up_blocks)
+        self.up_blocks = nn.ModuleList(up_blocks)
 
         # 4. Output norm & projection & unpatching
         self.norm_out = CosmosCausalGroupNorm(reversed_block_out_channels[-1], num_groups=1)

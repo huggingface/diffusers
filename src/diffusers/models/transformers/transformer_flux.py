@@ -167,13 +167,13 @@ class FluxIPAdapterAttnProcessor(torch.nn.Module):
             raise ValueError("`scale` should be a list of integers with the same length as `num_tokens`.")
         self.scale = scale
 
-        self.to_k_ip = nn.Modulelist(
+        self.to_k_ip = nn.ModuleList(
             [
                 nn.Linear(cross_attention_dim, hidden_size, bias=True, device=device, dtype=dtype)
                 for _ in range(len(num_tokens))
             ]
         )
-        self.to_v_ip = nn.Modulelist(
+        self.to_v_ip = nn.ModuleList(
             [
                 nn.Linear(cross_attention_dim, hidden_size, bias=True, device=device, dtype=dtype)
                 for _ in range(len(num_tokens))
@@ -317,7 +317,7 @@ class FluxAttention(torch.nn.Module, AttentionModuleMixin):
         self.to_v = torch.nn.Linear(query_dim, self.inner_dim, bias=bias)
 
         if not self.pre_only:
-            self.to_out = torch.nn.Modulelist([])
+            self.to_out = torch.nn.ModuleList([])
             self.to_out.append(torch.nn.Linear(self.inner_dim, self.out_dim, bias=out_bias))
             self.to_out.append(torch.nn.Dropout(dropout))
 
@@ -607,7 +607,7 @@ class FluxTransformer2DModel(
         self.context_embedder = nn.Linear(joint_attention_dim, self.inner_dim)
         self.x_embedder = nn.Linear(in_channels, self.inner_dim)
 
-        self.transformer_blocks = nn.Modulelist(
+        self.transformer_blocks = nn.ModuleList(
             [
                 FluxTransformerBlock(
                     dim=self.inner_dim,
@@ -618,7 +618,7 @@ class FluxTransformer2DModel(
             ]
         )
 
-        self.single_transformer_blocks = nn.Modulelist(
+        self.single_transformer_blocks = nn.ModuleList(
             [
                 FluxSingleTransformerBlock(
                     dim=self.inner_dim,

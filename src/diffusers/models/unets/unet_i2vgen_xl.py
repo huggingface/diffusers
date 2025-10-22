@@ -224,8 +224,8 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         )
 
         # blocks
-        self.down_blocks = nn.Modulelist([])
-        self.up_blocks = nn.Modulelist([])
+        self.down_blocks = nn.ModuleList([])
+        self.up_blocks = nn.ModuleList([])
 
         if isinstance(num_attention_heads, int):
             num_attention_heads = (num_attention_heads,) * len(down_block_types)

@@ -28,7 +28,7 @@ class MultiControlNetUnionModel(ModelMixin):
 
     def __init__(self, controlnets: list[ControlNetUnionModel] | tuple[ControlNetUnionModel]):
         super().__init__()
-        self.nets = nn.Modulelist(controlnets)
+        self.nets = nn.ModuleList(controlnets)
 
     def forward(
         self,

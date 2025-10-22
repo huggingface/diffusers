@@ -397,7 +397,7 @@ class Lumina2Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromO
         )
 
         # 2. Noise and context refinement blocks
-        self.noise_refiner = nn.Modulelist(
+        self.noise_refiner = nn.ModuleList(
             [
                 Lumina2TransformerBlock(
                     hidden_size,
@@ -412,7 +412,7 @@ class Lumina2Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromO
             ]
         )
 
-        self.context_refiner = nn.Modulelist(
+        self.context_refiner = nn.ModuleList(
             [
                 Lumina2TransformerBlock(
                     hidden_size,
@@ -428,7 +428,7 @@ class Lumina2Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromO
         )
 
         # 3. Transformer blocks
-        self.layers = nn.Modulelist(
+        self.layers = nn.ModuleList(
             [
                 Lumina2TransformerBlock(
                     hidden_size,

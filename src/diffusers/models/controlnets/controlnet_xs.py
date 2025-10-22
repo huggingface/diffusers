@@ -68,10 +68,10 @@ class DownBlockControlNetXSAdapter(nn.Module):
 
     def __init__(
         self,
-        resnets: nn.Modulelist,
-        base_to_ctrl: nn.Modulelist,
-        ctrl_to_base: nn.Modulelist,
-        attentions: Optional[nn.Modulelist] = None,
+        resnets: nn.ModuleList,
+        base_to_ctrl: nn.ModuleList,
+        ctrl_to_base: nn.ModuleList,
+        attentions: Optional[nn.ModuleList] = None,
         downsampler: Optional[nn.Conv2d] = None,
     ):
         super().__init__()
@@ -86,7 +86,7 @@ class MidBlockControlNetXSAdapter(nn.Module):
     """Components that together with corresponding components from the base model will form a
     `ControlNetXSCrossAttnMidBlock2D`"""
 
-    def __init__(self, midblock: UNetMidBlock2DCrossAttn, base_to_ctrl: nn.Modulelist, ctrl_to_base: nn.Modulelist):
+    def __init__(self, midblock: UNetMidBlock2DCrossAttn, base_to_ctrl: nn.ModuleList, ctrl_to_base: nn.ModuleList):
         super().__init__()
         self.midblock = midblock
         self.base_to_ctrl = base_to_ctrl
@@ -96,7 +96,7 @@ class MidBlockControlNetXSAdapter(nn.Module):
 class UpBlockControlNetXSAdapter(nn.Module):
     """Components that together with corresponding components from the base model will form a `ControlNetXSCrossAttnUpBlock2D`"""
 
-    def __init__(self, ctrl_to_base: nn.Modulelist):
+    def __init__(self, ctrl_to_base: nn.ModuleList):
         super().__init__()
         self.ctrl_to_base = ctrl_to_base
 
@@ -179,13 +179,13 @@ def get_down_block_adapter(
         downsamplers = None
 
     down_block_components = DownBlockControlNetXSAdapter(
-        resnets=nn.Modulelist(resnets),
-        base_to_ctrl=nn.Modulelist(base_to_ctrl),
-        ctrl_to_base=nn.Modulelist(ctrl_to_base),
+        resnets=nn.ModuleList(resnets),
+        base_to_ctrl=nn.ModuleList(base_to_ctrl),
+        ctrl_to_base=nn.ModuleList(ctrl_to_base),
     )
 
     if has_crossattn:
-        down_block_components.attentions = nn.Modulelist(attentions)
+        down_block_components.attentions = nn.ModuleList(attentions)
     if downsamplers is not None:
         down_block_components.downsamplers = downsamplers
 
@@ -238,7 +238,7 @@ def get_up_block_adapter(
         resnet_in_channels = prev_output_channel if i == 0 else out_channels
         ctrl_to_base.append(make_zero_conv(ctrl_skip_channels[i], resnet_in_channels))
 
-    return UpBlockControlNetXSAdapter(ctrl_to_base=nn.Modulelist(ctrl_to_base))
+    return UpBlockControlNetXSAdapter(ctrl_to_base=nn.ModuleList(ctrl_to_base))
 
 
 class ControlNetXSAdapter(ModelMixin, ConfigMixin):
@@ -352,8 +352,8 @@ class ControlNetXSAdapter(ModelMixin, ConfigMixin):
         else:
             self.time_embedding = None
 
-        self.down_blocks = nn.Modulelist([])
-        self.up_connections = nn.Modulelist([])
+        self.down_blocks = nn.ModuleList([])
+        self.up_connections = nn.ModuleList([])
 
         # input
         self.conv_in = nn.Conv2d(4, block_out_channels[0], kernel_size=3, padding=1)
@@ -708,8 +708,8 @@ class UNetControlNetXSModel(ModelMixin, ConfigMixin):
                 )
             )
 
-        self.down_blocks = nn.Modulelist(down_blocks)
-        self.up_blocks = nn.Modulelist(up_blocks)
+        self.down_blocks = nn.ModuleList(down_blocks)
+        self.up_blocks = nn.ModuleList(up_blocks)
 
         self.base_conv_norm_out = nn.GroupNorm(num_channels=block_out_channels[0], num_groups=norm_num_groups)
         self.base_conv_act = nn.SiLU()
@@ -819,12 +819,12 @@ class UNetControlNetXSModel(ModelMixin, ConfigMixin):
         model.control_to_base_for_conv_in.load_state_dict(controlnet.control_to_base_for_conv_in.state_dict())
 
         # from both
-        model.down_blocks = nn.Modulelist(
+        model.down_blocks = nn.ModuleList(
             ControlNetXSCrossAttnDownBlock2D.from_modules(b, c)
             for b, c in zip(unet.down_blocks, controlnet.down_blocks)
         )
         model.mid_block = ControlNetXSCrossAttnMidBlock2D.from_modules(unet.mid_block, controlnet.mid_block)
-        model.up_blocks = nn.Modulelist(
+        model.up_blocks = nn.ModuleList(
             ControlNetXSCrossAttnUpBlock2D.from_modules(b, c)
             for b, c in zip(unet.up_blocks, controlnet.up_connections)
         )
@@ -1320,12 +1320,12 @@ class ControlNetXSCrossAttnDownBlock2D(nn.Module):
             self.base_downsamplers = None
             self.ctrl_downsamplers = None
 
-        self.base_resnets = nn.Modulelist(base_resnets)
-        self.ctrl_resnets = nn.Modulelist(ctrl_resnets)
-        self.base_attentions = nn.Modulelist(base_attentions) if has_crossattn else [None] * num_layers
-        self.ctrl_attentions = nn.Modulelist(ctrl_attentions) if has_crossattn else [None] * num_layers
-        self.base_to_ctrl = nn.Modulelist(base_to_ctrl)
-        self.ctrl_to_base = nn.Modulelist(ctrl_to_base)
+        self.base_resnets = nn.ModuleList(base_resnets)
+        self.ctrl_resnets = nn.ModuleList(ctrl_resnets)
+        self.base_attentions = nn.ModuleList(base_attentions) if has_crossattn else [None] * num_layers
+        self.ctrl_attentions = nn.ModuleList(ctrl_attentions) if has_crossattn else [None] * num_layers
+        self.base_to_ctrl = nn.ModuleList(base_to_ctrl)
+        self.ctrl_to_base = nn.ModuleList(ctrl_to_base)
 
         self.gradient_checkpointing = False
 
@@ -1404,7 +1404,7 @@ class ControlNetXSCrossAttnDownBlock2D(nn.Module):
 
         # Freeze base part
         base_parts = [self.base_resnets]
-        if isinstance(self.base_attentions, nn.Modulelist):  # attentions can be a list of Nones
+        if isinstance(self.base_attentions, nn.ModuleList):  # attentions can be a list of Nones
             base_parts.append(self.base_attentions)
         if self.base_downsamplers is not None:
             base_parts.append(self.base_downsamplers)
@@ -1715,9 +1715,9 @@ class ControlNetXSCrossAttnUpBlock2D(nn.Module):
                     )
                 )
 
-        self.resnets = nn.Modulelist(resnets)
-        self.attentions = nn.Modulelist(attentions) if has_crossattn else [None] * num_layers
-        self.ctrl_to_base = nn.Modulelist(ctrl_to_base)
+        self.resnets = nn.ModuleList(resnets)
+        self.attentions = nn.ModuleList(attentions) if has_crossattn else [None] * num_layers
+        self.ctrl_to_base = nn.ModuleList(ctrl_to_base)
 
         if add_upsample:
             self.upsamplers = Upsample2D(out_channels, use_conv=True, out_channels=out_channels)
@@ -1795,7 +1795,7 @@ class ControlNetXSCrossAttnUpBlock2D(nn.Module):
 
         # Freeze base part
         base_parts = [self.resnets]
-        if isinstance(self.attentions, nn.Modulelist):  # attentions can be a list of Nones
+        if isinstance(self.attentions, nn.ModuleList):  # attentions can be a list of Nones
             base_parts.append(self.attentions)
         if self.upsamplers is not None:
             base_parts.append(self.upsamplers)

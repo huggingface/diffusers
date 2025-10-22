@@ -104,7 +104,7 @@ class Encoder(nn.Module):
             padding=1,
         )
 
-        self.down_blocks = nn.Modulelist([])
+        self.down_blocks = nn.ModuleList([])
 
         # down
         output_channel = block_out_channels[0]
@@ -224,7 +224,7 @@ class Decoder(nn.Module):
             padding=1,
         )
 
-        self.up_blocks = nn.Modulelist([])
+        self.up_blocks = nn.ModuleList([])
 
         temb_channels = in_channels if norm_type == "spatial" else None
 
@@ -441,7 +441,7 @@ class MaskConditionDecoder(nn.Module):
             padding=1,
         )
 
-        self.up_blocks = nn.Modulelist([])
+        self.up_blocks = nn.ModuleList([])
 
         temb_channels = in_channels if norm_type == "spatial" else None
 

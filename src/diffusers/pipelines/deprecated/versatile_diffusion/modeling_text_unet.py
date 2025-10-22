@@ -613,8 +613,8 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
         else:
             self.time_embed_act = get_activation(time_embedding_act_fn)
 
-        self.down_blocks = nn.Modulelist([])
-        self.up_blocks = nn.Modulelist([])
+        self.down_blocks = nn.ModuleList([])
+        self.up_blocks = nn.ModuleList([])
 
         if isinstance(only_cross_attention, bool):
             if mid_block_only_cross_attention is None:
@@ -1563,10 +1563,10 @@ class DownBlockFlat(nn.Module):
                 )
             )
 
-        self.resnets = nn.Modulelist(resnets)
+        self.resnets = nn.ModuleList(resnets)
 
         if add_downsample:
-            self.downsamplers = nn.Modulelist(
+            self.downsamplers = nn.ModuleList(
                 [
                     LinearMultiDim(
                         out_channels, use_conv=True, out_channels=out_channels, padding=downsample_padding, name="op"
@@ -1676,11 +1676,11 @@ class CrossAttnDownBlockFlat(nn.Module):
                         norm_num_groups=resnet_groups,
                     )
                 )
-        self.attentions = nn.Modulelist(attentions)
-        self.resnets = nn.Modulelist(resnets)
+        self.attentions = nn.ModuleList(attentions)
+        self.resnets = nn.ModuleList(resnets)
 
         if add_downsample:
-            self.downsamplers = nn.Modulelist(
+            self.downsamplers = nn.ModuleList(
                 [
                     LinearMultiDim(
                         out_channels, use_conv=True, out_channels=out_channels, padding=downsample_padding, name="op"
@@ -1784,10 +1784,10 @@ class UpBlockFlat(nn.Module):
                 )
             )
 
-        self.resnets = nn.Modulelist(resnets)
+        self.resnets = nn.ModuleList(resnets)
 
         if add_upsample:
-            self.upsamplers = nn.Modulelist([LinearMultiDim(out_channels, use_conv=True, out_channels=out_channels)])
+            self.upsamplers = nn.ModuleList([LinearMultiDim(out_channels, use_conv=True, out_channels=out_channels)])
         else:
             self.upsamplers = None
 
@@ -1926,11 +1926,11 @@ class CrossAttnUpBlockFlat(nn.Module):
                         norm_num_groups=resnet_groups,
                     )
                 )
-        self.attentions = nn.Modulelist(attentions)
-        self.resnets = nn.Modulelist(resnets)
+        self.attentions = nn.ModuleList(attentions)
+        self.resnets = nn.ModuleList(resnets)
 
         if add_upsample:
-            self.upsamplers = nn.Modulelist([LinearMultiDim(out_channels, use_conv=True, out_channels=out_channels)])
+            self.upsamplers = nn.ModuleList([LinearMultiDim(out_channels, use_conv=True, out_channels=out_channels)])
         else:
             self.upsamplers = None
 
@@ -2149,8 +2149,8 @@ class UNetMidBlockFlat(nn.Module):
                     )
                 )
 
-        self.attentions = nn.Modulelist(attentions)
-        self.resnets = nn.Modulelist(resnets)
+        self.attentions = nn.ModuleList(attentions)
+        self.resnets = nn.ModuleList(resnets)
 
         self.gradient_checkpointing = False
 
@@ -2268,8 +2268,8 @@ class UNetMidBlockFlatCrossAttn(nn.Module):
                 )
             )
 
-        self.attentions = nn.Modulelist(attentions)
-        self.resnets = nn.Modulelist(resnets)
+        self.attentions = nn.ModuleList(attentions)
+        self.resnets = nn.ModuleList(resnets)
 
         self.gradient_checkpointing = False
 
@@ -2395,8 +2395,8 @@ class UNetMidBlockFlatSimpleCrossAttn(nn.Module):
                 )
             )
 
-        self.attentions = nn.Modulelist(attentions)
-        self.resnets = nn.Modulelist(resnets)
+        self.attentions = nn.ModuleList(attentions)
+        self.resnets = nn.ModuleList(resnets)
 
     def forward(
         self,

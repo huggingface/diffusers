@@ -128,9 +128,9 @@ class UNet1DModel(ModelMixin, ConfigMixin):
                 out_dim=block_out_channels[0],
             )
 
-        self.down_blocks = nn.Modulelist([])
+        self.down_blocks = nn.ModuleList([])
         self.mid_block = None
-        self.up_blocks = nn.Modulelist([])
+        self.up_blocks = nn.ModuleList([])
         self.out_block = None
 
         # down

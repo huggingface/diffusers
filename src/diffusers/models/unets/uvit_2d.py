@@ -102,7 +102,7 @@ class UVit2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         self.project_to_hidden_norm = RMSNorm(block_out_channels, layer_norm_eps, ln_elementwise_affine)
         self.project_to_hidden = nn.Linear(block_out_channels, hidden_size, bias=use_bias)
 
-        self.transformer_layers = nn.Modulelist(
+        self.transformer_layers = nn.ModuleList(
             [
                 BasicTransformerBlock(
                     dim=hidden_size,
@@ -332,7 +332,7 @@ class UVitBlock(nn.Module):
         else:
             self.downsample = None
 
-        self.res_blocks = nn.Modulelist(
+        self.res_blocks = nn.ModuleList(
             [
                 ConvNextBlock(
                     channels,
@@ -346,7 +346,7 @@ class UVitBlock(nn.Module):
             ]
         )
 
-        self.attention_blocks = nn.Modulelist(
+        self.attention_blocks = nn.ModuleList(
             [
                 SkipFFTransformerBlock(
                     channels,

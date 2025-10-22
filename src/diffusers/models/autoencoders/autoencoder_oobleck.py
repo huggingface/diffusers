@@ -234,7 +234,7 @@ class OobleckEncoder(nn.Module):
                 )
             ]
 
-        self.block = nn.Modulelist(self.block)
+        self.block = nn.ModuleList(self.block)
         d_model = encoder_hidden_size * channel_multiples[-1]
         self.snake1 = Snake1d(d_model)
         self.conv2 = weight_norm(nn.Conv1d(d_model, encoder_hidden_size, kernel_size=3, padding=1))
@@ -274,7 +274,7 @@ class OobleckDecoder(nn.Module):
                 )
             ]
 
-        self.block = nn.Modulelist(block)
+        self.block = nn.ModuleList(block)
         output_dim = channels
         self.snake1 = Snake1d(output_dim)
         self.conv2 = weight_norm(nn.Conv1d(channels, audio_channels, kernel_size=7, padding=3, bias=False))

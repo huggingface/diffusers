@@ -130,7 +130,7 @@ class SD3ControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginal
 
             # `attention_head_dim` is doubled to account for the mixing.
             # It needs to crafted when we get the actual checkpoints.
-            self.transformer_blocks = nn.Modulelist(
+            self.transformer_blocks = nn.ModuleList(
                 [
                     JointTransformerBlock(
                         dim=self.inner_dim,
@@ -145,7 +145,7 @@ class SD3ControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginal
             )
         else:
             self.context_embedder = None
-            self.transformer_blocks = nn.Modulelist(
+            self.transformer_blocks = nn.ModuleList(
                 [
                     SD3SingleTransformerBlock(
                         dim=self.inner_dim,
@@ -157,7 +157,7 @@ class SD3ControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginal
             )
 
         # controlnet_blocks
-        self.controlnet_blocks = nn.Modulelist([])
+        self.controlnet_blocks = nn.ModuleList([])
         for _ in range(len(self.transformer_blocks)):
             controlnet_block = nn.Linear(self.inner_dim, self.inner_dim)
             controlnet_block = zero_module(controlnet_block)
@@ -467,7 +467,7 @@ class SD3MultiControlNetModel(ModelMixin):
 
     def __init__(self, controlnets):
         super().__init__()
-        self.nets = nn.Modulelist(controlnets)
+        self.nets = nn.ModuleList(controlnets)
 
     def forward(
         self,

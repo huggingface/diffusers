@@ -351,8 +351,8 @@ class QwenImageMidBlock(nn.Module):
         for _ in range(num_layers):
             attentions.append(QwenImageAttentionBlock(dim))
             resnets.append(QwenImageResidualBlock(dim, dim, dropout, non_linearity))
-        self.attentions = nn.Modulelist(attentions)
-        self.resnets = nn.Modulelist(resnets)
+        self.attentions = nn.ModuleList(attentions)
+        self.resnets = nn.ModuleList(resnets)
 
         self.gradient_checkpointing = False
 
@@ -413,7 +413,7 @@ class QwenImageEncoder3d(nn.Module):
         self.conv_in = QwenImageCausalConv3d(3, dims[0], 3, padding=1)
 
         # downsample blocks
-        self.down_blocks = nn.Modulelist([])
+        self.down_blocks = nn.ModuleList([])
         for i, (in_dim, out_dim) in enumerate(zip(dims[:-1], dims[1:])):
             # residual (+attention) blocks
             for _ in range(num_res_blocks):
@@ -511,12 +511,12 @@ class QwenImageUpBlock(nn.Module):
             resnets.append(QwenImageResidualBlock(current_dim, out_dim, dropout, non_linearity))
             current_dim = out_dim
 
-        self.resnets = nn.Modulelist(resnets)
+        self.resnets = nn.ModuleList(resnets)
 
         # Add upsampling layer if needed
         self.upsamplers = None
         if upsample_mode is not None:
-            self.upsamplers = nn.Modulelist([QwenImageResample(out_dim, mode=upsample_mode)])
+            self.upsamplers = nn.ModuleList([QwenImageResample(out_dim, mode=upsample_mode)])
 
         self.gradient_checkpointing = False
 
@@ -593,7 +593,7 @@ class QwenImageDecoder3d(nn.Module):
         self.mid_block = QwenImageMidBlock(dims[0], dropout, non_linearity, num_layers=1)
 
         # upsample blocks
-        self.up_blocks = nn.Modulelist([])
+        self.up_blocks = nn.ModuleList([])
         for i, (in_dim, out_dim) in enumerate(zip(dims[:-1], dims[1:])):
             # residual (+attention) blocks
             if i > 0:

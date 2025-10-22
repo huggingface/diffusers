@@ -166,9 +166,9 @@ class UNet2DModel(ModelMixin, ConfigMixin):
         else:
             self.class_embedding = None
 
-        self.down_blocks = nn.Modulelist([])
+        self.down_blocks = nn.ModuleList([])
         self.mid_block = None
-        self.up_blocks = nn.Modulelist([])
+        self.up_blocks = nn.ModuleList([])
 
         # down
         output_channel = block_out_channels[0]

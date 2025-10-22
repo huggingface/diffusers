@@ -2278,7 +2278,7 @@ class IPAdapterPlusImageProjection(nn.Module):
         self.proj_out = nn.Linear(hidden_dims, output_dims)
         self.norm_out = nn.LayerNorm(output_dims)
 
-        self.layers = nn.Modulelist(
+        self.layers = nn.ModuleList(
             [IPAdapterPlusImageProjectionBlock(hidden_dims, dim_head, heads, ffn_ratio) for _ in range(depth)]
         )
 
@@ -2350,7 +2350,7 @@ class IPAdapterFaceIDPlusImageProjection(nn.Module):
         self.proj_out = nn.Linear(embed_dims, output_dims)
         self.norm_out = nn.LayerNorm(output_dims)
 
-        self.layers = nn.Modulelist(
+        self.layers = nn.ModuleList(
             [IPAdapterPlusImageProjectionBlock(embed_dims, dim_head, heads, ffn_ratio) for _ in range(depth)]
         )
 
@@ -2529,7 +2529,7 @@ class IPAdapterTimeImageProjection(nn.Module):
         self.proj_in = nn.Linear(embed_dim, hidden_dim)
         self.proj_out = nn.Linear(hidden_dim, output_dim)
         self.norm_out = nn.LayerNorm(output_dim)
-        self.layers = nn.Modulelist(
+        self.layers = nn.ModuleList(
             [IPAdapterTimeImageProjectionBlock(hidden_dim, dim_head, heads, ffn_ratio) for _ in range(depth)]
         )
         self.time_proj = Timesteps(timestep_in_dim, timestep_flip_sin_to_cos, timestep_freq_shift)
@@ -2566,7 +2566,7 @@ class IPAdapterTimeImageProjection(nn.Module):
 class MultiIPAdapterImageProjection(nn.Module):
     def __init__(self, IPAdapterImageProjectionLayers: list[nn.Module] | tuple[nn.Module]):
         super().__init__()
-        self.image_projection_layers = nn.Modulelist(IPAdapterImageProjectionLayers)
+        self.image_projection_layers = nn.ModuleList(IPAdapterImageProjectionLayers)
 
     @property
     def num_ip_adapters(self) -> int:

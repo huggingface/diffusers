@@ -392,11 +392,11 @@ class CogVideoXDownBlock3D(nn.Module):
                 )
             )
 
-        self.resnets = nn.Modulelist(resnets)
+        self.resnets = nn.ModuleList(resnets)
         self.downsamplers = None
 
         if add_downsample:
-            self.downsamplers = nn.Modulelist(
+            self.downsamplers = nn.ModuleList(
                 [
                     CogVideoXDownsample3D(
                         out_channels, out_channels, padding=downsample_padding, compress_time=compress_time
@@ -497,7 +497,7 @@ class CogVideoXMidBlock3D(nn.Module):
                     pad_mode=pad_mode,
                 )
             )
-        self.resnets = nn.Modulelist(resnets)
+        self.resnets = nn.ModuleList(resnets)
 
         self.gradient_checkpointing = False
 
@@ -594,11 +594,11 @@ class CogVideoXUpBlock3D(nn.Module):
                 )
             )
 
-        self.resnets = nn.Modulelist(resnets)
+        self.resnets = nn.ModuleList(resnets)
         self.upsamplers = None
 
         if add_upsample:
-            self.upsamplers = nn.Modulelist(
+            self.upsamplers = nn.ModuleList(
                 [
                     CogVideoXUpsample3D(
                         out_channels, out_channels, padding=upsample_padding, compress_time=compress_time
@@ -692,7 +692,7 @@ class CogVideoXEncoder3D(nn.Module):
         temporal_compress_level = int(np.log2(temporal_compression_ratio))
 
         self.conv_in = CogVideoXCausalConv3d(in_channels, block_out_channels[0], kernel_size=3, pad_mode=pad_mode)
-        self.down_blocks = nn.Modulelist([])
+        self.down_blocks = nn.ModuleList([])
 
         # down blocks
         output_channel = block_out_channels[0]
@@ -859,7 +859,7 @@ class CogVideoXDecoder3D(nn.Module):
         )
 
         # up blocks
-        self.up_blocks = nn.Modulelist([])
+        self.up_blocks = nn.ModuleList([])
 
         output_channel = reversed_block_out_channels[0]
         temporal_compress_level = int(np.log2(temporal_compression_ratio))

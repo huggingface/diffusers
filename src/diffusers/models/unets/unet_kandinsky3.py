@@ -91,7 +91,7 @@ class Kandinsky3UNet(ModelMixin, ConfigMixin):
 
         cat_dims = []
         self.num_levels = len(in_out_dims)
-        self.down_blocks = nn.Modulelist([])
+        self.down_blocks = nn.ModuleList([])
         for level, ((in_dim, out_dim), res_block_num, text_dim, self_attention) in enumerate(
             zip(in_out_dims, *layer_params)
         ):
@@ -113,7 +113,7 @@ class Kandinsky3UNet(ModelMixin, ConfigMixin):
                 )
             )
 
-        self.up_blocks = nn.Modulelist([])
+        self.up_blocks = nn.ModuleList([])
         for level, ((out_dim, in_dim), res_block_num, text_dim, self_attention) in enumerate(
             zip(reversed(in_out_dims), *rev_layer_params)
         ):
@@ -300,9 +300,9 @@ class Kandinsky3UpSampleBlock(nn.Module):
                 Kandinsky3ResNetBlock(in_channel, out_channel, time_embed_dim, groups, compression_ratio)
             )
 
-        self.attentions = nn.Modulelist(attentions)
-        self.resnets_in = nn.Modulelist(resnets_in)
-        self.resnets_out = nn.Modulelist(resnets_out)
+        self.attentions = nn.ModuleList(attentions)
+        self.resnets_in = nn.ModuleList(resnets_in)
+        self.resnets_out = nn.ModuleList(resnets_out)
 
     def forward(self, x, time_embed, context=None, context_mask=None, image_mask=None):
         for attention, resnet_in, resnet_out in zip(self.attentions[1:], self.resnets_in, self.resnets_out):
@@ -368,9 +368,9 @@ class Kandinsky3DownSampleBlock(nn.Module):
                 )
             )
 
-        self.attentions = nn.Modulelist(attentions)
-        self.resnets_in = nn.Modulelist(resnets_in)
-        self.resnets_out = nn.Modulelist(resnets_out)
+        self.attentions = nn.ModuleList(attentions)
+        self.resnets_in = nn.ModuleList(resnets_in)
+        self.resnets_out = nn.ModuleList(resnets_out)
 
     def forward(self, x, time_embed, context=None, context_mask=None, image_mask=None):
         if self.self_attention:
@@ -440,7 +440,7 @@ class Kandinsky3ResNetBlock(nn.Module):
         hidden_channels = (
             [(in_channels, hidden_channel)] + [(hidden_channel, hidden_channel)] * 2 + [(hidden_channel, out_channels)]
         )
-        self.resnet_blocks = nn.Modulelist(
+        self.resnet_blocks = nn.ModuleList(
             [
                 Kandinsky3Block(in_channel, out_channel, time_embed_dim, kernel_size, norm_groups, up_resolution)
                 for (in_channel, out_channel), kernel_size, up_resolution in zip(

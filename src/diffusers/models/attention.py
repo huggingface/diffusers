@@ -1708,7 +1708,7 @@ class FeedForward(nn.Module):
         elif activation_fn == "linear-silu":
             act_fn = LinearActivation(dim, inner_dim, bias=bias, activation="silu")
 
-        self.net = nn.Modulelist([])
+        self.net = nn.ModuleList([])
         # project in
         self.net.append(act_fn)
         # project dropout

@@ -60,7 +60,7 @@ class SpectrogramContEncoder(ModelMixin, ConfigMixin, ModuleUtilsMixin):
             is_decoder=is_decoder,
             is_encoder_decoder=False,
         )
-        self.encoders = nn.Modulelist()
+        self.encoders = nn.ModuleList()
         for lyr_num in range(num_layers):
             lyr = T5Block(t5config)
             self.encoders.append(lyr)
