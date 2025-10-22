@@ -20,6 +20,8 @@ Adapted from
 https://github.com/huggingface/transformers/blob/52cb4034ada381fe1ffe8d428a1076e5411a8026/src/transformers/utils/quantization_config.py
 """
 
+from __future__ import annotations
+
 import copy
 import dataclasses
 import importlib.metadata
