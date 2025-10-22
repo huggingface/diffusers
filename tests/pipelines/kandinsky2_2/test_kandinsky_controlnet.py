@@ -291,11 +291,11 @@ class KandinskyV22ControlnetPipelineIntegrationTests(unittest.TestCase):
 
         assert image.shape == (512, 512, 3)
         max_diff = numpy_cosine_similarity_distance(expected_image.flatten(), image.flatten())
-        expected_slices = Expectations(
+        expected_max_diffs = Expectations(
             {
                 ("xpu", 3): 2e-3,
                 ("cuda", 7): 2e-4,
             }
         )
-        expected_max_diff = expected_slices.get_expectation()
+        expected_max_diff = expected_max_diffs.get_expectation()
         assert max_diff < expected_max_diff
