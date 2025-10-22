@@ -21,9 +21,9 @@ from ...utils import BaseOutput
 
 
 @dataclass
-class PhotonPipelineOutput(BaseOutput):
+class PRXPipelineOutput(BaseOutput):
     """
-    Output class for Photon pipelines.
+    Output class for PRX pipelines.
 
     Args:
         images (`list[PIL.Image.Image]` or `np.ndarray`)

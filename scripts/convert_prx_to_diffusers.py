@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Script to convert Photon checkpoint from original codebase to diffusers format.
+Script to convert PRX checkpoint from original codebase to diffusers format.
 """
 
 import argparse
@@ -13,15 +13,15 @@ from typing import Dict, Tuple
 import torch
 from safetensors.torch import save_file
 
-from diffusers.models.transformers.transformer_photon import PhotonTransformer2DModel
-from diffusers.pipelines.photon import PhotonPipeline
+from diffusers.models.transformers.transformer_prx import PRXTransformer2DModel
+from diffusers.pipelines.prx import PRXPipeline
 
 
 DEFAULT_RESOLUTION = 512
 
 
 @dataclass(frozen=True)
-class PhotonBase:
+class PRXBase:
     context_in_dim: int = 2304
     hidden_size: int = 1792
     mlp_ratio: float = 3.5
@@ -34,22 +34,22 @@ class PhotonBase:
 
 
 @dataclass(frozen=True)
-class PhotonFlux(PhotonBase):
+class PRXFlux(PRXBase):
     in_channels: int = 16
     patch_size: int = 2
 
 
 @dataclass(frozen=True)
-class PhotonDCAE(PhotonBase):
+class PRXDCAE(PRXBase):
     in_channels: int = 32
     patch_size: int = 1
 
 
 def build_config(vae_type: str) -> Tuple[dict, int]:
     if vae_type == "flux":
-        cfg = PhotonFlux()
+        cfg = PRXFlux()
     elif vae_type == "dc-ae":
-        cfg = PhotonDCAE()
+        cfg = PRXDCAE()
     else:
         raise ValueError(f"Unsupported VAE type: {vae_type}. Use 'flux' or 'dc-ae'")
 
@@ -64,7 +64,7 @@ def create_parameter_mapping(depth: int) -> dict:
     # Key mappings for structural changes
     mapping = {}
 
-    # Map old structure (layers in PhotonBlock) to new structure (layers in PhotonAttention)
+    # Map old structure (layers in PRXBlock) to new structure (layers in PRXAttention)
     for i in range(depth):
         # QKV projections moved to attention module
         mapping[f"blocks.{i}.img_qkv_proj.weight"] = f"blocks.{i}.attention.img_qkv_proj.weight"
@@ -108,8 +108,8 @@ def convert_checkpoint_parameters(old_state_dict: Dict[str, torch.Tensor], depth
     return converted_state_dict
 
 
-def create_transformer_from_checkpoint(checkpoint_path: str, config: dict) -> PhotonTransformer2DModel:
-    """Create and load PhotonTransformer2DModel from old checkpoint."""
+def create_transformer_from_checkpoint(checkpoint_path: str, config: dict) -> PRXTransformer2DModel:
+    """Create and load PRXTransformer2DModel from old checkpoint."""
 
     print(f"Loading checkpoint from: {checkpoint_path}")
 
@@ -137,8 +137,8 @@ def create_transformer_from_checkpoint(checkpoint_path: str, config: dict) -> Ph
     converted_state_dict = convert_checkpoint_parameters(state_dict, depth=model_depth)
 
     # Create transformer with config
-    print("Creating PhotonTransformer2DModel...")
-    transformer = PhotonTransformer2DModel(**config)
+    print("Creating PRXTransformer2DModel...")
+    transformer = PRXTransformer2DModel(**config)
 
     # Load state dict
     print("Loading converted parameters...")
@@ -221,14 +221,14 @@ def create_model_index(vae_type: str, default_image_size: int, output_path: str)
         vae_class = "AutoencoderDC"
 
     model_index = {
-        "_class_name": "PhotonPipeline",
+        "_class_name": "PRXPipeline",
         "_diffusers_version": "0.31.0.dev0",
         "_name_or_path": os.path.basename(output_path),
         "default_sample_size": default_image_size,
         "scheduler": ["diffusers", "FlowMatchEulerDiscreteScheduler"],
-        "text_encoder": ["photon", "T5GemmaEncoder"],
+        "text_encoder": ["prx", "T5GemmaEncoder"],
         "tokenizer": ["transformers", "GemmaTokenizerFast"],
-        "transformer": ["diffusers", "PhotonTransformer2DModel"],
+        "transformer": ["diffusers", "PRXTransformer2DModel"],
         "vae": ["diffusers", vae_class],
     }
 
@@ -275,7 +275,7 @@ def main(args):
 
     # Verify the pipeline can be loaded
     try:
-        pipeline = PhotonPipeline.from_pretrained(args.output_path)
+        pipeline = PRXPipeline.from_pretrained(args.output_path)
         print("Pipeline loaded successfully!")
         print(f"Transformer: {type(pipeline.transformer).__name__}")
         print(f"VAE: {type(pipeline.vae).__name__}")
@@ -298,10 +298,10 @@ def main(args):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Convert Photon checkpoint to diffusers format")
+    parser = argparse.ArgumentParser(description="Convert PRX checkpoint to diffusers format")
 
     parser.add_argument(
-        "--checkpoint_path", type=str, required=True, help="Path to the original Photon checkpoint (.pth file )"
+        "--checkpoint_path", type=str, required=True, help="Path to the original PRX checkpoint (.pth file )"
     )
 
     parser.add_argument(
