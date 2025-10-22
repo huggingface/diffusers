@@ -23,7 +23,8 @@ from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
 from ...utils import USE_PEFT_BACKEND, is_kernels_available, logging, scale_lora_layers, unscale_lora_layers
 from ..attention import AttentionMixin, AttentionModuleMixin, FeedForward
-from ..attention_dispatch import dispatch_attention_fn
+from ..attention_dispatch import AttentionBackendName, dispatch_attention_fn
+from .._modeling_parallel import ContextParallelInput, ContextParallelOutput
 from ..cache_utils import CacheMixin
 from ..embeddings import TimestepEmbedding, Timesteps
 from ..modeling_outputs import Transformer2DModelOutput
@@ -103,59 +104,42 @@ class Magi1AttnProcessor:
         hidden_states: torch.Tensor,
         encoder_hidden_states: Optional[torch.Tensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
-        rotary_emb: Optional[torch.Tensor] = None,
+        rotary_emb: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
+        attention_kwargs: Optional[Dict[str, Any]] = None,
     ) -> torch.Tensor:
         query, key, value = _get_qkv_projections(attn, hidden_states, encoder_hidden_states)
-        query = query.reshape(query.size(0), query.size(1), -1, attn.kv_inner_dim)
-        key = key.reshape(key.size(0), key.size(1), -1, attn.kv_inner_dim)
+
+        query = query.unflatten(2, (attn.heads, -1))
+        kv_h = attn.kv_heads if attn.kv_heads is not None else attn.heads
+        key = key.unflatten(2, (kv_h, -1))
+        value = value.unflatten(2, (kv_h, -1))
 
         query = attn.norm_q(query)
-        query = query.transpose(0, 1)
         key = attn.norm_k(key)
-        key = key.transpose(0, 1)
 
-        # Apply RoPE only for self-attention (when both query and key should use RoPE)
-        # Cross-attention doesn't use RoPE as the keys come from text embeddings
-        if rotary_emb is not None:
+        if rotary_emb is not None and attn.cross_attention_dim_head is None:
 
-            def apply_rotary_emb(
-                hidden_states: torch.Tensor,
-                freqs_cos: torch.Tensor,
-                freqs_sin: torch.Tensor,
-            ):
-                ro_dim = freqs_cos.shape[-1] * 2
-                if ro_dim > hidden_states.shape[-1]:
-                    raise ValueError(
-                        f"Expected query's or key's head_dim to have at least {ro_dim} dimensions, but got {hidden_states.shape[-1]}"
-                    )
-                cos = torch.repeat_interleave(freqs_cos, 2, dim=-1).unsqueeze(-2)
-                sin = torch.repeat_interleave(freqs_sin, 2, dim=-1).unsqueeze(-2)
-                x1, x2 = hidden_states.chunk(2, dim=-1)
-                hidden_states_rotated_half = torch.cat([-x2, x1], dim=-1)
-                return torch.cat(
-                    [
-                        hidden_states[..., :ro_dim] * cos + hidden_states_rotated_half * sin,
-                        hidden_states[..., ro_dim:],
-                    ],
-                    dim=-1,
-                )
+            def apply_rotary_emb(x: torch.Tensor, freqs_cos: torch.Tensor, freqs_sin: torch.Tensor) -> torch.Tensor:
+                # x: [B, S, H, D]
+                x1, x2 = x.unflatten(-1, (-1, 2)).unbind(-1)  # [B, S, H, D/2]
+                # Broadcast cos/sin to [1, S, 1, D/2]
+                cos = freqs_cos.view(1, -1, 1, freqs_cos.shape[-1])[..., 0::2]
+                sin = freqs_sin.view(1, -1, 1, freqs_sin.shape[-1])[..., 1::2]
+                out = torch.empty_like(x)
+                out[..., 0::2] = x1 * cos - x2 * sin
+                out[..., 1::2] = x1 * sin + x2 * cos
+                return out.type_as(x)
 
             query = apply_rotary_emb(query, *rotary_emb)
             key = apply_rotary_emb(key, *rotary_emb)
 
-        # batch_size, seq_len, num_heads, head_dim
-        query = query.contiguous()
-        key = key.contiguous()
-        value = value.unflatten(2, (-1, attn.kv_inner_dim)).transpose(0, 1).contiguous()
-
-        # Perform Grouped-Query Attention (GQA)
-        kv_heads = attn.kv_heads if attn.kv_heads is not None else attn.heads
+        kv_heads = kv_h
         n_rep = attn.heads // kv_heads
-        if n_rep >= 1:
+        if n_rep > 1:
             key = key.unsqueeze(3).repeat(1, 1, 1, n_rep, 1).flatten(2, 3)
             value = value.unsqueeze(3).repeat(1, 1, 1, n_rep, 1).flatten(2, 3)
 
-        hidden_states = dispatch_attention_fn(
+        out = dispatch_attention_fn(
             query,
             key,
             value,
@@ -165,15 +149,10 @@ class Magi1AttnProcessor:
             enable_gqa=True,
             backend=self._attention_backend,
             parallel_config=self._parallel_config,
+            attention_kwargs=attention_kwargs,
         )
-        # Convert [b, nh, sq, hd] -> [sq, b, (nh hd)]
-        hidden_states = hidden_states.permute(2, 0, 1, 3)
-        hidden_states = hidden_states.flatten(2, 3)
-        hidden_states = hidden_states.type_as(query)
-
-        # Note: Output projection is handled in Magi1TransformerBlock
-        # to match original architecture where outputs are concatenated and rearranged before projection
-        return hidden_states
+        out = out.flatten(2, 3).type_as(hidden_states)
+        return out
 
 
 class Magi1Attention(torch.nn.Module, AttentionModuleMixin):
@@ -507,20 +486,19 @@ class Magi1TransformerBlock(nn.Module):
         temb: torch.Tensor,
         rotary_emb: torch.Tensor,
         temb_map: torch.Tensor,
-        y_encoder_attention_flat: torch.Tensor,
-        meta_args: torch.Tensor,
+        encoder_attention_mask: Optional[torch.Tensor] = None,
+        self_attention_kwargs: Optional[Dict[str, Any]] = None,
+        encoder_attention_kwargs: Optional[Dict[str, Any]] = None,
     ) -> torch.Tensor:
         residual = hidden_states.float()
 
-        # [B, SQ, C] --> [SQ, B, q + qx + k + v]
-        mixed_qqkv = self.norm1(hidden_states.transpose(0, 1))
+        mixed_qqkv = self.norm1(hidden_states)
 
-        # 1. Self-attention
-        self_attn_output = self.attn1(mixed_qqkv, None, None, rotary_emb)
+        self_attn_output = self.attn1(mixed_qqkv, None, None, rotary_emb, attention_kwargs=self_attention_kwargs)
 
-        # 2. Cross-attention
-        # Note: y_encoder_attention_flat is the flattened text embeddings for cross-attention
-        cross_attn_output = self.attn2(mixed_qqkv, y_encoder_attention_flat, None, None)
+        cross_attn_output = self.attn2(
+            mixed_qqkv, encoder_hidden_states, encoder_attention_mask, None, attention_kwargs=encoder_attention_kwargs
+        )
 
         # 3. Concatenate attention outputs
         # Shape: [sq, b, num_heads * head_dim + num_heads * head_dim] = [sq, b, 2 * dim]
@@ -531,15 +509,12 @@ class Magi1TransformerBlock(nn.Module):
         # The interleaving is done at the query group level (not per-head level)
         # For 48 heads with 8 query groups: each group has 6 heads = 768 dims
         # Interleaving pattern: [self_g0, cross_g0, self_g1, cross_g1, ..., self_g7, cross_g7]
-        seq_len, batch_size, _ = hidden_states.shape
+        batch_size, seq_len, _ = hidden_states.shape
         num_query_groups = self.attn1.kv_heads if self.attn1.kv_heads is not None else self.attn1.heads
         group_dim = self_attn_output.shape[2] // num_query_groups
-        # Reshape to [sq, b, 2, num_query_groups, group_dim]
-        hidden_states = hidden_states.reshape(seq_len, batch_size, 2, num_query_groups, group_dim)
-        # Permute to [sq, b, num_query_groups, 2, group_dim] to interleave at group level
+        hidden_states = hidden_states.reshape(batch_size, seq_len, 2, num_query_groups, group_dim)
         hidden_states = hidden_states.permute(0, 1, 3, 2, 4)
-        # Flatten back to [sq, b, num_query_groups * 2 * group_dim]
-        hidden_states = hidden_states.reshape(seq_len, batch_size, -1)
+        hidden_states = hidden_states.reshape(batch_size, seq_len, -1)
 
         # 5. Apply combined projection
         hidden_states = self.attn_proj(hidden_states)
@@ -551,7 +526,7 @@ class Magi1TransformerBlock(nn.Module):
 
         # Residual connection for self-attention
         original_dtype = hidden_states.dtype
-        hidden_states = range_mod_pytorch(hidden_states.float(), temb_map, gate_msa)
+        hidden_states = range_mod_pytorch(hidden_states.float().transpose(0, 1), temb_map, gate_msa).transpose(0, 1)
         hidden_states = self.norm2(hidden_states)
         hidden_states = hidden_states + residual
         residual = hidden_states
@@ -562,7 +537,7 @@ class Magi1TransformerBlock(nn.Module):
 
         # Residual connection for MLP
         original_dtype = hidden_states.dtype
-        hidden_states = range_mod_pytorch(hidden_states.float(), temb_map, gate_mlp)
+        hidden_states = range_mod_pytorch(hidden_states.float().transpose(0, 1), temb_map, gate_mlp).transpose(0, 1)
         hidden_states = self.norm4(hidden_states)
         hidden_states = hidden_states + residual
         hidden_states = hidden_states.to(original_dtype)
@@ -619,6 +594,19 @@ class Magi1Transformer3DModel(
     ]
     _keys_to_ignore_on_load_unexpected = ["norm_added_q"]
     _repeated_blocks = ["Magi1TransformerBlock"]
+    _cp_plan = {
+        "rope": {
+            0: ContextParallelInput(split_dim=0, expected_dims=2, split_output=True),
+            1: ContextParallelInput(split_dim=0, expected_dims=2, split_output=True),
+        },
+        "blocks.0": {
+            "hidden_states": ContextParallelInput(split_dim=1, expected_dims=3, split_output=False),
+        },
+        "blocks.*": {
+            "encoder_hidden_states": ContextParallelInput(split_dim=1, expected_dims=3, split_output=False),
+        },
+        "proj_out": ContextParallelOutput(gather_dim=1, expected_dims=3),
+    }
 
     @register_to_config
     def __init__(
@@ -758,8 +746,7 @@ class Magi1Transformer3DModel(
                     "Passing `scale` via `attention_kwargs` when not using the PEFT backend is ineffective."
                 )
 
-        if kv_range is None:
-            raise ValueError("Please ensure `kv_range` is provided")
+        # `kv_range` is optional when not using MAGI varlen backend. No requirement here.
 
         batch_size, num_channels, num_frames, height, width = hidden_states.shape
         p_t, p_h, p_w = self.config.patch_size
@@ -781,9 +768,12 @@ class Magi1Transformer3DModel(
 
         # Patch & position embedding
         hidden_states = self.patch_embedding(hidden_states)
-        rotary_emb = self.rope(hidden_states, T_total)
-        # The shape of rotary_emb is (post_patch_num_frames*post_patch_height*post_patch_width, -1) aka (seq_length, head_dim), as post_patch_num_frames is the first dimension, we can directly cut it.
-        rotary_emb = rotary_emb[-(post_patch_num_frames * post_patch_height * post_patch_width) :]
+        freqs_cos, freqs_sin = self.rope(hidden_states, T_total)
+        # The shape of freqs_* is (total_seq_length, head_dim). Keep only the last tokens corresponding to current window.
+        keep = post_patch_num_frames * post_patch_height * post_patch_width
+        freqs_cos = freqs_cos[-keep:]
+        freqs_sin = freqs_sin[-keep:]
+        rotary_emb = (freqs_cos, freqs_sin)
 
         hidden_states = hidden_states.flatten(2).transpose(
             1, 2
@@ -796,82 +786,61 @@ class Magi1Transformer3DModel(
             distill_interval,
         )
 
-        temb = temb.reshape(batch_size, denoising_range_num, -1) + y_adaln
+        # Pool AdaLN text conditioning over valid tokens (mask) to get per-batch vector, then broadcast per range
+        if encoder_attention_mask is not None:
+            mask_2d = encoder_attention_mask.squeeze(1).squeeze(1).to(torch.bool)  # [B, L]
+            denom = mask_2d.sum(dim=1, keepdim=True).clamp(min=1)
+            y_adaln_pooled = (y_adaln * mask_2d.unsqueeze(-1)).sum(dim=1) / denom
+        else:
+            mask_2d = None
+            y_adaln_pooled = y_adaln.mean(dim=1)
+
+        temb = temb.reshape(batch_size, denoising_range_num, -1) + y_adaln_pooled.unsqueeze(1).expand(
+            -1, denoising_range_num, -1
+        )
 
         seqlen_per_chunk = (post_patch_num_frames * post_patch_height * post_patch_width) // denoising_range_num
         temb_map = torch.arange(batch_size * denoising_range_num, device=hidden_states.device)
         temb_map = torch.repeat_interleave(temb_map, seqlen_per_chunk)
         temb_map = temb_map.reshape(batch_size, -1).transpose(0, 1).contiguous()
 
-        encoder_attention_mask = encoder_attention_mask.squeeze(1).squeeze(1)
-        # y_encoder_attention_flat: (total_token, D)
-        y_encoder_attention_flat = torch.masked_select(
-            y_encoder_attention.squeeze(1), encoder_attention_mask.unsqueeze(-1).bool()
-        ).reshape(-1, y_encoder_attention.shape[-1])
-
-        # (N * denoising_range_num, L)
-        encoder_attention_mask = encoder_attention_mask.reshape(encoder_attention_mask.shape[0], -1)
-        y_index = torch.sum(encoder_attention_mask, dim=-1)
+        # Build varlen metadata for MAGI backend
         clip_token_nums = post_patch_height * post_patch_width * frame_in_range
 
-        cu_seqlens_q = torch.tensor(
-            [0] + ([clip_token_nums] * denoising_range_num * batch_size),
-            dtype=torch.int64,
-            device=hidden_states.device,
-        )
-        cu_seqlens_k = torch.cat([y_index.new_tensor([0]), y_index]).to(torch.int64).to(hidden_states.device)
-        cu_seqlens_q = cu_seqlens_q.cumsum(-1).to(torch.int32)
-        cu_seqlens_k = cu_seqlens_k.cumsum(-1).to(torch.int32)
-        if cu_seqlens_q.shape != cu_seqlens_k.shape:
-            raise ValueError(f"cu_seqlens_q.shape: {cu_seqlens_q.shape} != cu_seqlens_k.shape: {cu_seqlens_k.shape}")
+        self_attention_kwargs = None
+        if kv_range is not None:
+            cu_seqlens_q = torch.tensor(
+                [0] + ([clip_token_nums] * denoising_range_num * batch_size), dtype=torch.int64, device=hidden_states.device
+            ).cumsum(-1).to(torch.int32)
+            # q_ranges pairs from cu_seqlens_q
+            q_ranges = torch.cat([cu_seqlens_q[:-1].unsqueeze(1), cu_seqlens_q[1:].unsqueeze(1)], dim=1)
+            flat_kv = torch.unique(kv_range, sorted=True)
+            max_seqlen_k = int((flat_kv[-1] - flat_kv[0]).item())
+            self_attention_kwargs = {
+                "q_ranges": q_ranges,
+                "k_ranges": kv_range,
+                "max_seqlen_q": clip_token_nums,
+                "max_seqlen_k": max_seqlen_k,
+            }
 
-        encoder_attention_q_ranges = torch.cat([cu_seqlens_q[:-1].unsqueeze(1), cu_seqlens_q[1:].unsqueeze(1)], dim=1)
-        encoder_attention_k_ranges = torch.cat([cu_seqlens_k[:-1].unsqueeze(1), cu_seqlens_k[1:].unsqueeze(1)], dim=1)
-        if encoder_attention_q_ranges.shape != encoder_attention_k_ranges.shape:
-            raise ValueError(
-                f"encoder_attention_q_ranges.shape: {encoder_attention_q_ranges.shape} != encoder_attention_k_ranges.shape: {encoder_attention_k_ranges.shape}"
-            )
-
-        # Prepare self attention related q/kv range
-        q_range = torch.cat([cu_seqlens_q[:-1].unsqueeze(1), cu_seqlens_q[1:].unsqueeze(1)], dim=1)
-        flat_kv = torch.unique(kv_range, sorted=True)
-        max_seqlen_k = (flat_kv[-1] - flat_kv[0]).cpu().item()
-
-        hidden_states = hidden_states.to(self.config.dtype)
-        temb = temb.to(self.model_config.params_dtype)
-        y_encoder_attention_flat = y_encoder_attention_flat.to(self.model_config.params_dtype)
-
-        self_attention_kwargs = {
-            "q_range": q_range,
-            "k_range": kv_range,
-            "np_q_range": q_range.cpu().numpy(),
-            "np_k_range": kv_range.cpu().numpy(),
-            "max_seqlen_q": clip_token_nums,
-            "max_seqlen_k": max_seqlen_k,
-        }
-
-        encoder_attention_kwargs = {
-            "q_ranges": encoder_attention_q_ranges,
-            "kv_ranges": encoder_attention_k_ranges,
-            "cu_seqlens_q": cu_seqlens_q,
-            "cu_seqlens_kv": cu_seqlens_k,
-            "max_seqlen_q": clip_token_nums,
-            "max_seqlen_kv": 800,
-        }
-
-        transformer_block_kwargs = {
-            "H": post_patch_height,
-            "W": post_patch_width,
-            "slice_point": slice_point,
-            "denoising_range_num": denoising_range_num,
-            "range_num": range_num,
-            "extract_prefix_video_feature": extract_prefix_video_feature,
-            "fwd_extra_1st_chunk": fwd_extra_1st_chunk,
-            "distill_nearly_clean_chunk": distill_nearly_clean_chunk,
-            "clip_token_nums": clip_token_nums,
-            "self_attention_kwargs": self_attention_kwargs,
-            "encoder_attention_kwargs": encoder_attention_kwargs,
-        }
+        encoder_attention_kwargs = None
+        if mask_2d is not None:
+            y_index = mask_2d.sum(dim=-1).to(torch.int32)
+            cu_seqlens_q = torch.tensor(
+                [0] + ([clip_token_nums] * denoising_range_num * batch_size), dtype=torch.int64, device=hidden_states.device
+            ).cumsum(-1).to(torch.int32)
+            cu_seqlens_k = torch.cat([y_index.new_zeros(1, dtype=torch.int32), y_index.to(torch.int32)]).cumsum(-1)
+            q_ranges = torch.cat([cu_seqlens_q[:-1].unsqueeze(1), cu_seqlens_q[1:].unsqueeze(1)], dim=1)
+            k_ranges = torch.cat([cu_seqlens_k[:-1].unsqueeze(1), cu_seqlens_k[1:].unsqueeze(1)], dim=1)
+            max_seqlen_kv = int(y_index.max().item()) if y_index.numel() > 0 else 0
+            encoder_attention_kwargs = {
+                "q_ranges": q_ranges,
+                "k_ranges": k_ranges,
+                "max_seqlen_q": clip_token_nums,
+                "max_seqlen_k": max_seqlen_kv,
+                "cu_seqlens_q": cu_seqlens_q,
+                "cu_seqlens_k": cu_seqlens_k,
+            }
 
         # 4. Transformer blocks
         if torch.is_grad_enabled() and self.gradient_checkpointing:
@@ -879,23 +848,25 @@ class Magi1Transformer3DModel(
                 hidden_states = self._gradient_checkpointing_func(
                     block,
                     hidden_states,
-                    encoder_hidden_states,
+                    y_encoder_attention,
                     temb,
                     rotary_emb,
                     temb_map,
-                    y_encoder_attention_flat,
-                    transformer_block_kwargs,
+                    mask_2d,
+                    self_attention_kwargs,
+                    encoder_attention_kwargs,
                 )
         else:
             for block in self.blocks:
                 hidden_states = block(
                     hidden_states,
-                    encoder_hidden_states,
+                    y_encoder_attention,
                     temb,
                     rotary_emb,
                     temb_map,
-                    y_encoder_attention_flat,
-                    transformer_block_kwargs,
+                    mask_2d,
+                    self_attention_kwargs,
+                    encoder_attention_kwargs,
                 )
 
         hidden_states = self.norm_out(hidden_states)

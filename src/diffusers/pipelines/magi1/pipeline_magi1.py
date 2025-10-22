@@ -378,7 +378,11 @@ class Magi1Pipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
         prompt_embeds = prompt_embeds.repeat(1, num_videos_per_prompt, 1)
         prompt_embeds = prompt_embeds.view(batch_size * num_videos_per_prompt, seq_len, -1)
 
-        return prompt_embeds
+        # Repeat mask the same way as embeddings and keep size [B*num, L]
+        mask = mask.repeat(1, num_videos_per_prompt)
+        mask = mask.view(batch_size * num_videos_per_prompt, -1).to(device)
+
+        return prompt_embeds, mask
 
     def encode_prompt(
         self,
@@ -427,13 +431,15 @@ class Magi1Pipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
             batch_size = prompt_embeds.shape[0]
 
         if prompt_embeds is None:
-            prompt_embeds = self._get_t5_prompt_embeds(
+            prompt_embeds, prompt_mask = self._get_t5_prompt_embeds(
                 prompt=prompt,
                 num_videos_per_prompt=num_videos_per_prompt,
                 max_sequence_length=max_sequence_length,
                 device=device,
                 dtype=dtype,
             )
+        else:
+            prompt_mask = None
 
         if do_classifier_free_guidance and negative_prompt_embeds is None:
             negative_prompt = negative_prompt or ""
@@ -451,15 +457,16 @@ class Magi1Pipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
                     " the batch size of `prompt`."
                 )
 
-            negative_prompt_embeds = self._get_t5_prompt_embeds(
+            negative_prompt_embeds, negative_mask = self._get_t5_prompt_embeds(
                 prompt=negative_prompt,
                 num_videos_per_prompt=num_videos_per_prompt,
                 max_sequence_length=max_sequence_length,
                 device=device,
                 dtype=dtype,
             )
-
-        return prompt_embeds, negative_prompt_embeds
+        else:
+            negative_mask = None
+        return prompt_embeds, negative_prompt_embeds, prompt_mask, negative_mask
 
     def check_inputs(
         self,
@@ -724,7 +731,7 @@ class Magi1Pipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
             batch_size = prompt_embeds.shape[0]
 
         # 3. Encode input prompt
-        prompt_embeds, negative_prompt_embeds = self.encode_prompt(
+        prompt_embeds, negative_prompt_embeds, prompt_mask, negative_mask = self.encode_prompt(
             prompt=prompt,
             negative_prompt=negative_prompt,
             do_classifier_free_guidance=self.do_classifier_free_guidance,
@@ -830,6 +837,8 @@ class Magi1Pipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
                 # Borderness tokens condition on chunk boundaries
                 chunk_prompt_embeds_list = []
                 chunk_negative_prompt_embeds_list = []
+                chunk_prompt_masks_list = []
+                chunk_negative_masks_list = []
 
                 if self.special_tokens is not None:
                     # Prepare per-chunk embeddings with duration tokens
@@ -855,11 +864,24 @@ class Magi1Pipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
                             borderness_token = borderness_token.unsqueeze(0).expand(batch_size, -1, -1)
                             token_embeds = torch.cat([borderness_token, token_embeds], dim=1)
 
-                        # Truncate to max length
+                        # Build per-chunk mask by prepending ones for each added token and truncating
+                        token_mask = prompt_mask
+                        add_count = 0
+                        if f"DURATION_TOKEN_{duration_idx}" in self.special_tokens:
+                            add_count += 1
+                        if "BORDERNESS_TOKEN" in self.special_tokens:
+                            add_count += 1
+                        if add_count > 0:
+                            prepend = torch.ones(
+                                token_mask.shape[0], add_count, dtype=token_mask.dtype, device=token_mask.device
+                            )
+                            token_mask = torch.cat([prepend, token_mask], dim=1)
                         if token_embeds.shape[1] > max_sequence_length:
                             token_embeds = token_embeds[:, :max_sequence_length, :]
+                            token_mask = token_mask[:, :max_sequence_length]
 
                         chunk_prompt_embeds_list.append(token_embeds)
+                        chunk_prompt_masks_list.append(token_mask)
 
                         # Same for negative prompts
                         if self.do_classifier_free_guidance:
@@ -880,10 +902,24 @@ class Magi1Pipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
                                 borderness_token = borderness_token.unsqueeze(0).expand(batch_size, -1, -1)
                                 neg_token_embeds = torch.cat([borderness_token, neg_token_embeds], dim=1)
 
+                            # Build negative per-chunk mask
+                            neg_mask = negative_mask
+                            add_count = 0
+                            if f"DURATION_TOKEN_{duration_idx}" in self.special_tokens:
+                                add_count += 1
+                            if "BORDERNESS_TOKEN" in self.special_tokens:
+                                add_count += 1
+                            if add_count > 0:
+                                prepend = torch.ones(
+                                    neg_mask.shape[0], add_count, dtype=neg_mask.dtype, device=neg_mask.device
+                                )
+                                neg_mask = torch.cat([prepend, neg_mask], dim=1)
                             if neg_token_embeds.shape[1] > max_sequence_length:
                                 neg_token_embeds = neg_token_embeds[:, :max_sequence_length, :]
+                                neg_mask = neg_mask[:, :max_sequence_length]
 
                             chunk_negative_prompt_embeds_list.append(neg_token_embeds)
+                            chunk_negative_masks_list.append(neg_mask)
 
                 # Denoise this chunk range for denoise_step_per_stage steps
                 for denoise_idx in range(denoise_step_per_stage):
@@ -892,22 +928,21 @@ class Magi1Pipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
 
                     # Calculate timestep index for each chunk in the current window
                     # Chunks at different stages get different timesteps based on their denoise progress
+                    # Original MAGI-1: get_timestep() and get_denoise_step_of_each_chunk()
                     timestep_indices = []
                     for offset in range(num_chunks_in_window):
                         # Map offset within window to time index
                         t_idx_within_window = t_start_idx + offset
-                        if t_idx_within_window < t_end_idx:
-                            # This chunk is actively being denoised in this window
-                            t_idx = t_idx_within_window * denoise_step_per_stage + denoise_idx
-                        else:
-                            # This chunk is beyond the active window, use max timestep (it's already cleaner)
-                            t_idx = min((window_size - 1) * denoise_step_per_stage + denoise_idx, len(timesteps) - 1)
+                        t_idx = t_idx_within_window * denoise_step_per_stage + denoise_idx
                         timestep_indices.append(t_idx)
 
-                    # Reverse order: chunks further from start are noisier
+                    # Reverse order: later chunks in window are noisier (higher timestep index)
                     timestep_indices.reverse()
 
-                    # Get actual timesteps (reversed order: high noise to low noise)
+                    # Clamp indices to valid range
+                    timestep_indices = [min(idx, len(timesteps) - 1) for idx in timestep_indices]
+
+                    # Get actual timesteps
                     current_timesteps = timesteps[timestep_indices]
 
                     # Create per-chunk timestep tensor: [batch_size, num_chunks_in_window]
@@ -929,15 +964,16 @@ class Magi1Pipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
                     distill_nearly_clean_chunk = None
 
                     if enable_distillation:
-                        # distill_interval represents the time interval between denoising steps
+                        # Distillation mode uses modified timestep embeddings for faster inference
+                        # The interval represents the step size in the distilled schedule
+                        num_steps = num_inference_steps
                         distill_interval = len(timesteps) / num_inference_steps
 
                         # Determine if chunks are nearly clean (low noise) based on their timesteps
-                        # Check the first active chunk's timestep (after reversing, this is the noisiest chunk being actively denoised)
-                        nearly_clean_chunk_t = current_timesteps[0].item()
-                        distill_nearly_clean_chunk = nearly_clean_chunk_t > distill_nearly_clean_chunk_threshold
-
-                        num_steps = num_inference_steps
+                        # Check the first chunk's timestep (after reversing, this is the noisiest actively denoising chunk)
+                        # Original: checks t[0, int(fwd_extra_1st_chunk)].item()
+                        nearly_clean_chunk_t = current_timesteps[0].item() / self.scheduler.config.num_train_timesteps
+                        distill_nearly_clean_chunk = nearly_clean_chunk_t < distill_nearly_clean_chunk_threshold
 
                     # Prepare per-chunk embeddings
                     # The transformer expects embeddings in shape [batch_size * num_chunks_in_window, seq_len, hidden_dim]
@@ -957,26 +993,41 @@ class Magi1Pipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
                         # Fallback: repeat shared embeddings for each chunk
                         chunk_prompt_embeds = prompt_embeds.unsqueeze(1).repeat(1, num_chunks_in_window, 1, 1)
                         chunk_prompt_embeds = chunk_prompt_embeds.flatten(0, 1)
+                        prompt_mask_rep = prompt_mask.unsqueeze(1).repeat(1, num_chunks_in_window, 1)
+                        prompt_mask_rep = prompt_mask_rep.flatten(0, 1)
 
                         if negative_prompt_embeds is not None:
                             chunk_negative_prompt_embeds = negative_prompt_embeds.unsqueeze(1).repeat(
                                 1, num_chunks_in_window, 1, 1
                             )
                             chunk_negative_prompt_embeds = chunk_negative_prompt_embeds.flatten(0, 1)
+                            negative_mask_rep = negative_mask.unsqueeze(1).repeat(1, num_chunks_in_window, 1)
+                            negative_mask_rep = negative_mask_rep.flatten(0, 1)
                         else:
                             chunk_negative_prompt_embeds = None
+                            negative_mask_rep = None
 
-                    # Create encoder attention mask for per-chunk embeddings
-                    # Shape: [batch_size * num_chunks_in_window, 1, 1, seq_len]
-                    # All ones because we don't mask any tokens (text encoder handles padding)
-                    encoder_attention_mask = torch.ones(
-                        batch_size * num_chunks_in_window,
-                        1,
-                        1,
-                        chunk_prompt_embeds.shape[1],
-                        dtype=chunk_prompt_embeds.dtype,
-                        device=chunk_prompt_embeds.device,
+                    # Create encoder attention mask(s) for per-chunk embeddings from tokenizer masks
+                    if chunk_prompt_masks_list:
+                        chunk_prompt_masks = torch.stack(chunk_prompt_masks_list, dim=0).transpose(0, 1).flatten(0, 1)
+                    else:
+                        chunk_prompt_masks = prompt_mask_rep
+                    encoder_attention_mask = chunk_prompt_masks.to(dtype=chunk_prompt_embeds.dtype).view(
+                        batch_size * num_chunks_in_window, 1, 1, -1
                     )
+                    if chunk_negative_masks_list:
+                        chunk_negative_masks = torch.stack(chunk_negative_masks_list, dim=0).transpose(0, 1).flatten(0, 1)
+                        encoder_attention_mask_neg = chunk_negative_masks.to(dtype=chunk_prompt_embeds.dtype).view(
+                            batch_size * num_chunks_in_window, 1, 1, -1
+                        )
+                    else:
+                        encoder_attention_mask_neg = (
+                            negative_mask_rep.to(dtype=chunk_prompt_embeds.dtype).view(
+                                batch_size * num_chunks_in_window, 1, 1, -1
+                            )
+                            if negative_mask_rep is not None
+                            else encoder_attention_mask
+                        )
 
                     # Generate KV range for autoregressive attention
                     # Each chunk can attend to itself and all previous chunks in the sequence
@@ -988,10 +1039,10 @@ class Magi1Pipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
                     )
                     kv_range = []
                     for b in range(batch_size):
-                        # batch_offset should be based on total chunks in the video, not chunk_end_idx
-                        batch_offset = b * num_chunks
+                        # Calculate proper batch offset based on total number of chunks in video
+                        batch_offset = b * chunk_end_idx
                         for c in range(num_chunks_in_window):
-                            # This chunk can attend from the start of the video up to its own end
+                            # This chunk can attend from the start of its batch up to its own end
                             chunk_global_idx = chunk_start_idx + c
                             k_start = batch_offset * chunk_token_nums
                             k_end = (batch_offset + chunk_global_idx + 1) * chunk_token_nums
@@ -1021,7 +1072,7 @@ class Magi1Pipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
                             hidden_states=latent_chunk,
                             timestep=timestep_per_chunk,
                             encoder_hidden_states=chunk_negative_prompt_embeds,
-                            encoder_attention_mask=encoder_attention_mask,
+                            encoder_attention_mask=encoder_attention_mask_neg,
                             attention_kwargs=attention_kwargs,
                             denoising_range_num=num_chunks_in_window,
                             range_num=chunk_end_idx,
@@ -1036,25 +1087,32 @@ class Magi1Pipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
 
                     # Update latent chunk using scheduler step
                     # FlowMatchEulerDiscreteScheduler implements: x_new = x_old + dt * velocity
-                    # Since we have per-chunk timesteps, we need to apply scheduler.step() per chunk
-                    # or use the manual integration formula with per-chunk dt
+                    # For per-chunk timesteps, we use manual integration since scheduler doesn't support
+                    # different timesteps for different chunks in a single call
 
-                    # Use per_token_timesteps feature of the scheduler to handle per-chunk timesteps
-                    # This will compute dt per chunk internally
-                    latent_chunk = self.scheduler.step(
-                        noise_pred,
-                        current_timesteps[0],  # Reference timestep
-                        latent_chunk,
-                        per_token_timesteps=timestep_per_chunk.flatten()
-                        .repeat_interleave(
-                            latent_chunk.shape[2]
-                            * latent_chunk.shape[3]
-                            * latent_chunk.shape[4]
-                            // num_chunks_in_window
-                        )
-                        .reshape(batch_size, -1),
-                        return_dict=False,
-                    )[0]
+                    # Calculate dt for each chunk
+                    # Get next timesteps for integration
+                    next_timestep_indices = [min(idx + 1, len(timesteps) - 1) for idx in timestep_indices]
+                    next_timesteps = timesteps[next_timestep_indices]
+
+                    # Convert to sigmas (time in [0, 1] range)
+                    current_sigmas = current_timesteps / self.scheduler.config.num_train_timesteps
+                    next_sigmas = next_timesteps / self.scheduler.config.num_train_timesteps
+
+                    # Reshape for per-chunk application: [batch_size, num_chunks_in_window, 1, 1, 1]
+                    dt = (next_sigmas - current_sigmas).view(batch_size, num_chunks_in_window, 1, 1, 1)
+
+                    # Reshape latents and velocity to separate chunks: [batch_size, channels, chunks, frames_per_chunk, h, w]
+                    B, C, T, H, W = latent_chunk.shape
+                    frames_per_chunk = T // num_chunks_in_window
+                    latent_chunk = latent_chunk.view(B, C, num_chunks_in_window, frames_per_chunk, H, W)
+                    noise_pred = noise_pred.view(B, C, num_chunks_in_window, frames_per_chunk, H, W)
+
+                    # Apply Euler integration per chunk: x_new = x_old + dt * velocity
+                    latent_chunk = latent_chunk + dt * noise_pred
+
+                    # Reshape back to original shape
+                    latent_chunk = latent_chunk.view(B, C, T, H, W)
 
                     # Write back to full latents
                     latents[:, :, latent_start:latent_end] = latent_chunk

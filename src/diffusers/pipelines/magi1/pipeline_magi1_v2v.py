@@ -264,7 +264,9 @@ def prepare_v2v_embeddings(
     num_chunks: int,
     clean_chunk_num: int,
     max_sequence_length: int = 800,
-) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
+    prompt_mask: Optional[torch.Tensor] = None,
+    negative_mask: Optional[torch.Tensor] = None,
+) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[torch.Tensor], Optional[torch.Tensor]]:
     """
     Prepare per-chunk text embeddings for V2V generation.
 
@@ -279,8 +281,10 @@ def prepare_v2v_embeddings(
         max_sequence_length: Maximum sequence length
 
     Returns:
-        Tuple of (prompt_embeds_per_chunk, negative_prompt_embeds_per_chunk) Each has shape [batch_size, num_chunks,
-        seq_len, hidden_dim]
+        - prompt_embeds_per_chunk: [B, num_chunks, L, D]
+        - negative_prompt_embeds_per_chunk: [B, num_chunks, L, D] or None
+        - prompt_masks_per_chunk: [B, num_chunks, L] or None
+        - negative_masks_per_chunk: [B, num_chunks, L] or None
     """
     batch_size = prompt_embeds.shape[0]
     seq_len = prompt_embeds.shape[1]
@@ -306,6 +310,17 @@ def prepare_v2v_embeddings(
     else:
         prompt_embeds_per_chunk = denoise_embeds
 
+    # Build prompt masks per chunk
+    prompt_masks_per_chunk = None
+    negative_masks_per_chunk = None
+    if prompt_mask is not None:
+        denoise_masks = prompt_mask.unsqueeze(1).repeat(1, denoise_chunk_num, 1)
+        if clean_chunk_num > 0:
+            null_masks = torch.zeros(prompt_mask.shape[0], clean_chunk_num, prompt_mask.shape[1], device=device, dtype=prompt_mask.dtype)
+            prompt_masks_per_chunk = torch.cat([null_masks, denoise_masks], dim=1)
+        else:
+            prompt_masks_per_chunk = denoise_masks
+
     # Same for negative embeddings
     if negative_prompt_embeds is not None:
         denoise_neg_embeds = negative_prompt_embeds.unsqueeze(1).repeat(1, denoise_chunk_num, 1, 1)
@@ -316,8 +331,20 @@ def prepare_v2v_embeddings(
             negative_prompt_embeds_per_chunk = denoise_neg_embeds
     else:
         negative_prompt_embeds_per_chunk = None
+    if negative_mask is not None:
+        denoise_neg_masks = negative_mask.unsqueeze(1).repeat(1, denoise_chunk_num, 1)
+        if clean_chunk_num > 0:
+            null_neg_masks = torch.zeros(negative_mask.shape[0], clean_chunk_num, negative_mask.shape[1], device=device, dtype=negative_mask.dtype)
+            negative_masks_per_chunk = torch.cat([null_neg_masks, denoise_neg_masks], dim=1)
+        else:
+            negative_masks_per_chunk = denoise_neg_masks
 
-    return prompt_embeds_per_chunk, negative_prompt_embeds_per_chunk
+    return (
+        prompt_embeds_per_chunk,
+        negative_prompt_embeds_per_chunk,
+        prompt_masks_per_chunk,
+        negative_masks_per_chunk,
+    )
 
 
 EXAMPLE_DOC_STRING = """
@@ -463,8 +490,9 @@ class Magi1VideoToVideoPipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
         _, seq_len, _ = prompt_embeds.shape
         prompt_embeds = prompt_embeds.repeat(1, num_videos_per_prompt, 1)
         prompt_embeds = prompt_embeds.view(batch_size * num_videos_per_prompt, seq_len, -1)
-
-        return prompt_embeds
+        mask = mask.repeat(1, num_videos_per_prompt)
+        mask = mask.view(batch_size * num_videos_per_prompt, -1).to(device)
+        return prompt_embeds, mask
 
     def encode_prompt(
         self,
@@ -513,13 +541,15 @@ class Magi1VideoToVideoPipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
             batch_size = prompt_embeds.shape[0]
 
         if prompt_embeds is None:
-            prompt_embeds = self._get_t5_prompt_embeds(
+            prompt_embeds, prompt_mask = self._get_t5_prompt_embeds(
                 prompt=prompt,
                 num_videos_per_prompt=num_videos_per_prompt,
                 max_sequence_length=max_sequence_length,
                 device=device,
                 dtype=dtype,
             )
+        else:
+            prompt_mask = None
 
         if do_classifier_free_guidance and negative_prompt_embeds is None:
             negative_prompt = negative_prompt or ""
@@ -537,15 +567,17 @@ class Magi1VideoToVideoPipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
                     " the batch size of `prompt`."
                 )
 
-            negative_prompt_embeds = self._get_t5_prompt_embeds(
+            negative_prompt_embeds, negative_mask = self._get_t5_prompt_embeds(
                 prompt=negative_prompt,
                 num_videos_per_prompt=num_videos_per_prompt,
                 max_sequence_length=max_sequence_length,
                 device=device,
                 dtype=dtype,
             )
+        else:
+            negative_mask = None
 
-        return prompt_embeds, negative_prompt_embeds
+        return prompt_embeds, negative_prompt_embeds, prompt_mask, negative_mask
 
     def check_inputs(
         self,
@@ -886,7 +918,7 @@ class Magi1VideoToVideoPipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
             batch_size = prompt_embeds.shape[0]
 
         # 3. Encode input prompt
-        prompt_embeds, negative_prompt_embeds = self.encode_prompt(
+        prompt_embeds, negative_prompt_embeds, prompt_mask, negative_mask = self.encode_prompt(
             prompt=prompt,
             negative_prompt=negative_prompt,
             do_classifier_free_guidance=self.do_classifier_free_guidance,
@@ -985,12 +1017,19 @@ class Magi1VideoToVideoPipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
 
         # Prepare per-chunk text embeddings for V2V
         # Clean chunks (from input video) use null embeddings, denoise chunks use text embeddings
-        prompt_embeds_per_chunk, negative_prompt_embeds_per_chunk = prepare_v2v_embeddings(
+        (
+            prompt_embeds_per_chunk,
+            negative_prompt_embeds_per_chunk,
+            prompt_masks_per_chunk,
+            negative_masks_per_chunk,
+        ) = prepare_v2v_embeddings(
             prompt_embeds=prompt_embeds,
             negative_prompt_embeds=negative_prompt_embeds,
             num_chunks=num_chunks,
             clean_chunk_num=chunk_offset,
             max_sequence_length=max_sequence_length,
+            prompt_mask=prompt_mask,
+            negative_mask=negative_mask,
         )
 
         # Number of denoising steps per stage
@@ -1019,6 +1058,8 @@ class Magi1VideoToVideoPipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
                 # Borderness tokens condition on chunk boundaries
                 chunk_prompt_embeds_list = []
                 chunk_negative_prompt_embeds_list = []
+                chunk_prompt_masks_list = []
+                chunk_negative_masks_list = []
 
                 if self.special_tokens is not None:
                     # Prepare per-chunk embeddings with duration tokens
@@ -1046,11 +1087,27 @@ class Magi1VideoToVideoPipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
                             borderness_token = borderness_token.unsqueeze(0).expand(batch_size, -1, -1)
                             token_embeds = torch.cat([borderness_token, token_embeds], dim=1)
 
+                        # Build mask for this chunk from base per-chunk mask
+                        token_mask = (
+                            prompt_masks_per_chunk[:, chunk_idx]
+                            if prompt_masks_per_chunk is not None
+                            else torch.ones(batch_size, token_embeds.shape[1], device=token_embeds.device, dtype=torch.int64)
+                        )
+                        add_count = 0
+                        if f"DURATION_TOKEN_{duration_idx}" in self.special_tokens:
+                            add_count += 1
+                        if "BORDERNESS_TOKEN" in self.special_tokens:
+                            add_count += 1
+                        if add_count > 0:
+                            prepend = torch.ones(batch_size, add_count, dtype=token_mask.dtype, device=token_mask.device)
+                            token_mask = torch.cat([prepend, token_mask], dim=1)
                         # Truncate to max length
                         if token_embeds.shape[1] > max_sequence_length:
                             token_embeds = token_embeds[:, :max_sequence_length, :]
+                            token_mask = token_mask[:, :max_sequence_length]
 
                         chunk_prompt_embeds_list.append(token_embeds)
+                        chunk_prompt_masks_list.append(token_mask)
 
                         # Same for negative prompts
                         if self.do_classifier_free_guidance and negative_prompt_embeds_per_chunk is not None:
@@ -1072,10 +1129,26 @@ class Magi1VideoToVideoPipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
                                 borderness_token = borderness_token.unsqueeze(0).expand(batch_size, -1, -1)
                                 neg_token_embeds = torch.cat([borderness_token, neg_token_embeds], dim=1)
 
+                            # Build negative mask for this chunk
+                            neg_mask = (
+                                negative_masks_per_chunk[:, chunk_idx]
+                                if negative_masks_per_chunk is not None
+                                else torch.ones(batch_size, neg_token_embeds.shape[1], device=neg_token_embeds.device, dtype=torch.int64)
+                            )
+                            add_count = 0
+                            if f"DURATION_TOKEN_{duration_idx}" in self.special_tokens:
+                                add_count += 1
+                            if "BORDERNESS_TOKEN" in self.special_tokens:
+                                add_count += 1
+                            if add_count > 0:
+                                prepend = torch.ones(batch_size, add_count, dtype=neg_mask.dtype, device=neg_mask.device)
+                                neg_mask = torch.cat([prepend, neg_mask], dim=1)
                             if neg_token_embeds.shape[1] > max_sequence_length:
                                 neg_token_embeds = neg_token_embeds[:, :max_sequence_length, :]
+                                neg_mask = neg_mask[:, :max_sequence_length]
 
                             chunk_negative_prompt_embeds_list.append(neg_token_embeds)
+                            chunk_negative_masks_list.append(neg_mask)
 
                 # Denoise this chunk range for denoise_step_per_stage steps
                 for denoise_idx in range(denoise_step_per_stage):
@@ -1150,26 +1223,63 @@ class Magi1VideoToVideoPipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
                         # Extract embeddings for the current chunk range
                         chunk_prompt_embeds = prompt_embeds_per_chunk[:, chunk_start_idx:chunk_end_idx]
                         chunk_prompt_embeds = chunk_prompt_embeds.flatten(0, 1)
+                        chunk_prompt_masks = (
+                            prompt_masks_per_chunk[:, chunk_start_idx:chunk_end_idx].flatten(0, 1)
+                            if prompt_masks_per_chunk is not None
+                            else None
+                        )
 
                         if negative_prompt_embeds_per_chunk is not None:
                             chunk_negative_prompt_embeds = negative_prompt_embeds_per_chunk[
                                 :, chunk_start_idx:chunk_end_idx
                             ]
                             chunk_negative_prompt_embeds = chunk_negative_prompt_embeds.flatten(0, 1)
+                            chunk_negative_masks = (
+                                negative_masks_per_chunk[:, chunk_start_idx:chunk_end_idx].flatten(0, 1)
+                                if negative_masks_per_chunk is not None
+                                else None
+                            )
                         else:
                             chunk_negative_prompt_embeds = None
+                            chunk_negative_masks = None
 
-                    # Create encoder attention mask for per-chunk embeddings
-                    # Shape: [batch_size * num_chunks_in_window, 1, 1, seq_len]
-                    # All ones because we don't mask any tokens (text encoder handles padding)
-                    encoder_attention_mask = torch.ones(
-                        batch_size * num_chunks_in_window,
-                        1,
-                        1,
-                        chunk_prompt_embeds.shape[1],
-                        dtype=chunk_prompt_embeds.dtype,
-                        device=chunk_prompt_embeds.device,
+                    # Create encoder attention mask(s) from tokenizer masks
+                    if chunk_prompt_embeds_list:
+                        prompt_masks_stacked = torch.stack(chunk_prompt_masks_list, dim=0).transpose(0, 1).flatten(0, 1)
+                    else:
+                        prompt_masks_stacked = chunk_prompt_masks
+                    if prompt_masks_stacked is None:
+                        prompt_masks_stacked = torch.ones(
+                            batch_size * num_chunks_in_window,
+                            chunk_prompt_embeds.shape[1],
+                            dtype=torch.int64,
+                            device=chunk_prompt_embeds.device,
+                        )
+                    encoder_attention_mask = prompt_masks_stacked.to(dtype=chunk_prompt_embeds.dtype).view(
+                        batch_size * num_chunks_in_window, 1, 1, -1
                     )
+
+                    if self.do_classifier_free_guidance:
+                        if chunk_negative_prompt_embeds_list:
+                            negative_masks_stacked = (
+                                torch.stack(chunk_negative_masks_list, dim=0).transpose(0, 1).flatten(0, 1)
+                            )
+                        else:
+                            negative_masks_stacked = chunk_negative_masks
+                        if negative_masks_stacked is None and chunk_negative_prompt_embeds is not None:
+                            negative_masks_stacked = torch.ones(
+                                batch_size * num_chunks_in_window,
+                                chunk_negative_prompt_embeds.shape[1],
+                                dtype=torch.int64,
+                                device=chunk_negative_prompt_embeds.device,
+                            )
+                        encoder_attention_mask_neg = (
+                            negative_masks_stacked.to(dtype=chunk_prompt_embeds.dtype).view(
+                                batch_size * num_chunks_in_window, 1, 1, -1
+                            )
+                            if negative_masks_stacked is not None
+                            else encoder_attention_mask
+                        )
 
                     # Pad prefix video into latent_chunk if applicable (I2V)
                     # This ensures clean prefix frames are maintained during denoising
@@ -1241,7 +1351,7 @@ class Magi1VideoToVideoPipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
                             hidden_states=latent_chunk,
                             timestep=timestep_per_chunk,
                             encoder_hidden_states=chunk_negative_prompt_embeds,
-                            encoder_attention_mask=encoder_attention_mask,
+                            encoder_attention_mask=encoder_attention_mask_neg,
                             attention_kwargs=attention_kwargs,
                             denoising_range_num=num_chunks_in_window,
                             range_num=chunk_end_idx,
