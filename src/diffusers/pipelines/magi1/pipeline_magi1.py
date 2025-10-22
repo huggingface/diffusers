@@ -246,12 +246,16 @@ EXAMPLE_DOC_STRING = """
     Examples:
         ```python
         >>> import torch
-        >>> from diffusers import Magi1Pipeline, AutoencoderKLMagi1
+        >>> from diffusers import Magi1Pipeline, AutoencoderKLMagi1, FlowMatchEulerDiscreteScheduler
         >>> from diffusers.utils import export_to_video
 
         >>> model_id = "SandAI/Magi1-T2V-14B-480P-Diffusers"
         >>> vae = AutoencoderKLMagi1.from_pretrained(model_id, subfolder="vae", torch_dtype=torch.float32)
-        >>> pipe = Magi1Pipeline.from_pretrained(model_id, vae=vae, torch_dtype=torch.bfloat16)
+
+        >>> # IMPORTANT: MAGI-1 requires shift=3.0 for the scheduler (SD3-style time resolution transform)
+        >>> scheduler = FlowMatchEulerDiscreteScheduler.from_pretrained(model_id, subfolder="scheduler", shift=3.0)
+
+        >>> pipe = Magi1Pipeline.from_pretrained(model_id, vae=vae, scheduler=scheduler, torch_dtype=torch.bfloat16)
         >>> pipe.to("cuda")
 
         >>> prompt = "A cat and a dog baking a cake together in a kitchen."
@@ -955,9 +959,6 @@ class Magi1Pipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
                     # Extract chunk
                     latent_chunk = latents[:, :, latent_start:latent_end].to(transformer_dtype)
 
-                    # Extract chunk
-                    latent_chunk = latents[:, :, latent_start:latent_end].to(transformer_dtype)
-
                     # Prepare distillation parameters if enabled
                     num_steps = None
                     distill_interval = None
@@ -1040,7 +1041,7 @@ class Magi1Pipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
                     kv_range = []
                     for b in range(batch_size):
                         # Calculate proper batch offset based on total number of chunks in video
-                        batch_offset = b * chunk_end_idx
+                        batch_offset = b * num_chunks
                         for c in range(num_chunks_in_window):
                             # This chunk can attend from the start of its batch up to its own end
                             chunk_global_idx = chunk_start_idx + c

@@ -359,12 +359,16 @@ EXAMPLE_DOC_STRING = """
     Examples:
         ```python
         >>> import torch
-        >>> from diffusers import Magi1ImageToVideoPipeline, AutoencoderKLMagi1
+        >>> from diffusers import Magi1ImageToVideoPipeline, AutoencoderKLMagi1, FlowMatchEulerDiscreteScheduler
         >>> from diffusers.utils import export_to_video, load_image
 
         >>> model_id = "SandAI/Magi1-I2V-14B-480P-Diffusers"
         >>> vae = AutoencoderKLMagi1.from_pretrained(model_id, subfolder="vae", torch_dtype=torch.float32)
-        >>> pipe = Magi1ImageToVideoPipeline.from_pretrained(model_id, vae=vae, torch_dtype=torch.bfloat16)
+
+        >>> # IMPORTANT: MAGI-1 requires shift=3.0 for the scheduler (SD3-style time resolution transform)
+        >>> scheduler = FlowMatchEulerDiscreteScheduler.from_pretrained(model_id, subfolder="scheduler", shift=3.0)
+
+        >>> pipe = Magi1ImageToVideoPipeline.from_pretrained(model_id, vae=vae, scheduler=scheduler, torch_dtype=torch.bfloat16)
         >>> pipe.to("cuda")
 
         >>> image = load_image(
@@ -1188,9 +1192,6 @@ class Magi1ImageToVideoPipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
                     # Extract chunk
                     latent_chunk = latents[:, :, latent_start:latent_end].to(transformer_dtype)
 
-                    # Extract chunk
-                    latent_chunk = latents[:, :, latent_start:latent_end].to(transformer_dtype)
-
                     # Prepare distillation parameters if enabled
                     num_steps = None
                     distill_interval = None
@@ -1202,8 +1203,9 @@ class Magi1ImageToVideoPipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
 
                         # Determine if chunks are nearly clean (low noise) based on their timesteps
                         # Check the first active chunk's timestep (after reversing, this is the noisiest chunk being actively denoised)
-                        nearly_clean_chunk_t = current_timesteps[0].item()
-                        distill_nearly_clean_chunk = nearly_clean_chunk_t > distill_nearly_clean_chunk_threshold
+                        # Normalize timestep to [0, 1] range where 0=clean, 1=noise
+                        nearly_clean_chunk_t = current_timesteps[0].item() / self.scheduler.config.num_train_timesteps
+                        distill_nearly_clean_chunk = nearly_clean_chunk_t < distill_nearly_clean_chunk_threshold
 
                         num_steps = num_inference_steps
 

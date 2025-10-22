@@ -107,6 +107,8 @@ class Magi1AttnProcessor:
         rotary_emb: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
         attention_kwargs: Optional[Dict[str, Any]] = None,
     ) -> torch.Tensor:
+        attention_kwargs = attention_kwargs or {}
+
         query, key, value = _get_qkv_projections(attn, hidden_states, encoder_hidden_states)
 
         query = query.unflatten(2, (attn.heads, -1))
@@ -139,6 +141,11 @@ class Magi1AttnProcessor:
             key = key.unsqueeze(3).repeat(1, 1, 1, n_rep, 1).flatten(2, 3)
             value = value.unsqueeze(3).repeat(1, 1, 1, n_rep, 1).flatten(2, 3)
 
+        # Use MAGI backend if varlen parameters are provided
+        backend = self._attention_backend
+        if attention_kwargs.get("q_ranges") is not None:
+            backend = AttentionBackendName.MAGI
+
         out = dispatch_attention_fn(
             query,
             key,
@@ -147,7 +154,7 @@ class Magi1AttnProcessor:
             dropout_p=0.0,
             is_causal=False,
             enable_gqa=True,
-            backend=self._attention_backend,
+            backend=backend,
             parallel_config=self._parallel_config,
             attention_kwargs=attention_kwargs,
         )
@@ -293,7 +300,8 @@ class Magi1TimeTextEmbedding(nn.Module):
     ):
         super().__init__()
 
-        self.timesteps_proj = Timesteps(num_channels=time_freq_dim, flip_sin_to_cos=True, downscale_freq_shift=0)
+        # NOTE: timestep_rescale_factor=1000 to match original implementation (dit_module.py:71)
+        self.timesteps_proj = Timesteps(num_channels=time_freq_dim, flip_sin_to_cos=True, downscale_freq_shift=0, scale=1000)
         self.time_embedder = TimestepEmbedding(in_channels=time_freq_dim, time_embed_dim=int(dim * 0.25))
         self.text_embedder = Magi1TextProjection(text_embed_dim, dim, adaln_dim=int(dim * 0.25))
 
@@ -347,7 +355,7 @@ class Magi1RotaryPosEmbed(nn.Module):
         super().__init__()
 
         num_bands = dim // 8
-        exp = torch.arange(0, num_bands, dtype=torch.float32, device=torch.cuda.current_device()) / num_bands
+        exp = torch.arange(0, num_bands, dtype=torch.float32) / num_bands
         bands = 1.0 / (theta**exp)
         self.bands = nn.Parameter(bands)
 
