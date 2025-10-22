@@ -75,7 +75,7 @@ accelerate launch train_lcm_distill_sd_wds.py \
 Most of the parameters are identical to the parameters in the [Text-to-image](text2image#script-parameters) training guide, so you'll focus on the parameters that are relevant to latent consistency distillation in this guide.
 
 - `--pretrained_teacher_model`: the path to a pretrained latent diffusion model to use as the teacher model
-- `--pretrained_vae_model_name_or_path`: path to a pretrained VAE; the SDXL VAE is known to suffer from numerical instability, so this parameter allows you to specify an alternative VAE (like this [VAE]((https://huggingface.co/madebyollin/sdxl-vae-fp16-fix)) by madebyollin which works in fp16)
+- `--pretrained_vae_model_name_or_path`: path to a pretrained VAE; the SDXL VAE is known to suffer from numerical instability, so this parameter allows you to specify an alternative VAE (like this [VAE](https://huggingface.co/madebyollin/sdxl-vae-fp16-fix)) by madebyollin which works in fp16)
 - `--w_min` and `--w_max`: the minimum and maximum guidance scale values for guidance scale sampling
 - `--num_ddim_timesteps`: the number of timesteps for DDIM sampling
 - `--loss_type`: the type of loss (L2 or Huber) to calculate for latent consistency distillation; Huber loss is generally preferred because it's more robust to outliers
@@ -245,5 +245,5 @@ The SDXL training script is discussed in more detail in the [SDXL training](sdxl
 
 Congratulations on distilling a LCM model! To learn more about LCM, the following may be helpful:
 
-- Learn how to use [LCMs for inference](../using-diffusers/lcm) for text-to-image, image-to-image, and with LoRA checkpoints.
+- Learn how to use [LCMs for inference](../using-diffusers/inference_with_lcm) for text-to-image, image-to-image, and with LoRA checkpoints.
 - Read the [SDXL in 4 steps with Latent Consistency LoRAs](https://huggingface.co/blog/lcm_lora) blog post to learn more about SDXL LCM-LoRA's for super fast inference, quality comparisons, benchmarks, and more.
