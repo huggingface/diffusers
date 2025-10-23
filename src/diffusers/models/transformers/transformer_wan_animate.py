@@ -32,6 +32,7 @@ from ..normalization import FP32LayerNorm
 from .transformer_wan import (
     WanImageEmbedding,
     WanRotaryPosEmbed,
+    WanTimeTextImageEmbedding,
     WanTransformerBlock,
 )
 
@@ -357,72 +358,6 @@ class WanAnimateFaceEncoder(nn.Module):
         return x_local
 
 
-class WanTimeTextImageMotionFaceEmbedding(nn.Module):
-    def __init__(
-        self,
-        dim: int = 5120,  # num_attention_heads * attention_head_dim = 40 * 128 = 5120
-        time_freq_dim: int = 256,
-        time_proj_dim: int = 30720,  # (40 * 128) * 6 = 30720
-        text_embed_dim: int = 4096,
-        image_embed_dim: int = 1280,
-        motion_encoder_size: int = 512,
-        motion_style_dim: int = 512,
-        motion_dim: int = 20,
-        motion_encoder_dim: int = 512,
-    ):
-        super().__init__()
-
-        self.timesteps_proj = Timesteps(num_channels=time_freq_dim, flip_sin_to_cos=True, downscale_freq_shift=0)
-        self.time_embedder = TimestepEmbedding(in_channels=time_freq_dim, time_embed_dim=dim)
-        self.act_fn = nn.SiLU()
-        self.time_proj = nn.Linear(dim, time_proj_dim)
-        self.text_embedder = PixArtAlphaTextProjection(text_embed_dim, dim, act_fn="gelu_tanh")
-        self.image_embedder = WanImageEmbedding(image_embed_dim, dim)
-        self.motion_embedder = WanAnimateMotionEncoder(
-            size=motion_encoder_size, style_dim=motion_style_dim, motion_dim=motion_dim, out_dim=motion_encoder_dim
-        )
-        self.face_embedder = WanAnimateFaceEncoder(in_dim=motion_encoder_dim, out_dim=dim, num_heads=4)
-
-    def forward(
-        self,
-        timestep: torch.Tensor,
-        encoder_hidden_states: torch.Tensor,
-        encoder_hidden_states_image: Optional[torch.Tensor] = None,
-        face_pixel_values: Optional[torch.Tensor] = None,
-        upcast_to_fp32: bool = True,
-    ):
-        timestep = self.timesteps_proj(timestep)
-
-        time_embedder_dtype = get_parameter_dtype(self.time_embedder)
-        if timestep.dtype != time_embedder_dtype and time_embedder_dtype != torch.int8:
-            timestep = timestep.to(time_embedder_dtype)
-        temb = self.time_embedder(timestep).type_as(encoder_hidden_states)
-        timestep_proj = self.time_proj(self.act_fn(temb))
-
-        encoder_hidden_states = self.text_embedder(encoder_hidden_states)
-        if encoder_hidden_states_image is not None:
-            encoder_hidden_states_image = self.image_embedder(encoder_hidden_states_image)
-
-        # Motion vector computation from face pixel values
-        batch_size, channels, num_face_frames, height, width = face_pixel_values.shape
-        # Rearrange from (B, C, T, H, W) to (B*T, C, H, W)
-        face_pixel_values_flat = face_pixel_values.permute(0, 2, 1, 3, 4).reshape(-1, channels, height, width)
-
-        # Extract motion features using motion embedder
-        motion_vec = self.motion_embedder(face_pixel_values_flat, upcast_to_fp32=upcast_to_fp32)
-        motion_vec = motion_vec.view(batch_size, num_face_frames, -1)
-
-        # Encode motion vectors through face embedder
-        motion_vec = self.face_embedder(motion_vec)
-
-        # Add padding at the beginning (prepend zeros)
-        batch_size, T_motion, N_motion, C_motion = motion_vec.shape
-        pad_face = torch.zeros(batch_size, 1, N_motion, C_motion, dtype=motion_vec.dtype, device=motion_vec.device)
-        motion_vec = torch.cat([pad_face, motion_vec], dim=1)
-
-        return temb, timestep_proj, encoder_hidden_states, encoder_hidden_states_image, motion_vec
-
-
 class WanAnimateFaceBlock(nn.Module):
     _attention_backend = None
     _parallel_config = None
@@ -567,10 +502,13 @@ class WanAnimateTransformer3DModel(
         image_dim: Optional[int] = 1280,
         added_kv_proj_dim: Optional[int] = 5120,
         rope_max_seq_len: int = 1024,
-        motion_encoder_size: int = 512,
+        pos_embed_seq_len: Optional[int] = None,
+        motion_encoder_size: int = 512,  # Start of Wan Animate-specific args
         motion_style_dim: int = 512,
         motion_dim: int = 20,
         motion_encoder_dim: int = 512,
+        face_encoder_hidden_dim: int = 1024,
+        face_encoder_num_heads: int = 4,
     ) -> None:
         super().__init__()
 
@@ -583,16 +521,26 @@ class WanAnimateTransformer3DModel(
         self.pose_patch_embedding = nn.Conv3d(16, inner_dim, kernel_size=patch_size, stride=patch_size)
 
         # 2. Condition embeddings
-        self.condition_embedder = WanTimeTextImageMotionFaceEmbedding(
+        self.condition_embedder = WanTimeTextImageEmbedding(
             dim=inner_dim,
             time_freq_dim=freq_dim,
             time_proj_dim=inner_dim * 6,
             text_embed_dim=text_dim,
             image_embed_dim=image_dim,
-            motion_encoder_size=motion_encoder_size,
-            motion_style_dim=motion_style_dim,
-            motion_dim=motion_dim,
-            motion_encoder_dim=motion_encoder_dim,
+            pos_embed_seq_len=pos_embed_seq_len,
+        )
+
+        # Motion encoder
+        self.motion_encoder = WanAnimateMotionEncoder(
+            size=motion_encoder_size, style_dim=motion_style_dim, motion_dim=motion_dim, out_dim=motion_encoder_dim
+        )
+
+        # Face encoder
+        self.face_encoder = WanAnimateFaceEncoder(
+            in_dim=motion_encoder_dim,
+            out_dim=inner_dim,
+            hidden_dim=face_encoder_hidden_dim,
+            num_heads=face_encoder_num_heads,
         )
 
         # 3. Transformer blocks
@@ -663,6 +611,7 @@ class WanAnimateTransformer3DModel(
         encoder_hidden_states: torch.Tensor,
         face_pixel_values: torch.Tensor,
         encoder_hidden_states_image: Optional[torch.Tensor] = None,
+        upcast_to_fp32: bool = True,
         return_dict: bool = True,
         attention_kwargs: Optional[Dict[str, Any]] = None,
     ) -> Union[torch.Tensor, Dict[str, torch.Tensor]]:
@@ -700,15 +649,45 @@ class WanAnimateTransformer3DModel(
         # hidden_states = torch.cat([hidden_states, hidden_states.new_zeros(hidden_states.shape[0], sequence_length - hidden_states.shape[1], hidden_states.shape[2])], dim=1)
         pose_hidden_states = pose_hidden_states.flatten(2).transpose(1, 2)
 
-        # 3. Condition embeddings (time, text, image, motion)
-        temb, timestep_proj, encoder_hidden_states, encoder_hidden_states_image, motion_vec = self.condition_embedder(
-            timestep, encoder_hidden_states, encoder_hidden_states_image, face_pixel_values
-        )
-        timestep_proj = timestep_proj.unflatten(1, (6, -1))
+        # 3. Condition embeddings (time, text, image)
+        # timestep shape: batch_size, or batch_size, seq_len (wan 2.2 ti2v)
+        if timestep.ndim == 2:
+            ts_seq_len = timestep.shape[1]
+            timestep = timestep.flatten()  # batch_size * seq_len
+        else:
+            ts_seq_len = None
 
-        # 4. Image embedding
+        temb, timestep_proj, encoder_hidden_states, encoder_hidden_states_image = self.condition_embedder(
+            timestep, encoder_hidden_states, encoder_hidden_states_image, timestep_seq_len=ts_seq_len
+        )
+
+        if ts_seq_len is not None:
+            # batch_size, seq_len, 6, inner_dim
+            timestep_proj = timestep_proj.unflatten(2, (6, -1))
+        else:
+            # batch_size, 6, inner_dim
+            timestep_proj = timestep_proj.unflatten(1, (6, -1))
+
         if encoder_hidden_states_image is not None:
             encoder_hidden_states = torch.concat([encoder_hidden_states_image, encoder_hidden_states], dim=1)
+
+        # 4. Get motion features from the face video
+        # Motion vector computation from face pixel values
+        batch_size, channels, num_face_frames, height, width = face_pixel_values.shape
+        # Rearrange from (B, C, T, H, W) to (B*T, C, H, W)
+        face_pixel_values_flat = face_pixel_values.permute(0, 2, 1, 3, 4).reshape(-1, channels, height, width)
+
+        # Extract motion features using motion encoder
+        motion_vec = self.motion_encoder(face_pixel_values_flat, upcast_to_fp32=upcast_to_fp32)
+        motion_vec = motion_vec.view(batch_size, num_face_frames, -1)
+
+        # Now get face features from the motion vector
+        motion_vec = self.face_encoder(motion_vec)
+
+        # Add padding at the beginning (prepend zeros)
+        _, T_motion, N_motion, C_motion = motion_vec.shape
+        pad_face = torch.zeros(batch_size, 1, N_motion, C_motion, dtype=motion_vec.dtype, device=motion_vec.device)
+        motion_vec = torch.cat([pad_face, motion_vec], dim=1)
 
         # 5. Transformer blocks with face adapter integration
         if torch.is_grad_enabled() and self.gradient_checkpointing:
