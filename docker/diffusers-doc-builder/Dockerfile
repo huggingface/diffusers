@@ -11,8 +11,11 @@ RUN apt-get -y update && apt-get install -y bash \
     git-lfs \
     curl \
     ca-certificates \
+    libglib2.0-0 \
     libsndfile1-dev \
-    libgl1
+    libgl1 \
+    zip \
+    wget
 
 ENV UV_PYTHON=/usr/local/bin/python
 
@@ -30,7 +33,7 @@ RUN uv pip install --no-cache-dir "git+https://github.com/huggingface/diffusers.
 RUN uv pip install --no-cache-dir \
     accelerate \
     numpy==1.26.4 \
-    hf_transfer \
+    hf_xet \
     setuptools==69.5.1 \
     bitsandbytes \
     torchao \
