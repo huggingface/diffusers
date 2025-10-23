@@ -329,8 +329,7 @@ def get_1d_sincos_pos_embed_from_grid(embed_dim, pos, output_type="np", flip_sin
         output_type (`str`, *optional*, defaults to `"np"`): Output type. Use `"pt"` for PyTorch tensors.
         flip_sin_to_cos (`bool`, *optional*, defaults to `False`): Whether to flip sine and cosine embeddings.
         dtype (`torch.dtype`, *optional*): Data type for frequency calculations. If `None`, defaults to
-            `torch.float32` on MPS devices (which don't support `torch.float64`) and `torch.float64`
-            on other devices.
+            `torch.float32` on MPS devices (which don't support `torch.float64`) and `torch.float64` on other devices.
 
     Returns:
         `torch.Tensor`: Sinusoidal positional embeddings of shape `(M, D)`.
