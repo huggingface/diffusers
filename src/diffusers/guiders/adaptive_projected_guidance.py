@@ -77,19 +77,14 @@ class AdaptiveProjectedGuidance(BaseGuidance):
         self.use_original_formulation = use_original_formulation
         self.momentum_buffer = None
 
-    def prepare_inputs(
-        self, data: "BlockState", input_fields: Optional[Dict[str, Union[str, Tuple[str, str]]]] = None
-    ) -> List["BlockState"]:
-        if input_fields is None:
-            input_fields = self._input_fields
-
+    def prepare_inputs(self, data: Dict[str, Tuple[torch.Tensor, torch.Tensor]]) -> List["BlockState"]:
         if self._step == 0:
             if self.adaptive_projected_guidance_momentum is not None:
                 self.momentum_buffer = MomentumBuffer(self.adaptive_projected_guidance_momentum)
         tuple_indices = [0] if self.num_conditions == 1 or not self._is_apg_enabled() else [0, 1]
         data_batches = []
         for tuple_idx, input_prediction in zip(tuple_indices, self._input_predictions):
-            data_batch = self._prepare_batch(input_fields, data, tuple_idx, input_prediction)
+            data_batch = self._prepare_batch(data, tuple_idx, input_prediction)
             data_batches.append(data_batch)
         return data_batches
 

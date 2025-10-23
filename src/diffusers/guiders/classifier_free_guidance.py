@@ -52,20 +52,10 @@ class ClassifierFreeGuidance(BaseGuidance):
 
     Use `use_original_formulation=True` to switch to the original formulation.
 
-    **Guidance-Distilled Models:**
-
-    For models with distilled guidance (guidance baked into the model via distillation), set `distilled_guidance_scale`
-    to the desired guidance value. The pipeline will pass this to the model during forward passes. Set to `None` for
-    regular (non-distilled) models.
-
     Args:
         guidance_scale (`float`, defaults to `7.5`):
             CFG scale applied by this guider during post-processing. Higher values = stronger prompt conditioning but
             may reduce quality. Typical range: 1.0-20.0.
-        distilled_guidance_scale (`float`, *optional*, defaults to `None`):
-            Guidance scale for distilled models, passed directly to the model during forward pass. If `None`, assumes a
-            regular (non-distilled) model. Allows pipelines to configure different defaults for distilled vs.
-            non-distilled models. Typical range for distilled models: 1.0-8.0.
         guidance_rescale (`float`, defaults to `0.0`):
             Rescaling factor to prevent overexposure from high guidance scales. Based on [Common Diffusion Noise
             Schedules and Sample Steps are Flawed](https://huggingface.co/papers/2305.08891). Range: 0.0 (no rescaling)
@@ -89,7 +79,6 @@ class ClassifierFreeGuidance(BaseGuidance):
     def __init__(
         self,
         guidance_scale: float = 7.5,
-        distilled_guidance_scale: Optional[float] = None,
         guidance_rescale: float = 0.0,
         use_original_formulation: bool = False,
         start: float = 0.0,
@@ -99,20 +88,15 @@ class ClassifierFreeGuidance(BaseGuidance):
         super().__init__(start, stop, enabled)
 
         self.guidance_scale = guidance_scale
-        self.distilled_guidance_scale = distilled_guidance_scale
         self.guidance_rescale = guidance_rescale
         self.use_original_formulation = use_original_formulation
 
-    def prepare_inputs(
-        self, data: "BlockState", input_fields: Optional[Dict[str, Union[str, Tuple[str, str]]]] = None
-    ) -> List["BlockState"]:
-        if input_fields is None:
-            input_fields = self._input_fields
+    def prepare_inputs(self, data: Dict[str, Tuple[torch.Tensor, torch.Tensor]]) -> List["BlockState"]:
 
         tuple_indices = [0] if self.num_conditions == 1 or not self._is_cfg_enabled() else [0, 1]
         data_batches = []
         for tuple_idx, input_prediction in zip(tuple_indices, self._input_predictions):
-            data_batch = self._prepare_batch(input_fields, data, tuple_idx, input_prediction)
+            data_batch = self._prepare_batch(data, tuple_idx, input_prediction)
             data_batches.append(data_batch)
         return data_batches
 

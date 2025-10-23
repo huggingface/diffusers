@@ -75,7 +75,6 @@ class AdaptiveProjectedMixGuidance(BaseGuidance):
         stop: float = 1.0,
         adaptive_projected_guidance_start_step: int = 5,
         enabled: bool = True,
-        distilled_guidance_scale: Optional[float] = None,
     ):
         super().__init__(start, stop, enabled)
 
@@ -88,13 +87,9 @@ class AdaptiveProjectedMixGuidance(BaseGuidance):
         self.adaptive_projected_guidance_start_step = adaptive_projected_guidance_start_step
         self.use_original_formulation = use_original_formulation
         self.momentum_buffer = None
-        self.distilled_guidance_scale = distilled_guidance_scale
 
     def prepare_inputs(
-        self, data: "BlockState", input_fields: Optional[Dict[str, Union[str, Tuple[str, str]]]] = None
-    ) -> List["BlockState"]:
-        if input_fields is None:
-            input_fields = self._input_fields
+        self, data: Dict[str, Tuple[torch.Tensor, torch.Tensor]]) -> List["BlockState"]:
 
         if self._step == 0:
             if self.adaptive_projected_guidance_momentum is not None:
@@ -104,7 +99,7 @@ class AdaptiveProjectedMixGuidance(BaseGuidance):
         )
         data_batches = []
         for tuple_idx, input_prediction in zip(tuple_indices, self._input_predictions):
-            data_batch = self._prepare_batch(input_fields, data, tuple_idx, input_prediction)
+            data_batch = self._prepare_batch(data, tuple_idx, input_prediction)
             data_batches.append(data_batch)
         return data_batches
 

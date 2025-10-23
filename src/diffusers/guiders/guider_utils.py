@@ -190,8 +190,7 @@ class BaseGuidance(ConfigMixin, PushToHubMixin):
     @classmethod
     def _prepare_batch(
         cls,
-        input_fields: Dict[str, Union[str, Tuple[str, str]]],
-        data: "BlockState",
+        data: Dict[str, Tuple[torch.Tensor, torch.Tensor]],
         tuple_index: int,
         identifier: str,
     ) -> "BlockState":
@@ -217,24 +216,17 @@ class BaseGuidance(ConfigMixin, PushToHubMixin):
         """
         from ..modular_pipelines.modular_pipeline import BlockState
 
-        if isinstance(data, dict):
-            data = BlockState(**data)
 
-        if input_fields is None:
-            raise ValueError(
-                "Input fields cannot be None. Please pass `input_fields` to `prepare_inputs` or call `set_input_fields` before preparing inputs."
-            )
         data_batch = {}
-        for key, value in input_fields.items():
+        for key, value in data.items():
             try:
-                if isinstance(value, str):
-                    data_batch[key] = getattr(data, value)
+                if isinstance(value, torch.Tensor):
+                    data_batch[key] = value
                 elif isinstance(value, tuple):
-                    data_batch[key] = getattr(data, value[tuple_index])
+                    data_batch[key] = value[tuple_index]
                 else:
-                    # We've already checked that value is a string or a tuple of strings with length 2
-                    pass
-            except AttributeError:
+                    raise ValueError(f"Invalid value type: {type(value)}")
+            except ValueError:
                 logger.debug(f"`data` does not have attribute(s) {value}, skipping.")
         data_batch[cls._identifier_key] = identifier
         return BlockState(**data_batch)

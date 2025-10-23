@@ -77,16 +77,11 @@ class ClassifierFreeZeroStarGuidance(BaseGuidance):
         self.guidance_rescale = guidance_rescale
         self.use_original_formulation = use_original_formulation
 
-    def prepare_inputs(
-        self, data: "BlockState", input_fields: Optional[Dict[str, Union[str, Tuple[str, str]]]] = None
-    ) -> List["BlockState"]:
-        if input_fields is None:
-            input_fields = self._input_fields
-
+    def prepare_inputs(self, data: Dict[str, Tuple[torch.Tensor, torch.Tensor]]) -> List["BlockState"]:
         tuple_indices = [0] if self.num_conditions == 1 or not self._is_cfg_enabled() else [0, 1]
         data_batches = []
         for tuple_idx, input_prediction in zip(tuple_indices, self._input_predictions):
-            data_batch = self._prepare_batch(input_fields, data, tuple_idx, input_prediction)
+            data_batch = self._prepare_batch(data, tuple_idx, input_prediction)
             data_batches.append(data_batch)
         return data_batches
 
