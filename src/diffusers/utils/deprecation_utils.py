@@ -4,6 +4,10 @@ from typing import Any, Dict, Optional, Union
 
 from packaging import version
 
+from ..utils import logging
+
+
+logger = logging.get_logger(__name__)
 
 # Mapping for deprecated Transformers classes to their replacements
 # This is used to handle models that reference deprecated class names in their configs
@@ -22,7 +26,7 @@ _TRANSFORMERS_CLASS_REMAPPING = {
 }
 
 
-def _should_remap_transformers_class(class_name: str) -> Optional[str]:
+def _maybe_remap_transformers_class(class_name: str) -> Optional[str]:
     """
     Check if a Transformers class should be remapped to a newer version.
 
@@ -42,6 +46,8 @@ def _should_remap_transformers_class(class_name: str) -> Optional[str]:
 
     # Only remap if the transformers version meets the requirement
     if is_transformers_version(operation, required_version):
+        new_class = mapping["new_class"]
+        logger.warning(f"{class_name} appears to have been deprecated in transformers. Using {new_class} instead.")
         return mapping["new_class"]
 
     return None
