@@ -103,6 +103,8 @@ class StableCascadePriorPipeline(DeprecatedPipelineMixin, DiffusionPipeline):
             Default resolution for multiple images generated.
     """
 
+    _last_supported_version = "0.35.2"
+
     unet_name = "prior"
     text_encoder_name = "text_encoder"
     model_cpu_offload_seq = "image_encoder->text_encoder->prior"

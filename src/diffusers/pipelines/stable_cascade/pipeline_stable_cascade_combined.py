@@ -74,6 +74,8 @@ class StableCascadeCombinedPipeline(DeprecatedPipelineMixin, DiffusionPipeline):
             Frozen CLIP image-encoder ([clip-vit-large-patch14](https://huggingface.co/openai/clip-vit-large-patch14)).
     """
 
+    _last_supported_version = "0.35.2"
+
     _load_connected_pipes = True
     _optional_components = ["prior_feature_extractor", "prior_image_encoder"]
 

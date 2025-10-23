@@ -79,6 +79,8 @@ class StableCascadeDecoderPipeline(DeprecatedPipelineMixin, DiffusionPipeline):
             width=int(24*10.67)=256 in order to match the training conditions.
     """
 
+    _last_supported_version = "0.35.2"
+
     unet_name = "decoder"
     text_encoder_name = "text_encoder"
     model_cpu_offload_seq = "text_encoder->decoder->vqgan"
