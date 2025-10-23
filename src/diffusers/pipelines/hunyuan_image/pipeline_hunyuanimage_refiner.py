@@ -46,13 +46,14 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers import HunyuanImageRefinerPipeline
 
         >>> pipe = HunyuanImageRefinerPipeline.from_pretrained(
-        ...     "hunyuanvideo-community/HunyuanImageRefiner", torch_dtype=torch.bfloat16
+        ...     "hunyuanvideo-community/HunyuanImage-2.1-Refiner-Diffusers", torch_dtype=torch.bfloat16
         ... )
         >>> pipe.to("cuda")
         >>> prompt = "A cat holding a sign that says hello world"
+        >>> image = load_image("path/to/image.png")
         >>> # Depending on the variant being used, the pipeline call will slightly vary.
         >>> # Refer to the pipeline documentation for more details.
-        >>> image = pipe(prompt, negative_prompt="", num_inference_steps=50).images[0]
+        >>> image = pipe(prompt, image=image, num_inference_steps=4).images[0]
         >>> image.save("hunyuanimage.png")
         ```
 """
