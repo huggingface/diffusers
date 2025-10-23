@@ -21,7 +21,7 @@ import sys
 import tempfile
 import warnings
 from pathlib import Path
-from typing import Dict, List, Optional, Union
+from typing import Dict, Optional
 from uuid import uuid4
 
 from huggingface_hub import (
@@ -72,7 +72,7 @@ MODEL_CARD_TEMPLATE_PATH = Path(__file__).parent / "model_card_template.md"
 SESSION_ID = uuid4().hex
 
 
-def http_user_agent(user_agent: Union[Dict, str, None] = None) -> str:
+def http_user_agent(user_agent: Dict | str | None = None) -> str:
     """
     Formats a user-agent string with basic info about a request.
     """
@@ -105,7 +105,7 @@ def load_or_create_model_card(
     base_model: str = None,
     prompt: Optional[str] = None,
     license: Optional[str] = None,
-    widget: Optional[List[dict]] = None,
+    widget: Optional[list[dict]] = None,
     inference: Optional[bool] = None,
 ) -> ModelCard:
     """
@@ -128,7 +128,7 @@ def load_or_create_model_card(
         prompt (`str`, *optional*): Prompt used for training. Useful for DreamBooth-like training.
         license: (`str`, *optional*): License of the output artifact. Helpful when using
             `load_or_create_model_card` from a training script.
-        widget (`List[dict]`, *optional*): Widget to accompany a gallery template.
+        widget (`list[dict]`, *optional*): Widget to accompany a gallery template.
         inference: (`bool`, optional): Whether to turn on inference widget. Helpful when using
             `load_or_create_model_card` from a training script.
     """
@@ -167,7 +167,7 @@ def load_or_create_model_card(
     return model_card
 
 
-def populate_model_card(model_card: ModelCard, tags: Union[str, List[str]] = None) -> ModelCard:
+def populate_model_card(model_card: ModelCard, tags: str | list[str] = None) -> ModelCard:
     """Populates the `model_card` with library name and optional tags."""
     if model_card.data.library_name is None:
         model_card.data.library_name = "diffusers"
@@ -208,7 +208,7 @@ def _add_variant(weights_name: str, variant: Optional[str] = None) -> str:
 
 @validate_hf_hub_args
 def _get_model_file(
-    pretrained_model_name_or_path: Union[str, Path],
+    pretrained_model_name_or_path: str | Path,
     *,
     weights_name: str,
     subfolder: Optional[str] = None,
@@ -217,10 +217,10 @@ def _get_model_file(
     proxies: Optional[Dict] = None,
     local_files_only: bool = False,
     token: Optional[str] = None,
-    user_agent: Optional[Union[Dict, str]] = None,
+    user_agent: Optional[Dict | str] = None,
     revision: Optional[str] = None,
     commit_hash: Optional[str] = None,
-    dduf_entries: Optional[Dict[str, DDUFEntry]] = None,
+    dduf_entries: Optional[dict[str, DDUFEntry]] = None,
 ):
     pretrained_model_name_or_path = str(pretrained_model_name_or_path)
 
@@ -348,7 +348,7 @@ def _get_checkpoint_shard_files(
     user_agent=None,
     revision=None,
     subfolder="",
-    dduf_entries: Optional[Dict[str, DDUFEntry]] = None,
+    dduf_entries: Optional[dict[str, DDUFEntry]] = None,
 ):
     """
     For a given model:
@@ -449,7 +449,7 @@ def _get_checkpoint_shard_files(
     return cached_filenames, sharded_metadata
 
 
-def _check_legacy_sharding_variant_format(folder: str = None, filenames: List[str] = None, variant: str = None):
+def _check_legacy_sharding_variant_format(folder: str = None, filenames: list[str] = None, variant: str = None):
     if filenames and folder:
         raise ValueError("Both `filenames` and `folder` cannot be provided.")
     if not filenames:
@@ -469,7 +469,7 @@ class PushToHubMixin:
 
     def _upload_folder(
         self,
-        working_dir: Union[str, os.PathLike],
+        working_dir: str | os.PathLike,
         repo_id: str,
         token: Optional[str] = None,
         commit_message: Optional[str] = None,

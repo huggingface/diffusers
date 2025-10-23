@@ -12,13 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Dict
 
 import torch
 
 
 class AttnProcsLayers(torch.nn.Module):
-    def __init__(self, state_dict: Dict[str, torch.Tensor]):
+    def __init__(self, state_dict: dict[str, torch.Tensor]):
         super().__init__()
         self.layers = torch.nn.ModuleList(state_dict.values())
         self.mapping = dict(enumerate(state_dict.keys()))

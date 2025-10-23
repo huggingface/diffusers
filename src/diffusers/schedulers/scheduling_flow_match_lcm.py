@@ -14,7 +14,7 @@
 
 import math
 from dataclasses import dataclass
-from typing import List, Optional, Tuple, Union
+from typing import Optional
 
 import numpy as np
 import torch
@@ -106,7 +106,7 @@ class FlowMatchLCMScheduler(SchedulerMixin, ConfigMixin):
         use_exponential_sigmas: Optional[bool] = False,
         use_beta_sigmas: Optional[bool] = False,
         time_shift_type: str = "exponential",
-        scale_factors: Optional[List[float]] = None,
+        scale_factors: Optional[list[float]] = None,
         upscale_mode: Optional[str] = "bicubic",
     ):
         if self.config.use_beta_sigmas and not is_scipy_available():
@@ -192,7 +192,7 @@ class FlowMatchLCMScheduler(SchedulerMixin, ConfigMixin):
     def scale_noise(
         self,
         sample: torch.FloatTensor,
-        timestep: Union[float, torch.FloatTensor],
+        timestep: float | torch.FloatTensor,
         noise: Optional[torch.FloatTensor] = None,
     ) -> torch.FloatTensor:
         """
@@ -270,10 +270,10 @@ class FlowMatchLCMScheduler(SchedulerMixin, ConfigMixin):
     def set_timesteps(
         self,
         num_inference_steps: Optional[int] = None,
-        device: Union[str, torch.device] = None,
-        sigmas: Optional[List[float]] = None,
+        device: str | torch.device = None,
+        sigmas: Optional[list[float]] = None,
         mu: Optional[float] = None,
-        timesteps: Optional[List[float]] = None,
+        timesteps: Optional[list[float]] = None,
     ):
         """
         Sets the discrete timesteps used for the diffusion chain (to be run before inference).
@@ -283,13 +283,13 @@ class FlowMatchLCMScheduler(SchedulerMixin, ConfigMixin):
                 The number of diffusion steps used when generating samples with a pre-trained model.
             device (`str` or `torch.device`, *optional*):
                 The device to which the timesteps should be moved to. If `None`, the timesteps are not moved.
-            sigmas (`List[float]`, *optional*):
+            sigmas (`list[float]`, *optional*):
                 Custom values for sigmas to be used for each diffusion step. If `None`, the sigmas are computed
                 automatically.
             mu (`float`, *optional*):
                 Determines the amount of shifting applied to sigmas when performing resolution-dependent timestep
                 shifting.
-            timesteps (`List[float]`, *optional*):
+            timesteps (`list[float]`, *optional*):
                 Custom values for timesteps to be used for each diffusion step. If `None`, the timesteps are computed
                 automatically.
         """
@@ -394,11 +394,11 @@ class FlowMatchLCMScheduler(SchedulerMixin, ConfigMixin):
     def step(
         self,
         model_output: torch.FloatTensor,
-        timestep: Union[float, torch.FloatTensor],
+        timestep: float | torch.FloatTensor,
         sample: torch.FloatTensor,
         generator: Optional[torch.Generator] = None,
         return_dict: bool = True,
-    ) -> Union[FlowMatchLCMSchedulerOutput, Tuple]:
+    ) -> FlowMatchLCMSchedulerOutput | tuple:
         """
         Predict the sample from the previous timestep by reversing the SDE. This function propagates the diffusion
         process from the learned model outputs (most often the predicted noise).

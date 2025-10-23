@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Optional, Tuple, Union
+from typing import Optional
 
 import numpy as np
 import torch
@@ -50,10 +50,10 @@ class HunyuanVideoCausalConv3d(nn.Module):
         self,
         in_channels: int,
         out_channels: int,
-        kernel_size: Union[int, Tuple[int, int, int]] = 3,
-        stride: Union[int, Tuple[int, int, int]] = 1,
-        padding: Union[int, Tuple[int, int, int]] = 0,
-        dilation: Union[int, Tuple[int, int, int]] = 1,
+        kernel_size: int | tuple[int, int, int] = 3,
+        stride: int | tuple[int, int, int] = 1,
+        padding: int | tuple[int, int, int] = 0,
+        dilation: int | tuple[int, int, int] = 1,
         bias: bool = True,
         pad_mode: str = "replicate",
     ) -> None:
@@ -86,7 +86,7 @@ class HunyuanVideoUpsampleCausal3D(nn.Module):
         kernel_size: int = 3,
         stride: int = 1,
         bias: bool = True,
-        upsample_factor: Tuple[float, float, float] = (2, 2, 2),
+        upsample_factor: tuple[float, float, float] = (2, 2, 2),
     ) -> None:
         super().__init__()
 
@@ -357,7 +357,7 @@ class HunyuanVideoUpBlock3D(nn.Module):
         resnet_act_fn: str = "swish",
         resnet_groups: int = 32,
         add_upsample: bool = True,
-        upsample_scale_factor: Tuple[int, int, int] = (2, 2, 2),
+        upsample_scale_factor: tuple[int, int, int] = (2, 2, 2),
     ) -> None:
         super().__init__()
         resnets = []
@@ -418,13 +418,13 @@ class HunyuanVideoEncoder3D(nn.Module):
         self,
         in_channels: int = 3,
         out_channels: int = 3,
-        down_block_types: Tuple[str, ...] = (
+        down_block_types: tuple[str, ...] = (
             "HunyuanVideoDownBlock3D",
             "HunyuanVideoDownBlock3D",
             "HunyuanVideoDownBlock3D",
             "HunyuanVideoDownBlock3D",
         ),
-        block_out_channels: Tuple[int, ...] = (128, 256, 512, 512),
+        block_out_channels: tuple[int, ...] = (128, 256, 512, 512),
         layers_per_block: int = 2,
         norm_num_groups: int = 32,
         act_fn: str = "silu",
@@ -526,13 +526,13 @@ class HunyuanVideoDecoder3D(nn.Module):
         self,
         in_channels: int = 3,
         out_channels: int = 3,
-        up_block_types: Tuple[str, ...] = (
+        up_block_types: tuple[str, ...] = (
             "HunyuanVideoUpBlock3D",
             "HunyuanVideoUpBlock3D",
             "HunyuanVideoUpBlock3D",
             "HunyuanVideoUpBlock3D",
         ),
-        block_out_channels: Tuple[int, ...] = (128, 256, 512, 512),
+        block_out_channels: tuple[int, ...] = (128, 256, 512, 512),
         layers_per_block: int = 2,
         norm_num_groups: int = 32,
         act_fn: str = "silu",
@@ -641,19 +641,19 @@ class AutoencoderKLHunyuanVideo(ModelMixin, AutoencoderMixin, ConfigMixin):
         in_channels: int = 3,
         out_channels: int = 3,
         latent_channels: int = 16,
-        down_block_types: Tuple[str, ...] = (
+        down_block_types: tuple[str, ...] = (
             "HunyuanVideoDownBlock3D",
             "HunyuanVideoDownBlock3D",
             "HunyuanVideoDownBlock3D",
             "HunyuanVideoDownBlock3D",
         ),
-        up_block_types: Tuple[str, ...] = (
+        up_block_types: tuple[str, ...] = (
             "HunyuanVideoUpBlock3D",
             "HunyuanVideoUpBlock3D",
             "HunyuanVideoUpBlock3D",
             "HunyuanVideoUpBlock3D",
         ),
-        block_out_channels: Tuple[int] = (128, 256, 512, 512),
+        block_out_channels: tuple[int] = (128, 256, 512, 512),
         layers_per_block: int = 2,
         act_fn: str = "silu",
         norm_num_groups: int = 32,
@@ -779,7 +779,7 @@ class AutoencoderKLHunyuanVideo(ModelMixin, AutoencoderMixin, ConfigMixin):
     @apply_forward_hook
     def encode(
         self, x: torch.Tensor, return_dict: bool = True
-    ) -> Union[AutoencoderKLOutput, Tuple[DiagonalGaussianDistribution]]:
+    ) -> AutoencoderKLOutput | tuple[DiagonalGaussianDistribution]:
         r"""
         Encode a batch of images into latents.
 
@@ -804,7 +804,7 @@ class AutoencoderKLHunyuanVideo(ModelMixin, AutoencoderMixin, ConfigMixin):
             return (posterior,)
         return AutoencoderKLOutput(latent_dist=posterior)
 
-    def _decode(self, z: torch.Tensor, return_dict: bool = True) -> Union[DecoderOutput, torch.Tensor]:
+    def _decode(self, z: torch.Tensor, return_dict: bool = True) -> DecoderOutput | torch.Tensor:
         batch_size, num_channels, num_frames, height, width = z.shape
         tile_latent_min_height = self.tile_sample_min_height // self.spatial_compression_ratio
         tile_latent_min_width = self.tile_sample_min_width // self.spatial_compression_ratio
@@ -825,7 +825,7 @@ class AutoencoderKLHunyuanVideo(ModelMixin, AutoencoderMixin, ConfigMixin):
         return DecoderOutput(sample=dec)
 
     @apply_forward_hook
-    def decode(self, z: torch.Tensor, return_dict: bool = True) -> Union[DecoderOutput, torch.Tensor]:
+    def decode(self, z: torch.Tensor, return_dict: bool = True) -> DecoderOutput | torch.Tensor:
         r"""
         Decode a batch of images.
 
@@ -924,7 +924,7 @@ class AutoencoderKLHunyuanVideo(ModelMixin, AutoencoderMixin, ConfigMixin):
         enc = torch.cat(result_rows, dim=3)[:, :, :, :latent_height, :latent_width]
         return enc
 
-    def tiled_decode(self, z: torch.Tensor, return_dict: bool = True) -> Union[DecoderOutput, torch.Tensor]:
+    def tiled_decode(self, z: torch.Tensor, return_dict: bool = True) -> DecoderOutput | torch.Tensor:
         r"""
         Decode a batch of images using a tiled decoder.
 
@@ -1013,7 +1013,7 @@ class AutoencoderKLHunyuanVideo(ModelMixin, AutoencoderMixin, ConfigMixin):
         enc = torch.cat(result_row, dim=2)[:, :, :latent_num_frames]
         return enc
 
-    def _temporal_tiled_decode(self, z: torch.Tensor, return_dict: bool = True) -> Union[DecoderOutput, torch.Tensor]:
+    def _temporal_tiled_decode(self, z: torch.Tensor, return_dict: bool = True) -> DecoderOutput | torch.Tensor:
         batch_size, num_channels, num_frames, height, width = z.shape
         num_sample_frames = (num_frames - 1) * self.temporal_compression_ratio + 1
 
@@ -1055,7 +1055,7 @@ class AutoencoderKLHunyuanVideo(ModelMixin, AutoencoderMixin, ConfigMixin):
         sample_posterior: bool = False,
         return_dict: bool = True,
         generator: Optional[torch.Generator] = None,
-    ) -> Union[DecoderOutput, torch.Tensor]:
+    ) -> DecoderOutput | torch.Tensor:
         r"""
         Args:
             sample (`torch.Tensor`): Input sample.

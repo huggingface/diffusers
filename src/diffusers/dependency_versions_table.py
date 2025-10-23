@@ -29,7 +29,7 @@ deps = {
     "pytest": "pytest",
     "pytest-timeout": "pytest-timeout",
     "pytest-xdist": "pytest-xdist",
-    "python": "python>=3.8.0",
+    "python": "python>=3.9.0",
     "ruff": "ruff==0.9.10",
     "safetensors": "safetensors>=0.3.1",
     "sentencepiece": "sentencepiece>=0.1.91,!=0.1.92",

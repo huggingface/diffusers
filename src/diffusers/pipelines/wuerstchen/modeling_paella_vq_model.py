@@ -13,7 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Union
 
 import torch
 import torch.nn as nn
@@ -142,7 +141,7 @@ class PaellaVQModel(ModelMixin, ConfigMixin):
     @apply_forward_hook
     def decode(
         self, h: torch.Tensor, force_not_quantize: bool = True, return_dict: bool = True
-    ) -> Union[DecoderOutput, torch.Tensor]:
+    ) -> DecoderOutput | torch.Tensor:
         if not force_not_quantize:
             quant, _, _ = self.vquantizer(h)
         else:
@@ -155,7 +154,7 @@ class PaellaVQModel(ModelMixin, ConfigMixin):
 
         return DecoderOutput(sample=dec)
 
-    def forward(self, sample: torch.Tensor, return_dict: bool = True) -> Union[DecoderOutput, torch.Tensor]:
+    def forward(self, sample: torch.Tensor, return_dict: bool = True) -> DecoderOutput | torch.Tensor:
         r"""
         Args:
             sample (`torch.Tensor`): Input sample.

@@ -13,7 +13,7 @@
 # limitations under the License.
 import inspect
 import math
-from typing import Callable, List, Optional, Tuple, Union
+from typing import Callable, Optional
 
 import torch
 import torch.nn.functional as F
@@ -309,7 +309,7 @@ class Attention(nn.Module):
     def set_use_xla_flash_attention(
         self,
         use_xla_flash_attention: bool,
-        partition_spec: Optional[Tuple[Optional[str], ...]] = None,
+        partition_spec: Optional[tuple[Optional[str], ...]] = None,
         is_flux=False,
     ) -> None:
         r"""
@@ -318,7 +318,7 @@ class Attention(nn.Module):
         Args:
             use_xla_flash_attention (`bool`):
                 Whether to use pallas flash attention kernel from `torch_xla` or not.
-            partition_spec (`Tuple[]`, *optional*):
+            partition_spec (`tuple[]`, *optional*):
                 Specify the partition specification if using SPMD. Otherwise None.
         """
         if use_xla_flash_attention:
@@ -872,7 +872,7 @@ class SanaMultiscaleLinearAttention(nn.Module):
         attention_head_dim: int = 8,
         mult: float = 1.0,
         norm_type: str = "batch_norm",
-        kernel_sizes: Tuple[int, ...] = (5,),
+        kernel_sizes: tuple[int, ...] = (5,),
         eps: float = 1e-15,
         residual_connection: bool = False,
     ):
@@ -2790,7 +2790,7 @@ class XLAFlashAttnProcessor2_0:
     Processor for implementing scaled dot-product attention with pallas flash attention kernel if using `torch_xla`.
     """
 
-    def __init__(self, partition_spec: Optional[Tuple[Optional[str], ...]] = None):
+    def __init__(self, partition_spec: Optional[tuple[Optional[str], ...]] = None):
         if not hasattr(F, "scaled_dot_product_attention"):
             raise ImportError(
                 "XLAFlashAttnProcessor2_0 requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0."
@@ -3001,7 +3001,7 @@ class StableAudioAttnProcessor2_0:
     def apply_partial_rotary_emb(
         self,
         x: torch.Tensor,
-        freqs_cis: Tuple[torch.Tensor],
+        freqs_cis: tuple[torch.Tensor],
     ) -> torch.Tensor:
         from .embeddings import apply_rotary_emb
 
@@ -4212,9 +4212,9 @@ class IPAdapterAttnProcessor(nn.Module):
             The hidden size of the attention layer.
         cross_attention_dim (`int`):
             The number of channels in the `encoder_hidden_states`.
-        num_tokens (`int`, `Tuple[int]` or `List[int]`, defaults to `(4,)`):
+        num_tokens (`int`, `tuple[int]` or `list[int]`, defaults to `(4,)`):
             The context length of the image features.
-        scale (`float` or List[`float`], defaults to 1.0):
+        scale (`float` or list[`float`], defaults to 1.0):
             the weight scale of image prompt.
     """
 
@@ -4305,7 +4305,7 @@ class IPAdapterAttnProcessor(nn.Module):
         hidden_states = attn.batch_to_head_dim(hidden_states)
 
         if ip_adapter_masks is not None:
-            if not isinstance(ip_adapter_masks, List):
+            if not isinstance(ip_adapter_masks, list):
                 # for backward compatibility, we accept `ip_adapter_mask` as a tensor of shape [num_ip_adapter, 1, height, width]
                 ip_adapter_masks = list(ip_adapter_masks.unsqueeze(1))
             if not (len(ip_adapter_masks) == len(self.scale) == len(ip_hidden_states)):
@@ -4412,9 +4412,9 @@ class IPAdapterAttnProcessor2_0(torch.nn.Module):
             The hidden size of the attention layer.
         cross_attention_dim (`int`):
             The number of channels in the `encoder_hidden_states`.
-        num_tokens (`int`, `Tuple[int]` or `List[int]`, defaults to `(4,)`):
+        num_tokens (`int`, `tuple[int]` or `list[int]`, defaults to `(4,)`):
             The context length of the image features.
-        scale (`float` or `List[float]`, defaults to 1.0):
+        scale (`float` or `list[float]`, defaults to 1.0):
             the weight scale of image prompt.
     """
 
@@ -4524,7 +4524,7 @@ class IPAdapterAttnProcessor2_0(torch.nn.Module):
         hidden_states = hidden_states.to(query.dtype)
 
         if ip_adapter_masks is not None:
-            if not isinstance(ip_adapter_masks, List):
+            if not isinstance(ip_adapter_masks, list):
                 # for backward compatibility, we accept `ip_adapter_mask` as a tensor of shape [num_ip_adapter, 1, height, width]
                 ip_adapter_masks = list(ip_adapter_masks.unsqueeze(1))
             if not (len(ip_adapter_masks) == len(self.scale) == len(ip_hidden_states)):
@@ -4644,9 +4644,9 @@ class IPAdapterXFormersAttnProcessor(torch.nn.Module):
             The hidden size of the attention layer.
         cross_attention_dim (`int`):
             The number of channels in the `encoder_hidden_states`.
-        num_tokens (`int`, `Tuple[int]` or `List[int]`, defaults to `(4,)`):
+        num_tokens (`int`, `tuple[int]` or `list[int]`, defaults to `(4,)`):
             The context length of the image features.
-        scale (`float` or `List[float]`, defaults to 1.0):
+        scale (`float` or `list[float]`, defaults to 1.0):
             the weight scale of image prompt.
         attention_op (`Callable`, *optional*, defaults to `None`):
             The base
@@ -4763,7 +4763,7 @@ class IPAdapterXFormersAttnProcessor(torch.nn.Module):
 
         if ip_hidden_states:
             if ip_adapter_masks is not None:
-                if not isinstance(ip_adapter_masks, List):
+                if not isinstance(ip_adapter_masks, list):
                     # for backward compatibility, we accept `ip_adapter_mask` as a tensor of shape [num_ip_adapter, 1, height, width]
                     ip_adapter_masks = list(ip_adapter_masks.unsqueeze(1))
                 if not (len(ip_adapter_masks) == len(self.scale) == len(ip_hidden_states)):
@@ -5622,56 +5622,56 @@ CROSS_ATTENTION_PROCESSORS = (
     FluxIPAdapterJointAttnProcessor2_0,
 )
 
-AttentionProcessor = Union[
-    AttnProcessor,
-    CustomDiffusionAttnProcessor,
-    AttnAddedKVProcessor,
-    AttnAddedKVProcessor2_0,
-    JointAttnProcessor2_0,
-    PAGJointAttnProcessor2_0,
-    PAGCFGJointAttnProcessor2_0,
-    FusedJointAttnProcessor2_0,
-    AllegroAttnProcessor2_0,
-    AuraFlowAttnProcessor2_0,
-    FusedAuraFlowAttnProcessor2_0,
-    FluxAttnProcessor2_0,
-    FluxAttnProcessor2_0_NPU,
-    FusedFluxAttnProcessor2_0,
-    FusedFluxAttnProcessor2_0_NPU,
-    CogVideoXAttnProcessor2_0,
-    FusedCogVideoXAttnProcessor2_0,
-    XFormersAttnAddedKVProcessor,
-    XFormersAttnProcessor,
-    XLAFlashAttnProcessor2_0,
-    AttnProcessorNPU,
-    AttnProcessor2_0,
-    MochiVaeAttnProcessor2_0,
-    MochiAttnProcessor2_0,
-    StableAudioAttnProcessor2_0,
-    HunyuanAttnProcessor2_0,
-    FusedHunyuanAttnProcessor2_0,
-    PAGHunyuanAttnProcessor2_0,
-    PAGCFGHunyuanAttnProcessor2_0,
-    LuminaAttnProcessor2_0,
-    FusedAttnProcessor2_0,
-    CustomDiffusionXFormersAttnProcessor,
-    CustomDiffusionAttnProcessor2_0,
-    SlicedAttnProcessor,
-    SlicedAttnAddedKVProcessor,
-    SanaLinearAttnProcessor2_0,
-    PAGCFGSanaLinearAttnProcessor2_0,
-    PAGIdentitySanaLinearAttnProcessor2_0,
-    SanaMultiscaleLinearAttention,
-    SanaMultiscaleAttnProcessor2_0,
-    SanaMultiscaleAttentionProjection,
-    IPAdapterAttnProcessor,
-    IPAdapterAttnProcessor2_0,
-    IPAdapterXFormersAttnProcessor,
-    SD3IPAdapterJointAttnProcessor2_0,
-    PAGIdentitySelfAttnProcessor2_0,
-    PAGCFGIdentitySelfAttnProcessor2_0,
-    LoRAAttnProcessor,
-    LoRAAttnProcessor2_0,
-    LoRAXFormersAttnProcessor,
-    LoRAAttnAddedKVProcessor,
-]
+AttentionProcessor = (
+    AttnProcessor
+    | CustomDiffusionAttnProcessor
+    | AttnAddedKVProcessor
+    | AttnAddedKVProcessor2_0
+    | JointAttnProcessor2_0
+    | PAGJointAttnProcessor2_0
+    | PAGCFGJointAttnProcessor2_0
+    | FusedJointAttnProcessor2_0
+    | AllegroAttnProcessor2_0
+    | AuraFlowAttnProcessor2_0
+    | FusedAuraFlowAttnProcessor2_0
+    | FluxAttnProcessor2_0
+    | FluxAttnProcessor2_0_NPU
+    | FusedFluxAttnProcessor2_0
+    | FusedFluxAttnProcessor2_0_NPU
+    | CogVideoXAttnProcessor2_0
+    | FusedCogVideoXAttnProcessor2_0
+    | XFormersAttnAddedKVProcessor
+    | XFormersAttnProcessor
+    | XLAFlashAttnProcessor2_0
+    | AttnProcessorNPU
+    | AttnProcessor2_0
+    | MochiVaeAttnProcessor2_0
+    | MochiAttnProcessor2_0
+    | StableAudioAttnProcessor2_0
+    | HunyuanAttnProcessor2_0
+    | FusedHunyuanAttnProcessor2_0
+    | PAGHunyuanAttnProcessor2_0
+    | PAGCFGHunyuanAttnProcessor2_0
+    | LuminaAttnProcessor2_0
+    | FusedAttnProcessor2_0
+    | CustomDiffusionXFormersAttnProcessor
+    | CustomDiffusionAttnProcessor2_0
+    | SlicedAttnProcessor
+    | SlicedAttnAddedKVProcessor
+    | SanaLinearAttnProcessor2_0
+    | PAGCFGSanaLinearAttnProcessor2_0
+    | PAGIdentitySanaLinearAttnProcessor2_0
+    | SanaMultiscaleLinearAttention
+    | SanaMultiscaleAttnProcessor2_0
+    | SanaMultiscaleAttentionProjection
+    | IPAdapterAttnProcessor
+    | IPAdapterAttnProcessor2_0
+    | IPAdapterXFormersAttnProcessor
+    | SD3IPAdapterJointAttnProcessor2_0
+    | PAGIdentitySelfAttnProcessor2_0
+    | PAGCFGIdentitySelfAttnProcessor2_0
+    | LoRAAttnProcessor
+    | LoRAAttnProcessor2_0
+    | LoRAXFormersAttnProcessor
+    | LoRAAttnAddedKVProcessor
+)

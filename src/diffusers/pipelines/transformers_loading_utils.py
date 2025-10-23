@@ -15,7 +15,7 @@
 import contextlib
 import os
 import tempfile
-from typing import TYPE_CHECKING, Dict
+from typing import TYPE_CHECKING
 
 from huggingface_hub import DDUFEntry
 from tqdm import tqdm
@@ -34,7 +34,7 @@ if is_safetensors_available():
 
 
 def _load_tokenizer_from_dduf(
-    cls: "PreTrainedTokenizer", name: str, dduf_entries: Dict[str, DDUFEntry], **kwargs
+    cls: "PreTrainedTokenizer", name: str, dduf_entries: dict[str, DDUFEntry], **kwargs
 ) -> "PreTrainedTokenizer":
     """
     Load a tokenizer from a DDUF archive.
@@ -57,7 +57,7 @@ def _load_tokenizer_from_dduf(
 
 
 def _load_transformers_model_from_dduf(
-    cls: "PreTrainedModel", name: str, dduf_entries: Dict[str, DDUFEntry], **kwargs
+    cls: "PreTrainedModel", name: str, dduf_entries: dict[str, DDUFEntry], **kwargs
 ) -> "PreTrainedModel":
     """
     Load a transformers model from a DDUF archive.

@@ -16,7 +16,7 @@
 # The codebase is modified based on https://github.com/huggingface/diffusers/blob/main/src/diffusers/schedulers/scheduling_dpmsolver_multistep.py
 
 import math
-from typing import List, Optional, Tuple, Union
+from typing import Optional
 
 import numpy as np
 import torch
@@ -234,9 +234,7 @@ class DEISMultistepScheduler(SchedulerMixin, ConfigMixin):
         """
         self._begin_index = begin_index
 
-    def set_timesteps(
-        self, num_inference_steps: int, device: Union[str, torch.device] = None, mu: Optional[float] = None
-    ):
+    def set_timesteps(self, num_inference_steps: int, device: str | torch.device = None, mu: Optional[float] = None):
         """
         Sets the discrete timesteps used for the diffusion chain (to be run before inference).
 
@@ -586,7 +584,7 @@ class DEISMultistepScheduler(SchedulerMixin, ConfigMixin):
 
     def multistep_deis_second_order_update(
         self,
-        model_output_list: List[torch.Tensor],
+        model_output_list: list[torch.Tensor],
         *args,
         sample: torch.Tensor = None,
         **kwargs,
@@ -595,7 +593,7 @@ class DEISMultistepScheduler(SchedulerMixin, ConfigMixin):
         One step for the second-order multistep DEIS.
 
         Args:
-            model_output_list (`List[torch.Tensor]`):
+            model_output_list (`list[torch.Tensor]`):
                 The direct outputs from learned diffusion model at current and latter timesteps.
             sample (`torch.Tensor`):
                 A current instance of a sample created by the diffusion process.
@@ -655,7 +653,7 @@ class DEISMultistepScheduler(SchedulerMixin, ConfigMixin):
 
     def multistep_deis_third_order_update(
         self,
-        model_output_list: List[torch.Tensor],
+        model_output_list: list[torch.Tensor],
         *args,
         sample: torch.Tensor = None,
         **kwargs,
@@ -664,7 +662,7 @@ class DEISMultistepScheduler(SchedulerMixin, ConfigMixin):
         One step for the third-order multistep DEIS.
 
         Args:
-            model_output_list (`List[torch.Tensor]`):
+            model_output_list (`list[torch.Tensor]`):
                 The direct outputs from learned diffusion model at current and latter timesteps.
             sample (`torch.Tensor`):
                 A current instance of a sample created by diffusion process.
@@ -777,10 +775,10 @@ class DEISMultistepScheduler(SchedulerMixin, ConfigMixin):
     def step(
         self,
         model_output: torch.Tensor,
-        timestep: Union[int, torch.Tensor],
+        timestep: int | torch.Tensor,
         sample: torch.Tensor,
         return_dict: bool = True,
-    ) -> Union[SchedulerOutput, Tuple]:
+    ) -> SchedulerOutput | tuple:
         """
         Predict the sample from the previous timestep by reversing the SDE. This function propagates the sample with
         the multistep DEIS.
