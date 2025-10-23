@@ -148,6 +148,44 @@ class MomentumBuffer:
         new_average = self.momentum * self.running_average
         self.running_average = update_value + new_average
 
+    def __repr__(self) -> str:
+        """
+        Returns a string representation showing momentum, shape, statistics, and a slice of the running_average.
+        """
+        if isinstance(self.running_average, torch.Tensor):
+            shape = tuple(self.running_average.shape)
+
+            # Calculate statistics
+            with torch.no_grad():
+                stats = {
+                    "mean": self.running_average.mean().item(),
+                    "std": self.running_average.std().item(),
+                    "min": self.running_average.min().item(),
+                    "max": self.running_average.max().item(),
+                }
+
+            # Get a slice (max 3 elements per dimension)
+            slice_indices = tuple(slice(None, min(3, dim)) for dim in shape)
+            sliced_data = self.running_average[slice_indices]
+
+            # Format the slice for display (convert to float32 for numpy compatibility with bfloat16)
+            slice_str = str(sliced_data.detach().float().cpu().numpy())
+            if len(slice_str) > 200:  # Truncate if too long
+                slice_str = slice_str[:200] + "..."
+
+            stats_str = ", ".join([f"{k}={v:.4f}" for k, v in stats.items()])
+
+            return (
+                f"MomentumBuffer(\n"
+                f"  momentum={self.momentum},\n"
+                f"  shape={shape},\n"
+                f"  stats=[{stats_str}],\n"
+                f"  slice={slice_str}\n"
+                f")"
+            )
+        else:
+            return f"MomentumBuffer(momentum={self.momentum}, running_average={self.running_average})"
+
 
 def normalized_guidance(
     pred_cond: torch.Tensor,

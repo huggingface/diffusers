@@ -191,6 +191,7 @@ class AdaptiveProjectedMixGuidance(BaseGuidance):
         return state
 
 
+# Copied from diffusers.guiders.adaptive_projected_guidance.MomentumBuffer
 class MomentumBuffer:
     def __init__(self, momentum: float):
         self.momentum = momentum
