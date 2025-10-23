@@ -324,10 +324,10 @@ class Kandinsky5AttnProcessor:
                 sparse_params["sta_mask"],
                 thr=sparse_params["P"],
             )
-            
+
         else:
             attn_mask = None
-            
+
         hidden_states = dispatch_attention_fn(
             query,
             key,
