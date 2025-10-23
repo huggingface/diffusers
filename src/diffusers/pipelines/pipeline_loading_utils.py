@@ -33,6 +33,7 @@ from ..utils import (
     ONNX_WEIGHTS_NAME,
     SAFETENSORS_WEIGHTS_NAME,
     WEIGHTS_NAME,
+    _maybe_remap_transformers_class,
     deprecate,
     get_class_from_dynamic_module,
     is_accelerate_available,
@@ -356,6 +357,11 @@ def maybe_raise_or_warn(
     """Simple helper method to raise or warn in case incorrect module has been passed"""
     if not is_pipeline_module:
         library = importlib.import_module(library_name)
+
+        # Handle deprecated Transformers classes
+        if library_name == "transformers":
+            class_name = _maybe_remap_transformers_class(class_name) or class_name
+
         class_obj = getattr(library, class_name)
         class_candidates = {c: getattr(library, c, None) for c in importable_classes.keys()}
 
@@ -390,6 +396,11 @@ def simple_get_class_obj(library_name, class_name):
         class_obj = getattr(pipeline_module, class_name)
     else:
         library = importlib.import_module(library_name)
+
+        # Handle deprecated Transformers classes
+        if library_name == "transformers":
+            class_name = _maybe_remap_transformers_class(class_name) or class_name
+
         class_obj = getattr(library, class_name)
 
     return class_obj
@@ -415,6 +426,10 @@ def get_class_obj_and_candidates(
     else:
         # else we just import it from the library.
         library = importlib.import_module(library_name)
+
+        # Handle deprecated Transformers classes
+        if library_name == "transformers":
+            class_name = _maybe_remap_transformers_class(class_name) or class_name
 
         class_obj = getattr(library, class_name)
         class_candidates = {c: getattr(library, c, None) for c in importable_classes.keys()}
