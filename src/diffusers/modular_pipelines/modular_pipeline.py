@@ -1639,8 +1639,8 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
             pretrained_model_name_or_path (`str` or `os.PathLike`, optional):
                 Path to a pretrained pipeline configuration. It will first try to load config from
                 `modular_model_index.json`, then fallback to `model_index.json` for compatibility with standard
-                non-modular repositories. If the pretrained_model_name_or_path does not contain any pipeline config, it will be set to None
-                during initialization.
+                non-modular repositories. If the pretrained_model_name_or_path does not contain any pipeline config, it
+                will be set to None during initialization.
             trust_remote_code (`bool`, optional):
                 Whether to trust remote code when loading the pipeline, need to be set to True if you want to create
                 pipeline blocks based on the custom code in `pretrained_model_name_or_path`
@@ -2113,8 +2113,8 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
             **kwargs: additional kwargs to be passed to `from_pretrained()`.Can be:
              - a single value to be applied to all components to be loaded, e.g. torch_dtype=torch.bfloat16
              - a dict, e.g. torch_dtype={"unet": torch.bfloat16, "default": torch.float32}
-             - if potentially override ComponentSpec if passed a different loading field in kwargs, e.g. `pretrained_model_name_or_path`,
-               `variant`, `revision`, etc.
+             - if potentially override ComponentSpec if passed a different loading field in kwargs, e.g.
+               `pretrained_model_name_or_path`, `variant`, `revision`, etc.
         """
 
         if names is None:
@@ -2397,12 +2397,12 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
         Example:
             >>> from diffusers.pipelines.modular_pipeline_utils import ComponentSpec >>> from diffusers import
             UNet2DConditionModel >>> spec = ComponentSpec(
-                ... name="unet", ... type_hint=UNet2DConditionModel, ... config=None, ... pretrained_model_name_or_path="path/to/pretrained_model_name_or_path", ...
-                subfolder="subfolder", ... variant=None, ... revision=None, ...
-                default_creation_method="from_pretrained",
+                ... name="unet", ... type_hint=UNet2DConditionModel, ... config=None, ...
+                pretrained_model_name_or_path="path/to/pretrained_model_name_or_path", ... subfolder="subfolder", ...
+                variant=None, ... revision=None, ... default_creation_method="from_pretrained",
             ... ) >>> ModularPipeline._component_spec_to_dict(spec) {
-                "type_hint": ("diffusers", "UNet2DConditionModel"), "pretrained_model_name_or_path": "path/to/repo", "subfolder": "subfolder",
-                "variant": None, "revision": None,
+                "type_hint": ("diffusers", "UNet2DConditionModel"), "pretrained_model_name_or_path": "path/to/repo",
+                "subfolder": "subfolder", "variant": None, "revision": None,
             }
         """
         if component_spec.default_creation_method != "from_pretrained":
@@ -2451,11 +2451,13 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
             ComponentSpec: A reconstructed ComponentSpec object.
 
         Example:
-            >>> spec_dict = { ... "type_hint": ("diffusers", "UNet2DConditionModel"), ... "pretrained_model_name_or_path":
-            "stabilityai/stable-diffusion-xl", ... "subfolder": "unet", ... "variant": None, ... "revision": None, ...
-            } >>> ModularPipeline._dict_to_component_spec("unet", spec_dict) ComponentSpec(
-                name="unet", type_hint=UNet2DConditionModel, config=None, pretrained_model_name_or_path="stabilityai/stable-diffusion-xl",
-                subfolder="unet", variant=None, revision=None, default_creation_method="from_pretrained"
+            >>> spec_dict = { ... "type_hint": ("diffusers", "UNet2DConditionModel"), ...
+            "pretrained_model_name_or_path": "stabilityai/stable-diffusion-xl", ... "subfolder": "unet", ... "variant":
+            None, ... "revision": None, ... } >>> ModularPipeline._dict_to_component_spec("unet", spec_dict)
+            ComponentSpec(
+                name="unet", type_hint=UNet2DConditionModel, config=None,
+                pretrained_model_name_or_path="stabilityai/stable-diffusion-xl", subfolder="unet", variant=None,
+                revision=None, default_creation_method="from_pretrained"
             )
         """
         # make a shallow copy so we can pop() safely

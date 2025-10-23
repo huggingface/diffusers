@@ -21,7 +21,7 @@ from typing import Any, Dict, List, Literal, Optional, Type, Union
 import torch
 
 from ..configuration_utils import ConfigMixin, FrozenDict
-from ..loaders.single_file_utils import _validate_single_file_path
+from ..loaders.single_file_utils import _is_single_file_path_or_url
 from ..utils import is_torch_available, logging
 
 
@@ -92,12 +92,19 @@ class ComponentSpec:
     type_hint: Optional[Type] = None
     description: Optional[str] = None
     config: Optional[FrozenDict] = None
-    # YiYi Notes: should we change it to pretrained_model_name_or_path for consistency? a bit long for a field name
     pretrained_model_name_or_path: Optional[Union[str, List[str]]] = field(default=None, metadata={"loading": True})
     subfolder: Optional[str] = field(default="", metadata={"loading": True})
     variant: Optional[str] = field(default=None, metadata={"loading": True})
     revision: Optional[str] = field(default=None, metadata={"loading": True})
     default_creation_method: Literal["from_config", "from_pretrained"] = "from_pretrained"
+
+    # Deprecated
+    repo: Optional[Union[str, List[str]]] = field(default=None, metadata={"loading": False})
+
+    def __post_init__(self):
+        repo_value = self.repo
+        if repo_value is not None and self.pretrained_model_name_or_path is None:
+            object.__setattr__(self, "pretrained_model_name_or_path", repo_value)
 
     def __hash__(self):
         """Make ComponentSpec hashable, using load_id as the hash value."""
@@ -183,8 +190,8 @@ class ComponentSpec:
     @property
     def load_id(self) -> str:
         """
-        Unique identifier for this spec's pretrained load, composed of pretrained_model_name_or_path|subfolder|variant|revision (no empty
-        segments).
+        Unique identifier for this spec's pretrained load, composed of
+        pretrained_model_name_or_path|subfolder|variant|revision (no empty segments).
         """
         if self.default_creation_method == "from_config":
             return "null"
@@ -203,7 +210,8 @@ class ComponentSpec:
 
         Returns:
             Dict mapping loading field names to their values. e.g. {
-                "pretrained_model_name_or_path": "path/to/repo", "subfolder": "subfolder", "variant": "variant", "revision": "revision"
+                "pretrained_model_name_or_path": "path/to/repo", "subfolder": "subfolder", "variant": "variant",
+                "revision": "revision"
             } If a segment value is "null", it's replaced with None. Returns None if load_id is "null" (indicating
             component not created with `load` method).
         """
@@ -260,20 +268,21 @@ class ComponentSpec:
     # YiYi TODO: add guard for type of model, if it is supported by from_pretrained
     def load(self, **kwargs) -> Any:
         """Load component using from_pretrained."""
-
         # select loading fields from kwargs passed from user: e.g. pretrained_model_name_or_path, subfolder, variant, revision, note the list could change
         passed_loading_kwargs = {key: kwargs.pop(key) for key in self.loading_fields() if key in kwargs}
         # merge loading field value in the spec with user passed values to create load_kwargs
         load_kwargs = {key: passed_loading_kwargs.get(key, getattr(self, key)) for key in self.loading_fields()}
-        # pretrained_model_name_or_path is a required argument for from_pretrained, a.k.a. pretrained_model_name_or_path
+
         pretrained_model_name_or_path = load_kwargs.pop("pretrained_model_name_or_path", None)
         if pretrained_model_name_or_path is None:
             raise ValueError(
                 "`pretrained_model_name_or_path` info is required when using `load` method (you can directly set it in `pretrained_model_name_or_path` field of the ComponentSpec or pass it as an argument)"
             )
-        is_single_file = _validate_single_file_path(pretrained_model_name_or_path)
+        is_single_file = _is_single_file_path_or_url(pretrained_model_name_or_path)
         if is_single_file and self.type_hint is None:
-            raise ValueError("type_hint is required when loading a single file model")
+            raise ValueError(
+                f"`type_hint` is required when loading a single file model but is missing for component: {self.name}"
+            )
 
         if self.type_hint is None:
             try:
