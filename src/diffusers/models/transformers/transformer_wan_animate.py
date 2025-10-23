@@ -292,50 +292,66 @@ class WanAnimateMotionEncoder(nn.Module):
 
 
 class WanAnimateFaceEncoder(nn.Module):
-    def __init__(self, in_dim: int, hidden_dim: int, num_heads: int, kernel_size: int = 3, eps: float = 1e-6):
+    def __init__(
+        self,
+        in_dim: int,
+        out_dim: int,
+        hidden_dim: int = 1024,
+        num_heads: int = 4,
+        kernel_size: int = 3,
+        eps: float = 1e-6,
+        pad_mode: str = "replicate",
+    ):
         super().__init__()
         self.time_causal_padding = (kernel_size - 1, 0)
+        self.pad_mode = pad_mode
 
-        self.conv1_local = nn.Conv1d(in_dim, 1024 * num_heads, kernel_size=kernel_size, stride=1)
-        self.norm1 = nn.LayerNorm(hidden_dim // 8, eps, elementwise_affine=False)
         self.act = nn.SiLU()
-        self.conv2 = nn.Conv1d(1024, 1024, kernel_size, stride=2)
-        self.conv3 = nn.Conv1d(1024, 1024, kernel_size, stride=2)
 
-        self.out_proj = nn.Linear(1024, hidden_dim)
-        self.norm1 = nn.LayerNorm(1024, eps, elementwise_affine=False)
-        self.norm2 = nn.LayerNorm(1024, eps, elementwise_affine=False)
-        self.norm3 = nn.LayerNorm(1024, eps, elementwise_affine=False)
+        self.conv1_local = nn.Conv1d(in_dim, hidden_dim * num_heads, kernel_size=kernel_size, stride=1)
+        self.conv2 = nn.Conv1d(hidden_dim, hidden_dim, kernel_size, stride=2)
+        self.conv3 = nn.Conv1d(hidden_dim, hidden_dim, kernel_size, stride=2)
 
-        self.padding_tokens = nn.Parameter(torch.zeros(1, 1, 1, hidden_dim))
+        self.norm1 = nn.LayerNorm(hidden_dim, eps, elementwise_affine=False)
+        self.norm2 = nn.LayerNorm(hidden_dim, eps, elementwise_affine=False)
+        self.norm3 = nn.LayerNorm(hidden_dim, eps, elementwise_affine=False)
+
+        self.out_proj = nn.Linear(hidden_dim, out_dim)
+
+        self.padding_tokens = nn.Parameter(torch.zeros(1, 1, 1, out_dim))
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        batch_size, num_frames, channels = x.shape
+
+        # Reshape to channels-first to apply causal Conv1d over frame dim
         x = x.permute(0, 2, 1)
-        batch_size, channels, num_frames = x.shape
-
-        x = F.pad(x, self.time_causal_padding, mode="replicate")
-        x = self.conv1_local(x)
-        x = x.unflatten(1, (-1, channels)).flatten(0, 1).permute(0, 2, 1)
-
+        x = F.pad(x, self.time_causal_padding, mode=self.pad_mode)
+        x = self.conv1_local(x)  # [B, C, T] --> [B, N * C, T]
+        x = x.unflatten(1, (-1, channels)).flatten(0, 1)  # [B, N * C, T] --> [B * N, C, T]
+        # Reshape back to channels-last to apply LayerNorm over channel dim
+        x = x.permute(0, 2, 1)
         x = self.norm1(x)
         x = self.act(x)
+
         x = x.permute(0, 2, 1)
-        x = F.pad(x, self.time_causal_padding, mode="replicate")
+        x = F.pad(x, self.time_causal_padding, mode=self.pad_mode)
         x = self.conv2(x)
         x = x.permute(0, 2, 1)
         x = self.norm2(x)
         x = self.act(x)
+
         x = x.permute(0, 2, 1)
-        x = F.pad(x, self.time_causal_padding, mode="replicate")
+        x = F.pad(x, self.time_causal_padding, mode=self.pad_mode)
         x = self.conv3(x)
         x = x.permute(0, 2, 1)
         x = self.norm3(x)
         x = self.act(x)
+
         x = self.out_proj(x)
-        x = x.unflatten(0, (batch_size, -1)).permute(0, 2, 1, 3)
+        x = x.unflatten(0, (batch_size, -1)).permute(0, 2, 1, 3)  # [B * N, T, C_out] --> [B, T, N, C_out]
 
         padding = self.padding_tokens.repeat(batch_size, x.shape[1], 1, 1)
-        x = torch.cat([x, padding], dim=-2)
+        x = torch.cat([x, padding], dim=-2)  # [B, T, N, C_out] --> [B, T, N + 1, C_out]
         x_local = x.clone()
 
         return x_local
@@ -365,7 +381,7 @@ class WanTimeTextImageMotionFaceEmbedding(nn.Module):
         self.motion_embedder = WanAnimateMotionEncoder(
             size=motion_encoder_size, style_dim=motion_style_dim, motion_dim=motion_dim, out_dim=motion_encoder_dim
         )
-        self.face_embedder = WanAnimateFaceEncoder(in_dim=motion_encoder_dim, hidden_dim=dim, num_heads=4)
+        self.face_embedder = WanAnimateFaceEncoder(in_dim=motion_encoder_dim, out_dim=dim, num_heads=4)
 
     def forward(
         self,
