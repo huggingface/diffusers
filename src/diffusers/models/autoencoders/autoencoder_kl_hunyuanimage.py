@@ -588,7 +588,7 @@ class AutoencoderKLHunyuanImage(ModelMixin, ConfigMixin, FromOriginalModelMixin)
     def blend_v(self, a: torch.Tensor, b: torch.Tensor, blend_extent: int) -> torch.Tensor:
         blend_extent = min(a.shape[-2], b.shape[-2], blend_extent)
         for y in range(blend_extent):
-            b[:, :, :, y, :] = a[:, :, :, -blend_extent + y, :] * (1 - y / blend_extent) + b[:, :, :, y, :] * (
+            b[:, :, y, :] = a[:, :, -blend_extent + y, :] * (1 - y / blend_extent) + b[:, :, y, :] * (
                 y / blend_extent
             )
         return b
@@ -596,7 +596,7 @@ class AutoencoderKLHunyuanImage(ModelMixin, ConfigMixin, FromOriginalModelMixin)
     def blend_h(self, a: torch.Tensor, b: torch.Tensor, blend_extent: int) -> torch.Tensor:
         blend_extent = min(a.shape[-1], b.shape[-1], blend_extent)
         for x in range(blend_extent):
-            b[:, :, :, :, x] = a[:, :, :, :, -blend_extent + x] * (1 - x / blend_extent) + b[:, :, :, :, x] * (
+            b[:, :, :, x] = a[:, :, :, -blend_extent + x] * (1 - x / blend_extent) + b[:, :, :, x] * (
                 x / blend_extent
             )
         return b
@@ -664,7 +664,7 @@ class AutoencoderKLHunyuanImage(ModelMixin, ConfigMixin, FromOriginalModelMixin)
         for i in range(0, height, overlap_size):
             row = []
             for j in range(0, width, overlap_size):
-                tile = z[:, :, :, i : i + self.tile_latent_min_size, j : j + self.tile_latent_min_size]
+                tile = z[:, :, i : i + self.tile_latent_min_size, j : j + self.tile_latent_min_size]
                 decoded = self.decoder(tile)
                 row.append(decoded)
             rows.append(row)
@@ -677,7 +677,7 @@ class AutoencoderKLHunyuanImage(ModelMixin, ConfigMixin, FromOriginalModelMixin)
                     tile = self.blend_v(rows[i - 1][j], tile, blend_extent)
                 if j > 0:
                     tile = self.blend_h(row[j - 1], tile, blend_extent)
-                result_row.append(tile[:, :, :, :row_limit, :row_limit])
+                result_row.append(tile[:, :, :row_limit, :row_limit])
             result_rows.append(torch.cat(result_row, dim=-1))
 
         dec = torch.cat(result_rows, dim=-2)
