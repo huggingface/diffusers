@@ -17,7 +17,6 @@ from typing import List, Optional, Tuple, Union
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import torch.utils.checkpoint
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FromOriginalModelMixin
@@ -26,7 +25,7 @@ from ...utils.accelerate_utils import apply_forward_hook
 from ..activations import get_activation
 from ..modeling_outputs import AutoencoderKLOutput
 from ..modeling_utils import ModelMixin
-from .vae import DecoderOutput, DiagonalGaussianDistribution
+from .vae import AutoencoderMixin, DecoderOutput, DiagonalGaussianDistribution
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -454,14 +453,14 @@ class WanMidBlock(nn.Module):
 
     def forward(self, x, feat_cache=None, feat_idx=[0]):
         # First residual block
-        x = self.resnets[0](x, feat_cache, feat_idx)
+        x = self.resnets[0](x, feat_cache=feat_cache, feat_idx=feat_idx)
 
         # Process through attention and residual blocks
         for attn, resnet in zip(self.attentions, self.resnets[1:]):
             if attn is not None:
                 x = attn(x)
 
-            x = resnet(x, feat_cache, feat_idx)
+            x = resnet(x, feat_cache=feat_cache, feat_idx=feat_idx)
 
         return x
 
@@ -495,9 +494,9 @@ class WanResidualDownBlock(nn.Module):
     def forward(self, x, feat_cache=None, feat_idx=[0]):
         x_copy = x.clone()
         for resnet in self.resnets:
-            x = resnet(x, feat_cache, feat_idx)
+            x = resnet(x, feat_cache=feat_cache, feat_idx=feat_idx)
         if self.downsampler is not None:
-            x = self.downsampler(x, feat_cache, feat_idx)
+            x = self.downsampler(x, feat_cache=feat_cache, feat_idx=feat_idx)
 
         return x + self.avg_shortcut(x_copy)
 
@@ -599,12 +598,12 @@ class WanEncoder3d(nn.Module):
         ## downsamples
         for layer in self.down_blocks:
             if feat_cache is not None:
-                x = layer(x, feat_cache, feat_idx)
+                x = layer(x, feat_cache=feat_cache, feat_idx=feat_idx)
             else:
                 x = layer(x)
 
         ## middle
-        x = self.mid_block(x, feat_cache, feat_idx)
+        x = self.mid_block(x, feat_cache=feat_cache, feat_idx=feat_idx)
 
         ## head
         x = self.norm_out(x)
@@ -695,13 +694,13 @@ class WanResidualUpBlock(nn.Module):
 
         for resnet in self.resnets:
             if feat_cache is not None:
-                x = resnet(x, feat_cache, feat_idx)
+                x = resnet(x, feat_cache=feat_cache, feat_idx=feat_idx)
             else:
                 x = resnet(x)
 
         if self.upsampler is not None:
             if feat_cache is not None:
-                x = self.upsampler(x, feat_cache, feat_idx)
+                x = self.upsampler(x, feat_cache=feat_cache, feat_idx=feat_idx)
             else:
                 x = self.upsampler(x)
 
@@ -768,13 +767,13 @@ class WanUpBlock(nn.Module):
         """
         for resnet in self.resnets:
             if feat_cache is not None:
-                x = resnet(x, feat_cache, feat_idx)
+                x = resnet(x, feat_cache=feat_cache, feat_idx=feat_idx)
             else:
                 x = resnet(x)
 
         if self.upsamplers is not None:
             if feat_cache is not None:
-                x = self.upsamplers[0](x, feat_cache, feat_idx)
+                x = self.upsamplers[0](x, feat_cache=feat_cache, feat_idx=feat_idx)
             else:
                 x = self.upsamplers[0](x)
         return x
@@ -886,11 +885,11 @@ class WanDecoder3d(nn.Module):
             x = self.conv_in(x)
 
         ## middle
-        x = self.mid_block(x, feat_cache, feat_idx)
+        x = self.mid_block(x, feat_cache=feat_cache, feat_idx=feat_idx)
 
         ## upsamples
         for up_block in self.up_blocks:
-            x = up_block(x, feat_cache, feat_idx, first_chunk=first_chunk)
+            x = up_block(x, feat_cache=feat_cache, feat_idx=feat_idx, first_chunk=first_chunk)
 
         ## head
         x = self.norm_out(x)
@@ -952,7 +951,7 @@ def unpatchify(x, patch_size):
     return x
 
 
-class AutoencoderKLWan(ModelMixin, ConfigMixin, FromOriginalModelMixin):
+class AutoencoderKLWan(ModelMixin, AutoencoderMixin, ConfigMixin, FromOriginalModelMixin):
     r"""
     A VAE model with KL loss for encoding videos into latents and decoding latent representations into videos.
     Introduced in [Wan 2.1].
@@ -962,6 +961,9 @@ class AutoencoderKLWan(ModelMixin, ConfigMixin, FromOriginalModelMixin):
     """
 
     _supports_gradient_checkpointing = False
+    # keys toignore when AlignDeviceHook moves inputs/outputs between devices
+    # these are shared mutable state modified in-place
+    _skip_keys = ["feat_cache", "feat_idx"]
 
     @register_to_config
     def __init__(
@@ -1110,27 +1112,6 @@ class AutoencoderKLWan(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         self.tile_sample_min_width = tile_sample_min_width or self.tile_sample_min_width
         self.tile_sample_stride_height = tile_sample_stride_height or self.tile_sample_stride_height
         self.tile_sample_stride_width = tile_sample_stride_width or self.tile_sample_stride_width
-
-    def disable_tiling(self) -> None:
-        r"""
-        Disable tiled VAE decoding. If `enable_tiling` was previously enabled, this method will go back to computing
-        decoding in one step.
-        """
-        self.use_tiling = False
-
-    def enable_slicing(self) -> None:
-        r"""
-        Enable sliced VAE decoding. When this option is enabled, the VAE will split the input tensor in slices to
-        compute decoding in several steps. This is useful to save some memory and allow larger batch sizes.
-        """
-        self.use_slicing = True
-
-    def disable_slicing(self) -> None:
-        r"""
-        Disable sliced VAE decoding. If `enable_slicing` was previously enabled, this method will go back to computing
-        decoding in one step.
-        """
-        self.use_slicing = False
 
     def clear_cache(self):
         # Use cached conv counts for decoder and encoder to avoid re-iterating modules each call

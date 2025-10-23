@@ -238,7 +238,7 @@ def parse_args() -> argparse.Namespace:
 
 # EXAMPLE USAGE:
 #
-# python vae_roundtrip.py --use_cuda --pretrained_model_name_or_path "runwayml/stable-diffusion-v1-5" --subfolder "vae" --input_image "foo.png"
+# python vae_roundtrip.py --use_cuda --pretrained_model_name_or_path "stable-diffusion-v1-5/stable-diffusion-v1-5" --subfolder "vae" --input_image "foo.png"
 #
 # python vae_roundtrip.py --use_cuda --pretrained_model_name_or_path "madebyollin/taesd" --use_tiny_nn --input_image "foo.png"
 #

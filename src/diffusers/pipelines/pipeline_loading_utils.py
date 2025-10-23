@@ -838,6 +838,9 @@ def load_sub_model(
         else:
             loading_kwargs["low_cpu_mem_usage"] = False
 
+    if is_transformers_model and is_transformers_version(">=", "4.57.0"):
+        loading_kwargs.pop("offload_state_dict")
+
     if (
         quantization_config is not None
         and isinstance(quantization_config, PipelineQuantizationConfig)
@@ -863,6 +866,9 @@ def load_sub_model(
         # remove hooks
         remove_hook_from_module(loaded_sub_model, recurse=True)
         needs_offloading_to_cpu = device_map[""] == "cpu"
+        skip_keys = None
+        if hasattr(loaded_sub_model, "_skip_keys") and loaded_sub_model._skip_keys is not None:
+            skip_keys = loaded_sub_model._skip_keys
 
         if needs_offloading_to_cpu:
             dispatch_model(
@@ -871,9 +877,10 @@ def load_sub_model(
                 device_map=device_map,
                 force_hooks=True,
                 main_device=0,
+                skip_keys=skip_keys,
             )
         else:
-            dispatch_model(loaded_sub_model, device_map=device_map, force_hooks=True)
+            dispatch_model(loaded_sub_model, device_map=device_map, force_hooks=True, skip_keys=skip_keys)
 
     return loaded_sub_model
 

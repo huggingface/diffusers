@@ -128,13 +128,13 @@ class AutoModel(ConfigMixin):
         ```py
         from diffusers import AutoModel
 
-        unet = AutoModel.from_pretrained("runwayml/stable-diffusion-v1-5", subfolder="unet")
+        unet = AutoModel.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5", subfolder="unet")
         ```
 
         If you get the error message below, you need to finetune the weights for your downstream task:
 
         ```bash
-        Some weights of UNet2DConditionModel were not initialized from the model checkpoint at runwayml/stable-diffusion-v1-5 and are newly initialized because the shapes did not match:
+        Some weights of UNet2DConditionModel were not initialized from the model checkpoint at stable-diffusion-v1-5/stable-diffusion-v1-5 and are newly initialized because the shapes did not match:
         - conv_in.weight: found shape torch.Size([320, 4, 3, 3]) in the checkpoint and torch.Size([320, 9, 3, 3]) in the model instantiated
         You should probably TRAIN this model on a down-stream task to be able to use it for predictions and inference.
         ```
