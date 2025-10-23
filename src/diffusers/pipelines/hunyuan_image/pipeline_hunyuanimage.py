@@ -531,8 +531,7 @@ class HunyuanImagePipeline(DiffusionPipeline):
                 instead.
             negative_prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts not to guide the image generation. If not defined and negative_prompt_embeds is
-                not provided, will use an empty negative prompt. Ignored when not using guidance.
-                ).
+                not provided, will use an empty negative prompt. Ignored when not using guidance. ).
             height (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
                 The height in pixels of the generated image. This is set to 1024 by default for the best results.
             width (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
@@ -548,10 +547,10 @@ class HunyuanImagePipeline(DiffusionPipeline):
                 A guidance scale value for guidance distilled models. Unlike the traditional classifier-free guidance
                 where the guidance scale is applied during inference through noise prediction rescaling, guidance
                 distilled models take the guidance scale directly as an input parameter during forward pass. Guidance
-                is enabled by setting `distilled_guidance_scale > 1`. Higher guidance scale encourages to generate images that
-                are closely linked to the text `prompt`, usually at the expense of lower image quality. 
-                For guidance distilled models, this parameter is required. 
-                For non-distilled models, this parameter will be ignored.
+                is enabled by setting `distilled_guidance_scale > 1`. Higher guidance scale encourages to generate
+                images that are closely linked to the text `prompt`, usually at the expense of lower image quality. For
+                guidance distilled models, this parameter is required. For non-distilled models, this parameter will be
+                ignored.
             num_images_per_prompt (`int`, *optional*, defaults to 1):
                 The number of images to generate per prompt.
             generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
@@ -782,7 +781,9 @@ class HunyuanImagePipeline(DiffusionPipeline):
                     guider.prepare_models(self.transformer)
 
                     # Extract conditioning kwargs for this batch (e.g., encoder_hidden_states)
-                    cond_kwargs = {input_name: getattr(guider_state_batch, input_name) for input_name in guider_inputs.keys()}
+                    cond_kwargs = {
+                        input_name: getattr(guider_state_batch, input_name) for input_name in guider_inputs.keys()
+                    }
 
                     # e.g. "pred_cond"/"pred_uncond"
                     context_name = getattr(guider_state_batch, guider._identifier_key)

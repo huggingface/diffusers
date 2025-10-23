@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import math
-from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
 import torch
 
@@ -92,7 +92,6 @@ class ClassifierFreeGuidance(BaseGuidance):
         self.use_original_formulation = use_original_formulation
 
     def prepare_inputs(self, data: Dict[str, Tuple[torch.Tensor, torch.Tensor]]) -> List["BlockState"]:
-
         tuple_indices = [0] if self.num_conditions == 1 or not self._is_cfg_enabled() else [0, 1]
         data_batches = []
         for tuple_idx, input_prediction in zip(tuple_indices, self._input_predictions):

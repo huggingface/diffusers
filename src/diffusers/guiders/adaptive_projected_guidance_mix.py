@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import math
-from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
 import torch
 
@@ -88,9 +88,7 @@ class AdaptiveProjectedMixGuidance(BaseGuidance):
         self.use_original_formulation = use_original_formulation
         self.momentum_buffer = None
 
-    def prepare_inputs(
-        self, data: Dict[str, Tuple[torch.Tensor, torch.Tensor]]) -> List["BlockState"]:
-
+    def prepare_inputs(self, data: Dict[str, Tuple[torch.Tensor, torch.Tensor]]) -> List["BlockState"]:
         if self._step == 0:
             if self.adaptive_projected_guidance_momentum is not None:
                 self.momentum_buffer = MomentumBuffer(self.adaptive_projected_guidance_momentum)

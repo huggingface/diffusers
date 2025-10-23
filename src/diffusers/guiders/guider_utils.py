@@ -216,7 +216,6 @@ class BaseGuidance(ConfigMixin, PushToHubMixin):
         """
         from ..modular_pipelines.modular_pipeline import BlockState
 
-
         data_batch = {}
         for key, value in data.items():
             try:
