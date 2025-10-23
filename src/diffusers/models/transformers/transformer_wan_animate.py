@@ -44,11 +44,11 @@ class FusedLeakyReLU(nn.Module):
     Fused LeakyRelu with scale factor and channel-wise bias.
     """
 
-    def __init__(self, negative_slope: float = 0.2, scale: float = 1.0, channels: Optional[int] = None):
+    def __init__(self, negative_slope: float = 0.2, scale: float = 2**0.5, bias_channels: Optional[int] = None):
         super().__init__()
         self.negative_slope = negative_slope
         self.scale = scale
-        self.channels = channels
+        self.channels = bias_channels
 
         if self.channels is not None:
             self.bias = nn.Parameter(torch.zeros(self.channels,))
@@ -65,140 +65,233 @@ class FusedLeakyReLU(nn.Module):
         return F.leaky_relu(x, self.negative_slope) * self.scale
 
 
-class ConvLayer(nn.Module):
+class MotionConv2d(nn.Module):
     def __init__(
         self,
-        in_channel: int,
-        out_channel: int,
+        in_channels: int,
+        out_channels: int,
         kernel_size: int,
-        downsample_factor: Optional[int] = None,
-        blur_kernel: Tuple[int] = (1, 3, 3, 1),
+        stride: int = 1,
+        padding: int = 0,
         bias: bool = True,
-        activate: bool = True,
+        blur_kernel: Optional[Tuple[int, ...]] = None,
+        blur_upsample_factor: int = 1,
+        use_activation: bool = True,
     ):
         super().__init__()
+        self.use_activation = use_activation
+        self.in_channels = in_channels
 
-        self.downsample_factor = downsample_factor
-        self.blur_kernel = blur_kernel
-        self.activate = activate
+        # Handle blurring (applying a FIR filter with the given kernel) if available
+        self.blur = False
+        if blur_kernel is not None:
+            p = (len(blur_kernel) - stride) + (kernel_size - 1)
+            self.blur_padding = ((p + 1) // 2, p // 2)
 
-        if activate:
-            act_fn_channels = out_channel if bias else None
-            act_fn_scale = 2**0.5 if bias else 1.0
-            self.act = FusedLeakyReLU(scale=act_fn_scale, channels=act_fn_channels, channel_dim=1)
+            kernel = torch.tensor(blur_kernel)
+            # Convert kernel to 2D if necessary
+            if kernel.ndim == 1:
+                kernel = kernel[None, :] * kernel[:, None]
+            # Normalize kernel
+            kernel = kernel / kernel.sum()
+            if blur_upsample_factor > 1:
+                kernel = kernel * (blur_upsample_factor ** 2)
+            self.register_buffer("blur_kernel", kernel, persistent=False)
+            self.blur = True
 
-        if self.downsample_factor is not None:
-            p = (len(self.blur_kernel) - self.downsample_factor) + (kernel_size - 1)
-            pad0 = (p + 1) // 2
-            pad1 = p // 2
+        # Main Conv2d parameters (with scale factor)
+        self.weight = nn.Parameter(torch.randn(out_channels, in_channels, kernel_size, kernel_size))
+        self.scale = 1 / math.sqrt(in_channels * kernel_size ** 2)
 
-            # Create blur kernel
-            blur_kernel_tensor = torch.tensor(blur_kernel, dtype=torch.float32)
-            blur_kernel_2d = blur_kernel_tensor[None, :] * blur_kernel_tensor[:, None]
-            blur_kernel_2d /= blur_kernel_2d.sum()
+        self.stride = stride
+        self.padding = padding
 
-            self.blur_conv = nn.Conv2d(
-                in_channel,
-                in_channel,
-                blur_kernel_2d.shape[0],
-                padding=(pad0, pad1),
-                groups=in_channel,
-                bias=False,
-            )
-
-            # Set the kernel weights
-            with torch.no_grad():
-                # Expand kernel for groups
-                kernel_expanded = blur_kernel_2d.unsqueeze(0).unsqueeze(0).expand(in_channel, 1, -1, -1)
-                self.blur_conv.weight.copy_(kernel_expanded)
-
-            stride = 2
-            padding = 0
+        # If using an activation function, the bias will be fused into the activation
+        if bias and not self.use_activation:
+            self.bias = nn.Parameter(torch.zeros(out_channels))
         else:
-            stride = 1
-            padding = kernel_size // 2
+            self.bias = None
 
-        self.conv2d = nn.Conv2d(in_channel, out_channel, kernel_size, stride, padding, bias=bias and not activate)
+        if self.use_activation:
+            self.act_fn = FusedLeakyReLU(bias_channels=out_channels)
+        else:
+            self.act_fn = None
 
-    def forward(self, input: torch.Tensor) -> torch.Tensor:
-        if self.downsample:
-            input = self.blur_conv(input)
+    def forward(self, input: torch.Tensor, channel_dim: int = 1) -> torch.Tensor:
+        # Apply blur if using
+        if self.blur:
+            # NOTE: the original implementation uses a 2D upfirdn operation with the upsampling and downsampling rates
+            # set to 1, which should be equivalent to a 2D convolution
+            expanded_kernel = self.blur_kernel[None, None, :, :].expand(self.in_channels, 1, -1, -1)
+            x = F.conv2d(input, expanded_kernel, padding=self.blur_padding, groups=self.in_channels)
 
-        input = self.conv2d(input)
+        # Main Conv2D with scaling
+        x = F.conv2d(input, self.weight * self.scale, bias=self.bias, stride=self.stride, padding=self.padding)
 
-        if self.activate:
-            input = self.act(input + self.bias_leaky_relu) * 2**0.5
+        # Activation with fused bias, if using
+        if self.use_activation:
+            x = self.act_fn(x, channel_dim=channel_dim)
+        return x
 
-        return input
+    def __repr__(self):
+        return (
+            f'{self.__class__.__name__}({self.weight.shape[1]}, {self.weight.shape[0]},'
+            f' {self.weight.shape[2]}, stride={self.stride}, padding={self.padding})'
+        )
 
 
-class ResBlock(nn.Module):
-    def __init__(self, in_channel: int, out_channel: int):
+class MotionLinear(nn.Module):
+    def __init__(
+        self,
+        in_dim: int,
+        out_dim: int,
+        bias: bool = True,
+        use_activation: bool = False,
+    ):
         super().__init__()
+        self.use_activation = use_activation
 
-        self.conv1 = ConvLayer(in_channel, in_channel, 3)
-        self.conv2 = ConvLayer(in_channel, out_channel, 3, downsample=True)
+        # Linear weight with scale factor
+        self.weight = nn.Parameter(torch.randn(out_dim, in_dim))
+        self.scale = (1 / math.sqrt(in_dim))
 
-        self.skip = ConvLayer(in_channel, out_channel, 1, downsample=True, activate=False, bias=False)
+        # If an activation is present, the bias will be fused to it
+        if bias and not self.use_activation:
+            self.bias = nn.Parameter(torch.zeros(out_dim))
+        else:
+            self.bias = None
 
-    def forward(self, input: torch.Tensor) -> torch.Tensor:
-        out = self.conv1(input)
-        out = self.conv2(out)
+        if self.use_activation:
+            self.act_fn = FusedLeakyReLU(bias_channels=out_dim)
+        else:
+            self.act_fn = None
 
-        skip = self.skip(input)
-        out = (out + skip) / math.sqrt(2)
-
+    def forward(self, input: torch.Tensor, channel_dim: int = 1) -> torch.Tensor:
+        out = F.linear(input, self.weight * self.scale, bias=self.bias)
+        if self.use_activation:
+            out = self.act_fn(out, channel_dim=channel_dim)
         return out
 
+    def __repr__(self):
+        return (f'{self.__class__.__name__}({self.weight.shape[1]}, {self.weight.shape[0]})')
 
-class WanAnimateMotionEmbedder(nn.Module):
-    def __init__(self, size: int = 512, style_dim: int = 512, motion_dim: int = 20):
+
+class MotionEncoderResBlock(nn.Module):
+    def __init__(
+        self,
+        in_channels: int,
+        out_channels: int,
+        kernel_size: int = 3,
+        kernel_size_skip: int = 1,
+        blur_kernel: Tuple[int, ...] = (1, 3, 3, 1),
+        downsample_factor: int = 2,
+    ):
+        super().__init__()
+        self.downsample_factor = downsample_factor
+
+        # 3 x 3 Conv + fused leaky ReLU
+        self.conv1 = MotionConv2d(
+            in_channels,
+            in_channels,
+            kernel_size,
+            stride=1,
+            padding=kernel_size // 2,
+            use_activation=True,
+        )
+
+        # 3 x 3 Conv that downsamples 2x + fused leaky ReLU
+        self.conv2 = MotionConv2d(
+            in_channels,
+            out_channels,
+            kernel_size=kernel_size,
+            stride=self.downsample_factor,
+            padding=0,
+            blur_kernel=blur_kernel,
+            use_activation=True,
+        )
+
+        # 1 x 1 Conv that downsamples 2x in skip connection
+        self.conv_skip = MotionConv2d(
+            in_channels,
+            out_channels,
+            kernel_size=kernel_size_skip,
+            stride=self.downsample_factor,
+            padding=0,
+            bias=False,
+            blur_kernel=blur_kernel,
+            use_activation=False,
+        )
+
+    def forward(self, x: torch.Tensor, channel_dim: int = 1) -> torch.Tensor:
+        x_out = self.conv1(x, channel_dim)
+        x_out = self.conv2(x_out, channel_dim)
+
+        x_skip = self.conv_skip(x, channel_dim)
+
+        x_out = (x_out + x_skip) / math.sqrt(2)
+        return x_out
+
+
+class WanAnimateMotionEncoder(nn.Module):
+    def __init__(
+        self, size: int = 512, style_dim: int = 512, motion_dim: int = 20, out_dim: int = 512, motion_blocks: int = 5
+    ):
         super().__init__()
 
         # Appearance encoder: conv layers
         channels = {4: 512, 8: 512, 16: 512, 32: 512, 64: 256, 128: 128, 256: 64, 512: 32, 1024: 16}
         log_size = int(math.log(size, 2))
 
-        self.convs = nn.ModuleList()
-        self.convs.append(ConvLayer(3, channels[size], 1))
+        self.conv_in = MotionConv2d(3, channels[size], 1, use_activation=True)
 
-        in_channel = channels[size]
+        self.res_blocks = nn.ModuleList()
+        in_channels = channels[size]
         for i in range(log_size, 2, -1):
-            out_channel = channels[2 ** (i - 1)]
-            self.convs.append(ResBlock(in_channel, out_channel))
-            in_channel = out_channel
+            out_channels = channels[2 ** (i - 1)]
+            self.res_blocks.append(MotionEncoderResBlock(in_channels, out_channels))
+            in_channels = out_channels
 
-        self.convs.append(nn.Conv2d(in_channel, style_dim, 4, padding=0, bias=False))
+        self.conv_out = MotionConv2d(in_channels, style_dim, 4, padding=0, bias=False, use_activation=False)
 
         # Motion encoder: linear layers
-        linears = []
-        for _ in range(4):
-            linears.append(nn.Linear(style_dim, style_dim))
-        linears.append(nn.Linear(style_dim, motion_dim))
-        self.linears = nn.Sequential(*linears)
+        # NOTE: there are no activations in between the linear layers here, which is weird but I believe matches the
+        # original code.
+        linears = [MotionLinear(style_dim, style_dim) for _ in range(motion_blocks - 1)]
+        linears.append(MotionLinear(style_dim, motion_dim))
+        self.motion_network = nn.Sequential(*linears)
 
-        self.motion_synthesis_weight = nn.Parameter(torch.randn(512, 20))
+        self.motion_synthesis_weight = nn.Parameter(torch.randn(out_dim, motion_dim))
 
-    def forward(self, face_image: torch.Tensor) -> torch.Tensor:
+    def forward(self, face_image: torch.Tensor, channel_dim: int = 1, upcast_to_fp32: bool = True) -> torch.Tensor:
         # Appearance encoding through convs
-        for conv in self.convs:
-            face_image = conv(face_image)
+        face_image = self.conv_in(face_image, channel_dim)
+        for block in self.res_blocks:
+            face_image = block(face_image, channel_dim)
+        face_image = self.conv_out(face_image, channel_dim)
         face_image = face_image.squeeze(-1).squeeze(-1)
 
         # Motion feature extraction
-        motion_feat = self.linears(face_image)
+        motion_feat = self.motion_network(face_image, channel_dim)
 
         # Motion synthesis via QR decomposition
         weight = self.motion_synthesis_weight + 1e-8
-        Q = torch.linalg.qr(weight.to(torch.float32))[0]
+        if upcast_to_fp32:
+            original_motion_dtype = motion_feat.dtype
+            motion_feat = motion_feat.to(torch.float32)
+            weight = weight.to(torch.float32)
 
-        input_diag = torch.diag_embed(motion_feat)  # Alpha, diagonal matrix
-        out = torch.matmul(input_diag, Q.T)
-        out = torch.sum(out, dim=1).to(motion_feat.dtype)
-        return out
+        Q = torch.linalg.qr(weight)[0]
+
+        motion_feat_diag = torch.diag_embed(motion_feat)  # Alpha, diagonal matrix
+        motion_decomposition = torch.matmul(motion_feat_diag, Q.T)
+        motion_vec = torch.sum(motion_decomposition, dim=1)
+        if upcast_to_fp32:
+            motion_vec = motion_vec.to(dtype=original_motion_dtype)
+
+        return motion_vec
 
 
-class WanAnimateFaceEmbedder(nn.Module):
+class WanAnimateFaceEncoder(nn.Module):
     def __init__(self, in_dim: int, hidden_dim: int, num_heads: int, kernel_size: int = 3, eps: float = 1e-6):
         super().__init__()
         self.time_causal_padding = (kernel_size - 1, 0)
@@ -216,7 +309,7 @@ class WanAnimateFaceEmbedder(nn.Module):
 
         self.padding_tokens = nn.Parameter(torch.zeros(1, 1, 1, hidden_dim))
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = x.permute(0, 2, 1)
         batch_size, channels, num_frames = x.shape
 
@@ -251,12 +344,15 @@ class WanAnimateFaceEmbedder(nn.Module):
 class WanTimeTextImageMotionFaceEmbedding(nn.Module):
     def __init__(
         self,
-        dim: int,
-        time_freq_dim: int,
-        time_proj_dim: int,
-        text_embed_dim: int,
-        image_embed_dim: int,
-        motion_encoder_dim: int,
+        dim: int = 5120,  # num_attention_heads * attention_head_dim = 40 * 128 = 5120
+        time_freq_dim: int = 256,
+        time_proj_dim: int = 30720,  # (40 * 128) * 6 = 30720
+        text_embed_dim: int = 4096,
+        image_embed_dim: int = 1280,
+        motion_encoder_size: int = 512,
+        motion_style_dim: int = 512,
+        motion_dim: int = 20,
+        motion_encoder_dim: int = 512,
     ):
         super().__init__()
 
@@ -266,8 +362,10 @@ class WanTimeTextImageMotionFaceEmbedding(nn.Module):
         self.time_proj = nn.Linear(dim, time_proj_dim)
         self.text_embedder = PixArtAlphaTextProjection(text_embed_dim, dim, act_fn="gelu_tanh")
         self.image_embedder = WanImageEmbedding(image_embed_dim, dim)
-        self.motion_embedder = WanAnimateMotionEmbedder(size=512, style_dim=512, motion_dim=20)
-        self.face_embedder = WanAnimateFaceEmbedder(in_dim=motion_encoder_dim, hidden_dim=dim, num_heads=4)
+        self.motion_embedder = WanAnimateMotionEncoder(
+            size=motion_encoder_size, style_dim=motion_style_dim, motion_dim=motion_dim, out_dim=motion_encoder_dim
+        )
+        self.face_embedder = WanAnimateFaceEncoder(in_dim=motion_encoder_dim, hidden_dim=dim, num_heads=4)
 
     def forward(
         self,
@@ -275,6 +373,7 @@ class WanTimeTextImageMotionFaceEmbedding(nn.Module):
         encoder_hidden_states: torch.Tensor,
         encoder_hidden_states_image: Optional[torch.Tensor] = None,
         face_pixel_values: Optional[torch.Tensor] = None,
+        upcast_to_fp32: bool = True,
     ):
         timestep = self.timesteps_proj(timestep)
 
@@ -294,7 +393,7 @@ class WanTimeTextImageMotionFaceEmbedding(nn.Module):
         face_pixel_values_flat = face_pixel_values.permute(0, 2, 1, 3, 4).reshape(-1, channels, height, width)
 
         # Extract motion features using motion embedder
-        motion_vec = self.motion_embedder(face_pixel_values_flat)
+        motion_vec = self.motion_embedder(face_pixel_values_flat, upcast_to_fp32=upcast_to_fp32)
         motion_vec = motion_vec.view(batch_size, num_face_frames, -1)
 
         # Encode motion vectors through face embedder
@@ -452,6 +551,9 @@ class WanAnimateTransformer3DModel(
         image_dim: Optional[int] = 1280,
         added_kv_proj_dim: Optional[int] = 5120,
         rope_max_seq_len: int = 1024,
+        motion_encoder_size: int = 512,
+        motion_style_dim: int = 512,
+        motion_dim: int = 20,
         motion_encoder_dim: int = 512,
     ) -> None:
         super().__init__()
@@ -471,6 +573,9 @@ class WanAnimateTransformer3DModel(
             time_proj_dim=inner_dim * 6,
             text_embed_dim=text_dim,
             image_embed_dim=image_dim,
+            motion_encoder_size=motion_encoder_size,
+            motion_style_dim=motion_style_dim,
+            motion_dim=motion_dim,
             motion_encoder_dim=motion_encoder_dim,
         )
 
