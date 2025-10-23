@@ -25,7 +25,7 @@ from ...models import StableCascadeUNet
 from ...schedulers import DDPMWuerstchenScheduler
 from ...utils import BaseOutput, is_torch_xla_available, logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
-from ..pipeline_utils import DiffusionPipeline
+from ..pipeline_utils import DeprecatedPipelineMixin, DiffusionPipeline
 
 
 if is_torch_xla_available():
@@ -77,7 +77,7 @@ class StableCascadePriorPipelineOutput(BaseOutput):
     negative_prompt_embeds_pooled: Union[torch.Tensor, np.ndarray]
 
 
-class StableCascadePriorPipeline(DiffusionPipeline):
+class StableCascadePriorPipeline(DeprecatedPipelineMixin, DiffusionPipeline):
     """
     Pipeline for generating image prior for Stable Cascade.
 

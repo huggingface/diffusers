@@ -21,7 +21,7 @@ from ...models import StableCascadeUNet
 from ...schedulers import DDPMWuerstchenScheduler
 from ...utils import is_torch_version, is_torch_xla_available, logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
-from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
+from ..pipeline_utils import DeprecatedPipelineMixin, DiffusionPipeline, ImagePipelineOutput
 from ..wuerstchen.modeling_paella_vq_model import PaellaVQModel
 
 
@@ -55,7 +55,7 @@ EXAMPLE_DOC_STRING = """
 """
 
 
-class StableCascadeDecoderPipeline(DiffusionPipeline):
+class StableCascadeDecoderPipeline(DeprecatedPipelineMixin, DiffusionPipeline):
     """
     Pipeline for generating images from the Stable Cascade model.
 

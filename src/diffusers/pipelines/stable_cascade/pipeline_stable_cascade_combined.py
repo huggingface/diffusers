@@ -20,7 +20,7 @@ from transformers import CLIPImageProcessor, CLIPTextModelWithProjection, CLIPTo
 from ...models import StableCascadeUNet
 from ...schedulers import DDPMWuerstchenScheduler
 from ...utils import is_torch_version, replace_example_docstring
-from ..pipeline_utils import DiffusionPipeline
+from ..pipeline_utils import DeprecatedPipelineMixin, DiffusionPipeline
 from ..wuerstchen.modeling_paella_vq_model import PaellaVQModel
 from .pipeline_stable_cascade import StableCascadeDecoderPipeline
 from .pipeline_stable_cascade_prior import StableCascadePriorPipeline
@@ -42,7 +42,7 @@ TEXT2IMAGE_EXAMPLE_DOC_STRING = """
 """
 
 
-class StableCascadeCombinedPipeline(DiffusionPipeline):
+class StableCascadeCombinedPipeline(DeprecatedPipelineMixin, DiffusionPipeline):
     """
     Combined Pipeline for text-to-image generation using Stable Cascade.
 
