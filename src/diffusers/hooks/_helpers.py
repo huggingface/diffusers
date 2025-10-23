@@ -110,6 +110,7 @@ def _register_attention_processors_metadata():
     from ..models.transformers.transformer_flux import FluxAttnProcessor
     from ..models.transformers.transformer_qwenimage import QwenDoubleStreamAttnProcessor2_0
     from ..models.transformers.transformer_wan import WanAttnProcessor2_0
+    from ..models.transformers.transformer_hunyuanimage import HunyuanImageAttnProcessor
 
     # AttnProcessor2_0
     AttentionProcessorRegistry.register(
@@ -149,6 +150,14 @@ def _register_attention_processors_metadata():
         ),
     )
 
+    # HunyuanImageAttnProcessor
+    AttentionProcessorRegistry.register(
+        model_class=HunyuanImageAttnProcessor,
+        metadata=AttentionProcessorMetadata(
+            skip_processor_output_fn=_skip_proc_output_fn_Attention_HunyuanImageAttnProcessor,
+        ),
+    )
+
 
 def _register_transformer_blocks_metadata():
     from ..models.attention import BasicTransformerBlock
@@ -166,7 +175,7 @@ def _register_transformer_blocks_metadata():
     from ..models.transformers.transformer_mochi import MochiTransformerBlock
     from ..models.transformers.transformer_qwenimage import QwenImageTransformerBlock
     from ..models.transformers.transformer_wan import WanTransformerBlock
-
+    from ..models.transformers.transformer_hunyuanimage import HunyuanImageTransformerBlock, HunyuanImageSingleTransformerBlock
     # BasicTransformerBlock
     TransformerBlockRegistry.register(
         model_class=BasicTransformerBlock,
@@ -284,6 +293,23 @@ def _register_transformer_blocks_metadata():
     )
 
 
+    # HunyuanImage2.1
+    TransformerBlockRegistry.register(
+        model_class=HunyuanImageTransformerBlock,
+        metadata=TransformerBlockMetadata(
+            return_hidden_states_index=0,
+            return_encoder_hidden_states_index=1,
+        ),
+    )
+    TransformerBlockRegistry.register(
+        model_class=HunyuanImageSingleTransformerBlock,
+        metadata=TransformerBlockMetadata(
+            return_hidden_states_index=0,
+            return_encoder_hidden_states_index=1,
+        ),
+    )
+
+
 # fmt: off
 def _skip_attention___ret___hidden_states(self, *args, **kwargs):
     hidden_states = kwargs.get("hidden_states", None)
@@ -308,4 +334,5 @@ _skip_proc_output_fn_Attention_WanAttnProcessor2_0 = _skip_attention___ret___hid
 # not sure what this is yet.
 _skip_proc_output_fn_Attention_FluxAttnProcessor = _skip_attention___ret___hidden_states
 _skip_proc_output_fn_Attention_QwenDoubleStreamAttnProcessor2_0 = _skip_attention___ret___hidden_states
+_skip_proc_output_fn_Attention_HunyuanImageAttnProcessor = _skip_attention___ret___hidden_states
 # fmt: on
