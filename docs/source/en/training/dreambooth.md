@@ -548,4 +548,4 @@ Training the DeepFloyd IF model can be challenging, but here are some tips that 
 
 Congratulations on training your DreamBooth model! To learn more about how to use your new model, the following guide may be helpful:
 
-- Learn how to [load a DreamBooth](../using-diffusers/loading_adapters) model for inference if you trained your model with LoRA.
+- Learn how to [load a DreamBooth](../using-diffusers/dreambooth) model for inference if you trained your model with LoRA.
