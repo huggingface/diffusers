@@ -166,7 +166,7 @@ class SkipLayerGuidance(BaseGuidance):
                 registry.remove_hook(hook_name, recurse=True)
 
     def prepare_inputs(self, data: Dict[str, Tuple[torch.Tensor, torch.Tensor]]) -> List["BlockState"]:
-        if self.num_conditions == 1 or not self._is_cfg_enabled() and not self._is_slg_enabled():
+        if self.num_conditions == 1:
             tuple_indices = [0]
             input_predictions = ["pred_cond"]
         elif self.num_conditions == 2:

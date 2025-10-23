@@ -134,7 +134,7 @@ class AutoGuidance(BaseGuidance):
                 registry.remove_hook(name, recurse=True)
 
     def prepare_inputs(self, data: Dict[str, Tuple[torch.Tensor, torch.Tensor]]) -> List["BlockState"]:
-        tuple_indices = [0] if self.num_conditions == 1 or not self._is_ag_enabled() else [0, 1]
+        tuple_indices = [0] if self.num_conditions == 1 else [0, 1]
         data_batches = []
         for tuple_idx, input_prediction in zip(tuple_indices, self._input_predictions):
             data_batch = self._prepare_batch(data, tuple_idx, input_prediction)
