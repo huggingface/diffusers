@@ -110,7 +110,7 @@ image.save("image.png")
 
 use `distilled_guidance_scale` with the guidance-distilled checkpoint, 
 
-```
+```py
 import torch
 from diffusers import HunyuanImagePipeline
 pipe = HunyuanImagePipeline.from_pretrained("hunyuanvideo-community/HunyuanImage-2.1-Distilled-Diffusers", torch_dtype=torch.bfloat16)
