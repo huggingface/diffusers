@@ -2115,6 +2115,8 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
              - a dict, e.g. torch_dtype={"unet": torch.bfloat16, "default": torch.float32}
              - if potentially override ComponentSpec if passed a different loading field in kwargs, e.g.
                `pretrained_model_name_or_path`, `variant`, `revision`, etc.
+             - if potentially override ComponentSpec if passed a different loading field in kwargs, e.g.
+               `pretrained_model_name_or_path`, `variant`, `revision`, etc.
         """
 
         if names is None:
@@ -2403,6 +2405,8 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
             ... ) >>> ModularPipeline._component_spec_to_dict(spec) {
                 "type_hint": ("diffusers", "UNet2DConditionModel"), "pretrained_model_name_or_path": "path/to/repo",
                 "subfolder": "subfolder", "variant": None, "revision": None,
+                "type_hint": ("diffusers", "UNet2DConditionModel"), "pretrained_model_name_or_path": "path/to/repo",
+                "subfolder": "subfolder", "variant": None, "revision": None,
             }
         """
         if component_spec.default_creation_method != "from_pretrained":
@@ -2432,7 +2436,7 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
               Library name and class name of the component. (e.g. ("diffusers", "UNet2DConditionModel"))
           - All loading fields defined by `component_spec.loading_fields()`, typically:
               - "pretrained_model_name_or_path": Optional[str]
-                  The model pretrained_model_name_or_pathsitory (e.g., "stabilityai/stable-diffusion-xl").
+                  The model repository (e.g., "stabilityai/stable-diffusion-xl").
               - "subfolder": Optional[str]
                   A subfolder within the pretrained_model_name_or_path where this component lives.
               - "variant": Optional[str]
@@ -2451,6 +2455,13 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
             ComponentSpec: A reconstructed ComponentSpec object.
 
         Example:
+            >>> spec_dict = { ... "type_hint": ("diffusers", "UNet2DConditionModel"), ...
+            "pretrained_model_name_or_path": "stabilityai/stable-diffusion-xl", ... "subfolder": "unet", ... "variant":
+            None, ... "revision": None, ... } >>> ModularPipeline._dict_to_component_spec("unet", spec_dict)
+            ComponentSpec(
+                name="unet", type_hint=UNet2DConditionModel, config=None,
+                pretrained_model_name_or_path="stabilityai/stable-diffusion-xl", subfolder="unet", variant=None,
+                revision=None, default_creation_method="from_pretrained"
             >>> spec_dict = { ... "type_hint": ("diffusers", "UNet2DConditionModel"), ...
             "pretrained_model_name_or_path": "stabilityai/stable-diffusion-xl", ... "subfolder": "unet", ... "variant":
             None, ... "revision": None, ... } >>> ModularPipeline._dict_to_component_spec("unet", spec_dict)
