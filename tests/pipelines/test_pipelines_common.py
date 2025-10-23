@@ -2124,10 +2124,6 @@ class PipelineTesterMixin:
                         f"encode_prompt has no default in either encode_prompt or __call__."
                     )
 
-        if "_cut_context" in encode_prompt_param_names and "_cut_context" not in encode_prompt_inputs:
-            # As in full_pipeline, `_cut_context` is set to True.
-            encode_prompt_inputs["_cut_context"] = True
-
         # Compute `encode_prompt()`.
         with torch.no_grad():
             encoded_prompt_outputs = pipe_with_just_text_encoder.encode_prompt(**encode_prompt_inputs)
