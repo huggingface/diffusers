@@ -12,22 +12,28 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import inspect
 import unittest
 
 import numpy as np
 import torch
-from transformers import Qwen2_5_VLForConditionalGeneration, Qwen2Tokenizer, T5EncoderModel, Qwen2_5_VLConfig, T5Config, ByT5Tokenizer
+from transformers import (
+    ByT5Tokenizer,
+    Qwen2_5_VLConfig,
+    Qwen2_5_VLForConditionalGeneration,
+    Qwen2Tokenizer,
+    T5Config,
+    T5EncoderModel,
+)
 
 from diffusers import (
+    AdaptiveProjectedMixGuidance,
     AutoencoderKLHunyuanImage,
     FlowMatchEulerDiscreteScheduler,
     HunyuanImagePipeline,
     HunyuanImageTransformer2DModel,
-    AdaptiveProjectedMixGuidance,
 )
 
-from ...testing_utils import enable_full_determinism, torch_device
+from ...testing_utils import enable_full_determinism
 from ..test_pipelines_common import (
     FirstBlockCacheTesterMixin,
     PipelineTesterMixin,
@@ -94,7 +100,7 @@ class HunyuanImagePipelineFastTests(
 
         torch.manual_seed(0)
         scheduler = FlowMatchEulerDiscreteScheduler(shift=7.0)
-        
+
         if guidance_embeds:
             torch.manual_seed(0)
             guider = AdaptiveProjectedMixGuidance(adaptive_projected_guidance_start_step=2)
@@ -111,7 +117,7 @@ class HunyuanImagePipelineFastTests(
                 "num_attention_heads": 2,
                 "num_key_value_heads": 2,
                 "rope_scaling": {
-                    "mrope_section": [2, 2, 4], 
+                    "mrope_section": [2, 2, 4],
                     "rope_type": "default",
                     "type": "default",
                 },
@@ -199,7 +205,10 @@ class HunyuanImagePipelineFastTests(
         )
         output_slice = generated_image[0, -3:, -3:].flatten().cpu().numpy()
 
-        self.assertTrue(np.abs(output_slice - expected_slice_np).max() < 1e-3, f"output_slice: {output_slice}, expected_slice_np: {expected_slice_np}")
+        self.assertTrue(
+            np.abs(output_slice - expected_slice_np).max() < 1e-3,
+            f"output_slice: {output_slice}, expected_slice_np: {expected_slice_np}",
+        )
 
     def test_inference_with_distilled_guidance(self):
         device = "cpu"
@@ -215,11 +224,15 @@ class HunyuanImagePipelineFastTests(
         generated_image = image[0]
         self.assertEqual(generated_image.shape, (3, 16, 16))
 
-        expected_slice_np = np.array([0.63667065, 0.5187377, 0.66757566, 0.6320319, 0.4913387, 0.54813194,
-                                     0.5335031, 0.5736143, 0.5461346])
+        expected_slice_np = np.array(
+            [0.63667065, 0.5187377, 0.66757566, 0.6320319, 0.4913387, 0.54813194, 0.5335031, 0.5736143, 0.5461346]
+        )
         output_slice = generated_image[0, -3:, -3:].flatten().cpu().numpy()
 
-        self.assertTrue(np.abs(output_slice - expected_slice_np).max() < 1e-3, f"output_slice: {output_slice}, expected_slice_np: {expected_slice_np}")
+        self.assertTrue(
+            np.abs(output_slice - expected_slice_np).max() < 1e-3,
+            f"output_slice: {output_slice}, expected_slice_np: {expected_slice_np}",
+        )
 
     def test_vae_tiling(self, expected_diff_max: float = 0.2):
         generator_device = "cpu"

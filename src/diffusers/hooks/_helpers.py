@@ -108,9 +108,9 @@ def _register_attention_processors_metadata():
     from ..models.attention_processor import AttnProcessor2_0
     from ..models.transformers.transformer_cogview4 import CogView4AttnProcessor
     from ..models.transformers.transformer_flux import FluxAttnProcessor
+    from ..models.transformers.transformer_hunyuanimage import HunyuanImageAttnProcessor
     from ..models.transformers.transformer_qwenimage import QwenDoubleStreamAttnProcessor2_0
     from ..models.transformers.transformer_wan import WanAttnProcessor2_0
-    from ..models.transformers.transformer_hunyuanimage import HunyuanImageAttnProcessor
 
     # AttnProcessor2_0
     AttentionProcessorRegistry.register(
@@ -171,11 +171,15 @@ def _register_transformer_blocks_metadata():
         HunyuanVideoTokenReplaceTransformerBlock,
         HunyuanVideoTransformerBlock,
     )
+    from ..models.transformers.transformer_hunyuanimage import (
+        HunyuanImageSingleTransformerBlock,
+        HunyuanImageTransformerBlock,
+    )
     from ..models.transformers.transformer_ltx import LTXVideoTransformerBlock
     from ..models.transformers.transformer_mochi import MochiTransformerBlock
     from ..models.transformers.transformer_qwenimage import QwenImageTransformerBlock
     from ..models.transformers.transformer_wan import WanTransformerBlock
-    from ..models.transformers.transformer_hunyuanimage import HunyuanImageTransformerBlock, HunyuanImageSingleTransformerBlock
+
     # BasicTransformerBlock
     TransformerBlockRegistry.register(
         model_class=BasicTransformerBlock,
@@ -291,7 +295,6 @@ def _register_transformer_blocks_metadata():
             return_encoder_hidden_states_index=0,
         ),
     )
-
 
     # HunyuanImage2.1
     TransformerBlockRegistry.register(

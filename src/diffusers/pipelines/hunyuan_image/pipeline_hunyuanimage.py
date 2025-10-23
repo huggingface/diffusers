@@ -347,7 +347,9 @@ class HunyuanImagePipeline(DiffusionPipeline):
             glyph_texts = [extract_glyph_text(p) for p in prompt]
             for glyph_text in glyph_texts:
                 if glyph_text is None:
-                    glyph_text_embeds = torch.zeros((1, self.tokenizer_2_max_length, self.text_encoder_2.config.d_model), device=device)
+                    glyph_text_embeds = torch.zeros(
+                        (1, self.tokenizer_2_max_length, self.text_encoder_2.config.d_model), device=device
+                    )
                     glyph_text_embeds_mask = torch.zeros(
                         (1, self.tokenizer_2_max_length), device=device, dtype=torch.int64
                     )
