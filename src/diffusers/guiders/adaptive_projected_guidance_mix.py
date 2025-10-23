@@ -92,9 +92,7 @@ class AdaptiveProjectedMixGuidance(BaseGuidance):
         if self._step == 0:
             if self.adaptive_projected_guidance_momentum is not None:
                 self.momentum_buffer = MomentumBuffer(self.adaptive_projected_guidance_momentum)
-        tuple_indices = (
-            [0] if self.num_conditions == 1 else [0, 1]
-        )
+        tuple_indices = [0] if self.num_conditions == 1 else [0, 1]
         data_batches = []
         for tuple_idx, input_prediction in zip(tuple_indices, self._input_predictions):
             data_batch = self._prepare_batch(data, tuple_idx, input_prediction)
