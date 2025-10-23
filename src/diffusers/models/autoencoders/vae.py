@@ -286,7 +286,12 @@ class Decoder(nn.Module):
 
         sample = self.conv_in(sample)
 
-        upscale_dtype = self.up_blocks[0].resnets[0].norm1.weight.dtype
+        upscale_norm = self.up_blocks[0].resnets[0].norm1
+        if isinstance(upscale_norm, SpatialNorm):
+            upscale_dtype = upscale_norm.norm_layer.weight.dtype
+        else:
+            upscale_dtype = upscale_norm.weight.dtype
+
         if torch.is_grad_enabled() and self.gradient_checkpointing:
             # middle
             sample = self._gradient_checkpointing_func(self.mid_block, sample, latent_embeds)
