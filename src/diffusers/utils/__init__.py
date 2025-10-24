@@ -38,7 +38,7 @@ from .constants import (
     WEIGHTS_INDEX_NAME,
     WEIGHTS_NAME,
 )
-from .deprecation_utils import deprecate
+from .deprecation_utils import _maybe_remap_transformers_class, deprecate
 from .doc_utils import replace_example_docstring
 from .dynamic_modules_utils import get_class_from_dynamic_module
 from .export_utils import export_to_gif, export_to_obj, export_to_ply, export_to_video
