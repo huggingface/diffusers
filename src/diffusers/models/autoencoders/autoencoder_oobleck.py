@@ -25,6 +25,7 @@ from ...utils import BaseOutput
 from ...utils.accelerate_utils import apply_forward_hook
 from ...utils.torch_utils import randn_tensor
 from ..modeling_utils import ModelMixin
+from .vae import AutoencoderMixin
 
 
 class Snake1d(nn.Module):
@@ -291,7 +292,7 @@ class OobleckDecoder(nn.Module):
         return hidden_state
 
 
-class AutoencoderOobleck(ModelMixin, ConfigMixin):
+class AutoencoderOobleck(ModelMixin, AutoencoderMixin, ConfigMixin):
     r"""
     An autoencoder for encoding waveforms into latents and decoding latent representations into waveforms. First
     introduced in Stable Audio.
@@ -354,20 +355,6 @@ class AutoencoderOobleck(ModelMixin, ConfigMixin):
             channel_multiples=channel_multiples,
         )
 
-        self.use_slicing = False
-
-    def enable_slicing(self):
-        r"""
-        Enable sliced VAE decoding. When this option is enabled, the VAE will split the input tensor in slices to
-        compute decoding in several steps. This is useful to save some memory and allow larger batch sizes.
-        """
-        self.use_slicing = True
-
-    def disable_slicing(self):
-        r"""
-        Disable sliced VAE decoding. If `enable_slicing` was previously enabled, this method will go back to computing
-        decoding in one step.
-        """
         self.use_slicing = False
 
     @apply_forward_hook
