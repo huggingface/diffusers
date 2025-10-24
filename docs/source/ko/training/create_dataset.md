@@ -11,11 +11,8 @@
 - 이미지 폴더를 `--train_data_dir` 인수에 제공합니다.
 - 데이터셋을 Hub에 업로드하고 데이터셋 리포지토리 id를 `--dataset_name` 인수에 전달합니다.
 
-<Tip>
-
-💡 학습에 사용할 이미지 데이터셋을 만드는 방법에 대한 자세한 내용은 [이미지 데이터셋 만들기](https://huggingface.co/docs/datasets/image_dataset) 가이드를 참고하세요.
-
-</Tip>
+> [!TIP]
+> 💡 학습에 사용할 이미지 데이터셋을 만드는 방법에 대한 자세한 내용은 [이미지 데이터셋 만들기](https://huggingface.co/docs/datasets/image_dataset) 가이드를 참고하세요.
 
 ## 폴더 형태로 데이터셋 구축하기
 
@@ -40,11 +37,8 @@ accelerate launch train_unconditional.py \
 
 ## Hub에 데이터 올리기
 
-<Tip>
-
-💡 데이터셋을 만들고 Hub에 업로드하는 것에 대한 자세한 내용은 [🤗 Datasets을 사용한 이미지 검색](https://huggingface.co/blog/image-search-datasets) 게시물을 참고하세요.
-
-</Tip>
+> [!TIP]
+> 💡 데이터셋을 만들고 Hub에 업로드하는 것에 대한 자세한 내용은 [🤗 Datasets을 사용한 이미지 검색](https://huggingface.co/blog/image-search-datasets) 게시물을 참고하세요.
 
 PIL 인코딩된 이미지가 포함된 `이미지` 열을 생성하는 [이미지 폴더](https://huggingface.co/docs/datasets/image_load#imagefolder) 기능을 사용하여 데이터셋 생성을 시작합니다.
 
@@ -75,7 +69,7 @@ dataset = load_dataset(
 [push_to_hub(https://huggingface.co/docs/datasets/v2.13.1/en/package_reference/main_classes#datasets.Dataset.push_to_hub) 을 사용해서 Hub에 데이터셋을 업로드 합니다:
 
 ```python
-# 터미널에서 huggingface-cli login 커맨드를 이미 실행했다고 가정합니다
+# 터미널에서 hf auth login 커맨드를 이미 실행했다고 가정합니다
 dataset.push_to_hub("name_of_your_dataset")
 
 # 개인 repo로 push 하고 싶다면, `private=True` 을 추가하세요:

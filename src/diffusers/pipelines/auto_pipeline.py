@@ -49,6 +49,7 @@ from .flux import (
     FluxControlPipeline,
     FluxImg2ImgPipeline,
     FluxInpaintPipeline,
+    FluxKontextPipeline,
     FluxPipeline,
 )
 from .hunyuandit import HunyuanDiTPipeline
@@ -90,6 +91,15 @@ from .pag import (
     StableDiffusionXLPAGPipeline,
 )
 from .pixart_alpha import PixArtAlphaPipeline, PixArtSigmaPipeline
+from .qwenimage import (
+    QwenImageControlNetPipeline,
+    QwenImageEditInpaintPipeline,
+    QwenImageEditPipeline,
+    QwenImageEditPlusPipeline,
+    QwenImageImg2ImgPipeline,
+    QwenImageInpaintPipeline,
+    QwenImagePipeline,
+)
 from .sana import SanaPipeline
 from .stable_cascade import StableCascadeCombinedPipeline, StableCascadeDecoderPipeline
 from .stable_diffusion import (
@@ -142,12 +152,15 @@ AUTO_TEXT2IMAGE_PIPELINES_MAPPING = OrderedDict(
         ("flux", FluxPipeline),
         ("flux-control", FluxControlPipeline),
         ("flux-controlnet", FluxControlNetPipeline),
+        ("flux-kontext", FluxKontextPipeline),
         ("lumina", LuminaPipeline),
         ("lumina2", Lumina2Pipeline),
         ("chroma", ChromaPipeline),
         ("cogview3", CogView3PlusPipeline),
         ("cogview4", CogView4Pipeline),
         ("cogview4-control", CogView4ControlPipeline),
+        ("qwenimage", QwenImagePipeline),
+        ("qwenimage-controlnet", QwenImageControlNetPipeline),
     ]
 )
 
@@ -171,6 +184,10 @@ AUTO_IMAGE2IMAGE_PIPELINES_MAPPING = OrderedDict(
         ("flux", FluxImg2ImgPipeline),
         ("flux-controlnet", FluxControlNetImg2ImgPipeline),
         ("flux-control", FluxControlImg2ImgPipeline),
+        ("flux-kontext", FluxKontextPipeline),
+        ("qwenimage", QwenImageImg2ImgPipeline),
+        ("qwenimage-edit", QwenImageEditPipeline),
+        ("qwenimage-edit-plus", QwenImageEditPlusPipeline),
     ]
 )
 
@@ -192,6 +209,8 @@ AUTO_INPAINT_PIPELINES_MAPPING = OrderedDict(
         ("flux-controlnet", FluxControlNetInpaintPipeline),
         ("flux-control", FluxControlInpaintPipeline),
         ("stable-diffusion-pag", StableDiffusionPAGInpaintPipeline),
+        ("qwenimage", QwenImageInpaintPipeline),
+        ("qwenimage-edit", QwenImageEditInpaintPipeline),
     ]
 )
 
@@ -390,12 +409,8 @@ class AutoPipelineForText2Image(ConfigMixin):
                 Load weights from a specified variant filename such as `"fp16"` or `"ema"`. This is ignored when
                 loading `from_flax`.
 
-        <Tip>
-
-        To use private or [gated](https://huggingface.co/docs/hub/models-gated#gated-models) models, log-in with
-        `huggingface-cli login`.
-
-        </Tip>
+        > [!TIP] > To use private or [gated](https://huggingface.co/docs/hub/models-gated#gated-models) models, log-in
+        with `hf > auth login`.
 
         Examples:
 
@@ -685,12 +700,8 @@ class AutoPipelineForImage2Image(ConfigMixin):
                 Load weights from a specified variant filename such as `"fp16"` or `"ema"`. This is ignored when
                 loading `from_flax`.
 
-        <Tip>
-
-        To use private or [gated](https://huggingface.co/docs/hub/models-gated#gated-models) models, log-in with
-        `huggingface-cli login`.
-
-        </Tip>
+        > [!TIP] > To use private or [gated](https://huggingface.co/docs/hub/models-gated#gated-models) models, log-in
+        with `hf > auth login`.
 
         Examples:
 
@@ -995,12 +1006,8 @@ class AutoPipelineForInpainting(ConfigMixin):
                 Load weights from a specified variant filename such as `"fp16"` or `"ema"`. This is ignored when
                 loading `from_flax`.
 
-        <Tip>
-
-        To use private or [gated](https://huggingface.co/docs/hub/models-gated#gated-models) models, log-in with
-        `huggingface-cli login`.
-
-        </Tip>
+        > [!TIP] > To use private or [gated](https://huggingface.co/docs/hub/models-gated#gated-models) models, log-in
+        with `hf > auth login`.
 
         Examples:
 

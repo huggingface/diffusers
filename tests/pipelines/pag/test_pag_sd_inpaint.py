@@ -29,7 +29,8 @@ from diffusers import (
     StableDiffusionPAGInpaintPipeline,
     UNet2DConditionModel,
 )
-from diffusers.utils.testing_utils import (
+
+from ...testing_utils import (
     backend_empty_cache,
     enable_full_determinism,
     floats_tensor,
@@ -38,7 +39,6 @@ from diffusers.utils.testing_utils import (
     slow,
     torch_device,
 )
-
 from ..pipeline_params import (
     TEXT_GUIDED_IMAGE_INPAINTING_BATCH_PARAMS,
     TEXT_GUIDED_IMAGE_INPAINTING_PARAMS,
@@ -255,7 +255,7 @@ class StableDiffusionPAGInpaintPipelineFastTests(
 @require_torch_accelerator
 class StableDiffusionPAGPipelineIntegrationTests(unittest.TestCase):
     pipeline_class = StableDiffusionPAGInpaintPipeline
-    repo_id = "runwayml/stable-diffusion-v1-5"
+    repo_id = "stable-diffusion-v1-5/stable-diffusion-v1-5"
 
     def setUp(self):
         super().setUp()

@@ -21,7 +21,8 @@ from datasets import load_dataset
 from parameterized import parameterized
 
 from diffusers import AutoencoderOobleck
-from diffusers.utils.testing_utils import (
+
+from ...testing_utils import (
     backend_empty_cache,
     enable_full_determinism,
     floats_tensor,
@@ -29,14 +30,14 @@ from diffusers.utils.testing_utils import (
     torch_all_close,
     torch_device,
 )
-
-from ..test_modeling_common import ModelTesterMixin, UNetTesterMixin
+from ..test_modeling_common import ModelTesterMixin
+from .testing_utils import AutoencoderTesterMixin
 
 
 enable_full_determinism()
 
 
-class AutoencoderOobleckTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
+class AutoencoderOobleckTests(ModelTesterMixin, AutoencoderTesterMixin, unittest.TestCase):
     model_class = AutoencoderOobleck
     main_input_name = "sample"
     base_precision = 1e-2
@@ -105,10 +106,6 @@ class AutoencoderOobleckTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCa
             output_without_slicing_2.detach().cpu().numpy().all(),
             "Without slicing outputs should match with the outputs when slicing is manually disabled.",
         )
-
-    @unittest.skip("Test unsupported.")
-    def test_forward_with_norm_groups(self):
-        pass
 
     @unittest.skip("No attention module used in this model")
     def test_set_attn_processor_for_determinism(self):

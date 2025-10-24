@@ -50,7 +50,7 @@ from diffusers.utils import export_to_video
 pipeline_quant_config = PipelineQuantizationConfig(
   quant_backend="torchao",
   quant_kwargs={"quant_type": "int8wo"},
-  components_to_quantize=["transformer"]
+  components_to_quantize="transformer"
 )
 
 # fp8 layerwise weight-casting

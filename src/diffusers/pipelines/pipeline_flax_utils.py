@@ -276,12 +276,8 @@ class FlaxDiffusionPipeline(ConfigMixin, PushToHubMixin):
                 Can be used to overwrite load and saveable variables (the pipeline components) of the specific pipeline
                 class. The overwritten components are passed directly to the pipelines `__init__` method.
 
-        <Tip>
-
-        To use private or [gated models](https://huggingface.co/docs/hub/models-gated#gated-models), log-in with
-        `huggingface-cli login`.
-
-        </Tip>
+        > [!TIP] > To use private or [gated models](https://huggingface.co/docs/hub/models-gated#gated-models), log-in
+        with `hf > auth login`.
 
         Examples:
 
@@ -312,6 +308,11 @@ class FlaxDiffusionPipeline(ConfigMixin, PushToHubMixin):
         >>> dpm_params["scheduler"] = dpmpp_state
         ```
         """
+        logger.warning(
+            "Flax classes are deprecated and will be removed in Diffusers v1.0.0. We "
+            "recommend migrating to PyTorch classes or pinning your version of Diffusers."
+        )
+
         cache_dir = kwargs.pop("cache_dir", None)
         proxies = kwargs.pop("proxies", None)
         local_files_only = kwargs.pop("local_files_only", False)

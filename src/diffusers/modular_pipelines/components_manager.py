@@ -25,6 +25,7 @@ from ..utils import (
     is_accelerate_available,
     logging,
 )
+from ..utils.torch_utils import get_device
 
 
 if is_accelerate_available():
@@ -161,7 +162,9 @@ class AutoOffloadStrategy:
 
         current_module_size = model.get_memory_footprint()
 
-        mem_on_device = torch.cuda.mem_get_info(execution_device.index)[0]
+        device_type = execution_device.type
+        device_module = getattr(torch, device_type, torch.cuda)
+        mem_on_device = device_module.mem_get_info(execution_device.index)[0]
         mem_on_device = mem_on_device - self.memory_reserve_margin
         if current_module_size < mem_on_device:
             return []
@@ -283,11 +286,7 @@ class ComponentsManager:
     encoders, etc.) across different modular pipelines. It includes features for duplicate detection, memory
     management, and component organization.
 
-    <Tip warning={true}>
-
-        This is an experimental feature and is likely to change in the future.
-
-    </Tip>
+    > [!WARNING] > This is an experimental feature and is likely to change in the future.
 
     Example:
         ```python
@@ -301,7 +300,7 @@ class ComponentsManager:
         cm.add("vae", vae_model, collection="sdxl")
 
         # Enable auto offloading
-        cm.enable_auto_cpu_offload(device="cuda")
+        cm.enable_auto_cpu_offload()
 
         # Retrieve components
         unet = cm.get_one(name="unet", collection="sdxl")
@@ -386,6 +385,7 @@ class ComponentsManager:
                  id(component) is Python's built-in unique identifier for the object
         """
         component_id = f"{name}_{id(component)}"
+        is_new_component = True
 
         # check for duplicated components
         for comp_id, comp in self.components.items():
@@ -394,6 +394,7 @@ class ComponentsManager:
                 if comp_name == name:
                     logger.warning(f"ComponentsManager: component '{name}' already exists as '{comp_id}'")
                     component_id = comp_id
+                    is_new_component = False
                     break
                 else:
                     logger.warning(
@@ -426,7 +427,9 @@ class ComponentsManager:
                     logger.warning(
                         f"ComponentsManager: removing existing {name} from collection '{collection}': {comp_id}"
                     )
-                    self.remove(comp_id)
+                    # remove existing component from this collection (if it is not in any other collection, will be removed from ComponentsManager)
+                    self.remove_from_collection(comp_id, collection)
+
                 self.collections[collection].add(component_id)
                 logger.info(
                     f"ComponentsManager: added component '{name}' in collection '{collection}': {component_id}"
@@ -434,10 +437,28 @@ class ComponentsManager:
         else:
             logger.info(f"ComponentsManager: added component '{name}' as '{component_id}'")
 
-        if self._auto_offload_enabled:
+        if self._auto_offload_enabled and is_new_component:
             self.enable_auto_cpu_offload(self._auto_offload_device)
 
         return component_id
+
+    def remove_from_collection(self, component_id: str, collection: str):
+        """
+        Remove a component from a collection.
+        """
+        if collection not in self.collections:
+            logger.warning(f"Collection '{collection}' not found in ComponentsManager")
+            return
+        if component_id not in self.collections[collection]:
+            logger.warning(f"Component '{component_id}' not found in collection '{collection}'")
+            return
+        # remove from the collection
+        self.collections[collection].remove(component_id)
+        # check if this component is in any other collection
+        comp_colls = [coll for coll, comps in self.collections.items() if component_id in comps]
+        if not comp_colls:  # only if no other collection contains this component, remove it
+            logger.warning(f"ComponentsManager: removing component '{component_id}' from ComponentsManager")
+            self.remove(component_id)
 
     def remove(self, component_id: str = None):
         """
@@ -468,6 +489,8 @@ class ComponentsManager:
             gc.collect()
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
+            if torch.xpu.is_available():
+                torch.xpu.empty_cache()
 
     # YiYi TODO: rename to search_components for now, may remove this method
     def search_components(
@@ -656,7 +679,7 @@ class ComponentsManager:
 
         return get_return_dict(matches, return_dict_with_names)
 
-    def enable_auto_cpu_offload(self, device: Union[str, int, torch.device] = "cuda", memory_reserve_margin="3GB"):
+    def enable_auto_cpu_offload(self, device: Union[str, int, torch.device] = None, memory_reserve_margin="3GB"):
         """
         Enable automatic CPU offloading for all components.
 
@@ -682,6 +705,8 @@ class ComponentsManager:
 
         self.disable_auto_cpu_offload()
         offload_strategy = AutoOffloadStrategy(memory_reserve_margin=memory_reserve_margin)
+        if device is None:
+            device = get_device()
         device = torch.device(device)
         if device.index is None:
             device = torch.device(f"{device.type}:{0}")

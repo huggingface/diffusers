@@ -1,5 +1,4 @@
 import gc
-import unittest
 
 import pytest
 import torch
@@ -8,7 +7,8 @@ from diffusers import (
     StableDiffusionUpscalePipeline,
 )
 from diffusers.utils import load_image
-from diffusers.utils.testing_utils import (
+
+from ..testing_utils import (
     backend_empty_cache,
     enable_full_determinism,
     numpy_cosine_similarity_distance,
@@ -16,7 +16,6 @@ from diffusers.utils.testing_utils import (
     slow,
     torch_device,
 )
-
 from .single_file_testing_utils import SDSingleFileTesterMixin
 
 
@@ -25,19 +24,17 @@ enable_full_determinism()
 
 @slow
 @require_torch_accelerator
-class StableDiffusionUpscalePipelineSingleFileSlowTests(unittest.TestCase, SDSingleFileTesterMixin):
+class TestStableDiffusionUpscalePipelineSingleFileSlow(SDSingleFileTesterMixin):
     pipeline_class = StableDiffusionUpscalePipeline
     ckpt_path = "https://huggingface.co/stabilityai/stable-diffusion-x4-upscaler/blob/main/x4-upscaler-ema.safetensors"
     original_config = "https://raw.githubusercontent.com/Stability-AI/stablediffusion/main/configs/stable-diffusion/x4-upscaling.yaml"
     repo_id = "stabilityai/stable-diffusion-x4-upscaler"
 
-    def setUp(self):
-        super().setUp()
+    def setup_method(self):
         gc.collect()
         backend_empty_cache(torch_device)
 
-    def tearDown(self):
-        super().tearDown()
+    def teardown_method(self):
         gc.collect()
         backend_empty_cache(torch_device)
 

@@ -9,6 +9,7 @@ from typing import Any, Callable, Dict, Union
 
 import numpy as np
 import PIL.Image
+import pytest
 import torch
 import torch.nn as nn
 from huggingface_hub import ModelCard, delete_repo
@@ -35,6 +36,7 @@ from diffusers.hooks.first_block_cache import FirstBlockCacheConfig
 from diffusers.hooks.pyramid_attention_broadcast import PyramidAttentionBroadcastHook
 from diffusers.image_processor import VaeImageProcessor
 from diffusers.loaders import FluxIPAdapterMixin, IPAdapterMixin
+from diffusers.models.attention import AttentionModuleMixin
 from diffusers.models.attention_processor import AttnProcessor
 from diffusers.models.controlnets.controlnet_xs import UNetControlNetXSModel
 from diffusers.models.unets.unet_3d_condition import UNet3DConditionModel
@@ -45,19 +47,6 @@ from diffusers.schedulers import KarrasDiffusionSchedulers
 from diffusers.utils import logging
 from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.source_code_parsing_utils import ReturnNameVisitor
-from diffusers.utils.testing_utils import (
-    CaptureLogger,
-    backend_empty_cache,
-    numpy_cosine_similarity_distance,
-    require_accelerate_version_greater,
-    require_accelerator,
-    require_hf_hub_version_greater,
-    require_torch,
-    require_torch_accelerator,
-    require_transformers_version_greater,
-    skip_mps,
-    torch_device,
-)
 
 from ..models.autoencoders.vae import (
     get_asym_autoencoder_kl_config,
@@ -71,6 +60,19 @@ from ..models.unets.test_models_unet_2d_condition import (
     create_ip_adapter_state_dict,
 )
 from ..others.test_utils import TOKEN, USER, is_staging_test
+from ..testing_utils import (
+    CaptureLogger,
+    backend_empty_cache,
+    numpy_cosine_similarity_distance,
+    require_accelerate_version_greater,
+    require_accelerator,
+    require_hf_hub_version_greater,
+    require_torch,
+    require_torch_accelerator,
+    require_transformers_version_greater,
+    skip_mps,
+    torch_device,
+)
 
 
 def to_np(tensor):
@@ -94,6 +96,20 @@ def check_qkv_fusion_processors_exist(model):
     current_attn_processors = model.attn_processors
     proc_names = [v.__class__.__name__ for _, v in current_attn_processors.items()]
     return all(p.startswith("Fused") for p in proc_names)
+
+
+def check_qkv_fused_layers_exist(model, layer_names):
+    is_fused_submodules = []
+    for submodule in model.modules():
+        if not isinstance(submodule, AttentionModuleMixin):
+            continue
+        is_fused_attribute_set = submodule.fused_projections
+        is_fused_layer = True
+        for layer in layer_names:
+            is_fused_layer = is_fused_layer and getattr(submodule, layer, None) is not None
+        is_fused = is_fused_attribute_set and is_fused_layer
+        is_fused_submodules.append(is_fused)
+    return all(is_fused_submodules)
 
 
 class SDFunctionTesterMixin:
@@ -2262,6 +2278,96 @@ class PipelineTesterMixin:
                     expected_dtype,
                     f"Component '{name}' has dtype {component.dtype} but expected {expected_dtype}",
                 )
+
+    @require_torch_accelerator
+    def test_pipeline_with_accelerator_device_map(self, expected_max_difference=1e-4):
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe = pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        torch.manual_seed(0)
+        inputs = self.get_dummy_inputs(torch_device)
+        inputs["generator"] = torch.manual_seed(0)
+        out = pipe(**inputs)[0]
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            pipe.save_pretrained(tmpdir)
+            loaded_pipe = self.pipeline_class.from_pretrained(tmpdir, device_map=torch_device)
+            for component in loaded_pipe.components.values():
+                if hasattr(component, "set_default_attn_processor"):
+                    component.set_default_attn_processor()
+        inputs["generator"] = torch.manual_seed(0)
+        loaded_out = loaded_pipe(**inputs)[0]
+        max_diff = np.abs(to_np(out) - to_np(loaded_out)).max()
+        self.assertLess(max_diff, expected_max_difference)
+
+    @require_torch_accelerator
+    def test_pipeline_level_group_offloading_sanity_checks(self):
+        components = self.get_dummy_components()
+        pipe: DiffusionPipeline = self.pipeline_class(**components)
+
+        for name, component in pipe.components.items():
+            if hasattr(component, "_supports_group_offloading"):
+                if not component._supports_group_offloading:
+                    pytest.skip(f"{self.pipeline_class.__name__} is not suitable for this test.")
+
+        module_names = sorted(
+            [name for name, component in pipe.components.items() if isinstance(component, torch.nn.Module)]
+        )
+        exclude_module_name = module_names[0]
+        offload_device = "cpu"
+        pipe.enable_group_offload(
+            onload_device=torch_device,
+            offload_device=offload_device,
+            offload_type="leaf_level",
+            exclude_modules=exclude_module_name,
+        )
+        excluded_module = getattr(pipe, exclude_module_name)
+        self.assertTrue(torch.device(excluded_module.device).type == torch.device(torch_device).type)
+
+        for name, component in pipe.components.items():
+            if name not in [exclude_module_name] and isinstance(component, torch.nn.Module):
+                # `component.device` prints the `onload_device` type. We should probably override the
+                # `device` property in `ModelMixin`.
+                component_device = next(component.parameters())[0].device
+                self.assertTrue(torch.device(component_device).type == torch.device(offload_device).type)
+
+    @require_torch_accelerator
+    def test_pipeline_level_group_offloading_inference(self, expected_max_difference=1e-4):
+        components = self.get_dummy_components()
+        pipe: DiffusionPipeline = self.pipeline_class(**components)
+
+        for name, component in pipe.components.items():
+            if hasattr(component, "_supports_group_offloading"):
+                if not component._supports_group_offloading:
+                    pytest.skip(f"{self.pipeline_class.__name__} is not suitable for this test.")
+
+        # Regular inference.
+        pipe = pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+        torch.manual_seed(0)
+        inputs = self.get_dummy_inputs(torch_device)
+        inputs["generator"] = torch.manual_seed(0)
+        out = pipe(**inputs)[0]
+
+        pipe.to("cpu")
+        del pipe
+
+        # Inference with offloading
+        pipe: DiffusionPipeline = self.pipeline_class(**components)
+        offload_device = "cpu"
+        pipe.enable_group_offload(
+            onload_device=torch_device,
+            offload_device=offload_device,
+            offload_type="leaf_level",
+        )
+        pipe.set_progress_bar_config(disable=None)
+        inputs["generator"] = torch.manual_seed(0)
+        out_offload = pipe(**inputs)[0]
+
+        max_diff = np.abs(to_np(out) - to_np(out_offload)).max()
+        self.assertLess(max_diff, expected_max_difference)
 
 
 @is_staging_test

@@ -46,7 +46,7 @@ from ..utils import (
 )
 from ..utils.constants import DIFFUSERS_REQUEST_TIMEOUT
 from ..utils.hub_utils import _get_model_file
-from ..utils.torch_utils import device_synchronize, empty_device_cache
+from ..utils.torch_utils import empty_device_cache
 
 
 if is_transformers_available():
@@ -55,11 +55,12 @@ if is_transformers_available():
 if is_accelerate_available():
     from accelerate import init_empty_weights
 
-    from ..models.modeling_utils import load_model_dict_into_meta
+    from ..models.model_loading_utils import load_model_dict_into_meta
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 CHECKPOINT_KEY_NAMES = {
+    "v1": "model.diffusion_model.output_blocks.11.0.skip_connection.weight",
     "v2": "model.diffusion_model.input_blocks.2.1.transformer_blocks.0.attn2.to_k.weight",
     "xl_base": "conditioner.embedders.1.model.transformer.resblocks.9.mlp.c_proj.bias",
     "xl_refiner": "conditioner.embedders.0.model.transformer.resblocks.9.mlp.c_proj.bias",
@@ -1690,10 +1691,7 @@ def create_diffusers_clip_model_from_ldm(
 
     if is_accelerate_available():
         load_model_dict_into_meta(model, diffusers_format_checkpoint, dtype=torch_dtype)
-        # Ensure tensors are correctly placed on device by synchronizing before returning control to user. This is
-        # required because we move tensors with non_blocking=True, which is slightly faster for model loading.
         empty_device_cache()
-        device_synchronize()
     else:
         model.load_state_dict(diffusers_format_checkpoint, strict=False)
 
@@ -2153,10 +2151,7 @@ def create_diffusers_t5_model_from_checkpoint(
 
     if is_accelerate_available():
         load_model_dict_into_meta(model, diffusers_format_checkpoint, dtype=torch_dtype)
-        # Ensure tensors are correctly placed on device by synchronizing before returning control to user. This is
-        # required because we move tensors with non_blocking=True, which is slightly faster for model loading.
         empty_device_cache()
-        device_synchronize()
     else:
         model.load_state_dict(diffusers_format_checkpoint)
 

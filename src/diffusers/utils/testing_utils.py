@@ -36,7 +36,9 @@ from .import_utils import (
     is_compel_available,
     is_flax_available,
     is_gguf_available,
+    is_kernels_available,
     is_note_seq_available,
+    is_nvidia_modelopt_available,
     is_onnx_available,
     is_opencv_available,
     is_optimum_quanto_available,
@@ -65,7 +67,10 @@ else:
 global_rng = random.Random()
 
 logger = get_logger(__name__)
-
+logger.warning(
+    "diffusers.utils.testing_utils' is deprecated and will be removed in a future version. "
+    "Determinism and device backend utilities have been moved to `diffusers.utils.torch_utils`. "
+)
 _required_peft_version = is_peft_available() and version.parse(
     version.parse(importlib.metadata.version("peft")).base_version
 ) > version.parse("0.5")
@@ -634,6 +639,30 @@ def require_torchao_version_greater_or_equal(torchao_version):
     return decorator
 
 
+def require_modelopt_version_greater_or_equal(modelopt_version):
+    def decorator(test_case):
+        correct_nvidia_modelopt_version = is_nvidia_modelopt_available() and version.parse(
+            version.parse(importlib.metadata.version("modelopt")).base_version
+        ) >= version.parse(modelopt_version)
+        return unittest.skipUnless(
+            correct_nvidia_modelopt_version, f"Test requires modelopt with version greater than {modelopt_version}."
+        )(test_case)
+
+    return decorator
+
+
+def require_kernels_version_greater_or_equal(kernels_version):
+    def decorator(test_case):
+        correct_kernels_version = is_kernels_available() and version.parse(
+            version.parse(importlib.metadata.version("kernels")).base_version
+        ) >= version.parse(kernels_version)
+        return unittest.skipUnless(
+            correct_kernels_version, f"Test requires kernels with version greater than {kernels_version}."
+        )(test_case)
+
+    return decorator
+
+
 def deprecate_after_peft_backend(test_case):
     """
     Decorator marking a test that will be skipped after PEFT backend
@@ -788,10 +817,9 @@ def export_to_ply(mesh, output_ply_path: str = None):
                 f.write(format.pack(*vertex))
 
         if faces is not None:
-            format = struct.Struct("<B3I")
             for tri in faces.tolist():
                 f.write(format.pack(len(tri), *tri))
-
+            format = struct.Struct("<B3I")
     return output_ply_path
 
 
@@ -1131,23 +1159,23 @@ def enable_full_determinism():
     Helper function for reproducible behavior during distributed training. See
     - https://pytorch.org/docs/stable/notes/randomness.html for pytorch
     """
-    #  Enable PyTorch deterministic mode. This potentially requires either the environment
-    #  variable 'CUDA_LAUNCH_BLOCKING' or 'CUBLAS_WORKSPACE_CONFIG' to be set,
-    # depending on the CUDA version, so we set them both here
-    os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
-    os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":16:8"
-    torch.use_deterministic_algorithms(True)
+    from .torch_utils import enable_full_determinism as _enable_full_determinism
 
-    # Enable CUDNN deterministic mode
-    torch.backends.cudnn.deterministic = True
-    torch.backends.cudnn.benchmark = False
-    torch.backends.cuda.matmul.allow_tf32 = False
+    logger.warning(
+        "enable_full_determinism has been moved to diffusers.utils.torch_utils. "
+        "Importing from diffusers.utils.testing_utils is deprecated and will be removed in a future version."
+    )
+    return _enable_full_determinism()
 
 
 def disable_full_determinism():
-    os.environ["CUDA_LAUNCH_BLOCKING"] = "0"
-    os.environ["CUBLAS_WORKSPACE_CONFIG"] = ""
-    torch.use_deterministic_algorithms(False)
+    from .torch_utils import disable_full_determinism as _disable_full_determinism
+
+    logger.warning(
+        "disable_full_determinism has been moved to diffusers.utils.torch_utils. "
+        "Importing from diffusers.utils.testing_utils is deprecated and will be removed in a future version."
+    )
+    return _disable_full_determinism()
 
 
 # Utils for custom and alternative accelerator devices
@@ -1269,43 +1297,85 @@ def _device_agnostic_dispatch(device: str, dispatch_table: Dict[str, Callable], 
 
 # These are callables which automatically dispatch the function specific to the accelerator
 def backend_manual_seed(device: str, seed: int):
-    return _device_agnostic_dispatch(device, BACKEND_MANUAL_SEED, seed)
+    from .torch_utils import backend_manual_seed as _backend_manual_seed
+
+    logger.warning(
+        "backend_manual_seed has been moved to diffusers.utils.torch_utils. "
+        "diffusers.utils.testing_utils is deprecated and will be removed in a future version."
+    )
+    return _backend_manual_seed(device, seed)
 
 
 def backend_synchronize(device: str):
-    return _device_agnostic_dispatch(device, BACKEND_SYNCHRONIZE)
+    from .torch_utils import backend_synchronize as _backend_synchronize
+
+    logger.warning(
+        "backend_synchronize has been moved to diffusers.utils.torch_utils. "
+        "diffusers.utils.testing_utils is deprecated and will be removed in a future version."
+    )
+    return _backend_synchronize(device)
 
 
 def backend_empty_cache(device: str):
-    return _device_agnostic_dispatch(device, BACKEND_EMPTY_CACHE)
+    from .torch_utils import backend_empty_cache as _backend_empty_cache
+
+    logger.warning(
+        "backend_empty_cache has been moved to diffusers.utils.torch_utils. "
+        "diffusers.utils.testing_utils is deprecated and will be removed in a future version."
+    )
+    return _backend_empty_cache(device)
 
 
 def backend_device_count(device: str):
-    return _device_agnostic_dispatch(device, BACKEND_DEVICE_COUNT)
+    from .torch_utils import backend_device_count as _backend_device_count
+
+    logger.warning(
+        "backend_device_count has been moved to diffusers.utils.torch_utils. "
+        "diffusers.utils.testing_utils is deprecated and will be removed in a future version."
+    )
+    return _backend_device_count(device)
 
 
 def backend_reset_peak_memory_stats(device: str):
-    return _device_agnostic_dispatch(device, BACKEND_RESET_PEAK_MEMORY_STATS)
+    from .torch_utils import backend_reset_peak_memory_stats as _backend_reset_peak_memory_stats
+
+    logger.warning(
+        "backend_reset_peak_memory_stats has been moved to diffusers.utils.torch_utils. "
+        "diffusers.utils.testing_utils is deprecated and will be removed in a future version."
+    )
+    return _backend_reset_peak_memory_stats(device)
 
 
 def backend_reset_max_memory_allocated(device: str):
-    return _device_agnostic_dispatch(device, BACKEND_RESET_MAX_MEMORY_ALLOCATED)
+    from .torch_utils import backend_reset_max_memory_allocated as _backend_reset_max_memory_allocated
+
+    logger.warning(
+        "backend_reset_max_memory_allocated has been moved to diffusers.utils.torch_utils. "
+        "diffusers.utils.testing_utils is deprecated and will be removed in a future version."
+    )
+    return _backend_reset_max_memory_allocated(device)
 
 
 def backend_max_memory_allocated(device: str):
-    return _device_agnostic_dispatch(device, BACKEND_MAX_MEMORY_ALLOCATED)
+    from .torch_utils import backend_max_memory_allocated as _backend_max_memory_allocated
+
+    logger.warning(
+        "backend_max_memory_allocated has been moved to diffusers.utils.torch_utils. "
+        "diffusers.utils.testing_utils is deprecated and will be removed in a future version."
+    )
+    return _backend_max_memory_allocated(device)
 
 
 # These are callables which return boolean behaviour flags and can be used to specify some
 # device agnostic alternative where the feature is unsupported.
 def backend_supports_training(device: str):
-    if not is_torch_available():
-        return False
+    from .torch_utils import backend_supports_training as _backend_supports_training
 
-    if device not in BACKEND_SUPPORTS_TRAINING:
-        device = "default"
-
-    return BACKEND_SUPPORTS_TRAINING[device]
+    logger.warning(
+        "backend_supports_training has been moved to diffusers.utils.torch_utils. "
+        "diffusers.utils.testing_utils is deprecated and will be removed in a future version."
+    )
+    return _backend_supports_training(device)
 
 
 # Guard for when Torch is not available
@@ -1394,9 +1464,9 @@ else:
     DevicePropertiesUserDict = UserDict
 
 if is_torch_available():
+    from diffusers.hooks._common import _GO_LC_SUPPORTED_PYTORCH_LAYERS
     from diffusers.hooks.group_offloading import (
         _GROUP_ID_LAZY_LEAF,
-        _SUPPORTED_PYTORCH_LAYERS,
         _compute_group_hash,
         _find_parent_module_in_module_dict,
         _gather_buffers_with_no_group_offloading_parent,
@@ -1440,13 +1510,13 @@ if is_torch_available():
         elif offload_type == "leaf_level":
             # Handle leaf-level module groups
             for name, submodule in module.named_modules():
-                if isinstance(submodule, _SUPPORTED_PYTORCH_LAYERS):
+                if isinstance(submodule, _GO_LC_SUPPORTED_PYTORCH_LAYERS):
                     # These groups will always have parameters, so a file is expected
                     expected_files.add(get_hashed_filename(name))
 
             # Handle groups for non-leaf parameters/buffers
             modules_with_group_offloading = {
-                name for name, sm in module.named_modules() if isinstance(sm, _SUPPORTED_PYTORCH_LAYERS)
+                name for name, sm in module.named_modules() if isinstance(sm, _GO_LC_SUPPORTED_PYTORCH_LAYERS)
             }
             parameters = _gather_parameters_with_no_group_offloading_parent(module, modules_with_group_offloading)
             buffers = _gather_buffers_with_no_group_offloading_parent(module, modules_with_group_offloading)

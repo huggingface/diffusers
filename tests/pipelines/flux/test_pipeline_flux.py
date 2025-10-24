@@ -13,7 +13,9 @@ from diffusers import (
     FluxPipeline,
     FluxTransformer2DModel,
 )
-from diffusers.utils.testing_utils import (
+
+from ...testing_utils import (
+    Expectations,
     backend_empty_cache,
     nightly,
     numpy_cosine_similarity_distance,
@@ -21,15 +23,13 @@ from diffusers.utils.testing_utils import (
     slow,
     torch_device,
 )
-
 from ..test_pipelines_common import (
     FasterCacheTesterMixin,
     FirstBlockCacheTesterMixin,
     FluxIPAdapterTesterMixin,
     PipelineTesterMixin,
     PyramidAttentionBroadcastTesterMixin,
-    check_qkv_fusion_matches_attn_procs_length,
-    check_qkv_fusion_processors_exist,
+    check_qkv_fused_layers_exist,
 )
 
 
@@ -171,12 +171,10 @@ class FluxPipelineFastTests(
         # TODO (sayakpaul): will refactor this once `fuse_qkv_projections()` has been added
         # to the pipeline level.
         pipe.transformer.fuse_qkv_projections()
-        assert check_qkv_fusion_processors_exist(pipe.transformer), (
-            "Something wrong with the fused attention processors. Expected all the attention processors to be fused."
+        self.assertTrue(
+            check_qkv_fused_layers_exist(pipe.transformer, ["to_qkv"]),
+            ("Something wrong with the fused attention layers. Expected all the attention projections to be fused."),
         )
-        assert check_qkv_fusion_matches_attn_procs_length(
-            pipe.transformer, pipe.transformer.original_attn_processors
-        ), "Something wrong with the attention processors concerning the fused QKV projections."
 
         inputs = self.get_dummy_inputs(device)
         image = pipe(**inputs).images
@@ -279,10 +277,14 @@ class FluxPipelineSlowTests(unittest.TestCase):
         image = pipe(**inputs).images[0]
         image_slice = image[0, :10, :10]
         # fmt: off
-        expected_slice = np.array(
-            [0.3242, 0.3203, 0.3164, 0.3164, 0.3125, 0.3125, 0.3281, 0.3242, 0.3203, 0.3301, 0.3262, 0.3242, 0.3281, 0.3242, 0.3203, 0.3262, 0.3262, 0.3164, 0.3262, 0.3281, 0.3184, 0.3281, 0.3281, 0.3203, 0.3281, 0.3281, 0.3164, 0.3320, 0.3320, 0.3203],
-            dtype=np.float32,
+
+        expected_slices = Expectations(
+            {
+                ("cuda", None): np.array([0.3242, 0.3203, 0.3164, 0.3164, 0.3125, 0.3125, 0.3281, 0.3242, 0.3203, 0.3301, 0.3262, 0.3242, 0.3281, 0.3242, 0.3203, 0.3262, 0.3262, 0.3164, 0.3262, 0.3281, 0.3184, 0.3281, 0.3281, 0.3203, 0.3281, 0.3281, 0.3164, 0.3320, 0.3320, 0.3203], dtype=np.float32,),
+                ("xpu", 3): np.array([0.3301, 0.3281, 0.3359, 0.3203, 0.3203, 0.3281, 0.3281, 0.3301, 0.3340, 0.3281, 0.3320, 0.3359, 0.3281, 0.3301, 0.3320, 0.3242, 0.3301, 0.3281, 0.3242, 0.3320, 0.3320, 0.3281, 0.3320, 0.3320, 0.3262, 0.3320, 0.3301, 0.3301, 0.3359, 0.3320], dtype=np.float32,),
+            }
         )
+        expected_slice = expected_slices.get_expectation()
         # fmt: on
 
         max_diff = numpy_cosine_similarity_distance(expected_slice.flatten(), image_slice.flatten())

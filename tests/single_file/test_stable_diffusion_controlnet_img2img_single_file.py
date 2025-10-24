@@ -1,13 +1,13 @@
 import gc
 import tempfile
-import unittest
 
 import torch
 
 from diffusers import ControlNetModel, StableDiffusionControlNetPipeline
 from diffusers.loaders.single_file_utils import _extract_repo_id_and_weights_name
 from diffusers.utils import load_image
-from diffusers.utils.testing_utils import (
+
+from ..testing_utils import (
     backend_empty_cache,
     enable_full_determinism,
     numpy_cosine_similarity_distance,
@@ -15,7 +15,6 @@ from diffusers.utils.testing_utils import (
     slow,
     torch_device,
 )
-
 from .single_file_testing_utils import (
     SDSingleFileTesterMixin,
     download_diffusers_config,
@@ -29,7 +28,7 @@ enable_full_determinism()
 
 @slow
 @require_torch_accelerator
-class StableDiffusionControlNetPipelineSingleFileSlowTests(unittest.TestCase, SDSingleFileTesterMixin):
+class TestStableDiffusionControlNetPipelineSingleFileSlow(SDSingleFileTesterMixin):
     pipeline_class = StableDiffusionControlNetPipeline
     ckpt_path = (
         "https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5/blob/main/v1-5-pruned-emaonly.safetensors"
@@ -39,13 +38,11 @@ class StableDiffusionControlNetPipelineSingleFileSlowTests(unittest.TestCase, SD
     )
     repo_id = "stable-diffusion-v1-5/stable-diffusion-v1-5"
 
-    def setUp(self):
-        super().setUp()
+    def setup_method(self):
         gc.collect()
         backend_empty_cache(torch_device)
 
-    def tearDown(self):
-        super().tearDown()
+    def teardown_method(self):
         gc.collect()
         backend_empty_cache(torch_device)
 

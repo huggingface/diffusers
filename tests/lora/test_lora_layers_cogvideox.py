@@ -21,12 +21,12 @@ from transformers import AutoTokenizer, T5EncoderModel
 
 from diffusers import (
     AutoencoderKLCogVideoX,
-    CogVideoXDDIMScheduler,
     CogVideoXDPMScheduler,
     CogVideoXPipeline,
     CogVideoXTransformer3DModel,
 )
-from diffusers.utils.testing_utils import (
+
+from ..testing_utils import (
     floats_tensor,
     require_peft_backend,
     require_torch_accelerator,
@@ -35,7 +35,7 @@ from diffusers.utils.testing_utils import (
 
 sys.path.append(".")
 
-from utils import PeftLoraLoaderMixinTests  # noqa: E402
+from .utils import PeftLoraLoaderMixinTests  # noqa: E402
 
 
 @require_peft_backend
@@ -43,7 +43,6 @@ class CogVideoXLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
     pipeline_class = CogVideoXPipeline
     scheduler_cls = CogVideoXDPMScheduler
     scheduler_kwargs = {"timestep_spacing": "trailing"}
-    scheduler_classes = [CogVideoXDDIMScheduler, CogVideoXDPMScheduler]
 
     transformer_kwargs = {
         "num_attention_heads": 4,

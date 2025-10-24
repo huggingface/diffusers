@@ -18,7 +18,6 @@ import tempfile
 import unittest
 
 import numpy as np
-import pytest
 import safetensors.torch
 import torch
 from PIL import Image
@@ -26,7 +25,8 @@ from transformers import AutoTokenizer, T5EncoderModel
 
 from diffusers import AutoencoderKLWan, FlowMatchEulerDiscreteScheduler, WanVACEPipeline, WanVACETransformer3DModel
 from diffusers.utils.import_utils import is_peft_available
-from diffusers.utils.testing_utils import (
+
+from ..testing_utils import (
     floats_tensor,
     is_flaky,
     require_peft_backend,
@@ -41,7 +41,7 @@ if is_peft_available():
 
 sys.path.append(".")
 
-from utils import PeftLoraLoaderMixinTests  # noqa: E402
+from .utils import PeftLoraLoaderMixinTests  # noqa: E402
 
 
 @require_peft_backend
@@ -50,7 +50,6 @@ from utils import PeftLoraLoaderMixinTests  # noqa: E402
 class WanVACELoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
     pipeline_class = WanVACEPipeline
     scheduler_cls = FlowMatchEulerDiscreteScheduler
-    scheduler_classes = [FlowMatchEulerDiscreteScheduler]
     scheduler_kwargs = {}
 
     transformer_kwargs = {
@@ -160,23 +159,17 @@ class WanVACELoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
     def test_simple_inference_with_text_lora_save_load(self):
         pass
 
-    @pytest.mark.xfail(
-        condition=True,
-        reason="RuntimeError: Input type (float) and bias type (c10::BFloat16) should be the same",
-        strict=True,
-    )
     def test_layerwise_casting_inference_denoiser(self):
         super().test_layerwise_casting_inference_denoiser()
 
     @require_peft_version_greater("0.13.2")
     def test_lora_exclude_modules_wanvace(self):
-        scheduler_cls = self.scheduler_classes[0]
         exclude_module_name = "vace_blocks.0.proj_out"
-        components, text_lora_config, denoiser_lora_config = self.get_dummy_components(scheduler_cls)
+        components, text_lora_config, denoiser_lora_config = self.get_dummy_components()
         pipe = self.pipeline_class(**components).to(torch_device)
         _, _, inputs = self.get_dummy_inputs(with_generator=False)
 
-        output_no_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
+        output_no_lora = self.get_base_pipe_output()
         self.assertTrue(output_no_lora.shape == self.output_shape)
 
         # only supported for `denoiser` now

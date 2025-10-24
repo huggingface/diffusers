@@ -19,20 +19,20 @@ import torch
 from transformers import Gemma2Model, GemmaTokenizer
 
 from diffusers import AutoencoderDC, FlowMatchEulerDiscreteScheduler, SanaPipeline, SanaTransformer2DModel
-from diffusers.utils.testing_utils import floats_tensor, require_peft_backend
+
+from ..testing_utils import floats_tensor, require_peft_backend
 
 
 sys.path.append(".")
 
-from utils import PeftLoraLoaderMixinTests  # noqa: E402
+from .utils import PeftLoraLoaderMixinTests  # noqa: E402
 
 
 @require_peft_backend
 class SanaLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
     pipeline_class = SanaPipeline
-    scheduler_cls = FlowMatchEulerDiscreteScheduler(shift=7.0)
-    scheduler_kwargs = {}
-    scheduler_classes = [FlowMatchEulerDiscreteScheduler]
+    scheduler_cls = FlowMatchEulerDiscreteScheduler
+    scheduler_kwargs = {"shift": 7.0}
     transformer_kwargs = {
         "patch_size": 1,
         "in_channels": 4,

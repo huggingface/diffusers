@@ -30,11 +30,11 @@ import numpy as np
 from huggingface_hub import DDUFEntry, create_repo, hf_hub_download
 from huggingface_hub.utils import (
     EntryNotFoundError,
+    HfHubHTTPError,
     RepositoryNotFoundError,
     RevisionNotFoundError,
     validate_hf_hub_args,
 )
-from requests import HTTPError
 from typing_extensions import Self
 
 from . import __version__
@@ -407,7 +407,7 @@ class ConfigMixin:
                 raise EnvironmentError(
                     f"{pretrained_model_name_or_path} is not a local folder and is not a valid model identifier"
                     " listed on 'https://huggingface.co/models'\nIf this is a private repository, make sure to pass a"
-                    " token having permission to this repo with `token` or log in with `huggingface-cli login`."
+                    " token having permission to this repo with `token` or log in with `hf auth login`."
                 )
             except RevisionNotFoundError:
                 raise EnvironmentError(
@@ -419,7 +419,7 @@ class ConfigMixin:
                 raise EnvironmentError(
                     f"{pretrained_model_name_or_path} does not appear to have a file named {cls.config_name}."
                 )
-            except HTTPError as err:
+            except HfHubHTTPError as err:
                 raise EnvironmentError(
                     "There was a specific connection error when trying to load"
                     f" {pretrained_model_name_or_path}:\n{err}"
@@ -763,4 +763,7 @@ class LegacyConfigMixin(ConfigMixin):
         # resolve remapping
         remapped_class = _fetch_remapped_cls_from_config(config, cls)
 
-        return remapped_class.from_config(config, return_unused_kwargs, **kwargs)
+        if remapped_class is cls:
+            return super(LegacyConfigMixin, remapped_class).from_config(config, return_unused_kwargs, **kwargs)
+        else:
+            return remapped_class.from_config(config, return_unused_kwargs, **kwargs)

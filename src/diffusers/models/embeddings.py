@@ -319,13 +319,17 @@ def get_2d_sincos_pos_embed_from_grid(embed_dim, grid, output_type="np"):
     return emb
 
 
-def get_1d_sincos_pos_embed_from_grid(embed_dim, pos, output_type="np"):
+def get_1d_sincos_pos_embed_from_grid(embed_dim, pos, output_type="np", flip_sin_to_cos=False, dtype=None):
     """
     This function generates 1D positional embeddings from a grid.
 
     Args:
         embed_dim (`int`): The embedding dimension `D`
         pos (`torch.Tensor`): 1D tensor of positions with shape `(M,)`
+        output_type (`str`, *optional*, defaults to `"np"`): Output type. Use `"pt"` for PyTorch tensors.
+        flip_sin_to_cos (`bool`, *optional*, defaults to `False`): Whether to flip sine and cosine embeddings.
+        dtype (`torch.dtype`, *optional*): Data type for frequency calculations. If `None`, defaults to
+            `torch.float32` on MPS devices (which don't support `torch.float64`) and `torch.float64` on other devices.
 
     Returns:
         `torch.Tensor`: Sinusoidal positional embeddings of shape `(M, D)`.
@@ -341,7 +345,11 @@ def get_1d_sincos_pos_embed_from_grid(embed_dim, pos, output_type="np"):
     if embed_dim % 2 != 0:
         raise ValueError("embed_dim must be divisible by 2")
 
-    omega = torch.arange(embed_dim // 2, device=pos.device, dtype=torch.float64)
+    # Auto-detect appropriate dtype if not specified
+    if dtype is None:
+        dtype = torch.float32 if pos.device.type == "mps" else torch.float64
+
+    omega = torch.arange(embed_dim // 2, device=pos.device, dtype=dtype)
     omega /= embed_dim / 2.0
     omega = 1.0 / 10000**omega  # (D/2,)
 
@@ -352,6 +360,11 @@ def get_1d_sincos_pos_embed_from_grid(embed_dim, pos, output_type="np"):
     emb_cos = torch.cos(out)  # (M, D/2)
 
     emb = torch.concat([emb_sin, emb_cos], dim=1)  # (M, D)
+
+    # flip sine and cosine embeddings
+    if flip_sin_to_cos:
+        emb = torch.cat([emb[:, embed_dim // 2 :], emb[:, : embed_dim // 2]], dim=1)
+
     return emb
 
 
@@ -1176,6 +1189,7 @@ def apply_rotary_emb(
     freqs_cis: Union[torch.Tensor, Tuple[torch.Tensor]],
     use_real: bool = True,
     use_real_unbind_dim: int = -1,
+    sequence_dim: int = 2,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """
     Apply rotary embeddings to input tensors using the given frequency tensor. This function applies rotary embeddings
@@ -1193,8 +1207,15 @@ def apply_rotary_emb(
     """
     if use_real:
         cos, sin = freqs_cis  # [S, D]
-        cos = cos[None, None]
-        sin = sin[None, None]
+        if sequence_dim == 2:
+            cos = cos[None, None, :, :]
+            sin = sin[None, None, :, :]
+        elif sequence_dim == 1:
+            cos = cos[None, :, None, :]
+            sin = sin[None, :, None, :]
+        else:
+            raise ValueError(f"`sequence_dim={sequence_dim}` but should be 1 or 2.")
+
         cos, sin = cos.to(x.device), sin.to(x.device)
 
         if use_real_unbind_dim == -1:
@@ -1236,37 +1257,6 @@ def apply_rotary_emb_allegro(x: torch.Tensor, freqs_cis, positions):
     w = apply_1d_rope(w, positions[2], w_cos, w_sin)
     x = torch.cat([t, h, w], dim=-1)
     return x
-
-
-class FluxPosEmbed(nn.Module):
-    # modified from https://github.com/black-forest-labs/flux/blob/c00d7c60b085fce8058b9df845e036090873f2ce/src/flux/modules/layers.py#L11
-    def __init__(self, theta: int, axes_dim: List[int]):
-        super().__init__()
-        self.theta = theta
-        self.axes_dim = axes_dim
-
-    def forward(self, ids: torch.Tensor) -> torch.Tensor:
-        n_axes = ids.shape[-1]
-        cos_out = []
-        sin_out = []
-        pos = ids.float()
-        is_mps = ids.device.type == "mps"
-        is_npu = ids.device.type == "npu"
-        freqs_dtype = torch.float32 if (is_mps or is_npu) else torch.float64
-        for i in range(n_axes):
-            cos, sin = get_1d_rotary_pos_embed(
-                self.axes_dim[i],
-                pos[:, i],
-                theta=self.theta,
-                repeat_interleave_real=True,
-                use_real=True,
-                freqs_dtype=freqs_dtype,
-            )
-            cos_out.append(cos)
-            sin_out.append(sin)
-        freqs_cos = torch.cat(cos_out, dim=-1).to(ids.device)
-        freqs_sin = torch.cat(sin_out, dim=-1).to(ids.device)
-        return freqs_cos, freqs_sin
 
 
 class TimestepEmbedding(nn.Module):
@@ -2619,3 +2609,13 @@ class MultiIPAdapterImageProjection(nn.Module):
             projected_image_embeds.append(image_embed)
 
         return projected_image_embeds
+
+
+class FluxPosEmbed(nn.Module):
+    def __new__(cls, *args, **kwargs):
+        deprecation_message = "Importing and using `FluxPosEmbed` from `diffusers.models.embeddings` is deprecated. Please import it from `diffusers.models.transformers.transformer_flux`."
+        deprecate("FluxPosEmbed", "1.0.0", deprecation_message)
+
+        from .transformers.transformer_flux import FluxPosEmbed
+
+        return FluxPosEmbed(*args, **kwargs)

@@ -15,7 +15,9 @@
 PyTorch utilities: Utilities related to PyTorch
 """
 
-from typing import List, Optional, Tuple, Union
+import functools
+import os
+from typing import Callable, Dict, List, Optional, Tuple, Union
 
 from . import logging
 from .import_utils import is_torch_available, is_torch_npu_available, is_torch_version
@@ -25,6 +27,56 @@ if is_torch_available():
     import torch
     from torch.fft import fftn, fftshift, ifftn, ifftshift
 
+    BACKEND_SUPPORTS_TRAINING = {"cuda": True, "xpu": True, "cpu": True, "mps": False, "default": True}
+    BACKEND_EMPTY_CACHE = {
+        "cuda": torch.cuda.empty_cache,
+        "xpu": torch.xpu.empty_cache,
+        "cpu": None,
+        "mps": torch.mps.empty_cache,
+        "default": None,
+    }
+    BACKEND_DEVICE_COUNT = {
+        "cuda": torch.cuda.device_count,
+        "xpu": torch.xpu.device_count,
+        "cpu": lambda: 0,
+        "mps": lambda: 0,
+        "default": 0,
+    }
+    BACKEND_MANUAL_SEED = {
+        "cuda": torch.cuda.manual_seed,
+        "xpu": torch.xpu.manual_seed,
+        "cpu": torch.manual_seed,
+        "mps": torch.mps.manual_seed,
+        "default": torch.manual_seed,
+    }
+    BACKEND_RESET_PEAK_MEMORY_STATS = {
+        "cuda": torch.cuda.reset_peak_memory_stats,
+        "xpu": getattr(torch.xpu, "reset_peak_memory_stats", None),
+        "cpu": None,
+        "mps": None,
+        "default": None,
+    }
+    BACKEND_RESET_MAX_MEMORY_ALLOCATED = {
+        "cuda": torch.cuda.reset_max_memory_allocated,
+        "xpu": getattr(torch.xpu, "reset_peak_memory_stats", None),
+        "cpu": None,
+        "mps": None,
+        "default": None,
+    }
+    BACKEND_MAX_MEMORY_ALLOCATED = {
+        "cuda": torch.cuda.max_memory_allocated,
+        "xpu": getattr(torch.xpu, "max_memory_allocated", None),
+        "cpu": 0,
+        "mps": 0,
+        "default": 0,
+    }
+    BACKEND_SYNCHRONIZE = {
+        "cuda": torch.cuda.synchronize,
+        "xpu": getattr(torch.xpu, "synchronize", None),
+        "cpu": None,
+        "mps": None,
+        "default": None,
+    }
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 try:
@@ -33,6 +85,62 @@ except (ImportError, ModuleNotFoundError):
 
     def maybe_allow_in_graph(cls):
         return cls
+
+
+# This dispatches a defined function according to the accelerator from the function definitions.
+def _device_agnostic_dispatch(device: str, dispatch_table: Dict[str, Callable], *args, **kwargs):
+    if device not in dispatch_table:
+        return dispatch_table["default"](*args, **kwargs)
+
+    fn = dispatch_table[device]
+
+    # Some device agnostic functions return values. Need to guard against 'None' instead at
+    # user level
+    if not callable(fn):
+        return fn
+
+    return fn(*args, **kwargs)
+
+
+# These are callables which automatically dispatch the function specific to the accelerator
+def backend_manual_seed(device: str, seed: int):
+    return _device_agnostic_dispatch(device, BACKEND_MANUAL_SEED, seed)
+
+
+def backend_synchronize(device: str):
+    return _device_agnostic_dispatch(device, BACKEND_SYNCHRONIZE)
+
+
+def backend_empty_cache(device: str):
+    return _device_agnostic_dispatch(device, BACKEND_EMPTY_CACHE)
+
+
+def backend_device_count(device: str):
+    return _device_agnostic_dispatch(device, BACKEND_DEVICE_COUNT)
+
+
+def backend_reset_peak_memory_stats(device: str):
+    return _device_agnostic_dispatch(device, BACKEND_RESET_PEAK_MEMORY_STATS)
+
+
+def backend_reset_max_memory_allocated(device: str):
+    return _device_agnostic_dispatch(device, BACKEND_RESET_MAX_MEMORY_ALLOCATED)
+
+
+def backend_max_memory_allocated(device: str):
+    return _device_agnostic_dispatch(device, BACKEND_MAX_MEMORY_ALLOCATED)
+
+
+# These are callables which return boolean behaviour flags and can be used to specify some
+# device agnostic alternative where the feature is unsupported.
+def backend_supports_training(device: str):
+    if not is_torch_available():
+        return False
+
+    if device not in BACKEND_SUPPORTS_TRAINING:
+        device = "default"
+
+    return BACKEND_SUPPORTS_TRAINING[device]
 
 
 def randn_tensor(
@@ -168,6 +276,7 @@ def get_torch_cuda_device_capability():
         return None
 
 
+@functools.lru_cache
 def get_device():
     if torch.cuda.is_available():
         return "cuda"
@@ -195,3 +304,31 @@ def device_synchronize(device_type: Optional[str] = None):
         device_type = get_device()
     device_mod = getattr(torch, device_type, torch.cuda)
     device_mod.synchronize()
+
+
+def enable_full_determinism():
+    """
+    Helper function for reproducible behavior during distributed training. See
+    - https://pytorch.org/docs/stable/notes/randomness.html for pytorch
+    """
+    #  Enable PyTorch deterministic mode. This potentially requires either the environment
+    #  variable 'CUDA_LAUNCH_BLOCKING' or 'CUBLAS_WORKSPACE_CONFIG' to be set,
+    # depending on the CUDA version, so we set them both here
+    os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
+    os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":16:8"
+    torch.use_deterministic_algorithms(True)
+
+    # Enable CUDNN deterministic mode
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+    torch.backends.cuda.matmul.allow_tf32 = False
+
+
+def disable_full_determinism():
+    os.environ["CUDA_LAUNCH_BLOCKING"] = "0"
+    os.environ["CUBLAS_WORKSPACE_CONFIG"] = ""
+    torch.use_deterministic_algorithms(False)
+
+
+if is_torch_available():
+    torch_device = get_device()

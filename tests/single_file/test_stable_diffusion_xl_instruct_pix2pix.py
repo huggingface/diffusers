@@ -1,10 +1,10 @@
 import gc
-import unittest
 
 import torch
 
 from diffusers import StableDiffusionXLInstructPix2PixPipeline
-from diffusers.utils.testing_utils import (
+
+from ..testing_utils import (
     backend_empty_cache,
     enable_full_determinism,
     require_torch_accelerator,
@@ -18,19 +18,17 @@ enable_full_determinism()
 
 @slow
 @require_torch_accelerator
-class StableDiffusionXLInstructPix2PixPipeline(unittest.TestCase):
+class StableDiffusionXLInstructPix2PixPipeline:
     pipeline_class = StableDiffusionXLInstructPix2PixPipeline
     ckpt_path = "https://huggingface.co/stabilityai/cosxl/blob/main/cosxl_edit.safetensors"
     original_config = None
     repo_id = "diffusers/sdxl-instructpix2pix-768"
 
-    def setUp(self):
-        super().setUp()
+    def setup_method(self):
         gc.collect()
         backend_empty_cache(torch_device)
 
-    def tearDown(self):
-        super().tearDown()
+    def teardown_method(self):
         gc.collect()
         backend_empty_cache(torch_device)
 

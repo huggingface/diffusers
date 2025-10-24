@@ -21,13 +21,18 @@ import torch.nn as nn
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
 from ...utils import USE_PEFT_BACKEND, logging, scale_lora_layers, unscale_lora_layers
-from ..attention import FeedForward
-from ..attention_processor import Attention
+from ..attention import AttentionMixin, FeedForward
 from ..cache_utils import CacheMixin
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
 from ..normalization import FP32LayerNorm
-from .transformer_wan import WanAttnProcessor2_0, WanRotaryPosEmbed, WanTimeTextImageEmbedding, WanTransformerBlock
+from .transformer_wan import (
+    WanAttention,
+    WanAttnProcessor,
+    WanRotaryPosEmbed,
+    WanTimeTextImageEmbedding,
+    WanTransformerBlock,
+)
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -55,33 +60,22 @@ class WanVACETransformerBlock(nn.Module):
 
         # 2. Self-attention
         self.norm1 = FP32LayerNorm(dim, eps, elementwise_affine=False)
-        self.attn1 = Attention(
-            query_dim=dim,
+        self.attn1 = WanAttention(
+            dim=dim,
             heads=num_heads,
-            kv_heads=num_heads,
             dim_head=dim // num_heads,
-            qk_norm=qk_norm,
             eps=eps,
-            bias=True,
-            cross_attention_dim=None,
-            out_bias=True,
-            processor=WanAttnProcessor2_0(),
+            processor=WanAttnProcessor(),
         )
 
         # 3. Cross-attention
-        self.attn2 = Attention(
-            query_dim=dim,
+        self.attn2 = WanAttention(
+            dim=dim,
             heads=num_heads,
-            kv_heads=num_heads,
             dim_head=dim // num_heads,
-            qk_norm=qk_norm,
             eps=eps,
-            bias=True,
-            cross_attention_dim=None,
-            out_bias=True,
             added_kv_proj_dim=added_kv_proj_dim,
-            added_proj_bias=True,
-            processor=WanAttnProcessor2_0(),
+            processor=WanAttnProcessor(),
         )
         self.norm2 = FP32LayerNorm(dim, eps, elementwise_affine=True) if cross_attn_norm else nn.Identity()
 
@@ -109,19 +103,19 @@ class WanVACETransformerBlock(nn.Module):
             control_hidden_states = control_hidden_states + hidden_states
 
         shift_msa, scale_msa, gate_msa, c_shift_msa, c_scale_msa, c_gate_msa = (
-            self.scale_shift_table + temb.float()
+            self.scale_shift_table.to(temb.device) + temb.float()
         ).chunk(6, dim=1)
 
         # 1. Self-attention
         norm_hidden_states = (self.norm1(control_hidden_states.float()) * (1 + scale_msa) + shift_msa).type_as(
             control_hidden_states
         )
-        attn_output = self.attn1(hidden_states=norm_hidden_states, rotary_emb=rotary_emb)
+        attn_output = self.attn1(norm_hidden_states, None, None, rotary_emb)
         control_hidden_states = (control_hidden_states.float() + attn_output * gate_msa).type_as(control_hidden_states)
 
         # 2. Cross-attention
         norm_hidden_states = self.norm2(control_hidden_states.float()).type_as(control_hidden_states)
-        attn_output = self.attn2(hidden_states=norm_hidden_states, encoder_hidden_states=encoder_hidden_states)
+        attn_output = self.attn2(norm_hidden_states, encoder_hidden_states, None, None)
         control_hidden_states = control_hidden_states + attn_output
 
         # 3. Feed-forward
@@ -140,7 +134,9 @@ class WanVACETransformerBlock(nn.Module):
         return conditioning_states, control_hidden_states
 
 
-class WanVACETransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginalModelMixin, CacheMixin):
+class WanVACETransformer3DModel(
+    ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginalModelMixin, CacheMixin, AttentionMixin
+):
     r"""
     A Transformer model for video-like data used in the Wan model.
 
@@ -365,7 +361,7 @@ class WanVACETransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromO
                     hidden_states = hidden_states + control_hint * scale
 
         # 6. Output norm, projection & unpatchify
-        shift, scale = (self.scale_shift_table + temb.unsqueeze(1)).chunk(2, dim=1)
+        shift, scale = (self.scale_shift_table.to(temb.device) + temb.unsqueeze(1)).chunk(2, dim=1)
 
         # Move the shift and scale tensors to the same device as hidden_states.
         # When using multi-GPU inference via accelerate these will be on the
