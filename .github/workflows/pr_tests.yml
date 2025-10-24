@@ -126,7 +126,7 @@ jobs:
       if: ${{ matrix.config.framework == 'pytorch_pipelines' }}
       run: |
         pytest -n 16 --max-worker-restart=0 --dist=loadfile \
-          -s -k "not Flax and not Onnx" \
+          -k "not Flax and not Onnx" \
           --make-reports=tests_${{ matrix.config.report }} \
           tests/pipelines
 
