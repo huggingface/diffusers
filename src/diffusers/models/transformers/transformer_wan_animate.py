@@ -30,6 +30,7 @@ from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin, get_parameter_dtype
 from ..normalization import FP32LayerNorm
 from .transformer_wan import (
+    WanAttention,
     WanImageEmbedding,
     WanRotaryPosEmbed,
     WanTimeTextImageEmbedding,
@@ -38,6 +39,27 @@ from .transformer_wan import (
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
+
+# Copied from diffusers.models.transformers.transformer_wan._get_qkv_projections
+def _get_qkv_projections(attn: "WanAttention", hidden_states: torch.Tensor, encoder_hidden_states: torch.Tensor):
+    # encoder_hidden_states is only passed for cross-attention
+    if encoder_hidden_states is None:
+        encoder_hidden_states = hidden_states
+
+    if attn.fused_projections:
+        if attn.cross_attention_dim_head is None:
+            # In self-attention layers, we can fuse the entire QKV projection into a single linear
+            query, key, value = attn.to_qkv(hidden_states).chunk(3, dim=-1)
+        else:
+            # In cross-attention layers, we can only fuse the KV projections into a single linear
+            query = attn.to_q(hidden_states)
+            key, value = attn.to_kv(encoder_hidden_states).chunk(2, dim=-1)
+    else:
+        query = attn.to_q(hidden_states)
+        key = attn.to_k(encoder_hidden_states)
+        value = attn.to_v(encoder_hidden_states)
+    return query, key, value
 
 
 class FusedLeakyReLU(nn.Module):
@@ -358,78 +380,100 @@ class WanAnimateFaceEncoder(nn.Module):
         return x_local
 
 
-class WanAnimateFaceBlock(nn.Module):
+class WanAnimateFaceBlockAttnProcessor:
     _attention_backend = None
     _parallel_config = None
 
-    def __init__(
+    def __init__(self):
+        if not hasattr(F, "scaled_dot_product_attention"):
+            raise ImportError(
+                f"{self.__class__.__name__} requires PyTorch 2.0. To use it, please upgrade PyTorch to version 2.0 or"
+                f" higher."
+            )
+
+    def __call__(
         self,
-        hidden_size: int,
-        heads_num: int,
-        eps: float = 1e-6,
-    ):
-        super().__init__()
-        self.heads_num = heads_num
-        head_dim = hidden_size // heads_num
-
-        self.linear1_kv = nn.Linear(hidden_size, hidden_size * 2)
-        self.linear1_q = nn.Linear(hidden_size, hidden_size)
-        self.linear2 = nn.Linear(hidden_size, hidden_size)
-
-        self.q_norm = nn.RMSNorm(head_dim, eps)
-        self.k_norm = nn.RMSNorm(head_dim, eps)
-
-        self.pre_norm_feat = nn.LayerNorm(hidden_size, eps, elementwise_affine=False)
-        self.pre_norm_motion = nn.LayerNorm(hidden_size, eps, elementwise_affine=False)
-
-    def set_attention_backend(self, backend):
-        """Set the attention backend for this face block."""
-        self._attention_backend = backend
-
-    def set_parallel_config(self, config):
-        """Set the parallel configuration for this face block."""
-        self._parallel_config = config
-
-    def forward(
-        self,
-        x: torch.Tensor,
-        motion_vec: torch.Tensor,
+        attn: "WanAttention",
+        hidden_states: torch.Tensor,
+        encoder_hidden_states: Optional[torch.Tensor] = None,
+        attention_mask: Optional[torch.Tensor] = None,
+        rotary_emb: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
     ) -> torch.Tensor:
-        B, T, N, C = motion_vec.shape
-        T_comp = T
+        # encoder_hidden_states corresponds to the motion vec
+        # attention_mask corresponds to the motion mask (if any)
+        # B --> batch_size, C --> attn.dim
+        B, T, N, C = encoder_hidden_states.shape
 
-        x_motion = self.pre_norm_motion(motion_vec)
-        x_feat = self.pre_norm_feat(x)
+        query, key, value = _get_qkv_projections(attn, hidden_states, encoder_hidden_states)
 
-        kv = self.linear1_kv(x_motion)
-        q = self.linear1_q(x_feat)
+        query = query.unflatten(2, (attn.heads, -1))  # [B, L, H * D] --> [B, L, H, D]
+        key = key.view(B, T, N, attn.heads, -1)  # [B, T, N, H * D_kv] --> [B, T, N, H, D_kv]
+        value = value.view(B, T, N, attn.heads, -1)
 
-        k, v = kv.view(B, T, N, 2, self.heads_num, -1).permute(3, 0, 1, 2, 4, 5)
-        q = q.unflatten(2, (self.heads_num, -1))
+        query = attn.norm_q(query)
+        key = attn.norm_k(key)
 
-        q = self.q_norm(q.float()).type_as(q)
-        k = self.k_norm(k.float()).type_as(k)
+        query = query.unflatten(1, (T, -1)).flatten(0, 1)  # [B, L, H, D] --> [B * T, L / T, H, D]
+        key = key.flatten(0, 1)  # [B, T, N, H, D_kv] --> [B * T, N, H, D_kv]
+        value = value.flatten(0, 1)
 
-        k = k.flatten(0, 1)
-        v = v.flatten(0, 1)
-
-        q = q.unflatten(1, (T_comp, -1)).flatten(0, 1)
-
-        attn = dispatch_attention_fn(
-            q,
-            k,
-            v,
+        hidden_states = dispatch_attention_fn(
+            query,
+            key,
+            value,
             attn_mask=None,
             dropout_p=0.0,
             is_causal=False,
             backend=self._attention_backend,
             parallel_config=self._parallel_config,
         )
-        attn = attn.unflatten(0, (B, T_comp)).flatten(1, 2)
 
-        output = self.linear2(attn)
+        hidden_states = hidden_states.unflatten(0, (B, T)).flatten(1, 2)
 
-        return output
+        hidden_states = attn.to_out[0](hidden_states)
+        hidden_states = attn.to_out[1](hidden_states)
+
+        if attention_mask is not None:
+            # NOTE: attention_mask is assumed to be a multiplicative mask
+            attention_mask = attention_mask.flatten(start_dim=1)
+            hidden_states = hidden_states * attention_mask
+
+        return hidden_states
+
+
+class WanAnimateFaceBlock(nn.Module):
+    def __init__(
+        self,
+        dim: int,
+        num_heads: int,
+        eps: float = 1e-6,
+    ):
+        super().__init__()
+
+        self.pre_norm_feat = nn.LayerNorm(dim, eps, elementwise_affine=False)
+        self.pre_norm_motion = nn.LayerNorm(dim, eps, elementwise_affine=False)
+
+        self.attn = WanAttention(
+            dim=dim,
+            heads=num_heads,
+            dim_head=dim // num_heads,
+            eps=eps,
+            cross_attention_dim_head=dim // num_heads,
+            processor=WanAnimateFaceBlockAttnProcessor(),
+        )
+
+    def forward(
+        self,
+        hidden_states: torch.Tensor,
+        motion_vec: torch.Tensor,
+        motion_mask: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        motion_vec = self.pre_norm_motion(motion_vec)
+
+        hidden_states = self.pre_norm_feat(hidden_states)
+        hidden_states = self.attn(hidden_states, motion_vec, motion_mask)
+
+        return hidden_states
 
 
 class WanAnimateTransformer3DModel(
