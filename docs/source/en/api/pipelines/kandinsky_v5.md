@@ -30,12 +30,16 @@ The original codebase can be found at [ai-forever/Kandinsky-5](https://github.co
 
 Kandinsky 5.0 T2V Lite comes in several variants optimized for different use cases:
 
-| Model Type | Description | Use Cases |
+| model_id | Description | Use Cases |
 |------------|-------------|-----------|
-| **SFT** | Supervised Fine-Tuned model | Highest generation quality |
-| **no-CFG** | Classifier-Free Guidance distilled | 2× faster inference |
-| **Distilled** | Diffusion distilled to 16 steps | 6× faster inference, minimal quality loss |
-| **Pretrain** | Base pretrained model | Research and fine-tuning |
+| **ai-forever/Kandinsky-5.0-T2V-Lite-sft-5s-Diffusers** | 5 second Supervised Fine-Tuned model | Highest generation quality |
+| **ai-forever/Kandinsky-5.0-T2V-Lite-sft-10s-Diffusers** | 10 second Supervised Fine-Tuned model | Highest generation quality |
+| **ai-forever/Kandinsky-5.0-T2V-Lite-nocfg-5s-Diffusers** | 5 second Classifier-Free Guidance distilled | 2× faster inference |
+| **ai-forever/Kandinsky-5.0-T2V-Lite-nocfg-10s-Diffusers** | 10 second Classifier-Free Guidance distilled | 2× faster inference |
+| **ai-forever/Kandinsky-5.0-T2V-Lite-distilled16steps-5s-Diffusers** | 5 second Diffusion distilled to 16 steps | 6× faster inference, minimal quality loss |
+| **ai-forever/Kandinsky-5.0-T2V-Lite-distilled16steps-10s-Diffusers** | 10 second Diffusion distilled to 16 steps | 6× faster inference, minimal quality loss |
+| **ai-forever/Kandinsky-5.0-T2V-Lite-pretrain-5s-Diffusers** | 5 second Base pretrained model | Research and fine-tuning |
+| **ai-forever/Kandinsky-5.0-T2V-Lite-pretrain-10s-Diffusers** | 10 second Base pretrained model | Research and fine-tuning |
 
 All models are available in 5-second and 10-second video generation versions.
 
@@ -76,21 +80,57 @@ output = pipe(
 export_to_video(output, "output.mp4", fps=24, quality=9)
 ```
 
+### 10 second Models
+**⚠️ Warning!** all 10 second models should be used with Flex attention and max-autotune-no-cudagraphs compilation:
 
-### Using Different Model Variants
 ```python
-# For faster generation with distilled model
+pipe = Kandinsky5T2VPipeline.from_pretrained(
+    "ai-forever/Kandinsky-5.0-T2V-Lite-sft-10s-Diffusers", 
+    torch_dtype=torch.bfloat16
+)
+pipe = pipe.to("cuda")
+
+pipe.transformer.set_attention_backend(
+    "flex"
+)                                       # <--- Sett attention bakend to Flex
+pipe.transformer.compile(
+    mode="max-autotune-no-cudagraphs", 
+    dynamic=True
+)                                       # <--- Compile with max-autotune-no-cudagraphs
+
+prompt = "A cat and a dog baking a cake together in a kitchen."
+negative_prompt = "Static, 2D cartoon, cartoon, 2d animation, paintings, images, worst quality, low quality, ugly, deformed, walking backwards"
+
+output = pipe(
+    prompt=prompt,
+    negative_prompt=negative_prompt,
+    height=512,
+    width=768,
+    num_frames=241,
+    num_inference_steps=50,
+    guidance_scale=5.0,
+).frames[0]
+
+export_to_video(output, "output.mp4", fps=24, quality=9)
+```
+
+### Diffusion Distilled model
+**⚠️ Warning!** all nocfg and diffusion distilled models should be infered wothout CFG (```guidance_scale=1.0```):
+
+```python
 model_id = "ai-forever/Kandinsky-5.0-T2V-Lite-distilled16steps-5s-Diffusers"
 pipe = Kandinsky5T2VPipeline.from_pretrained(model_id, torch_dtype=torch.bfloat16)
 pipe = pipe.to("cuda")
 
-# Generate with fewer steps
 output = pipe(
     prompt="A beautiful sunset over mountains",
-    num_inference_steps=16,  # Only 16 steps needed for distilled model
-    guidance_scale=1.0,
+    num_inference_steps=16,  # <--- Model is distilled in 16 steps
+    guidance_scale=1.0,      # <--- no CFG
 ).frames[0]
+
+export_to_video(output, "output.mp4", fps=24, quality=9)
 ```
+
 
 ## Citation
 ```bibtex
