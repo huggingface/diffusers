@@ -23,8 +23,8 @@ concurrency:
 env:
   DIFFUSERS_IS_CI: yes
   HF_XET_HIGH_PERFORMANCE: 1
-  OMP_NUM_THREADS: 4
-  MKL_NUM_THREADS: 4
+  OMP_NUM_THREADS: 2
+  MKL_NUM_THREADS: 2
   PYTEST_TIMEOUT: 60
 
 jobs:
@@ -125,7 +125,7 @@ jobs:
     - name: Run fast PyTorch Pipeline CPU tests
       if: ${{ matrix.config.framework == 'pytorch_pipelines' }}
       run: |
-        pytest -n 8 --max-worker-restart=0 --dist=loadfile \
+        pytest -n 16 --max-worker-restart=0 --dist=loadfile \
           -s -v -k "not Flax and not Onnx" \
           --make-reports=tests_${{ matrix.config.report }} \
           tests/pipelines
