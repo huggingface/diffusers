@@ -31,6 +31,7 @@ if is_torch_available():
     from .transformer_kandinsky import Kandinsky5Transformer3DModel
     from .transformer_ltx import LTXVideoTransformer3DModel
     from .transformer_lumina2 import Lumina2Transformer2DModel
+    from .transformer_magi1 import Magi1Transformer3DModel
     from .transformer_mochi import MochiTransformer3DModel
     from .transformer_omnigen import OmniGenTransformer2DModel
     from .transformer_prx import PRXTransformer2DModel

@@ -8,6 +8,7 @@ from .autoencoder_kl_hunyuan_video import AutoencoderKLHunyuanVideo
 from .autoencoder_kl_hunyuanimage import AutoencoderKLHunyuanImage
 from .autoencoder_kl_hunyuanimage_refiner import AutoencoderKLHunyuanImageRefiner
 from .autoencoder_kl_ltx import AutoencoderKLLTXVideo
+from .autoencoder_kl_magi1 import AutoencoderKLMagi1
 from .autoencoder_kl_magvit import AutoencoderKLMagvit
 from .autoencoder_kl_mochi import AutoencoderKLMochi
 from .autoencoder_kl_qwenimage import AutoencoderKLQwenImage
