@@ -553,6 +553,7 @@ class WanAnimateTransformer3DModel(
         motion_encoder_dim: int = 512,
         face_encoder_hidden_dim: int = 1024,
         face_encoder_num_heads: int = 4,
+        inject_face_latents_blocks: int = 5,
     ) -> None:
         super().__init__()
 
@@ -591,7 +592,13 @@ class WanAnimateTransformer3DModel(
         self.blocks = nn.ModuleList(
             [
                 WanTransformerBlock(
-                    inner_dim, ffn_dim, num_attention_heads, qk_norm, cross_attn_norm, eps, added_kv_proj_dim
+                    dim=inner_dim,
+                    ffn_dim=ffn_dim,
+                    num_heads=num_attention_heads,
+                    qk_norm=qk_norm,
+                    cross_attn_norm=cross_attn_norm,
+                    eps=eps,
+                    added_kv_proj_dim=added_kv_proj_dim,
                 )
                 for _ in range(num_layers)
             ]
@@ -600,10 +607,11 @@ class WanAnimateTransformer3DModel(
         self.face_adapter = nn.ModuleList(
             [
                 WanAnimateFaceBlock(
-                    inner_dim,
-                    num_attention_heads,
+                    dim=inner_dim,
+                    num_heads=num_attention_heads,
+                    eps=eps,
                 )
-                for _ in range(num_layers // 5)
+                for _ in range(num_layers // inject_face_latents_blocks)
             ]
         )
 
@@ -614,38 +622,20 @@ class WanAnimateTransformer3DModel(
 
         self.gradient_checkpointing = False
 
-    def set_attention_backend(self, backend: str):
-        """
-        Set the attention backend for the transformer and all face adapter blocks.
+    def motion_batch_encode(
+        self, face_pixel_values: torch.Tensor, batch_size: int = 8, upcast_to_fp32: bool = True
+    ) -> torch.Tensor:
+        if batch_size >= face_pixel_values.shape[0]:
+            motion_vec = self.motion_encoder(face_pixel_values, upcast_to_fp32)
+        else:
+            motion_vec_batches = []
+            for i in range(math.ceil(face_pixel_values.shape[0] / batch_size)):
+                face_pixel_values_batch = face_pixel_values[i * batch_size : (i + 1) * batch_size]
+                motion_vec_batch = self.motion_encoder(face_pixel_values_batch, upcast_to_fp32)
+                motion_vec_batches.append(motion_vec_batch)
+            motion_vec = torch.cat(motion_vec_batches)
 
-        Args:
-            backend (`str`): The attention backend to use (e.g., 'flash', 'sdpa', 'xformers').
-        """
-        from ..attention_dispatch import AttentionBackendName
-
-        # Validate backend
-        available_backends = {x.value for x in AttentionBackendName.__members__.values()}
-        if backend not in available_backends:
-            raise ValueError(f"`{backend=}` must be one of the following: " + ", ".join(available_backends))
-
-        backend_enum = AttentionBackendName(backend.lower())
-
-        # Call parent ModelMixin method to set backend for all attention modules
-        super().set_attention_backend(backend)
-
-        # Also set backend for all face adapter blocks (which use dispatch_attention_fn directly)
-        for face_block in self.face_adapter:
-            face_block.set_attention_backend(backend_enum)
-
-    def set_parallel_config(self, config):
-        """
-        Set the parallel configuration for all face adapter blocks.
-
-        Args:
-            config: The parallel configuration to use.
-        """
-        for face_block in self.face_adapter:
-            face_block.set_parallel_config(config)
+        return motion_vec
 
     def forward(
         self,
@@ -655,6 +645,7 @@ class WanAnimateTransformer3DModel(
         encoder_hidden_states: torch.Tensor,
         face_pixel_values: torch.Tensor,
         encoder_hidden_states_image: Optional[torch.Tensor] = None,
+        motion_encode_batch_size: int = 8,
         upcast_to_fp32: bool = True,
         return_dict: bool = True,
         attention_kwargs: Optional[Dict[str, Any]] = None,
@@ -689,9 +680,6 @@ class WanAnimateTransformer3DModel(
         # Add pose embeddings to hidden states
         hidden_states[:, :, 1:] = hidden_states[:, :, 1:] + pose_hidden_states[:, :, 1:]
         hidden_states = hidden_states.flatten(2).transpose(1, 2)
-        # sequence_length = int(math.ceil(np.prod([post_patch_num_frames, post_patch_height, post_patch_width]) // 4))
-        # hidden_states = torch.cat([hidden_states, hidden_states.new_zeros(hidden_states.shape[0], sequence_length - hidden_states.shape[1], hidden_states.shape[2])], dim=1)
-        pose_hidden_states = pose_hidden_states.flatten(2).transpose(1, 2)
 
         # 3. Condition embeddings (time, text, image)
         # timestep shape: batch_size, or batch_size, seq_len (wan 2.2 ti2v)
@@ -719,42 +707,44 @@ class WanAnimateTransformer3DModel(
         # Motion vector computation from face pixel values
         batch_size, channels, num_face_frames, height, width = face_pixel_values.shape
         # Rearrange from (B, C, T, H, W) to (B*T, C, H, W)
-        face_pixel_values_flat = face_pixel_values.permute(0, 2, 1, 3, 4).reshape(-1, channels, height, width)
+        face_pixel_values = face_pixel_values.permute(0, 2, 1, 3, 4).reshape(-1, channels, height, width)
 
         # Extract motion features using motion encoder
-        motion_vec = self.motion_encoder(face_pixel_values_flat, upcast_to_fp32=upcast_to_fp32)
+        motion_vec = self.motion_batch_encode(face_pixel_values, motion_encode_batch_size, upcast_to_fp32)
         motion_vec = motion_vec.view(batch_size, num_face_frames, -1)
 
         # Now get face features from the motion vector
         motion_vec = self.face_encoder(motion_vec)
 
         # Add padding at the beginning (prepend zeros)
-        _, T_motion, N_motion, C_motion = motion_vec.shape
-        pad_face = torch.zeros(batch_size, 1, N_motion, C_motion, dtype=motion_vec.dtype, device=motion_vec.device)
+        _, T_motion, H_motion, C_motion = motion_vec.shape
+        pad_face = torch.zeros(batch_size, 1, H_motion, C_motion, dtype=motion_vec.dtype, device=motion_vec.device)
         motion_vec = torch.cat([pad_face, motion_vec], dim=1)
 
         # 5. Transformer blocks with face adapter integration
-        if torch.is_grad_enabled() and self.gradient_checkpointing:
-            for block_idx, block in enumerate(self.blocks):
+        for block_idx, block in enumerate(self.blocks):
+            if torch.is_grad_enabled() and self.gradient_checkpointing:
                 hidden_states = self._gradient_checkpointing_func(
                     block, hidden_states, encoder_hidden_states, timestep_proj, rotary_emb
                 )
-
-                # Face adapter integration: apply after every 5th block (0, 5, 10, 15, ...)
-                if block_idx % 5 == 0:
-                    face_adapter_output = self.face_adapter[block_idx // 5](hidden_states, motion_vec)
-                    hidden_states = face_adapter_output + hidden_states
-        else:
-            for block_idx, block in enumerate(self.blocks):
+            else:
                 hidden_states = block(hidden_states, encoder_hidden_states, timestep_proj, rotary_emb)
 
-                # Face adapter integration: apply after every 5th block (0, 5, 10, 15, ...)
-                if block_idx % 5 == 0:
-                    face_adapter_output = self.face_adapter[block_idx // 5](hidden_states, motion_vec)
-                    hidden_states = face_adapter_output + hidden_states
+            # Face adapter integration: apply after every 5th block (0, 5, 10, 15, ...)
+            if block_idx % self.config.inject_face_latents_blocks == 0:
+                face_adapter_block_idx = block_idx // self.config.inject_face_latents_blocks
+                face_adapter_output = self.face_adapter[face_adapter_block_idx](hidden_states, motion_vec)
+                hidden_states = face_adapter_output + hidden_states
 
         # 6. Output norm, projection & unpatchify
-        shift, scale = (self.scale_shift_table.to(temb.device) + temb.unsqueeze(1)).chunk(2, dim=1)
+        if temb.ndim == 3:
+            # batch_size, seq_len, inner_dim (wan 2.2 ti2v)
+            shift, scale = (self.scale_shift_table.unsqueeze(0).to(temb.device) + temb.unsqueeze(2)).chunk(2, dim=2)
+            shift = shift.squeeze(2)
+            scale = scale.squeeze(2)
+        else:
+            # batch_size, inner_dim
+            shift, scale = (self.scale_shift_table.to(temb.device) + temb.unsqueeze(1)).chunk(2, dim=1)
 
         # Move the shift and scale tensors to the same device as hidden_states.
         # When using multi-GPU inference via accelerate these will be on the
