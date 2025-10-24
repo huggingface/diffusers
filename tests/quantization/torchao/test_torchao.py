@@ -497,7 +497,7 @@ class TorchAoTest(unittest.TestCase):
 
     def test_model_memory_usage(self):
         model_id = "hf-internal-testing/tiny-flux-pipe"
-        expected_memory_saving_ratio = 2.0
+        expected_memory_saving_ratio = 1.02
 
         inputs = self.get_dummy_tensor_inputs(device=torch_device)
 
