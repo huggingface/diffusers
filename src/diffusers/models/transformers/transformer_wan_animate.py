@@ -25,13 +25,11 @@ from ...utils import USE_PEFT_BACKEND, logging, scale_lora_layers, unscale_lora_
 from ..attention import AttentionMixin
 from ..attention_dispatch import dispatch_attention_fn
 from ..cache_utils import CacheMixin
-from ..embeddings import PixArtAlphaTextProjection, TimestepEmbedding, Timesteps
 from ..modeling_outputs import Transformer2DModelOutput
-from ..modeling_utils import ModelMixin, get_parameter_dtype
+from ..modeling_utils import ModelMixin
 from ..normalization import FP32LayerNorm
 from .transformer_wan import (
     WanAttention,
-    WanImageEmbedding,
     WanRotaryPosEmbed,
     WanTimeTextImageEmbedding,
     WanTransformerBlock,
