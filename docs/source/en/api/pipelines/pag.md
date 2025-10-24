@@ -77,6 +77,11 @@ PAG can be used by specifying the `pag_applied_layers` as a parameter when insta
 	- all
 	- __call__
 
+## StableDiffusionControlNetPAGImg2ImgPipeline
+[[autodoc]] StableDiffusionControlNetPAGImg2ImgPipeline
+	- all
+	- __call__
+
 ## StableDiffusionXLPAGImg2ImgPipeline
 [[autodoc]] StableDiffusionXLPAGImg2ImgPipeline
 	- all
