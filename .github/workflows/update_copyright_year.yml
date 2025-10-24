@@ -1,0 +1,56 @@
+name: Update Copyright Year 
+
+on:
+  schedule:
+    - cron: "0 0 1 1 *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  update-year-pr:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Update copyright year
+        run: python utils/update_copyright_year.py
+
+      - name: Check for changes
+        id: check_changes
+        run: |
+          if git diff --quiet; then
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+          else
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create PR
+        if: steps.check_changes.outputs.has_changes == 'true'
+        run: |
+          YEAR=$(date +'%Y')
+          BRANCH="update-copyright-$YEAR"
+          
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          
+          git checkout -b "$BRANCH"
+          git add .
+          git commit -m "chore: update copyright year to $YEAR"
+          git push --set-upstream origin "$BRANCH"
+          
+          gh pr create \
+            --title "chore: update copyright year to $YEAR" \
+            --body "Automated update of copyright year to $YEAR." \
+            --head "$BRANCH" \
+            --base main \
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
