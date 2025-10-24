@@ -29,6 +29,7 @@ from diffusers import (
 )
 
 from ...testing_utils import (
+    Expectations,
     backend_empty_cache,
     enable_full_determinism,
     floats_tensor,
@@ -290,4 +291,11 @@ class KandinskyV22ControlnetPipelineIntegrationTests(unittest.TestCase):
 
         assert image.shape == (512, 512, 3)
         max_diff = numpy_cosine_similarity_distance(expected_image.flatten(), image.flatten())
-        assert max_diff < 2e-4
+        expected_max_diffs = Expectations(
+            {
+                ("xpu", 3): 2e-3,
+                ("cuda", 7): 2e-4,
+            }
+        )
+        expected_max_diff = expected_max_diffs.get_expectation()
+        assert max_diff < expected_max_diff
