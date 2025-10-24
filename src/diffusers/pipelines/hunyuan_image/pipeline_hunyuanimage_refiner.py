@@ -257,6 +257,8 @@ class HunyuanImageRefinerPipeline(DiffusionPipeline):
         if prompt is None:
             prompt = [""] * batch_size
 
+        prompt = [prompt] if isinstance(prompt, str) else prompt
+
         if prompt_embeds is None:
             prompt_embeds, prompt_embeds_mask = self._get_qwen_prompt_embeds(
                 tokenizer=self.tokenizer,

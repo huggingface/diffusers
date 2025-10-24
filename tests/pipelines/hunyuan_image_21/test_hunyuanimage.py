@@ -285,7 +285,6 @@ class HunyuanImagePipelineFastTests(
             "VAE tiling should not affect the inference results",
         )
 
-
     @unittest.skip("TODO: Test not supported for now because needs to be adjusted to work with guiders.")
     def test_encode_prompt_works_in_isolation(self):
         pass
