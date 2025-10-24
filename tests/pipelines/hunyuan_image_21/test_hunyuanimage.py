@@ -101,7 +101,7 @@ class HunyuanImagePipelineFastTests(
         torch.manual_seed(0)
         scheduler = FlowMatchEulerDiscreteScheduler(shift=7.0)
 
-        if guidance_embeds:
+        if not guidance_embeds:
             torch.manual_seed(0)
             guider = AdaptiveProjectedMixGuidance(adaptive_projected_guidance_start_step=2)
             ocr_guider = AdaptiveProjectedMixGuidance(adaptive_projected_guidance_start_step=3)
@@ -201,7 +201,33 @@ class HunyuanImagePipelineFastTests(
         self.assertEqual(generated_image.shape, (3, 16, 16))
 
         expected_slice_np = np.array(
-            [0.6258303, 0.51466966, 0.60717905, 0.5928265, 0.48783678, 0.5860771, 0.5236214, 0.58048356, 0.5678601]
+            [0.6252659, 0.51482046, 0.60799813, 0.59267783, 0.488082, 0.5857634, 0.523781, 0.58028054, 0.5674121]
+        )
+        output_slice = generated_image[0, -3:, -3:].flatten().cpu().numpy()
+
+        self.assertTrue(
+            np.abs(output_slice - expected_slice_np).max() < 1e-3,
+            f"output_slice: {output_slice}, expected_slice_np: {expected_slice_np}",
+        )
+
+    def test_inference_guider(self):
+        device = "cpu"
+
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe.to(device)
+        pipe.set_progress_bar_config(disable=None)
+
+        pipe.guider = pipe.guider.new(guidance_scale=1000)
+        pipe.ocr_guider = pipe.ocr_guider.new(guidance_scale=1000)
+
+        inputs = self.get_dummy_inputs(device)
+        image = pipe(**inputs).images
+        generated_image = image[0]
+        self.assertEqual(generated_image.shape, (3, 16, 16))
+
+        expected_slice_np = np.array(
+            [0.61494756, 0.49616697, 0.60327923, 0.6115793, 0.49047345, 0.56977504, 0.53066164, 0.58880305, 0.5570612]
         )
         output_slice = generated_image[0, -3:, -3:].flatten().cpu().numpy()
 
