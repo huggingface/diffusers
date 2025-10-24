@@ -224,6 +224,7 @@ class HunyuanImageRefinerPipeline(DiffusionPipeline):
         self,
         prompt: Optional[Union[str, List[str]]] = None,
         device: Optional[torch.device] = None,
+        batch_size: int = 1,
         num_images_per_prompt: int = 1,
         prompt_embeds: Optional[torch.Tensor] = None,
         prompt_embeds_mask: Optional[torch.Tensor] = None,
@@ -235,6 +236,8 @@ class HunyuanImageRefinerPipeline(DiffusionPipeline):
                 prompt to be encoded
             device: (`torch.device`):
                 torch device
+            batch_size (`int`):
+                batch size of prompts, defaults to 1
             num_images_per_prompt (`int`):
                 number of images that should be generated per prompt
             prompt_embeds (`torch.Tensor`, *optional*):
@@ -252,9 +255,7 @@ class HunyuanImageRefinerPipeline(DiffusionPipeline):
         device = device or self._execution_device
 
         if prompt is None:
-            prompt = ""
-        prompt = [prompt] if isinstance(prompt, str) else prompt
-        batch_size = len(prompt) if prompt_embeds is None else prompt_embeds.shape[0]
+            prompt = [""] * batch_size
 
         if prompt_embeds is None:
             prompt_embeds, prompt_embeds_mask = self._get_qwen_prompt_embeds(
@@ -578,6 +579,7 @@ class HunyuanImageRefinerPipeline(DiffusionPipeline):
             prompt_embeds=prompt_embeds,
             prompt_embeds_mask=prompt_embeds_mask,
             device=device,
+            batch_size=batch_size,
             num_images_per_prompt=num_images_per_prompt,
         )
 
@@ -592,6 +594,7 @@ class HunyuanImageRefinerPipeline(DiffusionPipeline):
                 prompt_embeds=negative_prompt_embeds,
                 prompt_embeds_mask=negative_prompt_embeds_mask,
                 device=device,
+                batch_size=batch_size,
                 num_images_per_prompt=num_images_per_prompt,
             )
 
