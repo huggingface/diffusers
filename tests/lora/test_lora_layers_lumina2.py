@@ -13,7 +13,6 @@
 # limitations under the License.
 
 import sys
-import unittest
 
 import numpy as np
 import pytest
@@ -36,7 +35,7 @@ from .utils import PeftLoraLoaderMixinTests, check_if_lora_correctly_set  # noqa
 
 
 @require_peft_backend
-class Lumina2LoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
+class TestLumina2LoRA(PeftLoraLoaderMixinTests):
     pipeline_class = Lumina2Pipeline
     scheduler_cls = FlowMatchEulerDiscreteScheduler
     scheduler_kwargs = {}
@@ -101,35 +100,35 @@ class Lumina2LoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
 
         return noise, input_ids, pipeline_inputs
 
-    @unittest.skip("Not supported in Lumina2.")
+    @pytest.mark.skip("Not supported in Lumina2.")
     def test_simple_inference_with_text_denoiser_block_scale(self):
         pass
 
-    @unittest.skip("Not supported in Lumina2.")
+    @pytest.mark.skip("Not supported in Lumina2.")
     def test_simple_inference_with_text_denoiser_block_scale_for_all_dict_options(self):
         pass
 
-    @unittest.skip("Not supported in Lumina2.")
+    @pytest.mark.skip("Not supported in Lumina2.")
     def test_modify_padding_mode(self):
         pass
 
-    @unittest.skip("Text encoder LoRA is not supported in Lumina2.")
+    @pytest.mark.skip("Text encoder LoRA is not supported in Lumina2.")
     def test_simple_inference_with_partial_text_lora(self):
         pass
 
-    @unittest.skip("Text encoder LoRA is not supported in Lumina2.")
+    @pytest.mark.skip("Text encoder LoRA is not supported in Lumina2.")
     def test_simple_inference_with_text_lora(self):
         pass
 
-    @unittest.skip("Text encoder LoRA is not supported in Lumina2.")
+    @pytest.mark.skip("Text encoder LoRA is not supported in Lumina2.")
     def test_simple_inference_with_text_lora_and_scale(self):
         pass
 
-    @unittest.skip("Text encoder LoRA is not supported in Lumina2.")
+    @pytest.mark.skip("Text encoder LoRA is not supported in Lumina2.")
     def test_simple_inference_with_text_lora_fused(self):
         pass
 
-    @unittest.skip("Text encoder LoRA is not supported in Lumina2.")
+    @pytest.mark.skip("Text encoder LoRA is not supported in Lumina2.")
     def test_simple_inference_with_text_lora_save_load(self):
         pass
 
@@ -139,20 +138,17 @@ class Lumina2LoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
         reason="Test currently fails on CPU and PyTorch 2.5.1 but not on PyTorch 2.4.1.",
         strict=False,
     )
-    def test_lora_fuse_nan(self):
-        components, text_lora_config, denoiser_lora_config = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        pipe = pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
+    def test_lora_fuse_nan(self, pipe):
+        _, text_lora_config, denoiser_lora_config = self.get_dummy_components()
         _, _, inputs = self.get_dummy_inputs(with_generator=False)
 
         if "text_encoder" in self.pipeline_class._lora_loadable_modules:
             pipe.text_encoder.add_adapter(text_lora_config, "adapter-1")
-            self.assertTrue(check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder")
+            assert check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder"
 
         denoiser = pipe.transformer if self.unet_kwargs is None else pipe.unet
         denoiser.add_adapter(denoiser_lora_config, "adapter-1")
-        self.assertTrue(check_if_lora_correctly_set(denoiser), "Lora not correctly set in denoiser.")
+        assert check_if_lora_correctly_set(denoiser), "Lora not correctly set in denoiser."
 
         # corrupt one LoRA weight with `inf` values
         with torch.no_grad():
@@ -166,4 +162,4 @@ class Lumina2LoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
         pipe.fuse_lora(components=self.pipeline_class._lora_loadable_modules, safe_fusing=False)
         out = pipe(**inputs)[0]
 
-        self.assertTrue(np.isnan(out).all())
+        assert np.isnan(out).all()
