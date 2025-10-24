@@ -151,8 +151,8 @@ def check_imports(filename):
             missing_packages.append(imp)
 
     if len(missing_packages) > 0:
-        raise ImportError(
-            "This modeling file requires the following packages that were not found in your environment: "
+        logger.warning(
+            "This modeling file might require the following packages that were not found in your environment: "
             f"{', '.join(missing_packages)}. Run `pip install {' '.join(missing_packages)}`"
         )
 

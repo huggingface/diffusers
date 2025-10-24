@@ -138,10 +138,8 @@ class AudioLDM2PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             patch_stride=2,
             patch_embed_input_channels=4,
         )
-        text_encoder_config = ClapConfig.from_text_audio_configs(
-            text_config=text_branch_config,
-            audio_config=audio_branch_config,
-            projection_dim=16,
+        text_encoder_config = ClapConfig(
+            text_config=text_branch_config, audio_config=audio_branch_config, projection_dim=16
         )
         text_encoder = ClapModel(text_encoder_config)
         tokenizer = RobertaTokenizer.from_pretrained("hf-internal-testing/tiny-random-roberta", model_max_length=77)
