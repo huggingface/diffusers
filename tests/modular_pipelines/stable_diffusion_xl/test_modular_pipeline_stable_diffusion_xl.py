@@ -51,7 +51,7 @@ class SDXLModularTests:
 
     pipeline_class = StableDiffusionXLModularPipeline
     pipeline_blocks_class = StableDiffusionXLAutoBlocks
-    repo = "hf-internal-testing/tiny-sdxl-modular"
+    pretrained_model_name_or_path = "hf-internal-testing/tiny-sdxl-modular"
     params = frozenset(
         [
             "prompt",
@@ -66,7 +66,9 @@ class SDXLModularTests:
     batch_params = frozenset(["prompt", "negative_prompt", "image", "mask_image"])
 
     def get_pipeline(self, components_manager=None, torch_dtype=torch.float32):
-        pipeline = self.pipeline_blocks_class().init_pipeline(self.repo, components_manager=components_manager)
+        pipeline = self.pipeline_blocks_class().init_pipeline(
+            self.pretrained_model_name_or_path, components_manager=components_manager
+        )
         pipeline.load_components(torch_dtype=torch_dtype)
         return pipeline
 
@@ -157,7 +159,7 @@ class SDXLModularIPAdapterTests:
 
         blocks = self.pipeline_blocks_class()
         _ = blocks.sub_blocks.pop("ip_adapter")
-        pipe = blocks.init_pipeline(self.repo)
+        pipe = blocks.init_pipeline(self.pretrained_model_name_or_path)
         pipe.load_components(torch_dtype=torch.float32)
         pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
