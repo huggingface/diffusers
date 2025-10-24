@@ -202,10 +202,22 @@ class StableDiffusionXLLoopDenoiser(ModularPipelineBlocks):
         #  Map the keys we'll see on each `guider_state_batch` (e.g. guider_state_batch.prompt_embeds)
         #  to the corresponding (cond, uncond) fields on block_state. (e.g. block_state.prompt_embeds, block_state.negative_prompt_embeds)
         guider_inputs = {
-            "prompt_embeds": (block_state.prompt_embeds, block_state.negative_prompt_embeds),
-            "time_ids": (block_state.add_time_ids, block_state.negative_add_time_ids),
-            "text_embeds": (block_state.pooled_prompt_embeds, block_state.negative_pooled_prompt_embeds),
-            "image_embeds": (block_state.ip_adapter_embeds, block_state.negative_ip_adapter_embeds),
+            "prompt_embeds": (
+                getattr(block_state, "prompt_embeds", None),
+                getattr(block_state, "negative_prompt_embeds", None),
+            ),
+            "time_ids": (
+                getattr(block_state, "add_time_ids", None),
+                getattr(block_state, "negative_add_time_ids", None),
+            ),
+            "text_embeds": (
+                getattr(block_state, "pooled_prompt_embeds", None),
+                getattr(block_state, "negative_pooled_prompt_embeds", None),
+            ),
+            "image_embeds": (
+                getattr(block_state, "ip_adapter_embeds", None),
+                getattr(block_state, "negative_ip_adapter_embeds", None),
+            ),
         }
 
         components.guider.set_state(step=i, num_inference_steps=block_state.num_inference_steps, timestep=t)
@@ -347,10 +359,22 @@ class StableDiffusionXLControlNetLoopDenoiser(ModularPipelineBlocks):
         #  Map the keys we'll see on each `guider_state_batch` (e.g. guider_state_batch.prompt_embeds)
         #  to the corresponding (cond, uncond) fields on block_state. (e.g. block_state.prompt_embeds, block_state.negative_prompt_embeds)
         guider_inputs = {
-            "prompt_embeds": (block_state.prompt_embeds, block_state.negative_prompt_embeds),
-            "time_ids": (block_state.add_time_ids, block_state.negative_add_time_ids),
-            "text_embeds": (block_state.pooled_prompt_embeds, block_state.negative_pooled_prompt_embeds),
-            "image_embeds": (block_state.ip_adapter_embeds, block_state.negative_ip_adapter_embeds),
+            "prompt_embeds": (
+                getattr(block_state, "prompt_embeds", None),
+                getattr(block_state, "negative_prompt_embeds", None),
+            ),
+            "time_ids": (
+                getattr(block_state, "add_time_ids", None),
+                getattr(block_state, "negative_add_time_ids", None),
+            ),
+            "text_embeds": (
+                getattr(block_state, "pooled_prompt_embeds", None),
+                getattr(block_state, "negative_pooled_prompt_embeds", None),
+            ),
+            "image_embeds": (
+                getattr(block_state, "ip_adapter_embeds", None),
+                getattr(block_state, "negative_ip_adapter_embeds", None),
+            ),
         }
 
         # cond_scale for the timestep (controlnet input)

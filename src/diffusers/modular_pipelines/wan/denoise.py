@@ -95,7 +95,10 @@ class WanLoopDenoiser(ModularPipelineBlocks):
         #  Map the keys we'll see on each `guider_state_batch` (e.g. guider_state_batch.prompt_embeds)
         #  to the corresponding (cond, uncond) fields on block_state. (e.g. block_state.prompt_embeds, block_state.negative_prompt_embeds)
         guider_inputs = {
-            "prompt_embeds": (block_state.prompt_embeds, block_state.negative_prompt_embeds),
+            "prompt_embeds": (
+                getattr(block_state, "prompt_embeds", None),
+                getattr(block_state, "negative_prompt_embeds", None),
+            ),
         }
         transformer_dtype = components.transformer.dtype
 
