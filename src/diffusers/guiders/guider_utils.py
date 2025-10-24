@@ -40,7 +40,7 @@ class BaseGuidance(ConfigMixin, PushToHubMixin):
     _input_predictions = None
     _identifier_key = "__guidance_identifier__"
 
-    def __init__(self, start: float = 0.0, stop: float = 1.0):
+    def __init__(self, start: float = 0.0, stop: float = 1.0, enabled: bool = True):
         self._start = start
         self._stop = stop
         self._step: int = None
@@ -48,7 +48,7 @@ class BaseGuidance(ConfigMixin, PushToHubMixin):
         self._timestep: torch.LongTensor = None
         self._count_prepared = 0
         self._input_fields: Dict[str, Union[str, Tuple[str, str]]] = None
-        self._enabled = True
+        self._enabled = enabled
 
         if not (0.0 <= start < 1.0):
             raise ValueError(f"Expected `start` to be between 0.0 and 1.0, but got {start}.")
@@ -59,6 +59,31 @@ class BaseGuidance(ConfigMixin, PushToHubMixin):
             raise ValueError(
                 "`_input_predictions` must be a list of required prediction names for the guidance technique."
             )
+
+    def new(self, **kwargs):
+        """
+        Creates a copy of this guider instance, optionally with modified configuration parameters.
+
+        Args:
+            **kwargs: Configuration parameters to override in the new instance. If no kwargs are provided,
+                returns an exact copy with the same configuration.
+
+        Returns:
+            A new guider instance with the same (or updated) configuration.
+
+        Example:
+            ```python
+            # Create a CFG guider
+            guider = ClassifierFreeGuidance(guidance_scale=3.5)
+
+            # Create an exact copy
+            same_guider = guider.new()
+
+            # Create a copy with different start step, keeping other config the same
+            new_guider = guider.new(guidance_scale=5)
+            ```
+        """
+        return self.__class__.from_config(self.config, **kwargs)
 
     def disable(self):
         self._enabled = False
@@ -72,42 +97,52 @@ class BaseGuidance(ConfigMixin, PushToHubMixin):
         self._timestep = timestep
         self._count_prepared = 0
 
-    def set_input_fields(self, **kwargs: Dict[str, Union[str, Tuple[str, str]]]) -> None:
+    def get_state(self) -> Dict[str, Any]:
         """
-        Set the input fields for the guidance technique. The input fields are used to specify the names of the returned
-        attributes containing the prepared data after `prepare_inputs` is called. The prepared data is obtained from
-        the values of the provided keyword arguments to this method.
-
-        Args:
-            **kwargs (`Dict[str, Union[str, Tuple[str, str]]]`):
-                A dictionary where the keys are the names of the fields that will be used to store the data once it is
-                prepared with `prepare_inputs`. The values can be either a string or a tuple of length 2, which is used
-                to look up the required data provided for preparation.
-
-                If a string is provided, it will be used as the conditional data (or unconditional if used with a
-                guidance method that requires it). If a tuple of length 2 is provided, the first element must be the
-                conditional data identifier and the second element must be the unconditional data identifier or None.
-
-                Example:
-                ```
-                data = {"prompt_embeds": <some tensor>, "negative_prompt_embeds": <some tensor>, "latents": <some tensor>}
-
-                BaseGuidance.set_input_fields(
-                    latents="latents",
-                    prompt_embeds=("prompt_embeds", "negative_prompt_embeds"),
-                )
-                ```
+        Returns the current state of the guidance technique as a dictionary. The state variables will be included in
+        the __repr__ method. Returns:
+            `Dict[str, Any]`: A dictionary containing the current state variables including:
+                - step: Current inference step
+                - num_inference_steps: Total number of inference steps
+                - timestep: Current timestep tensor
+                - count_prepared: Number of times prepare_models has been called
+                - enabled: Whether the guidance is enabled
+                - num_conditions: Number of conditions
         """
-        for key, value in kwargs.items():
-            is_string = isinstance(value, str)
-            is_tuple_of_str_with_len_2 = (
-                isinstance(value, tuple) and len(value) == 2 and all(isinstance(v, str) for v in value)
-            )
-            if not (is_string or is_tuple_of_str_with_len_2):
-                raise ValueError(
-                    f"Expected `set_input_fields` to be called with a string or a tuple of string with length 2, but got {type(value)} for key {key}."
-                )
-        self._input_fields = kwargs
+        state = {
+            "step": self._step,
+            "num_inference_steps": self._num_inference_steps,
+            "timestep": self._timestep,
+            "count_prepared": self._count_prepared,
+            "enabled": self._enabled,
+            "num_conditions": self.num_conditions,
+        }
+        return state
+
+    def __repr__(self) -> str:
+        """
+        Returns a string representation of the guidance object including both config and current state.
+        """
+        # Get ConfigMixin's __repr__
+        str_repr = super().__repr__()
+
+        # Get current state
+        state = self.get_state()
+
+        # Format each state variable on its own line with indentation
+        state_lines = []
+        for k, v in state.items():
+            # Convert value to string and handle multi-line values
+            v_str = str(v)
+            if "\n" in v_str:
+                # For multi-line values (like MomentumBuffer), indent subsequent lines
+                v_lines = v_str.split("\n")
+                v_str = v_lines[0] + "\n" + "\n".join(["    " + line for line in v_lines[1:]])
+            state_lines.append(f"  {k}: {v_str}")
+
+        state_str = "\n".join(state_lines)
+
+        return f"{str_repr}\nState:\n{state_str}"
 
     def prepare_models(self, denoiser: torch.nn.Module) -> None:
         """
@@ -155,8 +190,7 @@ class BaseGuidance(ConfigMixin, PushToHubMixin):
     @classmethod
     def _prepare_batch(
         cls,
-        input_fields: Dict[str, Union[str, Tuple[str, str]]],
-        data: "BlockState",
+        data: Dict[str, Tuple[torch.Tensor, torch.Tensor]],
         tuple_index: int,
         identifier: str,
     ) -> "BlockState":
@@ -182,21 +216,16 @@ class BaseGuidance(ConfigMixin, PushToHubMixin):
         """
         from ..modular_pipelines.modular_pipeline import BlockState
 
-        if input_fields is None:
-            raise ValueError(
-                "Input fields cannot be None. Please pass `input_fields` to `prepare_inputs` or call `set_input_fields` before preparing inputs."
-            )
         data_batch = {}
-        for key, value in input_fields.items():
+        for key, value in data.items():
             try:
-                if isinstance(value, str):
-                    data_batch[key] = getattr(data, value)
+                if isinstance(value, torch.Tensor):
+                    data_batch[key] = value
                 elif isinstance(value, tuple):
-                    data_batch[key] = getattr(data, value[tuple_index])
+                    data_batch[key] = value[tuple_index]
                 else:
-                    # We've already checked that value is a string or a tuple of strings with length 2
-                    pass
-            except AttributeError:
+                    raise ValueError(f"Invalid value type: {type(value)}")
+            except ValueError:
                 logger.debug(f"`data` does not have attribute(s) {value}, skipping.")
         data_batch[cls._identifier_key] = identifier
         return BlockState(**data_batch)
