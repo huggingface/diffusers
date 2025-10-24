@@ -130,8 +130,14 @@ class PipelineState:
         Allow attribute access to intermediate values. If an attribute is not found in the object, look for it in the
         intermediates dict.
         """
-        if name in self.values:
-            return self.values[name]
+        # Use object.__getattribute__ to avoid infinite recursion during deepcopy
+        try:
+            values = object.__getattribute__(self, "values")
+        except AttributeError:
+            raise AttributeError(f"'{self.__class__.__name__}' object has no attribute '{name}'")
+
+        if name in values:
+            return values[name]
         raise AttributeError(f"'{self.__class__.__name__}' object has no attribute '{name}'")
 
     def __repr__(self):
@@ -2492,6 +2498,8 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
         """
         if state is None:
             state = PipelineState()
+        else:
+            state = deepcopy(state)
 
         # Make a copy of the input kwargs
         passed_kwargs = kwargs.copy()
