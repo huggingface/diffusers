@@ -4074,6 +4074,7 @@ class WanLoraLoaderMixin(LoraBaseMixin):
             raise ValueError("Invalid LoRA checkpoint.")
 
         load_into_transformer_2 = kwargs.pop("load_into_transformer_2", False)
+        print(f"{load_into_transformer_2=}")
         if load_into_transformer_2:
             if not hasattr(self, "transformer_2"):
                 raise AttributeError(

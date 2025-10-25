@@ -1978,13 +1978,11 @@ def _convert_non_diffusers_wan_lora_to_diffusers(state_dict):
                 )
 
         if any("head.head" in k for k in original_state_dict):
-            if any(
-                f"head.head.{lora_down_key}.weight" in k and f"head.head.{lora_up_key}.weight" in k
-                for k in original_state_dict
-            ):
+            if any(f"head.head.{lora_down_key}.weight" in k for k in state_dict):
                 converted_state_dict["proj_out.lora_A.weight"] = original_state_dict.pop(
                     f"head.head.{lora_down_key}.weight"
                 )
+            if any(f"head.head.{lora_up_key}.weight" in k for k in state_dict):
                 converted_state_dict["proj_out.lora_B.weight"] = original_state_dict.pop(
                     f"head.head.{lora_up_key}.weight"
                 )
@@ -1995,7 +1993,7 @@ def _convert_non_diffusers_wan_lora_to_diffusers(state_dict):
             # This is my (sayakpaul) assumption that this particular key belongs to the down matrix.
             # Since for this particular LoRA, we don't have the corresponding up matrix, I will use
             # an identity.
-            if any("head.head.diff" in k for k in state_dict):
+            if any("head.head" in k and k.endswith(".diff") for k in state_dict):
                 if f"head.head.{lora_down_key}.weight" in state_dict:
                     logger.info(
                         f"The state dict seems to be have both `head.head.diff` and `head.head.{lora_down_key}.weight` keys, which is unexpected."
