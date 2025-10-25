@@ -16,8 +16,9 @@ import contextlib
 import functools
 import inspect
 import math
+from dataclasses import dataclass
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Literal, Optional, Set, Tuple, Union
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Literal, Optional, Tuple, Union
 
 import torch
 
@@ -40,7 +41,7 @@ from ..utils import (
     is_xformers_available,
     is_xformers_version,
 )
-from ..utils.constants import DIFFUSERS_ATTN_BACKEND, DIFFUSERS_ATTN_CHECKS, DIFFUSERS_ENABLE_HUB_KERNELS
+from ..utils.constants import DIFFUSERS_ATTN_BACKEND, DIFFUSERS_ATTN_CHECKS
 
 
 if TYPE_CHECKING:
@@ -77,9 +78,6 @@ if _CAN_USE_FLASH_ATTN_3:
 else:
     flash_attn_3_func = None
     flash_attn_3_varlen_func = None
-
-_BACKEND_HANDLES: Dict["AttentionBackendName", Callable] = {}
-_PREPARED_BACKENDS: Set["AttentionBackendName"] = set()
 
 if _CAN_USE_SAGE_ATTN:
     from sageattention import (
@@ -222,9 +220,7 @@ class _AttentionBackendRegistry:
 
     @classmethod
     def get_active_backend(cls):
-        backend = cls._active_backend
-        _ensure_attention_backend_ready(backend)
-        return backend, cls._backends[backend]
+        return cls._active_backend, cls._backends[cls._active_backend]
 
     @classmethod
     def list_backends(cls):
@@ -242,6 +238,25 @@ class _AttentionBackendRegistry:
         return supports_context_parallel and is_degree_greater_than_1
 
 
+@dataclass
+class _HubKernelConfig:
+    """Configuration for downloading and using a hub-based attention kernel."""
+
+    repo_id: str
+    function_attr: str
+    revision: Optional[str] = None
+    kernel_fn: Optional[Callable] = None
+
+
+# Registry for hub-based attention kernels
+_HUB_KERNELS_REGISTRY: Dict["AttentionBackendName", _HubKernelConfig] = {
+    # TODO: temporary revision for now. Remove when merged upstream into `main`.
+    AttentionBackendName._FLASH_3_HUB: _HubKernelConfig(
+        repo_id="kernels-community/flash-attn3", function_attr="flash_attn_func", revision="fake-ops-return-probs"
+    )
+}
+
+
 @contextlib.contextmanager
 def attention_backend(backend: Union[str, AttentionBackendName] = AttentionBackendName.NATIVE):
     """
@@ -251,7 +266,7 @@ def attention_backend(backend: Union[str, AttentionBackendName] = AttentionBacke
         raise ValueError(f"Backend {backend} is not registered.")
 
     backend = AttentionBackendName(backend)
-    _ensure_attention_backend_ready(backend)
+    _check_attention_backend_requirements(backend)
 
     old_backend = _AttentionBackendRegistry._active_backend
     _AttentionBackendRegistry._active_backend = backend
@@ -398,13 +413,9 @@ def _check_attention_backend_requirements(backend: AttentionBackendName) -> None
 
     # TODO: add support Hub variant of FA3 varlen later
     elif backend in [AttentionBackendName._FLASH_3_HUB]:
-        if not DIFFUSERS_ENABLE_HUB_KERNELS:
-            raise RuntimeError(
-                f"Flash Attention 3 Hub backend '{backend.value}' is not usable because the `DIFFUSERS_ENABLE_HUB_KERNELS` env var isn't set. Please set it like `export DIFFUSERS_ENABLE_HUB_KERNELS=yes`."
-            )
         if not is_kernels_available():
             raise RuntimeError(
-                f"Flash Attention 3 Hub backend '{backend.value}' is not usable because the `kernels` package isn't available. Please install it with `pip install kernels`."
+                f"Backend '{backend.value}' is not usable because the `kernels` package isn't available. Please install it with `pip install kernels`."
             )
 
     elif backend in [
@@ -443,39 +454,6 @@ def _check_attention_backend_requirements(backend: AttentionBackendName) -> None
             raise RuntimeError(
                 f"Xformers Attention backend '{backend.value}' is not usable because of missing package or the version is too old. Please install `xformers>={_REQUIRED_XFORMERS_VERSION}`."
             )
-
-
-def _ensure_flash_attn_3_func_hub_loaded():
-    cached = _BACKEND_HANDLES.get(AttentionBackendName._FLASH_3_HUB)
-    if cached is not None:
-        return cached
-
-    from ..utils.kernels_utils import _get_fa3_from_hub
-
-    flash_attn_interface_hub = _get_fa3_from_hub()
-    func = flash_attn_interface_hub.flash_attn_func
-    _BACKEND_HANDLES[AttentionBackendName._FLASH_3_HUB] = func
-
-    return func
-
-
-_BACKEND_PREPARERS: Dict[AttentionBackendName, Callable[[], None]] = {
-    AttentionBackendName._FLASH_3_HUB: _ensure_flash_attn_3_func_hub_loaded,
-}
-
-
-def _prepare_attention_backend(backend: AttentionBackendName) -> None:
-    preparer = _BACKEND_PREPARERS.get(backend)
-    if preparer is not None:
-        preparer()
-
-
-def _ensure_attention_backend_ready(backend: AttentionBackendName) -> None:
-    if backend in _PREPARED_BACKENDS:
-        return
-    _check_attention_backend_requirements(backend)
-    _prepare_attention_backend(backend)
-    _PREPARED_BACKENDS.add(backend)
 
 
 @functools.lru_cache(maxsize=128)
@@ -579,6 +557,29 @@ def _normalize_attn_mask(attn_mask: torch.Tensor, batch_size: int, seq_len_k: in
 
 def _flex_attention_causal_mask_mod(batch_idx, head_idx, q_idx, kv_idx):
     return q_idx >= kv_idx
+
+
+# ===== Helpers for downloading kernels =====
+def _maybe_download_kernel_for_backend(backend: AttentionBackendName) -> None:
+    if backend not in _HUB_KERNELS_REGISTRY:
+        return
+    config = _HUB_KERNELS_REGISTRY[backend]
+
+    if config._kernel_fn is not None:
+        return
+
+    try:
+        from kernels import get_kernel
+
+        kernel_module = get_kernel(config.repo_id, revision=config.revision)
+        kernel_func = getattr(kernel_module, config.function_attr)
+
+        # Cache the downloaded kernel function in the config object
+        config._kernel_fn = kernel_func
+
+    except Exception as e:
+        logger.error(f"An error occurred while fetching kernel '{config.repo_id}' from the Hub: {e}")
+        raise
 
 
 # ===== torch op registrations =====
@@ -1348,9 +1349,7 @@ def _flash_attention_3_hub(
     return_attn_probs: bool = False,
     _parallel_config: Optional["ParallelConfig"] = None,
 ) -> torch.Tensor:
-    func = _BACKEND_HANDLES.get(AttentionBackendName._FLASH_3_HUB)
-    if func is None:
-        func = _ensure_flash_attn_3_func_hub_loaded()
+    func = _HUB_KERNELS_REGISTRY[AttentionBackendName._FLASH_3_HUB]._kernel_fn
     out = func(
         q=query,
         k=key,
