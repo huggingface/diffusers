@@ -565,7 +565,7 @@ def _maybe_download_kernel_for_backend(backend: AttentionBackendName) -> None:
         return
     config = _HUB_KERNELS_REGISTRY[backend]
 
-    if config._kernel_fn is not None:
+    if config.kernel_fn is not None:
         return
 
     try:
@@ -575,7 +575,7 @@ def _maybe_download_kernel_for_backend(backend: AttentionBackendName) -> None:
         kernel_func = getattr(kernel_module, config.function_attr)
 
         # Cache the downloaded kernel function in the config object
-        config._kernel_fn = kernel_func
+        config.kernel_fn = kernel_func
 
     except Exception as e:
         logger.error(f"An error occurred while fetching kernel '{config.repo_id}' from the Hub: {e}")
@@ -1349,7 +1349,7 @@ def _flash_attention_3_hub(
     return_attn_probs: bool = False,
     _parallel_config: Optional["ParallelConfig"] = None,
 ) -> torch.Tensor:
-    func = _HUB_KERNELS_REGISTRY[AttentionBackendName._FLASH_3_HUB]._kernel_fn
+    func = _HUB_KERNELS_REGISTRY[AttentionBackendName._FLASH_3_HUB].kernel_fn
     out = func(
         q=query,
         k=key,
