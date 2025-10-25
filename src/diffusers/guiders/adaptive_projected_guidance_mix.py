@@ -25,9 +25,10 @@ if TYPE_CHECKING:
     from ..modular_pipelines.modular_pipeline import BlockState
 
 
-class AdaptiveProjectedGuidance(BaseGuidance):
+class AdaptiveProjectedMixGuidance(BaseGuidance):
     """
-    Adaptive Projected Guidance (APG): https://huggingface.co/papers/2410.02416
+    Adaptive Projected Guidance (APG) https://huggingface.co/papers/2410.02416 combined with Classifier-Free Guidance
+    (CFG). This guider is used in HunyuanImage2.1 https://github.com/Tencent-Hunyuan/HunyuanImage-2.1
 
     Args:
         guidance_scale (`float`, defaults to `7.5`):
@@ -37,19 +38,25 @@ class AdaptiveProjectedGuidance(BaseGuidance):
         adaptive_projected_guidance_momentum (`float`, defaults to `None`):
             The momentum parameter for the adaptive projected guidance. Disabled if set to `None`.
         adaptive_projected_guidance_rescale (`float`, defaults to `15.0`):
-            The rescale factor applied to the noise predictions. This is used to improve image quality and fix
+            The rescale factor applied to the noise predictions for adaptive projected guidance. This is used to
+            improve image quality and fix
         guidance_rescale (`float`, defaults to `0.0`):
-            The rescale factor applied to the noise predictions. This is used to improve image quality and fix
-            overexposure. Based on Section 3.4 from [Common Diffusion Noise Schedules and Sample Steps are
-            Flawed](https://huggingface.co/papers/2305.08891).
+            The rescale factor applied to the noise predictions for classifier-free guidance. This is used to improve
+            image quality and fix overexposure. Based on Section 3.4 from [Common Diffusion Noise Schedules and Sample
+            Steps are Flawed](https://huggingface.co/papers/2305.08891).
         use_original_formulation (`bool`, defaults to `False`):
             Whether to use the original formulation of classifier-free guidance as proposed in the paper. By default,
             we use the diffusers-native implementation that has been in the codebase for a long time. See
             [~guiders.classifier_free_guidance.ClassifierFreeGuidance] for more details.
         start (`float`, defaults to `0.0`):
-            The fraction of the total number of denoising steps after which guidance starts.
+            The fraction of the total number of denoising steps after which the classifier-free guidance starts.
         stop (`float`, defaults to `1.0`):
-            The fraction of the total number of denoising steps after which guidance stops.
+            The fraction of the total number of denoising steps after which the classifier-free guidance stops.
+        adaptive_projected_guidance_start_step (`int`, defaults to `5`):
+            The step at which the adaptive projected guidance starts (before this step, classifier-free guidance is
+            used, and momentum buffer is updated).
+        enabled (`bool`, defaults to `True`):
+            Whether this guidance is enabled.
     """
 
     _input_predictions = ["pred_cond", "pred_uncond"]
@@ -57,23 +64,27 @@ class AdaptiveProjectedGuidance(BaseGuidance):
     @register_to_config
     def __init__(
         self,
-        guidance_scale: float = 7.5,
-        adaptive_projected_guidance_momentum: Optional[float] = None,
-        adaptive_projected_guidance_rescale: float = 15.0,
-        eta: float = 1.0,
+        guidance_scale: float = 3.5,
         guidance_rescale: float = 0.0,
+        adaptive_projected_guidance_scale: float = 10.0,
+        adaptive_projected_guidance_momentum: float = -0.5,
+        adaptive_projected_guidance_rescale: float = 10.0,
+        eta: float = 0.0,
         use_original_formulation: bool = False,
         start: float = 0.0,
         stop: float = 1.0,
+        adaptive_projected_guidance_start_step: int = 5,
         enabled: bool = True,
     ):
         super().__init__(start, stop, enabled)
 
         self.guidance_scale = guidance_scale
+        self.guidance_rescale = guidance_rescale
+        self.adaptive_projected_guidance_scale = adaptive_projected_guidance_scale
         self.adaptive_projected_guidance_momentum = adaptive_projected_guidance_momentum
         self.adaptive_projected_guidance_rescale = adaptive_projected_guidance_rescale
         self.eta = eta
-        self.guidance_rescale = guidance_rescale
+        self.adaptive_projected_guidance_start_step = adaptive_projected_guidance_start_step
         self.use_original_formulation = use_original_formulation
         self.momentum_buffer = None
 
@@ -91,13 +102,25 @@ class AdaptiveProjectedGuidance(BaseGuidance):
     def forward(self, pred_cond: torch.Tensor, pred_uncond: Optional[torch.Tensor] = None) -> GuiderOutput:
         pred = None
 
-        if not self._is_apg_enabled():
+        # no guidance
+        if not self._is_cfg_enabled():
             pred = pred_cond
-        else:
+
+        # CFG + update momentum buffer
+        elif not self._is_apg_enabled():
+            if self.momentum_buffer is not None:
+                update_momentum_buffer(pred_cond, pred_uncond, self.momentum_buffer)
+            # CFG + update momentum buffer
+            shift = pred_cond - pred_uncond
+            pred = pred_cond if self.use_original_formulation else pred_uncond
+            pred = pred + self.guidance_scale * shift
+
+        # APG
+        elif self._is_apg_enabled():
             pred = normalized_guidance(
                 pred_cond,
                 pred_uncond,
-                self.guidance_scale,
+                self.adaptive_projected_guidance_scale,
                 self.momentum_buffer,
                 self.eta,
                 self.adaptive_projected_guidance_rescale,
@@ -116,11 +139,12 @@ class AdaptiveProjectedGuidance(BaseGuidance):
     @property
     def num_conditions(self) -> int:
         num_conditions = 1
-        if self._is_apg_enabled():
+        if self._is_apg_enabled() or self._is_cfg_enabled():
             num_conditions += 1
         return num_conditions
 
-    def _is_apg_enabled(self) -> bool:
+    # Copied from diffusers.guiders.classifier_free_guidance.ClassifierFreeGuidance._is_cfg_enabled
+    def _is_cfg_enabled(self) -> bool:
         if not self._enabled:
             return False
 
@@ -138,7 +162,34 @@ class AdaptiveProjectedGuidance(BaseGuidance):
 
         return is_within_range and not is_close
 
+    def _is_apg_enabled(self) -> bool:
+        if not self._enabled:
+            return False
 
+        if not self._is_cfg_enabled():
+            return False
+
+        is_within_range = False
+        if self._step is not None:
+            is_within_range = self._step > self.adaptive_projected_guidance_start_step
+
+        is_close = False
+        if self.use_original_formulation:
+            is_close = math.isclose(self.adaptive_projected_guidance_scale, 0.0)
+        else:
+            is_close = math.isclose(self.adaptive_projected_guidance_scale, 1.0)
+
+        return is_within_range and not is_close
+
+    def get_state(self):
+        state = super().get_state()
+        state["momentum_buffer"] = self.momentum_buffer
+        state["is_apg_enabled"] = self._is_apg_enabled()
+        state["is_cfg_enabled"] = self._is_cfg_enabled()
+        return state
+
+
+# Copied from diffusers.guiders.adaptive_projected_guidance.MomentumBuffer
 class MomentumBuffer:
     def __init__(self, momentum: float):
         self.momentum = momentum
@@ -187,6 +238,16 @@ class MomentumBuffer:
             return f"MomentumBuffer(momentum={self.momentum}, running_average={self.running_average})"
 
 
+def update_momentum_buffer(
+    pred_cond: torch.Tensor,
+    pred_uncond: torch.Tensor,
+    momentum_buffer: Optional[MomentumBuffer] = None,
+):
+    diff = pred_cond - pred_uncond
+    if momentum_buffer is not None:
+        momentum_buffer.update(diff)
+
+
 def normalized_guidance(
     pred_cond: torch.Tensor,
     pred_uncond: torch.Tensor,
@@ -196,12 +257,13 @@ def normalized_guidance(
     norm_threshold: float = 0.0,
     use_original_formulation: bool = False,
 ):
-    diff = pred_cond - pred_uncond
-    dim = [-i for i in range(1, len(diff.shape))]
-
     if momentum_buffer is not None:
-        momentum_buffer.update(diff)
+        update_momentum_buffer(pred_cond, pred_uncond, momentum_buffer)
         diff = momentum_buffer.running_average
+    else:
+        diff = pred_cond - pred_uncond
+
+    dim = [-i for i in range(1, len(diff.shape))]
 
     if norm_threshold > 0:
         ones = torch.ones_like(diff)
