@@ -199,6 +199,7 @@ else:
             "AutoencoderTiny",
             "AutoModel",
             "BriaTransformer2DModel",
+            "BriaFiboTransformer2DModel",
             "CacheMixin",
             "ChromaTransformer2DModel",
             "CogVideoXTransformer3DModel",
@@ -392,6 +393,8 @@ except OptionalDependencyNotAvailable:
 else:
     _import_structure["modular_pipelines"].extend(
         [
+            "BriaFiboVLMPromptToJson",
+            "BriaFiboGeminiPromptToJson",
             "FluxAutoBlocks",
             "FluxKontextAutoBlocks",
             "FluxKontextModularPipeline",
@@ -431,6 +434,7 @@ else:
             "BlipDiffusionControlNetPipeline",
             "BlipDiffusionPipeline",
             "BriaPipeline",
+            "BriaFiboPipeline",
             "ChromaImg2ImgPipeline",
             "ChromaPipeline",
             "CLIPImageProjection",
@@ -902,6 +906,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AutoencoderTiny,
             AutoModel,
             BriaTransformer2DModel,
+            BriaFiboTransformer2DModel,
             CacheMixin,
             ChromaTransformer2DModel,
             CogVideoXTransformer3DModel,
@@ -1104,6 +1109,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AudioLDMPipeline,
             AuraFlowPipeline,
             BriaPipeline,
+            BriaFiboPipeline,
             ChromaImg2ImgPipeline,
             ChromaPipeline,
             CLIPImageProjection,
