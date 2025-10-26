@@ -76,6 +76,57 @@ class Magi1Pipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
 
         # TODO: Add attributes
 
+    
+    def check_inputs(
+        self,
+        prompt,
+        negative_prompt,
+        height,
+        width,
+        prompt_embeds=None,
+        negative_prompt_embeds=None,
+        callback_on_step_end_tensor_inputs=None,
+    ):
+        """Checks the validity of the inputs."""
+
+        # Check prompt and prompt_embeds
+        if prompt is None and prompt_embeds is None:
+            raise ValueError(
+                "Provide either `prompt` or `prompt_embeds`. Cannot leave both `prompt` and `prompt_embeds` undefined."
+            )
+        if prompt is not None and prompt_embeds is not None:
+            raise ValueError(
+                f"Cannot forward both `prompt`: {prompt} and `prompt_embeds`: {prompt_embeds}. Please make sure to"
+                " only forward one of the two."
+            )
+        if prompt is not None and (not isinstance(prompt, str) and not isinstance(prompt, list)):
+            raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
+        
+        # Check negative_prompt and negative_prompt_embeds
+        if negative_prompt is not None and negative_prompt_embeds is not None:
+            raise ValueError(
+                f"Cannot forward both `negative_prompt`: {negative_prompt} and `negative_prompt_embeds`: {negative_prompt_embeds}. Please make sure to"
+                " only forward one of the two."
+            )
+        if negative_prompt is not None and (
+            not isinstance(negative_prompt, str) and not isinstance(negative_prompt, list)
+        ):
+            raise ValueError(f"`negative_prompt` has to be of type `str` or `list` but is {type(negative_prompt)}")
+
+        # Check height and width
+        # TODO: Why 16?
+        if height % 16 != 0 or width % 16 != 0:
+            raise ValueError(f"`height` and `width` have to be divisible by 16 but are {height} and {width}.")
+
+        # Check callback_on_step_end_tensor_inputs
+        if callback_on_step_end_tensor_inputs is not None and not all(
+            k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
+        ):
+            raise ValueError(
+                f"`callback_on_step_end_tensor_inputs` has to be in {self._callback_tensor_inputs}, but found {[k for k in callback_on_step_end_tensor_inputs if k not in self._callback_tensor_inputs]}"
+            )
+
+
     # TODO: Fix default values of the parameters
     # TODO: Double-check if all parameters are needed/included
     # TODO: Double-check output type default (both in param and in docstring)
@@ -85,8 +136,8 @@ class Magi1Pipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
         self,
         prompt: Optional[Union[str, List[str]]] = None,
         negative_prompt: Optional[Union[str, List[str]]] = None,
-        height: Optional[int] = 720,
-        width: Optional[int] = 1280,
+        height: int = 720,
+        width: int = 1280,
         num_frames: int = 96,
         num_inference_steps: int = 32,
         guidance_scale: float = 7.5,
@@ -101,6 +152,7 @@ class Magi1Pipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
         callback_on_step_end: Optional[
             Union[Callable[[int, int, Dict], None], PipelineCallback, MultiPipelineCallbacks]
         ] = None,
+        callback_on_step_end_tensor_inputs: List[str] = ["latents"],
         max_sequence_length: int = 800,
     ):
         r"""
@@ -174,3 +226,24 @@ class Magi1Pipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
         if isinstance(callback_on_step_end, (PipelineCallback, MultiPipelineCallbacks)):
             callback_on_step_end_tensor_inputs = callback_on_step_end.tensor_inputs
 
+        # 1. Check inputs. Raise error if not correct
+        self.check_inputs(
+            prompt,
+            negative_prompt,
+            height,
+            width,
+            prompt_embeds,
+            negative_prompt_embeds,
+            callback_on_step_end_tensor_inputs,
+        )
+
+        # TODO: Come back here later
+
+        # 2. Define call parameters
+        if prompt is not None and isinstance(prompt, str):
+            batch_size = 1
+        elif prompt is not None and isinstance(prompt, list):
+            batch_size = len(prompt)
+        else:
+            batch_size = prompt_embeds.shape[0] # TODO: Check if linter complains here
+        
