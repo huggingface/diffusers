@@ -12,8 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import html
+import re
 from typing import Any, Callable, Dict, List, Optional, Union
 
+import ftfy
 import torch
 from transformers import AutoTokenizer, UMT5EncoderModel
 
@@ -24,6 +27,23 @@ from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import is_ftfy_available, is_torch_xla_available, logging, replace_example_docstring
 from ..pipeline_utils import DiffusionPipeline
 
+
+
+def basic_clean(text):
+    text = ftfy.fix_text(text)
+    text = html.unescape(html.unescape(text))
+    return text.strip()
+
+
+def whitespace_clean(text):
+    text = re.sub(r"\s+", " ", text)
+    text = text.strip()
+    return text
+
+
+def prompt_clean(text):
+    text = whitespace_clean(basic_clean(text))
+    return text
 
 # TODO: Write example_doc_string
 EXAMPLE_DOC_STRING = """
@@ -77,6 +97,53 @@ class Magi1Pipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
         # TODO: Add attributes
 
     
+    def _get_t5_prompt_embeds(
+        self,
+        prompt: Union[str, List[str]],
+        num_videos_per_prompt: int,
+        max_sequence_length: int,
+        device: Optional[torch.device],
+        dtype: Optional[torch.dtype],
+    ):
+        # TODO: Double check if MAGI-1 does some special handling during prompt encoding
+        device = device or self._execution_device
+        dtype = dtype or self.text_encoder.dtype
+
+        prompt = [prompt] if isinstance(prompt, str) else prompt
+        prompt = [prompt_clean(u) for u in prompt]
+        batch_size = len(prompt)
+
+        text_inputs = self.tokenizer(
+            prompt,
+            padding="max_length",
+            max_length=max_sequence_length,
+            truncation=True,
+            add_special_tokens=True,
+            return_attention_mask=True,
+            return_tensors="pt",
+        )
+        text_input_ids, mask = text_inputs.input_ids, text_inputs.attention_mask
+        seq_lens = mask.gt(0).sum(dim=1).long()
+
+        prompt_embeds = self.text_encoder(text_input_ids.to(device), mask.to(device)).last_hidden_state
+        prompt_embeds = prompt_embeds.to(dtype=dtype, device=device)
+        prompt_embeds = [u[:v] for u, v in zip(prompt_embeds, seq_lens)]
+        prompt_embeds = torch.stack(
+            [torch.cat([u, u.new_zeros(max_sequence_length - u.size(0), u.size(1))]) for u in prompt_embeds], dim=0
+        )
+
+        # duplicate text embeddings for each generation per prompt, using mps friendly method
+        _, seq_len, _ = prompt_embeds.shape
+        prompt_embeds = prompt_embeds.repeat(1, num_videos_per_prompt, 1)
+        prompt_embeds = prompt_embeds.view(batch_size * num_videos_per_prompt, seq_len, -1)
+
+        # TODO: Debug if repeating mask is necessary because it's not used in any other pipeline
+        # Repeat mask the same way as embeddings and keep size [B*num, L]
+        mask = mask.repeat(1, num_videos_per_prompt)
+        mask = mask.view(batch_size * num_videos_per_prompt, -1).to(device)
+
+        return prompt_embeds, mask
+
     def encode_prompt(
         self,
         prompt: Optional[Union[str, List[str]]],
