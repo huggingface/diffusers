@@ -79,13 +79,13 @@ class Magi1Pipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
     
     def check_inputs(
         self,
-        prompt,
-        negative_prompt,
-        height,
-        width,
-        prompt_embeds=None,
-        negative_prompt_embeds=None,
-        callback_on_step_end_tensor_inputs=None,
+        prompt: Optional[Union[str, List[str]]],
+        negative_prompt: Optional[Union[str, List[str]]],
+        height: int,
+        width: int,
+        prompt_embeds: Optional[torch.Tensor],
+        negative_prompt_embeds: Optional[torch.Tensor],
+        callback_on_step_end_tensor_inputs: List[str],
     ):
         """Checks the validity of the inputs."""
 
