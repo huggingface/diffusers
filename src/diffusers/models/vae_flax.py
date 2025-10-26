@@ -532,8 +532,8 @@ class FlaxEncoder(nn.Module):
 
     in_channels: int = 3
     out_channels: int = 3
-    down_block_types: Tuple[str] = ("DownEncoderBlock2D",)
-    block_out_channels: Tuple[int] = (64,)
+    down_block_types: Tuple[str, ...] = ("DownEncoderBlock2D",)
+    block_out_channels: Tuple[int, ...] = (64,)
     layers_per_block: int = 2
     norm_num_groups: int = 32
     act_fn: str = "silu"
@@ -650,8 +650,8 @@ class FlaxDecoder(nn.Module):
 
     in_channels: int = 3
     out_channels: int = 3
-    up_block_types: Tuple[str] = ("UpDecoderBlock2D",)
-    block_out_channels: int = (64,)
+    up_block_types: Tuple[str, ...] = ("UpDecoderBlock2D",)
+    block_out_channels: Tuple[int, ...] = (64,)
     layers_per_block: int = 2
     norm_num_groups: int = 32
     act_fn: str = "silu"
@@ -823,9 +823,9 @@ class FlaxAutoencoderKL(nn.Module, FlaxModelMixin, ConfigMixin):
 
     in_channels: int = 3
     out_channels: int = 3
-    down_block_types: Tuple[str] = ("DownEncoderBlock2D",)
-    up_block_types: Tuple[str] = ("UpDecoderBlock2D",)
-    block_out_channels: Tuple[int] = (64,)
+    down_block_types: Tuple[str, ...] = ("DownEncoderBlock2D",)
+    up_block_types: Tuple[str, ...] = ("UpDecoderBlock2D",)
+    block_out_channels: Tuple[int, ...] = (64,)
     layers_per_block: int = 1
     act_fn: str = "silu"
     latent_channels: int = 4

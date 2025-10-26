@@ -653,7 +653,7 @@ class AutoencoderKLHunyuanVideo(ModelMixin, AutoencoderMixin, ConfigMixin):
             "HunyuanVideoUpBlock3D",
             "HunyuanVideoUpBlock3D",
         ),
-        block_out_channels: Tuple[int] = (128, 256, 512, 512),
+        block_out_channels: Tuple[int, ...] = (128, 256, 512, 512),
         layers_per_block: int = 2,
         act_fn: str = "silu",
         norm_num_groups: int = 32,

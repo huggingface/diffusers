@@ -45,7 +45,7 @@ def check_size(image, height, width):
         raise ValueError(f"Image size should be {height}x{width}, but got {h}x{w}")
 
 
-def overlay_inner_image(image, inner_image, paste_offset: Tuple[int] = (0, 0)):
+def overlay_inner_image(image, inner_image, paste_offset: Tuple[int, ...] = (0, 0)):
     inner_image = inner_image.convert("RGBA")
     image = image.convert("RGB")
 

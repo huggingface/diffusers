@@ -689,7 +689,7 @@ class HunyuanImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, 
         text_embed_dim: int = 3584,
         text_embed_2_dim: Optional[int] = None,
         rope_theta: float = 256.0,
-        rope_axes_dim: Tuple[int] = (64, 64),
+        rope_axes_dim: Tuple[int, ...] = (64, 64),
         use_meanflow: bool = False,
     ) -> None:
         super().__init__()
