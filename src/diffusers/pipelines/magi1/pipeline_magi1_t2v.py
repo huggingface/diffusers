@@ -77,6 +77,91 @@ class Magi1Pipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
         # TODO: Add attributes
 
     
+    def encode_prompt(
+        self,
+        prompt: Optional[Union[str, List[str]]],
+        negative_prompt: Optional[Union[str, List[str]]],
+        do_classifier_free_guidance: bool,
+        num_videos_per_prompt: int,
+        prompt_embeds: Optional[torch.Tensor],
+        negative_prompt_embeds: Optional[torch.Tensor],
+        max_sequence_length: int,
+        device: Optional[torch.device],
+        dtype: Optional[torch.dtype],
+    ):
+        r"""Encodes the prompt into text encoder hidden states.
+        
+        Args:
+            prompt (`str` or `List[str]`, *optional*):
+                prompt to be encoded
+            negative_prompt (`str` or `List[str]`, *optional*):
+                The prompt or prompts not to guide the video generation. If not defined, one has to pass
+                `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
+                less than `1`).
+            do_classifier_free_guidance (`bool`, *optional*):
+                Whether to use classifier free guidance or not.
+            num_videos_per_prompt (`int`):
+                Number of videos that should be generated per prompt. torch device to place the resulting embeddings on
+            prompt_embeds (`torch.Tensor`, *optional*):
+                Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
+                provided, text embeddings will be generated from `prompt` input argument.
+            negative_prompt_embeds (`torch.Tensor`, *optional*):
+                Pre-generated negative text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
+                weighting. If not provided, negative_prompt_embeds will be generated from `negative_prompt` input
+                argument.
+            device: (`torch.device`, *optional*):
+                torch device
+            dtype: (`torch.dtype`, *optional*):
+                torch dtype
+        """
+        # TODO: Can we provide different prompts for different chunks?
+        # If so, how are we gonna support that?
+        device = device or self._execution_device
+
+        prompt = [prompt] if isinstance(prompt, str) else prompt
+        if prompt is not None:
+            batch_size = len(prompt)
+        else:
+            batch_size = prompt_embeds.shape[0]
+
+        if prompt_embeds is None:
+            prompt_embeds, prompt_mask = self._get_t5_prompt_embeds(
+                prompt=prompt,
+                num_videos_per_prompt=num_videos_per_prompt,
+                max_sequence_length=max_sequence_length,
+                device=device,
+                dtype=dtype,
+            )
+        else:
+            prompt_mask = None
+
+        if do_classifier_free_guidance and negative_prompt_embeds is None:
+            negative_prompt = negative_prompt or ""
+            negative_prompt = batch_size * [negative_prompt] if isinstance(negative_prompt, str) else negative_prompt
+
+            if prompt is not None and type(prompt) is not type(negative_prompt):
+                raise TypeError(
+                    f"`negative_prompt` should be the same type to `prompt`, but got {type(negative_prompt)} !="
+                    f" {type(prompt)}."
+                )
+            elif batch_size != len(negative_prompt):
+                raise ValueError(
+                    f"`negative_prompt`: {negative_prompt} has batch size {len(negative_prompt)}, but `prompt`:"
+                    f" {prompt} has batch size {batch_size}. Please make sure that passed `negative_prompt` matches"
+                    " the batch size of `prompt`."
+                )
+            
+            negative_prompt_embeds, negative_mask = self._get_t5_prompt_embeds(
+                prompt=negative_prompt,
+                num_videos_per_prompt=num_videos_per_prompt,
+                max_sequence_length=max_sequence_length,
+                device=device,
+                dtype=dtype,
+            )
+        else:
+            negative_mask = None
+        return prompt_embeds, negative_prompt_embeds, prompt_mask, negative_mask
+
     def check_inputs(
         self,
         prompt: Optional[Union[str, List[str]]],
@@ -87,7 +172,7 @@ class Magi1Pipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
         negative_prompt_embeds: Optional[torch.Tensor],
         callback_on_step_end_tensor_inputs: List[str],
     ):
-        """Checks the validity of the inputs."""
+        r"""Checks the validity of the inputs."""
 
         # Check prompt and prompt_embeds
         if prompt is None and prompt_embeds is None:
@@ -141,7 +226,7 @@ class Magi1Pipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
         num_frames: int = 96,
         num_inference_steps: int = 32,
         guidance_scale: float = 7.5,
-        num_videos_per_prompt: Optional[int] = 1,
+        num_videos_per_prompt: int = 1,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.Tensor] = None,
         prompt_embeds: Optional[torch.Tensor] = None,
@@ -179,7 +264,7 @@ class Magi1Pipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
                 of [Imagen Paper](https://huggingface.co/papers/2205.11487). Guidance scale is enabled by setting
                 `guidance_scale > 1`. Higher guidance scale encourages to generate videos that are closely linked to
                 the text `prompt`, usually at the expense of lower video quality.
-            num_videos_per_prompt (`int`, *optional*, defaults to 1):
+            num_videos_per_prompt (`int`, defaults to 1):
                 The number of videos to generate per prompt.
             generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
                 A [`torch.Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make
@@ -247,3 +332,16 @@ class Magi1Pipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
         else:
             batch_size = prompt_embeds.shape[0] # TODO: Check if linter complains here
         
+        device = self._execution_device
+        # 3. Encode input prompt
+        prompt_embeds, negative_prompt_embeds, prompt_mask, negative_mask = self.encode_prompt(
+            prompt,
+            negative_prompt,
+            self.do_classifier_free_guidance,
+            num_videos_per_prompt,
+            prompt_embeds,
+            negative_prompt_embeds,
+            max_sequence_length,
+            device,
+            self.text_encoder.dtype
+        )
