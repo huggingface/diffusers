@@ -18,13 +18,12 @@ import unittest
 import torch
 
 from diffusers import BriaFiboTransformer2DModel
+
 from ...testing_utils import enable_full_determinism, torch_device
 from ..test_modeling_common import LoraHotSwappingForModelTesterMixin, ModelTesterMixin, TorchCompileTesterMixin
 
 
 enable_full_determinism()
-
-
 
 
 class BriaFiboTransformerTests(ModelTesterMixin, unittest.TestCase):
@@ -57,7 +56,7 @@ class BriaFiboTransformerTests(ModelTesterMixin, unittest.TestCase):
             "img_ids": image_ids,
             "txt_ids": text_ids,
             "timestep": timestep,
-            "text_encoder_layers": [encoder_hidden_states[:,:,:32], encoder_hidden_states[:,:,:32]],
+            "text_encoder_layers": [encoder_hidden_states[:, :, :32], encoder_hidden_states[:, :, :32]],
         }
 
     @property

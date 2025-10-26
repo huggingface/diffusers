@@ -21,8 +21,8 @@ except OptionalDependencyNotAvailable:
 
     _dummy_objects.update(get_objects_from_module(dummy_torch_and_transformers_objects))
 else:
-    _import_structure["gemini_prompt_to_json"] = ["BriaFiboGeminiPromptToJson"]
     _import_structure["fibo_vlm_prompt_to_json"] = ["BriaFiboVLMPromptToJson"]
+    _import_structure["gemini_prompt_to_json"] = ["BriaFiboGeminiPromptToJson"]
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     try:
@@ -31,8 +31,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     except OptionalDependencyNotAvailable:
         from ...utils.dummy_torch_and_transformers_objects import *  # noqa F403
     else:
-        from .gemini_prompt_to_json import BriaFiboGeminiPromptToJson
         from .fibo_vlm_prompt_to_json import BriaFiboVLMPromptToJson
+        from .gemini_prompt_to_json import BriaFiboGeminiPromptToJson
 else:
     import sys
 

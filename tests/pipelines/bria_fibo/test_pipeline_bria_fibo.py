@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import gc
 import tempfile
 import unittest
 
@@ -30,10 +29,8 @@ from diffusers.models.transformers.transformer_bria_fibo import BriaFiboTransfor
 from tests.pipelines.test_pipelines_common import PipelineTesterMixin, to_np
 
 from ...testing_utils import (
-    backend_empty_cache,
     enable_full_determinism,
     require_torch_accelerator,
-    slow,
     torch_device,
 )
 
@@ -194,5 +191,3 @@ class BriaFiboPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
     def test_save_load_dduf(self):
         pass
-
-

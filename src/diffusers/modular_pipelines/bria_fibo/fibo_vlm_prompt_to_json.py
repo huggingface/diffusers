@@ -277,16 +277,12 @@ def build_messages(
         if refine_image is None:
             base_prompt = (structured_prompt or "").strip()
             edits = (editing_instructions or "").strip()
-            formatted = textwrap.dedent(
-                f"""<refine> Input: {base_prompt} Editing instructions: {edits}"""
-            ).strip()
+            formatted = textwrap.dedent(f"""<refine> Input: {base_prompt} Editing instructions: {edits}""").strip()
             user_content.append({"type": "text", "text": formatted})
         else:
             user_content.append({"type": "image", "image": refine_image})
             edits = (editing_instructions or "").strip()
-            formatted = textwrap.dedent(
-                f"""<refine> Editing instructions: {edits}"""
-            ).strip()
+            formatted = textwrap.dedent(f"""<refine> Editing instructions: {edits}""").strip()
             user_content.append({"type": "text", "text": formatted})
 
     messages: List[Dict[str, Any]] = []

@@ -175,8 +175,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .transformers import (
             AllegroTransformer3DModel,
             AuraFlowTransformer2DModel,
-            BriaTransformer2DModel,
             BriaFiboTransformer2DModel,
+            BriaTransformer2DModel,
             ChromaTransformer2DModel,
             CogVideoXTransformer3DModel,
             CogView3PlusTransformer2DModel,
