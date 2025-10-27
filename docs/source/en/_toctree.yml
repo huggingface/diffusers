@@ -347,6 +347,8 @@
         title: HiDreamImageTransformer2DModel
       - local: api/models/hunyuan_transformer2d
         title: HunyuanDiT2DModel
+      - local: api/models/hunyuanimage_transformer_2d
+        title: HunyuanImageTransformer2DModel
       - local: api/models/hunyuan_video_transformer_3d
         title: HunyuanVideoTransformer3DModel
       - local: api/models/latte_transformer3d
@@ -411,6 +413,10 @@
         title: AutoencoderKLCogVideoX
       - local: api/models/autoencoderkl_cosmos
         title: AutoencoderKLCosmos
+      - local: api/models/autoencoder_kl_hunyuanimage
+        title: AutoencoderKLHunyuanImage
+      - local: api/models/autoencoder_kl_hunyuanimage_refiner
+        title: AutoencoderKLHunyuanImageRefiner
       - local: api/models/autoencoder_kl_hunyuan_video
         title: AutoencoderKLHunyuanVideo
       - local: api/models/autoencoderkl_ltx_video
@@ -620,6 +626,8 @@
         title: ConsisID
       - local: api/pipelines/framepack
         title: Framepack
+      - local: api/pipelines/hunyuanimage21
+        title: HunyuanImage2.1
       - local: api/pipelines/hunyuan_video
         title: HunyuanVideo
       - local: api/pipelines/i2vgenxl
