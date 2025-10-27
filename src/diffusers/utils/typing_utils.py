@@ -16,13 +16,7 @@ Typing utilities: Utilities related to type checking and validation
 """
 
 from typing import Any, Set, Type, Union, get_args, get_origin
-
-
-try:
-    from types import UnionType as _UnionType
-except ImportError:  # Python < 3.10
-    _UnionType = None
-
+from types import UnionType as _UnionType
 
 def _is_valid_type(obj: Any, class_or_tuple: Type | tuple[Type, ...]) -> bool:
     """
