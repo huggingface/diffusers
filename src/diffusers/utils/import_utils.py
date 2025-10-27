@@ -406,8 +406,10 @@ def is_flash_attn_available():
 def is_flash_attn_3_available():
     return _flash_attn_3_available
 
+
 def is_aiter_available():
     return _aiter_available
+
 
 def is_kornia_available():
     return _kornia_available
@@ -912,6 +914,7 @@ def is_flash_attn_version(operation: str, version: str):
     if not _flash_attn_available:
         return False
     return compare_versions(parse(_flash_attn_version), operation, version)
+
 
 @cache
 def is_aiter_version(operation: str, version: str):

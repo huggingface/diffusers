@@ -27,11 +27,11 @@ if torch.distributed.is_available():
 
 from ..utils import (
     get_logger,
+    is_aiter_available,
+    is_aiter_version,
     is_flash_attn_3_available,
     is_flash_attn_available,
     is_flash_attn_version,
-    is_aiter_available,
-    is_aiter_version,
     is_kernels_available,
     is_sageattention_available,
     is_sageattention_version,
