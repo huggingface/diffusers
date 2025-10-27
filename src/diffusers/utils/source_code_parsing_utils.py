@@ -12,7 +12,7 @@ class ReturnNameVisitor(ast.NodeVisitor):
 
     def visit_Return(self, node):
         # Check if the return value is a tuple.
-        if isinstance(node.value, ast.tuple):
+        if isinstance(node.value, ast.Tuple):
             for elt in node.value.elts:
                 if isinstance(elt, ast.Name):
                     self.return_names.append(elt.id)
