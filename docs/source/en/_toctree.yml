@@ -517,6 +517,8 @@
         title: HiDream-I1
       - local: api/pipelines/hunyuandit
         title: Hunyuan-DiT
+      - local: api/pipelines/hunyuanimage21
+        title: HunyuanImage2.1
       - local: api/pipelines/pix2pix
         title: InstructPix2Pix
       - local: api/pipelines/kandinsky
@@ -626,8 +628,6 @@
         title: ConsisID
       - local: api/pipelines/framepack
         title: Framepack
-      - local: api/pipelines/hunyuanimage21
-        title: HunyuanImage2.1
       - local: api/pipelines/hunyuan_video
         title: HunyuanVideo
       - local: api/pipelines/i2vgenxl
