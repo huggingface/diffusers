@@ -34,7 +34,7 @@ from ...testing_utils import (
     slow,
     torch_device,
 )
-from ..pipeline_params import TEXT_TO_VIDEO_BATCH_PARAMS, TEXT_TO_VIDEO_VIDEO_PARAMS, TEXT_TO_VIDEO_PARAMS
+from ..pipeline_params import TEXT_TO_VIDEO_BATCH_PARAMS, TEXT_TO_VIDEO_PARAMS, TEXT_TO_VIDEO_VIDEO_PARAMS
 from ..test_pipelines_common import PipelineTesterMixin
 
 
@@ -47,7 +47,7 @@ class Kandinsky5T2VPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     batch_params = TEXT_TO_VIDEO_BATCH_PARAMS
     image_params = TEXT_TO_VIDEO_VIDEO_PARAMS
     image_latents_params = TEXT_TO_VIDEO_VIDEO_PARAMS
-    
+
     # Define required optional parameters for your pipeline
     required_optional_params = frozenset(
         [
@@ -60,7 +60,7 @@ class Kandinsky5T2VPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "max_sequence_length",
         ]
     )
-    
+
     test_xformers_attention = False
     supports_dduf = False
 
@@ -144,16 +144,32 @@ class Kandinsky5T2VPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         inputs = self.get_dummy_inputs(device)
         video = pipe(**inputs).frames
         generated_video = video[0]
-        
+
         # Check video shape: (batch, channels, frames, height, width)
         expected_shape = (1, 3, 5, 32, 32)
         self.assertEqual(generated_video.shape, expected_shape)
 
         # Check specific values
-        expected_slice = torch.tensor([
-            0.5015, 0.4929, 0.4990, 0.4985, 0.4980, 0.5044, 0.5044, 0.5005,
-            0.4995, 0.4961, 0.4961, 0.4966, 0.4980, 0.4985, 0.4985, 0.4990
-        ])
+        expected_slice = torch.tensor(
+            [
+                0.5015,
+                0.4929,
+                0.4990,
+                0.4985,
+                0.4980,
+                0.5044,
+                0.5044,
+                0.5005,
+                0.4995,
+                0.4961,
+                0.4961,
+                0.4966,
+                0.4980,
+                0.4985,
+                0.4985,
+                0.4990,
+            ]
+        )
 
         generated_slice = generated_video.flatten()
         # Take first 8 and last 8 values for comparison
@@ -200,28 +216,24 @@ class Kandinsky5T2VPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
         pipe = pipe.to(torch_device)
-        
+
         # Test single prompt
         prompt = "A cat dancing"
         prompt_embeds_qwen, prompt_embeds_clip, prompt_cu_seqlens = pipe.encode_prompt(
-            prompt, 
-            device=torch_device,
-            max_sequence_length=16
+            prompt, device=torch_device, max_sequence_length=16
         )
-        
+
         # Check shapes
         self.assertEqual(prompt_embeds_qwen.dim(), 3)  # [batch, seq_len, embed_dim]
         self.assertEqual(prompt_embeds_clip.dim(), 2)  # [batch, embed_dim]
-        self.assertEqual(prompt_cu_seqlens.dim(), 1)   # [batch + 1]
-        
+        self.assertEqual(prompt_cu_seqlens.dim(), 1)  # [batch + 1]
+
         # Test batch of prompts
         prompts = ["A cat dancing", "A dog running"]
         batch_embeds_qwen, batch_embeds_clip, batch_cu_seqlens = pipe.encode_prompt(
-            prompts,
-            device=torch_device,
-            max_sequence_length=16
+            prompts, device=torch_device, max_sequence_length=16
         )
-        
+
         # Check batch size
         self.assertEqual(batch_embeds_qwen.shape[0], 2)
         self.assertEqual(batch_embeds_clip.shape[0], 2)
@@ -297,7 +309,7 @@ class Kandinsky5T2VPipelineIntegrationTests(unittest.TestCase):
         self.assertFalse(np.isnan(output).any())
         self.assertFalse(np.allclose(output, 0))
 
-    @unittest.skip("Slow integration test - needs actual pretrained models") 
+    @unittest.skip("Slow integration test - needs actual pretrained models")
     def test_kandinsky_5_t2v_negative_prompt(self):
         pipe = Kandinsky5T2VPipeline.from_pretrained(
             "ai-forever/Kandinsky-5.0-T2V-Lite-sft-5s-Diffusers", torch_dtype=torch.float16
