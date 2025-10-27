@@ -379,7 +379,7 @@ class ChromaTransformer2DModel(
     """
     The Transformer model introduced in Flux, modified for Chroma.
 
-    Reference: https://huggingface.co/lodestones/Chroma
+    Reference: https://huggingface.co/lodestones/Chroma1-HD
 
     Args:
         patch_size (`int`, defaults to `1`):
