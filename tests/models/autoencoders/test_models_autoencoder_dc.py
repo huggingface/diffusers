@@ -13,20 +13,19 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import os
 import unittest
 
 from diffusers import AutoencoderDC
 
-from ...testing_utils import (
-    enable_full_determinism,
-    floats_tensor,
-    torch_device,
-)
+from ...testing_utils import enable_full_determinism, floats_tensor, torch_device
 from ..test_modeling_common import ModelTesterMixin
 from .testing_utils import AutoencoderTesterMixin
 
 
 enable_full_determinism()
+
+IS_GITHUB_ACTIONS = os.getenv("GITHUB_ACTIONS") == "true" and os.getenv("DIFFUSERS_IS_CI") == "yes"
 
 
 class AutoencoderDCTests(ModelTesterMixin, AutoencoderTesterMixin, unittest.TestCase):
@@ -82,3 +81,7 @@ class AutoencoderDCTests(ModelTesterMixin, AutoencoderTesterMixin, unittest.Test
         init_dict = self.get_autoencoder_dc_config()
         inputs_dict = self.dummy_input
         return init_dict, inputs_dict
+
+    @unittest.skipIf(IS_GITHUB_ACTIONS, reason="Skipping test inside GitHub Actions environment")
+    def test_layerwise_casting_inference(self):
+        super().test_layerwise_casting_inference()

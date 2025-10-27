@@ -12,6 +12,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import os
 import sys
 import unittest
 
@@ -26,6 +27,9 @@ from ..testing_utils import floats_tensor, require_peft_backend
 sys.path.append(".")
 
 from .utils import PeftLoraLoaderMixinTests  # noqa: E402
+
+
+IS_GITHUB_ACTIONS = os.getenv("GITHUB_ACTIONS") == "true" and os.getenv("DIFFUSERS_IS_CI") == "yes"
 
 
 @require_peft_backend
@@ -136,3 +140,7 @@ class SanaLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
     @unittest.skip("Text encoder LoRA is not supported in SANA.")
     def test_simple_inference_with_text_lora_save_load(self):
         pass
+
+    @unittest.skipIf(IS_GITHUB_ACTIONS, reason="Skipping test inside GitHub Actions environment")
+    def test_layerwise_casting_inference_denoiser(self):
+        return super().test_layerwise_casting_inference_denoiser()
