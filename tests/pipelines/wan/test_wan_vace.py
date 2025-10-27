@@ -253,9 +253,15 @@ class WanVACEPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         assert video.shape == (17, 3, 16, 16)
 
     def test_save_load_optional_components(self, expected_max_difference=1e-4):
-        optional_component = ["transformer", "image_encoder", "image_processor"]
+        optional_component = ["transformer"]
 
         components = self.get_dummy_components()
+        components["transformer_2"] = components["transformer"]
+        # FlowMatchEulerDiscreteScheduler doesn't support running low noise only scheduler
+        # because starting timestep t == 1000 == boundary_timestep
+        components["scheduler"] = UniPCMultistepScheduler(
+            prediction_type="flow_prediction", use_flow_sigmas=True, flow_shift=3.0
+        )
         for component in optional_component:
             components[component] = None
 

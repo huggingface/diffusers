@@ -171,7 +171,7 @@ class WanVACEPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             boundary_timestep. If `None`, only the available transformer is used for the entire denoising process.
     """
 
-    model_cpu_offload_seq = "text_encoder->transformer->vae"
+    model_cpu_offload_seq = "text_encoder->transformer->transformer_2->vae"
     _callback_tensor_inputs = ["latents", "prompt_embeds", "negative_prompt_embeds"]
     _optional_components = ["transformer", "transformer_2"]
 
