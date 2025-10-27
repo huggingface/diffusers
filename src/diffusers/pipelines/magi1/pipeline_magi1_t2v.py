@@ -18,7 +18,7 @@ from typing import Any, Callable, Dict, List, Optional, Union
 
 import ftfy
 import torch
-from transformers import AutoTokenizer, UMT5EncoderModel
+from transformers import AutoTokenizer, T5EncoderModel
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...loaders import Magi1LoraLoaderMixin
@@ -61,10 +61,10 @@ class Magi1Pipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
     Args:
         tokenizer ([`T5Tokenizer`]):
             Tokenizer from [T5](https://huggingface.co/docs/transformers/en/model_doc/t5#transformers.T5Tokenizer),
-            specifically the [google/umt5-xxl](https://huggingface.co/google/umt5-xxl) variant.
+            specifically the [DeepFloyd/t5-v1_1-xxl](https://huggingface.co/DeepFloyd/t5-v1_1-xxl) variant.
         text_encoder ([`T5EncoderModel`]):
             [T5](https://huggingface.co/docs/transformers/en/model_doc/t5#transformers.T5EncoderModel), specifically
-            the [google/umt5-xxl](https://huggingface.co/google/umt5-xxl) variant.
+            the [DeepFloyd/t5-v1_1-xxl](https://huggingface.co/DeepFloyd/t5-v1_1-xxl) variant.
         transformer ([`Magi1Transformer3DModel`]):
             Conditional Transformer to denoise the input latents.
         vae ([`AutoencoderKLMagi1`]):
@@ -79,7 +79,7 @@ class Magi1Pipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
     def __init__(
         self,
         tokenizer: AutoTokenizer,
-        text_encoder: UMT5EncoderModel,
+        text_encoder: T5EncoderModel,
         transformer: Magi1Transformer3DModel,
         vae: AutoencoderKLMagi1,
         scheduler: FlowMatchEulerDiscreteScheduler,
