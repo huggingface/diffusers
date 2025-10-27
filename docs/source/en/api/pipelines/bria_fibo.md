@@ -18,6 +18,14 @@ FIBO is trained on structured JSON captions up to 1,000+ words and designed to u
 
 With only 8 billion parameters, FIBO provides a new level of image quality, prompt adherence and proffesional control.
 
+FIBO is trained exclusively on a structured prompt and will not work with freeform text prompts.
+you can use the [FIBO-VLM-prompt-to-JSON](https://huggingface.co/briaai/FIBO-VLM-prompt-to-JSON) model or the [FIBO-gemini-prompt-to-JSON](https://huggingface.co/briaai/FIBO-gemini-prompt-to-JSON)  to convert your freeform text prompt to a structured JSON prompt.
+
+its not recommended to use freeform text prompts directly with FIBO, as it will not produce the best results.
+
+you can learn more about FIBO in  [Bria Fibo Hugging Face page](https://huggingface.co/briaai/FIBO).
+
+
 ## Usage
 
 _As the model is gated, before using it with diffusers you first need to go to the [Bria Fibo Hugging Face page](https://huggingface.co/briaai/FIBO), fill in the form and accept the gate. Once you are in, you need to login so that your system knows you’ve accepted the gate._
