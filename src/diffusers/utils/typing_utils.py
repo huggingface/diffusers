@@ -15,8 +15,9 @@
 Typing utilities: Utilities related to type checking and validation
 """
 
+from types import UnionType
 from typing import Any, Set, Type, Union, get_args, get_origin
-from types import UnionType as _UnionType
+
 
 def _is_valid_type(obj: Any, class_or_tuple: Type | tuple[Type, ...]) -> bool:
     """
@@ -30,9 +31,9 @@ def _is_valid_type(obj: Any, class_or_tuple: Type | tuple[Type, ...]) -> bool:
     unpacked_class_or_tuple = []
     for t in class_or_tuple:
         origin = get_origin(t)
-        is_union = origin is Union or (_UnionType is not None and origin is _UnionType)
+        is_union = origin is Union or origin is UnionType
         # For PEP 604 unions (e.g. int | float), origin can be None but the object itself is a UnionType
-        if not is_union and _UnionType is not None and isinstance(t, _UnionType):
+        if not is_union and isinstance(t, UnionType):
             is_union = True
         if is_union:
             unpacked_class_or_tuple.extend(get_args(t))
