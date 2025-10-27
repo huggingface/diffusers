@@ -353,8 +353,8 @@ class BriaFiboPipeline(DiffusionPipeline):
         return self._interrupt
 
     @staticmethod
+    # Copied from diffusers.pipelines.flux.pipeline_flux.FluxPipeline._unpack_latents
     def _unpack_latents(latents, height, width, vae_scale_factor):
-        # Copied from diffusers.pipelines.qwenimage.pipeline_qwenimage.QwenImagePipeline
         batch_size, num_patches, channels = latents.shape
 
         height = height // vae_scale_factor
@@ -542,7 +542,8 @@ class BriaFiboPipeline(DiffusionPipeline):
                 The list of tensor inputs for the `callback_on_step_end` function. The tensors specified in the list
                 will be passed as `callback_kwargs` argument. You will only be able to include variables listed in the
                 `._callback_tensor_inputs` attribute of your pipeline class.
-            max_sequence_length (`int` defaults to 256): Maximum sequence length to use with the `prompt`.
+            max_sequence_length (`int` defaults to 3000): Maximum sequence length to use with the `prompt`.
+            do_patching (`bool`, *optional*, defaults to `False`): Whether to use patching.
         Examples:
           Returns:
             [`~pipelines.flux.BriaFiboPipelineOutput`] or `tuple`: [`~pipelines.flux.BriaFiboPipelineOutput`] if
