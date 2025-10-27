@@ -287,7 +287,7 @@ setup(
     packages=find_packages("src"),
     package_data={"diffusers": ["py.typed"]},
     include_package_data=True,
-    python_requires=">=3.9.0",
+    python_requires=">=3.10.0",
     install_requires=list(install_requires),
     extras_require=extras,
     entry_points={"console_scripts": ["diffusers-cli=diffusers.commands.diffusers_cli:main"]},
