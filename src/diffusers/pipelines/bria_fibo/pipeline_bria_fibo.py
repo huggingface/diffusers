@@ -1,3 +1,13 @@
+# Copyright (c) Bria.ai. All rights reserved.
+#
+# This file is licensed under the Creative Commons Attribution-NonCommercial 4.0 International Public License (CC-BY-NC-4.0).
+# You may obtain a copy of the license at https://creativecommons.org/licenses/by-nc/4.0/
+#
+# You are free to share and adapt this material for non-commercial purposes provided you give appropriate credit,
+# indicate if changes were made, and do not use the material for commercial purposes.
+#
+# See the license for further details.
+
 from typing import Any, Callable, Dict, List, Optional, Union
 
 import numpy as np
@@ -35,20 +45,47 @@ else:
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 EXAMPLE_DOC_STRING = """
-    ...
+    Example:
+    ```python
+    import torch
+    from diffusers import BriaFiboPipeline
+    from diffusers.modular_pipelines import ModularPipeline
+
+    torch.set_grad_enabled(False)
+    vlm_pipe = ModularPipeline.from_pretrained("briaai/FIBO-VLM-prompt-to-JSON", trust_remote_code=True)
+
+    pipe = BriaFiboPipeline.from_pretrained(
+        "briaai/FIBO",
+        trust_remote_code=True,
+        torch_dtype=torch.bfloat16,
+    )
+    pipe.enable_sequential_cpu_offload()
+
+    with torch.inference_mode():
+        # 1. Create a prompt to generate an initial image
+        output = vlm_pipe(prompt="a beautiful dog")
+        json_prompt_generate = output.values["json_prompt"]
+
+        # Generate the image from the structured json prompt
+        results_generate = pipe(prompt=json_prompt_generate, num_inference_steps=50, guidance_scale=5)
+        results_generate.images[0].save("image_generate.png")
+    ```
 """
 
 
 class BriaFiboPipeline(DiffusionPipeline):
     r"""
     Args:
-        transformer ([`GaiaTransformer2DModel`]):
-        scheduler ([`FlowMatchEulerDiscreteScheduler`]):
-            A scheduler to be used in combination with `transformer` to denoise the encoded image latents.
-        vae ([`AutoencoderKL`]):
-            Variational Auto-Encoder (VAE) Model to encode and decode images to and from latent representations.
-        text_encoder ([`SmolLM3ForCausalLM`]):
+        transformer (`BriaFiboTransformer2DModel`):
+            The transformer model for 2D diffusion modeling.
+        scheduler (`FlowMatchEulerDiscreteScheduler` or `KarrasDiffusionSchedulers`):
+            Scheduler to be used with `transformer` to denoise the encoded latents.
+        vae (`AutoencoderKLWan`):
+            Variational Auto-Encoder for encoding and decoding images to and from latent representations.
+        text_encoder (`SmolLM3ForCausalLM`):
+            Text encoder for processing input prompts.
         tokenizer (`AutoTokenizer`):
+            Tokenizer used for processing the input text prompts for the text_encoder.
     """
 
     model_cpu_offload_seq = "text_encoder->text_encoder_2->image_encoder->transformer->vae"
@@ -166,7 +203,7 @@ class BriaFiboPipeline(DiffusionPipeline):
         prompt: Union[str, List[str]],
         device: Optional[torch.device] = None,
         num_images_per_prompt: int = 1,
-        do_classifier_free_guidance: bool = True,
+        guidance_scale: float = 5,
         negative_prompt: Optional[Union[str, List[str]]] = None,
         prompt_embeds: Optional[torch.FloatTensor] = None,
         negative_prompt_embeds: Optional[torch.FloatTensor] = None,
@@ -181,8 +218,8 @@ class BriaFiboPipeline(DiffusionPipeline):
                 torch device
             num_images_per_prompt (`int`):
                 number of images that should be generated per prompt
-            do_classifier_free_guidance (`bool`):
-                whether to use classifier free guidance or not
+            guidance_scale (`float`):
+                Guidance scale for classifier free guidance.
             negative_prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts not to guide the image generation. If not defined, one has to pass
                 `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
@@ -224,7 +261,7 @@ class BriaFiboPipeline(DiffusionPipeline):
             prompt_embeds = prompt_embeds.to(dtype=self.transformer.dtype)
             prompt_layers = [tensor.to(dtype=self.transformer.dtype) for tensor in prompt_layers]
 
-        if do_classifier_free_guidance:
+        if guidance_scale > 1:
             if isinstance(negative_prompt, list) and negative_prompt[0] is None:
                 negative_prompt = ""
             negative_prompt = negative_prompt or ""
@@ -302,9 +339,6 @@ class BriaFiboPipeline(DiffusionPipeline):
     # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
     # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`
     # corresponds to doing no classifier free guidance.
-    @property
-    def do_classifier_free_guidance(self):
-        return self._guidance_scale > 1
 
     @property
     def joint_attention_kwargs(self):
@@ -320,6 +354,7 @@ class BriaFiboPipeline(DiffusionPipeline):
 
     @staticmethod
     def _unpack_latents(latents, height, width, vae_scale_factor):
+        # Copied from diffusers.pipelines.qwenimage.pipeline_qwenimage.QwenImagePipeline
         batch_size, num_patches, channels = latents.shape
 
         height = height // vae_scale_factor
@@ -366,6 +401,7 @@ class BriaFiboPipeline(DiffusionPipeline):
 
     @staticmethod
     def _pack_latents(latents, batch_size, num_channels_latents, height, width):
+        # Copied from diffusers.pipelines.qwenimage.pipeline_qwenimage.QwenImagePipeline
         latents = latents.view(batch_size, num_channels_latents, height // 2, 2, width // 2, 2)
         latents = latents.permute(0, 2, 4, 1, 3, 5)
         latents = latents.reshape(batch_size, (height // 2) * (width // 2), num_channels_latents * 4)
@@ -410,34 +446,7 @@ class BriaFiboPipeline(DiffusionPipeline):
         return latents, latent_image_ids
 
     @staticmethod
-    def init_inference_scheduler(height, width, device, image_seq_len, num_inference_steps=1000, noise_scheduler=None):
-        sigmas = np.linspace(1.0, 1 / num_inference_steps, num_inference_steps)
-
-        assert height % 16 == 0 and width % 16 == 0
-
-        mu = calculate_shift(
-            image_seq_len,
-            noise_scheduler.config.base_image_seq_len,
-            noise_scheduler.config.max_image_seq_len,
-            noise_scheduler.config.base_shift,
-            noise_scheduler.config.max_shift,
-        )
-
-        # Init sigmas and timesteps according to shift size
-        # This changes the scheduler in-place according to the dynamic scheduling
-        timesteps, num_inference_steps = retrieve_timesteps(
-            noise_scheduler,
-            num_inference_steps=num_inference_steps,
-            device=device,
-            timesteps=None,
-            sigmas=sigmas,
-            mu=mu,
-        )
-
-        return noise_scheduler, timesteps, num_inference_steps, mu
-
-    @staticmethod
-    def create_attention_matrix(attention_mask):
+    def _prepare_attention_mask(attention_mask):
         attention_matrix = torch.einsum("bi,bj->bij", attention_mask, attention_mask)
 
         # convert to 0 - keep, -inf ignore
@@ -583,7 +592,7 @@ class BriaFiboPipeline(DiffusionPipeline):
         ) = self.encode_prompt(
             prompt=prompt,
             negative_prompt=negative_prompt,
-            do_classifier_free_guidance=self.do_classifier_free_guidance,
+            guidance_scale=guidance_scale,
             prompt_embeds=prompt_embeds,
             negative_prompt_embeds=negative_prompt_embeds,
             device=device,
@@ -593,7 +602,7 @@ class BriaFiboPipeline(DiffusionPipeline):
         )
         prompt_batch_size = prompt_embeds.shape[0]
 
-        if self.do_classifier_free_guidance:
+        if guidance_scale > 1:
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds], dim=0)
             prompt_layers = [
                 torch.cat([negative_prompt_layers[i], prompt_layers[i]], dim=0) for i in range(len(prompt_layers))
@@ -611,6 +620,7 @@ class BriaFiboPipeline(DiffusionPipeline):
             prompt_layers = prompt_layers + [prompt_layers[-1]] * (total_num_layers_transformer - len(prompt_layers))
 
         # 5. Prepare latent variables
+
         num_channels_latents = self.transformer.config.in_channels
         if do_patching:
             num_channels_latents = int(num_channels_latents / 4)
@@ -630,11 +640,11 @@ class BriaFiboPipeline(DiffusionPipeline):
         latent_attention_mask = torch.ones(
             [latents.shape[0], latents.shape[1]], dtype=latents.dtype, device=latents.device
         )
-        if self.do_classifier_free_guidance:
+        if guidance_scale > 1:
             latent_attention_mask = latent_attention_mask.repeat(2, 1)
 
         attention_mask = torch.cat([prompt_attention_mask, latent_attention_mask], dim=1)
-        attention_mask = self.create_attention_matrix(attention_mask)  # batch, seq => batch, seq, seq
+        attention_mask = self._prepare_attention_mask(attention_mask)  # batch, seq => batch, seq, seq
         attention_mask = attention_mask.unsqueeze(dim=1).to(dtype=self.transformer.dtype)  # for head broadcasting
 
         if self._joint_attention_kwargs is None:
@@ -648,13 +658,25 @@ class BriaFiboPipeline(DiffusionPipeline):
         else:
             seq_len = (height // self.vae_scale_factor) * (width // self.vae_scale_factor)
 
-        self.noise_scheduler, timesteps, num_inference_steps, mu = self.init_inference_scheduler(
-            height=height,
-            width=width,
-            device=device,
+        sigmas = np.linspace(1.0, 1 / num_inference_steps, num_inference_steps)
+
+        mu = calculate_shift(
+            seq_len,
+            self.scheduler.config.base_image_seq_len,
+            self.scheduler.config.max_image_seq_len,
+            self.scheduler.config.base_shift,
+            self.scheduler.config.max_shift,
+        )
+
+        # Init sigmas and timesteps according to shift size
+        # This changes the scheduler in-place according to the dynamic scheduling
+        timesteps, num_inference_steps = retrieve_timesteps(
+            self.scheduler,
             num_inference_steps=num_inference_steps,
-            noise_scheduler=self.scheduler,
-            image_seq_len=seq_len,
+            device=device,
+            timesteps=None,
+            sigmas=sigmas,
+            mu=mu,
         )
 
         num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
@@ -674,10 +696,7 @@ class BriaFiboPipeline(DiffusionPipeline):
                     continue
 
                 # expand the latents if we are doing classifier free guidance
-                latent_model_input = torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents
-
-                if type(self.scheduler) != FlowMatchEulerDiscreteScheduler:
-                    latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
+                latent_model_input = torch.cat([latents] * 2) if guidance_scale > 1 else latents
 
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
                 timestep = t.expand(latent_model_input.shape[0]).to(
@@ -697,7 +716,7 @@ class BriaFiboPipeline(DiffusionPipeline):
                 )[0]
 
                 # perform guidance
-                if self.do_classifier_free_guidance:
+                if guidance_scale > 1:
                     noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
                     noise_pred = noise_pred_uncond + self.guidance_scale * (noise_pred_text - noise_pred_uncond)
 
@@ -736,7 +755,6 @@ class BriaFiboPipeline(DiffusionPipeline):
             else:
                 latents = self._unpack_latents_no_patch(latents, height, width, self.vae_scale_factor)
 
-            latents = latents.to(dtype=self.vae.dtype)
             latents = latents.unsqueeze(dim=2)
             latents = list(torch.unbind(latents, dim=0))
             latents_device = latents[0].device
@@ -780,8 +798,8 @@ class BriaFiboPipeline(DiffusionPipeline):
         callback_on_step_end_tensor_inputs=None,
         max_sequence_length=None,
     ):
-        if height % 8 != 0 or width % 8 != 0:
-            raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
+        if height % 16 != 0 or width % 16 != 0:
+            raise ValueError(f"`height` and `width` have to be divisible by 16 but are {height} and {width}.")
 
         if callback_on_step_end_tensor_inputs is not None and not all(
             k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
@@ -818,9 +836,3 @@ class BriaFiboPipeline(DiffusionPipeline):
 
         if max_sequence_length is not None and max_sequence_length > 3000:
             raise ValueError(f"`max_sequence_length` cannot be greater than 3000 but is {max_sequence_length}")
-
-    def to(self, *args, **kwargs):
-        DiffusionPipeline.to(self, *args, **kwargs)
-        # We use as float32 since wan22 in their repo use it like this
-        self.vae.to(dtype=torch.float32)
-        return self

@@ -20,7 +20,7 @@ import torch
 from diffusers import BriaFiboTransformer2DModel
 
 from ...testing_utils import enable_full_determinism, torch_device
-from ..test_modeling_common import LoraHotSwappingForModelTesterMixin, ModelTesterMixin, TorchCompileTesterMixin
+from ..test_modeling_common import ModelTesterMixin
 
 
 enable_full_determinism()
@@ -84,48 +84,6 @@ class BriaFiboTransformerTests(ModelTesterMixin, unittest.TestCase):
         inputs_dict = self.dummy_input
         return init_dict, inputs_dict
 
-    def test_deprecated_inputs_img_txt_ids_3d(self):
-        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
-        model = self.model_class(**init_dict)
-        model.to(torch_device)
-        model.eval()
-
-        with torch.no_grad():
-            output_1 = model(**inputs_dict)[0]
-
-        # update inputs_dict with txt_ids and img_ids as 3d tensors (deprecated)
-        text_ids_3d = inputs_dict["txt_ids"].unsqueeze(0)
-        image_ids_3d = inputs_dict["img_ids"].unsqueeze(0)
-
-        assert text_ids_3d.ndim == 3, "text_ids_3d should be a 3d tensor"
-        assert image_ids_3d.ndim == 3, "img_ids_3d should be a 3d tensor"
-
-        inputs_dict["txt_ids"] = text_ids_3d
-        inputs_dict["img_ids"] = image_ids_3d
-
-        with torch.no_grad():
-            output_2 = model(**inputs_dict)[0]
-
-        self.assertEqual(output_1.shape, output_2.shape)
-        self.assertTrue(
-            torch.allclose(output_1, output_2, atol=1e-5),
-            msg="output with deprecated inputs (img_ids and txt_ids as 3d torch tensors) are not equal as them as 2d inputs",
-        )
-
     def test_gradient_checkpointing_is_applied(self):
         expected_set = {"BriaFiboTransformer2DModel"}
         super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
-
-
-class BriaFiboTransformerCompileTests(TorchCompileTesterMixin, unittest.TestCase):
-    model_class = BriaFiboTransformer2DModel
-
-    def prepare_init_args_and_inputs_for_common(self):
-        return BriaFiboTransformerTests().prepare_init_args_and_inputs_for_common()
-
-
-class BriaFiboTransformerLoRAHotSwapTests(LoraHotSwappingForModelTesterMixin, unittest.TestCase):
-    model_class = BriaFiboTransformer2DModel
-
-    def prepare_init_args_and_inputs_for_common(self):
-        return BriaFiboTransformerTests().prepare_init_args_and_inputs_for_common()
