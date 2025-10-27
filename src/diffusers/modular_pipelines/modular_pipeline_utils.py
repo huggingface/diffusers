@@ -19,9 +19,11 @@ from dataclasses import dataclass, field, fields
 from typing import Any, Dict, List, Literal, Optional, Type, Union
 
 import torch
+from packaging.specifiers import InvalidSpecifier, SpecifierSet
 
 from ..configuration_utils import ConfigMixin, FrozenDict
 from ..utils import is_torch_available, logging
+from ..utils.import_utils import _is_package_available
 
 
 if is_torch_available():
@@ -670,3 +672,86 @@ def make_doc_string(
     output += format_output_params(outputs, indent_level=2)
 
     return output
+
+
+def _validate_requirements(reqs):
+    if reqs is None:
+        normalized_reqs = {}
+    else:
+        if not isinstance(reqs, dict):
+            raise ValueError(
+                "Requirements must be provided as a dictionary mapping package names to version specifiers."
+            )
+        normalized_reqs = _normalize_requirements(reqs)
+
+    if not normalized_reqs:
+        return {}
+
+    final: Dict[str, str] = {}
+    for req, specified_ver in normalized_reqs.items():
+        req_available, req_actual_ver = _is_package_available(req)
+        if not req_available:
+            logger.warning(f"{req} was specified in the requirements but wasn't found in the current environment.")
+
+        if specified_ver:
+            try:
+                specifier = SpecifierSet(specified_ver)
+            except InvalidSpecifier as err:
+                raise ValueError(f"Requirement specifier '{specified_ver}' for {req} is invalid.") from err
+
+            if req_actual_ver == "N/A":
+                logger.warning(
+                    f"Version of {req} could not be determined to validate requirement '{specified_ver}'. Things might work unexpected."
+                )
+            elif not specifier.contains(req_actual_ver, prereleases=True):
+                logger.warning(
+                    f"{req} requirement '{specified_ver}' is not satisfied by the installed version {req_actual_ver}. Things might work unexpected."
+                )
+
+        final[req] = specified_ver
+
+    return final
+
+
+def _normalize_requirements(reqs):
+    if not reqs:
+        return {}
+
+    normalized: "OrderedDict[str, str]" = OrderedDict()
+
+    def _accumulate(mapping: Dict[str, Any]):
+        for pkg, spec in mapping.items():
+            if isinstance(spec, dict):
+                # This is recursive because blocks are composable. This way, we can merge requirements
+                # from multiple blocks.
+                _accumulate(spec)
+                continue
+
+            pkg_name = str(pkg).strip()
+            if not pkg_name:
+                raise ValueError("Requirement package name cannot be empty.")
+
+            spec_str = "" if spec is None else str(spec).strip()
+            if spec_str and not spec_str.startswith(("<", ">", "=", "!", "~")):
+                spec_str = f"=={spec_str}"
+
+            existing_spec = normalized.get(pkg_name)
+            if existing_spec is not None:
+                if not existing_spec and spec_str:
+                    normalized[pkg_name] = spec_str
+                elif existing_spec and spec_str and existing_spec != spec_str:
+                    try:
+                        combined_spec = SpecifierSet(",".join(filter(None, [existing_spec, spec_str])))
+                    except InvalidSpecifier:
+                        logger.warning(
+                            f"Conflicting requirements for '{pkg_name}' detected: '{existing_spec}' vs '{spec_str}'. Keeping '{existing_spec}'."
+                        )
+                    else:
+                        normalized[pkg_name] = str(combined_spec)
+                continue
+
+            normalized[pkg_name] = spec_str
+
+    _accumulate(reqs)
+
+    return normalized

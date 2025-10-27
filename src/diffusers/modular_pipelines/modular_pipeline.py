@@ -32,7 +32,6 @@ from ..pipelines.pipeline_loading_utils import _fetch_class_library_tuple, simpl
 from ..utils import PushToHubMixin, is_accelerate_available, logging
 from ..utils.dynamic_modules_utils import get_class_from_dynamic_module, resolve_trust_remote_code
 from ..utils.hub_utils import load_or_create_model_card, populate_model_card
-from ..utils.import_utils import _is_package_available
 from .components_manager import ComponentsManager
 from .modular_pipeline_utils import (
     ComponentSpec,
@@ -40,6 +39,7 @@ from .modular_pipeline_utils import (
     InputParam,
     InsertableDict,
     OutputParam,
+    _validate_requirements,
     format_components,
     format_configs,
     make_doc_string,
@@ -240,7 +240,7 @@ class ModularPipelineBlocks(ConfigMixin, PushToHubMixin):
 
     config_name = "modular_config.json"
     model_name = None
-    _requirements: Union[List[Tuple[str, str]], Tuple[str, str]] = None
+    _requirements: Optional[Dict[str, str]] = None
 
     @classmethod
     def _get_signature_keys(cls, obj):
@@ -1142,6 +1142,14 @@ class SequentialPipelineBlocks(ModularPipelineBlocks):
             expected_components=self.expected_components,
             expected_configs=self.expected_configs,
         )
+
+    @property
+    def _requirements(self) -> Dict[str, str]:
+        requirements = {}
+        for block_name, block in self.sub_blocks.items():
+            if getattr(block, "_requirements", None):
+                requirements[block_name] = block._requirements
+        return requirements
 
 
 class LoopSequentialPipelineBlocks(ModularPipelineBlocks):
@@ -2547,33 +2555,3 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
             return state.get(output)
         else:
             raise ValueError(f"Output '{output}' is not a valid output type")
-
-
-def _validate_requirements(reqs):
-    normalized_reqs = _normalize_requirements(reqs)
-    if not normalized_reqs:
-        return []
-
-    final: List[Tuple[str, str]] = []
-    for req, specified_ver in normalized_reqs:
-        req_available, req_actual_ver = _is_package_available(req)
-        if not req_available:
-            raise ValueError(f"{req} was specified in the requirements but wasn't found in the current environment.")
-        if specified_ver != req_actual_ver:
-            logger.warning(
-                f"Version of {req} was specified to be {specified_ver} in the configuration. However, the actual installed version if {req_actual_ver}. Things might work unexpected."
-            )
-
-        final.append((req, specified_ver))
-
-    return final
-
-
-def _normalize_requirements(reqs):
-    if not reqs:
-        return []
-    if isinstance(reqs, tuple) and len(reqs) == 2 and isinstance(reqs[0], str):
-        req_seq: List[Tuple[str, str]] = [reqs]  # single pair
-    else:
-        req_seq = reqs
-    return req_seq
