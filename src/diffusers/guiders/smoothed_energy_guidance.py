@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from __future__ import annotations
+
 import math
 from typing import TYPE_CHECKING, Optional
 
@@ -92,8 +94,9 @@ class SmoothedEnergyGuidance(BaseGuidance):
         use_original_formulation: bool = False,
         start: float = 0.0,
         stop: float = 1.0,
+        enabled: bool = True,
     ):
-        super().__init__(start, stop)
+        super().__init__(start, stop, enabled)
 
         self.guidance_scale = guidance_scale
         self.seg_guidance_scale = seg_guidance_scale
@@ -153,12 +156,7 @@ class SmoothedEnergyGuidance(BaseGuidance):
             for hook_name in self._seg_layer_hook_names:
                 registry.remove_hook(hook_name, recurse=True)
 
-    def prepare_inputs(
-        self, data: "BlockState", input_fields: Optional[dict[str, str | tuple[str, str]]] = None
-    ) -> list["BlockState"]:
-        if input_fields is None:
-            input_fields = self._input_fields
-
+    def prepare_inputs(self, data: dict[str, tuple[torch.Tensor, torch.Tensor]]) -> list["BlockState"]:
         if self.num_conditions == 1:
             tuple_indices = [0]
             input_predictions = ["pred_cond"]
@@ -171,8 +169,8 @@ class SmoothedEnergyGuidance(BaseGuidance):
             tuple_indices = [0, 1, 0]
             input_predictions = ["pred_cond", "pred_uncond", "pred_cond_seg"]
         data_batches = []
-        for i in range(self.num_conditions):
-            data_batch = self._prepare_batch(input_fields, data, tuple_indices[i], input_predictions[i])
+        for tuple_idx, input_prediction in zip(tuple_indices, input_predictions):
+            data_batch = self._prepare_batch(data, tuple_idx, input_prediction)
             data_batches.append(data_batch)
         return data_batches
 

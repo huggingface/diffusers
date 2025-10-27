@@ -28,6 +28,7 @@ from ..modeling_outputs import AutoencoderKLOutput
 from ..modeling_utils import ModelMixin
 from ..resnet import ResnetBlock2D
 from ..upsampling import Upsample2D
+from .vae import AutoencoderMixin
 
 
 class AllegroTemporalConvLayer(nn.Module):
@@ -673,7 +674,7 @@ class AllegroDecoder3D(nn.Module):
         return sample
 
 
-class AutoencoderKLAllegro(ModelMixin, ConfigMixin):
+class AutoencoderKLAllegro(ModelMixin, AutoencoderMixin, ConfigMixin):
     r"""
     A VAE model with KL loss for encoding videos into latents and decoding latent representations into videos. Used in
     [Allegro](https://github.com/rhymes-ai/Allegro).
@@ -794,35 +795,6 @@ class AutoencoderKLAllegro(ModelMixin, ConfigMixin):
             sample_size - self.tile_overlap_h,
             sample_size - self.tile_overlap_w,
         )
-
-    def enable_tiling(self) -> None:
-        r"""
-        Enable tiled VAE decoding. When this option is enabled, the VAE will split the input tensor into tiles to
-        compute decoding and encoding in several steps. This is useful for saving a large amount of memory and to allow
-        processing larger images.
-        """
-        self.use_tiling = True
-
-    def disable_tiling(self) -> None:
-        r"""
-        Disable tiled VAE decoding. If `enable_tiling` was previously enabled, this method will go back to computing
-        decoding in one step.
-        """
-        self.use_tiling = False
-
-    def enable_slicing(self) -> None:
-        r"""
-        Enable sliced VAE decoding. When this option is enabled, the VAE will split the input tensor in slices to
-        compute decoding in several steps. This is useful to save some memory and allow larger batch sizes.
-        """
-        self.use_slicing = True
-
-    def disable_slicing(self) -> None:
-        r"""
-        Disable sliced VAE decoding. If `enable_slicing` was previously enabled, this method will go back to computing
-        decoding in one step.
-        """
-        self.use_slicing = False
 
     def _encode(self, x: torch.Tensor) -> torch.Tensor:
         # TODO(aryan)

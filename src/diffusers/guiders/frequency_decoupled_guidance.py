@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from __future__ import annotations
+
 import math
 from typing import TYPE_CHECKING, Optional
 
@@ -149,6 +151,7 @@ class FrequencyDecoupledGuidance(BaseGuidance):
         stop: float | list[float] | tuple[float] = 1.0,
         guidance_rescale_space: str = "data",
         upcast_to_double: bool = True,
+        enabled: bool = True,
     ):
         if not _CAN_USE_KORNIA:
             raise ImportError(
@@ -160,7 +163,7 @@ class FrequencyDecoupledGuidance(BaseGuidance):
         # Set start to earliest start for any freq component and stop to latest stop for any freq component
         min_start = start if isinstance(start, float) else min(start)
         max_stop = stop if isinstance(stop, float) else max(stop)
-        super().__init__(min_start, max_stop)
+        super().__init__(min_start, max_stop, enabled)
 
         self.guidance_scales = guidance_scales
         self.levels = len(guidance_scales)
@@ -217,16 +220,11 @@ class FrequencyDecoupledGuidance(BaseGuidance):
                 f"({len(self.guidance_scales)})"
             )
 
-    def prepare_inputs(
-        self, data: "BlockState", input_fields: Optional[dict[str, str | tuple[str, str]]] = None
-    ) -> list["BlockState"]:
-        if input_fields is None:
-            input_fields = self._input_fields
-
+    def prepare_inputs(self, data: dict[str, tuple[torch.Tensor, torch.Tensor]]) -> list["BlockState"]:
         tuple_indices = [0] if self.num_conditions == 1 else [0, 1]
         data_batches = []
-        for i in range(self.num_conditions):
-            data_batch = self._prepare_batch(input_fields, data, tuple_indices[i], self._input_predictions[i])
+        for tuple_idx, input_prediction in zip(tuple_indices, self._input_predictions):
+            data_batch = self._prepare_batch(data, tuple_idx, input_prediction)
             data_batches.append(data_batch)
         return data_batches
 

@@ -20,10 +20,10 @@ from ...configuration_utils import ConfigMixin, register_to_config
 from ...utils.accelerate_utils import apply_forward_hook
 from ..modeling_outputs import AutoencoderKLOutput
 from ..modeling_utils import ModelMixin
-from .vae import DecoderOutput, DiagonalGaussianDistribution, Encoder, MaskConditionDecoder
+from .vae import AutoencoderMixin, DecoderOutput, DiagonalGaussianDistribution, Encoder, MaskConditionDecoder
 
 
-class AsymmetricAutoencoderKL(ModelMixin, ConfigMixin):
+class AsymmetricAutoencoderKL(ModelMixin, AutoencoderMixin, ConfigMixin):
     r"""
     Designing a Better Asymmetric VQGAN for StableDiffusion https://huggingface.co/papers/2306.04632 . A VAE model with
     KL loss for encoding images into latents and decoding latent representations into images.
@@ -106,9 +106,6 @@ class AsymmetricAutoencoderKL(ModelMixin, ConfigMixin):
 
         self.quant_conv = nn.Conv2d(2 * latent_channels, 2 * latent_channels, 1)
         self.post_quant_conv = nn.Conv2d(latent_channels, latent_channels, 1)
-
-        self.use_slicing = False
-        self.use_tiling = False
 
         self.register_to_config(block_out_channels=up_block_out_channels)
         self.register_to_config(force_upcast=False)

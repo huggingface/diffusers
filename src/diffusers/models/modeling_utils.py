@@ -251,6 +251,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
     _repeated_blocks = []
     _parallel_config = None
     _cp_plan = None
+    _skip_keys = None
 
     def __init__(self):
         super().__init__()

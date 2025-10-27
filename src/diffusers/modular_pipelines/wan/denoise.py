@@ -94,25 +94,30 @@ class WanLoopDenoiser(ModularPipelineBlocks):
     ) -> PipelineState:
         #  Map the keys we'll see on each `guider_state_batch` (e.g. guider_state_batch.prompt_embeds)
         #  to the corresponding (cond, uncond) fields on block_state. (e.g. block_state.prompt_embeds, block_state.negative_prompt_embeds)
-        guider_input_fields = {
-            "prompt_embeds": ("prompt_embeds", "negative_prompt_embeds"),
+        guider_inputs = {
+            "prompt_embeds": (
+                getattr(block_state, "prompt_embeds", None),
+                getattr(block_state, "negative_prompt_embeds", None),
+            ),
         }
         transformer_dtype = components.transformer.dtype
 
         components.guider.set_state(step=i, num_inference_steps=block_state.num_inference_steps, timestep=t)
 
-        # Prepare mini‐batches according to guidance method and `guider_input_fields`
-        # Each guider_state_batch will have .prompt_embeds, .time_ids, text_embeds, image_embeds.
-        # e.g. for CFG, we prepare two batches: one for uncond, one for cond
-        # for first batch, guider_state_batch.prompt_embeds correspond to block_state.prompt_embeds
-        # for second batch, guider_state_batch.prompt_embeds correspond to block_state.negative_prompt_embeds
-        guider_state = components.guider.prepare_inputs(block_state, guider_input_fields)
+        # The guider splits model inputs into separate batches for conditional/unconditional predictions.
+        # For CFG with guider_inputs = {"encoder_hidden_states": (prompt_embeds, negative_prompt_embeds)}:
+        # you will get a guider_state with two batches:
+        #   guider_state = [
+        #       {"encoder_hidden_states": prompt_embeds, "__guidance_identifier__": "pred_cond"},      # conditional batch
+        #       {"encoder_hidden_states": negative_prompt_embeds, "__guidance_identifier__": "pred_uncond"},  # unconditional batch
+        #   ]
+        # Other guidance methods may return 1 batch (no guidance) or 3+ batches (e.g., PAG, APG).
+        guider_state = components.guider.prepare_inputs(guider_inputs)
 
         # run the denoiser for each guidance batch
         for guider_state_batch in guider_state:
             components.guider.prepare_models(components.transformer)
-            cond_kwargs = guider_state_batch.as_dict()
-            cond_kwargs = {k: v for k, v in cond_kwargs.items() if k in guider_input_fields}
+            cond_kwargs = {input_name: getattr(guider_state_batch, input_name) for input_name in guider_inputs.keys()}
             prompt_embeds = cond_kwargs.pop("prompt_embeds")
 
             # Predict the noise residual
