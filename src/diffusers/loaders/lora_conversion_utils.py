@@ -558,70 +558,62 @@ def _convert_kohya_flux_lora_to_diffusers(state_dict):
                     ait_sd[target_key] = value
 
         if any("guidance_in" in k for k in sds_sd):
-            assign_remaining_weights(
-                [
-                    (
-                        "time_text_embed.guidance_embedder.linear_1.{lora_key}.weight",
-                        "lora_unet_guidance_in_in_layer.{orig_lora_key}.weight",
-                        None,
-                    ),
-                    (
-                        "time_text_embed.guidance_embedder.linear_2.{lora_key}.weight",
-                        "lora_unet_guidance_in_out_layer.{orig_lora_key}.weight",
-                        None,
-                    ),
-                ],
+            _convert_to_ai_toolkit(
                 sds_sd,
+                ait_sd,
+                "lora_unet_guidance_in_in_layer",
+                "time_text_embed.guidance_embedder.linear_1",
+            )
+
+            _convert_to_ai_toolkit(
+                sds_sd,
+                ait_sd,
+                "lora_unet_guidance_in_out_layer",
+                "time_text_embed.guidance_embedder.linear_2",
             )
 
         if any("img_in" in k for k in sds_sd):
-            assign_remaining_weights(
-                [
-                    ("x_embedder.{lora_key}.weight", "lora_unet_img_in.{orig_lora_key}.weight", None),
-                ],
+            _convert_to_ai_toolkit(
                 sds_sd,
+                ait_sd,
+                "lora_unet_img_in",
+                "x_embedder",
             )
 
         if any("txt_in" in k for k in sds_sd):
-            assign_remaining_weights(
-                [
-                    ("context_embedder.{lora_key}.weight", "lora_unet_txt_in.{orig_lora_key}.weight", None),
-                ],
+            _convert_to_ai_toolkit(
                 sds_sd,
+                ait_sd,
+                "lora_unet_txt_in",
+                "context_embedder",
             )
 
         if any("time_in" in k for k in sds_sd):
-            assign_remaining_weights(
-                [
-                    (
-                        "time_text_embed.timestep_embedder.linear_1.{lora_key}.weight",
-                        "lora_unet_time_in_in_layer.{orig_lora_key}.weight",
-                        None,
-                    ),
-                    (
-                        "time_text_embed.timestep_embedder.linear_2.{lora_key}.weight",
-                        "lora_unet_time_in_out_layer.{orig_lora_key}.weight",
-                        None,
-                    ),
-                ],
+            _convert_to_ai_toolkit(
                 sds_sd,
+                ait_sd,
+                "lora_unet_time_in_in_layer",
+                "time_text_embed.timestep_embedder.linear_1",
+            )
+            _convert_to_ai_toolkit(
+                sds_sd,
+                ait_sd,
+                "lora_unet_time_in_out_layer",
+                "time_text_embed.timestep_embedder.linear_2",
             )
 
         if any("vector_in" in k for k in sds_sd):
-            assign_remaining_weights(
-                [
-                    (
-                        "time_text_embed.text_embedder.linear_1.{lora_key}.weight",
-                        "lora_unet_vector_in_in_layer.{orig_lora_key}.weight",
-                        None,
-                    ),
-                    (
-                        "time_text_embed.text_embedder.linear_2.{lora_key}.weight",
-                        "lora_unet_vector_in_out_layer.{orig_lora_key}.weight",
-                        None,
-                    ),
-                ],
+            _convert_to_ai_toolkit(
                 sds_sd,
+                ait_sd,
+                "lora_unet_vector_in_in_layer",
+                "time_text_embed.text_embedder.linear_1",
+            )
+            _convert_to_ai_toolkit(
+                sds_sd,
+                ait_sd,
+                "lora_unet_vector_in_out_layer",
+                "time_text_embed.text_embedder.linear_2",
             )
 
         if any("final_layer" in k for k in sds_sd):
@@ -1985,13 +1977,33 @@ def _convert_non_diffusers_wan_lora_to_diffusers(state_dict):
                     "time_projection.1.diff_b"
                 )
 
-        if any("head.head" in k for k in state_dict):
-            converted_state_dict["proj_out.lora_A.weight"] = original_state_dict.pop(
-                f"head.head.{lora_down_key}.weight"
-            )
-            converted_state_dict["proj_out.lora_B.weight"] = original_state_dict.pop(f"head.head.{lora_up_key}.weight")
+        if any("head.head" in k for k in original_state_dict):
+            if any(f"head.head.{lora_down_key}.weight" in k for k in state_dict):
+                converted_state_dict["proj_out.lora_A.weight"] = original_state_dict.pop(
+                    f"head.head.{lora_down_key}.weight"
+                )
+            if any(f"head.head.{lora_up_key}.weight" in k for k in state_dict):
+                converted_state_dict["proj_out.lora_B.weight"] = original_state_dict.pop(
+                    f"head.head.{lora_up_key}.weight"
+                )
             if "head.head.diff_b" in original_state_dict:
                 converted_state_dict["proj_out.lora_B.bias"] = original_state_dict.pop("head.head.diff_b")
+
+            # Notes: https://huggingface.co/lightx2v/Wan2.2-Distill-Loras
+            # This is my (sayakpaul) assumption that this particular key belongs to the down matrix.
+            # Since for this particular LoRA, we don't have the corresponding up matrix, I will use
+            # an identity.
+            if any("head.head" in k and k.endswith(".diff") for k in state_dict):
+                if f"head.head.{lora_down_key}.weight" in state_dict:
+                    logger.info(
+                        f"The state dict seems to be have both `head.head.diff` and `head.head.{lora_down_key}.weight` keys, which is unexpected."
+                    )
+                converted_state_dict["proj_out.lora_A.weight"] = original_state_dict.pop("head.head.diff")
+                down_matrix_head = converted_state_dict["proj_out.lora_A.weight"]
+                up_matrix_shape = (down_matrix_head.shape[0], converted_state_dict["proj_out.lora_B.bias"].shape[0])
+                converted_state_dict["proj_out.lora_B.weight"] = torch.eye(
+                    *up_matrix_shape, dtype=down_matrix_head.dtype, device=down_matrix_head.device
+                ).T
 
         for text_time in ["text_embedding", "time_embedding"]:
             if any(text_time in k for k in original_state_dict):

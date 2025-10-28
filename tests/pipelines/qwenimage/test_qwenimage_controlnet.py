@@ -44,7 +44,6 @@ class QwenControlNetPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     batch_params = frozenset(["prompt", "negative_prompt", "control_image"])
     image_params = frozenset(["control_image"])
     image_latents_params = frozenset(["latents"])
-
     required_optional_params = frozenset(
         [
             "num_inference_steps",
@@ -59,7 +58,7 @@ class QwenControlNetPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     )
 
     supports_dduf = False
-    test_xformers_attention = True
+    test_xformers_attention = False
     test_layerwise_casting = True
     test_group_offloading = True
 

@@ -19,6 +19,7 @@ from huggingface_hub.utils import validate_hf_hub_args
 
 from ..configuration_utils import ConfigMixin
 from ..utils import logging
+from ..utils.dynamic_modules_utils import get_class_from_dynamic_module, resolve_trust_remote_code
 
 
 logger = logging.get_logger(__name__)
@@ -114,48 +115,46 @@ class AutoModel(ConfigMixin):
             disable_mmap ('bool', *optional*, defaults to 'False'):
                 Whether to disable mmap when loading a Safetensors model. This option can perform better when the model
                 is on a network mount or hard drive, which may not handle the seeky-ness of mmap very well.
+            trust_remote_cocde (`bool`, *optional*, defaults to `False`):
+                Whether to trust remote code
 
-        <Tip>
-
-        To use private or [gated models](https://huggingface.co/docs/hub/models-gated#gated-models), log-in with `hf
-        auth login`. You can also activate the special
-        ["offline-mode"](https://huggingface.co/diffusers/installation.html#offline-mode) to use this method in a
+        > [!TIP] > To use private or [gated models](https://huggingface.co/docs/hub/models-gated#gated-models), log-in
+        with `hf > auth login`. You can also activate the special >
+        ["offline-mode"](https://huggingface.co/diffusers/installation.html#offline-mode) to use this method in a >
         firewalled environment.
-
-        </Tip>
 
         Example:
 
         ```py
         from diffusers import AutoModel
 
-        unet = AutoModel.from_pretrained("runwayml/stable-diffusion-v1-5", subfolder="unet")
+        unet = AutoModel.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5", subfolder="unet")
         ```
 
         If you get the error message below, you need to finetune the weights for your downstream task:
 
         ```bash
-        Some weights of UNet2DConditionModel were not initialized from the model checkpoint at runwayml/stable-diffusion-v1-5 and are newly initialized because the shapes did not match:
+        Some weights of UNet2DConditionModel were not initialized from the model checkpoint at stable-diffusion-v1-5/stable-diffusion-v1-5 and are newly initialized because the shapes did not match:
         - conv_in.weight: found shape torch.Size([320, 4, 3, 3]) in the checkpoint and torch.Size([320, 9, 3, 3]) in the model instantiated
         You should probably TRAIN this model on a down-stream task to be able to use it for predictions and inference.
         ```
         """
-        cache_dir = kwargs.pop("cache_dir", None)
-        force_download = kwargs.pop("force_download", False)
-        proxies = kwargs.pop("proxies", None)
-        token = kwargs.pop("token", None)
-        local_files_only = kwargs.pop("local_files_only", False)
-        revision = kwargs.pop("revision", None)
         subfolder = kwargs.pop("subfolder", None)
+        trust_remote_code = kwargs.pop("trust_remote_code", False)
 
-        load_config_kwargs = {
-            "cache_dir": cache_dir,
-            "force_download": force_download,
-            "proxies": proxies,
-            "token": token,
-            "local_files_only": local_files_only,
-            "revision": revision,
-        }
+        hub_kwargs_names = [
+            "cache_dir",
+            "force_download",
+            "local_files_only",
+            "proxies",
+            "resume_download",
+            "revision",
+            "token",
+        ]
+        hub_kwargs = {name: kwargs.pop(name, None) for name in hub_kwargs_names}
+
+        # load_config_kwargs uses the same hub kwargs minus subfolder and resume_download
+        load_config_kwargs = {k: v for k, v in hub_kwargs.items() if k not in ["subfolder", "resume_download"]}
 
         library = None
         orig_class_name = None
@@ -189,15 +188,35 @@ class AutoModel(ConfigMixin):
             else:
                 raise ValueError(f"Couldn't find model associated with the config file at {pretrained_model_or_path}.")
 
-        from ..pipelines.pipeline_loading_utils import ALL_IMPORTABLE_CLASSES, get_class_obj_and_candidates
+        has_remote_code = "auto_map" in config and cls.__name__ in config["auto_map"]
+        trust_remote_code = resolve_trust_remote_code(trust_remote_code, pretrained_model_or_path, has_remote_code)
+        if not has_remote_code and trust_remote_code:
+            raise ValueError(
+                "Selected model repository does not happear to have any custom code or does not have a valid `config.json` file."
+            )
 
-        model_cls, _ = get_class_obj_and_candidates(
-            library_name=library,
-            class_name=orig_class_name,
-            importable_classes=ALL_IMPORTABLE_CLASSES,
-            pipelines=None,
-            is_pipeline_module=False,
-        )
+        if has_remote_code and trust_remote_code:
+            class_ref = config["auto_map"][cls.__name__]
+            module_file, class_name = class_ref.split(".")
+            module_file = module_file + ".py"
+            model_cls = get_class_from_dynamic_module(
+                pretrained_model_or_path,
+                subfolder=subfolder,
+                module_file=module_file,
+                class_name=class_name,
+                **hub_kwargs,
+                **kwargs,
+            )
+        else:
+            from ..pipelines.pipeline_loading_utils import ALL_IMPORTABLE_CLASSES, get_class_obj_and_candidates
+
+            model_cls, _ = get_class_obj_and_candidates(
+                library_name=library,
+                class_name=orig_class_name,
+                importable_classes=ALL_IMPORTABLE_CLASSES,
+                pipelines=None,
+                is_pipeline_module=False,
+            )
 
         if model_cls is None:
             raise ValueError(f"AutoModel can't find a model linked to {orig_class_name}.")
