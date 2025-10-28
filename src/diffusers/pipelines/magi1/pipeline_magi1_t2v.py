@@ -426,10 +426,10 @@ class Magi1Pipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
         use_static_first_frames_token: bool = False,
         use_dynamic_first_frames_token: bool = False,
         use_borderness_token: bool = False,
-        use_hq_token: bool = False,
+        use_hq_token: bool = True,
         use_three_d_model_token: bool = False,
         use_two_d_anime_token: bool = False,
-        use_duration_token: bool = False,
+        use_duration_token: bool = True,
         use_negative_special_tokens: bool = False,
     ):
         r"""
