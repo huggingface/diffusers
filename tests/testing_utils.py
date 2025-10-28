@@ -63,6 +63,8 @@ else:
     IS_CUDA_SYSTEM = False
     IS_XPU_SYSTEM = False
 
+IS_GITHUB_ACTIONS = os.getenv("GITHUB_ACTIONS") == "true" and os.getenv("DIFFUSERS_IS_CI") == "yes"
+
 global_rng = random.Random()
 
 logger = get_logger(__name__)
