@@ -514,7 +514,9 @@ class Magi1Pipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
             height,
             width,
             prompt_embeds,
+            prompt_mask,
             negative_prompt_embeds,
+            negative_prompt_mask,
             callback_on_step_end_tensor_inputs,
         )
 
