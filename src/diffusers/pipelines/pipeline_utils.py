@@ -1834,8 +1834,14 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             return union_type is not None and isinstance(annotation, union_type)
 
         def _normalize_annotation(annotation: Any) -> tuple[type, ...]:
-            if annotation in (inspect._empty, None) or annotation is Any:
-                return ()
+            if annotation is inspect._empty:
+                return (inspect.Signature.empty,)
+
+            if annotation is None:
+                return (type(None),)
+
+            if annotation is Any:
+                return (Any,)
 
             if inspect.isclass(annotation):
                 return (annotation,)
@@ -2149,9 +2155,11 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         for name, component in pipeline.components.items():
             if name in expected_modules and name not in passed_class_obj:
                 # for model components, we will not switch over if the class does not matches the type hint in the new pipeline's signature
+                expected = component_types.get(name, ())
                 if (
                     not isinstance(component, ModelMixin)
-                    or type(component) in component_types[name]
+                    or not expected
+                    or _is_valid_type(component, expected)
                     or (component is None and name in cls._optional_components)
                 ):
                     original_class_obj[name] = component
