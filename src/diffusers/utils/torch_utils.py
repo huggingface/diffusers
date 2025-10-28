@@ -18,6 +18,7 @@ PyTorch utilities: Utilities related to PyTorch
 import functools
 import os
 from typing import Callable, Dict, List, Optional, Tuple, Union
+import warnings
 
 from . import logging
 from .import_utils import is_torch_available, is_torch_npu_available, is_torch_version
@@ -222,8 +223,23 @@ def fourier_filter(x_in: "torch.Tensor", threshold: int, scale: int) -> "torch.T
         x = x.to(dtype=torch.float32)
 
     # FFT
-    x_freq = fftn(x, dim=(-2, -1))
-    x_freq = fftshift(x_freq, dim=(-2, -1))
+    # When running with torch.float16, PyTorch may emit a UserWarning about
+    # ComplexHalf (experimental) support when performing FFTs. This warning is
+    # noisy for users of the FreeU feature and doesn't change the behaviour of
+    # the algorithm here. We therefore locally suppress that specific warning
+    # around the FFT calls when the input dtype is float16.
+    if x.dtype == torch.float16:
+        with warnings.catch_warnings():
+            warnings.filterwarnings(
+                "ignore",
+                message="ComplexHalf support is experimental and many operators don't support it yet.*",
+                category=UserWarning,
+            )
+            x_freq = fftn(x, dim=(-2, -1))
+            x_freq = fftshift(x_freq, dim=(-2, -1))
+    else:
+        x_freq = fftn(x, dim=(-2, -1))
+        x_freq = fftshift(x_freq, dim=(-2, -1))
 
     B, C, H, W = x_freq.shape
     mask = torch.ones((B, C, H, W), device=x.device)
@@ -234,7 +250,16 @@ def fourier_filter(x_in: "torch.Tensor", threshold: int, scale: int) -> "torch.T
 
     # IFFT
     x_freq = ifftshift(x_freq, dim=(-2, -1))
-    x_filtered = ifftn(x_freq, dim=(-2, -1)).real
+    if x.dtype == torch.float16:
+        with warnings.catch_warnings():
+            warnings.filterwarnings(
+                "ignore",
+                message="ComplexHalf support is experimental and many operators don't support it yet.*",
+                category=UserWarning,
+            )
+            x_filtered = ifftn(x_freq, dim=(-2, -1)).real
+    else:
+        x_filtered = ifftn(x_freq, dim=(-2, -1)).real
 
     return x_filtered.to(dtype=x_in.dtype)
 
