@@ -22,7 +22,7 @@ import torch.nn.functional as F
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
 from ...utils import USE_PEFT_BACKEND, logging, scale_lora_layers, unscale_lora_layers
-from ..attention import AttentionMixin
+from ..attention import AttentionMixin, AttentionModuleMixin
 from ..attention_dispatch import dispatch_attention_fn
 from ..cache_utils import CacheMixin
 from ..modeling_outputs import Transformer2DModelOutput
@@ -37,6 +37,11 @@ from .transformer_wan import (
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
+
+WAN_ANIMATE_MOTION_ENCODER_CHANNEL_SIZES = {
+    4: 512, 8: 512, 16: 512, 32: 512, 64: 256, 128: 128, 256: 64, 512: 32, 1024: 16
+}
 
 
 # Copied from diffusers.models.transformers.transformer_wan._get_qkv_projections
@@ -138,16 +143,16 @@ class MotionConv2d(nn.Module):
         else:
             self.act_fn = None
 
-    def forward(self, input: torch.Tensor, channel_dim: int = 1) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, channel_dim: int = 1) -> torch.Tensor:
         # Apply blur if using
         if self.blur:
             # NOTE: the original implementation uses a 2D upfirdn operation with the upsampling and downsampling rates
             # set to 1, which should be equivalent to a 2D convolution
             expanded_kernel = self.blur_kernel[None, None, :, :].expand(self.in_channels, 1, -1, -1)
-            x = F.conv2d(input, expanded_kernel, padding=self.blur_padding, groups=self.in_channels)
+            x = F.conv2d(x, expanded_kernel, padding=self.blur_padding, groups=self.in_channels)
 
         # Main Conv2D with scaling
-        x = F.conv2d(input, self.weight * self.scale, bias=self.bias, stride=self.stride, padding=self.padding)
+        x = F.conv2d(x, self.weight * self.scale, bias=self.bias, stride=self.stride, padding=self.padding)
 
         # Activation with fused bias, if using
         if self.use_activation:
@@ -255,18 +260,25 @@ class MotionEncoderResBlock(nn.Module):
 
 class WanAnimateMotionEncoder(nn.Module):
     def __init__(
-        self, size: int = 512, style_dim: int = 512, motion_dim: int = 20, out_dim: int = 512, motion_blocks: int = 5
+        self,
+        size: int = 512,
+        style_dim: int = 512,
+        motion_dim: int = 20,
+        out_dim: int = 512,
+        motion_blocks: int = 5,
+        channels: Optional[Dict[int, int]] = None,
     ):
         super().__init__()
 
         # Appearance encoder: conv layers
-        channels = {4: 512, 8: 512, 16: 512, 32: 512, 64: 256, 128: 128, 256: 64, 512: 32, 1024: 16}
-        log_size = int(math.log(size, 2))
+        if channels is None:
+            channels = WAN_ANIMATE_MOTION_ENCODER_CHANNEL_SIZES
 
         self.conv_in = MotionConv2d(3, channels[size], 1, use_activation=True)
 
         self.res_blocks = nn.ModuleList()
         in_channels = channels[size]
+        log_size = int(math.log(size, 2))
         for i in range(log_size, 2, -1):
             out_channels = channels[2 ** (i - 1)]
             self.res_blocks.append(MotionEncoderResBlock(in_channels, out_channels))
@@ -279,7 +291,7 @@ class WanAnimateMotionEncoder(nn.Module):
         # original code.
         linears = [MotionLinear(style_dim, style_dim) for _ in range(motion_blocks - 1)]
         linears.append(MotionLinear(style_dim, motion_dim))
-        self.motion_network = nn.Sequential(*linears)
+        self.motion_network = nn.ModuleList(linears)
 
         self.motion_synthesis_weight = nn.Parameter(torch.randn(out_dim, motion_dim))
 
@@ -289,10 +301,11 @@ class WanAnimateMotionEncoder(nn.Module):
         for block in self.res_blocks:
             face_image = block(face_image, channel_dim)
         face_image = self.conv_out(face_image, channel_dim)
-        face_image = face_image.squeeze(-1).squeeze(-1)
+        motion_feat = face_image.squeeze(-1).squeeze(-1)
 
         # Motion feature extraction
-        motion_feat = self.motion_network(face_image, channel_dim)
+        for linear_layer in self.motion_network:
+            motion_feat = linear_layer(motion_feat, channel_dim=channel_dim)
 
         # Motion synthesis via QR decomposition
         weight = self.motion_synthesis_weight + 1e-8
@@ -342,12 +355,12 @@ class WanAnimateFaceEncoder(nn.Module):
         self.padding_tokens = nn.Parameter(torch.zeros(1, 1, 1, out_dim))
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        batch_size, num_frames, channels = x.shape
+        batch_size, _, channels = x.shape
 
         # Reshape to channels-first to apply causal Conv1d over frame dim
         x = x.permute(0, 2, 1)
         x = F.pad(x, self.time_causal_padding, mode=self.pad_mode)
-        x = self.conv1_local(x)  # [B, C, T] --> [B, N * C, T]
+        x = self.conv1_local(x)  # [B, C, T_padded] --> [B, N * C, T]
         x = x.unflatten(1, (-1, channels)).flatten(0, 1)  # [B, N * C, T] --> [B * N, C, T]
         # Reshape back to channels-last to apply LayerNorm over channel dim
         x = x.permute(0, 2, 1)
@@ -373,9 +386,8 @@ class WanAnimateFaceEncoder(nn.Module):
 
         padding = self.padding_tokens.repeat(batch_size, x.shape[1], 1, 1)
         x = torch.cat([x, padding], dim=-2)  # [B, T, N, C_out] --> [B, T, N + 1, C_out]
-        x_local = x.clone()
 
-        return x_local
+        return x
 
 
 class WanAnimateFaceBlockAttnProcessor:
@@ -391,27 +403,32 @@ class WanAnimateFaceBlockAttnProcessor:
 
     def __call__(
         self,
-        attn: "WanAttention",
+        attn: "WanAnimateFaceBlockCrossAttention",
         hidden_states: torch.Tensor,
         encoder_hidden_states: Optional[torch.Tensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
-        rotary_emb: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
     ) -> torch.Tensor:
         # encoder_hidden_states corresponds to the motion vec
         # attention_mask corresponds to the motion mask (if any)
-        # B --> batch_size, C --> attn.dim
+        hidden_states = attn.pre_norm_q(hidden_states)
+        encoder_hidden_states = attn.pre_norm_kv(encoder_hidden_states)
+
+        # B --> batch_size, T --> reduced inference segment len, N --> face_encoder_num_heads + 1, C --> attn.dim
         B, T, N, C = encoder_hidden_states.shape
 
         query, key, value = _get_qkv_projections(attn, hidden_states, encoder_hidden_states)
 
-        query = query.unflatten(2, (attn.heads, -1))  # [B, L, H * D] --> [B, L, H, D]
+        query = query.unflatten(2, (attn.heads, -1))  # [B, S, H * D] --> [B, S, H, D]
         key = key.view(B, T, N, attn.heads, -1)  # [B, T, N, H * D_kv] --> [B, T, N, H, D_kv]
         value = value.view(B, T, N, attn.heads, -1)
 
         query = attn.norm_q(query)
         key = attn.norm_k(key)
 
-        query = query.unflatten(1, (T, -1)).flatten(0, 1)  # [B, L, H, D] --> [B * T, L / T, H, D]
+        # NOTE: the below line (which follows the official code) means that in practice, the number of frames T in
+        # encoder_hidden_states (the motion vector after applying the face encoder) must evenly divide the
+        # post-patchify sequence length S of the transformer hidden_states. Is it possible to remove this dependency?
+        query = query.unflatten(1, (T, -1)).flatten(0, 1)  # [B, S, H, D] --> [B * T, S / T, H, D]
         key = key.flatten(0, 1)  # [B, T, N, H, D_kv] --> [B * T, N, H, D_kv]
         value = value.flatten(0, 1)
 
@@ -426,10 +443,11 @@ class WanAnimateFaceBlockAttnProcessor:
             parallel_config=self._parallel_config,
         )
 
+        hidden_states = hidden_states.flatten(2, 3)
+        hidden_states = hidden_states.type_as(query)
         hidden_states = hidden_states.unflatten(0, (B, T)).flatten(1, 2)
 
-        hidden_states = attn.to_out[0](hidden_states)
-        hidden_states = attn.to_out[1](hidden_states)
+        hidden_states = attn.to_out(hidden_states)
 
         if attention_mask is not None:
             # NOTE: attention_mask is assumed to be a multiplicative mask
@@ -439,39 +457,58 @@ class WanAnimateFaceBlockAttnProcessor:
         return hidden_states
 
 
-class WanAnimateFaceBlock(nn.Module):
+class WanAnimateFaceBlockCrossAttention(nn.Module, AttentionModuleMixin):
+    """
+    Temporally-aligned cross attention with the face motion signal in the Wan Animate Face Blocks.
+    """
+
+    _default_processor_cls = WanAnimateFaceBlockAttnProcessor
+    _available_processors = [WanAnimateFaceBlockAttnProcessor]
+
     def __init__(
         self,
         dim: int,
-        num_heads: int,
+        heads: int = 8,
+        dim_head: int = 64,
         eps: float = 1e-6,
+        cross_attention_dim_head: Optional[int] = None,
+        processor=None,
     ):
         super().__init__()
+        self.inner_dim = dim_head * heads
+        self.heads = heads
+        self.cross_attention_head_dim = cross_attention_dim_head
+        self.kv_inner_dim = self.inner_dim if cross_attention_dim_head is None else cross_attention_dim_head * heads
 
-        self.pre_norm_feat = nn.LayerNorm(dim, eps, elementwise_affine=False)
-        self.pre_norm_motion = nn.LayerNorm(dim, eps, elementwise_affine=False)
+        # 1. Pre-Attention Norms for the hidden_states (video latents) and encoder_hidden_states (motion vector).
+        # NOTE: this is not used in "vanilla" WanAttention
+        self.pre_norm_q = nn.LayerNorm(dim, eps, elementwise_affine=False)
+        self.pre_norm_kv = nn.LayerNorm(dim, eps, elementwise_affine=False)
 
-        self.attn = WanAttention(
-            dim=dim,
-            heads=num_heads,
-            dim_head=dim // num_heads,
-            eps=eps,
-            cross_attention_dim_head=dim // num_heads,
-            processor=WanAnimateFaceBlockAttnProcessor(),
-        )
+        # 2. QKV and Output Projections
+        self.to_q = torch.nn.Linear(dim, self.inner_dim, bias=True)
+        self.to_k = torch.nn.Linear(dim, self.kv_inner_dim, bias=True)
+        self.to_v = torch.nn.Linear(dim, self.kv_inner_dim, bias=True)
+        self.to_out = torch.nn.Linear(self.inner_dim, dim, bias=True)
+
+        # 3. QK Norm
+        # NOTE: this is applied after the reshape, so only over dim_head rather than dim_head * heads
+        self.norm_q = torch.nn.RMSNorm(dim_head, eps=eps, elementwise_affine=True)
+        self.norm_k = torch.nn.RMSNorm(dim_head, eps=eps, elementwise_affine=True)
+
+        # 4. Set attention processor
+        if processor is None:
+            processor = self._default_processor_cls()
+        self.set_processor(processor)
 
     def forward(
         self,
         hidden_states: torch.Tensor,
-        motion_vec: torch.Tensor,
-        motion_mask: Optional[torch.Tensor] = None,
+        encoder_hidden_states: Optional[torch.Tensor] = None,
+        attention_mask: Optional[torch.Tensor] = None,
+        **kwargs,
     ) -> torch.Tensor:
-        motion_vec = self.pre_norm_motion(motion_vec)
-
-        hidden_states = self.pre_norm_feat(hidden_states)
-        hidden_states = self.attn(hidden_states, motion_vec, motion_mask)
-
-        return hidden_states
+        return self.processor(self, hidden_states, encoder_hidden_states, attention_mask)
 
 
 class WanAnimateTransformer3DModel(
@@ -532,8 +569,9 @@ class WanAnimateTransformer3DModel(
         patch_size: Tuple[int] = (1, 2, 2),
         num_attention_heads: int = 40,
         attention_head_dim: int = 128,
-        in_channels: int = 36,
-        out_channels: int = 16,
+        in_channels: Optional[int] = 36,
+        latent_channels: Optional[int] = 16,
+        out_channels: Optional[int] = 16,
         text_dim: int = 4096,
         freq_dim: int = 256,
         ffn_dim: int = 13824,
@@ -542,10 +580,11 @@ class WanAnimateTransformer3DModel(
         qk_norm: Optional[str] = "rms_norm_across_heads",
         eps: float = 1e-6,
         image_dim: Optional[int] = 1280,
-        added_kv_proj_dim: Optional[int] = 5120,
+        added_kv_proj_dim: Optional[int] = None,
         rope_max_seq_len: int = 1024,
         pos_embed_seq_len: Optional[int] = None,
-        motion_encoder_size: int = 512,  # Start of Wan Animate-specific args
+        motion_encoder_channel_sizes: Optional[Dict[int, int]] = None,  # Start of Wan Animate-specific args
+        motion_encoder_size: int = 512,
         motion_style_dim: int = 512,
         motion_dim: int = 20,
         motion_encoder_dim: int = 512,
@@ -556,12 +595,22 @@ class WanAnimateTransformer3DModel(
         super().__init__()
 
         inner_dim = num_attention_heads * attention_head_dim
-        out_channels = out_channels or in_channels
+        # Allow either only in_channels or only latent_channels to be set for convenience
+        if in_channels is None and latent_channels is not None:
+            in_channels = 2 * latent_channels + 4
+        elif in_channels is not None and latent_channels is None:
+            latent_channels = (in_channels - 4) // 2
+        elif in_channels is not None and latent_channels is not None:
+            # TODO: should this always be true?
+            assert in_channels == 2 * latent_channels + 4, "in_channels should be 2 * latent_channels + 4"
+        else:
+            raise ValueError(f"At least one of `in_channels` and `latent_channels` must be supplied.")
+        out_channels = out_channels or latent_channels
 
         # 1. Patch & position embedding
         self.rope = WanRotaryPosEmbed(attention_head_dim, patch_size, rope_max_seq_len)
         self.patch_embedding = nn.Conv3d(in_channels, inner_dim, kernel_size=patch_size, stride=patch_size)
-        self.pose_patch_embedding = nn.Conv3d(16, inner_dim, kernel_size=patch_size, stride=patch_size)
+        self.pose_patch_embedding = nn.Conv3d(latent_channels, inner_dim, kernel_size=patch_size, stride=patch_size)
 
         # 2. Condition embeddings
         self.condition_embedder = WanTimeTextImageEmbedding(
@@ -575,7 +624,11 @@ class WanAnimateTransformer3DModel(
 
         # Motion encoder
         self.motion_encoder = WanAnimateMotionEncoder(
-            size=motion_encoder_size, style_dim=motion_style_dim, motion_dim=motion_dim, out_dim=motion_encoder_dim
+            size=motion_encoder_size,
+            style_dim=motion_style_dim,
+            motion_dim=motion_dim,
+            out_dim=motion_encoder_dim,
+            channels=motion_encoder_channel_sizes,
         )
 
         # Face encoder
@@ -604,10 +657,13 @@ class WanAnimateTransformer3DModel(
 
         self.face_adapter = nn.ModuleList(
             [
-                WanAnimateFaceBlock(
+                WanAnimateFaceBlockCrossAttention(
                     dim=inner_dim,
-                    num_heads=num_attention_heads,
+                    heads=num_attention_heads,
+                    dim_head=inner_dim // num_attention_heads,
                     eps=eps,
+                    cross_attention_dim_head=inner_dim // num_attention_heads,
+                    processor=WanAnimateFaceBlockAttnProcessor(),
                 )
                 for _ in range(num_layers // inject_face_latents_blocks)
             ]
@@ -638,16 +694,43 @@ class WanAnimateTransformer3DModel(
     def forward(
         self,
         hidden_states: torch.Tensor,
-        pose_hidden_states: torch.Tensor,
         timestep: torch.LongTensor,
         encoder_hidden_states: torch.Tensor,
-        face_pixel_values: torch.Tensor,
         encoder_hidden_states_image: Optional[torch.Tensor] = None,
+        pose_hidden_states: Optional[torch.Tensor] = None,
+        face_pixel_values: Optional[torch.Tensor] = None,
         motion_encode_batch_size: int = 8,
         upcast_to_fp32: bool = True,
         return_dict: bool = True,
         attention_kwargs: Optional[Dict[str, Any]] = None,
     ) -> Union[torch.Tensor, Dict[str, torch.Tensor]]:
+        """
+        Forward pass of Wan2.2-Animate transformer model.
+
+        Args:
+            hidden_states (`torch.Tensor` of shape `(B, 2C + 4, T + 1, H, W)`):
+                Input noisy video latents of shape `(B, 2C + 4, T + 1, H, W)`, where B is the batch size, C is the
+                number of latent channels (16 for Wan VAE), T is the number of latent frames in an inference segment,
+                H is the latent height, and W is the latent width.
+            timestep: (`torch.LongTensor`):
+                The current timestep in the denoising loop.
+            encoder_hidden_states (`torch.Tensor`):
+                Text embeddings from the text encoder (umT5 for Wan Animate).
+            encoder_hidden_states_image (`torch.Tensor`):
+                CLIP visual features of the reference (character) image.
+            pose_hidden_states (`torch.Tensor` of shape `(B, C, T, H, W)`):
+                Pose video latents. TODO: description
+            face_pixel_values (`torch.Tensor` of shape `(B, C', S, H', W')`):
+                Face video in pixel space (not latent space). Typically C' = 3 and H' and W' are the height/width of
+                the face video in pixels. Here S is the inference segment length, usually set to 77.
+            motion_encode_batch_size (`int`, *optional*, defaults to `8`):
+                The batch size for batched encoding of the face video via the motion encoder.
+            upcast_to_fp32 (`bool`, *optional*, defaults to `True`):
+                Whether to upcast certain precision-sensitive operations to FP32.
+            return_dict (`bool`, *optional*, defaults to `True`):
+                Whether to return the output as a dict or tuple.
+        """
+
         if attention_kwargs is not None:
             attention_kwargs = attention_kwargs.copy()
             lora_scale = attention_kwargs.pop("scale", 1.0)
@@ -663,6 +746,13 @@ class WanAnimateTransformer3DModel(
                     "Passing `scale` via `attention_kwargs` when not using the PEFT backend is ineffective."
                 )
 
+        # Check that shapes match up
+        if pose_hidden_states is not None and pose_hidden_states.shape[2] + 1 != hidden_states.shape[2]:
+            raise ValueError(
+                f"pose_hidden_states frame dim (dim 2) is {pose_hidden_states.shape[2]} but must be one less than the"
+                f"hidden_states's corresponding frame dim: {hidden_states.shape[2]}"
+            )
+
         batch_size, num_channels, num_frames, height, width = hidden_states.shape
         p_t, p_h, p_w = self.config.patch_size
         post_patch_num_frames = num_frames // p_t
@@ -676,7 +766,7 @@ class WanAnimateTransformer3DModel(
         hidden_states = self.patch_embedding(hidden_states)
         pose_hidden_states = self.pose_patch_embedding(pose_hidden_states)
         # Add pose embeddings to hidden states
-        hidden_states[:, :, 1:] = hidden_states[:, :, 1:] + pose_hidden_states[:, :, 1:]
+        hidden_states[:, :, 1:] = hidden_states[:, :, 1:] + pose_hidden_states
         hidden_states = hidden_states.flatten(2).transpose(1, 2)
 
         # 3. Condition embeddings (time, text, image)
