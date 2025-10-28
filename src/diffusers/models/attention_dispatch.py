@@ -27,6 +27,8 @@ if torch.distributed.is_available():
 
 from ..utils import (
     get_logger,
+    is_aiter_available,
+    is_aiter_version,
     is_flash_attn_3_available,
     is_flash_attn_available,
     is_flash_attn_version,
@@ -47,6 +49,7 @@ if TYPE_CHECKING:
     from ._modeling_parallel import ParallelConfig
 
 _REQUIRED_FLASH_VERSION = "2.6.3"
+_REQUIRED_AITER_VERSION = "0.1.5"
 _REQUIRED_SAGE_VERSION = "2.1.1"
 _REQUIRED_FLEX_VERSION = "2.5.0"
 _REQUIRED_XLA_VERSION = "2.2"
@@ -54,6 +57,7 @@ _REQUIRED_XFORMERS_VERSION = "0.0.29"
 
 _CAN_USE_FLASH_ATTN = is_flash_attn_available() and is_flash_attn_version(">=", _REQUIRED_FLASH_VERSION)
 _CAN_USE_FLASH_ATTN_3 = is_flash_attn_3_available()
+_CAN_USE_AITER_ATTN = is_aiter_available() and is_aiter_version(">=", _REQUIRED_AITER_VERSION)
 _CAN_USE_SAGE_ATTN = is_sageattention_available() and is_sageattention_version(">=", _REQUIRED_SAGE_VERSION)
 _CAN_USE_FLEX_ATTN = is_torch_version(">=", _REQUIRED_FLEX_VERSION)
 _CAN_USE_NPU_ATTN = is_torch_npu_available()
@@ -77,6 +81,12 @@ if _CAN_USE_FLASH_ATTN_3:
 else:
     flash_attn_3_func = None
     flash_attn_3_varlen_func = None
+
+
+if _CAN_USE_AITER_ATTN:
+    from aiter import flash_attn_func as aiter_flash_attn_func
+else:
+    aiter_flash_attn_func = None
 
 if DIFFUSERS_ENABLE_HUB_KERNELS:
     if not is_kernels_available():
@@ -177,6 +187,9 @@ class AttentionBackendName(str, Enum):
     _FLASH_VARLEN_3 = "_flash_varlen_3"
     _FLASH_3_HUB = "_flash_3_hub"
     # _FLASH_VARLEN_3_HUB = "_flash_varlen_3_hub"  # not supported yet.
+
+    # `aiter`
+    AITER = "aiter"
 
     # PyTorch native
     FLEX = "flex"
@@ -412,6 +425,12 @@ def _check_attention_backend_requirements(backend: AttentionBackendName) -> None
         if not is_kernels_available():
             raise RuntimeError(
                 f"Flash Attention 3 Hub backend '{backend.value}' is not usable because the `kernels` package isn't available. Please install it with `pip install kernels`."
+            )
+
+    elif backend == AttentionBackendName.AITER:
+        if not _CAN_USE_AITER_ATTN:
+            raise RuntimeError(
+                f"Aiter Attention backend '{backend.value}' is not usable because of missing package or the version is too old. Please install `aiter>={_REQUIRED_AITER_VERSION}`."
             )
 
     elif backend in [
@@ -1393,6 +1412,47 @@ def _flash_varlen_attention_3(
         causal=is_causal,
     )
     out = out.unflatten(0, (batch_size, -1))
+
+    return (out, lse) if return_lse else out
+
+
+@_AttentionBackendRegistry.register(
+    AttentionBackendName.AITER,
+    constraints=[_check_device_cuda, _check_qkv_dtype_bf16_or_fp16, _check_shape],
+)
+def _aiter_flash_attention(
+    query: torch.Tensor,
+    key: torch.Tensor,
+    value: torch.Tensor,
+    dropout_p: float = 0.0,
+    is_causal: bool = False,
+    scale: Optional[float] = None,
+    return_lse: bool = False,
+    _parallel_config: Optional["ParallelConfig"] = None,
+) -> torch.Tensor:
+    if not return_lse and torch.is_grad_enabled():
+        # aiter requires return_lse=True by assertion when gradients are enabled.
+        out, lse, *_ = aiter_flash_attn_func(
+            q=query,
+            k=key,
+            v=value,
+            dropout_p=dropout_p,
+            softmax_scale=scale,
+            causal=is_causal,
+            return_lse=True,
+        )
+    else:
+        out = aiter_flash_attn_func(
+            q=query,
+            k=key,
+            v=value,
+            dropout_p=dropout_p,
+            softmax_scale=scale,
+            causal=is_causal,
+            return_lse=return_lse,
+        )
+        if return_lse:
+            out, lse, *_ = out
 
     return (out, lse) if return_lse else out
 

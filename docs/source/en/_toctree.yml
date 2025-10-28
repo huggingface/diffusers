@@ -525,6 +525,8 @@
         title: Kandinsky 2.2
       - local: api/pipelines/kandinsky3
         title: Kandinsky 3
+      - local: api/pipelines/kandinsky5
+        title: Kandinsky 5
       - local: api/pipelines/kolors
         title: Kolors
       - local: api/pipelines/latent_consistency_models

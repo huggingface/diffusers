@@ -41,6 +41,10 @@ class BaseGuidance(ConfigMixin, PushToHubMixin):
     _identifier_key = "__guidance_identifier__"
 
     def __init__(self, start: float = 0.0, stop: float = 1.0, enabled: bool = True):
+        logger.warning(
+            "Guiders are currently an experimental feature under active development. The API is subject to breaking changes in future releases."
+        )
+
         self._start = start
         self._stop = stop
         self._step: int = None

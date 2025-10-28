@@ -173,8 +173,10 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
         )
         self.prompt_template_encode_start_idx = 129
 
-        self.vae_scale_factor_temporal = vae.config.temporal_compression_ratio
-        self.vae_scale_factor_spatial = vae.config.spatial_compression_ratio
+        self.vae_scale_factor_temporal = (
+            self.vae.config.temporal_compression_ratio if getattr(self, "vae", None) else 4
+        )
+        self.vae_scale_factor_spatial = self.vae.config.spatial_compression_ratio if getattr(self, "vae", None) else 8
         self.video_processor = VideoProcessor(vae_scale_factor=self.vae_scale_factor_spatial)
 
     @staticmethod
@@ -383,6 +385,9 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
         """
         device = device or self._execution_device
         dtype = dtype or self.text_encoder.dtype
+
+        if not isinstance(prompt, list):
+            prompt = [prompt]
 
         batch_size = len(prompt)
 

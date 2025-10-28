@@ -266,7 +266,7 @@ class StableDiffusion3ControlNetPipeline(
             return torch.zeros(
                 (
                     batch_size * num_images_per_prompt,
-                    self.tokenizer_max_length,
+                    max_sequence_length,
                     self.transformer.config.joint_attention_dim,
                 ),
                 device=device,
