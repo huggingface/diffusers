@@ -393,8 +393,6 @@ except OptionalDependencyNotAvailable:
 else:
     _import_structure["modular_pipelines"].extend(
         [
-            "BriaFiboGeminiPromptToJson",
-            "BriaFiboVLMPromptToJson",
             "FluxAutoBlocks",
             "FluxKontextAutoBlocks",
             "FluxKontextModularPipeline",
