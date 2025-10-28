@@ -535,7 +535,12 @@ class UNetControlNetXSModel(ModelMixin, ConfigMixin):
             "CrossAttnDownBlock2D",
             "DownBlock2D",
         ),
-        up_block_types: Tuple[str, ...] = ("UpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D"),
+        up_block_types: Tuple[str, ...] = (
+            "UpBlock2D",
+            "CrossAttnUpBlock2D",
+            "CrossAttnUpBlock2D",
+            "CrossAttnUpBlock2D",
+        ),
         block_out_channels: Tuple[int, ...] = (320, 640, 1280, 1280),
         norm_num_groups: Optional[int] = 32,
         cross_attention_dim: Union[int, Tuple[int]] = 1024,
