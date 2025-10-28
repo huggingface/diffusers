@@ -13,19 +13,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import os
 import unittest
 
 from diffusers import AutoencoderDC
 
-from ...testing_utils import enable_full_determinism, floats_tensor, torch_device
+from ...testing_utils import IS_GITHUB_ACTIONS, enable_full_determinism, floats_tensor, torch_device
 from ..test_modeling_common import ModelTesterMixin
 from .testing_utils import AutoencoderTesterMixin
 
 
 enable_full_determinism()
-
-IS_GITHUB_ACTIONS = os.getenv("GITHUB_ACTIONS") == "true" and os.getenv("DIFFUSERS_IS_CI") == "yes"
 
 
 class AutoencoderDCTests(ModelTesterMixin, AutoencoderTesterMixin, unittest.TestCase):

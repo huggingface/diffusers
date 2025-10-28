@@ -12,7 +12,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import os
 import sys
 import unittest
 
@@ -21,15 +20,12 @@ from transformers import Gemma2Model, GemmaTokenizer
 
 from diffusers import AutoencoderDC, FlowMatchEulerDiscreteScheduler, SanaPipeline, SanaTransformer2DModel
 
-from ..testing_utils import floats_tensor, require_peft_backend
+from ..testing_utils import IS_GITHUB_ACTIONS, floats_tensor, require_peft_backend
 
 
 sys.path.append(".")
 
 from .utils import PeftLoraLoaderMixinTests  # noqa: E402
-
-
-IS_GITHUB_ACTIONS = os.getenv("GITHUB_ACTIONS") == "true" and os.getenv("DIFFUSERS_IS_CI") == "yes"
 
 
 @require_peft_backend
