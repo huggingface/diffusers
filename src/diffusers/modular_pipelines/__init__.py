@@ -69,7 +69,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     except OptionalDependencyNotAvailable:
         from ..utils.dummy_pt_objects import *  # noqa F403
     else:
-        from .bria_fibo import BriaFiboGeminiPromptToJson, BriaFiboVLMPromptToJson
         from .components_manager import ComponentsManager
         from .flux import FluxAutoBlocks, FluxKontextAutoBlocks, FluxKontextModularPipeline, FluxModularPipeline
         from .modular_pipeline import (
