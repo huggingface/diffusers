@@ -353,7 +353,7 @@ class BriaFiboPipeline(DiffusionPipeline):
         return self._interrupt
 
     @staticmethod
-    # Copied from diffusers.pipelines.flux.pipeline_flux.FluxPipeline._unpack_latents
+    # Inspired by from diffusers.pipelines.flux.pipeline_flux.FluxPipeline._unpack_latents FluxPipeline-> BriaFiboPipeline _unpack_latents
     def _unpack_latents(latents, height, width, vae_scale_factor):
         batch_size, num_patches, channels = latents.shape
 
@@ -400,7 +400,7 @@ class BriaFiboPipeline(DiffusionPipeline):
         return latents
 
     @staticmethod
-    # Copied from diffusers.pipelines.qwenimage.pipeline_qwenimage.QwenImagePipeline
+    # Inspired by from diffusers.pipelines.qwenimage.pipeline_qwenimage.QwenImagePipeline 
     def _pack_latents(latents, batch_size, num_channels_latents, height, width):
         latents = latents.view(batch_size, num_channels_latents, height // 2, 2, width // 2, 2)
         latents = latents.permute(0, 2, 4, 1, 3, 5)
