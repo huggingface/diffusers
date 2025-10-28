@@ -98,8 +98,8 @@ def get_special_token_keys(
     use_dynamic_first_frames_token: bool,
     use_borderness_token: bool,
     use_hq_token: bool,
-    use_three_d_model_token: bool,
-    use_two_d_anime_token: bool,
+    use_3d_model_token: bool,
+    use_2d_anime_token: bool,
     use_duration_token: bool,
 ):
     special_token_keys = []
@@ -111,9 +111,9 @@ def get_special_token_keys(
         special_token_keys.append("BORDERNESS_TOKEN")
     if use_hq_token:
         special_token_keys.append("HQ_TOKEN")
-    if use_three_d_model_token:
+    if use_3d_model_token:
         special_token_keys.append("THREE_D_MODEL_TOKEN")
-    if use_two_d_anime_token:
+    if use_2d_anime_token:
         special_token_keys.append("TWO_D_ANIME_TOKEN")
     if use_duration_token:
         special_token_keys.append("DURATION_TOKEN")
@@ -427,8 +427,8 @@ class Magi1Pipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
         use_dynamic_first_frames_token: bool = False,
         use_borderness_token: bool = False,
         use_hq_token: bool = True,
-        use_three_d_model_token: bool = False,
-        use_two_d_anime_token: bool = False,
+        use_3d_model_token: bool = False,
+        use_2d_anime_token: bool = False,
         use_duration_token: bool = True,
         use_negative_special_tokens: bool = False,
     ):
@@ -555,8 +555,8 @@ class Magi1Pipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
             use_dynamic_first_frames_token=use_dynamic_first_frames_token,
             use_borderness_token=use_borderness_token,
             use_hq_token=use_hq_token,
-            use_three_d_model_token=use_three_d_model_token,
-            use_two_d_anime_token=use_two_d_anime_token,
+            use_3d_model_token=use_3d_model_token,
+            use_2d_anime_token=use_2d_anime_token,
             use_duration_token=use_duration_token)
         prompt_embeds, prompt_mask = pad_special_token(special_token_keys, prompt_embeds, prompt_mask)
         if self.do_classifier_free_guidance:
