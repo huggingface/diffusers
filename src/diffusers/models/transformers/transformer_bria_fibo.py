@@ -66,7 +66,7 @@ def _get_qkv_projections(attn: "BriaFiboAttention", hidden_states, encoder_hidde
     return _get_projections(attn, hidden_states, encoder_hidden_states)
 
 
-# Based on from diffusers.models.transformers.transformer_flux.FluxAttnProcessor
+# Based on https://github.com/huggingface/diffusers/blob/55d49d4379007740af20629bb61aba9546c6b053/src/diffusers/models/transformers/transformer_flux.py
 class BriaFiboAttnProcessor:
     _attention_backend = None
     _parallel_config = None
@@ -134,7 +134,7 @@ class BriaFiboAttnProcessor:
             return hidden_states
 
 
-# Based on from diffusers.models.transformers.transformer_flux.FluxAttention
+# Based on https://github.com/huggingface/diffusers/blob/55d49d4379007740af20629bb61aba9546c6b053/src/diffusers/models/transformers/transformer_flux.py
 class BriaFiboAttention(torch.nn.Module, AttentionModuleMixin):
     _default_processor_cls = BriaFiboAttnProcessor
     _available_processors = [
