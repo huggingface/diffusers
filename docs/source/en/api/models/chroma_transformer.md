@@ -12,7 +12,7 @@ specific language governing permissions and limitations under the License.
 
 # ChromaTransformer2DModel
 
-A modified flux Transformer model from [Chroma](https://huggingface.co/lodestones/Chroma)
+A modified flux Transformer model from [Chroma](https://huggingface.co/lodestones/Chroma1-HD)
 
 ## ChromaTransformer2DModel
 
