@@ -308,8 +308,8 @@ class BriaFiboTextProjection(nn.Module):
 
 
 @maybe_allow_in_graph
+# Copied from diffusers.models.transformers.transformer_flux.FluxTransformerBlock
 class BriaFiboTransformerBlock(nn.Module):
-    # Copied from diffusers.models.transformers.transformer_flux.FluxTransformerBlock
     def __init__(
         self, dim: int, num_attention_heads: int, attention_head_dim: int, qk_norm: str = "rms_norm", eps: float = 1e-6
     ):
