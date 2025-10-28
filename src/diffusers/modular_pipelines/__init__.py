@@ -45,7 +45,6 @@ else:
         "InsertableDict",
     ]
     _import_structure["stable_diffusion_xl"] = ["StableDiffusionXLAutoBlocks", "StableDiffusionXLModularPipeline"]
-    _import_structure["bria_fibo"] = ["BriaFiboVLMPromptToJson", "BriaFiboGeminiPromptToJson"]
     _import_structure["wan"] = ["WanAutoBlocks", "WanModularPipeline"]
     _import_structure["flux"] = [
         "FluxAutoBlocks",

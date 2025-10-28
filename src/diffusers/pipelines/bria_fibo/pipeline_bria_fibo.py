@@ -59,7 +59,7 @@ EXAMPLE_DOC_STRING = """
         trust_remote_code=True,
         torch_dtype=torch.bfloat16,
     )
-    pipe.enable_sequential_cpu_offload()
+    pipe.enable_model_cpu_offload()
 
     with torch.inference_mode():
         # 1. Create a prompt to generate an initial image
@@ -757,7 +757,6 @@ class BriaFiboPipeline(DiffusionPipeline):
                 latents = self._unpack_latents_no_patch(latents, height, width, self.vae_scale_factor)
 
             latents = latents.unsqueeze(dim=2)
-            latents = list(torch.unbind(latents, dim=0))
             latents_device = latents[0].device
             latents_dtype = latents[0].dtype
             latents_mean = (
