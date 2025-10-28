@@ -1,19 +1,19 @@
 name: Fast GPU Tests on PR 
 
 on:
-  pull_request:
-    branches: main
-    paths:
-      - "src/diffusers/models/modeling_utils.py"
-      - "src/diffusers/models/model_loading_utils.py"
-      - "src/diffusers/pipelines/pipeline_utils.py"
-      - "src/diffusers/pipeline_loading_utils.py"
-      - "src/diffusers/loaders/lora_base.py"
-      - "src/diffusers/loaders/lora_pipeline.py"
-      - "src/diffusers/loaders/peft.py"
-      - "tests/pipelines/test_pipelines_common.py"
-      - "tests/models/test_modeling_common.py"
-      - "examples/**/*.py"
+  # pull_request:
+  #   branches: main
+  #   paths:
+  #     - "src/diffusers/models/modeling_utils.py"
+  #     - "src/diffusers/models/model_loading_utils.py"
+  #     - "src/diffusers/pipelines/pipeline_utils.py"
+  #     - "src/diffusers/pipeline_loading_utils.py"
+  #     - "src/diffusers/loaders/lora_base.py"
+  #     - "src/diffusers/loaders/lora_pipeline.py"
+  #     - "src/diffusers/loaders/peft.py"
+  #     - "tests/pipelines/test_pipelines_common.py"
+  #     - "tests/models/test_modeling_common.py"
+  #     - "examples/**/*.py"
   workflow_dispatch:
 
 concurrency:
