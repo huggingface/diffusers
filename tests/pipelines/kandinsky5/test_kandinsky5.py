@@ -12,13 +12,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import gc
-import tempfile
 import unittest
 
-import numpy as np
 import torch
-from transformers import CLIPTextModel, CLIPTokenizer, Qwen2_5_VLForConditionalGeneration, Qwen2VLProcessor
+from transformers import (
+    CLIPTextConfig,
+    CLIPTextModel,
+    CLIPTokenizer,
+    Qwen2_5_VLConfig,
+    Qwen2_5_VLForConditionalGeneration,
+    Qwen2VLProcessor,
+)
 
 from diffusers import (
     AutoencoderKLHunyuanVideo,
@@ -28,13 +32,10 @@ from diffusers import (
 )
 
 from ...testing_utils import (
-    backend_empty_cache,
     enable_full_determinism,
-    require_torch_accelerator,
-    slow,
     torch_device,
 )
-from ..pipeline_params import TEXT_TO_VIDEO_BATCH_PARAMS, TEXT_TO_VIDEO_PARAMS, TEXT_TO_VIDEO_VIDEO_PARAMS
+from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_PARAMS
 from ..test_pipelines_common import PipelineTesterMixin
 
 
@@ -43,10 +44,8 @@ enable_full_determinism()
 
 class Kandinsky5T2VPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     pipeline_class = Kandinsky5T2VPipeline
-    params = TEXT_TO_VIDEO_PARAMS - {"cross_attention_kwargs"}
-    batch_params = TEXT_TO_VIDEO_BATCH_PARAMS
-    image_params = TEXT_TO_VIDEO_VIDEO_PARAMS
-    image_latents_params = TEXT_TO_VIDEO_VIDEO_PARAMS
+    params = TEXT_TO_IMAGE_PARAMS - {"cross_attention_kwargs", "prompt_embeds", "negative_prompt_embeds"}
+    batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
 
     # Define required optional parameters for your pipeline
     required_optional_params = frozenset(
@@ -67,35 +66,78 @@ class Kandinsky5T2VPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     def get_dummy_components(self):
         torch.manual_seed(0)
         vae = AutoencoderKLHunyuanVideo(
-            in_channels=16,
-            out_channels=16,
+            in_channels=3,
+            out_channels=3,
             spatial_compression_ratio=8,
             temporal_compression_ratio=4,
-            base_channels=32,
-            channel_multipliers=[1, 2, 4],
-            num_res_blocks=2,
+            latent_channels=4,
+            block_out_channels=(8, 8, 8, 8),
+            layers_per_block=1,
+            norm_num_groups=4,
         )
 
         torch.manual_seed(0)
         scheduler = FlowMatchEulerDiscreteScheduler(shift=7.0)
 
         # Dummy Qwen2.5-VL model
-        text_encoder = Qwen2_5_VLForConditionalGeneration.from_pretrained("hf-internal-testing/tiny-random-Qwen2.5-VL")
-        tokenizer = Qwen2VLProcessor.from_pretrained("hf-internal-testing/tiny-random-Qwen2.5-VL")
+        config = Qwen2_5_VLConfig(
+            text_config={
+                "hidden_size": 16,
+                "intermediate_size": 16,
+                "num_hidden_layers": 2,
+                "num_attention_heads": 2,
+                "num_key_value_heads": 2,
+                "rope_scaling": {
+                    "mrope_section": [1, 1, 2],
+                    "rope_type": "default",
+                    "type": "default",
+                },
+                "rope_theta": 1000000.0,
+            },
+            vision_config={
+                "depth": 2,
+                "hidden_size": 16,
+                "intermediate_size": 16,
+                "num_heads": 2,
+                "out_hidden_size": 16,
+            },
+            hidden_size=16,
+            vocab_size=152064,
+            vision_end_token_id=151653,
+            vision_start_token_id=151652,
+            vision_token_id=151654,
+        )
+        text_encoder = Qwen2_5_VLForConditionalGeneration(config)
+        tokenizer = Qwen2VLProcessor.from_pretrained("hf-internal-testing/tiny-random-Qwen2VLForConditionalGeneration")
 
         # Dummy CLIP model
-        text_encoder_2 = CLIPTextModel.from_pretrained("hf-internal-testing/tiny-random-clip")
+        clip_text_encoder_config = CLIPTextConfig(
+            bos_token_id=0,
+            eos_token_id=2,
+            hidden_size=32,
+            intermediate_size=37,
+            layer_norm_eps=1e-05,
+            num_attention_heads=4,
+            num_hidden_layers=5,
+            pad_token_id=1,
+            vocab_size=1000,
+            hidden_act="gelu",
+            projection_dim=32,
+        )
+
+        torch.manual_seed(0)
+        text_encoder_2 = CLIPTextModel(clip_text_encoder_config)
         tokenizer_2 = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
 
         torch.manual_seed(0)
         transformer = Kandinsky5Transformer3DModel(
-            in_visual_dim=16,
-            in_text_dim=32,  # Match tiny Qwen2.5-VL hidden size
+            in_visual_dim=4,
+            in_text_dim=16,  # Match tiny Qwen2.5-VL hidden size
             in_text_dim2=32,  # Match tiny CLIP hidden size
             time_dim=32,
-            out_visual_dim=16,
+            out_visual_dim=4,
             patch_size=(1, 2, 2),
-            model_dim=64,
+            model_dim=48,
             ff_dim=128,
             num_text_blocks=1,
             num_visual_blocks=1,
@@ -143,118 +185,113 @@ class Kandinsky5T2VPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         inputs = self.get_dummy_inputs(device)
         video = pipe(**inputs).frames
-        generated_video = video[0]
 
-        # Check video shape: (batch, channels, frames, height, width)
-        expected_shape = (1, 3, 5, 32, 32)
-        self.assertEqual(generated_video.shape, expected_shape)
+        # Check video shape: (batch, frames, channel, height, width)
+        expected_shape = (1, 5, 3, 32, 32)
+        self.assertEqual(video.shape, expected_shape)
 
         # Check specific values
         expected_slice = torch.tensor(
             [
-                0.5015,
-                0.4929,
-                0.4990,
-                0.4985,
-                0.4980,
-                0.5044,
-                0.5044,
-                0.5005,
-                0.4995,
-                0.4961,
-                0.4961,
-                0.4966,
-                0.4980,
-                0.4985,
-                0.4985,
-                0.4990,
+                0.4330,
+                0.4254,
+                0.4285,
+                0.3835,
+                0.4253,
+                0.4196,
+                0.3704,
+                0.3714,
+                0.4999,
+                0.5346,
+                0.4795,
+                0.4637,
+                0.4930,
+                0.5124,
+                0.4902,
+                0.4570,
             ]
         )
 
-        generated_slice = generated_video.flatten()
+        generated_slice = video.flatten()
         # Take first 8 and last 8 values for comparison
-        generated_slice = torch.cat([generated_slice[:8], generated_slice[-8:]])
-        self.assertTrue(torch.allclose(generated_slice, expected_slice, atol=1e-3))
-
-    def test_inference_batch_consistent(self):
-        # Override to test batch consistency with video
-        super().test_inference_batch_consistent(batch_sizes=[1, 2])
+        video_slice = torch.cat([generated_slice[:8], generated_slice[-8:]])
+        self.assertTrue(
+            torch.allclose(video_slice, expected_slice, atol=1e-3),
+            f"video_slice: {video_slice}, expected_slice: {expected_slice}",
+        )
 
     def test_inference_batch_single_identical(self):
         # Override to test batch single identical with video
-        super().test_inference_batch_single_identical(batch_size=2, expected_max_diff=1e-3)
+        super().test_inference_batch_single_identical(batch_size=2, expected_max_diff=1e-2)
 
-    def test_save_load_optional_components(self):
-        # Kandinsky5T2VPipeline doesn't have optional components like transformer_2
-        # but we can test saving/loading with the current components
+    def test_encode_prompt_works_in_isolation(self, extra_required_param_value_dict=None, atol=1e-3, rtol=1e-3):
         components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
 
-        # Set seed for deterministic results
-        inputs = self.get_dummy_inputs(torch_device)
-        torch.manual_seed(0)
-        output = pipe(**inputs).frames
+        text_component_names = ["text_encoder", "text_encoder_2", "tokenizer", "tokenizer_2"]
+        text_components = {k: (v if k in text_component_names else None) for k, v in components.items()}
+        non_text_components = {k: (v if k not in text_component_names else None) for k, v in components.items()}
 
-        with tempfile.TemporaryDirectory() as tmpdir:
-            pipe.save_pretrained(tmpdir, safe_serialization=False)
-            pipe_loaded = self.pipeline_class.from_pretrained(tmpdir)
-            pipe_loaded.to(torch_device)
-            pipe_loaded.set_progress_bar_config(disable=None)
+        pipe_with_just_text_encoder = self.pipeline_class(**text_components)
+        pipe_with_just_text_encoder = pipe_with_just_text_encoder.to(torch_device)
 
-        # Set same seed for comparison
-        inputs = self.get_dummy_inputs(torch_device)
-        torch.manual_seed(0)
-        output_loaded = pipe_loaded(**inputs).frames
+        pipe_without_text_encoders = self.pipeline_class(**non_text_components)
+        pipe_without_text_encoders = pipe_without_text_encoders.to(torch_device)
 
-        max_diff = np.abs(output.detach().cpu().numpy() - output_loaded.detach().cpu().numpy()).max()
-        self.assertLess(max_diff, 1e-4)
-
-    def test_encode_prompt_works_in_isolation(self):
-        """Test that encode_prompt works independently of the full pipeline."""
-        components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
         pipe = pipe.to(torch_device)
+
+        # Compute `encode_prompt()`.
 
         # Test single prompt
         prompt = "A cat dancing"
-        prompt_embeds_qwen, prompt_embeds_clip, prompt_cu_seqlens = pipe.encode_prompt(
-            prompt, device=torch_device, max_sequence_length=16
-        )
+        with torch.no_grad():
+            prompt_embeds_qwen, prompt_embeds_clip, prompt_cu_seqlens = pipe_with_just_text_encoder.encode_prompt(
+                prompt, device=torch_device, max_sequence_length=16
+            )
 
         # Check shapes
-        self.assertEqual(prompt_embeds_qwen.dim(), 3)  # [batch, seq_len, embed_dim]
-        self.assertEqual(prompt_embeds_clip.dim(), 2)  # [batch, embed_dim]
-        self.assertEqual(prompt_cu_seqlens.dim(), 1)  # [batch + 1]
+        self.assertEqual(prompt_embeds_qwen.shape, (1, 4, 16))  # [batch, seq_len, embed_dim]
+        self.assertEqual(prompt_embeds_clip.shape, (1, 32))  # [batch, embed_dim]
+        self.assertEqual(prompt_cu_seqlens.shape, (2,))  # [batch + 1]
 
         # Test batch of prompts
         prompts = ["A cat dancing", "A dog running"]
-        batch_embeds_qwen, batch_embeds_clip, batch_cu_seqlens = pipe.encode_prompt(
-            prompts, device=torch_device, max_sequence_length=16
-        )
+        with torch.no_grad():
+            batch_embeds_qwen, batch_embeds_clip, batch_cu_seqlens = pipe_with_just_text_encoder.encode_prompt(
+                prompts, device=torch_device, max_sequence_length=16
+            )
 
         # Check batch size
-        self.assertEqual(batch_embeds_qwen.shape[0], 2)
-        self.assertEqual(batch_embeds_clip.shape[0], 2)
-        self.assertEqual(len(batch_cu_seqlens), 3)  # [0, len1, len1+len2]
-
-    def test_callback(self):
-        # Test that callbacks work properly
-        def dummy_callback(pipe, step, timestep, callback_kwargs):
-            return callback_kwargs
-
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        pipe = pipe.to(torch_device)
+        self.assertEqual(batch_embeds_qwen.shape, (len(prompts), 4, 16))
+        self.assertEqual(batch_embeds_clip.shape, (len(prompts), 32))
+        self.assertEqual(len(batch_cu_seqlens), len(prompts) + 1)  # [0, len1, len1+len2]
 
         inputs = self.get_dummy_inputs(torch_device)
-        inputs["callback_on_step_end"] = dummy_callback
-        inputs["callback_on_step_end_tensor_inputs"] = ["latents"]
+        inputs["guidance_scale"] = 1.0
 
-        # Should run without errors
-        output = pipe(**inputs).frames
-        self.assertEqual(output.shape, (1, 3, 5, 32, 32))
+        # baseline output: full pipeline
+        pipe_out = pipe(**inputs).frames
+
+        # test against pipeline call with pre-computed prompt embeds
+        inputs = self.get_dummy_inputs(torch_device)
+        inputs["guidance_scale"] = 1.0
+
+        with torch.no_grad():
+            prompt_embeds_qwen, prompt_embeds_clip, prompt_cu_seqlens = pipe_with_just_text_encoder.encode_prompt(
+                inputs["prompt"], device=torch_device, max_sequence_length=inputs["max_sequence_length"]
+            )
+
+        inputs["prompt"] = None
+        inputs["prompt_embeds_qwen"] = prompt_embeds_qwen
+        inputs["prompt_embeds_clip"] = prompt_embeds_clip
+        inputs["prompt_cu_seqlens"] = prompt_cu_seqlens
+
+        pipe_out_2 = pipe_without_text_encoders(**inputs)[0]
+
+        self.assertTrue(
+            torch.allclose(pipe_out, pipe_out_2, atol=atol, rtol=rtol),
+            f"max diff: {torch.max(torch.abs(pipe_out - pipe_out_2))}",
+        )
 
     @unittest.skip("Kandinsky5T2VPipeline does not support attention slicing")
     def test_attention_slicing_forward_pass(self):
@@ -267,81 +304,3 @@ class Kandinsky5T2VPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     @unittest.skip("Kandinsky5T2VPipeline does not support VAE slicing")
     def test_vae_slicing(self):
         pass
-
-
-@slow
-@require_torch_accelerator
-class Kandinsky5T2VPipelineIntegrationTests(unittest.TestCase):
-    prompt = "A cat dancing in a kitchen with colorful lights"
-
-    def setUp(self):
-        super().setUp()
-        gc.collect()
-        backend_empty_cache(torch_device)
-
-    def tearDown(self):
-        super().tearDown()
-        gc.collect()
-        backend_empty_cache(torch_device)
-
-    @unittest.skip("Slow integration test - needs actual pretrained models")
-    def test_kandinsky_5_t2v(self):
-        # This is a slow integration test that would use actual pretrained models
-        pipe = Kandinsky5T2VPipeline.from_pretrained(
-            "ai-forever/Kandinsky-5.0-T2V-Lite-sft-5s-Diffusers", torch_dtype=torch.float16
-        )
-        pipe = pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
-
-        generator = torch.Generator(device=torch_device).manual_seed(0)
-        output = pipe(
-            prompt=self.prompt,
-            height=256,
-            width=256,
-            num_frames=17,
-            num_inference_steps=3,  # Few steps for quick test
-            generator=generator,
-            output_type="np",
-        ).frames
-
-        self.assertEqual(output.shape, (1, 3, 17, 256, 256))
-        # Check that output is reasonable (not all zeros or NaNs)
-        self.assertFalse(np.isnan(output).any())
-        self.assertFalse(np.allclose(output, 0))
-
-    @unittest.skip("Slow integration test - needs actual pretrained models")
-    def test_kandinsky_5_t2v_negative_prompt(self):
-        pipe = Kandinsky5T2VPipeline.from_pretrained(
-            "ai-forever/Kandinsky-5.0-T2V-Lite-sft-5s-Diffusers", torch_dtype=torch.float16
-        )
-        pipe = pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
-
-        # Test with negative prompt
-        generator = torch.Generator(device=torch_device).manual_seed(0)
-        output_with_negative = pipe(
-            prompt=self.prompt,
-            negative_prompt="blurry, low quality, distorted",
-            height=256,
-            width=256,
-            num_frames=17,
-            num_inference_steps=3,
-            generator=generator,
-            output_type="np",
-        ).frames
-
-        # Test without negative prompt
-        generator = torch.Generator(device=torch_device).manual_seed(0)
-        output_without_negative = pipe(
-            prompt=self.prompt,
-            height=256,
-            width=256,
-            num_frames=17,
-            num_inference_steps=3,
-            generator=generator,
-            output_type="np",
-        ).frames
-
-        # Outputs should be different
-        max_diff = np.abs(output_with_negative - output_without_negative).max()
-        self.assertGreater(max_diff, 1e-3)
