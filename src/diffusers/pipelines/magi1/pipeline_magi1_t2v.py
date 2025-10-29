@@ -195,6 +195,60 @@ class Magi1Pipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
         self._callback_tensor_inputs = ["latents"]  # extend as needed
         # TODO: Add attributes
 
+
+    def _build_text_pack(
+        self,
+        prompt_embeds: torch.Tensor,
+        prompt_mask: torch.Tensor,
+        negative_prompt_embeds: Optional[torch.Tensor],
+        negative_prompt_mask: Optional[torch.Tensor],
+        num_infer_chunks: int,
+        use_static_first_frames_token:  bool,
+        use_dynamic_first_frames_token: bool,
+        use_borderness_token: bool,
+        use_hq_token: bool,
+        use_3d_model_token: bool,
+        use_2d_anime_token: bool,
+        use_duration_token: bool,
+        use_negative_special_tokens: bool,
+    ):
+        """
+        Expand to chunk dim and prepend special tokens in MAGI order.
+        """
+        prompt_embeds = prompt_embeds.unsqueeze(1).repeat(1, num_infer_chunks, 1, 1)
+        prompt_mask = prompt_mask.unsqueeze(1).repeat(1, num_infer_chunks, 1)
+        special_token_keys = get_special_token_keys(
+            use_static_first_frames_token=use_static_first_frames_token,
+            use_dynamic_first_frames_token=use_dynamic_first_frames_token,
+            use_borderness_token=use_borderness_token,
+            use_hq_token=use_hq_token,
+            use_3d_model_token=use_3d_model_token,
+            use_2d_anime_token=use_2d_anime_token,
+            use_duration_token=use_duration_token,
+        )
+        prompt_embeds, prompt_mask = pad_special_token(special_token_keys, prompt_embeds, prompt_mask)
+        if self.do_classifier_free_guidance:
+            if negative_prompt_embeds is None:
+                # TODO: Load negative prompt embeds, they are learned
+                # null_caption_embedding = model.y_embedder.null_caption_embedding.unsqueeze(0)
+                # Creating zeros for negative prompt embeds for now
+                negative_prompt_embeds = torch.zeros(prompt_embeds.size(0), prompt_embeds.size(2), prompt_embeds.size(3)).to(prompt_embeds.device)
+                negative_mask = torch.zeros_like(prompt_mask)
+                negative_prompt_embeds = negative_prompt_embeds.unsqueeze(1).repeat(1, num_infer_chunks, 1, 1)
+                special_negative_token_keys = get_negative_special_token_keys(
+                    use_negative_special_tokens=use_negative_special_tokens,
+                )
+                negative_prompt_embeds, _ = pad_special_token(special_negative_token_keys, negative_prompt_embeds, None)
+                negative_token_length = 50
+                negative_mask[:, :, :negative_token_length] = 1
+                negative_mask[:, :, negative_token_length:] = 0
+            if prompt_mask.sum() == 0:
+                prompt_embeds = torch.cat([negative_prompt_embeds, negative_prompt_embeds])
+                prompt_mask = torch.cat([negative_mask, negative_mask], dim=0)
+            else:
+                prompt_embeds = torch.cat([prompt_embeds, negative_prompt_embeds])
+                prompt_mask = torch.cat([prompt_mask, negative_mask], dim=0)
+        return prompt_embeds, prompt_mask
     
     def _get_t5_prompt_embeds(
         self,
@@ -203,7 +257,7 @@ class Magi1Pipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
         max_sequence_length: int,
         device: Optional[torch.device],
         dtype: Optional[torch.dtype],
-    ):
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
         # TODO: Double check if MAGI-1 does some special handling during prompt encoding
         device = device or self._execution_device
         dtype = dtype or self.text_encoder.dtype
@@ -257,7 +311,7 @@ class Magi1Pipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
         max_sequence_length: int,
         device: Optional[torch.device],
         dtype: Optional[torch.dtype],
-    ):
+    ) -> Tuple[torch.Tensor, torch.Tensor, Optional[torch.Tensor], Optional[torch.Tensor]]:
         r"""Encodes the prompt into text encoder hidden states.
         
         Args:
@@ -566,35 +620,18 @@ class Magi1Pipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
         )
 
         num_infer_chunks = math.ceil((num_frames // self.temporal_downscale_factor) / self.chunk_width)
-        prompt_embeds = prompt_embeds.unsqueeze(1).repeat(1, num_infer_chunks, 1, 1)
-        prompt_mask = prompt_mask.unsqueeze(1).repeat(1, num_infer_chunks, 1)
-        special_token_keys = get_special_token_keys(
-            use_static_first_frames_token=use_static_first_frames_token,
-            use_dynamic_first_frames_token=use_dynamic_first_frames_token,
-            use_borderness_token=use_borderness_token,
-            use_hq_token=use_hq_token,
-            use_3d_model_token=use_3d_model_token,
-            use_2d_anime_token=use_2d_anime_token,
-            use_duration_token=use_duration_token)
-        prompt_embeds, prompt_mask = pad_special_token(special_token_keys, prompt_embeds, prompt_mask)
-        if self.do_classifier_free_guidance:
-            if negative_prompt_embeds is None:
-                # TODO: Load negative prompt embeds, they are learned
-                # null_caption_embedding = model.y_embedder.null_caption_embedding.unsqueeze(0)
-                # Creating zeros for negative prompt embeds for now
-                negative_prompt_embeds = torch.zeros(prompt_embeds.size(0), prompt_embeds.size(2), prompt_embeds.size(3)).to(prompt_embeds.device)
-                negative_mask = torch.zeros_like(prompt_mask)
-                negative_prompt_embeds = negative_prompt_embeds.unsqueeze(1).repeat(1, num_infer_chunks, 1, 1)
-                special_negative_token_keys = get_negative_special_token_keys(
-                    use_negative_special_tokens=use_negative_special_tokens,
-                )
-                negative_prompt_embeds, _ = pad_special_token(special_negative_token_keys, negative_prompt_embeds, None)
-                negative_token_length = 50
-                negative_mask[:, :, :negative_token_length] = 1
-                negative_mask[:, :, negative_token_length:] = 0
-            if prompt_mask.sum() == 0:
-                prompt_embeds = torch.cat([negative_prompt_embeds, negative_prompt_embeds])
-                prompt_mask = torch.cat([negative_mask, negative_mask], dim=0)
-            else:
-                prompt_embeds = torch.cat([prompt_embeds, negative_prompt_embeds])
-                prompt_mask = torch.cat([prompt_mask, negative_mask], dim=0)
+        prompt_embeds, prompt_mask = self._build_text_pack(
+            prompt_embeds,
+            prompt_mask,
+            negative_prompt_embeds,
+            negative_prompt_mask,
+            num_infer_chunks,
+            use_static_first_frames_token,
+            use_dynamic_first_frames_token,
+            use_borderness_token,
+            use_hq_token,
+            use_3d_model_token,
+            use_2d_anime_token,
+            use_duration_token,
+            use_negative_special_tokens,
+        )
