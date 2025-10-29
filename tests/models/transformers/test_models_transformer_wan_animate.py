@@ -47,8 +47,8 @@ class WanAnimateTransformer3DTests(ModelTesterMixin, unittest.TestCase):
         clip_dim = 16
 
         inference_segment_length = 77  # The inference segment length in the full Wan2.2-Animate-14B model
-        face_height = 8
-        face_width = 8
+        face_height = 16  # Should be square and match `motion_encoder_size` below
+        face_width = 16
 
         hidden_states = torch.randn((batch_size, 2 * num_channels + 4, num_frames + 1, height, width)).to(torch_device)
         timestep = torch.randint(0, 1000, size=(batch_size,)).to(torch_device)
@@ -70,13 +70,17 @@ class WanAnimateTransformer3DTests(ModelTesterMixin, unittest.TestCase):
 
     @property
     def input_shape(self):
-        return (4, 1, 16, 16)
+        return (12, 1, 16, 16)
 
     @property
     def output_shape(self):
         return (4, 1, 16, 16)
 
     def prepare_init_args_and_inputs_for_common(self):
+        # Use custom channel sizes since the default Wan Animate channel sizes will cause the motion encoder to
+        # contain the vast majority of the parameters in the test model
+        channel_sizes = {"4": 16, "8": 16, "16": 16}
+
         init_dict = {
             "patch_size": (1, 2, 2),
             "num_attention_heads": 2,
@@ -92,7 +96,8 @@ class WanAnimateTransformer3DTests(ModelTesterMixin, unittest.TestCase):
             "qk_norm": "rms_norm_across_heads",
             "image_dim": 16,
             "rope_max_seq_len": 32,
-            "motion_encoder_size": 8,  # Start of Wan Animate-specific config
+            "motion_encoder_channel_sizes": channel_sizes,  # Start of Wan Animate-specific config
+            "motion_encoder_size": 16,  # Ensures that there will be 2 motion encoder resblocks
             "motion_style_dim": 8,
             "motion_dim": 4,
             "motion_encoder_dim": 16,

@@ -40,7 +40,7 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
 WAN_ANIMATE_MOTION_ENCODER_CHANNEL_SIZES = {
-    4: 512, 8: 512, 16: 512, 32: 512, 64: 256, 128: 128, 256: 64, 512: 32, 1024: 16
+    "4": 512, "8": 512, "16": 512, "32": 512, "64": 256, "128": 128, "256": 64, "512": 32, "1024": 16
 }
 
 
@@ -162,7 +162,7 @@ class MotionConv2d(nn.Module):
     def __repr__(self):
         return (
             f'{self.__class__.__name__}({self.weight.shape[1]}, {self.weight.shape[0]},'
-            f' {self.weight.shape[2]}, stride={self.stride}, padding={self.padding})'
+            f' kernel_size={self.weight.shape[2]}, stride={self.stride}, padding={self.padding})'
         )
 
 
@@ -199,7 +199,10 @@ class MotionLinear(nn.Module):
         return out
 
     def __repr__(self):
-        return (f'{self.__class__.__name__}({self.weight.shape[1]}, {self.weight.shape[0]})')
+        return (
+            f'{self.__class__.__name__}(in_features={self.weight.shape[1]}, out_features={self.weight.shape[0]},'
+            f' bias={self.bias is not None})'
+        )
 
 
 class MotionEncoderResBlock(nn.Module):
@@ -266,21 +269,22 @@ class WanAnimateMotionEncoder(nn.Module):
         motion_dim: int = 20,
         out_dim: int = 512,
         motion_blocks: int = 5,
-        channels: Optional[Dict[int, int]] = None,
+        channels: Optional[Dict[str, int]] = None,
     ):
         super().__init__()
+        self.size = size
 
         # Appearance encoder: conv layers
         if channels is None:
             channels = WAN_ANIMATE_MOTION_ENCODER_CHANNEL_SIZES
 
-        self.conv_in = MotionConv2d(3, channels[size], 1, use_activation=True)
+        self.conv_in = MotionConv2d(3, channels[str(size)], 1, use_activation=True)
 
         self.res_blocks = nn.ModuleList()
-        in_channels = channels[size]
+        in_channels = channels[str(size)]
         log_size = int(math.log(size, 2))
         for i in range(log_size, 2, -1):
-            out_channels = channels[2 ** (i - 1)]
+            out_channels = channels[str(2 ** (i - 1))]
             self.res_blocks.append(MotionEncoderResBlock(in_channels, out_channels))
             in_channels = out_channels
 
@@ -296,6 +300,12 @@ class WanAnimateMotionEncoder(nn.Module):
         self.motion_synthesis_weight = nn.Parameter(torch.randn(out_dim, motion_dim))
 
     def forward(self, face_image: torch.Tensor, channel_dim: int = 1, upcast_to_fp32: bool = True) -> torch.Tensor:
+        if (face_image.shape[-2] != self.size) or (face_image.shape[-1] != self.size):
+            raise ValueError(
+                f"Face pixel values has resolution ({face_image.shape[-1]}, {face_image.shape[-2]}) but is expected"
+                f" to have resolution ({self.size}, {self.size})"
+            )
+
         # Appearance encoding through convs
         face_image = self.conv_in(face_image, channel_dim)
         for block in self.res_blocks:
@@ -314,7 +324,7 @@ class WanAnimateMotionEncoder(nn.Module):
             motion_feat = motion_feat.to(torch.float32)
             weight = weight.to(torch.float32)
 
-        Q = torch.linalg.qr(weight)[0]
+        Q = torch.linalg.qr(weight)[0].to(device=motion_feat.device)
 
         motion_feat_diag = torch.diag_embed(motion_feat)  # Alpha, diagonal matrix
         motion_decomposition = torch.matmul(motion_feat_diag, Q.T)
@@ -384,7 +394,7 @@ class WanAnimateFaceEncoder(nn.Module):
         x = self.out_proj(x)
         x = x.unflatten(0, (batch_size, -1)).permute(0, 2, 1, 3)  # [B * N, T, C_out] --> [B, T, N, C_out]
 
-        padding = self.padding_tokens.repeat(batch_size, x.shape[1], 1, 1)
+        padding = self.padding_tokens.repeat(batch_size, x.shape[1], 1, 1).to(device=x.device)
         x = torch.cat([x, padding], dim=-2)  # [B, T, N, C_out] --> [B, T, N + 1, C_out]
 
         return x
@@ -552,7 +562,7 @@ class WanAnimateTransformer3DModel(
 
     _supports_gradient_checkpointing = True
     _skip_layerwise_casting_patterns = ["patch_embedding", "condition_embedder", "norm"]
-    _no_split_modules = ["WanAnimateTransformerBlock"]
+    _no_split_modules = ["WanTransformerBlock", "MotionEncoderResBlock"]
     _keep_in_fp32_modules = [
         "time_embedder",
         "scale_shift_table",
@@ -583,7 +593,7 @@ class WanAnimateTransformer3DModel(
         added_kv_proj_dim: Optional[int] = None,
         rope_max_seq_len: int = 1024,
         pos_embed_seq_len: Optional[int] = None,
-        motion_encoder_channel_sizes: Optional[Dict[int, int]] = None,  # Start of Wan Animate-specific args
+        motion_encoder_channel_sizes: Optional[Dict[str, int]] = None,  # Start of Wan Animate-specific args
         motion_encoder_size: int = 512,
         motion_style_dim: int = 512,
         motion_dim: int = 20,
@@ -822,6 +832,9 @@ class WanAnimateTransformer3DModel(
             if block_idx % self.config.inject_face_latents_blocks == 0:
                 face_adapter_block_idx = block_idx // self.config.inject_face_latents_blocks
                 face_adapter_output = self.face_adapter[face_adapter_block_idx](hidden_states, motion_vec)
+                # In case the face adapter and main transformer blocks are on different devices, which can happen when
+                # using model parallelism
+                face_adapter_output = face_adapter_output.to(device=hidden_states.device)
                 hidden_states = face_adapter_output + hidden_states
 
         # 6. Output norm, projection & unpatchify
@@ -834,14 +847,16 @@ class WanAnimateTransformer3DModel(
             # batch_size, inner_dim
             shift, scale = (self.scale_shift_table.to(temb.device) + temb.unsqueeze(1)).chunk(2, dim=1)
 
+        hidden_states_original_dtype = hidden_states.dtype
+        hidden_states = self.norm_out(hidden_states.float())
         # Move the shift and scale tensors to the same device as hidden_states.
         # When using multi-GPU inference via accelerate these will be on the
         # first device rather than the last device, which hidden_states ends up
         # on.
         shift = shift.to(hidden_states.device)
         scale = scale.to(hidden_states.device)
+        hidden_states = (hidden_states * (1 + scale) + shift).to(dtype=hidden_states_original_dtype)
 
-        hidden_states = (self.norm_out(hidden_states.float()) * (1 + scale) + shift).type_as(hidden_states)
         hidden_states = self.proj_out(hidden_states)
 
         hidden_states = hidden_states.reshape(
