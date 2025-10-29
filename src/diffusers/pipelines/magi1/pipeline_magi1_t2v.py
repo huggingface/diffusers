@@ -59,14 +59,12 @@ SPECIAL_TOKEN_DICT = {
 }
 
 def _pad_special_token(special_token: torch.Tensor, txt_feat: torch.Tensor, attn_mask: torch.Tensor = None):
-    _device = txt_feat.device
-    _dtype = txt_feat.dtype
     N, C, _, D = txt_feat.size()
     txt_feat = torch.cat(
-        [special_token.unsqueeze(0).unsqueeze(0).to(_device).to(_dtype).expand(N, C, -1, D), txt_feat], dim=2
+        [special_token.unsqueeze(0).unsqueeze(0).to(txt_feat.device).to(txt_feat.dtype).expand(N, C, -1, D), txt_feat], dim=2
     )[:, :, :800, :]
     if attn_mask is not None:
-        attn_mask = torch.cat([torch.ones(N, C, 1, dtype=_dtype, device=_device), attn_mask], dim=-1)[:, :, :800]
+        attn_mask = torch.cat([torch.ones(N, C, 1, dtype=attn_mask.dtype, device=attn_mask.device), attn_mask], dim=-1)[:, :, :800]
     return txt_feat, attn_mask
 
 
@@ -192,8 +190,9 @@ class Magi1Pipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
             scheduler=scheduler,
         )
 
-        self.temporal_downscale_factor = 4 # TODO: Double check this value
+        self.temporal_downscale_factor = 4 # TODO: Read it from model (vae) config
         self.chunk_width = 6 # TODO: Double check this value
+        self._callback_tensor_inputs = ["latents"]  # extend as needed
         # TODO: Add attributes
 
     
@@ -228,21 +227,21 @@ class Magi1Pipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
 
         prompt_embeds = self.text_encoder(text_input_ids.to(device), mask.to(device)).last_hidden_state
         prompt_embeds = prompt_embeds.to(dtype=dtype, device=device)
-        # TODO: IDK why we need the code below, seems redundant to me, double check later.
-        # prompt_embeds = [u[:v] for u, v in zip(prompt_embeds, seq_lens)]
-        # prompt_embeds = torch.stack(
-        #     [torch.cat([u, u.new_zeros(max_sequence_length - u.size(0), u.size(1))]) for u in prompt_embeds], dim=0
-        # )
+        prompt_embeds = [u[:v] for u, v in zip(prompt_embeds, seq_lens)]
+        prompt_embeds = torch.stack(
+            [torch.cat([u, u.new_zeros(max_sequence_length - u.size(0), u.size(1))]) for u in prompt_embeds], dim=0
+        )
 
-        # # duplicate text embeddings for each generation per prompt, using mps friendly method
-        # _, seq_len, _ = prompt_embeds.shape
-        # prompt_embeds = prompt_embeds.repeat(1, num_videos_per_prompt, 1)
-        # prompt_embeds = prompt_embeds.view(batch_size * num_videos_per_prompt, seq_len, -1)
+        # duplicate text embeddings for each generation per prompt, using mps friendly method
+        _, seq_len, _ = prompt_embeds.shape
+        prompt_embeds = prompt_embeds.repeat(1, num_videos_per_prompt, 1)
+        prompt_embeds = prompt_embeds.view(batch_size * num_videos_per_prompt, seq_len, -1)
 
-        # # TODO: Debug if repeating mask is necessary because it's not used in any other pipeline
-        # # Repeat mask the same way as embeddings and keep size [B*num, L]
-        # mask = mask.repeat(1, num_videos_per_prompt)
-        # mask = mask.view(batch_size * num_videos_per_prompt, -1).to(device)
+        # TODO: Debug if repeating mask is necessary because it's not used in any other pipeline
+        # Repeat mask the same way as embeddings and keep size [B*num, L]
+        mask = mask.repeat(1, num_videos_per_prompt)
+        mask = mask.view(batch_size * num_videos_per_prompt, -1).to(device)
+        # TODO: I think prompt_embeds are already float32, but double check
         prompt_embeds = prompt_embeds.float()
         return prompt_embeds, mask
 
@@ -309,6 +308,7 @@ class Magi1Pipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
             )
         else:
             prompt_mask = None
+        # TODO: Also handle if negative prompt is provided (though the default is learned embeddings in MAGI-1)
         return prompt_embeds, prompt_mask
 
     def check_inputs(
