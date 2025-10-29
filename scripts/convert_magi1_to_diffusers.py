@@ -1,16 +1,25 @@
 import argparse
 import json
 import os
+import pathlib
 import shutil
 import tempfile
 
 import torch
+from accelerate import init_empty_weights
 from huggingface_hub import hf_hub_download
 from safetensors import safe_open
 from safetensors.torch import load_file
+from transformers import AutoTokenizer, UMT5EncoderModel
 
-from diffusers import Magi1Pipeline, Magi1Transformer3DModel
-from diffusers.models.autoencoders import AutoencoderKLMagi1
+from diffusers import (
+    AutoencoderKLMagi1,
+    FlowMatchEulerDiscreteScheduler,
+    Magi1ImageToVideoPipeline,
+    Magi1Pipeline,
+    Magi1Transformer3DModel,
+    Magi1VideoToVideoPipeline,
+)
 
 
 def convert_magi1_transformer(model_type):
@@ -51,7 +60,6 @@ def convert_magi1_transformer(model_type):
                     "sand-ai/MAGI-1", f"ckpt/magi/{repo_path}/inference_weight.distill/{shard_filename}"
                 )
                 checkpoint_files.append(shard_path)
-                print(f"Downloaded {shard_filename}")
                 shard_index += 1
             elif shard_index == 2:
                 shard_filename = f"model-{shard_index:05d}-of-00002.safetensors"
@@ -59,12 +67,10 @@ def convert_magi1_transformer(model_type):
                     "sand-ai/MAGI-1", f"ckpt/magi/{repo_path}/inference_weight.distill/{shard_filename}"
                 )
                 checkpoint_files.append(shard_path)
-                print(f"Downloaded {shard_filename}")
                 break
             else:
                 break
-        except Exception as e:
-            print(f"No more shards found or error downloading shard {shard_index}: {e}")
+        except Exception:
             break
 
     if not checkpoint_files:
@@ -306,13 +312,6 @@ def convert_magi1_transformer_checkpoint(checkpoint_path, transformer_config_fil
 
     converted_state_dict, report = convert_transformer_state_dict(checkpoint, transformer, allow_partial=allow_partial)
 
-    # Verify mapping coverage & shapes
-    print("\n=== MAGI-1 -> Diffusers mapping report ===")
-    print(f"Source keys used: {report['used_src_keys']} / {report['total_src_keys']}")
-    if report["missing_src_keys"]:
-        print(f"Missing source keys referenced: {len(report['missing_src_keys'])}")
-        print("Examples:", report["missing_src_keys"][:20])
-
     # Target verifications
     expected = transformer.state_dict()
     expected_keys = set(expected.keys())
@@ -324,16 +323,6 @@ def convert_magi1_transformer_checkpoint(checkpoint_path, transformer_config_fil
     for k in sorted(list(expected_keys & got_keys)):
         if tuple(expected[k].shape) != tuple(converted_state_dict[k].shape):
             shape_mismatches.append((k, tuple(converted_state_dict[k].shape), tuple(expected[k].shape)))
-
-    if missing_target:
-        print(f"Missing target keys: {len(missing_target)}")
-        print("Examples:", missing_target[:20])
-    if unexpected_target:
-        print(f"Unexpected converted keys: {len(unexpected_target)}")
-        print("Examples:", unexpected_target[:20])
-    if shape_mismatches:
-        print(f"Shape mismatches: {len(shape_mismatches)}")
-        print("Examples:", shape_mismatches[:5])
 
     if (report["missing_src_keys"] or missing_target or shape_mismatches):
         raise ValueError("Conversion verification failed. See report above.")
@@ -354,8 +343,6 @@ def convert_transformer_state_dict(checkpoint, transformer=None, allow_partial=F
     Maps the original MAGI-1 parameter names to diffusers' standard transformer naming.
     Handles all shape mismatches and key mappings based on actual checkpoint analysis.
     """
-    print("Converting MAGI-1 checkpoint keys...")
-
     converted_state_dict = {}
     used_src_keys = set()
     missing_src_keys = []
@@ -471,7 +458,6 @@ def convert_transformer_state_dict(checkpoint, transformer=None, allow_partial=F
             if not allow_partial:
                 raise
 
-    print(f"Converted {len(converted_state_dict)} parameters")
     report = {
         "total_src_keys": len(checkpoint),
         "used_src_keys": len(used_src_keys),
@@ -482,13 +468,28 @@ def convert_transformer_state_dict(checkpoint, transformer=None, allow_partial=F
 
 def get_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model_type", type=str, default=None)
-    parser.add_argument("--checkpoint_path", type=str, default=None, help="Local MAGI-1 transformer checkpoint path")
+    parser.add_argument(
+        "--model_type",
+        type=str,
+        required=True,
+        choices=[
+            "MAGI-1-T2V-4.5B-distill",
+            "MAGI-1-T2V-24B-distill",
+            "MAGI-1-T2V-4.5B",
+            "MAGI-1-T2V-24B",
+            "MAGI-1-I2V-4.5B-distill",
+            "MAGI-1-I2V-24B-distill",
+            "MAGI-1-V2V-4.5B-distill",
+            "MAGI-1-V2V-24B-distill",
+        ],
+        help="Model type to convert",
+    )
+    parser.add_argument(
+        "--checkpoint_path", type=str, default=None, help="Local MAGI-1 transformer checkpoint path (optional)"
+    )
     parser.add_argument("--config_path", type=str, default=None, help="Optional JSON config for transformer")
-    parser.add_argument("--output_path", type=str, required=True)
-    parser.add_argument("--dtype", default="fp32", choices=["fp32", "fp16", "bf16", "none"])
-    parser.add_argument("--push_to_hub", action="store_true", help="If set, push to the Hub after conversion")
-    parser.add_argument("--repo_id", type=str, default=None, help="Repo ID to push to (when --push_to_hub is set)")
+    parser.add_argument("--output_path", type=str, required=True, help="Output directory for converted pipeline")
+    parser.add_argument("--dtype", default="bf16", choices=["fp32", "fp16", "bf16", "none"], help="Data type for conversion")
     parser.add_argument("--allow_partial", action="store_true", help="Allow partial/loose state dict loading")
     return parser.parse_args()
 
@@ -502,47 +503,54 @@ DTYPE_MAPPING = {
 if __name__ == "__main__":
     args = get_args()
 
-    if args.model_type is not None:
-        transformer = convert_magi1_transformer(args.model_type)
-    elif args.checkpoint_path is not None:
+    # Convert transformer
+    if args.checkpoint_path is not None:
         transformer = convert_magi1_transformer_checkpoint(
             args.checkpoint_path, transformer_config_file=args.config_path, allow_partial=args.allow_partial
         )
     else:
-        raise ValueError("Provide either --model_type for HF download or --checkpoint_path for local conversion.")
+        transformer = convert_magi1_transformer(args.model_type)
 
-    # If user has specified "none", we keep the original dtypes of the state dict without any conversion
+    # Convert VAE
+    vae = convert_magi1_vae()
+
+    # Load text encoder and tokenizer
+    text_encoder = UMT5EncoderModel.from_pretrained("google/umt5-xxl", torch_dtype=torch.bfloat16)
+    tokenizer = AutoTokenizer.from_pretrained("google/umt5-xxl")
+
+    # Create scheduler with SD3-style shift
+    scheduler = FlowMatchEulerDiscreteScheduler(shift=3.0)
+
+    # Apply dtype conversion if specified
     if args.dtype != "none":
         dtype = DTYPE_MAPPING[args.dtype]
         transformer.to(dtype)
 
-    # Save transformer directly to output path (subfolder 'transformer')
-    save_kwargs = {"safe_serialization": True, "max_shard_size": "5GB"}
-    save_dir = os.path.join(args.output_path, "transformer")
-    os.makedirs(save_dir, exist_ok=True)
-    if args.push_to_hub:
-        save_kwargs.update(
-            {
-                "push_to_hub": True,
-                "repo_id": (
-                    args.repo_id
-                    if args.repo_id is not None
-                    else (f"tolgacangoz/{args.model_type}-Magi1Transformer" if args.model_type else "tolgacangoz/Magi1Transformer")
-                ),
-            }
+    # Determine pipeline class based on model type
+    if "I2V" in args.model_type:
+        pipe = Magi1ImageToVideoPipeline(
+            transformer=transformer,
+            text_encoder=text_encoder,
+            tokenizer=tokenizer,
+            vae=vae,
+            scheduler=scheduler,
         )
-    transformer.save_pretrained(save_dir, **save_kwargs)
+    elif "V2V" in args.model_type:
+        pipe = Magi1VideoToVideoPipeline(
+            transformer=transformer,
+            text_encoder=text_encoder,
+            tokenizer=tokenizer,
+            vae=vae,
+            scheduler=scheduler,
+        )
+    else:  # T2V
+        pipe = Magi1Pipeline(
+            transformer=transformer,
+            text_encoder=text_encoder,
+            tokenizer=tokenizer,
+            vae=vae,
+            scheduler=scheduler,
+        )
 
-    # Also write a minimal model_index.json for convenience when composing a pipeline later
-    index_path = os.path.join(args.output_path, "model_index.json")
-    index = {
-        "_class_name": "Magi1Pipeline",
-        "_diffusers_version": "0.0.0",
-        "transformer": ["transformer"],
-        "vae": None,
-        "text_encoder": None,
-        "tokenizer": None,
-        "scheduler": None,
-    }
-    with open(index_path, "w") as f:
-        json.dump(index, f, indent=2)
+    # Save complete pipeline
+    pipe.save_pretrained(args.output_path, safe_serialization=True, max_shard_size="5GB")
