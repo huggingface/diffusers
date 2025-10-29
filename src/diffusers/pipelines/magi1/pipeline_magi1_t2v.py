@@ -28,6 +28,7 @@ from ...loaders import Magi1LoraLoaderMixin
 from ...models import AutoencoderKLMagi1, Magi1Transformer3DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import is_ftfy_available, is_torch_xla_available, logging, replace_example_docstring
+from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
 
 
@@ -190,7 +191,10 @@ class Magi1Pipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
             scheduler=scheduler,
         )
 
-        self.temporal_downscale_factor = 4 # TODO: Read it from model (vae) config
+        # TODO: Double check if they are really read from config
+        self.temporal_downscale_factor = getattr(self.vae.config, "scale_factor_temporal", 4)
+        self.spatial_downscale_factor = getattr(self.vae.config, "scale_factor_spatial", 8)
+        self.num_channels_latents = self.transformer.config.in_channels
         self.chunk_width = 6 # TODO: Double check this value
         self._callback_tensor_inputs = ["latents"]  # extend as needed
         # TODO: Add attributes
@@ -462,6 +466,35 @@ class Magi1Pipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
             raise ValueError(
                 f"`callback_on_step_end_tensor_inputs` has to be in {self._callback_tensor_inputs}, but found {[k for k in callback_on_step_end_tensor_inputs if k not in self._callback_tensor_inputs]}"
             )
+        
+    def prepare_latents(
+        self,
+        batch_size: int,
+        num_channels_latents: int,
+        height: int,
+        width: int,
+        num_chunks: int,
+        dtype: Optional[torch.dtype] = None,
+        device: Optional[torch.device] = None,
+        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
+        latents: Optional[torch.Tensor] = None,
+    ):
+        if latents is not None:
+            return latents.to(device=device, dtype=dtype)
+        shape = (
+            batch_size,
+            num_channels_latents,
+            num_chunks * self.chunk_width,
+            height // self.spatial_downscale_factor,
+            width // self.spatial_downscale_factor,
+        )
+        if isinstance(generator, list) and len(generator) != batch_size:
+            raise ValueError(
+                f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
+                f" size of {batch_size}. Make sure the batch size matches the length of the generators."
+            )
+        latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
+        return latents
 
     @property
     def do_classifier_free_guidance(self):
@@ -634,4 +667,16 @@ class Magi1Pipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
             use_2d_anime_token,
             use_duration_token,
             use_negative_special_tokens,
+        )
+        
+        latents = self.prepare_latents(
+            batch_size * num_videos_per_prompt,
+            self.num_channels_latents,
+            height,
+            width,
+            num_infer_chunks,
+            prompt_embeds.dtype,
+            device,
+            generator,
+            latents,
         )
