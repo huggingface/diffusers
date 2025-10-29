@@ -233,21 +233,21 @@ class Magi1Pipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
                 # null_caption_embedding = model.y_embedder.null_caption_embedding.unsqueeze(0)
                 # Creating zeros for negative prompt embeds for now
                 negative_prompt_embeds = torch.zeros(prompt_embeds.size(0), prompt_embeds.size(2), prompt_embeds.size(3)).to(prompt_embeds.device)
-                negative_mask = torch.zeros_like(prompt_mask)
+                negative_prompt_mask = torch.zeros_like(prompt_mask)
                 negative_prompt_embeds = negative_prompt_embeds.unsqueeze(1).repeat(1, num_infer_chunks, 1, 1)
                 special_negative_token_keys = get_negative_special_token_keys(
                     use_negative_special_tokens=use_negative_special_tokens,
                 )
                 negative_prompt_embeds, _ = pad_special_token(special_negative_token_keys, negative_prompt_embeds, None)
                 negative_token_length = 50
-                negative_mask[:, :, :negative_token_length] = 1
-                negative_mask[:, :, negative_token_length:] = 0
+                negative_prompt_mask[:, :, :negative_token_length] = 1
+                negative_prompt_mask[:, :, negative_token_length:] = 0
             if prompt_mask.sum() == 0:
                 prompt_embeds = torch.cat([negative_prompt_embeds, negative_prompt_embeds])
-                prompt_mask = torch.cat([negative_mask, negative_mask], dim=0)
+                prompt_mask = torch.cat([negative_prompt_mask, negative_prompt_mask], dim=0)
             else:
                 prompt_embeds = torch.cat([prompt_embeds, negative_prompt_embeds])
-                prompt_mask = torch.cat([prompt_mask, negative_mask], dim=0)
+                prompt_mask = torch.cat([prompt_mask, negative_prompt_mask], dim=0)
         return prompt_embeds, prompt_mask
     
     def _get_t5_prompt_embeds(
