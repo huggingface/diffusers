@@ -106,7 +106,7 @@ jobs:
       - name: Run fast PyTorch Pipeline CPU tests
         run: |
           pytest -n 8 --max-worker-restart=0 --dist=loadfile \
-            -s -v -k "not Flax and not Onnx" \
+            -s -v \
             --make-reports=tests_torch_cpu_modular_pipelines \
             tests/modular_pipelines
 

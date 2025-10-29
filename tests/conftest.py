@@ -32,6 +32,8 @@ warnings.simplefilter(action="ignore", category=FutureWarning)
 
 def pytest_configure(config):
     config.addinivalue_line("markers", "big_accelerator: marks tests as requiring big accelerator resources")
+    config.addinivalue_line("markers", "slow: mark test as slow")
+    config.addinivalue_line("markers", "nightly: mark test as nightly")
 
 
 def pytest_addoption(parser):
