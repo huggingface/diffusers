@@ -111,7 +111,7 @@ class TestModularCustomBlocks:
 class TestKreaCustomBlocksIntegration:
     repo_id = "krea/krea-realtime-video"
 
-    def test_loading(self):
+    def test_loading_from_hub(self):
         blocks = ModularPipelineBlocks.from_pretrained(self.repo_id, trust_remote_code=True)
         block_names = sorted(blocks.sub_blocks)
 
