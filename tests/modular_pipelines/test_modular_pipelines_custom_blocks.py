@@ -86,9 +86,9 @@ class TestModularCustomBlocks:
             trust_remote_code=True,
         )
         self._test_block_properties(block)
-        
+
         pipe = block.init_pipeline()
-        
+
         prompt = "Diffusers is nice"
         output = pipe(prompt=prompt)
         output_prompt = output.values["output_prompt"]
