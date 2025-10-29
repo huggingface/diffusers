@@ -41,23 +41,23 @@ if can_use_cuda_kernels and is_kernels_available():
 else:
     ops = None
 
-UNQUANTIZED_TYPES = {gguf.GGMLQuantizationType.F32, gguf.GGMLQuantizationType.F16, gguf.GGMLQuantizationType.BF16}
-STANDARD_QUANT_TYPES = {
+UNQUANTIZED_TYPES = [gguf.GGMLQuantizationType.F32, gguf.GGMLQuantizationType.F16, gguf.GGMLQuantizationType.BF16]
+STANDARD_QUANT_TYPES = [
     gguf.GGMLQuantizationType.Q4_0,
     gguf.GGMLQuantizationType.Q4_1,
     gguf.GGMLQuantizationType.Q5_0,
     gguf.GGMLQuantizationType.Q5_1,
     gguf.GGMLQuantizationType.Q8_0,
     gguf.GGMLQuantizationType.Q8_1,
-}
-KQUANT_TYPES = {
+]
+KQUANT_TYPES = [
     gguf.GGMLQuantizationType.Q2_K,
     gguf.GGMLQuantizationType.Q3_K,
     gguf.GGMLQuantizationType.Q4_K,
     gguf.GGMLQuantizationType.Q5_K,
     gguf.GGMLQuantizationType.Q6_K,
-}
-IMATRIX_QUANT_TYPES = {
+]
+IMATRIX_QUANT_TYPES = [
     gguf.GGMLQuantizationType.IQ1_M,
     gguf.GGMLQuantizationType.IQ1_S,
     gguf.GGMLQuantizationType.IQ2_XXS,
@@ -67,7 +67,7 @@ IMATRIX_QUANT_TYPES = {
     gguf.GGMLQuantizationType.IQ3_S,
     gguf.GGMLQuantizationType.IQ4_XS,
     gguf.GGMLQuantizationType.IQ4_NL,
-}
+]
 # TODO(Isotr0py): Currently, we don't have MMQ kernel for I-Matrix quantization.
 # Consolidate DEQUANT_TYPES, MMVQ_QUANT_TYPES and MMQ_QUANT_TYPES after we add
 # MMQ kernel for I-Matrix quantization.
