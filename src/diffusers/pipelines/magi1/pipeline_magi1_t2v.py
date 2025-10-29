@@ -16,7 +16,7 @@ import html
 import math
 import os
 import re
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, Generator, List, Optional, Tuple, Union
 
 import ftfy
 import numpy as np
@@ -142,6 +142,59 @@ def prompt_clean(text):
     text = whitespace_clean(basic_clean(text))
     return text
 
+
+def _compute_sequences(chunk_num: int, window_size: int, chunk_offset: int = 0):
+    """
+    Replicates MAGI's generate_sequences(...). Returns four int lists:
+    clip_start, clip_end, t_start, t_end (all length = chunk_num + window_size - 1 - offset).
+    """
+    start_index = chunk_offset
+    end_index = chunk_num + window_size - 1
+    clip_start = [max(chunk_offset, i - window_size + 1) for i in range(start_index, end_index)]
+    clip_end   = [min(chunk_num, i + 1)                   for i in range(start_index, end_index)]
+    t_start    = [max(0, i - chunk_num + 1)               for i in range(start_index, end_index)]
+    t_end      = [min(window_size, i - chunk_offset + 1) if i - chunk_offset < window_size else window_size
+                  for i in range(start_index, end_index)]
+    return clip_start, clip_end, t_start, t_end
+
+class ARWindow:
+    """
+    Sliding window over temporal chunks, identical to MAGI's step/stage mapping.
+
+    - chunk_num: number of chunks
+    - window_size: number of chunks per stage
+    - chunk_offset: prefix offset (0 for T2V)
+    """
+    def __init__(self, chunk_num: int, window_size: int, chunk_offset: int = 0):
+        self.chunk_num = chunk_num
+        self.window_size = window_size
+        self.offset = chunk_offset
+        (self.clip_start,
+         self.clip_end,
+         self.t_start,
+         self.t_end) = _compute_sequences(chunk_num, window_size, chunk_offset)
+
+    def total_forward_steps(self, num_steps: int) -> int:
+        per_stage = num_steps // self.window_size
+        return per_stage * (self.chunk_num + self.window_size - 1 - self.offset)
+
+    def status(self, step: int, num_steps: int) -> Tuple[Tuple[int, int, int], Tuple[int, int, int, int]]:
+        """
+        Returns:
+            (per_stage, stage, idx),
+            (chunk_start, chunk_end, t_start, t_end)
+        """
+        per_stage = num_steps // self.window_size
+        stage, idx = divmod(step, per_stage)
+        return (per_stage, stage, idx), (
+            self.clip_start[stage],
+            self.clip_end[stage],
+            self.t_start[stage],
+            self.t_end[stage],
+        )
+
+
+
 # TODO: Write example_doc_string
 EXAMPLE_DOC_STRING = """
     Examples:
@@ -196,6 +249,7 @@ class Magi1Pipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
         self.spatial_downscale_factor = getattr(self.vae.config, "scale_factor_spatial", 8)
         self.num_channels_latents = self.transformer.config.in_channels
         self.chunk_width = 6 # TODO: Double check this value
+        self.window_size = 4 # TODO: Double check this value
         self._callback_tensor_inputs = ["latents"]  # extend as needed
         # TODO: Add attributes
 
@@ -206,7 +260,7 @@ class Magi1Pipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
         prompt_mask: torch.Tensor,
         negative_prompt_embeds: Optional[torch.Tensor],
         negative_prompt_mask: Optional[torch.Tensor],
-        num_infer_chunks: int,
+        chunk_num: int,
         use_static_first_frames_token:  bool,
         use_dynamic_first_frames_token: bool,
         use_borderness_token: bool,
@@ -219,8 +273,8 @@ class Magi1Pipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
         """
         Expand to chunk dim and prepend special tokens in MAGI order.
         """
-        prompt_embeds = prompt_embeds.unsqueeze(1).repeat(1, num_infer_chunks, 1, 1)
-        prompt_mask = prompt_mask.unsqueeze(1).repeat(1, num_infer_chunks, 1)
+        prompt_embeds = prompt_embeds.unsqueeze(1).repeat(1, chunk_num, 1, 1)
+        prompt_mask = prompt_mask.unsqueeze(1).repeat(1, chunk_num, 1)
         special_token_keys = get_special_token_keys(
             use_static_first_frames_token=use_static_first_frames_token,
             use_dynamic_first_frames_token=use_dynamic_first_frames_token,
@@ -238,7 +292,7 @@ class Magi1Pipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
                 # Creating zeros for negative prompt embeds for now
                 negative_prompt_embeds = torch.zeros(prompt_embeds.size(0), prompt_embeds.size(2), prompt_embeds.size(3)).to(prompt_embeds.device)
                 negative_prompt_mask = torch.zeros_like(prompt_mask)
-                negative_prompt_embeds = negative_prompt_embeds.unsqueeze(1).repeat(1, num_infer_chunks, 1, 1)
+                negative_prompt_embeds = negative_prompt_embeds.unsqueeze(1).repeat(1, chunk_num, 1, 1)
                 special_negative_token_keys = get_negative_special_token_keys(
                     use_negative_special_tokens=use_negative_special_tokens,
                 )
@@ -473,7 +527,7 @@ class Magi1Pipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
         num_channels_latents: int,
         height: int,
         width: int,
-        num_chunks: int,
+        chunk_num: int,
         dtype: Optional[torch.dtype] = None,
         device: Optional[torch.device] = None,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
@@ -484,7 +538,7 @@ class Magi1Pipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
         shape = (
             batch_size,
             num_channels_latents,
-            num_chunks * self.chunk_width,
+            chunk_num * self.chunk_width,
             height // self.spatial_downscale_factor,
             width // self.spatial_downscale_factor,
         )
@@ -495,6 +549,114 @@ class Magi1Pipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
             )
         latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
         return latents
+
+    def _decode_chunk_to_frames(self, latents_chunk: torch.Tensor) -> np.ndarray:
+        """
+        Decode a single latent chunk to video frames.
+        
+        Args:
+            latents_chunk: Latent tensor of shape [1, C, Tc, H_lat, W_lat]
+            
+        Returns:
+            Frames as uint8 numpy array of shape [Tc, H, W, 3]
+        """
+        scale = getattr(self.vae.config, "scaling_factor", 1.0)
+        x = latents_chunk / scale
+        
+        # Decode through VAE
+        pixels = self.vae.decode(x).sample  # [1, 3, Tc, H, W], expected in [-1, 1]
+        
+        # Convert to uint8 [0, 255]
+        pixels = (pixels.clamp(-1, 1) + 1) / 2
+        pixels = (pixels * 255).round().to(torch.uint8)
+        
+        # Rearrange to [Tc, H, W, 3]
+        frames = pixels.squeeze(0).permute(1, 2, 3, 0).contiguous().cpu().numpy()
+        return frames
+
+    def _denoise_loop_generator(
+        self,
+        latents: torch.Tensor,
+        prompt_embeds: torch.Tensor,
+        prompt_mask: torch.Tensor,
+        num_inference_steps: int,
+        chunk_num: int,
+        device: torch.device,
+        callback_on_step_end: Optional[Callable] = None,
+        callback_on_step_end_tensor_inputs: List[str] = None,
+    ) -> Generator[Dict[str, Any], None, None]:
+        """
+        Generator that performs the denoising loop and yields clean chunks as they complete.
+        
+        Yields:
+            Dictionary with:
+                - "chunk_idx": int, index of the completed chunk
+                - "latents": torch.Tensor, clean latent chunk [1, C, chunk_width, H_lat, W_lat]
+        """
+        window = ARWindow(chunk_num=chunk_num, window_size=self.window_size, chunk_offset=0)
+        total_steps = window.total_forward_steps(num_inference_steps)
+        denoise_counts = torch.zeros(chunk_num, dtype=torch.int32, device="cpu")
+        
+        # TODO: Initialize scheduler timesteps
+        # self.scheduler.set_timesteps(num_inference_steps, device=device)
+        # timesteps = self.scheduler.timesteps
+        
+        with self.progress_bar(total=total_steps) as pbar:
+            for step in range(total_steps):
+                (per_stage, stage, idx), (c_start, c_end, t_start, t_end) = window.status(step, num_inference_steps)
+
+                # TODO: Implement the actual denoising step
+                # 1. Extract the window of latents for current stage
+                # latent_window = latents[:, :, c_start * self.chunk_width : c_end * self.chunk_width]
+                
+                # 2. Extract corresponding prompt embeddings
+                # y_window = prompt_embeds[:, c_start:c_end]
+                # mask_window = prompt_mask[:, c_start:c_end]
+                
+                # 3. Get timesteps for current stage
+                # t = timesteps[???]  # Need to map stage/idx to timestep
+                
+                # 4. Forward through transformer
+                # noise_pred = self.transformer(
+                #     latent_window,
+                #     timestep=t,
+                #     encoder_hidden_states=y_window,
+                #     encoder_attention_mask=mask_window,
+                #     **self._attention_kwargs or {},
+                # )
+                
+                # 5. Scheduler step to update latents
+                # latent_window = self.scheduler.step(noise_pred, t, latent_window).prev_sample
+                
+                # 6. Write back to main latents
+                # latents[:, :, c_start * self.chunk_width : c_end * self.chunk_width] = latent_window
+                
+                # 7. Update denoise counts and check for clean chunks
+                for c in range(c_start, c_end):
+                    denoise_counts[c] += 1
+                    if denoise_counts[c] == num_inference_steps:
+                        # Extract clean chunk (only conditional part if using CFG)
+                        chunk_start = c * self.chunk_width
+                        chunk_end = (c + 1) * self.chunk_width
+                        
+                        if self.do_classifier_free_guidance:
+                            # Take only the conditional part (first half of batch)
+                            clean_chunk = latents[0:1, :, chunk_start:chunk_end].detach()
+                        else:
+                            clean_chunk = latents[:, :, chunk_start:chunk_end].detach()
+                        
+                        yield {"chunk_idx": int(c), "latents": clean_chunk}
+                
+                # Callback support
+                if callback_on_step_end is not None:
+                    callback_kwargs = {}
+                    if callback_on_step_end_tensor_inputs:
+                        for k in callback_on_step_end_tensor_inputs:
+                            if k == "latents":
+                                callback_kwargs[k] = latents
+                    callback_on_step_end(self, step, None, callback_kwargs)
+                
+                pbar.update()
 
     @property
     def do_classifier_free_guidance(self):
@@ -537,6 +699,7 @@ class Magi1Pipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
         use_2d_anime_token: bool = False,
         use_duration_token: bool = True,
         use_negative_special_tokens: bool = False,
+        stream_chunks: bool = False,
     ):
         r"""
         The call function to the pipeline for generation.
@@ -601,13 +764,25 @@ class Magi1Pipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
             max_sequence_length (`int`, defaults to `800`):
                 The maximum sequence length for the text encoder. Sequences longer than this will be truncated. MAGI-1
                 uses a max length of 800 tokens.
+            stream_chunks (`bool`, defaults to `False`):
+                Whether to stream chunks as they are generated. If `True`, this method returns a generator that yields
+                dictionaries containing `{"chunk_idx": int, "latents": torch.Tensor}` or 
+                `{"chunk_idx": int, "frames": np.ndarray}` depending on `output_type`. If `False`, the method returns
+                the complete video after all chunks are generated.
 
         Examples:
 
         Returns:
-            [`~Magi1PipelineOutput`] or `tuple`:
-                If `return_dict` is `True`, [`Magi1PipelineOutput`] is returned, otherwise a `tuple` is returned where
-                the first element is a list with the generated videos.
+            If `stream_chunks=False`:
+                [`~Magi1PipelineOutput`] or `tuple`:
+                    If `return_dict` is `True`, [`Magi1PipelineOutput`] is returned, otherwise a `tuple` is returned 
+                    where the first element is a list with the generated videos.
+            
+            If `stream_chunks=True`:
+                Generator yielding dictionaries with:
+                    - `chunk_idx` (int): Index of the chunk
+                    - `latents` (torch.Tensor): If output_type is "latent" or "pt"
+                    - `frames` (np.ndarray): If output_type is "np"
         """
 
         if isinstance(callback_on_step_end, (PipelineCallback, MultiPipelineCallbacks)):
@@ -652,13 +827,13 @@ class Magi1Pipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
             self.text_encoder.dtype # TODO: double check what is passed here
         )
 
-        num_infer_chunks = math.ceil((num_frames // self.temporal_downscale_factor) / self.chunk_width)
+        chunk_num = math.ceil((num_frames // self.temporal_downscale_factor) / self.chunk_width)
         prompt_embeds, prompt_mask = self._build_text_pack(
             prompt_embeds,
             prompt_mask,
             negative_prompt_embeds,
             negative_prompt_mask,
-            num_infer_chunks,
+            chunk_num,
             use_static_first_frames_token,
             use_dynamic_first_frames_token,
             use_borderness_token,
@@ -674,9 +849,92 @@ class Magi1Pipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
             self.num_channels_latents,
             height,
             width,
-            num_infer_chunks,
+            chunk_num,
             prompt_embeds.dtype,
             device,
             generator,
             latents,
         )
+
+        # Store attention kwargs for use in denoising loop
+        self._attention_kwargs = attention_kwargs
+
+        # Execute denoising and handle streaming vs non-streaming
+        if stream_chunks:
+            # Streaming mode: Return generator that yields decoded chunks
+            def stream_generator():
+                for event in self._denoise_loop_generator(
+                    latents=latents,
+                    prompt_embeds=prompt_embeds,
+                    prompt_mask=prompt_mask,
+                    num_inference_steps=num_inference_steps,
+                    chunk_num=chunk_num,
+                    device=device,
+                    callback_on_step_end=callback_on_step_end,
+                    callback_on_step_end_tensor_inputs=callback_on_step_end_tensor_inputs,
+                ):
+                    chunk_idx = event["chunk_idx"]
+                    chunk_latents = event["latents"]
+                    
+                    # Decode or keep as latents based on output_type
+                    if output_type == "latent":
+                        yield {"chunk_idx": chunk_idx, "latents": chunk_latents}
+                    elif output_type == "pt":
+                        # Decode but keep as torch tensor
+                        frames = self._decode_chunk_to_frames(chunk_latents)
+                        frames_pt = torch.from_numpy(frames).to(device)
+                        yield {"chunk_idx": chunk_idx, "frames": frames_pt}
+                    else:  # output_type == "np"
+                        # Decode to numpy frames
+                        frames = self._decode_chunk_to_frames(chunk_latents)
+                        yield {"chunk_idx": chunk_idx, "frames": frames}
+            
+            return stream_generator()
+        
+        else:
+            # Non-streaming mode: Collect all chunks, then decode at the end
+            collected_chunks = []
+            
+            for event in self._denoise_loop_generator(
+                latents=latents,
+                prompt_embeds=prompt_embeds,
+                prompt_mask=prompt_mask,
+                num_inference_steps=num_inference_steps,
+                chunk_num=chunk_num,
+                device=device,
+                callback_on_step_end=callback_on_step_end,
+                callback_on_step_end_tensor_inputs=callback_on_step_end_tensor_inputs,
+            ):
+                collected_chunks.append(event["latents"])
+            
+            if len(collected_chunks) == 0:
+                raise RuntimeError("No chunks were produced during generation.")
+            
+            # Concatenate all chunks
+            full_latents = torch.cat(collected_chunks, dim=2)  # [1, C, T_lat, H_lat, W_lat]
+            
+            # Handle output format
+            if output_type == "latent":
+                output = full_latents
+            else:
+                # Decode all chunks
+                all_frames = []
+                for chunk_latents in collected_chunks:
+                    frames = self._decode_chunk_to_frames(chunk_latents)
+                    all_frames.append(frames)
+                
+                # Concatenate frames along time dimension
+                video_frames = np.concatenate(all_frames, axis=0)  # [T, H, W, 3]
+                
+                if output_type == "pt":
+                    output = torch.from_numpy(video_frames).to(device)
+                else:  # output_type == "np"
+                    output = video_frames
+            
+            if not return_dict:
+                return (output,)
+            
+            # TODO: Return proper output type (Magi1PipelineOutput)
+            return {"frames": output} if output_type != "latent" else {"latents": output}
+
+
