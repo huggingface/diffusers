@@ -45,22 +45,24 @@ class DummyCustomBlockSimple(ModularPipelineBlocks):
 
 
 class TestModularCustomBlocks:
-    def test_custom_block_properties(self):
-        custom_block = DummyCustomBlockSimple()
+    def _test_block_properties(self, block):
+        assert not block.expected_components
+        assert not block.intermediate_inputs
 
-        assert not custom_block.expected_components
-        assert not custom_block.intermediate_inputs
-
-        actual_inputs = [inp.name for inp in custom_block.inputs]
-        actual_intermediate_outputs = [out.name for out in custom_block.intermediate_outputs]
+        actual_inputs = [inp.name for inp in block.inputs]
+        actual_intermediate_outputs = [out.name for out in block.intermediate_outputs]
         assert actual_inputs == ["prompt"]
         assert actual_intermediate_outputs == ["output_prompt"]
 
+    def test_custom_block_properties(self):
+        custom_block = DummyCustomBlockSimple()
+        self._test_block_properties(custom_block)
+
     def test_custom_block_output(self):
         custom_block = DummyCustomBlockSimple()
-        pipeline = custom_block.init_pipeline()
+        pipe = custom_block.init_pipeline()
         prompt = "Diffusers is nice"
-        output = pipeline(prompt=prompt)
+        output = pipe(prompt=prompt)
 
         actual_inputs = [inp.name for inp in custom_block.inputs]
         actual_intermediate_outputs = [out.name for out in custom_block.intermediate_outputs]
@@ -76,3 +78,18 @@ class TestModularCustomBlocks:
 
         assert len(pipe.components) == 1
         assert pipe.component_names[0] == "transformer"
+
+    def test_custom_block_loads_from_hub(self):
+        repo_id = "hf-internal-testing/tiny-modular-diffusers-block"
+        block = ModularPipelineBlocks.from_pretrained(
+            repo_id,
+            trust_remote_code=True,
+        )
+        self._test_block_properties(block)
+        
+        pipe = block.init_pipeline()
+        
+        prompt = "Diffusers is nice"
+        output = pipe(prompt=prompt)
+        output_prompt = output.values["output_prompt"]
+        assert output_prompt.startswith("Modular diffusers + ")
