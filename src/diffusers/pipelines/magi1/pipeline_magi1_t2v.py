@@ -249,7 +249,6 @@ class Magi1Pipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
         self,
         prompt: Optional[Union[str, List[str]]],
         negative_prompt: Optional[Union[str, List[str]]],
-        do_classifier_free_guidance: bool,
         num_videos_per_prompt: int,
         prompt_embeds: Optional[torch.Tensor],
         prompt_mask: Optional[torch.Tensor],
@@ -258,7 +257,7 @@ class Magi1Pipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
         max_sequence_length: int,
         device: Optional[torch.device],
         dtype: Optional[torch.dtype],
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+    ):
         r"""Encodes the prompt into text encoder hidden states.
         
         Args:
@@ -268,8 +267,6 @@ class Magi1Pipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
                 The prompt or prompts not to guide the video generation. If not defined, one has to pass
                 `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
                 less than `1`).
-            do_classifier_free_guidance (`bool`, *optional*):
-                Whether to use classifier free guidance or not.
             num_videos_per_prompt (`int`):
                 Number of videos that should be generated per prompt. torch device to place the resulting embeddings on
             prompt_embeds (`torch.Tensor`, *optional*):
@@ -298,7 +295,7 @@ class Magi1Pipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
         else:
             batch_size = prompt_embeds.shape[0]
 
-        if prompt_embeds is None:
+        if prompt is not None:
             prompt_embeds, prompt_mask = self._get_t5_prompt_embeds(
                 prompt=prompt,
                 num_videos_per_prompt=num_videos_per_prompt,
@@ -306,10 +303,32 @@ class Magi1Pipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
                 device=device,
                 dtype=dtype,
             )
-        else:
-            prompt_mask = None
-        # TODO: Also handle if negative prompt is provided (though the default is learned embeddings in MAGI-1)
-        return prompt_embeds, prompt_mask
+        
+        # Negative prompt embeddings are learned for MAGI-1
+        # However, we still provide the option to pass them in
+        if self.do_classifier_free_guidance:
+            if negative_prompt is not None:
+                negative_prompt = batch_size * [negative_prompt] if isinstance(negative_prompt, str) else negative_prompt
+
+                if prompt is not None and type(prompt) is not type(negative_prompt):
+                    raise TypeError(
+                        f"`negative_prompt` should be the same type to `prompt`, but got {type(negative_prompt)} !="
+                        f" {type(prompt)}."
+                    )
+                elif batch_size != len(negative_prompt):
+                    raise ValueError(
+                        f"`negative_prompt`: {negative_prompt} has batch size {len(negative_prompt)}, but `prompt`:"
+                        f" {prompt} has batch size {batch_size}. Please make sure that passed `negative_prompt` matches"
+                        " the batch size of `prompt`."
+                    )
+                negative_prompt_embeds, negative_prompt_mask = self._get_t5_prompt_embeds(
+                    prompt=negative_prompt,
+                    num_videos_per_prompt=num_videos_per_prompt,
+                    max_sequence_length=max_sequence_length,
+                    device=device,
+                    dtype=dtype,
+                )
+        return prompt_embeds, prompt_mask, negative_prompt_embeds, negative_prompt_mask
 
     def check_inputs(
         self,
@@ -533,10 +552,9 @@ class Magi1Pipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
         
         device = self._execution_device
         # 3. Encode input prompt
-        prompt_embeds, prompt_mask = self.encode_prompt(
+        prompt_embeds, prompt_mask, negative_prompt_embeds, negative_prompt_mask = self.encode_prompt(
             prompt,
             negative_prompt,
-            self.do_classifier_free_guidance,
             num_videos_per_prompt,
             prompt_embeds,
             prompt_mask,
