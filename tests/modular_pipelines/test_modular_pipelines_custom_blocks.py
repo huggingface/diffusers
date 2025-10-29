@@ -1,5 +1,7 @@
+from collections import deque
 from typing import List
 
+import numpy as np
 import torch
 
 from diffusers import FluxTransformer2DModel
@@ -110,6 +112,9 @@ class TestModularCustomBlocksIntegration:
     def test_krea_realtime_video_loading(self):
         repo_id = "krea/krea-realtime-video"
         blocks = ModularPipelineBlocks.from_pretrained(repo_id, trust_remote_code=True)
+        block_names = sorted(blocks.sub_blocks)
+
+        assert block_names == sorted(["text_encoder", "before_denoise", "denoise", "decode"])
 
         pipe = WanModularPipeline(blocks, repo_id)
         pipe.load_components(
@@ -117,3 +122,51 @@ class TestModularCustomBlocksIntegration:
             device_map="cuda",
             torch_dtype={"default": torch.bfloat16, "vae": torch.float16},
         )
+        assert len(pipe.components) == 7
+        assert sorted(pipe.components) == sorted(
+            ["text_encoder", "tokenizer", "guider", "scheduler", "vae", "transformer", "video_processor"]
+        )
+
+    def test_forward(self):
+        repo_id = "krea/krea-realtime-video"
+        blocks = ModularPipelineBlocks.from_pretrained(repo_id, trust_remote_code=True)
+        pipe = WanModularPipeline(blocks, repo_id)
+        pipe.load_components(
+            trust_remote_code=True,
+            device_map="cuda",
+            torch_dtype={"default": torch.bfloat16, "vae": torch.float16},
+        )
+
+        num_frames_per_block = 2
+        num_blocks = 2
+
+        state = PipelineState()
+        state.set("frame_cache_context", deque(maxlen=pipe.config.frame_cache_len))
+
+        prompt = ["a cat sitting on a boat"]
+
+        for block in pipe.transformer.blocks:
+            block.self_attn.fuse_projections()
+
+        for block_idx in range(num_blocks):
+            state = pipe(
+                state,
+                prompt=prompt,
+                num_inference_steps=2,
+                num_blocks=num_blocks,
+                num_frames_per_block=num_frames_per_block,
+                block_idx=block_idx,
+                generator=torch.manual_seed(42),
+            )
+            current_frames = np.array(state.values["videos"][0])
+            current_frames_flat = current_frames.flatten()
+            actual_slices = np.concatenate([current_frames_flat[:4], current_frames_flat[-4:]]).tolist()
+
+            if block_idx == 0:
+                assert current_frames.shape == (5, 480, 832, 3)
+                expected_slices = np.array([211, 229, 238, 208, 195, 180, 188, 193])
+            else:
+                assert current_frames.shape == (8, 480, 832, 3)
+                expected_slices = np.array([179, 203, 214, 176, 194, 181, 187, 191])
+
+            assert np.allclose(actual_slices, expected_slices)
