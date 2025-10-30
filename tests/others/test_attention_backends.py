@@ -14,6 +14,10 @@ pytest tests/others/test_attention_backends.py
 
 Tests were conducted on an H100 with PyTorch 2.8.0 (CUDA 12.9). Slices for the compilation tests in
 "native" variants were obtained with a torch nightly version (2.10.0.dev20250924+cu128).
+
+Tests for aiter backend were conducted and slices for the aiter backend tests collected on a MI355X
+with torch 2025-09-25 nightly version (ad2f7315ca66b42497047bb7951f696b50f1e81b) and
+aiter 0.1.5.post4.dev20+ga25e55e79.
 """
 
 import os
@@ -44,6 +48,10 @@ FORWARD_CASES = [
         "_native_cudnn",
         torch.tensor([0.0781, 0.0840, 0.0879, 0.0957, 0.0898, 0.0957, 0.0957, 0.0977, 0.2168, 0.2246, 0.2324, 0.2500, 0.2539, 0.2480, 0.2441, 0.2695], dtype=torch.bfloat16),
     ),
+    (
+        "aiter",
+        torch.tensor([0.0781, 0.0820, 0.0879, 0.0957, 0.0898, 0.0938, 0.0957, 0.0957, 0.2285, 0.2363, 0.2461, 0.2637, 0.2695, 0.2617, 0.2617, 0.2891], dtype=torch.bfloat16),
+    )
 ]
 
 COMPILE_CASES = [
@@ -63,6 +71,11 @@ COMPILE_CASES = [
         torch.tensor([0.0410, 0.0410, 0.0430, 0.0508, 0.0488, 0.0586, 0.0605, 0.0586, 0.2344, 0.2461, 0.2578, 0.2773, 0.2871, 0.2832, 0.2793, 0.3086], dtype=torch.bfloat16),
         True,
     ),
+    (
+        "aiter",
+        torch.tensor([0.0391, 0.0391, 0.0430, 0.0488, 0.0469, 0.0566, 0.0586, 0.0566, 0.2402, 0.2539, 0.2637, 0.2812, 0.2930, 0.2910, 0.2891, 0.3164], dtype=torch.bfloat16),
+        True,
+    )
 ]
 # fmt: on
 
