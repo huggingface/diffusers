@@ -157,59 +157,23 @@ ANIMATE_TRANSFORMER_KEYS_RENAME_DICT = {
     "attn2.to_k_img": "attn2.add_k_proj",
     "attn2.to_v_img": "attn2.add_v_proj",
     "attn2.norm_k_img": "attn2.norm_added_k",
+    # Wan Animate-specific mappings (motion encoder, face encoder, face adapter)
     # Motion encoder mappings
-    "motion_encoder.enc.net_app.convs": "condition_embedder.motion_embedder.convs",
-    "motion_encoder.enc.fc": "condition_embedder.motion_embedder.linears",
-    "motion_encoder.dec.direction.weight": "condition_embedder.motion_embedder.motion_synthesis_weight",
+    # The name mapping is complicated for the convolutional part so we handle that in its own function
+    "motion_encoder.enc.fc": "motion_encoder.motion_network",
+    "motion_encoder.dec.direction.weight": "motion_encoder.motion_synthesis_weight",
     # Face encoder mappings - CausalConv1d has a .conv submodule that we need to flatten
-    "face_encoder.conv1_local.conv": "condition_embedder.face_embedder.conv1_local",
-    "face_encoder.conv2.conv": "condition_embedder.face_embedder.conv2",
-    "face_encoder.conv3.conv": "condition_embedder.face_embedder.conv3",
-    "face_encoder.out_proj": "condition_embedder.face_embedder.out_proj",
-    "face_encoder.norm1": "condition_embedder.face_embedder.norm1",
-    # Return to the original order for face_embedder norms
-    "face_encoder.norm2": "face_embedder_norm__placeholder",
-    "face_encoder.norm3": "condition_embedder.face_embedder.norm2",
-    "face_embedder_norm__placeholder": "condition_embedder.face_embedder.norm3",
-    "face_encoder.padding_tokens": "condition_embedder.face_embedder.padding_tokens",
-    # Face adapter mappings
-    "face_adapter.fuser_blocks": "face_adapter",
+    "face_encoder.conv1_local.conv": "face_encoder.conv1_local",
+    "face_encoder.conv2.conv": "face_encoder.conv2",
+    "face_encoder.conv3.conv": "face_encoder.conv3",
+    # Face adapter mappings are handled in a separate function
 }
 
 
-def convert_equal_linear_weight(key: str, state_dict: Dict[str, Any]) -> None:
-    """
-    Convert EqualLinear weights to standard Linear weights by applying the scale factor.
-    EqualLinear uses: F.linear(input, self.weight * self.scale, bias=self.bias)
-    where scale = (1 / sqrt(in_dim))
-    """
-    if ".weight" not in key:
-        return
-
-    in_dim = state_dict[key].shape[1]
-    scale = 1.0 / math.sqrt(in_dim)
-    state_dict[key] = state_dict[key] * scale
-
-
-def convert_equal_conv2d_weight(key: str, state_dict: Dict[str, Any]) -> None:
-    """
-    Convert EqualConv2d weights to standard Conv2d weights by applying the scale factor.
-    EqualConv2d uses: F.conv2d(input, self.weight * self.scale, bias=self.bias, ...)
-    where scale = 1 / sqrt(in_channel * kernel_size^2)
-    """
-    if ".weight" not in key or len(state_dict[key].shape) != 4:
-        return
-
-    out_channel, in_channel, kernel_size, kernel_size = state_dict[key].shape
-    scale = 1.0 / math.sqrt(in_channel * kernel_size**2)
-    state_dict[key] = state_dict[key] * scale
-
-
 # TODO: Verify this and simplify if possible.
-def convert_animate_motion_encoder_weights(key: str, state_dict: Dict[str, Any]) -> None:
+def convert_animate_motion_encoder_weights(key: str, state_dict: Dict[str, Any], final_conv_idx: int = 8) -> None:
     """
     Convert all motion encoder weights for Animate model.
-    This handles both EqualLinear (in linears) and EqualConv2d (in convs).
 
     In the original model:
     - All Linear layers in fc use EqualLinear
@@ -220,89 +184,135 @@ def convert_animate_motion_encoder_weights(key: str, state_dict: Dict[str, Any])
     Conversion strategy:
     1. Drop .kernel buffers (blur kernels)
     2. Rename sequential indices to named components (e.g., 0 -> conv2d, 1 -> bias_leaky_relu)
-    3. Scale EqualLinear and EqualConv2d weights
     """
     # Skip if not a weight, bias, or kernel
     if ".weight" not in key and ".bias" not in key and ".kernel" not in key:
         return
 
     # Handle Blur kernel buffers from original implementation.
-    # After renaming, these appear under: condition_embedder.motion_embedder.convs.*.conv{1,2}.0.kernel
-    # Diffusers constructs blur kernels procedurally (ConvLayer.blur_conv) so we must drop these keys
-    if ".kernel" in key and "condition_embedder.motion_embedder.convs" in key:
+    # After renaming, these appear under: motion_encoder.res_blocks.*.conv{2,skip}.blur_kernel
+    # Diffusers constructs blur kernels as a non-persistent buffer so we must drop these keys
+    if ".kernel" in key and "motion_encoder" in key:
         # Remove unexpected blur kernel buffers to avoid strict load errors
         state_dict.pop(key, None)
         return
 
     # Rename Sequential indices to named components in ConvLayer and ResBlock
-    # This must happen BEFORE weight scaling because we need to rename the keys first
-    # Original: convs.X.Y.weight/bias or convs.X.conv1/conv2/skip.Y.weight/bias
-    # Target: convs.X.conv2d.weight or convs.X.conv1/conv2/skip.conv2d.weight or .bias_leaky_relu
-    if ".convs." in key and (".weight" in key or ".bias" in key):
+    if ".enc.net_app.convs." in key and (".weight" in key or ".bias" in key):
         parts = key.split(".")
 
         # Find the sequential index (digit) after convs or after conv1/conv2/skip
         # Examples:
-        # - convs.0.0.weight -> convs.0.conv2d.weight (ConvLayer, no blur)
-        # - convs.0.1.weight -> convs.0.conv2d.weight (ConvLayer, with blur at index 0)
-        # - convs.0.1.bias -> convs.0.bias_leaky_relu (FusedLeakyReLU)
-        # - convs.1.conv1.1.weight -> convs.1.conv1.conv2d.weight (ResBlock ConvLayer)
-        # - convs.1.conv1.2.bias -> convs.1.conv1.bias_leaky_relu (ResBlock FusedLeakyReLU)
-        # - convs.8.weight -> unchanged (final Conv2d, not in Sequential)
+        # - enc.net_app.convs.0.0.weight -> conv_in.weight (initial conv layer weight)
+        # - enc.net_app.convs.0.1.bias -> conv_in.act_fn.bias (initial conv layer bias)
+        # - enc.net_app.convs.{n:1-7}.conv1.0.weight -> res_blocks.{(n-1):0-6}.conv1.weight (conv1 weight)
+        #     - e.g. enc.net_app.convs.1.conv1.0.weight -> res_blocks.0.conv1.weight
+        # - enc.net_app.convs.{n:1-7}.conv1.1.bias -> res_blocks.{(n-1):0-6}.conv1.act_fn.bias (conv1 bias)
+        #     - e.g. enc.net_app.convs.1.conv1.1.bias -> res_blocks.0.conv1.act_fn.bias
+        # - enc.net_app.convs.{n:1-7}.conv2.1.weight -> res_blocks.{(n-1):0-6}.conv2.weight (conv2 weight)
+        # - enc.net_app.convs.1.conv2.2.bias -> res_blocks.0.conv2.act_fn.bias (conv2 bias)
+        # - enc.net_app.convs.{n:1-7}.skip.1.weight -> res_blocks.{(n-1):0-6}.conv_skip.weight (skip conv weight)
+        # - enc.net_app.convs.8 -> conv_out (final conv layer)
 
-        # Check if we have a digit as second-to-last part before .weight or .bias
-        # But we need to distinguish between Sequential indices (convs.X.Y.weight)
-        # and ModuleList indices (convs.X.weight)
-        # We only rename if there are at least 3 parts after finding 'convs'
         convs_idx = parts.index("convs") if "convs" in parts else -1
-        if (
-            convs_idx >= 0 and len(parts) - convs_idx > 3
-        ):  # e.g., ['convs', '0', '0', 'weight'] has 4 parts after convs
-            if len(parts) >= 2 and parts[-2].isdigit():
+        if convs_idx >= 0 and len(parts) - convs_idx >= 2:
+            bias = False
+            # The nn.Sequential index will always follow convs
+            sequential_idx = int(parts[convs_idx + 1])
+            if sequential_idx == 0:
                 if key.endswith(".weight"):
-                    # Replace digit index with 'conv2d' for EqualConv2d weight parameters
-                    parts[-2] = "conv2d"
-                    new_key = ".".join(parts)
-                    state_dict[new_key] = state_dict.pop(key)
-                    # Update key for subsequent processing
-                    key = new_key
+                    new_key = "motion_encoder.conv_in.weight"
                 elif key.endswith(".bias"):
-                    # Replace digit index + .bias with 'bias_leaky_relu' for FusedLeakyReLU bias
-                    new_key = ".".join(parts[:-2]) + ".bias_leaky_relu"
-                    state_dict[new_key] = state_dict.pop(key)
-                    # Bias doesn't need scaling, we're done
-                    return
+                    new_key = "motion_encoder.conv_in.act_fn.bias"
+                    bias = True
+            elif sequential_idx == final_conv_idx:
+                if key.endswith(".weight"):
+                    new_key = "motion_encoder.conv_out.weight"
+            else:
+                # Intermediate .convs. layers, which get mapped to .res_blocks.
+                prefix = "motion_encoder.res_blocks."
 
-    # Skip blur_conv weights that are already initialized in diffusers
-    if "blur_conv.weight" in key:
-        return
+                layer_name = parts[convs_idx + 2]
+                if layer_name == "skip":
+                    layer_name = "conv_skip"
 
-    # Skip bias_leaky_relu as it doesn't need any transformation
-    if "bias_leaky_relu" in key:
-        return
+                if key.endswith(".weight"):
+                    param_name = "weight"
+                elif key.endswith(".bias"):
+                    param_name = "act_fn.bias"
+                    bias = True
 
-    # Scale EqualLinear weights in linear layers
-    if ".linears." in key and ".weight" in key:
-        convert_equal_linear_weight(key, state_dict)
-        return
+                suffix_parts = [str(sequential_idx - 1), layer_name, param_name]
+                suffix = ".".join(suffix_parts)
+                new_key = prefix + suffix
 
-    # Scale EqualConv2d weights in convolution layers
-    if ".convs." in key and ".weight" in key:
-        # Two cases:
-        # 1. ConvLayer with EqualConv2d: convs.<i>.conv2d.weight (after renaming)
-        # 2. Direct EqualConv2d (last conv): convs.<i>.weight (where <i> is a single digit)
-        if ".conv2d.weight" in key:
-            convert_equal_conv2d_weight(key, state_dict)
+            param = state_dict.pop(key)
+            if bias:
+                param = param.squeeze()
+            state_dict[new_key] = param
             return
-        elif key.split(".")[-2].isdigit() and key.endswith(".weight"):
-            # This handles keys like "convs.7.weight" where the second-to-last part is a digit
-            convert_equal_conv2d_weight(key, state_dict)
-            return
+        return
+    return
+
+
+def convert_animate_face_adapter_weights(key: str, state_dict: Dict[str, Any]) -> None:
+    """
+    Convert face adapter weights for the Animate model.
+
+    The original model uses a fused KV projection but the diffusers models uses separate K and V projections.
+    """
+    # Skip if not a weight or bias
+    if ".weight" not in key and ".bias" not in key:
+        return
+
+    prefix = "face_adapter."
+    if ".fuser_blocks." in key:
+        parts = key.split(".")
+
+        module_list_idx = parts.index("fuser_blocks") if "fuser_blocks" in parts else -1
+        if module_list_idx >= 0 and (len(parts) - 1) - module_list_idx == 3:
+            block_idx = parts[module_list_idx + 1]
+            layer_name = parts[module_list_idx + 2]
+            param_name = parts[module_list_idx + 3]
+
+            if layer_name == "linear1_kv":
+                layer_name_k = "to_k"
+                layer_name_v = "to_v"
+
+                suffix_k = ".".join([block_idx, layer_name_k, param_name])
+                suffix_v = ".".join([block_idx, layer_name_v, param_name])
+                new_key_k = prefix + suffix_k
+                new_key_v = prefix + suffix_v
+
+                kv_proj = state_dict.pop(key)
+                k_proj, v_proj = torch.chunk(kv_proj, 2, dim=0)
+                state_dict[new_key_k] = k_proj
+                state_dict[new_key_v] = v_proj
+                return
+            else:
+                if layer_name == "q_norm":
+                    new_layer_name = "norm_q"
+                elif layer_name == "k_norm":
+                    new_layer_name = "norm_k"
+                elif layer_name == "linear1_q":
+                    new_layer_name = "to_q"
+                elif layer_name == "linear2":
+                    new_layer_name = "to_out"
+
+                suffix_parts = [block_idx, new_layer_name, param_name]
+                suffix = ".".join(suffix_parts)
+                new_key = prefix + suffix
+                state_dict[new_key] = state_dict.pop(key)
+                return
+    return
 
 
 TRANSFORMER_SPECIAL_KEYS_REMAP = {}
 VACE_TRANSFORMER_SPECIAL_KEYS_REMAP = {}
-ANIMATE_TRANSFORMER_SPECIAL_KEYS_REMAP = {"condition_embedder.motion_embedder": convert_animate_motion_encoder_weights}
+ANIMATE_TRANSFORMER_SPECIAL_KEYS_REMAP = {
+    "motion_encoder": convert_animate_motion_encoder_weights,
+    "face_adapter": convert_animate_face_adapter_weights,
+}
 
 
 def update_state_dict_(state_dict: Dict[str, Any], old_key: str, new_key: str) -> Dict[str, Any]:
@@ -580,7 +590,14 @@ def get_transformer_config(model_type: str) -> Tuple[Dict[str, Any], ...]:
                 "qk_norm": "rms_norm_across_heads",
                 "text_dim": 4096,
                 "rope_max_seq_len": 1024,
-                "pos_embed_seq_len": 257 * 2,
+                "pos_embed_seq_len": None,
+                "motion_encoder_size": 512,  # Start of Wan Animate-specific configs
+                "motion_style_dim": 512,
+                "motion_dim": 20,
+                "motion_encoder_dim": 512,
+                "face_encoder_hidden_dim": 1024,
+                "face_encoder_num_heads": 4,
+                "inject_face_latents_blocks": 5,
             },
         }
         RENAME_DICT = ANIMATE_TRANSFORMER_KEYS_RENAME_DICT
@@ -619,18 +636,6 @@ def convert_transformer(model_type: str, stage: str = None):
             if special_key not in key:
                 continue
             handler_fn_inplace(key, original_state_dict)
-
-    # For Animate model, add blur_conv weights from the initialized model
-    # These are procedurally generated in the diffusers ConvLayer and not present in original checkpoint
-    if "Animate" in model_type:
-        # Create a temporary model on CPU to get the blur_conv weights
-        with torch.device("cpu"):
-            temp_transformer = WanAnimateTransformer3DModel.from_config(diffusers_config)
-        temp_model_state = temp_transformer.state_dict()
-        for key in temp_model_state.keys():
-            if "blur_conv.weight" in key and "motion_embedder" in key:
-                original_state_dict[key] = temp_model_state[key]
-        del temp_transformer
 
     # Load state dict into the meta model, which will materialize the tensors
     transformer.load_state_dict(original_state_dict, strict=True, assign=True)
