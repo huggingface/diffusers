@@ -1420,7 +1420,10 @@ class PipelineTesterMixin:
     @unittest.skipIf(torch_device not in ["cuda", "xpu"], reason="float16 requires CUDA or XPU")
     @require_accelerator
     def test_save_load_float16(self, expected_max_diff=1e-2):
-        components = self.get_dummy_components(dtype=torch.float16)
+        components = self.get_dummy_components()
+        for name, module in components.items():
+            if hasattr(module, "half"):
+                components[name] = module.to(torch_device).half()
 
         pipe = self.pipeline_class(**components)
         for component in pipe.components.values():

@@ -155,6 +155,43 @@ class Wan22PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     def test_attention_slicing_forward_pass(self):
         pass
 
+    @unittest.skipIf(torch_device not in ["cuda", "xpu"], reason="float16 requires CUDA or XPU")
+    def test_save_load_float16(self, expected_max_diff=1e-2):
+        # Use get_dummy_components with dtype parameter instead of converting components
+        components = self.get_dummy_components(dtype=torch.float16)
+        pipe = self.pipeline_class(**components)
+        for component in pipe.components.values():
+            if hasattr(component, "set_default_attn_processor"):
+                component.set_default_attn_processor()
+        pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(torch_device)
+        output = pipe(**inputs)[0]
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            pipe.save_pretrained(tmpdir)
+            pipe_loaded = self.pipeline_class.from_pretrained(tmpdir, torch_dtype=torch.float16)
+            for component in pipe_loaded.components.values():
+                if hasattr(component, "set_default_attn_processor"):
+                    component.set_default_attn_processor()
+            pipe_loaded.to(torch_device)
+            pipe_loaded.set_progress_bar_config(disable=None)
+
+        for name, component in pipe_loaded.components.items():
+            if hasattr(component, "dtype"):
+                self.assertTrue(
+                    component.dtype == torch.float16,
+                    f"`{name}.dtype` switched from `float16` to {component.dtype} after loading.",
+                )
+
+        inputs = self.get_dummy_inputs(torch_device)
+        output_loaded = pipe_loaded(**inputs)[0]
+        max_diff = np.abs(output.detach().cpu().numpy() - output_loaded.detach().cpu().numpy()).max()
+        self.assertLess(
+            max_diff, expected_max_diff, "The output of the fp16 pipeline changed after saving and loading."
+        )
+
     def test_save_load_optional_components(self, expected_max_difference=1e-4):
         optional_component = "transformer"
 
@@ -215,7 +252,7 @@ class Wan225BPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     test_xformers_attention = False
     supports_dduf = False
 
-    def get_dummy_components(self, dtype=torch.float32):
+    def get_dummy_components(self):
         torch.manual_seed(0)
         vae = AutoencoderKLWan(
             base_dim=3,
@@ -231,11 +268,11 @@ class Wan225BPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             scale_factor_spatial=16,
             scale_factor_temporal=4,
             temperal_downsample=[False, True, True],
-        ).to(dtype=dtype)
+        )
 
         torch.manual_seed(0)
         scheduler = UniPCMultistepScheduler(prediction_type="flow_prediction", use_flow_sigmas=True, flow_shift=3.0)
-        text_encoder = T5EncoderModel.from_pretrained("hf-internal-testing/tiny-random-t5", dtype=dtype)
+        text_encoder = T5EncoderModel.from_pretrained("hf-internal-testing/tiny-random-t5")
         tokenizer = AutoTokenizer.from_pretrained("hf-internal-testing/tiny-random-t5")
 
         torch.manual_seed(0)
@@ -252,7 +289,7 @@ class Wan225BPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             cross_attn_norm=True,
             qk_norm="rms_norm_across_heads",
             rope_max_seq_len=32,
-        ).to(dtype=dtype)
+        )
 
         components = {
             "transformer": transformer,
