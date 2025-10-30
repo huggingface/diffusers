@@ -107,6 +107,9 @@ LoRA is a fast and lightweight training method that inserts and trains a signifi
 
 [[autodoc]] loaders.lora_pipeline.QwenImageLoraLoaderMixin
 
+## KandinskyLoraLoaderMixin
+[[autodoc]] loaders.lora_pipeline.KandinskyLoraLoaderMixin
+
 ## LoraBaseMixin
 
 [[autodoc]] loaders.lora_base.LoraBaseMixin
