@@ -50,10 +50,10 @@ class ContextParallelConfig:
             for long sequences with limited memory/bandwidth. Number of devices to use for ring attention within a
             context parallel region. Must be a divisor of the total number of devices in the context parallel mesh.
         ulysses_degree (`int`, *optional*, defaults to `1`):
-            Number of devices to use for Ulysses Attention. Sequence split across devices. Each device computes local
-            QKV, then all-gathers all KV chunks to compute full attention in one pass. Higher memory (stores all KV),
-            requires high-bandwidth all-to-all communication, but lower latency. Best for moderate sequences with good
-            interconnect bandwidth.
+            Number of devices to use for Ulysses Attention. Sequence split is across devices. Each device computes
+            local QKV, then all-gathers all KV chunks to compute full attention in one pass. Higher memory (stores all
+            KV), requires high-bandwidth all-to-all communication, but lower latency. Best for moderate sequences with
+            good interconnect bandwidth.
         convert_to_fp32 (`bool`, *optional*, defaults to `True`):
             Whether to convert output and LSE to float32 for ring attention numerical stability.
         rotate_method (`str`, *optional*, defaults to `"allgather"`):
