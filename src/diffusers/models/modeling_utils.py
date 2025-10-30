@@ -1509,7 +1509,6 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
 
         attention_classes = (Attention, MochiAttention, AttentionModuleMixin)
 
-        # Step 1: Validate attention backend supports context parallelism if enabled
         if config.context_parallel_config is not None:
             for module in self.modules():
                 if not isinstance(module, attention_classes):
