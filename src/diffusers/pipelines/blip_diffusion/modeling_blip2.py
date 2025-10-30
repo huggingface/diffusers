@@ -14,7 +14,6 @@
 from typing import Optional, Tuple, Union
 
 import torch
-import torch.utils.checkpoint
 from torch import nn
 from transformers import BertTokenizer
 from transformers.activations import QuickGELUActivation as QuickGELU

@@ -276,12 +276,8 @@ class FlaxDiffusionPipeline(ConfigMixin, PushToHubMixin):
                 Can be used to overwrite load and saveable variables (the pipeline components) of the specific pipeline
                 class. The overwritten components are passed directly to the pipelines `__init__` method.
 
-        <Tip>
-
-        To use private or [gated models](https://huggingface.co/docs/hub/models-gated#gated-models), log-in with `hf
-        auth login`.
-
-        </Tip>
+        > [!TIP] > To use private or [gated models](https://huggingface.co/docs/hub/models-gated#gated-models), log-in
+        with `hf > auth login`.
 
         Examples:
 

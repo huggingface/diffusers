@@ -45,11 +45,8 @@ There are 4 configurations (`SafetyConfig.WEAK`, `SafetyConfig.MEDIUM`, `SafetyC
 >>> out = pipeline(prompt=prompt, **SafetyConfig.MAX)
 ```
 
-<Tip>
-
-Make sure to check out the Stable Diffusion [Tips](overview#tips) section to learn how to explore the tradeoff between scheduler speed and quality, and how to reuse pipeline components efficiently!
-
-</Tip>
+> [!TIP]
+> Make sure to check out the Stable Diffusion [Tips](overview#tips) section to learn how to explore the tradeoff between scheduler speed and quality, and how to reuse pipeline components efficiently!
 
 ## StableDiffusionPipelineSafe
 

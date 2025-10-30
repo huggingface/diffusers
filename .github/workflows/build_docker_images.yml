@@ -42,18 +42,39 @@ jobs:
           CHANGED_FILES: ${{ steps.file_changes.outputs.all }}
         run: |
           echo "$CHANGED_FILES"
-          for FILE in $CHANGED_FILES; do 
+          ALLOWED_IMAGES=(
+            diffusers-pytorch-cpu
+            diffusers-pytorch-cuda
+            diffusers-pytorch-xformers-cuda
+            diffusers-pytorch-minimum-cuda
+            diffusers-doc-builder
+          )
+
+          declare -A IMAGES_TO_BUILD=()
+
+          for FILE in $CHANGED_FILES; do
             # skip anything that isn't still on disk
-            if [[ ! -f "$FILE" ]]; then
+            if [[ ! -e "$FILE" ]]; then
               echo "Skipping removed file $FILE"
               continue
-            fi           
-            if [[ "$FILE" == docker/*Dockerfile ]]; then
-              DOCKER_PATH="${FILE%/Dockerfile}"
-              DOCKER_TAG=$(basename "$DOCKER_PATH")
-              echo "Building Docker image for $DOCKER_TAG"
-              docker build -t "$DOCKER_TAG" "$DOCKER_PATH"
             fi
+
+            for IMAGE in "${ALLOWED_IMAGES[@]}"; do
+              if [[ "$FILE" == docker/${IMAGE}/* ]]; then
+                IMAGES_TO_BUILD["$IMAGE"]=1
+              fi
+            done
+          done
+
+          if [[ ${#IMAGES_TO_BUILD[@]} -eq 0 ]]; then
+            echo "No relevant Docker changes detected."
+            exit 0
+          fi
+
+          for IMAGE in "${!IMAGES_TO_BUILD[@]}"; do
+            DOCKER_PATH="docker/${IMAGE}"
+            echo "Building Docker image for $IMAGE"
+            docker build -t "$IMAGE" "$DOCKER_PATH"
           done
         if: steps.file_changes.outputs.all != ''
 
@@ -71,7 +92,6 @@ jobs:
       matrix:
         image-name:
           - diffusers-pytorch-cpu
-          - diffusers-pytorch-cuda
           - diffusers-pytorch-cuda
           - diffusers-pytorch-xformers-cuda
           - diffusers-pytorch-minimum-cuda

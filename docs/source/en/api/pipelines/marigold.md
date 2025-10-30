@@ -45,14 +45,11 @@ This work expanded Marigold to support new modalities such as **Surface Normals*
 (IID), introduced a training protocol for **Latent Consistency Models** (LCM), and demonstrated **High-Resolution** (HR) 
 processing capability.
 
-<Tip>
-
-The early Marigold models (`v1-0` and earlier) were optimized for best results with at least 10 inference steps.
-LCM models were later developed to enable high-quality inference in just 1 to 4 steps.
-Marigold models `v1-1` and later use the DDIM scheduler to achieve optimal 
-results in as few as 1 to 4 steps.
-
-</Tip>
+> [!TIP]
+> The early Marigold models (`v1-0` and earlier) were optimized for best results with at least 10 inference steps.
+> LCM models were later developed to enable high-quality inference in just 1 to 4 steps.
+> Marigold models `v1-1` and later use the DDIM scheduler to achieve optimal 
+> results in as few as 1 to 4 steps.
 
 ## Available Pipelines
 
@@ -78,29 +75,23 @@ The following is a summary of the recommended checkpoints, all of which produce 
 | [prs-eth/marigold-depth-v1-1](https://huggingface.co/prs-eth/marigold-depth-v1-1)                   | Depth        | Affine-invariant depth prediction assigns each pixel a value between 0 (near plane) and 1 (far plane), with both planes determined by the model during inference.                    |
 | [prs-eth/marigold-normals-v0-1](https://huggingface.co/prs-eth/marigold-normals-v0-1)               | Normals      | The surface normals predictions are unit-length 3D vectors in the screen space camera, with values in the range from -1 to 1.                                                        |
 | [prs-eth/marigold-iid-appearance-v1-1](https://huggingface.co/prs-eth/marigold-iid-appearance-v1-1) | Intrinsics   | InteriorVerse decomposition is comprised of Albedo and two BRDF material properties: Roughness and Metallicity.                                                                      | 
-| [prs-eth/marigold-iid-lighting-v1-1](https://huggingface.co/prs-eth/marigold-iid-lighting-v1-1)     | Intrinsics   | HyperSim decomposition of an image &nbsp\\(I\\)&nbsp is comprised of Albedo &nbsp\\(A\\), Diffuse shading &nbsp\\(S\\), and Non-diffuse residual &nbsp\\(R\\): &nbsp\\(I = A*S+R\\). |
+| [prs-eth/marigold-iid-lighting-v1-1](https://huggingface.co/prs-eth/marigold-iid-lighting-v1-1)     | Intrinsics   | HyperSim decomposition of an image $I$ is comprised of Albedo $A$, Diffuse shading $S$, and Non-diffuse residual $R$: $I = A*S+R$. |
 
-<Tip>
+> [!TIP]
+> Make sure to check out the Schedulers [guide](../../using-diffusers/schedulers) to learn how to explore the tradeoff 
+> between scheduler speed and quality, and see the [reuse components across pipelines](../../using-diffusers/loading#reuse-a-pipeline) section to learn how to 
+> efficiently load the same components into multiple pipelines. 
+> Also, to know more about reducing the memory usage of this pipeline, refer to the ["Reduce memory usage"] section 
+> [here](../../using-diffusers/svd#reduce-memory-usage).
 
-Make sure to check out the Schedulers [guide](../../using-diffusers/schedulers) to learn how to explore the tradeoff 
-between scheduler speed and quality, and see the [reuse components across pipelines](../../using-diffusers/loading#reuse-a-pipeline) section to learn how to 
-efficiently load the same components into multiple pipelines. 
-Also, to know more about reducing the memory usage of this pipeline, refer to the ["Reduce memory usage"] section 
-[here](../../using-diffusers/svd#reduce-memory-usage).
-
-</Tip>
-
-<Tip warning={true}>
-
-Marigold pipelines were designed and tested with the scheduler embedded in the model checkpoint.
-The optimal number of inference steps varies by scheduler, with no universal value that works best across all cases.
-To accommodate this, the `num_inference_steps` parameter in the pipeline's `__call__` method defaults to `None` (see the 
-API reference).
-Unless set explicitly, it inherits the value from the `default_denoising_steps` field in the checkpoint configuration 
-file (`model_index.json`).
-This ensures high-quality predictions when invoking the pipeline with only the `image` argument.
-
-</Tip>
+> [!WARNING]
+> Marigold pipelines were designed and tested with the scheduler embedded in the model checkpoint.
+> The optimal number of inference steps varies by scheduler, with no universal value that works best across all cases.
+> To accommodate this, the `num_inference_steps` parameter in the pipeline's `__call__` method defaults to `None` (see the 
+> API reference).
+> Unless set explicitly, it inherits the value from the `default_denoising_steps` field in the checkpoint configuration 
+> file (`model_index.json`).
+> This ensures high-quality predictions when invoking the pipeline with only the `image` argument.
 
 See also Marigold [usage examples](../../using-diffusers/marigold_usage).
 
