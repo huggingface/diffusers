@@ -238,19 +238,27 @@ class QwenImageLoopDenoiser(ModularPipelineBlocks):
 
     @torch.no_grad()
     def __call__(self, components: QwenImageModularPipeline, block_state: BlockState, i: int, t: torch.Tensor):
-        guider_input_fields = {
-            "encoder_hidden_states": ("prompt_embeds", "negative_prompt_embeds"),
-            "encoder_hidden_states_mask": ("prompt_embeds_mask", "negative_prompt_embeds_mask"),
-            "txt_seq_lens": ("txt_seq_lens", "negative_txt_seq_lens"),
+        guider_inputs = {
+            "encoder_hidden_states": (
+                getattr(block_state, "prompt_embeds", None),
+                getattr(block_state, "negative_prompt_embeds", None),
+            ),
+            "encoder_hidden_states_mask": (
+                getattr(block_state, "prompt_embeds_mask", None),
+                getattr(block_state, "negative_prompt_embeds_mask", None),
+            ),
+            "txt_seq_lens": (
+                getattr(block_state, "txt_seq_lens", None),
+                getattr(block_state, "negative_txt_seq_lens", None),
+            ),
         }
 
         components.guider.set_state(step=i, num_inference_steps=block_state.num_inference_steps, timestep=t)
-        guider_state = components.guider.prepare_inputs(block_state, guider_input_fields)
+        guider_state = components.guider.prepare_inputs(guider_inputs)
 
         for guider_state_batch in guider_state:
             components.guider.prepare_models(components.transformer)
-            cond_kwargs = guider_state_batch.as_dict()
-            cond_kwargs = {k: v for k, v in cond_kwargs.items() if k in guider_input_fields}
+            cond_kwargs = {input_name: getattr(guider_state_batch, input_name) for input_name in guider_inputs.keys()}
 
             # YiYi TODO: add cache context
             guider_state_batch.noise_pred = components.transformer(
@@ -328,19 +336,27 @@ class QwenImageEditLoopDenoiser(ModularPipelineBlocks):
 
     @torch.no_grad()
     def __call__(self, components: QwenImageModularPipeline, block_state: BlockState, i: int, t: torch.Tensor):
-        guider_input_fields = {
-            "encoder_hidden_states": ("prompt_embeds", "negative_prompt_embeds"),
-            "encoder_hidden_states_mask": ("prompt_embeds_mask", "negative_prompt_embeds_mask"),
-            "txt_seq_lens": ("txt_seq_lens", "negative_txt_seq_lens"),
+        guider_inputs = {
+            "encoder_hidden_states": (
+                getattr(block_state, "prompt_embeds", None),
+                getattr(block_state, "negative_prompt_embeds", None),
+            ),
+            "encoder_hidden_states_mask": (
+                getattr(block_state, "prompt_embeds_mask", None),
+                getattr(block_state, "negative_prompt_embeds_mask", None),
+            ),
+            "txt_seq_lens": (
+                getattr(block_state, "txt_seq_lens", None),
+                getattr(block_state, "negative_txt_seq_lens", None),
+            ),
         }
 
         components.guider.set_state(step=i, num_inference_steps=block_state.num_inference_steps, timestep=t)
-        guider_state = components.guider.prepare_inputs(block_state, guider_input_fields)
+        guider_state = components.guider.prepare_inputs(guider_inputs)
 
         for guider_state_batch in guider_state:
             components.guider.prepare_models(components.transformer)
-            cond_kwargs = guider_state_batch.as_dict()
-            cond_kwargs = {k: v for k, v in cond_kwargs.items() if k in guider_input_fields}
+            cond_kwargs = {input_name: getattr(guider_state_batch, input_name) for input_name in guider_inputs.keys()}
 
             # YiYi TODO: add cache context
             guider_state_batch.noise_pred = components.transformer(

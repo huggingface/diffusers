@@ -26,6 +26,10 @@ Utility and helper functions for working with 🤗 Diffusers.
 
 [[autodoc]] utils.load_image
 
+## load_video
+
+[[autodoc]] utils.load_video
+
 ## export_to_gif
 
 [[autodoc]] utils.export_to_gif

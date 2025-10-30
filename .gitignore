@@ -125,6 +125,9 @@ dmypy.json
 .vs
 .vscode
 
+# Cursor
+.cursor
+
 # Pycharm
 .idea
 
