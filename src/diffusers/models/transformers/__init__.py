@@ -18,6 +18,7 @@ if is_torch_available():
     from .transformer_2d import Transformer2DModel
     from .transformer_allegro import AllegroTransformer3DModel
     from .transformer_bria import BriaTransformer2DModel
+    from .transformer_bria_fibo import BriaFiboTransformer2DModel
     from .transformer_chroma import ChromaTransformer2DModel
     from .transformer_cogview3plus import CogView3PlusTransformer2DModel
     from .transformer_cogview4 import CogView4Transformer2DModel
