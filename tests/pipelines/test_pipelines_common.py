@@ -1420,10 +1420,7 @@ class PipelineTesterMixin:
     @unittest.skipIf(torch_device not in ["cuda", "xpu"], reason="float16 requires CUDA or XPU")
     @require_accelerator
     def test_save_load_float16(self, expected_max_diff=1e-2):
-        components = self.get_dummy_components()
-        for name, module in components.items():
-            if hasattr(module, "half"):
-                components[name] = module.to(torch_device).half()
+        components = self.get_dummy_components(dtype=torch.float16)
 
         pipe = self.pipeline_class(**components)
         for component in pipe.components.values():
@@ -1438,18 +1435,18 @@ class PipelineTesterMixin:
         with tempfile.TemporaryDirectory() as tmpdir:
             pipe.save_pretrained(tmpdir)
             pipe_loaded = self.pipeline_class.from_pretrained(tmpdir, torch_dtype=torch.float16)
-            for name, component in pipe_loaded.components.items():
+            for component in pipe_loaded.components.values():
                 if hasattr(component, "set_default_attn_processor"):
                     component.set_default_attn_processor()
-                if hasattr(component, "dtype"):
-                    self.assertTrue(
-                        component.dtype == torch.float16,
-                        f"`{name}.dtype` switched from `float16` to {component.dtype} after loading.",
-                    )
-                if hasattr(component, "half"):
-                    # Although all components for pipe_loaded should be float16 now, some submodules still use fp32, like in https://github.com/huggingface/transformers/blob/v4.57.1/src/transformers/models/t5/modeling_t5.py#L783, so we need to do the conversion again manally to align with the datatype we use in pipe exactly
-                    component = component.to(torch_device).half()
+            pipe_loaded.to(torch_device)
             pipe_loaded.set_progress_bar_config(disable=None)
+
+        for name, component in pipe_loaded.components.items():
+            if hasattr(component, "dtype"):
+                self.assertTrue(
+                    component.dtype == torch.float16,
+                    f"`{name}.dtype` switched from `float16` to {component.dtype} after loading.",
+                )
 
         inputs = self.get_dummy_inputs(torch_device)
         output_loaded = pipe_loaded(**inputs)[0]

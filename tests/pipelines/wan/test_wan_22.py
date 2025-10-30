@@ -51,7 +51,7 @@ class Wan22PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     test_xformers_attention = False
     supports_dduf = False
 
-    def get_dummy_components(self):
+    def get_dummy_components(self, dtype=torch.float32):
         torch.manual_seed(0)
         vae = AutoencoderKLWan(
             base_dim=3,
@@ -59,11 +59,11 @@ class Wan22PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             dim_mult=[1, 1, 1, 1],
             num_res_blocks=1,
             temperal_downsample=[False, True, True],
-        )
+        ).to(dtype=dtype)
 
         torch.manual_seed(0)
         scheduler = UniPCMultistepScheduler(prediction_type="flow_prediction", use_flow_sigmas=True, flow_shift=3.0)
-        text_encoder = T5EncoderModel.from_pretrained("hf-internal-testing/tiny-random-t5")
+        text_encoder = T5EncoderModel.from_pretrained("hf-internal-testing/tiny-random-t5", dtype=dtype)
         tokenizer = AutoTokenizer.from_pretrained("hf-internal-testing/tiny-random-t5")
 
         torch.manual_seed(0)
@@ -80,7 +80,7 @@ class Wan22PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             cross_attn_norm=True,
             qk_norm="rms_norm_across_heads",
             rope_max_seq_len=32,
-        )
+        ).to(dtype=dtype)
 
         torch.manual_seed(0)
         transformer_2 = WanTransformer3DModel(
@@ -96,7 +96,7 @@ class Wan22PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             cross_attn_norm=True,
             qk_norm="rms_norm_across_heads",
             rope_max_seq_len=32,
-        )
+        ).to(dtype=dtype)
 
         components = {
             "transformer": transformer,
@@ -215,7 +215,7 @@ class Wan225BPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     test_xformers_attention = False
     supports_dduf = False
 
-    def get_dummy_components(self):
+    def get_dummy_components(self, dtype=torch.float32):
         torch.manual_seed(0)
         vae = AutoencoderKLWan(
             base_dim=3,
@@ -231,11 +231,11 @@ class Wan225BPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             scale_factor_spatial=16,
             scale_factor_temporal=4,
             temperal_downsample=[False, True, True],
-        )
+        ).to(dtype=dtype)
 
         torch.manual_seed(0)
         scheduler = UniPCMultistepScheduler(prediction_type="flow_prediction", use_flow_sigmas=True, flow_shift=3.0)
-        text_encoder = T5EncoderModel.from_pretrained("hf-internal-testing/tiny-random-t5")
+        text_encoder = T5EncoderModel.from_pretrained("hf-internal-testing/tiny-random-t5", dtype=dtype)
         tokenizer = AutoTokenizer.from_pretrained("hf-internal-testing/tiny-random-t5")
 
         torch.manual_seed(0)
@@ -252,7 +252,7 @@ class Wan225BPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             cross_attn_norm=True,
             qk_norm="rms_norm_across_heads",
             rope_max_seq_len=32,
-        )
+        ).to(dtype=dtype)
 
         components = {
             "transformer": transformer,
