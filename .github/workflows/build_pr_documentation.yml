@@ -12,7 +12,33 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  check-links:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install uv
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+
+      - name: Install doc-builder
+        run: |
+          uv pip install --system git+https://github.com/huggingface/doc-builder.git@main
+
+      - name: Check documentation links
+        run: |
+          uv run doc-builder check-links docs/source/en
+
   build:
+    needs: check-links
     uses: huggingface/doc-builder/.github/workflows/build_pr_documentation.yml@main
     with:
       commit_sha: ${{ github.event.pull_request.head.sha }}

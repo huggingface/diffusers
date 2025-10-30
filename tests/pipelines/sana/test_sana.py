@@ -23,6 +23,7 @@ from transformers import Gemma2Config, Gemma2Model, GemmaTokenizer
 from diffusers import AutoencoderDC, FlowMatchEulerDiscreteScheduler, SanaPipeline, SanaTransformer2DModel
 
 from ...testing_utils import (
+    IS_GITHUB_ACTIONS,
     backend_empty_cache,
     enable_full_determinism,
     require_torch_accelerator,
@@ -303,6 +304,10 @@ class SanaPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     def test_float16_inference(self):
         # Requires higher tolerance as model seems very sensitive to dtype
         super().test_float16_inference(expected_max_diff=0.08)
+
+    @unittest.skipIf(IS_GITHUB_ACTIONS, reason="Skipping test inside GitHub Actions environment")
+    def test_layerwise_casting_inference(self):
+        super().test_layerwise_casting_inference()
 
 
 @slow
