@@ -22,6 +22,7 @@ from transformers import AutoTokenizer, T5EncoderModel
 from diffusers import AutoencoderKLWan, UniPCMultistepScheduler, WanPipeline, WanTransformer3DModel
 
 from ...testing_utils import (
+    require_accelerator,
     enable_full_determinism,
     torch_device,
 )
@@ -63,40 +64,22 @@ class Wan22PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         torch.manual_seed(0)
         scheduler = UniPCMultistepScheduler(prediction_type="flow_prediction", use_flow_sigmas=True, flow_shift=3.0)
-        text_encoder = T5EncoderModel.from_pretrained("hf-internal-testing/tiny-random-t5", dtype=dtype)
+        text_encoder = T5EncoderModel.from_pretrained("hf-internal-testing/tiny-random-t5", torch_dtype=dtype)
         tokenizer = AutoTokenizer.from_pretrained("hf-internal-testing/tiny-random-t5")
 
         torch.manual_seed(0)
-        transformer = WanTransformer3DModel(
-            patch_size=(1, 2, 2),
-            num_attention_heads=2,
-            attention_head_dim=12,
-            in_channels=16,
-            out_channels=16,
-            text_dim=32,
-            freq_dim=256,
-            ffn_dim=32,
-            num_layers=2,
-            cross_attn_norm=True,
-            qk_norm="rms_norm_across_heads",
-            rope_max_seq_len=32,
-        ).to(dtype=dtype)
+        # Use from_pretrained with a tiny model to ensure proper dtype handling
+        # This ensures _keep_in_fp32_modules and _skip_layerwise_casting_patterns are respected
+        transformer = WanTransformer3DModel.from_pretrained(
+            "Kaixuanliu/tiny-random-wan-transformer", 
+            torch_dtype=dtype
+        )
 
         torch.manual_seed(0)
-        transformer_2 = WanTransformer3DModel(
-            patch_size=(1, 2, 2),
-            num_attention_heads=2,
-            attention_head_dim=12,
-            in_channels=16,
-            out_channels=16,
-            text_dim=32,
-            freq_dim=256,
-            ffn_dim=32,
-            num_layers=2,
-            cross_attn_norm=True,
-            qk_norm="rms_norm_across_heads",
-            rope_max_seq_len=32,
-        ).to(dtype=dtype)
+        transformer_2 = WanTransformer3DModel.from_pretrained(
+            "Kaixuanliu/tiny-random-wan-transformer",
+            torch_dtype=dtype
+        )
 
         components = {
             "transformer": transformer,
@@ -156,6 +139,7 @@ class Wan22PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         pass
 
     @unittest.skipIf(torch_device not in ["cuda", "xpu"], reason="float16 requires CUDA or XPU")
+    @require_accelerator
     def test_save_load_float16(self, expected_max_diff=1e-2):
         # Use get_dummy_components with dtype parameter instead of converting components
         components = self.get_dummy_components(dtype=torch.float16)
