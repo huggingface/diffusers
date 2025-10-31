@@ -1556,12 +1556,24 @@ def _native_attention(
         world_size = _parallel_config.context_parallel_config.ulysses_degree
         group = ulysses_mesh.get_group()
 
-        B, S_Q_LOCAL, H, D = query.shape
-        _, S_KV_LOCAL, _, _ = key.shape
-        H_LOCAL = H // world_size
-        query = query.reshape(B, S_Q_LOCAL, world_size, H_LOCAL, D).permute(2, 1, 0, 3, 4).contiguous()
-        key = key.reshape(B, S_KV_LOCAL, world_size, H_LOCAL, D).permute(2, 1, 0, 3, 4).contiguous()
-        value = value.reshape(B, S_KV_LOCAL, world_size, H_LOCAL, D).permute(2, 1, 0, 3, 4).contiguous()
+        batch_size, seq_len_q_local, num_heads, head_dim = query.shape
+        _, seq_len_kv_local, _, _ = key.shape
+        num_heads_local = num_heads // world_size
+        query = (
+            query.reshape(batch_size, seq_len_q_local, world_size, num_heads_local, head_dim)
+            .permute(2, 1, 0, 3, 4)
+            .contiguous()
+        )
+        key = (
+            key.reshape(batch_size, seq_len_kv_local, world_size, num_heads_local, head_dim)
+            .permute(2, 1, 0, 3, 4)
+            .contiguous()
+        )
+        value = (
+            value.reshape(batch_size, seq_len_kv_local, world_size, num_heads_local, head_dim)
+            .permute(2, 1, 0, 3, 4)
+            .contiguous()
+        )
         query, key, value = (_all_to_all_single(x, group) for x in (query, key, value))
         query, key, value = (x.flatten(0, 1).permute(1, 2, 0, 3).contiguous() for x in (query, key, value))
         out = torch.nn.functional.scaled_dot_product_attention(
@@ -1574,11 +1586,17 @@ def _native_attention(
             scale=scale,
             enable_gqa=enable_gqa,
         )
-        out = out.reshape(B, H_LOCAL, world_size, S_Q_LOCAL, D).permute(2, 1, 0, 3, 4).contiguous()
+        out = (
+            out.reshape(batch_size, num_heads_local, world_size, seq_len_q_local, head_dim)
+            .permute(2, 1, 0, 3, 4)
+            .contiguous()
+        )
         out = _all_to_all_single(out, group)
         out = out.flatten(0, 1).permute(1, 2, 0, 3).contiguous()
     else:
-        raise ValueError("Native attention backend does not support context parallelism with ring_degree > 1, you could try to use ulysses Attention instead")
+        raise ValueError(
+            "Native attention backend does not support context parallelism with `ring_degree` > 1, try Ulysses Attention instead by specifying `ulysses_degree` > 1."
+        )
     return out
 
 
