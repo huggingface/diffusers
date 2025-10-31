@@ -1523,6 +1523,7 @@ def _native_flex_attention(
 @_AttentionBackendRegistry.register(
     AttentionBackendName.NATIVE,
     constraints=[_check_device, _check_shape],
+    supports_context_parallel=True,
 )
 def _native_attention(
     query: torch.Tensor,
