@@ -18,7 +18,7 @@ env:
   HF_HOME: /mnt/cache
   OMP_NUM_THREADS: 8
   MKL_NUM_THREADS: 8
-  HF_HUB_ENABLE_HF_TRANSFER: 1
+  HF_XET_HIGH_PERFORMANCE: 1
   PYTEST_TIMEOUT: 600
   RUN_SLOW: no
 
@@ -60,19 +60,16 @@ jobs:
 
     - name: Install dependencies
       run: |
-        python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
-        python -m uv pip install -e [quality,test]
+        uv pip install -e ".[quality]"
 
     - name: Environment
       run: |
-        python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
         python utils/print_env.py
 
     - name: Run fast PyTorch CPU tests
       if: ${{ matrix.config.framework == 'pytorch' }}
       run: |
-        python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
-        python -m pytest -n 4 --max-worker-restart=0 --dist=loadfile \
+        pytest -n 4 --max-worker-restart=0 --dist=loadfile \
           -s -v -k "not Flax and not Onnx" \
           --make-reports=tests_${{ matrix.config.report }} \
           tests/
@@ -80,9 +77,8 @@ jobs:
     - name: Run example PyTorch CPU tests
       if: ${{ matrix.config.framework == 'pytorch_examples' }}
       run: |
-        python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
-        python -m uv pip install peft timm
-        python -m pytest -n 4 --max-worker-restart=0 --dist=loadfile \
+        uv pip install ".[training]"
+        pytest -n 4 --max-worker-restart=0 --dist=loadfile \
           --make-reports=tests_${{ matrix.config.report }} \
           examples
 

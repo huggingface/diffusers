@@ -1,0 +1,10 @@
+torch 
+torchvision 
+transformers 
+sentencepiece 
+fastapi 
+uvicorn 
+ftfy
+accelerate
+xformers
+protobuf

@@ -49,7 +49,7 @@ EXAMPLE_DOC_STRING = """
     Examples:
         ```python
         >>> import torch
-        >>> from diffusers.utils import export_to_video
+        >>> from diffusers.utils import export_to_video, load_video
         >>> from diffusers import AutoencoderKLWan, WanVideoToVideoPipeline
         >>> from diffusers.schedulers.scheduling_unipc_multistep import UniPCMultistepScheduler
 
