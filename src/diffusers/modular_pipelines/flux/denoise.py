@@ -59,7 +59,7 @@ class FluxLoopDenoiser(ModularPipelineBlocks):
             ),
             InputParam(
                 "guidance",
-                required=True,
+                required=False,
                 type_hint=torch.Tensor,
                 description="Guidance scale as a tensor",
             ),
@@ -141,7 +141,7 @@ class FluxKontextLoopDenoiser(ModularPipelineBlocks):
             ),
             InputParam(
                 "guidance",
-                required=True,
+                required=False,
                 type_hint=torch.Tensor,
                 description="Guidance scale as a tensor",
             ),
@@ -182,6 +182,7 @@ class FluxKontextLoopDenoiser(ModularPipelineBlocks):
             latent_model_input = torch.cat([latent_model_input, image_latents], dim=1)
 
         timestep = t.expand(latents.shape[0]).to(latents.dtype)
+        print(f"{latents.shape=}, {timestep.shape=}")
         noise_pred = components.transformer(
             hidden_states=latent_model_input,
             timestep=timestep / 1000,

@@ -164,7 +164,13 @@ class AutoOffloadStrategy:
 
         device_type = execution_device.type
         device_module = getattr(torch, device_type, torch.cuda)
-        mem_on_device = device_module.mem_get_info(execution_device.index)[0]
+        try:
+            mem_on_device = device_module.mem_get_info(execution_device.index)[0]
+        except AttributeError:
+            try:
+                mem_on_device = device_module.recommended_max_memory()
+            except AttributeError:
+                raise NotImplementedError(f"Do not know how to obtain memory info for {str(device_module)}.")
         mem_on_device = mem_on_device - self.memory_reserve_margin
         if current_module_size < mem_on_device:
             return []
