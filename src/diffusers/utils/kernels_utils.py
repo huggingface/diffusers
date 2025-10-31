@@ -6,18 +6,25 @@ logger = get_logger(__name__)
 
 
 _DEFAULT_HUB_ID_FA3 = "kernels-community/flash-attn3"
+_DEFAULT_HUB_ID_SAGE = "kernels-community/sage_attention"
+_KERNEL_REVISION = {
+    # TODO: temporary revision for now. Remove when merged upstream into `main`.
+    _DEFAULT_HUB_ID_FA3: "fake-ops-return-probs",
+    _DEFAULT_HUB_ID_SAGE: None,
+}
 
 
-def _get_fa3_from_hub():
+def _get_kernel_from_hub(kernel_id):
     if not is_kernels_available():
         return None
     else:
         from kernels import get_kernel
 
         try:
-            # TODO: temporary revision for now. Remove when merged upstream into `main`.
-            flash_attn_3_hub = get_kernel(_DEFAULT_HUB_ID_FA3, revision="fake-ops-return-probs")
-            return flash_attn_3_hub
+            if kernel_id not in _KERNEL_REVISION:
+                raise NotImplementedError(f"{kernel_id} is not implemented in Diffusers.")
+            kernel_hub = get_kernel(kernel_id, revision=_KERNEL_REVISION.get(kernel_id))
+            return kernel_hub
         except Exception as e:
-            logger.error(f"An error occurred while fetching kernel '{_DEFAULT_HUB_ID_FA3}' from the Hub: {e}")
+            logger.error(f"An error occurred while fetching kernel '{kernel_id}' from the Hub: {e}")
             raise
