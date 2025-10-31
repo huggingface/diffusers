@@ -608,8 +608,7 @@ class FluxKontextRoPEInputsStep(ModularPipelineBlocks):
         height = 2 * (int(block_state.height) // (components.vae_scale_factor * 2))
         width = 2 * (int(block_state.width) // (components.vae_scale_factor * 2))
         latent_ids = FluxPipeline._prepare_latent_image_ids(None, height // 2, width // 2, device, dtype)
-        print(f"{latent_ids.shape=}, {img_ids.shape=}")
-
+        
         if img_ids is not None:
             latent_ids = torch.cat([latent_ids, img_ids], dim=0)
 
