@@ -18,13 +18,46 @@ import tempfile
 import unittest
 
 import numpy as np
+import PIL
 import torch
 
 from diffusers.image_processor import VaeImageProcessor
-from diffusers.modular_pipelines import FluxAutoBlocks, FluxModularPipeline, ModularPipeline
+from diffusers.modular_pipelines import (
+    FluxAutoBlocks,
+    FluxKontextAutoBlocks,
+    FluxKontextModularPipeline,
+    FluxModularPipeline,
+    ModularPipeline,
+)
+from diffusers.modular_pipelines.flux.modular_blocks import (
+    AUTO_BLOCKS_KONTEXT,
+    FluxKontextAutoVaeEncoderStep,
+    FluxKontextProcessImagesInputStep,
+    FluxKontextVaeEncoderStep,
+    FluxVaeEncoderDynamicStep,
+)
+from diffusers.modular_pipelines.modular_pipeline_utils import InsertableDict
 
 from ...testing_utils import floats_tensor, torch_device
 from ..test_modular_pipelines_common import ModularPipelineTesterMixin
+
+
+# Because we should disable `auto_resize` during tests.
+FluxKontextVaeEncoderBlocks = InsertableDict(
+    [
+        ("preprocess", FluxKontextProcessImagesInputStep(_auto_resize=False)),
+        ("encode", FluxVaeEncoderDynamicStep(sample_mode="argmax")),
+    ]
+)
+FluxKontextVaeEncoderStep.block_classes = FluxKontextVaeEncoderBlocks.values()
+FluxKontextVaeEncoderStep.block_names = FluxKontextVaeEncoderBlocks.keys()
+FluxKontextAutoVaeEncoderStep.block_classes = [FluxKontextVaeEncoderStep]
+
+AUTO_BLOCKS_KONTEXT = AUTO_BLOCKS_KONTEXT.copy()
+AUTO_BLOCKS_KONTEXT["image_encoder"] = FluxKontextAutoVaeEncoderStep
+
+FluxKontextAutoBlocks.block_classes = AUTO_BLOCKS_KONTEXT.values()
+FluxKontextAutoBlocks.block_names = AUTO_BLOCKS_KONTEXT.keys()
 
 
 class FluxModularTests:
@@ -104,3 +137,18 @@ class FluxImg2ImgModularPipelineFastTests(FluxModularTests, ModularPipelineTeste
             image_slices.append(image[0, -3:, -3:, -1].flatten())
 
         assert np.abs(image_slices[0] - image_slices[1]).max() < 1e-3
+
+
+class FluxKontextModularPipelineFastTests(FluxImg2ImgModularPipelineFastTests):
+    pipeline_class = FluxKontextModularPipeline
+    pipeline_blocks_class = FluxKontextAutoBlocks
+    repo = "hf-internal-testing/tiny-flux-kontext-pipe"
+
+    def get_dummy_inputs(self, device, seed=0):
+        inputs = super().get_dummy_inputs(device, seed)
+        image = PIL.Image.new("RGB", (32, 32), 0)
+        inputs["image"] = image
+        inputs["height"] = 8
+        inputs["width"] = 8
+        inputs["max_area"] = 8 * 8
+        return inputs

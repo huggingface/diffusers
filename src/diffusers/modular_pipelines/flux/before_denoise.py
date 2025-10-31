@@ -598,7 +598,7 @@ class FluxKontextRoPEInputsStep(ModularPipelineBlocks):
             and getattr(block_state, "image_width", None) is not None
         ):
             image_latent_height = 2 * (int(block_state.image_height) // (components.vae_scale_factor * 2))
-            image_latent_width = 2 * (int(block_state.width) // (components.vae_scale_factor * 2))
+            image_latent_width = 2 * (int(block_state.image_width) // (components.vae_scale_factor * 2))
             img_ids = FluxPipeline._prepare_latent_image_ids(
                 None, image_latent_height // 2, image_latent_width // 2, device, dtype
             )
@@ -608,6 +608,7 @@ class FluxKontextRoPEInputsStep(ModularPipelineBlocks):
         height = 2 * (int(block_state.height) // (components.vae_scale_factor * 2))
         width = 2 * (int(block_state.width) // (components.vae_scale_factor * 2))
         latent_ids = FluxPipeline._prepare_latent_image_ids(None, height // 2, width // 2, device, dtype)
+        print(f"{latent_ids.shape=}, {img_ids.shape=}")
 
         if img_ids is not None:
             latent_ids = torch.cat([latent_ids, img_ids], dim=0)
