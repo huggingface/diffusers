@@ -222,11 +222,6 @@ MELLON_OUTPUT_PARAMS = {
         "display": "output",
         "type": "string",
     },
-    "latents_preview": {
-        "label": "Latents Preview",
-        "display": "output",
-        "type": "latent",
-    },
 }
 
 
