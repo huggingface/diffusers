@@ -95,7 +95,7 @@ class FluxProcessImagesInputStep(ModularPipelineBlocks):
             ComponentSpec(
                 "image_processor",
                 VaeImageProcessor,
-                config=FrozenDict({"vae_scale_factor": 16}),
+                config=FrozenDict({"vae_scale_factor": 16, "vae_latent_channels": 16}),
                 default_creation_method="from_config",
             ),
         ]
