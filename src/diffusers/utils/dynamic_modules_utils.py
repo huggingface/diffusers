@@ -298,9 +298,10 @@ def get_cached_module_file(
     """
     # Download and cache module_file from the repo `pretrained_model_name_or_path` of grab it if it's a local file.
     pretrained_model_name_or_path = str(pretrained_model_name_or_path)
+    print(f"{pretrained_model_name_or_path=}")
 
     module_file_or_url = os.path.join(pretrained_model_name_or_path, module_file)
-
+    print(f"{module_file_or_url=}")
     if os.path.isfile(module_file_or_url):
         resolved_module_file = module_file_or_url
         submodule = "local"

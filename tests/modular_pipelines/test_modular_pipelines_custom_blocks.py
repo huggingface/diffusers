@@ -1,3 +1,20 @@
+# Copyright 2025 The HuggingFace Team. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import json
+import os
+import tempfile
 from collections import deque
 from typing import List
 
@@ -57,6 +74,58 @@ class DummyCustomBlockSimple(ModularPipelineBlocks):
         return components, state
 
 
+CODE_STR = """
+from diffusers.modular_pipelines import (
+    ComponentSpec,
+    InputParam,
+    ModularPipelineBlocks,
+    OutputParam,
+    PipelineState,
+    WanModularPipeline,
+)
+from typing import List
+
+class DummyCustomBlockSimple(ModularPipelineBlocks):
+    def __init__(self, use_dummy_model_component=False):
+        self.use_dummy_model_component = use_dummy_model_component
+        super().__init__()
+
+    @property
+    def expected_components(self):
+        if self.use_dummy_model_component:
+            return [ComponentSpec("transformer", FluxTransformer2DModel)]
+        else:
+            return []
+
+    @property
+    def inputs(self) -> List[InputParam]:
+        return [InputParam("prompt", type_hint=str, required=True, description="Prompt to use")]
+
+    @property
+    def intermediate_inputs(self) -> List[InputParam]:
+        return []
+
+    @property
+    def intermediate_outputs(self) -> List[OutputParam]:
+        return [
+            OutputParam(
+                "output_prompt",
+                type_hint=str,
+                description="Modified prompt",
+            )
+        ]
+
+    def __call__(self, components, state: PipelineState) -> PipelineState:
+        block_state = self.get_block_state(state)
+
+        old_prompt = block_state.prompt
+        block_state.output_prompt = "Modular diffusers + " + old_prompt
+        self.set_block_state(state, block_state)
+
+        return components, state
+"""
+
+
 class TestModularCustomBlocks:
     def _test_block_properties(self, block):
         assert not block.expected_components
@@ -79,6 +148,37 @@ class TestModularCustomBlocks:
 
         actual_inputs = [inp.name for inp in custom_block.inputs]
         actual_intermediate_outputs = [out.name for out in custom_block.intermediate_outputs]
+        assert sorted(output.values) == sorted(actual_inputs + actual_intermediate_outputs)
+
+        output_prompt = output.values["output_prompt"]
+        assert output_prompt.startswith("Modular diffusers + ")
+
+    def test_custom_block_saving_loading(self):
+        custom_block = DummyCustomBlockSimple()
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            custom_block.save_pretrained(tmpdir)
+            assert any("modular_config.json" in k for k in os.listdir(tmpdir))
+
+            with open(os.path.join(tmpdir, "modular_config.json"), "r") as f:
+                config = json.load(f)
+            auto_map = config["auto_map"]
+            assert auto_map == {"ModularPipelineBlocks": "test_modular_pipelines_custom_blocks.DummyCustomBlockSimple"}
+
+            # For now, the Python script that implements the custom block has to be manually pushed to the Hub.
+            # This is why, we have to separately save the Python script here.
+            code_path = os.path.join(tmpdir, "test_modular_pipelines_custom_blocks.py")
+            with open(code_path, "w") as f:
+                f.write(CODE_STR)
+
+            loaded_custom_block = ModularPipelineBlocks.from_pretrained(tmpdir, trust_remote_code=True)
+
+        pipe = loaded_custom_block.init_pipeline()
+        prompt = "Diffusers is nice"
+        output = pipe(prompt=prompt)
+
+        actual_inputs = [inp.name for inp in loaded_custom_block.inputs]
+        actual_intermediate_outputs = [out.name for out in loaded_custom_block.intermediate_outputs]
         assert sorted(output.values) == sorted(actual_inputs + actual_intermediate_outputs)
 
         output_prompt = output.values["output_prompt"]
