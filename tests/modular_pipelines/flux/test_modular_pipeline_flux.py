@@ -29,35 +29,9 @@ from diffusers.modular_pipelines import (
     FluxModularPipeline,
     ModularPipeline,
 )
-from diffusers.modular_pipelines.flux.modular_blocks import (
-    AUTO_BLOCKS_KONTEXT,
-    FluxKontextAutoVaeEncoderStep,
-    FluxKontextProcessImagesInputStep,
-    FluxKontextVaeEncoderStep,
-    FluxVaeEncoderDynamicStep,
-)
-from diffusers.modular_pipelines.modular_pipeline_utils import InsertableDict
 
 from ...testing_utils import floats_tensor, torch_device
 from ..test_modular_pipelines_common import ModularPipelineTesterMixin
-
-
-# Because we should disable `auto_resize` during tests.
-FluxKontextVaeEncoderBlocks = InsertableDict(
-    [
-        ("preprocess", FluxKontextProcessImagesInputStep(_auto_resize=False)),
-        ("encode", FluxVaeEncoderDynamicStep(sample_mode="argmax")),
-    ]
-)
-FluxKontextVaeEncoderStep.block_classes = FluxKontextVaeEncoderBlocks.values()
-FluxKontextVaeEncoderStep.block_names = FluxKontextVaeEncoderBlocks.keys()
-FluxKontextAutoVaeEncoderStep.block_classes = [FluxKontextVaeEncoderStep]
-
-AUTO_BLOCKS_KONTEXT = AUTO_BLOCKS_KONTEXT.copy()
-AUTO_BLOCKS_KONTEXT["image_encoder"] = FluxKontextAutoVaeEncoderStep
-
-FluxKontextAutoBlocks.block_classes = AUTO_BLOCKS_KONTEXT.values()
-FluxKontextAutoBlocks.block_names = AUTO_BLOCKS_KONTEXT.keys()
 
 
 class FluxModularTests:
@@ -147,8 +121,10 @@ class FluxKontextModularPipelineFastTests(FluxImg2ImgModularPipelineFastTests):
     def get_dummy_inputs(self, device, seed=0):
         inputs = super().get_dummy_inputs(device, seed)
         image = PIL.Image.new("RGB", (32, 32), 0)
+        _ = inputs.pop("strength")
         inputs["image"] = image
         inputs["height"] = 8
         inputs["width"] = 8
         inputs["max_area"] = 8 * 8
+        inputs["_auto_resize"] = False
         return inputs
