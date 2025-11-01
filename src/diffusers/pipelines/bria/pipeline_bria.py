@@ -15,7 +15,6 @@ from ...models import AutoencoderKL
 from ...models.transformers.transformer_bria import BriaTransformer2DModel
 from ...pipelines import DiffusionPipeline
 from ...pipelines.bria.pipeline_output import BriaPipelineOutput
-from ...pipelines.flux.pipeline_flux import calculate_shift, retrieve_timesteps
 from ...schedulers import (
     DDIMScheduler,
     EulerAncestralDiscreteScheduler,
@@ -31,6 +30,7 @@ from ...utils import (
     unscale_lora_layers,
 )
 from ...utils.torch_utils import randn_tensor
+from ..pipeline_utils import calculate_shift, retrieve_timesteps
 
 
 if is_torch_xla_available():
