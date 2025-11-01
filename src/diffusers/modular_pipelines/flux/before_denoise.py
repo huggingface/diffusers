@@ -598,7 +598,7 @@ class FluxKontextRoPEInputsStep(ModularPipelineBlocks):
             and getattr(block_state, "image_width", None) is not None
         ):
             image_latent_height = 2 * (int(block_state.image_height) // (components.vae_scale_factor * 2))
-            image_latent_width = 2 * (int(block_state.width) // (components.vae_scale_factor * 2))
+            image_latent_width = 2 * (int(block_state.image_width) // (components.vae_scale_factor * 2))
             img_ids = FluxPipeline._prepare_latent_image_ids(
                 None, image_latent_height // 2, image_latent_width // 2, device, dtype
             )

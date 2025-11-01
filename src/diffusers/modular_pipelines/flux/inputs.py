@@ -112,6 +112,10 @@ class FluxTextInputStep(ModularPipelineBlocks):
         block_state.prompt_embeds = block_state.prompt_embeds.view(
             block_state.batch_size * block_state.num_images_per_prompt, seq_len, -1
         )
+        pooled_prompt_embeds = block_state.pooled_prompt_embeds.repeat(1, block_state.num_images_per_prompt)
+        block_state.pooled_prompt_embeds = pooled_prompt_embeds.view(
+            block_state.batch_size * block_state.num_images_per_prompt, -1
+        )
         self.set_block_state(state, block_state)
 
         return components, state
