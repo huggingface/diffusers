@@ -307,7 +307,6 @@ class ModularPipelineBlocks(ConfigMixin, PushToHubMixin):
             "local_files_only",
             "local_dir",
             "proxies",
-            "resume_download",
             "revision",
             "subfolder",
             "token",
