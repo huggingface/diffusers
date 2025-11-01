@@ -143,26 +143,26 @@ def prompt_clean(text):
     return text
 
 
-def _compute_sequences(chunk_num: int, window_size: int, chunk_offset: int = 0):
-    """
-    Replicates MAGI's generate_sequences(...). Returns four int lists:
-    clip_start, clip_end, t_start, t_end (all length = chunk_num + window_size - 1 - offset).
-    """
+def _generate_sequences(chunk_num: int, window_size: int, chunk_offset: int = 0):
+    """Compute global and local (window) start/end indices for each stage of a sliding window over chunked frames
+    replicating MAGI's `generate_sequences()` to drive the auto-regressive denoising schedule."""
     start_index = chunk_offset
     end_index = chunk_num + window_size - 1
     clip_start = [max(chunk_offset, i - window_size + 1) for i in range(start_index, end_index)]
-    clip_end   = [min(chunk_num, i + 1)                   for i in range(start_index, end_index)]
-    t_start    = [max(0, i - chunk_num + 1)               for i in range(start_index, end_index)]
-    t_end      = [min(window_size, i - chunk_offset + 1) if i - chunk_offset < window_size else window_size
-                  for i in range(start_index, end_index)]
+    clip_end = [min(chunk_num, i + 1) for i in range(start_index, end_index)]
+    t_start = [max(0, i - chunk_num + 1) for i in range(start_index, end_index)]
+    t_end = [
+        min(window_size, i - chunk_offset + 1) if i - chunk_offset < window_size else window_size
+        for i in range(start_index, end_index)
+    ]
     return clip_start, clip_end, t_start, t_end
 
 class ARWindow:
     """
     Sliding window over temporal chunks, identical to MAGI's step/stage mapping.
 
-    - chunk_num: number of chunks
-    - window_size: number of chunks per stage
+    - chunk_num: number of total chunks
+    - window_size: max number of chunks processed in one stage
     - chunk_offset: prefix offset (0 for T2V)
     """
     def __init__(self, chunk_num: int, window_size: int, chunk_offset: int = 0):
@@ -172,25 +172,31 @@ class ARWindow:
         (self.clip_start,
          self.clip_end,
          self.t_start,
-         self.t_end) = _compute_sequences(chunk_num, window_size, chunk_offset)
+         self.t_end) = _generate_sequences(chunk_num, window_size, chunk_offset)
 
-    def total_forward_steps(self, num_steps: int) -> int:
-        per_stage = num_steps // self.window_size
-        return per_stage * (self.chunk_num + self.window_size - 1 - self.offset)
+    def calc_total_inference_steps(self, num_inference_steps: int) -> int:
+        steps_per_stage = num_inference_steps // self.window_size
+        return steps_per_stage * (self.chunk_num + self.window_size - 1 - self.offset)
 
-    def status(self, step: int, num_steps: int) -> Tuple[Tuple[int, int, int], Tuple[int, int, int, int]]:
+    def status(self, global_step_idx: int, num_inference_steps: int) -> Tuple[Tuple[int, int, int], Tuple[int, int, int, int]]:
         """
+        Get current stage and step indices, along with chunk indices.
         Returns:
-            (per_stage, stage, idx),
-            (chunk_start, chunk_end, t_start, t_end)
+            - steps_per_stage: How many steps are in each stage
+            - stage_idx: Current stage index
+            - local_step_idx: Local (to the stage) step index within that stage
+            - clip_start: Global starting chunk index included in the current stage
+            - clip_end: Global ending chunk index (exclusive) included in the current stage
+            - t_start: Local (to the window) starting chunk index within the current stage
+            - t_end: Local (to the window) ending chunk index (exclusive) within the current stage
         """
-        per_stage = num_steps // self.window_size
-        stage, idx = divmod(step, per_stage)
-        return (per_stage, stage, idx), (
-            self.clip_start[stage],
-            self.clip_end[stage],
-            self.t_start[stage],
-            self.t_end[stage],
+        steps_per_stage = num_inference_steps // self.window_size
+        stage_idx, local_step_idx = divmod(global_step_idx, steps_per_stage)
+        return (steps_per_stage, stage_idx, local_step_idx), (
+            self.clip_start[stage_idx],
+            self.clip_end[stage_idx],
+            self.t_start[stage_idx],
+            self.t_end[stage_idx],
         )
 
 
@@ -594,39 +600,39 @@ class Magi1Pipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
                 - "latents": torch.Tensor, clean latent chunk [1, C, chunk_width, H_lat, W_lat]
         """
         window = ARWindow(chunk_num=chunk_num, window_size=self.window_size, chunk_offset=0)
-        total_steps = window.total_forward_steps(num_inference_steps)
+        total_inference_steps = window.calc_total_inference_steps(num_inference_steps)
         denoise_counts = torch.zeros(chunk_num, dtype=torch.int32, device="cpu")
         
         # TODO: Initialize scheduler timesteps
         # self.scheduler.set_timesteps(num_inference_steps, device=device)
         # timesteps = self.scheduler.timesteps
         
-        with self.progress_bar(total=total_steps) as pbar:
-            for step in range(total_steps):
-                (per_stage, stage, idx), (c_start, c_end, t_start, t_end) = window.status(step, num_inference_steps)
+        with self.progress_bar(total=total_inference_steps) as pbar:
+            for global_step_idx in range(total_inference_steps):
+                (steps_per_stage, stage_idx, local_step_idx), (c_start, c_end, t_start, t_end) = window.status(global_step_idx, num_inference_steps)
 
                 # TODO: Implement the actual denoising step
                 # 1. Extract the window of latents for current stage
-                # latent_window = latents[:, :, c_start * self.chunk_width : c_end * self.chunk_width]
+                latent_window = latents[:, :, c_start * self.chunk_width : c_end * self.chunk_width]
                 
                 # 2. Extract corresponding prompt embeddings
-                # y_window = prompt_embeds[:, c_start:c_end]
-                # mask_window = prompt_mask[:, c_start:c_end]
+                prompt_embeds_window = prompt_embeds[:, c_start:c_end]
+                prompt_mask_window = prompt_mask[:, c_start:c_end]
                 
                 # 3. Get timesteps for current stage
                 # t = timesteps[???]  # Need to map stage/idx to timestep
                 
                 # 4. Forward through transformer
-                # noise_pred = self.transformer(
+                # velocity = self.transformer(
                 #     latent_window,
                 #     timestep=t,
-                #     encoder_hidden_states=y_window,
-                #     encoder_attention_mask=mask_window,
+                #     encoder_hidden_states=prompt_embeds_window,
+                #     encoder_attention_mask=prompt_mask_window,
                 #     **self._attention_kwargs or {},
                 # )
                 
                 # 5. Scheduler step to update latents
-                # latent_window = self.scheduler.step(noise_pred, t, latent_window).prev_sample
+                # latent_window = self.scheduler.step(velocity, t, latent_window).prev_sample
                 
                 # 6. Write back to main latents
                 # latents[:, :, c_start * self.chunk_width : c_end * self.chunk_width] = latent_window
