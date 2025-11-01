@@ -374,21 +374,21 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
         center_input_sample: bool = False,
         flip_sin_to_cos: bool = True,
         freq_shift: int = 0,
-        down_block_types: Tuple[str] = (
+        down_block_types: Tuple[str, ...] = (
             "CrossAttnDownBlockFlat",
             "CrossAttnDownBlockFlat",
             "CrossAttnDownBlockFlat",
             "DownBlockFlat",
         ),
         mid_block_type: Optional[str] = "UNetMidBlockFlatCrossAttn",
-        up_block_types: Tuple[str] = (
+        up_block_types: Tuple[str, ...] = (
             "UpBlockFlat",
             "CrossAttnUpBlockFlat",
             "CrossAttnUpBlockFlat",
             "CrossAttnUpBlockFlat",
         ),
         only_cross_attention: Union[bool, Tuple[bool]] = False,
-        block_out_channels: Tuple[int] = (320, 640, 1280, 1280),
+        block_out_channels: Tuple[int, ...] = (320, 640, 1280, 1280),
         layers_per_block: Union[int, Tuple[int]] = 2,
         downsample_padding: int = 1,
         mid_block_scale_factor: float = 1,

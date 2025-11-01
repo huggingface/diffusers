@@ -31,7 +31,7 @@ class TemporalDecoder(nn.Module):
         self,
         in_channels: int = 4,
         out_channels: int = 3,
-        block_out_channels: Tuple[int] = (128, 256, 512, 512),
+        block_out_channels: Tuple[int, ...] = (128, 256, 512, 512),
         layers_per_block: int = 2,
     ):
         super().__init__()
@@ -172,8 +172,8 @@ class AutoencoderKLTemporalDecoder(ModelMixin, AutoencoderMixin, ConfigMixin):
         self,
         in_channels: int = 3,
         out_channels: int = 3,
-        down_block_types: Tuple[str] = ("DownEncoderBlock2D",),
-        block_out_channels: Tuple[int] = (64,),
+        down_block_types: Tuple[str, ...] = ("DownEncoderBlock2D",),
+        block_out_channels: Tuple[int, ...] = (64,),
         layers_per_block: int = 1,
         latent_channels: int = 4,
         sample_size: int = 32,

@@ -293,14 +293,14 @@ class ControlNetXSAdapter(ModelMixin, ConfigMixin):
         self,
         conditioning_channels: int = 3,
         conditioning_channel_order: str = "rgb",
-        conditioning_embedding_out_channels: Tuple[int] = (16, 32, 96, 256),
+        conditioning_embedding_out_channels: Tuple[int, ...] = (16, 32, 96, 256),
         time_embedding_mix: float = 1.0,
         learn_time_embedding: bool = False,
         num_attention_heads: Union[int, Tuple[int]] = 4,
-        block_out_channels: Tuple[int] = (4, 8, 16, 16),
-        base_block_out_channels: Tuple[int] = (320, 640, 1280, 1280),
+        block_out_channels: Tuple[int, ...] = (4, 8, 16, 16),
+        base_block_out_channels: Tuple[int, ...] = (320, 640, 1280, 1280),
         cross_attention_dim: int = 1024,
-        down_block_types: Tuple[str] = (
+        down_block_types: Tuple[str, ...] = (
             "CrossAttnDownBlock2D",
             "CrossAttnDownBlock2D",
             "CrossAttnDownBlock2D",
@@ -436,7 +436,7 @@ class ControlNetXSAdapter(ModelMixin, ConfigMixin):
         time_embedding_mix: int = 1.0,
         conditioning_channels: int = 3,
         conditioning_channel_order: str = "rgb",
-        conditioning_embedding_out_channels: Tuple[int] = (16, 32, 96, 256),
+        conditioning_embedding_out_channels: Tuple[int, ...] = (16, 32, 96, 256),
     ):
         r"""
         Instantiate a [`ControlNetXSAdapter`] from a [`UNet2DConditionModel`].
@@ -529,14 +529,19 @@ class UNetControlNetXSModel(ModelMixin, ConfigMixin):
         self,
         # unet configs
         sample_size: Optional[int] = 96,
-        down_block_types: Tuple[str] = (
+        down_block_types: Tuple[str, ...] = (
             "CrossAttnDownBlock2D",
             "CrossAttnDownBlock2D",
             "CrossAttnDownBlock2D",
             "DownBlock2D",
         ),
-        up_block_types: Tuple[str] = ("UpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D"),
-        block_out_channels: Tuple[int] = (320, 640, 1280, 1280),
+        up_block_types: Tuple[str, ...] = (
+            "UpBlock2D",
+            "CrossAttnUpBlock2D",
+            "CrossAttnUpBlock2D",
+            "CrossAttnUpBlock2D",
+        ),
+        block_out_channels: Tuple[int, ...] = (320, 640, 1280, 1280),
         norm_num_groups: Optional[int] = 32,
         cross_attention_dim: Union[int, Tuple[int]] = 1024,
         transformer_layers_per_block: Union[int, Tuple[int]] = 1,
@@ -550,10 +555,10 @@ class UNetControlNetXSModel(ModelMixin, ConfigMixin):
         # additional controlnet configs
         time_embedding_mix: float = 1.0,
         ctrl_conditioning_channels: int = 3,
-        ctrl_conditioning_embedding_out_channels: Tuple[int] = (16, 32, 96, 256),
+        ctrl_conditioning_embedding_out_channels: Tuple[int, ...] = (16, 32, 96, 256),
         ctrl_conditioning_channel_order: str = "rgb",
         ctrl_learn_time_embedding: bool = False,
-        ctrl_block_out_channels: Tuple[int] = (4, 8, 16, 16),
+        ctrl_block_out_channels: Tuple[int, ...] = (4, 8, 16, 16),
         ctrl_num_attention_heads: Union[int, Tuple[int]] = 4,
         ctrl_max_norm_num_groups: int = 32,
     ):

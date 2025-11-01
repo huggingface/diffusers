@@ -601,7 +601,7 @@ class AutoencoderKLHunyuanImageRefiner(ModelMixin, ConfigMixin):
         in_channels: int = 3,
         out_channels: int = 3,
         latent_channels: int = 32,
-        block_out_channels: Tuple[int] = (128, 256, 512, 1024, 1024),
+        block_out_channels: Tuple[int, ...] = (128, 256, 512, 1024, 1024),
         layers_per_block: int = 2,
         spatial_compression_ratio: int = 16,
         temporal_compression_ratio: int = 4,

@@ -177,16 +177,21 @@ class UNet2DConditionModel(
         center_input_sample: bool = False,
         flip_sin_to_cos: bool = True,
         freq_shift: int = 0,
-        down_block_types: Tuple[str] = (
+        down_block_types: Tuple[str, ...] = (
             "CrossAttnDownBlock2D",
             "CrossAttnDownBlock2D",
             "CrossAttnDownBlock2D",
             "DownBlock2D",
         ),
         mid_block_type: Optional[str] = "UNetMidBlock2DCrossAttn",
-        up_block_types: Tuple[str] = ("UpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D"),
+        up_block_types: Tuple[str, ...] = (
+            "UpBlock2D",
+            "CrossAttnUpBlock2D",
+            "CrossAttnUpBlock2D",
+            "CrossAttnUpBlock2D",
+        ),
         only_cross_attention: Union[bool, Tuple[bool]] = False,
-        block_out_channels: Tuple[int] = (320, 640, 1280, 1280),
+        block_out_channels: Tuple[int, ...] = (320, 640, 1280, 1280),
         layers_per_block: Union[int, Tuple[int]] = 2,
         downsample_padding: int = 1,
         mid_block_scale_factor: float = 1,
@@ -486,10 +491,10 @@ class UNet2DConditionModel(
 
     def _check_config(
         self,
-        down_block_types: Tuple[str],
-        up_block_types: Tuple[str],
+        down_block_types: Tuple[str, ...],
+        up_block_types: Tuple[str, ...],
         only_cross_attention: Union[bool, Tuple[bool]],
-        block_out_channels: Tuple[int],
+        block_out_channels: Tuple[int, ...],
         layers_per_block: Union[int, Tuple[int]],
         cross_attention_dim: Union[int, Tuple[int]],
         transformer_layers_per_block: Union[int, Tuple[int], Tuple[Tuple[int]]],
