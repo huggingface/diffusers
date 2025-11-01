@@ -92,7 +92,7 @@ pipe = pipe.to("cuda")
 
 pipe.transformer.set_attention_backend(
     "flex"
-)                                       # <--- Sett attention bakend to Flex
+)                                       # <--- Set attention backend to Flex
 pipe.transformer.compile(
     mode="max-autotune-no-cudagraphs", 
     dynamic=True
@@ -115,7 +115,7 @@ export_to_video(output, "output.mp4", fps=24, quality=9)
 ```
 
 ### Diffusion Distilled model
-**⚠️ Warning!** all nocfg and diffusion distilled models should be infered wothout CFG (```guidance_scale=1.0```):
+**⚠️ Warning!** all nocfg and diffusion distilled models should be inferred without CFG (```guidance_scale=1.0```):
 
 ```python
 model_id = "ai-forever/Kandinsky-5.0-T2V-Lite-distilled16steps-5s-Diffusers"

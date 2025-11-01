@@ -1,48 +1,42 @@
-# Copyright 2025 Black Forest Labs, The HuggingFace Team and The InstantX Team. All rights reserved.
+# Copyright (c) Bria.ai. All rights reserved.
 #
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
+# This file is licensed under the Creative Commons Attribution-NonCommercial 4.0 International Public License (CC-BY-NC-4.0).
+# You may obtain a copy of the license at https://creativecommons.org/licenses/by-nc/4.0/
 #
-#     http://www.apache.org/licenses/LICENSE-2.0
+# You are free to share and adapt this material for non-commercial purposes provided you give appropriate credit,
+# indicate if changes were made, and do not use the material for commercial purposes.
 #
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
+# See the license for further details.
 import inspect
-from typing import Any, Optional
+from typing import Any, Dict, List, Optional, Tuple, Union
 
-import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
 from ...configuration_utils import ConfigMixin, register_to_config
-from ...loaders import FluxTransformer2DLoadersMixin, FromOriginalModelMixin, PeftAdapterMixin
-from ...utils import USE_PEFT_BACKEND, is_torch_npu_available, logging, scale_lora_layers, unscale_lora_layers
-from ...utils.torch_utils import maybe_allow_in_graph
-from .._modeling_parallel import ContextParallelInput, ContextParallelOutput
-from ..attention import AttentionMixin, AttentionModuleMixin, FeedForward
-from ..attention_dispatch import dispatch_attention_fn
-from ..cache_utils import CacheMixin
-from ..embeddings import (
-    CombinedTimestepGuidanceTextProjEmbeddings,
-    CombinedTimestepTextProjEmbeddings,
-    apply_rotary_emb,
-    get_1d_rotary_pos_embed,
+from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
+from ...models.attention_processor import Attention
+from ...models.embeddings import TimestepEmbedding, apply_rotary_emb, get_1d_rotary_pos_embed, get_timestep_embedding
+from ...models.modeling_outputs import Transformer2DModelOutput
+from ...models.modeling_utils import ModelMixin
+from ...models.transformers.transformer_bria import BriaAttnProcessor
+from ...utils import (
+    USE_PEFT_BACKEND,
+    logging,
+    scale_lora_layers,
+    unscale_lora_layers,
 )
-from ..modeling_outputs import Transformer2DModelOutput
-from ..modeling_utils import ModelMixin
+from ...utils.torch_utils import maybe_allow_in_graph
+from ..attention import AttentionModuleMixin, FeedForward
+from ..attention_dispatch import dispatch_attention_fn
 from ..normalization import AdaLayerNormContinuous, AdaLayerNormZero, AdaLayerNormZeroSingle
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-def _get_projections(attn: "FluxAttention", hidden_states, encoder_hidden_states=None):
+def _get_projections(attn: "BriaFiboAttention", hidden_states, encoder_hidden_states=None):
     query = attn.to_q(hidden_states)
     key = attn.to_k(hidden_states)
     value = attn.to_v(hidden_states)
@@ -56,7 +50,7 @@ def _get_projections(attn: "FluxAttention", hidden_states, encoder_hidden_states
     return query, key, value, encoder_query, encoder_key, encoder_value
 
 
-def _get_fused_projections(attn: "FluxAttention", hidden_states, encoder_hidden_states=None):
+def _get_fused_projections(attn: "BriaFiboAttention", hidden_states, encoder_hidden_states=None):
     query, key, value = attn.to_qkv(hidden_states).chunk(3, dim=-1)
 
     encoder_query = encoder_key = encoder_value = (None,)
@@ -66,13 +60,14 @@ def _get_fused_projections(attn: "FluxAttention", hidden_states, encoder_hidden_
     return query, key, value, encoder_query, encoder_key, encoder_value
 
 
-def _get_qkv_projections(attn: "FluxAttention", hidden_states, encoder_hidden_states=None):
+def _get_qkv_projections(attn: "BriaFiboAttention", hidden_states, encoder_hidden_states=None):
     if attn.fused_projections:
         return _get_fused_projections(attn, hidden_states, encoder_hidden_states)
     return _get_projections(attn, hidden_states, encoder_hidden_states)
 
 
-class FluxAttnProcessor:
+# Copied from diffusers.models.transformers.transformer_flux.FluxAttnProcessor with FluxAttnProcessor->BriaFiboAttnProcessor, FluxAttention->BriaFiboAttention
+class BriaFiboAttnProcessor:
     _attention_backend = None
     _parallel_config = None
 
@@ -82,7 +77,7 @@ class FluxAttnProcessor:
 
     def __call__(
         self,
-        attn: "FluxAttention",
+        attn: "BriaFiboAttention",
         hidden_states: torch.Tensor,
         encoder_hidden_states: torch.Tensor = None,
         attention_mask: Optional[torch.Tensor] = None,
@@ -139,145 +134,10 @@ class FluxAttnProcessor:
             return hidden_states
 
 
-class FluxIPAdapterAttnProcessor(torch.nn.Module):
-    """Flux Attention processor for IP-Adapter."""
-
-    _attention_backend = None
-    _parallel_config = None
-
-    def __init__(
-        self, hidden_size: int, cross_attention_dim: int, num_tokens=(4,), scale=1.0, device=None, dtype=None
-    ):
-        super().__init__()
-
-        if not hasattr(F, "scaled_dot_product_attention"):
-            raise ImportError(
-                f"{self.__class__.__name__} requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0."
-            )
-
-        self.hidden_size = hidden_size
-        self.cross_attention_dim = cross_attention_dim
-
-        if not isinstance(num_tokens, (tuple, list)):
-            num_tokens = [num_tokens]
-
-        if not isinstance(scale, list):
-            scale = [scale] * len(num_tokens)
-        if len(scale) != len(num_tokens):
-            raise ValueError("`scale` should be a list of integers with the same length as `num_tokens`.")
-        self.scale = scale
-
-        self.to_k_ip = nn.ModuleList(
-            [
-                nn.Linear(cross_attention_dim, hidden_size, bias=True, device=device, dtype=dtype)
-                for _ in range(len(num_tokens))
-            ]
-        )
-        self.to_v_ip = nn.ModuleList(
-            [
-                nn.Linear(cross_attention_dim, hidden_size, bias=True, device=device, dtype=dtype)
-                for _ in range(len(num_tokens))
-            ]
-        )
-
-    def __call__(
-        self,
-        attn: "FluxAttention",
-        hidden_states: torch.Tensor,
-        encoder_hidden_states: torch.Tensor = None,
-        attention_mask: Optional[torch.Tensor] = None,
-        image_rotary_emb: Optional[torch.Tensor] = None,
-        ip_hidden_states: Optional[list[torch.Tensor]] = None,
-        ip_adapter_masks: Optional[torch.Tensor] = None,
-    ) -> torch.Tensor:
-        batch_size = hidden_states.shape[0]
-
-        query, key, value, encoder_query, encoder_key, encoder_value = _get_qkv_projections(
-            attn, hidden_states, encoder_hidden_states
-        )
-
-        query = query.unflatten(-1, (attn.heads, -1))
-        key = key.unflatten(-1, (attn.heads, -1))
-        value = value.unflatten(-1, (attn.heads, -1))
-
-        query = attn.norm_q(query)
-        key = attn.norm_k(key)
-        ip_query = query
-
-        if encoder_hidden_states is not None:
-            encoder_query = encoder_query.unflatten(-1, (attn.heads, -1))
-            encoder_key = encoder_key.unflatten(-1, (attn.heads, -1))
-            encoder_value = encoder_value.unflatten(-1, (attn.heads, -1))
-
-            encoder_query = attn.norm_added_q(encoder_query)
-            encoder_key = attn.norm_added_k(encoder_key)
-
-            query = torch.cat([encoder_query, query], dim=1)
-            key = torch.cat([encoder_key, key], dim=1)
-            value = torch.cat([encoder_value, value], dim=1)
-
-        if image_rotary_emb is not None:
-            query = apply_rotary_emb(query, image_rotary_emb, sequence_dim=1)
-            key = apply_rotary_emb(key, image_rotary_emb, sequence_dim=1)
-
-        hidden_states = dispatch_attention_fn(
-            query,
-            key,
-            value,
-            attn_mask=attention_mask,
-            dropout_p=0.0,
-            is_causal=False,
-            backend=self._attention_backend,
-            parallel_config=self._parallel_config,
-        )
-        hidden_states = hidden_states.flatten(2, 3)
-        hidden_states = hidden_states.to(query.dtype)
-
-        if encoder_hidden_states is not None:
-            encoder_hidden_states, hidden_states = hidden_states.split_with_sizes(
-                [encoder_hidden_states.shape[1], hidden_states.shape[1] - encoder_hidden_states.shape[1]], dim=1
-            )
-            hidden_states = attn.to_out[0](hidden_states)
-            hidden_states = attn.to_out[1](hidden_states)
-            encoder_hidden_states = attn.to_add_out(encoder_hidden_states)
-
-            # IP-adapter
-            ip_attn_output = torch.zeros_like(hidden_states)
-
-            for current_ip_hidden_states, scale, to_k_ip, to_v_ip in zip(
-                ip_hidden_states, self.scale, self.to_k_ip, self.to_v_ip
-            ):
-                ip_key = to_k_ip(current_ip_hidden_states)
-                ip_value = to_v_ip(current_ip_hidden_states)
-
-                ip_key = ip_key.view(batch_size, -1, attn.heads, attn.head_dim)
-                ip_value = ip_value.view(batch_size, -1, attn.heads, attn.head_dim)
-
-                current_ip_hidden_states = dispatch_attention_fn(
-                    ip_query,
-                    ip_key,
-                    ip_value,
-                    attn_mask=None,
-                    dropout_p=0.0,
-                    is_causal=False,
-                    backend=self._attention_backend,
-                    parallel_config=self._parallel_config,
-                )
-                current_ip_hidden_states = current_ip_hidden_states.reshape(batch_size, -1, attn.heads * attn.head_dim)
-                current_ip_hidden_states = current_ip_hidden_states.to(ip_query.dtype)
-                ip_attn_output += scale * current_ip_hidden_states
-
-            return hidden_states, encoder_hidden_states, ip_attn_output
-        else:
-            return hidden_states
-
-
-class FluxAttention(torch.nn.Module, AttentionModuleMixin):
-    _default_processor_cls = FluxAttnProcessor
-    _available_processors = [
-        FluxAttnProcessor,
-        FluxIPAdapterAttnProcessor,
-    ]
+# Based on https://github.com/huggingface/diffusers/blob/55d49d4379007740af20629bb61aba9546c6b053/src/diffusers/models/transformers/transformer_flux.py
+class BriaFiboAttention(torch.nn.Module, AttentionModuleMixin):
+    _default_processor_cls = BriaFiboAttnProcessor
+    _available_processors = [BriaFiboAttnProcessor]
 
     def __init__(
         self,
@@ -352,8 +212,38 @@ class FluxAttention(torch.nn.Module, AttentionModuleMixin):
         return self.processor(self, hidden_states, encoder_hidden_states, attention_mask, image_rotary_emb, **kwargs)
 
 
+class BriaFiboEmbedND(torch.nn.Module):
+    # modified from https://github.com/black-forest-labs/flux/blob/c00d7c60b085fce8058b9df845e036090873f2ce/src/flux/modules/layers.py#L11
+    def __init__(self, theta: int, axes_dim: List[int]):
+        super().__init__()
+        self.theta = theta
+        self.axes_dim = axes_dim
+
+    def forward(self, ids: torch.Tensor) -> torch.Tensor:
+        n_axes = ids.shape[-1]
+        cos_out = []
+        sin_out = []
+        pos = ids.float()
+        is_mps = ids.device.type == "mps"
+        freqs_dtype = torch.float32 if is_mps else torch.float64
+        for i in range(n_axes):
+            cos, sin = get_1d_rotary_pos_embed(
+                self.axes_dim[i],
+                pos[:, i],
+                theta=self.theta,
+                repeat_interleave_real=True,
+                use_real=True,
+                freqs_dtype=freqs_dtype,
+            )
+            cos_out.append(cos)
+            sin_out.append(sin)
+        freqs_cos = torch.cat(cos_out, dim=-1).to(ids.device)
+        freqs_sin = torch.cat(sin_out, dim=-1).to(ids.device)
+        return freqs_cos, freqs_sin
+
+
 @maybe_allow_in_graph
-class FluxSingleTransformerBlock(nn.Module):
+class BriaFiboSingleTransformerBlock(nn.Module):
     def __init__(self, dim: int, num_attention_heads: int, attention_head_dim: int, mlp_ratio: float = 4.0):
         super().__init__()
         self.mlp_hidden_dim = int(dim * mlp_ratio)
@@ -363,13 +253,17 @@ class FluxSingleTransformerBlock(nn.Module):
         self.act_mlp = nn.GELU(approximate="tanh")
         self.proj_out = nn.Linear(dim + self.mlp_hidden_dim, dim)
 
-        self.attn = FluxAttention(
+        processor = BriaAttnProcessor()
+
+        self.attn = Attention(
             query_dim=dim,
+            cross_attention_dim=None,
             dim_head=attention_head_dim,
             heads=num_attention_heads,
             out_dim=dim,
             bias=True,
-            processor=FluxAttnProcessor(),
+            processor=processor,
+            qk_norm="rms_norm",
             eps=1e-6,
             pre_only=True,
         )
@@ -377,14 +271,10 @@ class FluxSingleTransformerBlock(nn.Module):
     def forward(
         self,
         hidden_states: torch.Tensor,
-        encoder_hidden_states: torch.Tensor,
         temb: torch.Tensor,
-        image_rotary_emb: Optional[tuple[torch.Tensor, torch.Tensor]] = None,
-        joint_attention_kwargs: Optional[dict[str, Any]] = None,
-    ) -> tuple[torch.Tensor, torch.Tensor]:
-        text_seq_len = encoder_hidden_states.shape[1]
-        hidden_states = torch.cat([encoder_hidden_states, hidden_states], dim=1)
-
+        image_rotary_emb: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
+        joint_attention_kwargs: Optional[Dict[str, Any]] = None,
+    ) -> torch.Tensor:
         residual = hidden_states
         norm_hidden_states, gate = self.norm(hidden_states, emb=temb)
         mlp_hidden_states = self.act_mlp(self.proj_mlp(norm_hidden_states))
@@ -402,12 +292,22 @@ class FluxSingleTransformerBlock(nn.Module):
         if hidden_states.dtype == torch.float16:
             hidden_states = hidden_states.clip(-65504, 65504)
 
-        encoder_hidden_states, hidden_states = hidden_states[:, :text_seq_len], hidden_states[:, text_seq_len:]
-        return encoder_hidden_states, hidden_states
+        return hidden_states
+
+
+class BriaFiboTextProjection(nn.Module):
+    def __init__(self, in_features, hidden_size):
+        super().__init__()
+        self.linear = nn.Linear(in_features=in_features, out_features=hidden_size, bias=False)
+
+    def forward(self, caption):
+        hidden_states = self.linear(caption)
+        return hidden_states
 
 
 @maybe_allow_in_graph
-class FluxTransformerBlock(nn.Module):
+# Based on from diffusers.models.transformers.transformer_flux.FluxTransformerBlock
+class BriaFiboTransformerBlock(nn.Module):
     def __init__(
         self, dim: int, num_attention_heads: int, attention_head_dim: int, qk_norm: str = "rms_norm", eps: float = 1e-6
     ):
@@ -416,7 +316,7 @@ class FluxTransformerBlock(nn.Module):
         self.norm1 = AdaLayerNormZero(dim)
         self.norm1_context = AdaLayerNormZero(dim)
 
-        self.attn = FluxAttention(
+        self.attn = BriaFiboAttention(
             query_dim=dim,
             added_kv_proj_dim=dim,
             dim_head=attention_head_dim,
@@ -424,7 +324,7 @@ class FluxTransformerBlock(nn.Module):
             out_dim=dim,
             context_pre_only=False,
             bias=True,
-            processor=FluxAttnProcessor(),
+            processor=BriaFiboAttnProcessor(),
             eps=eps,
         )
 
@@ -439,9 +339,9 @@ class FluxTransformerBlock(nn.Module):
         hidden_states: torch.Tensor,
         encoder_hidden_states: torch.Tensor,
         temb: torch.Tensor,
-        image_rotary_emb: Optional[tuple[torch.Tensor, torch.Tensor]] = None,
-        joint_attention_kwargs: Optional[dict[str, Any]] = None,
-    ) -> tuple[torch.Tensor, torch.Tensor]:
+        image_rotary_emb: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
+        joint_attention_kwargs: Optional[Dict[str, Any]] = None,
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
         norm_hidden_states, gate_msa, shift_mlp, scale_mlp, gate_mlp = self.norm1(hidden_states, emb=temb)
 
         norm_encoder_hidden_states, c_gate_msa, c_shift_mlp, c_scale_mlp, c_gate_mlp = self.norm1_context(
@@ -491,141 +391,111 @@ class FluxTransformerBlock(nn.Module):
         return encoder_hidden_states, hidden_states
 
 
-class FluxPosEmbed(nn.Module):
-    # modified from https://github.com/black-forest-labs/flux/blob/c00d7c60b085fce8058b9df845e036090873f2ce/src/flux/modules/layers.py#L11
-    def __init__(self, theta: int, axes_dim: list[int]):
+class BriaFiboTimesteps(nn.Module):
+    def __init__(
+        self, num_channels: int, flip_sin_to_cos: bool, downscale_freq_shift: float, scale: int = 1, time_theta=10000
+    ):
         super().__init__()
-        self.theta = theta
-        self.axes_dim = axes_dim
+        self.num_channels = num_channels
+        self.flip_sin_to_cos = flip_sin_to_cos
+        self.downscale_freq_shift = downscale_freq_shift
+        self.scale = scale
+        self.time_theta = time_theta
 
-    def forward(self, ids: torch.Tensor) -> torch.Tensor:
-        n_axes = ids.shape[-1]
-        cos_out = []
-        sin_out = []
-        pos = ids.float()
-        is_mps = ids.device.type == "mps"
-        is_npu = ids.device.type == "npu"
-        freqs_dtype = torch.float32 if (is_mps or is_npu) else torch.float64
-        for i in range(n_axes):
-            cos, sin = get_1d_rotary_pos_embed(
-                self.axes_dim[i],
-                pos[:, i],
-                theta=self.theta,
-                repeat_interleave_real=True,
-                use_real=True,
-                freqs_dtype=freqs_dtype,
-            )
-            cos_out.append(cos)
-            sin_out.append(sin)
-        freqs_cos = torch.cat(cos_out, dim=-1).to(ids.device)
-        freqs_sin = torch.cat(sin_out, dim=-1).to(ids.device)
-        return freqs_cos, freqs_sin
+    def forward(self, timesteps):
+        t_emb = get_timestep_embedding(
+            timesteps,
+            self.num_channels,
+            flip_sin_to_cos=self.flip_sin_to_cos,
+            downscale_freq_shift=self.downscale_freq_shift,
+            scale=self.scale,
+            max_period=self.time_theta,
+        )
+        return t_emb
 
 
-class FluxTransformer2DModel(
-    ModelMixin,
-    ConfigMixin,
-    PeftAdapterMixin,
-    FromOriginalModelMixin,
-    FluxTransformer2DLoadersMixin,
-    CacheMixin,
-    AttentionMixin,
-):
+class BriaFiboTimestepProjEmbeddings(nn.Module):
+    def __init__(self, embedding_dim, time_theta):
+        super().__init__()
+
+        self.time_proj = BriaFiboTimesteps(
+            num_channels=256, flip_sin_to_cos=True, downscale_freq_shift=0, time_theta=time_theta
+        )
+        self.timestep_embedder = TimestepEmbedding(in_channels=256, time_embed_dim=embedding_dim)
+
+    def forward(self, timestep, dtype):
+        timesteps_proj = self.time_proj(timestep)
+        timesteps_emb = self.timestep_embedder(timesteps_proj.to(dtype=dtype))  # (N, D)
+        return timesteps_emb
+
+
+class BriaFiboTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginalModelMixin):
     """
-    The Transformer model introduced in Flux.
-
-    Reference: https://blackforestlabs.ai/announcing-black-forest-labs/
-
-    Args:
-        patch_size (`int`, defaults to `1`):
-            Patch size to turn the input data into small patches.
-        in_channels (`int`, defaults to `64`):
-            The number of channels in the input.
-        out_channels (`int`, *optional*, defaults to `None`):
-            The number of channels in the output. If not specified, it defaults to `in_channels`.
-        num_layers (`int`, defaults to `19`):
-            The number of layers of dual stream DiT blocks to use.
-        num_single_layers (`int`, defaults to `38`):
-            The number of layers of single stream DiT blocks to use.
-        attention_head_dim (`int`, defaults to `128`):
-            The number of dimensions to use for each attention head.
-        num_attention_heads (`int`, defaults to `24`):
-            The number of attention heads to use.
-        joint_attention_dim (`int`, defaults to `4096`):
-            The number of dimensions to use for the joint attention (embedding/channel dimension of
-            `encoder_hidden_states`).
-        pooled_projection_dim (`int`, defaults to `768`):
-            The number of dimensions to use for the pooled projection.
-        guidance_embeds (`bool`, defaults to `False`):
-            Whether to use guidance embeddings for guidance-distilled variant of the model.
-        axes_dims_rope (`tuple[int]`, defaults to `(16, 56, 56)`):
-            The dimensions to use for the rotary positional embeddings.
+    Parameters:
+        patch_size (`int`): Patch size to turn the input data into small patches.
+        in_channels (`int`, *optional*, defaults to 16): The number of channels in the input.
+        num_layers (`int`, *optional*, defaults to 18): The number of layers of MMDiT blocks to use.
+        num_single_layers (`int`, *optional*, defaults to 18): The number of layers of single DiT blocks to use.
+        attention_head_dim (`int`, *optional*, defaults to 64): The number of channels in each head.
+        num_attention_heads (`int`, *optional*, defaults to 18): The number of heads to use for multi-head attention.
+        joint_attention_dim (`int`, *optional*): The number of `encoder_hidden_states` dimensions to use.
+        pooled_projection_dim (`int`): Number of dimensions to use when projecting the `pooled_projections`.
+        guidance_embeds (`bool`, defaults to False): Whether to use guidance embeddings.
+        ...
     """
 
     _supports_gradient_checkpointing = True
-    _no_split_modules = ["FluxTransformerBlock", "FluxSingleTransformerBlock"]
-    _skip_layerwise_casting_patterns = ["pos_embed", "norm"]
-    _repeated_blocks = ["FluxTransformerBlock", "FluxSingleTransformerBlock"]
-    _cp_plan = {
-        "": {
-            "hidden_states": ContextParallelInput(split_dim=1, expected_dims=3, split_output=False),
-            "encoder_hidden_states": ContextParallelInput(split_dim=1, expected_dims=3, split_output=False),
-            "img_ids": ContextParallelInput(split_dim=0, expected_dims=2, split_output=False),
-            "txt_ids": ContextParallelInput(split_dim=0, expected_dims=2, split_output=False),
-        },
-        "proj_out": ContextParallelOutput(gather_dim=1, expected_dims=3),
-    }
 
     @register_to_config
     def __init__(
         self,
         patch_size: int = 1,
         in_channels: int = 64,
-        out_channels: Optional[int] = None,
         num_layers: int = 19,
         num_single_layers: int = 38,
         attention_head_dim: int = 128,
         num_attention_heads: int = 24,
         joint_attention_dim: int = 4096,
-        pooled_projection_dim: int = 768,
+        pooled_projection_dim: int = None,
         guidance_embeds: bool = False,
-        axes_dims_rope: tuple[int, int, int] = (16, 56, 56),
+        axes_dims_rope: List[int] = [16, 56, 56],
+        rope_theta=10000,
+        time_theta=10000,
+        text_encoder_dim: int = 2048,
     ):
         super().__init__()
-        self.out_channels = out_channels or in_channels
-        self.inner_dim = num_attention_heads * attention_head_dim
+        self.out_channels = in_channels
+        self.inner_dim = self.config.num_attention_heads * self.config.attention_head_dim
 
-        self.pos_embed = FluxPosEmbed(theta=10000, axes_dim=axes_dims_rope)
+        self.pos_embed = BriaFiboEmbedND(theta=rope_theta, axes_dim=axes_dims_rope)
 
-        text_time_guidance_cls = (
-            CombinedTimestepGuidanceTextProjEmbeddings if guidance_embeds else CombinedTimestepTextProjEmbeddings
-        )
-        self.time_text_embed = text_time_guidance_cls(
-            embedding_dim=self.inner_dim, pooled_projection_dim=pooled_projection_dim
-        )
+        self.time_embed = BriaFiboTimestepProjEmbeddings(embedding_dim=self.inner_dim, time_theta=time_theta)
 
-        self.context_embedder = nn.Linear(joint_attention_dim, self.inner_dim)
-        self.x_embedder = nn.Linear(in_channels, self.inner_dim)
+        if guidance_embeds:
+            self.guidance_embed = BriaFiboTimestepProjEmbeddings(embedding_dim=self.inner_dim)
+
+        self.context_embedder = nn.Linear(self.config.joint_attention_dim, self.inner_dim)
+        self.x_embedder = torch.nn.Linear(self.config.in_channels, self.inner_dim)
 
         self.transformer_blocks = nn.ModuleList(
             [
-                FluxTransformerBlock(
+                BriaFiboTransformerBlock(
                     dim=self.inner_dim,
-                    num_attention_heads=num_attention_heads,
-                    attention_head_dim=attention_head_dim,
+                    num_attention_heads=self.config.num_attention_heads,
+                    attention_head_dim=self.config.attention_head_dim,
                 )
-                for _ in range(num_layers)
+                for i in range(self.config.num_layers)
             ]
         )
 
         self.single_transformer_blocks = nn.ModuleList(
             [
-                FluxSingleTransformerBlock(
+                BriaFiboSingleTransformerBlock(
                     dim=self.inner_dim,
-                    num_attention_heads=num_attention_heads,
-                    attention_head_dim=attention_head_dim,
+                    num_attention_heads=self.config.num_attention_heads,
+                    attention_head_dim=self.config.attention_head_dim,
                 )
-                for _ in range(num_single_layers)
+                for i in range(self.config.num_single_layers)
             ]
         )
 
@@ -634,35 +504,36 @@ class FluxTransformer2DModel(
 
         self.gradient_checkpointing = False
 
+        caption_projection = [
+            BriaFiboTextProjection(in_features=text_encoder_dim, hidden_size=self.inner_dim // 2)
+            for i in range(self.config.num_layers + self.config.num_single_layers)
+        ]
+        self.caption_projection = nn.ModuleList(caption_projection)
+
     def forward(
         self,
         hidden_states: torch.Tensor,
         encoder_hidden_states: torch.Tensor = None,
+        text_encoder_layers: list = None,
         pooled_projections: torch.Tensor = None,
         timestep: torch.LongTensor = None,
         img_ids: torch.Tensor = None,
         txt_ids: torch.Tensor = None,
         guidance: torch.Tensor = None,
-        joint_attention_kwargs: Optional[dict[str, Any]] = None,
-        controlnet_block_samples=None,
-        controlnet_single_block_samples=None,
+        joint_attention_kwargs: Optional[Dict[str, Any]] = None,
         return_dict: bool = True,
-        controlnet_blocks_repeat: bool = False,
-    ) -> torch.Tensor | Transformer2DModelOutput:
+    ) -> Union[torch.FloatTensor, Transformer2DModelOutput]:
         """
-        The [`FluxTransformer2DModel`] forward method.
 
         Args:
-            hidden_states (`torch.Tensor` of shape `(batch_size, image_sequence_length, in_channels)`):
+            hidden_states (`torch.FloatTensor` of shape `(batch size, channel, height, width)`):
                 Input `hidden_states`.
-            encoder_hidden_states (`torch.Tensor` of shape `(batch_size, text_sequence_length, joint_attention_dim)`):
+            encoder_hidden_states (`torch.FloatTensor` of shape `(batch size, sequence_len, embed_dims)`):
                 Conditional embeddings (embeddings computed from the input conditions such as prompts) to use.
-            pooled_projections (`torch.Tensor` of shape `(batch_size, projection_dim)`): Embeddings projected
+            pooled_projections (`torch.FloatTensor` of shape `(batch_size, projection_dim)`): Embeddings projected
                 from the embeddings of input conditions.
             timestep ( `torch.LongTensor`):
                 Used to indicate denoising step.
-            block_controlnet_hidden_states: (`list` of `torch.Tensor`):
-                A list of tensors that if specified are added to the residuals of transformer blocks.
             joint_attention_kwargs (`dict`, *optional*):
                 A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
                 `self.processor` in
@@ -670,7 +541,6 @@ class FluxTransformer2DModel(
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~models.transformer_2d.Transformer2DModelOutput`] instead of a plain
                 tuple.
-
         Returns:
             If `return_dict` is True, an [`~models.transformer_2d.Transformer2DModelOutput`] is returned, otherwise a
             `tuple` where the first element is the sample tensor.
@@ -689,46 +559,43 @@ class FluxTransformer2DModel(
                 logger.warning(
                     "Passing `scale` via `joint_attention_kwargs` when not using the PEFT backend is ineffective."
                 )
-
         hidden_states = self.x_embedder(hidden_states)
 
-        timestep = timestep.to(hidden_states.dtype) * 1000
+        timestep = timestep.to(hidden_states.dtype)
         if guidance is not None:
-            guidance = guidance.to(hidden_states.dtype) * 1000
+            guidance = guidance.to(hidden_states.dtype)
+        else:
+            guidance = None
 
-        temb = (
-            self.time_text_embed(timestep, pooled_projections)
-            if guidance is None
-            else self.time_text_embed(timestep, guidance, pooled_projections)
-        )
+        temb = self.time_embed(timestep, dtype=hidden_states.dtype)
+
+        if guidance:
+            temb += self.guidance_embed(guidance, dtype=hidden_states.dtype)
+
         encoder_hidden_states = self.context_embedder(encoder_hidden_states)
 
-        if txt_ids.ndim == 3:
-            logger.warning(
-                "Passing `txt_ids` 3d torch.Tensor is deprecated."
-                "Please remove the batch dimension and pass it as a 2d torch Tensor"
-            )
+        if len(txt_ids.shape) == 3:
             txt_ids = txt_ids[0]
-        if img_ids.ndim == 3:
-            logger.warning(
-                "Passing `img_ids` 3d torch.Tensor is deprecated."
-                "Please remove the batch dimension and pass it as a 2d torch Tensor"
-            )
+
+        if len(img_ids.shape) == 3:
             img_ids = img_ids[0]
 
         ids = torch.cat((txt_ids, img_ids), dim=0)
-        if is_torch_npu_available():
-            freqs_cos, freqs_sin = self.pos_embed(ids.cpu())
-            image_rotary_emb = (freqs_cos.npu(), freqs_sin.npu())
-        else:
-            image_rotary_emb = self.pos_embed(ids)
+        image_rotary_emb = self.pos_embed(ids)
 
-        if joint_attention_kwargs is not None and "ip_adapter_image_embeds" in joint_attention_kwargs:
-            ip_adapter_image_embeds = joint_attention_kwargs.pop("ip_adapter_image_embeds")
-            ip_hidden_states = self.encoder_hid_proj(ip_adapter_image_embeds)
-            joint_attention_kwargs.update({"ip_hidden_states": ip_hidden_states})
+        new_text_encoder_layers = []
+        for i, text_encoder_layer in enumerate(text_encoder_layers):
+            text_encoder_layer = self.caption_projection[i](text_encoder_layer)
+            new_text_encoder_layers.append(text_encoder_layer)
+        text_encoder_layers = new_text_encoder_layers
 
+        block_id = 0
         for index_block, block in enumerate(self.transformer_blocks):
+            current_text_encoder_layer = text_encoder_layers[block_id]
+            encoder_hidden_states = torch.cat(
+                [encoder_hidden_states[:, :, : self.inner_dim // 2], current_text_encoder_layer], dim=-1
+            )
+            block_id += 1
             if torch.is_grad_enabled() and self.gradient_checkpointing:
                 encoder_hidden_states, hidden_states = self._gradient_checkpointing_func(
                     block,
@@ -747,44 +614,33 @@ class FluxTransformer2DModel(
                     image_rotary_emb=image_rotary_emb,
                     joint_attention_kwargs=joint_attention_kwargs,
                 )
-
-            # controlnet residual
-            if controlnet_block_samples is not None:
-                interval_control = len(self.transformer_blocks) / len(controlnet_block_samples)
-                interval_control = int(np.ceil(interval_control))
-                # For Xlabs ControlNet.
-                if controlnet_blocks_repeat:
-                    hidden_states = (
-                        hidden_states + controlnet_block_samples[index_block % len(controlnet_block_samples)]
-                    )
-                else:
-                    hidden_states = hidden_states + controlnet_block_samples[index_block // interval_control]
 
         for index_block, block in enumerate(self.single_transformer_blocks):
+            current_text_encoder_layer = text_encoder_layers[block_id]
+            encoder_hidden_states = torch.cat(
+                [encoder_hidden_states[:, :, : self.inner_dim // 2], current_text_encoder_layer], dim=-1
+            )
+            block_id += 1
+            hidden_states = torch.cat([encoder_hidden_states, hidden_states], dim=1)
             if torch.is_grad_enabled() and self.gradient_checkpointing:
-                encoder_hidden_states, hidden_states = self._gradient_checkpointing_func(
+                hidden_states = self._gradient_checkpointing_func(
                     block,
                     hidden_states,
-                    encoder_hidden_states,
                     temb,
                     image_rotary_emb,
                     joint_attention_kwargs,
                 )
 
             else:
-                encoder_hidden_states, hidden_states = block(
+                hidden_states = block(
                     hidden_states=hidden_states,
-                    encoder_hidden_states=encoder_hidden_states,
                     temb=temb,
                     image_rotary_emb=image_rotary_emb,
                     joint_attention_kwargs=joint_attention_kwargs,
                 )
 
-            # controlnet residual
-            if controlnet_single_block_samples is not None:
-                interval_control = len(self.single_transformer_blocks) / len(controlnet_single_block_samples)
-                interval_control = int(np.ceil(interval_control))
-                hidden_states = hidden_states + controlnet_single_block_samples[index_block // interval_control]
+            encoder_hidden_states = hidden_states[:, : encoder_hidden_states.shape[1], ...]
+            hidden_states = hidden_states[:, encoder_hidden_states.shape[1] :, ...]
 
         hidden_states = self.norm_out(hidden_states, temb)
         output = self.proj_out(hidden_states)
