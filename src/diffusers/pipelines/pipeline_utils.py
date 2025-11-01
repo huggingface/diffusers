@@ -19,9 +19,10 @@ import inspect
 import os
 import re
 import sys
+import types
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Union, get_args, get_origin
+from typing import Any, Callable, Optional, Union, get_args, get_origin, get_type_hints
 
 import httpx
 import numpy as np
@@ -120,12 +121,12 @@ class ImagePipelineOutput(BaseOutput):
     Output class for image pipelines.
 
     Args:
-        images (`List[PIL.Image.Image]` or `np.ndarray`)
-            List of denoised PIL images of length `batch_size` or NumPy array of shape `(batch_size, height, width,
+        images (`list[PIL.Image.Image]` or `np.ndarray`)
+            list of denoised PIL images of length `batch_size` or NumPy array of shape `(batch_size, height, width,
             num_channels)`.
     """
 
-    images: Union[List[PIL.Image.Image], np.ndarray]
+    images: list[PIL.Image.Image] | np.ndarray
 
 
 @dataclass
@@ -135,7 +136,7 @@ class AudioPipelineOutput(BaseOutput):
 
     Args:
         audios (`np.ndarray`)
-            List of denoised audio samples of a NumPy array of shape `(batch_size, num_channels, sample_rate)`.
+            list of denoised audio samples of a NumPy array of shape `(batch_size, num_channels, sample_rate)`.
     """
 
     audios: np.ndarray
@@ -192,7 +193,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
         - **config_name** (`str`) -- The configuration filename that stores the class and module names of all the
           diffusion pipeline's components.
-        - **_optional_components** (`List[str]`) -- List of all optional components that don't have to be passed to the
+        - **_optional_components** (`list[str]`) -- list of all optional components that don't have to be passed to the
           pipeline to function (should be overridden by subclasses).
     """
 
@@ -236,10 +237,10 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
     def save_pretrained(
         self,
-        save_directory: Union[str, os.PathLike],
+        save_directory: str | os.PathLike,
         safe_serialization: bool = True,
         variant: Optional[str] = None,
-        max_shard_size: Optional[Union[int, str]] = None,
+        max_shard_size: Optional[int | str] = None,
         push_to_hub: bool = False,
         **kwargs,
     ):
@@ -267,7 +268,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 repository you want to push to with `repo_id` (will default to the name of `save_directory` in your
                 namespace).
 
-            kwargs (`Dict[str, Any]`, *optional*):
+            kwargs (`dict[str, Any]`, *optional*):
                 Additional keyword arguments passed along to the [`~utils.PushToHubMixin.push_to_hub`] method.
         """
         model_index_dict = dict(self.config)
@@ -591,7 +592,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
     @classmethod
     @validate_hf_hub_args
-    def from_pretrained(cls, pretrained_model_name_or_path: Optional[Union[str, os.PathLike]], **kwargs) -> Self:
+    def from_pretrained(cls, pretrained_model_name_or_path: Optional[str | os.PathLike], **kwargs) -> Self:
         r"""
         Instantiate a PyTorch diffusion pipeline from pretrained pipeline weights.
 
@@ -648,7 +649,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 Path to a directory where a downloaded pretrained model configuration is cached if the standard cache
                 is not used.
 
-            proxies (`Dict[str, str]`, *optional*):
+            proxies (`dict[str, str]`, *optional*):
                 A dictionary of proxy servers to use by protocol or endpoint, for example, `{'http': 'foo.bar:3128',
                 'http://hostname': 'foo.bar:4012'}`. The proxies are used on each request.
             output_loading_info(`bool`, *optional*, defaults to `False`):
@@ -1073,6 +1074,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             )
 
         # 10. Type checking init arguments
+        print(f"{expected_types.keys()=}")
         for kw, arg in init_kwargs.items():
             # Too complex to validate with type annotation alone
             if "scheduler" in kw:
@@ -1147,7 +1149,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 accelerate.hooks.remove_hook_from_module(model, recurse=True)
         self._all_hooks = []
 
-    def enable_model_cpu_offload(self, gpu_id: Optional[int] = None, device: Union[torch.device, str] = None):
+    def enable_model_cpu_offload(self, gpu_id: Optional[int] = None, device: torch.device | str = None):
         r"""
         Offloads all models to CPU using accelerate, reducing memory usage with a low impact on performance. Compared
         to `enable_sequential_cpu_offload`, this method moves one whole model at a time to the accelerator when its
@@ -1263,7 +1265,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         # make sure the model is in the same state as before calling it
         self.enable_model_cpu_offload(device=getattr(self, "_offload_device", "cuda"))
 
-    def enable_sequential_cpu_offload(self, gpu_id: Optional[int] = None, device: Union[torch.device, str] = None):
+    def enable_sequential_cpu_offload(self, gpu_id: Optional[int] = None, device: torch.device | str = None):
         r"""
         Offloads all models to CPU using 🤗 Accelerate, significantly reducing memory usage. When called, the state
         dicts of all `torch.nn.Module` components (except those in `self._exclude_from_cpu_offload`) are saved to CPU
@@ -1341,7 +1343,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         record_stream: bool = False,
         low_cpu_mem_usage=False,
         offload_to_disk_path: Optional[str] = None,
-        exclude_modules: Optional[Union[str, List[str]]] = None,
+        exclude_modules: Optional[str | list[str]] = None,
     ) -> None:
         r"""
         Applies group offloading to the internal layers of a torch.nn.Module. To understand what group offloading is,
@@ -1401,7 +1403,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 If True, the CPU memory usage is minimized by pinning tensors on-the-fly instead of pre-pinning them.
                 This option only matters when using streamed CPU offloading (i.e. `use_stream=True`). This can be
                 useful when the CPU memory is a bottleneck but may counteract the benefits of using streams.
-            exclude_modules (`Union[str, List[str]]`, defaults to `None`): List of modules to exclude from offloading.
+            exclude_modules (`Union[str, list[str]]`, defaults to `None`): list of modules to exclude from offloading.
 
         Example:
             ```python
@@ -1472,7 +1474,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
     @classmethod
     @validate_hf_hub_args
-    def download(cls, pretrained_model_name, **kwargs) -> Union[str, os.PathLike]:
+    def download(cls, pretrained_model_name, **kwargs) -> str | os.PathLike:
         r"""
         Download and cache a PyTorch diffusion pipeline from pretrained pipeline weights.
 
@@ -1505,7 +1507,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 Whether or not to force the (re-)download of the model weights and configuration files, overriding the
                 cached versions if they exist.
 
-            proxies (`Dict[str, str]`, *optional*):
+            proxies (`dict[str, str]`, *optional*):
                 A dictionary of proxy servers to use by protocol or endpoint, for example, `{'http': 'foo.bar:3128',
                 'http://hostname': 'foo.bar:4012'}`. The proxies are used on each request.
             output_loading_info(`bool`, *optional*, defaults to `False`):
@@ -1568,7 +1570,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         use_onnx = kwargs.pop("use_onnx", None)
         load_connected_pipeline = kwargs.pop("load_connected_pipeline", False)
         trust_remote_code = kwargs.pop("trust_remote_code", False)
-        dduf_file: Optional[Dict[str, DDUFEntry]] = kwargs.pop("dduf_file", None)
+        dduf_file: Optional[dict[str, DDUFEntry]] = kwargs.pop("dduf_file", None)
 
         if dduf_file:
             if custom_pipeline:
@@ -1813,19 +1815,88 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
     @classmethod
     def _get_signature_types(cls):
         signature_types = {}
-        for k, v in inspect.signature(cls.__init__).parameters.items():
-            if inspect.isclass(v.annotation):
-                signature_types[k] = (v.annotation,)
-            elif get_origin(v.annotation) == Union:
-                signature_types[k] = get_args(v.annotation)
-            elif get_origin(v.annotation) in [List, Dict, list, dict]:
-                signature_types[k] = (v.annotation,)
-            else:
-                logger.warning(f"cannot get type annotation for Parameter {k} of {cls}.")
+        module_globals = sys.modules.get(cls.__module__, {}).__dict__ if cls.__module__ in sys.modules else {}
+        localns = dict(vars(cls))
+
+        try:
+            type_hints = get_type_hints(cls.__init__, globalns=module_globals, localns=localns, include_extras=True)
+        except TypeError:
+            type_hints = get_type_hints(cls.__init__, globalns=module_globals, localns=localns)
+        except Exception as exc:
+            logger.debug("Failed to resolve type hints for %s.__init__: %s", cls.__name__, exc)
+            type_hints = {}
+
+        def _is_union(annotation: Any) -> bool:
+            origin = get_origin(annotation)
+            union_type = getattr(types, "UnionType", None)
+            if origin in (Union, union_type):
+                return True
+            return union_type is not None and isinstance(annotation, union_type)
+
+        def _normalize_annotation(annotation: Any) -> tuple[type, ...]:
+            if annotation is inspect._empty:
+                return (inspect.Signature.empty,)
+
+            if annotation is None:
+                return (type(None),)
+
+            if annotation is Any:
+                return (Any,)
+
+            if inspect.isclass(annotation):
+                return (annotation,)
+
+            if _is_union(annotation):
+                collected: list[type] = []
+                for arg in get_args(annotation):
+                    collected.extend(_normalize_annotation(arg))
+                # preserve order while removing duplicates
+                unique: list[type] = []
+                seen: set[type] = set()
+                for item in collected:
+                    if item not in seen:
+                        seen.add(item)
+                        unique.append(item)
+                return tuple(unique)
+
+            origin = get_origin(annotation)
+            if origin is not None:
+                if getattr(origin, "__qualname__", "") == "Annotated":
+                    args = get_args(annotation)
+                    return _normalize_annotation(args[0]) if args else ()
+                if getattr(origin, "__qualname__", "") == "Literal":
+                    return ()
+                if inspect.isclass(origin):
+                    return (origin,)
+
+            return ()
+
+        for name, parameter in inspect.signature(cls.__init__).parameters.items():
+            if name == "self":
+                continue
+
+            annotation = type_hints.get(name, parameter.annotation)
+
+            if isinstance(annotation, str):
+                try:
+                    annotation = eval(annotation, module_globals, localns)  # noqa: S307
+                except Exception as exc:  # noqa: BLE001
+                    logger.debug(
+                        "Failed to evaluate forward reference %r on %s.%s: %s", annotation, cls.__name__, name, exc
+                    )
+                    annotation = inspect._empty
+
+            normalized = _normalize_annotation(annotation)
+
+            if normalized:
+                signature_types[name] = normalized
+            elif annotation not in (inspect._empty, None, Any):
+                logger.warning(f"cannot get type annotation for Parameter {name} of {cls}.")
+
         return signature_types
 
     @property
-    def parameters(self) -> Dict[str, Any]:
+    def parameters(self) -> dict[str, Any]:
         r"""
         The `self.parameters` property can be useful to run different pipelines with the same weights and
         configurations without reallocating additional memory.
@@ -1855,7 +1926,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         return pipeline_parameters
 
     @property
-    def components(self) -> Dict[str, Any]:
+    def components(self) -> dict[str, Any]:
         r"""
         The `self.components` property can be useful to run different pipelines with the same weights and
         configurations without reallocating additional memory.
@@ -1975,7 +2046,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         for module in modules:
             fn_recursive_set_mem_eff(module)
 
-    def enable_attention_slicing(self, slice_size: Optional[Union[str, int]] = "auto"):
+    def enable_attention_slicing(self, slice_size: Optional[str | int] = "auto"):
         r"""
         Enable sliced attention computation. When this option is enabled, the attention module splits the input tensor
         in slices to compute attention in several steps. For more than one attention head, the computation is performed
@@ -2084,9 +2155,11 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         for name, component in pipeline.components.items():
             if name in expected_modules and name not in passed_class_obj:
                 # for model components, we will not switch over if the class does not matches the type hint in the new pipeline's signature
+                expected = component_types.get(name, ())
                 if (
                     not isinstance(component, ModelMixin)
-                    or type(component) in component_types[name]
+                    or not expected
+                    or _is_valid_type(component, expected)
                     or (component is None and name in cls._optional_components)
                 ):
                     original_class_obj[name] = component

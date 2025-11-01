@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import html
-from typing import Callable, Dict, List, Optional, Union
+from typing import Callable, Dict, Optional
 
 import regex as re
 import torch
@@ -265,7 +265,7 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
 
     def _encode_prompt_qwen(
         self,
-        prompt: Union[str, List[str]],
+        prompt: str | list[str],
         device: Optional[torch.device] = None,
         max_sequence_length: int = 256,
         dtype: Optional[torch.dtype] = None,
@@ -277,14 +277,14 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
         video generation.
 
         Args:
-            prompt (Union[str, List[str]]): Input prompt or list of prompts
+            prompt (Union[str, list[str]]): Input prompt or list of prompts
             device (torch.device): Device to run encoding on
             num_videos_per_prompt (int): Number of videos to generate per prompt
             max_sequence_length (int): Maximum sequence length for tokenization
             dtype (torch.dtype): Data type for embeddings
 
         Returns:
-            Tuple[torch.Tensor, torch.Tensor]: Text embeddings and cumulative sequence lengths
+            tuple[torch.Tensor, torch.Tensor]: Text embeddings and cumulative sequence lengths
         """
         device = device or self._execution_device
         dtype = dtype or self.text_encoder.dtype
@@ -315,7 +315,7 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
 
     def _encode_prompt_clip(
         self,
-        prompt: Union[str, List[str]],
+        prompt: str | list[str],
         device: Optional[torch.device] = None,
         dtype: Optional[torch.dtype] = None,
     ):
@@ -326,7 +326,7 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
         semantic information.
 
         Args:
-            prompt (Union[str, List[str]]): Input prompt or list of prompts
+            prompt (Union[str, list[str]]): Input prompt or list of prompts
             device (torch.device): Device to run encoding on
             num_videos_per_prompt (int): Number of videos to generate per prompt
             dtype (torch.dtype): Data type for embeddings
@@ -352,7 +352,7 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
 
     def encode_prompt(
         self,
-        prompt: Union[str, List[str]],
+        prompt: str | list[str],
         num_videos_per_prompt: int = 1,
         max_sequence_length: int = 512,
         device: Optional[torch.device] = None,
@@ -365,7 +365,7 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
         representations for video generation.
 
         Args:
-            prompt (`str` or `List[str]`):
+            prompt (`str` or `list[str]`):
                 Prompt to be encoded.
             num_videos_per_prompt (`int`, *optional*, defaults to 1):
                 Number of videos to generate per prompt.
@@ -377,7 +377,7 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
                 Torch dtype.
 
         Returns:
-            Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+            tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
                 - Qwen text embeddings of shape (batch_size * num_videos_per_prompt, sequence_length, embedding_dim)
                 - CLIP pooled embeddings of shape (batch_size * num_videos_per_prompt, clip_embedding_dim)
                 - Cumulative sequence lengths (`cu_seqlens`) for Qwen embeddings of shape (batch_size *
@@ -533,7 +533,7 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
         num_frames: int = 81,
         dtype: Optional[torch.dtype] = None,
         device: Optional[torch.device] = None,
-        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
+        generator: Optional[torch.Generator | list[torch.Generator]] = None,
         latents: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         """
@@ -616,15 +616,15 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        prompt: Union[str, List[str]] = None,
-        negative_prompt: Optional[Union[str, List[str]]] = None,
+        prompt: str | list[str] = None,
+        negative_prompt: Optional[str | list[str]] = None,
         height: int = 512,
         width: int = 768,
         num_frames: int = 121,
         num_inference_steps: int = 50,
         guidance_scale: float = 5.0,
         num_videos_per_prompt: Optional[int] = 1,
-        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
+        generator: Optional[torch.Generator | list[torch.Generator]] = None,
         latents: Optional[torch.Tensor] = None,
         prompt_embeds_qwen: Optional[torch.Tensor] = None,
         prompt_embeds_clip: Optional[torch.Tensor] = None,
@@ -635,9 +635,9 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
         callback_on_step_end: Optional[
-            Union[Callable[[int, int, Dict], None], PipelineCallback, MultiPipelineCallbacks]
+            Callable[[int, int, Dict], None] | PipelineCallback | MultiPipelineCallbacks
         ] = None,
-        callback_on_step_end_tensor_inputs: List[str] = ["latents"],
+        callback_on_step_end_tensor_inputs: list[str] = ["latents"],
         max_sequence_length: int = 512,
         **kwargs,
     ):
@@ -645,9 +645,9 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
         The call function to the pipeline for generation.
 
         Args:
-            prompt (`str` or `List[str]`, *optional*):
+            prompt (`str` or `list[str]`, *optional*):
                 The prompt or prompts to guide the video generation. If not defined, pass `prompt_embeds` instead.
-            negative_prompt (`str` or `List[str]`, *optional*):
+            negative_prompt (`str` or `list[str]`, *optional*):
                 The prompt or prompts to avoid during video generation. If not defined, pass `negative_prompt_embeds`
                 instead. Ignored when not using guidance (`guidance_scale` < `1`).
             height (`int`, defaults to `512`):
@@ -662,7 +662,7 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
                 Guidance scale as defined in classifier-free guidance.
             num_videos_per_prompt (`int`, *optional*, defaults to 1):
                 The number of videos to generate per prompt.
-            generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
+            generator (`torch.Generator` or `list[torch.Generator]`, *optional*):
                 A torch generator to make generation deterministic.
             latents (`torch.Tensor`, *optional*):
                 Pre-generated noisy latents.
@@ -676,7 +676,7 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
                 Whether or not to return a [`KandinskyPipelineOutput`].
             callback_on_step_end (`Callable`, `PipelineCallback`, `MultiPipelineCallbacks`, *optional*):
                 A function that is called at the end of each denoising step.
-            callback_on_step_end_tensor_inputs (`List`, *optional*):
+            callback_on_step_end_tensor_inputs (`list`, *optional*):
                 The list of tensor inputs for the `callback_on_step_end` function.
             max_sequence_length (`int`, defaults to `512`):
                 The maximum sequence length for text encoding.

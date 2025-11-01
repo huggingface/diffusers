@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import List, Tuple
 
 import torch
 
@@ -78,7 +77,7 @@ def repeat_tensor_to_batch_size(
     return input_tensor
 
 
-def calculate_dimension_from_latents(latents: torch.Tensor, vae_scale_factor: int) -> Tuple[int, int]:
+def calculate_dimension_from_latents(latents: torch.Tensor, vae_scale_factor: int) -> tuple[int, int]:
     """Calculate image dimensions from latent tensor dimensions.
 
     This function converts latent space dimensions to image space dimensions by multiplying the latent height and width
@@ -91,7 +90,7 @@ def calculate_dimension_from_latents(latents: torch.Tensor, vae_scale_factor: in
             Typically 8 for most VAEs (image is 8x larger than latents in each dimension)
 
     Returns:
-        Tuple[int, int]: The calculated image dimensions as (height, width)
+        tuple[int, int]: The calculated image dimensions as (height, width)
 
     Raises:
         ValueError: If latents tensor doesn't have 4 or 5 dimensions
@@ -127,7 +126,7 @@ class QwenImageTextInputsStep(ModularPipelineBlocks):
         return summary_section + placement_section
 
     @property
-    def inputs(self) -> List[InputParam]:
+    def inputs(self) -> list[InputParam]:
         return [
             InputParam(name="num_images_per_prompt", default=1),
             InputParam(name="prompt_embeds", required=True, kwargs_type="denoiser_input_fields"),
@@ -137,7 +136,7 @@ class QwenImageTextInputsStep(ModularPipelineBlocks):
         ]
 
     @property
-    def intermediate_outputs(self) -> List[str]:
+    def intermediate_outputs(self) -> list[str]:
         return [
             OutputParam(
                 "batch_size",
@@ -226,8 +225,8 @@ class QwenImageInputsDynamicStep(ModularPipelineBlocks):
 
     def __init__(
         self,
-        image_latent_inputs: List[str] = ["image_latents"],
-        additional_batch_inputs: List[str] = [],
+        image_latent_inputs: list[str] = ["image_latents"],
+        additional_batch_inputs: list[str] = [],
     ):
         """Initialize a configurable step that standardizes the inputs for the denoising step. It:\n"
 
@@ -238,10 +237,10 @@ class QwenImageInputsDynamicStep(ModularPipelineBlocks):
         This is a dynamic block that allows you to configure which inputs to process.
 
         Args:
-            image_latent_inputs (List[str], optional): Names of image latent tensors to process.
+            image_latent_inputs (list[str], optional): Names of image latent tensors to process.
                 These will be used to determine height/width, patchified, and batch-expanded. Can be a single string or
                 list of strings. Defaults to ["image_latents"]. Examples: ["image_latents"], ["control_image_latents"]
-            additional_batch_inputs (List[str], optional):
+            additional_batch_inputs (list[str], optional):
                 Names of additional conditional input tensors to expand batch size. These tensors will only have their
                 batch dimensions adjusted to match the final batch size. Can be a single string or list of strings.
                 Defaults to []. Examples: ["processed_mask_image"]
@@ -289,7 +288,7 @@ class QwenImageInputsDynamicStep(ModularPipelineBlocks):
         return summary_section + inputs_info + placement_section
 
     @property
-    def inputs(self) -> List[InputParam]:
+    def inputs(self) -> list[InputParam]:
         inputs = [
             InputParam(name="num_images_per_prompt", default=1),
             InputParam(name="batch_size", required=True),
@@ -308,14 +307,14 @@ class QwenImageInputsDynamicStep(ModularPipelineBlocks):
         return inputs
 
     @property
-    def intermediate_outputs(self) -> List[OutputParam]:
+    def intermediate_outputs(self) -> list[OutputParam]:
         return [
             OutputParam(name="image_height", type_hint=int, description="The height of the image latents"),
             OutputParam(name="image_width", type_hint=int, description="The width of the image latents"),
         ]
 
     @property
-    def expected_components(self) -> List[ComponentSpec]:
+    def expected_components(self) -> list[ComponentSpec]:
         return [
             ComponentSpec("pachifier", QwenImagePachifier, default_creation_method="from_config"),
         ]
@@ -380,7 +379,7 @@ class QwenImageControlNetInputsStep(ModularPipelineBlocks):
         return "prepare the `control_image_latents` for controlnet. Insert after all the other inputs steps."
 
     @property
-    def inputs(self) -> List[InputParam]:
+    def inputs(self) -> list[InputParam]:
         return [
             InputParam(name="control_image_latents", required=True),
             InputParam(name="batch_size", required=True),

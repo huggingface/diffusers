@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Optional, Union
+from typing import Optional
 
 import torch
 from torch import nn
@@ -41,7 +41,7 @@ class StableUnCLIPImageNormalizer(ModelMixin, ConfigMixin):
 
     def to(
         self,
-        torch_device: Optional[Union[str, torch.device]] = None,
+        torch_device: Optional[str | torch.device] = None,
         torch_dtype: Optional[torch.dtype] = None,
     ):
         self.mean = nn.Parameter(self.mean.to(torch_device).to(torch_dtype))

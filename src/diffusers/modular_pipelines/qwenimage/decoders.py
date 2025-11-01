@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import List, Union
 
 import numpy as np
 import PIL
@@ -38,7 +37,7 @@ class QwenImageDecoderStep(ModularPipelineBlocks):
         return "Step that decodes the latents to images"
 
     @property
-    def expected_components(self) -> List[ComponentSpec]:
+    def expected_components(self) -> list[ComponentSpec]:
         components = [
             ComponentSpec("vae", AutoencoderKLQwenImage),
             ComponentSpec("pachifier", QwenImagePachifier, default_creation_method="from_config"),
@@ -47,7 +46,7 @@ class QwenImageDecoderStep(ModularPipelineBlocks):
         return components
 
     @property
-    def inputs(self) -> List[InputParam]:
+    def inputs(self) -> list[InputParam]:
         return [
             InputParam(name="height", required=True),
             InputParam(name="width", required=True),
@@ -60,11 +59,11 @@ class QwenImageDecoderStep(ModularPipelineBlocks):
         ]
 
     @property
-    def intermediate_outputs(self) -> List[str]:
+    def intermediate_outputs(self) -> list[str]:
         return [
             OutputParam(
                 "images",
-                type_hint=Union[List[PIL.Image.Image], List[torch.Tensor], List[np.array]],
+                type_hint=list[PIL.Image.Image] | list[torch.Tensor] | list[np.array],
                 description="The generated images, can be a PIL.Image.Image, torch.Tensor or a numpy array",
             )
         ]
@@ -102,7 +101,7 @@ class QwenImageProcessImagesOutputStep(ModularPipelineBlocks):
         return "postprocess the generated image"
 
     @property
-    def expected_components(self) -> List[ComponentSpec]:
+    def expected_components(self) -> list[ComponentSpec]:
         return [
             ComponentSpec(
                 "image_processor",
@@ -113,7 +112,7 @@ class QwenImageProcessImagesOutputStep(ModularPipelineBlocks):
         ]
 
     @property
-    def inputs(self) -> List[InputParam]:
+    def inputs(self) -> list[InputParam]:
         return [
             InputParam("images", required=True, description="the generated image from decoders step"),
             InputParam(
@@ -152,7 +151,7 @@ class QwenImageInpaintProcessImagesOutputStep(ModularPipelineBlocks):
         return "postprocess the generated image, optional apply the mask overally to the original image.."
 
     @property
-    def expected_components(self) -> List[ComponentSpec]:
+    def expected_components(self) -> list[ComponentSpec]:
         return [
             ComponentSpec(
                 "image_mask_processor",
@@ -163,7 +162,7 @@ class QwenImageInpaintProcessImagesOutputStep(ModularPipelineBlocks):
         ]
 
     @property
-    def inputs(self) -> List[InputParam]:
+    def inputs(self) -> list[InputParam]:
         return [
             InputParam("images", required=True, description="the generated image from decoders step"),
             InputParam(

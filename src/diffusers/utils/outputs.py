@@ -17,7 +17,7 @@ Generic utilities
 
 from collections import OrderedDict
 from dataclasses import fields, is_dataclass
-from typing import Any, Tuple
+from typing import Any
 
 import numpy as np
 
@@ -127,7 +127,7 @@ class BaseOutput(OrderedDict):
         args = tuple(getattr(self, field.name) for field in fields(self))
         return callable, args, *remaining
 
-    def to_tuple(self) -> Tuple[Any, ...]:
+    def to_tuple(self) -> tuple[Any, ...]:
         """
         Convert self to a tuple containing all the attributes/keys that are not `None`.
         """

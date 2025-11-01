@@ -14,7 +14,7 @@
 
 
 from dataclasses import dataclass
-from typing import Optional, Tuple, Union
+from typing import Optional
 
 import numpy as np
 import torch
@@ -110,7 +110,7 @@ class KarrasVeScheduler(SchedulerMixin, ConfigMixin):
         """
         return sample
 
-    def set_timesteps(self, num_inference_steps: int, device: Union[str, torch.device] = None):
+    def set_timesteps(self, num_inference_steps: int, device: str | torch.device = None):
         """
         Sets the discrete timesteps used for the diffusion chain (to be run before inference).
 
@@ -134,7 +134,7 @@ class KarrasVeScheduler(SchedulerMixin, ConfigMixin):
 
     def add_noise_to_input(
         self, sample: torch.Tensor, sigma: float, generator: Optional[torch.Generator] = None
-    ) -> Tuple[torch.Tensor, float]:
+    ) -> tuple[torch.Tensor, float]:
         """
         Explicit Langevin-like "churn" step of adding noise to the sample according to a `gamma_i ≥ 0` to reach a
         higher noise level `sigma_hat = sigma_i + gamma_i*sigma_i`.
@@ -165,7 +165,7 @@ class KarrasVeScheduler(SchedulerMixin, ConfigMixin):
         sigma_prev: float,
         sample_hat: torch.Tensor,
         return_dict: bool = True,
-    ) -> Union[KarrasVeOutput, Tuple]:
+    ) -> KarrasVeOutput | tuple:
         """
         Predict the sample from the previous timestep by reversing the SDE. This function propagates the diffusion
         process from the learned model outputs (most often the predicted noise).
@@ -206,7 +206,7 @@ class KarrasVeScheduler(SchedulerMixin, ConfigMixin):
         sample_prev: torch.Tensor,
         derivative: torch.Tensor,
         return_dict: bool = True,
-    ) -> Union[KarrasVeOutput, Tuple]:
+    ) -> KarrasVeOutput | tuple:
         """
         Corrects the predicted sample based on the `model_output` of the network.
 

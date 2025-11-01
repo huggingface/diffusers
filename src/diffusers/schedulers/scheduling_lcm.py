@@ -17,7 +17,7 @@
 
 import math
 from dataclasses import dataclass
-from typing import List, Optional, Tuple, Union
+from typing import Optional
 
 import numpy as np
 import torch
@@ -199,7 +199,7 @@ class LCMScheduler(SchedulerMixin, ConfigMixin):
         beta_start: float = 0.00085,
         beta_end: float = 0.012,
         beta_schedule: str = "scaled_linear",
-        trained_betas: Optional[Union[np.ndarray, List[float]]] = None,
+        trained_betas: Optional[np.ndarray | list[float]] = None,
         original_inference_steps: int = 50,
         clip_sample: bool = False,
         clip_sample_range: float = 1.0,
@@ -349,9 +349,9 @@ class LCMScheduler(SchedulerMixin, ConfigMixin):
     def set_timesteps(
         self,
         num_inference_steps: Optional[int] = None,
-        device: Union[str, torch.device] = None,
+        device: str | torch.device = None,
         original_inference_steps: Optional[int] = None,
-        timesteps: Optional[List[int]] = None,
+        timesteps: Optional[list[int]] = None,
         strength: int = 1.0,
     ):
         """
@@ -368,7 +368,7 @@ class LCMScheduler(SchedulerMixin, ConfigMixin):
                 schedule (which is different from the standard `diffusers` implementation). We will then take
                 `num_inference_steps` timesteps from this schedule, evenly spaced in terms of indices, and use that as
                 our final timestep schedule. If not set, this will default to the `original_inference_steps` attribute.
-            timesteps (`List[int]`, *optional*):
+            timesteps (`list[int]`, *optional*):
                 Custom timesteps used to support arbitrary spacing between timesteps. If `None`, then the default
                 timestep spacing strategy of equal spacing between timesteps on the training/distillation timestep
                 schedule is used. If `timesteps` is passed, `num_inference_steps` must be `None`.
@@ -501,7 +501,7 @@ class LCMScheduler(SchedulerMixin, ConfigMixin):
         sample: torch.Tensor,
         generator: Optional[torch.Generator] = None,
         return_dict: bool = True,
-    ) -> Union[LCMSchedulerOutput, Tuple]:
+    ) -> LCMSchedulerOutput | tuple:
         """
         Predict the sample from the previous timestep by reversing the SDE. This function propagates the diffusion
         process from the learned model outputs (most often the predicted noise).

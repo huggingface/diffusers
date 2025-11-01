@@ -14,7 +14,7 @@
 
 import warnings
 from functools import partial
-from typing import Dict, List, Optional, Union
+from typing import Dict, Optional
 
 import jax
 import jax.numpy as jnp
@@ -135,9 +135,7 @@ class FlaxStableDiffusionInpaintPipeline(FlaxDiffusionPipeline):
         text_encoder: FlaxCLIPTextModel,
         tokenizer: CLIPTokenizer,
         unet: FlaxUNet2DConditionModel,
-        scheduler: Union[
-            FlaxDDIMScheduler, FlaxPNDMScheduler, FlaxLMSDiscreteScheduler, FlaxDPMSolverMultistepScheduler
-        ],
+        scheduler: FlaxDDIMScheduler | FlaxPNDMScheduler | FlaxLMSDiscreteScheduler | FlaxDPMSolverMultistepScheduler,
         safety_checker: FlaxStableDiffusionSafetyChecker,
         feature_extractor: CLIPImageProcessor,
         dtype: jnp.dtype = jnp.float32,
@@ -193,9 +191,9 @@ class FlaxStableDiffusionInpaintPipeline(FlaxDiffusionPipeline):
 
     def prepare_inputs(
         self,
-        prompt: Union[str, List[str]],
-        image: Union[Image.Image, List[Image.Image]],
-        mask: Union[Image.Image, List[Image.Image]],
+        prompt: str | list[str],
+        image: Image.Image | list[Image.Image],
+        mask: Image.Image | list[Image.Image],
     ):
         if not isinstance(prompt, (str, list)):
             raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
@@ -269,7 +267,7 @@ class FlaxStableDiffusionInpaintPipeline(FlaxDiffusionPipeline):
         prompt_ids: jnp.ndarray,
         mask: jnp.ndarray,
         masked_image: jnp.ndarray,
-        params: Union[Dict, FrozenDict],
+        params: Dict | FrozenDict,
         prng_seed: jax.Array,
         num_inference_steps: int,
         height: int,
@@ -397,12 +395,12 @@ class FlaxStableDiffusionInpaintPipeline(FlaxDiffusionPipeline):
         prompt_ids: jnp.ndarray,
         mask: jnp.ndarray,
         masked_image: jnp.ndarray,
-        params: Union[Dict, FrozenDict],
+        params: Dict | FrozenDict,
         prng_seed: jax.Array,
         num_inference_steps: int = 50,
         height: Optional[int] = None,
         width: Optional[int] = None,
-        guidance_scale: Union[float, jnp.ndarray] = 7.5,
+        guidance_scale: float | jnp.ndarray = 7.5,
         latents: jnp.ndarray = None,
         neg_prompt_ids: jnp.ndarray = None,
         return_dict: bool = True,
@@ -412,7 +410,7 @@ class FlaxStableDiffusionInpaintPipeline(FlaxDiffusionPipeline):
         Function invoked when calling the pipeline for generation.
 
         Args:
-            prompt (`str` or `List[str]`):
+            prompt (`str` or `list[str]`):
                 The prompt or prompts to guide image generation.
             height (`int`, *optional*, defaults to `self.unet.config.sample_size * self.vae_scale_factor`):
                 The height in pixels of the generated image.

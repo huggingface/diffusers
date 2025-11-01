@@ -1,6 +1,6 @@
 import inspect
 import warnings
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, Optional
 
 from packaging import version
 
@@ -53,7 +53,7 @@ def _maybe_remap_transformers_class(class_name: str) -> Optional[str]:
     return None
 
 
-def deprecate(*args, take_from: Optional[Union[Dict, Any]] = None, standard_warn=True, stacklevel=2):
+def deprecate(*args, take_from: Optional[Dict | Any] = None, standard_warn=True, stacklevel=2):
     from .. import __version__
 
     deprecated_kwargs = take_from

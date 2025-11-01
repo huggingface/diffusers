@@ -12,8 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from __future__ import annotations
+
 import os
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, Optional
 
 import torch
 from huggingface_hub.utils import validate_hf_hub_args
@@ -51,8 +53,8 @@ class BaseGuidance(ConfigMixin, PushToHubMixin):
         self._num_inference_steps: int = None
         self._timestep: torch.LongTensor = None
         self._count_prepared = 0
-        self._input_fields: Dict[str, Union[str, Tuple[str, str]]] = None
-        self._enabled = enabled
+        self._input_fields: dict[str, str | tuple[str, str]] = None
+        self._enabled = True
 
         if not (0.0 <= start < 1.0):
             raise ValueError(f"Expected `start` to be between 0.0 and 1.0, but got {start}.")
@@ -101,7 +103,7 @@ class BaseGuidance(ConfigMixin, PushToHubMixin):
         self._timestep = timestep
         self._count_prepared = 0
 
-    def get_state(self) -> Dict[str, Any]:
+    def get_state(self) -> dict[str, Any]:
         """
         Returns the current state of the guidance technique as a dictionary. The state variables will be included in
         the __repr__ method. Returns:
@@ -163,10 +165,10 @@ class BaseGuidance(ConfigMixin, PushToHubMixin):
         """
         pass
 
-    def prepare_inputs(self, data: "BlockState") -> List["BlockState"]:
+    def prepare_inputs(self, data: "BlockState") -> list["BlockState"]:
         raise NotImplementedError("BaseGuidance::prepare_inputs must be implemented in subclasses.")
 
-    def __call__(self, data: List["BlockState"]) -> Any:
+    def __call__(self, data: list["BlockState"]) -> Any:
         if not all(hasattr(d, "noise_pred") for d in data):
             raise ValueError("Expected all data to have `noise_pred` attribute.")
         if len(data) != self.num_conditions:
@@ -194,7 +196,7 @@ class BaseGuidance(ConfigMixin, PushToHubMixin):
     @classmethod
     def _prepare_batch(
         cls,
-        data: Dict[str, Tuple[torch.Tensor, torch.Tensor]],
+        data: dict[str, tuple[torch.Tensor, torch.Tensor]],
         tuple_index: int,
         identifier: str,
     ) -> "BlockState":
@@ -203,7 +205,7 @@ class BaseGuidance(ConfigMixin, PushToHubMixin):
         `BaseGuidance` class. It prepares the batch based on the provided tuple index.
 
         Args:
-            input_fields (`Dict[str, Union[str, Tuple[str, str]]]`):
+            input_fields (`dict[str, Union[str, tuple[str, str]]]`):
                 A dictionary where the keys are the names of the fields that will be used to store the data once it is
                 prepared with `prepare_inputs`. The values can be either a string or a tuple of length 2, which is used
                 to look up the required data provided for preparation. If a string is provided, it will be used as the
@@ -238,7 +240,7 @@ class BaseGuidance(ConfigMixin, PushToHubMixin):
     @validate_hf_hub_args
     def from_pretrained(
         cls,
-        pretrained_model_name_or_path: Optional[Union[str, os.PathLike]] = None,
+        pretrained_model_name_or_path: Optional[str | os.PathLike] = None,
         subfolder: Optional[str] = None,
         return_unused_kwargs=False,
         **kwargs,
@@ -265,7 +267,7 @@ class BaseGuidance(ConfigMixin, PushToHubMixin):
                 Whether or not to force the (re-)download of the model weights and configuration files, overriding the
                 cached versions if they exist.
 
-            proxies (`Dict[str, str]`, *optional*):
+            proxies (`dict[str, str]`, *optional*):
                 A dictionary of proxy servers to use by protocol or endpoint, for example, `{'http': 'foo.bar:3128',
                 'http://hostname': 'foo.bar:4012'}`. The proxies are used on each request.
             output_loading_info(`bool`, *optional*, defaults to `False`):
@@ -295,7 +297,7 @@ class BaseGuidance(ConfigMixin, PushToHubMixin):
         )
         return cls.from_config(config, return_unused_kwargs=return_unused_kwargs, **kwargs)
 
-    def save_pretrained(self, save_directory: Union[str, os.PathLike], push_to_hub: bool = False, **kwargs):
+    def save_pretrained(self, save_directory: str | os.PathLike, push_to_hub: bool = False, **kwargs):
         """
         Save a guider configuration object to a directory so that it can be reloaded using the
         [`~BaseGuidance.from_pretrained`] class method.
@@ -307,7 +309,7 @@ class BaseGuidance(ConfigMixin, PushToHubMixin):
                 Whether or not to push your model to the Hugging Face Hub after saving it. You can specify the
                 repository you want to push to with `repo_id` (will default to the name of `save_directory` in your
                 namespace).
-            kwargs (`Dict[str, Any]`, *optional*):
+            kwargs (`dict[str, Any]`, *optional*):
                 Additional keyword arguments passed along to the [`~utils.PushToHubMixin.push_to_hub`] method.
         """
         self.save_config(save_directory=save_directory, push_to_hub=push_to_hub, **kwargs)

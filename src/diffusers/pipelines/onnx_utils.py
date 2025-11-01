@@ -18,7 +18,7 @@
 import os
 import shutil
 from pathlib import Path
-from typing import Optional, Union
+from typing import Optional
 
 import numpy as np
 from huggingface_hub import hf_hub_download
@@ -61,7 +61,7 @@ class OnnxRuntimeModel:
         return self.model.run(None, inputs)
 
     @staticmethod
-    def load_model(path: Union[str, Path], provider=None, sess_options=None, provider_options=None):
+    def load_model(path: str | Path, provider=None, sess_options=None, provider_options=None):
         """
         Loads an ONNX Inference session with an ExecutionProvider. Default provider is `CPUExecutionProvider`
 
@@ -84,7 +84,7 @@ class OnnxRuntimeModel:
             path, providers=[provider], sess_options=sess_options, provider_options=provider_options
         )
 
-    def _save_pretrained(self, save_directory: Union[str, Path], file_name: Optional[str] = None, **kwargs):
+    def _save_pretrained(self, save_directory: str | Path, file_name: Optional[str] = None, **kwargs):
         """
         Save a model and its configuration file to a directory, so that it can be re-loaded using the
         [`~optimum.onnxruntime.modeling_ort.ORTModel.from_pretrained`] class method. It will always save the
@@ -117,7 +117,7 @@ class OnnxRuntimeModel:
 
     def save_pretrained(
         self,
-        save_directory: Union[str, os.PathLike],
+        save_directory: str | os.PathLike,
         **kwargs,
     ):
         """
@@ -141,9 +141,9 @@ class OnnxRuntimeModel:
     @validate_hf_hub_args
     def _from_pretrained(
         cls,
-        model_id: Union[str, Path],
-        token: Optional[Union[bool, str, None]] = None,
-        revision: Optional[Union[str, None]] = None,
+        model_id: str | Path,
+        token: Optional[bool | str | None] = None,
+        revision: Optional[str | None] = None,
         force_download: bool = False,
         cache_dir: Optional[str] = None,
         file_name: Optional[str] = None,
@@ -210,7 +210,7 @@ class OnnxRuntimeModel:
     @validate_hf_hub_args
     def from_pretrained(
         cls,
-        model_id: Union[str, Path],
+        model_id: str | Path,
         force_download: bool = True,
         token: Optional[str] = None,
         cache_dir: Optional[str] = None,

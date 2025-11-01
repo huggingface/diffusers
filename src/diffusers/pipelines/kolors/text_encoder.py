@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import math
-from typing import List, Optional, Tuple
+from typing import Optional
 
 import torch
 import torch.nn.functional as F
@@ -234,7 +234,7 @@ def split_tensor_along_last_dim(
     tensor: torch.Tensor,
     num_partitions: int,
     contiguous_split_chunks: bool = False,
-) -> List[torch.Tensor]:
+) -> list[torch.Tensor]:
     """Split a tensor along its last dimension.
 
     Arguments:
@@ -802,7 +802,7 @@ class ChatGLMModel(ChatGLMPreTrainedModel):
         position_ids: Optional[torch.Tensor] = None,
         attention_mask: Optional[torch.BoolTensor] = None,
         full_attention_mask: Optional[torch.BoolTensor] = None,
-        past_key_values: Optional[Tuple[Tuple[torch.Tensor, torch.Tensor], ...]] = None,
+        past_key_values: Optional[tuple[tuple[torch.Tensor, torch.Tensor], ...]] = None,
         inputs_embeds: Optional[torch.Tensor] = None,
         use_cache: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,

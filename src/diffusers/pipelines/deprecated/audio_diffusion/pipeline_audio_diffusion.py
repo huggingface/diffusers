@@ -14,7 +14,6 @@
 
 
 from math import acos, sin
-from typing import List, Tuple, Union
 
 import numpy as np
 import torch
@@ -53,7 +52,7 @@ class AudioDiffusionPipeline(DiffusionPipeline):
         vqvae: AutoencoderKL,
         unet: UNet2DConditionModel,
         mel: Mel,
-        scheduler: Union[DDIMScheduler, DDPMScheduler],
+        scheduler: DDIMScheduler | DDPMScheduler,
     ):
         super().__init__()
         self.register_modules(unet=unet, scheduler=scheduler, mel=mel, vqvae=vqvae)
@@ -84,10 +83,7 @@ class AudioDiffusionPipeline(DiffusionPipeline):
         noise: torch.Tensor = None,
         encoding: torch.Tensor = None,
         return_dict=True,
-    ) -> Union[
-        Union[AudioPipelineOutput, ImagePipelineOutput],
-        Tuple[List[Image.Image], Tuple[int, List[np.ndarray]]],
-    ]:
+    ) -> AudioPipelineOutput | ImagePipelineOutput | tuple[list[Image.Image], tuple[int, list[np.ndarray]]]:
         """
         The call function to the pipeline for generation.
 
@@ -170,8 +166,8 @@ class AudioDiffusionPipeline(DiffusionPipeline):
         ```
 
         Returns:
-            `List[PIL Image]`:
-                A list of Mel spectrograms (`float`, `List[np.ndarray]`) with the sample rate and raw audio.
+            `list[PIL Image]`:
+                A list of Mel spectrograms (`float`, `list[np.ndarray]`) with the sample rate and raw audio.
         """
 
         steps = steps or self.get_default_steps()
@@ -268,13 +264,13 @@ class AudioDiffusionPipeline(DiffusionPipeline):
         return BaseOutput(**AudioPipelineOutput(np.array(audios)[:, np.newaxis, :]), **ImagePipelineOutput(images))
 
     @torch.no_grad()
-    def encode(self, images: List[Image.Image], steps: int = 50) -> np.ndarray:
+    def encode(self, images: list[Image.Image], steps: int = 50) -> np.ndarray:
         """
         Reverse the denoising step process to recover a noisy image from the generated image.
 
         Args:
-            images (`List[PIL Image]`):
-                List of images to encode.
+            images (`list[PIL Image]`):
+                list of images to encode.
             steps (`int`):
                 Number of encoding steps to perform (defaults to `50`).
 

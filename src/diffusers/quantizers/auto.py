@@ -17,7 +17,7 @@ https://github.com/huggingface/transformers/blob/c409cd81777fb27aadc043ed3d8339d
 """
 
 import warnings
-from typing import Dict, Optional, Union
+from typing import Dict, Optional
 
 from .bitsandbytes import BnB4BitDiffusersQuantizer, BnB8BitDiffusersQuantizer
 from .gguf import GGUFQuantizer
@@ -82,7 +82,7 @@ class DiffusersAutoQuantizer:
         return target_cls.from_dict(quantization_config_dict)
 
     @classmethod
-    def from_config(cls, quantization_config: Union[QuantizationConfigMixin, Dict], **kwargs):
+    def from_config(cls, quantization_config: QuantizationConfigMixin | Dict, **kwargs):
         # Convert it to a QuantizationConfig if the q_config is a dict
         if isinstance(quantization_config, dict):
             quantization_config = cls.from_dict(quantization_config)
@@ -123,7 +123,7 @@ class DiffusersAutoQuantizer:
     @classmethod
     def merge_quantization_configs(
         cls,
-        quantization_config: Union[dict, QuantizationConfigMixin],
+        quantization_config: dict | QuantizationConfigMixin,
         quantization_config_from_args: Optional[QuantizationConfigMixin],
     ):
         """

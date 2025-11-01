@@ -28,7 +28,7 @@ from logging import (
     WARN,  # NOQA
     WARNING,  # NOQA
 )
-from typing import Dict, Optional
+from typing import Optional
 
 from tqdm import auto as tqdm_lib
 
@@ -105,7 +105,7 @@ def _reset_library_root_logger() -> None:
         _default_handler = None
 
 
-def get_log_levels_dict() -> Dict[str, int]:
+def get_log_levels_dict() -> dict[str, int]:
     return log_levels
 
 

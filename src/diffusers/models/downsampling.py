@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Optional, Tuple
+from typing import Optional
 
 import torch
 import torch.nn as nn
@@ -168,7 +168,7 @@ class FirDownsample2D(nn.Module):
         channels: Optional[int] = None,
         out_channels: Optional[int] = None,
         use_conv: bool = False,
-        fir_kernel: Tuple[int, int, int, int] = (1, 3, 3, 1),
+        fir_kernel: tuple[int, int, int, int] = (1, 3, 3, 1),
     ):
         super().__init__()
         out_channels = out_channels if out_channels else channels

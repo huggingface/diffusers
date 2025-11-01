@@ -13,7 +13,7 @@
 # limitations under the License.
 
 from dataclasses import dataclass
-from typing import List, Optional, Tuple, Union
+from typing import Optional
 
 import numpy as np
 import torch
@@ -66,7 +66,7 @@ class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
             [paper](https://huggingface.co/papers/2206.00364). Defaults to 7.0 from the original implementation.
         clip_denoised (`bool`, defaults to `True`):
             Whether to clip the denoised outputs to `(-1, 1)`.
-        timesteps (`List` or `np.ndarray` or `torch.Tensor`, *optional*):
+        timesteps (`list` or `np.ndarray` or `torch.Tensor`, *optional*):
             An explicit timestep schedule that can be optionally specified. The timesteps are expected to be in
             increasing order.
     """
@@ -126,7 +126,7 @@ class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
         """
         self._begin_index = begin_index
 
-    def scale_model_input(self, sample: torch.Tensor, timestep: Union[float, torch.Tensor]) -> torch.Tensor:
+    def scale_model_input(self, sample: torch.Tensor, timestep: float | torch.Tensor) -> torch.Tensor:
         """
         Scales the consistency model input by `(sigma**2 + sigma_data**2) ** 0.5`.
 
@@ -151,7 +151,7 @@ class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
         self.is_scale_input_called = True
         return sample
 
-    def sigma_to_t(self, sigmas: Union[float, np.ndarray]):
+    def sigma_to_t(self, sigmas: float | np.ndarray):
         """
         Gets scaled timesteps from the Karras sigmas for input to the consistency model.
 
@@ -173,8 +173,8 @@ class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
     def set_timesteps(
         self,
         num_inference_steps: Optional[int] = None,
-        device: Union[str, torch.device] = None,
-        timesteps: Optional[List[int]] = None,
+        device: str | torch.device = None,
+        timesteps: Optional[list[int]] = None,
     ):
         """
         Sets the timesteps used for the diffusion chain (to be run before inference).
@@ -184,7 +184,7 @@ class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
                 The number of diffusion steps used when generating samples with a pre-trained model.
             device (`str` or `torch.device`, *optional*):
                 The device to which the timesteps should be moved to. If `None`, the timesteps are not moved.
-            timesteps (`List[int]`, *optional*):
+            timesteps (`list[int]`, *optional*):
                 Custom timesteps used to support arbitrary spacing between timesteps. If `None`, then the default
                 timestep spacing strategy of equal spacing between timesteps is used. If `timesteps` is passed,
                 `num_inference_steps` must be `None`.
@@ -313,11 +313,11 @@ class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
     def step(
         self,
         model_output: torch.Tensor,
-        timestep: Union[float, torch.Tensor],
+        timestep: float | torch.Tensor,
         sample: torch.Tensor,
         generator: Optional[torch.Generator] = None,
         return_dict: bool = True,
-    ) -> Union[CMStochasticIterativeSchedulerOutput, Tuple]:
+    ) -> CMStochasticIterativeSchedulerOutput | tuple:
         """
         Predict the sample from the previous timestep by reversing the SDE. This function propagates the diffusion
         process from the learned model outputs (most often the predicted noise).

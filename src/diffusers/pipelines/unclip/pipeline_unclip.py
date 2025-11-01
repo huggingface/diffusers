@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import inspect
-from typing import List, Optional, Tuple, Union
+from typing import Optional
 
 import torch
 from torch.nn import functional as F
@@ -131,7 +131,7 @@ class UnCLIPPipeline(DeprecatedPipelineMixin, DiffusionPipeline):
         device,
         num_images_per_prompt,
         do_classifier_free_guidance,
-        text_model_output: Optional[Union[CLIPTextModelOutput, Tuple]] = None,
+        text_model_output: Optional[CLIPTextModelOutput | tuple] = None,
         text_attention_mask: Optional[torch.Tensor] = None,
     ):
         if text_model_output is None:
@@ -219,16 +219,16 @@ class UnCLIPPipeline(DeprecatedPipelineMixin, DiffusionPipeline):
     @torch.no_grad()
     def __call__(
         self,
-        prompt: Optional[Union[str, List[str]]] = None,
+        prompt: Optional[str | list[str]] = None,
         num_images_per_prompt: int = 1,
         prior_num_inference_steps: int = 25,
         decoder_num_inference_steps: int = 25,
         super_res_num_inference_steps: int = 7,
-        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
+        generator: Optional[torch.Generator | list[torch.Generator]] = None,
         prior_latents: Optional[torch.Tensor] = None,
         decoder_latents: Optional[torch.Tensor] = None,
         super_res_latents: Optional[torch.Tensor] = None,
-        text_model_output: Optional[Union[CLIPTextModelOutput, Tuple]] = None,
+        text_model_output: Optional[CLIPTextModelOutput | tuple] = None,
         text_attention_mask: Optional[torch.Tensor] = None,
         prior_guidance_scale: float = 4.0,
         decoder_guidance_scale: float = 8.0,
@@ -239,7 +239,7 @@ class UnCLIPPipeline(DeprecatedPipelineMixin, DiffusionPipeline):
         The call function to the pipeline for generation.
 
         Args:
-            prompt (`str` or `List[str]`):
+            prompt (`str` or `list[str]`):
                 The prompt or prompts to guide image generation. This can only be left undefined if `text_model_output`
                 and `text_attention_mask` is passed.
             num_images_per_prompt (`int`, *optional*, defaults to 1):
@@ -253,7 +253,7 @@ class UnCLIPPipeline(DeprecatedPipelineMixin, DiffusionPipeline):
             super_res_num_inference_steps (`int`, *optional*, defaults to 7):
                 The number of denoising steps for super resolution. More denoising steps usually lead to a higher
                 quality image at the expense of slower inference.
-            generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
+            generator (`torch.Generator` or `list[torch.Generator]`, *optional*):
                 A [`torch.Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make
                 generation deterministic.
             prior_latents (`torch.Tensor` of shape (batch size, embeddings dimension), *optional*):
