@@ -324,6 +324,7 @@ class Kandinsky5AttnProcessor:
                 sparse_params["sta_mask"],
                 thr=sparse_params["P"],
             )
+
         else:
             attn_mask = None
 
@@ -335,6 +336,7 @@ class Kandinsky5AttnProcessor:
             backend=self._attention_backend,
             parallel_config=self._parallel_config,
         )
+
         hidden_states = hidden_states.flatten(-2, -1)
 
         attn_out = attn.out_layer(hidden_states)
