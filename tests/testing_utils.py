@@ -24,6 +24,7 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Set, Tupl
 import numpy as np
 import PIL.Image
 import PIL.ImageOps
+import pytest
 import requests
 from numpy.linalg import norm
 from packaging import version
@@ -267,7 +268,7 @@ def slow(test_case):
     Slow tests are skipped by default. Set the RUN_SLOW environment variable to a truthy value to run them.
 
     """
-    return unittest.skipUnless(_run_slow_tests, "test is slow")(test_case)
+    return pytest.mark.skipif(not _run_slow_tests, reason="test is slow")(pytest.mark.slow(test_case))
 
 
 def nightly(test_case):
@@ -277,7 +278,7 @@ def nightly(test_case):
     Slow tests are skipped by default. Set the RUN_NIGHTLY environment variable to a truthy value to run them.
 
     """
-    return unittest.skipUnless(_run_nightly_tests, "test is nightly")(test_case)
+    return pytest.mark.skipif(not _run_nightly_tests, reason="test is nightly")(pytest.mark.nightly(test_case))
 
 
 def is_torch_compile(test_case):
