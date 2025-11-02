@@ -31,6 +31,8 @@ from ...utils import is_ftfy_available, is_torch_xla_available, logging, replace
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
 
+# TODO: Load special tokens in a function instead of at the module level
+# TODO: Add docstrings to functions taken from original MAGI-1 repo
 
 SPECIAL_TOKEN_PATH = os.getenv("SPECIAL_TOKEN_PATH", "example/assets/special_tokens.npz")
 SPECIAL_TOKEN = np.load(SPECIAL_TOKEN_PATH)
@@ -322,12 +324,12 @@ class Magi1Pipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
         device: Optional[torch.device],
         dtype: Optional[torch.dtype],
     ) -> Tuple[torch.Tensor, torch.Tensor]:
-        # TODO: Double check if MAGI-1 does some special handling during prompt encoding
         device = device or self._execution_device
         dtype = dtype or self.text_encoder.dtype
 
         prompt = [prompt] if isinstance(prompt, str) else prompt
-        # Just keep the clean function consistent with other pipelines
+        # The original prompt clean functionality is more complex however,
+        # we just keep the clean function consistent with other pipelines
         prompt = [prompt_clean(u) for u in prompt]
         batch_size = len(prompt)
 
@@ -403,8 +405,6 @@ class Magi1Pipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
             dtype: (`torch.dtype`, *optional*):
                 torch dtype
         """
-        # TODO: Can we provide different prompts for different chunks?
-        # If so, how are we gonna support that?
         device = device or self._execution_device
 
         prompt = [prompt] if isinstance(prompt, str) else prompt
@@ -556,6 +556,37 @@ class Magi1Pipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
         latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
         return latents
 
+    def prepare_magi_timesteps(self, num_steps: int, shift: float = 3.0, device: torch.device = None) -> torch.Tensor:
+        """
+        Prepare timesteps following Magi's schedule:
+        1. Linear spacing
+        2. Square
+        3. Apply shift transform with shift_inv
+        
+        Args:
+            num_steps: Number of denoising steps
+            shift: Shift parameter (default 3.0 from Magi)
+            device: Device to place tensor on
+        
+        Returns:
+            Timesteps tensor of shape [num_steps + 1]
+        """
+        t = torch.linspace(0, 1, num_steps + 1, device=device)
+        t = t ** 2
+        shift_inv = 1.0 / shift
+        t = shift_inv * t / (1 + (shift_inv - 1) * t)
+        return t
+
+    def get_timesteps(self, timesteps, steps_per_stage, t_start, t_end, local_step_idx):
+        t_indices = []
+        for i in range(t_start, t_end):
+            t_indices.append(i * steps_per_stage + local_step_idx)
+        t_indices.reverse()  # AR windowing
+        timestep_window = timesteps[t_indices]
+        # TODO: Implement has_clean_t
+        return timestep_window
+
+
     def _decode_chunk_to_frames(self, latents_chunk: torch.Tensor) -> np.ndarray:
         """
         Decode a single latent chunk to video frames.
@@ -603,9 +634,7 @@ class Magi1Pipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
         total_inference_steps = window.calc_total_inference_steps(num_inference_steps)
         denoise_counts = torch.zeros(chunk_num, dtype=torch.int32, device="cpu")
         
-        # TODO: Initialize scheduler timesteps
-        # self.scheduler.set_timesteps(num_inference_steps, device=device)
-        # timesteps = self.scheduler.timesteps
+        timesteps = self.prepare_magi_timesteps(num_inference_steps, shift=3.0, device=device)
         
         with self.progress_bar(total=total_inference_steps) as pbar:
             for global_step_idx in range(total_inference_steps):
@@ -614,28 +643,36 @@ class Magi1Pipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
                 # TODO: Implement the actual denoising step
                 # 1. Extract the window of latents for current stage
                 latent_window = latents[:, :, c_start * self.chunk_width : c_end * self.chunk_width]
+                B, C, T_window, H, W = latent_window.shape
                 
                 # 2. Extract corresponding prompt embeddings
                 prompt_embeds_window = prompt_embeds[:, c_start:c_end]
                 prompt_mask_window = prompt_mask[:, c_start:c_end]
                 
                 # 3. Get timesteps for current stage
-                # t = timesteps[???]  # Need to map stage/idx to timestep
+                t_window = self.get_timesteps(timesteps, steps_per_stage, t_start, t_end, local_step_idx) # [num chunks in window]
                 
                 # 4. Forward through transformer
-                # velocity = self.transformer(
-                #     latent_window,
-                #     timestep=t,
-                #     encoder_hidden_states=prompt_embeds_window,
-                #     encoder_attention_mask=prompt_mask_window,
-                #     **self._attention_kwargs or {},
-                # )
-                
+                velocity = self.transformer(
+                    latent_window,
+                    timestep=t_window.unsqueeze(0).repeat(B, 1),
+                    encoder_hidden_states=prompt_embeds_window,
+                    encoder_attention_mask=prompt_mask_window,
+                    **self._attention_kwargs or {},
+                )
+
                 # 5. Scheduler step to update latents
-                # latent_window = self.scheduler.step(velocity, t, latent_window).prev_sample
+                t_window_next = self.get_timesteps(timesteps, steps_per_stage, t_start, t_end, local_step_idx + 1)
+                delta_t_window = t_window_next - t_window
+                latent_window = latent_window.reshape(B, C, -1, self.chunk_width, H, W)
+                velocity = velocity.reshape(B, C, -1, self.chunk_width, H, W)
+                assert latent_window.size(2) == delta_t_window.size(0)
+                latent_window = latent_window + velocity * delta_t_window.reshape(1, 1, -1, 1, 1, 1)
+                latent_window = latent_window.reshape(B, C, T_window, H, W)
+                
                 
                 # 6. Write back to main latents
-                # latents[:, :, c_start * self.chunk_width : c_end * self.chunk_width] = latent_window
+                latents[:, :, c_start * self.chunk_width : c_end * self.chunk_width] = latent_window
                 
                 # 7. Update denoise counts and check for clean chunks
                 for c in range(c_start, c_end):
@@ -660,7 +697,7 @@ class Magi1Pipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
                         for k in callback_on_step_end_tensor_inputs:
                             if k == "latents":
                                 callback_kwargs[k] = latents
-                    callback_on_step_end(self, step, None, callback_kwargs)
+                    callback_on_step_end(self, global_step_idx, None, callback_kwargs)
                 
                 pbar.update()
 
