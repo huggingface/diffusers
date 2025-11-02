@@ -14,6 +14,7 @@
 
 import html
 import inspect
+import warnings
 from typing import Any, Callable, Dict, List, Optional, Union
 
 import regex as re
@@ -562,12 +563,11 @@ class WanVideoToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 The maximum sequence length of the text encoder. If the prompt is longer than this, it will be
                 truncated. If the prompt is shorter, it will be padded to this length.
             control_hidden_states (`torch.Tensor`, *optional*):
-                Control tensor for the VACE control path. Expected shape: `(B, C, T_patch, H_patch, W_patch)`. If not
-                provided, a neutral zero tensor of the correct size and dtype is automatically created. **Note:** This
-                argument was added to prevent crashes when running without control features.
+                Control tensor for the VACE control path. Shape: `(B, C, T_patch, H_patch, W_patch)`. If omitted, a neutral
+                zero tensor of the correct size/dtype is created automatically. **If the underlying transformer does not support
+                these kwargs, this argument is ignored.**
             control_hidden_states_scale (`torch.Tensor`, *optional*):
-                A 1D tensor of scaling factors (length = number of VACE layers). Defaults to a vector of ones if not
-                provided.
+                1D tensor of scaling factors (length = number of VACE layers). Defaults to ones. **Ignored if unsupported.**
 
         Examples:
 
@@ -609,6 +609,12 @@ class WanVideoToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         _supports_control = (
             "control_hidden_states" in _sig.parameters and "control_hidden_states_scale" in _sig.parameters
         )
+        if not _supports_control and (control_hidden_states is not None or control_hidden_states_scale is not None):
+            warnings.warn(
+                "control_hidden_states/control_hidden_states_scale were provided, but the underlying transformer "
+                "does not accept these kwargs; they will be ignored.",
+                stacklevel=2,
+            )
 
         device = self._execution_device
 
