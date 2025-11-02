@@ -563,11 +563,12 @@ class WanVideoToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 The maximum sequence length of the text encoder. If the prompt is longer than this, it will be
                 truncated. If the prompt is shorter, it will be padded to this length.
             control_hidden_states (`torch.Tensor`, *optional*):
-                Control tensor for the VACE control path. Shape: `(B, C, T_patch, H_patch, W_patch)`. If omitted, a neutral
-                zero tensor of the correct size/dtype is created automatically. **If the underlying transformer does not support
-                these kwargs, this argument is ignored.**
+                Control tensor for the VACE control path. Shape: `(B, C, T_patch, H_patch, W_patch)`. If omitted, a
+                neutral zero tensor of the correct size/dtype is created automatically. **If the underlying transformer
+                does not support these kwargs, this argument is ignored.**
             control_hidden_states_scale (`torch.Tensor`, *optional*):
-                1D tensor of scaling factors (length = number of VACE layers). Defaults to ones. **Ignored if unsupported.**
+                1D tensor of scaling factors for VACE layers (length = number of VACE layers). Defaults to ones.
+                **Ignored if unsupported.**
 
         Examples:
 
@@ -609,6 +610,7 @@ class WanVideoToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         _supports_control = (
             "control_hidden_states" in _sig.parameters and "control_hidden_states_scale" in _sig.parameters
         )
+        # Warn if user passed control kwargs but model won't consume them
         if not _supports_control and (control_hidden_states is not None or control_hidden_states_scale is not None):
             warnings.warn(
                 "control_hidden_states/control_hidden_states_scale were provided, but the underlying transformer "
@@ -669,10 +671,10 @@ class WanVideoToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             latent_timestep,
         )
 
-        # Precompute shapes/dtypes/devices we’ll need
+        # Precompute shapes we’ll need
         B = batch_size * num_videos_per_prompt
 
-        # Optionally build neutral control tensors if supported
+        # Build neutral control tensors only if the base transformer supports them
         if _supports_control:
             cfg_tr = self.transformer.config  # FrozenDict-like
             C_ctrl = cfg_tr.get("vace_in_channels", cfg_tr.get("out_channels", cfg_tr.get("in_channels", 320)))
@@ -682,10 +684,12 @@ class WanVideoToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             else:
                 pt, ph, pw = (ps[0], ps[1], ps[2]) if len(ps) == 3 else (ps[0], ps[0], ps[0])
 
+            # On first use, create neutral one-token control
             if control_hidden_states is None:
                 control_hidden_states = torch.zeros(
                     (B, int(C_ctrl), int(pt), int(ph), int(pw)), device=device, dtype=transformer_dtype
                 )
+            # Layer-wise scale vector (not batched)
             if control_hidden_states_scale is None:
                 vls = cfg_tr.get("vace_layers", [])
                 n_layers = len(vls) if isinstance(vls, (list, tuple)) else int(vls or 0)
@@ -704,7 +708,7 @@ class WanVideoToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 latent_model_input = latents.to(transformer_dtype)
                 timestep = t.expand(latents.shape[0])
 
-                # Build call kwargs
+                # Prepare kwargs for transformer call; keep identical for cond/uncond (swap only encoder_hidden_states)
                 call_kwargs = {
                     "hidden_states": latent_model_input,
                     "timestep": timestep,
@@ -713,7 +717,7 @@ class WanVideoToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                     "return_dict": False,
                 }
 
-                # If supported, attach control tensors; ensure correct batch/device/dtype
+                # If supported, attach control tensors; ensure batch/device/dtype match latent input
                 if _supports_control:
                     if control_hidden_states.shape[0] != latent_model_input.shape[0]:
                         control_hidden_states = control_hidden_states.expand(
