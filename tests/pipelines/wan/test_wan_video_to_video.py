@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import inspect
 import unittest
 
 import torch
@@ -49,6 +50,12 @@ class WanVideoToVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     )
     test_xformers_attention = False
     supports_dduf = False
+
+    def _supports_control_kwargs(self, transformer) -> bool:
+        """Return True if the base transformer's forward() accepts VACE control kwargs."""
+        base = transformer.get_base_model() if hasattr(transformer, "get_base_model") else transformer
+        sig = inspect.signature(base.forward)
+        return "control_hidden_states" in sig.parameters and "control_hidden_states_scale" in sig.parameters
 
     def get_dummy_components(self):
         torch.manual_seed(0)
@@ -147,3 +154,102 @@ class WanVideoToVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     )
     def test_save_load_float16(self):
         pass
+
+    def test_neutral_control_injection_no_crash_latent(self):
+        device = "cpu"
+
+        # Reuse the same tiny components
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components).to(device)
+        pipe.set_progress_bar_config(disable=None)
+
+        # If transformer doesn't support control kwargs, this test isn't applicable.
+        if not self._supports_control_kwargs(pipe.transformer):
+            self.skipTest("Transformer doesn't accept VACE control kwargs; skipping control injection test.")
+
+        # --- Ensure VACE fields exist for control tensor sizing ---
+        # Prefer real module in_channels if present
+        pe = getattr(pipe.transformer, "vace_patch_embedding", None)
+        if pe is not None and hasattr(pe, "in_channels"):
+            vace_in = int(pe.in_channels)
+        else:
+            # fallback to model config fields
+            vace_in = int(getattr(pipe.transformer.config, "vace_in_channels", pipe.transformer.config.in_channels))
+            # also set it to help the pipeline code path
+            pipe.transformer.config.vace_in_channels = vace_in
+
+        # vace_layers: ensure non-empty so scale vector has length >=1
+        if not hasattr(pipe.transformer.config, "vace_layers"):
+            pipe.transformer.config.vace_layers = [0, 1]
+
+        # Patch: we run in latent mode; skip VAE decode & video preprocessing
+        # Build tiny latents matching transformer.config.in_channels
+        C = int(pipe.transformer.config.in_channels)
+        # Very small T/H/W to keep speed
+        latents = torch.zeros((1, C, 2, 8, 8), device=device, dtype=torch.float32)
+
+        out = pipe(
+            video=None,
+            prompt="test",
+            negative_prompt=None,
+            height=16,
+            width=16,
+            num_inference_steps=2,
+            guidance_scale=1.0,  # disable CFG branch to keep path minimal
+            strength=0.5,
+            generator=None,
+            latents=latents,  # <- latent path, so we don’t need real VAE/video_processor
+            prompt_embeds=None,
+            negative_prompt_embeds=None,
+            output_type="latent",  # <- prevents decode/postprocess
+            return_dict=True,
+            max_sequence_length=16,
+        ).frames
+
+        # Assert: no crash and the latent shape is preserved
+        self.assertIsInstance(out, torch.Tensor)
+        self.assertEqual(tuple(out.shape), tuple(latents.shape))
+
+    def test_neutral_control_injection_with_cfg(self):
+        device = "cpu"
+
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components).to(device)
+        pipe.set_progress_bar_config(disable=None)
+
+        if not self._supports_control_kwargs(pipe.transformer):
+            self.skipTest("Transformer doesn't accept VACE control kwargs; skipping control+CFG test.")
+
+        # Ensure VACE sizing hints exist (as above)
+        pe = getattr(pipe.transformer, "vace_patch_embedding", None)
+        if pe is not None and hasattr(pe, "in_channels"):
+            vace_in = int(pe.in_channels)
+        else:
+            vace_in = int(getattr(pipe.transformer.config, "vace_in_channels", pipe.transformer.config.in_channels))
+            pipe.transformer.config.vace_in_channels = vace_in
+        if not hasattr(pipe.transformer.config, "vace_layers"):
+            pipe.transformer.config.vace_layers = [0, 1, 2]
+
+        C = int(pipe.transformer.config.in_channels)
+        latents = torch.zeros((1, C, 2, 8, 8), device=device, dtype=torch.float32)
+
+        out = pipe(
+            video=None,
+            prompt="test",
+            negative_prompt="",
+            height=16,
+            width=16,
+            num_inference_steps=2,
+            guidance_scale=3.5,  # trigger CFG (uncond) path
+            strength=0.5,
+            generator=None,
+            latents=latents,
+            prompt_embeds=None,
+            negative_prompt_embeds=None,
+            output_type="latent",
+            return_dict=True,
+            max_sequence_length=16,
+        ).frames
+
+        self.assertIsInstance(out, torch.Tensor)
+        self.assertEqual(tuple(out.shape), tuple(latents.shape))

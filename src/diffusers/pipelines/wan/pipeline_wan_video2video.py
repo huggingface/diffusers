@@ -502,6 +502,8 @@ class WanVideoToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         ] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
         max_sequence_length: int = 512,
+        control_hidden_states: Optional[torch.Tensor] = None,
+        control_hidden_states_scale: Optional[torch.Tensor] = None,
     ):
         r"""
         The call function to the pipeline for generation.
@@ -559,6 +561,14 @@ class WanVideoToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             max_sequence_length (`int`, defaults to `512`):
                 The maximum sequence length of the text encoder. If the prompt is longer than this, it will be
                 truncated. If the prompt is shorter, it will be padded to this length.
+            control_hidden_states (`torch.Tensor`, *optional*):
+                Control tensor for the VACE control path. Expected shape:
+                `(B, C, T_patch, H_patch, W_patch)`. If not provided, a neutral zero tensor of the correct
+                size and dtype is automatically created.
+                **Note:** This argument was added to prevent crashes when running without control features.
+            control_hidden_states_scale (`torch.Tensor`, *optional*):
+                A 1D tensor of scaling factors (length = number of VACE layers). Defaults to a vector of
+                ones if not provided.
 
         Examples:
 
@@ -593,6 +603,11 @@ class WanVideoToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         self._attention_kwargs = attention_kwargs
         self._current_timestep = None
         self._interrupt = False
+        base_tr = self.transformer.get_base_model() if hasattr(self.transformer, "get_base_model") else self.transformer
+        _sig = inspect.signature(base_tr.forward)
+        _supports_control = (
+            "control_hidden_states" in _sig.parameters and "control_hidden_states_scale" in _sig.parameters
+        )
 
         device = self._execution_device
 
@@ -647,6 +662,27 @@ class WanVideoToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             latent_timestep,
         )
 
+        # Precompute shapes/dtypes/devices we’ll need
+        B = batch_size * num_videos_per_prompt
+
+        # Optionally build neutral control tensors if supported
+        if _supports_control:
+            cfg_tr = self.transformer.config  # FrozenDict-like
+            C_ctrl = cfg_tr.get("vace_in_channels", cfg_tr.get("out_channels", cfg_tr.get("in_channels", 320)))
+            ps = cfg_tr.get("patch_size", (1, 1, 1))
+            if isinstance(ps, int):
+                pt = ph = pw = ps
+            else:
+                pt, ph, pw = (ps[0], ps[1], ps[2]) if len(ps) == 3 else (ps[0], ps[0], ps[0])
+
+            if control_hidden_states is None:
+                control_hidden_states = torch.zeros((B, int(C_ctrl), int(pt), int(ph), int(pw)),
+                                                    device=device, dtype=transformer_dtype)
+            if control_hidden_states_scale is None:
+                vls = cfg_tr.get("vace_layers", [])
+                n_layers = len(vls) if isinstance(vls, (list, tuple)) else int(vls or 0)
+                control_hidden_states_scale = torch.ones(max(1, n_layers), device=device, dtype=transformer_dtype)
+
         # 6. Denoising loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
         self._num_timesteps = len(timesteps)
@@ -660,22 +696,33 @@ class WanVideoToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 latent_model_input = latents.to(transformer_dtype)
                 timestep = t.expand(latents.shape[0])
 
-                noise_pred = self.transformer(
+                # Build call kwargs
+                call_kwargs = dict(
                     hidden_states=latent_model_input,
                     timestep=timestep,
                     encoder_hidden_states=prompt_embeds,
                     attention_kwargs=attention_kwargs,
                     return_dict=False,
-                )[0]
+                )
 
+                # If supported, attach control tensors; ensure correct batch/device/dtype
+                if _supports_control:
+                    if control_hidden_states.shape[0] != latent_model_input.shape[0]:
+                        control_hidden_states = control_hidden_states.expand(latent_model_input.shape[0], -1, -1, -1, -1)
+                    call_kwargs["control_hidden_states"] = control_hidden_states.to(
+                        device=latent_model_input.device, dtype=transformer_dtype
+                    )
+                    call_kwargs["control_hidden_states_scale"] = control_hidden_states_scale.to(
+                        device=latent_model_input.device, dtype=transformer_dtype
+                    )
+
+                # Cond pass
+                noise_pred = self.transformer(**call_kwargs)[0]
+ 
                 if self.do_classifier_free_guidance:
-                    noise_uncond = self.transformer(
-                        hidden_states=latent_model_input,
-                        timestep=timestep,
-                        encoder_hidden_states=negative_prompt_embeds,
-                        attention_kwargs=attention_kwargs,
-                        return_dict=False,
-                    )[0]
+                    # Uncond pass: swap encoder_hidden_states; keep control kwargs identical
+                    call_kwargs["encoder_hidden_states"] = negative_prompt_embeds
+                    noise_uncond = self.transformer(**call_kwargs)[0]
                     noise_pred = noise_uncond + guidance_scale * (noise_pred - noise_uncond)
 
                 # compute the previous noisy sample x_t -> x_t-1
