@@ -22,9 +22,9 @@ import torch.nn.functional as F
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
 from ...utils import USE_PEFT_BACKEND, is_kernels_available, logging, scale_lora_layers, unscale_lora_layers
+from .._modeling_parallel import ContextParallelInput, ContextParallelOutput
 from ..attention import AttentionMixin, AttentionModuleMixin, FeedForward
 from ..attention_dispatch import AttentionBackendName, dispatch_attention_fn
-from .._modeling_parallel import ContextParallelInput, ContextParallelOutput
 from ..cache_utils import CacheMixin
 from ..embeddings import TimestepEmbedding, Timesteps
 from ..modeling_outputs import Transformer2DModelOutput
@@ -301,7 +301,9 @@ class Magi1TimeTextEmbedding(nn.Module):
         super().__init__()
 
         # NOTE: timestep_rescale_factor=1000 to match original implementation (dit_module.py:71)
-        self.timesteps_proj = Timesteps(num_channels=time_freq_dim, flip_sin_to_cos=True, downscale_freq_shift=0, scale=1000)
+        self.timesteps_proj = Timesteps(
+            num_channels=time_freq_dim, flip_sin_to_cos=True, downscale_freq_shift=0, scale=1000
+        )
         self.time_embedder = TimestepEmbedding(in_channels=time_freq_dim, time_embed_dim=int(dim * 0.25))
         self.text_embedder = Magi1TextProjection(text_embed_dim, dim, adaln_dim=int(dim * 0.25))
 
@@ -817,9 +819,15 @@ class Magi1Transformer3DModel(
 
         self_attention_kwargs = None
         if kv_range is not None:
-            cu_seqlens_q = torch.tensor(
-                [0] + ([clip_token_nums] * denoising_range_num * batch_size), dtype=torch.int64, device=hidden_states.device
-            ).cumsum(-1).to(torch.int32)
+            cu_seqlens_q = (
+                torch.tensor(
+                    [0] + ([clip_token_nums] * denoising_range_num * batch_size),
+                    dtype=torch.int64,
+                    device=hidden_states.device,
+                )
+                .cumsum(-1)
+                .to(torch.int32)
+            )
             # q_ranges pairs from cu_seqlens_q
             q_ranges = torch.cat([cu_seqlens_q[:-1].unsqueeze(1), cu_seqlens_q[1:].unsqueeze(1)], dim=1)
             flat_kv = torch.unique(kv_range, sorted=True)
@@ -834,9 +842,15 @@ class Magi1Transformer3DModel(
         encoder_attention_kwargs = None
         if mask_2d is not None:
             y_index = mask_2d.sum(dim=-1).to(torch.int32)
-            cu_seqlens_q = torch.tensor(
-                [0] + ([clip_token_nums] * denoising_range_num * batch_size), dtype=torch.int64, device=hidden_states.device
-            ).cumsum(-1).to(torch.int32)
+            cu_seqlens_q = (
+                torch.tensor(
+                    [0] + ([clip_token_nums] * denoising_range_num * batch_size),
+                    dtype=torch.int64,
+                    device=hidden_states.device,
+                )
+                .cumsum(-1)
+                .to(torch.int32)
+            )
             cu_seqlens_k = torch.cat([y_index.new_zeros(1, dtype=torch.int32), y_index.to(torch.int32)]).cumsum(-1)
             q_ranges = torch.cat([cu_seqlens_q[:-1].unsqueeze(1), cu_seqlens_q[1:].unsqueeze(1)], dim=1)
             k_ranges = torch.cat([cu_seqlens_k[:-1].unsqueeze(1), cu_seqlens_k[1:].unsqueeze(1)], dim=1)

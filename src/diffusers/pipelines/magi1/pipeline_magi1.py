@@ -1017,7 +1017,9 @@ class Magi1Pipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
                         batch_size * num_chunks_in_window, 1, 1, -1
                     )
                     if chunk_negative_masks_list:
-                        chunk_negative_masks = torch.stack(chunk_negative_masks_list, dim=0).transpose(0, 1).flatten(0, 1)
+                        chunk_negative_masks = (
+                            torch.stack(chunk_negative_masks_list, dim=0).transpose(0, 1).flatten(0, 1)
+                        )
                         encoder_attention_mask_neg = chunk_negative_masks.to(dtype=chunk_prompt_embeds.dtype).view(
                             batch_size * num_chunks_in_window, 1, 1, -1
                         )

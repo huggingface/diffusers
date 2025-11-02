@@ -1,16 +1,15 @@
 import argparse
-import json
 import os
-import pathlib
 import shutil
 import tempfile
+from typing import Any, Dict
 
 import torch
 from accelerate import init_empty_weights
 from huggingface_hub import hf_hub_download
 from safetensors import safe_open
 from safetensors.torch import load_file
-from transformers import AutoTokenizer, UMT5EncoderModel
+from transformers import AutoTokenizer, T5EncoderModel
 
 from diffusers import (
     AutoencoderKLMagi1,
@@ -20,6 +19,254 @@ from diffusers import (
     Magi1Transformer3DModel,
     Magi1VideoToVideoPipeline,
 )
+
+
+# Simple top-level mappings for MAGI-1 transformer conversion
+SIMPLE_TRANSFORMER_MAPPINGS = [
+    ("x_embedder.weight", "patch_embedding.weight"),
+    ("t_embedder.mlp.0.weight", "condition_embedder.time_embedder.linear_1.weight"),
+    ("t_embedder.mlp.0.bias", "condition_embedder.time_embedder.linear_1.bias"),
+    ("t_embedder.mlp.2.weight", "condition_embedder.time_embedder.linear_2.weight"),
+    ("t_embedder.mlp.2.bias", "condition_embedder.time_embedder.linear_2.bias"),
+    ("y_embedder.y_proj_xattn.0.weight", "condition_embedder.text_embedder.y_proj_xattn.0.weight"),
+    ("y_embedder.y_proj_xattn.0.bias", "condition_embedder.text_embedder.y_proj_xattn.0.bias"),
+    ("y_embedder.y_proj_adaln.0.weight", "condition_embedder.text_embedder.y_proj_adaln.weight"),
+    ("y_embedder.y_proj_adaln.0.bias", "condition_embedder.text_embedder.y_proj_adaln.bias"),
+    ("videodit_blocks.final_layernorm.weight", "norm_out.weight"),
+    ("videodit_blocks.final_layernorm.bias", "norm_out.bias"),
+    ("final_linear.linear.weight", "proj_out.weight"),
+    ("rope.bands", "rope.bands"),
+]
+
+
+def get_transformer_config(model_type: str) -> Dict[str, Any]:
+    """
+    Get transformer configuration for different MAGI-1 model variants.
+
+    Args:
+        model_type: Model type identifier (e.g., "MAGI-1-T2V-4.5B-distill")
+
+    Returns:
+        Dictionary containing model_id, repo_path, and diffusers_config
+    """
+    if model_type == "MAGI-1-T2V-4.5B-distill" or model_type == "4.5B_distill":
+        return {
+            "model_id": "sand-ai/MAGI-1",
+            "repo_path": "4.5B_distill",
+            "diffusers_config": {
+                "in_channels": 16,
+                "out_channels": 16,
+                "num_layers": 34,
+                "num_attention_heads": 24,
+                "num_kv_heads": 8,
+                "attention_head_dim": 128,
+                "cross_attention_dim": 4096,
+                "freq_dim": 256,
+                "ffn_dim": 12288,
+                "patch_size": (1, 2, 2),
+                "eps": 1e-6,
+            },
+        }
+    elif model_type == "MAGI-1-T2V-24B-distill" or model_type == "24B_distill":
+        return {
+            "model_id": "sand-ai/MAGI-1",
+            "repo_path": "24B_distill",
+            "diffusers_config": {
+                "in_channels": 16,
+                "out_channels": 16,
+                "num_layers": 48,
+                "num_attention_heads": 32,
+                "num_kv_heads": 8,
+                "attention_head_dim": 128,
+                "cross_attention_dim": 4096,
+                "freq_dim": 256,
+                "ffn_dim": 16384,
+                "patch_size": (1, 2, 2),
+                "eps": 1e-6,
+            },
+        }
+    elif model_type == "MAGI-1-T2V-4.5B" or model_type == "4.5B":
+        return {
+            "model_id": "sand-ai/MAGI-1",
+            "repo_path": "4.5B_base",
+            "diffusers_config": {
+                "in_channels": 16,
+                "out_channels": 16,
+                "num_layers": 34,
+                "num_attention_heads": 24,
+                "num_kv_heads": 8,
+                "attention_head_dim": 128,
+                "cross_attention_dim": 4096,
+                "freq_dim": 256,
+                "ffn_dim": 12288,
+                "patch_size": (1, 2, 2),
+                "eps": 1e-6,
+            },
+        }
+    elif model_type == "MAGI-1-T2V-24B" or model_type == "24B":
+        return {
+            "model_id": "sand-ai/MAGI-1",
+            "repo_path": "24B_base",
+            "diffusers_config": {
+                "in_channels": 16,
+                "out_channels": 16,
+                "num_layers": 48,
+                "num_attention_heads": 32,
+                "num_kv_heads": 8,
+                "attention_head_dim": 128,
+                "cross_attention_dim": 4096,
+                "freq_dim": 256,
+                "ffn_dim": 16384,
+                "patch_size": (1, 2, 2),
+                "eps": 1e-6,
+            },
+        }
+    elif model_type == "MAGI-1-I2V-4.5B-distill":
+        return {
+            "model_id": "sand-ai/MAGI-1",
+            "repo_path": "4.5B_distill",  # Placeholder - update when I2V weights are released
+            "diffusers_config": {
+                "in_channels": 16,
+                "out_channels": 16,
+                "num_layers": 34,
+                "num_attention_heads": 24,
+                "num_kv_heads": 8,
+                "attention_head_dim": 128,
+                "cross_attention_dim": 4096,
+                "freq_dim": 256,
+                "ffn_dim": 12288,
+                "patch_size": (1, 2, 2),
+                "eps": 1e-6,
+            },
+        }
+    elif model_type == "MAGI-1-I2V-4.5B":
+        return {
+            "model_id": "sand-ai/MAGI-1",
+            "repo_path": "4.5B_base",
+            "diffusers_config": {
+                "in_channels": 16,
+                "out_channels": 16,
+                "num_layers": 34,
+                "num_attention_heads": 24,
+                "num_kv_heads": 8,
+                "attention_head_dim": 128,
+                "cross_attention_dim": 4096,
+                "freq_dim": 256,
+                "ffn_dim": 12288,
+                "patch_size": (1, 2, 2),
+                "eps": 1e-6,
+            },
+        }
+    elif model_type == "MAGI-1-I2V-24B-distill":
+        return {
+            "model_id": "sand-ai/MAGI-1",
+            "repo_path": "24B_distill",  # Placeholder - update when I2V weights are released
+            "diffusers_config": {
+                "in_channels": 16,
+                "out_channels": 16,
+                "num_layers": 48,
+                "num_attention_heads": 32,
+                "num_kv_heads": 8,
+                "attention_head_dim": 128,
+                "cross_attention_dim": 4096,
+                "freq_dim": 256,
+                "ffn_dim": 16384,
+                "patch_size": (1, 2, 2),
+                "eps": 1e-6,
+            },
+        }
+    elif model_type == "MAGI-1-I2V-24B":
+        return {
+            "model_id": "sand-ai/MAGI-1",
+            "repo_path": "24B_base",
+            "diffusers_config": {
+                "in_channels": 16,
+                "out_channels": 16,
+                "num_layers": 48,
+                "num_attention_heads": 32,
+                "num_kv_heads": 8,
+                "attention_head_dim": 128,
+                "cross_attention_dim": 4096,
+                "freq_dim": 256,
+                "ffn_dim": 16384,
+                "patch_size": (1, 2, 2),
+                "eps": 1e-6,
+            },
+        }
+    elif model_type == "MAGI-1-V2V-4.5B-distill":
+        return {
+            "model_id": "sand-ai/MAGI-1",
+            "repo_path": "4.5B_distill",  # Placeholder - update when V2V weights are released
+            "diffusers_config": {
+                "in_channels": 16,
+                "out_channels": 16,
+                "num_layers": 34,
+                "num_attention_heads": 24,
+                "num_kv_heads": 8,
+                "attention_head_dim": 128,
+                "cross_attention_dim": 4096,
+                "freq_dim": 256,
+                "ffn_dim": 12288,
+                "patch_size": (1, 2, 2),
+                "eps": 1e-6,
+            },
+        }
+    elif model_type == "MAGI-1-V2V-4.5B":
+        return {
+            "model_id": "sand-ai/MAGI-1",
+            "repo_path": "4.5B_base",
+            "diffusers_config": {
+                "in_channels": 16,
+                "out_channels": 16,
+                "num_layers": 34,
+                "num_attention_heads": 24,
+                "num_kv_heads": 8,
+                "attention_head_dim": 128,
+                "cross_attention_dim": 4096,
+                "freq_dim": 256,
+                "ffn_dim": 12288,
+                "patch_size": (1, 2, 2),
+                "eps": 1e-6,
+            },
+        }
+    elif model_type == "MAGI-1-V2V-24B-distill":
+        return {
+            "model_id": "sand-ai/MAGI-1",
+            "repo_path": "24B_distill",  # Placeholder - update when V2V weights are released
+            "diffusers_config": {
+                "in_channels": 16,
+                "out_channels": 16,
+                "num_layers": 48,
+                "num_attention_heads": 32,
+                "num_kv_heads": 8,
+                "attention_head_dim": 128,
+                "cross_attention_dim": 4096,
+                "freq_dim": 256,
+                "ffn_dim": 16384,
+                "patch_size": (1, 2, 2),
+                "eps": 1e-6,
+            },
+        }
+    elif model_type == "MAGI-1-V2V-24B":
+        return {
+            "model_id": "sand-ai/MAGI-1",
+            "repo_path": "24B_base",
+            "diffusers_config": {
+                "in_channels": 16,
+                "out_channels": 16,
+                "num_layers": 48,
+                "num_attention_heads": 32,
+                "num_kv_heads": 8,
+                "attention_head_dim": 128,
+                "cross_attention_dim": 4096,
+                "freq_dim": 256,
+                "ffn_dim": 16384,
+                "patch_size": (1, 2, 2),
+                "eps": 1e-6,
+            },
+        }
+    else:
+        raise ValueError(f"Unknown model type: {model_type}")
 
 
 def convert_magi1_transformer(model_type):
@@ -32,60 +279,64 @@ def convert_magi1_transformer(model_type):
     Returns:
         The converted transformer model.
     """
-
-    model_type_mapping = {
-        "MAGI-1-T2V-4.5B-distill": "4.5B_distill",
-        "MAGI-1-T2V-24B-distill": "24B_distill",
-        "MAGI-1-T2V-4.5B": "4.5B",
-        "MAGI-1-T2V-24B": "24B",
-        "4.5B_distill": "4.5B_distill",
-        "24B_distill": "24B_distill",
-        "4.5B": "4.5B",
-        "24B": "24B",
-    }
-
-    repo_path = model_type_mapping.get(model_type, model_type)
+    config = get_transformer_config(model_type)
+    model_id = config["model_id"]
+    repo_path = config["repo_path"]
+    diffusers_config = config["diffusers_config"]
 
     temp_dir = tempfile.mkdtemp()
     transformer_ckpt_dir = os.path.join(temp_dir, "transformer_checkpoint")
     os.makedirs(transformer_ckpt_dir, exist_ok=True)
 
+    # Determine checkpoint path based on model type (distill vs base)
+    if "distill" in model_type.lower():
+        weight_subpath = "inference_weight.distill"
+    else:
+        weight_subpath = "inference_weight"
+
     checkpoint_files = []
-    shard_index = 1
-    while True:
+    last_exception = None
+
+    # Try to download both shards
+    for shard_index in [1, 2]:
         try:
-            if shard_index == 1:
-                shard_filename = f"model-{shard_index:05d}-of-00002.safetensors"
-                shard_path = hf_hub_download(
-                    "sand-ai/MAGI-1", f"ckpt/magi/{repo_path}/inference_weight.distill/{shard_filename}"
-                )
-                checkpoint_files.append(shard_path)
-                shard_index += 1
-            elif shard_index == 2:
-                shard_filename = f"model-{shard_index:05d}-of-00002.safetensors"
-                shard_path = hf_hub_download(
-                    "sand-ai/MAGI-1", f"ckpt/magi/{repo_path}/inference_weight.distill/{shard_filename}"
-                )
-                checkpoint_files.append(shard_path)
-                break
-            else:
-                break
-        except Exception:
+            shard_filename = f"model-{shard_index:05d}-of-00002.safetensors"
+            checkpoint_path = f"ckpt/magi/{repo_path}/{weight_subpath}/{shard_filename}"
+            print(f"Attempting to download: {model_id}/{checkpoint_path}")
+            shard_path = hf_hub_download(model_id, checkpoint_path)
+            checkpoint_files.append(shard_path)
+            print(f"Successfully downloaded shard {shard_index}")
+        except Exception as e:
+            last_exception = e
+            print(f"Failed to download shard {shard_index}: {e}")
             break
 
     if not checkpoint_files:
-        raise ValueError(f"No checkpoint files found for model type: {model_type}")
+        error_msg = f"No checkpoint files found for model type: {model_type}\n"
+        error_msg += f"Tried path: {model_id}/ckpt/magi/{repo_path}/{weight_subpath}/\n"
+        if last_exception:
+            error_msg += f"Last error: {last_exception}"
+        raise ValueError(error_msg)
 
     for i, shard_path in enumerate(checkpoint_files):
         dest_path = os.path.join(transformer_ckpt_dir, f"model-{i + 1:05d}-of-{len(checkpoint_files):05d}.safetensors")
         shutil.copy2(shard_path, dest_path)
 
-    transformer = convert_magi1_transformer_checkpoint(transformer_ckpt_dir)
+    transformer = convert_magi1_transformer_checkpoint(transformer_ckpt_dir, diffusers_config=diffusers_config)
 
     return transformer
 
 
 def convert_magi1_vae():
+    """
+    Convert MAGI-1 VAE checkpoint to diffusers format.
+
+    Uses init_empty_weights() for memory-efficient loading of large models,
+    avoiding OOM errors during conversion.
+
+    Returns:
+        AutoencoderKLMagi1: The converted VAE model.
+    """
     vae_ckpt_path = hf_hub_download("sand-ai/MAGI-1", "ckpt/vae/diffusion_pytorch_model.safetensors")
     checkpoint = load_file(vae_ckpt_path)
 
@@ -100,24 +351,17 @@ def convert_magi1_vae():
         "ffn_dim": 4 * 1024,
         "num_layers": 24,
         "eps": 1e-6,
+        # Add compression ratios explicitly for pipeline compatibility
+        "temporal_compression_ratio": 4,  # patch_size[0]
+        "spatial_compression_ratio": 8,  # patch_size[1] or patch_size[2]
     }
 
-    vae = AutoencoderKLMagi1(
-        patch_size=config["patch_size"],
-        num_attention_heads=config["num_attention_heads"],
-        attention_head_dim=config["attention_head_dim"],
-        z_dim=config["z_dim"],
-        height=config["height"],
-        width=config["width"],
-        num_frames=config["num_frames"],
-        ffn_dim=config["ffn_dim"],
-        num_layers=config["num_layers"],
-        eps=config["eps"],
-    )
+    with init_empty_weights():
+        vae = AutoencoderKLMagi1.from_config(config)
 
     converted_state_dict = convert_vae_state_dict(checkpoint)
 
-    vae.load_state_dict(converted_state_dict, strict=True)
+    vae.load_state_dict(converted_state_dict, strict=True, assign=True)
 
     return vae
 
@@ -264,206 +508,141 @@ def load_magi1_transformer_checkpoint(checkpoint_path):
     return state_dict
 
 
-def convert_magi1_transformer_checkpoint(checkpoint_path, transformer_config_file=None, dtype=None, allow_partial=False):
+def convert_magi1_transformer_checkpoint(checkpoint_path, diffusers_config):
     """
     Convert a MAGI-1 transformer checkpoint to a diffusers Magi1Transformer3DModel.
 
+    Uses init_empty_weights() for memory-efficient loading to avoid OOM errors
+    with large models (4.5B-24B parameters). Follows diffusers best practices
+    with strict=True and assign=True for direct tensor assignment.
+
+    Preserves original mixed precision from checkpoint:
+    - F32 for embeddings and output layers (numerical stability)
+    - BF16 for attention and MLP layers (memory efficiency)
+
     Args:
         checkpoint_path: Path to the MAGI-1 transformer checkpoint.
-        transformer_config_file: Optional path to a transformer config file.
-        dtype: Optional dtype for the model.
+        diffusers_config: Diffusers config dict (from get_transformer_config).
 
     Returns:
-        A diffusers Magi1Transformer3DModel model.
+        A diffusers Magi1Transformer3DModel model with original mixed precision.
     """
-    if transformer_config_file is not None:
-        with open(transformer_config_file, "r") as f:
-            config = json.load(f)
-    else:
-        config = {
-            "in_channels": 16,
-            "out_channels": 16,
-            "num_layers": 34,
-            "num_attention_heads": 24,
-            "num_kv_heads": 8,
-            "attention_head_dim": 128,
-            "cross_attention_dim": 4096,
-            "freq_dim": 256,
-            "ffn_dim": 12288,
-            "patch_size": (1, 2, 2),
-            "eps": 1e-6,
-        }
-
-    transformer = Magi1Transformer3DModel(
-        in_channels=config["in_channels"],
-        out_channels=config["out_channels"],
-        num_layers=config["num_layers"],
-        num_attention_heads=config["num_attention_heads"],
-        num_kv_heads=config["num_kv_heads"],
-        attention_head_dim=config["attention_head_dim"],
-        cross_attention_dim=config["cross_attention_dim"],
-        freq_dim=config["freq_dim"],
-        ffn_dim=config["ffn_dim"],
-        patch_size=config["patch_size"],
-        eps=config["eps"],
-    )
-
     checkpoint = load_magi1_transformer_checkpoint(checkpoint_path)
 
-    converted_state_dict, report = convert_transformer_state_dict(checkpoint, transformer, allow_partial=allow_partial)
+    with init_empty_weights():
+        transformer = Magi1Transformer3DModel.from_config(diffusers_config)
 
-    # Target verifications
-    expected = transformer.state_dict()
-    expected_keys = set(expected.keys())
-    got_keys = set(converted_state_dict.keys())
-    missing_target = sorted(list(expected_keys - got_keys))
-    unexpected_target = sorted(list(got_keys - expected_keys))
+    converted_state_dict = convert_transformer_state_dict(checkpoint, transformer)
 
-    shape_mismatches = []
-    for k in sorted(list(expected_keys & got_keys)):
-        if tuple(expected[k].shape) != tuple(converted_state_dict[k].shape):
-            shape_mismatches.append((k, tuple(converted_state_dict[k].shape), tuple(expected[k].shape)))
+    # Use assign=True to preserve original mixed precision dtypes from checkpoint
+    # Original MAGI-1 uses F32 for embeddings/output layers and BF16 for attention/MLP
+    transformer.load_state_dict(converted_state_dict, strict=True, assign=True)
 
-    if (report["missing_src_keys"] or missing_target or shape_mismatches):
-        raise ValueError("Conversion verification failed. See report above.")
-
-    # Enforce strict=True per requirement
-    transformer.load_state_dict(converted_state_dict, strict=True)
-
-    if dtype is not None:
-        transformer = transformer.to(dtype=dtype)
+    # Note: dtype parameter is intentionally NOT applied to preserve mixed precision
+    # If you need uniform dtype, convert after loading the pipeline
 
     return transformer
 
 
-def convert_transformer_state_dict(checkpoint, transformer=None, allow_partial=False):
+def convert_transformer_state_dict(checkpoint, transformer):
     """
     Convert MAGI-1 transformer state dict to diffusers format.
 
-    Maps the original MAGI-1 parameter names to diffusers' standard transformer naming.
-    Handles all shape mismatches and key mappings based on actual checkpoint analysis.
+    Uses explicit key mappings for clarity and correctness.
     """
     converted_state_dict = {}
-    used_src_keys = set()
-    missing_src_keys = []
-
-    def require(key: str) -> torch.Tensor:
-        if key not in checkpoint:
-            missing_src_keys.append(key)
-            if allow_partial:
-                return None  # will be skipped by caller
-            raise KeyError(f"Missing source key: {key}")
-        used_src_keys.add(key)
-        return checkpoint[key]
-
-    def assign(src: str, dst: str):
-        val = require(src)
-        if val is not None:
-            converted_state_dict[dst] = val
-
-    def split_assign(src: str, dst_k: str, dst_v: str):
-        kv = require(src)
-        if kv is not None:
-            k, v = kv.chunk(2, dim=0)
-            converted_state_dict[dst_k] = k
-            converted_state_dict[dst_v] = v
 
     # Simple top-level mappings
-    simple_maps = [
-        ("x_embedder.weight", "patch_embedding.weight"),
-        ("t_embedder.mlp.0.weight", "condition_embedder.time_embedder.linear_1.weight"),
-        ("t_embedder.mlp.0.bias", "condition_embedder.time_embedder.linear_1.bias"),
-        ("t_embedder.mlp.2.weight", "condition_embedder.time_embedder.linear_2.weight"),
-        ("t_embedder.mlp.2.bias", "condition_embedder.time_embedder.linear_2.bias"),
-        ("y_embedder.y_proj_xattn.0.weight", "condition_embedder.text_embedder.y_proj_xattn.0.weight"),
-        ("y_embedder.y_proj_xattn.0.bias", "condition_embedder.text_embedder.y_proj_xattn.0.bias"),
-        ("y_embedder.y_proj_adaln.0.weight", "condition_embedder.text_embedder.y_proj_adaln.weight"),
-        ("y_embedder.y_proj_adaln.0.bias", "condition_embedder.text_embedder.y_proj_adaln.bias"),
-        ("videodit_blocks.final_layernorm.weight", "norm_out.weight"),
-        ("videodit_blocks.final_layernorm.bias", "norm_out.bias"),
-        ("final_linear.linear.weight", "proj_out.weight"),
-        ("rope.bands", "rope.bands"),
-    ]
-
-    for src, dst in simple_maps:
-        try:
-            assign(src, dst)
-        except KeyError:
-            if not allow_partial:
-                raise
+    for src, dst in SIMPLE_TRANSFORMER_MAPPINGS:
+        if src in checkpoint:
+            converted_state_dict[dst] = checkpoint[src]
 
     # Determine number of layers
-    if transformer is not None and hasattr(transformer, "config"):
-        num_layers = transformer.config.num_layers
-    else:
-        # Fallback: infer from checkpoint keys
-        num_layers = 0
-        for k in checkpoint.keys():
-            if k.startswith("videodit_blocks.layers."):
-                try:
-                    idx = int(k.split(".")[3])
-                    num_layers = max(num_layers, idx + 1)
-                except Exception:
-                    pass
+    num_layers = transformer.config.num_layers
 
     # Per-layer mappings
     for i in range(num_layers):
         layer_prefix = f"videodit_blocks.layers.{i}"
         block_prefix = f"blocks.{i}"
 
-        layer_maps = [
-            (f"{layer_prefix}.self_attention.linear_qkv.layer_norm.weight", f"{block_prefix}.norm1.weight"),
-            (f"{layer_prefix}.self_attention.linear_qkv.layer_norm.bias", f"{block_prefix}.norm1.bias"),
-            (f"{layer_prefix}.self_attention.linear_qkv.q.weight", f"{block_prefix}.attn1.to_q.weight"),
-            (f"{layer_prefix}.self_attention.linear_qkv.k.weight", f"{block_prefix}.attn1.to_k.weight"),
-            (f"{layer_prefix}.self_attention.linear_qkv.v.weight", f"{block_prefix}.attn1.to_v.weight"),
-            (f"{layer_prefix}.self_attention.q_layernorm.weight", f"{block_prefix}.attn1.norm_q.weight"),
-            (f"{layer_prefix}.self_attention.q_layernorm.bias", f"{block_prefix}.attn1.norm_q.bias"),
-            (f"{layer_prefix}.self_attention.k_layernorm.weight", f"{block_prefix}.attn1.norm_k.weight"),
-            (f"{layer_prefix}.self_attention.k_layernorm.bias", f"{block_prefix}.attn1.norm_k.bias"),
-            (f"{layer_prefix}.self_attention.linear_qkv.qx.weight", f"{block_prefix}.attn2.to_q.weight"),
-            (f"{layer_prefix}.self_attention.q_layernorm_xattn.weight", f"{block_prefix}.attn2.norm_q.weight"),
-            (f"{layer_prefix}.self_attention.q_layernorm_xattn.bias", f"{block_prefix}.attn2.norm_q.bias"),
-            (f"{layer_prefix}.self_attention.k_layernorm_xattn.weight", f"{block_prefix}.attn2.norm_k.weight"),
-            (f"{layer_prefix}.self_attention.k_layernorm_xattn.bias", f"{block_prefix}.attn2.norm_k.bias"),
-            # Combined projection for concatenated [self_attn, cross_attn] outputs
-            (f"{layer_prefix}.self_attention.linear_proj.weight", f"{block_prefix}.attn_proj.weight"),
-            (f"{layer_prefix}.self_attn_post_norm.weight", f"{block_prefix}.norm2.weight"),
-            (f"{layer_prefix}.self_attn_post_norm.bias", f"{block_prefix}.norm2.bias"),
-            (f"{layer_prefix}.mlp.layer_norm.weight", f"{block_prefix}.norm3.weight"),
-            (f"{layer_prefix}.mlp.layer_norm.bias", f"{block_prefix}.norm3.bias"),
-            (f"{layer_prefix}.mlp.linear_fc1.weight", f"{block_prefix}.ffn.net.0.proj.weight"),
-            (f"{layer_prefix}.mlp.linear_fc2.weight", f"{block_prefix}.ffn.net.2.weight"),
-            (f"{layer_prefix}.mlp_post_norm.weight", f"{block_prefix}.norm4.weight"),
-            (f"{layer_prefix}.mlp_post_norm.bias", f"{block_prefix}.norm4.bias"),
-            (f"{layer_prefix}.ada_modulate_layer.proj.0.weight", f"{block_prefix}.ada_modulate_layer.1.weight"),
-            (f"{layer_prefix}.ada_modulate_layer.proj.0.bias", f"{block_prefix}.ada_modulate_layer.1.bias"),
+        # Self-attention (attn1)
+        converted_state_dict[f"{block_prefix}.norm1.weight"] = checkpoint[
+            f"{layer_prefix}.self_attention.linear_qkv.layer_norm.weight"
+        ]
+        converted_state_dict[f"{block_prefix}.norm1.bias"] = checkpoint[
+            f"{layer_prefix}.self_attention.linear_qkv.layer_norm.bias"
+        ]
+        converted_state_dict[f"{block_prefix}.attn1.to_q.weight"] = checkpoint[
+            f"{layer_prefix}.self_attention.linear_qkv.q.weight"
+        ]
+        converted_state_dict[f"{block_prefix}.attn1.to_k.weight"] = checkpoint[
+            f"{layer_prefix}.self_attention.linear_qkv.k.weight"
+        ]
+        converted_state_dict[f"{block_prefix}.attn1.to_v.weight"] = checkpoint[
+            f"{layer_prefix}.self_attention.linear_qkv.v.weight"
+        ]
+        converted_state_dict[f"{block_prefix}.attn1.norm_q.weight"] = checkpoint[
+            f"{layer_prefix}.self_attention.q_layernorm.weight"
+        ]
+        converted_state_dict[f"{block_prefix}.attn1.norm_q.bias"] = checkpoint[
+            f"{layer_prefix}.self_attention.q_layernorm.bias"
+        ]
+        converted_state_dict[f"{block_prefix}.attn1.norm_k.weight"] = checkpoint[
+            f"{layer_prefix}.self_attention.k_layernorm.weight"
+        ]
+        converted_state_dict[f"{block_prefix}.attn1.norm_k.bias"] = checkpoint[
+            f"{layer_prefix}.self_attention.k_layernorm.bias"
         ]
 
-        for src, dst in layer_maps:
-            try:
-                assign(src, dst)
-            except KeyError:
-                if not allow_partial:
-                    raise
+        # Cross-attention (attn2)
+        converted_state_dict[f"{block_prefix}.attn2.to_q.weight"] = checkpoint[
+            f"{layer_prefix}.self_attention.linear_qkv.qx.weight"
+        ]
+        converted_state_dict[f"{block_prefix}.attn2.norm_q.weight"] = checkpoint[
+            f"{layer_prefix}.self_attention.q_layernorm_xattn.weight"
+        ]
+        converted_state_dict[f"{block_prefix}.attn2.norm_q.bias"] = checkpoint[
+            f"{layer_prefix}.self_attention.q_layernorm_xattn.bias"
+        ]
+        converted_state_dict[f"{block_prefix}.attn2.norm_k.weight"] = checkpoint[
+            f"{layer_prefix}.self_attention.k_layernorm_xattn.weight"
+        ]
+        converted_state_dict[f"{block_prefix}.attn2.norm_k.bias"] = checkpoint[
+            f"{layer_prefix}.self_attention.k_layernorm_xattn.bias"
+        ]
 
-        # special split for kv
-        try:
-            split_assign(
-                f"{layer_prefix}.self_attention.linear_kv_xattn.weight",
-                f"{block_prefix}.attn2.to_k.weight",
-                f"{block_prefix}.attn2.to_v.weight",
-            )
-        except KeyError:
-            if not allow_partial:
-                raise
+        # Split KV for cross-attention
+        kv = checkpoint[f"{layer_prefix}.self_attention.linear_kv_xattn.weight"]
+        k, v = kv.chunk(2, dim=0)
+        converted_state_dict[f"{block_prefix}.attn2.to_k.weight"] = k
+        converted_state_dict[f"{block_prefix}.attn2.to_v.weight"] = v
 
-    report = {
-        "total_src_keys": len(checkpoint),
-        "used_src_keys": len(used_src_keys),
-        "missing_src_keys": missing_src_keys,
-    }
-    return converted_state_dict, report
+        # Combined projection for both attentions
+        converted_state_dict[f"{block_prefix}.attn_proj.weight"] = checkpoint[
+            f"{layer_prefix}.self_attention.linear_proj.weight"
+        ]
+        converted_state_dict[f"{block_prefix}.norm2.weight"] = checkpoint[f"{layer_prefix}.self_attn_post_norm.weight"]
+        converted_state_dict[f"{block_prefix}.norm2.bias"] = checkpoint[f"{layer_prefix}.self_attn_post_norm.bias"]
+
+        # MLP
+        converted_state_dict[f"{block_prefix}.norm3.weight"] = checkpoint[f"{layer_prefix}.mlp.layer_norm.weight"]
+        converted_state_dict[f"{block_prefix}.norm3.bias"] = checkpoint[f"{layer_prefix}.mlp.layer_norm.bias"]
+        converted_state_dict[f"{block_prefix}.ffn.net.0.proj.weight"] = checkpoint[
+            f"{layer_prefix}.mlp.linear_fc1.weight"
+        ]
+        converted_state_dict[f"{block_prefix}.ffn.net.2.weight"] = checkpoint[f"{layer_prefix}.mlp.linear_fc2.weight"]
+        converted_state_dict[f"{block_prefix}.norm4.weight"] = checkpoint[f"{layer_prefix}.mlp_post_norm.weight"]
+        converted_state_dict[f"{block_prefix}.norm4.bias"] = checkpoint[f"{layer_prefix}.mlp_post_norm.bias"]
+
+        # Ada LayerNorm modulation
+        converted_state_dict[f"{block_prefix}.ada_modulate_layer.1.weight"] = checkpoint[
+            f"{layer_prefix}.ada_modulate_layer.proj.0.weight"
+        ]
+        converted_state_dict[f"{block_prefix}.ada_modulate_layer.1.bias"] = checkpoint[
+            f"{layer_prefix}.ada_modulate_layer.proj.0.bias"
+        ]
+
+    return converted_state_dict
 
 
 def get_args():
@@ -479,18 +658,22 @@ def get_args():
             "MAGI-1-T2V-24B",
             "MAGI-1-I2V-4.5B-distill",
             "MAGI-1-I2V-24B-distill",
+            "MAGI-1-I2V-4.5B",
+            "MAGI-1-I2V-24B",
             "MAGI-1-V2V-4.5B-distill",
             "MAGI-1-V2V-24B-distill",
+            "MAGI-1-V2V-4.5B",
+            "MAGI-1-V2V-24B",
         ],
         help="Model type to convert",
     )
-    parser.add_argument(
-        "--checkpoint_path", type=str, default=None, help="Local MAGI-1 transformer checkpoint path (optional)"
-    )
-    parser.add_argument("--config_path", type=str, default=None, help="Optional JSON config for transformer")
     parser.add_argument("--output_path", type=str, required=True, help="Output directory for converted pipeline")
-    parser.add_argument("--dtype", default="bf16", choices=["fp32", "fp16", "bf16", "none"], help="Data type for conversion")
-    parser.add_argument("--allow_partial", action="store_true", help="Allow partial/loose state dict loading")
+    parser.add_argument(
+        "--dtype", default="bf16", choices=["fp32", "fp16", "bf16", "none"], help="Data type for conversion"
+    )
+    parser.add_argument(
+        "--repo_id", type=str, default=None, help="Hugging Face Hub repo ID to push the converted model to"
+    )
     return parser.parse_args()
 
 
@@ -504,27 +687,28 @@ if __name__ == "__main__":
     args = get_args()
 
     # Convert transformer
-    if args.checkpoint_path is not None:
-        transformer = convert_magi1_transformer_checkpoint(
-            args.checkpoint_path, transformer_config_file=args.config_path, allow_partial=args.allow_partial
-        )
-    else:
-        transformer = convert_magi1_transformer(args.model_type)
+    transformer = convert_magi1_transformer(args.model_type)
 
     # Convert VAE
     vae = convert_magi1_vae()
 
     # Load text encoder and tokenizer
-    text_encoder = UMT5EncoderModel.from_pretrained("google/umt5-xxl", torch_dtype=torch.bfloat16)
-    tokenizer = AutoTokenizer.from_pretrained("google/umt5-xxl")
+    # Apply dtype to text encoder if specified
+    if args.dtype != "none":
+        text_encoder_dtype = DTYPE_MAPPING[args.dtype]
+    else:
+        text_encoder_dtype = torch.bfloat16
+
+    text_encoder = T5EncoderModel.from_pretrained(
+        "sand-ai/MAGI-1", subfolder="ckpt/t5/t5-v1_1-xxl", torch_dtype=text_encoder_dtype
+    )
+    tokenizer = AutoTokenizer.from_pretrained("sand-ai/MAGI-1", subfolder="ckpt/t5/t5-v1_1-xxl")
 
     # Create scheduler with SD3-style shift
     scheduler = FlowMatchEulerDiscreteScheduler(shift=3.0)
 
-    # Apply dtype conversion if specified
-    if args.dtype != "none":
-        dtype = DTYPE_MAPPING[args.dtype]
-        transformer.to(dtype)
+    # Note: Transformer preserves original mixed precision (F32 embeddings + BF16 layers)
+    # VAE and text encoder use the specified dtype
 
     # Determine pipeline class based on model type
     if "I2V" in args.model_type:
@@ -553,4 +737,6 @@ if __name__ == "__main__":
         )
 
     # Save complete pipeline
-    pipe.save_pretrained(args.output_path, safe_serialization=True, max_shard_size="5GB")
+    pipe.save_pretrained(
+        args.output_path, repo_id=args.repo_id, push_to_hub=True, safe_serialization=True, max_shard_size="5GB"
+    )

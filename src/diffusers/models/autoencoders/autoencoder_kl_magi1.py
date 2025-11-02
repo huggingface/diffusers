@@ -513,6 +513,8 @@ class AutoencoderKLMagi1(ModelMixin, ConfigMixin, FromOriginalModelMixin, CacheM
         ffn_dim: int = 4 * 1024,
         num_layers: int = 24,
         eps: float = 1e-6,
+        temporal_compression_ratio: Optional[int] = None,
+        spatial_compression_ratio: Optional[int] = None,
         latents_mean: List[float] = [
             -0.7571,
             -0.7089,
@@ -581,8 +583,13 @@ class AutoencoderKLMagi1(ModelMixin, ConfigMixin, FromOriginalModelMixin, CacheM
             eps,
         )
 
-        self.spatial_compression_ratio = patch_size[1] or patch_size[2]
-        self.temporal_compression_ratio = patch_size[0]
+        # Use provided compression ratios if given, otherwise compute from patch_size
+        self.spatial_compression_ratio = (
+            spatial_compression_ratio if spatial_compression_ratio is not None else (patch_size[1] or patch_size[2])
+        )
+        self.temporal_compression_ratio = (
+            temporal_compression_ratio if temporal_compression_ratio is not None else patch_size[0]
+        )
 
         # When decoding a batch of video latents at a time, one can save memory by slicing across the batch dimension
         # to perform decoding of a single video latent at a time.
