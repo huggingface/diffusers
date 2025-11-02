@@ -2130,8 +2130,13 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
                         component_load_kwargs[key] = value["default"]
             try:
                 components_to_register[name] = spec.load(**component_load_kwargs)
-            except Exception as e:
-                logger.warning(f"Failed to create component '{name}': {e}")
+            except Exception:
+                logger.warning(
+                    f"\nFailed to create component {name}:\n"
+                    f"- Component spec: {spec}\n"
+                    f"- load() called with kwargs: {component_load_kwargs}\n\n"
+                    f"{traceback.format_exc()}"
+                )
 
         # Register all components at once
         self.register_components(**components_to_register)
