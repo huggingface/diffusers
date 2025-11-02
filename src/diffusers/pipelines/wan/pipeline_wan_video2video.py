@@ -562,13 +562,12 @@ class WanVideoToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 The maximum sequence length of the text encoder. If the prompt is longer than this, it will be
                 truncated. If the prompt is shorter, it will be padded to this length.
             control_hidden_states (`torch.Tensor`, *optional*):
-                Control tensor for the VACE control path. Expected shape:
-                `(B, C, T_patch, H_patch, W_patch)`. If not provided, a neutral zero tensor of the correct
-                size and dtype is automatically created.
-                **Note:** This argument was added to prevent crashes when running without control features.
+                Control tensor for the VACE control path. Expected shape: `(B, C, T_patch, H_patch, W_patch)`. If not
+                provided, a neutral zero tensor of the correct size and dtype is automatically created. **Note:** This
+                argument was added to prevent crashes when running without control features.
             control_hidden_states_scale (`torch.Tensor`, *optional*):
-                A 1D tensor of scaling factors (length = number of VACE layers). Defaults to a vector of
-                ones if not provided.
+                A 1D tensor of scaling factors (length = number of VACE layers). Defaults to a vector of ones if not
+                provided.
 
         Examples:
 
@@ -603,7 +602,9 @@ class WanVideoToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         self._attention_kwargs = attention_kwargs
         self._current_timestep = None
         self._interrupt = False
-        base_tr = self.transformer.get_base_model() if hasattr(self.transformer, "get_base_model") else self.transformer
+        base_tr = (
+            self.transformer.get_base_model() if hasattr(self.transformer, "get_base_model") else self.transformer
+        )
         _sig = inspect.signature(base_tr.forward)
         _supports_control = (
             "control_hidden_states" in _sig.parameters and "control_hidden_states_scale" in _sig.parameters
@@ -676,8 +677,9 @@ class WanVideoToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 pt, ph, pw = (ps[0], ps[1], ps[2]) if len(ps) == 3 else (ps[0], ps[0], ps[0])
 
             if control_hidden_states is None:
-                control_hidden_states = torch.zeros((B, int(C_ctrl), int(pt), int(ph), int(pw)),
-                                                    device=device, dtype=transformer_dtype)
+                control_hidden_states = torch.zeros(
+                    (B, int(C_ctrl), int(pt), int(ph), int(pw)), device=device, dtype=transformer_dtype
+                )
             if control_hidden_states_scale is None:
                 vls = cfg_tr.get("vace_layers", [])
                 n_layers = len(vls) if isinstance(vls, (list, tuple)) else int(vls or 0)
@@ -697,18 +699,20 @@ class WanVideoToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 timestep = t.expand(latents.shape[0])
 
                 # Build call kwargs
-                call_kwargs = dict(
-                    hidden_states=latent_model_input,
-                    timestep=timestep,
-                    encoder_hidden_states=prompt_embeds,
-                    attention_kwargs=attention_kwargs,
-                    return_dict=False,
-                )
+                call_kwargs = {
+                    "hidden_states": latent_model_input,
+                    "timestep": timestep,
+                    "encoder_hidden_states": prompt_embeds,
+                    "attention_kwargs": attention_kwargs,
+                    "return_dict": False,
+                }
 
                 # If supported, attach control tensors; ensure correct batch/device/dtype
                 if _supports_control:
                     if control_hidden_states.shape[0] != latent_model_input.shape[0]:
-                        control_hidden_states = control_hidden_states.expand(latent_model_input.shape[0], -1, -1, -1, -1)
+                        control_hidden_states = control_hidden_states.expand(
+                            latent_model_input.shape[0], -1, -1, -1, -1
+                        )
                     call_kwargs["control_hidden_states"] = control_hidden_states.to(
                         device=latent_model_input.device, dtype=transformer_dtype
                     )
@@ -718,7 +722,7 @@ class WanVideoToVideoPipeline(DiffusionPipeline, WanLoraLoaderMixin):
 
                 # Cond pass
                 noise_pred = self.transformer(**call_kwargs)[0]
- 
+
                 if self.do_classifier_free_guidance:
                     # Uncond pass: swap encoder_hidden_states; keep control kwargs identical
                     call_kwargs["encoder_hidden_states"] = negative_prompt_embeds
