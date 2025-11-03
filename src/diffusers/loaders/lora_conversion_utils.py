@@ -2215,7 +2215,7 @@ def _convert_non_diffusers_qwen_lora_to_diffusers(state_dict):
 
     has_default = any("default." in k for k in state_dict)
     if has_default:
-        state_dict = {key.replace("default.", ""): v for k, v in state_dict.items()}
+        state_dict = {k.replace("default.", ""): v for k, v in state_dict.items()}
 
     converted_state_dict = {}
     all_keys = list(state_dict.keys())
