@@ -309,6 +309,7 @@ def convert_magi1_transformer(model_type):
         print(f"Attempting to download index: {model_id}/{index_path}")
         index_file = hf_hub_download(model_id, index_path)
         import json
+
         with open(index_file) as f:
             index_data = json.load(f)
 
