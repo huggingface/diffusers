@@ -746,14 +746,10 @@ if __name__ == "__main__":
     vae = convert_magi1_vae()
 
     # Load text encoder and tokenizer
-    # Apply dtype to text encoder if specified
-    if args.dtype != "none":
-        text_encoder_dtype = DTYPE_MAPPING[args.dtype]
-    else:
-        text_encoder_dtype = torch.bfloat16
-
+    # MAGI-1 uses FP32 for text encoder to ensure numerical stability when concatenating
+    # with FP16 special tokens (see inference/pipeline/prompt_process.py in MAGI-1 repo)
     text_encoder = T5EncoderModel.from_pretrained(
-        "sand-ai/MAGI-1", subfolder="ckpt/t5/t5-v1_1-xxl", torch_dtype=text_encoder_dtype
+        "sand-ai/MAGI-1", subfolder="ckpt/t5/t5-v1_1-xxl", torch_dtype=torch.float32
     )
     tokenizer = AutoTokenizer.from_pretrained("sand-ai/MAGI-1", subfolder="ckpt/t5/t5-v1_1-xxl")
 
@@ -761,7 +757,8 @@ if __name__ == "__main__":
     scheduler = FlowMatchEulerDiscreteScheduler(shift=3.0)
 
     # Note: Transformer preserves original mixed precision (F32 embeddings + BF16 layers)
-    # VAE and text encoder use the specified dtype
+    # Text encoder uses FP32 to match original MAGI-1 implementation
+    # VAE uses the specified dtype
 
     # Determine pipeline class based on model type
     if "I2V" in args.model_type:
