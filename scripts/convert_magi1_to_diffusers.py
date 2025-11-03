@@ -49,7 +49,7 @@ def get_transformer_config(model_type: str) -> Dict[str, Any]:
     Returns:
         Dictionary containing model_id, repo_path, and diffusers_config
     """
-    if model_type == "MAGI-1-T2V-4.5B-distill" or model_type == "4.5B_distill":
+    if model_type == "MAGI-1-T2V-4.5B-distill":
         return {
             "model_id": "sand-ai/MAGI-1",
             "repo_path": "4.5B_distill",
@@ -67,7 +67,25 @@ def get_transformer_config(model_type: str) -> Dict[str, Any]:
                 "eps": 1e-6,
             },
         }
-    elif model_type == "MAGI-1-T2V-24B-distill" or model_type == "24B_distill":
+    elif model_type == "MAGI-1-T2V-4.5B":
+        return {
+            "model_id": "sand-ai/MAGI-1",
+            "repo_path": "4.5B_base",
+            "diffusers_config": {
+                "in_channels": 16,
+                "out_channels": 32,
+                "num_layers": 34,
+                "num_attention_heads": 24,
+                "num_kv_heads": 8,
+                "attention_head_dim": 128,
+                "cross_attention_dim": 4096,
+                "freq_dim": 256,
+                "ffn_dim": 12288,
+                "patch_size": (1, 2, 2),
+                "eps": 1e-6,
+            },
+        }
+    elif model_type == "MAGI-1-T2V-24B-distill":
         return {
             "model_id": "sand-ai/MAGI-1",
             "repo_path": "24B_distill",
@@ -86,25 +104,7 @@ def get_transformer_config(model_type: str) -> Dict[str, Any]:
                 "eps": 1e-6,
             },
         }
-    elif model_type == "MAGI-1-T2V-4.5B" or model_type == "4.5B":
-        return {
-            "model_id": "sand-ai/MAGI-1",
-            "repo_path": "4.5B_base",
-            "diffusers_config": {
-                "in_channels": 16,
-                "out_channels": 32,
-                "num_layers": 34,
-                "num_attention_heads": 24,
-                "num_kv_heads": 8,
-                "attention_head_dim": 128,
-                "cross_attention_dim": 4096,
-                "freq_dim": 256,
-                "ffn_dim": 12288,
-                "patch_size": (1, 2, 2),
-                "eps": 1e-6,
-            },
-        }
-    elif model_type == "MAGI-1-T2V-24B" or model_type == "24B":
+    elif model_type == "MAGI-1-T2V-24B":
         return {
             "model_id": "sand-ai/MAGI-1",
             "repo_path": "24B_base",
@@ -306,7 +306,6 @@ def convert_magi1_transformer(model_type):
     # Try to download the index file first to determine number of shards
     index_path = f"ckpt/magi/{repo_path}/{weight_subpath}/model.safetensors.index.json"
     try:
-        print(f"Attempting to download index: {model_id}/{index_path}")
         index_file = hf_hub_download(model_id, index_path)
         import json
 
@@ -320,7 +319,6 @@ def convert_magi1_transformer(model_type):
             weight_map = index_data.get("weight_map", {})
             shard_files = set(weight_map.values())
             num_shards = len(shard_files)
-            print(f"Detected {num_shards} shards from index file")
     except Exception as e:
         print(f"Could not download index file, will try common shard counts: {e}")
         num_shards = None
@@ -331,7 +329,6 @@ def convert_magi1_transformer(model_type):
             try:
                 shard_filename = f"model-{shard_index:05d}-of-{num_shards:05d}.safetensors"
                 checkpoint_path = f"ckpt/magi/{repo_path}/{weight_subpath}/{shard_filename}"
-                print(f"Downloading shard {shard_index}/{num_shards}: {checkpoint_path}")
                 shard_path = hf_hub_download(model_id, checkpoint_path)
                 checkpoint_files.append(shard_path)
             except Exception as e:
@@ -350,7 +347,6 @@ def convert_magi1_transformer(model_type):
                     else:
                         shard_filename = f"model-{shard_index:05d}-of-{num_shards:05d}.safetensors"
                     checkpoint_path = f"ckpt/magi/{repo_path}/{weight_subpath}/{shard_filename}"
-                    print(f"Trying {num_shards}-shard pattern: {checkpoint_path}")
                     shard_path = hf_hub_download(model_id, checkpoint_path)
                     checkpoint_files.append(shard_path)
                 except Exception as e:
@@ -359,7 +355,6 @@ def convert_magi1_transformer(model_type):
                     break
 
             if success and checkpoint_files:
-                print(f"Successfully downloaded all {num_shards} shards")
                 break
             else:
                 checkpoint_files = []
@@ -706,35 +701,26 @@ def get_args():
         required=True,
         choices=[
             "MAGI-1-T2V-4.5B-distill",
-            "MAGI-1-T2V-24B-distill",
             "MAGI-1-T2V-4.5B",
+            "MAGI-1-T2V-24B-distill",
             "MAGI-1-T2V-24B",
             "MAGI-1-I2V-4.5B-distill",
-            "MAGI-1-I2V-24B-distill",
             "MAGI-1-I2V-4.5B",
+            "MAGI-1-I2V-24B-distill",
             "MAGI-1-I2V-24B",
             "MAGI-1-V2V-4.5B-distill",
-            "MAGI-1-V2V-24B-distill",
             "MAGI-1-V2V-4.5B",
+            "MAGI-1-V2V-24B-distill",
             "MAGI-1-V2V-24B",
         ],
         help="Model type to convert",
     )
     parser.add_argument("--output_path", type=str, required=True, help="Output directory for converted pipeline")
     parser.add_argument(
-        "--dtype", default="bf16", choices=["fp32", "fp16", "bf16", "none"], help="Data type for conversion"
-    )
-    parser.add_argument(
         "--repo_id", type=str, default=None, help="Hugging Face Hub repo ID to push the converted model to"
     )
     return parser.parse_args()
 
-
-DTYPE_MAPPING = {
-    "fp32": torch.float32,
-    "fp16": torch.float16,
-    "bf16": torch.bfloat16,
-}
 
 if __name__ == "__main__":
     args = get_args()
