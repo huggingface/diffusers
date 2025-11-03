@@ -147,14 +147,13 @@ class AutoModel(ConfigMixin):
             "force_download",
             "local_files_only",
             "proxies",
-            "resume_download",
             "revision",
             "token",
         ]
         hub_kwargs = {name: kwargs.pop(name, None) for name in hub_kwargs_names}
 
         # load_config_kwargs uses the same hub kwargs minus subfolder and resume_download
-        load_config_kwargs = {k: v for k, v in hub_kwargs.items() if k not in ["subfolder", "resume_download"]}
+        load_config_kwargs = {k: v for k, v in hub_kwargs.items() if k not in ["subfolder"]}
 
         library = None
         orig_class_name = None
@@ -205,7 +204,6 @@ class AutoModel(ConfigMixin):
                 module_file=module_file,
                 class_name=class_name,
                 **hub_kwargs,
-                **kwargs,
             )
         else:
             from ..pipelines.pipeline_loading_utils import ALL_IMPORTABLE_CLASSES, get_class_obj_and_candidates
