@@ -36,16 +36,6 @@ class SDXLModularTesterMixin:
     This mixin defines method to create pipeline, base input and base test across all SDXL modular tests.
     """
 
-    def get_dummy_inputs(self, seed=0):
-        generator = self.get_generator(seed)
-        inputs = {
-            "prompt": "A painting of a squirrel eating a burger",
-            "generator": generator,
-            "num_inference_steps": 2,
-            "output_type": "np",
-        }
-        return inputs
-
     def _test_stable_diffusion_xl_euler(self, expected_image_shape, expected_slice, expected_max_diff=1e-2):
         sd_pipe = self.get_pipeline()
         sd_pipe = sd_pipe.to(torch_device)
@@ -56,10 +46,8 @@ class SDXLModularTesterMixin:
         image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == expected_image_shape
-
-        assert (
-            torch.abs(image_slice.flatten() - expected_slice).max() < expected_max_diff
-        ), "Image Slice does not match expected slice"
+        max_diff = torch.abs(image_slice.flatten() - expected_slice).max()
+        assert max_diff < expected_max_diff, f"Image slice does not match expected slice. Max Difference: {max_diff}"
 
 
 class SDXLModularIPAdapterTesterMixin:
@@ -72,16 +60,16 @@ class SDXLModularIPAdapterTesterMixin:
         parameters = blocks.input_names
 
         assert issubclass(self.pipeline_class, ModularIPAdapterMixin)
-        assert (
-            "ip_adapter_image" in parameters
-        ), "`ip_adapter_image` argument must be supported by the `__call__` method"
+        assert "ip_adapter_image" in parameters, (
+            "`ip_adapter_image` argument must be supported by the `__call__` method"
+        )
         assert "ip_adapter" in blocks.sub_blocks, "pipeline must contain an IPAdapter block"
 
         _ = blocks.sub_blocks.pop("ip_adapter")
         parameters = blocks.input_names
-        assert (
-            "ip_adapter_image" not in parameters
-        ), "`ip_adapter_image` argument must be removed from the `__call__` method"
+        assert "ip_adapter_image" not in parameters, (
+            "`ip_adapter_image` argument must be removed from the `__call__` method"
+        )
 
     def _get_dummy_image_embeds(self, cross_attention_dim: int = 32):
         return torch.randn((1, 1, cross_attention_dim), device=torch_device)
@@ -101,7 +89,7 @@ class SDXLModularIPAdapterTesterMixin:
         if "image" in parameters and "strength" in parameters:
             inputs["num_inference_steps"] = 4
 
-        inputs["output_type"] = "np"
+        inputs["output_type"] = "pt"
         return inputs
 
     def test_ip_adapter(self, expected_max_diff: float = 1e-4, expected_pipe_slice=None):
@@ -154,12 +142,12 @@ class SDXLModularIPAdapterTesterMixin:
         if expected_pipe_slice is not None:
             output_with_adapter_scale = output_with_adapter_scale[0, -3:, -3:, -1].flatten()
 
-        max_diff_without_adapter_scale = np.abs(output_without_adapter_scale - output_without_adapter).max()
-        max_diff_with_adapter_scale = np.abs(output_with_adapter_scale - output_without_adapter).max()
+        max_diff_without_adapter_scale = torch.abs(output_without_adapter_scale - output_without_adapter).max()
+        max_diff_with_adapter_scale = torch.abs(output_with_adapter_scale - output_without_adapter).max()
 
-        assert (
-            max_diff_without_adapter_scale < expected_max_diff
-        ), "Output without ip-adapter must be same as normal inference"
+        assert max_diff_without_adapter_scale < expected_max_diff, (
+            "Output without ip-adapter must be same as normal inference"
+        )
         assert max_diff_with_adapter_scale > 1e-2, "Output with ip-adapter must be different from normal inference"
 
         # 2. Multi IP-Adapter test cases
@@ -185,16 +173,16 @@ class SDXLModularIPAdapterTesterMixin:
         if expected_pipe_slice is not None:
             output_with_multi_adapter_scale = output_with_multi_adapter_scale[0, -3:, -3:, -1].flatten()
 
-        max_diff_without_multi_adapter_scale = np.abs(
+        max_diff_without_multi_adapter_scale = torch.abs(
             output_without_multi_adapter_scale - output_without_adapter
         ).max()
-        max_diff_with_multi_adapter_scale = np.abs(output_with_multi_adapter_scale - output_without_adapter).max()
-        assert (
-            max_diff_without_multi_adapter_scale < expected_max_diff
-        ), "Output without multi-ip-adapter must be same as normal inference"
-        assert (
-            max_diff_with_multi_adapter_scale > 1e-2
-        ), "Output with multi-ip-adapter scale must be different from normal inference"
+        max_diff_with_multi_adapter_scale = torch.abs(output_with_multi_adapter_scale - output_without_adapter).max()
+        assert max_diff_without_multi_adapter_scale < expected_max_diff, (
+            "Output without multi-ip-adapter must be same as normal inference"
+        )
+        assert max_diff_with_multi_adapter_scale > 1e-2, (
+            "Output with multi-ip-adapter scale must be different from normal inference"
+        )
 
 
 class SDXLModularControlNetTesterMixin:
@@ -207,9 +195,9 @@ class SDXLModularControlNetTesterMixin:
         parameters = blocks.input_names
 
         assert "control_image" in parameters, "`control_image` argument must be supported by the `__call__` method"
-        assert (
-            "controlnet_conditioning_scale" in parameters
-        ), "`controlnet_conditioning_scale` argument must be supported by the `__call__` method"
+        assert "controlnet_conditioning_scale" in parameters, (
+            "`controlnet_conditioning_scale` argument must be supported by the `__call__` method"
+        )
 
     def _modify_inputs_for_controlnet_test(self, inputs: Dict[str, Any]):
         controlnet_embedder_scale_factor = 2
@@ -252,12 +240,14 @@ class SDXLModularControlNetTesterMixin:
         output_with_controlnet_scale = pipe(**inputs, output="images")
         output_with_controlnet_scale = output_with_controlnet_scale[0, -3:, -3:, -1].flatten()
 
-        max_diff_without_controlnet_scale = np.abs(output_without_controlnet_scale - output_without_controlnet).max()
-        max_diff_with_controlnet_scale = np.abs(output_with_controlnet_scale - output_without_controlnet).max()
+        max_diff_without_controlnet_scale = torch.abs(
+            output_without_controlnet_scale - output_without_controlnet
+        ).max()
+        max_diff_with_controlnet_scale = torch.abs(output_with_controlnet_scale - output_without_controlnet).max()
 
-        assert (
-            max_diff_without_controlnet_scale < expected_max_diff
-        ), "Output without controlnet must be same as normal inference"
+        assert max_diff_without_controlnet_scale < expected_max_diff, (
+            "Output without controlnet must be same as normal inference"
+        )
         assert max_diff_with_controlnet_scale > 1e-2, "Output with controlnet must be different from normal inference"
 
     def test_controlnet_cfg(self):
@@ -279,7 +269,7 @@ class SDXLModularControlNetTesterMixin:
         out_cfg = pipe(**inputs, output="images")
 
         assert out_cfg.shape == out_no_cfg.shape
-        max_diff = np.abs(out_cfg - out_no_cfg).max()
+        max_diff = torch.abs(out_cfg - out_no_cfg).max()
         assert max_diff > 1e-2, "Output with CFG must be different from normal inference"
 
 
@@ -329,21 +319,35 @@ class TestSDXLModularPipelineFast(
         ]
     )
     batch_params = frozenset(["prompt", "negative_prompt"])
+    expected_image_output_shape = (1, 3, 64, 64)
+
+    def get_dummy_inputs(self, seed=0):
+        generator = self.get_generator(seed)
+        inputs = {
+            "prompt": "A painting of a squirrel eating a burger",
+            "generator": generator,
+            "num_inference_steps": 2,
+            "output_type": "pt",
+        }
+        return inputs
 
     def test_stable_diffusion_xl_euler(self):
         self._test_stable_diffusion_xl_euler(
-            expected_image_shape=(1, 64, 64, 3),
-            expected_slice=[
-                0.5966781,
-                0.62939394,
-                0.48465094,
-                0.51573336,
-                0.57593524,
-                0.47035995,
-                0.53410417,
-                0.51436996,
-                0.47313565,
-            ],
+            expected_image_shape=self.expected_image_output_shape,
+            expected_slice=torch.tensor(
+                [
+                    0.5966781,
+                    0.62939394,
+                    0.48465094,
+                    0.51573336,
+                    0.57593524,
+                    0.47035995,
+                    0.53410417,
+                    0.51436996,
+                    0.47313565,
+                ],
+                device=torch_device,
+            ),
             expected_max_diff=1e-2,
         )
 
@@ -352,11 +356,11 @@ class TestSDXLModularPipelineFast(
 
 
 class TestSDXLImg2ImgModularPipelineFast(
-    ModularPipelineTesterMixin,
     SDXLModularTesterMixin,
     SDXLModularIPAdapterTesterMixin,
     SDXLModularControlNetTesterMixin,
     SDXLModularGuiderTesterMixin,
+    ModularPipelineTesterMixin,
 ):
     """Test cases for Stable Diffusion XL image-to-image modular pipeline fast tests."""
 
@@ -374,30 +378,42 @@ class TestSDXLImg2ImgModularPipelineFast(
         ]
     )
     batch_params = frozenset(["prompt", "negative_prompt", "image"])
+    expected_image_output_shape = (1, 3, 64, 64)
 
-    def get_dummy_inputs(self, device, seed=0):
-        inputs = super().get_dummy_inputs(device, seed)
-        image = floats_tensor((1, 3, 64, 64), rng=random.Random(seed)).to(device)
-        image = image / 2 + 0.5
-        inputs["image"] = image
-        inputs["strength"] = 0.8
+    def get_dummy_inputs(self, seed=0):
+        generator = self.get_generator(seed)
+        inputs = {
+            "prompt": "A painting of a squirrel eating a burger",
+            "generator": generator,
+            "num_inference_steps": 4,
+            "output_type": "pt",
+        }
+        image = floats_tensor((1, 3, 32, 32), rng=random.Random(seed)).to(torch_device)
+        image = image.cpu().permute(0, 2, 3, 1)[0]
+        init_image = Image.fromarray(np.uint8(image)).convert("RGB").resize((64, 64))
+
+        inputs["image"] = init_image
+        inputs["strength"] = 0.5
 
         return inputs
 
     def test_stable_diffusion_xl_euler(self):
         self._test_stable_diffusion_xl_euler(
-            expected_image_shape=(1, 64, 64, 3),
-            expected_slice=[
-                0.56943184,
-                0.4702148,
-                0.48048905,
-                0.6235963,
-                0.551138,
-                0.49629188,
-                0.60031277,
-                0.5688907,
-                0.43996853,
-            ],
+            expected_image_shape=self.expected_image_output_shape,
+            expected_slice=torch.tensor(
+                [
+                    0.56943184,
+                    0.4702148,
+                    0.48048905,
+                    0.6235963,
+                    0.551138,
+                    0.49629188,
+                    0.60031277,
+                    0.5688907,
+                    0.43996853,
+                ],
+                device=torch_device,
+            ),
             expected_max_diff=1e-2,
         )
 
@@ -406,11 +422,11 @@ class TestSDXLImg2ImgModularPipelineFast(
 
 
 class SDXLInpaintingModularPipelineFastTests(
-    ModularPipelineTesterMixin,
     SDXLModularTesterMixin,
     SDXLModularIPAdapterTesterMixin,
     SDXLModularControlNetTesterMixin,
     SDXLModularGuiderTesterMixin,
+    ModularPipelineTesterMixin,
 ):
     """Test cases for Stable Diffusion XL inpainting modular pipeline fast tests."""
 
@@ -429,12 +445,20 @@ class SDXLInpaintingModularPipelineFastTests(
         ]
     )
     batch_params = frozenset(["prompt", "negative_prompt", "image", "mask_image"])
+    expected_image_output_shape = (1, 3, 64, 64)
 
     def get_dummy_inputs(self, device, seed=0):
-        inputs = super().get_dummy_inputs(device, seed)
+        generator = self.get_generator(seed)
+        inputs = {
+            "prompt": "A painting of a squirrel eating a burger",
+            "generator": generator,
+            "num_inference_steps": 4,
+            "output_type": "pt",
+        }
         image = floats_tensor((1, 3, 32, 32), rng=random.Random(seed)).to(device)
         image = image.cpu().permute(0, 2, 3, 1)[0]
         init_image = Image.fromarray(np.uint8(image)).convert("RGB").resize((64, 64))
+
         # create mask
         image[8:, 8:, :] = 255
         mask_image = Image.fromarray(np.uint8(image)).convert("L").resize((64, 64))
@@ -447,18 +471,21 @@ class SDXLInpaintingModularPipelineFastTests(
 
     def test_stable_diffusion_xl_euler(self):
         self._test_stable_diffusion_xl_euler(
-            expected_image_shape=(1, 64, 64, 3),
-            expected_slice=[
-                0.40872607,
-                0.38842705,
-                0.34893104,
-                0.47837183,
-                0.43792963,
-                0.5332134,
-                0.3716843,
-                0.47274873,
-                0.45000193,
-            ],
+            expected_image_shape=self.expected_image_output_shape,
+            expected_slice=torch.tensor(
+                [
+                    0.40872607,
+                    0.38842705,
+                    0.34893104,
+                    0.47837183,
+                    0.43792963,
+                    0.5332134,
+                    0.3716843,
+                    0.47274873,
+                    0.45000193,
+                ],
+                device=torch_device,
+            ),
             expected_max_diff=1e-2,
         )
 

@@ -71,12 +71,6 @@ class ModularPipelineTesterMixin:
             "See existing pipeline tests for reference."
         )
 
-    def get_pipeline(self):
-        raise NotImplementedError(
-            "You need to implement `get_pipeline(self)` in the child test class. "
-            "See existing pipeline tests for reference."
-        )
-
     def get_dummy_inputs(self, seed=0):
         raise NotImplementedError(
             "You need to implement `get_dummy_inputs(self, device, seed)` in the child test class. "
@@ -126,7 +120,7 @@ class ModularPipelineTesterMixin:
 
     def get_pipeline(self, components_manager=None, torch_dtype=torch.float32):
         pipeline = self.pipeline_blocks_class().init_pipeline(self.repo, components_manager=components_manager)
-        pipeline.load_components(self.repo, torch_dtype=torch_dtype)
+        pipeline.load_components(torch_dtype=torch_dtype)
         return pipeline
 
     def test_pipeline_call_signature(self):
@@ -136,9 +130,9 @@ class ModularPipelineTesterMixin:
 
         def _check_for_parameters(parameters, expected_parameters, param_type):
             remaining_parameters = {param for param in parameters if param not in expected_parameters}
-            assert (
-                len(remaining_parameters) == 0
-            ), f"Required {param_type} parameters not present: {remaining_parameters}"
+            assert len(remaining_parameters) == 0, (
+                f"Required {param_type} parameters not present: {remaining_parameters}"
+            )
 
         _check_for_parameters(self.params, input_parameters, "input")
         _check_for_parameters(self.optional_params, optional_parameters, "optional")
@@ -148,7 +142,7 @@ class ModularPipelineTesterMixin:
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
-        inputs = self.get_dummy_inputs(torch_device)
+        inputs = self.get_dummy_inputs()
         inputs["generator"] = self.get_generator(0)
 
         logger = logging.get_logger(pipe.__module__)
@@ -188,7 +182,7 @@ class ModularPipelineTesterMixin:
         pipe = self.get_pipeline()
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
-        inputs = self.get_dummy_inputs(torch_device)
+        inputs = self.get_dummy_inputs()
 
         # Reset generator in case it is has been used in self.get_dummy_inputs
         inputs["generator"] = self.get_generator(0)
@@ -218,7 +212,7 @@ class ModularPipelineTesterMixin:
 
         assert output_batch.shape[0] == batch_size
 
-        max_diff = np.abs(to_np(output_batch[0]) - to_np(output[0])).max()
+        max_diff = torch.abs(output_batch[0] - output[0]).max()
         assert max_diff < expected_max_diff, "Batch inference results different from single inference results"
 
     @require_accelerator
@@ -231,13 +225,13 @@ class ModularPipelineTesterMixin:
         pipe_fp16.to(torch_device, torch.float16)
         pipe_fp16.set_progress_bar_config(disable=None)
 
-        inputs = self.get_dummy_inputs(torch_device)
+        inputs = self.get_dummy_inputs()
         # Reset generator in case it is used inside dummy inputs
         if "generator" in inputs:
             inputs["generator"] = self.get_generator(0)
         output = pipe(**inputs, output="images")
 
-        fp16_inputs = self.get_dummy_inputs(torch_device)
+        fp16_inputs = self.get_dummy_inputs()
         # Reset generator in case it is used inside dummy inputs
         if "generator" in fp16_inputs:
             fp16_inputs["generator"] = self.get_generator(0)
@@ -265,16 +259,16 @@ class ModularPipelineTesterMixin:
         model_devices = [
             component.device.type for component in pipe.components.values() if hasattr(component, "device")
         ]
-        assert all(
-            device == torch_device for device in model_devices
-        ), "All pipeline components are not on accelerator device"
+        assert all(device == torch_device for device in model_devices), (
+            "All pipeline components are not on accelerator device"
+        )
 
     def test_inference_is_not_nan_cpu(self):
         pipe = self.get_pipeline()
         pipe.set_progress_bar_config(disable=None)
         pipe.to("cpu")
 
-        output = pipe(**self.get_dummy_inputs("cpu"), output="images")
+        output = pipe(**self.get_dummy_inputs(), output="images")
         assert torch.isnan(output).sum() == 0, "CPU Inference returns NaN"
 
     @require_accelerator
@@ -283,7 +277,7 @@ class ModularPipelineTesterMixin:
         pipe.set_progress_bar_config(disable=None)
         pipe.to(torch_device)
 
-        output = pipe(**self.get_dummy_inputs(torch_device), output="images")
+        output = pipe(**self.get_dummy_inputs(), output="images")
         assert torch.isnan(output).sum() == 0, "Accelerator Inference returns NaN"
 
     def test_num_images_per_prompt(self):
@@ -300,7 +294,7 @@ class ModularPipelineTesterMixin:
 
         for batch_size in batch_sizes:
             for num_images_per_prompt in num_images_per_prompts:
-                inputs = self.get_dummy_inputs(torch_device)
+                inputs = self.get_dummy_inputs()
 
                 for key in inputs.keys():
                     if key in self.batch_params:
@@ -320,7 +314,7 @@ class ModularPipelineTesterMixin:
 
         image_slices = []
         for pipe in [base_pipe, offload_pipe]:
-            inputs = self.get_dummy_inputs(torch_device)
+            inputs = self.get_dummy_inputs()
             image = pipe(**inputs, output="images")
 
             image_slices.append(image[0, -3:, -3:, -1].flatten())
@@ -342,7 +336,7 @@ class ModularPipelineTesterMixin:
 
         image_slices = []
         for pipe in pipes:
-            inputs = self.get_dummy_inputs(torch_device)
+            inputs = self.get_dummy_inputs()
             image = pipe(**inputs, output="images")
 
             image_slices.append(image[0, -3:, -3:, -1].flatten())
