@@ -26,10 +26,7 @@ class QwenImagePachifier(ConfigMixin):
     config_name = "config.json"
 
     @register_to_config
-    def __init__(
-        self,
-        patch_size: int = 2,
-    ):
+    def __init__(self, patch_size: int = 2):
         super().__init__()
 
     def pack_latents(self, latents):
