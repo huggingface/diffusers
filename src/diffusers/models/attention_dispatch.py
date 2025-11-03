@@ -649,6 +649,86 @@ def _(
 # ===== Helper functions to use attention backends with templated CP autograd functions =====
 
 
+def _native_attention_forward_op(
+    ctx: torch.autograd.function.FunctionCtx,
+    query: torch.Tensor,
+    key: torch.Tensor,
+    value: torch.Tensor,
+    attn_mask: Optional[torch.Tensor] = None,
+    dropout_p: float = 0.0,
+    is_causal: bool = False,
+    scale: Optional[float] = None,
+    enable_gqa: bool = False,
+    return_lse: bool = False,
+    _save_ctx: bool = True,
+    _parallel_config: Optional["ParallelConfig"] = None,
+):
+    # Native attention does not return_lse
+    if return_lse:
+        raise ValueError("Native attention does not support return_lse=True")
+
+    # used for backward pass
+    if _save_ctx:
+        ctx.save_for_backward(query, key, value)
+        ctx.attn_mask = attn_mask
+        ctx.dropout_p = dropout_p
+        ctx.is_causal = is_causal
+        ctx.scale = scale
+        ctx.enable_gqa = enable_gqa
+
+    query, key, value = (x.permute(0, 2, 1, 3) for x in (query, key, value))
+    out = torch.nn.functional.scaled_dot_product_attention(
+        query=query,
+        key=key,
+        value=value,
+        attn_mask=attn_mask,
+        dropout_p=dropout_p,
+        is_causal=is_causal,
+        scale=scale,
+        enable_gqa=enable_gqa,
+    )
+    out = out.permute(0, 2, 1, 3)
+
+    return out
+
+
+def _native_attention_backward_op(
+    ctx: torch.autograd.function.FunctionCtx,
+    grad_out: torch.Tensor,
+    *args,
+    **kwargs,
+):
+    query, key, value = ctx.saved_tensors
+
+    query.requires_grad_(True)
+    key.requires_grad_(True)
+    value.requires_grad_(True)
+
+    query_t, key_t, value_t = (x.permute(0, 2, 1, 3) for x in (query, key, value))
+    out = torch.nn.functional.scaled_dot_product_attention(
+        query=query_t,
+        key=key_t,
+        value=value_t,
+        attn_mask=ctx.attn_mask,
+        dropout_p=ctx.dropout_p,
+        is_causal=ctx.is_causal,
+        scale=ctx.scale,
+        enable_gqa=ctx.enable_gqa,
+    )
+    out = out.permute(0, 2, 1, 3)
+
+    grad_out_t = grad_out.permute(0, 2, 1, 3)
+    grad_query_t, grad_key_t, grad_value_t = torch.autograd.grad(
+        outputs=out, inputs=[query_t, key_t, value_t], grad_outputs=grad_out_t, retain_graph=False
+    )
+
+    grad_query = grad_query_t.permute(0, 2, 1, 3)
+    grad_key = grad_key_t.permute(0, 2, 1, 3)
+    grad_value = grad_value_t.permute(0, 2, 1, 3)
+
+    return grad_query, grad_key, grad_value
+
+
 # https://github.com/pytorch/pytorch/blob/8904ba638726f8c9a5aff5977c4aa76c9d2edfa6/aten/src/ATen/native/native_functions.yaml#L14958
 # forward declaration:
 #   aten::_scaled_dot_product_cudnn_attention(Tensor query, Tensor key, Tensor value, Tensor? attn_bias, bool compute_log_sumexp, float dropout_p=0., bool is_causal=False, bool return_debug_mask=False, *, float? scale=None) -> (Tensor output, Tensor logsumexp, Tensor cum_seq_q, Tensor cum_seq_k, SymInt max_q, SymInt max_k, Tensor philox_seed, Tensor philox_offset, Tensor debug_attn_mask)
@@ -1552,52 +1632,22 @@ def _native_attention(
             enable_gqa=enable_gqa,
         )
         out = out.permute(0, 2, 1, 3)
-    elif _parallel_config.context_parallel_config.ring_degree == 1:
-        ulysses_mesh = _parallel_config.context_parallel_config._ulysses_mesh
-        world_size = _parallel_config.context_parallel_config.ulysses_degree
-        group = ulysses_mesh.get_group()
-
-        batch_size, seq_len_q_local, num_heads, head_dim = query.shape
-        _, seq_len_kv_local, _, _ = key.shape
-        num_heads_local = num_heads // world_size
-        query = (
-            query.reshape(batch_size, seq_len_q_local, world_size, num_heads_local, head_dim)
-            .permute(2, 1, 0, 3, 4)
-            .contiguous()
-        )
-        key = (
-            key.reshape(batch_size, seq_len_kv_local, world_size, num_heads_local, head_dim)
-            .permute(2, 1, 0, 3, 4)
-            .contiguous()
-        )
-        value = (
-            value.reshape(batch_size, seq_len_kv_local, world_size, num_heads_local, head_dim)
-            .permute(2, 1, 0, 3, 4)
-            .contiguous()
-        )
-        query, key, value = (_all_to_all_single(x, group) for x in (query, key, value))
-        query, key, value = (x.flatten(0, 1).permute(1, 2, 0, 3).contiguous() for x in (query, key, value))
-        out = torch.nn.functional.scaled_dot_product_attention(
-            query=query,
-            key=key,
-            value=value,
-            attn_mask=attn_mask,
-            dropout_p=dropout_p,
-            is_causal=is_causal,
-            scale=scale,
-            enable_gqa=enable_gqa,
-        )
-        out = (
-            out.reshape(batch_size, num_heads_local, world_size, seq_len_q_local, head_dim)
-            .permute(2, 1, 0, 3, 4)
-            .contiguous()
-        )
-        out = _all_to_all_single(out, group)
-        out = out.flatten(0, 1).permute(1, 2, 0, 3).contiguous()
     else:
-        raise ValueError(
-            "Native attention backend does not support context parallelism with `ring_degree` > 1, try Ulysses Attention instead by specifying `ulysses_degree` > 1."
+        out = _templated_context_parallel_attention(
+            query,
+            key,
+            value,
+            attn_mask,
+            dropout_p,
+            is_causal,
+            scale,
+            enable_gqa,
+            return_lse,
+            forward_op=_native_attention_forward_op,
+            backward_op=_native_attention_backward_op,
+            _parallel_config=_parallel_config,
         )
+
     return out
 
 
