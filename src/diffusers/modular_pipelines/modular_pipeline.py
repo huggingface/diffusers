@@ -1692,6 +1692,7 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
             components_manager=components_manager,
             collection=collection,
             **kwargs,
+            **load_config_kwargs,
         )
         return pipeline
 
