@@ -1357,29 +1357,12 @@ class Magi1ImageToVideoPipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
                     # Predict noise (conditional)
                     # Note: MAGI-1 uses velocity field (flow matching), but following diffusers convention
                     # we use noise_pred naming for consistency across all pipelines
-                    noise_pred = self.transformer(
-                        hidden_states=latent_chunk,
-                        timestep=timestep_per_chunk,
-                        encoder_hidden_states=chunk_prompt_embeds,
-                        encoder_attention_mask=encoder_attention_mask,
-                        attention_kwargs=attention_kwargs,
-                        denoising_range_num=num_chunks_in_window,
-                        range_num=chunk_end_idx,
-                        slice_point=chunk_start_idx,
-                        kv_range=kv_range,
-                        num_steps=num_steps,
-                        distill_interval=distill_interval,
-                        distill_nearly_clean_chunk=distill_nearly_clean_chunk,
-                        return_dict=False,
-                    )[0]
-
-                    # Classifier-free guidance: separate forward pass for unconditional
-                    if self.do_classifier_free_guidance:
-                        noise_pred_uncond = self.transformer(
+                    with self.transformer.cache_context("cond"):
+                        noise_pred = self.transformer(
                             hidden_states=latent_chunk,
                             timestep=timestep_per_chunk,
-                            encoder_hidden_states=chunk_negative_prompt_embeds,
-                            encoder_attention_mask=encoder_attention_mask_neg,
+                            encoder_hidden_states=chunk_prompt_embeds,
+                            encoder_attention_mask=encoder_attention_mask,
                             attention_kwargs=attention_kwargs,
                             denoising_range_num=num_chunks_in_window,
                             range_num=chunk_end_idx,
@@ -1390,6 +1373,25 @@ class Magi1ImageToVideoPipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
                             distill_nearly_clean_chunk=distill_nearly_clean_chunk,
                             return_dict=False,
                         )[0]
+
+                    # Classifier-free guidance: separate forward pass for unconditional
+                    if self.do_classifier_free_guidance:
+                        with self.transformer.cache_context("uncond"):
+                            noise_pred_uncond = self.transformer(
+                                hidden_states=latent_chunk,
+                                timestep=timestep_per_chunk,
+                                encoder_hidden_states=chunk_negative_prompt_embeds,
+                                encoder_attention_mask=encoder_attention_mask_neg,
+                                attention_kwargs=attention_kwargs,
+                                denoising_range_num=num_chunks_in_window,
+                                range_num=chunk_end_idx,
+                                slice_point=chunk_start_idx,
+                                kv_range=kv_range,
+                                num_steps=num_steps,
+                                distill_interval=distill_interval,
+                                distill_nearly_clean_chunk=distill_nearly_clean_chunk,
+                                return_dict=False,
+                            )[0]
                         # Apply classifier-free guidance
                         noise_pred = noise_pred_uncond + guidance_scale * (noise_pred - noise_pred_uncond)
 
