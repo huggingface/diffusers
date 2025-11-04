@@ -164,7 +164,11 @@ class AutoOffloadStrategy:
 
         device_type = execution_device.type
         device_module = getattr(torch, device_type, torch.cuda)
-        mem_on_device = device_module.mem_get_info(execution_device.index)[0]
+        try:
+            mem_on_device = device_module.mem_get_info(execution_device.index)[0]
+        except AttributeError:
+            raise AttributeError(f"Do not know how to obtain obtain memory info for {str(device_module)}.")
+
         mem_on_device = mem_on_device - self.memory_reserve_margin
         if current_module_size < mem_on_device:
             return []
@@ -698,6 +702,8 @@ class ComponentsManager:
         """
         if not is_accelerate_available():
             raise ImportError("Make sure to install accelerate to use auto_cpu_offload")
+
+        # TODO: add a warning if mem_get_info isn't available on `device`.
 
         for name, component in self.components.items():
             if isinstance(component, torch.nn.Module) and hasattr(component, "_hf_hook"):
