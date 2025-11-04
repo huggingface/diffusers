@@ -86,7 +86,7 @@ class HunyuanVideoAttnProcessor2_0:
                 query = torch.cat(
                     [
                         apply_rotary_emb(
-                            query[:, :-encoder_hidden_states.shape[1]],
+                            query[:, : -encoder_hidden_states.shape[1]],
                             image_rotary_emb,
                             sequence_dim=1,
                         ),
