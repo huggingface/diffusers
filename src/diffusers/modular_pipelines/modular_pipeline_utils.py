@@ -21,6 +21,7 @@ from typing import Any, Dict, List, Literal, Optional, Type, Union
 import torch
 
 from ..configuration_utils import ConfigMixin, FrozenDict
+from ..loaders.single_file_utils import _is_single_file_path_or_url
 from ..utils import is_torch_available, logging
 
 
@@ -80,10 +81,10 @@ class ComponentSpec:
         type_hint: Type of the component (e.g. UNet2DConditionModel)
         description: Optional description of the component
         config: Optional config dict for __init__ creation
-        repo: Optional repo path for from_pretrained creation
-        subfolder: Optional subfolder in repo
-        variant: Optional variant in repo
-        revision: Optional revision in repo
+        pretrained_model_name_or_path: Optional pretrained_model_name_or_path path for from_pretrained creation
+        subfolder: Optional subfolder in pretrained_model_name_or_path
+        variant: Optional variant in pretrained_model_name_or_path
+        revision: Optional revision in pretrained_model_name_or_path
         default_creation_method: Preferred creation method - "from_config" or "from_pretrained"
     """
 
@@ -91,12 +92,19 @@ class ComponentSpec:
     type_hint: Optional[Type] = None
     description: Optional[str] = None
     config: Optional[FrozenDict] = None
-    # YiYi Notes: should we change it to pretrained_model_name_or_path for consistency? a bit long for a field name
-    repo: Optional[Union[str, List[str]]] = field(default=None, metadata={"loading": True})
+    pretrained_model_name_or_path: Optional[Union[str, List[str]]] = field(default=None, metadata={"loading": True})
     subfolder: Optional[str] = field(default="", metadata={"loading": True})
     variant: Optional[str] = field(default=None, metadata={"loading": True})
     revision: Optional[str] = field(default=None, metadata={"loading": True})
     default_creation_method: Literal["from_config", "from_pretrained"] = "from_pretrained"
+
+    # Deprecated
+    repo: Optional[Union[str, List[str]]] = field(default=None, metadata={"loading": False})
+
+    def __post_init__(self):
+        repo_value = self.repo
+        if repo_value is not None and self.pretrained_model_name_or_path is None:
+            object.__setattr__(self, "pretrained_model_name_or_path", repo_value)
 
     def __hash__(self):
         """Make ComponentSpec hashable, using load_id as the hash value."""
@@ -182,8 +190,8 @@ class ComponentSpec:
     @property
     def load_id(self) -> str:
         """
-        Unique identifier for this spec's pretrained load, composed of repo|subfolder|variant|revision (no empty
-        segments).
+        Unique identifier for this spec's pretrained load, composed of
+        pretrained_model_name_or_path|subfolder|variant|revision (no empty segments).
         """
         if self.default_creation_method == "from_config":
             return "null"
@@ -197,12 +205,13 @@ class ComponentSpec:
         Decode a load_id string back into a dictionary of loading fields and values.
 
         Args:
-            load_id: The load_id string to decode, format: "repo|subfolder|variant|revision"
+            load_id: The load_id string to decode, format: "pretrained_model_name_or_path|subfolder|variant|revision"
                      where None values are represented as "null"
 
         Returns:
             Dict mapping loading field names to their values. e.g. {
-                "repo": "path/to/repo", "subfolder": "subfolder", "variant": "variant", "revision": "revision"
+                "pretrained_model_name_or_path": "path/to/repo", "subfolder": "subfolder", "variant": "variant",
+                "revision": "revision"
             } If a segment value is "null", it's replaced with None. Returns None if load_id is "null" (indicating
             component not created with `load` method).
         """
@@ -259,34 +268,45 @@ class ComponentSpec:
     # YiYi TODO: add guard for type of model, if it is supported by from_pretrained
     def load(self, **kwargs) -> Any:
         """Load component using from_pretrained."""
-
-        # select loading fields from kwargs passed from user: e.g. repo, subfolder, variant, revision, note the list could change
+        # select loading fields from kwargs passed from user: e.g. pretrained_model_name_or_path, subfolder, variant, revision, note the list could change
         passed_loading_kwargs = {key: kwargs.pop(key) for key in self.loading_fields() if key in kwargs}
         # merge loading field value in the spec with user passed values to create load_kwargs
         load_kwargs = {key: passed_loading_kwargs.get(key, getattr(self, key)) for key in self.loading_fields()}
-        # repo is a required argument for from_pretrained, a.k.a. pretrained_model_name_or_path
-        repo = load_kwargs.pop("repo", None)
-        if repo is None:
+
+        pretrained_model_name_or_path = load_kwargs.pop("pretrained_model_name_or_path", None)
+        if pretrained_model_name_or_path is None:
             raise ValueError(
-                "`repo` info is required when using `load` method (you can directly set it in `repo` field of the ComponentSpec or pass it as an argument)"
+                "`pretrained_model_name_or_path` info is required when using `load` method (you can directly set it in `pretrained_model_name_or_path` field of the ComponentSpec or pass it as an argument)"
+            )
+        is_single_file = _is_single_file_path_or_url(pretrained_model_name_or_path)
+        if is_single_file and self.type_hint is None:
+            raise ValueError(
+                f"`type_hint` is required when loading a single file model but is missing for component: {self.name}"
             )
 
         if self.type_hint is None:
             try:
                 from diffusers import AutoModel
 
-                component = AutoModel.from_pretrained(repo, **load_kwargs, **kwargs)
+                component = AutoModel.from_pretrained(pretrained_model_name_or_path, **load_kwargs, **kwargs)
             except Exception as e:
                 raise ValueError(f"Unable to load {self.name} without `type_hint`: {e}")
             # update type_hint if AutoModel load successfully
             self.type_hint = component.__class__
         else:
+            # determine load method
+            load_method = (
+                getattr(self.type_hint, "from_single_file")
+                if is_single_file
+                else getattr(self.type_hint, "from_pretrained")
+            )
+
             try:
-                component = self.type_hint.from_pretrained(repo, **load_kwargs, **kwargs)
+                component = load_method(pretrained_model_name_or_path, **load_kwargs, **kwargs)
             except Exception as e:
                 raise ValueError(f"Unable to load {self.name} using load method: {e}")
 
-        self.repo = repo
+        self.pretrained_model_name_or_path = pretrained_model_name_or_path
         for k, v in load_kwargs.items():
             setattr(self, k, v)
         component._diffusers_load_id = self.load_id
