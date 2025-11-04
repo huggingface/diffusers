@@ -313,7 +313,7 @@ class ModularPipelineBlocks(ConfigMixin, PushToHubMixin):
         ]
         hub_kwargs = {name: kwargs.pop(name) for name in hub_kwargs_names if name in kwargs}
 
-        config = cls.load_config(pretrained_model_name_or_path)
+        config = cls.load_config(pretrained_model_name_or_path, **hub_kwargs)
         has_remote_code = "auto_map" in config and cls.__name__ in config["auto_map"]
         trust_remote_code = resolve_trust_remote_code(
             trust_remote_code, pretrained_model_name_or_path, has_remote_code
