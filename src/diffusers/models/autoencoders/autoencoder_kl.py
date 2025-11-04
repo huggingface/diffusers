@@ -15,11 +15,12 @@ from typing import Dict, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
+import torch.distributed as dist
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import PeftAdapterMixin
 from ...loaders.single_file_model import FromOriginalModelMixin
-from ...utils import deprecate
+from ...utils import deprecate, logging
 from ...utils.accelerate_utils import apply_forward_hook
 from ..attention_processor import (
     ADDED_KV_ATTENTION_PROCESSORS,
@@ -33,6 +34,9 @@ from ..attention_processor import (
 from ..modeling_outputs import AutoencoderKLOutput
 from ..modeling_utils import ModelMixin
 from .vae import AutoencoderMixin, Decoder, DecoderOutput, DiagonalGaussianDistribution, Encoder
+
+
+logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
 class AutoencoderKL(ModelMixin, AutoencoderMixin, ConfigMixin, FromOriginalModelMixin, PeftAdapterMixin):
@@ -127,6 +131,7 @@ class AutoencoderKL(ModelMixin, AutoencoderMixin, ConfigMixin, FromOriginalModel
 
         self.use_slicing = False
         self.use_tiling = False
+        self.use_dp = False
 
         # only relevant if vae tiling is enabled
         self.tile_sample_min_size = self.config.sample_size
@@ -214,9 +219,58 @@ class AutoencoderKL(ModelMixin, AutoencoderMixin, ConfigMixin, FromOriginalModel
 
         self.set_attn_processor(processor)
 
+    def enable_dp(
+        self,
+        world_size: Optional[int] = None,
+        hw_splits: Optional[Tuple[int, int]] = None,
+        overlap_ratio: Optional[float] = None,
+        overlap_pixels: Optional[int] = None
+    ) -> None:
+        r"""
+        """
+        if world_size is None:
+            world_size = dist.get_world_size()
+
+        if world_size <= 1 or world_size > dist.get_world_size():
+            logger.warning(
+                f"Supported world_size for vae dp is between 2 - {dist.get_world_size}, but got {world_size}. " \
+                f"Fall back to normal vae")
+            return
+
+        if hw_splits is None:
+            hw_splits = (1, int(world_size))
+
+        assert len(hw_splits) == 2, f"'hw_splits' should be a tuple of 2 int, but got length {len(hw_splits)}"
+
+        h_split, w_split = map(int, hw_splits)
+
+        self.use_dp = True
+        self.h_split, self.w_split = h_split, w_split
+        self.world_size = world_size
+        self.overlap_ratio = overlap_ratio
+        self.overlap_pixels = overlap_pixels
+        self.spatial_compression_ratio = 2 ** (len(self.config.block_out_channels) - 1)
+
+        dp_ranks = list(range(0, world_size))
+        self.vae_dp_group = dist.new_group(ranks=dp_ranks)
+        self.rank = dist.get_rank()
+        # patch_ranks_flatten = [tile_idx % world_size for tile_idx in range(num_tiles)]
+        # self.patch_ranks = torch.Tensor(patch_ranks_flatten).reshape(h_split, w_split)
+        self.tile_idxs_per_rank = [[] for _ in range(self.world_size)]
+        self.num_tiles_per_rank = [0] * self.world_size
+        rank_idx = 0
+        for h_idx in range(self.h_split):
+            for w_idx in range(self.w_split):
+                rank_idx %= self.world_size
+                self.tile_idxs_per_rank[rank_idx].append((h_idx, w_idx))
+                self.num_tiles_per_rank[rank_idx] += 1
+                rank_idx += 1
+
     def _encode(self, x: torch.Tensor) -> torch.Tensor:
         batch_size, num_channels, height, width = x.shape
 
+        if self.use_dp:
+            return self._tiled_encode(x)
         if self.use_tiling and (width > self.tile_sample_min_size or height > self.tile_sample_min_size):
             return self._tiled_encode(x)
 
@@ -256,6 +310,8 @@ class AutoencoderKL(ModelMixin, AutoencoderMixin, ConfigMixin, FromOriginalModel
         return AutoencoderKLOutput(latent_dist=posterior)
 
     def _decode(self, z: torch.Tensor, return_dict: bool = True) -> Union[DecoderOutput, torch.Tensor]:
+        if self.use_dp:
+            return self.tiled_decode_with_dp(z, return_dict=return_dict)
         if self.use_tiling and (z.shape[-1] > self.tile_latent_min_size or z.shape[-2] > self.tile_latent_min_size):
             return self.tiled_decode(z, return_dict=return_dict)
 
@@ -492,6 +548,248 @@ class AutoencoderKL(ModelMixin, AutoencoderMixin, ConfigMixin, FromOriginalModel
             z = posterior.mode()
         dec = self.decode(z).sample
 
+        if not return_dict:
+            return (dec,)
+
+        return DecoderOutput(sample=dec)
+
+    def _tiled_encode_with_dp(self, x: torch.Tensor) -> torch.Tensor:
+        r"""Encode a batch of images using a tiled encoder.
+
+        When this option is enabled, the VAE will split the input tensor into tiles to compute encoding in several
+        steps. This is useful to keep memory use constant regardless of image size. The end result of tiled encoding is
+        different from non-tiled encoding because each tile uses a different encoder. To avoid tiling artifacts, the
+        tiles overlap and are blended together to form a smooth output. You may still see tile-sized changes in the
+        output, but they should be much less noticeable.
+
+        Args:
+            x (`torch.Tensor`): Input batch of images.
+
+        Returns:
+            `torch.Tensor`:
+                The latent representation of the encoded videos.
+        """
+
+        _, _, height, width = x.shape
+        device = x.device
+        latent_height = height // self.spatial_compression_ratio
+        latent_width = width // self.spatial_compression_ratio
+
+        # Calculate stride based on h_split and w_split
+        tile_latent_stride_height = int((latent_height + self.h_split - 1) / self.h_split)
+        tile_latent_stride_width = int((latent_width + self.w_split - 1) / self.w_split)
+
+        # Calculate overlap in latent space
+        overlap_latent_height = 3
+        overlap_latent_width = 3
+        if self.overlap_pixels is not None:
+            overlap_latent = (self.overlap_pixels + self.spatial_compression_ratio - 1) // self.spatial_compression_ratio
+            overlap_latent_height = overlap_latent
+            overlap_latent_width = overlap_latent
+        elif self.overlap_ratio is not None:
+            overlap_latent_height = int(self.overlap_ratio * latent_height)
+            overlap_latent_width = int(self.overlap_ratio * latent_width)
+
+        # Calculate minimum tile size in latent space
+        tile_latent_min_height = tile_latent_stride_height + overlap_latent_height
+        tile_latent_min_width = tile_latent_stride_width + overlap_latent_width
+
+        blend_height = tile_latent_min_height - tile_latent_stride_height
+        blend_width = tile_latent_min_width - tile_latent_stride_width
+
+        tile_sample_min_height = tile_latent_min_height * self.spatial_compression_ratio
+        tile_sample_min_width = tile_latent_min_width * self.spatial_compression_ratio
+        tile_sample_stride_height = tile_latent_stride_height * self.spatial_compression_ratio
+        tile_sample_stride_width = tile_latent_stride_width * self.spatial_compression_ratio
+
+        # Determine tile grid dimensions - patch_ranks shape is [h_split, w_split]
+        num_tile_rows = self.h_split
+        num_tile_cols = self.w_split
+
+        local_tiles = []
+        local_hw_shapes = []
+
+        for h_idx, w_idx in self.tile_idxs_per_rank[self.rank]:
+            patch_height_start = h_idx * tile_sample_stride_height
+            patch_height_end = patch_height_start + tile_sample_min_height
+            patch_width_start = w_idx * tile_sample_stride_width
+            patch_width_end = patch_width_start + tile_sample_min_width
+
+            tile = x[:, :, patch_height_start : patch_height_end, patch_width_start : patch_width_end]
+            tile = self.encoder(tile)
+            if self.config.use_quant_conv:
+                tile = self.quant_conv(tile)
+
+            local_tiles.append(tile.flatten(-2, -1))
+            local_hw_shapes.append(torch.Tensor([*tile.shape[-2:]]).to(device).int())
+
+        # concat all tiles on local rank
+        local_tiles = torch.cat(local_tiles, dim=-1)
+        local_hw_shapes = torch.stack(local_hw_shapes)
+
+        # get all hw shapes for each rank (perhaps has different shapes for last tile)
+        gathered_shape_list = [torch.empty((num_tiles, 2), dtype=local_hw_shapes.dtype, device=device) 
+                        for num_tiles in self.num_tiles_per_rank]
+        dist.all_gather(gathered_shape_list, local_hw_shapes, group=self.vae_dp_group)
+
+        # gather tiles on all ranks
+        bc_ = local_tiles.shape[:-1]
+        gathered_tiles = [
+            torch.empty(
+                (*bc_, tiles_shape.prod(dim=1).sum().item()), 
+                dtype=local_tiles.dtype, device=device) for tiles_shape in gathered_shape_list
+        ]
+        dist.all_gather(gathered_tiles, local_tiles, group=self.vae_dp_group)
+
+        # put tiles in rows based on tile_idxs_per_rank
+        rows = [[None] * num_tile_cols for _ in range(num_tile_rows)]
+        for rank_idx, tile_idxs in enumerate(self.tile_idxs_per_rank):
+            if not tile_idxs:
+                continue
+            rank_tile_hw_shapes = gathered_shape_list[rank_idx]
+            hw_start_idx = 0
+            # perhaps has more than one tile in each rank, get each by hw_shapes
+            for tile_idx, (h_idx, w_idx) in enumerate(tile_idxs):
+                rank_tile_hw_shape = rank_tile_hw_shapes[tile_idx]
+                hw_end_idx = hw_start_idx + rank_tile_hw_shape.prod().item() # flattend hw
+                rows[h_idx][w_idx] = gathered_tiles[rank_idx][..., hw_start_idx:hw_end_idx].unflatten(
+                    -1, rank_tile_hw_shape.tolist()) # unflatten hw dim
+                hw_start_idx = hw_end_idx
+ 
+        result_rows = []
+        for i, row in enumerate(rows):
+            result_row = []
+            for j, tile in enumerate(row):
+                # blend the above tile and the left tile
+                # to the current tile and add the current tile to the result row
+                if i > 0:
+                    tile = self.blend_v(rows[i - 1][j], tile, blend_height)
+                if j > 0:
+                    tile = self.blend_h(row[j - 1], tile, blend_width)
+                result_row.append(tile[:, :, :tile_latent_stride_height, :tile_latent_stride_width])
+            result_rows.append(torch.cat(result_row, dim=3))
+
+        enc = torch.cat(result_rows, dim=2)[:, :, :latent_height, :latent_width]
+        return enc
+
+    def tiled_decode_with_dp(self, z: torch.Tensor, return_dict: bool = True) -> Union[DecoderOutput, torch.Tensor]:
+        r"""
+        Decode a batch of images using a tiled decoder.
+
+        Args:
+            z (`torch.Tensor`): Input batch of latent vectors.
+            return_dict (`bool`, *optional*, defaults to `True`):
+                Whether or not to return a [`~models.vae.DecoderOutput`] instead of a plain tuple.
+
+        Returns:
+            [`~models.vae.DecoderOutput`] or `tuple`:
+                If return_dict is True, a [`~models.vae.DecoderOutput`] is returned, otherwise a plain `tuple` is
+                returned.
+        """
+        _, _, height, width = z.shape
+        device = z.device
+        sample_height = height * self.spatial_compression_ratio
+        sample_width = width * self.spatial_compression_ratio
+
+        # Calculate stride based on h_split and w_split
+        tile_latent_stride_height = int((height + self.h_split - 1) / self.h_split)
+        tile_latent_stride_width = int((width + self.w_split - 1) / self.w_split)
+
+        # Calculate overlap in latent space
+        overlap_latent_height = 3
+        overlap_latent_width = 3
+        if self.overlap_pixels is not None:
+            overlap_latent = (self.overlap_pixels + self.spatial_compression_ratio - 1) // self.spatial_compression_ratio
+            overlap_latent_height = overlap_latent
+            overlap_latent_width = overlap_latent
+        elif self.overlap_ratio is not None:
+            overlap_latent_height = int(self.overlap_ratio * height)
+            overlap_latent_width = int(self.overlap_ratio * width)
+
+        # Calculate minimum tile size in latent space
+        tile_latent_min_height = tile_latent_stride_height + overlap_latent_height
+        tile_latent_min_width = tile_latent_stride_width + overlap_latent_width
+
+        # Convert min/stride to sample space
+        tile_sample_min_height = tile_latent_min_height * self.spatial_compression_ratio
+        tile_sample_min_width = tile_latent_min_width * self.spatial_compression_ratio
+        tile_sample_stride_height = tile_latent_stride_height * self.spatial_compression_ratio
+        tile_sample_stride_width = tile_latent_stride_width * self.spatial_compression_ratio
+
+        blend_height = tile_sample_min_height - tile_sample_stride_height
+        blend_width = tile_sample_min_width - tile_sample_stride_width
+
+        # Determine tile grid dimensions - patch_ranks shape is [h_split, w_split]
+        num_tile_rows = self.h_split
+        num_tile_cols = self.w_split
+
+        # Split z into overlapping tiles and decode them separately.
+        # The tiles have an overlap to avoid seams between tiles.
+        # Each rank computes only tiles assigned to it based on tile_idxs_per_rank
+        local_tiles = [] # List to store tiles computed by this rank
+        local_hw_shapes = [] # List to store shapes of tiles by this rank
+        
+        for h_idx, w_idx in self.tile_idxs_per_rank[self.rank]:
+            patch_height_start = h_idx * tile_latent_stride_height
+            patch_height_end = patch_height_start + tile_latent_min_height
+            patch_width_start = w_idx * tile_latent_stride_width
+            patch_width_end = patch_width_start + tile_latent_min_width
+
+            tile = z[:, :, patch_height_start : patch_height_end, patch_width_start : patch_width_end]
+            if self.config.use_post_quant_conv:
+                tile = self.post_quant_conv(tile)
+            decoded = self.decoder(tile)
+
+            local_tiles.append(decoded.flatten(-2, -1)) # flatten h,w dim for concate all tiles in one rank
+            local_hw_shapes.append(torch.Tensor([*decoded.shape[-2:]]).to(device).int()) # record hw for futher unflatten
+
+        # concat all tiles on local rank
+        local_tiles = torch.cat(local_tiles, dim=-1)
+        local_hw_shapes = torch.stack(local_hw_shapes)
+
+        # get all hw shapes for each rank (perhaps has different shapes for last tile)
+        gathered_shape_list = [torch.empty((num_tiles, 2), dtype=local_hw_shapes.dtype, device=device) 
+                        for num_tiles in self.num_tiles_per_rank]
+        dist.all_gather(gathered_shape_list, local_hw_shapes, group=self.vae_dp_group)
+
+        # gather tiles on all ranks
+        bcn_ = local_tiles.shape[:-1]
+        gathered_tiles = [
+            torch.empty(
+                (*bcn_, tiles_shape.prod(dim=1).sum().item()), 
+                dtype=local_tiles.dtype, device=device) for tiles_shape in gathered_shape_list
+        ]
+        dist.all_gather(gathered_tiles, local_tiles, group=self.vae_dp_group)
+
+        # put tiles in rows based on tile_idxs_per_rank
+        rows = [[None] * num_tile_cols for _ in range(num_tile_rows)]
+        for rank_idx, tile_idxs in enumerate(self.tile_idxs_per_rank):
+            if not tile_idxs:
+                continue
+            rank_tile_hw_shapes = gathered_shape_list[rank_idx]
+            hw_start_idx = 0
+            # perhaps has more than one tile in each rank, get each by hw_shapes
+            for tile_idx, (h_idx, w_idx) in enumerate(tile_idxs):
+                rank_tile_hw_shape = rank_tile_hw_shapes[tile_idx]
+                hw_end_idx = hw_start_idx + rank_tile_hw_shape.prod().item() # flattend hw
+                rows[h_idx][w_idx] = gathered_tiles[rank_idx][..., hw_start_idx:hw_end_idx].unflatten(
+                    -1, rank_tile_hw_shape.tolist()) # unflatten hw dim
+                hw_start_idx = hw_end_idx
+
+        result_rows = []
+        for i, row in enumerate(rows):
+            result_row = []
+            for j, tile in enumerate(row):
+                # blend the above tile and the left tile
+                # to the current tile and add the current tile to the result row
+                if i > 0:
+                    tile = self.blend_v(rows[i - 1][j], tile, blend_height)
+                if j > 0:
+                    tile = self.blend_h(row[j - 1], tile, blend_width)
+                result_row.append(tile[:, :, :tile_sample_stride_height, :tile_sample_stride_width])
+            result_rows.append(torch.cat(result_row, dim=3))
+
+        dec = torch.cat(result_rows, dim=2)[:, :, :sample_height, :sample_width]
         if not return_dict:
             return (dec,)
 
