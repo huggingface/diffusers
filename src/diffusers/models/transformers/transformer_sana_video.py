@@ -118,13 +118,6 @@ class SanaLinearAttnProcessor3_0:
         if attn.norm_k is not None:
             key = attn.norm_k(key)
 
-        # B,N,C
-        # B,H,C,N
-        # query = query.transpose(1, 2).unflatten(1, (attn.heads, -1))
-        # B,H,N,C
-        # key = key.transpose(1, 2).unflatten(1, (attn.heads, -1)).transpose(2, 3)
-        # B,N,H,C
-        # value = value.transpose(1, 2).unflatten(1, (attn.heads, -1))
         query = query.unflatten(2, (attn.heads, -1))
         key = key.unflatten(2, (attn.heads, -1))
         value = value.unflatten(2, (attn.heads, -1))
@@ -156,95 +149,6 @@ class SanaLinearAttnProcessor3_0:
         key = key.permute(0, 2, 3, 1)
         query_rotate = query_rotate.permute(0, 2, 3, 1)
         key_rotate = key_rotate.permute(0, 2, 3, 1)
-        value = value.permute(0, 2, 3, 1)
-
-        query_rotate, key_rotate, value = query_rotate.float(), key_rotate.float(), value.float()
-
-        z = 1 / (key.sum(dim=-1, keepdim=True).transpose(-2, -1) @ query + 1e-15)
-
-        scores = torch.matmul(value, key_rotate.transpose(-1, -2))
-        hidden_states = torch.matmul(scores, query_rotate)
-
-        hidden_states = hidden_states * z
-        # B,H,C,N
-        hidden_states = hidden_states.flatten(1, 2).transpose(1, 2)
-        hidden_states = hidden_states.to(original_dtype)
-
-        hidden_states = attn.to_out[0](hidden_states)
-        hidden_states = attn.to_out[1](hidden_states)
-
-        return hidden_states
-
-
-class SanaLinearAttnProcessor3_1:
-    r"""
-    Processor for implementing scaled dot-product linear attention.
-    """
-
-    def __call__(
-        self,
-        attn: Attention,
-        hidden_states: torch.Tensor,
-        encoder_hidden_states: Optional[torch.Tensor] = None,
-        attention_mask: Optional[torch.Tensor] = None,
-        rotary_emb: Optional[torch.Tensor] = None,
-    ) -> torch.Tensor:
-        original_dtype = hidden_states.dtype
-
-        if encoder_hidden_states is None:
-            encoder_hidden_states = hidden_states
-
-        query = attn.to_q(hidden_states)
-        key = attn.to_k(encoder_hidden_states)
-        value = attn.to_v(encoder_hidden_states)
-
-        if attn.norm_q is not None:
-            query = attn.norm_q(query)
-        if attn.norm_k is not None:
-            key = attn.norm_k(key)
-
-        # B,N,C
-        # B,H,C,N
-        # query = query.transpose(1, 2).unflatten(1, (attn.heads, -1))
-        # B,H,N,C
-        # key = key.transpose(1, 2).unflatten(1, (attn.heads, -1)).transpose(2, 3)
-        # B,N,H,C
-        # value = value.transpose(1, 2).unflatten(1, (attn.heads, -1))
-        query = query.unflatten(2, (attn.heads, -1))
-        key = key.unflatten(2, (attn.heads, -1))
-        value = value.unflatten(2, (attn.heads, -1))
-        # B,N,H,C
-
-        query = F.relu(query)
-        key = F.relu(key)
-
-        # if rotary_emb is not None:
-
-        #     def apply_rotary_emb(
-        #         hidden_states: torch.Tensor,
-        #         freqs_cos: torch.Tensor,
-        #         freqs_sin: torch.Tensor,
-        #     ):
-        #         x1, x2 = hidden_states.unflatten(-1, (-1, 2)).unbind(-1)
-        #         cos = freqs_cos[..., 0::2]
-        #         sin = freqs_sin[..., 1::2]
-        #         out = torch.empty_like(hidden_states)
-        #         out[..., 0::2] = x1 * cos - x2 * sin
-        #         out[..., 1::2] = x1 * sin + x2 * cos
-        #         return out.type_as(hidden_states)
-
-        #     query_rotate = apply_rotary_emb(query, *rotary_emb)
-        #     key_rotate = apply_rotary_emb(key, *rotary_emb)
-
-        # B,H,C,N
-        # query_rotate = query_rotate.permute(0, 2, 3, 1)
-        # key_rotate = key_rotate.permute(0, 2, 3, 1)
-        # value = value.permute(0, 2, 3, 1)
-
-        query = query.permute(0, 2, 3, 1)
-        key = key.permute(0, 2, 3, 1)
-        query_rotate = query
-        key_rotate = key
         value = value.permute(0, 2, 3, 1)
 
         query_rotate, key_rotate, value = query_rotate.float(), key_rotate.float(), value.float()
