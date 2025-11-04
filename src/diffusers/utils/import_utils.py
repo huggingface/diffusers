@@ -226,6 +226,7 @@ _cosmos_guardrail_available, _cosmos_guardrail_version = _is_package_available("
 _sageattention_available, _sageattention_version = _is_package_available("sageattention")
 _flash_attn_available, _flash_attn_version = _is_package_available("flash_attn")
 _flash_attn_3_available, _flash_attn_3_version = _is_package_available("flash_attn_3")
+_aiter_available, _aiter_version = _is_package_available("aiter")
 _kornia_available, _kornia_version = _is_package_available("kornia")
 _nvidia_modelopt_available, _nvidia_modelopt_version = _is_package_available("modelopt", get_dist_name=True)
 
@@ -404,6 +405,10 @@ def is_flash_attn_available():
 
 def is_flash_attn_3_available():
     return _flash_attn_3_available
+
+
+def is_aiter_available():
+    return _aiter_available
 
 
 def is_kornia_available():
@@ -909,6 +914,22 @@ def is_flash_attn_version(operation: str, version: str):
     if not _flash_attn_available:
         return False
     return compare_versions(parse(_flash_attn_version), operation, version)
+
+
+@cache
+def is_aiter_version(operation: str, version: str):
+    """
+    Compares the current aiter version to a given reference with an operation.
+
+    Args:
+        operation (`str`):
+            A string representation of an operator, such as `">"` or `"<="`
+        version (`str`):
+            A version string
+    """
+    if not _aiter_available:
+        return False
+    return compare_versions(parse(_aiter_version), operation, version)
 
 
 def get_objects_from_module(module):
