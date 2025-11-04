@@ -16,16 +16,22 @@
 import unittest
 
 import numpy as np
+import PIL
 import torch
 
 from diffusers import ClassifierFreeGuidance
-from diffusers.modular_pipelines import QwenImageAutoBlocks, QwenImageModularPipeline
+from diffusers.modular_pipelines import (
+    QwenImageAutoBlocks,
+    QwenImageEditAutoBlocks,
+    QwenImageEditModularPipeline,
+    QwenImageModularPipeline,
+)
 
 from ...testing_utils import torch_device
 from ..test_modular_pipelines_common import ModularPipelineTesterMixin
 
 
-class QwenImagexModularTests:
+class QwenImageModularTests:
     pipeline_class = QwenImageModularPipeline
     pipeline_blocks_class = QwenImageAutoBlocks
     repo = "hf-internal-testing/tiny-qwenimage-modular"
@@ -79,7 +85,20 @@ class QwenImageModularGuiderTests:
 
 
 class QwenImageModularPipelineFastTests(
-    QwenImagexModularTests, QwenImageModularGuiderTests, ModularPipelineTesterMixin, unittest.TestCase
+    QwenImageModularTests, QwenImageModularGuiderTests, ModularPipelineTesterMixin, unittest.TestCase
 ):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+
+
+class QwenImageEditModularPipelineFastTests(
+    QwenImageModularTests, QwenImageModularGuiderTests, ModularPipelineTesterMixin, unittest.TestCase
+):
+    pipeline_class = QwenImageEditModularPipeline
+    pipeline_blocks_class = QwenImageEditAutoBlocks
+    repo = "hf-internal-testing/tiny-qwenimage-edit-modular"
+
+    def get_dummy_inputs(self, device, seed=0):
+        inputs = super().get_dummy_inputs(device, seed)
+        inputs["image"] = PIL.Image.new("RGB", (32, 32), 0)
+        return inputs
