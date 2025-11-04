@@ -243,7 +243,7 @@ def apply_freeu(
     resolution_idx: int, hidden_states: "torch.Tensor", res_hidden_states: "torch.Tensor", **freeu_kwargs
 ) -> Tuple["torch.Tensor", "torch.Tensor"]:
     """Applies the FreeU mechanism as introduced in https:
-    //huggingface.com/papers/2309.11497. Adapted from the official code repository: https://github.com/ChenyangSi/FreeU.
+    //huggingface.co/papers/2309.11497. Adapted from the official code repository: https://github.com/ChenyangSi/FreeU.
 
     Args:
         resolution_idx (`int`): Integer denoting the UNet block where FreeU is being applied.
