@@ -520,6 +520,7 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
     def prepare_reference_image_latents(
         self,
         image: torch.Tensor,
+        batch_size: int = 1,
         sample_mode: int = "argmax",
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         dtype: Optional[torch.dtype] = None,
@@ -530,13 +531,14 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
             # Add a singleton frame dimension after the channels dimension
             image = image.unsqueeze(2)
 
-        batch_size, _, _, height, width = image.shape
+        _, _, _, height, width = image.shape
         latent_height = height // self.vae_scale_factor_spatial
         latent_width = width // self.vae_scale_factor_spatial
 
         # Encode image to latents using VAE
         image = image.to(device=device, dtype=dtype if dtype is not None else self.vae.dtype)
         if isinstance(generator, list):
+            # Like in prepare_latents, assume len(generator) == batch_size
             ref_image_latents = [
                 retrieve_latents(self.vae.encode(image), generator=g, sample_mode=sample_mode) for g in generator
             ]
@@ -544,6 +546,10 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
         else:
             ref_image_latents = retrieve_latents(self.vae.encode(image), generator, sample_mode)
         ref_image_latents = self.standardize_latents(ref_image_latents)
+        # Handle the case where we supply one image and one generator, but batch_size > 1 (e.g. generating multiple
+        # videos per prompt)
+        if ref_image_latents.shape[0] == 1 and batch_size > 1:
+            ref_image_latents = ref_image_latents.expand(batch_size, -1, -1, -1, -1)
 
         # Prepare I2V mask in latent space and prepend to the reference image latents along channel dim
         reference_image_mask = self.get_i2v_mask(batch_size, 1, latent_height, latent_width, 1, None, device)
@@ -574,9 +580,9 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 prev_segment_cond_video = background_video[:, :, :prev_segment_cond_frames]
             else:
                 cond_frames_shape = (batch_size, 3, prev_segment_cond_frames, height, width)  # In pixel space
-                prev_segment_cond_video = torch.zeros(cond_frames_shape)
+                prev_segment_cond_video = torch.zeros(cond_frames_shape, device=device)
 
-        batch_size, channels, _, segment_height, segment_width = prev_segment_cond_video.shape
+        data_batch_size, channels, _, segment_height, segment_width = prev_segment_cond_video.shape
         num_latent_frames = (segment_frame_length - 1) // self.vae_scale_factor_temporal + 1
         latent_height = height // self.vae_scale_factor_spatial
         latent_width = width // self.vae_scale_factor_spatial
@@ -593,15 +599,28 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
             remaining_segment = background_video[:, :, prev_segment_cond_frames:]
         else:
             remaining_segment_frames = segment_frame_length - prev_segment_cond_frames
-            remaining_segment = torch.zeros(batch_size, channels, remaining_segment_frames, height, width)
+            remaining_segment = torch.zeros(
+                batch_size, channels, remaining_segment_frames, height, width, device=device
+            )
 
         # Prepend the conditioning frames from the previous segment to the remaining segment video in the frame dim
         full_segment_cond_video = torch.cat([prev_segment_cond_video, remaining_segment], dim=2)
 
         if isinstance(generator, list):
-            prev_segment_cond_latents = [
-                retrieve_latents(self.vae.encode(full_segment_cond_video), g, sample_mode) for g in generator
-            ]
+            if data_batch_size == len(generator):
+                prev_segment_cond_latents = [
+                    retrieve_latents(self.vae.encode(full_segment_cond_video[i].unsqueeze(0)), g, sample_mode) for i, g in enumerate(generator)
+                ]
+            elif data_batch_size == 1:
+                # Like prepare_latents, assume len(generator) == batch_size
+                prev_segment_cond_latents = [
+                    retrieve_latents(self.vae.encode(full_segment_cond_video), g, sample_mode) for g in generator
+                ]
+            else:
+                raise ValueError(
+                    f"The batch size of the prev segment video should be either {len(generator)} or 1 but is"
+                    f" {data_batch_size}"
+                )
             prev_segment_cond_latents = torch.cat(prev_segment_cond_latents)
         else:
             prev_segment_cond_latents = retrieve_latents(
@@ -634,6 +653,7 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
     def prepare_pose_latents(
         self,
         pose_video: torch.Tensor,
+        batch_size: int = 1,
         sample_mode: int = "argmax",
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         dtype: Optional[torch.dtype] = None,
@@ -649,6 +669,8 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
         else:
             pose_latents = retrieve_latents(self.vae.encode(pose_video), generator, sample_mode)
         pose_latents = self.standardize_latents(pose_latents)
+        if pose_latents.shape[0] == 1 and batch_size > 1:
+            pose_latents = pose_latents.expand(batch_size, -1, -1, -1, -1)
         return pose_latents
 
     def prepare_latents(
@@ -938,7 +960,7 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
         # Get CLIP features from the reference image
         if image_embeds is None:
             image_embeds = self.encode_image(image, device)
-        image_embeds = image_embeds.repeat(batch_size, 1, 1)
+        image_embeds = image_embeds.repeat(batch_size * num_videos_per_prompt, 1, 1)
         image_embeds = image_embeds.to(transformer_dtype)
 
         # 5. Encode conditioning videos (pose, face)
@@ -991,7 +1013,7 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
 
         # Get VAE-encoded latents of the reference (character) image
         reference_image_latents = self.prepare_reference_image_latents(
-            image_pixels, generator=generator, device=device
+            image_pixels, batch_size * num_videos_per_prompt, generator=generator, device=device
         )
 
         # 8. Loop over video inference segments
@@ -1008,6 +1030,8 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
             pose_video_segment = pose_video[start:end]
             face_video_segment = face_video[start:end]
 
+            face_video_segment = face_video_segment.expand(batch_size * num_videos_per_prompt, -1, -1, -1, -1)
+
             if start > 0:
                 # TODO: check shapes here, why do we take index 0 in the first dim.?
                 prev_segment_cond_video = out_frames[0, :, -prev_segment_conditioning_frames:].clone().detach().unsqueeze(0)
@@ -1017,11 +1041,18 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
             if mode == "replace":
                 background_video_segment = background_video[start:end]
                 mask_video_segment = mask_video[start:end].permute(0, 2, 1, 3, 4)
+
+                background_video_segment = background_video_segment.expand(
+                    batch_size * num_videos_per_prompt, -1, -1, -1, -1
+                )
+                mask_video_segment = mask_video_segment.expand(batch_size * num_videos_per_prompt, -1, -1, -1, -1)
             else:
                 background_video_segment = None
                 mask_video_segment = None
 
-            pose_latents = self.prepare_pose_latents(pose_video_segment, generator=generator, device=device)
+            pose_latents = self.prepare_pose_latents(
+                pose_video_segment, batch_size * num_videos_per_prompt, generator=generator, device=device
+            )
 
             prev_segment_cond_latents = self.prepare_prev_segment_cond_latents(
                 prev_segment_cond_video,
