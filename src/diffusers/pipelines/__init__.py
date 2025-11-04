@@ -129,6 +129,7 @@ else:
         "AnimateDiffVideoToVideoControlNetPipeline",
     ]
     _import_structure["bria"] = ["BriaPipeline"]
+    _import_structure["bria_fibo"] = ["BriaFiboPipeline"]
     _import_structure["flux"] = [
         "FluxControlPipeline",
         "FluxControlInpaintPipeline",
@@ -145,6 +146,7 @@ else:
         "FluxKontextPipeline",
         "FluxKontextInpaintPipeline",
     ]
+    _import_structure["prx"] = ["PRXPipeline"]
     _import_structure["audioldm"] = ["AudioLDMPipeline"]
     _import_structure["audioldm2"] = [
         "AudioLDM2Pipeline",
@@ -241,6 +243,7 @@ else:
         "HunyuanVideoImageToVideoPipeline",
         "HunyuanVideoFramepackPipeline",
     ]
+    _import_structure["hunyuan_image"] = ["HunyuanImagePipeline", "HunyuanImageRefinerPipeline"]
     _import_structure["kandinsky"] = [
         "KandinskyCombinedPipeline",
         "KandinskyImg2ImgCombinedPipeline",
@@ -562,6 +565,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .aura_flow import AuraFlowPipeline
         from .blip_diffusion import BlipDiffusionPipeline
         from .bria import BriaPipeline
+        from .bria_fibo import BriaFiboPipeline
         from .chroma import ChromaImg2ImgPipeline, ChromaPipeline
         from .cogvideo import (
             CogVideoXFunControlPipeline,
@@ -641,6 +645,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             ReduxImageEncoder,
         )
         from .hidream_image import HiDreamImagePipeline
+        from .hunyuan_image import HunyuanImagePipeline, HunyuanImageRefinerPipeline
         from .hunyuan_video import (
             HunyuanSkyreelsImageToVideoPipeline,
             HunyuanVideoFramepackPipeline,
@@ -722,6 +727,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .paint_by_example import PaintByExamplePipeline
         from .pia import PIAPipeline
         from .pixart_alpha import PixArtAlphaPipeline, PixArtSigmaPipeline
+        from .prx import PRXPipeline
         from .qwenimage import (
             QwenImageControlNetInpaintPipeline,
             QwenImageControlNetPipeline,

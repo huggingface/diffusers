@@ -265,7 +265,9 @@ def prepare_i2v_embeddings(
     if prompt_mask is not None:
         denoise_masks = prompt_mask.unsqueeze(1).repeat(1, denoise_chunk_num, 1)
         if clean_chunk_num > 0:
-            null_masks = torch.zeros(prompt_mask.shape[0], clean_chunk_num, prompt_mask.shape[1], device=device, dtype=prompt_mask.dtype)
+            null_masks = torch.zeros(
+                prompt_mask.shape[0], clean_chunk_num, prompt_mask.shape[1], device=device, dtype=prompt_mask.dtype
+            )
             prompt_masks_per_chunk = torch.cat([null_masks, denoise_masks], dim=1)
         else:
             prompt_masks_per_chunk = denoise_masks
@@ -284,7 +286,13 @@ def prepare_i2v_embeddings(
     if negative_mask is not None:
         denoise_neg_masks = negative_mask.unsqueeze(1).repeat(1, denoise_chunk_num, 1)
         if clean_chunk_num > 0:
-            null_neg_masks = torch.zeros(negative_mask.shape[0], clean_chunk_num, negative_mask.shape[1], device=device, dtype=negative_mask.dtype)
+            null_neg_masks = torch.zeros(
+                negative_mask.shape[0],
+                clean_chunk_num,
+                negative_mask.shape[1],
+                device=device,
+                dtype=negative_mask.dtype,
+            )
             negative_masks_per_chunk = torch.cat([null_neg_masks, denoise_neg_masks], dim=1)
         else:
             negative_masks_per_chunk = denoise_neg_masks
@@ -368,7 +376,9 @@ EXAMPLE_DOC_STRING = """
         >>> # IMPORTANT: MAGI-1 requires shift=3.0 for the scheduler (SD3-style time resolution transform)
         >>> scheduler = FlowMatchEulerDiscreteScheduler.from_pretrained(model_id, subfolder="scheduler", shift=3.0)
 
-        >>> pipe = Magi1ImageToVideoPipeline.from_pretrained(model_id, vae=vae, scheduler=scheduler, torch_dtype=torch.bfloat16)
+        >>> pipe = Magi1ImageToVideoPipeline.from_pretrained(
+        ...     model_id, vae=vae, scheduler=scheduler, torch_dtype=torch.bfloat16
+        ... )
         >>> pipe.to("cuda")
 
         >>> image = load_image(
@@ -1098,7 +1108,9 @@ class Magi1ImageToVideoPipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
                         token_mask = (
                             prompt_masks_per_chunk[:, chunk_idx]
                             if prompt_masks_per_chunk is not None
-                            else torch.ones(batch_size, token_embeds.shape[1], device=token_embeds.device, dtype=torch.int64)
+                            else torch.ones(
+                                batch_size, token_embeds.shape[1], device=token_embeds.device, dtype=torch.int64
+                            )
                         )
                         add_count = 0
                         if f"DURATION_TOKEN_{duration_idx}" in self.special_tokens:
@@ -1106,7 +1118,9 @@ class Magi1ImageToVideoPipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
                         if "BORDERNESS_TOKEN" in self.special_tokens:
                             add_count += 1
                         if add_count > 0:
-                            prepend = torch.ones(batch_size, add_count, dtype=token_mask.dtype, device=token_mask.device)
+                            prepend = torch.ones(
+                                batch_size, add_count, dtype=token_mask.dtype, device=token_mask.device
+                            )
                             token_mask = torch.cat([prepend, token_mask], dim=1)
                         # Truncate to max length
                         if token_embeds.shape[1] > max_sequence_length:
@@ -1140,7 +1154,12 @@ class Magi1ImageToVideoPipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
                             neg_mask = (
                                 negative_masks_per_chunk[:, chunk_idx]
                                 if negative_masks_per_chunk is not None
-                                else torch.ones(batch_size, neg_token_embeds.shape[1], device=neg_token_embeds.device, dtype=torch.int64)
+                                else torch.ones(
+                                    batch_size,
+                                    neg_token_embeds.shape[1],
+                                    device=neg_token_embeds.device,
+                                    dtype=torch.int64,
+                                )
                             )
                             add_count = 0
                             if f"DURATION_TOKEN_{duration_idx}" in self.special_tokens:
@@ -1148,7 +1167,9 @@ class Magi1ImageToVideoPipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
                             if "BORDERNESS_TOKEN" in self.special_tokens:
                                 add_count += 1
                             if add_count > 0:
-                                prepend = torch.ones(batch_size, add_count, dtype=neg_mask.dtype, device=neg_mask.device)
+                                prepend = torch.ones(
+                                    batch_size, add_count, dtype=neg_mask.dtype, device=neg_mask.device
+                                )
                                 neg_mask = torch.cat([prepend, neg_mask], dim=1)
                             if neg_token_embeds.shape[1] > max_sequence_length:
                                 neg_token_embeds = neg_token_embeds[:, :max_sequence_length, :]
@@ -1250,7 +1271,9 @@ class Magi1ImageToVideoPipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
 
                     # Create encoder attention mask(s) from tokenizer masks
                     if chunk_prompt_embeds_list:
-                        prompt_masks_stacked = torch.stack(chunk_prompt_masks_list, dim=0).transpose(0, 1).flatten(0, 1)
+                        prompt_masks_stacked = (
+                            torch.stack(chunk_prompt_masks_list, dim=0).transpose(0, 1).flatten(0, 1)
+                        )
                     else:
                         prompt_masks_stacked = chunk_prompt_masks
                     if prompt_masks_stacked is None:
@@ -1334,29 +1357,12 @@ class Magi1ImageToVideoPipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
                     # Predict noise (conditional)
                     # Note: MAGI-1 uses velocity field (flow matching), but following diffusers convention
                     # we use noise_pred naming for consistency across all pipelines
-                    noise_pred = self.transformer(
-                        hidden_states=latent_chunk,
-                        timestep=timestep_per_chunk,
-                        encoder_hidden_states=chunk_prompt_embeds,
-                        encoder_attention_mask=encoder_attention_mask,
-                        attention_kwargs=attention_kwargs,
-                        denoising_range_num=num_chunks_in_window,
-                        range_num=chunk_end_idx,
-                        slice_point=chunk_start_idx,
-                        kv_range=kv_range,
-                        num_steps=num_steps,
-                        distill_interval=distill_interval,
-                        distill_nearly_clean_chunk=distill_nearly_clean_chunk,
-                        return_dict=False,
-                    )[0]
-
-                    # Classifier-free guidance: separate forward pass for unconditional
-                    if self.do_classifier_free_guidance:
-                        noise_pred_uncond = self.transformer(
+                    with self.transformer.cache_context("cond"):
+                        noise_pred = self.transformer(
                             hidden_states=latent_chunk,
                             timestep=timestep_per_chunk,
-                            encoder_hidden_states=chunk_negative_prompt_embeds,
-                            encoder_attention_mask=encoder_attention_mask_neg,
+                            encoder_hidden_states=chunk_prompt_embeds,
+                            encoder_attention_mask=encoder_attention_mask,
                             attention_kwargs=attention_kwargs,
                             denoising_range_num=num_chunks_in_window,
                             range_num=chunk_end_idx,
@@ -1367,6 +1373,25 @@ class Magi1ImageToVideoPipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
                             distill_nearly_clean_chunk=distill_nearly_clean_chunk,
                             return_dict=False,
                         )[0]
+
+                    # Classifier-free guidance: separate forward pass for unconditional
+                    if self.do_classifier_free_guidance:
+                        with self.transformer.cache_context("uncond"):
+                            noise_pred_uncond = self.transformer(
+                                hidden_states=latent_chunk,
+                                timestep=timestep_per_chunk,
+                                encoder_hidden_states=chunk_negative_prompt_embeds,
+                                encoder_attention_mask=encoder_attention_mask_neg,
+                                attention_kwargs=attention_kwargs,
+                                denoising_range_num=num_chunks_in_window,
+                                range_num=chunk_end_idx,
+                                slice_point=chunk_start_idx,
+                                kv_range=kv_range,
+                                num_steps=num_steps,
+                                distill_interval=distill_interval,
+                                distill_nearly_clean_chunk=distill_nearly_clean_chunk,
+                                return_dict=False,
+                            )[0]
                         # Apply classifier-free guidance
                         noise_pred = noise_pred_uncond + guidance_scale * (noise_pred - noise_pred_uncond)
 

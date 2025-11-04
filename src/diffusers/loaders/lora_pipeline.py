@@ -4065,11 +4065,14 @@ class Magi1LoraLoaderMixin(LoraBaseMixin):
     def save_lora_weights(
         cls,
         save_directory: Union[str, os.PathLike],
-        transformer_lora_layers: Dict[str, Union[torch.nn.Module, torch.Tensor]] = None,
+        unet_lora_layers: Dict[str, Union[torch.nn.Module, torch.Tensor]] = None,
+        text_encoder_lora_layers: Dict[str, torch.nn.Module] = None,
         is_main_process: bool = True,
         weight_name: str = None,
         save_function: Callable = None,
         safe_serialization: bool = True,
+        unet_lora_adapter_metadata=None,
+        text_encoder_lora_adapter_metadata=None,
     ):
         r"""
         Save the LoRA parameters corresponding to the UNet and text encoder.
@@ -4077,8 +4080,11 @@ class Magi1LoraLoaderMixin(LoraBaseMixin):
         Arguments:
             save_directory (`str` or `os.PathLike`):
                 Directory to save LoRA parameters to. Will be created if it doesn't exist.
-            transformer_lora_layers (`Dict[str, torch.nn.Module]` or `Dict[str, torch.Tensor]`):
-                State dict of the LoRA layers corresponding to the `transformer`.
+            unet_lora_layers (`Dict[str, torch.nn.Module]` or `Dict[str, torch.Tensor]`):
+                State dict of the LoRA layers corresponding to the `unet`.
+            text_encoder_lora_layers (`Dict[str, torch.nn.Module]` or `Dict[str, torch.Tensor]`):
+                State dict of the LoRA layers corresponding to the `text_encoder`. Must explicitly pass the text
+                encoder LoRA state dict because it comes from 🤗 Transformers.
             is_main_process (`bool`, *optional*, defaults to `True`):
                 Whether the process calling this is the main process or not. Useful during distributed training and you
                 need to call this function on all processes. In this case, set `is_main_process=True` only on the main
@@ -4089,18 +4095,29 @@ class Magi1LoraLoaderMixin(LoraBaseMixin):
                 `DIFFUSERS_SAVE_MODE`.
             safe_serialization (`bool`, *optional*, defaults to `True`):
                 Whether to save the model using `safetensors` or the traditional PyTorch way with `pickle`.
+            unet_lora_adapter_metadata:
+                LoRA adapter metadata associated with the unet to be serialized with the state dict.
+            text_encoder_lora_adapter_metadata:
+                LoRA adapter metadata associated with the text encoder to be serialized with the state dict.
         """
-        state_dict = {}
+        lora_layers = {}
+        lora_metadata = {}
 
-        if not transformer_lora_layers:
-            raise ValueError("You must pass `transformer_lora_layers`.")
+        if unet_lora_layers:
+            lora_layers[cls.unet_name] = unet_lora_layers
+            lora_metadata[cls.unet_name] = unet_lora_adapter_metadata
 
-        state_dict.update(cls.pack_weights(transformer_lora_layers, cls.transformer_name))
+        if text_encoder_lora_layers:
+            lora_layers[cls.text_encoder_name] = text_encoder_lora_layers
+            lora_metadata[cls.text_encoder_name] = text_encoder_lora_adapter_metadata
 
-        # Save the model
-        cls.write_lora_layers(
-            state_dict=state_dict,
+        if not lora_layers:
+            raise ValueError("You must pass at least one of `unet_lora_layers` or `text_encoder_lora_layers`.")
+
+        cls._save_lora_weights(
             save_directory=save_directory,
+            lora_layers=lora_layers,
+            lora_metadata=lora_metadata,
             is_main_process=is_main_process,
             weight_name=weight_name,
             save_function=save_function,

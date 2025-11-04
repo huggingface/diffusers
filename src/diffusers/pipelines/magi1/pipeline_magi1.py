@@ -1017,7 +1017,9 @@ class Magi1Pipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
                         batch_size * num_chunks_in_window, 1, 1, -1
                     )
                     if chunk_negative_masks_list:
-                        chunk_negative_masks = torch.stack(chunk_negative_masks_list, dim=0).transpose(0, 1).flatten(0, 1)
+                        chunk_negative_masks = (
+                            torch.stack(chunk_negative_masks_list, dim=0).transpose(0, 1).flatten(0, 1)
+                        )
                         encoder_attention_mask_neg = chunk_negative_masks.to(dtype=chunk_prompt_embeds.dtype).view(
                             batch_size * num_chunks_in_window, 1, 1, -1
                         )
@@ -1050,30 +1052,12 @@ class Magi1Pipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
                             kv_range.append([k_start, k_end])
                     kv_range = torch.tensor(kv_range, dtype=torch.int32, device=device)
 
-                    # Predict noise (conditional)
-                    noise_pred = self.transformer(
-                        hidden_states=latent_chunk,
-                        timestep=timestep_per_chunk,
-                        encoder_hidden_states=chunk_prompt_embeds,
-                        encoder_attention_mask=encoder_attention_mask,
-                        attention_kwargs=attention_kwargs,
-                        denoising_range_num=num_chunks_in_window,
-                        range_num=chunk_end_idx,
-                        slice_point=chunk_start_idx,
-                        kv_range=kv_range,
-                        num_steps=num_steps,
-                        distill_interval=distill_interval,
-                        distill_nearly_clean_chunk=distill_nearly_clean_chunk,
-                        return_dict=False,
-                    )[0]
-
-                    # Classifier-free guidance
-                    if self.do_classifier_free_guidance:
-                        noise_pred_uncond = self.transformer(
+                    with self.transformer.cache_context("cond"):
+                        noise_pred = self.transformer(
                             hidden_states=latent_chunk,
                             timestep=timestep_per_chunk,
-                            encoder_hidden_states=chunk_negative_prompt_embeds,
-                            encoder_attention_mask=encoder_attention_mask_neg,
+                            encoder_hidden_states=chunk_prompt_embeds,
+                            encoder_attention_mask=encoder_attention_mask,
                             attention_kwargs=attention_kwargs,
                             denoising_range_num=num_chunks_in_window,
                             range_num=chunk_end_idx,
@@ -1084,6 +1068,25 @@ class Magi1Pipeline(DiffusionPipeline, Magi1LoraLoaderMixin):
                             distill_nearly_clean_chunk=distill_nearly_clean_chunk,
                             return_dict=False,
                         )[0]
+
+                    # Classifier-free guidance
+                    if self.do_classifier_free_guidance:
+                        with self.transformer.cache_context("uncond"):
+                            noise_pred_uncond = self.transformer(
+                                hidden_states=latent_chunk,
+                                timestep=timestep_per_chunk,
+                                encoder_hidden_states=chunk_negative_prompt_embeds,
+                                encoder_attention_mask=encoder_attention_mask_neg,
+                                attention_kwargs=attention_kwargs,
+                                denoising_range_num=num_chunks_in_window,
+                                range_num=chunk_end_idx,
+                                slice_point=chunk_start_idx,
+                                kv_range=kv_range,
+                                num_steps=num_steps,
+                                distill_interval=distill_interval,
+                                distill_nearly_clean_chunk=distill_nearly_clean_chunk,
+                                return_dict=False,
+                            )[0]
                         noise_pred = noise_pred_uncond + guidance_scale * (noise_pred - noise_pred_uncond)
 
                     # Update latent chunk using scheduler step
