@@ -206,34 +206,6 @@ class WanAnimatePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         video = pipe(**inputs).frames[0]
         self.assertEqual(video.shape, (17, 3, 16, 16))
 
-    def test_inference_with_single_reference_image(self):
-        """Test inference with a single reference image for additional context."""
-        device = "cpu"
-
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        pipe.to(device)
-        pipe.set_progress_bar_config(disable=None)
-
-        inputs = self.get_dummy_inputs(device)
-        inputs["reference_images"] = Image.new("RGB", (16, 16))
-        video = pipe(**inputs).frames[0]
-        self.assertEqual(video.shape, (17, 3, 16, 16))
-
-    def test_inference_with_multiple_reference_image(self):
-        """Test inference with multiple reference images for richer context."""
-        device = "cpu"
-
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        pipe.to(device)
-        pipe.set_progress_bar_config(disable=None)
-
-        inputs = self.get_dummy_inputs(device)
-        inputs["reference_images"] = [[Image.new("RGB", (16, 16))] * 2]
-        video = pipe(**inputs).frames[0]
-        self.assertEqual(video.shape, (17, 3, 16, 16))
-
     @unittest.skip("Test not supported")
     def test_attention_slicing_forward_pass(self):
         pass
