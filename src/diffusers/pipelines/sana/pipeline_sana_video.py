@@ -23,7 +23,6 @@ import torch
 from transformers import Gemma2PreTrainedModel, GemmaTokenizer, GemmaTokenizerFast
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
-from ...image_processor import PixArtImageProcessor
 from ...loaders import SanaLoraLoaderMixin
 from ...models import AutoencoderDC, AutoencoderKLWan, SanaVideoTransformer3DModel
 from ...schedulers import DPMSolverMultistepScheduler
