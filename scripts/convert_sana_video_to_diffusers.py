@@ -82,6 +82,16 @@ def main(args):
     # Positional embedding interpolation scale.
     qk_norm = True
 
+    # sample size
+    if args.video_size == 480:
+        sample_size = 30    # Wan-VAE: 8xp2 downsample factor
+        patch_size = (1, 2, 2)
+    elif args.video_size == 720:
+        sample_size = 22    # Wan-VAE: 32xp1 downsample factor
+        patch_size = (1, 1, 1)
+    else:
+        raise ValueError(f"Video size {args.video_size} is not supported.")
+
     for depth in range(layer_num):
         # Transformer blocks.
         converted_state_dict[f"transformer_blocks.{depth}.scale_shift_table"] = state_dict.pop(
@@ -177,8 +187,8 @@ def main(args):
             "caption_channels": 2304,
             "mlp_ratio": 3.0,
             "attention_bias": False,
-            "sample_size": args.image_size // 16,
-            "patch_size": (1, 2, 2),
+            "sample_size": sample_size,
+            "patch_size": patch_size,
             "norm_elementwise_affine": False,
             "norm_eps": 1e-6,
             "qk_norm": "rms_norm_across_heads",
@@ -273,12 +283,12 @@ if __name__ == "__main__":
         "--orig_ckpt_path", default=None, type=str, required=False, help="Path to the checkpoint to convert."
     )
     parser.add_argument(
-        "--image_size",
-        default=1024,
+        "--video_size",
+        default=480,
         type=int,
-        choices=[512, 1024, 2048, 4096],
+        choices=[480, 720],
         required=False,
-        help="Image size of pretrained model, 512, 1024, 2048 or 4096.",
+        help="Video size of pretrained model, 480 or 720.",
     )
     parser.add_argument(
         "--model_type",
