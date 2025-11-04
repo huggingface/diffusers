@@ -173,7 +173,7 @@ mask_url = "https://raw.githubusercontent.com/CompVis/latent-diffusion/main/data
 init_image = download_image(img_url).resize((512, 512))
 mask_image = download_image(mask_url).resize((512, 512))
 
-path = "runwayml/stable-diffusion-inpainting"
+path = "stable-diffusion-v1-5/stable-diffusion-inpainting"
 
 run_compile = True  # Set True / False
 

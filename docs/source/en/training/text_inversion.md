@@ -32,11 +32,8 @@ Navigate to the example folder with the training script and install the required
 cd examples/textual_inversion
 pip install -r requirements.txt
 ```
-<Tip>
-
-🤗 Accelerate is a library for helping you train on multiple GPUs/TPUs or with mixed-precision. It'll automatically configure your training setup based on your hardware and environment. Take a look at the 🤗 Accelerate [Quick tour](https://huggingface.co/docs/accelerate/quicktour) to learn more.
-
-</Tip>
+> [!TIP]
+> 🤗 Accelerate is a library for helping you train on multiple GPUs/TPUs or with mixed-precision. It'll automatically configure your training setup based on your hardware and environment. Take a look at the 🤗 Accelerate [Quick tour](https://huggingface.co/docs/accelerate/quicktour) to learn more.
 
 Initialize an 🤗 Accelerate environment:
 
@@ -60,11 +57,8 @@ write_basic_config()
 
 Lastly, if you want to train a model on your own dataset, take a look at the [Create a dataset for training](create_dataset) guide to learn how to create a dataset that works with the training script.
 
-<Tip>
-
-The following sections highlight parts of the training script that are important for understanding how to modify it, but it doesn't cover every aspect of the script in detail. If you're interested in learning more, feel free to read through the [script](https://github.com/huggingface/diffusers/blob/main/examples/textual_inversion/textual_inversion.py) and let us know if you have any questions or concerns.
-
-</Tip>
+> [!TIP]
+> The following sections highlight parts of the training script that are important for understanding how to modify it, but it doesn't cover every aspect of the script in detail. If you're interested in learning more, feel free to read through the [script](https://github.com/huggingface/diffusers/blob/main/examples/textual_inversion/textual_inversion.py) and let us know if you have any questions or concerns.
 
 ## Script parameters
 
@@ -160,11 +154,8 @@ Set the environment variable `MODEL_NAME` to a model id on the Hub or a path to 
 - `token_identifier.txt`: the special placeholder token
 - `type_of_concept.txt`: the type of concept you're training on (either "object" or "style")
 
-<Tip warning={true}>
-
-A full training run takes ~1 hour on a single V100 GPU.
-
-</Tip>
+> [!WARNING]
+> A full training run takes ~1 hour on a single V100 GPU.
 
 One more thing before you launch the script. If you're interested in following along with the training process, you can periodically save generated images as training progresses. Add the following parameters to the training command:
 
@@ -212,5 +203,4 @@ image.save("cat-train.png")
 
 Congratulations on training your own Textual Inversion model! 🎉 To learn more about how to use your new model, the following guides may be helpful:
 
-- Learn how to [load Textual Inversion embeddings](../using-diffusers/loading_adapters) and also use them as negative embeddings.
-- Learn how to use [Textual Inversion](textual_inversion_inference) for inference with Stable Diffusion 1/2 and Stable Diffusion XL.
+- Learn how to [load Textual Inversion embeddings](../using-diffusers/textual_inversion_inference) and also use them as negative embeddings.

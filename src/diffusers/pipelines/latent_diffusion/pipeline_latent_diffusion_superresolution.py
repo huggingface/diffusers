@@ -4,7 +4,6 @@ from typing import List, Optional, Tuple, Union
 import numpy as np
 import PIL.Image
 import torch
-import torch.utils.checkpoint
 
 from ...models import UNet2DModel, VQModel
 from ...schedulers import (

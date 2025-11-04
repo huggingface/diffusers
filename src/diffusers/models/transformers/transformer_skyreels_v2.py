@@ -129,6 +129,7 @@ def _get_added_kv_projections(attn: "SkyReelsV2Attention", encoder_hidden_states
 
 class SkyReelsV2AttnProcessor:
     _attention_backend = None
+    _parallel_config = None
 
     def __init__(self):
         if not hasattr(F, "scaled_dot_product_attention"):
@@ -195,6 +196,7 @@ class SkyReelsV2AttnProcessor:
                 dropout_p=0.0,
                 is_causal=False,
                 backend=self._attention_backend,
+                parallel_config=self._parallel_config,
             )
             hidden_states_img = hidden_states_img.flatten(2, 3)
             hidden_states_img = hidden_states_img.type_as(query)
@@ -207,6 +209,7 @@ class SkyReelsV2AttnProcessor:
             dropout_p=0.0,
             is_causal=False,
             backend=self._attention_backend,
+            parallel_config=self._parallel_config,
         )
 
         hidden_states = hidden_states.flatten(2, 3)

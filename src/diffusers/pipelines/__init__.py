@@ -128,6 +128,7 @@ else:
         "AnimateDiffVideoToVideoControlNetPipeline",
     ]
     _import_structure["bria"] = ["BriaPipeline"]
+    _import_structure["bria_fibo"] = ["BriaFiboPipeline"]
     _import_structure["flux"] = [
         "FluxControlPipeline",
         "FluxControlInpaintPipeline",
@@ -144,6 +145,7 @@ else:
         "FluxKontextPipeline",
         "FluxKontextInpaintPipeline",
     ]
+    _import_structure["prx"] = ["PRXPipeline"]
     _import_structure["audioldm"] = ["AudioLDMPipeline"]
     _import_structure["audioldm2"] = [
         "AudioLDM2Pipeline",
@@ -240,6 +242,7 @@ else:
         "HunyuanVideoImageToVideoPipeline",
         "HunyuanVideoFramepackPipeline",
     ]
+    _import_structure["hunyuan_image"] = ["HunyuanImagePipeline", "HunyuanImageRefinerPipeline"]
     _import_structure["kandinsky"] = [
         "KandinskyCombinedPipeline",
         "KandinskyImg2ImgCombinedPipeline",
@@ -285,6 +288,7 @@ else:
     ]
     _import_structure["lumina"] = ["LuminaPipeline", "LuminaText2ImgPipeline"]
     _import_structure["lumina2"] = ["Lumina2Pipeline", "Lumina2Text2ImgPipeline"]
+    _import_structure["lucy"] = ["LucyEditPipeline"]
     _import_structure["marigold"].extend(
         [
             "MarigoldDepthPipeline",
@@ -381,6 +385,7 @@ else:
         "WuerstchenPriorPipeline",
     ]
     _import_structure["wan"] = ["WanPipeline", "WanImageToVideoPipeline", "WanVideoToVideoPipeline", "WanVACEPipeline"]
+    _import_structure["kandinsky5"] = ["Kandinsky5T2VPipeline"]
     _import_structure["skyreels_v2"] = [
         "SkyReelsV2DiffusionForcingPipeline",
         "SkyReelsV2DiffusionForcingImageToVideoPipeline",
@@ -393,7 +398,9 @@ else:
         "QwenImageImg2ImgPipeline",
         "QwenImageInpaintPipeline",
         "QwenImageEditPipeline",
+        "QwenImageEditPlusPipeline",
         "QwenImageEditInpaintPipeline",
+        "QwenImageControlNetInpaintPipeline",
         "QwenImageControlNetPipeline",
     ]
 try:
@@ -556,6 +563,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .aura_flow import AuraFlowPipeline
         from .blip_diffusion import BlipDiffusionPipeline
         from .bria import BriaPipeline
+        from .bria_fibo import BriaFiboPipeline
         from .chroma import ChromaImg2ImgPipeline, ChromaPipeline
         from .cogvideo import (
             CogVideoXFunControlPipeline,
@@ -635,6 +643,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             ReduxImageEncoder,
         )
         from .hidream_image import HiDreamImagePipeline
+        from .hunyuan_image import HunyuanImagePipeline, HunyuanImageRefinerPipeline
         from .hunyuan_video import (
             HunyuanSkyreelsImageToVideoPipeline,
             HunyuanVideoFramepackPipeline,
@@ -668,6 +677,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             Kandinsky3Img2ImgPipeline,
             Kandinsky3Pipeline,
         )
+        from .kandinsky5 import Kandinsky5T2VPipeline
         from .latent_consistency_models import (
             LatentConsistencyModelImg2ImgPipeline,
             LatentConsistencyModelPipeline,
@@ -681,6 +691,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             LEditsPPPipelineStableDiffusionXL,
         )
         from .ltx import LTXConditionPipeline, LTXImageToVideoPipeline, LTXLatentUpsamplePipeline, LTXPipeline
+        from .lucy import LucyEditPipeline
         from .lumina import LuminaPipeline, LuminaText2ImgPipeline
         from .lumina2 import Lumina2Pipeline, Lumina2Text2ImgPipeline
         from .marigold import (
@@ -713,10 +724,13 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .paint_by_example import PaintByExamplePipeline
         from .pia import PIAPipeline
         from .pixart_alpha import PixArtAlphaPipeline, PixArtSigmaPipeline
+        from .prx import PRXPipeline
         from .qwenimage import (
+            QwenImageControlNetInpaintPipeline,
             QwenImageControlNetPipeline,
             QwenImageEditInpaintPipeline,
             QwenImageEditPipeline,
+            QwenImageEditPlusPipeline,
             QwenImageImg2ImgPipeline,
             QwenImageInpaintPipeline,
             QwenImagePipeline,

@@ -25,7 +25,6 @@ import traceback
 import unittest
 import unittest.mock as mock
 import uuid
-import warnings
 from collections import defaultdict
 from typing import Dict, List, Optional, Tuple, Union
 
@@ -37,9 +36,8 @@ import torch
 import torch.nn as nn
 from accelerate.utils.modeling import _get_proper_dtype, compute_module_sizes, dtype_byte_size
 from huggingface_hub import ModelCard, delete_repo, snapshot_download, try_to_load_from_cache
-from huggingface_hub.utils import is_jinja_available
+from huggingface_hub.utils import HfHubHTTPError, is_jinja_available
 from parameterized import parameterized
-from requests.exceptions import HTTPError
 
 from diffusers.models import FluxTransformer2DModel, SD3Transformer2DModel, UNet2DConditionModel
 from diffusers.models.attention_processor import (
@@ -244,8 +242,8 @@ class ModelUtilsTest(unittest.TestCase):
             else:
                 _ = load_model(repo_id)
 
-        warning_message = str(warning.warnings[0].message)
-        self.assertIn("This serialization format is now deprecated to standardize the serialization", warning_message)
+        warning_messages = " ".join(str(w.message) for w in warning.warnings)
+        self.assertIn("This serialization format is now deprecated to standardize the serialization", warning_messages)
 
     # Local tests are already covered down below.
     @parameterized.expand(
@@ -272,7 +270,7 @@ class ModelUtilsTest(unittest.TestCase):
         response_mock = mock.Mock()
         response_mock.status_code = 500
         response_mock.headers = {}
-        response_mock.raise_for_status.side_effect = HTTPError
+        response_mock.raise_for_status.side_effect = HfHubHTTPError("Server down", response=mock.Mock())
         response_mock.json.return_value = {}
 
         # Download this model to make sure it's in the cache.
@@ -296,14 +294,16 @@ class ModelUtilsTest(unittest.TestCase):
         error_response = mock.Mock(
             status_code=500,
             headers={},
-            raise_for_status=mock.Mock(side_effect=HTTPError),
+            raise_for_status=mock.Mock(side_effect=HfHubHTTPError("Server down", response=mock.Mock())),
             json=mock.Mock(return_value={}),
         )
+        client_mock = mock.Mock()
+        client_mock.get.return_value = error_response
 
         with tempfile.TemporaryDirectory() as tmpdir:
             model = FluxTransformer2DModel.from_pretrained(repo_id, subfolder="transformer", cache_dir=tmpdir)
 
-            with mock.patch("requests.Session.get", return_value=error_response):
+            with mock.patch("huggingface_hub.hf_api.get_session", return_value=client_mock):
                 # Should fail with local_files_only=False (network required)
                 # We would make a network call with model_info
                 with self.assertRaises(OSError):
@@ -450,7 +450,15 @@ class ModelUtilsTest(unittest.TestCase):
 
 
 class UNetTesterMixin:
+    @staticmethod
+    def _accepts_norm_num_groups(model_class):
+        model_sig = inspect.signature(model_class.__init__)
+        accepts_norm_groups = "norm_num_groups" in model_sig.parameters
+        return accepts_norm_groups
+
     def test_forward_with_norm_groups(self):
+        if not self._accepts_norm_num_groups(self.model_class):
+            pytest.skip(f"Test not supported for {self.model_class.__name__}")
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
 
         init_dict["norm_num_groups"] = 16
@@ -1794,11 +1802,6 @@ class ModelTesterMixin:
         if not self.model_class._supports_group_offloading:
             pytest.skip("Model does not support group offloading.")
 
-        if self.model_class.__name__ == "QwenImageTransformer2DModel":
-            pytest.skip(
-                "QwenImageTransformer2DModel doesn't support group offloading with disk. Needs to be investigated."
-            )
-
         def _has_generator_arg(model):
             sig = inspect.signature(model.forward)
             params = sig.parameters
@@ -2377,14 +2380,15 @@ class LoraHotSwappingForModelTesterMixin:
 
     def test_enable_lora_hotswap_called_after_adapter_added_ignore(self):
         # check possibility to ignore the error/warning
+        from diffusers.loaders.peft import logger
+
         lora_config = self.get_lora_config(8, 8, target_modules=["to_q"])
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
         model = self.model_class(**init_dict).to(torch_device)
         model.add_adapter(lora_config)
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")  # Capture all warnings
-            model.enable_lora_hotswap(target_rank=32, check_compiled="warn")
-            self.assertEqual(len(w), 0, f"Expected no warnings, but got: {[str(warn.message) for warn in w]}")
+        # note: assertNoLogs requires Python 3.10+
+        with self.assertNoLogs(logger, level="WARNING"):
+            model.enable_lora_hotswap(target_rank=32, check_compiled="ignore")
 
     def test_enable_lora_hotswap_wrong_check_compiled_argument_raises(self):
         # check that wrong argument value raises an error

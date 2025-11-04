@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import math
-from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
 import torch
 
@@ -27,43 +27,50 @@ if TYPE_CHECKING:
 
 class ClassifierFreeGuidance(BaseGuidance):
     """
-    Classifier-free guidance (CFG): https://huggingface.co/papers/2207.12598
+    Implements Classifier-Free Guidance (CFG) for diffusion models.
 
-    CFG is a technique used to improve generation quality and condition-following in diffusion models. It works by
-    jointly training a model on both conditional and unconditional data, and using a weighted sum of the two during
-    inference. This allows the model to tradeoff between generation quality and sample diversity. The original paper
-    proposes scaling and shifting the conditional distribution based on the difference between conditional and
-    unconditional predictions. [x_pred = x_cond + scale * (x_cond - x_uncond)]
+    Reference: https://huggingface.co/papers/2207.12598
 
-    Diffusers implemented the scaling and shifting on the unconditional prediction instead based on the [Imagen
-    paper](https://huggingface.co/papers/2205.11487), which is equivalent to what the original paper proposed in
-    theory. [x_pred = x_uncond + scale * (x_cond - x_uncond)]
+    CFG improves generation quality and prompt adherence by jointly training models on both conditional and
+    unconditional data, then combining predictions during inference. This allows trading off between quality (high
+    guidance) and diversity (low guidance).
 
-    The intution behind the original formulation can be thought of as moving the conditional distribution estimates
-    further away from the unconditional distribution estimates, while the diffusers-native implementation can be
-    thought of as moving the unconditional distribution towards the conditional distribution estimates to get rid of
-    the unconditional predictions (usually negative features like "bad quality, bad anotomy, watermarks", etc.)
+    **Two CFG Formulations:**
 
-    The `use_original_formulation` argument can be set to `True` to use the original CFG formulation mentioned in the
-    paper. By default, we use the diffusers-native implementation that has been in the codebase for a long time.
+    1. **Original formulation** (from paper):
+       ```
+       x_pred = x_cond + guidance_scale * (x_cond - x_uncond)
+       ```
+       Moves conditional predictions further from unconditional ones.
+
+    2. **Diffusers-native formulation** (default, from Imagen paper):
+       ```
+       x_pred = x_uncond + guidance_scale * (x_cond - x_uncond)
+       ```
+       Moves unconditional predictions toward conditional ones, effectively suppressing negative features (e.g., "bad
+       quality", "watermarks"). Equivalent in theory but more intuitive.
+
+    Use `use_original_formulation=True` to switch to the original formulation.
 
     Args:
         guidance_scale (`float`, defaults to `7.5`):
-            The scale parameter for classifier-free guidance. Higher values result in stronger conditioning on the text
-            prompt, while lower values allow for more freedom in generation. Higher values may lead to saturation and
-            deterioration of image quality.
+            CFG scale applied by this guider during post-processing. Higher values = stronger prompt conditioning but
+            may reduce quality. Typical range: 1.0-20.0.
         guidance_rescale (`float`, defaults to `0.0`):
-            The rescale factor applied to the noise predictions. This is used to improve image quality and fix
-            overexposure. Based on Section 3.4 from [Common Diffusion Noise Schedules and Sample Steps are
-            Flawed](https://huggingface.co/papers/2305.08891).
+            Rescaling factor to prevent overexposure from high guidance scales. Based on [Common Diffusion Noise
+            Schedules and Sample Steps are Flawed](https://huggingface.co/papers/2305.08891). Range: 0.0 (no rescaling)
+            to 1.0 (full rescaling).
         use_original_formulation (`bool`, defaults to `False`):
-            Whether to use the original formulation of classifier-free guidance as proposed in the paper. By default,
-            we use the diffusers-native implementation that has been in the codebase for a long time. See
-            [~guiders.classifier_free_guidance.ClassifierFreeGuidance] for more details.
+            If `True`, uses the original CFG formulation from the paper. If `False` (default), uses the
+            diffusers-native formulation from the Imagen paper.
         start (`float`, defaults to `0.0`):
-            The fraction of the total number of denoising steps after which guidance starts.
+            Fraction of denoising steps (0.0-1.0) after which CFG starts. Use > 0.0 to disable CFG in early denoising
+            steps.
         stop (`float`, defaults to `1.0`):
-            The fraction of the total number of denoising steps after which guidance stops.
+            Fraction of denoising steps (0.0-1.0) after which CFG stops. Use < 1.0 to disable CFG in late denoising
+            steps.
+        enabled (`bool`, defaults to `True`):
+            Whether CFG is enabled. Set to `False` to disable CFG entirely (uses only conditional predictions).
     """
 
     _input_predictions = ["pred_cond", "pred_uncond"]
@@ -76,23 +83,19 @@ class ClassifierFreeGuidance(BaseGuidance):
         use_original_formulation: bool = False,
         start: float = 0.0,
         stop: float = 1.0,
+        enabled: bool = True,
     ):
-        super().__init__(start, stop)
+        super().__init__(start, stop, enabled)
 
         self.guidance_scale = guidance_scale
         self.guidance_rescale = guidance_rescale
         self.use_original_formulation = use_original_formulation
 
-    def prepare_inputs(
-        self, data: "BlockState", input_fields: Optional[Dict[str, Union[str, Tuple[str, str]]]] = None
-    ) -> List["BlockState"]:
-        if input_fields is None:
-            input_fields = self._input_fields
-
+    def prepare_inputs(self, data: Dict[str, Tuple[torch.Tensor, torch.Tensor]]) -> List["BlockState"]:
         tuple_indices = [0] if self.num_conditions == 1 else [0, 1]
         data_batches = []
-        for i in range(self.num_conditions):
-            data_batch = self._prepare_batch(input_fields, data, tuple_indices[i], self._input_predictions[i])
+        for tuple_idx, input_prediction in zip(tuple_indices, self._input_predictions):
+            data_batch = self._prepare_batch(data, tuple_idx, input_prediction)
             data_batches.append(data_batch)
         return data_batches
 
