@@ -736,7 +736,13 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             QwenImageInpaintPipeline,
             QwenImagePipeline,
         )
-        from .sana import SanaControlNetPipeline, SanaPipeline, SanaSprintImg2ImgPipeline, SanaSprintPipeline, SanaVideoPipeline
+        from .sana import (
+            SanaControlNetPipeline,
+            SanaPipeline,
+            SanaSprintImg2ImgPipeline,
+            SanaSprintPipeline,
+            SanaVideoPipeline,
+        )
         from .semantic_stable_diffusion import SemanticStableDiffusionPipeline
         from .shap_e import ShapEImg2ImgPipeline, ShapEPipeline
         from .stable_audio import StableAudioPipeline, StableAudioProjectionModel

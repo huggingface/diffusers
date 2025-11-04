@@ -16,7 +16,6 @@ import html
 import inspect
 import re
 import urllib.parse as ul
-import warnings
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import torch
@@ -27,7 +26,6 @@ from ...image_processor import PixArtImageProcessor
 from ...loaders import SanaLoraLoaderMixin
 from ...models import AutoencoderDC, AutoencoderKLWan, SanaVideoTransformer3DModel
 from ...schedulers import DPMSolverMultistepScheduler
-from ...video_processor import VideoProcessor
 from ...utils import (
     BACKENDS_MAPPING,
     USE_PEFT_BACKEND,
@@ -39,7 +37,8 @@ from ...utils import (
     scale_lora_layers,
     unscale_lora_layers,
 )
-from ...utils.torch_utils import get_device, is_torch_version, randn_tensor
+from ...utils.torch_utils import randn_tensor
+from ...video_processor import VideoProcessor
 from ..pipeline_utils import DiffusionPipeline
 from ..pixart_alpha.pipeline_pixart_alpha import (
     ASPECT_RATIO_512_BIN,
@@ -84,16 +83,18 @@ EXAMPLE_DOC_STRING = """
         >>> import torch
         >>> from diffusers import SanaVideoPipeline
         >>> from diffusers.utils import export_to_video
-        >>> model_id = "sana_video"
-        >>> pipe = SanaVideoPipeline.from_pretrained(
-        ...    model_id,
-        ... )
-        ... pipe.transformer.to(torch.bfloat16)
-        ... pipe.text_encoder.to(torch.bfloat16)
-        ... pipe.to("cuda")
+        >>> model_id = "Efficient-Large-Model/SANA-Video_2B_480p_diffusers"
+        >>> pipe = SanaVideoPipeline.from_pretrained(model_id)
+        >>> pipe.transformer.to(torch.bfloat16)
+        >>> pipe.text_encoder.to(torch.bfloat16)
+        >>> pipe.vae.to(torch.float32)
+        >>> pipe.to("cuda")
+        >>> model_score = 30
 
-        >>> prompt = "A cat and a dog baking a cake together in a kitchen. The cat is carefully measuring flour, while the dog is stirring the batter with a wooden spoon. The kitchen is cozy, with sunlight streaming through the window."
+        >>> prompt = "Evening, backlight, side lighting, soft light, high contrast, mid-shot, centered composition, clean solo shot, warm色调。A young Caucasian man stands in a forest, golden light glimmers on his hair as sunlight filters through the leaves. He wears a light shirt, wind gently blowing his hair and collar, light dances across his face with his movements. The background is blurred, with dappled light and soft tree shadows in the distance. The camera focuses on his lifted gaze, clear and emotional."
         >>> negative_prompt = "A chaotic sequence with misshapen, deformed limbs in heavy motion blur, sudden disappearance, jump cuts, jerky movements, rapid shot changes, frames out of sync, inconsistent character shapes, temporal artifacts, jitter, and ghosting effects, creating a disorienting visual experience."
+        >>> motion_prompt = f" motion score: {model_score}."
+        >>> prompt = prompt + motion_prompt
 
         >>> output = pipe(
         ...    prompt=prompt,
@@ -212,13 +213,11 @@ class SanaVideoPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
             tokenizer=tokenizer, text_encoder=text_encoder, vae=vae, transformer=transformer, scheduler=scheduler
         )
 
-        # 使用与Wan相同的VAE，设置时间和空间缩放因子
         self.vae_scale_factor_temporal = self.vae.config.scale_factor_temporal if getattr(self, "vae", None) else 4
         self.vae_scale_factor_spatial = self.vae.config.scale_factor_spatial if getattr(self, "vae", None) else 8
-        
-        # 兼容原有的vae_scale_factor属性
+
         self.vae_scale_factor = self.vae_scale_factor_spatial
-        
+
         self.image_processor = PixArtImageProcessor(vae_scale_factor=self.vae_scale_factor)
         self.video_processor = VideoProcessor(vae_scale_factor=self.vae_scale_factor_spatial)
 

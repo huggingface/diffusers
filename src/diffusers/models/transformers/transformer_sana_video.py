@@ -263,7 +263,7 @@ class SanaLinearAttnProcessor3_1:
         hidden_states = attn.to_out[1](hidden_states)
 
         return hidden_states
-        
+
 
 # copy from https://github.com/huggingface/diffusers/blob/11d22e0e809d1219a067ded8a18f7b0129fc58c7/src/diffusers/models/transformers/transformer_wan.py#L410
 class WanRotaryPosEmbed(nn.Module):
