@@ -323,6 +323,8 @@
         title: AllegroTransformer3DModel
       - local: api/models/aura_flow_transformer2d
         title: AuraFlowTransformer2DModel
+      - local: api/models/transformer_bria_fibo
+        title: BriaFiboTransformer2DModel
       - local: api/models/bria_transformer
         title: BriaTransformer2DModel
       - local: api/models/chroma_transformer
@@ -347,6 +349,8 @@
         title: HiDreamImageTransformer2DModel
       - local: api/models/hunyuan_transformer2d
         title: HunyuanDiT2DModel
+      - local: api/models/hunyuanimage_transformer_2d
+        title: HunyuanImageTransformer2DModel
       - local: api/models/hunyuan_video_transformer_3d
         title: HunyuanVideoTransformer3DModel
       - local: api/models/latte_transformer3d
@@ -411,6 +415,10 @@
         title: AutoencoderKLCogVideoX
       - local: api/models/autoencoderkl_cosmos
         title: AutoencoderKLCosmos
+      - local: api/models/autoencoder_kl_hunyuanimage
+        title: AutoencoderKLHunyuanImage
+      - local: api/models/autoencoder_kl_hunyuanimage_refiner
+        title: AutoencoderKLHunyuanImageRefiner
       - local: api/models/autoencoder_kl_hunyuan_video
         title: AutoencoderKLHunyuanVideo
       - local: api/models/autoencoderkl_ltx_video
@@ -463,6 +471,8 @@
         title: BLIP-Diffusion
       - local: api/pipelines/bria_3_2
         title: Bria 3.2
+      - local: api/pipelines/bria_fibo
+        title: Bria Fibo
       - local: api/pipelines/chroma
         title: Chroma
       - local: api/pipelines/cogview3
@@ -620,10 +630,14 @@
         title: ConsisID
       - local: api/pipelines/framepack
         title: Framepack
+      - local: api/pipelines/hunyuanimage21
+        title: HunyuanImage2.1
       - local: api/pipelines/hunyuan_video
         title: HunyuanVideo
       - local: api/pipelines/i2vgenxl
         title: I2VGen-XL
+      - local: api/pipelines/kandinsky5_video
+        title: Kandinsky 5.0 Video
       - local: api/pipelines/latte
         title: Latte
       - local: api/pipelines/ltx_video

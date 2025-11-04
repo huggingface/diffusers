@@ -130,8 +130,14 @@ class PipelineState:
         Allow attribute access to intermediate values. If an attribute is not found in the object, look for it in the
         intermediates dict.
         """
-        if name in self.values:
-            return self.values[name]
+        # Use object.__getattribute__ to avoid infinite recursion during deepcopy
+        try:
+            values = object.__getattribute__(self, "values")
+        except AttributeError:
+            raise AttributeError(f"'{self.__class__.__name__}' object has no attribute '{name}'")
+
+        if name in values:
+            return values[name]
         raise AttributeError(f"'{self.__class__.__name__}' object has no attribute '{name}'")
 
     def __repr__(self):
@@ -299,15 +305,15 @@ class ModularPipelineBlocks(ConfigMixin, PushToHubMixin):
             "cache_dir",
             "force_download",
             "local_files_only",
+            "local_dir",
             "proxies",
-            "resume_download",
             "revision",
             "subfolder",
             "token",
         ]
         hub_kwargs = {name: kwargs.pop(name) for name in hub_kwargs_names if name in kwargs}
 
-        config = cls.load_config(pretrained_model_name_or_path)
+        config = cls.load_config(pretrained_model_name_or_path, **hub_kwargs)
         has_remote_code = "auto_map" in config and cls.__name__ in config["auto_map"]
         trust_remote_code = resolve_trust_remote_code(
             trust_remote_code, pretrained_model_name_or_path, has_remote_code
@@ -325,11 +331,10 @@ class ModularPipelineBlocks(ConfigMixin, PushToHubMixin):
             module_file=module_file,
             class_name=class_name,
             **hub_kwargs,
-            **kwargs,
         )
         expected_kwargs, optional_kwargs = block_cls._get_signature_keys(block_cls)
         block_kwargs = {
-            name: kwargs.pop(name) for name in kwargs if name in expected_kwargs or name in optional_kwargs
+            name: kwargs.get(name) for name in kwargs if name in expected_kwargs or name in optional_kwargs
         }
 
         return block_cls(**block_kwargs)
@@ -2125,8 +2130,13 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
                         component_load_kwargs[key] = value["default"]
             try:
                 components_to_register[name] = spec.load(**component_load_kwargs)
-            except Exception as e:
-                logger.warning(f"Failed to create component '{name}': {e}")
+            except Exception:
+                logger.warning(
+                    f"\nFailed to create component {name}:\n"
+                    f"- Component spec: {spec}\n"
+                    f"- load() called with kwargs: {component_load_kwargs}\n\n"
+                    f"{traceback.format_exc()}"
+                )
 
         # Register all components at once
         self.register_components(**components_to_register)
@@ -2492,6 +2502,8 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
         """
         if state is None:
             state = PipelineState()
+        else:
+            state = deepcopy(state)
 
         # Make a copy of the input kwargs
         passed_kwargs = kwargs.copy()
