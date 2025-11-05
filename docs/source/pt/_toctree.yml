@@ -1,8 +1,50 @@
 - sections:
-    - local: index
-      title: 🧨 Diffusers
-    - local: quicktour
-      title: Tour rápido
-    - local: installation
-      title: Instalação
+  - local: index
+    title: Diffusers
+  - local: installation
+    title: Instalação
+  - local: quicktour
+    title: Tour rápido
+  - local: stable_diffusion
+    title: Desempenho básico
   title: Primeiros passos
+- isExpanded: false
+  sections:
+  - local: in_translation
+    title: (Em tradução) Pipelines
+  title: Pipelines
+- isExpanded: false
+  sections:
+  - local: in_translation
+    title: (Em tradução) Adaptadores
+  title: Adaptadores
+- isExpanded: false
+  sections:
+  - local: in_translation
+    title: (Em tradução) Inferência
+  title: Inferência
+- isExpanded: false
+  sections:
+  - local: in_translation
+    title: (Em tradução) Otimização
+  title: Otimização
+- isExpanded: false
+  sections:
+  - local: in_translation
+    title: (Em tradução) Tutoriais
+  title: Tutoriais
+- isExpanded: false
+  sections:
+  - local: in_translation
+    title: (Em tradução) Treinamento
+  title: Treinamento
+- isExpanded: false
+  sections:
+  - local: in_translation
+    title: (Em tradução) Conceitos
+  title: Conceitos
+- isExpanded: false
+  sections:
+  - local: in_translation
+    title: (Em tradução) Referência da API
+  title: Referência da API
