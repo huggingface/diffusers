@@ -138,7 +138,7 @@ class VideoProcessor(VaeImageProcessor):
 
         Args:
             samples (`torch.Tensor`):
-                A tensor of shape (N, C, T, H, W) where N is the batch size, C is the number of channels, T is the 
+                A tensor of shape (N, C, T, H, W) where N is the batch size, C is the number of channels, T is the
                 number of frames, H is the height, and W is the width.
             new_width (`int`): The desired width of the output videos.
             new_height (`int`): The desired height of the output videos.
