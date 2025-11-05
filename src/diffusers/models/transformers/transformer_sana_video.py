@@ -446,7 +446,7 @@ class SanaVideoTransformerBlock(nn.Module):
 
 class SanaVideoTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginalModelMixin):
     r"""
-    A 2D Transformer model introduced in [Sana](https://huggingface.co/papers/2410.10629) family of models.
+    A 3D Transformer model introduced in [Sana-Video](https://huggingface.co/papers/2509.24695) family of models.
 
     Args:
         in_channels (`int`, defaults to `16`):
