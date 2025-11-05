@@ -1,5 +1,6 @@
 import argparse
 import inspect
+import io
 import logging
 import math
 import os
@@ -9,6 +10,7 @@ from pathlib import Path
 
 import accelerate
 import datasets
+import numpy as np
 import torch
 import torch.nn.functional as F
 from accelerate import Accelerator, InitProcessGroupKwargs
@@ -53,9 +55,7 @@ def _extract_into_tensor(arr, timesteps, broadcast_shape):
 
 
 def _ensure_three_channels(tensor: torch.Tensor) -> torch.Tensor:
-    """
-    Ensure the tensor has exactly three channels (C, H, W) by repeating or truncating channels when needed.
-    """
+    """Ensure tensors end up with exactly three channels."""
     if tensor.ndim == 2:
         tensor = tensor.unsqueeze(0)
     channels = tensor.shape[0]
@@ -69,6 +69,68 @@ def _ensure_three_channels(tensor: torch.Tensor) -> torch.Tensor:
         return tensor[:3]
     raise ValueError(f"Unsupported number of channels: {channels}")
 
+
+def _prepare_sample_images(images: np.ndarray, bit_depth: int):
+    """Scale pipeline outputs to uint8/uint16 arrays and build a TensorBoard-safe preview."""
+    max_pixel_value = 255 if bit_depth == 8 else 65535
+    out_dtype = np.uint8 if bit_depth == 8 else np.uint16
+    images_processed = (
+        np.clip(np.round(images * max_pixel_value), 0, max_pixel_value).astype(out_dtype)
+    )
+
+    if bit_depth == 8:
+        tb_preview = images_processed
+    else:
+        # TensorBoard accepts float [0,1] or uint8 visuals, so keep a separate preview for the UI.
+        tb_preview = np.clip(np.round(images * 255), 0, 255).astype(np.uint8)
+
+    return images_processed, tb_preview
+
+
+def _log_sample_images(
+    accelerator: Accelerator,
+    images_processed: np.ndarray,
+    tb_preview: np.ndarray,
+    epoch: int,
+    global_step: int,
+    logger_name: str,
+):
+    if logger_name == "tensorboard":
+        if is_accelerate_version(">=", "0.17.0.dev0"):
+            tracker = accelerator.get_tracker("tensorboard", unwrap=True)
+        else:
+            tracker = accelerator.get_tracker("tensorboard")
+        tracker.add_images("test_samples", tb_preview.transpose(0, 3, 1, 2), epoch)
+    elif logger_name == "wandb":
+        import wandb
+
+        tracker = accelerator.get_tracker("wandb")
+        if images_processed.dtype == np.uint16:
+            from PIL import Image
+
+            wandb_images = []
+            for img16 in images_processed:
+                buffer = io.BytesIO()
+                if img16.ndim == 3 and img16.shape[-1] == 3:
+                    contiguous = np.ascontiguousarray(img16)
+                    pil_image = Image.frombytes(
+                        "RGB",
+                        (contiguous.shape[1], contiguous.shape[0]),
+                        contiguous.byteswap().tobytes(),
+                        "raw",
+                        "RGB;16B",
+                    )
+                else:
+                    pil_image = Image.fromarray(img16, mode="I;16")
+                pil_image.save(buffer, format="PNG")
+                buffer.seek(0)
+                wandb_images.append(wandb.Image(buffer))
+            tracker.log({"test_samples": wandb_images, "epoch": epoch}, step=global_step)
+        else:
+            tracker.log(
+                {"test_samples": [wandb.Image(img) for img in images_processed], "epoch": epoch},
+                step=global_step,
+            )
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Simple example of a training script.")
@@ -146,6 +208,13 @@ def parse_args():
     )
     parser.add_argument(
         "--eval_batch_size", type=int, default=16, help="The number of images to generate for evaluation."
+    )
+    parser.add_argument(
+        "--image_bit_depth",
+        type=int,
+        choices=[8, 16],
+        default=8,
+        help="Bit depth for generated sample images during evaluation/logging. Default: 8.",
     )
     parser.add_argument(
         "--dataloader_num_workers",
@@ -699,20 +768,16 @@ def main(args):
                 if args.use_ema:
                     ema_model.restore(unet.parameters())
 
-                # denormalize the images and save to tensorboard
-                images_processed = (images * 255).round().astype("uint8")
+                images_processed, tb_preview = _prepare_sample_images(images, args.image_bit_depth)
 
-                if args.logger == "tensorboard":
-                    if is_accelerate_version(">=", "0.17.0.dev0"):
-                        tracker = accelerator.get_tracker("tensorboard", unwrap=True)
-                    else:
-                        tracker = accelerator.get_tracker("tensorboard")
-                    tracker.add_images("test_samples", images_processed.transpose(0, 3, 1, 2), epoch)
-                elif args.logger == "wandb":
-                    # Upcoming `log_images` helper coming in https://github.com/huggingface/accelerate/pull/962/files
-                    accelerator.get_tracker("wandb").log(
-                        {"test_samples": [wandb.Image(img) for img in images_processed], "epoch": epoch},
-                        step=global_step,
+                if args.logger in {"tensorboard", "wandb"}:
+                    _log_sample_images(
+                        accelerator,
+                        images_processed,
+                        tb_preview,
+                        epoch,
+                        global_step,
+                        args.logger,
                     )
 
             if epoch % args.save_model_epochs == 0 or epoch == args.num_epochs - 1:
