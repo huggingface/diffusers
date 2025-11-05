@@ -95,4 +95,3 @@ class SanaVideoTransformerCompileTests(TorchCompileTesterMixin, unittest.TestCas
 
     def prepare_init_args_and_inputs_for_common(self):
         return SanaVideoTransformer3DTests().prepare_init_args_and_inputs_for_common()
-

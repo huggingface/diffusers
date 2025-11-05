@@ -67,7 +67,7 @@ class SanaVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         torch.manual_seed(0)
         scheduler = DPMSolverMultistepScheduler()
-        
+
         torch.manual_seed(0)
         text_encoder_config = Gemma2Config(
             head_dim=16,
@@ -204,6 +204,7 @@ class SanaVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         # Requires higher tolerance as model seems very sensitive to dtype
         super().test_save_load_float16(expected_max_diff=0.2)
 
+
 @slow
 @require_torch_accelerator
 class SanaVideoPipelineIntegrationTests(unittest.TestCase):
@@ -222,4 +223,3 @@ class SanaVideoPipelineIntegrationTests(unittest.TestCase):
     @unittest.skip("TODO: test needs to be implemented")
     def test_sana_video_480p(self):
         pass
-

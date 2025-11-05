@@ -642,7 +642,6 @@ class SanaVideoPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
 
         return caption.strip()
 
-
     def prepare_latents(
         self,
         batch_size: int,

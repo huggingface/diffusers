@@ -62,9 +62,13 @@ def main(args):
     converted_state_dict["caption_projection.linear_2.weight"] = state_dict.pop("y_embedder.y_proj.fc2.weight")
     converted_state_dict["caption_projection.linear_2.bias"] = state_dict.pop("y_embedder.y_proj.fc2.bias")
 
-    converted_state_dict["time_embed.emb.timestep_embedder.linear_1.weight"] = state_dict.pop("t_embedder.mlp.0.weight")
+    converted_state_dict["time_embed.emb.timestep_embedder.linear_1.weight"] = state_dict.pop(
+        "t_embedder.mlp.0.weight"
+    )
     converted_state_dict["time_embed.emb.timestep_embedder.linear_1.bias"] = state_dict.pop("t_embedder.mlp.0.bias")
-    converted_state_dict["time_embed.emb.timestep_embedder.linear_2.weight"] = state_dict.pop("t_embedder.mlp.2.weight")
+    converted_state_dict["time_embed.emb.timestep_embedder.linear_2.weight"] = state_dict.pop(
+        "t_embedder.mlp.2.weight"
+    )
     converted_state_dict["time_embed.emb.timestep_embedder.linear_2.bias"] = state_dict.pop("t_embedder.mlp.2.bias")
 
     # Shared norm.
@@ -84,10 +88,10 @@ def main(args):
 
     # sample size
     if args.video_size == 480:
-        sample_size = 30    # Wan-VAE: 8xp2 downsample factor
+        sample_size = 30  # Wan-VAE: 8xp2 downsample factor
         patch_size = (1, 2, 2)
     elif args.video_size == 720:
-        sample_size = 22    # Wan-VAE: 32xp1 downsample factor
+        sample_size = 22  # Wan-VAE: 32xp1 downsample factor
         patch_size = (1, 1, 1)
     else:
         raise ValueError(f"Video size {args.video_size} is not supported.")
@@ -253,7 +257,10 @@ def main(args):
             scheduler = FlowMatchEulerDiscreteScheduler(shift=flow_shift)
         elif args.scheduler_type == "uni-pc":
             scheduler = UniPCMultistepScheduler(
-                prediction_type="flow_prediction", use_flow_sigmas=True, num_train_timesteps=1000, flow_shift=flow_shift
+                prediction_type="flow_prediction",
+                use_flow_sigmas=True,
+                num_train_timesteps=1000,
+                flow_shift=flow_shift,
             )
         else:
             raise ValueError(f"Scheduler type {args.scheduler_type} is not supported")

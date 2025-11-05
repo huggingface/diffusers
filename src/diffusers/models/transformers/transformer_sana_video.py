@@ -58,7 +58,9 @@ class GLUMBTempConv(nn.Module):
         if norm_type == "rms_norm":
             self.norm = RMSNorm(out_channels, eps=1e-5, elementwise_affine=True, bias=True)
 
-        self.conv_temp = nn.Conv2d(out_channels, out_channels, kernel_size=(3, 1), stride=1, padding=(1, 0), bias=False)
+        self.conv_temp = nn.Conv2d(
+            out_channels, out_channels, kernel_size=(3, 1), stride=1, padding=(1, 0), bias=False
+        )
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         if self.residual_connection:
@@ -76,7 +78,9 @@ class GLUMBTempConv(nn.Module):
         hidden_states = self.conv_point(hidden_states)
 
         # Temporal aggregation
-        hidden_states_temporal = hidden_states.view(batch_size, num_frames, num_channels, height * width).permute(0, 2, 1, 3)
+        hidden_states_temporal = hidden_states.view(batch_size, num_frames, num_channels, height * width).permute(
+            0, 2, 1, 3
+        )
         hidden_states = hidden_states_temporal + self.conv_temp(hidden_states_temporal)
         hidden_states = hidden_states.permute(0, 2, 3, 1).view(batch_size, num_frames, height, width, num_channels)
 
@@ -275,6 +279,7 @@ class SanaAttnProcessor2_0:
     r"""
     Processor for implementing scaled dot-product attention (enabled by default if you're using PyTorch 2.0).
     """
+
     _attention_backend = None
     _parallel_config = None
 
