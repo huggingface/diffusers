@@ -403,6 +403,7 @@ else:
         "QwenImageControlNetInpaintPipeline",
         "QwenImageControlNetPipeline",
     ]
+    _import_structure["chronoedit"] = ["ChronoEditPipeline"]
 try:
     if not is_onnx_available():
         raise OptionalDependencyNotAvailable()
@@ -565,6 +566,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .bria import BriaPipeline
         from .bria_fibo import BriaFiboPipeline
         from .chroma import ChromaImg2ImgPipeline, ChromaPipeline
+        from .chronoedit import ChronoEditPipeline
         from .cogvideo import (
             CogVideoXFunControlPipeline,
             CogVideoXImageToVideoPipeline,
