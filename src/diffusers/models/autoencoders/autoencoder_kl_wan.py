@@ -1295,6 +1295,20 @@ class AutoencoderKLWan(ModelMixin, AutoencoderMixin, ConfigMixin, FromOriginalMo
             )
         return b
 
+    def blend_v_(self, a: torch.Tensor, b: torch.Tensor, blend_extent: int) -> torch.Tensor:
+        blend_extent = min(a.shape[2], b.shape[2], blend_extent)
+        y = torch.arange(0, blend_extent, device=a.device)
+        blend_ratio = (y / blend_extent)[None, None, None, :, None].to(a.dtype)
+        b[:, :, :, y, :] = a[:, :, :, -blend_extent + y, :] * (1 - blend_ratio) + b[:, :, :, y, :] * blend_ratio
+        return b
+
+    def blend_h_(self, a: torch.Tensor, b: torch.Tensor, blend_extent: int) -> torch.Tensor:
+        blend_extent = min(a.shape[3], b.shape[3], blend_extent)
+        x = torch.arange(0, blend_extent, device=a.device)
+        blend_ratio = (x / blend_extent)[None, None, None, None, :].to(a.dtype)
+        b[:, :, :, :, x] = a[:, :, :, :, -blend_extent + x] * (1 - blend_ratio) + b[:, :, :, :, x] * blend_ratio
+        return b
+
     def tiled_encode(self, x: torch.Tensor) -> AutoencoderKLOutput:
         r"""Encode a batch of images using a tiled encoder.
 
@@ -1542,9 +1556,9 @@ class AutoencoderKLWan(ModelMixin, AutoencoderMixin, ConfigMixin, FromOriginalMo
                 # blend the above tile and the left tile
                 # to the current tile and add the current tile to the result row
                 if i > 0:
-                    tile = self.blend_v(rows[i - 1][j], tile, blend_latent_height)
+                    tile = self.blend_v_(rows[i - 1][j], tile, blend_latent_height)
                 if j > 0:
-                    tile = self.blend_h(row[j - 1], tile, blend_latent_width)
+                    tile = self.blend_h_(row[j - 1], tile, blend_latent_width)
                 result_row.append(tile[:, :, :, :tile_latent_stride_height, :tile_latent_stride_width])
             result_rows.append(torch.cat(result_row, dim=-1))
 
@@ -1608,9 +1622,9 @@ class AutoencoderKLWan(ModelMixin, AutoencoderMixin, ConfigMixin, FromOriginalMo
                 # blend the above tile and the left tile
                 # to the current tile and add the current tile to the result row
                 if i > 0:
-                    tile = self.blend_v(rows[i - 1][j], tile, blend_sample_height)
+                    tile = self.blend_v_(rows[i - 1][j], tile, blend_sample_height)
                 if j > 0:
-                    tile = self.blend_h(row[j - 1], tile, blend_sample_width)
+                    tile = self.blend_h_(row[j - 1], tile, blend_sample_width)
                 result_row.append(tile[:, :, :, :tile_sample_stride_height, :tile_sample_stride_width])
             result_rows.append(torch.cat(result_row, dim=-1))
         dec = torch.cat(result_rows, dim=3)[:, :, :, :sample_height, :sample_width]

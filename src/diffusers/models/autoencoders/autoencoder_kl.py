@@ -366,6 +366,20 @@ class AutoencoderKL(ModelMixin, AutoencoderMixin, ConfigMixin, FromOriginalModel
             b[:, :, :, x] = a[:, :, :, -blend_extent + x] * (1 - x / blend_extent) + b[:, :, :, x] * (x / blend_extent)
         return b
 
+    def blend_v_(self, a: torch.Tensor, b: torch.Tensor, blend_extent: int) -> torch.Tensor:
+        blend_extent = min(a.shape[2], b.shape[2], blend_extent)
+        y = torch.arange(0, blend_extent, device=a.device)
+        blend_ratio = (y / blend_extent)[None, None, :, None].to(a.dtype)
+        b[:, :, y, :] = a[:, :, -blend_extent + y, :] * (1 - blend_ratio) + b[:, :, y, :] * blend_ratio
+        return b
+
+    def blend_h_(self, a: torch.Tensor, b: torch.Tensor, blend_extent: int) -> torch.Tensor:
+        blend_extent = min(a.shape[3], b.shape[3], blend_extent)
+        x = torch.arange(0, blend_extent, device=a.device)
+        blend_ratio = (x / blend_extent)[None, None, None, :].to(a.dtype)
+        b[:, :, :, x] = a[:, :, :, -blend_extent + x] * (1 - blend_ratio) + b[:, :, :, x] * blend_ratio
+        return b
+
     def _tiled_encode(self, x: torch.Tensor) -> torch.Tensor:
         r"""Encode a batch of images using a tiled encoder.
 
@@ -523,6 +537,8 @@ class AutoencoderKL(ModelMixin, AutoencoderMixin, ConfigMixin, FromOriginalModel
         if not return_dict:
             return (dec,)
 
+        return DecoderOutput(sample=dec)
+
     def calculate_tiled_parallel_size(self, latent_height, latent_width):
         # Calculate stride based on h_split and w_split
         tile_latent_stride_height = int((latent_height + self.h_split - 1) / self.h_split)
@@ -558,8 +574,6 @@ class AutoencoderKL(ModelMixin, AutoencoderMixin, ConfigMixin, FromOriginalModel
             tile_latent_min_height, tile_latent_min_width, tile_latent_stride_height, tile_latent_stride_width, \
             tile_sample_min_height, tile_sample_min_width, tile_sample_stride_height, tile_sample_stride_width, \
             blend_latent_height, blend_latent_width, blend_sample_height, blend_sample_width
-
-        return DecoderOutput(sample=dec)
 
     def _tiled_encode_with_dp(self, x: torch.Tensor) -> torch.Tensor:
         r"""Encode a batch of images using a tiled encoder.
@@ -609,9 +623,9 @@ class AutoencoderKL(ModelMixin, AutoencoderMixin, ConfigMixin, FromOriginalModel
                 # blend the above tile and the left tile
                 # to the current tile and add the current tile to the result row
                 if i > 0:
-                    tile = self.blend_v(rows[i - 1][j], tile, blend_latent_height)
+                    tile = self.blend_v_(rows[i - 1][j], tile, blend_latent_height)
                 if j > 0:
-                    tile = self.blend_h(row[j - 1], tile, blend_latent_width)
+                    tile = self.blend_h_(row[j - 1], tile, blend_latent_width)
                 result_row.append(tile[:, :, :tile_latent_stride_height, :tile_latent_stride_width])
             result_rows.append(torch.cat(result_row, dim=3))
 
@@ -664,9 +678,9 @@ class AutoencoderKL(ModelMixin, AutoencoderMixin, ConfigMixin, FromOriginalModel
                 # blend the above tile and the left tile
                 # to the current tile and add the current tile to the result row
                 if i > 0:
-                    tile = self.blend_v(rows[i - 1][j], tile, blend_sample_height)
+                    tile = self.blend_v_(rows[i - 1][j], tile, blend_sample_height)
                 if j > 0:
-                    tile = self.blend_h(row[j - 1], tile, blend_sample_width)
+                    tile = self.blend_h_(row[j - 1], tile, blend_sample_width)
                 result_row.append(tile[:, :, :tile_sample_stride_height, :tile_sample_stride_width])
             result_rows.append(torch.cat(result_row, dim=3))
 
