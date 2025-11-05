@@ -186,7 +186,6 @@ def retrieve_timesteps(
 class SanaVideoPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
     r"""
     Pipeline for text-to-video generation using [Sana](https://huggingface.co/papers/2509.24695).
-    
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods
     implemented for all pipelines (downloading, saving, running on a particular device, etc.).
 
