@@ -339,7 +339,7 @@ class SanaAttnProcessor2_0:
 
 class SanaVideoTransformerBlock(nn.Module):
     r"""
-    Transformer block introduced in [Sana](https://huggingface.co/papers/2410.10629).
+    Transformer block introduced in [Sana-Video](https://huggingface.co/papers/2509.24695).
     """
 
     def __init__(
