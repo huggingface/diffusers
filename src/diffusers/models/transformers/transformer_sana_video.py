@@ -504,7 +504,7 @@ class SanaVideoTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fro
         mlp_ratio: float = 2.5,
         dropout: float = 0.0,
         attention_bias: bool = False,
-        sample_size: int = 32,
+        sample_size: int = 30,
         patch_size: Tuple[int, int, int] = (1, 2, 2),
         norm_elementwise_affine: bool = False,
         norm_eps: float = 1e-6,
