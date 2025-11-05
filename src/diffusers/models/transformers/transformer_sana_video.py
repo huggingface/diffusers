@@ -169,7 +169,7 @@ class SanaLinearAttnProcessor3_0:
         return hidden_states
 
 
-# copy from https://github.com/huggingface/diffusers/blob/11d22e0e809d1219a067ded8a18f7b0129fc58c7/src/diffusers/models/transformers/transformer_wan.py#L410
+# Copied from diffusers.models.transformers.transformer_wan.WanRotaryPosEmbed
 class WanRotaryPosEmbed(nn.Module):
     def __init__(
         self,
