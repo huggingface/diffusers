@@ -444,7 +444,7 @@ class SanaVideoTransformerBlock(nn.Module):
         return hidden_states
 
 
-class SanaVideoTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginalModelMixin):
+class SanaVideoTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginalModelMixin, AttentionMixin):
     r"""
     A 3D Transformer model introduced in [Sana-Video](https://huggingface.co/papers/2509.24695) family of models.
 
