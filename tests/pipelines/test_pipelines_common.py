@@ -1465,13 +1465,14 @@ class PipelineTesterMixin:
         inputs = self.get_dummy_inputs(torch_device)
         output_loaded = pipe_loaded(**inputs)[0]
         max_diff = np.abs(to_np(output) - to_np(output_loaded)).max()
-        pdb.set_trace()
         self.assertLess(
             max_diff, expected_max_diff, "The output of the fp16 pipeline changed after saving and loading."
         )
 
     def test_save_load_optional_components(self, expected_max_difference=1e-4):
         if not hasattr(self.pipeline_class, "_optional_components"):
+            return
+        if not self.pipeline_class._optional_components:
             return
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
