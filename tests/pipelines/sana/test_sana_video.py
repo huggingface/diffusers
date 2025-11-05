@@ -133,6 +133,7 @@ class SanaVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "max_sequence_length": 16,
             "output_type": "pt",
             "complex_human_instruction": [],
+            "use_resolution_binning": False,
         }
         return inputs
 
