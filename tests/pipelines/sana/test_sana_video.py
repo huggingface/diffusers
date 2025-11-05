@@ -148,7 +148,7 @@ class SanaVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         inputs = self.get_dummy_inputs(device)
         video = pipe(**inputs).frames
         generated_video = video[0]
-        self.assertEqual(generated_video.shape, (9, 3, 16, 16))
+        self.assertEqual(generated_video.shape, (9, 3, 32, 32))
 
     @unittest.skip("Test not supported")
     def test_attention_slicing_forward_pass(self):
