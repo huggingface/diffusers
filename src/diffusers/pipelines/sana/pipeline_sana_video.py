@@ -1033,7 +1033,6 @@ class SanaVideoPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
             if use_resolution_binning:
                 video = self.video_processor.resize_and_crop_tensor(video, orig_width, orig_height)
 
-        if not output_type == "latent":
             video = self.video_processor.postprocess_video(video, output_type=output_type)
 
         # Offload all models
