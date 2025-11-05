@@ -501,12 +501,15 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
         latent_w: int,
         mask_len: int = 1,
         mask_pixel_values: Optional[torch.Tensor] = None,
+        dtype: Optional[torch.dtype] = None,
         device: Union[str, torch.device] = "cuda",
     ) -> torch.Tensor:
         if mask_pixel_values is None:
-            mask_lat_size = torch.zeros(batch_size, 1, (latent_t - 1) * 4 + 1, latent_h, latent_w, device=device)
+            mask_lat_size = torch.zeros(
+                batch_size, 1, (latent_t - 1) * 4 + 1, latent_h, latent_w, dtype=dtype, device=device
+            )
         else:
-            mask_lat_size = mask_pixel_values.clone()
+            mask_lat_size = mask_pixel_values.clone().to(device=device, dtype=dtype)
         mask_lat_size[:, :, :mask_len] = 1
         first_frame_mask = mask_lat_size[:, :, 0:1]
         first_frame_mask = torch.repeat_interleave(first_frame_mask, dim=2, repeats=self.vae_scale_factor_temporal)
@@ -527,6 +530,7 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
         device: Optional[torch.device] = None,
     ) -> torch.Tensor:
         # image shape: (B, C, H, W) or (B, C, T, H, W)
+        dtype = dtype or self.vae.dtype
         if image.ndim == 4:
             # Add a singleton frame dimension after the channels dimension
             image = image.unsqueeze(2)
@@ -536,7 +540,7 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
         latent_width = width // self.vae_scale_factor_spatial
 
         # Encode image to latents using VAE
-        image = image.to(device=device, dtype=dtype if dtype is not None else self.vae.dtype)
+        image = image.to(device=device, dtype=dtype)
         if isinstance(generator, list):
             # Like in prepare_latents, assume len(generator) == batch_size
             ref_image_latents = [
@@ -552,7 +556,7 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
             ref_image_latents = ref_image_latents.expand(batch_size, -1, -1, -1, -1)
 
         # Prepare I2V mask in latent space and prepend to the reference image latents along channel dim
-        reference_image_mask = self.get_i2v_mask(batch_size, 1, latent_height, latent_width, 1, None, device)
+        reference_image_mask = self.get_i2v_mask(batch_size, 1, latent_height, latent_width, 1, None, dtype, device)
         reference_image_latents = torch.cat([reference_image_mask, ref_image_latents], dim=1)
 
         return reference_image_latents
@@ -575,12 +579,13 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
         device: Optional[torch.device] = None,
     ) -> torch.Tensor:
         # prev_segment_cond_video shape: (B, C, T, H, W) in pixel space if supplied
+        dtype = dtype or self.vae.dtype
         if prev_segment_cond_video is None:
             if task == "replace":
-                prev_segment_cond_video = background_video[:, :, :prev_segment_cond_frames]
+                prev_segment_cond_video = background_video[:, :, :prev_segment_cond_frames].to(dtype)
             else:
                 cond_frames_shape = (batch_size, 3, prev_segment_cond_frames, height, width)  # In pixel space
-                prev_segment_cond_video = torch.zeros(cond_frames_shape, device=device)
+                prev_segment_cond_video = torch.zeros(cond_frames_shape, dtype=dtype, device=device)
 
         data_batch_size, channels, _, segment_height, segment_width = prev_segment_cond_video.shape
         num_latent_frames = (segment_frame_length - 1) // self.vae_scale_factor_temporal + 1
@@ -596,14 +601,15 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
         # replacing).
         # TODO: check shapes here
         if task == "replace":
-            remaining_segment = background_video[:, :, prev_segment_cond_frames:]
+            remaining_segment = background_video[:, :, prev_segment_cond_frames:].to(dtype)
         else:
             remaining_segment_frames = segment_frame_length - prev_segment_cond_frames
             remaining_segment = torch.zeros(
-                batch_size, channels, remaining_segment_frames, height, width, device=device
+                batch_size, channels, remaining_segment_frames, height, width, dtype=dtype, device=device
             )
 
         # Prepend the conditioning frames from the previous segment to the remaining segment video in the frame dim
+        prev_segment_cond_video = prev_segment_cond_video.to(dtype=dtype)
         full_segment_cond_video = torch.cat([prev_segment_cond_video, remaining_segment], dim=2)
 
         if isinstance(generator, list):
@@ -643,6 +649,7 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
             latent_width,
             mask_len=prev_segment_cond_frames,
             mask_pixel_values=mask_pixel_values,
+            dtype=dtype,
             device=device,
         )
 
@@ -1031,6 +1038,7 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
             face_video_segment = face_video[start:end]
 
             face_video_segment = face_video_segment.expand(batch_size * num_videos_per_prompt, -1, -1, -1, -1)
+            face_video_segment = face_video_segment.to(dtype=transformer_dtype)
 
             if start > 0:
                 # TODO: check shapes here, why do we take index 0 in the first dim.?
@@ -1053,6 +1061,7 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
             pose_latents = self.prepare_pose_latents(
                 pose_video_segment, batch_size * num_videos_per_prompt, generator=generator, device=device
             )
+            pose_latents = pose_latents.to(dtype=transformer_dtype)
 
             prev_segment_cond_latents = self.prepare_prev_segment_cond_latents(
                 prev_segment_cond_video,
