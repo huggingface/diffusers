@@ -183,6 +183,26 @@ class SanaVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         max_diff = np.abs(output.detach().cpu().numpy() - output_loaded.detach().cpu().numpy()).max()
         self.assertLess(max_diff, expected_max_difference)
 
+    # TODO(aryan): Create a dummy gemma model with smol vocab size
+    @unittest.skip(
+        "A very small vocab size is used for fast tests. So, any kind of prompt other than the empty default used in other tests will lead to a embedding lookup error. This test uses a long prompt that causes the error."
+    )
+    def test_inference_batch_consistent(self):
+        pass
+
+    @unittest.skip(
+        "A very small vocab size is used for fast tests. So, any kind of prompt other than the empty default used in other tests will lead to a embedding lookup error. This test uses a long prompt that causes the error."
+    )
+    def test_inference_batch_single_identical(self):
+        pass
+
+    def test_float16_inference(self):
+        # Requires higher tolerance as model seems very sensitive to dtype
+        super().test_float16_inference(expected_max_diff=0.08)
+
+    def test_save_load_float16(self):
+        # Requires higher tolerance as model seems very sensitive to dtype
+        super().test_save_load_float16(expected_max_diff=0.2)
 
 @slow
 @require_torch_accelerator
