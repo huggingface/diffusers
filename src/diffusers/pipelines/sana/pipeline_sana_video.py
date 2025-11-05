@@ -702,7 +702,10 @@ class SanaVideoPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
                 f" size of {batch_size}. Make sure the batch size matches the length of the generators."
             )
 
-        latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
+        if latents is None:
+            latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
+        else:
+            latents = latents.to(device=device, dtype=dtype)
         return latents
 
     @property
