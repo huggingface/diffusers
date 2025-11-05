@@ -18,7 +18,7 @@ import unittest
 
 import numpy as np
 import torch
-from transformers import AutoModel, AutoTokenizer
+from transformers import Gemma2Config, Gemma2Model, GemmaTokenizer
 
 from diffusers import AutoencoderKLWan, DPMSolverMultistepScheduler, SanaVideoPipeline, SanaVideoTransformer3DModel
 
@@ -68,8 +68,22 @@ class SanaVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         torch.manual_seed(0)
         scheduler = DPMSolverMultistepScheduler()
         
-        text_encoder = AutoModel.from_pretrained("hf-internal-testing/tiny-random-gemma2")
-        tokenizer = AutoTokenizer.from_pretrained("hf-internal-testing/tiny-random-gemma2")
+        torch.manual_seed(0)
+        text_encoder_config = Gemma2Config(
+            head_dim=16,
+            hidden_size=8,
+            initializer_range=0.02,
+            intermediate_size=64,
+            max_position_embeddings=8192,
+            model_type="gemma2",
+            num_attention_heads=2,
+            num_hidden_layers=1,
+            num_key_value_heads=2,
+            vocab_size=8,
+            attn_implementation="eager",
+        )
+        text_encoder = Gemma2Model(text_encoder_config)
+        tokenizer = GemmaTokenizer.from_pretrained("hf-internal-testing/dummy-gemma")
 
         torch.manual_seed(0)
         transformer = SanaVideoTransformer3DModel(
