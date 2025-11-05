@@ -95,7 +95,7 @@ class SanaVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             num_cross_attention_heads=2,
             cross_attention_head_dim=12,
             cross_attention_dim=24,
-            caption_channels=32,
+            caption_channels=8,
             mlp_ratio=2.5,
             dropout=0.0,
             attention_bias=False,
