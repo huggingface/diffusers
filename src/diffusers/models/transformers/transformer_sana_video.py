@@ -234,6 +234,7 @@ class WanRotaryPosEmbed(nn.Module):
         return freqs_cos, freqs_sin
 
 
+# Copied from diffusers.models.transformers.sana_transformer.SanaModulatedNorm
 class SanaModulatedNorm(nn.Module):
     def __init__(self, dim: int, elementwise_affine: bool = False, eps: float = 1e-6):
         super().__init__()
