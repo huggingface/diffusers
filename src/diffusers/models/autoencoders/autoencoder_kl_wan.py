@@ -1074,6 +1074,8 @@ class AutoencoderKLWan(ModelMixin, AutoencoderMixin, ConfigMixin, FromOriginalMo
         self.tile_sample_stride_height = 192
         self.tile_sample_stride_width = 192
 
+        self.use_dp = False
+
         # Precompute and cache conv counts for encoder and decoder for clear_cache speedup
         self._cached_conv_counts = {
             "decoder": sum(isinstance(m, WanCausalConv3d) for m in self.decoder.modules())
@@ -1177,6 +1179,9 @@ class AutoencoderKLWan(ModelMixin, AutoencoderMixin, ConfigMixin, FromOriginalMo
         if self.config.patch_size is not None:
             x = patchify(x, patch_size=self.config.patch_size)
 
+        if self.use_dp:
+            return self.tiled_encode_with_dp(x)
+
         if self.use_tiling and (width > self.tile_sample_min_width or height > self.tile_sample_min_height):
             return self.tiled_encode(x)
 
@@ -1228,6 +1233,9 @@ class AutoencoderKLWan(ModelMixin, AutoencoderMixin, ConfigMixin, FromOriginalMo
         _, _, num_frame, height, width = z.shape
         tile_latent_min_height = self.tile_sample_min_height // self.spatial_compression_ratio
         tile_latent_min_width = self.tile_sample_min_width // self.spatial_compression_ratio
+
+        if self.use_dp:
+            return self.tiled_decode_with_dp(z, return_dict=return_dict)
 
         if self.use_tiling and (width > tile_latent_min_width or height > tile_latent_min_height):
             return self.tiled_decode(z, return_dict=return_dict)
