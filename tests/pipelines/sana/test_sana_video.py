@@ -122,8 +122,8 @@ class SanaVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         else:
             generator = torch.Generator(device=device).manual_seed(seed)
         inputs = {
-            "prompt": "A cat playing with a ball",
-            "negative_prompt": "blurry, low quality",
+            "prompt": "",
+            "negative_prompt": "",
             "generator": generator,
             "num_inference_steps": 2,
             "guidance_scale": 6.0,
