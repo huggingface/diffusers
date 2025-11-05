@@ -229,7 +229,7 @@ class AutoencoderKL(ModelMixin, AutoencoderMixin, ConfigMixin, FromOriginalModel
         r"""
         """
         if world_size is None:
-            world_size = dist.get_world_size()
+            world_size = dist.get_world_size() if dist.is_initialized() else 1
 
         if world_size <= 1 or world_size > dist.get_world_size():
             logger.warning(
