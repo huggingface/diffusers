@@ -323,6 +323,8 @@
         title: AllegroTransformer3DModel
       - local: api/models/aura_flow_transformer2d
         title: AuraFlowTransformer2DModel
+      - local: api/models/transformer_bria_fibo
+        title: BriaFiboTransformer2DModel
       - local: api/models/bria_transformer
         title: BriaTransformer2DModel
       - local: api/models/chroma_transformer
@@ -371,6 +373,8 @@
         title: QwenImageTransformer2DModel
       - local: api/models/sana_transformer2d
         title: SanaTransformer2DModel
+      - local: api/models/sana_video_transformer3d
+        title: SanaVideoTransformer3DModel
       - local: api/models/sd3_transformer2d
         title: SD3Transformer2DModel
       - local: api/models/skyreels_v2_transformer_3d
@@ -469,6 +473,8 @@
         title: BLIP-Diffusion
       - local: api/pipelines/bria_3_2
         title: Bria 3.2
+      - local: api/pipelines/bria_fibo
+        title: Bria Fibo
       - local: api/pipelines/chroma
         title: Chroma
       - local: api/pipelines/cogview3
@@ -559,6 +565,8 @@
         title: Sana
       - local: api/pipelines/sana_sprint
         title: Sana Sprint
+      - local: api/pipelines/sana_video
+        title: Sana Video
       - local: api/pipelines/self_attention_guidance
         title: Self-Attention Guidance
       - local: api/pipelines/semantic_stable_diffusion
@@ -632,6 +640,8 @@
         title: HunyuanVideo
       - local: api/pipelines/i2vgenxl
         title: I2VGen-XL
+      - local: api/pipelines/kandinsky5_video
+        title: Kandinsky 5.0 Video
       - local: api/pipelines/latte
         title: Latte
       - local: api/pipelines/ltx_video

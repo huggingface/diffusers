@@ -27,6 +27,8 @@ if torch.distributed.is_available():
 
 from ..utils import (
     get_logger,
+    is_aiter_available,
+    is_aiter_version,
     is_flash_attn_3_available,
     is_flash_attn_available,
     is_flash_attn_version,
@@ -47,6 +49,7 @@ if TYPE_CHECKING:
     from ._modeling_parallel import ParallelConfig
 
 _REQUIRED_FLASH_VERSION = "2.6.3"
+_REQUIRED_AITER_VERSION = "0.1.5"
 _REQUIRED_SAGE_VERSION = "2.1.1"
 _REQUIRED_FLEX_VERSION = "2.5.0"
 _REQUIRED_XLA_VERSION = "2.2"
@@ -54,6 +57,7 @@ _REQUIRED_XFORMERS_VERSION = "0.0.29"
 
 _CAN_USE_FLASH_ATTN = is_flash_attn_available() and is_flash_attn_version(">=", _REQUIRED_FLASH_VERSION)
 _CAN_USE_FLASH_ATTN_3 = is_flash_attn_3_available()
+_CAN_USE_AITER_ATTN = is_aiter_available() and is_aiter_version(">=", _REQUIRED_AITER_VERSION)
 _CAN_USE_SAGE_ATTN = is_sageattention_available() and is_sageattention_version(">=", _REQUIRED_SAGE_VERSION)
 _CAN_USE_FLEX_ATTN = is_torch_version(">=", _REQUIRED_FLEX_VERSION)
 _CAN_USE_NPU_ATTN = is_torch_npu_available()
@@ -77,6 +81,12 @@ if _CAN_USE_FLASH_ATTN_3:
 else:
     flash_attn_3_func = None
     flash_attn_3_varlen_func = None
+
+
+if _CAN_USE_AITER_ATTN:
+    from aiter import flash_attn_func as aiter_flash_attn_func
+else:
+    aiter_flash_attn_func = None
 
 if DIFFUSERS_ENABLE_HUB_KERNELS:
     if not is_kernels_available():
@@ -177,6 +187,9 @@ class AttentionBackendName(str, Enum):
     _FLASH_VARLEN_3 = "_flash_varlen_3"
     _FLASH_3_HUB = "_flash_3_hub"
     # _FLASH_VARLEN_3_HUB = "_flash_varlen_3_hub"  # not supported yet.
+
+    # `aiter`
+    AITER = "aiter"
 
     # PyTorch native
     FLEX = "flex"
@@ -414,6 +427,12 @@ def _check_attention_backend_requirements(backend: AttentionBackendName) -> None
                 f"Flash Attention 3 Hub backend '{backend.value}' is not usable because the `kernels` package isn't available. Please install it with `pip install kernels`."
             )
 
+    elif backend == AttentionBackendName.AITER:
+        if not _CAN_USE_AITER_ATTN:
+            raise RuntimeError(
+                f"Aiter Attention backend '{backend.value}' is not usable because of missing package or the version is too old. Please install `aiter>={_REQUIRED_AITER_VERSION}`."
+            )
+
     elif backend in [
         AttentionBackendName.SAGE,
         AttentionBackendName.SAGE_VARLEN,
@@ -628,6 +647,86 @@ def _(
 
 
 # ===== Helper functions to use attention backends with templated CP autograd functions =====
+
+
+def _native_attention_forward_op(
+    ctx: torch.autograd.function.FunctionCtx,
+    query: torch.Tensor,
+    key: torch.Tensor,
+    value: torch.Tensor,
+    attn_mask: Optional[torch.Tensor] = None,
+    dropout_p: float = 0.0,
+    is_causal: bool = False,
+    scale: Optional[float] = None,
+    enable_gqa: bool = False,
+    return_lse: bool = False,
+    _save_ctx: bool = True,
+    _parallel_config: Optional["ParallelConfig"] = None,
+):
+    # Native attention does not return_lse
+    if return_lse:
+        raise ValueError("Native attention does not support return_lse=True")
+
+    # used for backward pass
+    if _save_ctx:
+        ctx.save_for_backward(query, key, value)
+        ctx.attn_mask = attn_mask
+        ctx.dropout_p = dropout_p
+        ctx.is_causal = is_causal
+        ctx.scale = scale
+        ctx.enable_gqa = enable_gqa
+
+    query, key, value = (x.permute(0, 2, 1, 3) for x in (query, key, value))
+    out = torch.nn.functional.scaled_dot_product_attention(
+        query=query,
+        key=key,
+        value=value,
+        attn_mask=attn_mask,
+        dropout_p=dropout_p,
+        is_causal=is_causal,
+        scale=scale,
+        enable_gqa=enable_gqa,
+    )
+    out = out.permute(0, 2, 1, 3)
+
+    return out
+
+
+def _native_attention_backward_op(
+    ctx: torch.autograd.function.FunctionCtx,
+    grad_out: torch.Tensor,
+    *args,
+    **kwargs,
+):
+    query, key, value = ctx.saved_tensors
+
+    query.requires_grad_(True)
+    key.requires_grad_(True)
+    value.requires_grad_(True)
+
+    query_t, key_t, value_t = (x.permute(0, 2, 1, 3) for x in (query, key, value))
+    out = torch.nn.functional.scaled_dot_product_attention(
+        query=query_t,
+        key=key_t,
+        value=value_t,
+        attn_mask=ctx.attn_mask,
+        dropout_p=ctx.dropout_p,
+        is_causal=ctx.is_causal,
+        scale=ctx.scale,
+        enable_gqa=ctx.enable_gqa,
+    )
+    out = out.permute(0, 2, 1, 3)
+
+    grad_out_t = grad_out.permute(0, 2, 1, 3)
+    grad_query_t, grad_key_t, grad_value_t = torch.autograd.grad(
+        outputs=out, inputs=[query_t, key_t, value_t], grad_outputs=grad_out_t, retain_graph=False
+    )
+
+    grad_query = grad_query_t.permute(0, 2, 1, 3)
+    grad_key = grad_key_t.permute(0, 2, 1, 3)
+    grad_value = grad_value_t.permute(0, 2, 1, 3)
+
+    return grad_query, grad_key, grad_value
 
 
 # https://github.com/pytorch/pytorch/blob/8904ba638726f8c9a5aff5977c4aa76c9d2edfa6/aten/src/ATen/native/native_functions.yaml#L14958
@@ -1398,6 +1497,47 @@ def _flash_varlen_attention_3(
 
 
 @_AttentionBackendRegistry.register(
+    AttentionBackendName.AITER,
+    constraints=[_check_device_cuda, _check_qkv_dtype_bf16_or_fp16, _check_shape],
+)
+def _aiter_flash_attention(
+    query: torch.Tensor,
+    key: torch.Tensor,
+    value: torch.Tensor,
+    dropout_p: float = 0.0,
+    is_causal: bool = False,
+    scale: Optional[float] = None,
+    return_lse: bool = False,
+    _parallel_config: Optional["ParallelConfig"] = None,
+) -> torch.Tensor:
+    if not return_lse and torch.is_grad_enabled():
+        # aiter requires return_lse=True by assertion when gradients are enabled.
+        out, lse, *_ = aiter_flash_attn_func(
+            q=query,
+            k=key,
+            v=value,
+            dropout_p=dropout_p,
+            softmax_scale=scale,
+            causal=is_causal,
+            return_lse=True,
+        )
+    else:
+        out = aiter_flash_attn_func(
+            q=query,
+            k=key,
+            v=value,
+            dropout_p=dropout_p,
+            softmax_scale=scale,
+            causal=is_causal,
+            return_lse=return_lse,
+        )
+        if return_lse:
+            out, lse, *_ = out
+
+    return (out, lse) if return_lse else out
+
+
+@_AttentionBackendRegistry.register(
     AttentionBackendName.FLEX,
     constraints=[_check_attn_mask_or_causal, _check_device, _check_shape],
 )
@@ -1463,6 +1603,7 @@ def _native_flex_attention(
 @_AttentionBackendRegistry.register(
     AttentionBackendName.NATIVE,
     constraints=[_check_device, _check_shape],
+    supports_context_parallel=True,
 )
 def _native_attention(
     query: torch.Tensor,
@@ -1478,18 +1619,35 @@ def _native_attention(
 ) -> torch.Tensor:
     if return_lse:
         raise ValueError("Native attention backend does not support setting `return_lse=True`.")
-    query, key, value = (x.permute(0, 2, 1, 3) for x in (query, key, value))
-    out = torch.nn.functional.scaled_dot_product_attention(
-        query=query,
-        key=key,
-        value=value,
-        attn_mask=attn_mask,
-        dropout_p=dropout_p,
-        is_causal=is_causal,
-        scale=scale,
-        enable_gqa=enable_gqa,
-    )
-    out = out.permute(0, 2, 1, 3)
+    if _parallel_config is None:
+        query, key, value = (x.permute(0, 2, 1, 3) for x in (query, key, value))
+        out = torch.nn.functional.scaled_dot_product_attention(
+            query=query,
+            key=key,
+            value=value,
+            attn_mask=attn_mask,
+            dropout_p=dropout_p,
+            is_causal=is_causal,
+            scale=scale,
+            enable_gqa=enable_gqa,
+        )
+        out = out.permute(0, 2, 1, 3)
+    else:
+        out = _templated_context_parallel_attention(
+            query,
+            key,
+            value,
+            attn_mask,
+            dropout_p,
+            is_causal,
+            scale,
+            enable_gqa,
+            return_lse,
+            forward_op=_native_attention_forward_op,
+            backward_op=_native_attention_backward_op,
+            _parallel_config=_parallel_config,
+        )
+
     return out
 
 
