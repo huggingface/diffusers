@@ -17,13 +17,14 @@ import unittest
 from diffusers import AutoencoderKLCosmos
 
 from ...testing_utils import enable_full_determinism, floats_tensor, torch_device
-from ..test_modeling_common import ModelTesterMixin, UNetTesterMixin
+from ..test_modeling_common import ModelTesterMixin
+from .testing_utils import AutoencoderTesterMixin
 
 
 enable_full_determinism()
 
 
-class AutoencoderKLCosmosTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
+class AutoencoderKLCosmosTests(ModelTesterMixin, AutoencoderTesterMixin, unittest.TestCase):
     model_class = AutoencoderKLCosmos
     main_input_name = "sample"
     base_precision = 1e-2
@@ -79,8 +80,4 @@ class AutoencoderKLCosmosTests(ModelTesterMixin, UNetTesterMixin, unittest.TestC
 
     @unittest.skip("Not sure why this test fails. Investigate later.")
     def test_effective_gradient_checkpointing(self):
-        pass
-
-    @unittest.skip("Unsupported test.")
-    def test_forward_with_norm_groups(self):
         pass

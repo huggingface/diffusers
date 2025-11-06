@@ -70,32 +70,6 @@ For convenience, we provide a table to denote which methods are inference-only a
 [InstructPix2Pix](../api/pipelines/pix2pix) is fine-tuned from Stable Diffusion to support editing input images. It takes as inputs an image and a prompt describing an edit, and it outputs the edited image.
 InstructPix2Pix has been explicitly trained to work well with [InstructGPT](https://openai.com/blog/instruction-following/)-like prompts.
 
-## Pix2Pix Zero
-
-[Paper](https://huggingface.co/papers/2302.03027)
-
-[Pix2Pix Zero](../api/pipelines/pix2pix_zero) allows modifying an image so that one concept or subject is translated to another one while preserving general image semantics.
-
-The denoising process is guided from one conceptual embedding towards another conceptual embedding. The intermediate latents are optimized during the denoising process to push the attention maps towards reference attention maps. The reference attention maps are from the denoising process of the input image and are used to encourage semantic preservation.
-
-Pix2Pix Zero can be used both to edit synthetic images as well as real images.
-
-- To edit synthetic images, one first generates an image given a caption.
-  Next, we generate image captions for the concept that shall be edited and for the new target concept. We can use a model like [Flan-T5](https://huggingface.co/docs/transformers/model_doc/flan-t5) for this purpose. Then, "mean" prompt embeddings for both the source and target concepts are created via the text encoder. Finally, the pix2pix-zero algorithm is used to edit the synthetic image.
-- To edit a real image, one first generates an image caption using a model like [BLIP](https://huggingface.co/docs/transformers/model_doc/blip). Then one applies DDIM inversion on the prompt and image to generate "inverse" latents. Similar to before, "mean" prompt embeddings for both source and target concepts are created and finally the pix2pix-zero algorithm in combination with the "inverse" latents is used to edit the image.
-
-> [!TIP]
-> Pix2Pix Zero is the first model that allows "zero-shot" image editing. This means that the model
-> can edit an image in less than a minute on a consumer GPU as shown [here](../api/pipelines/pix2pix_zero#usage-example).
-
-As mentioned above, Pix2Pix Zero includes optimizing the latents (and not any of the UNet, VAE, or the text encoder) to steer the generation toward a specific concept. This means that the overall
-pipeline might require more memory than a standard [StableDiffusionPipeline](../api/pipelines/stable_diffusion/text2img).
-
-> [!TIP]
-> An important distinction between methods like InstructPix2Pix and Pix2Pix Zero is that the former
-> involves fine-tuning the pre-trained weights while the latter does not. This means that you can
-> apply Pix2Pix Zero to any of the available Stable Diffusion models.
-
 ## Attend and Excite
 
 [Paper](https://huggingface.co/papers/2301.13826)
@@ -177,14 +151,6 @@ text-to-image diffusion model. It also allows for additionally performing Textua
 multi-concept training by design. Like DreamBooth and Textual Inversion, Custom Diffusion is also used to
 teach a pre-trained text-to-image diffusion model about new concepts to generate outputs involving the
 concept(s) of interest.
-
-## Model Editing
-
-[Paper](https://huggingface.co/papers/2303.08084)
-
-The [text-to-image model editing pipeline](../api/pipelines/model_editing) helps you mitigate some of the incorrect implicit assumptions a pre-trained text-to-image
-diffusion model might make about the subjects present in the input prompt. For example, if you prompt Stable Diffusion to generate images for "A pack of roses", the roses in the generated images
-are more likely to be red. This pipeline helps you change that assumption.
 
 ## DiffEdit
 

@@ -178,5 +178,5 @@ image.save("yoda-naruto.png")
 
 Congratulations on training your own text-to-image model! To learn more about how to use your new model, the following guides may be helpful:
 
-- Learn how to [load LoRA weights](../using-diffusers/loading_adapters#LoRA) for inference if you trained your model with LoRA.
+- Learn how to [load LoRA weights](../tutorials/using_peft_for_inference) for inference if you trained your model with LoRA.
 - Learn more about how certain parameters like guidance scale or techniques such as prompt weighting can help you control inference in the [Text-to-image](../using-diffusers/conditional_image_generation) task guide.
