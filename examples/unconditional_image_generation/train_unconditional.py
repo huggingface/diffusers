@@ -55,7 +55,9 @@ def _extract_into_tensor(arr, timesteps, broadcast_shape):
 
 
 def _ensure_three_channels(tensor: torch.Tensor) -> torch.Tensor:
-    """Ensure tensors end up with exactly three channels."""
+    """
+    Ensure the tensor has exactly three channels (C, H, W) by repeating or truncating channels when needed.
+    """
     if tensor.ndim == 2:
         tensor = tensor.unsqueeze(0)
     channels = tensor.shape[0]
