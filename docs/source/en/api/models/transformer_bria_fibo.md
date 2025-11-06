@@ -10,10 +10,10 @@ an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express o
 specific language governing permissions and limitations under the License.
 -->
 
-# ChromaTransformer2DModel
+# BriaFiboTransformer2DModel
 
-A modified flux Transformer model from [Chroma](https://huggingface.co/lodestones/Chroma1-HD)
+A modified flux Transformer model from [Bria](https://huggingface.co/briaai/FIBO)
 
-## ChromaTransformer2DModel
+## BriaFiboTransformer2DModel
 
-[[autodoc]] ChromaTransformer2DModel
+[[autodoc]] BriaFiboTransformer2DModel

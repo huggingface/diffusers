@@ -17,11 +17,7 @@ import unittest
 
 from diffusers import AutoencoderDC
 
-from ...testing_utils import (
-    enable_full_determinism,
-    floats_tensor,
-    torch_device,
-)
+from ...testing_utils import IS_GITHUB_ACTIONS, enable_full_determinism, floats_tensor, torch_device
 from ..test_modeling_common import ModelTesterMixin
 from .testing_utils import AutoencoderTesterMixin
 
@@ -82,3 +78,7 @@ class AutoencoderDCTests(ModelTesterMixin, AutoencoderTesterMixin, unittest.Test
         init_dict = self.get_autoencoder_dc_config()
         inputs_dict = self.dummy_input
         return init_dict, inputs_dict
+
+    @unittest.skipIf(IS_GITHUB_ACTIONS, reason="Skipping test inside GitHub Actions environment")
+    def test_layerwise_casting_inference(self):
+        super().test_layerwise_casting_inference()

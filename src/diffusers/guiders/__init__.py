@@ -17,12 +17,6 @@ from typing import Union
 from ..utils import is_torch_available, logging
 
 
-logger = logging.get_logger(__name__)
-logger.warning(
-    "Guiders are currently an experimental feature under active development. The API is subject to breaking changes in future releases."
-)
-
-
 if is_torch_available():
     from .adaptive_projected_guidance import AdaptiveProjectedGuidance
     from .adaptive_projected_guidance_mix import AdaptiveProjectedMixGuidance

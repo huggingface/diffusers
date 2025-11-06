@@ -64,6 +64,8 @@ from .import_utils import (
     get_objects_from_module,
     is_accelerate_available,
     is_accelerate_version,
+    is_aiter_available,
+    is_aiter_version,
     is_better_profanity_available,
     is_bitsandbytes_available,
     is_bitsandbytes_version,
