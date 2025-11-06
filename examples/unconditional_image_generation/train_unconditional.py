@@ -123,6 +123,7 @@ def _log_sample_images(
 
         tracker = accelerator.get_tracker("wandb")
         if images_processed.dtype == np.uint16:
+            # Pillow required to encode true 16-bit PNGs for W&B; fall back to 8-bit previews if unavailable.
             from PIL import Image
 
             wandb_images = []
@@ -146,6 +147,7 @@ def _log_sample_images(
                         pil_image = Image.frombytes(
                             mode,
                             (w, h),
+                            # Pillow expects big-endian for RGB(A); use ";16B" and byteswap() to match.
                             contiguous.byteswap().tobytes(),
                             "raw",
                             f"{mode};16B",
