@@ -201,7 +201,7 @@ class WanAnimatePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         height = 16
         width = 16
         inputs["background_video"] = [Image.new("RGB", (height, width))] * num_frames
-        inputs["mask_video"] = [Image.new("RGB", (height, width))] * num_frames
+        inputs["mask_video"] = [Image.new("L", (height, width))] * num_frames
 
         video = pipe(**inputs).frames[0]
         self.assertEqual(video.shape, (17, 3, 16, 16))

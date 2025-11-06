@@ -504,6 +504,7 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
         dtype: Optional[torch.dtype] = None,
         device: Union[str, torch.device] = "cuda",
     ) -> torch.Tensor:
+        # mask_pixel_values shape (if supplied): [B, C = 1, T, latent_h, latent_w]
         if mask_pixel_values is None:
             mask_lat_size = torch.zeros(
                 batch_size, 1, (latent_t - 1) * 4 + 1, latent_h, latent_w, dtype=dtype, device=device
@@ -512,11 +513,12 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
             mask_lat_size = mask_pixel_values.clone().to(device=device, dtype=dtype)
         mask_lat_size[:, :, :mask_len] = 1
         first_frame_mask = mask_lat_size[:, :, 0:1]
+        # Repeat first frame mask self.vae_scale_factor_temporal (= 4) times in the frame dimension
         first_frame_mask = torch.repeat_interleave(first_frame_mask, dim=2, repeats=self.vae_scale_factor_temporal)
-        mask_lat_size = torch.concat([first_frame_mask, mask_lat_size[:, :, 1:, :]], dim=2)
+        mask_lat_size = torch.concat([first_frame_mask, mask_lat_size[:, :, 1:]], dim=2)
         mask_lat_size = mask_lat_size.view(
             batch_size, -1, self.vae_scale_factor_temporal, latent_h, latent_w
-        ).transpose(1, 2)
+        ).transpose(1, 2)  # [B, C = 1, 4 * T_lat, H_lat, W_lat] --> [B, C = 4, T_lat, H_lat, W_lat]
 
         return mask_lat_size
 
@@ -579,6 +581,8 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
         device: Optional[torch.device] = None,
     ) -> torch.Tensor:
         # prev_segment_cond_video shape: (B, C, T, H, W) in pixel space if supplied
+        # background_video shape: (B, C, T, H, W) (same as prev_segment_cond_video shape)
+        # mask_video shape: (B, 1, T, H, W) (same as prev_segment_cond_video, but with only 1 channel)
         dtype = dtype or self.vae.dtype
         if prev_segment_cond_video is None:
             if task == "replace":
@@ -599,7 +603,6 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
 
         # Fill the remaining part of the cond video segment with zeros (if animating) or the background video (if 
         # replacing).
-        # TODO: check shapes here
         if task == "replace":
             remaining_segment = background_video[:, :, prev_segment_cond_frames:].to(dtype)
         else:
@@ -637,9 +640,11 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
         # Prepare I2V mask
         if task == "replace":
             mask_video = 1 - mask_video
-            mask_video = mask_video.flatten(0, 1)  # (B, T, C, H, W) --> (B * T, C, H, W)
+            mask_video = mask_video.permute(0, 2, 1, 3, 4)
+            mask_video = mask_video.flatten(0, 1)
             mask_video = F.interpolate(mask_video, size=(latent_height, latent_width), mode="nearest")
-            mask_pixel_values = mask_video.unflatten(0, (1, -1))[:, :, 0]
+            mask_pixel_values = mask_video.unflatten(0, (batch_size, -1))
+            mask_pixel_values = mask_pixel_values.permute(0, 2, 1, 3, 4)  # output shape: [B, C = 1, T, H_lat, W_lat]
         else:
             mask_pixel_values = None
         prev_segment_cond_mask = self.get_i2v_mask(
@@ -1041,14 +1046,13 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
             face_video_segment = face_video_segment.to(dtype=transformer_dtype)
 
             if start > 0:
-                # TODO: check shapes here, why do we take index 0 in the first dim.?
-                prev_segment_cond_video = out_frames[0, :, -prev_segment_conditioning_frames:].clone().detach().unsqueeze(0)
+                prev_segment_cond_video = out_frames[:, :, -prev_segment_conditioning_frames:].clone().detach()
             else:
                 prev_segment_cond_video = None
 
             if mode == "replace":
                 background_video_segment = background_video[start:end]
-                mask_video_segment = mask_video[start:end].permute(0, 2, 1, 3, 4)
+                mask_video_segment = mask_video[start:end]
 
                 background_video_segment = background_video_segment.expand(
                     batch_size * num_videos_per_prompt, -1, -1, -1, -1
