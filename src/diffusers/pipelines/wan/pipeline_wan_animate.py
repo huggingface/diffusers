@@ -989,9 +989,17 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
         pose_video = self.video_processor.preprocess_video(pose_video, height=height, width=width).to(
             device, dtype=torch.float32
         )
-        face_video = self.video_processor.preprocess_video(face_video, height=height, width=width).to(
-            device, dtype=torch.float32
-        )
+
+        face_video_width, face_video_height = face_video[0].size
+        expected_face_size = self.transformer.config.motion_encoder_size
+        if face_video_width != expected_face_size or face_video_height != expected_face_size:
+            logger.warning(
+                f"Reshaping face video from ({face_video_width}, {face_video_height}) to ({expected_face_size},"
+                f" {expected_face_size})"
+            )
+        face_video = self.video_processor.preprocess_video(
+            face_video, height=expected_face_size, width=expected_face_size
+        ).to(device, dtype=torch.float32)
 
         if mode == "replace":
             background_video = self.pad_video_frames(background_video, num_target_frames)
@@ -1040,8 +1048,8 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
         # while start + prev_segment_conditioning_frames < len(pose_video):
         for _ in range(num_segments):
             assert start + prev_segment_conditioning_frames < cond_video_frames
-            pose_video_segment = pose_video[start:end]
-            face_video_segment = face_video[start:end]
+            pose_video_segment = pose_video[:, :, start:end]
+            face_video_segment = face_video[:, :, start:end]
 
             face_video_segment = face_video_segment.expand(batch_size * num_videos_per_prompt, -1, -1, -1, -1)
             face_video_segment = face_video_segment.to(dtype=transformer_dtype)
@@ -1052,8 +1060,8 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 prev_segment_cond_video = None
 
             if mode == "replace":
-                background_video_segment = background_video[start:end]
-                mask_video_segment = mask_video[start:end]
+                background_video_segment = background_video[:, :, start:end]
+                mask_video_segment = mask_video[:, :, start:end]
 
                 background_video_segment = background_video_segment.expand(
                     batch_size * num_videos_per_prompt, -1, -1, -1, -1
