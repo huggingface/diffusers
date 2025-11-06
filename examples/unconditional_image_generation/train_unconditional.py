@@ -74,17 +74,24 @@ def _ensure_three_channels(tensor: torch.Tensor) -> torch.Tensor:
 
 def _prepare_sample_images(images: np.ndarray, bit_depth: int):
     """Scale pipeline outputs to uint8/uint16 arrays and build a TensorBoard-safe preview."""
-    max_pixel_value = 255 if bit_depth == 8 else 65535
-    out_dtype = np.uint8 if bit_depth == 8 else np.uint16
+    if bit_depth == 8:
+        max_pixel_value = 255
+        out_dtype = np.uint8
+    elif bit_depth == 16:
+        max_pixel_value = 65535
+        out_dtype = np.uint16
+    else:
+        raise ValueError(f"Unsupported image_bit_depth: {bit_depth}")
+
     images_processed = (
         np.clip(np.round(images * max_pixel_value), 0, max_pixel_value).astype(out_dtype)
     )
 
-    if bit_depth == 8:
-        tb_preview = images_processed
-    else:
+    if bit_depth == 16:
         # TensorBoard accepts float [0,1] or uint8 visuals, so keep a separate preview for the UI.
         tb_preview = np.clip(np.round(images * 255), 0, 255).astype(np.uint8)
+    else:
+        tb_preview = images_processed
 
     return images_processed, tb_preview
 
@@ -97,6 +104,11 @@ def _log_sample_images(
     global_step: int,
     logger_name: str,
 ):
+    if images_processed.dtype not in {np.uint8, np.uint16}:
+        raise ValueError(
+            f"Unsupported dtype for logged images: {images_processed.dtype}; expected uint8 or uint16."
+        )
+
     if logger_name == "tensorboard":
         if is_accelerate_version(">=", "0.17.0.dev0"):
             tracker = accelerator.get_tracker("tensorboard", unwrap=True)
@@ -112,18 +124,36 @@ def _log_sample_images(
 
             wandb_images = []
             for img16 in images_processed:
-                buffer = io.BytesIO()
-                if img16.ndim == 3 and img16.shape[-1] == 3:
-                    contiguous = np.ascontiguousarray(img16)
-                    pil_image = Image.frombytes(
-                        "RGB",
-                        (contiguous.shape[1], contiguous.shape[0]),
-                        contiguous.byteswap().tobytes(),
-                        "raw",
-                        "RGB;16B",
+                if img16.dtype != np.uint16:
+                    raise ValueError(
+                        f"Expected uint16 image for 16-bit logging, received {img16.dtype}."
                     )
-                else:
+                h, w = img16.shape[:2]
+                buffer = io.BytesIO()
+                if img16.ndim == 2:
                     pil_image = Image.fromarray(img16, mode="I;16")
+                elif img16.ndim == 3:
+                    channels = img16.shape[-1]
+                    if channels == 1:
+                        pil_image = Image.fromarray(img16.squeeze(-1), mode="I;16")
+                    elif channels in {3, 4}:
+                        mode = "RGB" if channels == 3 else "RGBA"
+                        contiguous = np.ascontiguousarray(img16)
+                        pil_image = Image.frombytes(
+                            mode,
+                            (w, h),
+                            contiguous.byteswap().tobytes(),
+                            "raw",
+                            f"{mode};16B",
+                        )
+                    else:
+                        raise ValueError(
+                            f"Unsupported channel count for 16-bit image: {channels}"
+                        )
+                else:
+                    raise ValueError(
+                        f"Unsupported array shape for 16-bit image: {img16.shape}"
+                    )
                 pil_image.save(buffer, format="PNG")
                 buffer.seek(0)
                 wandb_images.append(wandb.Image(buffer))
