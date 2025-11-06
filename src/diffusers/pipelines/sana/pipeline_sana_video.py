@@ -94,6 +94,7 @@ EXAMPLE_DOC_STRING = """
         >>> import torch
         >>> from diffusers import SanaVideoPipeline
         >>> from diffusers.utils import export_to_video
+
         >>> model_id = "Efficient-Large-Model/SANA-Video_2B_480p_diffusers"
         >>> pipe = SanaVideoPipeline.from_pretrained(model_id)
         >>> pipe.transformer.to(torch.bfloat16)
@@ -108,14 +109,14 @@ EXAMPLE_DOC_STRING = """
         >>> prompt = prompt + motion_prompt
 
         >>> output = pipe(
-        ...    prompt=prompt,
-        ...    negative_prompt=negative_prompt,
-        ...    height=480,
-        ...    width=832,
-        ...    frames=81,
-        ...    guidance_scale=6,
-        ...    num_inference_steps=50,
-        ...    generator=torch.Generator(device="cuda").manual_seed(42),
+        ...     prompt=prompt,
+        ...     negative_prompt=negative_prompt,
+        ...     height=480,
+        ...     width=832,
+        ...     frames=81,
+        ...     guidance_scale=6,
+        ...     num_inference_steps=50,
+        ...     generator=torch.Generator(device="cuda").manual_seed(42),
         ... ).frames[0]
 
         >>> export_to_video(output, "sana-video-output.mp4", fps=16)
@@ -185,9 +186,9 @@ def retrieve_timesteps(
 
 class SanaVideoPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
     r"""
-    Pipeline for text-to-video generation using [Sana](https://huggingface.co/papers/2509.24695).
-    This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods
-    implemented for all pipelines (downloading, saving, running on a particular device, etc.).
+    Pipeline for text-to-video generation using [Sana](https://huggingface.co/papers/2509.24695). This model inherits
+    from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods implemented for all
+    pipelines (downloading, saving, running on a particular device, etc.).
 
     Args:
         tokenizer ([`GemmaTokenizer`] or [`GemmaTokenizerFast`]):
@@ -806,8 +807,8 @@ class SanaVideoPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
                 prompt.
             use_resolution_binning (`bool` defaults to `True`):
                 If set to `True`, the requested height and width are first mapped to the closest resolutions using
-                `ASPECT_RATIO_480_BIN` or `ASPECT_RATIO_720_BIN`. After the produced latents are decoded into videos, they are resized back to
-                the requested resolution. Useful for generating non-square videos.
+                `ASPECT_RATIO_480_BIN` or `ASPECT_RATIO_720_BIN`. After the produced latents are decoded into videos,
+                they are resized back to the requested resolution. Useful for generating non-square videos.
             callback_on_step_end (`Callable`, *optional*):
                 A function that calls at the end of each denoising steps during the inference. The function is called
                 with the following arguments: `callback_on_step_end(self: DiffusionPipeline, step: int, timestep: int,

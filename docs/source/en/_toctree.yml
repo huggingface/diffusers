@@ -563,10 +563,10 @@
         title: QwenImage
       - local: api/pipelines/sana
         title: Sana
-      - local: api/pipelines/sana_video
-        title: Sana Video
       - local: api/pipelines/sana_sprint
         title: Sana Sprint
+      - local: api/pipelines/sana_video
+        title: Sana Video
       - local: api/pipelines/self_attention_guidance
         title: Self-Attention Guidance
       - local: api/pipelines/semantic_stable_diffusion
