@@ -645,15 +645,13 @@ class QwenImageEditPlusRoPEInputsStep(QwenImageEditRoPEInputsStep):
     @property
     def inputs(self) -> List[InputParam]:
         existing_inputs = super().inputs
-        current_inputs = [InputParam("vae_image_sizes", type_hint=List[Tuple[int, int]])]
+        current_inputs = [InputParam("vae_image_sizes", type_hint=List[Tuple[int, int]], required=True)]
         return existing_inputs + current_inputs
 
     def __call__(self, components: QwenImageModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
-        print(f"{block_state=}")
 
         vae_scale_factor = components.vae_scale_factor
-        print(f"{block_state.vae_image_sizes=}")
         block_state.img_shapes = [
             [
                 (1, block_state.height // vae_scale_factor // 2, block_state.width // vae_scale_factor // 2),

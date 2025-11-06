@@ -330,7 +330,7 @@ class QwenImageEditPlusResizeDynamicStep(QwenImageEditResizeDynamicStep):
         output_name: str = "resized_image",
         vae_image_output_name: str = "vae_image",
     ):
-        """Create a configurable step for resizing images to the target area (1024 * 1024) while maintaining the aspect ratio.
+        """Create a configurable step for resizing images to the target area (384 * 384) while maintaining the aspect ratio.
 
         This block resizes an input image or a list input images and exposes the resized result under configurable
         input and output names. Use this when you need to wire the resize step to different image fields (e.g.,
@@ -893,7 +893,6 @@ class QwenImageEditPlusProcessImagesInputStep(QwenImageProcessImagesInputStep):
             block_state.processed_image = torch.stack(processed_images, dim=0).squeeze(1)
 
         block_state.vae_image_sizes = vae_image_sizes
-        print(f"{block_state.vae_image_sizes=}")
 
         self.set_block_state(state, block_state)
         return components, state
