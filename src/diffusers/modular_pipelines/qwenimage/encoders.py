@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Dict, List, Optional, Union
+from typing import Dict, List, Optional, Tuple, Union
 
 import PIL
 import torch
@@ -803,9 +803,7 @@ class QwenImageProcessImagesInputStep(ModularPipelineBlocks):
 
     @property
     def intermediate_outputs(self) -> List[OutputParam]:
-        return [
-            OutputParam(name="processed_image"),
-        ]
+        return [OutputParam(name="processed_image")]
 
     @staticmethod
     def check_inputs(height, width, vae_scale_factor):
@@ -845,7 +843,10 @@ class QwenImageProcessImagesInputStep(ModularPipelineBlocks):
 
 class QwenImageEditPlusProcessImagesInputStep(QwenImageProcessImagesInputStep):
     model_name = "qwenimage-edit-plus"
-    vae_image_size = 1024 * 1024
+
+    def __init__(self):
+        self.vae_image_size = 1024 * 1024
+        super().__init__()
 
     @property
     def description(self) -> str:
@@ -855,6 +856,12 @@ class QwenImageEditPlusProcessImagesInputStep(QwenImageProcessImagesInputStep):
     def inputs(self) -> List[InputParam]:
         return [InputParam("vae_image"), InputParam("image"), InputParam("height"), InputParam("width")]
 
+    @property
+    def intermediate_outputs(self):
+        existing_outputs = super().intermediate_outputs
+        current_outputs = [OutputParam("vae_image_sizes", type_hint=List[Tuple[int, int]])]
+        return existing_outputs + current_outputs
+
     @torch.no_grad()
     def __call__(self, components: QwenImageModularPipeline, state: PipelineState):
         block_state = self.get_block_state(state)
@@ -862,6 +869,7 @@ class QwenImageEditPlusProcessImagesInputStep(QwenImageProcessImagesInputStep):
         if block_state.vae_image is None and block_state.image is None:
             raise ValueError("`vae_image` and `image` cannot be None at the same time")
 
+        vae_image_sizes = None
         if block_state.vae_image is None:
             image = block_state.image
             self.check_inputs(
@@ -873,12 +881,19 @@ class QwenImageEditPlusProcessImagesInputStep(QwenImageProcessImagesInputStep):
                 image=image, height=height, width=width
             )
         else:
-            width, height = block_state.vae_image[0].size
-            image = block_state.vae_image
+            processed_images = []
+            vae_image_sizes = []
+            for img in block_state.vae_image:
+                width, height = img.size
+                vae_width, vae_height, _ = calculate_dimensions(self.vae_image_size, width / height)
+                vae_image_sizes.append((vae_width, vae_height))
+                processed_images.append(
+                    components.image_processor.preprocess(image=img, height=vae_height, width=vae_width)
+                )
+            block_state.processed_image = torch.stack(processed_images, dim=0).squeeze(1)
 
-            block_state.processed_image = components.image_processor.preprocess(
-                image=image, height=height, width=width
-            )
+        block_state.vae_image_sizes = vae_image_sizes
+        print(f"{block_state.vae_image_sizes=}")
 
         self.set_block_state(state, block_state)
         return components, state
@@ -920,17 +935,12 @@ class QwenImageVaeEncoderDynamicStep(ModularPipelineBlocks):
 
     @property
     def expected_components(self) -> List[ComponentSpec]:
-        components = [
-            ComponentSpec("vae", AutoencoderKLQwenImage),
-        ]
+        components = [ComponentSpec("vae", AutoencoderKLQwenImage)]
         return components
 
     @property
     def inputs(self) -> List[InputParam]:
-        inputs = [
-            InputParam(self._image_input_name, required=True),
-            InputParam("generator"),
-        ]
+        inputs = [InputParam(self._image_input_name, required=True), InputParam("generator")]
         return inputs
 
     @property

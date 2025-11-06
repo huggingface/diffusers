@@ -228,6 +228,7 @@ class QwenImageInputsDynamicStep(ModularPipelineBlocks):
         self,
         image_latent_inputs: List[str] = ["image_latents"],
         additional_batch_inputs: List[str] = [],
+        reshape_to_seq_dim: bool = False,
     ):
         """Initialize a configurable step that standardizes the inputs for the denoising step. It:\n"
 
@@ -245,6 +246,9 @@ class QwenImageInputsDynamicStep(ModularPipelineBlocks):
                 Names of additional conditional input tensors to expand batch size. These tensors will only have their
                 batch dimensions adjusted to match the final batch size. Can be a single string or list of strings.
                 Defaults to []. Examples: ["processed_mask_image"]
+            reshape_to_seq_dim: (bool, optional):
+                If the packed output should be reshaped along the sequence dimension. Example: `[2, 4096, 64]` => `[1,
+                8192, 64]`. This is needed for QwenImage Edit Plus.
 
         Examples:
             # Configure to process image_latents (default behavior) QwenImageInputsDynamicStep()
@@ -263,6 +267,7 @@ class QwenImageInputsDynamicStep(ModularPipelineBlocks):
 
         self._image_latent_inputs = image_latent_inputs
         self._additional_batch_inputs = additional_batch_inputs
+        self.reshape_to_seq_dim = reshape_to_seq_dim
         super().__init__()
 
     @property
@@ -341,6 +346,9 @@ class QwenImageInputsDynamicStep(ModularPipelineBlocks):
 
             # 2. Patchify the image latent tensor
             image_latent_tensor = components.pachifier.pack_latents(image_latent_tensor)
+            if self.reshape_to_seq_dim:
+                channels = image_latent_tensor.shape[-1]
+                image_latent_tensor = image_latent_tensor.reshape(1, -1, channels)
 
             # 3. Expand batch size
             image_latent_tensor = repeat_tensor_to_batch_size(
