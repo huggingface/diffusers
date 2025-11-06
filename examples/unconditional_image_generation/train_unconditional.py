@@ -73,7 +73,10 @@ def _ensure_three_channels(tensor: torch.Tensor) -> torch.Tensor:
 
 
 def _prepare_sample_images(images: np.ndarray, bit_depth: int):
-    """Scale NHWC float images in [0, 1] to uint8/uint16 arrays and build a TensorBoard-safe preview."""
+    """Scale NHWC float images in [0, 1] to uint8/uint16 arrays and build a TensorBoard-safe preview.
+
+    Expects float inputs with shape (N, H, W, C) and returns the scaled array plus an 8-bit preview.
+    """
     if bit_depth == 8:
         max_pixel_value = 255
         out_dtype = np.uint8
@@ -124,52 +127,50 @@ def _log_sample_images(
 
             wandb_images = []
             temp_paths = []
-            try:
-                for img16 in images_processed:
-                    if img16.dtype != np.uint16:
-                        raise ValueError(
-                            f"Expected uint16 image for 16-bit logging, received {img16.dtype}."
-                        )
-                    if img16.ndim not in {2, 3}:
-                        raise ValueError(
-                            f"Unsupported array shape for 16-bit image: {img16.shape}"
-                        )
-                    h, w = img16.shape[:2]
-                    if img16.ndim == 3:
-                        channels = img16.shape[-1]
-                        if channels == 1:
-                            array_for_pil = np.ascontiguousarray(img16.squeeze(-1))
-                            pil_image = Image.fromarray(array_for_pil, mode="I;16")
-                        elif channels in {3, 4}:
-                            mode = "RGB" if channels == 3 else "RGBA"
-                            contiguous = np.ascontiguousarray(img16)
-                            pil_image = Image.frombytes(
-                                mode,
-                                (w, h),
-                                contiguous.byteswap().tobytes(),
-                                "raw",
-                                f"{mode};16B",
-                            )
-                        else:
-                            raise ValueError(
-                                f"Unsupported channel count for 16-bit image: {channels}"
-                            )
-                    else:
-                        array_for_pil = np.ascontiguousarray(img16)
+            for img16 in images_processed:
+                if img16.dtype != np.uint16:
+                    raise ValueError(
+                        f"Expected uint16 image for 16-bit logging, received {img16.dtype}."
+                    )
+                if img16.ndim not in {2, 3}:
+                    raise ValueError(f"Unsupported array shape for 16-bit image: {img16.shape}")
+                h, w = img16.shape[:2]
+                if img16.ndim == 3:
+                    channels = img16.shape[-1]
+                    if channels == 1:
+                        array_for_pil = np.ascontiguousarray(img16.squeeze(-1))
                         pil_image = Image.fromarray(array_for_pil, mode="I;16")
+                    elif channels in {3, 4}:
+                        mode = "RGB" if channels == 3 else "RGBA"
+                        contiguous = np.ascontiguousarray(img16)
+                        pil_image = Image.frombytes(
+                            mode,
+                            (w, h),
+                            contiguous.byteswap().tobytes(),
+                            "raw",
+                            f"{mode};16B",
+                        )
+                    else:
+                        raise ValueError(f"Unsupported channel count for 16-bit image: {channels}")
+                else:
+                    array_for_pil = np.ascontiguousarray(img16)
+                    pil_image = Image.fromarray(array_for_pil, mode="I;16")
 
-                    tmp = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
-                    temp_paths.append(tmp.name)
-                    tmp.close()
-                    pil_image.save(temp_paths[-1], format="PNG")
-                    wandb_images.append(wandb.Image(temp_paths[-1]))
+                tmp = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
+                temp_paths.append(tmp.name)
+                tmp.close()
+                # wandb.Image does not accept BytesIO; a file path preserves 16-bit PNG bytes on upload.
+                pil_image.save(temp_paths[-1], format="PNG")
+                wandb_images.append(wandb.Image(temp_paths[-1]))
+
+            try:
+                tracker.log({"test_samples": wandb_images, "epoch": epoch}, step=global_step)
             finally:
                 for path in temp_paths:
                     try:
                         os.unlink(path)
                     except OSError:
                         pass
-            tracker.log({"test_samples": wandb_images, "epoch": epoch}, step=global_step)
         else:
             tracker.log(
                 {"test_samples": [wandb.Image(img) for img in images_processed], "epoch": epoch},
