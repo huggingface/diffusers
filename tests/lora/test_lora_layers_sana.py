@@ -137,6 +137,6 @@ class TestSanaLoRA(PeftLoraLoaderMixinTests):
     def test_simple_inference_with_text_lora_save_load(self):
         pass
 
-    @unittest.skipIf(IS_GITHUB_ACTIONS, reason="Skipping test inside GitHub Actions environment")
+    @pytest.mark.skipif(IS_GITHUB_ACTIONS, reason="Skipping test inside GitHub Actions environment")
     def test_layerwise_casting_inference_denoiser(self):
         return super().test_layerwise_casting_inference_denoiser()
