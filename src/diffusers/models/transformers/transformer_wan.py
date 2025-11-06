@@ -20,7 +20,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from ...configuration_utils import ConfigMixin, register_to_config
-from ...hooks.context_parallel import EquipartitionSharder
 from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
 from ...utils import USE_PEFT_BACKEND, deprecate, logging, scale_lora_layers, unscale_lora_layers
 from ...utils.torch_utils import maybe_allow_in_graph
@@ -556,6 +555,9 @@ class WanTransformer3DModel(
             "encoder_hidden_states": ContextParallelInput(split_dim=1, expected_dims=3, split_output=False),
         },
         "proj_out": ContextParallelOutput(gather_dim=1, expected_dims=3),
+        "": {
+            "timestep": ContextParallelInput(split_dim=1, expected_dims=2, split_output=False),
+        },
     }
 
     @register_to_config
@@ -661,15 +663,6 @@ class WanTransformer3DModel(
             timestep, encoder_hidden_states, encoder_hidden_states_image, timestep_seq_len=ts_seq_len
         )
         if ts_seq_len is not None:
-             # Check if running under context parallel and split along seq_len dimension
-            if hasattr(self, '_parallel_config') and self._parallel_config is not None:
-                cp_config = getattr(self._parallel_config, 'context_parallel_config', None)
-                if cp_config is not None and cp_config._world_size > 1:
-                    timestep_proj = EquipartitionSharder.shard(
-                        timestep_proj,
-                        dim=1,
-                        mesh=cp_config._flattened_mesh
-                    )
             # batch_size, seq_len, 6, inner_dim
             timestep_proj = timestep_proj.unflatten(2, (6, -1))
         else:
@@ -691,15 +684,6 @@ class WanTransformer3DModel(
 
         # 5. Output norm, projection & unpatchify
         if temb.ndim == 3:
-             # Check if running under context parallel and split along seq_len dimension
-            if hasattr(self, '_parallel_config') and self._parallel_config is not None:
-                cp_config = getattr(self._parallel_config, 'context_parallel_config', None)
-                if cp_config is not None and cp_config._world_size > 1:
-                    temb = EquipartitionSharder.shard(
-                        temb,
-                        dim=1,
-                        mesh=cp_config._flattened_mesh
-                    )
             # batch_size, seq_len, inner_dim (wan 2.2 ti2v)
             shift, scale = (self.scale_shift_table.unsqueeze(0).to(temb.device) + temb.unsqueeze(2)).chunk(2, dim=2)
             shift = shift.squeeze(2)
