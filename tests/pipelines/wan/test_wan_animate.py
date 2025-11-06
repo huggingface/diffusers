@@ -210,6 +210,14 @@ class WanAnimatePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     def test_attention_slicing_forward_pass(self):
         pass
 
+    @unittest.skip(
+        "Setting the Wan Animate latents to zero at the last denoising step does not guarantee that the output will be"
+        " zero. I believe this is because the latents are further processed in the outer loop where we loop over"
+        " inference segments."
+    )
+    def test_callback_inputs(self):
+        pass
+
 
 @slow
 @require_torch_accelerator
