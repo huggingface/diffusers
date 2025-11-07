@@ -89,13 +89,13 @@ class WanTextEncoderStep(ModularPipelineBlocks):
             OutputParam(
                 "prompt_embeds",
                 type_hint=torch.Tensor,
-                kwargs_type="guider_input_fields",
+                kwargs_type="denoiser_input_fields",
                 description="text embeddings used to guide the image generation",
             ),
             OutputParam(
                 "negative_prompt_embeds",
                 type_hint=torch.Tensor,
-                kwargs_type="guider_input_fields",
+                kwargs_type="denoiser_input_fields",
                 description="negative text embeddings used to guide the image generation",
             ),
         ]

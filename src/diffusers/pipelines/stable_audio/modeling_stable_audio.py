@@ -18,7 +18,6 @@ from typing import Optional
 
 import torch
 import torch.nn as nn
-import torch.utils.checkpoint
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...models.modeling_utils import ModelMixin

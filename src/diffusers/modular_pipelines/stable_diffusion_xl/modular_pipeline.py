@@ -47,12 +47,10 @@ class StableDiffusionXLModularPipeline(
     """
     A ModularPipeline for Stable Diffusion XL.
 
-    <Tip warning={true}>
-
-        This is an experimental feature and is likely to change in the future.
-
-    </Tip>
+    > [!WARNING] > This is an experimental feature and is likely to change in the future.
     """
+
+    default_blocks_name = "StableDiffusionXLAutoBlocks"
 
     @property
     def default_height(self):

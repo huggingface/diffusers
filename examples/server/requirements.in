@@ -7,3 +7,4 @@ prometheus_client >= 0.18.0
 prometheus-fastapi-instrumentator >= 7.0.0
 fastapi
 uvicorn
+accelerate

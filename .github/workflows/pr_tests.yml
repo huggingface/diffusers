@@ -22,7 +22,7 @@ concurrency:
 
 env:
   DIFFUSERS_IS_CI: yes
-  HF_HUB_ENABLE_HF_TRANSFER: 1
+  HF_XET_HIGH_PERFORMANCE: 1
   OMP_NUM_THREADS: 4
   MKL_NUM_THREADS: 4
   PYTEST_TIMEOUT: 60
@@ -38,7 +38,7 @@ jobs:
           python-version: "3.8"
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip
+          pip install --upgrade pip
           pip install .[quality]
       - name: Check quality
         run: make quality
@@ -58,7 +58,7 @@ jobs:
           python-version: "3.8"
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip
+          pip install --upgrade pip
           pip install .[quality]
       - name: Check repo consistency
         run: |
@@ -114,21 +114,18 @@ jobs:
 
     - name: Install dependencies
       run: |
-        python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
-        python -m uv pip install -e [quality,test]
-        pip uninstall transformers -y && python -m uv pip install -U transformers@git+https://github.com/huggingface/transformers.git --no-deps
-        pip uninstall accelerate -y && python -m uv pip install -U accelerate@git+https://github.com/huggingface/accelerate.git --no-deps
+        uv pip install -e ".[quality]"
+        uv pip uninstall transformers huggingface_hub && uv pip install --prerelease allow -U transformers@git+https://github.com/huggingface/transformers.git
+        uv pip uninstall accelerate && uv pip install -U accelerate@git+https://github.com/huggingface/accelerate.git --no-deps
 
     - name: Environment
       run: |
-        python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
         python utils/print_env.py
 
     - name: Run fast PyTorch Pipeline CPU tests
       if: ${{ matrix.config.framework == 'pytorch_pipelines' }}
       run: |
-        python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
-        python -m pytest -n 8 --max-worker-restart=0 --dist=loadfile \
+        pytest -n 8 --max-worker-restart=0 --dist=loadfile \
           -s -v -k "not Flax and not Onnx" \
           --make-reports=tests_${{ matrix.config.report }} \
           tests/pipelines
@@ -136,8 +133,7 @@ jobs:
     - name: Run fast PyTorch Model Scheduler CPU tests
       if: ${{ matrix.config.framework == 'pytorch_models' }}
       run: |
-        python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
-        python -m pytest -n 4 --max-worker-restart=0 --dist=loadfile \
+        pytest -n 4 --max-worker-restart=0 --dist=loadfile \
           -s -v -k "not Flax and not Onnx and not Dependency" \
           --make-reports=tests_${{ matrix.config.report }} \
           tests/models tests/schedulers tests/others
@@ -145,9 +141,8 @@ jobs:
     - name: Run example PyTorch CPU tests
       if: ${{ matrix.config.framework == 'pytorch_examples' }}
       run: |
-        python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
-        python -m uv pip install peft timm
-        python -m pytest -n 4 --max-worker-restart=0 --dist=loadfile \
+        uv pip install ".[training]"
+        pytest -n 4 --max-worker-restart=0 --dist=loadfile \
           --make-reports=tests_${{ matrix.config.report }} \
           examples
 
@@ -195,19 +190,16 @@ jobs:
 
     - name: Install dependencies
       run: |
-        python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
-        python -m uv pip install -e [quality,test]
+        uv pip install -e ".[quality]"
 
     - name: Environment
       run: |
-        python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
         python utils/print_env.py
 
     - name: Run Hub tests for models, schedulers, and pipelines on a staging env
       if: ${{ matrix.config.framework == 'hub_tests_pytorch' }}
       run: |
-        python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
-        HUGGINGFACE_CO_STAGING=true python -m pytest \
+        HUGGINGFACE_CO_STAGING=true pytest \
           -m "is_staging_test" \
           --make-reports=tests_${{ matrix.config.report }} \
           tests
@@ -249,27 +241,24 @@ jobs:
 
     - name: Install dependencies
       run: |
-        python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
-        python -m uv pip install -e [quality,test]
+        uv pip install -e ".[quality]"
         # TODO (sayakpaul, DN6): revisit `--no-deps`
-        python -m pip install -U peft@git+https://github.com/huggingface/peft.git --no-deps
-        python -m uv pip install -U transformers@git+https://github.com/huggingface/transformers.git --no-deps
-        python -m uv pip install -U tokenizers
-        pip uninstall accelerate -y && python -m uv pip install -U accelerate@git+https://github.com/huggingface/accelerate.git --no-deps
+        uv pip install -U peft@git+https://github.com/huggingface/peft.git --no-deps
+        uv pip install -U tokenizers
+        uv pip uninstall accelerate && uv pip install -U accelerate@git+https://github.com/huggingface/accelerate.git --no-deps
+        uv pip uninstall transformers huggingface_hub && uv pip install --prerelease allow -U transformers@git+https://github.com/huggingface/transformers.git
 
     - name: Environment
       run: |
-        python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
         python utils/print_env.py
 
     - name: Run fast PyTorch LoRA tests with PEFT
       run: |
-        python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
-        python -m pytest -n 4 --max-worker-restart=0 --dist=loadfile \
+        pytest -n 4 --max-worker-restart=0 --dist=loadfile \
           -s -v \
           --make-reports=tests_peft_main \
           tests/lora/
-        python -m pytest -n 4 --max-worker-restart=0 --dist=loadfile \
+        pytest -n 4 --max-worker-restart=0 --dist=loadfile \
           -s -v \
           --make-reports=tests_models_lora_peft_main \
           tests/models/ -k "lora"

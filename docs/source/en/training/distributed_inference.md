@@ -12,17 +12,23 @@ specific language governing permissions and limitations under the License.
 
 # Distributed inference
 
-On distributed setups, you can run inference across multiple GPUs with 🤗 [Accelerate](https://huggingface.co/docs/accelerate/index) or [PyTorch Distributed](https://pytorch.org/tutorials/beginner/dist_overview.html), which is useful for generating with multiple prompts in parallel.
+Distributed inference splits the workload across multiple GPUs. It a useful technique for fitting larger models in memory and can process multiple prompts for higher throughput.
 
-This guide will show you how to use 🤗 Accelerate and PyTorch Distributed for distributed inference.
+This guide will show you how to use [Accelerate](https://huggingface.co/docs/accelerate/index) and [PyTorch Distributed](https://pytorch.org/tutorials/beginner/dist_overview.html) for distributed inference.
 
-## 🤗 Accelerate
+## Accelerate
 
-🤗 [Accelerate](https://huggingface.co/docs/accelerate/index) is a library designed to make it easy to train or run inference across distributed setups. It simplifies the process of setting up the distributed environment, allowing you to focus on your PyTorch code.
+Accelerate is a library designed to simplify inference and training on multiple accelerators by handling the setup, allowing users to focus on their PyTorch code.
 
-To begin, create a Python file and initialize an [`accelerate.PartialState`] to create a distributed environment; your setup is automatically detected so you don't need to explicitly define the `rank` or `world_size`. Move the [`DiffusionPipeline`] to `distributed_state.device` to assign a GPU to each process.
+Install Accelerate with the following command.
 
-Now use the [`~accelerate.PartialState.split_between_processes`] utility as a context manager to automatically distribute the prompts between the number of processes.
+```bash
+uv pip install accelerate
+```
+
+Initialize a [`accelerate.PartialState`] class in a Python file to create a distributed environment. The [`accelerate.PartialState`] class manages process management, device control and distribution, and process coordination.
+
+Move the [`DiffusionPipeline`] to [`accelerate.PartialState.device`] to assign a GPU to each process.
 
 ```py
 import torch
@@ -30,33 +36,34 @@ from accelerate import PartialState
 from diffusers import DiffusionPipeline
 
 pipeline = DiffusionPipeline.from_pretrained(
-    "stable-diffusion-v1-5/stable-diffusion-v1-5", torch_dtype=torch.float16, use_safetensors=True
+    "Qwen/Qwen-Image", torch_dtype=torch.float16
 )
 distributed_state = PartialState()
 pipeline.to(distributed_state.device)
+```
 
+Use the [`~accelerate.PartialState.split_between_processes`] utility as a context manager to automatically distribute the prompts between the number of processes.
+
+```py
 with distributed_state.split_between_processes(["a dog", "a cat"]) as prompt:
     result = pipeline(prompt).images[0]
     result.save(f"result_{distributed_state.process_index}.png")
 ```
 
-Use the `--num_processes` argument to specify the number of GPUs to use, and call `accelerate launch` to run the script:
+Call `accelerate launch` to run the script and use the `--num_processes` argument to set the number of GPUs to use.
 
 ```bash
 accelerate launch run_distributed.py --num_processes=2
 ```
 
-<Tip>
-
-Refer to this minimal example [script](https://gist.github.com/sayakpaul/cfaebd221820d7b43fae638b4dfa01ba) for running inference across multiple GPUs. To learn more, take a look at the [Distributed Inference with 🤗 Accelerate](https://huggingface.co/docs/accelerate/en/usage_guides/distributed_inference#distributed-inference-with-accelerate) guide.
-
-</Tip>
+> [!TIP]
+> Refer to this minimal example [script](https://gist.github.com/sayakpaul/cfaebd221820d7b43fae638b4dfa01ba) for running inference across multiple GPUs. To learn more, take a look at the [Distributed Inference with 🤗 Accelerate](https://huggingface.co/docs/accelerate/en/usage_guides/distributed_inference#distributed-inference-with-accelerate) guide.
 
 ## PyTorch Distributed
 
-PyTorch supports [`DistributedDataParallel`](https://pytorch.org/docs/stable/generated/torch.nn.parallel.DistributedDataParallel.html) which enables data parallelism.
+PyTorch [DistributedDataParallel](https://pytorch.org/docs/stable/generated/torch.nn.parallel.DistributedDataParallel.html) enables [data parallelism](https://huggingface.co/spaces/nanotron/ultrascale-playbook?section=data_parallelism), which replicates the same model on each device, to process different batches of data in parallel.
 
-To start, create a Python file and import `torch.distributed` and `torch.multiprocessing` to set up the distributed process group and to spawn the processes for inference on each GPU. You should also initialize a [`DiffusionPipeline`]:
+Import `torch.distributed` and `torch.multiprocessing` into a Python file to set up the distributed process group and to spawn the processes for inference on each GPU.
 
 ```py
 import torch
@@ -65,20 +72,20 @@ import torch.multiprocessing as mp
 
 from diffusers import DiffusionPipeline
 
-sd = DiffusionPipeline.from_pretrained(
-    "stable-diffusion-v1-5/stable-diffusion-v1-5", torch_dtype=torch.float16, use_safetensors=True
+pipeline = DiffusionPipeline.from_pretrained(
+    "Qwen/Qwen-Image", torch_dtype=torch.float16,
 )
 ```
 
-You'll want to create a function to run inference; [`init_process_group`](https://pytorch.org/docs/stable/distributed.html?highlight=init_process_group#torch.distributed.init_process_group) handles creating a distributed environment with the type of backend to use, the `rank` of the current process, and the `world_size` or the number of processes participating. If you're running inference in parallel over 2 GPUs, then the `world_size` is 2.
+Create a function for inference with [init_process_group](https://pytorch.org/docs/stable/distributed.html?highlight=init_process_group#torch.distributed.init_process_group). This method creates a distributed environment with the backend type, the `rank` of the current process, and the `world_size` or number of processes participating (for example, 2 GPUs would be `world_size=2`).
 
-Move the [`DiffusionPipeline`] to `rank` and use `get_rank` to assign a GPU to each process, where each process handles a different prompt:
+Move the pipeline to `rank` and use `get_rank` to assign a GPU to each process. Each process handles a different prompt.
 
 ```py
 def run_inference(rank, world_size):
     dist.init_process_group("nccl", rank=rank, world_size=world_size)
 
-    sd.to(rank)
+    pipeline.to(rank)
 
     if torch.distributed.get_rank() == 0:
         prompt = "a dog"
@@ -89,7 +96,7 @@ def run_inference(rank, world_size):
     image.save(f"./{'_'.join(prompt)}.png")
 ```
 
-To run the distributed inference, call [`mp.spawn`](https://pytorch.org/docs/stable/multiprocessing.html#torch.multiprocessing.spawn) to run the `run_inference` function on the number of GPUs defined in `world_size`:
+Use [mp.spawn](https://pytorch.org/docs/stable/multiprocessing.html#torch.multiprocessing.spawn) to create the number of processes defined in `world_size`.
 
 ```py
 def main():
@@ -101,31 +108,26 @@ if __name__ == "__main__":
     main()
 ```
 
-Once you've completed the inference script, use the `--nproc_per_node` argument to specify the number of GPUs to use and call `torchrun` to run the script:
+Call `torchrun` to run the inference script and use the `--nproc_per_node` argument to set the number of GPUs to use.
 
 ```bash
 torchrun run_distributed.py --nproc_per_node=2
 ```
 
-> [!TIP]
-> You can use `device_map` within a [`DiffusionPipeline`] to distribute its model-level components on multiple devices. Refer to the [Device placement](../tutorials/inference_with_big_models#device-placement) guide to learn more.
+## device_map
 
-## Model sharding
+The `device_map` argument enables distributed inference by automatically placing model components on separate GPUs. This is especially useful when a model doesn't fit on a single GPU. You can use `device_map` to selectively load and unload the required model components at a given stage as shown in the example below (assumes two GPUs are available).
 
-Modern diffusion systems such as [Flux](../api/pipelines/flux) are very large and have multiple models. For example, [Flux.1-Dev](https://hf.co/black-forest-labs/FLUX.1-dev) is made up of two text encoders - [T5-XXL](https://hf.co/google/t5-v1_1-xxl) and [CLIP-L](https://hf.co/openai/clip-vit-large-patch14) - a [diffusion transformer](../api/models/flux_transformer), and a [VAE](../api/models/autoencoderkl). With a model this size, it can be challenging to run inference on consumer GPUs.
-
-Model sharding is a technique that distributes models across GPUs when the models don't fit on a single GPU. The example below assumes two 16GB GPUs are available for inference.
-
-Start by computing the text embeddings with the text encoders. Keep the text encoders on two GPUs by setting `device_map="balanced"`. The `balanced` strategy evenly distributes the model on all available GPUs. Use the `max_memory` parameter to allocate the maximum amount of memory for each text encoder on each GPU.
-
-> [!TIP]
-> **Only** load the text encoders for this step! The diffusion transformer and VAE are loaded in a later step to preserve memory.
+Set `device_map="balanced"` to evenly distributes the text encoders on all available GPUs. You can use the `max_memory` argument to allocate a maximum amount of memory for each text encoder. Don't load any other pipeline components to avoid memory usage.
 
 ```py
 from diffusers import FluxPipeline
 import torch
 
-prompt = "a photo of a dog with cat-like look"
+prompt = """
+cinematic film still of a cat sipping a margarita in a pool in Palm Springs, California
+highly detailed, high budget hollywood movie, cinemascope, moody, epic, gorgeous, film grain
+"""
 
 pipeline = FluxPipeline.from_pretrained(
     "black-forest-labs/FLUX.1-dev",
@@ -142,7 +144,7 @@ with torch.no_grad():
     )
 ```
 
-Once the text embeddings are computed, remove them from the GPU to make space for the diffusion transformer.
+After the text embeddings are computed, remove them from the GPU to make space for the diffusion transformer.
 
 ```py
 import gc 
@@ -162,7 +164,7 @@ del pipeline
 flush()
 ```
 
-Load the diffusion transformer next which has 12.5B parameters. This time, set `device_map="auto"` to automatically distribute the model across two 16GB GPUs. The `auto` strategy is backed by [Accelerate](https://hf.co/docs/accelerate/index) and available as a part of the [Big Model Inference](https://hf.co/docs/accelerate/concept_guides/big_model_inference) feature. It starts by distributing a model across the fastest device first (GPU) before moving to slower devices like the CPU and hard drive if needed. The trade-off of storing model parameters on slower devices is slower inference latency.
+Set `device_map="auto"` to automatically distribute the model on the two GPUs. This strategy places a model on the fastest device first before placing a model on a slower device like a CPU or hard drive if needed. The trade-off of storing model parameters on slower devices is slower inference latency.
 
 ```py
 from diffusers import AutoModel
@@ -177,9 +179,9 @@ transformer = AutoModel.from_pretrained(
 ```
 
 > [!TIP]
-> At any point, you can try `print(pipeline.hf_device_map)` to see how the various models are distributed across devices. This is useful for tracking the device placement of the models. You can also try `print(transformer.hf_device_map)` to see how the transformer model is sharded across devices.
+> Run `pipeline.hf_device_map` to see how the various models are distributed across devices. This is useful for tracking model device placement. You can also call `hf_device_map` on the transformer model to see how it is distributed.
 
-Add the transformer model to the pipeline for denoising, but set the other model-level components like the text encoders and VAE to `None` because you don't need them yet.
+Add the transformer model to the pipeline and set the `output_type="latent"` to generate the latents.
 
 ```py
 pipeline = FluxPipeline.from_pretrained(
@@ -206,21 +208,12 @@ latents = pipeline(
 ).images
 ```
 
-Remove the pipeline and transformer from memory as they're no longer needed.
+Remove the pipeline and transformer from memory and load a VAE to decode the latents. The VAE is typically small enough to be loaded on a single device.
 
 ```py
-del pipeline.transformer
-del pipeline
-
-flush()
-```
-
-Finally, decode the latents with the VAE into an image. The VAE is typically small enough to be loaded on a single GPU.
-
-```py
+import torch
 from diffusers import AutoencoderKL
 from diffusers.image_processor import VaeImageProcessor
-import torch 
 
 vae = AutoencoderKL.from_pretrained(ckpt_id, subfolder="vae", torch_dtype=torch.bfloat16).to("cuda")
 vae_scale_factor = 2 ** (len(vae.config.block_out_channels) - 1)
@@ -237,3 +230,63 @@ with torch.no_grad():
 ```
 
 By selectively loading and unloading the models you need at a given stage and sharding the largest models across multiple GPUs, it is possible to run inference with large models on consumer GPUs.
+
+## Context parallelism
+
+[Context parallelism](https://huggingface.co/spaces/nanotron/ultrascale-playbook?section=context_parallelism) splits input sequences across multiple GPUs to reduce memory usage. Each GPU processes its own slice of the sequence.
+
+Use [`~ModelMixin.set_attention_backend`] to switch to a more optimized attention backend. Refer to this [table](../optimization/attention_backends#available-backends) for a complete list of available backends.
+
+### Ring Attention
+
+Key (K) and value (V) representations communicate between devices using [Ring Attention](https://huggingface.co/papers/2310.01889). This ensures each split sees every other token's K/V. Each GPU computes attention for its local K/V and passes it to the next GPU in the ring. No single GPU holds the full sequence, which reduces communication latency.
+
+Pass a [`ContextParallelConfig`] to the `parallel_config` argument of the transformer model. The config supports the `ring_degree` argument that determines how many devices to use for Ring Attention.
+
+```py
+import torch
+from diffusers import AutoModel, QwenImagePipeline, ContextParallelConfig
+
+try:
+    torch.distributed.init_process_group("nccl")
+    rank = torch.distributed.get_rank()
+    device = torch.device("cuda", rank % torch.cuda.device_count())
+    torch.cuda.set_device(device)
+    
+    transformer = AutoModel.from_pretrained("Qwen/Qwen-Image", subfolder="transformer", torch_dtype=torch.bfloat16, parallel_config=ContextParallelConfig(ring_degree=2))
+    pipeline = QwenImagePipeline.from_pretrained("Qwen/Qwen-Image", transformer=transformer, torch_dtype=torch.bfloat16, device_map="cuda")
+    pipeline.transformer.set_attention_backend("flash")
+
+    prompt = """
+    cinematic film still of a cat sipping a margarita in a pool in Palm Springs, California
+    highly detailed, high budget hollywood movie, cinemascope, moody, epic, gorgeous, film grain
+    """
+    
+    # Must specify generator so all ranks start with same latents (or pass your own)
+    generator = torch.Generator().manual_seed(42)
+    image = pipeline(prompt, num_inference_steps=50, generator=generator).images[0]
+    
+    if rank == 0:
+        image.save("output.png")
+
+except Exception as e:
+    print(f"An error occurred: {e}")
+    torch.distributed.breakpoint()
+    raise
+
+finally:
+    if torch.distributed.is_initialized():
+        torch.distributed.destroy_process_group()
+```
+
+### Ulysses Attention
+
+[Ulysses Attention](https://huggingface.co/papers/2309.14509) splits a sequence across GPUs and performs an *all-to-all* communication (every device sends/receives data to every other device). Each GPU ends up with all tokens for only a subset of attention heads. Each GPU computes attention locally on all tokens for its head, then performs another all-to-all to regroup results by tokens for the next layer.
+
+[`ContextParallelConfig`] supports Ulysses Attention through the `ulysses_degree` argument. This determines how many devices to use for Ulysses Attention.
+
+Pass the [`ContextParallelConfig`] to [`~ModelMixin.enable_parallelism`].
+
+```py
+pipeline.transformer.enable_parallelism(config=ContextParallelConfig(ulysses_degree=2))
+```

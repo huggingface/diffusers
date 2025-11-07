@@ -500,12 +500,8 @@ class SASolverScheduler(SchedulerMixin, ConfigMixin):
         Noise_prediction is designed to discretize an integral of the noise prediction model, and data_prediction is
         designed to discretize an integral of the data prediction model.
 
-        <Tip>
-
-        The algorithm and model type are decoupled. You can use either data_prediction or noise_prediction for both
-        noise prediction and data prediction models.
-
-        </Tip>
+        > [!TIP] > The algorithm and model type are decoupled. You can use either data_prediction or noise_prediction
+        for both > noise prediction and data prediction models.
 
         Args:
             model_output (`torch.Tensor`):

@@ -203,7 +203,6 @@ class QwenImagePrepareLatentsStep(ModularPipelineBlocks):
         block_state.latents = components.pachifier.pack_latents(block_state.latents)
 
         self.set_block_state(state, block_state)
-
         return components, state
 
 
@@ -571,15 +570,14 @@ class QwenImageEditRoPEInputsStep(ModularPipelineBlocks):
 
     @property
     def description(self) -> str:
-        return "Step that prepares the RoPE inputs for denoising process. This is used in QwenImage Edit. Should be place after prepare_latents step"
+        return "Step that prepares the RoPE inputs for denoising process. This is used in QwenImage Edit. Should be placed after prepare_latents step"
 
     @property
     def inputs(self) -> List[InputParam]:
         return [
             InputParam(name="batch_size", required=True),
-            InputParam(
-                name="resized_image", required=True, type_hint=torch.Tensor, description="The resized image input"
-            ),
+            InputParam(name="image_height", required=True),
+            InputParam(name="image_width", required=True),
             InputParam(name="height", required=True),
             InputParam(name="width", required=True),
             InputParam(name="prompt_embeds_mask"),
@@ -612,10 +610,6 @@ class QwenImageEditRoPEInputsStep(ModularPipelineBlocks):
         block_state = self.get_block_state(state)
 
         # for edit, image size can be different from the target size (height/width)
-        image = (
-            block_state.resized_image[0] if isinstance(block_state.resized_image, list) else block_state.resized_image
-        )
-        image_width, image_height = image.size
 
         block_state.img_shapes = [
             [
@@ -624,7 +618,11 @@ class QwenImageEditRoPEInputsStep(ModularPipelineBlocks):
                     block_state.height // components.vae_scale_factor // 2,
                     block_state.width // components.vae_scale_factor // 2,
                 ),
-                (1, image_height // components.vae_scale_factor // 2, image_width // components.vae_scale_factor // 2),
+                (
+                    1,
+                    block_state.image_height // components.vae_scale_factor // 2,
+                    block_state.image_width // components.vae_scale_factor // 2,
+                ),
             ]
         ] * block_state.batch_size
 

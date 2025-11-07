@@ -1328,7 +1328,7 @@ model = CLIPSegForImageSegmentation.from_pretrained("CIDAS/clipseg-rd64-refined"
 
 # Load Stable Diffusion Inpainting Pipeline with custom pipeline
 pipe = DiffusionPipeline.from_pretrained(
-    "runwayml/stable-diffusion-inpainting",
+    "stable-diffusion-v1-5/stable-diffusion-inpainting",
     custom_pipeline="text_inpainting",
     segmentation_model=model,
     segmentation_processor=processor

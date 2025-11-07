@@ -97,12 +97,10 @@ class QwenImageModularPipeline(ModularPipeline, QwenImageLoraLoaderMixin):
     """
     A ModularPipeline for QwenImage.
 
-    <Tip warning={true}>
-
-        This is an experimental feature and is likely to change in the future.
-
-    </Tip>
+    > [!WARNING] > This is an experimental feature and is likely to change in the future.
     """
+
+    default_blocks_name = "QwenImageAutoBlocks"
 
     @property
     def default_height(self):
@@ -151,12 +149,10 @@ class QwenImageEditModularPipeline(ModularPipeline, QwenImageLoraLoaderMixin):
     """
     A ModularPipeline for QwenImage-Edit.
 
-    <Tip warning={true}>
-
-        This is an experimental feature and is likely to change in the future.
-
-    </Tip>
+    > [!WARNING] > This is an experimental feature and is likely to change in the future.
     """
+
+    default_blocks_name = "QwenImageEditAutoBlocks"
 
     # YiYi TODO: qwen edit should not provide default height/width, should be derived from the resized input image (after adjustment) produced by the resize step.
     @property
@@ -200,3 +196,13 @@ class QwenImageEditModularPipeline(ModularPipeline, QwenImageLoraLoaderMixin):
             requires_unconditional_embeds = self.guider._enabled and self.guider.num_conditions > 1
 
         return requires_unconditional_embeds
+
+
+class QwenImageEditPlusModularPipeline(QwenImageEditModularPipeline):
+    """
+    A ModularPipeline for QwenImage-Edit Plus.
+
+    > [!WARNING] > This is an experimental feature and is likely to change in the future.
+    """
+
+    default_blocks_name = "QwenImageEditPlusAutoBlocks"
