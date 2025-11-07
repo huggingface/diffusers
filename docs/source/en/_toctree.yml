@@ -628,6 +628,8 @@
     - sections:
       - local: api/pipelines/allegro
         title: Allegro
+      - local: api/pipelines/chronoedit
+        title: ChronoEdit
       - local: api/pipelines/cogvideox
         title: CogVideoX
       - local: api/pipelines/consisid
