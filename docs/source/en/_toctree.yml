@@ -122,7 +122,7 @@
   - local: modular_diffusers/custom_blocks
     title: Building custom blocks
   title: Modular Diffusers
-  isExpanded: false
+- isExpanded: false
   sections:
   - local: training/overview
     title: Overview
