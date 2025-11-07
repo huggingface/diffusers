@@ -785,7 +785,7 @@ class StableDiffusionReferencePipeline(
                 )
             ref_image_latents = ref_image_latents.repeat(batch_size // ref_image_latents.shape[0], 1, 1, 1)
 
-        # aligning device to prevent device errors when concating it with the latent model input
+        # aligning device to prevent device errors when concatenating it with the latent model input
         ref_image_latents = ref_image_latents.to(device=device, dtype=dtype)
         return ref_image_latents
 

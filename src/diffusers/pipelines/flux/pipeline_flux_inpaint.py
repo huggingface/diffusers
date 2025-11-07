@@ -737,7 +737,7 @@ class FluxInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FluxIPAdapterM
                 )
             masked_image_latents = masked_image_latents.repeat(batch_size // masked_image_latents.shape[0], 1, 1, 1)
 
-        # aligning device to prevent device errors when concating it with the latent model input
+        # aligning device to prevent device errors when concatenating it with the latent model input
         masked_image_latents = masked_image_latents.to(device=device, dtype=dtype)
         masked_image_latents = self._pack_latents(
             masked_image_latents,

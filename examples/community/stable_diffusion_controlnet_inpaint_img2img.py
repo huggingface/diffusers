@@ -697,7 +697,7 @@ class StableDiffusionControlNetInpaintImg2ImgPipeline(DiffusionPipeline, StableD
             torch.cat([masked_image_latents] * 2) if do_classifier_free_guidance else masked_image_latents
         )
 
-        # aligning device to prevent device errors when concating it with the latent model input
+        # aligning device to prevent device errors when concatenating it with the latent model input
         masked_image_latents = masked_image_latents.to(device=device, dtype=dtype)
         return masked_image_latents
 

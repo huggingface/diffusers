@@ -161,7 +161,7 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
 
         self.prompt_template = "\n".join(
             [
-                "<|im_start|>system\nYou are a promt engineer. Describe the video in detail.",
+                "<|im_start|>system\nYou are a prompt engineer. Describe the video in detail.",
                 "Describe how the camera moves or shakes, describe the zoom and view angle, whether it follows the objects.",
                 "Describe the location of the video, main characters or objects and their action.",
                 "Describe the dynamism of the video and presented actions.",
