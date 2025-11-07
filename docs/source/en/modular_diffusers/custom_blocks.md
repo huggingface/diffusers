@@ -13,19 +13,28 @@ specific language governing permissions and limitations under the License.
 
 # Building custom blocks
 
-[ModularPipelineBlocks](./pipeline_block) are the fundamental building blocks for a [`ModularPipeline`]. As long as they contain the appropriate inputs, outputs, and computation logic, you can customize these blocks to create custom blocks.
+[ModularPipelineBlocks](./pipeline_block) are the fundamental building blocks of a [`ModularPipeline`]. You can create custom blocks by defining their inputs, outputs, and computation logic.
 
-This guide will show you how to create and use a custom block.
+This guide demonstrates how to create and use a custom block.
 
-The project should be structured as shown below. The custom block code is contained in `block.py` and the `modular_config.json` file contains metadata for loading the block.
+## Project Structure
 
+Your custom block project should follow this structure:
 ```shell
 .
 ├── block.py
 └── modular_config.json
 ```
 
-This example creates a custom block that uses the [Florence 2](https://huggingface.co/docs/transformers/model_doc/florence2) model to process an input image and generate a mask for inpainting.
+- `block.py` contains the custom block implementation
+- `modular_config.json` contains the metadata needed to load the block
+
+## Example: Florence 2 Inpainting Block
+
+In This example we will create a custom block that uses the [Florence 2](https://huggingface.co/docs/transformers/model_doc/florence2) model to process an input image and generate a mask for inpainting.
+
+
+The first step is to define the components that the block will use. In this case, we will use the `Florence2ForConditionalGeneration` model and its corresponding processor `AutoProcessor`. When defining components, we specify the name of the component within our pipeline, model class, and provided a `pretrained_model_name_or_path` for the component if we intend to load the model weights from a specific repository on the Hub.
 
 ```py
 from typing import List, Union
@@ -44,18 +53,173 @@ from transformers import AutoProcessor, Florence2ForConditionalGeneration
 
 
 class Florence2ImageAnnotatorBlock(ModularPipelineBlocks):
+
+    # Define the expected components (models and processors) for this block
     @property
     def expected_components(self):
         return [
             ComponentSpec(
                 name="image_annotator",
                 type_hint=Florence2ForConditionalGeneration,
-                repo="florence-community/Florence-2-base-ft",
+                pretrained_model_name_or_path="florence-community/Florence-2-base-ft",
             ),
             ComponentSpec(
                 name="image_annotator_processor",
                 type_hint=AutoProcessor,
-                repo="florence-community/Florence-2-base-ft",
+                pretrained_model_name_or_path="florence-community/Florence-2-base-ft",
+            ),
+        ]
+```
+
+Next, we define the inputs and outputs of the block. The inputs include the image to be annotated, the annotation task, and the annotation prompt. The outputs include the generated mask image and annotations.
+
+```py
+from typing import List, Union
+from PIL import Image, ImageDraw
+import torch
+import numpy as np
+
+from diffusers.modular_pipelines import (
+    PipelineState,
+    ModularPipelineBlocks,
+    InputParam,
+    ComponentSpec,
+    OutputParam,
+)
+from transformers import AutoProcessor, Florence2ForConditionalGeneration
+
+
+class Florence2ImageAnnotatorBlock(ModularPipelineBlocks):
+
+    # Define the expected components (models and processors) for this block
+    @property
+    def expected_components(self):
+        return [
+            ComponentSpec(
+                name="image_annotator",
+                type_hint=Florence2ForConditionalGeneration,
+                pretrained_model_name_or_path="florence-community/Florence-2-base-ft",
+            ),
+            ComponentSpec(
+                name="image_annotator_processor",
+                type_hint=AutoProcessor,
+                pretrained_model_name_or_path="florence-community/Florence-2-base-ft",
+            ),
+        ]
+
+    @property
+    def inputs(self) -> List[InputParam]:
+        return [
+            InputParam(
+                "image",
+                type_hint=Union[Image.Image, List[Image.Image]],
+                required=True,
+                description="Image(s) to annotate",
+            ),
+            InputParam(
+                "annotation_task",
+                type_hint=Union[str, List[str]],
+                required=True,
+                default="<REFERRING_EXPRESSION_SEGMENTATION>",
+                description="""Annotation Task to perform on the image.
+                Supported Tasks:
+
+                <OD>
+                <REFERRING_EXPRESSION_SEGMENTATION>
+                <CAPTION>
+                <DETAILED_CAPTION>
+                <MORE_DETAILED_CAPTION>
+                <DENSE_REGION_CAPTION>
+                <CAPTION_TO_PHRASE_GROUNDING>
+                <OPEN_VOCABULARY_DETECTION>
+
+                """,
+            ),
+            InputParam(
+                "annotation_prompt",
+                type_hint=Union[str, List[str]],
+                required=True,
+                description="""Annotation Prompt to provide more context to the task.
+                Can be used to detect or segment out specific elements in the image
+                """,
+            ),
+            InputParam(
+                "annotation_output_type",
+                type_hint=str,
+                required=True,
+                default="mask_image",
+                description="""Output type from annotation predictions. Availabe options are
+                mask_image:
+                    -black and white mask image for the given image based on the task type
+                mask_overlay:
+                    - mask overlayed on the original image
+                bounding_box:
+                    - bounding boxes drawn on the original image
+                """,
+            ),
+            InputParam(
+                "annotation_overlay",
+                type_hint=bool,
+                required=True,
+                default=False,
+                description="",
+            ),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> List[OutputParam]:
+        return [
+            OutputParam(
+                "mask_image",
+                type_hint=Image,
+                description="Inpainting Mask for input Image(s)",
+            ),
+            OutputParam(
+                "annotations",
+                type_hint=dict,
+                description="Annotations Predictions for input Image(s)",
+            ),
+            OutputParam(
+                "image",
+                type_hint=Image,
+                description="Annotated input Image(s)",
+            ),
+        ]
+
+```
+
+Now we implement the `__call__` method, which contains the logic for processing the input image and generating the mask.
+
+```py
+from typing import List, Union
+from PIL import Image, ImageDraw
+import torch
+import numpy as np
+
+from diffusers.modular_pipelines import (
+    PipelineState,
+    ModularPipelineBlocks,
+    InputParam,
+    ComponentSpec,
+    OutputParam,
+)
+from transformers import AutoProcessor, Florence2ForConditionalGeneration
+
+
+class Florence2ImageAnnotatorBlock(ModularPipelineBlocks):
+
+    @property
+    def expected_components(self):
+        return [
+            ComponentSpec(
+                name="image_annotator",
+                type_hint=Florence2ForConditionalGeneration,
+                pretrained_model_name_or_path="florence-community/Florence-2-base-ft",
+            ),
+            ComponentSpec(
+                name="image_annotator_processor",
+                type_hint=AutoProcessor,
+                pretrained_model_name_or_path="florence-community/Florence-2-base-ft",
             ),
         ]
 
@@ -244,9 +408,10 @@ class Florence2ImageAnnotatorBlock(ModularPipelineBlocks):
         self.set_block_state(state, block_state)
 
         return components, state
+
 ```
 
-Save the custom block to the Hub, from either the CLI or with the [`push_to_hub`] method, so you can easily share and reuse it.
+Once we have defined our custom block we can save it to the Hub, using either the CLI or the [`push_to_hub`] method, so it is easy to share and reuse.
 
 <hfoptions id="share">
 <hfoption id="hf CLI">
@@ -318,7 +483,7 @@ output[0].save("florence-inpainting.png")
 
 ## Editing Custom Blocks
 
-By default, custom blocks are saved in your cache directory. To download and edit a custom block you can use the `local_dir` argument to save the block to a specific folder.
+By default, custom blocks are saved in your cache directory. Use the `local_dir` argument to download and edit a custom block in a specific folder.
 
 ```py
 import torch
@@ -330,4 +495,4 @@ from diffusers.utils import load_image
 image_annotator_block = ModularPipelineBlocks.from_pretrained("diffusers/florence-2-custom-block", trust_remote_code=True, local_dir="/my-local-folder")
 ```
 
-Any changes made to the block files to the blocks in this file will be reflected when you load the block again.
+Any changes made to the block files in this folder will be reflected when you load the block again.
