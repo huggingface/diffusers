@@ -1168,6 +1168,10 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
             start += effective_segment_length
             end += effective_segment_length
 
+            # Reset scheduler timesteps / state for next denoising loop
+            self.scheduler.set_timesteps(num_inference_steps, device=device)
+            timesteps = self.scheduler.timesteps
+
         self._current_timestep = None
         assert start + prev_segment_conditioning_frames >= cond_video_frames
 

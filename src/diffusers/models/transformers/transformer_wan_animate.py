@@ -347,6 +347,7 @@ class WanAnimateFaceEncoder(nn.Module):
         pad_mode: str = "replicate",
     ):
         super().__init__()
+        self.num_heads = num_heads
         self.time_causal_padding = (kernel_size - 1, 0)
         self.pad_mode = pad_mode
 
@@ -365,13 +366,13 @@ class WanAnimateFaceEncoder(nn.Module):
         self.padding_tokens = nn.Parameter(torch.zeros(1, 1, 1, out_dim))
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        batch_size, _, channels = x.shape
+        batch_size = x.shape[0]
 
         # Reshape to channels-first to apply causal Conv1d over frame dim
         x = x.permute(0, 2, 1)
         x = F.pad(x, self.time_causal_padding, mode=self.pad_mode)
         x = self.conv1_local(x)  # [B, C, T_padded] --> [B, N * C, T]
-        x = x.unflatten(1, (-1, channels)).flatten(0, 1)  # [B, N * C, T] --> [B * N, C, T]
+        x = x.unflatten(1, (self.num_heads, -1)).flatten(0, 1)  # [B, N * C, T] --> [B * N, C, T]
         # Reshape back to channels-last to apply LayerNorm over channel dim
         x = x.permute(0, 2, 1)
         x = self.norm1(x)
