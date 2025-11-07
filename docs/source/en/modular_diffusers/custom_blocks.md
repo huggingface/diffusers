@@ -15,6 +15,10 @@ specific language governing permissions and limitations under the License.
 
 [ModularPipelineBlocks](./pipeline_block) are the fundamental building blocks of a [`ModularPipeline`]. You can create custom blocks by defining their inputs, outputs, and computation logic. This guide demonstrates how to create and use a custom block.
 
+<Tip>
+You can find examples of different types of custom blocks in the [Modular Diffusers Custom Blocks collection](https://huggingface.co/collections/diffusers/modular-diffusers-custom-blocks)
+</Tip>
+
 ## Project Structure
 
 Your custom block project should use the following structure:
