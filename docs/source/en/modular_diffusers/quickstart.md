@@ -183,7 +183,7 @@ from diffusers.modular_pipelines import ComponentsManager
 components = ComponentManager()
 
 dd_pipeline = dd_blocks.init_pipeline("YiYiXu/modular-demo-auto", components_manager=components, collection="diffdiff")
-dd_pipeline.load_default_componenets(torch_dtype=torch.float16)
+dd_pipeline.load_componenets(torch_dtype=torch.float16)
 dd_pipeline.to("cuda")
 ```
 
