@@ -237,7 +237,7 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
         self.vae_scale_factor_spatial = self.vae.config.scale_factor_spatial if getattr(self, "vae", None) else 8
         self.video_processor = VideoProcessor(vae_scale_factor=self.vae_scale_factor_spatial)
         self.video_processor_for_mask = VideoProcessor(
-            vae_scale_factor=self.vae_scale_factor_spatial, do_normalize=False
+            vae_scale_factor=self.vae_scale_factor_spatial, do_normalize=False, do_convert_grayscale=True
         )
         self.vae_image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor_spatial)
         self.image_processor = image_processor
