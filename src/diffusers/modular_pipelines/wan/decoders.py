@@ -51,12 +51,6 @@ class WanDecodeStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> List[Tuple[str, Any]]:
         return [
-            InputParam("output_type", default="pil"),
-        ]
-
-    @property
-    def intermediate_inputs(self) -> List[str]:
-        return [
             InputParam(
                 "latents",
                 required=True,
@@ -80,24 +74,21 @@ class WanDecodeStep(ModularPipelineBlocks):
         block_state = self.get_block_state(state)
         vae_dtype = components.vae.dtype
 
-        if not block_state.output_type == "latent":
-            latents = block_state.latents
-            latents_mean = (
-                torch.tensor(components.vae.config.latents_mean)
-                .view(1, components.vae.config.z_dim, 1, 1, 1)
-                .to(latents.device, latents.dtype)
-            )
-            latents_std = 1.0 / torch.tensor(components.vae.config.latents_std).view(
-                1, components.vae.config.z_dim, 1, 1, 1
-            ).to(latents.device, latents.dtype)
-            latents = latents / latents_std + latents_mean
-            latents = latents.to(vae_dtype)
-            block_state.videos = components.vae.decode(latents, return_dict=False)[0]
-        else:
-            block_state.videos = block_state.latents
+        latents = block_state.latents
+        latents_mean = (
+            torch.tensor(components.vae.config.latents_mean)
+            .view(1, components.vae.config.z_dim, 1, 1, 1)
+            .to(latents.device, latents.dtype)
+        )
+        latents_std = 1.0 / torch.tensor(components.vae.config.latents_std).view(
+            1, components.vae.config.z_dim, 1, 1, 1
+        ).to(latents.device, latents.dtype)
+        latents = latents / latents_std + latents_mean
+        latents = latents.to(vae_dtype)
+        block_state.videos = components.vae.decode(latents, return_dict=False)[0]
 
         block_state.videos = components.video_processor.postprocess_video(
-            block_state.videos, output_type=block_state.output_type
+            block_state.videos, output_type="np"
         )
 
         self.set_block_state(state, block_state)

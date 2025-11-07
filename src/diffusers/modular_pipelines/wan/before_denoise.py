@@ -112,11 +112,6 @@ class WanInputStep(ModularPipelineBlocks):
     def inputs(self) -> List[InputParam]:
         return [
             InputParam("num_videos_per_prompt", default=1),
-        ]
-
-    @property
-    def intermediate_inputs(self) -> List[str]:
-        return [
             InputParam(
                 "prompt_embeds",
                 required=True,
@@ -142,18 +137,6 @@ class WanInputStep(ModularPipelineBlocks):
                 "dtype",
                 type_hint=torch.dtype,
                 description="Data type of model tensor inputs (determined by `prompt_embeds`)",
-            ),
-            OutputParam(
-                "prompt_embeds",
-                type_hint=torch.Tensor,
-                kwargs_type="denoiser_input_fields",  # already in intermedites state but declare here again for denoiser_input_fields
-                description="text embeddings used to guide the image generation",
-            ),
-            OutputParam(
-                "negative_prompt_embeds",
-                type_hint=torch.Tensor,
-                kwargs_type="denoiser_input_fields",  # already in intermedites state but declare here again for denoiser_input_fields
-                description="negative text embeddings used to guide the image generation",
             ),
         ]
 
@@ -215,26 +198,16 @@ class WanSetTimestepsStep(ModularPipelineBlocks):
             InputParam("sigmas"),
         ]
 
-    @property
-    def intermediate_outputs(self) -> List[OutputParam]:
-        return [
-            OutputParam("timesteps", type_hint=torch.Tensor, description="The timesteps to use for inference"),
-            OutputParam(
-                "num_inference_steps",
-                type_hint=int,
-                description="The number of denoising steps to perform at inference time",
-            ),
-        ]
 
     @torch.no_grad()
     def __call__(self, components: WanModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
-        block_state.device = components._execution_device
+        device = components._execution_device
 
         block_state.timesteps, block_state.num_inference_steps = retrieve_timesteps(
             components.scheduler,
             block_state.num_inference_steps,
-            block_state.device,
+            device,
             block_state.timesteps,
             block_state.sigmas,
         )
@@ -245,10 +218,6 @@ class WanSetTimestepsStep(ModularPipelineBlocks):
 
 class WanPrepareLatentsStep(ModularPipelineBlocks):
     model_name = "wan"
-
-    @property
-    def expected_components(self) -> List[ComponentSpec]:
-        return []
 
     @property
     def description(self) -> str:
@@ -262,11 +231,6 @@ class WanPrepareLatentsStep(ModularPipelineBlocks):
             InputParam("num_frames", type_hint=int),
             InputParam("latents", type_hint=Optional[torch.Tensor]),
             InputParam("num_videos_per_prompt", type_hint=int, default=1),
-        ]
-
-    @property
-    def intermediate_inputs(self) -> List[InputParam]:
-        return [
             InputParam("generator"),
             InputParam(
                 "batch_size",
@@ -337,27 +301,26 @@ class WanPrepareLatentsStep(ModularPipelineBlocks):
     @torch.no_grad()
     def __call__(self, components: WanModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
+        self.check_inputs(components, block_state)
+
+        device = components._execution_device
+        dtype = torch.float32  # Wan latents should be torch.float32 for best quality
 
         block_state.height = block_state.height or components.default_height
         block_state.width = block_state.width or components.default_width
         block_state.num_frames = block_state.num_frames or components.default_num_frames
-        block_state.device = components._execution_device
-        block_state.dtype = torch.float32  # Wan latents should be torch.float32 for best quality
-        block_state.num_channels_latents = components.num_channels_latents
-
-        self.check_inputs(components, block_state)
 
         block_state.latents = self.prepare_latents(
             components,
-            block_state.batch_size * block_state.num_videos_per_prompt,
-            block_state.num_channels_latents,
-            block_state.height,
-            block_state.width,
-            block_state.num_frames,
-            block_state.dtype,
-            block_state.device,
-            block_state.generator,
-            block_state.latents,
+            batch_size=block_state.batch_size * block_state.num_videos_per_prompt,
+            num_channels_latents=components.num_channels_latents,
+            height=block_state.height,
+            width=block_state.width,
+            num_frames=block_state.num_frames,
+            dtype=dtype,
+            device=device,
+            generator=block_state.generator,
+            latents=block_state.latents,
         )
 
         self.set_block_state(state, block_state)

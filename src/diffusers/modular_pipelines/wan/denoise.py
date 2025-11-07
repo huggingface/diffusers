@@ -27,11 +27,12 @@ from ..modular_pipeline import (
     ModularPipelineBlocks,
     PipelineState,
 )
-from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
+from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam, ConfigSpec
 from .modular_pipeline import WanModularPipeline
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
 
 
 class WanLoopDenoiser(ModularPipelineBlocks):
@@ -61,11 +62,6 @@ class WanLoopDenoiser(ModularPipelineBlocks):
     def inputs(self) -> List[Tuple[str, Any]]:
         return [
             InputParam("attention_kwargs"),
-        ]
-
-    @property
-    def intermediate_inputs(self) -> List[str]:
-        return [
             InputParam(
                 "latents",
                 required=True,
@@ -78,14 +74,8 @@ class WanLoopDenoiser(ModularPipelineBlocks):
                 type_hint=int,
                 description="The number of inference steps to use for the denoising process. Can be generated in set_timesteps step.",
             ),
-            InputParam(
-                kwargs_type="denoiser_input_fields",
-                description=(
-                    "All conditional model inputs that need to be prepared with guider. "
-                    "It should contain prompt_embeds/negative_prompt_embeds. "
-                    "Please add `kwargs_type=denoiser_input_fields` to their parameter spec (`OutputParam`) when they are created and added to the pipeline state"
-                ),
-            ),
+            InputParam("prompt_embeds", required=True, type_hint=torch.Tensor),
+            InputParam("negative_prompt_embeds", required=True, type_hint=torch.Tensor),
         ]
 
     @torch.no_grad()
@@ -95,10 +85,7 @@ class WanLoopDenoiser(ModularPipelineBlocks):
         #  Map the keys we'll see on each `guider_state_batch` (e.g. guider_state_batch.prompt_embeds)
         #  to the corresponding (cond, uncond) fields on block_state. (e.g. block_state.prompt_embeds, block_state.negative_prompt_embeds)
         guider_inputs = {
-            "prompt_embeds": (
-                getattr(block_state, "prompt_embeds", None),
-                getattr(block_state, "negative_prompt_embeds", None),
-            ),
+            "encoder_hidden_states": (block_state.prompt_embeds, block_state.negative_prompt_embeds),
         }
         transformer_dtype = components.transformer.dtype
 
@@ -118,16 +105,15 @@ class WanLoopDenoiser(ModularPipelineBlocks):
         for guider_state_batch in guider_state:
             components.guider.prepare_models(components.transformer)
             cond_kwargs = {input_name: getattr(guider_state_batch, input_name) for input_name in guider_inputs.keys()}
-            prompt_embeds = cond_kwargs.pop("prompt_embeds")
 
             # Predict the noise residual
             # store the noise_pred in guider_state_batch so that we can apply guidance across all batches
             guider_state_batch.noise_pred = components.transformer(
                 hidden_states=block_state.latents.to(transformer_dtype),
-                timestep=t.flatten(),
-                encoder_hidden_states=prompt_embeds,
+                timestep=t.expand(block_state.latents.shape[0]).to(block_state.latents.dtype),
                 attention_kwargs=block_state.attention_kwargs,
                 return_dict=False,
+                **cond_kwargs,
             )[0]
             components.guider.cleanup_models(components.transformer)
 
@@ -154,19 +140,6 @@ class WanLoopAfterDenoiser(ModularPipelineBlocks):
             "object (e.g. `WanDenoiseLoopWrapper`)"
         )
 
-    @property
-    def inputs(self) -> List[Tuple[str, Any]]:
-        return []
-
-    @property
-    def intermediate_inputs(self) -> List[str]:
-        return [
-            InputParam("generator"),
-        ]
-
-    @property
-    def intermediate_outputs(self) -> List[OutputParam]:
-        return [OutputParam("latents", type_hint=torch.Tensor, description="The denoised latents")]
 
     @torch.no_grad()
     def __call__(self, components: WanModularPipeline, block_state: BlockState, i: int, t: torch.Tensor):
@@ -198,18 +171,11 @@ class WanDenoiseLoopWrapper(LoopSequentialPipelineBlocks):
     @property
     def loop_expected_components(self) -> List[ComponentSpec]:
         return [
-            ComponentSpec(
-                "guider",
-                ClassifierFreeGuidance,
-                config=FrozenDict({"guidance_scale": 5.0}),
-                default_creation_method="from_config",
-            ),
             ComponentSpec("scheduler", UniPCMultistepScheduler),
-            ComponentSpec("transformer", WanTransformer3DModel),
         ]
 
     @property
-    def loop_intermediate_inputs(self) -> List[InputParam]:
+    def loop_inputs(self) -> List[InputParam]:
         return [
             InputParam(
                 "timesteps",
@@ -246,6 +212,81 @@ class WanDenoiseLoopWrapper(LoopSequentialPipelineBlocks):
         return components, state
 
 
+# class Wan22DenoiseLoopWrapper(LoopSequentialPipelineBlocks):
+#     model_name = "wan"
+
+#     @property
+#     def description(self) -> str:
+#         return (
+#             "Pipeline block that iteratively denoise the latents over `timesteps`. "
+#             "The specific steps with each iteration can be customized with `sub_blocks` attributes"
+#         )
+
+#     @property
+#     def loop_expected_configs(self) -> List[ConfigSpec]:
+#         return [
+#             ConfigSpec(
+#                 "boundary_ratio",
+#                 type_hint=float,
+#                 description="The ratio of the total timesteps to use as the boundary for switching between transformers in two-stage denoising.",
+#             ),
+#         ]
+
+#     @property
+#     def loop_expected_components(self) -> List[ComponentSpec]:
+#         return [
+#             ComponentSpec("scheduler", UniPCMultistepScheduler),
+#         ]
+
+#     @property
+#     def loop_inputs(self) -> List[InputParam]:
+#         return [
+#             InputParam(
+#                 "timesteps",
+#                 required=True,
+#                 type_hint=torch.Tensor,
+#                 description="The timesteps to use for the denoising process. Can be generated in set_timesteps step.",
+#             ),
+#             InputParam(
+#                 "num_inference_steps",
+#                 required=True,
+#                 type_hint=int,
+#                 description="The number of inference steps to use for the denoising process. Can be generated in set_timesteps step.",
+#             ),
+#         ]
+
+#     @torch.no_grad()
+#     def __call__(self, components: WanModularPipeline, state: PipelineState) -> PipelineState:
+#         block_state = self.get_block_state(state)
+
+#         block_state.num_warmup_steps = max(
+#             len(block_state.timesteps) - block_state.num_inference_steps * components.scheduler.order, 0
+#         )
+
+#         block_state.boundary_timestep = components.config.boundary_ratio * components.scheduler.config.num_train_timesteps
+
+#         with self.progress_bar(total=block_state.num_inference_steps) as progress_bar:
+#             for i, t in enumerate(block_state.timesteps):
+
+#                 if t > block_state.boundary_timestep:
+#                     # hieh-noise stage
+#                     block_state.current_model = components.transformer
+#                     block_state.current_guider = components.guider
+#                 else:
+#                     # low-noise stage
+#                     block_state.current_model = components.transformer_2
+#                     block_state.current_guider = components.guider_2
+#                 components, block_state = self.loop_step(components, block_state, i=i, t=t)
+#                 if i == len(block_state.timesteps) - 1 or (
+#                     (i + 1) > block_state.num_warmup_steps and (i + 1) % components.scheduler.order == 0
+#                 ):
+#                     progress_bar.update()
+
+#         self.set_block_state(state, block_state)
+
+#         return components, state
+
+
 class WanDenoiseStep(WanDenoiseLoopWrapper):
     block_classes = [
         WanLoopDenoiser,
@@ -261,5 +302,5 @@ class WanDenoiseStep(WanDenoiseLoopWrapper):
             "At each iteration, it runs blocks defined in `sub_blocks` sequentially:\n"
             " - `WanLoopDenoiser`\n"
             " - `WanLoopAfterDenoiser`\n"
-            "This block supports both text2vid tasks."
+            "This block supports text-to-video tasks."
         )

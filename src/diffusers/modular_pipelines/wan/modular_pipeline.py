@@ -86,3 +86,13 @@ class WanModularPipeline(
         if hasattr(self, "vae") and self.vae is not None:
             num_channels_latents = self.vae.config.z_dim
         return num_channels_latents
+
+
+    @property
+    def requires_unconditional_embeds(self):
+        requires_unconditional_embeds = False
+
+        if hasattr(self, "guider") and self.guider is not None:
+            requires_unconditional_embeds = self.guider._enabled and self.guider.num_conditions > 1
+
+        return requires_unconditional_embeds
