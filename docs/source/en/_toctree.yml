@@ -120,7 +120,7 @@
   - local: modular_diffusers/guiders
     title: Guiders
   - local: modular_diffusers/custom_blocks
-    title: Building custom blocks
+    title: Building Custom Blocks
   title: Modular Diffusers
 - isExpanded: false
   sections:

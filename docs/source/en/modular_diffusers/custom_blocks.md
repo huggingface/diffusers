@@ -11,15 +11,14 @@ specific language governing permissions and limitations under the License.
 -->
 
 
-# Building custom blocks
+# Building Custom Blocks
 
-[ModularPipelineBlocks](./pipeline_block) are the fundamental building blocks of a [`ModularPipeline`]. You can create custom blocks by defining their inputs, outputs, and computation logic.
-
-This guide demonstrates how to create and use a custom block.
+[ModularPipelineBlocks](./pipeline_block) are the fundamental building blocks of a [`ModularPipeline`]. You can create custom blocks by defining their inputs, outputs, and computation logic. This guide demonstrates how to create and use a custom block.
 
 ## Project Structure
 
-Your custom block project should follow this structure:
+Your custom block project should use the following structure:
+
 ```shell
 .
 ├── block.py
@@ -31,30 +30,21 @@ Your custom block project should follow this structure:
 
 ## Example: Florence 2 Inpainting Block
 
-In This example we will create a custom block that uses the [Florence 2](https://huggingface.co/docs/transformers/model_doc/florence2) model to process an input image and generate a mask for inpainting.
+In this example we will create a custom block that uses the [Florence 2](https://huggingface.co/docs/transformers/model_doc/florence2) model to process an input image and generate a mask for inpainting.
 
-
-The first step is to define the components that the block will use. In this case, we will use the `Florence2ForConditionalGeneration` model and its corresponding processor `AutoProcessor`. When defining components, we specify the name of the component within our pipeline, model class, and provided a `pretrained_model_name_or_path` for the component if we intend to load the model weights from a specific repository on the Hub.
+The first step is to define the components that the block will use. In this case, we will need to use the `Florence2ForConditionalGeneration` model and its corresponding processor `AutoProcessor`. When defining components, we must specify the name of the component within our pipeline, model class via `type_hint`, and provide a `pretrained_model_name_or_path` for the component if we intend to load the model weights from a specific repository on the Hub.
 
 ```py
-from typing import List, Union
-from PIL import Image, ImageDraw
-import torch
-import numpy as np
-
+# Inside block.py
 from diffusers.modular_pipelines import (
-    PipelineState,
     ModularPipelineBlocks,
-    InputParam,
     ComponentSpec,
-    OutputParam,
 )
 from transformers import AutoProcessor, Florence2ForConditionalGeneration
 
 
 class Florence2ImageAnnotatorBlock(ModularPipelineBlocks):
 
-    # Define the expected components (models and processors) for this block
     @property
     def expected_components(self):
         return [
@@ -91,7 +81,6 @@ from transformers import AutoProcessor, Florence2ForConditionalGeneration
 
 class Florence2ImageAnnotatorBlock(ModularPipelineBlocks):
 
-    # Define the expected components (models and processors) for this block
     @property
     def expected_components(self):
         return [
@@ -411,7 +400,7 @@ class Florence2ImageAnnotatorBlock(ModularPipelineBlocks):
 
 ```
 
-Once we have defined our custom block we can save it to the Hub, using either the CLI or the [`push_to_hub`] method, so it is easy to share and reuse.
+Once we have defined our custom block, we can save it to the Hub, using either the CLI or the [`push_to_hub`] method. This will make it easy to share and reuse our custom block with other pipelines.
 
 <hfoptions id="share">
 <hfoption id="hf CLI">
@@ -438,6 +427,8 @@ block.push_to_hub("<your repo id>")
 </hfoption>
 </hfoptions>
 
+## Using Custom Blocks
+
 Load the custom block with [`~ModularPipelineBlocks.from_pretrained`] and set `trust_remote_code=True`.
 
 ```py
@@ -447,7 +438,7 @@ from diffusers.modular_pipelines.stable_diffusion_xl import INPAINT_BLOCKS
 from diffusers.utils import load_image
 
 # Fetch the Florence2 image annotator block that will create our mask
-image_annotator_block = ModularPipelineBlocks.from_pretrained("diffusers/florence-2-custom-block", }}}trust_remote_code=True)
+image_annotator_block = ModularPipelineBlocks.from_pretrained("diffusers/florence-2-custom-block", trust_remote_code=True)
 
 my_blocks = INPAINT_BLOCKS.copy()
 # insert the annotation block before the image encoding step
