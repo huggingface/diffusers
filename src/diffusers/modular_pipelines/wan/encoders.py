@@ -383,7 +383,7 @@ class WanImageEncoderStep(ModularPipelineBlocks):
 
     @property
     def description(self) -> str:
-        return "Image Encoder step that generate image_embeds to guide the video generation"
+        return "Image Encoder step that generate image_embeds based on first frame image to guide the video generation"
 
     @property
     def expected_components(self) -> List[ComponentSpec]:
@@ -423,12 +423,59 @@ class WanImageEncoderStep(ModularPipelineBlocks):
         return components, state
 
 
+class WanFirstLastFrameImageEncoderStep(ModularPipelineBlocks):
+    model_name = "wan"
+
+    @property
+    def description(self) -> str:
+        return "Image Encoder step that generate image_embeds based on first and last frame images to guide the video generation"
+
+    @property
+    def expected_components(self) -> List[ComponentSpec]:
+        return [
+            ComponentSpec("image_processor", CLIPImageProcessor),
+            ComponentSpec("image_encoder", CLIPVisionModel),
+        ]
+
+    @property
+    def inputs(self) -> List[InputParam]:
+        return [
+            InputParam("resized_image", type_hint=PIL.Image.Image, required=True),
+            InputParam("resized_last_image", type_hint=PIL.Image.Image, required=True),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> List[OutputParam]:
+        return [
+            OutputParam("image_embeds", type_hint=torch.Tensor, description="The image embeddings"),
+        ]
+
+
+    def __call__(self, components: WanModularPipeline, state: PipelineState) -> PipelineState:
+        block_state = self.get_block_state(state)
+
+        device = components._execution_device
+        
+        first_frame_image = block_state.resized_image
+        last_frame_image = block_state.resized_last_image
+
+        image_embeds = encode_image(
+            image_processor=components.image_processor,
+            image_encoder=components.image_encoder,
+            image=[first_frame_image, last_frame_image],
+            device=device,
+        )
+        block_state.image_embeds = image_embeds
+        self.set_block_state(state, block_state)
+        return components, state
+
+
 class WanVaeImageEncoderStep(ModularPipelineBlocks):
     model_name = "wan"
 
     @property
     def description(self) -> str:
-        return "Vae Image Encoder step that generate condition_latents to guide the video generation"
+        return "Vae Image Encoder step that generate condition_latents based on first frame image to guide the video generation"
 
     @property
     def expected_components(self) -> List[ComponentSpec]:
@@ -450,7 +497,7 @@ class WanVaeImageEncoderStep(ModularPipelineBlocks):
     @property
     def intermediate_outputs(self) -> List[OutputParam]:
         return [
-            OutputParam("condition_latents", type_hint=torch.Tensor, description="The condition latents"),
+            OutputParam("first_frame_latents", type_hint=torch.Tensor, description="video latent representation with the first frame image condition"),
         ]
     
     @staticmethod
@@ -491,7 +538,93 @@ class WanVaeImageEncoderStep(ModularPipelineBlocks):
             [image_tensor, image_tensor.new_zeros(image_tensor.shape[0], image_tensor.shape[1], num_frames - 1, height, width)], dim=2
         ).to(device=device, dtype=dtype)
 
-        block_state.condition_latents = encode_vae_image(
+        block_state.first_frame_latents = encode_vae_image(
+            video_tensor=video_tensor,
+            vae=components.vae,
+            generator=block_state.generator,
+            device=device,
+            dtype=dtype,
+            latent_channels=components.num_channels_latents,
+        )
+
+        self.set_block_state(state, block_state)
+        return components, state
+
+
+class WanFirstLastFrameVaeImageEncoderStep(ModularPipelineBlocks):
+    model_name = "wan"
+
+    @property
+    def description(self) -> str:
+        return "Vae Image Encoder step that generate condition_latents based on first and last frame images to guide the video generation"
+
+    @property
+    def expected_components(self) -> List[ComponentSpec]:
+        return [
+            ComponentSpec("vae", AutoencoderKLWan),
+            ComponentSpec("video_processor", VideoProcessor, config=FrozenDict({"vae_scale_factor": 8}), default_creation_method="from_config"),
+        ]
+    
+    @property
+    def inputs(self) -> List[InputParam]:
+        return [
+            InputParam("resized_image", type_hint=PIL.Image.Image, required=True),
+            InputParam("resized_last_image", type_hint=PIL.Image.Image, required=True),
+            InputParam("height"),
+            InputParam("width"),
+            InputParam("num_frames"),
+            InputParam("generator"),
+        ]
+    
+    @property
+    def intermediate_outputs(self) -> List[OutputParam]:
+        return [
+            OutputParam("first_last_frame_latents", type_hint=torch.Tensor, description="video latent representation with the first and last frame images condition"),
+        ]
+    
+    @staticmethod
+    def check_inputs(components, block_state):
+        if (block_state.height is not None and block_state.height % components.vae_scale_factor_spatial != 0) or (
+            block_state.width is not None and block_state.width % components.vae_scale_factor_spatial != 0
+        ):
+            raise ValueError(
+                f"`height` and `width` have to be divisible by {components.vae_scale_factor_spatial} but are {block_state.height} and {block_state.width}."
+            )
+        if block_state.num_frames is not None and (
+            block_state.num_frames < 1 or (block_state.num_frames - 1) % components.vae_scale_factor_temporal != 0
+        ):
+            raise ValueError(
+                f"`num_frames` has to be greater than 0, and (num_frames - 1) must be divisible by {components.vae_scale_factor_temporal}, but got {block_state.num_frames}."
+            )   
+    
+    def __call__(self, components: WanModularPipeline, state: PipelineState) -> PipelineState:
+        block_state = self.get_block_state(state)
+        self.check_inputs(components, block_state)
+
+        first_frame_image = block_state.resized_image
+        last_frame_image = block_state.resized_last_image
+
+        device = components._execution_device
+        dtype = torch.float32
+
+        height = block_state.height or components.default_height
+        width = block_state.width or components.default_width
+        num_frames = block_state.num_frames or components.default_num_frames
+
+        first_image_tensor = components.video_processor.preprocess(
+            first_frame_image, height=height, width=width).to(device=device, dtype=dtype)
+        first_image_tensor = first_image_tensor.unsqueeze(2)
+        
+        last_image_tensor = components.video_processor.preprocess(
+            last_frame_image, height=height, width=width).to(device=device, dtype=dtype)
+        
+        last_image_tensor = last_image_tensor.unsqueeze(2)
+
+        video_tensor = torch.cat(
+            [first_image_tensor, first_image_tensor.new_zeros(first_image_tensor.shape[0], first_image_tensor.shape[1], num_frames - 2, height, width), last_image_tensor], dim=2
+        ).to(device=device, dtype=dtype)
+
+        block_state.first_last_frame_latents = encode_vae_image(
             video_tensor=video_tensor,
             vae=components.vae,
             generator=block_state.generator,

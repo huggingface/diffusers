@@ -54,12 +54,18 @@ class WanLoopBeforeDenoiser(ModularPipelineBlocks):
                 type_hint=torch.Tensor,
                 description="The initial latents to use for the denoising process. Can be generated in prepare_latent step.",
             ),
+            InputParam(
+                "dtype",
+                required=True,
+                type_hint=torch.dtype,
+                description="The dtype of the model inputs. Can be generated in input step.",
+            ),
         ]
     
 
     @torch.no_grad()
     def __call__(self, components: WanModularPipeline, block_state: BlockState, i: int, t: torch.Tensor):
-        block_state.latent_model_input = block_state.latents
+        block_state.latent_model_input = block_state.latents.to(block_state.dtype)
         return components, block_state
 
 
@@ -84,17 +90,66 @@ class WanImage2VideoLoopBeforeDenoiser(ModularPipelineBlocks):
                 description="The initial latents to use for the denoising process. Can be generated in prepare_latent step.",
             ),
             InputParam(
-                "condition_latents",
+                "first_frame_latents",
                 required=True,
                 type_hint=torch.Tensor,
-                description="The condition latents to use for the denoising process. Can be generated in prepare_condition_latents step.",
+                description="The first frame latents to use for the denoising process. Can be generated in prepare_first_frame_latents step.",
+            ),
+            InputParam(
+                "dtype",
+                required=True,
+                type_hint=torch.dtype,
+                description="The dtype of the model inputs. Can be generated in input step.",
             ),
         ]
 
     @torch.no_grad()
     def __call__(self, components: WanModularPipeline, block_state: BlockState, i: int, t: torch.Tensor):
-        block_state.latent_model_input = torch.cat([block_state.latents, block_state.condition_latents], dim=1)
+        block_state.latent_model_input = torch.cat([block_state.latents, block_state.first_frame_latents], dim=1).to(block_state.dtype)
+        block_state.image_embeds = block_state.image_embeds.to(block_state.dtype)
         return components, block_state
+
+
+class WanFLF2VLoopBeforeDenoiser(ModularPipelineBlocks):
+    model_name = "wan"
+
+    @property
+    def description(self) -> str:
+        return (
+            "step within the denoising loop that prepares the latent input for the denoiser. "
+            "This block should be used to compose the `sub_blocks` attribute of a `LoopSequentialPipelineBlocks` "
+            "object (e.g. `WanDenoiseLoopWrapper`)"
+        )
+
+    @property
+    def inputs(self) -> List[InputParam]:
+        return [
+            InputParam(
+                "latents",
+                required=True,
+                type_hint=torch.Tensor,
+                description="The initial latents to use for the denoising process. Can be generated in prepare_latent step.",
+            ),
+            InputParam(
+                "first_last_frame_latents",
+                required=True,
+                type_hint=torch.Tensor,
+                description="The first and last frame latents to use for the denoising process. Can be generated in prepare_first_last_frame_latents step.",
+            ),
+            InputParam(
+                "dtype",
+                required=True,
+                type_hint=torch.dtype,
+                description="The dtype of the model inputs. Can be generated in input step.",
+            ),
+        ]
+
+    @torch.no_grad()
+    def __call__(self, components: WanModularPipeline, block_state: BlockState, i: int, t: torch.Tensor):
+        block_state.latent_model_input = torch.cat([block_state.latents, block_state.first_last_frame_latents], dim=1).to(block_state.dtype)
+        block_state.image_embeds = block_state.image_embeds.to(block_state.dtype)
+        return components, block_state
+
 
 class WanLoopDenoiserDynamic(ModularPipelineBlocks):
     model_name = "wan"
@@ -155,9 +210,6 @@ class WanLoopDenoiserDynamic(ModularPipelineBlocks):
     def __call__(
         self, components: WanModularPipeline, block_state: BlockState, i: int, t: torch.Tensor
     ) -> PipelineState:
-
-        transformer_dtype = components.transformer.dtype
-
         components.guider.set_state(step=i, num_inference_steps=block_state.num_inference_steps, timestep=t)
 
         # The guider splits model inputs into separate batches for conditional/unconditional predictions.
@@ -179,8 +231,8 @@ class WanLoopDenoiserDynamic(ModularPipelineBlocks):
             # Predict the noise residual
             # store the noise_pred in guider_state_batch so that we can apply guidance across all batches
             guider_state_batch.noise_pred = components.transformer(
-                hidden_states=block_state.latent_model_input.to(transformer_dtype),
-                timestep=t.expand(block_state.latent_model_input.shape[0]).to(block_state.latent_model_input.dtype),
+                hidden_states=block_state.latent_model_input.to(block_state.dtype),
+                timestep=t.expand(block_state.latent_model_input.shape[0]).to(block_state.dtype),
                 attention_kwargs=block_state.attention_kwargs,
                 return_dict=False,
                 **cond_kwargs,
@@ -300,6 +352,7 @@ class WanDenoiseStep(WanDenoiseLoopWrapper):
             "Denoise step that iteratively denoise the latents. \n"
             "Its loop logic is defined in `WanDenoiseLoopWrapper.__call__` method \n"
             "At each iteration, it runs blocks defined in `sub_blocks` sequentially:\n"
+            " - `WanLoopBeforeDenoiser`\n"
             " - `WanLoopDenoiser`\n"
             " - `WanLoopAfterDenoiser`\n"
             "This block supports text-to-video tasks."
@@ -324,7 +377,34 @@ class WanImage2VideoDenoiseStep(WanDenoiseLoopWrapper):
             "Denoise step that iteratively denoise the latents. \n"
             "Its loop logic is defined in `WanDenoiseLoopWrapper.__call__` method \n"
             "At each iteration, it runs blocks defined in `sub_blocks` sequentially:\n"
+            " - `WanImage2VideoLoopBeforeDenoiser`\n"
             " - `WanLoopDenoiser`\n"
             " - `WanLoopAfterDenoiser`\n"
             "This block supports image-to-video tasks."
+        )
+
+
+class WanFLF2VDenoiseStep(WanDenoiseLoopWrapper):
+    block_classes = [
+        WanFLF2VLoopBeforeDenoiser,
+        WanLoopDenoiserDynamic(
+            guider_input_fields={
+                "encoder_hidden_states": ("prompt_embeds", "negative_prompt_embeds"),
+                "encoder_hidden_states_image": "image_embeds",
+            }
+        ),
+        WanLoopAfterDenoiser,
+    ]
+    block_names = ["before_denoiser", "denoiser", "after_denoiser"]
+
+    @property
+    def description(self) -> str:
+        return (
+            "Denoise step that iteratively denoise the latents. \n"
+            "Its loop logic is defined in `WanDenoiseLoopWrapper.__call__` method \n"
+            "At each iteration, it runs blocks defined in `sub_blocks` sequentially:\n"
+            " - `WanFLF2VLoopBeforeDenoiser`\n"
+            " - `WanLoopDenoiser`\n"
+            " - `WanLoopAfterDenoiser`\n"
+            "This block supports FLF2V tasks."
         )

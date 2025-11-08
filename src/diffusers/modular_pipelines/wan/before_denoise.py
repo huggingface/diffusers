@@ -23,6 +23,7 @@ from ...utils.torch_utils import randn_tensor
 from ..modular_pipeline import ModularPipelineBlocks, PipelineState
 from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
 from .modular_pipeline import WanModularPipeline
+from ...models import WanTransformer3DModel
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -194,6 +195,12 @@ class WanTextInputStep(ModularPipelineBlocks):
             "of prompt_embeds. The tensors will be duplicated across the batch dimension to\n"
             "have a final batch_size of batch_size * num_videos_per_prompt."
         )
+    
+    @property
+    def expected_components(self) -> List[ComponentSpec]:
+        return [
+            ComponentSpec("transformer", WanTransformer3DModel),
+        ]
 
     @property
     def inputs(self) -> List[InputParam]:
@@ -223,7 +230,7 @@ class WanTextInputStep(ModularPipelineBlocks):
             OutputParam(
                 "dtype",
                 type_hint=torch.dtype,
-                description="Data type of model tensor inputs (determined by `prompt_embeds`)",
+                description="Data type of model tensor inputs (determined by `transformer.dtype`)",
             ),
         ]
 
@@ -242,7 +249,7 @@ class WanTextInputStep(ModularPipelineBlocks):
         self.check_inputs(components, block_state)
 
         block_state.batch_size = block_state.prompt_embeds.shape[0]
-        block_state.dtype = block_state.prompt_embeds.dtype
+        block_state.dtype = components.transformer.dtype
 
         _, seq_len, _ = block_state.prompt_embeds.shape
         block_state.prompt_embeds = block_state.prompt_embeds.repeat(1, block_state.num_videos_per_prompt, 1)
@@ -269,8 +276,8 @@ class WanInputsDynamicStep(ModularPipelineBlocks):
 
     def __init__(
         self,
-        image_latent_inputs: List[str] = ["condition_latents"],
-        additional_batch_inputs: List[str] = ["image_embeds"],
+        image_latent_inputs: List[str] = ["first_frame_latents"],
+        additional_batch_inputs: List[str] = [],
     ):
         """Initialize a configurable step that standardizes the inputs for the denoising step. It:\n"
 
@@ -559,7 +566,7 @@ class WanPrepareFirstFrameLatentsStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> List[InputParam]:
         return [
-            InputParam("condition_latents", type_hint=Optional[torch.Tensor]),
+            InputParam("first_frame_latents", type_hint=Optional[torch.Tensor]),
             InputParam("num_frames", type_hint=int),
         ]
     
@@ -567,7 +574,7 @@ class WanPrepareFirstFrameLatentsStep(ModularPipelineBlocks):
     def __call__(self, components: WanModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
 
-        batch_size, _, _, latent_height, latent_width = block_state.condition_latents.shape
+        batch_size, _, _, latent_height, latent_width = block_state.first_frame_latents.shape
 
         mask_lat_size = torch.ones(batch_size, 1, block_state.num_frames, latent_height, latent_width)
         mask_lat_size[:, :, list(range(1, block_state.num_frames))] = 0
@@ -577,8 +584,43 @@ class WanPrepareFirstFrameLatentsStep(ModularPipelineBlocks):
         mask_lat_size = torch.concat([first_frame_mask, mask_lat_size[:, :, 1:, :]], dim=2)
         mask_lat_size = mask_lat_size.view(batch_size, -1, components.vae_scale_factor_temporal, latent_height, latent_width)
         mask_lat_size = mask_lat_size.transpose(1, 2)
-        mask_lat_size = mask_lat_size.to(block_state.condition_latents.device)
-        block_state.condition_latents = torch.concat([mask_lat_size, block_state.condition_latents], dim=1)
+        mask_lat_size = mask_lat_size.to(block_state.first_frame_latents.device)
+        block_state.first_frame_latents = torch.concat([mask_lat_size, block_state.first_frame_latents], dim=1)
+
+        self.set_block_state(state, block_state)
+        return components, state
+
+
+class WanPrepareFirstLastFrameLatentsStep(ModularPipelineBlocks):
+    model_name = "wan"
+
+    @property
+    def description(self) -> str:
+        return "step that prepares the last frame mask latents and add it to the latent condition"
+
+    @property
+    def inputs(self) -> List[InputParam]:
+        return [
+            InputParam("first_last_frame_latents", type_hint=Optional[torch.Tensor]),
+            InputParam("num_frames", type_hint=int),
+        ]
+    
+    
+    def __call__(self, components: WanModularPipeline, state: PipelineState) -> PipelineState:
+        block_state = self.get_block_state(state)
+
+        batch_size, _, _, latent_height, latent_width = block_state.first_last_frame_latents.shape
+
+        mask_lat_size = torch.ones(batch_size, 1, block_state.num_frames, latent_height, latent_width)
+        mask_lat_size[:, :, list(range(1, block_state.num_frames-1))] = 0
+
+        first_frame_mask = mask_lat_size[:, :, 0:1]
+        first_frame_mask = torch.repeat_interleave(first_frame_mask, dim=2, repeats=components.vae_scale_factor_temporal)
+        mask_lat_size = torch.concat([first_frame_mask, mask_lat_size[:, :, 1:, :]], dim=2)
+        mask_lat_size = mask_lat_size.view(batch_size, -1, components.vae_scale_factor_temporal, latent_height, latent_width)
+        mask_lat_size = mask_lat_size.transpose(1, 2)
+        mask_lat_size = mask_lat_size.to(block_state.first_last_frame_latents.device)
+        block_state.first_last_frame_latents = torch.concat([mask_lat_size, block_state.first_last_frame_latents], dim=1)
 
         self.set_block_state(state, block_state)
         return components, state
