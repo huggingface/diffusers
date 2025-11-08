@@ -55,9 +55,9 @@ class WanAnimateTransformer3DTests(ModelTesterMixin, unittest.TestCase):
         encoder_hidden_states = torch.randn((batch_size, sequence_length, text_encoder_embedding_dim)).to(torch_device)
         clip_ref_features = torch.randn((batch_size, clip_seq_len, clip_dim)).to(torch_device)
         pose_latents = torch.randn((batch_size, num_channels, num_frames, height, width)).to(torch_device)
-        face_pixel_values = torch.randn(
-            (batch_size, 3, inference_segment_length, face_height, face_width)
-        ).to(torch_device)
+        face_pixel_values = torch.randn((batch_size, 3, inference_segment_length, face_height, face_width)).to(
+            torch_device
+        )
 
         return {
             "hidden_states": hidden_states,

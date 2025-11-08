@@ -40,7 +40,15 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
 WAN_ANIMATE_MOTION_ENCODER_CHANNEL_SIZES = {
-    "4": 512, "8": 512, "16": 512, "32": 512, "64": 256, "128": 128, "256": 64, "512": 32, "1024": 16
+    "4": 512,
+    "8": 512,
+    "16": 512,
+    "32": 512,
+    "64": 256,
+    "128": 128,
+    "256": 64,
+    "512": 32,
+    "1024": 16,
 }
 
 
@@ -77,7 +85,11 @@ class FusedLeakyReLU(nn.Module):
         self.channels = bias_channels
 
         if self.channels is not None:
-            self.bias = nn.Parameter(torch.zeros(self.channels,))
+            self.bias = nn.Parameter(
+                torch.zeros(
+                    self.channels,
+                )
+            )
         else:
             self.bias = None
 
@@ -121,13 +133,13 @@ class MotionConv2d(nn.Module):
             # Normalize kernel
             kernel = kernel / kernel.sum()
             if blur_upsample_factor > 1:
-                kernel = kernel * (blur_upsample_factor ** 2)
+                kernel = kernel * (blur_upsample_factor**2)
             self.register_buffer("blur_kernel", kernel, persistent=False)
             self.blur = True
 
         # Main Conv2d parameters (with scale factor)
         self.weight = nn.Parameter(torch.randn(out_channels, in_channels, kernel_size, kernel_size))
-        self.scale = 1 / math.sqrt(in_channels * kernel_size ** 2)
+        self.scale = 1 / math.sqrt(in_channels * kernel_size**2)
 
         self.stride = stride
         self.padding = padding
@@ -161,8 +173,8 @@ class MotionConv2d(nn.Module):
 
     def __repr__(self):
         return (
-            f'{self.__class__.__name__}({self.weight.shape[1]}, {self.weight.shape[0]},'
-            f' kernel_size={self.weight.shape[2]}, stride={self.stride}, padding={self.padding})'
+            f"{self.__class__.__name__}({self.weight.shape[1]}, {self.weight.shape[0]},"
+            f" kernel_size={self.weight.shape[2]}, stride={self.stride}, padding={self.padding})"
         )
 
 
@@ -179,7 +191,7 @@ class MotionLinear(nn.Module):
 
         # Linear weight with scale factor
         self.weight = nn.Parameter(torch.randn(out_dim, in_dim))
-        self.scale = (1 / math.sqrt(in_dim))
+        self.scale = 1 / math.sqrt(in_dim)
 
         # If an activation is present, the bias will be fused to it
         if bias and not self.use_activation:
@@ -200,8 +212,8 @@ class MotionLinear(nn.Module):
 
     def __repr__(self):
         return (
-            f'{self.__class__.__name__}(in_features={self.weight.shape[1]}, out_features={self.weight.shape[0]},'
-            f' bias={self.bias is not None})'
+            f"{self.__class__.__name__}(in_features={self.weight.shape[1]}, out_features={self.weight.shape[0]},"
+            f" bias={self.bias is not None})"
         )
 
 
@@ -616,7 +628,7 @@ class WanAnimateTransformer3DModel(
             # TODO: should this always be true?
             assert in_channels == 2 * latent_channels + 4, "in_channels should be 2 * latent_channels + 4"
         else:
-            raise ValueError(f"At least one of `in_channels` and `latent_channels` must be supplied.")
+            raise ValueError("At least one of `in_channels` and `latent_channels` must be supplied.")
         out_channels = out_channels or latent_channels
 
         # 1. Patch & position embedding
@@ -722,8 +734,8 @@ class WanAnimateTransformer3DModel(
         Args:
             hidden_states (`torch.Tensor` of shape `(B, 2C + 4, T + 1, H, W)`):
                 Input noisy video latents of shape `(B, 2C + 4, T + 1, H, W)`, where B is the batch size, C is the
-                number of latent channels (16 for Wan VAE), T is the number of latent frames in an inference segment,
-                H is the latent height, and W is the latent width.
+                number of latent channels (16 for Wan VAE), T is the number of latent frames in an inference segment, H
+                is the latent height, and W is the latent width.
             timestep: (`torch.LongTensor`):
                 The current timestep in the denoising loop.
             encoder_hidden_states (`torch.Tensor`):

@@ -421,9 +421,7 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 " undefined when mode is `replace`."
             )
         if mode == "replace" and (not isinstance(background_video, list) or not isinstance(mask_video, list)):
-            raise ValueError(
-                "`background_video` and `mask_video` must be lists of PIL images when mode is `replace`."
-            )
+            raise ValueError("`background_video` and `mask_video` must be lists of PIL images when mode is `replace`.")
 
         if height % 16 != 0 or width % 16 != 0:
             raise ValueError(f"`height` and `width` have to be divisible by 16 but are {height} and {width}.")
@@ -609,7 +607,7 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
             )
             prev_segment_cond_video = prev_segment_cond_video.unflatten(0, (batch_size, -1)).transpose(1, 2)
 
-        # Fill the remaining part of the cond video segment with zeros (if animating) or the background video (if 
+        # Fill the remaining part of the cond video segment with zeros (if animating) or the background video (if
         # replacing).
         if task == "replace":
             remaining_segment = background_video[:, :, prev_segment_cond_frames:].to(dtype)
@@ -626,7 +624,8 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
         if isinstance(generator, list):
             if data_batch_size == len(generator):
                 prev_segment_cond_latents = [
-                    retrieve_latents(self.vae.encode(full_segment_cond_video[i].unsqueeze(0)), g, sample_mode) for i, g in enumerate(generator)
+                    retrieve_latents(self.vae.encode(full_segment_cond_video[i].unsqueeze(0)), g, sample_mode)
+                    for i, g in enumerate(generator)
                 ]
             elif data_batch_size == 1:
                 # Like prepare_latents, assume len(generator) == batch_size
@@ -813,11 +812,11 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
             face_video (`List[PIL.Image.Image]`):
                 The input face video to condition the generation on. Must be a list of PIL images.
             background_video (`List[PIL.Image.Image]`, *optional*):
-                When mode is `"replace"`, the input background video to condition the generation on. Must be a list
-                of PIL images.
-            mask_video (`List[PIL.Image.Image]`, *optional*):
-                When mode is `"replace"`, the input mask video to condition the generation on. Must be a list of
+                When mode is `"replace"`, the input background video to condition the generation on. Must be a list of
                 PIL images.
+            mask_video (`List[PIL.Image.Image]`, *optional*):
+                When mode is `"replace"`, the input mask video to condition the generation on. Must be a list of PIL
+                images.
             prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds`.
                 instead.
@@ -828,16 +827,16 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
             mode (`str`, defaults to `"animation"`):
                 The mode of the generation. Choose between `"animate"` and `"replace"`.
             prev_segment_conditioning_frames (`int`, defaults to `1`):
-                The number of frames from the previous video segment to be used for temporal guidance. Recommended
-                to be 1 or 5. In general, should be 4N + 1, where N is a non-negative integer.
+                The number of frames from the previous video segment to be used for temporal guidance. Recommended to
+                be 1 or 5. In general, should be 4N + 1, where N is a non-negative integer.
             height (`int`, defaults to `720`):
                 The height of the generated video.
             width (`int`, defaults to `1280`):
                 The width of the generated video.
             segment_frame_length (`int`, defaults to `77`):
-                The number of frames in each generated video segment. The total frames of video generated will be
-                equal to the number of frames in `pose_video`; we will generate the video in segments until we have
-                hit this length. In general, should be 4N + 1, where N is a non-negative integer.
+                The number of frames in each generated video segment. The total frames of video generated will be equal
+                to the number of frames in `pose_video`; we will generate the video in segments until we have hit this
+                length. In general, should be 4N + 1, where N is a non-negative integer.
             num_inference_steps (`int`, defaults to `20`):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
@@ -846,8 +845,8 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 Guidance](https://huggingface.co/papers/2207.12598). `guidance_scale` is defined as `w` of equation 2.
                 of [Imagen Paper](https://huggingface.co/papers/2205.11487). Guidance scale is enabled by setting
                 `guidance_scale > 1`. Higher guidance scale encourages to generate images that are closely linked to
-                the text `prompt`, usually at the expense of lower image quality. By default, CFG is not used in
-                Wan Animate inference.
+                the text `prompt`, usually at the expense of lower image quality. By default, CFG is not used in Wan
+                Animate inference.
             num_videos_per_prompt (`int`, *optional*, defaults to 1):
                 The number of images to generate per prompt.
             generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
@@ -923,7 +922,9 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 f"`segment_frame_length - 1` has to be divisible by {self.vae_scale_factor_temporal}. Rounding to the"
                 f" nearest number."
             )
-            segment_frame_length = segment_frame_length // self.vae_scale_factor_temporal * self.vae_scale_factor_temporal + 1
+            segment_frame_length = (
+                segment_frame_length // self.vae_scale_factor_temporal * self.vae_scale_factor_temporal + 1
+            )
         segment_frame_length = max(segment_frame_length, 1)
 
         self._guidance_scale = guidance_scale

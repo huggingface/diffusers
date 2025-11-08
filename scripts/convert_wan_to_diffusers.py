@@ -1,5 +1,4 @@
 import argparse
-import math
 import pathlib
 from typing import Any, Dict, Tuple
 
@@ -582,7 +581,6 @@ def get_transformer_config(model_type: str) -> Tuple[Dict[str, Any], ...]:
                 "ffn_dim": 13824,
                 "freq_dim": 256,
                 "in_channels": 36,
-                "motion_encoder_dim": 512,
                 "num_attention_heads": 40,
                 "num_layers": 40,
                 "out_channels": 16,
