@@ -136,7 +136,7 @@ export_to_video(video, "output.mp4", fps=24)
   - The recommended dtype for the transformer, VAE, and text encoder is `torch.bfloat16`. The VAE and text encoder can also be `torch.float32` or `torch.float16`.
   - For guidance-distilled variants of LTX-Video, set `guidance_scale` to `1.0`. The `guidance_scale` for any other model should be set higher, like `5.0`, for good generation quality.
   - For timestep-aware VAE variants (LTX-Video 0.9.1 and above), set `decode_timestep` to `0.05` and `image_cond_noise_scale` to `0.025`.
-  - For variants that support interpolation between multiple conditioning images and videos (LTX-Video 0.9.5 and above), use similar images and videos for the best results. Divergence from the conditioning inputs may lead to abrupt transitionts in the generated video.
+  - For variants that support interpolation between multiple conditioning images and videos (LTX-Video 0.9.5 and above), use similar images and videos for the best results. Divergence from the conditioning inputs may lead to abrupt transitions in the generated video.
 
 - LTX-Video 0.9.7 includes a spatial latent upscaler and a 13B parameter transformer. During inference, a low resolution video is quickly generated first and then upscaled and refined.
 
@@ -414,6 +414,91 @@ export_to_video(video, "output.mp4", fps=24)
 
   </details>
 
+  <details>
+  <summary>Long image-to-video generation with multi-prompt sliding windows (ComfyUI parity)</summary>
+
+  ```py
+  import torch
+  from diffusers import LTXI2VLongMultiPromptPipeline, LTXLatentUpsamplePipeline
+  from diffusers.pipelines.ltx.modeling_latent_upsampler import LTXLatentUpsamplerModel
+  from diffusers.utils import export_to_video
+  from PIL import Image
+
+
+  # Stage A: long I2V with sliding windows and multi-prompt scheduling
+  pipe = LTXI2VLongMultiPromptPipeline.from_pretrained(
+      "LTX-Video-0.9.8-13B-distilled",
+      torch_dtype=torch.bfloat16
+  ).to("cuda")
+
+  schedule = "a chimpanzee walks in the jungle |a chimpanzee stops and eats a snack |a chimpanzee lays on the ground"
+  cond_image = Image.open("chimpanzee_l.jpg").convert("RGB")
+
+  latents = pipe(
+      prompt=schedule,
+      negative_prompt="worst quality, inconsistent motion, blurry, jittery, distorted",
+      width=768,
+      height=512,   # must be divisible by 32
+      num_frames=361,
+      temporal_tile_size=120,
+      temporal_overlap=32,
+      sigmas=[1.0000, 0.9937, 0.9875, 0.9812, 0.9750, 0.9094, 0.7250, 0.4219, 0.0],
+      guidance_scale=1.0,         # distilled variants typically use 1.0
+      cond_image=cond_image,      # hard-conditions the first frame
+      adain_factor=0.25,          # cross-window normalization
+      output_type="latent",       # return latent-space video for downstream processing
+  ).frames
+
+  # Optional: decode with VAE tiling
+  video_pil = pipe.vae_decode_tiled(latents, decode_timestep=0.05, decode_noise_scale=0.025, output_type="pil")[0]
+  export_to_video(video_pil, "ltx_i2v_long_base.mp4", fps=24)
+
+  # Stage B (optional): spatial latent upsampling + short refinement
+  upsampler = LTXLatentUpsamplerModel.from_pretrained("LTX-Video-spatial-upscaler-0.9.8/latent_upsampler", torch_dtype=torch.bfloat16)
+  pipe_upsample = LTXLatentUpsamplePipeline(vae=pipe.vae, latent_upsampler=upsampler).to(torch.bfloat16).to("cuda")
+
+  up_latents = pipe_upsample(
+      latents=latents,
+      adain_factor=1.0,
+      tone_map_compression_ratio=0.6,
+      output_type="latent"
+  ).frames
+  try:
+      pipe.load_lora_weights(
+          "LTX-Video-ICLoRA-detailer-13b-0.9.8/ltxv-098-ic-lora-detailer-diffusers.safetensors",
+          adapter_name="ic-detailer",
+      )
+      pipe.fuse_lora(components=["transformer"], lora_scale=1.0)
+      print("[Info] IC-LoRA detailer adapter loaded and fused.")
+  except Exception as e:
+      print(f"[Warn] Failed to load IC-LoRA: {e}. Skipping the second refinement sampling.")
+
+  # Short refinement pass (distilled; low steps)
+  frames_refined = pipe(
+      negative_prompt="worst quality, inconsistent motion, blurry, jittery, distorted",
+      width=768,
+      height=512,
+      num_frames=361,
+      temporal_tile_size=80,
+      temporal_overlap=24,
+      seed=1625,
+      adain_factor=0.0,                 # disable AdaIN in refinement
+      latents=up_latents,               # start from upscaled latents
+      guidance_latents=up_latents,
+      sigmas=[0.99, 0.9094, 0.0],       # short sigma schedule
+      output_type="pil",
+  ).frames[0]
+
+  export_to_video(frames_refined, "ltx_i2v_long_refined.mp4", fps=24)
+  ```
+
+  Notes:
+  - Seeding: window-local hard-condition noise uses `seed + w_start` when `seed` is provided; otherwise the passed-in `generator` drives stochasticity.
+  - Height/width must be divisible by 32; latent shapes follow the pipeline docstrings.
+  - Use VAE tiled decoding to avoid OOM for high resolutions or long sequences.
+  - Distilled variants generally prefer `guidance_scale=1.0` and short schedules for refinement.
+  </details>
+
 - LTX-Video supports LoRAs with [`~loaders.LTXVideoLoraLoaderMixin.load_lora_weights`].
 
   <details>
@@ -473,6 +558,12 @@ export_to_video(video, "output.mp4", fps=24)
   ```
 
   </details>
+
+## LTXI2VLongMultiPromptPipeline
+
+[[autodoc]] LTXI2VLongMultiPromptPipeline
+  - all
+  - __call__
 
 ## LTXPipeline
 
