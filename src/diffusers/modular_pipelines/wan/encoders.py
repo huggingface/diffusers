@@ -21,7 +21,7 @@ from transformers import AutoTokenizer, UMT5EncoderModel, CLIPImageProcessor, CL
 
 from ...configuration_utils import FrozenDict
 from ...guiders import ClassifierFreeGuidance
-from ...utils import is_ftfy_available, logging
+from ...utils import is_ftfy_available, is_torchvision_available, logging
 from ..modular_pipeline import ModularPipelineBlocks, PipelineState
 from ..modular_pipeline_utils import ComponentSpec, ConfigSpec, InputParam, OutputParam
 from .modular_pipeline import WanModularPipeline
@@ -31,8 +31,12 @@ from ...models import AutoencoderKLWan
 import PIL
 import numpy as np
 
+
 if is_ftfy_available():
     import ftfy
+
+if is_torchvision_available():
+    from torchvision import transforms
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -307,36 +311,17 @@ class WanTextEncoderStep(ModularPipelineBlocks):
         return components, state
 
 
-class WanImageResizeDynamicStep(ModularPipelineBlocks):
+class WanImageResizeStep(ModularPipelineBlocks):
     model_name = "wan"
-
-    def __init__(self, input_name: str = "image", output_name: str = "resized_image"):
-        """Create a configurable step for resizing images to the target area (height * width) while maintaining the aspect ratio.
-
-        This block resizes an input image and exposes the resized result under configurable
-        input and output names. Use this when you need to wire the resize step to different image fields (e.g.,
-        "image", "last_image")
-
-        Args:
-            input_name (str, optional): Name of the image field to read from the
-                pipeline state. Defaults to "image".
-            output_name (str, optional): Name of the resized image field to write
-                back to the pipeline state. Defaults to "resized_image".
-        """
-        if not isinstance(input_name, str) or not isinstance(output_name, str):
-            raise ValueError(f"input_name and output_name must be strings but are {type(input_name)} and {type(output_name)}")
-        self._image_input_name = input_name
-        self._resized_image_output_name = output_name
-        super().__init__()
 
     @property
     def description(self) -> str:
-        return f"Image Resize step that resize the {self._image_input_name} to the target area (height * width) while maintaining the aspect ratio."
+        return "Image Resize step that resize the image to the target area (height * width) while maintaining the aspect ratio."
 
     @property
     def inputs(self) -> List[InputParam]:
         return [
-            InputParam(self._image_input_name, type_hint=PIL.Image.Image),
+            InputParam("image", type_hint=PIL.Image.Image, required=True),
             InputParam("height", type_hint=int, default=480),
             InputParam("width", type_hint=int, default=832),
         ]
@@ -344,7 +329,7 @@ class WanImageResizeDynamicStep(ModularPipelineBlocks):
     @property
     def intermediate_outputs(self) -> List[OutputParam]:
         return [
-            OutputParam(self._resized_image_output_name, type_hint=PIL.Image.Image, description="The resized image"),
+            OutputParam("resized_image", type_hint=PIL.Image.Image),
         ]
 
     def __call__(self, components: WanModularPipeline, state: PipelineState) -> PipelineState:
@@ -352,38 +337,66 @@ class WanImageResizeDynamicStep(ModularPipelineBlocks):
         block_state = self.get_block_state(state)
         max_area = block_state.height * block_state.width
 
-        image = getattr(block_state, self._image_input_name)
-
+        image = block_state.image
         aspect_ratio = image.height / image.width
         mod_value = components.vae_scale_factor_spatial * components.patch_size_spatial
-        height = round(np.sqrt(max_area * aspect_ratio)) // mod_value * mod_value
-        width = round(np.sqrt(max_area / aspect_ratio)) // mod_value * mod_value
-        resized_image = image.resize((width, height))
-        setattr(block_state, self._resized_image_output_name, resized_image)
+        block_state.height = round(np.sqrt(max_area * aspect_ratio)) // mod_value * mod_value
+        block_state.width = round(np.sqrt(max_area / aspect_ratio)) // mod_value * mod_value
+        block_state.resized_image = image.resize((block_state.width, block_state.height))
 
         self.set_block_state(state, block_state)
         return components, state
 
 
-class WanImageEncoderDynamicStep(ModularPipelineBlocks):
+class WanImageCropResizeStep(ModularPipelineBlocks):
     model_name = "wan"
 
-    def __init__(self, input_name: str = "resized_image", output_name: str = "image_embeds"):
-        """Create a configurable step for encoding images to generate image embeddings.
-
-        This block encodes an input image and exposes the generated embeddings under configurable
-        input and output names. Use this when you need to wire the encoder step to different image fields (e.g.,
-        "resized_image")
-    """
-        if not isinstance(input_name, str) or not isinstance(output_name, str):
-            raise ValueError(f"input_name and output_name must be strings but are {type(input_name)} and {type(output_name)}")
-        self._image_input_name = input_name
-        self._image_embeds_output_name = output_name
-        super().__init__()
 
     @property
     def description(self) -> str:
-        return f"Image Encoder step that generate {self._image_embeds_output_name} to guide the video generation"
+        return "Image Resize step that resize the last_image to the same size of first frame image with center crop."
+
+    @property
+    def inputs(self) -> List[InputParam]:
+        return [
+            InputParam("resized_image", type_hint=PIL.Image.Image, required=True, description="The resized first frame image"),
+            InputParam("last_image", type_hint=PIL.Image.Image, required=True, description="The last frameimage"),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> List[OutputParam]:
+        return [
+            OutputParam("resized_last_image", type_hint=PIL.Image.Image),
+        ]
+
+    def __call__(self, components: WanModularPipeline, state: PipelineState) -> PipelineState:
+
+        block_state = self.get_block_state(state)
+    
+        height = block_state.resized_image.height
+        width = block_state.resized_image.width
+        image = block_state.last_image
+
+        # Calculate resize ratio to match first frame dimensions
+        resize_ratio = max(width / image.width, height / image.height)
+        
+        # Resize the image
+        width = round(image.width * resize_ratio)
+        height = round(image.height * resize_ratio)
+        size = [width, height]
+        resized_image = transforms.functional.center_crop(image, size)
+        block_state.resized_last_image = resized_image
+
+        self.set_block_state(state, block_state)
+        return components, state
+
+
+class WanImageEncoderStep(ModularPipelineBlocks):
+    model_name = "wan"
+
+    @property
+    def description(self) -> str:
+        return "Image Encoder step that generate image_embeds to guide the video generation"
 
     @property
     def expected_components(self) -> List[ComponentSpec]:
@@ -395,13 +408,13 @@ class WanImageEncoderDynamicStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> List[InputParam]:
         return [
-            InputParam(self._image_input_name, type_hint=PIL.Image.Image),
+            InputParam("resized_image", type_hint=PIL.Image.Image, required=True),
         ]
 
     @property
     def intermediate_outputs(self) -> List[OutputParam]:
         return [
-            OutputParam(self._image_embeds_output_name, type_hint=torch.Tensor, description="The image embeddings"),
+            OutputParam("image_embeds", type_hint=torch.Tensor, description="The image embeddings"),
         ]
 
 
@@ -409,8 +422,8 @@ class WanImageEncoderDynamicStep(ModularPipelineBlocks):
         block_state = self.get_block_state(state)
 
         device = components._execution_device
-
-        image = getattr(block_state, self._image_input_name)
+        
+        image = block_state.resized_image
 
         image_embeds = encode_image(
             image_processor=components.image_processor,
@@ -418,30 +431,17 @@ class WanImageEncoderDynamicStep(ModularPipelineBlocks):
             image=image,
             device=device,
         )
-        setattr(block_state, self._image_embeds_output_name, image_embeds)
+        block_state.image_embeds = image_embeds
         self.set_block_state(state, block_state)
         return components, state
 
 
-class WanVaeImageEncoderDynamicStep(ModularPipelineBlocks):
+class WanVaeImageEncoderStep(ModularPipelineBlocks):
     model_name = "wan"
-
-    def __init__(self, input_name: str = "resized_image", output_name: str = "first_frame_latents"):
-        """Create a configurable step for encoding images to generate image latents.
-
-        This block encodes an input image and exposes the generated latents under configurable
-        input and output names. Use this when you need to wire the encoder step to different image fields (e.g.,
-        "resized_image")
-    """
-        if not isinstance(input_name, str) or not isinstance(output_name, str):
-            raise ValueError(f"input_name and output_name must be strings but are {type(input_name)} and {type(output_name)}")
-        self._image_input_name = input_name
-        self._image_latents_output_name = output_name
-        super().__init__()
 
     @property
     def description(self) -> str:
-        return f"Vae Image Encoder step that generate {self._image_latents_output_name} to guide the video generation"
+        return "Vae Image Encoder step that generate first_frame_latents to guide the video generation"
 
     @property
     def expected_components(self) -> List[ComponentSpec]:
@@ -453,7 +453,7 @@ class WanVaeImageEncoderDynamicStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> List[InputParam]:
         return [
-            InputParam(self._image_input_name, type_hint=PIL.Image.Image),
+            InputParam("resized_image", type_hint=PIL.Image.Image, required=True),
             InputParam("height"),
             InputParam("width"),
             InputParam("num_frames"),
@@ -463,7 +463,7 @@ class WanVaeImageEncoderDynamicStep(ModularPipelineBlocks):
     @property
     def intermediate_outputs(self) -> List[OutputParam]:
         return [
-            OutputParam(self._image_latents_output_name, type_hint=torch.Tensor, description="The latent condition"),
+            OutputParam("first_frame_latents", type_hint=torch.Tensor, description="The latent condition"),
         ]
     
     @staticmethod
@@ -485,7 +485,7 @@ class WanVaeImageEncoderDynamicStep(ModularPipelineBlocks):
         block_state = self.get_block_state(state)
         self.check_inputs(components, block_state)
 
-        image = getattr(block_state, self._image_input_name)
+        image = block_state.resized_image
 
         device = components._execution_device
         dtype = torch.float32
@@ -509,6 +509,6 @@ class WanVaeImageEncoderDynamicStep(ModularPipelineBlocks):
             latent_channels=components.num_channels_latents,
         )
 
-        setattr(block_state, self._image_latents_output_name, latent_condition)
+        block_state.first_frame_latents = latent_condition
         self.set_block_state(state, block_state)
         return components, state

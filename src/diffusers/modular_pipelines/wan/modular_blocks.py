@@ -24,7 +24,7 @@ from .before_denoise import (
 )
 from .decoders import WanImageVaeDecoderStep
 from .denoise import WanDenoiseStep, WanImage2VideoDenoiseStep
-from .encoders import WanTextEncoderStep, WanImageResizeDynamicStep, WanImageEncoderDynamicStep, WanVaeImageEncoderDynamicStep
+from .encoders import WanTextEncoderStep, WanImageResizeStep, WanImageEncoderStep, WanVaeImageEncoderStep
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -57,7 +57,7 @@ class WanCoreDenoiseStep(SequentialPipelineBlocks):
 ## iamge encoder
 class WanImage2VideoImageEncoderStep(SequentialPipelineBlocks):
     model_name = "wan"
-    block_classes = [WanImageResizeDynamicStep(input_name="image", output_name="resized_image"), WanImageEncoderDynamicStep(input_name="resized_image", output_name="image_embeds")]
+    block_classes = [WanImageResizeStep, WanImageEncoderStep]
     block_names = ["image_resize", "image_encoder"]
 
     @property
@@ -69,7 +69,7 @@ class WanImage2VideoImageEncoderStep(SequentialPipelineBlocks):
 # vae encoder
 class WanImage2VideoVaeImageEncoderStep(SequentialPipelineBlocks):
     model_name = "wan"
-    block_classes = [WanImageResizeDynamicStep(input_name="image", output_name="resized_image"), WanVaeImageEncoderDynamicStep(input_name="resized_image", output_name="first_frame_latents")]
+    block_classes = [WanImageResizeStep, WanVaeImageEncoderStep]
     block_names = ["image_resize", "vae_image_encoder"]
 
     @property
@@ -189,8 +189,8 @@ TEXT2VIDEO_BLOCKS = InsertableDict(
 
 IMAGE2VIDEO_BLOCKS = InsertableDict(
     [
-        ("image_resize", WanImageResizeDynamicStep()),
-        ("image_encoder", WanImage2VideoImageEncoderStep()),
+        ("image_resize", WanImageResizeStep),
+        ("image_encoder", WanImage2VideoImageEncoderStep),
         ("vae_image_encoder", WanImage2VideoVaeImageEncoderStep),
         ("input", WanTextInputStep),
         ("additional_inputs", WanInputsDynamicStep(image_latent_inputs=["first_frame_latents"])),
