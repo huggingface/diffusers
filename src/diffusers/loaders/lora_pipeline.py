@@ -4940,7 +4940,8 @@ class QwenImageLoraLoaderMixin(LoraBaseMixin):
         has_alphas_in_sd = any(k.endswith(".alpha") for k in state_dict)
         has_lora_unet = any(k.startswith("lora_unet_") for k in state_dict)
         has_diffusion_model = any(k.startswith("diffusion_model.") for k in state_dict)
-        if has_alphas_in_sd or has_lora_unet or has_diffusion_model:
+        has_default = any("default." in k for k in state_dict)
+        if has_alphas_in_sd or has_lora_unet or has_diffusion_model or has_default:
             state_dict = _convert_non_diffusers_qwen_lora_to_diffusers(state_dict)
 
         out = (state_dict, metadata) if return_lora_metadata else state_dict
