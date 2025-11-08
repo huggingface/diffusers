@@ -29,7 +29,7 @@ from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-class WanDecodeStep(ModularPipelineBlocks):
+class WanImageVaeDecoderStep(ModularPipelineBlocks):
     model_name = "wan"
 
     @property

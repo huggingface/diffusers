@@ -58,6 +58,14 @@ class WanModularPipeline(
     @property
     def default_sample_num_frames(self):
         return 21
+    
+    @property
+    def patch_size_spatial(self):
+        patch_size_spatial = 2
+        if hasattr(self, "transformer") and self.transformer is not None:
+            patch_size_spatial = self.transformer.config.patch_size[1]
+        return patch_size_spatial
+    
 
     @property
     def vae_scale_factor_spatial(self):

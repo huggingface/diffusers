@@ -17,7 +17,7 @@ from typing import List, Optional, Union
 
 import regex as re
 import torch
-from transformers import AutoTokenizer, UMT5EncoderModel
+from transformers import AutoTokenizer, UMT5EncoderModel, CLIPImageProcessor, CLIPVisionModel
 
 from ...configuration_utils import FrozenDict
 from ...guiders import ClassifierFreeGuidance
@@ -25,7 +25,11 @@ from ...utils import is_ftfy_available, logging
 from ..modular_pipeline import ModularPipelineBlocks, PipelineState
 from ..modular_pipeline_utils import ComponentSpec, ConfigSpec, InputParam, OutputParam
 from .modular_pipeline import WanModularPipeline
-
+from ...image_processor import PipelineImageInput
+from ...video_processor import VideoProcessor
+from ...models import AutoencoderKLWan
+import PIL
+import numpy as np
 
 if is_ftfy_available():
     import ftfy
@@ -49,7 +53,6 @@ def whitespace_clean(text):
 def prompt_clean(text):
     text = whitespace_clean(basic_clean(text))
     return text
-
 
 
 def get_t5_prompt_embeds(
@@ -82,6 +85,84 @@ def get_t5_prompt_embeds(
     )
 
     return prompt_embeds
+
+
+def encode_image(
+    image: PipelineImageInput,
+    image_processor: CLIPImageProcessor,
+    image_encoder: CLIPVisionModel,
+    device: Optional[torch.device] = None,
+):
+    image = image_processor(images=image, return_tensors="pt").to(device)
+    image_embeds = image_encoder(**image, output_hidden_states=True)
+    return image_embeds.hidden_states[-2]
+
+
+# Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.retrieve_latents
+def retrieve_latents(
+    encoder_output: torch.Tensor, generator: Optional[torch.Generator] = None, sample_mode: str = "sample"
+):
+    if hasattr(encoder_output, "latent_dist") and sample_mode == "sample":
+        return encoder_output.latent_dist.sample(generator)
+    elif hasattr(encoder_output, "latent_dist") and sample_mode == "argmax":
+        return encoder_output.latent_dist.mode()
+    elif hasattr(encoder_output, "latents"):
+        return encoder_output.latents
+    else:
+        raise AttributeError("Could not access latents of provided encoder_output")
+
+
+def encode_vae_image(
+    image: torch.Tensor,
+    vae: AutoencoderKLWan,
+    generator: torch.Generator,
+    device: torch.device,
+    dtype: torch.dtype,
+    num_frames: int = 81,
+    height: int = 480,
+    width: int = 832,
+    latent_channels: int = 16,
+):
+    if not isinstance(image, torch.Tensor):
+        raise ValueError(f"Expected image to be a tensor, got {type(image)}.")
+
+    if isinstance(generator, list) and len(generator) != image.shape[0]:
+        raise ValueError(f"You have passed a list of generators of length {len(generator)}, but it is not same as number of images {image.shape[0]}.")
+
+    # preprocessed image should be a 4D tensor: batch_size, num_channels, height, width
+    if image.dim() == 4:
+        image = image.unsqueeze(2)
+    elif image.dim() != 5:
+        raise ValueError(f"Expected image dims 4 or 5, got {image.dim()}.")
+
+    video_condition = torch.cat(
+        [image, image.new_zeros(image.shape[0], image.shape[1], num_frames - 1, height, width)], dim=2
+    )
+
+    video_condition = video_condition.to(device=device, dtype=dtype)
+
+    if isinstance(generator, list):
+        latent_condition = [
+            retrieve_latents(vae.encode(video_condition[i : i + 1]), generator=generator[i], sample_mode="argmax") for i in range(image.shape[0])
+        ]
+        latent_condition = torch.cat(latent_condition, dim=0)
+    else:
+        latent_condition = retrieve_latents(vae.encode(video_condition), sample_mode="argmax")
+
+    latents_mean = (
+        torch.tensor(vae.config.latents_mean)
+        .view(1, latent_channels, 1, 1, 1)
+        .to(latent_condition.device, latent_condition.dtype)
+    )
+    latents_std = (
+        1.0 / torch.tensor(vae.config.latents_std)
+        .view(1, latent_channels, 1, 1, 1)
+        .to(latent_condition.device, latent_condition.dtype)
+    )
+    latent_condition = (latent_condition - latents_mean) * latents_std
+
+    return latent_condition
+
 
 
 class WanTextEncoderStep(ModularPipelineBlocks):
@@ -222,5 +303,212 @@ class WanTextEncoderStep(ModularPipelineBlocks):
         )
 
         # Add outputs
+        self.set_block_state(state, block_state)
+        return components, state
+
+
+class WanImageResizeDynamicStep(ModularPipelineBlocks):
+    model_name = "wan"
+
+    def __init__(self, input_name: str = "image", output_name: str = "resized_image"):
+        """Create a configurable step for resizing images to the target area (height * width) while maintaining the aspect ratio.
+
+        This block resizes an input image and exposes the resized result under configurable
+        input and output names. Use this when you need to wire the resize step to different image fields (e.g.,
+        "image", "last_image")
+
+        Args:
+            input_name (str, optional): Name of the image field to read from the
+                pipeline state. Defaults to "image".
+            output_name (str, optional): Name of the resized image field to write
+                back to the pipeline state. Defaults to "resized_image".
+        """
+        if not isinstance(input_name, str) or not isinstance(output_name, str):
+            raise ValueError(f"input_name and output_name must be strings but are {type(input_name)} and {type(output_name)}")
+        self._image_input_name = input_name
+        self._resized_image_output_name = output_name
+        super().__init__()
+
+    @property
+    def description(self) -> str:
+        return f"Image Resize step that resize the {self._image_input_name} to the target area (height * width) while maintaining the aspect ratio."
+
+    @property
+    def inputs(self) -> List[InputParam]:
+        return [
+            InputParam(self._image_input_name, type_hint=PIL.Image.Image),
+            InputParam("height", type_hint=int, default=480),
+            InputParam("width", type_hint=int, default=832),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> List[OutputParam]:
+        return [
+            OutputParam(self._resized_image_output_name, type_hint=PIL.Image.Image, description="The resized image"),
+        ]
+
+    def __call__(self, components: WanModularPipeline, state: PipelineState) -> PipelineState:
+
+        block_state = self.get_block_state(state)
+        max_area = block_state.height * block_state.width
+
+        image = getattr(block_state, self._image_input_name)
+
+        aspect_ratio = image.height / image.width
+        mod_value = components.vae_scale_factor_spatial * components.patch_size_spatial
+        height = round(np.sqrt(max_area * aspect_ratio)) // mod_value * mod_value
+        width = round(np.sqrt(max_area / aspect_ratio)) // mod_value * mod_value
+        resized_image = image.resize((width, height))
+        setattr(block_state, self._resized_image_output_name, resized_image)
+
+        self.set_block_state(state, block_state)
+        return components, state
+
+
+class WanImageEncoderDynamicStep(ModularPipelineBlocks):
+    model_name = "wan"
+
+    def __init__(self, input_name: str = "resized_image", output_name: str = "image_embeds"):
+        """Create a configurable step for encoding images to generate image embeddings.
+
+        This block encodes an input image and exposes the generated embeddings under configurable
+        input and output names. Use this when you need to wire the encoder step to different image fields (e.g.,
+        "resized_image")
+    """
+        if not isinstance(input_name, str) or not isinstance(output_name, str):
+            raise ValueError(f"input_name and output_name must be strings but are {type(input_name)} and {type(output_name)}")
+        self._image_input_name = input_name
+        self._image_embeds_output_name = output_name
+        super().__init__()
+
+    @property
+    def description(self) -> str:
+        return f"Image Encoder step that generate {self._image_embeds_output_name} to guide the video generation"
+
+    @property
+    def expected_components(self) -> List[ComponentSpec]:
+        return [
+            ComponentSpec("image_processor", CLIPImageProcessor),
+            ComponentSpec("image_encoder", CLIPVisionModel),
+        ]
+
+    @property
+    def inputs(self) -> List[InputParam]:
+        return [
+            InputParam(self._image_input_name, type_hint=PIL.Image.Image),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> List[OutputParam]:
+        return [
+            OutputParam(self._image_embeds_output_name, type_hint=torch.Tensor, description="The image embeddings"),
+        ]
+
+
+    def __call__(self, components: WanModularPipeline, state: PipelineState) -> PipelineState:
+        block_state = self.get_block_state(state)
+
+        device = components._execution_device
+
+        image = getattr(block_state, self._image_input_name)
+
+        image_embeds = encode_image(
+            image_processor=components.image_processor,
+            image_encoder=components.image_encoder,
+            image=image,
+            device=device,
+        )
+        setattr(block_state, self._image_embeds_output_name, image_embeds)
+        self.set_block_state(state, block_state)
+        return components, state
+
+
+class WanVaeImageEncoderDynamicStep(ModularPipelineBlocks):
+    model_name = "wan"
+
+    def __init__(self, input_name: str = "resized_image", output_name: str = "first_frame_latents"):
+        """Create a configurable step for encoding images to generate image latents.
+
+        This block encodes an input image and exposes the generated latents under configurable
+        input and output names. Use this when you need to wire the encoder step to different image fields (e.g.,
+        "resized_image")
+    """
+        if not isinstance(input_name, str) or not isinstance(output_name, str):
+            raise ValueError(f"input_name and output_name must be strings but are {type(input_name)} and {type(output_name)}")
+        self._image_input_name = input_name
+        self._image_latents_output_name = output_name
+        super().__init__()
+
+    @property
+    def description(self) -> str:
+        return f"Vae Image Encoder step that generate {self._image_latents_output_name} to guide the video generation"
+
+    @property
+    def expected_components(self) -> List[ComponentSpec]:
+        return [
+            ComponentSpec("vae", AutoencoderKLWan),
+            ComponentSpec("video_processor", VideoProcessor, config=FrozenDict({"vae_scale_factor": 8}), default_creation_method="from_config"),
+        ]
+    
+    @property
+    def inputs(self) -> List[InputParam]:
+        return [
+            InputParam(self._image_input_name, type_hint=PIL.Image.Image),
+            InputParam("height"),
+            InputParam("width"),
+            InputParam("num_frames"),
+            InputParam("generator"),
+        ]
+    
+    @property
+    def intermediate_outputs(self) -> List[OutputParam]:
+        return [
+            OutputParam(self._image_latents_output_name, type_hint=torch.Tensor, description="The latent condition"),
+        ]
+    
+    @staticmethod
+    def check_inputs(components, block_state):
+        if (block_state.height is not None and block_state.height % components.vae_scale_factor_spatial != 0) or (
+            block_state.width is not None and block_state.width % components.vae_scale_factor_spatial != 0
+        ):
+            raise ValueError(
+                f"`height` and `width` have to be divisible by {components.vae_scale_factor_spatial} but are {block_state.height} and {block_state.width}."
+            )
+        if block_state.num_frames is not None and (
+            block_state.num_frames < 1 or (block_state.num_frames - 1) % components.vae_scale_factor_temporal != 0
+        ):
+            raise ValueError(
+                f"`num_frames` has to be greater than 0, and (num_frames - 1) must be divisible by {components.vae_scale_factor_temporal}, but got {block_state.num_frames}."
+            )   
+    
+    def __call__(self, components: WanModularPipeline, state: PipelineState) -> PipelineState:
+        block_state = self.get_block_state(state)
+        self.check_inputs(components, block_state)
+
+        image = getattr(block_state, self._image_input_name)
+
+        device = components._execution_device
+        dtype = torch.float32
+
+        height = block_state.height or components.default_height
+        width = block_state.width or components.default_width
+        num_frames = block_state.num_frames or components.default_num_frames
+
+        image_tensor = components.video_processor.preprocess(
+            image, height=height, width=width).to(device=device, dtype=dtype)
+
+        latent_condition = encode_vae_image(
+            image=image_tensor,
+            vae=components.vae,
+            generator=block_state.generator,
+            device=device,
+            dtype=dtype,
+            num_frames=num_frames,
+            height=height,
+            width=width,
+            latent_channels=components.num_channels_latents,
+        )
+
+        setattr(block_state, self._image_latents_output_name, latent_condition)
         self.set_block_state(state, block_state)
         return components, state
