@@ -269,7 +269,7 @@ class WanInputsDynamicStep(ModularPipelineBlocks):
 
     def __init__(
         self,
-        image_latent_inputs: List[str] = ["first_frame_latents"],
+        image_latent_inputs: List[str] = ["condition_latents"],
         additional_batch_inputs: List[str] = ["image_embeds"],
     ):
         """Initialize a configurable step that standardizes the inputs for the denoising step. It:\n"
@@ -559,7 +559,7 @@ class WanPrepareFirstFrameLatentsStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> List[InputParam]:
         return [
-            InputParam("first_frame_latents", type_hint=Optional[torch.Tensor]),
+            InputParam("condition_latents", type_hint=Optional[torch.Tensor]),
             InputParam("num_frames", type_hint=int),
         ]
     
@@ -567,7 +567,7 @@ class WanPrepareFirstFrameLatentsStep(ModularPipelineBlocks):
     def __call__(self, components: WanModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
 
-        batch_size, _, _, latent_height, latent_width = block_state.first_frame_latents.shape
+        batch_size, _, _, latent_height, latent_width = block_state.condition_latents.shape
 
         mask_lat_size = torch.ones(batch_size, 1, block_state.num_frames, latent_height, latent_width)
         mask_lat_size[:, :, list(range(1, block_state.num_frames))] = 0
@@ -577,8 +577,8 @@ class WanPrepareFirstFrameLatentsStep(ModularPipelineBlocks):
         mask_lat_size = torch.concat([first_frame_mask, mask_lat_size[:, :, 1:, :]], dim=2)
         mask_lat_size = mask_lat_size.view(batch_size, -1, components.vae_scale_factor_temporal, latent_height, latent_width)
         mask_lat_size = mask_lat_size.transpose(1, 2)
-        mask_lat_size = mask_lat_size.to(block_state.first_frame_latents.device)
-        block_state.first_frame_latents = torch.concat([mask_lat_size, block_state.first_frame_latents], dim=1)
+        mask_lat_size = mask_lat_size.to(block_state.condition_latents.device)
+        block_state.condition_latents = torch.concat([mask_lat_size, block_state.condition_latents], dim=1)
 
         self.set_block_state(state, block_state)
         return components, state

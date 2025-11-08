@@ -81,7 +81,7 @@ class WanImage2VideoVaeImageEncoderStep(SequentialPipelineBlocks):
 class WanImage2VideoCoreDenoiseStep(SequentialPipelineBlocks):
     block_classes = [
         WanTextInputStep,
-        WanInputsDynamicStep(image_latent_inputs=["first_frame_latents"]),
+        WanInputsDynamicStep(image_latent_inputs=["condition_latents"]),
         WanSetTimestepsStep,
         WanPrepareLatentsStep,
         WanPrepareFirstFrameLatentsStep,
@@ -137,7 +137,7 @@ class WanAutoDenoiseStep(AutoPipelineBlocks):
         WanCoreDenoiseStep,
     ]
     block_names = ["image2video", "text2video"]
-    block_trigger_inputs = ["first_frame_latents", None]
+    block_trigger_inputs = ["condition_latents", None]
 
     @property
     def description(self) -> str:
@@ -193,7 +193,7 @@ IMAGE2VIDEO_BLOCKS = InsertableDict(
         ("image_encoder", WanImage2VideoImageEncoderStep),
         ("vae_image_encoder", WanImage2VideoVaeImageEncoderStep),
         ("input", WanTextInputStep),
-        ("additional_inputs", WanInputsDynamicStep(image_latent_inputs=["first_frame_latents"])),
+        ("additional_inputs", WanInputsDynamicStep(image_latent_inputs=["condition_latents"])),
         ("set_timesteps", WanSetTimestepsStep),
         ("prepare_latents", WanPrepareLatentsStep),
         ("denoise", WanImage2VideoCoreDenoiseStep),

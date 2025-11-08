@@ -117,55 +117,42 @@ def retrieve_latents(
 
 
 def encode_vae_image(
-    image: torch.Tensor,
+    video_tensor: torch.Tensor,
     vae: AutoencoderKLWan,
     generator: torch.Generator,
     device: torch.device,
     dtype: torch.dtype,
-    num_frames: int = 81,
-    height: int = 480,
-    width: int = 832,
     latent_channels: int = 16,
 ):
-    if not isinstance(image, torch.Tensor):
-        raise ValueError(f"Expected image to be a tensor, got {type(image)}.")
+    if not isinstance(video_tensor, torch.Tensor):
+        raise ValueError(f"Expected video_tensor to be a tensor, got {type(video_tensor)}.")
 
-    if isinstance(generator, list) and len(generator) != image.shape[0]:
-        raise ValueError(f"You have passed a list of generators of length {len(generator)}, but it is not same as number of images {image.shape[0]}.")
+    if isinstance(generator, list) and len(generator) != video_tensor.shape[0]:
+        raise ValueError(f"You have passed a list of generators of length {len(generator)}, but it is not same as number of images {video_tensor.shape[0]}.")
 
-    # preprocessed image should be a 4D tensor: batch_size, num_channels, height, width
-    if image.dim() == 4:
-        image = image.unsqueeze(2)
-    elif image.dim() != 5:
-        raise ValueError(f"Expected image dims 4 or 5, got {image.dim()}.")
-
-    video_condition = torch.cat(
-        [image, image.new_zeros(image.shape[0], image.shape[1], num_frames - 1, height, width)], dim=2
-    )
-
-    video_condition = video_condition.to(device=device, dtype=dtype)
+    video_tensor = video_tensor.to(device=device, dtype=dtype)
 
     if isinstance(generator, list):
-        latent_condition = [
-            retrieve_latents(vae.encode(video_condition[i : i + 1]), generator=generator[i], sample_mode="argmax") for i in range(image.shape[0])
+        video_latents = [
+            retrieve_latents(vae.encode(video_tensor[i : i + 1]), generator=generator[i], sample_mode="argmax") for i in range(video_tensor.shape[0])
         ]
-        latent_condition = torch.cat(latent_condition, dim=0)
+        video_latents = torch.cat(video_latents, dim=0)
     else:
-        latent_condition = retrieve_latents(vae.encode(video_condition), sample_mode="argmax")
+        video_latents = retrieve_latents(vae.encode(video_tensor), sample_mode="argmax")
 
     latents_mean = (
         torch.tensor(vae.config.latents_mean)
         .view(1, latent_channels, 1, 1, 1)
-        .to(latent_condition.device, latent_condition.dtype)
+        .to(video_latents.device, video_latents.dtype)
     )
     latents_std = (
         1.0 / torch.tensor(vae.config.latents_std)
         .view(1, latent_channels, 1, 1, 1)
-        .to(latent_condition.device, latent_condition.dtype)
+        .to(video_latents.device, video_latents.dtype)
     )
-    latent_condition = (latent_condition - latents_mean) * latents_std
+    video_latents = (video_latents - latents_mean) * latents_std
 
-    return latent_condition
+    return video_latents
 
 
 
@@ -441,7 +428,7 @@ class WanVaeImageEncoderStep(ModularPipelineBlocks):
 
     @property
     def description(self) -> str:
-        return "Vae Image Encoder step that generate first_frame_latents to guide the video generation"
+        return "Vae Image Encoder step that generate condition_latents to guide the video generation"
 
     @property
     def expected_components(self) -> List[ComponentSpec]:
@@ -463,7 +450,7 @@ class WanVaeImageEncoderStep(ModularPipelineBlocks):
     @property
     def intermediate_outputs(self) -> List[OutputParam]:
         return [
-            OutputParam("first_frame_latents", type_hint=torch.Tensor, description="The latent condition"),
+            OutputParam("condition_latents", type_hint=torch.Tensor, description="The condition latents"),
         ]
     
     @staticmethod
@@ -497,18 +484,21 @@ class WanVaeImageEncoderStep(ModularPipelineBlocks):
         image_tensor = components.video_processor.preprocess(
             image, height=height, width=width).to(device=device, dtype=dtype)
 
-        latent_condition = encode_vae_image(
-            image=image_tensor,
+        if image_tensor.dim() == 4:
+            image_tensor = image_tensor.unsqueeze(2)
+
+        video_tensor = torch.cat(
+            [image_tensor, image_tensor.new_zeros(image_tensor.shape[0], image_tensor.shape[1], num_frames - 1, height, width)], dim=2
+        ).to(device=device, dtype=dtype)
+
+        block_state.condition_latents = encode_vae_image(
+            video_tensor=video_tensor,
             vae=components.vae,
             generator=block_state.generator,
             device=device,
             dtype=dtype,
-            num_frames=num_frames,
-            height=height,
-            width=width,
             latent_channels=components.num_channels_latents,
         )
 
-        block_state.first_frame_latents = latent_condition
         self.set_block_state(state, block_state)
         return components, state

@@ -84,16 +84,16 @@ class WanImage2VideoLoopBeforeDenoiser(ModularPipelineBlocks):
                 description="The initial latents to use for the denoising process. Can be generated in prepare_latent step.",
             ),
             InputParam(
-                "first_frame_latents",
+                "condition_latents",
                 required=True,
                 type_hint=torch.Tensor,
-                description="The first frame latents to use for the denoising process. Can be generated in prepare_first_frame_latents step.",
+                description="The condition latents to use for the denoising process. Can be generated in prepare_condition_latents step.",
             ),
         ]
 
     @torch.no_grad()
     def __call__(self, components: WanModularPipeline, block_state: BlockState, i: int, t: torch.Tensor):
-        block_state.latent_model_input = torch.cat([block_state.latents, block_state.first_frame_latents], dim=1)
+        block_state.latent_model_input = torch.cat([block_state.latents, block_state.condition_latents], dim=1)
         return components, block_state
 
 class WanLoopDenoiserDynamic(ModularPipelineBlocks):
