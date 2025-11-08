@@ -95,8 +95,11 @@ class VaeImageProcessor(ConfigMixin):
             `height` and `width` arguments from [`image_processor.VaeImageProcessor.preprocess`] method.
         vae_scale_factor (`int`, *optional*, defaults to `8`):
             VAE scale factor. If `do_resize` is `True`, the image is automatically resized to multiples of this factor.
-        resample (`str`, *optional*, defaults to `lanczos`):
-            Resampling filter to use when resizing the image.
+        resample (`str`, *optional*, defaults to `"lanczos"`):
+            Resampling filter to use when resizing PIL images.
+        tensor_resample (`str`, *optional*, defaults to `"nearest"`):
+            Resampling filter to use when resizing `torch.Tensor` or `np.ndarray` images. Can be any valid `mode`
+            argument to `torch.nn.functional.interpolate`.
         do_normalize (`bool`, *optional*, defaults to `True`):
             Whether to normalize the image to [-1,1].
         do_binarize (`bool`, *optional*, defaults to `False`):
@@ -116,6 +119,7 @@ class VaeImageProcessor(ConfigMixin):
         vae_scale_factor: int = 8,
         vae_latent_channels: int = 4,
         resample: str = "lanczos",
+        tensor_resample: str = "nearest",
         reducing_gap: int = None,
         do_normalize: bool = True,
         do_binarize: bool = False,
@@ -385,6 +389,7 @@ class VaeImageProcessor(ConfigMixin):
         image: PIL.Image.Image,
         width: int,
         height: int,
+        fill_color: Optional[Union[str, float, Tuple[float, ...]]] = None,
     ) -> PIL.Image.Image:
         r"""
         Resize the image to fit within the specified width and height, maintaining the aspect ratio, and then center
@@ -397,6 +402,10 @@ class VaeImageProcessor(ConfigMixin):
                 The width to resize the image to.
             height (`int`):
                 The height to resize the image to.
+            fill_color (`str` or `float` or `Tuple[float, ...]`, *optional*, defaults to `None`):
+                An optional fill color when `resize_mode` is set to `"fill"`. This will fill the empty space with that
+                color instead of filling with data from the image. Any valid `color` argument to `PIL.Image.new` is
+                valid; if `None`, will default to filling with data from `image`.
 
         Returns:
             `PIL.Image.Image`:
@@ -405,30 +414,35 @@ class VaeImageProcessor(ConfigMixin):
 
         ratio = width / height
         src_ratio = image.width / image.height
+        fill_with_image_data = fill_color is None
+        if fill_with_image_data:
+            # Default for `color` arg to PIL.Image.new
+            fill_color = 0
 
         src_w = width if ratio < src_ratio else image.width * height // image.height
         src_h = height if ratio >= src_ratio else image.height * width // image.width
 
-        resized = image.resize((src_w, src_h), resample=PIL_INTERPOLATION["lanczos"])
-        res = Image.new("RGB", (width, height))
+        resized = image.resize((src_w, src_h), resample=PIL_INTERPOLATION[self.config.resample])
+        res = Image.new("RGB", (width, height), color=fill_color)
         res.paste(resized, box=(width // 2 - src_w // 2, height // 2 - src_h // 2))
 
-        if ratio < src_ratio:
-            fill_height = height // 2 - src_h // 2
-            if fill_height > 0:
-                res.paste(resized.resize((width, fill_height), box=(0, 0, width, 0)), box=(0, 0))
-                res.paste(
-                    resized.resize((width, fill_height), box=(0, resized.height, width, resized.height)),
-                    box=(0, fill_height + src_h),
-                )
-        elif ratio > src_ratio:
-            fill_width = width // 2 - src_w // 2
-            if fill_width > 0:
-                res.paste(resized.resize((fill_width, height), box=(0, 0, 0, height)), box=(0, 0))
-                res.paste(
-                    resized.resize((fill_width, height), box=(resized.width, 0, resized.width, height)),
-                    box=(fill_width + src_w, 0),
-                )
+        if fill_with_image_data:
+            if ratio < src_ratio:
+                fill_height = height // 2 - src_h // 2
+                if fill_height > 0:
+                    res.paste(resized.resize((width, fill_height), box=(0, 0, width, 0)), box=(0, 0))
+                    res.paste(
+                        resized.resize((width, fill_height), box=(0, resized.height, width, resized.height)),
+                        box=(0, fill_height + src_h),
+                    )
+            elif ratio > src_ratio:
+                fill_width = width // 2 - src_w // 2
+                if fill_width > 0:
+                    res.paste(resized.resize((fill_width, height), box=(0, 0, 0, height)), box=(0, 0))
+                    res.paste(
+                        resized.resize((fill_width, height), box=(resized.width, 0, resized.width, height)),
+                        box=(fill_width + src_w, 0),
+                    )
 
         return res
 
@@ -460,7 +474,7 @@ class VaeImageProcessor(ConfigMixin):
         src_w = width if ratio > src_ratio else image.width * height // image.height
         src_h = height if ratio <= src_ratio else image.height * width // image.width
 
-        resized = image.resize((src_w, src_h), resample=PIL_INTERPOLATION["lanczos"])
+        resized = image.resize((src_w, src_h), resample=PIL_INTERPOLATION[self.config.resample])
         res = Image.new("RGB", (width, height))
         res.paste(resized, box=(width // 2 - src_w // 2, height // 2 - src_h // 2))
         return res
@@ -471,6 +485,7 @@ class VaeImageProcessor(ConfigMixin):
         height: int,
         width: int,
         resize_mode: str = "default",  # "default", "fill", "crop"
+        fill_color: Optional[Union[str, float, Tuple[float, ...]]] = None,
     ) -> Union[PIL.Image.Image, np.ndarray, torch.Tensor]:
         """
         Resize image.
@@ -490,6 +505,10 @@ class VaeImageProcessor(ConfigMixin):
                 the image to fit within the specified width and height, maintaining the aspect ratio, and then center
                 the image within the dimensions, cropping the excess. Note that resize_mode `fill` and `crop` are only
                 supported for PIL image input.
+            fill_color (`str` or `float` or `Tuple[float, ...]`, *optional*, defaults to `None`):
+                An optional fill color when `resize_mode` is set to `"fill"`. This will fill the empty space with that
+                color instead of filling with data from the image. Any valid `color` argument to `PIL.Image.new` is
+                valid; if `None`, will default to filling with data from `image`.
 
         Returns:
             `PIL.Image.Image`, `np.ndarray` or `torch.Tensor`:
@@ -505,7 +524,7 @@ class VaeImageProcessor(ConfigMixin):
                     reducing_gap=self.config.reducing_gap,
                 )
             elif resize_mode == "fill":
-                image = self._resize_and_fill(image, width, height)
+                image = self._resize_and_fill(image, width, height, fill_color=fill_color)
             elif resize_mode == "crop":
                 image = self._resize_and_crop(image, width, height)
             else:
@@ -515,12 +534,14 @@ class VaeImageProcessor(ConfigMixin):
             image = torch.nn.functional.interpolate(
                 image,
                 size=(height, width),
+                mode=self.config.tensor_resample,
             )
         elif isinstance(image, np.ndarray):
             image = self.numpy_to_pt(image)
             image = torch.nn.functional.interpolate(
                 image,
                 size=(height, width),
+                mode=self.config.tensor_resample,
             )
             image = self.pt_to_numpy(image)
 
@@ -617,6 +638,8 @@ class VaeImageProcessor(ConfigMixin):
         width: Optional[int] = None,
         resize_mode: str = "default",  # "default", "fill", "crop"
         crops_coords: Optional[Tuple[int, int, int, int]] = None,
+        do_normalize: Optional[bool] = None,
+        fill_color: Optional[Union[str, float, Tuple[float, ...]]] = None,
     ) -> torch.Tensor:
         """
         Preprocess the image input.
@@ -640,6 +663,13 @@ class VaeImageProcessor(ConfigMixin):
                 supported for PIL image input.
             crops_coords (`List[Tuple[int, int, int, int]]`, *optional*, defaults to `None`):
                 The crop coordinates for each image in the batch. If `None`, will not crop the image.
+            do_normalize (`bool`, *optional*, defaults to `None`):
+                Whether to normalize the image to [-1,1]. If `None`, will use the value of `do_normalize` in the
+                `VaeImageProcessor` config.
+            fill_color (`str` or `float` or `Tuple[float, ...]`, *optional*, defaults to `None`):
+                An optional fill color when `resize_mode` is set to `"fill"`. This will fill the empty space with that
+                color instead of filling with data from the image. Any valid `color` argument to `PIL.Image.new` is
+                valid; if `None`, will default to filling with data from `image`.
 
         Returns:
             `torch.Tensor`:
@@ -692,7 +722,7 @@ class VaeImageProcessor(ConfigMixin):
                 image = [i.crop(crops_coords) for i in image]
             if self.config.do_resize:
                 height, width = self.get_default_height_width(image[0], height, width)
-                image = [self.resize(i, height, width, resize_mode=resize_mode) for i in image]
+                image = [self.resize(i, height, width, resize_mode=resize_mode, fill_color=fill_color) for i in image]
             if self.config.do_convert_rgb:
                 image = [self.convert_to_rgb(i) for i in image]
             elif self.config.do_convert_grayscale:
@@ -725,7 +755,7 @@ class VaeImageProcessor(ConfigMixin):
                 image = self.resize(image, height, width)
 
         # expected range [0,1], normalize to [-1,1]
-        do_normalize = self.config.do_normalize
+        do_normalize = do_normalize or self.config.do_normalize
         if do_normalize and image.min() < 0:
             warnings.warn(
                 "Passing `image` as torch tensor with value range in [-1,1] is deprecated. The expected value range for image tensor is [0,1] "

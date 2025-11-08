@@ -762,7 +762,7 @@ class WanAnimateTransformer3DModel(
         if pose_hidden_states is not None and pose_hidden_states.shape[2] + 1 != hidden_states.shape[2]:
             raise ValueError(
                 f"pose_hidden_states frame dim (dim 2) is {pose_hidden_states.shape[2]} but must be one less than the"
-                f"hidden_states's corresponding frame dim: {hidden_states.shape[2]}"
+                f" hidden_states's corresponding frame dim: {hidden_states.shape[2]}"
             )
 
         batch_size, num_channels, num_frames, height, width = hidden_states.shape

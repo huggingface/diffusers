@@ -239,7 +239,9 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
         self.video_processor_for_mask = VideoProcessor(
             vae_scale_factor=self.vae_scale_factor_spatial, do_normalize=False, do_convert_grayscale=True
         )
-        self.vae_image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor_spatial)
+        self.vae_image_processor = VaeImageProcessor(
+            vae_scale_factor=self.vae_scale_factor_spatial, resample="bilinear"
+        )
         self.image_processor = image_processor
 
     def _get_t5_prompt_embeds(
@@ -597,10 +599,15 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
         latent_height = height // self.vae_scale_factor_spatial
         latent_width = width // self.vae_scale_factor_spatial
         if segment_height != height or segment_width != width:
-            # TODO: check if equivalent to original, which I believe does a 4D (rather than 5D) reshape
+            print(
+                f"Interpolating prev segment cond video from ({segment_width}, {segment_height}) to ({width}, {height})"
+            )
+            # Perform a 4D (spatial) rather than a 5D (spatiotemporal) reshape, following the original code
+            prev_segment_cond_video = prev_segment_cond_video.transpose(1, 2).flatten(0, 1)  # [B * T, C, H, W]
             prev_segment_cond_video = F.interpolate(
                 prev_segment_cond_video, size=(height, width), mode=interpolation_mode
             )
+            prev_segment_cond_video = prev_segment_cond_video.unflatten(0, (batch_size, -1)).transpose(1, 2)
 
         # Fill the remaining part of the cond video segment with zeros (if animating) or the background video (if 
         # replacing).
@@ -806,10 +813,10 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
             face_video (`List[PIL.Image.Image]`):
                 The input face video to condition the generation on. Must be a list of PIL images.
             background_video (`List[PIL.Image.Image]`, *optional*):
-                When mode is `"replacement"`, the input background video to condition the generation on. Must be a list
+                When mode is `"replace"`, the input background video to condition the generation on. Must be a list
                 of PIL images.
             mask_video (`List[PIL.Image.Image]`, *optional*):
-                When mode is `"replacement"`, the input mask video to condition the generation on. Must be a list of
+                When mode is `"replace"`, the input mask video to condition the generation on. Must be a list of
                 PIL images.
             prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds`.
@@ -819,7 +826,7 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
                 less than `1`).
             mode (`str`, defaults to `"animation"`):
-                The mode of the generation. Choose between `"animation"` and `"replacement"`.
+                The mode of the generation. Choose between `"animate"` and `"replace"`.
             prev_segment_conditioning_frames (`int`, defaults to `1`):
                 The number of frames from the previous video segment to be used for temporal guidance. Recommended
                 to be 1 or 5. In general, should be 4N + 1, where N is a non-negative integer.
@@ -831,15 +838,16 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 The number of frames in each generated video segment. The total frames of video generated will be
                 equal to the number of frames in `pose_video`; we will generate the video in segments until we have
                 hit this length. In general, should be 4N + 1, where N is a non-negative integer.
-            num_inference_steps (`int`, defaults to `50`):
+            num_inference_steps (`int`, defaults to `20`):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
-            guidance_scale (`float`, defaults to `5.0`):
+            guidance_scale (`float`, defaults to `1.0`):
                 Guidance scale as defined in [Classifier-Free Diffusion
                 Guidance](https://huggingface.co/papers/2207.12598). `guidance_scale` is defined as `w` of equation 2.
                 of [Imagen Paper](https://huggingface.co/papers/2205.11487). Guidance scale is enabled by setting
                 `guidance_scale > 1`. Higher guidance scale encourages to generate images that are closely linked to
-                the text `prompt`, usually at the expense of lower image quality.
+                the text `prompt`, usually at the expense of lower image quality. By default, CFG is not used in
+                Wan Animate inference.
             num_videos_per_prompt (`int`, *optional*, defaults to 1):
                 The number of images to generate per prompt.
             generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
@@ -963,12 +971,12 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
             negative_prompt_embeds = negative_prompt_embeds.to(transformer_dtype)
 
         # 4. Preprocess and encode the reference (character) image
-        # TODO: confirm whether changes need to be made here, the official code seems to use some special padding
-        # and resize logic for the reference image
         image_height, image_width = self.video_processor.get_default_height_width(image)
         if image_height != height or image_width != width:
             logger.warning(f"Reshaping reference image from ({image_width}, {image_height}) to ({width}, {height})")
-        image_pixels = self.vae_image_processor.preprocess(image, height=height, width=width).to(device, dtype=torch.float32)
+        image_pixels = self.vae_image_processor.preprocess(
+            image, height=height, width=width, resize_mode="fill", fill_color=0
+        ).to(device, dtype=torch.float32)
 
         # Get CLIP features from the reference image
         if image_embeds is None:
@@ -1016,21 +1024,8 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
         self.scheduler.set_timesteps(num_inference_steps, device=device)
         timesteps = self.scheduler.timesteps
 
-        # 7. Prepare latent variables
+        # 7. Prepare latent variables which stay constant for all inference segments
         num_channels_latents = self.vae.config.z_dim
-
-        # Sample noisy latents from prior (if necessary)
-        latents = self.prepare_latents(
-            batch_size * num_videos_per_prompt,
-            num_channels_latents=num_channels_latents,
-            height=height,
-            width=width,
-            num_frames=segment_frame_length,
-            dtype=torch.float32,
-            device=device,
-            generator=generator,
-            latents=latents,
-        )
 
         # Get VAE-encoded latents of the reference (character) image
         reference_image_latents = self.prepare_reference_image_latents(
@@ -1042,12 +1037,23 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
         end = segment_frame_length  # Data space frames, not latent frames
         all_out_frames = []
         out_frames = None
-        y_ref = None
-        calculate_noise_latents_only = False
 
-        # while start + prev_segment_conditioning_frames < len(pose_video):
         for _ in range(num_segments):
             assert start + prev_segment_conditioning_frames < cond_video_frames
+
+            # Sample noisy latents from prior for the current inference segment
+            latents = self.prepare_latents(
+                batch_size * num_videos_per_prompt,
+                num_channels_latents=num_channels_latents,
+                height=height,
+                width=width,
+                num_frames=segment_frame_length,
+                dtype=torch.float32,
+                device=device,
+                generator=generator,
+                latents=latents if start == 0 else None,  # Only use pre-calculated latents for first segment
+            )
+
             pose_video_segment = pose_video[:, :, start:end]
             face_video_segment = face_video[:, :, start:end]
 
@@ -1179,7 +1185,6 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
             video = torch.cat(all_out_frames, dim=2)[:, :, :cond_video_frames]
             video = self.video_processor.postprocess_video(video, output_type=output_type)
         else:
-            # TODO
             video = latents
 
         # Offload all models
