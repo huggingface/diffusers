@@ -425,8 +425,8 @@ class ChronoEditRotaryPosEmbed(nn.Module):
         return freqs_cos, freqs_sin
 
 
-# Copied from diffusers.models.transformers.transformer_wan.WanTransformerBlock
 @maybe_allow_in_graph
+# Copied from diffusers.models.transformers.transformer_wan.WanTransformerBlock
 class WanTransformerBlock(nn.Module):
     def __init__(
         self,
@@ -514,6 +514,7 @@ class WanTransformerBlock(nn.Module):
         return hidden_states
 
 
+# modified from diffusers.models.transformers.transformer_wan.WanTransformer3DModel
 class ChronoEditTransformer3DModel(
     ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginalModelMixin, CacheMixin, AttentionMixin
 ):
