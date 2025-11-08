@@ -13,7 +13,6 @@
 # limitations under the License.
 
 import unittest
-from unittest.mock import patch
 
 import numpy as np
 import torch
@@ -235,41 +234,3 @@ class QwenImagePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             expected_diff_max,
             "VAE tiling should not affect the inference results",
         )
-
-    def test_context_parallelism_padding_fix(self):
-        """
-        Compare pipeline outputs: baseline (normal single-process) vs
-        simulated multi-process (mocked torch.distributed). This verifies
-        padding logic does not change the generated image.
-        """
-        device = "cpu"
-
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        pipe.to(device)
-        pipe.set_progress_bar_config(disable=None)
-
-        inputs = self.get_dummy_inputs(device)
-
-        # Baseline run (no distributed)
-        baseline_image = pipe(**inputs).images[0]
-
-        # Re-initialize inputs to get a fresh generator with the same seed for a fair comparison
-        inputs = self.get_dummy_inputs(device)
-
-        # Simulate distributed env (world_size = 3) so padding branch runs
-        # NOTE: patch target must match where `dist` is imported in the transformer module.
-        with (
-            patch("diffusers.models.transformers.transformer_qwenimage.dist.is_initialized", return_value=True),
-            patch("diffusers.models.transformers.transformer_qwenimage.dist.get_world_size", return_value=3),
-        ):
-            padded_image = pipe(**inputs).images[0]
-
-        # shape check 
-        self.assertEqual(baseline_image.shape, padded_image.shape)
-
-        # Additional check: verify padding didn't introduce extreme values
-        self.assertTrue(torch.isfinite(padded_image).all())
-
-        # Verify numerical equivalence
-        self.assertTrue(torch.allclose(baseline_image, padded_image, atol=1e-2, rtol=1e-2))

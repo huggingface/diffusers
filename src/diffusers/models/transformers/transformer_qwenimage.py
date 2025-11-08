@@ -18,7 +18,6 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import torch
-import torch.distributed as dist
 import torch.nn as nn
 import torch.nn.functional as F
 
@@ -331,19 +330,6 @@ class QwenDoubleStreamAttnProcessor2_0:
         joint_key = torch.cat([txt_key, img_key], dim=1)
         joint_value = torch.cat([txt_value, img_value], dim=1)
 
-        if attention_mask is None and encoder_hidden_states_mask is not None:
-            # The joint sequence is [text, image].
-            seq_len_img = hidden_states.shape[1]
-            img_mask = torch.ones(
-                encoder_hidden_states_mask.shape[0], seq_len_img, device=encoder_hidden_states_mask.device
-            )
-            attention_mask = torch.cat([encoder_hidden_states_mask, img_mask], dim=1)
-
-            # Convert the mask to the format expected by SDPA
-            attention_mask = attention_mask[:, None, None, :]
-            attention_mask = attention_mask.to(dtype=joint_query.dtype)
-            attention_mask = (1.0 - attention_mask) * torch.finfo(joint_query.dtype).min
-
         # Compute joint attention
         joint_hidden_states = dispatch_attention_fn(
             joint_query,
@@ -614,15 +600,6 @@ class QwenImageTransformer2DModel(
             If `return_dict` is True, an [`~models.transformer_2d.Transformer2DModelOutput`] is returned, otherwise a
             `tuple` where the first element is the sample tensor.
         """
-        if dist.is_initialized():
-            world_size = dist.get_world_size()
-            if world_size > 1 and encoder_hidden_states is not None:
-                seq_len = encoder_hidden_states.shape[1]
-                pad_len = (world_size - seq_len % world_size) % world_size
-                if pad_len > 0:
-                    encoder_hidden_states = F.pad(encoder_hidden_states, (0, 0, 0, pad_len))
-                    if encoder_hidden_states_mask is not None:
-                        encoder_hidden_states_mask = F.pad(encoder_hidden_states_mask, (0, pad_len), value=0)
 
         if attention_kwargs is not None:
             attention_kwargs = attention_kwargs.copy()
@@ -654,13 +631,7 @@ class QwenImageTransformer2DModel(
             else self.time_text_embed(timestep, guidance, hidden_states)
         )
 
-        # use the shape of the padded hidden states to generate the rotary embeddings
-        if encoder_hidden_states is not None:
-            recalculated_txt_seq_lens = [encoder_hidden_states.shape[1]] * encoder_hidden_states.shape[0]
-        else:
-            recalculated_txt_seq_lens = txt_seq_lens
-
-        image_rotary_emb = self.pos_embed(img_shapes, recalculated_txt_seq_lens, device=hidden_states.device)
+        image_rotary_emb = self.pos_embed(img_shapes, txt_seq_lens, device=hidden_states.device)
 
         for index_block, block in enumerate(self.transformer_blocks):
             if torch.is_grad_enabled() and self.gradient_checkpointing:
