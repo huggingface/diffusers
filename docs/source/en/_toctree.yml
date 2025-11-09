@@ -373,6 +373,8 @@
         title: QwenImageTransformer2DModel
       - local: api/models/sana_transformer2d
         title: SanaTransformer2DModel
+      - local: api/models/sana_video_transformer3d
+        title: SanaVideoTransformer3DModel
       - local: api/models/sd3_transformer2d
         title: SD3Transformer2DModel
       - local: api/models/skyreels_v2_transformer_3d
@@ -563,6 +565,8 @@
         title: Sana
       - local: api/pipelines/sana_sprint
         title: Sana Sprint
+      - local: api/pipelines/sana_video
+        title: Sana Video
       - local: api/pipelines/self_attention_guidance
         title: Self-Attention Guidance
       - local: api/pipelines/semantic_stable_diffusion
