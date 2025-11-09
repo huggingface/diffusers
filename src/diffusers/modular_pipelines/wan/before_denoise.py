@@ -249,7 +249,7 @@ class WanTextInputStep(ModularPipelineBlocks):
         self.check_inputs(components, block_state)
 
         block_state.batch_size = block_state.prompt_embeds.shape[0]
-        block_state.dtype = components.transformer.dtype
+        block_state.dtype = block_state.prompt_embeds.dtype
 
         _, seq_len, _ = block_state.prompt_embeds.shape
         block_state.prompt_embeds = block_state.prompt_embeds.repeat(1, block_state.num_videos_per_prompt, 1)

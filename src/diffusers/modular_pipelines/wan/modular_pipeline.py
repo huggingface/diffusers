@@ -17,6 +17,7 @@ from ...loaders import WanLoraLoaderMixin
 from ...pipelines.pipeline_utils import StableDiffusionMixin
 from ...utils import logging
 from ..modular_pipeline import ModularPipeline
+from typing import Optional, Dict, Any
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -34,6 +35,13 @@ class WanModularPipeline(
     """
 
     default_blocks_name = "WanAutoBlocks"
+
+    # override the default_blocks_name in base class, which is just return self.default_blocks_name
+    def get_default_blocks_name(self, config_dict: Optional[Dict[str, Any]]) -> Optional[str]:
+        if config_dict is not None and "boundary_ratio" in config_dict and config_dict["boundary_ratio"] is not None:
+            return "Wan22AutoBlocks"
+        else:
+            return "WanAutoBlocks"
 
     @property
     def default_height(self):
@@ -104,3 +112,10 @@ class WanModularPipeline(
             requires_unconditional_embeds = self.guider._enabled and self.guider.num_conditions > 1
 
         return requires_unconditional_embeds
+
+    @property
+    def num_train_timesteps(self):
+        num_train_timesteps = 1000
+        if hasattr(self, "scheduler") and self.scheduler is not None:
+            num_train_timesteps = self.scheduler.config.num_train_timesteps
+        return num_train_timesteps
