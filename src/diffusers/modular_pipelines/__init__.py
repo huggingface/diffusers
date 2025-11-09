@@ -90,7 +90,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             QwenImageModularPipeline,
         )
         from .stable_diffusion_xl import StableDiffusionXLAutoBlocks, StableDiffusionXLModularPipeline
-        from .wan import WanAutoBlocks, Wan22AutoBlocks, WanModularPipeline
+        from .wan import Wan22AutoBlocks, WanAutoBlocks, WanModularPipeline
 else:
     import sys
 

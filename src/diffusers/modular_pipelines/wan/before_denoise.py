@@ -13,17 +13,17 @@
 # limitations under the License.
 
 import inspect
-from typing import List, Optional, Union, Tuple
+from typing import List, Optional, Tuple, Union
 
 import torch
 
+from ...models import WanTransformer3DModel
 from ...schedulers import UniPCMultistepScheduler
 from ...utils import logging
 from ...utils.torch_utils import randn_tensor
 from ..modular_pipeline import ModularPipelineBlocks, PipelineState
 from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
 from .modular_pipeline import WanModularPipeline
-from ...models import WanTransformer3DModel
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -90,11 +90,14 @@ def repeat_tensor_to_batch_size(
 
     return input_tensor
 
-def calculate_dimension_from_latents(latents: torch.Tensor, vae_scale_factor_temporal: int, vae_scale_factor_spatial: int) -> Tuple[int, int]:
+
+def calculate_dimension_from_latents(
+    latents: torch.Tensor, vae_scale_factor_temporal: int, vae_scale_factor_spatial: int
+) -> Tuple[int, int]:
     """Calculate image dimensions from latent tensor dimensions.
 
-    This function converts latent temporal and spatial dimensions to image temporal and spatial dimensions by multiplying the latent num_frames/height/width
-    by the VAE scale factor.
+    This function converts latent temporal and spatial dimensions to image temporal and spatial dimensions by
+    multiplying the latent num_frames/height/width by the VAE scale factor.
 
     Args:
         latents (torch.Tensor): The latent tensor. Must have 4 or 5 dimensions.
@@ -121,6 +124,7 @@ def calculate_dimension_from_latents(latents: torch.Tensor, vae_scale_factor_tem
     width = latent_width * vae_scale_factor_spatial
 
     return num_frames, height, width
+
 
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.retrieve_timesteps
 def retrieve_timesteps(
@@ -195,7 +199,7 @@ class WanTextInputStep(ModularPipelineBlocks):
             "of prompt_embeds. The tensors will be duplicated across the batch dimension to\n"
             "have a final batch_size of batch_size * num_videos_per_prompt."
         )
-    
+
     @property
     def expected_components(self) -> List[ComponentSpec]:
         return [
@@ -289,8 +293,9 @@ class WanInputsDynamicStep(ModularPipelineBlocks):
 
         Args:
             image_latent_inputs (List[str], optional): Names of image latent tensors to process.
-                In additional to adjust batch size of these inputs, they will be used to determine height/width. Can be a single string or
-                list of strings. Defaults to ["image_latents"]. Examples: ["image_latents"], ["control_image_latents"]
+                In additional to adjust batch size of these inputs, they will be used to determine height/width. Can be
+                a single string or list of strings. Defaults to ["image_latents"]. Examples: ["image_latents"],
+                ["control_image_latents"]
             additional_batch_inputs (List[str], optional):
                 Names of additional conditional input tensors to expand batch size. These tensors will only have their
                 batch dimensions adjusted to match the final batch size. Can be a single string or list of strings.
@@ -358,7 +363,6 @@ class WanInputsDynamicStep(ModularPipelineBlocks):
 
         return inputs
 
-
     def __call__(self, components: WanModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
 
@@ -369,11 +373,12 @@ class WanInputsDynamicStep(ModularPipelineBlocks):
                 continue
 
             # 1. Calculate num_frames, height/width from latents
-            num_frames,height, width = calculate_dimension_from_latents(image_latent_tensor, components.vae_scale_factor_temporal, components.vae_scale_factor_spatial)
+            num_frames, height, width = calculate_dimension_from_latents(
+                image_latent_tensor, components.vae_scale_factor_temporal, components.vae_scale_factor_spatial
+            )
             block_state.num_frames = block_state.num_frames or num_frames
             block_state.height = block_state.height or height
             block_state.width = block_state.width or width
-
 
             # 3. Expand batch size
             image_latent_tensor = repeat_tensor_to_batch_size(
@@ -425,7 +430,6 @@ class WanSetTimestepsStep(ModularPipelineBlocks):
             InputParam("timesteps"),
             InputParam("sigmas"),
         ]
-
 
     @torch.no_grad()
     def __call__(self, components: WanModularPipeline, state: PipelineState) -> PipelineState:
@@ -569,8 +573,7 @@ class WanPrepareFirstFrameLatentsStep(ModularPipelineBlocks):
             InputParam("first_frame_latents", type_hint=Optional[torch.Tensor]),
             InputParam("num_frames", type_hint=int),
         ]
-    
-    
+
     def __call__(self, components: WanModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
 
@@ -580,9 +583,13 @@ class WanPrepareFirstFrameLatentsStep(ModularPipelineBlocks):
         mask_lat_size[:, :, list(range(1, block_state.num_frames))] = 0
 
         first_frame_mask = mask_lat_size[:, :, 0:1]
-        first_frame_mask = torch.repeat_interleave(first_frame_mask, dim=2, repeats=components.vae_scale_factor_temporal)
+        first_frame_mask = torch.repeat_interleave(
+            first_frame_mask, dim=2, repeats=components.vae_scale_factor_temporal
+        )
         mask_lat_size = torch.concat([first_frame_mask, mask_lat_size[:, :, 1:, :]], dim=2)
-        mask_lat_size = mask_lat_size.view(batch_size, -1, components.vae_scale_factor_temporal, latent_height, latent_width)
+        mask_lat_size = mask_lat_size.view(
+            batch_size, -1, components.vae_scale_factor_temporal, latent_height, latent_width
+        )
         mask_lat_size = mask_lat_size.transpose(1, 2)
         mask_lat_size = mask_lat_size.to(block_state.first_frame_latents.device)
         block_state.first_frame_latents = torch.concat([mask_lat_size, block_state.first_frame_latents], dim=1)
@@ -604,23 +611,28 @@ class WanPrepareFirstLastFrameLatentsStep(ModularPipelineBlocks):
             InputParam("first_last_frame_latents", type_hint=Optional[torch.Tensor]),
             InputParam("num_frames", type_hint=int),
         ]
-    
-    
+
     def __call__(self, components: WanModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
 
         batch_size, _, _, latent_height, latent_width = block_state.first_last_frame_latents.shape
 
         mask_lat_size = torch.ones(batch_size, 1, block_state.num_frames, latent_height, latent_width)
-        mask_lat_size[:, :, list(range(1, block_state.num_frames-1))] = 0
+        mask_lat_size[:, :, list(range(1, block_state.num_frames - 1))] = 0
 
         first_frame_mask = mask_lat_size[:, :, 0:1]
-        first_frame_mask = torch.repeat_interleave(first_frame_mask, dim=2, repeats=components.vae_scale_factor_temporal)
+        first_frame_mask = torch.repeat_interleave(
+            first_frame_mask, dim=2, repeats=components.vae_scale_factor_temporal
+        )
         mask_lat_size = torch.concat([first_frame_mask, mask_lat_size[:, :, 1:, :]], dim=2)
-        mask_lat_size = mask_lat_size.view(batch_size, -1, components.vae_scale_factor_temporal, latent_height, latent_width)
+        mask_lat_size = mask_lat_size.view(
+            batch_size, -1, components.vae_scale_factor_temporal, latent_height, latent_width
+        )
         mask_lat_size = mask_lat_size.transpose(1, 2)
         mask_lat_size = mask_lat_size.to(block_state.first_last_frame_latents.device)
-        block_state.first_last_frame_latents = torch.concat([mask_lat_size, block_state.first_last_frame_latents], dim=1)
+        block_state.first_last_frame_latents = torch.concat(
+            [mask_lat_size, block_state.first_last_frame_latents], dim=1
+        )
 
         self.set_block_state(state, block_state)
         return components, state

@@ -186,8 +186,10 @@ class PerturbedAttentionGuidance(BaseGuidance):
             data_batch = self._prepare_batch(data, tuple_idx, input_prediction)
             data_batches.append(data_batch)
         return data_batches
-    
-    def prepare_inputs_from_block_state(self, data: "BlockState", input_fields: Dict[str, Union[str, Tuple[str, str]]]) -> List["BlockState"]:
+
+    def prepare_inputs_from_block_state(
+        self, data: "BlockState", input_fields: Dict[str, Union[str, Tuple[str, str]]]
+    ) -> List["BlockState"]:
         if self.num_conditions == 1:
             tuple_indices = [0]
             input_predictions = ["pred_cond"]

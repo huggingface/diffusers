@@ -166,7 +166,9 @@ class BaseGuidance(ConfigMixin, PushToHubMixin):
     def prepare_inputs(self, data: "BlockState") -> List["BlockState"]:
         raise NotImplementedError("BaseGuidance::prepare_inputs must be implemented in subclasses.")
 
-    def prepare_inputs_from_block_state(self, data: "BlockState", input_fields: Dict[str, Union[str, Tuple[str, str]]]) -> List["BlockState"]:
+    def prepare_inputs_from_block_state(
+        self, data: "BlockState", input_fields: Dict[str, Union[str, Tuple[str, str]]]
+    ) -> List["BlockState"]:
         raise NotImplementedError("BaseGuidance::prepare_inputs_from_block_state must be implemented in subclasses.")
 
     def __call__(self, data: List["BlockState"]) -> Any:
@@ -237,7 +239,6 @@ class BaseGuidance(ConfigMixin, PushToHubMixin):
         data_batch[cls._identifier_key] = identifier
         return BlockState(**data_batch)
 
-
     @classmethod
     def _prepare_batch_from_block_state(
         cls,
@@ -267,7 +268,6 @@ class BaseGuidance(ConfigMixin, PushToHubMixin):
             `BlockState`: The prepared batch of data.
         """
         from ..modular_pipelines.modular_pipeline import BlockState
-
 
         data_batch = {}
         for key, value in input_fields.items():

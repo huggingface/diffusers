@@ -13,11 +13,12 @@
 # limitations under the License.
 
 
+from typing import Any, Dict, Optional
+
 from ...loaders import WanLoraLoaderMixin
 from ...pipelines.pipeline_utils import StableDiffusionMixin
 from ...utils import logging
 from ..modular_pipeline import ModularPipeline
-from typing import Optional, Dict, Any
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -66,14 +67,13 @@ class WanModularPipeline(
     @property
     def default_sample_num_frames(self):
         return 21
-    
+
     @property
     def patch_size_spatial(self):
         patch_size_spatial = 2
         if hasattr(self, "transformer") and self.transformer is not None:
             patch_size_spatial = self.transformer.config.patch_size[1]
         return patch_size_spatial
-    
 
     @property
     def vae_scale_factor_spatial(self):
@@ -102,7 +102,6 @@ class WanModularPipeline(
         if hasattr(self, "vae") and self.vae is not None:
             num_channels_latents = self.vae.config.z_dim
         return num_channels_latents
-
 
     @property
     def requires_unconditional_embeds(self):

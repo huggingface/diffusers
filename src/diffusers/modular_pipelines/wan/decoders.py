@@ -87,9 +87,7 @@ class WanImageVaeDecoderStep(ModularPipelineBlocks):
         latents = latents.to(vae_dtype)
         block_state.videos = components.vae.decode(latents, return_dict=False)[0]
 
-        block_state.videos = components.video_processor.postprocess_video(
-            block_state.videos, output_type="np"
-        )
+        block_state.videos = components.video_processor.postprocess_video(block_state.videos, output_type="np")
 
         self.set_block_state(state, block_state)
 

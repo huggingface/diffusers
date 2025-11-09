@@ -99,11 +99,9 @@ class AdaptiveProjectedMixGuidance(BaseGuidance):
             data_batches.append(data_batch)
         return data_batches
 
-
     def prepare_inputs_from_block_state(
         self, data: "BlockState", input_fields: Dict[str, Union[str, Tuple[str, str]]]
     ) -> List["BlockState"]:
-
         if self._step == 0:
             if self.adaptive_projected_guidance_momentum is not None:
                 self.momentum_buffer = MomentumBuffer(self.adaptive_projected_guidance_momentum)

@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Any, List, Tuple, Dict
+from typing import Any, Dict, List, Tuple
 
 import torch
 
@@ -27,7 +27,7 @@ from ..modular_pipeline import (
     ModularPipelineBlocks,
     PipelineState,
 )
-from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam, ConfigSpec
+from ..modular_pipeline_utils import ComponentSpec, ConfigSpec, InputParam
 from .modular_pipeline import WanModularPipeline
 
 
@@ -61,7 +61,6 @@ class WanLoopBeforeDenoiser(ModularPipelineBlocks):
                 description="The dtype of the model inputs. Can be generated in input step.",
             ),
         ]
-    
 
     @torch.no_grad()
     def __call__(self, components: WanModularPipeline, block_state: BlockState, i: int, t: torch.Tensor):
@@ -105,7 +104,9 @@ class WanImage2VideoLoopBeforeDenoiser(ModularPipelineBlocks):
 
     @torch.no_grad()
     def __call__(self, components: WanModularPipeline, block_state: BlockState, i: int, t: torch.Tensor):
-        block_state.latent_model_input = torch.cat([block_state.latents, block_state.first_frame_latents], dim=1).to(block_state.dtype)
+        block_state.latent_model_input = torch.cat([block_state.latents, block_state.first_frame_latents], dim=1).to(
+            block_state.dtype
+        )
         return components, block_state
 
 
@@ -145,31 +146,31 @@ class WanFLF2VLoopBeforeDenoiser(ModularPipelineBlocks):
 
     @torch.no_grad()
     def __call__(self, components: WanModularPipeline, block_state: BlockState, i: int, t: torch.Tensor):
-        block_state.latent_model_input = torch.cat([block_state.latents, block_state.first_last_frame_latents], dim=1).to(block_state.dtype)
+        block_state.latent_model_input = torch.cat(
+            [block_state.latents, block_state.first_last_frame_latents], dim=1
+        ).to(block_state.dtype)
         return components, block_state
 
 
 class WanLoopDenoiser(ModularPipelineBlocks):
     model_name = "wan"
 
-
     def __init__(
-        self, 
-        guider_input_fields: Dict[str, Any] = {"encoder_hidden_states": ("prompt_embeds", "negative_prompt_embeds")}
-        ):
+        self,
+        guider_input_fields: Dict[str, Any] = {"encoder_hidden_states": ("prompt_embeds", "negative_prompt_embeds")},
+    ):
         """Initialize a denoiser block that calls the denoiser model. This block is used in Wan2.1.
 
         Args:
             guider_input_fields: A dictionary that maps each argument expected by the denoiser model
-                (for example, "encoder_hidden_states") to data stored on 'block_state'.
-                The value can be either:
+                (for example, "encoder_hidden_states") to data stored on 'block_state'. The value can be either:
 
-                - A tuple of strings. For instance,
-                  {"encoder_hidden_states": ("prompt_embeds", "negative_prompt_embeds")} tells
-                  the guider to read `block_state.prompt_embeds` and `block_state.negative_prompt_embeds` and
-                  pass them as the conditional and unconditional batches of 'encoder_hidden_states'.
-                - A string. For example, {"encoder_hidden_image": "image_embeds"} makes the guider
-                  forward `block_state.image_embeds` for both conditional and unconditional batches.
+                - A tuple of strings. For instance, {"encoder_hidden_states": ("prompt_embeds",
+                  "negative_prompt_embeds")} tells the guider to read `block_state.prompt_embeds` and
+                  `block_state.negative_prompt_embeds` and pass them as the conditional and unconditional batches of
+                  'encoder_hidden_states'.
+                - A string. For example, {"encoder_hidden_image": "image_embeds"} makes the guider forward
+                  `block_state.image_embeds` for both conditional and unconditional batches.
         """
         if not isinstance(guider_input_fields, dict):
             raise ValueError(f"guider_input_fields must be a dictionary but is {type(guider_input_fields)}")
@@ -198,7 +199,6 @@ class WanLoopDenoiser(ModularPipelineBlocks):
 
     @property
     def inputs(self) -> List[Tuple[str, Any]]:
-
         inputs = [
             InputParam("attention_kwargs"),
             InputParam(
@@ -218,7 +218,6 @@ class WanLoopDenoiser(ModularPipelineBlocks):
         for name in guider_input_names:
             inputs.append(InputParam(name=name, required=True, type_hint=torch.Tensor))
         return inputs
-
 
     @torch.no_grad()
     def __call__(
@@ -264,21 +263,22 @@ class WanLoopDenoiser(ModularPipelineBlocks):
 class Wan22LoopDenoiser(ModularPipelineBlocks):
     model_name = "wan"
 
-
-    def __init__(self, guider_input_fields: Dict[str, Any] = {"encoder_hidden_states": ("prompt_embeds", "negative_prompt_embeds")}):
+    def __init__(
+        self,
+        guider_input_fields: Dict[str, Any] = {"encoder_hidden_states": ("prompt_embeds", "negative_prompt_embeds")},
+    ):
         """Initialize a denoiser block that calls the denoiser model. This block is used in Wan2.2.
 
         Args:
             guider_input_fields: A dictionary that maps each argument expected by the denoiser model
-                (for example, "encoder_hidden_states") to data stored on `block_state`.
-                The value can be either:
+                (for example, "encoder_hidden_states") to data stored on `block_state`. The value can be either:
 
-                - A tuple of strings. For instance,
-                  `{"encoder_hidden_states": ("prompt_embeds", "negative_prompt_embeds")}` tells
-                  the guider to read `block_state.prompt_embeds` and `block_state.negative_prompt_embeds` and
-                  pass them as the conditional and unconditional batches of `encoder_hidden_states`.
-                - A string. For example, `{"encoder_hidden_image": "image_embeds"}` makes the guider
-                  forward `block_state.image_embeds` for both conditional and unconditional batches.
+                - A tuple of strings. For instance, `{"encoder_hidden_states": ("prompt_embeds",
+                  "negative_prompt_embeds")}` tells the guider to read `block_state.prompt_embeds` and
+                  `block_state.negative_prompt_embeds` and pass them as the conditional and unconditional batches of
+                  `encoder_hidden_states`.
+                - A string. For example, `{"encoder_hidden_image": "image_embeds"}` makes the guider forward
+                  `block_state.image_embeds` for both conditional and unconditional batches.
         """
         if not isinstance(guider_input_fields, dict):
             raise ValueError(f"guider_input_fields must be a dictionary but is {type(guider_input_fields)}")
@@ -324,7 +324,6 @@ class Wan22LoopDenoiser(ModularPipelineBlocks):
 
     @property
     def inputs(self) -> List[Tuple[str, Any]]:
-
         inputs = [
             InputParam("attention_kwargs"),
             InputParam(
@@ -345,12 +344,10 @@ class Wan22LoopDenoiser(ModularPipelineBlocks):
             inputs.append(InputParam(name=name, required=True, type_hint=torch.Tensor))
         return inputs
 
-
     @torch.no_grad()
     def __call__(
         self, components: WanModularPipeline, block_state: BlockState, i: int, t: torch.Tensor
     ) -> PipelineState:
-
         boundary_timestep = components.config.boundary_ratio * components.num_train_timesteps
         if t >= boundary_timestep:
             block_state.current_model = components.transformer
@@ -412,7 +409,6 @@ class WanLoopAfterDenoiser(ModularPipelineBlocks):
             "This block should be used to compose the `sub_blocks` attribute of a `LoopSequentialPipelineBlocks` "
             "object (e.g. `WanDenoiseLoopWrapper`)"
         )
-
 
     @torch.no_grad()
     def __call__(self, components: WanModularPipeline, block_state: BlockState, i: int, t: torch.Tensor):
@@ -509,6 +505,7 @@ class WanDenoiseStep(WanDenoiseLoopWrapper):
             "This block supports text-to-video tasks."
         )
 
+
 class Wan22DenoiseStep(WanDenoiseLoopWrapper):
     block_classes = [
         WanLoopBeforeDenoiser,
@@ -532,6 +529,7 @@ class Wan22DenoiseStep(WanDenoiseLoopWrapper):
             " - `WanLoopAfterDenoiser`\n"
             "This block supports text-to-video tasks for Wan2.2."
         )
+
 
 class WanImage2VideoDenoiseStep(WanDenoiseLoopWrapper):
     block_classes = [

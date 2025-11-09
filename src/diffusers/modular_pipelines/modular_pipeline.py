@@ -1512,8 +1512,10 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
                 "revision": revision,
             }
 
-            modular_config_dict, config_dict = self._load_pipeline_config(pretrained_model_name_or_path, **load_config_kwargs)
-        
+            modular_config_dict, config_dict = self._load_pipeline_config(
+                pretrained_model_name_or_path, **load_config_kwargs
+            )
+
         if blocks is None:
             if modular_config_dict is not None:
                 blocks_class_name = modular_config_dict.get("_blocks_class_name")
@@ -1535,7 +1537,6 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
         self._config_specs = {spec.name: deepcopy(spec) for spec in self.blocks.expected_configs}
 
         # update component_specs and config_specs from modular_repo
-
 
         # update component_specs and config_specs based on modular_model_index.json
         if modular_config_dict is not None:
@@ -1605,28 +1606,26 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
         pretrained_model_name_or_path: Optional[Union[str, os.PathLike]],
         **load_config_kwargs,
     ):
-
         try:
             # try to load modular_model_index.json
             modular_config_dict = cls.load_config(pretrained_model_name_or_path, **load_config_kwargs)
             return modular_config_dict, None
-        
+
         except EnvironmentError as e:
             logger.debug(f" modular_model_index.json not found in the repo: {e}")
 
         try:
             logger.debug(" try to load model_index.json")
             from diffusers import DiffusionPipeline
-            from diffusers.pipelines.auto_pipeline import _get_model
 
             config_dict = DiffusionPipeline.load_config(pretrained_model_name_or_path, **load_config_kwargs)
             return None, config_dict
-        
+
         except EnvironmentError as e:
             logger.debug(f" model_index.json not found in the repo: {e}")
-    
+
         return None, None
-    
+
     @classmethod
     @validate_hf_hub_args
     def from_pretrained(
@@ -1681,12 +1680,15 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
             "revision": revision,
         }
 
-        modular_config_dict, config_dict = cls._load_pipeline_config(pretrained_model_name_or_path, **load_config_kwargs)
+        modular_config_dict, config_dict = cls._load_pipeline_config(
+            pretrained_model_name_or_path, **load_config_kwargs
+        )
 
         if modular_config_dict is not None:
             pipeline_class = _get_pipeline_class(cls, config=modular_config_dict)
         elif config_dict is not None:
             from diffusers.pipelines.auto_pipeline import _get_model
+
             logger.debug(" try to determine the modular pipeline class from model_index.json")
             standard_pipeline_class = _get_pipeline_class(cls, config=config_dict)
             model_name = _get_model(standard_pipeline_class.__name__)

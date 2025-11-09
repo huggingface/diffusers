@@ -406,8 +406,8 @@ else:
             "QwenImageModularPipeline",
             "StableDiffusionXLAutoBlocks",
             "StableDiffusionXLModularPipeline",
-            "WanAutoBlocks",
             "Wan22AutoBlocks",
+            "WanAutoBlocks",
             "WanModularPipeline",
         ]
     )
@@ -1088,8 +1088,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             QwenImageModularPipeline,
             StableDiffusionXLAutoBlocks,
             StableDiffusionXLModularPipeline,
-            WanAutoBlocks,
             Wan22AutoBlocks,
+            WanAutoBlocks,
             WanModularPipeline,
         )
         from .pipelines import (

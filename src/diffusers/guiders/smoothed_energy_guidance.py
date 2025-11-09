@@ -172,7 +172,9 @@ class SmoothedEnergyGuidance(BaseGuidance):
             data_batches.append(data_batch)
         return data_batches
 
-    def prepare_inputs_from_block_state(self, data: "BlockState", input_fields: Dict[str, Union[str, Tuple[str, str]]]) -> List["BlockState"]:
+    def prepare_inputs_from_block_state(
+        self, data: "BlockState", input_fields: Dict[str, Union[str, Tuple[str, str]]]
+    ) -> List["BlockState"]:
         if self.num_conditions == 1:
             tuple_indices = [0]
             input_predictions = ["pred_cond"]

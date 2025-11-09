@@ -26,9 +26,9 @@ else:
         "ALL_BLOCKS",
         "AUTO_BLOCKS",
         "TEXT2VIDEO_BLOCKS",
+        "Wan22AutoBlocks",
         "WanAutoBeforeDenoiseStep",
         "WanAutoBlocks",
-        "Wan22AutoBlocks",
         "WanAutoDecodeStep",
         "WanAutoDenoiseStep",
     ]
@@ -46,9 +46,9 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             ALL_BLOCKS,
             AUTO_BLOCKS,
             TEXT2VIDEO_BLOCKS,
+            Wan22AutoBlocks,
             WanAutoBeforeDenoiseStep,
             WanAutoBlocks,
-            Wan22AutoBlocks,
             WanAutoDecodeStep,
             WanAutoDenoiseStep,
         )
