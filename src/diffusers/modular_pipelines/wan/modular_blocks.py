@@ -16,7 +16,7 @@ from ...utils import logging
 from ..modular_pipeline import AutoPipelineBlocks, SequentialPipelineBlocks
 from ..modular_pipeline_utils import InsertableDict
 from .before_denoise import (
-    WanInputsDynamicStep,
+    WanAdditionalInputsStep,
     WanPrepareFirstFrameLatentsStep,
     WanPrepareFirstLastFrameLatentsStep,
     WanPrepareLatentsStep,
@@ -95,7 +95,7 @@ class WanImage2VideoVaeImageEncoderStep(SequentialPipelineBlocks):
 class WanImage2VideoCoreDenoiseStep(SequentialPipelineBlocks):
     block_classes = [
         WanTextInputStep,
-        WanInputsDynamicStep(image_latent_inputs=["first_frame_latents"]),
+        WanAdditionalInputsStep(image_latent_inputs=["first_frame_latents"]),
         WanSetTimestepsStep,
         WanPrepareLatentsStep,
         WanPrepareFirstFrameLatentsStep,
@@ -116,10 +116,10 @@ class WanImage2VideoCoreDenoiseStep(SequentialPipelineBlocks):
             "denoise block that takes encoded text and image latent conditions and runs the denoising process.\n"
             + "This is a sequential pipeline blocks:\n"
             + " - `WanTextInputStep` is used to adjust the batch size of the model inputs\n"
-            + " - `WanInputsDynamicStep` is used to adjust the batch size of the latent conditions\n"
+            + " - `WanAdditionalInputsStep` is used to adjust the batch size of the latent conditions\n"
             + " - `WanSetTimestepsStep` is used to set the timesteps\n"
             + " - `WanPrepareLatentsStep` is used to prepare the latents\n"
-            + " - `WanPrepareConditionLatentsStep` is used to prepare the latent conditions\n"
+            + " - `WanPrepareFirstFrameLatentsStep` is used to prepare the first frame latent conditions\n"
             + " - `WanImage2VideoDenoiseStep` is used to denoise the latents\n"
         )
 
@@ -153,7 +153,7 @@ class WanFLF2VVaeImageEncoderStep(SequentialPipelineBlocks):
 class WanFLF2VCoreDenoiseStep(SequentialPipelineBlocks):
     block_classes = [
         WanTextInputStep,
-        WanInputsDynamicStep(image_latent_inputs=["first_last_frame_latents"]),
+        WanAdditionalInputsStep(image_latent_inputs=["first_last_frame_latents"]),
         WanSetTimestepsStep,
         WanPrepareLatentsStep,
         WanPrepareFirstLastFrameLatentsStep,
@@ -174,7 +174,7 @@ class WanFLF2VCoreDenoiseStep(SequentialPipelineBlocks):
             "denoise block that takes encoded text and image latent conditions and runs the denoising process.\n"
             + "This is a sequential pipeline blocks:\n"
             + " - `WanTextInputStep` is used to adjust the batch size of the model inputs\n"
-            + " - `WanInputsDynamicStep` is used to adjust the batch size of the latent conditions\n"
+            + " - `WanAdditionalInputsStep` is used to adjust the batch size of the latent conditions\n"
             + " - `WanSetTimestepsStep` is used to set the timesteps\n"
             + " - `WanPrepareLatentsStep` is used to prepare the latents\n"
             + " - `WanPrepareFirstLastFrameLatentsStep` is used to prepare the latent conditions\n"
@@ -295,7 +295,7 @@ class Wan22CoreDenoiseStep(SequentialPipelineBlocks):
 class Wan22Image2VideoCoreDenoiseStep(SequentialPipelineBlocks):
     block_classes = [
         WanTextInputStep,
-        WanInputsDynamicStep(image_latent_inputs=["first_frame_latents"]),
+        WanAdditionalInputsStep(image_latent_inputs=["first_frame_latents"]),
         WanSetTimestepsStep,
         WanPrepareLatentsStep,
         WanPrepareFirstFrameLatentsStep,
@@ -316,10 +316,10 @@ class Wan22Image2VideoCoreDenoiseStep(SequentialPipelineBlocks):
             "denoise block that takes encoded text and image latent conditions and runs the denoising process.\n"
             + "This is a sequential pipeline blocks:\n"
             + " - `WanTextInputStep` is used to adjust the batch size of the model inputs\n"
-            + " - `WanInputsDynamicStep` is used to adjust the batch size of the latent conditions\n"
+            + " - `WanAdditionalInputsStep` is used to adjust the batch size of the latent conditions\n"
             + " - `WanSetTimestepsStep` is used to set the timesteps\n"
             + " - `WanPrepareLatentsStep` is used to prepare the latents\n"
-            + " - `WanPrepareConditionLatentsStep` is used to prepare the latent conditions\n"
+            + " - `WanPrepareFirstFrameLatentsStep` is used to prepare the first frame latent conditions\n"
             + " - `Wan22Image2VideoDenoiseStep` is used to denoise the latents in wan2.2\n"
         )
 
@@ -386,7 +386,7 @@ IMAGE2VIDEO_BLOCKS = InsertableDict(
         ("image_encoder", WanImage2VideoImageEncoderStep),
         ("vae_image_encoder", WanImage2VideoVaeImageEncoderStep),
         ("input", WanTextInputStep),
-        ("additional_inputs", WanInputsDynamicStep(image_latent_inputs=["first_frame_latents"])),
+        ("additional_inputs", WanAdditionalInputsStep(image_latent_inputs=["first_frame_latents"])),
         ("set_timesteps", WanSetTimestepsStep),
         ("prepare_latents", WanPrepareLatentsStep),
         ("prepare_first_frame_latents", WanPrepareFirstFrameLatentsStep),
@@ -403,7 +403,7 @@ FLF2V_BLOCKS = InsertableDict(
         ("image_encoder", WanFLF2VImageEncoderStep),
         ("vae_image_encoder", WanFLF2VVaeImageEncoderStep),
         ("input", WanTextInputStep),
-        ("additional_inputs", WanInputsDynamicStep(image_latent_inputs=["first_last_frame_latents"])),
+        ("additional_inputs", WanAdditionalInputsStep(image_latent_inputs=["first_last_frame_latents"])),
         ("set_timesteps", WanSetTimestepsStep),
         ("prepare_latents", WanPrepareLatentsStep),
         ("prepare_first_last_frame_latents", WanPrepareFirstLastFrameLatentsStep),

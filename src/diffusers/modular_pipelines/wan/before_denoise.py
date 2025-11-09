@@ -275,7 +275,7 @@ class WanTextInputStep(ModularPipelineBlocks):
         return components, state
 
 
-class WanInputsDynamicStep(ModularPipelineBlocks):
+class WanAdditionalInputsStep(ModularPipelineBlocks):
     model_name = "wan"
 
     def __init__(
