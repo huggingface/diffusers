@@ -294,21 +294,20 @@ class WanInputsDynamicStep(ModularPipelineBlocks):
         Args:
             image_latent_inputs (List[str], optional): Names of image latent tensors to process.
                 In additional to adjust batch size of these inputs, they will be used to determine height/width. Can be
-                a single string or list of strings. Defaults to ["image_latents"]. Examples: ["image_latents"],
-                ["control_image_latents"]
+                a single string or list of strings. Defaults to ["first_frame_latents"].
             additional_batch_inputs (List[str], optional):
                 Names of additional conditional input tensors to expand batch size. These tensors will only have their
                 batch dimensions adjusted to match the final batch size. Can be a single string or list of strings.
-                Defaults to []. Examples: ["processed_mask_image"]
+                Defaults to [].
 
         Examples:
-            # Configure to process image_latents (default behavior) QwenImageInputsDynamicStep()
+            # Configure to process first_frame_latents (default behavior) WanAdditionalInputsStep()
 
             # Configure to process multiple image latent inputs
-            QwenImageInputsDynamicStep(image_latent_inputs=["image_latents", "control_image_latents"])
+            WanAdditionalInputsStep(image_latent_inputs=["first_frame_latents", "last_frame_latents"])
 
-            # Configure to process image latents and additional batch inputs QwenImageInputsDynamicStep(
-                image_latent_inputs=["image_latents"], additional_batch_inputs=["processed_mask_image"]
+            # Configure to process image latents and additional batch inputs WanAdditionalInputsStep(
+                image_latent_inputs=["first_frame_latents"], additional_batch_inputs=["image_embeds"]
             )
         """
         if not isinstance(image_latent_inputs, list):
@@ -565,7 +564,7 @@ class WanPrepareFirstFrameLatentsStep(ModularPipelineBlocks):
 
     @property
     def description(self) -> str:
-        return "step that prepares the last frame mask latents and add it to the latent condition"
+        return "step that prepares the masked first frame latents and add it to the latent condition"
 
     @property
     def inputs(self) -> List[InputParam]:
@@ -603,7 +602,7 @@ class WanPrepareFirstLastFrameLatentsStep(ModularPipelineBlocks):
 
     @property
     def description(self) -> str:
-        return "step that prepares the last frame mask latents and add it to the latent condition"
+        return "step that prepares the masked latents with first and last frames and add it to the latent condition"
 
     @property
     def inputs(self) -> List[InputParam]:

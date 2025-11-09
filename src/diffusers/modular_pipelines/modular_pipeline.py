@@ -1536,8 +1536,6 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
         self._component_specs = {spec.name: deepcopy(spec) for spec in self.blocks.expected_components}
         self._config_specs = {spec.name: deepcopy(spec) for spec in self.blocks.expected_configs}
 
-        # update component_specs and config_specs from modular_repo
-
         # update component_specs and config_specs based on modular_model_index.json
         if modular_config_dict is not None:
             for name, value in modular_config_dict.items():
@@ -1551,7 +1549,7 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
                 elif name in self._config_specs:
                     self._config_specs[name].default = value
 
-        # if modular_model_index.json is not found, try to load model_index.json
+        # if `modular_config_dict` is None (i.e. `modular_model_index.json` is not found), update based on `config_dict` (i.e. `model_index.json`)
         elif config_dict is not None:
             for name, value in config_dict.items():
                 if name in self._component_specs and isinstance(value, (tuple, list)) and len(value) == 2:

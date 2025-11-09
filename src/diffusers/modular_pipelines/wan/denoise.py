@@ -502,7 +502,7 @@ class WanDenoiseStep(WanDenoiseLoopWrapper):
             " - `WanLoopBeforeDenoiser`\n"
             " - `WanLoopDenoiser`\n"
             " - `WanLoopAfterDenoiser`\n"
-            "This block supports text-to-video tasks."
+            "This block supports text-to-video tasks for wan2.1."
         )
 
 
@@ -553,7 +553,7 @@ class WanImage2VideoDenoiseStep(WanDenoiseLoopWrapper):
             " - `WanImage2VideoLoopBeforeDenoiser`\n"
             " - `WanLoopDenoiser`\n"
             " - `WanLoopAfterDenoiser`\n"
-            "This block supports image-to-video tasks."
+            "This block supports image-to-video tasks for wan2.1."
         )
 
 
@@ -604,5 +604,5 @@ class WanFLF2VDenoiseStep(WanDenoiseLoopWrapper):
             " - `WanFLF2VLoopBeforeDenoiser`\n"
             " - `WanLoopDenoiser`\n"
             " - `WanLoopAfterDenoiser`\n"
-            "This block supports FLF2V tasks."
+            "This block supports FLF2V tasks for wan2.1."
         )
