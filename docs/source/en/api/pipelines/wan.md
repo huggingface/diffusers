@@ -40,6 +40,7 @@ The following Wan models are supported in Diffusers:
 - [Wan 2.2 T2V 14B](https://huggingface.co/Wan-AI/Wan2.2-T2V-A14B-Diffusers)
 - [Wan 2.2 I2V 14B](https://huggingface.co/Wan-AI/Wan2.2-I2V-A14B-Diffusers)
 - [Wan 2.2 TI2V 5B](https://huggingface.co/Wan-AI/Wan2.2-TI2V-5B-Diffusers)
+- [Wan 2.2 S2V 14B](https://huggingface.co/Wan-AI/Wan2.2-S2V-14B-Diffusers)
 
 > [!TIP]
 > Click on the Wan models in the right sidebar for more examples of video generation.
@@ -95,15 +96,15 @@ pipeline = WanPipeline.from_pretrained(
 pipeline.to("cuda")
 
 prompt = """
-The camera rushes from far to near in a low-angle shot, 
-revealing a white ferret on a log. It plays, leaps into the water, and emerges, as the camera zooms in 
-for a close-up. Water splashes berry bushes nearby, while moss, snow, and leaves blanket the ground. 
-Birch trees and a light blue sky frame the scene, with ferns in the foreground. Side lighting casts dynamic 
+The camera rushes from far to near in a low-angle shot,
+revealing a white ferret on a log. It plays, leaps into the water, and emerges, as the camera zooms in
+for a close-up. Water splashes berry bushes nearby, while moss, snow, and leaves blanket the ground.
+Birch trees and a light blue sky frame the scene, with ferns in the foreground. Side lighting casts dynamic
 shadows and warm highlights. Medium composition, front view, low angle, with depth of field.
 """
 negative_prompt = """
-Bright tones, overexposed, static, blurred details, subtitles, style, works, paintings, images, static, overall gray, worst quality, 
-low quality, JPEG compression residue, ugly, incomplete, extra fingers, poorly drawn hands, poorly drawn faces, deformed, disfigured, 
+Bright tones, overexposed, static, blurred details, subtitles, style, works, paintings, images, static, overall gray, worst quality,
+low quality, JPEG compression residue, ugly, incomplete, extra fingers, poorly drawn hands, poorly drawn faces, deformed, disfigured,
 misshapen limbs, fused fingers, still picture, messy background, three legs, many people in the background, walking backwards
 """
 
@@ -150,15 +151,15 @@ pipeline.transformer = torch.compile(
 )
 
 prompt = """
-The camera rushes from far to near in a low-angle shot, 
-revealing a white ferret on a log. It plays, leaps into the water, and emerges, as the camera zooms in 
-for a close-up. Water splashes berry bushes nearby, while moss, snow, and leaves blanket the ground. 
-Birch trees and a light blue sky frame the scene, with ferns in the foreground. Side lighting casts dynamic 
+The camera rushes from far to near in a low-angle shot,
+revealing a white ferret on a log. It plays, leaps into the water, and emerges, as the camera zooms in
+for a close-up. Water splashes berry bushes nearby, while moss, snow, and leaves blanket the ground.
+Birch trees and a light blue sky frame the scene, with ferns in the foreground. Side lighting casts dynamic
 shadows and warm highlights. Medium composition, front view, low angle, with depth of field.
 """
 negative_prompt = """
-Bright tones, overexposed, static, blurred details, subtitles, style, works, paintings, images, static, overall gray, worst quality, 
-low quality, JPEG compression residue, ugly, incomplete, extra fingers, poorly drawn hands, poorly drawn faces, deformed, disfigured, 
+Bright tones, overexposed, static, blurred details, subtitles, style, works, paintings, images, static, overall gray, worst quality,
+low quality, JPEG compression residue, ugly, incomplete, extra fingers, poorly drawn hands, poorly drawn faces, deformed, disfigured,
 misshapen limbs, fused fingers, still picture, messy background, three legs, many people in the background, walking backwards
 """
 
@@ -236,6 +237,129 @@ export_to_video(output, "output.mp4", fps=16)
 </hfoption>
 </hfoptions>
 
+
+### Wan-S2V: Audio-Driven Cinematic Video Generation
+
+[Wan-S2V](https://huggingface.co/papers/2508.18621) by the Wan Team.
+
+*Current state-of-the-art (SOTA) methods for audio-driven character animation demonstrate promising performance for scenarios primarily involving speech and singing. However, they often fall short in more complex film and television productions, which demand sophisticated elements such as nuanced character interactions, realistic body movements, and dynamic camera work. To address this long-standing challenge of achieving film-level character animation, we propose an audio-driven model, which we refere to as Wan-S2V, built upon Wan. Our model achieves significantly enhanced expressiveness and fidelity in cinematic contexts compared to existing approaches. We conducted extensive experiments, benchmarking our method against cutting-edge models such as Hunyuan-Avatar and Omnihuman. The experimental results consistently demonstrate that our approach significantly outperforms these existing solutions. Additionally, we explore the versatility of our method through its applications in long-form video generation and precise video lip-sync editing.*
+
+The project page: https://humanaigc.github.io/wan-s2v-webpage/
+
+This model was contributed by [M. Tolga Cangöz](https://github.com/tolgacangoz).
+
+The example below demonstrates how to use the speech-to-video pipeline to generate a video using a text description, a starting frame, an audio, and a pose video.
+
+<hfoptions id="S2V usage">
+<hfoption id="usage">
+
+```python
+import numpy as np, math
+import torch
+from diffusers import AutoencoderKLWan, WanSpeechToVideoPipeline
+from diffusers.utils import export_to_merged_video_audio, load_image, load_audio, load_video, export_to_video
+from transformers import Wav2Vec2ForCTC
+import requests
+from PIL import Image
+from io import BytesIO
+
+
+model_id = "Wan-AI/Wan2.2-S2V-14B-Diffusers"
+audio_encoder = Wav2Vec2ForCTC.from_pretrained(model_id, subfolder="audio_encoder", dtype=torch.float32)
+vae = AutoencoderKLWan.from_pretrained(model_id, subfolder="vae", torch_dtype=torch.float32)
+pipe = WanSpeechToVideoPipeline.from_pretrained(
+    model_id, vae=vae, audio_encoder=audio_encoder, torch_dtype=torch.bfloat16
+)
+pipe.to("cuda")
+
+headers = {"User-Agent": "Mozilla/5.0"}
+url = "https://upload.wikimedia.org/wikipedia/commons/4/46/Albert_Einstein_sticks_his_tongue.jpg"
+resp = requests.get(url, headers=headers, timeout=30)
+image = Image.open(BytesIO(resp.content))
+
+audio, sampling_rate = load_audio("https://github.com/Wan-Video/Wan2.2/raw/refs/heads/main/examples/Five%20Hundred%20Miles.MP3")
+#pose_video_path_or_url = "https://github.com/Wan-Video/Wan2.2/raw/refs/heads/main/examples/pose.mp4"
+
+def get_size_less_than_area(height,
+                            width,
+                            target_area=1024 * 704,
+                            divisor=64):
+    if height * width <= target_area:
+        # If the original image area is already less than or equal to the target,
+        # no resizing is needed—just padding. Still need to ensure that the padded area doesn't exceed the target.
+        max_upper_area = target_area
+        min_scale = 0.1
+        max_scale = 1.0
+    else:
+        # Resize to fit within the target area and then pad to multiples of `divisor`
+        max_upper_area = target_area  # Maximum allowed total pixel count after padding
+        d = divisor - 1
+        b = d * (height + width)
+        a = height * width
+        c = d**2 - max_upper_area
+
+        # Calculate scale boundaries using quadratic equation
+        min_scale = (-b + math.sqrt(b**2 - 2 * a * c)) / (2 * a)  # Scale when maximum padding is applied
+        max_scale = math.sqrt(max_upper_area / (height * width))  # Scale without any padding
+
+    # We want to choose the largest possible scale such that the final padded area does not exceed max_upper_area
+    # Use binary search-like iteration to find this scale
+    find_it = False
+    for i in range(100):
+        scale = max_scale - (max_scale - min_scale) * i / 100
+        new_height, new_width = int(height * scale), int(width * scale)
+
+        # Pad to make dimensions divisible by 64
+        pad_height = (64 - new_height % 64) % 64
+        pad_width = (64 - new_width % 64) % 64
+        pad_top = pad_height // 2
+        pad_bottom = pad_height - pad_top
+        pad_left = pad_width // 2
+        pad_right = pad_width - pad_left
+
+        padded_height, padded_width = new_height + pad_height, new_width + pad_width
+
+        if padded_height * padded_width <= max_upper_area:
+            find_it = True
+            break
+
+    if find_it:
+        return padded_height, padded_width
+    else:
+        # Fallback: calculate target dimensions based on aspect ratio and divisor alignment
+        aspect_ratio = width / height
+        target_width = int(
+            (target_area * aspect_ratio)**0.5 // divisor * divisor)
+        target_height = int(
+            (target_area / aspect_ratio)**0.5 // divisor * divisor)
+
+        # Ensure the result is not larger than the original resolution
+        if target_width >= width or target_height >= height:
+            target_width = int(width // divisor * divisor)
+            target_height = int(height // divisor * divisor)
+
+        return target_height, target_width
+
+height, width = get_size_less_than_area(first_frame.height, first_frame.width, 480*832)
+
+prompt = "Einstein singing a song."
+
+output = pipe(
+    prompt=prompt, image=image, audio=audio, sampling_rate=sampling_rate,
+    height=height, width=width, num_frames_per_chunk=80,
+    #pose_video_path_or_url=pose_video_path_or_url,
+).frames[0]
+export_to_video(output, "output.mp4", fps=16)
+
+# Lastly, we need to merge the video and audio into a new video, with the duration set to
+# the shorter of the two and overwrite the original video file.
+export_to_merged_video_audio("output.mp4", "audio.mp3")
+```
+
+</hfoption>
+</hfoptions>
+
+
 ### Any-to-Video Controllable Generation
 
 Wan VACE supports various generation techniques which achieve controllable video generation. Some of the capabilities include:
@@ -281,10 +405,10 @@ The general rule of thumb to keep in mind when preparing inputs for the VACE pip
 
   # use "steamboat willie style" to trigger the LoRA
   prompt = """
-  steamboat willie style, golden era animation, The camera rushes from far to near in a low-angle shot, 
-  revealing a white ferret on a log. It plays, leaps into the water, and emerges, as the camera zooms in 
-  for a close-up. Water splashes berry bushes nearby, while moss, snow, and leaves blanket the ground. 
-  Birch trees and a light blue sky frame the scene, with ferns in the foreground. Side lighting casts dynamic 
+  steamboat willie style, golden era animation, The camera rushes from far to near in a low-angle shot,
+  revealing a white ferret on a log. It plays, leaps into the water, and emerges, as the camera zooms in
+  for a close-up. Water splashes berry bushes nearby, while moss, snow, and leaves blanket the ground.
+  Birch trees and a light blue sky frame the scene, with ferns in the foreground. Side lighting casts dynamic
   shadows and warm highlights. Medium composition, front view, low angle, with depth of field.
   """
 
@@ -350,6 +474,12 @@ The general rule of thumb to keep in mind when preparing inputs for the VACE pip
 ## WanVACEPipeline
 
 [[autodoc]] WanVACEPipeline
+  - all
+  - __call__
+
+## WanSpeechToVideoPipeline
+
+[[autodoc]] WanSpeechToVideoPipeline
   - all
   - __call__
 

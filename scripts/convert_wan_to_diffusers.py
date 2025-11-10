@@ -6,13 +6,22 @@ import torch
 from accelerate import init_empty_weights
 from huggingface_hub import hf_hub_download, snapshot_download
 from safetensors.torch import load_file
-from transformers import AutoProcessor, AutoTokenizer, CLIPVisionModelWithProjection, UMT5EncoderModel
+from transformers import (
+    AutoProcessor,
+    AutoTokenizer,
+    CLIPVisionModelWithProjection,
+    UMT5EncoderModel,
+    Wav2Vec2ForCTC,
+    Wav2Vec2Processor,
+)
 
 from diffusers import (
     AutoencoderKLWan,
     UniPCMultistepScheduler,
     WanImageToVideoPipeline,
     WanPipeline,
+    WanS2VTransformer3DModel,
+    WanSpeechToVideoPipeline,
     WanTransformer3DModel,
     WanVACEPipeline,
     WanVACETransformer3DModel,
@@ -105,8 +114,59 @@ VACE_TRANSFORMER_KEYS_RENAME_DICT = {
     "after_proj": "proj_out",
 }
 
+S2V_TRANSFORMER_KEYS_RENAME_DICT = {
+    "time_embedding.0": "condition_embedder.time_embedder.linear_1",
+    "time_embedding.2": "condition_embedder.time_embedder.linear_2",
+    "text_embedding.0": "condition_embedder.text_embedder.linear_1",
+    "text_embedding.2": "condition_embedder.text_embedder.linear_2",
+    "time_projection.1": "condition_embedder.time_proj",
+    "head.modulation": "scale_shift_table",
+    "head.head": "proj_out",
+    "modulation": "scale_shift_table",
+    "ffn.0": "ffn.net.0.proj",
+    "ffn.2": "ffn.net.2",
+    # Hack to swap the layer names
+    # The original model calls the norms in following order: norm1, norm3, norm2
+    # We convert it to: norm1, norm2, norm3
+    "norm2": "norm__placeholder",
+    "norm3": "norm2",
+    "norm__placeholder": "norm3",
+    # Add attention component mappings
+    "self_attn.q": "attn1.to_q",
+    "self_attn.k": "attn1.to_k",
+    "self_attn.v": "attn1.to_v",
+    "self_attn.o": "attn1.to_out.0",
+    "self_attn.norm_q": "attn1.norm_q",
+    "self_attn.norm_k": "attn1.norm_k",
+    "cross_attn.q": "attn2.to_q",
+    "cross_attn.k": "attn2.to_k",
+    "cross_attn.v": "attn2.to_v",
+    "cross_attn.o": "attn2.to_out.0",
+    "cross_attn.norm_q": "attn2.norm_q",
+    "cross_attn.norm_k": "attn2.norm_k",
+    "attn2.to_k_img": "attn2.add_k_proj",
+    "attn2.to_v_img": "attn2.add_v_proj",
+    "attn2.norm_k_img": "attn2.norm_added_k",
+    # S2V-specific audio component mappings
+    "casual_audio_encoder.encoder.conv2.conv": "condition_embedder.causal_audio_encoder.encoder.conv2.conv.conv",
+    "casual_audio_encoder.encoder.conv3.conv": "condition_embedder.causal_audio_encoder.encoder.conv3.conv.conv",
+    "casual_audio_encoder.weights": "condition_embedder.causal_audio_encoder.weighted_avg.weights",
+    # Pose condition encoder mappings
+    "cond_encoder.weight": "condition_embedder.pose_embedder.weight",
+    "cond_encoder.bias": "condition_embedder.pose_embedder.bias",
+    "trainable_cond_mask": "trainable_condition_mask",
+    "patch_embedding": "motion_in.patch_embedding",
+    # Audio injector attention mappings - convert original q/k/v/o format to diffusers format
+    **{
+        f"audio_injector.injector.{i}.{src}": f"audio_injector.injector.{i}.{dst}"
+        for i in range(12)
+        for src, dst in [("q", "to_q"), ("k", "to_k"), ("v", "to_v"), ("o", "to_out.0")]
+    },
+}
+
 TRANSFORMER_SPECIAL_KEYS_REMAP = {}
 VACE_TRANSFORMER_SPECIAL_KEYS_REMAP = {}
+S2V_TRANSFORMER_SPECIAL_KEYS_REMAP = {}
 
 
 def update_state_dict_(state_dict: Dict[str, Any], old_key: str, new_key: str) -> Dict[str, Any]:
@@ -364,6 +424,36 @@ def get_transformer_config(model_type: str) -> Tuple[Dict[str, Any], ...]:
         }
         RENAME_DICT = TRANSFORMER_KEYS_RENAME_DICT
         SPECIAL_KEYS_REMAP = TRANSFORMER_SPECIAL_KEYS_REMAP
+    elif model_type == "Wan2.2-S2V-14B":
+        config = {
+            "model_id": "Wan-AI/Wan2.2-S2V-14B",
+            "diffusers_config": {
+                "added_kv_proj_dim": None,
+                "attention_head_dim": 128,
+                "cross_attn_norm": True,
+                "eps": 1e-06,
+                "ffn_dim": 13824,
+                "freq_dim": 256,
+                "in_channels": 16,
+                "num_attention_heads": 40,
+                "num_layers": 40,
+                "out_channels": 16,
+                "patch_size": [1, 2, 2],
+                "qk_norm": "rms_norm_across_heads",
+                "text_dim": 4096,
+                "audio_dim": 1024,
+                "audio_inject_layers": [0, 4, 8, 12, 16, 20, 24, 27, 30, 33, 36, 39],
+                "enable_adain": True,
+                "adain_mode": "attn_norm",
+                "pose_dim": 16,
+                "enable_framepack": True,
+                "framepack_drop_mode": "padd",
+                "add_last_motion": True,
+                "zero_timestep": True,
+            },
+        }
+        RENAME_DICT = S2V_TRANSFORMER_KEYS_RENAME_DICT
+        SPECIAL_KEYS_REMAP = S2V_TRANSFORMER_SPECIAL_KEYS_REMAP
     return config, RENAME_DICT, SPECIAL_KEYS_REMAP
 
 
@@ -380,7 +470,9 @@ def convert_transformer(model_type: str, stage: str = None):
     original_state_dict = load_sharded_safetensors(model_dir)
 
     with init_empty_weights():
-        if "VACE" not in model_type:
+        if "S2V" in model_type:
+            transformer = WanS2VTransformer3DModel.from_config(diffusers_config)
+        elif "VACE" not in model_type:
             transformer = WanTransformer3DModel.from_config(diffusers_config)
         else:
             transformer = WanVACETransformer3DModel.from_config(diffusers_config)
@@ -926,7 +1018,7 @@ DTYPE_MAPPING = {
 if __name__ == "__main__":
     args = get_args()
 
-    if "Wan2.2" in args.model_type and "TI2V" not in args.model_type:
+    if "Wan2.2" in args.model_type and "TI2V" not in args.model_type and "S2V" not in args.model_type:
         transformer = convert_transformer(args.model_type, stage="high_noise_model")
         transformer_2 = convert_transformer(args.model_type, stage="low_noise_model")
     else:
@@ -942,7 +1034,7 @@ if __name__ == "__main__":
     tokenizer = AutoTokenizer.from_pretrained("google/umt5-xxl")
     if "FLF2V" in args.model_type:
         flow_shift = 16.0
-    elif "TI2V" in args.model_type:
+    elif "TI2V" in args.model_type or "S2V" in args.model_type:
         flow_shift = 5.0
     else:
         flow_shift = 3.0
@@ -1015,6 +1107,22 @@ if __name__ == "__main__":
             tokenizer=tokenizer,
             vae=vae,
             scheduler=scheduler,
+        )
+    elif "S2V" in args.model_type:
+        audio_encoder = Wav2Vec2ForCTC.from_pretrained(
+            "Wan-AI/Wan2.2-S2V-14B", subfolder="wav2vec2-large-xlsr-53-english"
+        )
+        audio_processor = Wav2Vec2Processor.from_pretrained(
+            "Wan-AI/Wan2.2-S2V-14B", subfolder="wav2vec2-large-xlsr-53-english"
+        )
+        pipe = WanSpeechToVideoPipeline(
+            transformer=transformer,
+            text_encoder=text_encoder,
+            tokenizer=tokenizer,
+            vae=vae,
+            scheduler=scheduler,
+            audio_encoder=audio_encoder,
+            audio_processor=audio_processor,
         )
     else:
         pipe = WanPipeline(
