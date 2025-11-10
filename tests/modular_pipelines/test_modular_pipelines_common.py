@@ -7,6 +7,7 @@ import torch
 
 import diffusers
 from diffusers import ComponentsManager, ModularPipeline, ModularPipelineBlocks
+from diffusers.guiders import ClassifierFreeGuidance
 from diffusers.utils import logging
 
 from ..testing_utils import backend_empty_cache, numpy_cosine_similarity_distance, torch_device
@@ -104,6 +105,7 @@ class ModularPipelineTesterMixin:
     def get_pipeline(self, components_manager=None, torch_dtype=torch.float32):
         pipeline = self.pipeline_blocks_class().init_pipeline(self.repo, components_manager=components_manager)
         pipeline.load_components(torch_dtype=torch_dtype)
+        pipeline.set_progress_bar_config(disable=None)
         return pipeline
 
     def test_pipeline_call_signature(self):
@@ -121,9 +123,7 @@ class ModularPipelineTesterMixin:
         _check_for_parameters(self.optional_params, optional_parameters, "optional")
 
     def test_inference_batch_consistent(self, batch_sizes=[2], batch_generator=True):
-        pipe = self.get_pipeline()
-        pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
+        pipe = self.get_pipeline().to(torch_device)
 
         inputs = self.get_dummy_inputs()
         inputs["generator"] = self.get_generator(0)
@@ -162,9 +162,8 @@ class ModularPipelineTesterMixin:
         batch_size=2,
         expected_max_diff=1e-4,
     ):
-        pipe = self.get_pipeline()
-        pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
+        pipe = self.get_pipeline().to(torch_device)
+
         inputs = self.get_dummy_inputs()
 
         # Reset generator in case it is has been used in self.get_dummy_inputs
@@ -202,7 +201,6 @@ class ModularPipelineTesterMixin:
     def test_float16_inference(self, expected_max_diff=5e-2):
         pipe = self.get_pipeline()
         pipe.to(torch_device, torch.float32)
-        pipe.set_progress_bar_config(disable=None)
 
         pipe_fp16 = self.get_pipeline()
         pipe_fp16.to(torch_device, torch.float16)
@@ -229,10 +227,8 @@ class ModularPipelineTesterMixin:
 
     @pytest.mark.skipif(torch_device == "cpu", reason="Test needs an accelerator.")
     def test_to_device(self):
-        pipe = self.get_pipeline()
-        pipe.set_progress_bar_config(disable=None)
+        pipe = self.get_pipeline().to("cpu")
 
-        pipe.to("cpu")
         model_devices = [
             component.device.type for component in pipe.components.values() if hasattr(component, "device")
         ]
@@ -247,30 +243,23 @@ class ModularPipelineTesterMixin:
         )
 
     def test_inference_is_not_nan_cpu(self):
-        pipe = self.get_pipeline()
-        pipe.set_progress_bar_config(disable=None)
-        pipe.to("cpu")
+        pipe = self.get_pipeline().to("cpu")
 
         output = pipe(**self.get_dummy_inputs(), output="images")
         assert torch.isnan(output).sum() == 0, "CPU Inference returns NaN"
 
     @pytest.mark.skipif(torch_device == "cpu", reason="Test needs an accelerator.")
     def test_inference_is_not_nan(self):
-        pipe = self.get_pipeline()
-        pipe.set_progress_bar_config(disable=None)
-        pipe.to(torch_device)
+        pipe = self.get_pipeline().to(torch_device)
 
         output = pipe(**self.get_dummy_inputs(), output="images")
         assert torch.isnan(output).sum() == 0, "Accelerator Inference returns NaN"
 
     def test_num_images_per_prompt(self):
-        pipe = self.get_pipeline()
+        pipe = self.get_pipeline().to(torch_device)
 
         if "num_images_per_prompt" not in pipe.blocks.input_names:
-            return
-
-        pipe = pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
+            pytest.mark.skip("Skipping test as `num_images_per_prompt` is not present in input names.")
 
         batch_sizes = [1, 2]
         num_images_per_prompts = [1, 2]
@@ -325,3 +314,25 @@ class ModularPipelineTesterMixin:
             image_slices.append(image[0, -3:, -3:, -1].flatten())
 
         assert torch.abs(image_slices[0] - image_slices[1]).max() < 1e-3
+
+
+class ModularGuiderTesterMixin:
+    def test_guider_cfg(self, expected_max_diff=1e-2):
+        pipe = self.get_pipeline().to(torch_device)
+
+        # forward pass with CFG not applied
+        guider = ClassifierFreeGuidance(guidance_scale=1.0)
+        pipe.update_components(guider=guider)
+
+        inputs = self.get_dummy_inputs()
+        out_no_cfg = pipe(**inputs, output="images")
+
+        # forward pass with CFG applied
+        guider = ClassifierFreeGuidance(guidance_scale=7.5)
+        pipe.update_components(guider=guider)
+        inputs = self.get_dummy_inputs()
+        out_cfg = pipe(**inputs, output="images")
+
+        assert out_cfg.shape == out_no_cfg.shape
+        max_diff = torch.abs(out_cfg - out_no_cfg).max()
+        assert max_diff > expected_max_diff, "Output with CFG must be different from normal inference"

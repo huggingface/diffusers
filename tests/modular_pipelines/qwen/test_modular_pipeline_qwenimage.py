@@ -14,11 +14,9 @@
 # limitations under the License.
 
 
-import numpy as np
 import PIL
 import pytest
 
-from diffusers import ClassifierFreeGuidance
 from diffusers.modular_pipelines import (
     QwenImageAutoBlocks,
     QwenImageEditAutoBlocks,
@@ -28,32 +26,10 @@ from diffusers.modular_pipelines import (
     QwenImageModularPipeline,
 )
 
-from ...testing_utils import torch_device
-from ..test_modular_pipelines_common import ModularPipelineTesterMixin
+from ..test_modular_pipelines_common import ModularGuiderTesterMixin, ModularPipelineTesterMixin
 
 
-class QwenImageModularGuiderMixin:
-    def test_guider_cfg(self, tol=1e-2):
-        pipe = self.get_pipeline()
-        pipe = pipe.to(torch_device)
-
-        guider = ClassifierFreeGuidance(guidance_scale=1.0)
-        pipe.update_components(guider=guider)
-
-        inputs = self.get_dummy_inputs()
-        out_no_cfg = pipe(**inputs, output="images")
-
-        guider = ClassifierFreeGuidance(guidance_scale=7.5)
-        pipe.update_components(guider=guider)
-        inputs = self.get_dummy_inputs()
-        out_cfg = pipe(**inputs, output="images")
-
-        assert out_cfg.shape == out_no_cfg.shape
-        max_diff = np.abs(out_cfg - out_no_cfg).max()
-        assert max_diff > tol, "Output with CFG must be different from normal inference"
-
-
-class TestQwenImageModularPipelineFast(ModularPipelineTesterMixin, QwenImageModularGuiderMixin):
+class TestQwenImageModularPipelineFast(ModularPipelineTesterMixin, ModularGuiderTesterMixin):
     pipeline_class = QwenImageModularPipeline
     pipeline_blocks_class = QwenImageAutoBlocks
     repo = "hf-internal-testing/tiny-qwenimage-modular"
@@ -76,7 +52,7 @@ class TestQwenImageModularPipelineFast(ModularPipelineTesterMixin, QwenImageModu
         return inputs
 
 
-class TestQwenImageEditModularPipelineFast(ModularPipelineTesterMixin, QwenImageModularGuiderMixin):
+class TestQwenImageEditModularPipelineFast(ModularPipelineTesterMixin, ModularGuiderTesterMixin):
     pipeline_class = QwenImageEditModularPipeline
     pipeline_blocks_class = QwenImageEditAutoBlocks
     repo = "hf-internal-testing/tiny-qwenimage-edit-modular"
@@ -102,7 +78,7 @@ class TestQwenImageEditModularPipelineFast(ModularPipelineTesterMixin, QwenImage
         super().test_guider_cfg(7e-5)
 
 
-class TestQwenImageEditPlusModularPipelineFast(ModularPipelineTesterMixin, QwenImageModularGuiderMixin):
+class TestQwenImageEditPlusModularPipelineFast(ModularPipelineTesterMixin, ModularGuiderTesterMixin):
     pipeline_class = QwenImageEditPlusModularPipeline
     pipeline_blocks_class = QwenImageEditPlusAutoBlocks
     repo = "hf-internal-testing/tiny-qwenimage-edit-plus-modular"
