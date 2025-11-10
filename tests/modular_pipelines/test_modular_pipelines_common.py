@@ -2,22 +2,16 @@ import gc
 import tempfile
 from typing import Callable, Union
 
+import pytest
 import torch
 
 import diffusers
 from diffusers import ComponentsManager, ModularPipeline, ModularPipelineBlocks
 from diffusers.utils import logging
 
-from ..testing_utils import (
-    backend_empty_cache,
-    numpy_cosine_similarity_distance,
-    require_accelerator,
-    require_torch,
-    torch_device,
-)
+from ..testing_utils import backend_empty_cache, numpy_cosine_similarity_distance, torch_device
 
 
-@require_torch
 class ModularPipelineTesterMixin:
     """
     It provides a set of common tests for each modular pipeline,
@@ -204,7 +198,7 @@ class ModularPipelineTesterMixin:
         max_diff = torch.abs(output_batch[0] - output[0]).max()
         assert max_diff < expected_max_diff, "Batch inference results different from single inference results"
 
-    @require_accelerator
+    @pytest.mark.skipif(torch_device != "cpu", "Test needs an accelerator.")
     def test_float16_inference(self, expected_max_diff=5e-2):
         pipe = self.get_pipeline()
         pipe.to(torch_device, torch.float32)
@@ -233,7 +227,7 @@ class ModularPipelineTesterMixin:
         max_diff = numpy_cosine_similarity_distance(output.flatten(), output_fp16.flatten())
         assert max_diff < expected_max_diff, "FP16 inference is different from FP32 inference"
 
-    @require_accelerator
+    @pytest.mark.skipif(torch_device != "cpu", "Test needs an accelerator.")
     def test_to_device(self):
         pipe = self.get_pipeline()
         pipe.set_progress_bar_config(disable=None)
@@ -260,7 +254,7 @@ class ModularPipelineTesterMixin:
         output = pipe(**self.get_dummy_inputs(), output="images")
         assert torch.isnan(output).sum() == 0, "CPU Inference returns NaN"
 
-    @require_accelerator
+    @pytest.mark.skipif(torch_device != "cpu", "Test needs an accelerator.")
     def test_inference_is_not_nan(self):
         pipe = self.get_pipeline()
         pipe.set_progress_bar_config(disable=None)
@@ -293,7 +287,7 @@ class ModularPipelineTesterMixin:
 
                 assert images.shape[0] == batch_size * num_images_per_prompt
 
-    @require_accelerator
+    @pytest.mark.skipif(torch_device != "cpu", "Test needs an accelerator.")
     def test_components_auto_cpu_offload_inference_consistent(self):
         base_pipe = self.get_pipeline().to(torch_device)
 
