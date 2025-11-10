@@ -204,7 +204,6 @@ class ModularPipelineTesterMixin:
 
         pipe_fp16 = self.get_pipeline()
         pipe_fp16.to(torch_device, torch.float16)
-        pipe_fp16.set_progress_bar_config(disable=None)
 
         inputs = self.get_dummy_inputs()
         # Reset generator in case it is used inside dummy inputs
@@ -218,9 +217,8 @@ class ModularPipelineTesterMixin:
             fp16_inputs["generator"] = self.get_generator(0)
         output_fp16 = pipe_fp16(**fp16_inputs, output="images")
 
-        if isinstance(output, torch.Tensor):
-            output = output.cpu()
-            output_fp16 = output_fp16.cpu()
+        output = output.cpu()
+        output_fp16 = output_fp16.cpu()
 
         max_diff = numpy_cosine_similarity_distance(output.flatten(), output_fp16.flatten())
         assert max_diff < expected_max_diff, "FP16 inference is different from FP32 inference"

@@ -51,6 +51,9 @@ class TestQwenImageModularPipelineFast(ModularPipelineTesterMixin, ModularGuider
         }
         return inputs
 
+    def test_inference_batch_single_identical(self):
+        super().test_inference_batch_single_identical(expected_max_diff=5e-4)
+
 
 class TestQwenImageEditModularPipelineFast(ModularPipelineTesterMixin, ModularGuiderTesterMixin):
     pipeline_class = QwenImageEditModularPipeline
