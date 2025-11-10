@@ -1,6 +1,6 @@
 import math
 from dataclasses import dataclass
-from typing import List, Optional, Tuple, Union
+from typing import List, Literal, Optional, Tuple, Union
 
 import torch
 
@@ -21,7 +21,7 @@ def gumbel_noise(t: torch.Tensor, generator: Optional[torch.Generator] = None) -
 
     Returns:
         `torch.Tensor`:
-            Gumbel-distributed noise with the same shape as the input tensor.
+            Gumbel-distributed noise with the same shape, dtype, and device as the input tensor.
     """
     device = generator.device if generator is not None else t.device
     noise = torch.zeros_like(t, device=device).uniform_(0, 1, generator=generator).to(t.device)
@@ -64,12 +64,12 @@ class AmusedSchedulerOutput(BaseOutput):
     Output class for the scheduler's `step` function output.
 
     Args:
-        prev_sample (`torch.Tensor` of shape `(batch_size, num_channels, height, width)` for images):
-            Computed sample `(x_{t-1})` of previous timestep. `prev_sample` should be used as next model input in the
-            denoising loop.
-        pred_original_sample (`torch.Tensor` of shape `(batch_size, num_channels, height, width)` for images):
-            The predicted denoised sample `(x_{0})` based on the model output from the current timestep.
-            `pred_original_sample` can be used to preview progress or for guidance.
+        prev_sample (`torch.LongTensor` of shape `(batch_size, height, width)` or `(batch_size, sequence_length)`):
+            Computed sample `(x_{t-1})` of previous timestep with token IDs. `prev_sample` should be used as next model
+            input in the denoising loop.
+        pred_original_sample (`torch.LongTensor` of shape `(batch_size, height, width)` or `(batch_size, sequence_length)`, *optional*):
+            The predicted fully denoised sample `(x_{0})` with token IDs based on the model output from the current
+            timestep. `pred_original_sample` can be used to preview progress or for guidance.
     """
 
     prev_sample: torch.Tensor
@@ -77,6 +77,23 @@ class AmusedSchedulerOutput(BaseOutput):
 
 
 class AmusedScheduler(SchedulerMixin, ConfigMixin):
+    """
+    A scheduler for masked token generation as used in [Amused](https://huggingface.co/amused).
+
+    This scheduler iteratively unmasks tokens based on their confidence scores, following either a cosine or linear
+    schedule. Unlike traditional diffusion schedulers that work with continuous pixel values, this scheduler operates
+    on discrete token IDs, making it suitable for autoregressive and non-autoregressive masked token generation models.
+
+    This scheduler inherits from [`SchedulerMixin`] and [`ConfigMixin`]. Check the superclass documentation for the
+    generic methods the library implements for all schedulers such as loading and saving.
+
+    Args:
+        mask_token_id (`int`):
+            The token ID used to represent masked tokens in the sequence.
+        masking_schedule (`Literal["cosine", "linear"]`, *optional*, defaults to `"cosine"`):
+            The schedule type for determining the mask ratio at each timestep. Can be either `"cosine"` or `"linear"`.
+    """
+
     order = 1
 
     temperatures: Optional[torch.Tensor]
@@ -86,40 +103,30 @@ class AmusedScheduler(SchedulerMixin, ConfigMixin):
     def __init__(
         self,
         mask_token_id: int,
-        masking_schedule: str = "cosine",
+        masking_schedule: Literal["cosine", "linear"] = "cosine",
     ):
-        """
-        Create a new AmusedScheduler instance.
-
-        Args:
-            mask_token_id (`int`):
-                The token ID used to represent masked tokens in the sequence.
-            masking_schedule (`str`, *optional*, defaults to `"cosine"`):
-                The schedule type for determining the mask ratio at each timestep. Can be either `"cosine"` or
-                `"linear"`.
-        """
         self.temperatures = None
         self.timesteps = None
 
     def set_timesteps(
         self,
         num_inference_steps: int,
-        temperature: Union[int, Tuple[int, int], List[int]] = (2, 0),
-        device: Union[str, torch.device] = None,
+        temperature: Union[float, Tuple[float, float], List[float]] = (2, 0),
+        device: Optional[Union[str, torch.device]] = None,
     ) -> None:
         """
-        Set the discrete timesteps used for the diffusion chain.
+        Set the discrete timesteps used for the diffusion chain (to be run before inference).
 
         Args:
             num_inference_steps (`int`):
                 The number of diffusion steps used when generating samples with a pre-trained model.
-            temperature (`Union[int, Tuple[int, int], List[int]]`, *optional*, defaults to `(2, 0)`):
+            temperature (`Union[float, Tuple[float, float], List[float]]`, *optional*, defaults to `(2, 0)`):
                 Temperature parameter(s) for controlling the randomness of sampling. If a tuple or list is provided,
                 temperatures will be linearly interpolated between the first and second values across all timesteps. If
                 a single value is provided, temperatures will be linearly interpolated from that value to 0.01.
-            device (`Union[str, torch.device]`, *optional*):
-                The device to which the timesteps and temperatures should be moved. If not specified, uses the default
-                device.
+            device (`str` or `torch.device`, *optional*):
+                The device to which the timesteps and temperatures should be moved to. If `None`, the timesteps are not
+                moved.
         """
         self.timesteps = torch.arange(num_inference_steps, device=device).flip(0)
 
@@ -136,7 +143,7 @@ class AmusedScheduler(SchedulerMixin, ConfigMixin):
         starting_mask_ratio: float = 1.0,
         generator: Optional[torch.Generator] = None,
         return_dict: bool = True,
-    ) -> Union[AmusedSchedulerOutput, Tuple]:
+    ) -> Union[AmusedSchedulerOutput, Tuple[torch.Tensor, torch.Tensor]]:
         """
         Predict the sample at the previous timestep by masking tokens based on confidence scores.
 
@@ -159,9 +166,9 @@ class AmusedScheduler(SchedulerMixin, ConfigMixin):
 
         Returns:
             [`~schedulers.scheduling_amused.AmusedSchedulerOutput`] or `tuple`:
-                If `return_dict` is `True`, returns [`~schedulers.scheduling_amused.AmusedSchedulerOutput`], otherwise
-                returns a tuple where the first element is the sample tensor and the second element is the predicted
-                original sample tensor.
+                If `return_dict` is `True`, [`~schedulers.scheduling_amused.AmusedSchedulerOutput`] is returned,
+                otherwise a tuple is returned where the first element is the sample tensor (`prev_sample`) and the
+                second element is the predicted original sample tensor (`pred_original_sample`).
         """
         two_dim_input = sample.ndim == 3 and model_output.ndim == 4
 
