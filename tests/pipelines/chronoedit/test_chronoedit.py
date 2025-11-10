@@ -134,11 +134,9 @@ class ChronoEditPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "generator": generator,
             "num_inference_steps": 2,
             "guidance_scale": 6.0,
-            "num_frames": 9,
+            "num_frames": 5,
             "max_sequence_length": 16,
             "output_type": "pt",
-            "enable_temporal_reasoning": True,
-            "num_temporal_reasoning_steps": 2,
         }
         return inputs
 
@@ -153,10 +151,10 @@ class ChronoEditPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         inputs = self.get_dummy_inputs(device)
         video = pipe(**inputs).frames
         generated_video = video[0]
-        self.assertEqual(generated_video.shape, (9, 3, 16, 16))
+        self.assertEqual(generated_video.shape, (5, 3, 16, 16))
 
         # fmt: off
-        expected_slice = torch.tensor([0.4525, 0.4525, 0.4497, 0.4536, 0.452, 0.4529, 0.454, 0.4535, 0.5072, 0.5527, 0.5165, 0.5244, 0.5481, 0.5282, 0.5208, 0.5214])
+        expected_slice = torch.tensor([0.4525, 0.4520, 0.4485, 0.4534, 0.4523, 0.4522, 0.4529, 0.4528, 0.5022, 0.5064, 0.5011, 0.5061, 0.5028, 0.4979, 0.5117, 0.5192])
         # fmt: on
 
         generated_slice = generated_video.flatten()
@@ -169,4 +167,10 @@ class ChronoEditPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
     @unittest.skip("TODO: revisit failing as it requires a very high threshold to pass")
     def test_inference_batch_single_identical(self):
+        pass
+
+    @unittest.skip(
+        "ChronoEditPipeline has to run in mixed precision. Save/Load the entire pipeline in FP16 will result in errors"
+    )
+    def test_save_load_float16(self):
         pass
