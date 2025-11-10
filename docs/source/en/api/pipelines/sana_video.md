@@ -99,4 +99,4 @@ export_to_video(output, "sana-video-output.mp4", fps=16)
 
 ## SanaVideoPipelineOutput
 
-[[autodoc]] pipelines.sana.pipeline_sana_video.SanaVideoPipelineOutput
+[[autodoc]] pipelines.sana_video.pipeline_sana_video.SanaVideoPipelineOutput

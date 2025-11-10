@@ -42,35 +42,8 @@ from ...video_processor import VideoProcessor
 from ..pipeline_utils import DiffusionPipeline
 from .pipeline_output import SanaVideoPipelineOutput
 
+from .pipeline_sana_video import ASPECT_RATIO_480_BIN, ASPECT_RATIO_720_BIN
 
-ASPECT_RATIO_480_BIN = {
-    "0.5": [448.0, 896.0],
-    "0.57": [480.0, 832.0],
-    "0.68": [528.0, 768.0],
-    "0.78": [560.0, 720.0],
-    "1.0": [624.0, 624.0],
-    "1.13": [672.0, 592.0],
-    "1.29": [720.0, 560.0],
-    "1.46": [768.0, 528.0],
-    "1.67": [816.0, 496.0],
-    "1.75": [832.0, 480.0],
-    "2.0": [896.0, 448.0],
-}
-
-
-ASPECT_RATIO_720_BIN = {
-    "0.5": [672.0, 1344.0],
-    "0.57": [704.0, 1280.0],
-    "0.68": [800.0, 1152.0],
-    "0.78": [832.0, 1088.0],
-    "1.0": [960.0, 960.0],
-    "1.13": [1024.0, 896.0],
-    "1.29": [1088.0, 832.0],
-    "1.46": [1152.0, 800.0],
-    "1.67": [1248.0, 736.0],
-    "1.75": [1280.0, 704.0],
-    "2.0": [1344.0, 672.0],
-}
 
 if is_torch_xla_available():
     import torch_xla.core.xla_model as xm
@@ -94,7 +67,6 @@ EXAMPLE_DOC_STRING = """
         >>> import torch
         >>> from diffusers import SanaVideoPipeline
         >>> from diffusers.utils import export_to_video
-
         >>> model_id = "Efficient-Large-Model/SANA-Video_2B_480p_diffusers"
         >>> pipe = SanaVideoPipeline.from_pretrained(model_id)
         >>> pipe.transformer.to(torch.bfloat16)
@@ -109,14 +81,14 @@ EXAMPLE_DOC_STRING = """
         >>> prompt = prompt + motion_prompt
 
         >>> output = pipe(
-        ...     prompt=prompt,
-        ...     negative_prompt=negative_prompt,
-        ...     height=480,
-        ...     width=832,
-        ...     frames=81,
-        ...     guidance_scale=6,
-        ...     num_inference_steps=50,
-        ...     generator=torch.Generator(device="cuda").manual_seed(42),
+        ...    prompt=prompt,
+        ...    negative_prompt=negative_prompt,
+        ...    height=480,
+        ...    width=832,
+        ...    frames=81,
+        ...    guidance_scale=6,
+        ...    num_inference_steps=50,
+        ...    generator=torch.Generator(device="cuda").manual_seed(42),
         ... ).frames[0]
 
         >>> export_to_video(output, "sana-video-output.mp4", fps=16)
@@ -184,11 +156,11 @@ def retrieve_timesteps(
     return timesteps, num_inference_steps
 
 
-class SanaVideoPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
+class SanaImageToVideoPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
     r"""
-    Pipeline for text-to-video generation using [Sana](https://huggingface.co/papers/2509.24695). This model inherits
-    from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods implemented for all
-    pipelines (downloading, saving, running on a particular device, etc.).
+    Pipeline for image/text-to-video generation using [Sana](https://huggingface.co/papers/2509.24695).
+    This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods
+    implemented for all pipelines (downloading, saving, running on a particular device, etc.).
 
     Args:
         tokenizer ([`GemmaTokenizer`] or [`GemmaTokenizerFast`]):
@@ -807,8 +779,8 @@ class SanaVideoPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
                 prompt.
             use_resolution_binning (`bool` defaults to `True`):
                 If set to `True`, the requested height and width are first mapped to the closest resolutions using
-                `ASPECT_RATIO_480_BIN` or `ASPECT_RATIO_720_BIN`. After the produced latents are decoded into videos,
-                they are resized back to the requested resolution. Useful for generating non-square videos.
+                `ASPECT_RATIO_480_BIN` or `ASPECT_RATIO_720_BIN`. After the produced latents are decoded into videos, they are resized back to
+                the requested resolution. Useful for generating non-square videos.
             callback_on_step_end (`Callable`, *optional*):
                 A function that calls at the end of each denoising steps during the inference. The function is called
                 with the following arguments: `callback_on_step_end(self: DiffusionPipeline, step: int, timestep: int,
@@ -827,8 +799,8 @@ class SanaVideoPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
         Examples:
 
         Returns:
-            [`~pipelines.sana.pipeline_output.SanaVideoPipelineOutput`] or `tuple`:
-                If `return_dict` is `True`, [`~pipelines.sana.pipeline_output.SanaVideoPipelineOutput`] is returned,
+            [`~pipelines.sana_video.pipeline_output.SanaVideoPipelineOutput`] or `tuple`:
+                If `return_dict` is `True`, [`~pipelines.sana_video.pipeline_output.SanaVideoPipelineOutput`] is returned,
                 otherwise a `tuple` is returned where the first element is a list with the generated videos
         """
 
