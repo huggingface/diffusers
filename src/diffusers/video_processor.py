@@ -13,11 +13,12 @@
 # limitations under the License.
 
 import warnings
-from typing import List, Optional, Union
+from typing import List, Optional, Tuple, Union
 
 import numpy as np
 import PIL
 import torch
+import torch.nn.functional as F
 
 from .image_processor import VaeImageProcessor, is_valid_image, is_valid_image_imagelist
 
@@ -111,3 +112,65 @@ class VideoProcessor(VaeImageProcessor):
             raise ValueError(f"{output_type} does not exist. Please choose one of ['np', 'pt', 'pil']")
 
         return outputs
+
+    @staticmethod
+    def classify_height_width_bin(height: int, width: int, ratios: dict) -> Tuple[int, int]:
+        r"""
+        Returns the binned height and width based on the aspect ratio.
+
+        Args:
+            height (`int`): The height of the image.
+            width (`int`): The width of the image.
+            ratios (`dict`): A dictionary where keys are aspect ratios and values are tuples of (height, width).
+
+        Returns:
+            `Tuple[int, int]`: The closest binned height and width.
+        """
+        ar = float(height / width)
+        closest_ratio = min(ratios.keys(), key=lambda ratio: abs(float(ratio) - ar))
+        default_hw = ratios[closest_ratio]
+        return int(default_hw[0]), int(default_hw[1])
+
+    @staticmethod
+    def resize_and_crop_tensor(samples: torch.Tensor, new_width: int, new_height: int) -> torch.Tensor:
+        r"""
+        Resizes and crops a tensor of videos to the specified dimensions.
+
+        Args:
+            samples (`torch.Tensor`):
+                A tensor of shape (N, C, T, H, W) where N is the batch size, C is the number of channels, T is the
+                number of frames, H is the height, and W is the width.
+            new_width (`int`): The desired width of the output videos.
+            new_height (`int`): The desired height of the output videos.
+
+        Returns:
+            `torch.Tensor`: A tensor containing the resized and cropped videos.
+        """
+        orig_height, orig_width = samples.shape[3], samples.shape[4]
+
+        # Check if resizing is needed
+        if orig_height != new_height or orig_width != new_width:
+            ratio = max(new_height / orig_height, new_width / orig_width)
+            resized_width = int(orig_width * ratio)
+            resized_height = int(orig_height * ratio)
+
+            # Reshape to (N*T, C, H, W) for interpolation
+            n, c, t, h, w = samples.shape
+            samples = samples.permute(0, 2, 1, 3, 4).reshape(n * t, c, h, w)
+
+            # Resize
+            samples = F.interpolate(
+                samples, size=(resized_height, resized_width), mode="bilinear", align_corners=False
+            )
+
+            # Center Crop
+            start_x = (resized_width - new_width) // 2
+            end_x = start_x + new_width
+            start_y = (resized_height - new_height) // 2
+            end_y = start_y + new_height
+            samples = samples[:, :, start_y:end_y, start_x:end_x]
+
+            # Reshape back to (N, C, T, H, W)
+            samples = samples.reshape(n, t, c, new_height, new_width).permute(0, 2, 1, 3, 4)
+
+        return samples
