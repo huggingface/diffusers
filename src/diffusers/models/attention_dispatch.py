@@ -220,7 +220,7 @@ class _AttentionBackendRegistry:
     _backends = {}
     _constraints = {}
     _supported_arg_names = {}
-    _supports_context_parallel = {}
+    _supports_context_parallel = set()
     _active_backend = AttentionBackendName(DIFFUSERS_ATTN_BACKEND)
     _checks_enabled = DIFFUSERS_ATTN_CHECKS
 
@@ -237,7 +237,9 @@ class _AttentionBackendRegistry:
             cls._backends[backend] = func
             cls._constraints[backend] = constraints or []
             cls._supported_arg_names[backend] = set(inspect.signature(func).parameters.keys())
-            cls._supports_context_parallel[backend] = supports_context_parallel
+            if supports_context_parallel:
+                cls._supports_context_parallel.add(backend.value)
+
             return func
 
         return decorator
@@ -251,15 +253,12 @@ class _AttentionBackendRegistry:
         return list(cls._backends.keys())
 
     @classmethod
-    def _is_context_parallel_enabled(
-        cls, backend: AttentionBackendName, parallel_config: Optional["ParallelConfig"]
+    def _is_context_parallel_available(
+        cls,
+        backend: AttentionBackendName,
     ) -> bool:
-        supports_context_parallel = backend in cls._supports_context_parallel
-        is_degree_greater_than_1 = parallel_config is not None and (
-            parallel_config.context_parallel_config.ring_degree > 1
-            or parallel_config.context_parallel_config.ulysses_degree > 1
-        )
-        return supports_context_parallel and is_degree_greater_than_1
+        supports_context_parallel = backend.value in cls._supports_context_parallel
+        return supports_context_parallel
 
 
 @contextlib.contextmanager
@@ -305,14 +304,6 @@ def dispatch_attention_fn(
     else:
         backend_name = AttentionBackendName(backend)
         backend_fn = _AttentionBackendRegistry._backends.get(backend_name)
-
-    if parallel_config is not None and not _AttentionBackendRegistry._is_context_parallel_enabled(
-        backend_name, parallel_config
-    ):
-        raise ValueError(
-            f"Backend {backend_name} either does not support context parallelism or context parallelism "
-            f"was enabled with a world size of 1."
-        )
 
     kwargs = {
         "query": query,

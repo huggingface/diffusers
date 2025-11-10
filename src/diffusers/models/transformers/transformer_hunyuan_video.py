@@ -914,7 +914,7 @@ class HunyuanVideoTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, 
         text_embed_dim: int = 4096,
         pooled_projection_dim: int = 768,
         rope_theta: float = 256.0,
-        rope_axes_dim: Tuple[int] = (16, 56, 56),
+        rope_axes_dim: Tuple[int, ...] = (16, 56, 56),
         image_condition_type: Optional[str] = None,
     ) -> None:
         super().__init__()
