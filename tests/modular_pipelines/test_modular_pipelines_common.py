@@ -198,7 +198,7 @@ class ModularPipelineTesterMixin:
         max_diff = torch.abs(output_batch[0] - output[0]).max()
         assert max_diff < expected_max_diff, "Batch inference results different from single inference results"
 
-    @pytest.mark.skipif(torch_device != "cpu", reason="Test needs an accelerator.")
+    @pytest.mark.skipif(torch_device == "cpu", reason="Test needs an accelerator.")
     def test_float16_inference(self, expected_max_diff=5e-2):
         pipe = self.get_pipeline()
         pipe.to(torch_device, torch.float32)
@@ -227,7 +227,7 @@ class ModularPipelineTesterMixin:
         max_diff = numpy_cosine_similarity_distance(output.flatten(), output_fp16.flatten())
         assert max_diff < expected_max_diff, "FP16 inference is different from FP32 inference"
 
-    @pytest.mark.skipif(torch_device != "cpu", reason="Test needs an accelerator.")
+    @pytest.mark.skipif(torch_device == "cpu", reason="Test needs an accelerator.")
     def test_to_device(self):
         pipe = self.get_pipeline()
         pipe.set_progress_bar_config(disable=None)
@@ -254,7 +254,7 @@ class ModularPipelineTesterMixin:
         output = pipe(**self.get_dummy_inputs(), output="images")
         assert torch.isnan(output).sum() == 0, "CPU Inference returns NaN"
 
-    @pytest.mark.skipif(torch_device != "cpu", reason="Test needs an accelerator.")
+    @pytest.mark.skipif(torch_device == "cpu", reason="Test needs an accelerator.")
     def test_inference_is_not_nan(self):
         pipe = self.get_pipeline()
         pipe.set_progress_bar_config(disable=None)
@@ -287,7 +287,7 @@ class ModularPipelineTesterMixin:
 
                 assert images.shape[0] == batch_size * num_images_per_prompt
 
-    @pytest.mark.skipif(torch_device != "cpu", reason="Test needs an accelerator.")
+    @pytest.mark.skipif(torch_device == "cpu", reason="Test needs an accelerator.")
     def test_components_auto_cpu_offload_inference_consistent(self):
         base_pipe = self.get_pipeline().to(torch_device)
 
