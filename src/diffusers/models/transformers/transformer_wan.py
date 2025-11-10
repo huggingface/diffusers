@@ -555,6 +555,9 @@ class WanTransformer3DModel(
             "encoder_hidden_states": ContextParallelInput(split_dim=1, expected_dims=3, split_output=False),
         },
         "proj_out": ContextParallelOutput(gather_dim=1, expected_dims=3),
+        "": {
+            "timestep": ContextParallelInput(split_dim=1, expected_dims=2, split_output=False),
+        },
     }
 
     @register_to_config
