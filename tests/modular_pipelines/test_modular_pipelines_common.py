@@ -32,20 +32,9 @@ class ModularPipelineTesterMixin:
     # Canonical parameters that are passed to `__call__` regardless
     # of the type of pipeline. They are always optional and have common
     # sense default values.
-    optional_params = frozenset(
-        [
-            "num_inference_steps",
-            "num_images_per_prompt",
-            "latents",
-            "output_type",
-        ]
-    )
+    optional_params = frozenset(["num_inference_steps", "num_images_per_prompt", "latents", "output_type"])
     # this is modular specific: generator needs to be a intermediate input because it's mutable
-    intermediate_params = frozenset(
-        [
-            "generator",
-        ]
-    )
+    intermediate_params = frozenset(["generator"])
 
     def get_generator(self, seed=0):
         generator = torch.Generator("cpu").manual_seed(seed)

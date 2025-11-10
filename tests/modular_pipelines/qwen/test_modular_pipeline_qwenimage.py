@@ -13,12 +13,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import unittest
 
 import numpy as np
 import PIL
 import pytest
-import torch
 
 from diffusers import ClassifierFreeGuidance
 from diffusers.modular_pipelines import (
@@ -32,38 +30,6 @@ from diffusers.modular_pipelines import (
 
 from ...testing_utils import torch_device
 from ..test_modular_pipelines_common import ModularPipelineTesterMixin
-
-
-class QwenImageModularTests:
-    pipeline_class = QwenImageModularPipeline
-    pipeline_blocks_class = QwenImageAutoBlocks
-    repo = "hf-internal-testing/tiny-qwenimage-modular"
-
-    params = frozenset(["prompt", "height", "width", "negative_prompt", "attention_kwargs", "image", "mask_image"])
-    batch_params = frozenset(["prompt", "negative_prompt", "image", "mask_image"])
-
-    def get_pipeline(self, components_manager=None, torch_dtype=torch.float32):
-        pipeline = self.pipeline_blocks_class().init_pipeline(self.repo, components_manager=components_manager)
-        pipeline.load_components(torch_dtype=torch_dtype)
-        pipeline.set_progress_bar_config(disable=None)
-        return pipeline
-
-    def get_dummy_inputs(self, device, seed=0):
-        if str(device).startswith("mps"):
-            generator = torch.manual_seed(seed)
-        else:
-            generator = torch.Generator(device=device).manual_seed(seed)
-        inputs = {
-            "prompt": "dance monkey",
-            "negative_prompt": "bad quality",
-            "generator": generator,
-            "num_inference_steps": 2,
-            "height": 32,
-            "width": 32,
-            "max_sequence_length": 16,
-            "output_type": "np",
-        }
-        return inputs
 
 
 class QwenImageModularGuiderTests:
@@ -87,23 +53,48 @@ class QwenImageModularGuiderTests:
         assert max_diff > tol, "Output with CFG must be different from normal inference"
 
 
-class QwenImageModularPipelineFastTests(
-    QwenImageModularTests, QwenImageModularGuiderTests, ModularPipelineTesterMixin, unittest.TestCase
-):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+class TestQwenImageModularPipelineFast(ModularPipelineTesterMixin, QwenImageModularGuiderTests):
+    pipeline_class = QwenImageModularPipeline
+    pipeline_blocks_class = QwenImageAutoBlocks
+    repo = "hf-internal-testing/tiny-qwenimage-modular"
+
+    params = frozenset(["prompt", "height", "width", "negative_prompt", "attention_kwargs", "image", "mask_image"])
+    batch_params = frozenset(["prompt", "negative_prompt", "image", "mask_image"])
+
+    def get_dummy_inputs(self):
+        generator = self.get_generator()
+        inputs = {
+            "prompt": "dance monkey",
+            "negative_prompt": "bad quality",
+            "generator": generator,
+            "num_inference_steps": 2,
+            "height": 32,
+            "width": 32,
+            "max_sequence_length": 16,
+            "output_type": "np",
+        }
+        return inputs
 
 
-class QwenImageEditModularPipelineFastTests(
-    QwenImageModularTests, QwenImageModularGuiderTests, ModularPipelineTesterMixin, unittest.TestCase
-):
+class TestQwenImageEditModularPipelineFast(ModularPipelineTesterMixin, QwenImageModularGuiderTests):
     pipeline_class = QwenImageEditModularPipeline
     pipeline_blocks_class = QwenImageEditAutoBlocks
     repo = "hf-internal-testing/tiny-qwenimage-edit-modular"
 
-    def get_dummy_inputs(self, device, seed=0):
-        inputs = super().get_dummy_inputs(device, seed)
-        inputs.pop("max_sequence_length")
+    params = frozenset(["prompt", "height", "width", "negative_prompt", "attention_kwargs", "image", "mask_image"])
+    batch_params = frozenset(["prompt", "negative_prompt", "image", "mask_image"])
+
+    def get_dummy_inputs(self):
+        generator = self.get_generator()
+        inputs = {
+            "prompt": "dance monkey",
+            "negative_prompt": "bad quality",
+            "generator": generator,
+            "num_inference_steps": 2,
+            "height": 32,
+            "width": 32,
+            "output_type": "np",
+        }
         inputs["image"] = PIL.Image.new("RGB", (32, 32), 0)
         return inputs
 
@@ -111,9 +102,7 @@ class QwenImageEditModularPipelineFastTests(
         super().test_guider_cfg(7e-5)
 
 
-class QwenImageEditPlusModularPipelineFastTests(
-    QwenImageModularTests, QwenImageModularGuiderTests, ModularPipelineTesterMixin, unittest.TestCase
-):
+class QwenImageEditPlusModularPipelineFastTests(ModularPipelineTesterMixin, QwenImageModularGuiderTests):
     pipeline_class = QwenImageEditPlusModularPipeline
     pipeline_blocks_class = QwenImageEditPlusAutoBlocks
     repo = "hf-internal-testing/tiny-qwenimage-edit-plus-modular"
@@ -122,11 +111,18 @@ class QwenImageEditPlusModularPipelineFastTests(
     params = frozenset(["prompt", "height", "width", "negative_prompt", "attention_kwargs", "image"])
     batch_params = frozenset(["prompt", "negative_prompt", "image"])
 
-    def get_dummy_inputs(self, device, seed=0):
-        inputs = super().get_dummy_inputs(device, seed)
-        inputs.pop("max_sequence_length")
-        image = PIL.Image.new("RGB", (32, 32), 0)
-        inputs["image"] = [image]
+    def get_dummy_inputs(self):
+        generator = self.get_generator()
+        inputs = {
+            "prompt": "dance monkey",
+            "negative_prompt": "bad quality",
+            "generator": generator,
+            "num_inference_steps": 2,
+            "height": 32,
+            "width": 32,
+            "output_type": "np",
+        }
+        inputs["image"] = PIL.Image.new("RGB", (32, 32), 0)
         return inputs
 
     @pytest.mark.xfail(condition=True, reason="Batch of multiple images needs to be revisited", strict=True)
