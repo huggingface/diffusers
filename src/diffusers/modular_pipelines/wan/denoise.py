@@ -239,9 +239,11 @@ class WanLoopDenoiser(ModularPipelineBlocks):
         for guider_state_batch in guider_state:
             components.guider.prepare_models(components.transformer)
             cond_kwargs = guider_state_batch.as_dict()
-            cond_kwargs = {k: v for k, v in cond_kwargs.items() if k in self._guider_input_fields.keys()}
-            for cond in cond_kwargs.values():
-                cond = cond.to(block_state.dtype)
+            cond_kwargs = {
+                k: v.to(block_state.dtype) if isinstance(v, torch.Tensor) else v
+                for k, v in cond_kwargs.items()
+                if k in self._guider_input_fields.keys()
+            }
 
             # Predict the noise residual
             # store the noise_pred in guider_state_batch so that we can apply guidance across all batches
@@ -372,9 +374,11 @@ class Wan22LoopDenoiser(ModularPipelineBlocks):
         for guider_state_batch in guider_state:
             block_state.guider.prepare_models(block_state.current_model)
             cond_kwargs = guider_state_batch.as_dict()
-            cond_kwargs = {k: v for k, v in cond_kwargs.items() if k in self._guider_input_fields.keys()}
-            for cond in cond_kwargs.values():
-                cond = cond.to(block_state.dtype)
+            cond_kwargs = {
+                k: v.to(block_state.dtype) if isinstance(v, torch.Tensor) else v
+                for k, v in cond_kwargs.items()
+                if k in self._guider_input_fields.keys()
+            }
 
             # Predict the noise residual
             # store the noise_pred in guider_state_batch so that we can apply guidance across all batches

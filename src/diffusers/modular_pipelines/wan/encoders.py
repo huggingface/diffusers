@@ -190,7 +190,6 @@ class WanTextEncoderStep(ModularPipelineBlocks):
             OutputParam(
                 "prompt_embeds",
                 type_hint=torch.Tensor,
-                # YiYi TODO: we should change it to text_embeddings
                 kwargs_type="denoiser_input_fields",
                 description="text embeddings used to guide the image generation",
             ),
