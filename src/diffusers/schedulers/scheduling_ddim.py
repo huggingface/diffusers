@@ -38,7 +38,7 @@ class DDIMSchedulerOutput(BaseOutput):
         prev_sample (`torch.Tensor` of shape `(batch_size, num_channels, height, width)` for images):
             Computed sample `(x_{t-1})` of previous timestep. `prev_sample` should be used as next model input in the
             denoising loop.
-        pred_original_sample (`torch.Tensor` of shape `(batch_size, num_channels, height, width)` for images):
+        pred_original_sample (`torch.Tensor` of shape `(batch_size, num_channels, height, width)` for images, *optional*):
             The predicted denoised sample `(x_{0})` based on the model output from the current timestep.
             `pred_original_sample` can be used to preview progress or for guidance.
     """
@@ -375,7 +375,7 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         sample: torch.Tensor,
         eta: float = 0.0,
         use_clipped_model_output: bool = False,
-        generator=None,
+        generator: Optional[torch.Generator] = None,
         variance_noise: Optional[torch.Tensor] = None,
         return_dict: bool = True,
     ) -> Union[DDIMSchedulerOutput, Tuple]:
@@ -386,20 +386,21 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         Args:
             model_output (`torch.Tensor`):
                 The direct output from learned diffusion model.
-            timestep (`float`):
+            timestep (`int`):
                 The current discrete timestep in the diffusion chain.
             sample (`torch.Tensor`):
                 A current instance of a sample created by the diffusion process.
-            eta (`float`):
-                The weight of noise for added noise in diffusion step.
-            use_clipped_model_output (`bool`, defaults to `False`):
+            eta (`float`, *optional*, defaults to 0.0):
+                The weight of noise for added noise in diffusion step. A value of 0 corresponds to DDIM (deterministic)
+                and 1 corresponds to DDPM (fully stochastic).
+            use_clipped_model_output (`bool`, *optional*, defaults to `False`):
                 If `True`, computes "corrected" `model_output` from the clipped predicted original sample. Necessary
                 because predicted original sample is clipped to [-1, 1] when `self.config.clip_sample` is `True`. If no
                 clipping has happened, "corrected" `model_output` would coincide with the one provided as input and
                 `use_clipped_model_output` has no effect.
             generator (`torch.Generator`, *optional*):
-                A random number generator.
-            variance_noise (`torch.Tensor`):
+                A random number generator for reproducible sampling.
+            variance_noise (`torch.Tensor`, *optional*):
                 Alternative to generating noise with `generator` by directly providing the noise for the variance
                 itself. Useful for methods such as [`CycleDiffusion`].
             return_dict (`bool`, *optional*, defaults to `True`):
@@ -507,19 +508,22 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         timesteps: torch.IntTensor,
     ) -> torch.Tensor:
         """
-        Adds noise to the original samples.
+        Add noise to the original samples according to the noise magnitude at each timestep.
+
+        This implements the forward diffusion process using the formula: `noisy_sample = sqrt(alpha_prod) *
+        original_sample + sqrt(1 - alpha_prod) * noise`
 
         Args:
             original_samples (`torch.Tensor`):
-                The original samples to add noise to.
+                The original clean samples to which noise will be added.
             noise (`torch.Tensor`):
-                The noise to add to the original samples.
+                The noise tensor to add, typically sampled from a Gaussian distribution.
             timesteps (`torch.IntTensor`):
-                The timesteps to add noise to.
+                The timesteps indicating the noise level from the diffusion schedule.
 
         Returns:
             `torch.Tensor`:
-                The noisy samples.
+                The noisy samples with noise added according to the timestep schedule.
         """
         # Make sure alphas_cumprod and timestep have same device and dtype as original_samples
         # Move the self.alphas_cumprod to device to avoid redundant CPU to GPU data movement
@@ -544,20 +548,25 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
     # Copied from diffusers.schedulers.scheduling_ddpm.DDPMScheduler.get_velocity
     def get_velocity(self, sample: torch.Tensor, noise: torch.Tensor, timesteps: torch.IntTensor) -> torch.Tensor:
         """
-        Computes the velocity of the sample. The velocity is defined as the difference between the original sample and
-        the noisy sample. See https://huggingface.co/papers/2010.02502
+        Compute the velocity prediction for v-prediction models.
+
+        The velocity is computed using the formula: `velocity = sqrt(alpha_prod) * noise - sqrt(1 - alpha_prod) *
+        sample`
+
+        This is used in v-prediction models where the model directly predicts the velocity instead of the noise or the
+        sample. See section 2.4 of Imagen Video paper: https://imagen.research.google/video/paper.pdf
 
         Args:
             sample (`torch.Tensor`):
-                The sample to compute the velocity of.
+                The input sample (x_t) at the current timestep.
             noise (`torch.Tensor`):
-                The noise to compute the velocity of.
+                The noise tensor corresponding to the sample.
             timesteps (`torch.IntTensor`):
-                The timesteps to compute the velocity of.
+                The timesteps at which to compute the velocity.
 
         Returns:
             `torch.Tensor`:
-                The velocity of the sample.
+                The velocity prediction computed from the sample and noise at the given timesteps.
         """
         # Make sure alphas_cumprod and timestep have same device and dtype as sample
         self.alphas_cumprod = self.alphas_cumprod.to(device=sample.device)
@@ -577,5 +586,5 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         velocity = sqrt_alpha_prod * noise - sqrt_one_minus_alpha_prod * sample
         return velocity
 
-    def __len__(self):
+    def __len__(self) -> int:
         return self.config.num_train_timesteps
