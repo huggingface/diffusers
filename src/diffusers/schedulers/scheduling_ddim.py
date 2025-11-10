@@ -49,17 +49,16 @@ class DDIMSchedulerOutput(BaseOutput):
 
 # Copied from diffusers.schedulers.scheduling_ddpm.betas_for_alpha_bar
 def betas_for_alpha_bar(
-    num_diffusion_timesteps,
-    max_beta=0.999,
-    alpha_transform_type="cosine",
-):
+    num_diffusion_timesteps: int,
+    max_beta: float = 0.999,
+    alpha_transform_type: str = "cosine",
+) -> torch.Tensor:
     """
     Create a beta schedule that discretizes the given alpha_t_bar function, which defines the cumulative product of
     (1-beta) over time from t = [0,1].
 
     Contains a function alpha_bar that takes an argument t and transforms it to the cumulative product of (1-beta) up
     to that part of the diffusion process.
-
 
     Args:
         num_diffusion_timesteps (`int`): the number of betas to produce.
@@ -69,16 +68,16 @@ def betas_for_alpha_bar(
                      Choose from `cosine` or `exp`
 
     Returns:
-        betas (`np.ndarray`): the betas used by the scheduler to step the model outputs
+        betas (`torch.Tensor`): the betas used by the scheduler to step the model outputs
     """
     if alpha_transform_type == "cosine":
 
-        def alpha_bar_fn(t):
+        def alpha_bar_fn(t: float) -> float:
             return math.cos((t + 0.008) / 1.008 * math.pi / 2) ** 2
 
     elif alpha_transform_type == "exp":
 
-        def alpha_bar_fn(t):
+        def alpha_bar_fn(t: float) -> float:
             return math.exp(t * -12.0)
 
     else:
@@ -92,10 +91,9 @@ def betas_for_alpha_bar(
     return torch.tensor(betas, dtype=torch.float32)
 
 
-def rescale_zero_terminal_snr(betas):
+def rescale_zero_terminal_snr(betas: torch.Tensor) -> torch.Tensor:
     """
     Rescales betas to have zero terminal SNR Based on https://huggingface.co/papers/2305.08891 (Algorithm 1)
-
 
     Args:
         betas (`torch.Tensor`):
@@ -250,7 +248,25 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         """
         return sample
 
-    def _get_variance(self, timestep, prev_timestep):
+    def _get_variance(self, timestep: int, prev_timestep: int) -> torch.Tensor:
+        """
+        Computes the variance of the noise added at a given diffusion step.
+
+        For a given `timestep` and its previous step, this method calculates the variance as defined in DDIM/DDPM
+        literature:
+            var_t = (beta_prod_t_prev / beta_prod_t) * (1 - alpha_prod_t / alpha_prod_t_prev)
+        where alpha_prod and beta_prod are cumulative products of alphas and betas, respectively.
+
+        Args:
+            timestep (`int`):
+                The current timestep in the diffusion process.
+            prev_timestep (`int`):
+                The previous timestep in the diffusion process. If negative, uses `final_alpha_cumprod`.
+
+        Returns:
+            `torch.Tensor`:
+                The variance for the current timestep.
+        """
         alpha_prod_t = self.alphas_cumprod[timestep]
         alpha_prod_t_prev = self.alphas_cumprod[prev_timestep] if prev_timestep >= 0 else self.final_alpha_cumprod
         beta_prod_t = 1 - alpha_prod_t
@@ -263,13 +279,21 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
     # Copied from diffusers.schedulers.scheduling_ddpm.DDPMScheduler._threshold_sample
     def _threshold_sample(self, sample: torch.Tensor) -> torch.Tensor:
         """
-        "Dynamic thresholding: At each sampling step we set s to a certain percentile absolute pixel value in xt0 (the
+        Dynamic thresholding: At each sampling step we set s to a certain percentile absolute pixel value in xt0 (the
         prediction of x_0 at timestep t), and if s > 1, then we threshold xt0 to the range [-s, s] and then divide by
         s. Dynamic thresholding pushes saturated pixels (those near -1 and 1) inwards, thereby actively preventing
         pixels from saturation at each step. We find that dynamic thresholding results in significantly better
-        photorealism as well as better image-text alignment, especially when using very large guidance weights."
+        photorealism as well as better image-text alignment, especially when using very large guidance weights.
 
-        https://huggingface.co/papers/2205.11487
+        See https://huggingface.co/papers/2205.11487
+
+        Args:
+            sample (`torch.Tensor`):
+                The sample to threshold.
+
+        Returns:
+            `torch.Tensor`:
+                The thresholded sample.
         """
         dtype = sample.dtype
         batch_size, channels, *remaining_dims = sample.shape
@@ -294,13 +318,18 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
 
         return sample
 
-    def set_timesteps(self, num_inference_steps: int, device: Union[str, torch.device] = None):
+    def set_timesteps(self, num_inference_steps: int, device: Union[str, torch.device] = None) -> None:
         """
         Sets the discrete timesteps used for the diffusion chain (to be run before inference).
 
         Args:
             num_inference_steps (`int`):
                 The number of diffusion steps used when generating samples with a pre-trained model.
+            device (`Union[str, torch.device]`, *optional*):
+                The device to use for the timesteps.
+
+        Raises:
+            ValueError: If `num_inference_steps` is larger than `self.config.num_train_timesteps`.
         """
 
         if num_inference_steps > self.config.num_train_timesteps:
@@ -477,6 +506,21 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         noise: torch.Tensor,
         timesteps: torch.IntTensor,
     ) -> torch.Tensor:
+        """
+        Adds noise to the original samples.
+
+        Args:
+            original_samples (`torch.Tensor`):
+                The original samples to add noise to.
+            noise (`torch.Tensor`):
+                The noise to add to the original samples.
+            timesteps (`torch.IntTensor`):
+                The timesteps to add noise to.
+
+        Returns:
+            `torch.Tensor`:
+                The noisy samples.
+        """
         # Make sure alphas_cumprod and timestep have same device and dtype as original_samples
         # Move the self.alphas_cumprod to device to avoid redundant CPU to GPU data movement
         # for the subsequent add_noise calls
@@ -499,6 +543,22 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
 
     # Copied from diffusers.schedulers.scheduling_ddpm.DDPMScheduler.get_velocity
     def get_velocity(self, sample: torch.Tensor, noise: torch.Tensor, timesteps: torch.IntTensor) -> torch.Tensor:
+        """
+        Computes the velocity of the sample. The velocity is defined as the difference between the original sample and
+        the noisy sample. See https://huggingface.co/papers/2010.02502
+
+        Args:
+            sample (`torch.Tensor`):
+                The sample to compute the velocity of.
+            noise (`torch.Tensor`):
+                The noise to compute the velocity of.
+            timesteps (`torch.IntTensor`):
+                The timesteps to compute the velocity of.
+
+        Returns:
+            `torch.Tensor`:
+                The velocity of the sample.
+        """
         # Make sure alphas_cumprod and timestep have same device and dtype as sample
         self.alphas_cumprod = self.alphas_cumprod.to(device=sample.device)
         alphas_cumprod = self.alphas_cumprod.to(dtype=sample.dtype)
