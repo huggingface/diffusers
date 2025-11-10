@@ -481,7 +481,7 @@ class MaskedStableDiffusionXLImg2ImgPipeline(StableDiffusionXLImg2ImgPipeline):
             needs_upcasting = self.vae.dtype == torch.float16 and self.vae.config.force_upcast
 
             if needs_upcasting:
-                self.upcast_vae()
+                self.vae.to(torch.float32)
             elif latents.dtype != self.vae.dtype:
                 if torch.backends.mps.is_available():
                     # some platforms (eg. apple mps) misbehave due to a pytorch bug: https://github.com/pytorch/pytorch/pull/99272

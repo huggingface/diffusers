@@ -45,8 +45,6 @@ from diffusers.models import AutoencoderKL, ImageProjection, UNet2DConditionMode
 from diffusers.models.attention_processor import (
     Attention,
     AttnProcessor2_0,
-    FusedAttnProcessor2_0,
-    XFormersAttnProcessor,
 )
 from diffusers.models.lora import adjust_lora_scale_text_encoder
 from diffusers.pipelines.pipeline_utils import DiffusionPipeline, StableDiffusionMixin
@@ -1151,22 +1149,7 @@ class StyleAlignedSDXLPipeline(
         return add_time_ids
 
     def upcast_vae(self):
-        dtype = self.vae.dtype
-        self.vae.to(dtype=torch.float32)
-        use_torch_2_0_or_xformers = isinstance(
-            self.vae.decoder.mid_block.attentions[0].processor,
-            (
-                AttnProcessor2_0,
-                XFormersAttnProcessor,
-                FusedAttnProcessor2_0,
-            ),
-        )
-        # if xformers or torch_2_0 is used attention block does not need
-        # to be in float32 which can save lots of memory
-        if use_torch_2_0_or_xformers:
-            self.vae.post_quant_conv.to(dtype)
-            self.vae.decoder.conv_in.to(dtype)
-            self.vae.decoder.mid_block.to(dtype)
+        deprecate("`upcast_vae` is deprecated")
 
     def _enable_shared_attention_processors(
         self,
@@ -1892,7 +1875,7 @@ class StyleAlignedSDXLPipeline(
             needs_upcasting = self.vae.dtype == torch.float16 and self.vae.config.force_upcast
 
             if needs_upcasting:
-                self.upcast_vae()
+                self.vae.to(torch.float32)
                 latents = latents.to(next(iter(self.vae.post_quant_conv.parameters())).dtype)
 
             image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False)[0]

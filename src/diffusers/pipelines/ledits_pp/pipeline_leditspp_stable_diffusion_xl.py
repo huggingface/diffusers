@@ -37,8 +37,6 @@ from ...models import AutoencoderKL, UNet2DConditionModel
 from ...models.attention_processor import (
     Attention,
     AttnProcessor,
-    AttnProcessor2_0,
-    XFormersAttnProcessor,
 )
 from ...models.lora import adjust_lora_scale_text_encoder
 from ...schedulers import DDIMScheduler, DPMSolverMultistepScheduler
@@ -688,21 +686,7 @@ class LEditsPPPipelineStableDiffusionXL(
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_upscale.StableDiffusionUpscalePipeline.upcast_vae
     def upcast_vae(self):
-        dtype = self.vae.dtype
-        self.vae.to(dtype=torch.float32)
-        use_torch_2_0_or_xformers = isinstance(
-            self.vae.decoder.mid_block.attentions[0].processor,
-            (
-                AttnProcessor2_0,
-                XFormersAttnProcessor,
-            ),
-        )
-        # if xformers or torch_2_0 is used attention block does not need
-        # to be in float32 which can save lots of memory
-        if use_torch_2_0_or_xformers:
-            self.vae.post_quant_conv.to(dtype)
-            self.vae.decoder.conv_in.to(dtype)
-            self.vae.decoder.mid_block.to(dtype)
+        deprecate("`upcast_vae` is deprecated")
 
     # Copied from diffusers.pipelines.latent_consistency_models.pipeline_latent_consistency_text2img.LatentConsistencyModelPipeline.get_guidance_scale_embedding
     def get_guidance_scale_embedding(
@@ -1421,7 +1405,7 @@ class LEditsPPPipelineStableDiffusionXL(
             needs_upcasting = self.vae.dtype == torch.float16 and self.vae.config.force_upcast
 
             if needs_upcasting:
-                self.upcast_vae()
+                self.vae.to(torch.float32)
                 latents = latents.to(next(iter(self.vae.post_quant_conv.parameters())).dtype)
 
             image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False)[0]
@@ -1472,7 +1456,7 @@ class LEditsPPPipelineStableDiffusionXL(
 
         if needs_upcasting:
             image = image.float()
-            self.upcast_vae()
+            self.vae.to(torch.float32)
 
         x0 = self.vae.encode(image).latent_dist.mode()
         x0 = x0.to(dtype)
@@ -1638,7 +1622,7 @@ class LEditsPPPipelineStableDiffusionXL(
 
         # autoencoder reconstruction
         if self.vae.dtype == torch.float16 and self.vae.config.force_upcast:
-            self.upcast_vae()
+            self.vae.to(torch.float32)
             x0_tmp = x0.to(next(iter(self.vae.post_quant_conv.parameters())).dtype)
             image_rec = self.vae.decode(
                 x0_tmp / self.vae.config.scaling_factor, return_dict=False, generator=generator

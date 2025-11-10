@@ -16,11 +16,11 @@ from diffusers.loaders import (
     TextualInversionLoaderMixin,
 )
 from diffusers.models import AutoencoderKL, UNet2DConditionModel
-from diffusers.models.attention_processor import AttnProcessor2_0, XFormersAttnProcessor
 from diffusers.models.lora import adjust_lora_scale_text_encoder
 from diffusers.pipelines.pipeline_utils import DiffusionPipeline, StableDiffusionMixin
 from diffusers.schedulers import KarrasDiffusionSchedulers
 from diffusers.utils import (
+    deprecate,
     is_accelerate_available,
     is_accelerate_version,
     is_invisible_watermark_available,
@@ -614,18 +614,7 @@ class DemoFusionSDXLPipeline(
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_upscale.StableDiffusionUpscalePipeline.upcast_vae
     def upcast_vae(self):
-        dtype = self.vae.dtype
-        self.vae.to(dtype=torch.float32)
-        use_torch_2_0_or_xformers = isinstance(
-            self.vae.decoder.mid_block.attentions[0].processor,
-            (AttnProcessor2_0, XFormersAttnProcessor),
-        )
-        # if xformers or torch_2_0 is used attention block does not need
-        # to be in float32 which can save lots of memory
-        if use_torch_2_0_or_xformers:
-            self.vae.post_quant_conv.to(dtype)
-            self.vae.decoder.conv_in.to(dtype)
-            self.vae.decoder.mid_block.to(dtype)
+        deprecate("`upcast_vae` is deprecated")
 
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
@@ -997,7 +986,7 @@ class DemoFusionSDXLPipeline(
                 needs_upcasting = self.vae.dtype == torch.float16 and self.vae.config.force_upcast
 
                 if needs_upcasting:
-                    self.upcast_vae()
+                    self.vae.to(torch.float32)
                     latents = latents.to(next(iter(self.vae.post_quant_conv.parameters())).dtype)
                 print("### Phase 1 Decoding ###")
                 image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False)[0]
@@ -1257,7 +1246,7 @@ class DemoFusionSDXLPipeline(
                     needs_upcasting = self.vae.dtype == torch.float16 and self.vae.config.force_upcast
 
                     if needs_upcasting:
-                        self.upcast_vae()
+                        self.vae.to(torch.float32)
                         latents = latents.to(next(iter(self.vae.post_quant_conv.parameters())).dtype)
 
                     print("### Phase {} Decoding ###".format(current_scale_num))

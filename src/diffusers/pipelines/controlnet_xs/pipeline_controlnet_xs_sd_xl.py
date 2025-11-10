@@ -32,14 +32,11 @@ from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...image_processor import PipelineImageInput, VaeImageProcessor
 from ...loaders import FromSingleFileMixin, StableDiffusionXLLoraLoaderMixin, TextualInversionLoaderMixin
 from ...models import AutoencoderKL, ControlNetXSAdapter, UNet2DConditionModel, UNetControlNetXSModel
-from ...models.attention_processor import (
-    AttnProcessor2_0,
-    XFormersAttnProcessor,
-)
 from ...models.lora import adjust_lora_scale_text_encoder
 from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import (
     USE_PEFT_BACKEND,
+    deprecate,
     logging,
     replace_example_docstring,
     scale_lora_layers,
@@ -685,21 +682,7 @@ class StableDiffusionXLControlNetXSPipeline(
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_upscale.StableDiffusionUpscalePipeline.upcast_vae
     def upcast_vae(self):
-        dtype = self.vae.dtype
-        self.vae.to(dtype=torch.float32)
-        use_torch_2_0_or_xformers = isinstance(
-            self.vae.decoder.mid_block.attentions[0].processor,
-            (
-                AttnProcessor2_0,
-                XFormersAttnProcessor,
-            ),
-        )
-        # if xformers or torch_2_0 is used attention block does not need
-        # to be in float32 which can save lots of memory
-        if use_torch_2_0_or_xformers:
-            self.vae.post_quant_conv.to(dtype)
-            self.vae.decoder.conv_in.to(dtype)
-            self.vae.decoder.mid_block.to(dtype)
+        deprecate("`upcast_vae` is deprecated")
 
     @property
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.guidance_scale
@@ -1095,7 +1078,7 @@ class StableDiffusionXLControlNetXSPipeline(
 
         # manually for max memory savings
         if self.vae.dtype == torch.float16 and self.vae.config.force_upcast:
-            self.upcast_vae()
+            self.vae.to(torch.float32)
             latents = latents.to(next(iter(self.vae.post_quant_conv.parameters())).dtype)
 
         if not output_type == "latent":
@@ -1103,7 +1086,7 @@ class StableDiffusionXLControlNetXSPipeline(
             needs_upcasting = self.vae.dtype == torch.float16 and self.vae.config.force_upcast
 
             if needs_upcasting:
-                self.upcast_vae()
+                self.vae.to(torch.float32)
                 latents = latents.to(next(iter(self.vae.post_quant_conv.parameters())).dtype)
 
             image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False)[0]

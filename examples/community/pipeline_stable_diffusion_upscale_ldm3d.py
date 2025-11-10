@@ -736,7 +736,7 @@ class StableDiffusionUpscaleLDM3DPipeline(
             needs_upcasting = self.vae.dtype == torch.float16 and self.vae.config.force_upcast
 
             if needs_upcasting:
-                self.upcast_vae()
+                self.vae.to(torch.float32)
                 latents = latents.to(next(iter(self.vae.post_quant_conv.parameters())).dtype)
 
             image = self.vae.decode(latents / self.vae.scaling_factor, return_dict=False)[0]
