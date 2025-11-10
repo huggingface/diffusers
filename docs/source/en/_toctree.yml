@@ -329,6 +329,8 @@
         title: BriaTransformer2DModel
       - local: api/models/chroma_transformer
         title: ChromaTransformer2DModel
+      - local: api/models/chronoedit_transformer_3d
+        title: ChronoEditTransformer3DModel
       - local: api/models/cogvideox_transformer3d
         title: CogVideoXTransformer3DModel
       - local: api/models/cogview3plus_transformer2d
@@ -628,6 +630,8 @@
     - sections:
       - local: api/pipelines/allegro
         title: Allegro
+      - local: api/pipelines/chronoedit
+        title: ChronoEdit
       - local: api/pipelines/cogvideox
         title: CogVideoX
       - local: api/pipelines/consisid
