@@ -41,6 +41,7 @@ from .encoders import (
     QwenImageEditPlusProcessImagesInputStep,
     QwenImageEditPlusResizeDynamicStep,
     QwenImageEditPlusTextEncoderStep,
+    QwenImageEditPlusVaeEncoderDynamicStep,
     QwenImageEditResizeDynamicStep,
     QwenImageEditTextEncoderStep,
     QwenImageInpaintProcessImagesInputStep,
@@ -48,7 +49,12 @@ from .encoders import (
     QwenImageTextEncoderStep,
     QwenImageVaeEncoderDynamicStep,
 )
-from .inputs import QwenImageControlNetInputsStep, QwenImageInputsDynamicStep, QwenImageTextInputsStep
+from .inputs import (
+    QwenImageControlNetInputsStep,
+    QwenImageEditPlusInputsDynamicStep,
+    QwenImageInputsDynamicStep,
+    QwenImageTextInputsStep,
+)
 
 
 logger = logging.get_logger(__name__)
@@ -906,7 +912,7 @@ QwenImageEditPlusVaeEncoderBlocks = InsertableDict(
     [
         ("resize", QwenImageEditPlusResizeDynamicStep()),  # edit plus has a different resize step
         ("preprocess", QwenImageEditPlusProcessImagesInputStep()),  # vae_image -> processed_image
-        ("encode", QwenImageVaeEncoderDynamicStep()),  # processed_image -> image_latents
+        ("encode", QwenImageEditPlusVaeEncoderDynamicStep()),  # processed_image -> image_latents
     ]
 )
 
@@ -927,7 +933,7 @@ QwenImageEditPlusInputBlocks = InsertableDict(
         ("text_inputs", QwenImageTextInputsStep()),  # default step to process text embeddings
         (
             "additional_inputs",
-            QwenImageInputsDynamicStep(image_latent_inputs=["image_latents"], reshape_to_seq_dim=True),
+            QwenImageEditPlusInputsDynamicStep(image_latent_inputs=["image_latents"]),
         ),
     ]
 )

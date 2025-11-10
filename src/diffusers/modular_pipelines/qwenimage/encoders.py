@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Dict, List, Optional, Union
 
 import PIL
 import torch
@@ -856,12 +856,6 @@ class QwenImageEditPlusProcessImagesInputStep(QwenImageProcessImagesInputStep):
     def inputs(self) -> List[InputParam]:
         return [InputParam("vae_image"), InputParam("image"), InputParam("height"), InputParam("width")]
 
-    @property
-    def intermediate_outputs(self):
-        existing_outputs = super().intermediate_outputs
-        current_outputs = [OutputParam("vae_image_sizes", type_hint=List[Tuple[int, int]])]
-        return existing_outputs + current_outputs
-
     @torch.no_grad()
     def __call__(self, components: QwenImageModularPipeline, state: PipelineState):
         block_state = self.get_block_state(state)
@@ -881,6 +875,7 @@ class QwenImageEditPlusProcessImagesInputStep(QwenImageProcessImagesInputStep):
                 image=image, height=height, width=width
             )
         else:
+            # QwenImage Edit Plus can allow multiple input images with varied resolutions
             processed_images = []
             vae_image_sizes = []
             for img in block_state.vae_image:
@@ -890,7 +885,7 @@ class QwenImageEditPlusProcessImagesInputStep(QwenImageProcessImagesInputStep):
                 processed_images.append(
                     components.image_processor.preprocess(image=img, height=vae_height, width=vae_width)
                 )
-            block_state.processed_image = torch.stack(processed_images, dim=0).squeeze(1)
+            block_state.processed_image = processed_images
 
         block_state.vae_image_sizes = vae_image_sizes
 
@@ -970,6 +965,50 @@ class QwenImageVaeEncoderDynamicStep(ModularPipelineBlocks):
             dtype=dtype,
             latent_channels=components.num_channels_latents,
         )
+        setattr(block_state, self._image_latents_output_name, image_latents)
+
+        self.set_block_state(state, block_state)
+
+        return components, state
+
+
+class QwenImageEditPlusVaeEncoderDynamicStep(QwenImageVaeEncoderDynamicStep):
+    model_name = "qwenimage-edit-plus"
+
+    @property
+    def intermediate_outputs(self) -> List[OutputParam]:
+        # Each reference image latent can have varied resolutions hence we return this as a list.
+        return [
+            OutputParam(
+                self._image_latents_output_name,
+                type_hint=List[torch.Tensor],
+                description="The latents representing the reference image(s).",
+            )
+        ]
+
+    @torch.no_grad()
+    def __call__(self, components: QwenImageModularPipeline, state: PipelineState) -> PipelineState:
+        block_state = self.get_block_state(state)
+
+        device = components._execution_device
+        dtype = components.vae.dtype
+
+        image = getattr(block_state, self._image_input_name)
+
+        # Encode image into latents
+        image_latents = []
+        for img in image:
+            image_latents.append(
+                encode_vae_image(
+                    image=img,
+                    vae=components.vae,
+                    generator=block_state.generator,
+                    device=device,
+                    dtype=dtype,
+                    latent_channels=components.num_channels_latents,
+                )
+            )
+
         setattr(block_state, self._image_latents_output_name, image_latents)
 
         self.set_block_state(state, block_state)
