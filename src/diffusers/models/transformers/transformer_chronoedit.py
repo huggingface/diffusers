@@ -1,4 +1,4 @@
-# Copyright 2025 The Wan Team and The HuggingFace Team. All rights reserved.
+# Copyright 2025 The ChronoEdit Team and The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -36,6 +36,7 @@ from ..normalization import FP32LayerNorm
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
+# Copied from diffusers.models.transformers.transformer_wan._get_qkv_projections
 def _get_qkv_projections(attn: "WanAttention", hidden_states: torch.Tensor, encoder_hidden_states: torch.Tensor):
     # encoder_hidden_states is only passed for cross-attention
     if encoder_hidden_states is None:
@@ -56,6 +57,7 @@ def _get_qkv_projections(attn: "WanAttention", hidden_states: torch.Tensor, enco
     return query, key, value
 
 
+# Copied from diffusers.models.transformers.transformer_wan._get_added_kv_projections
 def _get_added_kv_projections(attn: "WanAttention", encoder_hidden_states_img: torch.Tensor):
     if attn.fused_projections:
         key_img, value_img = attn.to_added_kv(encoder_hidden_states_img).chunk(2, dim=-1)
@@ -65,6 +67,7 @@ def _get_added_kv_projections(attn: "WanAttention", encoder_hidden_states_img: t
     return key_img, value_img
 
 
+# Copied from diffusers.models.transformers.transformer_wan.WanAttnProcessor
 class WanAttnProcessor:
     _attention_backend = None
     _parallel_config = None
@@ -160,6 +163,7 @@ class WanAttnProcessor:
         return hidden_states
 
 
+# Copied from diffusers.models.transformers.transformer_wan.WanAttnProcessor2_0
 class WanAttnProcessor2_0:
     def __new__(cls, *args, **kwargs):
         deprecation_message = (
@@ -170,6 +174,7 @@ class WanAttnProcessor2_0:
         return WanAttnProcessor(*args, **kwargs)
 
 
+# Copied from diffusers.models.transformers.transformer_wan.WanAttention
 class WanAttention(torch.nn.Module, AttentionModuleMixin):
     _default_processor_cls = WanAttnProcessor
     _available_processors = [WanAttnProcessor]
@@ -276,6 +281,7 @@ class WanAttention(torch.nn.Module, AttentionModuleMixin):
         return self.processor(self, hidden_states, encoder_hidden_states, attention_mask, rotary_emb, **kwargs)
 
 
+# Copied from diffusers.models.transformers.transformer_wan.WanImageEmbedding
 class WanImageEmbedding(torch.nn.Module):
     def __init__(self, in_features: int, out_features: int, pos_embed_seq_len=None):
         super().__init__()
@@ -300,6 +306,7 @@ class WanImageEmbedding(torch.nn.Module):
         return hidden_states
 
 
+# Copied from diffusers.models.transformers.transformer_wan.WanTimeTextImageEmbedding
 class WanTimeTextImageEmbedding(nn.Module):
     def __init__(
         self,
@@ -346,19 +353,21 @@ class WanTimeTextImageEmbedding(nn.Module):
         return temb, timestep_proj, encoder_hidden_states, encoder_hidden_states_image
 
 
-class WanRotaryPosEmbed(nn.Module):
+class ChronoEditRotaryPosEmbed(nn.Module):
     def __init__(
         self,
         attention_head_dim: int,
         patch_size: Tuple[int, int, int],
         max_seq_len: int,
         theta: float = 10000.0,
+        temporal_skip_len: int = 8,
     ):
         super().__init__()
 
         self.attention_head_dim = attention_head_dim
         self.patch_size = patch_size
         self.max_seq_len = max_seq_len
+        self.temporal_skip_len = temporal_skip_len
 
         h_dim = w_dim = 2 * (attention_head_dim // 6)
         t_dim = attention_head_dim - h_dim - w_dim
@@ -396,11 +405,17 @@ class WanRotaryPosEmbed(nn.Module):
         freqs_cos = self.freqs_cos.split(split_sizes, dim=1)
         freqs_sin = self.freqs_sin.split(split_sizes, dim=1)
 
-        freqs_cos_f = freqs_cos[0][:ppf].view(ppf, 1, 1, -1).expand(ppf, pph, ppw, -1)
+        if num_frames == 2:
+            freqs_cos_f = freqs_cos[0][: self.temporal_skip_len][[0, -1]].view(ppf, 1, 1, -1).expand(ppf, pph, ppw, -1)
+        else:
+            freqs_cos_f = freqs_cos[0][:ppf].view(ppf, 1, 1, -1).expand(ppf, pph, ppw, -1)
         freqs_cos_h = freqs_cos[1][:pph].view(1, pph, 1, -1).expand(ppf, pph, ppw, -1)
         freqs_cos_w = freqs_cos[2][:ppw].view(1, 1, ppw, -1).expand(ppf, pph, ppw, -1)
 
-        freqs_sin_f = freqs_sin[0][:ppf].view(ppf, 1, 1, -1).expand(ppf, pph, ppw, -1)
+        if num_frames == 2:
+            freqs_sin_f = freqs_sin[0][: self.temporal_skip_len][[0, -1]].view(ppf, 1, 1, -1).expand(ppf, pph, ppw, -1)
+        else:
+            freqs_sin_f = freqs_sin[0][:ppf].view(ppf, 1, 1, -1).expand(ppf, pph, ppw, -1)
         freqs_sin_h = freqs_sin[1][:pph].view(1, pph, 1, -1).expand(ppf, pph, ppw, -1)
         freqs_sin_w = freqs_sin[2][:ppw].view(1, 1, ppw, -1).expand(ppf, pph, ppw, -1)
 
@@ -411,6 +426,7 @@ class WanRotaryPosEmbed(nn.Module):
 
 
 @maybe_allow_in_graph
+# Copied from diffusers.models.transformers.transformer_wan.WanTransformerBlock
 class WanTransformerBlock(nn.Module):
     def __init__(
         self,
@@ -498,11 +514,12 @@ class WanTransformerBlock(nn.Module):
         return hidden_states
 
 
-class WanTransformer3DModel(
+# modified from diffusers.models.transformers.transformer_wan.WanTransformer3DModel
+class ChronoEditTransformer3DModel(
     ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginalModelMixin, CacheMixin, AttentionMixin
 ):
     r"""
-    A Transformer model for video-like data used in the Wan model.
+    A Transformer model for video-like data used in the ChronoEdit model.
 
     Args:
         patch_size (`Tuple[int]`, defaults to `(1, 2, 2)`):
@@ -555,9 +572,6 @@ class WanTransformer3DModel(
             "encoder_hidden_states": ContextParallelInput(split_dim=1, expected_dims=3, split_output=False),
         },
         "proj_out": ContextParallelOutput(gather_dim=1, expected_dims=3),
-        "": {
-            "timestep": ContextParallelInput(split_dim=1, expected_dims=2, split_output=False),
-        },
     }
 
     @register_to_config
@@ -579,6 +593,7 @@ class WanTransformer3DModel(
         added_kv_proj_dim: Optional[int] = None,
         rope_max_seq_len: int = 1024,
         pos_embed_seq_len: Optional[int] = None,
+        rope_temporal_skip_len: int = 8,
     ) -> None:
         super().__init__()
 
@@ -586,7 +601,9 @@ class WanTransformer3DModel(
         out_channels = out_channels or in_channels
 
         # 1. Patch & position embedding
-        self.rope = WanRotaryPosEmbed(attention_head_dim, patch_size, rope_max_seq_len)
+        self.rope = ChronoEditRotaryPosEmbed(
+            attention_head_dim, patch_size, rope_max_seq_len, temporal_skip_len=rope_temporal_skip_len
+        )
         self.patch_embedding = nn.Conv3d(in_channels, inner_dim, kernel_size=patch_size, stride=patch_size)
 
         # 2. Condition embeddings
