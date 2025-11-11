@@ -55,9 +55,8 @@ class TestFluxModularPipelineFast(ModularPipelineTesterMixin):
         }
         return inputs
 
-
-def test_float16_inference(self):
-    super().test_float16_inference(9e-2)
+    def test_float16_inference(self):
+        super().test_float16_inference(9e-2)
 
 
 class TestFluxImg2ImgModularPipelineFast(ModularPipelineTesterMixin):
@@ -122,7 +121,6 @@ class TestFluxImg2ImgModularPipelineFast(ModularPipelineTesterMixin):
 
         assert torch.abs(image_slices[0] - image_slices[1]).max() < 1e-3
 
-    # @pytest.mark.skipif(torch_device == "cpu", reason="Test needs an accelerator.")
     def test_float16_inference(self):
         super().test_float16_inference(8e-2)
 
