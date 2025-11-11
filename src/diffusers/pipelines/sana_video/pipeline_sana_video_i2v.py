@@ -19,13 +19,15 @@ import urllib.parse as ul
 import warnings
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
+import PIL
 import torch
 from transformers import Gemma2PreTrainedModel, GemmaTokenizer, GemmaTokenizerFast
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
+from ...image_processor import PipelineImageInput
 from ...loaders import SanaLoraLoaderMixin
 from ...models import AutoencoderDC, AutoencoderKLWan, SanaVideoTransformer3DModel
-from ...schedulers import DPMSolverMultistepScheduler
+from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import (
     BACKENDS_MAPPING,
     USE_PEFT_BACKEND,
@@ -65,22 +67,24 @@ EXAMPLE_DOC_STRING = """
     Examples:
         ```py
         >>> import torch
-        >>> from diffusers import SanaVideoPipeline
-        >>> from diffusers.utils import export_to_video
+        >>> from diffusers import SanaImageToVideoPipeline
+        >>> from diffusers.utils import export_to_video, load_image
         >>> model_id = "Efficient-Large-Model/SANA-Video_2B_480p_diffusers"
-        >>> pipe = SanaVideoPipeline.from_pretrained(model_id)
+        >>> pipe = SanaImageToVideoPipeline.from_pretrained(model_id)
         >>> pipe.transformer.to(torch.bfloat16)
         >>> pipe.text_encoder.to(torch.bfloat16)
         >>> pipe.vae.to(torch.float32)
         >>> pipe.to("cuda")
         >>> model_score = 30
 
-        >>> prompt = "Evening, backlight, side lighting, soft light, high contrast, mid-shot, centered composition, clean solo shot, warm color. A young Caucasian man stands in a forest, golden light glimmers on his hair as sunlight filters through the leaves. He wears a light shirt, wind gently blowing his hair and collar, light dances across his face with his movements. The background is blurred, with dappled light and soft tree shadows in the distance. The camera focuses on his lifted gaze, clear and emotional."
+        >>> prompt = "A woman stands against a stunning sunset backdrop, her long, wavy brown hair gently blowing in the breeze. She wears a sleeveless, light-colored blouse with a deep V-neckline, which accentuates her graceful posture. The warm hues of the setting sun cast a golden glow across her face and hair, creating a serene and ethereal atmosphere. The background features a blurred landscape with soft, rolling hills and scattered clouds, adding depth to the scene. The camera remains steady, capturing the tranquil moment from a medium close-up angle."
         >>> negative_prompt = "A chaotic sequence with misshapen, deformed limbs in heavy motion blur, sudden disappearance, jump cuts, jerky movements, rapid shot changes, frames out of sync, inconsistent character shapes, temporal artifacts, jitter, and ghosting effects, creating a disorienting visual experience."
         >>> motion_prompt = f" motion score: {model_score}."
         >>> prompt = prompt + motion_prompt
+        >>> image = load_image("https://raw.githubusercontent.com/NVlabs/Sana/refs/heads/main/asset/samples/i2v-1.png")
 
         >>> output = pipe(
+        ...    image=image,
         ...    prompt=prompt,
         ...    negative_prompt=negative_prompt,
         ...    height=480,
@@ -91,7 +95,7 @@ EXAMPLE_DOC_STRING = """
         ...    generator=torch.Generator(device="cuda").manual_seed(42),
         ... ).frames[0]
 
-        >>> export_to_video(output, "sana-video-output.mp4", fps=16)
+        >>> export_to_video(output, "sana-ti2v-output.mp4", fps=16)
         ```
 """
 
@@ -156,6 +160,20 @@ def retrieve_timesteps(
     return timesteps, num_inference_steps
 
 
+# Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.retrieve_latents
+def retrieve_latents(
+    encoder_output: torch.Tensor, generator: Optional[torch.Generator] = None, sample_mode: str = "sample"
+):
+    if hasattr(encoder_output, "latent_dist") and sample_mode == "sample":
+        return encoder_output.latent_dist.sample(generator)
+    elif hasattr(encoder_output, "latent_dist") and sample_mode == "argmax":
+        return encoder_output.latent_dist.mode()
+    elif hasattr(encoder_output, "latents"):
+        return encoder_output.latents
+    else:
+        raise AttributeError("Could not access latents of provided encoder_output")
+
+
 class SanaImageToVideoPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
     r"""
     Pipeline for image/text-to-video generation using [Sana](https://huggingface.co/papers/2509.24695).
@@ -171,7 +189,7 @@ class SanaImageToVideoPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
             Variational Auto-Encoder (VAE) Model to encode and decode videos to and from latent representations.
         transformer ([`SanaVideoTransformer3DModel`]):
             Conditional Transformer to denoise the input latents.
-        scheduler ([`DPMSolverMultistepScheduler`]):
+        scheduler ([`FlowMatchEulerDiscreteScheduler`]):
             A scheduler to be used in combination with `transformer` to denoise the encoded video latents.
     """
 
@@ -188,7 +206,7 @@ class SanaImageToVideoPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
         text_encoder: Gemma2PreTrainedModel,
         vae: Union[AutoencoderDC, AutoencoderKLWan],
         transformer: SanaVideoTransformer3DModel,
-        scheduler: DPMSolverMultistepScheduler,
+        scheduler: FlowMatchEulerDiscreteScheduler,
     ):
         super().__init__()
 
@@ -200,6 +218,13 @@ class SanaImageToVideoPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
         self.vae_scale_factor_spatial = self.vae.config.scale_factor_spatial if getattr(self, "vae", None) else 8
 
         self.vae_scale_factor = self.vae_scale_factor_spatial
+
+        self.transformer_spatial_patch_size = (
+            self.transformer.config.patch_size[1] if getattr(self, "transformer", None) is not None else 1
+        )
+        self.transformer_temporal_patch_size = (
+            self.transformer.config.patch_size[0] if getattr(self, "transformer") is not None else 1
+        )
 
         self.video_processor = VideoProcessor(vae_scale_factor=self.vae_scale_factor_spatial)
 
@@ -412,6 +437,7 @@ class SanaImageToVideoPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
     def check_inputs(
         self,
         prompt,
+        image,
         height,
         width,
         callback_on_step_end_tensor_inputs=None,
@@ -423,6 +449,9 @@ class SanaImageToVideoPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
     ):
         if height % 32 != 0 or width % 32 != 0:
             raise ValueError(f"`height` and `width` have to be divisible by 32 but are {height} and {width}.")
+
+        if image is not None and not isinstance(image, torch.Tensor) and not isinstance(image, PIL.Image.Image):
+            raise ValueError(f"`image` has to be of type `torch.Tensor` or `PIL.Image.Image` but is {type(image)}")
 
         if callback_on_step_end_tensor_inputs is not None and not all(
             k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
@@ -617,6 +646,7 @@ class SanaImageToVideoPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
 
     def prepare_latents(
         self,
+        image: PipelineImageInput,
         batch_size: int,
         num_channels_latents: int = 16,
         height: int = 480,
@@ -627,8 +657,6 @@ class SanaImageToVideoPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        if latents is not None:
-            return latents.to(device=device, dtype=dtype)
 
         num_latent_frames = (num_frames - 1) // self.vae_scale_factor_temporal + 1
         shape = (
@@ -648,6 +676,25 @@ class SanaImageToVideoPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
             latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
         else:
             latents = latents.to(device=device, dtype=dtype)
+        
+        image = image.unsqueeze(2)  # [B, C, 1, H, W]
+        image = image.to(device=device, dtype=dtype)
+        
+        if isinstance(generator, list):
+            image_latents = [
+                retrieve_latents(self.vae.encode(image), sample_mode="argmax") for _ in generator
+            ]
+            image_latents = torch.cat(image_latents)
+        else:
+            image_latents = retrieve_latents(self.vae.encode(image), sample_mode="argmax")
+            image_latents = image_latents.repeat(batch_size, 1, 1, 1, 1)
+        
+        latents_mean = torch.tensor(self.vae.config.latents_mean).view(1, -1, 1, 1, 1).to(image_latents.device, image_latents.dtype)
+        latents_std = 1.0 / torch.tensor(self.vae.config.latents_std).view(1, -1, 1, 1, 1).to(image_latents.device, image_latents.dtype)
+        image_latents = (image_latents - latents_mean) * latents_std
+        
+        latents[:, :, 0:1] = image_latents.to(dtype)
+            
         return latents
 
     @property
@@ -674,6 +721,7 @@ class SanaImageToVideoPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
+        image: PipelineImageInput,
         prompt: Union[str, List[str]] = None,
         negative_prompt: str = "",
         num_inference_steps: int = 50,
@@ -714,6 +762,9 @@ class SanaImageToVideoPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
         Function invoked when calling the pipeline for generation.
 
         Args:
+            image (`PipelineImageInput`):
+                The input image to condition the video generation on. The first frame of the generated
+                video will be conditioned on this image.
             prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts to guide the video generation. If not defined, one has to pass `prompt_embeds`.
                 instead.
@@ -820,6 +871,7 @@ class SanaImageToVideoPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
 
         self.check_inputs(
             prompt,
+            image,
             height,
             width,
             callback_on_step_end_tensor_inputs,
@@ -877,7 +929,10 @@ class SanaImageToVideoPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
 
         # 5. Prepare latents.
         latent_channels = self.transformer.config.in_channels
+        image = self.video_processor.preprocess(image, height=height, width=width).to(device, dtype=torch.float32)
+        
         latents = self.prepare_latents(
+            image,
             batch_size * num_videos_per_prompt,
             latent_channels,
             height,
@@ -888,6 +943,17 @@ class SanaImageToVideoPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
             generator,
             latents,
         )
+
+        conditioning_mask = latents.new_zeros(
+            batch_size, 
+            1, 
+            latents.shape[2]//self.transformer_temporal_patch_size, 
+            latents.shape[3]//self.transformer_spatial_patch_size, 
+            latents.shape[4]//self.transformer_spatial_patch_size
+        )
+        conditioning_mask[:, :, 0] = 1.0
+        if self.do_classifier_free_guidance:
+            conditioning_mask = torch.cat([conditioning_mask, conditioning_mask])
 
         # 6. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
@@ -905,7 +971,8 @@ class SanaImageToVideoPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
                 latent_model_input = torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents
 
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
-                timestep = t.expand(latent_model_input.shape[0])
+                timestep = t.expand(conditioning_mask.shape)
+                timestep = timestep * (1 - conditioning_mask)
 
                 # predict noise model_output
                 noise_pred = self.transformer(
@@ -922,13 +989,17 @@ class SanaImageToVideoPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
                 if self.do_classifier_free_guidance:
                     noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
                     noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
+                    timestep, _ = timestep.chunk(2)
 
                 # learned sigma
                 if self.transformer.config.out_channels // 2 == latent_channels:
                     noise_pred = noise_pred.chunk(2, dim=1)[0]
 
-                # compute previous image: x_t -> x_t-1
-                latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs, return_dict=False)[0]
+                noise_pred = noise_pred[:, :, 1:]
+                noise_latents = latents[:, :, 1:]
+                pred_latents = self.scheduler.step(noise_pred, t, noise_latents, **extra_step_kwargs, return_dict=False)[0]
+
+                latents = torch.cat([latents[:, :, :1], pred_latents], dim=2)
 
                 if callback_on_step_end is not None:
                     callback_kwargs = {}

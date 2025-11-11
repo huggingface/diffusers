@@ -101,11 +101,11 @@ EXAMPLE_DOC_STRING = """
         >>> pipe.text_encoder.to(torch.bfloat16)
         >>> pipe.vae.to(torch.float32)
         >>> pipe.to("cuda")
-        >>> model_score = 30
+        >>> motion_scale = 30
 
         >>> prompt = "Evening, backlight, side lighting, soft light, high contrast, mid-shot, centered composition, clean solo shot, warm color. A young Caucasian man stands in a forest, golden light glimmers on his hair as sunlight filters through the leaves. He wears a light shirt, wind gently blowing his hair and collar, light dances across his face with his movements. The background is blurred, with dappled light and soft tree shadows in the distance. The camera focuses on his lifted gaze, clear and emotional."
         >>> negative_prompt = "A chaotic sequence with misshapen, deformed limbs in heavy motion blur, sudden disappearance, jump cuts, jerky movements, rapid shot changes, frames out of sync, inconsistent character shapes, temporal artifacts, jitter, and ghosting effects, creating a disorienting visual experience."
-        >>> motion_prompt = f" motion score: {model_score}."
+        >>> motion_prompt = f" motion score: {motion_scale}."
         >>> prompt = prompt + motion_prompt
 
         >>> output = pipe(
