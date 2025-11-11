@@ -286,6 +286,8 @@ def get_device():
         return "xpu"
     elif torch.backends.mps.is_available():
         return "mps"
+    elif torch.mlu.is_available():
+        return "mlu"
     else:
         return "cpu"
 
