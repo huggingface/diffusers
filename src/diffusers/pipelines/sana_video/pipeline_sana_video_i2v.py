@@ -43,7 +43,6 @@ from ...utils.torch_utils import get_device, is_torch_version, randn_tensor
 from ...video_processor import VideoProcessor
 from ..pipeline_utils import DiffusionPipeline
 from .pipeline_output import SanaVideoPipelineOutput
-
 from .pipeline_sana_video import ASPECT_RATIO_480_BIN, ASPECT_RATIO_720_BIN
 
 
@@ -657,7 +656,6 @@ class SanaImageToVideoPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-
         num_latent_frames = (num_frames - 1) // self.vae_scale_factor_temporal + 1
         shape = (
             batch_size,
@@ -676,25 +674,29 @@ class SanaImageToVideoPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
             latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
         else:
             latents = latents.to(device=device, dtype=dtype)
-        
+
         image = image.unsqueeze(2)  # [B, C, 1, H, W]
         image = image.to(device=device, dtype=dtype)
-        
+
         if isinstance(generator, list):
-            image_latents = [
-                retrieve_latents(self.vae.encode(image), sample_mode="argmax") for _ in generator
-            ]
+            image_latents = [retrieve_latents(self.vae.encode(image), sample_mode="argmax") for _ in generator]
             image_latents = torch.cat(image_latents)
         else:
             image_latents = retrieve_latents(self.vae.encode(image), sample_mode="argmax")
             image_latents = image_latents.repeat(batch_size, 1, 1, 1, 1)
-        
-        latents_mean = torch.tensor(self.vae.config.latents_mean).view(1, -1, 1, 1, 1).to(image_latents.device, image_latents.dtype)
-        latents_std = 1.0 / torch.tensor(self.vae.config.latents_std).view(1, -1, 1, 1, 1).to(image_latents.device, image_latents.dtype)
+
+        latents_mean = (
+            torch.tensor(self.vae.config.latents_mean)
+            .view(1, -1, 1, 1, 1)
+            .to(image_latents.device, image_latents.dtype)
+        )
+        latents_std = 1.0 / torch.tensor(self.vae.config.latents_std).view(1, -1, 1, 1, 1).to(
+            image_latents.device, image_latents.dtype
+        )
         image_latents = (image_latents - latents_mean) * latents_std
-        
+
         latents[:, :, 0:1] = image_latents.to(dtype)
-            
+
         return latents
 
     @property
@@ -930,7 +932,7 @@ class SanaImageToVideoPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
         # 5. Prepare latents.
         latent_channels = self.transformer.config.in_channels
         image = self.video_processor.preprocess(image, height=height, width=width).to(device, dtype=torch.float32)
-        
+
         latents = self.prepare_latents(
             image,
             batch_size * num_videos_per_prompt,
@@ -945,11 +947,11 @@ class SanaImageToVideoPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
         )
 
         conditioning_mask = latents.new_zeros(
-            batch_size, 
-            1, 
-            latents.shape[2]//self.transformer_temporal_patch_size, 
-            latents.shape[3]//self.transformer_spatial_patch_size, 
-            latents.shape[4]//self.transformer_spatial_patch_size
+            batch_size,
+            1,
+            latents.shape[2] // self.transformer_temporal_patch_size,
+            latents.shape[3] // self.transformer_spatial_patch_size,
+            latents.shape[4] // self.transformer_spatial_patch_size,
         )
         conditioning_mask[:, :, 0] = 1.0
         if self.do_classifier_free_guidance:
@@ -997,7 +999,9 @@ class SanaImageToVideoPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
 
                 noise_pred = noise_pred[:, :, 1:]
                 noise_latents = latents[:, :, 1:]
-                pred_latents = self.scheduler.step(noise_pred, t, noise_latents, **extra_step_kwargs, return_dict=False)[0]
+                pred_latents = self.scheduler.step(
+                    noise_pred, t, noise_latents, **extra_step_kwargs, return_dict=False
+                )[0]
 
                 latents = torch.cat([latents[:, :, :1], pred_latents], dim=2)
 
