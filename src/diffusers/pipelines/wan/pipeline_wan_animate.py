@@ -468,32 +468,6 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 f" {type(prev_segment_conditioning_frames)} and value is {prev_segment_conditioning_frames}"
             )
 
-    def standardize_latents(self, latents: torch.Tensor) -> torch.Tensor:
-        latents_mean = (
-            torch.tensor(self.vae.config.latents_mean)
-            .view(1, self.vae.config.z_dim, 1, 1, 1)
-            .to(latents.device, latents.dtype)
-        )
-        latents_recip_std = 1.0 / torch.tensor(self.vae.config.latents_std).view(1, self.vae.config.z_dim, 1, 1, 1).to(
-            latents.device, latents.dtype
-        )
-
-        latents = (latents - latents_mean) * latents_recip_std
-        return latents
-
-    def destandardize_latents(self, latents: torch.Tensor) -> torch.Tensor:
-        latents_mean = (
-            torch.tensor(self.vae.config.latents_mean)
-            .view(1, self.vae.config.z_dim, 1, 1, 1)
-            .to(latents.device, latents.dtype)
-        )
-        latents_recip_std = 1.0 / torch.tensor(self.vae.config.latents_std).view(1, self.vae.config.z_dim, 1, 1, 1).to(
-            latents.device, latents.dtype
-        )
-
-        latents = latents / latents_recip_std + latents_mean
-        return latents
-
     def get_i2v_mask(
         self,
         batch_size: int,
@@ -552,7 +526,16 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
             ref_image_latents = torch.cat(ref_image_latents)
         else:
             ref_image_latents = retrieve_latents(self.vae.encode(image), generator, sample_mode)
-        ref_image_latents = self.standardize_latents(ref_image_latents)
+        # Standardize latents in preparation for Wan VAE encode
+        latents_mean = (
+            torch.tensor(self.vae.config.latents_mean)
+            .view(1, self.vae.config.z_dim, 1, 1, 1)
+            .to(ref_image_latents.device, ref_image_latents.dtype)
+        )
+        latents_recip_std = 1.0 / torch.tensor(self.vae.config.latents_std).view(1, self.vae.config.z_dim, 1, 1, 1).to(
+            ref_image_latents.device, ref_image_latents.dtype
+        )
+        ref_image_latents = (ref_image_latents - latents_mean) * latents_recip_std
         # Handle the case where we supply one image and one generator, but batch_size > 1 (e.g. generating multiple
         # videos per prompt)
         if ref_image_latents.shape[0] == 1 and batch_size > 1:
@@ -643,7 +626,16 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
             prev_segment_cond_latents = retrieve_latents(
                 self.vae.encode(full_segment_cond_video), generator, sample_mode
             )
-        prev_segment_cond_latents = self.standardize_latents(prev_segment_cond_latents)
+        # Standardize latents in preparation for Wan VAE encode
+        latents_mean = (
+            torch.tensor(self.vae.config.latents_mean)
+            .view(1, self.vae.config.z_dim, 1, 1, 1)
+            .to(prev_segment_cond_latents.device, prev_segment_cond_latents.dtype)
+        )
+        latents_recip_std = 1.0 / torch.tensor(self.vae.config.latents_std).view(1, self.vae.config.z_dim, 1, 1, 1).to(
+            prev_segment_cond_latents.device, prev_segment_cond_latents.dtype
+        )
+        prev_segment_cond_latents = (prev_segment_cond_latents - latents_mean) * latents_recip_std
 
         # Prepare I2V mask
         if task == "replace":
@@ -688,7 +680,16 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
             pose_latents = torch.cat(pose_latents)
         else:
             pose_latents = retrieve_latents(self.vae.encode(pose_video), generator, sample_mode)
-        pose_latents = self.standardize_latents(pose_latents)
+        # Standardize latents in preparation for Wan VAE encode
+        latents_mean = (
+            torch.tensor(self.vae.config.latents_mean)
+            .view(1, self.vae.config.z_dim, 1, 1, 1)
+            .to(pose_latents.device, pose_latents.dtype)
+        )
+        latents_recip_std = 1.0 / torch.tensor(self.vae.config.latents_std).view(1, self.vae.config.z_dim, 1, 1, 1).to(
+            pose_latents.device, pose_latents.dtype
+        )
+        pose_latents = (pose_latents - latents_mean) * latents_recip_std
         if pose_latents.shape[0] == 1 and batch_size > 1:
             pose_latents = pose_latents.expand(batch_size, -1, -1, -1, -1)
         return pose_latents
@@ -1166,7 +1167,16 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
                         xm.mark_step()
 
             latents = latents.to(self.vae.dtype)
-            latents = self.destandardize_latents(latents)
+            # Destandardize latents in preparation for Wan VAE decoding
+            latents_mean = (
+                torch.tensor(self.vae.config.latents_mean)
+                .view(1, self.vae.config.z_dim, 1, 1, 1)
+                .to(latents.device, latents.dtype)
+            )
+            latents_recip_std = 1.0 / torch.tensor(self.vae.config.latents_std).view(1, self.vae.config.z_dim, 1, 1, 1).to(
+                latents.device, latents.dtype
+            )
+            latents = latents / latents_recip_std + latents_mean
             # Skip the first latent frame (used for conditioning)
             out_frames = self.vae.decode(latents[:, :, 1:], return_dict=False)[0]
 
