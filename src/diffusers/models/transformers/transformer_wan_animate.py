@@ -1224,7 +1224,8 @@ class WanAnimateTransformer3DModel(
         pose_hidden_states = self.pose_patch_embedding(pose_hidden_states)
         # Add pose embeddings to hidden states
         hidden_states[:, :, 1:] = hidden_states[:, :, 1:] + pose_hidden_states
-        hidden_states = hidden_states.flatten(2).transpose(1, 2)
+        # Calling contiguous() here is important so that we don't recompile when performing regional compilation
+        hidden_states = hidden_states.flatten(2).transpose(1, 2).contiguous()
 
         # 3. Condition embeddings (time, text, image)
         # timestep shape: batch_size, or batch_size, seq_len (wan 2.2 ti2v)
