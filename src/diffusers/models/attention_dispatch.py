@@ -387,7 +387,7 @@ def _check_shape(
     # query: (batch_size, seq_len_q, num_heads, head_dim)
     # key:   (batch_size, seq_len_kv, num_heads, head_dim)
     # value: (batch_size, seq_len_kv, num_heads, head_dim)
-    # attn_mask: (seq_len_q, seq_len_kv) or (batch_size, seq_len_q, seq_len_kv) 
+    # attn_mask: (seq_len_q, seq_len_kv) or (batch_size, seq_len_q, seq_len_kv)
     #            or (batch_size, num_heads, seq_len_q, seq_len_kv)
     if query.shape[-1] != key.shape[-1]:
         raise ValueError("Query and key must have the same head dimension.")
