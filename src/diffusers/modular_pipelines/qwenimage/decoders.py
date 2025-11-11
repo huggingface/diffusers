@@ -74,7 +74,7 @@ class QwenImageDecoderStep(ModularPipelineBlocks):
         block_state = self.get_block_state(state)
 
         # YiYi Notes: remove support for output_type = "latents', we can just skip decode/encode step in modular
-        vae_scale_factor = 2 ** len(components.vae.temperal_downsample)
+        vae_scale_factor = components.vae_scale_factor
         block_state.latents = components.pachifier.unpack_latents(
             block_state.latents, block_state.height, block_state.width, vae_scale_factor=vae_scale_factor
         )
