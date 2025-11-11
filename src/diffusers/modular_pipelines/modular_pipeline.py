@@ -861,6 +861,10 @@ class SequentialPipelineBlocks(ModularPipelineBlocks):
             else:
                 sub_blocks[block_name] = block
         self.sub_blocks = sub_blocks
+        if not len(self.block_names) == len(self.block_classes):
+            raise ValueError(
+                f"In {self.__class__.__name__}, the number of block_names and block_classes must be the same."
+            )
 
     def _get_inputs(self):
         inputs = []
