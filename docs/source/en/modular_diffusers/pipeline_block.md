@@ -37,17 +37,7 @@ A [`~modular_pipelines.ModularPipelineBlocks`] requires `inputs`, and `intermedi
     ]
     ```
 
-- `intermediate_inputs` are values typically created from a previous block but it can also be directly provided if no preceding block generates them. Unlike `inputs`, `intermediate_inputs` can be modified.
-
-    Use `InputParam` to define `intermediate_inputs`.
-
-    ```py
-    user_intermediate_inputs = [
-        InputParam(name="processed_image", type_hint="torch.Tensor", description="image that has been preprocessed and normalized"),
-    ]
-    ```
-
-- `intermediate_outputs` are new values created by a block and added to the [`~modular_pipelines.PipelineState`]. The `intermediate_outputs` are available as `intermediate_inputs` for subsequent blocks or available as the final output from running the pipeline.
+- `intermediate_outputs` are new values created by a block and added to the [`~modular_pipelines.PipelineState`]. The `intermediate_outputs` are available as `inputs` for subsequent blocks or available as the final output from running the pipeline.
 
     Use `OutputParam` to define `intermediate_outputs`.
 
@@ -65,8 +55,8 @@ The intermediate inputs and outputs share data to connect blocks. They are acces
 
 The computation a block performs is defined in the `__call__` method and it follows a specific structure.
 
-1. Retrieve the [`~modular_pipelines.BlockState`] to get a local view of the `inputs` and `intermediate_inputs`.
-2. Implement the computation logic on the `inputs` and `intermediate_inputs`.
+1. Retrieve the [`~modular_pipelines.BlockState`] to get a local view of the `inputs`
+2. Implement the computation logic on the `inputs`.
 3. Update [`~modular_pipelines.PipelineState`] to push changes from the local [`~modular_pipelines.BlockState`] back to the global [`~modular_pipelines.PipelineState`].
 4. Return the components and state which becomes available to the next block.
 
@@ -76,7 +66,7 @@ def __call__(self, components, state):
     block_state = self.get_block_state(state)
 
     # Your computation logic here
-    # block_state contains all your inputs and intermediate_inputs
+    # block_state contains all your inputs
     # Access them like: block_state.image, block_state.processed_image
 
     # Update the pipeline state with your updated block_states
