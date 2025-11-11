@@ -355,7 +355,7 @@ def require_torch_cuda_compatibility(expected_compute_capability):
 def require_torch_accelerator(test_case):
     """Decorator marking a test that requires an accelerator backend and PyTorch."""
     return pytest.mark.skipif(
-        not (is_torch_available() and torch_device != "cpu"), reason="test requires accelerator+PyTorch"
+        torch_device == "cpu", reason="test requires accelerator+PyTorch"
     )(test_case)
 
 
