@@ -334,7 +334,7 @@ def require_torch_version_greater(torch_version):
 def require_torch_gpu(test_case):
     """Decorator marking a test that requires CUDA and PyTorch."""
     return pytest.mark.skipif(
-        not (is_torch_available() and torch_device == "cuda"), reason="test requires PyTorch+CUDA"
+        torch_device != "cuda", reason="test requires PyTorch+CUDA"
     )(test_case)
 
 
