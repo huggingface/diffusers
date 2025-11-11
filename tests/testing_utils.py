@@ -333,9 +333,7 @@ def require_torch_version_greater(torch_version):
 
 def require_torch_gpu(test_case):
     """Decorator marking a test that requires CUDA and PyTorch."""
-    return pytest.mark.skipif(
-        torch_device != "cuda", reason="test requires PyTorch+CUDA"
-    )(test_case)
+    return pytest.mark.skipif(torch_device != "cuda", reason="test requires PyTorch+CUDA")(test_case)
 
 
 def require_torch_cuda_compatibility(expected_compute_capability):
@@ -354,9 +352,7 @@ def require_torch_cuda_compatibility(expected_compute_capability):
 # These decorators are for accelerator-specific behaviours that are not GPU-specific
 def require_torch_accelerator(test_case):
     """Decorator marking a test that requires an accelerator backend and PyTorch."""
-    return pytest.mark.skipif(
-        torch_device == "cpu", reason="test requires accelerator+PyTorch"
-    )(test_case)
+    return pytest.mark.skipif(torch_device == "cpu", reason="test requires accelerator+PyTorch")(test_case)
 
 
 def require_torch_multi_gpu(test_case):
