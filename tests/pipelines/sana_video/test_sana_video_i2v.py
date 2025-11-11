@@ -20,7 +20,12 @@ import numpy as np
 import torch
 from transformers import Gemma2Config, Gemma2Model, GemmaTokenizer
 
-from diffusers import AutoencoderKLWan, FlowMatchEulerDiscreteScheduler, SanaImageToVideoPipeline, SanaVideoTransformer3DModel
+from diffusers import (
+    AutoencoderKLWan,
+    FlowMatchEulerDiscreteScheduler,
+    SanaImageToVideoPipeline,
+    SanaVideoTransformer3DModel,
+)
 
 from ...testing_utils import (
     backend_empty_cache,
@@ -121,10 +126,10 @@ class SanaImageToVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             generator = torch.manual_seed(seed)
         else:
             generator = torch.Generator(device=device).manual_seed(seed)
-        
+
         # Create a dummy image input (PIL Image)
         image = torch.randn(1, 3, 32, 32).to(device)
-        
+
         inputs = {
             "image": image,
             "prompt": "",
