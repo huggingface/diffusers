@@ -679,7 +679,7 @@ class AutoencoderKLQwenImage(ModelMixin, AutoencoderMixin, ConfigMixin, FromOrig
         self,
         base_dim: int = 96,
         z_dim: int = 16,
-        dim_mult: Tuple[int] = [1, 2, 4, 4],
+        dim_mult: Tuple[int, ...] = (1, 2, 4, 4),
         num_res_blocks: int = 2,
         attn_scales: List[float] = [],
         temperal_downsample: List[bool] = [False, True, True],
