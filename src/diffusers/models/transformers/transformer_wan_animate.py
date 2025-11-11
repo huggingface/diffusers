@@ -316,7 +316,7 @@ class WanAnimateMotionEncoder(nn.Module):
 
         self.motion_synthesis_weight = nn.Parameter(torch.randn(out_dim, motion_dim))
 
-    def forward(self, face_image: torch.Tensor, channel_dim: int = 1, upcast_to_fp32: bool = True) -> torch.Tensor:
+    def forward(self, face_image: torch.Tensor, channel_dim: int = 1) -> torch.Tensor:
         if (face_image.shape[-2] != self.size) or (face_image.shape[-1] != self.size):
             raise ValueError(
                 f"Face pixel values has resolution ({face_image.shape[-1]}, {face_image.shape[-2]}) but is expected"
@@ -334,20 +334,20 @@ class WanAnimateMotionEncoder(nn.Module):
         for linear_layer in self.motion_network:
             motion_feat = linear_layer(motion_feat, channel_dim=channel_dim)
 
-        # Motion synthesis via QR decomposition
+        # Motion synthesis via Linear Motion Decomposition
         weight = self.motion_synthesis_weight + 1e-8
-        if upcast_to_fp32:
-            original_motion_dtype = motion_feat.dtype
-            motion_feat = motion_feat.to(torch.float32)
-            weight = weight.to(torch.float32)
+        # Upcast the QR orthogonalization operation to FP32
+        original_motion_dtype = motion_feat.dtype
+        motion_feat = motion_feat.to(torch.float32)
+        weight = weight.to(torch.float32)
 
         Q = torch.linalg.qr(weight)[0].to(device=motion_feat.device)
 
         motion_feat_diag = torch.diag_embed(motion_feat)  # Alpha, diagonal matrix
         motion_decomposition = torch.matmul(motion_feat_diag, Q.T)
         motion_vec = torch.sum(motion_decomposition, dim=1)
-        if upcast_to_fp32:
-            motion_vec = motion_vec.to(dtype=original_motion_dtype)
+
+        motion_vec = motion_vec.to(dtype=original_motion_dtype)
 
         return motion_vec
 
@@ -1133,21 +1133,6 @@ class WanAnimateTransformer3DModel(
 
         self.gradient_checkpointing = False
 
-    def motion_batch_encode(
-        self, face_pixel_values: torch.Tensor, batch_size: int = 8, upcast_to_fp32: bool = True
-    ) -> torch.Tensor:
-        if batch_size >= face_pixel_values.shape[0]:
-            motion_vec = self.motion_encoder(face_pixel_values, upcast_to_fp32)
-        else:
-            motion_vec_batches = []
-            for i in range(math.ceil(face_pixel_values.shape[0] / batch_size)):
-                face_pixel_values_batch = face_pixel_values[i * batch_size : (i + 1) * batch_size]
-                motion_vec_batch = self.motion_encoder(face_pixel_values_batch, upcast_to_fp32)
-                motion_vec_batches.append(motion_vec_batch)
-            motion_vec = torch.cat(motion_vec_batches)
-
-        return motion_vec
-
     def forward(
         self,
         hidden_states: torch.Tensor,
@@ -1157,7 +1142,6 @@ class WanAnimateTransformer3DModel(
         pose_hidden_states: Optional[torch.Tensor] = None,
         face_pixel_values: Optional[torch.Tensor] = None,
         motion_encode_batch_size: int = 8,
-        upcast_to_fp32: bool = True,
         return_dict: bool = True,
         attention_kwargs: Optional[Dict[str, Any]] = None,
     ) -> Union[torch.Tensor, Dict[str, torch.Tensor]]:
@@ -1182,8 +1166,6 @@ class WanAnimateTransformer3DModel(
                 the face video in pixels. Here S is the inference segment length, usually set to 77.
             motion_encode_batch_size (`int`, *optional*, defaults to `8`):
                 The batch size for batched encoding of the face video via the motion encoder.
-            upcast_to_fp32 (`bool`, *optional*, defaults to `True`):
-                Whether to upcast certain precision-sensitive operations to FP32.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether to return the output as a dict or tuple.
         """
@@ -1246,7 +1228,9 @@ class WanAnimateTransformer3DModel(
         face_pixel_values = face_pixel_values.permute(0, 2, 1, 3, 4).reshape(-1, channels, height, width)
 
         # Extract motion features using motion encoder
-        motion_vec = self.motion_batch_encode(face_pixel_values, motion_encode_batch_size, upcast_to_fp32)
+        # Perform batched motion encoder inference to allow trading off inference speed for memory usage
+        face_batches = torch.split(face_pixel_values, motion_encode_batch_size)
+        motion_vec = torch.cat([self.motion_encoder(face_batch) for face_batch in face_batches])
         motion_vec = motion_vec.view(batch_size, num_face_frames, -1)
 
         # Now get face features from the motion vector
