@@ -172,6 +172,26 @@ class SmoothedEnergyGuidance(BaseGuidance):
             data_batches.append(data_batch)
         return data_batches
 
+    def prepare_inputs_from_block_state(
+        self, data: "BlockState", input_fields: Dict[str, Union[str, Tuple[str, str]]]
+    ) -> List["BlockState"]:
+        if self.num_conditions == 1:
+            tuple_indices = [0]
+            input_predictions = ["pred_cond"]
+        elif self.num_conditions == 2:
+            tuple_indices = [0, 1]
+            input_predictions = (
+                ["pred_cond", "pred_uncond"] if self._is_cfg_enabled() else ["pred_cond", "pred_cond_seg"]
+            )
+        else:
+            tuple_indices = [0, 1, 0]
+            input_predictions = ["pred_cond", "pred_uncond", "pred_cond_seg"]
+        data_batches = []
+        for tuple_idx, input_prediction in zip(tuple_indices, input_predictions):
+            data_batch = self._prepare_batch_from_block_state(input_fields, data, tuple_idx, input_prediction)
+            data_batches.append(data_batch)
+        return data_batches
+
     def forward(
         self,
         pred_cond: torch.Tensor,
