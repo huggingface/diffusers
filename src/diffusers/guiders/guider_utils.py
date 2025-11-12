@@ -166,6 +166,11 @@ class BaseGuidance(ConfigMixin, PushToHubMixin):
     def prepare_inputs(self, data: "BlockState") -> List["BlockState"]:
         raise NotImplementedError("BaseGuidance::prepare_inputs must be implemented in subclasses.")
 
+    def prepare_inputs_from_block_state(
+        self, data: "BlockState", input_fields: Dict[str, Union[str, Tuple[str, str]]]
+    ) -> List["BlockState"]:
+        raise NotImplementedError("BaseGuidance::prepare_inputs_from_block_state must be implemented in subclasses.")
+
     def __call__(self, data: List["BlockState"]) -> Any:
         if not all(hasattr(d, "noise_pred") for d in data):
             raise ValueError("Expected all data to have `noise_pred` attribute.")
@@ -230,6 +235,51 @@ class BaseGuidance(ConfigMixin, PushToHubMixin):
                 else:
                     raise ValueError(f"Invalid value type: {type(value)}")
             except ValueError:
+                logger.debug(f"`data` does not have attribute(s) {value}, skipping.")
+        data_batch[cls._identifier_key] = identifier
+        return BlockState(**data_batch)
+
+    @classmethod
+    def _prepare_batch_from_block_state(
+        cls,
+        input_fields: Dict[str, Union[str, Tuple[str, str]]],
+        data: "BlockState",
+        tuple_index: int,
+        identifier: str,
+    ) -> "BlockState":
+        """
+        Prepares a batch of data for the guidance technique. This method is used in the `prepare_inputs` method of the
+        `BaseGuidance` class. It prepares the batch based on the provided tuple index.
+
+        Args:
+            input_fields (`Dict[str, Union[str, Tuple[str, str]]]`):
+                A dictionary where the keys are the names of the fields that will be used to store the data once it is
+                prepared with `prepare_inputs`. The values can be either a string or a tuple of length 2, which is used
+                to look up the required data provided for preparation. If a string is provided, it will be used as the
+                conditional data (or unconditional if used with a guidance method that requires it). If a tuple of
+                length 2 is provided, the first element must be the conditional data identifier and the second element
+                must be the unconditional data identifier or None.
+            data (`BlockState`):
+                The input data to be prepared.
+            tuple_index (`int`):
+                The index to use when accessing input fields that are tuples.
+
+        Returns:
+            `BlockState`: The prepared batch of data.
+        """
+        from ..modular_pipelines.modular_pipeline import BlockState
+
+        data_batch = {}
+        for key, value in input_fields.items():
+            try:
+                if isinstance(value, str):
+                    data_batch[key] = getattr(data, value)
+                elif isinstance(value, tuple):
+                    data_batch[key] = getattr(data, value[tuple_index])
+                else:
+                    # We've already checked that value is a string or a tuple of strings with length 2
+                    pass
+            except AttributeError:
                 logger.debug(f"`data` does not have attribute(s) {value}, skipping.")
         data_batch[cls._identifier_key] = identifier
         return BlockState(**data_batch)

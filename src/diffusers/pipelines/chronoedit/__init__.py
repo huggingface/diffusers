@@ -13,6 +13,7 @@ from ...utils import (
 _dummy_objects = {}
 _import_structure = {}
 
+
 try:
     if not (is_transformers_available() and is_torch_available()):
         raise OptionalDependencyNotAvailable()
@@ -21,34 +22,17 @@ except OptionalDependencyNotAvailable:
 
     _dummy_objects.update(get_objects_from_module(dummy_torch_and_transformers_objects))
 else:
-    _import_structure["decoders"] = ["WanImageVaeDecoderStep"]
-    _import_structure["encoders"] = ["WanTextEncoderStep"]
-    _import_structure["modular_blocks"] = [
-        "ALL_BLOCKS",
-        "Wan22AutoBlocks",
-        "WanAutoBlocks",
-        "WanAutoImageEncoderStep",
-        "WanAutoVaeImageEncoderStep",
-    ]
-    _import_structure["modular_pipeline"] = ["WanModularPipeline"]
-
+    _import_structure["pipeline_chronoedit"] = ["ChronoEditPipeline"]
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     try:
         if not (is_transformers_available() and is_torch_available()):
             raise OptionalDependencyNotAvailable()
+
     except OptionalDependencyNotAvailable:
-        from ...utils.dummy_torch_and_transformers_objects import *  # noqa F403
+        from ...utils.dummy_torch_and_transformers_objects import *
     else:
-        from .decoders import WanImageVaeDecoderStep
-        from .encoders import WanTextEncoderStep
-        from .modular_blocks import (
-            ALL_BLOCKS,
-            Wan22AutoBlocks,
-            WanAutoBlocks,
-            WanAutoImageEncoderStep,
-            WanAutoVaeImageEncoderStep,
-        )
-        from .modular_pipeline import WanModularPipeline
+        from .pipeline_chronoedit import ChronoEditPipeline
+
 else:
     import sys
 
