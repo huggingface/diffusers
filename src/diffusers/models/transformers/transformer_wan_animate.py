@@ -1245,8 +1245,7 @@ class WanAnimateTransformer3DModel(
         motion_vec = self.face_encoder(motion_vec)
 
         # Add padding at the beginning (prepend zeros)
-        _, T_motion, H_motion, C_motion = motion_vec.shape
-        pad_face = torch.zeros(batch_size, 1, H_motion, C_motion, dtype=motion_vec.dtype, device=motion_vec.device)
+        pad_face = torch.zeros_like(motion_vec[:, :1])
         motion_vec = torch.cat([pad_face, motion_vec], dim=1)
 
         # 5. Transformer blocks with face adapter integration
