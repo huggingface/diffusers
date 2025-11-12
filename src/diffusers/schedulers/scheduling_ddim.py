@@ -64,9 +64,9 @@ def betas_for_alpha_bar(
         num_diffusion_timesteps (`int`):
             The number of betas to produce.
         max_beta (`float`, defaults to 0.999):
-            The maximum beta to use; use values lower than 1 to prevent singularities.
+            The maximum beta to use; use values lower than 1 to avoid numerical instability.
         alpha_transform_type (`Literal["cosine", "exp"]`, defaults to `"cosine"`):
-            The type of noise schedule for alpha_bar. Must be one of `"cosine"` or `"exp"`.
+            The type of noise schedule for `alpha_bar`. Must be one of `"cosine"` or `"exp"`.
 
     Returns:
         `torch.Tensor`: The betas used by the scheduler to step the model outputs.
@@ -160,7 +160,7 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         prediction_type (`Literal["epsilon", "sample", "v_prediction"]`, defaults to `"epsilon"`):
             Prediction type of the scheduler function. Must be one of `"epsilon"` (predicts the noise of the diffusion
             process), `"sample"` (directly predicts the noisy sample), or `"v_prediction"` (see section 2.4 of [Imagen
-            Video](https://imagen.research.google/video/paper.pdf) paper).
+            Video](https://huggingface.co/papers/2210.02303) paper).
         thresholding (`bool`, defaults to `False`):
             Whether to use the "dynamic thresholding" method. This is unsuitable for latent-space diffusion models such
             as Stable Diffusion.
@@ -556,7 +556,7 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         sample`
 
         This is used in v-prediction models where the model directly predicts the velocity instead of the noise or the
-        sample. See section 2.4 of Imagen Video paper: https://imagen.research.google/video/paper.pdf
+        sample. See section 2.4 of [Imagen Video](https://huggingface.co/papers/2210.02303) paper.
 
         Args:
             sample (`torch.Tensor`):
