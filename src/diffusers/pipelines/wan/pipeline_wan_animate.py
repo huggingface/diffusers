@@ -52,24 +52,26 @@ EXAMPLE_DOC_STRING = """
         ```python
         >>> import torch
         >>> import numpy as np
-        >>> from diffusers import AutoencoderKLWan, WanAnimatePipeline
+        >>> from diffusers import WanAnimatePipeline
         >>> from diffusers.utils import export_to_video, load_image, load_video
-        >>> from transformers import CLIPVisionModel
 
-        >>> model_id = "Wan-AI/Wan2.2-Animate-14B-720P-Diffusers"
-        >>> image_encoder = CLIPVisionModel.from_pretrained(
-        ...     model_id, subfolder="image_encoder", torch_dtype=torch.float32
-        ... )
-        >>> vae = AutoencoderKLWan.from_pretrained(model_id, subfolder="vae", torch_dtype=torch.float32)
-        >>> pipe = WanAnimatePipeline.from_pretrained(
-        ...     model_id, vae=vae, image_encoder=image_encoder, torch_dtype=torch.bfloat16
-        ... )
+        >>> model_id = "Wan-AI/Wan2.2-Animate-14B-Diffusers"
+        >>> pipe = WanAnimatePipeline.from_pretrained(model_id, torch_dtype=torch.bfloat16)
+        >>> # Optionally upcast the Wan VAE to FP32
+        >>> pipe.vae.to(torch.float32)
         >>> pipe.to("cuda")
 
-        >>> # Load the character image
+        >>> # Load the reference character image
         >>> image = load_image(
         ...     "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/astronaut.jpg"
         ... )
+        >>> # Resize image such that it splits evenly into spatial patches after VAE encoding
+        >>> max_area = 720 * 1280
+        >>> aspect_ratio = image.height / image.width
+        >>> mod_value = pipe.vae_scale_factor_spatial * pipe.transformer.config.patch_size[1]
+        >>> height = round(np.sqrt(max_area * aspect_ratio)) // mod_value * mod_value
+        >>> width = round(np.sqrt(max_area / aspect_ratio)) // mod_value * mod_value
+        >>> image = image.resize((width, height))
 
         >>> # Load pose and face videos (preprocessed from reference video)
         >>> # Note: Videos should be preprocessed to extract pose keypoints and face features
@@ -77,23 +79,10 @@ EXAMPLE_DOC_STRING = """
         >>> pose_video = load_video("path/to/pose_video.mp4")
         >>> face_video = load_video("path/to/face_video.mp4")
 
-        >>> # Calculate optimal dimensions based on VAE constraints
-        >>> max_area = 480 * 832
-        >>> aspect_ratio = image.height / image.width
-        >>> mod_value = pipe.vae_scale_factor_spatial * pipe.transformer.config.patch_size[1]
-        >>> height = round(np.sqrt(max_area * aspect_ratio)) // mod_value * mod_value
-        >>> width = round(np.sqrt(max_area / aspect_ratio)) // mod_value * mod_value
-        >>> image = image.resize((width, height))
-
+        >>> # CFG is generally not used for Wan Animate
         >>> prompt = (
         ...     "An astronaut hatching from an egg, on the surface of the moon, the darkness and depth of space realised in "
         ...     "the background. High quality, ultrarealistic detail and breath-taking movie-like camera shot."
-        ... )
-        >>> negative_prompt = (
-        ...     "Bright tones, overexposed, static, blurred details, subtitles, style, works, paintings, images, static, "
-        ...     "overall gray, worst quality, low quality, JPEG compression residue, ugly, incomplete, extra fingers, "
-        ...     "poorly drawn hands, poorly drawn faces, deformed, disfigured, misshapen limbs, fused fingers, still picture, "
-        ...     "messy background, three legs, many people in the background, walking backwards"
         ... )
 
         >>> # Animation mode: Animate the character with the motion from pose/face videos
@@ -102,12 +91,12 @@ EXAMPLE_DOC_STRING = """
         ...     pose_video=pose_video,
         ...     face_video=face_video,
         ...     prompt=prompt,
-        ...     negative_prompt=negative_prompt,
         ...     height=height,
         ...     width=width,
-        ...     num_frames=77,
+        ...     segment_frame_length=77,  # Frame length of each inference segment
         ...     guidance_scale=1.0,
-        ...     mode="animation",
+        ...     num_inference_steps=20,
+        ...     mode="animate",
         ... ).frames[0]
         >>> export_to_video(output, "output_animation.mp4", fps=30)
 
@@ -122,12 +111,12 @@ EXAMPLE_DOC_STRING = """
         ...     background_video=background_video,
         ...     mask_video=mask_video,
         ...     prompt=prompt,
-        ...     negative_prompt=negative_prompt,
         ...     height=height,
         ...     width=width,
-        ...     num_frames=76,
+        ...     segment_frame_length=77,  # Frame length of each inference segment
         ...     guidance_scale=1.0,
-        ...     mode="replacement",
+        ...     num_inference_steps=20,
+        ...     mode="replace",
         ... ).frames[0]
         >>> export_to_video(output, "output_replacement.mp4", fps=30)
         ```
