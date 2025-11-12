@@ -20,7 +20,7 @@ import os
 from typing import Callable, Dict, List, Optional, Tuple, Union
 
 from . import logging
-from .import_utils import is_torch_available, is_torch_npu_available, is_torch_version, is_torch_mlu_available
+from .import_utils import is_torch_available, is_torch_mlu_available, is_torch_npu_available, is_torch_version
 
 
 if is_torch_available():

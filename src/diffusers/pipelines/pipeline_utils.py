@@ -62,7 +62,6 @@ from ..utils import (
     is_accelerate_version,
     is_hpu_available,
     is_torch_npu_available,
-    is_torch_mlu_available,
     is_torch_version,
     is_transformers_version,
     logging,
