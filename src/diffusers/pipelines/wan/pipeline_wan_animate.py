@@ -31,6 +31,7 @@ from ...utils import is_ftfy_available, is_torch_xla_available, logging, replace
 from ...utils.torch_utils import randn_tensor
 from ...video_processor import VideoProcessor
 from ..pipeline_utils import DiffusionPipeline
+from .image_processor import WanAnimateImageProcessor
 from .pipeline_output import WanPipelineOutput
 
 
@@ -239,8 +240,8 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
         self.video_processor_for_mask = VideoProcessor(
             vae_scale_factor=self.vae_scale_factor_spatial, do_normalize=False, do_convert_grayscale=True
         )
-        self.vae_image_processor = VaeImageProcessor(
-            vae_scale_factor=self.vae_scale_factor_spatial, resample="bilinear"
+        self.vae_image_processor = WanAnimateImageProcessor(
+            vae_scale_factor=self.vae_scale_factor_spatial, resample="bilinear", fill_color=0
         )
         self.image_processor = image_processor
 
@@ -978,7 +979,7 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
         if image_height != height or image_width != width:
             logger.warning(f"Reshaping reference image from ({image_width}, {image_height}) to ({width}, {height})")
         image_pixels = self.vae_image_processor.preprocess(
-            image, height=height, width=width, resize_mode="fill", fill_color=0
+            image, height=height, width=width, resize_mode="fill"
         ).to(device, dtype=torch.float32)
 
         # Get CLIP features from the reference image
