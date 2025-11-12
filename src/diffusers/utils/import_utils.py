@@ -244,7 +244,7 @@ def is_torch_npu_available():
     return _torch_npu_available
 
 
-def is_mlu_available():
+def is_torch_mlu_available():
     return _torch_mlu_available
 
 
