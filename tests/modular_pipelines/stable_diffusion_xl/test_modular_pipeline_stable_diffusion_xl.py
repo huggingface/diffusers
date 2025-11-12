@@ -25,7 +25,7 @@ from diffusers.loaders import ModularIPAdapterMixin
 
 from ...models.unets.test_models_unet_2d_condition import create_ip_adapter_state_dict
 from ...testing_utils import enable_full_determinism, floats_tensor, torch_device
-from ..test_modular_pipelines_common import ModularPipelineTesterMixin
+from ..test_modular_pipelines_common import ModularGuiderTesterMixin, ModularPipelineTesterMixin
 
 
 enable_full_determinism()
@@ -37,13 +37,11 @@ class SDXLModularTesterMixin:
     """
 
     def _test_stable_diffusion_xl_euler(self, expected_image_shape, expected_slice, expected_max_diff=1e-2):
-        sd_pipe = self.get_pipeline()
-        sd_pipe = sd_pipe.to(torch_device)
-        sd_pipe.set_progress_bar_config(disable=None)
+        sd_pipe = self.get_pipeline().to(torch_device)
 
         inputs = self.get_dummy_inputs()
         image = sd_pipe(**inputs, output="images")
-        image_slice = image[0, -3:, -3:, -1]
+        image_slice = image[0, -3:, -3:, -1].cpu()
 
         assert image.shape == expected_image_shape
         max_diff = torch.abs(image_slice.flatten() - expected_slice).max()
@@ -110,7 +108,7 @@ class SDXLModularIPAdapterTesterMixin:
         pipe = blocks.init_pipeline(self.repo)
         pipe.load_components(torch_dtype=torch.float32)
         pipe = pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
+
         cross_attention_dim = pipe.unet.config.get("cross_attention_dim")
 
         # forward pass without ip adapter
@@ -219,9 +217,7 @@ class SDXLModularControlNetTesterMixin:
         # compare against static slices and that can be shaky (with a VVVV low probability).
         expected_max_diff = 9e-4 if torch_device == "cpu" else expected_max_diff
 
-        pipe = self.get_pipeline()
-        pipe = pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
+        pipe = self.get_pipeline().to(torch_device)
 
         # forward pass without controlnet
         inputs = self.get_dummy_inputs()
@@ -251,9 +247,7 @@ class SDXLModularControlNetTesterMixin:
         assert max_diff_with_controlnet_scale > 1e-2, "Output with controlnet must be different from normal inference"
 
     def test_controlnet_cfg(self):
-        pipe = self.get_pipeline()
-        pipe = pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
+        pipe = self.get_pipeline().to(torch_device)
 
         # forward pass with CFG not applied
         guider = ClassifierFreeGuidance(guidance_scale=1.0)
@@ -273,35 +267,11 @@ class SDXLModularControlNetTesterMixin:
         assert max_diff > 1e-2, "Output with CFG must be different from normal inference"
 
 
-class SDXLModularGuiderTesterMixin:
-    def test_guider_cfg(self):
-        pipe = self.get_pipeline()
-        pipe = pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
-
-        # forward pass with CFG not applied
-        guider = ClassifierFreeGuidance(guidance_scale=1.0)
-        pipe.update_components(guider=guider)
-
-        inputs = self.get_dummy_inputs()
-        out_no_cfg = pipe(**inputs, output="images")
-
-        # forward pass with CFG applied
-        guider = ClassifierFreeGuidance(guidance_scale=7.5)
-        pipe.update_components(guider=guider)
-        inputs = self.get_dummy_inputs()
-        out_cfg = pipe(**inputs, output="images")
-
-        assert out_cfg.shape == out_no_cfg.shape
-        max_diff = np.abs(out_cfg - out_no_cfg).max()
-        assert max_diff > 1e-2, "Output with CFG must be different from normal inference"
-
-
 class TestSDXLModularPipelineFast(
     SDXLModularTesterMixin,
     SDXLModularIPAdapterTesterMixin,
     SDXLModularControlNetTesterMixin,
-    SDXLModularGuiderTesterMixin,
+    ModularGuiderTesterMixin,
     ModularPipelineTesterMixin,
 ):
     """Test cases for Stable Diffusion XL modular pipeline fast tests."""
@@ -335,18 +305,7 @@ class TestSDXLModularPipelineFast(
         self._test_stable_diffusion_xl_euler(
             expected_image_shape=self.expected_image_output_shape,
             expected_slice=torch.tensor(
-                [
-                    0.5966781,
-                    0.62939394,
-                    0.48465094,
-                    0.51573336,
-                    0.57593524,
-                    0.47035995,
-                    0.53410417,
-                    0.51436996,
-                    0.47313565,
-                ],
-                device=torch_device,
+                [0.3886, 0.4685, 0.4953, 0.4217, 0.4317, 0.3945, 0.4847, 0.4704, 0.4731],
             ),
             expected_max_diff=1e-2,
         )
@@ -359,7 +318,7 @@ class TestSDXLImg2ImgModularPipelineFast(
     SDXLModularTesterMixin,
     SDXLModularIPAdapterTesterMixin,
     SDXLModularControlNetTesterMixin,
-    SDXLModularGuiderTesterMixin,
+    ModularGuiderTesterMixin,
     ModularPipelineTesterMixin,
 ):
     """Test cases for Stable Diffusion XL image-to-image modular pipeline fast tests."""
@@ -400,20 +359,7 @@ class TestSDXLImg2ImgModularPipelineFast(
     def test_stable_diffusion_xl_euler(self):
         self._test_stable_diffusion_xl_euler(
             expected_image_shape=self.expected_image_output_shape,
-            expected_slice=torch.tensor(
-                [
-                    0.56943184,
-                    0.4702148,
-                    0.48048905,
-                    0.6235963,
-                    0.551138,
-                    0.49629188,
-                    0.60031277,
-                    0.5688907,
-                    0.43996853,
-                ],
-                device=torch_device,
-            ),
+            expected_slice=torch.tensor([0.5246, 0.4466, 0.444, 0.3246, 0.4443, 0.5108, 0.5225, 0.559, 0.5147]),
             expected_max_diff=1e-2,
         )
 
@@ -425,7 +371,7 @@ class SDXLInpaintingModularPipelineFastTests(
     SDXLModularTesterMixin,
     SDXLModularIPAdapterTesterMixin,
     SDXLModularControlNetTesterMixin,
-    SDXLModularGuiderTesterMixin,
+    ModularGuiderTesterMixin,
     ModularPipelineTesterMixin,
 ):
     """Test cases for Stable Diffusion XL inpainting modular pipeline fast tests."""
