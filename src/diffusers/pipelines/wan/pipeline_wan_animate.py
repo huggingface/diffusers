@@ -787,6 +787,7 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
         num_inference_steps: int = 20,
         mode: str = "animate",
         prev_segment_conditioning_frames: int = 1,
+        motion_encode_batch_size: Optional[int] = None,
         guidance_scale: float = 1.0,
         num_videos_per_prompt: Optional[int] = 1,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
@@ -832,6 +833,10 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
             prev_segment_conditioning_frames (`int`, defaults to `1`):
                 The number of frames from the previous video segment to be used for temporal guidance. Recommended to
                 be 1 or 5. In general, should be 4N + 1, where N is a non-negative integer.
+            motion_encode_batch_size (`int`, *optional*):
+                The batch size for batched encoding of the face video via the motion encoder. This allows trading off
+                inference speed for lower memory usage by setting a smaller batch size. Will default to
+                `self.transformer.config.motion_encoder_batch_size` if not set.
             height (`int`, defaults to `720`):
                 The height of the generated video.
             width (`int`, defaults to `1280`):
@@ -1127,6 +1132,7 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
                             encoder_hidden_states_image=image_embeds,
                             pose_hidden_states=pose_latents,
                             face_pixel_values=face_video_segment,
+                            motion_encode_batch_size=motion_encode_batch_size,
                             attention_kwargs=attention_kwargs,
                             return_dict=False,
                         )[0]
@@ -1142,6 +1148,7 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
                                 encoder_hidden_states_image=image_embeds,
                                 pose_hidden_states=pose_latents,
                                 face_pixel_values=face_pixel_values_uncond,
+                                motion_encode_batch_size=motion_encode_batch_size,
                                 attention_kwargs=attention_kwargs,
                                 return_dict=False,
                             )[0]

@@ -1049,7 +1049,7 @@ class WanAnimateTransformer3DModel(
         face_encoder_hidden_dim: int = 1024,
         face_encoder_num_heads: int = 4,
         inject_face_latents_blocks: int = 5,
-        motion_encoder_batch_size: Optional[int] = 8,
+        motion_encoder_batch_size: int = 8,
     ) -> None:
         super().__init__()
 
@@ -1135,8 +1135,6 @@ class WanAnimateTransformer3DModel(
 
         self.gradient_checkpointing = False
 
-        self.motion_encoder_batch_size = motion_encoder_batch_size
-
     def forward(
         self,
         hidden_states: torch.Tensor,
@@ -1168,8 +1166,9 @@ class WanAnimateTransformer3DModel(
             face_pixel_values (`torch.Tensor` of shape `(B, C', S, H', W')`):
                 Face video in pixel space (not latent space). Typically C' = 3 and H' and W' are the height/width of
                 the face video in pixels. Here S is the inference segment length, usually set to 77.
-            motion_encode_batch_size (`int`, *optional*, defaults to `8`):
-                The batch size for batched encoding of the face video via the motion encoder.
+            motion_encode_batch_size (`int`, *optional*):
+                The batch size for batched encoding of the face video via the motion encoder. Will default to
+                `self.config.motion_encoder_batch_size` if not set.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether to return the output as a dict or tuple.
         """
@@ -1233,7 +1232,7 @@ class WanAnimateTransformer3DModel(
 
         # Extract motion features using motion encoder
         # Perform batched motion encoder inference to allow trading off inference speed for memory usage
-        motion_encode_batch_size = motion_encode_batch_size or self.motion_encoder_batch_size
+        motion_encode_batch_size = motion_encode_batch_size or self.config.motion_encoder_batch_size
         face_batches = torch.split(face_pixel_values, motion_encode_batch_size)
         motion_vec_batches = []
         for face_batch in face_batches:
