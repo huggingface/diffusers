@@ -232,6 +232,7 @@ class QwenImageEditPlusPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
         image: Optional[torch.Tensor] = None,
         device: Optional[torch.device] = None,
         dtype: Optional[torch.dtype] = None,
+        max_sequence_length: int = 1024,
     ):
         device = device or self._execution_device
         dtype = dtype or self.text_encoder.dtype
@@ -270,8 +271,10 @@ class QwenImageEditPlusPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
         hidden_states = outputs.hidden_states[-1]
         split_hidden_states = self._extract_masked_hidden(hidden_states, model_inputs.attention_mask)
         split_hidden_states = [e[drop_idx:] for e in split_hidden_states]
+        # Truncate if longer than max_sequence_length
+        split_hidden_states = [e[:max_sequence_length] if e.size(0) > max_sequence_length else e for e in split_hidden_states]
         attn_mask_list = [torch.ones(e.size(0), dtype=torch.long, device=e.device) for e in split_hidden_states]
-        max_seq_len = max([e.size(0) for e in split_hidden_states])
+        max_seq_len = max_sequence_length
         prompt_embeds = torch.stack(
             [torch.cat([u, u.new_zeros(max_seq_len - u.size(0), u.size(1))]) for u in split_hidden_states]
         )
@@ -315,7 +318,9 @@ class QwenImageEditPlusPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
         batch_size = len(prompt) if prompt_embeds is None else prompt_embeds.shape[0]
 
         if prompt_embeds is None:
-            prompt_embeds, prompt_embeds_mask = self._get_qwen_prompt_embeds(prompt, image, device)
+            prompt_embeds, prompt_embeds_mask = self._get_qwen_prompt_embeds(
+                prompt, image, device, max_sequence_length=max_sequence_length
+            )
 
         _, seq_len, _ = prompt_embeds.shape
         prompt_embeds = prompt_embeds.repeat(1, num_images_per_prompt, 1)
@@ -777,7 +782,7 @@ class QwenImageEditPlusPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
         if self.attention_kwargs is None:
             self._attention_kwargs = {}
 
-        txt_seq_lens = prompt_embeds_mask.sum(dim=1).tolist() if prompt_embeds_mask is not None else None
+        txt_seq_lens = [prompt_embeds.shape[1]] * prompt_embeds.shape[0] if prompt_embeds is not None else None
         negative_txt_seq_lens = (
             negative_prompt_embeds_mask.sum(dim=1).tolist() if negative_prompt_embeds_mask is not None else None
         )
