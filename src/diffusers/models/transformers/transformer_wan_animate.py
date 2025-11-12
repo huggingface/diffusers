@@ -1048,6 +1048,7 @@ class WanAnimateTransformer3DModel(
         face_encoder_hidden_dim: int = 1024,
         face_encoder_num_heads: int = 4,
         inject_face_latents_blocks: int = 5,
+        motion_encoder_batch_size: Optional[int] = 8,
     ) -> None:
         super().__init__()
 
@@ -1133,6 +1134,8 @@ class WanAnimateTransformer3DModel(
 
         self.gradient_checkpointing = False
 
+        self.motion_encoder_batch_size = motion_encoder_batch_size
+
     def forward(
         self,
         hidden_states: torch.Tensor,
@@ -1141,7 +1144,7 @@ class WanAnimateTransformer3DModel(
         encoder_hidden_states_image: Optional[torch.Tensor] = None,
         pose_hidden_states: Optional[torch.Tensor] = None,
         face_pixel_values: Optional[torch.Tensor] = None,
-        motion_encode_batch_size: int = 8,
+        motion_encode_batch_size: Optional[int] = None,
         return_dict: bool = True,
         attention_kwargs: Optional[Dict[str, Any]] = None,
     ) -> Union[torch.Tensor, Dict[str, torch.Tensor]]:
@@ -1229,6 +1232,7 @@ class WanAnimateTransformer3DModel(
 
         # Extract motion features using motion encoder
         # Perform batched motion encoder inference to allow trading off inference speed for memory usage
+        motion_encode_batch_size = motion_encode_batch_size or self.motion_encoder_batch_size
         face_batches = torch.split(face_pixel_values, motion_encode_batch_size)
         motion_vec = torch.cat([self.motion_encoder(face_batch) for face_batch in face_batches])
         motion_vec = motion_vec.view(batch_size, num_face_frames, -1)
