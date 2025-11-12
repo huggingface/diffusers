@@ -78,7 +78,7 @@ class AmusedSchedulerOutput(BaseOutput):
 
 class AmusedScheduler(SchedulerMixin, ConfigMixin):
     """
-    A scheduler for masked token generation as used in [Amused](https://huggingface.co/amused).
+    A scheduler for masked token generation as used in [`AmusedPipeline`].
 
     This scheduler iteratively unmasks tokens based on their confidence scores, following either a cosine or linear
     schedule. Unlike traditional diffusion schedulers that work with continuous pixel values, this scheduler operates
