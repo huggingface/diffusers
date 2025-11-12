@@ -43,8 +43,8 @@ class WanAnimateImageProcessor(VaeImageProcessor):
             Whether to convert the images to grayscale format.
         fill_color (`str` or `float` or `Tuple[float, ...]`, *optional*, defaults to `None`):
             An optional fill color when `resize_mode` is set to `"fill"`. This will fill the empty space with that
-            color instead of filling with data from the image. Any valid `color` argument to `PIL.Image.new` is
-            valid; if `None`, will default to filling with data from `image`.
+            color instead of filling with data from the image. Any valid `color` argument to `PIL.Image.new` is valid;
+            if `None`, will default to filling with data from `image`.
     """
 
     @register_to_config

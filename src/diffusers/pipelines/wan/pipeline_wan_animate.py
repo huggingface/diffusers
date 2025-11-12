@@ -23,7 +23,7 @@ import torch.nn.functional as F
 from transformers import AutoTokenizer, CLIPImageProcessor, CLIPVisionModel, UMT5EncoderModel
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
-from ...image_processor import PipelineImageInput, VaeImageProcessor
+from ...image_processor import PipelineImageInput
 from ...loaders import WanLoraLoaderMixin
 from ...models import AutoencoderKLWan, WanAnimateTransformer3DModel
 from ...schedulers import UniPCMultistepScheduler
@@ -978,9 +978,9 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
         image_height, image_width = self.video_processor.get_default_height_width(image)
         if image_height != height or image_width != width:
             logger.warning(f"Reshaping reference image from ({image_width}, {image_height}) to ({width}, {height})")
-        image_pixels = self.vae_image_processor.preprocess(
-            image, height=height, width=width, resize_mode="fill"
-        ).to(device, dtype=torch.float32)
+        image_pixels = self.vae_image_processor.preprocess(image, height=height, width=width, resize_mode="fill").to(
+            device, dtype=torch.float32
+        )
 
         # Get CLIP features from the reference image
         if image_embeds is None:
@@ -1174,9 +1174,9 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 .view(1, self.vae.config.z_dim, 1, 1, 1)
                 .to(latents.device, latents.dtype)
             )
-            latents_recip_std = 1.0 / torch.tensor(self.vae.config.latents_std).view(1, self.vae.config.z_dim, 1, 1, 1).to(
-                latents.device, latents.dtype
-            )
+            latents_recip_std = 1.0 / torch.tensor(self.vae.config.latents_std).view(
+                1, self.vae.config.z_dim, 1, 1, 1
+            ).to(latents.device, latents.dtype)
             latents = latents / latents_recip_std + latents_mean
             # Skip the first latent frame (used for conditioning)
             out_frames = self.vae.decode(latents[:, :, 1:], return_dict=False)[0]
