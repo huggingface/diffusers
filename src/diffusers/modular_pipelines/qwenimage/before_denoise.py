@@ -550,8 +550,7 @@ class QwenImageRoPEInputsStep(ModularPipelineBlocks):
                     block_state.width // components.vae_scale_factor // 2,
                 )
             ]
-            for _ in range(block_state.batch_size)
-        ]
+        ] * block_state.batch_size
         block_state.txt_seq_lens = (
             block_state.prompt_embeds_mask.sum(dim=1).tolist() if block_state.prompt_embeds_mask is not None else None
         )
