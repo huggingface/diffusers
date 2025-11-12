@@ -448,6 +448,8 @@
   - sections:
     - local: api/pipelines/overview
       title: Overview
+    - local: api/pipelines/auto_pipeline
+      title: AutoPipeline
     - sections:
       - local: api/pipelines/audioldm
         title: AudioLDM
@@ -460,8 +462,6 @@
       - local: api/pipelines/stable_audio
         title: Stable Audio
       title: Audio
-    - local: api/pipelines/auto_pipeline
-      title: AutoPipeline
     - sections:
       - local: api/pipelines/amused
         title: aMUSEd
@@ -525,6 +525,8 @@
         title: HiDream-I1
       - local: api/pipelines/hunyuandit
         title: Hunyuan-DiT
+      - local: api/pipelines/hunyuanimage21
+        title: HunyuanImage2.1
       - local: api/pipelines/pix2pix
         title: InstructPix2Pix
       - local: api/pipelines/kandinsky
@@ -638,8 +640,6 @@
         title: ConsisID
       - local: api/pipelines/framepack
         title: Framepack
-      - local: api/pipelines/hunyuanimage21
-        title: HunyuanImage2.1
       - local: api/pipelines/hunyuan_video
         title: HunyuanVideo
       - local: api/pipelines/i2vgenxl
