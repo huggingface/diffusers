@@ -65,13 +65,6 @@ EXAMPLE_DOC_STRING = """
         >>> image = load_image(
         ...     "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/astronaut.jpg"
         ... )
-        >>> # Resize image such that it splits evenly into spatial patches after VAE encoding
-        >>> max_area = 720 * 1280
-        >>> aspect_ratio = image.height / image.width
-        >>> mod_value = pipe.vae_scale_factor_spatial * pipe.transformer.config.patch_size[1]
-        >>> height = round(np.sqrt(max_area * aspect_ratio)) // mod_value * mod_value
-        >>> width = round(np.sqrt(max_area / aspect_ratio)) // mod_value * mod_value
-        >>> image = image.resize((width, height))
 
         >>> # Load pose and face videos (preprocessed from reference video)
         >>> # Note: Videos should be preprocessed to extract pose keypoints and face features
@@ -229,8 +222,13 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
         self.video_processor_for_mask = VideoProcessor(
             vae_scale_factor=self.vae_scale_factor_spatial, do_normalize=False, do_convert_grayscale=True
         )
+        # In case self.transformer is None (e.g. for some pipeline tests)
+        spatial_patch_size = self.transformer.config.patch_size[-2:] if self.transformer is not None else (2, 2)
         self.vae_image_processor = WanAnimateImageProcessor(
-            vae_scale_factor=self.vae_scale_factor_spatial, resample="bilinear", fill_color=0
+            vae_scale_factor=self.vae_scale_factor_spatial,
+            spatial_patch_size=spatial_patch_size,
+            resample="bilinear",
+            fill_color=0,
         )
         self.image_processor = image_processor
 

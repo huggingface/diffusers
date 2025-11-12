@@ -14,7 +14,9 @@
 
 from typing import Optional, Tuple, Union
 
+import numpy as np
 import PIL.Image
+import torch
 
 from ...configuration_utils import register_to_config
 from ...image_processor import VaeImageProcessor
@@ -30,7 +32,12 @@ class WanAnimateImageProcessor(VaeImageProcessor):
             Whether to downscale the image's (height, width) dimensions to multiples of `vae_scale_factor`. Can accept
             `height` and `width` arguments from [`image_processor.VaeImageProcessor.preprocess`] method.
         vae_scale_factor (`int`, *optional*, defaults to `8`):
-            VAE scale factor. If `do_resize` is `True`, the image is automatically resized to multiples of this factor.
+            VAE (spatial) scale factor. If `do_resize` is `True`, the image is automatically resized to multiples of
+            this factor.
+        vae_latent_channels (`int`, *optional*, defaults to `16`):
+            VAE latent channels.
+        spatial_patch_size (`Tuple[int, int]`, *optional*, defaults to `(2, 2)`):
+            The spatial patch size used by the diffusion transformer. For Wan models, this is typically (2, 2).
         resample (`str`, *optional*, defaults to `lanczos`):
             Resampling filter to use when resizing the image.
         do_normalize (`bool`, *optional*, defaults to `True`):
@@ -52,7 +59,8 @@ class WanAnimateImageProcessor(VaeImageProcessor):
         self,
         do_resize: bool = True,
         vae_scale_factor: int = 8,
-        vae_latent_channels: int = 4,
+        vae_latent_channels: int = 16,
+        spatial_patch_size: Tuple[int, int] = (2, 2),
         resample: str = "lanczos",
         reducing_gap: int = None,
         do_normalize: bool = True,
@@ -123,3 +131,55 @@ class WanAnimateImageProcessor(VaeImageProcessor):
                     )
 
         return res
+
+    def get_default_height_width(
+        self,
+        image: Union[PIL.Image.Image, np.ndarray, torch.Tensor],
+        height: Optional[int] = None,
+        width: Optional[int] = None,
+    ) -> Tuple[int, int]:
+        r"""
+        Returns the height and width of the image, downscaled to the next integer multiple of `vae_scale_factor`.
+
+        Args:
+            image (`Union[PIL.Image.Image, np.ndarray, torch.Tensor]`):
+                The image input, which can be a PIL image, NumPy array, or PyTorch tensor. If it is a NumPy array, it
+                should have shape `[batch, height, width]` or `[batch, height, width, channels]`. If it is a PyTorch
+                tensor, it should have shape `[batch, channels, height, width]`.
+            height (`Optional[int]`, *optional*, defaults to `None`):
+                The height of the preprocessed image. If `None`, the height of the `image` input will be used.
+            width (`Optional[int]`, *optional*, defaults to `None`):
+                The width of the preprocessed image. If `None`, the width of the `image` input will be used.
+
+        Returns:
+            `Tuple[int, int]`:
+                A tuple containing the height and width, both resized to the nearest integer multiple of
+                `vae_scale_factor * spatial_patch_size`.
+        """
+
+        if height is None:
+            if isinstance(image, PIL.Image.Image):
+                height = image.height
+            elif isinstance(image, torch.Tensor):
+                height = image.shape[2]
+            else:
+                height = image.shape[1]
+
+        if width is None:
+            if isinstance(image, PIL.Image.Image):
+                width = image.width
+            elif isinstance(image, torch.Tensor):
+                width = image.shape[3]
+            else:
+                width = image.shape[2]
+
+        max_area = width * height
+        aspect_ratio = height / width
+        mod_value_h = self.config.vae_scale_factor * self.config.spatial_patch_size[0]
+        mod_value_w = self.config.vae_scale_factor * self.config.spatial_patch_size[1]
+
+        # Try to preserve the aspect ratio
+        height = round(np.sqrt(max_area * aspect_ratio)) // mod_value_h * mod_value_h
+        width = round(np.sqrt(max_area / aspect_ratio)) // mod_value_w * mod_value_w
+
+        return height, width
