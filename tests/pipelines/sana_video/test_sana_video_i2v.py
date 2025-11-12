@@ -128,7 +128,7 @@ class SanaImageToVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             generator = torch.Generator(device=device).manual_seed(seed)
 
         # Create a dummy image input (PIL Image)
-        image = torch.randn(1, 3, 32, 32).to(device)
+        image = Image.new("RGB", (32, 32))
 
         inputs = {
             "image": image,
