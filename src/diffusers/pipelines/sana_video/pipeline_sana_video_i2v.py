@@ -678,7 +678,7 @@ class SanaImageToVideoPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
             latents = latents.to(device=device, dtype=dtype)
 
         image = image.unsqueeze(2)  # [B, C, 1, H, W]
-        image = image.to(device=device, dtype=dtype)
+        image = image.to(device=device, dtype=self.vae.dtype)
 
         if isinstance(generator, list):
             image_latents = [retrieve_latents(self.vae.encode(image), sample_mode="argmax") for _ in generator]
