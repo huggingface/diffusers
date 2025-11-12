@@ -160,7 +160,7 @@ class QwenImagePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         self.assertEqual(generated_image.shape, (3, 32, 32))
 
         # fmt: off
-        expected_slice = torch.tensor([0.56331, 0.63677, 0.6015, 0.56369, 0.58166, 0.55277, 0.57176, 0.63261, 0.41466, 0.35561, 0.56229, 0.48334, 0.49714, 0.52622, 0.40872, 0.50208])
+        expected_slice = torch.tensor([0.5633, 0.6416, 0.6035, 0.5617, 0.5813, 0.5502, 0.5718, 0.6345, 0.4164, 0.3563, 0.5630, 0.4849, 0.4979, 0.5269, 0.4096, 0.5020])
         # fmt: on
 
         generated_slice = generated_image.flatten()
@@ -233,4 +233,62 @@ class QwenImagePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             (to_np(output_without_tiling) - to_np(output_with_tiling)).max(),
             expected_diff_max,
             "VAE tiling should not affect the inference results",
+        )
+
+    def test_prompt_embeds_padding(self):
+        """Test that prompt embeddings are padded to tokenizer_max_length (1024) instead of batch max."""
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe.to(torch_device)
+
+        # Test 1: Short prompt should be padded to 1024, not to its actual length
+        short_prompt = "test"
+        prompt_embeds, prompt_embeds_mask = pipe.encode_prompt(
+            prompt=short_prompt,
+            device=torch_device,
+            num_images_per_prompt=1,
+            max_sequence_length=1024,
+        )
+
+        # Should be padded to 1024 (tokenizer_max_length), not to the actual token count
+        self.assertEqual(
+            prompt_embeds.shape[1],
+            1024,
+            f"Short prompt should be padded to 1024, got {prompt_embeds.shape[1]}",
+        )
+        self.assertEqual(
+            prompt_embeds_mask.shape[1],
+            1024,
+            f"Mask should be 1024 length, got {prompt_embeds_mask.shape[1]}",
+        )
+
+        # Test 2: Batch with different lengths should all be padded to same length (1024)
+        batch_prompts = ["short", "a much longer prompt here"]
+        prompt_embeds_batch, mask_batch = pipe.encode_prompt(
+            prompt=batch_prompts,
+            device=torch_device,
+            num_images_per_prompt=1,
+            max_sequence_length=1024,
+        )
+
+        self.assertEqual(prompt_embeds_batch.shape[0], 2, "Batch size should be 2")
+        self.assertEqual(
+            prompt_embeds_batch.shape[1],
+            1024,
+            f"All prompts in batch should be padded to 1024, got {prompt_embeds_batch.shape[1]}",
+        )
+
+        # Test 3: With default max_sequence_length (512), should still pad to 1024 internally
+        # then truncate to 512
+        prompt_embeds_512, mask_512 = pipe.encode_prompt(
+            prompt=short_prompt,
+            device=torch_device,
+            num_images_per_prompt=1,
+            max_sequence_length=512,
+        )
+
+        self.assertEqual(
+            prompt_embeds_512.shape[1],
+            512,
+            f"With max_sequence_length=512, should truncate to 512, got {prompt_embeds_512.shape[1]}",
         )
