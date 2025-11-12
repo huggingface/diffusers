@@ -1234,7 +1234,11 @@ class WanAnimateTransformer3DModel(
         # Perform batched motion encoder inference to allow trading off inference speed for memory usage
         motion_encode_batch_size = motion_encode_batch_size or self.motion_encoder_batch_size
         face_batches = torch.split(face_pixel_values, motion_encode_batch_size)
-        motion_vec = torch.cat([self.motion_encoder(face_batch) for face_batch in face_batches])
+        motion_vec_batches = []
+        for face_batch in face_batches:
+            motion_vec_batch = self.motion_encoder(face_batch)
+            motion_vec_batches.append(motion_vec_batch)
+        motion_vec = torch.cat(motion_vec_batches)
         motion_vec = motion_vec.view(batch_size, num_face_frames, -1)
 
         # Now get face features from the motion vector
