@@ -12,11 +12,13 @@ from ._common import (
     _ATTENTION_CLASSES,
 )
 from ..hooks import HookRegistry
-
+from ..utils import logging
+logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 _TAYLORSEER_ATTENTION_CACHE_HOOK = "taylorseer_attention_cache"
 
 @dataclass
 class TaylorSeerCacheConfig:
+    warmup_steps: int = 3 # full compute some first steps
     fresh_threshold: int = 5 # interleave cache and compute: `fresh_threshold` steps are cached, then 1 full compute step is performed
     max_order: int = 1 # order of Taylor series expansion
     current_timestep_callback: Callable[[], int] = None
@@ -33,7 +35,9 @@ class TaylorSeerState:
         self.taylor_factors = {}
 
     def update(self, features: torch.Tensor, current_step: int, max_order: int, refresh_threshold: int):
-        N = math.abs(current_step - self.last_step)
+        logger.debug("="*10)
+        N = self.last_step - current_step 
+        logger.debug(f"update: N: {N}, current_step: {current_step}, last_step: {self.last_step}")
         # initialize the first order taylor factors
         new_taylor_factors = {0: features}
         for i in range(max_order):
@@ -44,6 +48,9 @@ class TaylorSeerState:
         self.taylor_factors = new_taylor_factors
         self.last_step = current_step
         self.predict_counter = refresh_threshold
+        logger.debug(f"last_step: {self.last_step}")
+        logger.debug(f"predict_counter: {self.predict_counter}")
+        logger.debug("="*10)
 
     def predict(self, current_step: int):
         k = current_step - self.last_step
@@ -52,20 +59,24 @@ class TaylorSeerState:
         for i in range(len(self.taylor_factors)):
             output += self.taylor_factors[i] * (k ** i) / math.factorial(i)
         self.predict_counter -= 1
+        logger.debug(f"predict_counter: {self.predict_counter}")
+        logger.debug(f"k: {k}")
         return output
 
 class TaylorSeerAttentionCacheHook(ModelHook):
     _is_stateful = True
 
-    def __init__(self, fresh_threshold: int, max_order: int, current_timestep_callback: Callable[[], int]):
+    def __init__(self, fresh_threshold: int, max_order: int, current_timestep_callback: Callable[[], int], warmup_steps: int):
         super().__init__()
         self.fresh_threshold = fresh_threshold
         self.max_order = max_order
         self.current_timestep_callback = current_timestep_callback
+        self.warmup_steps = warmup_steps
 
     def initialize_hook(self, module):
         self.states = None
         self.num_outputs = None
+        self.warmup_steps_counter = 0
         return module
 
     def new_forward(self, module: torch.nn.Module, *args, **kwargs):
@@ -74,21 +85,31 @@ class TaylorSeerAttentionCacheHook(ModelHook):
 
         if self.states is None:
             attention_outputs = self.fn_ref.original_forward(*args, **kwargs)
+            if self.warmup_steps_counter < self.warmup_steps:
+                logger.debug(f"warmup_steps_counter: {self.warmup_steps_counter}")
+                self.warmup_steps_counter += 1
+                return attention_outputs
+            if isinstance(attention_outputs, torch.Tensor):
+                attention_outputs = [attention_outputs]
             self.num_outputs = len(attention_outputs)
             self.states = [TaylorSeerState() for _ in range(self.num_outputs)]
             for i, feat in enumerate(attention_outputs):
                 self.states[i].update(feat, current_step, self.max_order, self.fresh_threshold)
-            return attention_outputs
+            return attention_outputs[0] if len(attention_outputs) == 1 else attention_outputs
 
         should_predict = self.states[0].predict_counter > 0
 
         if not should_predict:
             attention_outputs = self.fn_ref.original_forward(*args, **kwargs)
+            if isinstance(attention_outputs, torch.Tensor):
+                attention_outputs = [attention_outputs]
             for i, feat in enumerate(attention_outputs):
                 self.states[i].update(feat, current_step, self.max_order, self.fresh_threshold)
-            return attention_outputs
+            return attention_outputs[0] if len(attention_outputs) == 1 else attention_outputs
         else:
             predicted_outputs = [state.predict(current_step) for state in self.states]
+            if len(predicted_outputs) == 1:
+                return predicted_outputs[0]
             return tuple(predicted_outputs)
 
     def reset_state(self, module: torch.nn.Module) -> None:
@@ -101,7 +122,7 @@ def apply_taylorseer_cache(module: torch.nn.Module, config: TaylorSeerCacheConfi
     for name, submodule in module.named_modules():
         if not isinstance(submodule, (*_ATTENTION_CLASSES, AttentionModuleMixin)):
             continue
-        print(f"Applying TaylorSeer cache to {name}")
+        logger.debug(f"Applying TaylorSeer cache to {name}")
         _apply_taylorseer_cache_on_attention_class(name, submodule, config)
 
 
@@ -111,5 +132,5 @@ def _apply_taylorseer_cache_on_attention_class(name: str, module: Attention, con
 
 def _apply_taylorseer_cache_hook(module: Attention, config: TaylorSeerCacheConfig):
     registry = HookRegistry.check_if_exists_or_initialize(module)
-    hook = TaylorSeerAttentionCacheHook(config.fresh_threshold, config.max_order, config.current_timestep_callback)
+    hook = TaylorSeerAttentionCacheHook(config.fresh_threshold, config.max_order, config.current_timestep_callback, config.warmup_steps)
     registry.register_hook(hook, _TAYLORSEER_ATTENTION_CACHE_HOOK)
