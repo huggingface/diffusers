@@ -18,6 +18,7 @@ import unittest
 
 import numpy as np
 import torch
+from PIL import Image
 from transformers import Gemma2Config, Gemma2Model, GemmaTokenizer
 
 from diffusers import (
