@@ -68,17 +68,16 @@ EXAMPLE_DOC_STRING = """
         >>> import torch
         >>> from diffusers import SanaImageToVideoPipeline
         >>> from diffusers.utils import export_to_video, load_image
-        >>> model_id = "Efficient-Large-Model/SANA-Video_2B_480p_diffusers"
-        >>> pipe = SanaImageToVideoPipeline.from_pretrained(model_id)
+        >>> pipe = SanaImageToVideoPipeline.from_pretrained("Efficient-Large-Model/SANA-Video_2B_480p_diffusers")
         >>> pipe.transformer.to(torch.bfloat16)
         >>> pipe.text_encoder.to(torch.bfloat16)
         >>> pipe.vae.to(torch.float32)
         >>> pipe.to("cuda")
-        >>> model_score = 30
+        >>> motion_score = 30
 
         >>> prompt = "A woman stands against a stunning sunset backdrop, her long, wavy brown hair gently blowing in the breeze. She wears a sleeveless, light-colored blouse with a deep V-neckline, which accentuates her graceful posture. The warm hues of the setting sun cast a golden glow across her face and hair, creating a serene and ethereal atmosphere. The background features a blurred landscape with soft, rolling hills and scattered clouds, adding depth to the scene. The camera remains steady, capturing the tranquil moment from a medium close-up angle."
         >>> negative_prompt = "A chaotic sequence with misshapen, deformed limbs in heavy motion blur, sudden disappearance, jump cuts, jerky movements, rapid shot changes, frames out of sync, inconsistent character shapes, temporal artifacts, jitter, and ghosting effects, creating a disorienting visual experience."
-        >>> motion_prompt = f" motion score: {model_score}."
+        >>> motion_prompt = f" motion score: {motion_score}."
         >>> prompt = prompt + motion_prompt
         >>> image = load_image("https://raw.githubusercontent.com/NVlabs/Sana/refs/heads/main/asset/samples/i2v-1.png")
 
