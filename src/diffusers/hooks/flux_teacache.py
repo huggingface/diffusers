@@ -71,11 +71,11 @@ class FluxTeaCacheHook(ModelHook):
         self.state_manager.set_context("flux_teacache")
         return module
         
-    def new_forward(self, module, hidden_states, timestep, pooled_projections, 
+    def new_forward(self, module, hidden_states, timestep, pooled_projections,
                    encoder_hidden_states, txt_ids, img_ids, **kwargs):
         """Replace FLUX transformer forward with TeaCache logic."""
         state = self.state_manager.get_state()
-        
+
         # Reset counter if we've completed all steps (new inference run)
         if state.cnt == state.num_steps and state.num_steps > 0:
             state.cnt = 0
@@ -91,33 +91,76 @@ class FluxTeaCacheHook(ModelHook):
             if state.num_steps == 0 and hasattr(module, 'num_steps'):
                 state.num_steps = module.num_steps
         
-        # Extract timestep embedding for FLUX
-        timestep = timestep.to(hidden_states.dtype) * 1000
-        temb = module.time_text_embed(timestep, pooled_projections)
-        
-        # Extract modulated input from first transformer block
-        modulated_inp, _, _, _, _ = module.transformer_blocks[0].norm1(
-            hidden_states.clone(), emb=temb.clone()
-        )
-        
-        # Make caching decision using original algorithm
+        # Process inputs like original TeaCache
+        # Must process hidden_states through x_embedder first
+        hidden_states = module.x_embedder(hidden_states)
+
+        # Extract timestep embedding
+        timestep_scaled = timestep.to(hidden_states.dtype) * 1000
+        if kwargs.get('guidance') is not None:
+            guidance = kwargs['guidance'].to(hidden_states.dtype) * 1000
+            temb = module.time_text_embed(timestep_scaled, guidance, pooled_projections)
+        else:
+            temb = module.time_text_embed(timestep_scaled, pooled_projections)
+
+        # Extract modulated input from first transformer block like original
+        inp = hidden_states.clone()
+        temb_clone = temb.clone()
+        modulated_inp, _, _, _, _ = module.transformer_blocks[0].norm1(inp, emb=temb_clone)
+
+        # Make caching decision
         should_calc = self._should_compute_full_transformer(state, modulated_inp)
-        
+
         if not should_calc:
             # Fast path: apply cached residual
             output = hidden_states + state.previous_residual
         else:
-            # Slow path: full computation
+            # Slow path: full computation inline (like original TeaCache)
             ori_hidden_states = hidden_states.clone()
-            output = self.fn_ref.original_forward(
-                hidden_states, timestep, pooled_projections, 
-                encoder_hidden_states, txt_ids, img_ids, **kwargs
-            )
+
+            # Process encoder_hidden_states
+            encoder_hidden_states = module.context_embedder(encoder_hidden_states)
+
+            # Process txt_ids and img_ids
+            if txt_ids.ndim == 3:
+                txt_ids = txt_ids[0]
+            if img_ids.ndim == 3:
+                img_ids = img_ids[0]
+
+            ids = torch.cat((txt_ids, img_ids), dim=0)
+            image_rotary_emb = module.pos_embed(ids)
+
+            # Process through transformer blocks
+            for block in module.transformer_blocks:
+                encoder_hidden_states, hidden_states = block(
+                    hidden_states=hidden_states,
+                    encoder_hidden_states=encoder_hidden_states,
+                    temb=temb,
+                    image_rotary_emb=image_rotary_emb,
+                    joint_attention_kwargs=kwargs.get('joint_attention_kwargs'),
+                )
+
+            # Process through single transformer blocks
+            # Note: single blocks concatenate internally, so pass separately
+            for block in module.single_transformer_blocks:
+                encoder_hidden_states, hidden_states = block(
+                    hidden_states=hidden_states,
+                    encoder_hidden_states=encoder_hidden_states,
+                    temb=temb,
+                    image_rotary_emb=image_rotary_emb,
+                    joint_attention_kwargs=kwargs.get('joint_attention_kwargs'),
+                )
+
             # Cache the residual
-            state.previous_residual = output - ori_hidden_states
-            state.previous_modulated_input = modulated_inp
-            
+            state.previous_residual = hidden_states - ori_hidden_states
+
+        state.previous_modulated_input = modulated_inp
         state.cnt += 1
+
+        # Apply final norm and projection (always needed)
+        hidden_states = module.norm_out(hidden_states, temb)
+        output = module.proj_out(hidden_states)
+
         return output
         
     def _should_compute_full_transformer(self, state, modulated_inp):
