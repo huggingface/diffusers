@@ -38,7 +38,7 @@ class DDIMSchedulerOutput(BaseOutput):
         prev_sample (`torch.Tensor` of shape `(batch_size, num_channels, height, width)` for images):
             Computed sample `(x_{t-1})` of previous timestep. `prev_sample` should be used as next model input in the
             denoising loop.
-        pred_original_sample (`torch.Tensor` of shape `(batch_size, num_channels, height, width)` for images, *optional*):
+        pred_original_sample (`torch.Tensor` of shape `(batch_size, num_channels, height, width)` for images):
             The predicted denoised sample `(x_{0})` based on the model output from the current timestep.
             `pred_original_sample` can be used to preview progress or for guidance.
     """
@@ -49,10 +49,10 @@ class DDIMSchedulerOutput(BaseOutput):
 
 # Copied from diffusers.schedulers.scheduling_ddpm.betas_for_alpha_bar
 def betas_for_alpha_bar(
-    num_diffusion_timesteps: int,
-    max_beta: float = 0.999,
-    alpha_transform_type: Literal["cosine", "exp"] = "cosine",
-) -> torch.Tensor:
+    num_diffusion_timesteps,
+    max_beta=0.999,
+    alpha_transform_type="cosine",
+):
     """
     Create a beta schedule that discretizes the given alpha_t_bar function, which defines the cumulative product of
     (1-beta) over time from t = [0,1].
@@ -60,25 +60,25 @@ def betas_for_alpha_bar(
     Contains a function alpha_bar that takes an argument t and transforms it to the cumulative product of (1-beta) up
     to that part of the diffusion process.
 
+
     Args:
-        num_diffusion_timesteps (`int`):
-            The number of betas to produce.
-        max_beta (`float`, defaults to 0.999):
-            The maximum beta to use; use values lower than 1 to avoid numerical instability.
-        alpha_transform_type (`Literal["cosine", "exp"]`, defaults to `"cosine"`):
-            The type of noise schedule for `alpha_bar`. Must be one of `"cosine"` or `"exp"`.
+        num_diffusion_timesteps (`int`): the number of betas to produce.
+        max_beta (`float`): the maximum beta to use; use values lower than 1 to
+                     prevent singularities.
+        alpha_transform_type (`str`, *optional*, default to `cosine`): the type of noise schedule for alpha_bar.
+                     Choose from `cosine` or `exp`
 
     Returns:
-        `torch.Tensor`: The betas used by the scheduler to step the model outputs.
+        betas (`np.ndarray`): the betas used by the scheduler to step the model outputs
     """
     if alpha_transform_type == "cosine":
 
-        def alpha_bar_fn(t: float) -> float:
+        def alpha_bar_fn(t):
             return math.cos((t + 0.008) / 1.008 * math.pi / 2) ** 2
 
     elif alpha_transform_type == "exp":
 
-        def alpha_bar_fn(t: float) -> float:
+        def alpha_bar_fn(t):
             return math.exp(t * -12.0)
 
     else:
@@ -281,21 +281,13 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
     # Copied from diffusers.schedulers.scheduling_ddpm.DDPMScheduler._threshold_sample
     def _threshold_sample(self, sample: torch.Tensor) -> torch.Tensor:
         """
-        Dynamic thresholding: At each sampling step we set s to a certain percentile absolute pixel value in xt0 (the
+        "Dynamic thresholding: At each sampling step we set s to a certain percentile absolute pixel value in xt0 (the
         prediction of x_0 at timestep t), and if s > 1, then we threshold xt0 to the range [-s, s] and then divide by
         s. Dynamic thresholding pushes saturated pixels (those near -1 and 1) inwards, thereby actively preventing
         pixels from saturation at each step. We find that dynamic thresholding results in significantly better
-        photorealism as well as better image-text alignment, especially when using very large guidance weights.
+        photorealism as well as better image-text alignment, especially when using very large guidance weights."
 
-        See https://huggingface.co/papers/2205.11487
-
-        Args:
-            sample (`torch.Tensor`):
-                The sample to threshold.
-
-        Returns:
-            `torch.Tensor`:
-                The thresholded sample.
+        https://huggingface.co/papers/2205.11487
         """
         dtype = sample.dtype
         batch_size, channels, *remaining_dims = sample.shape
@@ -509,24 +501,6 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         noise: torch.Tensor,
         timesteps: torch.IntTensor,
     ) -> torch.Tensor:
-        """
-        Add noise to the original samples according to the noise magnitude at each timestep.
-
-        This implements the forward diffusion process using the formula: `noisy_sample = sqrt(alpha_prod) *
-        original_sample + sqrt(1 - alpha_prod) * noise`
-
-        Args:
-            original_samples (`torch.Tensor`):
-                The original clean samples to which noise will be added.
-            noise (`torch.Tensor`):
-                The noise tensor to add, typically sampled from a Gaussian distribution.
-            timesteps (`torch.IntTensor`):
-                The timesteps indicating the noise level from the diffusion schedule.
-
-        Returns:
-            `torch.Tensor`:
-                The noisy samples with noise added according to the timestep schedule.
-        """
         # Make sure alphas_cumprod and timestep have same device and dtype as original_samples
         # Move the self.alphas_cumprod to device to avoid redundant CPU to GPU data movement
         # for the subsequent add_noise calls
@@ -549,27 +523,6 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
 
     # Copied from diffusers.schedulers.scheduling_ddpm.DDPMScheduler.get_velocity
     def get_velocity(self, sample: torch.Tensor, noise: torch.Tensor, timesteps: torch.IntTensor) -> torch.Tensor:
-        """
-        Compute the velocity prediction for v-prediction models.
-
-        The velocity is computed using the formula: `velocity = sqrt(alpha_prod) * noise - sqrt(1 - alpha_prod) *
-        sample`
-
-        This is used in v-prediction models where the model directly predicts the velocity instead of the noise or the
-        sample. See section 2.4 of [Imagen Video](https://huggingface.co/papers/2210.02303) paper.
-
-        Args:
-            sample (`torch.Tensor`):
-                The input sample (x_t) at the current timestep.
-            noise (`torch.Tensor`):
-                The noise tensor corresponding to the sample.
-            timesteps (`torch.IntTensor`):
-                The timesteps at which to compute the velocity.
-
-        Returns:
-            `torch.Tensor`:
-                The velocity prediction computed from the sample and noise at the given timesteps.
-        """
         # Make sure alphas_cumprod and timestep have same device and dtype as sample
         self.alphas_cumprod = self.alphas_cumprod.to(device=sample.device)
         alphas_cumprod = self.alphas_cumprod.to(dtype=sample.dtype)
