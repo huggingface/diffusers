@@ -13,6 +13,7 @@ from .autoencoder_kl_mochi import AutoencoderKLMochi
 from .autoencoder_kl_qwenimage import AutoencoderKLQwenImage
 from .autoencoder_kl_temporal_decoder import AutoencoderKLTemporalDecoder
 from .autoencoder_kl_wan import AutoencoderKLWan
+from .autoencoder_kl_flux2 import AutoencoderKLFlux2
 from .autoencoder_oobleck import AutoencoderOobleck
 from .autoencoder_tiny import AutoencoderTiny
 from .consistency_decoder_vae import ConsistencyDecoderVAE

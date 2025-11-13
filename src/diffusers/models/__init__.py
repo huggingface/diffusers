@@ -44,6 +44,7 @@ if is_torch_available():
     _import_structure["autoencoders.autoencoder_kl_qwenimage"] = ["AutoencoderKLQwenImage"]
     _import_structure["autoencoders.autoencoder_kl_temporal_decoder"] = ["AutoencoderKLTemporalDecoder"]
     _import_structure["autoencoders.autoencoder_kl_wan"] = ["AutoencoderKLWan"]
+    _import_structure["autoencoders.autoencoder_kl_flux2"] = ["AutoencoderKLFlux2"]
     _import_structure["autoencoders.autoencoder_oobleck"] = ["AutoencoderOobleck"]
     _import_structure["autoencoders.autoencoder_tiny"] = ["AutoencoderTiny"]
     _import_structure["autoencoders.consistency_decoder_vae"] = ["ConsistencyDecoderVAE"]
@@ -148,6 +149,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AutoencoderKLQwenImage,
             AutoencoderKLTemporalDecoder,
             AutoencoderKLWan,
+            AutoencoderKLFlux2,
             AutoencoderOobleck,
             AutoencoderTiny,
             ConsistencyDecoderVAE,
