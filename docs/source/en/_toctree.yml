@@ -22,7 +22,7 @@
     title: Reproducibility
   - local: using-diffusers/schedulers
     title: Schedulers
-  - local: using-diffusers/AutoModel
+  - local: using-diffusers/automodel
     title: AutoModel
   - local: using-diffusers/other-formats
     title: Model formats
