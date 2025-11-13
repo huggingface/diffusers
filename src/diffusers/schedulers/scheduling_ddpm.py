@@ -98,7 +98,7 @@ def rescale_zero_terminal_snr(betas: torch.Tensor) -> torch.Tensor:
     Args:
         betas (`torch.Tensor`):
             the betas that the scheduler is being initialized with.
-    
+
     Returns:
         `torch.Tensor`: rescaled betas with zero terminal SNR
     """
@@ -183,7 +183,9 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
         beta_end: float = 0.02,
         beta_schedule: Literal["linear", "scaled_linear", "squaredcos_cap_v2", "sigmoid"] = "linear",
         trained_betas: Optional[Union[np.ndarray, List[float]]] = None,
-        variance_type: Literal["fixed_small", "fixed_small_log", "fixed_large", "fixed_large_log", "learned", "learned_range"] = "fixed_small",
+        variance_type: Literal[
+            "fixed_small", "fixed_small_log", "fixed_large", "fixed_large_log", "learned", "learned_range"
+        ] = "fixed_small",
         clip_sample: bool = True,
         prediction_type: Literal["epsilon", "sample", "v_prediction"] = "epsilon",
         thresholding: bool = False,
@@ -324,25 +326,27 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
         self,
         t: int,
         predicted_variance: Optional[torch.Tensor] = None,
-        variance_type: Optional[Literal["fixed_small", "fixed_small_log", "fixed_large", "fixed_large_log", "learned", "learned_range"]] = None
+        variance_type: Optional[
+            Literal["fixed_small", "fixed_small_log", "fixed_large", "fixed_large_log", "learned", "learned_range"]
+        ] = None,
     ) -> torch.Tensor:
-       """
-       Compute the variance for a given timestep according to the specified variance type.
+        """
+        Compute the variance for a given timestep according to the specified variance type.
 
-       Args:
-           t (`int`):
-               The current timestep.
-           predicted_variance (`torch.Tensor`, *optional*):
-               The predicted variance from the model. Used only when `variance_type` is `"learned"` or
-               `"learned_range"`.
-           variance_type (`"fixed_small"`, `"fixed_small_log"`, `"fixed_large"`, `"fixed_large_log"`, `"learned"`, or `"learned_range"`, *optional*):
-               The type of variance to compute. If `None`, uses the variance type specified in the scheduler
-               configuration.
+        Args:
+            t (`int`):
+                The current timestep.
+            predicted_variance (`torch.Tensor`, *optional*):
+                The predicted variance from the model. Used only when `variance_type` is `"learned"` or
+                `"learned_range"`.
+            variance_type (`"fixed_small"`, `"fixed_small_log"`, `"fixed_large"`, `"fixed_large_log"`, `"learned"`, or `"learned_range"`, *optional*):
+                The type of variance to compute. If `None`, uses the variance type specified in the scheduler
+                configuration.
 
-       Returns:
-           `torch.Tensor`:
-               The computed variance.
-       """
+        Returns:
+            `torch.Tensor`:
+                The computed variance.
+        """
         prev_t = self.previous_timestep(t)
 
         alpha_prod_t = self.alphas_cumprod[t]
