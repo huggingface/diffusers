@@ -16,7 +16,7 @@
 
 import math
 from dataclasses import dataclass
-from typing import List, Optional, Tuple, Union
+from typing import List, Literal, Optional, Tuple, Union
 
 import numpy as np
 import torch
@@ -336,7 +336,7 @@ class DDPMParallelScheduler(SchedulerMixin, ConfigMixin):
         self.timesteps = torch.from_numpy(timesteps).to(device)
 
     # Copied from diffusers.schedulers.scheduling_ddpm.DDPMScheduler._get_variance
-    def _get_variance(self, t, predicted_variance=None, variance_type=None):
+    def _get_variance(
         self,
         t: int,
         predicted_variance: Optional[torch.Tensor] = None,

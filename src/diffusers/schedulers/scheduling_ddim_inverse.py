@@ -16,7 +16,7 @@
 # and https://github.com/hojonathanho/diffusion
 import math
 from dataclasses import dataclass
-from typing import List, Optional, Tuple, Union
+from typing import List, Literal, Optional, Tuple, Union
 
 import numpy as np
 import torch
