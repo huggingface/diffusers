@@ -23,12 +23,12 @@ class TaylorSeerCacheConfig:
 
 class TaylorSeerState:
     def __init__(self):
-        self.predict_counter: int = 1
+        self.predict_counter: int = 0
         self.last_step: int = 1000
         self.taylor_factors: dict[int, torch.Tensor] = {}
 
     def reset(self):
-        self.predict_counter = 1
+        self.predict_counter = 0
         self.last_step = 1000
         self.taylor_factors = {}
 
@@ -43,15 +43,15 @@ class TaylorSeerState:
                 break
         self.taylor_factors = new_taylor_factors
         self.last_step = current_step
-        self.predict_counter = (self.predict_counter + 1) % refresh_threshold
+        self.predict_counter = refresh_threshold
 
-    def predict(self, current_step: int, refresh_threshold: int):
+    def predict(self, current_step: int):
         k = current_step - self.last_step
         device = self.taylor_factors[0].device
         output = torch.zeros_like(self.taylor_factors[0], device=device)
         for i in range(len(self.taylor_factors)):
             output += self.taylor_factors[i] * (k ** i) / math.factorial(i)
-        self.predict_counter = (self.predict_counter + 1) % refresh_threshold
+        self.predict_counter -= 1
         return output
 
 class TaylorSeerAttentionCacheHook(ModelHook):
@@ -64,47 +64,44 @@ class TaylorSeerAttentionCacheHook(ModelHook):
         self.current_timestep_callback = current_timestep_callback
 
     def initialize_hook(self, module):
-        self.img_state = TaylorSeerState()
-        self.txt_state = TaylorSeerState()
-        self.ip_state = TaylorSeerState()
+        self.states = None
+        self.num_outputs = None
         return module
 
     def new_forward(self, module: torch.nn.Module, *args, **kwargs):
         current_step = self.current_timestep_callback()
         assert current_step is not None, "timestep is required for TaylorSeerAttentionCacheHook"
-        should_predict = self.img_state.predict_counter > 0
+
+        if self.states is None:
+            attention_outputs = self.fn_ref.original_forward(*args, **kwargs)
+            self.num_outputs = len(attention_outputs)
+            self.states = [TaylorSeerState() for _ in range(self.num_outputs)]
+            for i, feat in enumerate(attention_outputs):
+                self.states[i].update(feat, current_step, self.max_order, self.fresh_threshold)
+            return attention_outputs
+
+        should_predict = self.states[0].predict_counter > 0
 
         if not should_predict:
             attention_outputs = self.fn_ref.original_forward(*args, **kwargs)
-            if len(attention_outputs) == 2:
-                attn_output, context_attn_output = attention_outputs
-                self.img_state.update(attn_output, current_step, self.max_order, self.fresh_threshold)
-                self.txt_state.update(context_attn_output, current_step, self.max_order, self.fresh_threshold)
-            elif len(attention_outputs) == 3:
-                attn_output, context_attn_output, ip_attn_output = attention_outputs
-                self.img_state.update(attn_output, current_step, self.max_order, self.fresh_threshold)
-                self.txt_state.update(context_attn_output, current_step, self.max_order, self.fresh_threshold)
-                self.ip_state.update(ip_attn_output, current_step, self.max_order, self.fresh_threshold)
-        else:
-            attn_output = self.img_state.predict(current_step, self.fresh_threshold)
-            context_attn_output = self.txt_state.predict(current_step, self.fresh_threshold)
-            ip_attn_output = self.ip_state.predict(current_step, self.fresh_threshold)
-            attention_outputs = (attn_output, context_attn_output, ip_attn_output)
+            for i, feat in enumerate(attention_outputs):
+                self.states[i].update(feat, current_step, self.max_order, self.fresh_threshold)
             return attention_outputs
+        else:
+            predicted_outputs = [state.predict(current_step) for state in self.states]
+            return tuple(predicted_outputs)
 
     def reset_state(self, module: torch.nn.Module) -> None:
-        self.img_state.reset()
-        self.txt_state.reset()
-        self.ip_state.reset()
+        if self.states is not None:
+            for state in self.states:
+                state.reset()
         return module
 
 def apply_taylorseer_cache(module: torch.nn.Module, config: TaylorSeerCacheConfig):
     for name, submodule in module.named_modules():
         if not isinstance(submodule, (*_ATTENTION_CLASSES, AttentionModuleMixin)):
-            # PAB has been implemented specific to Diffusers' Attention classes. However, this does not mean that PAB
-            # cannot be applied to this layer. For custom layers, users can extend this functionality and implement
-            # their own PAB logic similar to `_apply_pyramid_attention_broadcast_on_attention_class`.
             continue
+        print(f"Applying TaylorSeer cache to {name}")
         _apply_taylorseer_cache_on_attention_class(name, submodule, config)
 
 
