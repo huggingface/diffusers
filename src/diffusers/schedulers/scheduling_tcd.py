@@ -98,7 +98,6 @@ def rescale_zero_terminal_snr(betas: torch.Tensor) -> torch.Tensor:
     """
     Rescales betas to have zero terminal SNR Based on https://huggingface.co/papers/2305.08891 (Algorithm 1)
 
-
     Args:
         betas (`torch.Tensor`):
             the betas that the scheduler is being initialized with.
@@ -316,6 +315,24 @@ class TCDScheduler(SchedulerMixin, ConfigMixin):
 
     # Copied from diffusers.schedulers.scheduling_ddim.DDIMScheduler._get_variance
     def _get_variance(self, timestep, prev_timestep):
+        """
+        Computes the variance of the noise added at a given diffusion step.
+
+        For a given `timestep` and its previous step, this method calculates the variance as defined in DDIM/DDPM
+        literature:
+            var_t = (beta_prod_t_prev / beta_prod_t) * (1 - alpha_prod_t / alpha_prod_t_prev)
+        where alpha_prod and beta_prod are cumulative products of alphas and betas, respectively.
+
+        Args:
+            timestep (`int`):
+                The current timestep in the diffusion process.
+            prev_timestep (`int`):
+                The previous timestep in the diffusion process. If negative, uses `final_alpha_cumprod`.
+
+        Returns:
+            `torch.Tensor`:
+                The variance for the current timestep.
+        """
         alpha_prod_t = self.alphas_cumprod[timestep]
         alpha_prod_t_prev = self.alphas_cumprod[prev_timestep] if prev_timestep >= 0 else self.final_alpha_cumprod
         beta_prod_t = 1 - alpha_prod_t

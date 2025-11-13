@@ -17,7 +17,7 @@
 
 import math
 from dataclasses import dataclass
-from typing import List, Optional, Tuple, Union
+from typing import List, Literal, Optional, Tuple, Union
 
 import numpy as np
 import torch
@@ -96,7 +96,6 @@ def betas_for_alpha_bar(
 def rescale_zero_terminal_snr(betas):
     """
     Rescales betas to have zero terminal SNR Based on https://huggingface.co/papers/2305.08891 (Algorithm 1)
-
 
     Args:
         betas (`torch.Tensor`):
@@ -194,17 +193,17 @@ class DDIMParallelScheduler(SchedulerMixin, ConfigMixin):
         num_train_timesteps: int = 1000,
         beta_start: float = 0.0001,
         beta_end: float = 0.02,
-        beta_schedule: str = "linear",
+        beta_schedule: Literal["linear", "scaled_linear", "squaredcos_cap_v2"] = "linear",
         trained_betas: Optional[Union[np.ndarray, List[float]]] = None,
         clip_sample: bool = True,
         set_alpha_to_one: bool = True,
         steps_offset: int = 0,
-        prediction_type: str = "epsilon",
+        prediction_type: Literal["epsilon", "sample", "v_prediction"] = "epsilon",
         thresholding: bool = False,
         dynamic_thresholding_ratio: float = 0.995,
         clip_sample_range: float = 1.0,
         sample_max_value: float = 1.0,
-        timestep_spacing: str = "leading",
+        timestep_spacing: Literal["leading", "trailing", "linspace"] = "leading",
         rescale_betas_zero_snr: bool = False,
     ):
         if trained_betas is not None:
@@ -324,6 +323,11 @@ class DDIMParallelScheduler(SchedulerMixin, ConfigMixin):
         Args:
             num_inference_steps (`int`):
                 The number of diffusion steps used when generating samples with a pre-trained model.
+            device (`Union[str, torch.device]`, *optional*):
+                The device to use for the timesteps.
+
+        Raises:
+            ValueError: If `num_inference_steps` is larger than `self.config.num_train_timesteps`.
         """
 
         if num_inference_steps > self.config.num_train_timesteps:

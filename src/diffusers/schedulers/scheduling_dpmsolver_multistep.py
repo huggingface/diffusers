@@ -80,7 +80,6 @@ def rescale_zero_terminal_snr(betas):
     """
     Rescales betas to have zero terminal SNR Based on https://huggingface.co/papers/2305.08891 (Algorithm 1)
 
-
     Args:
         betas (`torch.Tensor`):
             the betas that the scheduler is being initialized with.
