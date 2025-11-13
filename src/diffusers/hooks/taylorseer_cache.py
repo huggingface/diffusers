@@ -85,10 +85,6 @@ class TaylorSeerAttentionCacheHook(ModelHook):
 
         if self.states is None:
             attention_outputs = self.fn_ref.original_forward(*args, **kwargs)
-            if self.warmup_steps_counter < self.warmup_steps:
-                logger.debug(f"warmup_steps_counter: {self.warmup_steps_counter}")
-                self.warmup_steps_counter += 1
-                return attention_outputs
             if isinstance(attention_outputs, torch.Tensor):
                 attention_outputs = [attention_outputs]
             self.num_outputs = len(attention_outputs)
@@ -97,7 +93,7 @@ class TaylorSeerAttentionCacheHook(ModelHook):
                 self.states[i].update(feat, current_step, self.max_order, self.fresh_threshold)
             return attention_outputs[0] if len(attention_outputs) == 1 else attention_outputs
 
-        should_predict = self.states[0].predict_counter > 0
+        should_predict = self.states[0].predict_counter > 0 and self.warmup_steps_counter > self.warmup_steps
 
         if not should_predict:
             attention_outputs = self.fn_ref.original_forward(*args, **kwargs)
@@ -108,9 +104,7 @@ class TaylorSeerAttentionCacheHook(ModelHook):
             return attention_outputs[0] if len(attention_outputs) == 1 else attention_outputs
         else:
             predicted_outputs = [state.predict(current_step) for state in self.states]
-            if len(predicted_outputs) == 1:
-                return predicted_outputs[0]
-            return tuple(predicted_outputs)
+            return predicted_outputs[0] if len(predicted_outputs) == 1 else predicted_outputs
 
     def reset_state(self, module: torch.nn.Module) -> None:
         if self.states is not None:
