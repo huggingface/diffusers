@@ -188,6 +188,11 @@ class WanRotaryPosEmbed(nn.Module):
 
         h_dim = w_dim = 2 * (attention_head_dim // 6)
         t_dim = attention_head_dim - h_dim - w_dim
+
+        self.t_dim = t_dim
+        self.h_dim = h_dim
+        self.w_dim = w_dim
+
         freqs_dtype = torch.float32 if torch.backends.mps.is_available() else torch.float64
 
         freqs_cos = []
@@ -213,11 +218,7 @@ class WanRotaryPosEmbed(nn.Module):
         p_t, p_h, p_w = self.patch_size
         ppf, pph, ppw = num_frames // p_t, height // p_h, width // p_w
 
-        split_sizes = [
-            self.attention_head_dim - 2 * (self.attention_head_dim // 3),
-            self.attention_head_dim // 3,
-            self.attention_head_dim // 3,
-        ]
+        split_sizes = [self.t_dim, self.h_dim, self.w_dim]
 
         freqs_cos = self.freqs_cos.split(split_sizes, dim=1)
         freqs_sin = self.freqs_sin.split(split_sizes, dim=1)
