@@ -409,7 +409,7 @@ class VaeImageProcessor(ConfigMixin):
         src_w = width if ratio < src_ratio else image.width * height // image.height
         src_h = height if ratio >= src_ratio else image.height * width // image.width
 
-        resized = image.resize((src_w, src_h), resample=PIL_INTERPOLATION["lanczos"])
+        resized = image.resize((src_w, src_h), resample=PIL_INTERPOLATION[self.config.resample])
         res = Image.new("RGB", (width, height))
         res.paste(resized, box=(width // 2 - src_w // 2, height // 2 - src_h // 2))
 
@@ -460,7 +460,7 @@ class VaeImageProcessor(ConfigMixin):
         src_w = width if ratio > src_ratio else image.width * height // image.height
         src_h = height if ratio <= src_ratio else image.height * width // image.width
 
-        resized = image.resize((src_w, src_h), resample=PIL_INTERPOLATION["lanczos"])
+        resized = image.resize((src_w, src_h), resample=PIL_INTERPOLATION[self.config.resample])
         res = Image.new("RGB", (width, height))
         res.paste(resized, box=(width // 2 - src_w // 2, height // 2 - src_h // 2))
         return res

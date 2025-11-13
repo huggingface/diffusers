@@ -523,7 +523,7 @@ class QwenImageCoreDenoiseStep(SequentialPipelineBlocks):
         QwenImageOptionalControlNetBeforeDenoiseStep,
         QwenImageAutoDenoiseStep,
     ]
-    block_names = ["input", "controlnet_input", "before_denoise", "controlnet_before_denoise", "denoise", "decode"]
+    block_names = ["input", "controlnet_input", "before_denoise", "controlnet_before_denoise", "denoise"]
 
     @property
     def description(self):
@@ -534,7 +534,6 @@ class QwenImageCoreDenoiseStep(SequentialPipelineBlocks):
             + " - `QwenImageAutoBeforeDenoiseStep` (before_denoise) prepares the inputs for the denoising step.\n"
             + " - `QwenImageOptionalControlNetBeforeDenoiseStep` (controlnet_before_denoise) prepares the controlnet input for the denoising step.\n"
             + " - `QwenImageAutoDenoiseStep` (denoise) iteratively denoises the latents.\n"
-            + " - `QwenImageAutoDecodeStep` (decode) decodes the latents into images.\n\n"
             + "This step support text-to-image, image-to-image, inpainting, and controlnet tasks for QwenImage:\n"
             + " - for image-to-image generation, you need to provide `image_latents`\n"
             + " - for inpainting, you need to provide `processed_mask_image` and `image_latents`\n"
