@@ -376,6 +376,19 @@ class DPMSolverMultistepInverseScheduler(SchedulerMixin, ConfigMixin):
 
     # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler._sigma_to_t
     def _sigma_to_t(self, sigma, log_sigmas):
+        """
+        Convert sigma values to corresponding timestep values through interpolation.
+
+        Args:
+            sigma (`np.ndarray`):
+                The sigma value(s) to convert to timestep(s).
+            log_sigmas (`np.ndarray`):
+                The logarithm of the sigma schedule used for interpolation.
+
+        Returns:
+            `np.ndarray`:
+                The interpolated timestep value(s) corresponding to the input sigma(s).
+        """
         # get log sigma
         log_sigma = np.log(np.maximum(sigma, 1e-10))
 
@@ -411,7 +424,19 @@ class DPMSolverMultistepInverseScheduler(SchedulerMixin, ConfigMixin):
 
     # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler._convert_to_karras
     def _convert_to_karras(self, in_sigmas: torch.Tensor, num_inference_steps) -> torch.Tensor:
-        """Constructs the noise schedule of Karras et al. (2022)."""
+        """
+        Construct the noise schedule of Karras et al. (2022).
+
+        Args:
+            in_sigmas (`torch.Tensor`):
+                The input sigma values to be converted.
+            num_inference_steps (`int`):
+                The number of inference steps to generate the noise schedule for.
+
+        Returns:
+            `torch.Tensor`:
+                The converted sigma values following the Karras noise schedule.
+        """
 
         # Hack to make sure that other schedulers which copy this function don't break
         # TODO: Add this logic to the other schedulers
@@ -437,7 +462,19 @@ class DPMSolverMultistepInverseScheduler(SchedulerMixin, ConfigMixin):
 
     # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler._convert_to_exponential
     def _convert_to_exponential(self, in_sigmas: torch.Tensor, num_inference_steps: int) -> torch.Tensor:
-        """Constructs an exponential noise schedule."""
+        """
+        Construct an exponential noise schedule.
+
+        Args:
+            in_sigmas (`torch.Tensor`):
+                The input sigma values to be converted.
+            num_inference_steps (`int`):
+                The number of inference steps to generate the noise schedule for.
+
+        Returns:
+            `torch.Tensor`:
+                The converted sigma values following an exponential schedule.
+        """
 
         # Hack to make sure that other schedulers which copy this function don't break
         # TODO: Add this logic to the other schedulers
@@ -461,7 +498,24 @@ class DPMSolverMultistepInverseScheduler(SchedulerMixin, ConfigMixin):
     def _convert_to_beta(
         self, in_sigmas: torch.Tensor, num_inference_steps: int, alpha: float = 0.6, beta: float = 0.6
     ) -> torch.Tensor:
-        """From "Beta Sampling is All You Need" [arXiv:2407.12173] (Lee et. al, 2024)"""
+        """
+        Construct a beta noise schedule as proposed in ["Beta Sampling is All You
+        Need"](https://huggingface.co/papers/2407.12173) (Lee et al., 2024).
+
+        Args:
+            in_sigmas (`torch.Tensor`):
+                The input sigma values to be converted.
+            num_inference_steps (`int`):
+                The number of inference steps to generate the noise schedule for.
+            alpha (`float`, *optional*, defaults to `0.6`):
+                The alpha parameter for the beta distribution.
+            beta (`float`, *optional*, defaults to `0.6`):
+                The beta parameter for the beta distribution.
+
+        Returns:
+            `torch.Tensor`:
+                The converted sigma values following a beta distribution schedule.
+        """
 
         # Hack to make sure that other schedulers which copy this function don't break
         # TODO: Add this logic to the other schedulers

@@ -103,10 +103,11 @@ def rescale_zero_terminal_snr(betas: torch.Tensor) -> torch.Tensor:
 
     Args:
         betas (`torch.Tensor`):
-            the betas that the scheduler is being initialized with.
+            The betas that the scheduler is being initialized with.
 
     Returns:
-        `torch.Tensor`: rescaled betas with zero terminal SNR
+        `torch.Tensor`:
+            Rescaled betas with zero terminal SNR.
     """
     # Convert betas to alphas_bar_sqrt
     alphas = 1.0 - betas
@@ -152,8 +153,8 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         trained_betas (`np.ndarray`, *optional*):
             Pass an array of betas directly to the constructor to bypass `beta_start` and `beta_end`.
         prediction_type (`Literal["epsilon", "sample", "v_prediction"]`, defaults to `"epsilon"`, *optional*):
-            Prediction type of the scheduler function; can be `"epsilon"` (predicts the noise of the diffusion process),
-            `"sample"` (directly predicts the noisy sample`) or `"v_prediction"` (see section 2.4 of [Imagen
+            Prediction type of the scheduler function; can be `"epsilon"` (predicts the noise of the diffusion
+            process), `"sample"` (directly predicts the noisy sample`) or `"v_prediction"` (see section 2.4 of [Imagen
             Video](https://imagen.research.google/video/paper.pdf) paper).
         interpolation_type (`Literal["linear", "log_linear"]`, defaults to `"linear"`, *optional*):
             The interpolation type to compute intermediate sigmas for the scheduler denoising steps. Should be one of
@@ -167,9 +168,11 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
             Whether to use beta sigmas for step sizes in the noise schedule during the sampling process. Refer to [Beta
             Sampling is All You Need](https://huggingface.co/papers/2407.12173) for more information.
         sigma_min (`float`, *optional*):
-            The minimum sigma value for the noise schedule. If not provided, defaults to the last sigma in the schedule.
+            The minimum sigma value for the noise schedule. If not provided, defaults to the last sigma in the
+            schedule.
         sigma_max (`float`, *optional*):
-            The maximum sigma value for the noise schedule. If not provided, defaults to the first sigma in the schedule.
+            The maximum sigma value for the noise schedule. If not provided, defaults to the first sigma in the
+            schedule.
         timestep_spacing (`Literal["linspace", "leading", "trailing"]`, defaults to `"linspace"`):
             The way the timesteps should be scaled. Refer to Table 2 of the [Common Diffusion Noise Schedules and
             Sample Steps are Flawed](https://huggingface.co/papers/2305.08891) for more information.
@@ -284,7 +287,7 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
     def step_index(self) -> Optional[int]:
         """
         The index counter for current timestep. It will increase by 1 after each scheduler step.
-        
+
         Returns:
             `int` or `None`:
                 The current step index, or `None` if not initialized.
@@ -295,7 +298,7 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
     def begin_index(self) -> Optional[int]:
         """
         The index for the first timestep. It should be set from pipeline with `set_begin_index` method.
-        
+
         Returns:
             `int` or `None`:
                 The begin index for the scheduler, or `None` if not set.
@@ -349,7 +352,7 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
 
         Args:
             num_inference_steps (`int`, *optional*):
-                The number of diffusion steps used when generating samples with a pre-trained model. If `None`, 
+                The number of diffusion steps used when generating samples with a pre-trained model. If `None`,
                 `timesteps` or `sigmas` must be provided.
             device (`str` or `torch.device`, *optional*):
                 The device to which the timesteps should be moved to. If `None`, the timesteps are not moved.
@@ -358,10 +361,9 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
                 based on the `timestep_spacing` attribute. If `timesteps` is passed, `num_inference_steps` and `sigmas`
                 must be `None`, and `timestep_spacing` attribute will be ignored.
             sigmas (`List[float]`, *optional*):
-                Custom sigmas used to support arbitrary timesteps schedule. If `None`, timesteps and sigmas
-                will be generated based on the relevant scheduler attributes. If `sigmas` is passed,
-                `num_inference_steps` and `timesteps` must be `None`, and the timesteps will be generated based on the
-                custom sigmas schedule.
+                Custom sigmas used to support arbitrary timesteps schedule. If `None`, timesteps and sigmas will be
+                generated based on the relevant scheduler attributes. If `sigmas` is passed, `num_inference_steps` and
+                `timesteps` must be `None`, and the timesteps will be generated based on the custom sigmas schedule.
         """
 
         if timesteps is not None and sigmas is not None:
@@ -583,8 +585,8 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         self, in_sigmas: torch.Tensor, num_inference_steps: int, alpha: float = 0.6, beta: float = 0.6
     ) -> torch.Tensor:
         """
-        Construct a beta noise schedule as proposed in "Beta Sampling is All You Need" [arXiv:2407.12173] (Lee et al.,
-        2024).
+        Construct a beta noise schedule as proposed in ["Beta Sampling is All You
+        Need"](https://huggingface.co/papers/2407.12173) (Lee et al., 2024).
 
         Args:
             in_sigmas (`torch.Tensor`):
@@ -641,7 +643,7 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
 
         Returns:
             `int`:
-                The index of the timestep in the schedule. For the very first step, returns the second index if 
+                The index of the timestep in the schedule. For the very first step, returns the second index if
                 multiple matches exist to avoid skipping a sigma when starting mid-schedule (e.g., for image-to-image).
         """
         if schedule_timesteps is None:
@@ -715,7 +717,7 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         Returns:
             [`~schedulers.scheduling_euler_discrete.EulerDiscreteSchedulerOutput`] or `tuple`:
                 If `return_dict` is `True`, [`~schedulers.scheduling_euler_discrete.EulerDiscreteSchedulerOutput`] is
-                returned, otherwise a tuple is returned where the first element is the sample tensor and the second 
+                returned, otherwise a tuple is returned where the first element is the sample tensor and the second
                 element is the predicted original sample.
         """
 
