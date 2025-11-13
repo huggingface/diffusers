@@ -21,12 +21,16 @@ import torch
 from .hooks import BaseState, HookRegistry, ModelHook, StateManager
 
 
+_FLUX_TEACACHE_HOOK = "flux_teacache"
+
+
 @dataclass
 class FluxTeaCacheConfig:
     """Configuration for FLUX TeaCache following original algorithm."""
     rel_l1_thresh: float = 0.2  # threshold for accumulated distance (based on paper 0.1->0.3 works best)
     coefficients: Optional[List[float]] = None  # FLUX-specific polynomial coefficients  
     current_timestep_callback: Optional[Callable[[], int]] = None
+    num_inference_steps_callback: Optional[Callable[[], int]] = None  # Callback to get total inference steps
     
     def __post_init__(self):
         if self.coefficients is None:
@@ -46,6 +50,7 @@ class FluxTeaCacheState(BaseState):
         
     def reset(self):
         self.cnt = 0
+        self.num_steps = 0
         self.accumulated_rel_l1_distance = 0.0
         self.previous_modulated_input = None  
         self.previous_residual = None
@@ -70,6 +75,21 @@ class FluxTeaCacheHook(ModelHook):
                    encoder_hidden_states, txt_ids, img_ids, **kwargs):
         """Replace FLUX transformer forward with TeaCache logic."""
         state = self.state_manager.get_state()
+        
+        # Reset counter if we've completed all steps (new inference run)
+        if state.cnt == state.num_steps and state.num_steps > 0:
+            state.cnt = 0
+            state.accumulated_rel_l1_distance = 0.0
+            state.previous_modulated_input = None
+            state.previous_residual = None
+        
+        # Set num_steps on first timestep if not already set
+        if state.cnt == 0 and state.num_steps == 0:
+            if self.config.num_inference_steps_callback is not None:
+                state.num_steps = self.config.num_inference_steps_callback()
+            # If still not set, try to get from module attribute (set by pipeline)
+            if state.num_steps == 0 and hasattr(module, 'num_steps'):
+                state.num_steps = module.num_steps
         
         # Extract timestep embedding for FLUX
         timestep = timestep.to(hidden_states.dtype) * 1000
@@ -102,9 +122,18 @@ class FluxTeaCacheHook(ModelHook):
         
     def _should_compute_full_transformer(self, state, modulated_inp):
         """Core caching decision logic from original TeaCache."""
-        # Compute first and last timesteps (always compute)
-        if state.cnt == 0 or state.cnt == state.num_steps - 1:
+        # compute first timestep
+        if state.cnt == 0:
             state.accumulated_rel_l1_distance = 0
+            return True
+        
+        # compute last timestep (if num_steps is set)
+        if state.num_steps > 0 and state.cnt == state.num_steps - 1:
+            state.accumulated_rel_l1_distance = 0
+            return True
+        
+        # Need previous modulated input for comparison
+        if state.previous_modulated_input is None:
             return True
             
         # Compute relative L1 distance 
@@ -138,4 +167,4 @@ def apply_flux_teacache(module, config: FluxTeaCacheConfig):
     # Register hook on main transformer
     registry = HookRegistry.check_if_exists_or_initialize(module)
     hook = FluxTeaCacheHook(config)
-    registry.register_hook(hook, "flux_teacache")
+    registry.register_hook(hook, _FLUX_TEACACHE_HOOK)
