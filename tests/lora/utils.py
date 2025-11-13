@@ -28,9 +28,9 @@ from diffusers import (
     AutoencoderKL,
     UNet2DConditionModel,
 )
+from diffusers.hooks.group_offloading import apply_group_offloading
 from diffusers.utils import logging
 from diffusers.utils.import_utils import is_peft_available
-from diffusers.hooks.group_offloading import apply_group_offloading
 
 from ..testing_utils import (
     CaptureLogger,
@@ -2403,7 +2403,8 @@ class PeftLoraLoaderMixinTests:
             )
 
             pipe.load_lora_weights(tmpdirname, adapter_name="default")
-            pipe(**inputs, generator=torch.manual_seed(0))
+            out_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
             # Delete the adapter
             pipe.delete_adapters("default")
-            pipe(**inputs, generator=torch.manual_seed(0))
+            out_no_lora = pipe(**inputs, generator=torch.manual_seed(0))[0]
+            self.assertFalse(np.allclose(out_lora, out_no_lora, atol=1e-3, rtol=1e-3))
