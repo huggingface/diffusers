@@ -90,10 +90,56 @@ class FluxTeaCacheConfig:
     num_inference_steps_callback: Optional[Callable[[], int]] = None
 
     def __post_init__(self):
+        # Validate rel_l1_thresh
+        if not isinstance(self.rel_l1_thresh, (int, float)):
+            raise TypeError(
+                f"rel_l1_thresh must be a number, got {type(self.rel_l1_thresh).__name__}. "
+                f"Please provide a float value between 0.1 and 1.0."
+            )
+        if self.rel_l1_thresh <= 0:
+            raise ValueError(
+                f"rel_l1_thresh must be positive, got {self.rel_l1_thresh}. "
+                f"Based on the TeaCache paper, values between 0.1 and 0.3 work best. "
+                f"Try 0.25 for 1.5x speedup or 0.6 for 2x speedup."
+            )
+        if self.rel_l1_thresh < 0.05:
+            import warnings
+            warnings.warn(
+                f"rel_l1_thresh={self.rel_l1_thresh} is very low and may result in minimal caching. "
+                f"Consider using values between 0.1 and 0.3 for optimal performance.",
+                UserWarning
+            )
+        if self.rel_l1_thresh > 1.0:
+            import warnings
+            warnings.warn(
+                f"rel_l1_thresh={self.rel_l1_thresh} is very high and may cause quality degradation. "
+                f"Consider using values between 0.1 and 0.6 for better quality-speed tradeoff.",
+                UserWarning
+            )
+
+        # Set default coefficients if not provided
         if self.coefficients is None:
             # Original FLUX coefficients from TeaCache paper
             self.coefficients = [4.98651651e+02, -2.83781631e+02,
                                5.58554382e+01, -3.82021401e+00, 2.64230861e-01]
+
+        # Validate coefficients
+        if not isinstance(self.coefficients, (list, tuple)):
+            raise TypeError(
+                f"coefficients must be a list or tuple, got {type(self.coefficients).__name__}. "
+                f"Please provide a list of 5 polynomial coefficients."
+            )
+        if len(self.coefficients) != 5:
+            raise ValueError(
+                f"coefficients must contain exactly 5 elements for 4th-degree polynomial, "
+                f"got {len(self.coefficients)}. The polynomial is evaluated as: "
+                f"c[0]*x^4 + c[1]*x^3 + c[2]*x^2 + c[3]*x + c[4]"
+            )
+        if not all(isinstance(c, (int, float)) for c in self.coefficients):
+            raise TypeError(
+                f"All coefficients must be numbers. "
+                f"Got types: {[type(c).__name__ for c in self.coefficients]}"
+            )
 
     def __repr__(self) -> str:
         return (
@@ -404,7 +450,11 @@ def apply_flux_teacache(module, config: FluxTeaCacheConfig):
 
     # Validate FLUX model
     if not isinstance(module, FluxTransformer2DModel):
-        raise ValueError("TeaCache supports only FLUX transformer model for now")
+        raise ValueError(
+            f"TeaCache currently supports only FLUX transformer models. "
+            f"Got {type(module).__name__}. Please ensure you're applying TeaCache to a "
+            f"FluxTransformer2DModel instance (e.g., pipe.transformer)."
+        )
 
     # Register hook on main transformer
     registry = HookRegistry.check_if_exists_or_initialize(module)
