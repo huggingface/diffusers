@@ -284,7 +284,7 @@ def run_benchmark_suite():
             print(f"WARNING: {overhead_no_padding:.1f}% overhead when using masks")
 
     # Save to CSV
-    csv_filename = "qwen_mask_benchmark_results.csv"
+    csv_filename = "qwenimage.csv"
     df.to_csv(csv_filename, index=False)
     print(f"\nResults saved to: {csv_filename}")
 
