@@ -383,12 +383,18 @@ def _check_shape(
     attn_mask: Optional[torch.Tensor] = None,
     **kwargs,
 ) -> None:
+    # Expected shapes:
+    # query: (batch_size, seq_len_q, num_heads, head_dim)
+    # key:   (batch_size, seq_len_kv, num_heads, head_dim)
+    # value: (batch_size, seq_len_kv, num_heads, head_dim)
+    # attn_mask: (seq_len_q, seq_len_kv) or (batch_size, seq_len_q, seq_len_kv)
+    #            or (batch_size, num_heads, seq_len_q, seq_len_kv)
     if query.shape[-1] != key.shape[-1]:
-        raise ValueError("Query and key must have the same last dimension.")
-    if query.shape[-2] != value.shape[-2]:
-        raise ValueError("Query and value must have the same second to last dimension.")
-    if attn_mask is not None and attn_mask.shape[-1] != key.shape[-2]:
-        raise ValueError("Attention mask must match the key's second to last dimension.")
+        raise ValueError("Query and key must have the same head dimension.")
+    if key.shape[-3] != value.shape[-3]:
+        raise ValueError("Key and value must have the same sequence length.")
+    if attn_mask is not None and attn_mask.shape[-1] != key.shape[-3]:
+        raise ValueError("Attention mask must match the key's sequence length.")
 
 
 # ===== Helper functions =====

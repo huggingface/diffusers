@@ -373,7 +373,7 @@ def rescale_noise_cfg(noise_cfg, noise_pred_text, guidance_rescale=0.0):
     r"""
     Rescales `noise_cfg` tensor based on `guidance_rescale` to improve image quality and fix overexposure. Based on
     Section 3.4 from [Common Diffusion Noise Schedules and Sample Steps are
-    Flawed](https://arxiv.org/pdf/2305.08891.pdf).
+    Flawed](https://huggingface.co/papers/2305.08891).
 
     Args:
         noise_cfg (`torch.Tensor`):
