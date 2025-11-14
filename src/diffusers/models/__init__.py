@@ -92,6 +92,7 @@ if is_torch_available():
     _import_structure["transformers.transformer_cosmos"] = ["CosmosTransformer3DModel"]
     _import_structure["transformers.transformer_easyanimate"] = ["EasyAnimateTransformer3DModel"]
     _import_structure["transformers.transformer_flux"] = ["FluxTransformer2DModel"]
+    _import_structure["transformers.transformer_flux2"] = ["Flux2Transformer2DModel"]
     _import_structure["transformers.transformer_hidream_image"] = ["HiDreamImageTransformer2DModel"]
     _import_structure["transformers.transformer_hunyuan_video"] = ["HunyuanVideoTransformer3DModel"]
     _import_structure["transformers.transformer_hunyuan_video_framepack"] = ["HunyuanVideoFramepackTransformer3DModel"]
@@ -189,6 +190,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             DiTTransformer2DModel,
             DualTransformer2DModel,
             EasyAnimateTransformer3DModel,
+            Flux2Transformer2DModel,
             FluxTransformer2DModel,
             HiDreamImageTransformer2DModel,
             HunyuanDiT2DModel,
