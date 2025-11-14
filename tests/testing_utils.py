@@ -241,7 +241,6 @@ def parse_flag_from_env(key, default=False):
 
 _run_slow_tests = parse_flag_from_env("RUN_SLOW", default=False)
 _run_nightly_tests = parse_flag_from_env("RUN_NIGHTLY", default=False)
-_run_compile_tests = parse_flag_from_env("RUN_COMPILE", default=False)
 
 
 def floats_tensor(shape, scale=1.0, rng=None, name=None):
@@ -282,12 +281,128 @@ def nightly(test_case):
 
 def is_torch_compile(test_case):
     """
-    Decorator marking a test that runs compile tests in the diffusers CI.
-
-    Compile tests are skipped by default. Set the RUN_COMPILE environment variable to a truthy value to run them.
-
+    Decorator marking a test as a torch.compile test. These tests can be filtered using:
+        pytest -m "not compile" to skip
+        pytest -m compile to run only these tests
     """
-    return pytest.mark.skipif(not _run_compile_tests, reason="test is torch compile")(test_case)
+    return pytest.mark.compile(test_case)
+
+
+def is_single_file(test_case):
+    """
+    Decorator marking a test as a single file loading test. These tests can be filtered using:
+        pytest -m "not single_file" to skip
+        pytest -m single_file to run only these tests
+    """
+    return pytest.mark.single_file(test_case)
+
+
+def is_lora(test_case):
+    """
+    Decorator marking a test as a LoRA test. These tests can be filtered using:
+        pytest -m "not lora" to skip
+        pytest -m lora to run only these tests
+    """
+    return pytest.mark.lora(test_case)
+
+
+def is_ip_adapter(test_case):
+    """
+    Decorator marking a test as an IP Adapter test. These tests can be filtered using:
+        pytest -m "not ip_adapter" to skip
+        pytest -m ip_adapter to run only these tests
+    """
+    return pytest.mark.ip_adapter(test_case)
+
+
+def is_training(test_case):
+    """
+    Decorator marking a test as a training test. These tests can be filtered using:
+        pytest -m "not training" to skip
+        pytest -m training to run only these tests
+    """
+    return pytest.mark.training(test_case)
+
+
+def is_attention(test_case):
+    """
+    Decorator marking a test as an attention test. These tests can be filtered using:
+        pytest -m "not attention" to skip
+        pytest -m attention to run only these tests
+    """
+    return pytest.mark.attention(test_case)
+
+
+def is_memory(test_case):
+    """
+    Decorator marking a test as a memory optimization test. These tests can be filtered using:
+        pytest -m "not memory" to skip
+        pytest -m memory to run only these tests
+    """
+    return pytest.mark.memory(test_case)
+
+
+def is_cpu_offload(test_case):
+    """
+    Decorator marking a test as a CPU offload test. These tests can be filtered using:
+        pytest -m "not cpu_offload" to skip
+        pytest -m cpu_offload to run only these tests
+    """
+    return pytest.mark.cpu_offload(test_case)
+
+
+def is_group_offload(test_case):
+    """
+    Decorator marking a test as a group offload test. These tests can be filtered using:
+        pytest -m "not group_offload" to skip
+        pytest -m group_offload to run only these tests
+    """
+    return pytest.mark.group_offload(test_case)
+
+
+def is_bitsandbytes(test_case):
+    """
+    Decorator marking a test as a BitsAndBytes quantization test. These tests can be filtered using:
+        pytest -m "not bitsandbytes" to skip
+        pytest -m bitsandbytes to run only these tests
+    """
+    return pytest.mark.bitsandbytes(test_case)
+
+
+def is_quanto(test_case):
+    """
+    Decorator marking a test as a Quanto quantization test. These tests can be filtered using:
+        pytest -m "not quanto" to skip
+        pytest -m quanto to run only these tests
+    """
+    return pytest.mark.quanto(test_case)
+
+
+def is_torchao(test_case):
+    """
+    Decorator marking a test as a TorchAO quantization test. These tests can be filtered using:
+        pytest -m "not torchao" to skip
+        pytest -m torchao to run only these tests
+    """
+    return pytest.mark.torchao(test_case)
+
+
+def is_gguf(test_case):
+    """
+    Decorator marking a test as a GGUF quantization test. These tests can be filtered using:
+        pytest -m "not gguf" to skip
+        pytest -m gguf to run only these tests
+    """
+    return pytest.mark.gguf(test_case)
+
+
+def is_modelopt(test_case):
+    """
+    Decorator marking a test as a NVIDIA ModelOpt quantization test. These tests can be filtered using:
+        pytest -m "not modelopt" to skip
+        pytest -m modelopt to run only these tests
+    """
+    return pytest.mark.modelopt(test_case)
 
 
 def require_torch(test_case):

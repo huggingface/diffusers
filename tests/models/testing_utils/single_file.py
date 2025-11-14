@@ -23,6 +23,7 @@ from diffusers.loaders.single_file_utils import _extract_repo_id_and_weights_nam
 
 from ...testing_utils import (
     backend_empty_cache,
+    is_single_file,
     nightly,
     require_torch_accelerator,
     torch_device,
@@ -68,23 +69,23 @@ class SingleFileTesterMixin:
         - ckpt_path: Path or Hub path to the single file checkpoint
         - subfolder: (Optional) Subfolder within the repo
         - torch_dtype: (Optional) torch dtype to use for testing
+
+    Pytest mark: single_file
+        Use `pytest -m "not single_file"` to skip these tests
     """
 
     pretrained_model_name_or_path = None
     ckpt_path = None
 
     def setup_method(self):
-        """Setup before each test method."""
         gc.collect()
         backend_empty_cache(torch_device)
 
     def teardown_method(self):
-        """Cleanup after each test method."""
         gc.collect()
         backend_empty_cache(torch_device)
 
     def test_single_file_model_config(self):
-        """Test that config matches between pretrained and single file loading."""
         pretrained_kwargs = {}
         single_file_kwargs = {}
 
@@ -111,7 +112,6 @@ class SingleFileTesterMixin:
             )
 
     def test_single_file_model_parameters(self):
-        """Test that parameters match between pretrained and single file loading."""
         pretrained_kwargs = {}
         single_file_kwargs = {}
 
@@ -152,7 +152,6 @@ class SingleFileTesterMixin:
             )
 
     def test_single_file_loading_local_files_only(self):
-        """Test single file loading with local_files_only=True."""
         single_file_kwargs = {}
 
         if hasattr(self, "torch_dtype") and self.torch_dtype:
@@ -169,7 +168,6 @@ class SingleFileTesterMixin:
             assert model_single_file is not None, "Failed to load model with local_files_only=True"
 
     def test_single_file_loading_with_diffusers_config(self):
-        """Test single file loading with diffusers config."""
         single_file_kwargs = {}
 
         if hasattr(self, "torch_dtype") and self.torch_dtype:
@@ -199,7 +197,6 @@ class SingleFileTesterMixin:
             ), f"{param_name} differs: pretrained={model.config[param_name]}, single_file={param_value}"
 
     def test_single_file_loading_with_diffusers_config_local_files_only(self):
-        """Test single file loading with diffusers config and local_files_only=True."""
         single_file_kwargs = {}
 
         if hasattr(self, "torch_dtype") and self.torch_dtype:
@@ -217,7 +214,6 @@ class SingleFileTesterMixin:
             assert model_single_file is not None, "Failed to load model with config and local_files_only=True"
 
     def test_single_file_loading_dtype(self):
-        """Test single file loading with different dtypes."""
         for dtype in [torch.float32, torch.float16]:
             if torch_device == "mps" and dtype == torch.bfloat16:
                 continue
@@ -232,7 +228,6 @@ class SingleFileTesterMixin:
             backend_empty_cache(torch_device)
 
     def test_checkpoint_variant_loading(self):
-        """Test loading checkpoints with alternate keys/variants if provided."""
         if not hasattr(self, "alternate_ckpt_paths") or not self.alternate_ckpt_paths:
             return
 

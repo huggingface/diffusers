@@ -43,24 +43,24 @@ class TorchCompileTesterMixin:
     Expected methods to be implemented by subclasses:
         - get_init_dict(): Returns dict of arguments to initialize the model
         - get_dummy_inputs(): Returns dict of inputs to pass to the model forward pass
+
+    Pytest mark: compile
+        Use `pytest -m "not compile"` to skip these tests
     """
 
     different_shapes_for_compilation = None
 
     def setup_method(self):
-        """Setup before each test method."""
         torch.compiler.reset()
         gc.collect()
         backend_empty_cache(torch_device)
 
     def teardown_method(self):
-        """Cleanup after each test method."""
         torch.compiler.reset()
         gc.collect()
         backend_empty_cache(torch_device)
 
     def test_torch_compile_recompilation_and_graph_break(self):
-        """Test that model compiles without graph breaks and doesn't recompile unnecessarily."""
         init_dict = self.get_init_dict()
         inputs_dict = self.get_dummy_inputs()
 
@@ -77,7 +77,6 @@ class TorchCompileTesterMixin:
             _ = model(**inputs_dict)
 
     def test_torch_compile_repeated_blocks(self):
-        """Test compilation of repeated blocks if model supports it."""
         if self.model_class._repeated_blocks is None:
             pytest.skip("Skipping test as the model class doesn't have `_repeated_blocks` set.")
 
@@ -101,7 +100,6 @@ class TorchCompileTesterMixin:
             _ = model(**inputs_dict)
 
     def test_compile_with_group_offloading(self):
-        """Test that compilation works with group offloading enabled."""
         if not self.model_class._supports_group_offloading:
             pytest.skip("Model does not support group offloading.")
 
@@ -128,7 +126,6 @@ class TorchCompileTesterMixin:
             _ = model(**inputs_dict)
 
     def test_compile_on_different_shapes(self):
-        """Test dynamic compilation on different input shapes."""
         if self.different_shapes_for_compilation is None:
             pytest.skip(f"Skipping as `different_shapes_for_compilation` is not set for {self.__class__.__name__}.")
         torch.fx.experimental._config.use_duck_shape = False
@@ -144,7 +141,6 @@ class TorchCompileTesterMixin:
                 _ = model(**inputs_dict)
 
     def test_compile_works_with_aot(self):
-        """Test that model works with ahead-of-time compilation and packaging."""
         from torch._inductor.package import load_package
 
         init_dict = self.get_init_dict()

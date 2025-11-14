@@ -98,9 +98,9 @@ class GGUFCudaKernelsTests(unittest.TestCase):
                 output_native = linear.forward_native(x)
                 output_cuda = linear.forward_cuda(x)
 
-            assert torch.allclose(output_native, output_cuda, 1e-2), (
-                f"GGUF CUDA Kernel Output is different from Native Output for {quant_type}"
-            )
+            assert torch.allclose(
+                output_native, output_cuda, 1e-2
+            ), f"GGUF CUDA Kernel Output is different from Native Output for {quant_type}"
 
 
 @nightly

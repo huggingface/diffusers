@@ -18,7 +18,6 @@ import uuid
 
 import pytest
 import torch
-from huggingface_hub import ModelCard, delete_repo
 from huggingface_hub.utils import is_jinja_available
 
 from ...others.test_utils import TOKEN, USER, is_staging_test
