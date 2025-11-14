@@ -20,6 +20,7 @@ import torch
 from torch.nn import functional as F
 from transformers import CLIPTextModel, CLIPTokenizer, Qwen2_5_VLForConditionalGeneration, Qwen2VLProcessor
 
+from ...image_processor import PipelineImageInput
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...loaders import KandinskyLoraLoaderMixin
 from ...models import AutoencoderKLHunyuanVideo
@@ -57,8 +58,8 @@ EXAMPLE_DOC_STRING = """
 
         ```python
         >>> import torch
-        >>> from diffusers import Kandinsky5T2VPipeline
-        >>> from diffusers.utils import export_to_video
+        >>> from diffusers import Kandinsky5I2VPipeline
+        >>> from diffusers.utils import export_to_video, load_image
 
         >>> # Available models:
         >>> # ai-forever/Kandinsky-5.0-T2V-Lite-sft-5s-Diffusers
@@ -67,13 +68,17 @@ EXAMPLE_DOC_STRING = """
         >>> # ai-forever/Kandinsky-5.0-T2V-Lite-pretrain-5s-Diffusers
 
         >>> model_id = "ai-forever/Kandinsky-5.0-T2V-Lite-sft-5s-Diffusers"
-        >>> pipe = Kandinsky5T2VPipeline.from_pretrained(model_id, torch_dtype=torch.bfloat16)
+        >>> pipe = Kandinsky5I2VPipeline.from_pretrained(model_id, torch_dtype=torch.bfloat16)
         >>> pipe = pipe.to("cuda")
 
-        >>> prompt = "A cat and a dog baking a cake together in a kitchen."
+        >>> image = load_image(
+        ...     "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/astronaut.jpg"
+        ... )
+        >>> prompt = "An astronaut floating in space with Earth in the background, cinematic shot"
         >>> negative_prompt = "Static, 2D cartoon, cartoon, 2d animation, paintings, images, worst quality, low quality, ugly, deformed, walking backwards"
 
         >>> output = pipe(
+        ...     image=image,
         ...     prompt=prompt,
         ...     negative_prompt=negative_prompt,
         ...     height=512,
@@ -109,9 +114,9 @@ def prompt_clean(text):
     return text
 
 
-class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
+class Kandinsky5I2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
     r"""
-    Pipeline for text-to-video generation using Kandinsky 5.0.
+    Pipeline for image-to-video generation using Kandinsky 5.0.
 
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods
     implemented for all pipelines (downloading, saving, running on a particular device, etc.).
@@ -184,7 +189,6 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
         self.vae_scale_factor_spatial = self.vae.config.spatial_compression_ratio if getattr(self, "vae", None) else 8
         self.video_processor = VideoProcessor(vae_scale_factor=self.vae_scale_factor_spatial)
 
-
     def _get_scale_factor(self, height: int, width: int) -> tuple:
         """
         Calculate the scale factor based on resolution.
@@ -203,7 +207,6 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
         else:  # 720p and above
             return (1, 3.16, 3.16)
 
-    # Add model CPU offload methods
     def enable_model_cpu_offload(self, gpu_id: Optional[int] = None):
         r"""
         Offloads all models to CPU using accelerate, reducing memory usage with a low impact on performance. Compared
@@ -260,7 +263,7 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
         if hasattr(self, "vae"):
             models.append(self.vae)
         return models
-
+    
     def maybe_free_model_hooks(self):
         r"""
         Function that might remove all the `_hf_hook` if they are set (which is the case if
@@ -272,7 +275,7 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
                 module._hf_hook = None
 
         if hasattr(self, "_offload_hook"):
-            self._offload_hook()
+            self._offload_hook()   
 
     @staticmethod
     def fast_sta_nabla(T: int, H: int, W: int, wT: int = 3, wH: int = 3, wW: int = 3, device="cuda") -> torch.Tensor:
@@ -374,7 +377,6 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
         Args:
             prompt (Union[str, List[str]]): Input prompt or list of prompts
             device (torch.device): Device to run encoding on
-            num_videos_per_prompt (int): Number of videos to generate per prompt
             max_sequence_length (int): Maximum sequence length for tokenization
             dtype (torch.dtype): Data type for embeddings
 
@@ -423,7 +425,6 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
         Args:
             prompt (Union[str, List[str]]): Input prompt or list of prompts
             device (torch.device): Device to run encoding on
-            num_videos_per_prompt (int): Number of videos to generate per prompt
             dtype (torch.dtype): Data type for embeddings
 
         Returns:
@@ -523,8 +524,6 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
         prompt_embeds_clip = prompt_embeds_clip.view(batch_size * num_videos_per_prompt, -1)
 
         # Repeat cumulative sequence lengths for num_videos_per_prompt
-        # Original cu_seqlens: [0, len1, len1+len2, ...]
-        # Need to repeat the differences and reconstruct for repeated prompts
         # Original differences (lengths) for each prompt in the batch
         original_lengths = prompt_cu_seqlens.diff()  # [len1, len2, ...]
         # Repeat the lengths for num_videos_per_prompt
@@ -542,6 +541,7 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
         self,
         prompt,
         negative_prompt,
+        image,
         height,
         width,
         prompt_embeds_qwen=None,
@@ -558,6 +558,7 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
         Args:
             prompt: Input prompt
             negative_prompt: Negative prompt for guidance
+            image: Input image for conditioning
             height: Video height
             width: Video width
             prompt_embeds_qwen: Pre-computed Qwen prompt embeddings
@@ -571,6 +572,9 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
         Raises:
             ValueError: If inputs are invalid
         """
+        if image is None:
+            raise ValueError("`image` must be provided for image-to-video generation")
+
         if height % 16 != 0 or width % 16 != 0:
             raise ValueError(f"`height` and `width` have to be divisible by 16 but are {height} and {width}.")
 
@@ -621,6 +625,7 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
 
     def prepare_latents(
         self,
+        image: PipelineImageInput,
         batch_size: int,
         num_channels_latents: int = 16,
         height: int = 480,
@@ -632,11 +637,13 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
         latents: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         """
-        Prepare initial latent variables for video generation.
+        Prepare initial latent variables for image-to-video generation.
 
-        This method creates random noise latents or uses provided latents as starting point for the denoising process.
+        This method creates random noise latents for all frames except the first frame,
+        which is replaced with the encoded input image.
 
         Args:
+            image (PipelineImageInput): Input image to condition the generation on
             batch_size (int): Number of videos to generate
             num_channels_latents (int): Number of channels in latent space
             height (int): Height of generated video
@@ -648,7 +655,7 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
             latents (torch.Tensor): Pre-existing latents to use
 
         Returns:
-            torch.Tensor: Prepared latent tensor
+            torch.Tensor: Prepared latent tensor with first frame as encoded image
         """
         if latents is not None:
             return latents.to(device=device, dtype=dtype)
@@ -661,13 +668,35 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
             int(width) // self.vae_scale_factor_spatial,
             num_channels_latents,
         )
+        
         if isinstance(generator, list) and len(generator) != batch_size:
             raise ValueError(
                 f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
                 f" size of {batch_size}. Make sure the batch size matches the length of the generators."
             )
 
+        # Generate random noise for all frames
         latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
+        
+        # Encode the input image to use as first frame
+        # Preprocess image
+        image_tensor = self.video_processor.preprocess(image, height=height, width=width).to(device, dtype=dtype)
+        
+        # Encode image to latents using VAE
+        with torch.no_grad():
+            # Convert image to video format [batch, channels, 1, height, width]
+            image_video = image_tensor.unsqueeze(2)  # Add temporal dimension
+            image_latents = self.vae.encode(image_video).latent_dist.sample()
+            
+            # Normalize latents if needed
+            if hasattr(self.vae.config, 'scaling_factor'):
+                image_latents = image_latents * self.vae.config.scaling_factor
+            
+            # Reshape to match latent dimensions [batch, frames, height, width, channels]
+            image_latents = image_latents.permute(0, 2, 3, 4, 1)  # [batch, 1, H, W, C]
+            
+            # Replace first frame with encoded image
+            latents[:, 0:1] = image_latents
 
         if self.transformer.visual_cond:
             # For visual conditioning, concatenate with zeros and mask
@@ -683,6 +712,10 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
                 dtype=latents.dtype,
                 device=latents.device,
             )
+            
+            visual_cond_mask[:, 0:1] = 1
+            visual_cond[:, 0:1] = image_latents
+            
             latents = torch.cat([latents, visual_cond, visual_cond_mask], dim=-1)
 
         return latents
@@ -711,6 +744,7 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
+        image: PipelineImageInput,
         prompt: Union[str, List[str]] = None,
         negative_prompt: Optional[Union[str, List[str]]] = None,
         height: int = 512,
@@ -737,9 +771,11 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
         **kwargs,
     ):
         r"""
-        The call function to the pipeline for generation.
+        The call function to the pipeline for image-to-video generation.
 
         Args:
+            image (`PipelineImageInput`):
+                The input image to condition the generation on. Must be an image, a list of images or a `torch.Tensor`.
             prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts to guide the video generation. If not defined, pass `prompt_embeds` instead.
             negative_prompt (`str` or `List[str]`, *optional*):
@@ -749,7 +785,7 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
                 The height in pixels of the generated video.
             width (`int`, defaults to `768`):
                 The width in pixels of the generated video.
-            num_frames (`int`, defaults to `25`):
+            num_frames (`int`, defaults to `121`):
                 The number of frames in the generated video.
             num_inference_steps (`int`, defaults to `50`):
                 The number of denoising steps.
@@ -761,10 +797,18 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
                 A torch generator to make generation deterministic.
             latents (`torch.Tensor`, *optional*):
                 Pre-generated noisy latents.
-            prompt_embeds (`torch.Tensor`, *optional*):
-                Pre-generated text embeddings.
-            negative_prompt_embeds (`torch.Tensor`, *optional*):
-                Pre-generated negative text embeddings.
+            prompt_embeds_qwen (`torch.Tensor`, *optional*):
+                Pre-generated Qwen text embeddings.
+            prompt_embeds_clip (`torch.Tensor`, *optional*):
+                Pre-generated CLIP text embeddings.
+            negative_prompt_embeds_qwen (`torch.Tensor`, *optional*):
+                Pre-generated Qwen negative text embeddings.
+            negative_prompt_embeds_clip (`torch.Tensor`, *optional*):
+                Pre-generated CLIP negative text embeddings.
+            prompt_cu_seqlens (`torch.Tensor`, *optional*):
+                Pre-generated cumulative sequence lengths for Qwen positive prompt.
+            negative_prompt_cu_seqlens (`torch.Tensor`, *optional*):
+                Pre-generated cumulative sequence lengths for Qwen negative prompt.
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generated video.
             return_dict (`bool`, *optional*, defaults to `True`):
@@ -781,7 +825,7 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
         Returns:
             [`~KandinskyPipelineOutput`] or `tuple`:
                 If `return_dict` is `True`, [`KandinskyPipelineOutput`] is returned, otherwise a `tuple` is returned
-                where the first element is a list with the generated images.
+                where the first element is a list with the generated videos.
         """
         if isinstance(callback_on_step_end, (PipelineCallback, MultiPipelineCallbacks)):
             callback_on_step_end_tensor_inputs = callback_on_step_end.tensor_inputs
@@ -790,6 +834,7 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
         self.check_inputs(
             prompt=prompt,
             negative_prompt=negative_prompt,
+            image=image,
             height=height,
             width=width,
             prompt_embeds_qwen=prompt_embeds_qwen,
@@ -827,6 +872,7 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
         if prompt_embeds_qwen is None:
             prompt_embeds_qwen, prompt_embeds_clip, prompt_cu_seqlens = self.encode_prompt(
                 prompt=prompt,
+                num_videos_per_prompt=num_videos_per_prompt,
                 max_sequence_length=max_sequence_length,
                 device=device,
                 dtype=dtype,
@@ -847,6 +893,7 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
                 negative_prompt_embeds_qwen, negative_prompt_embeds_clip, negative_prompt_cu_seqlens = (
                     self.encode_prompt(
                         prompt=negative_prompt,
+                        num_videos_per_prompt=num_videos_per_prompt,
                         max_sequence_length=max_sequence_length,
                         device=device,
                         dtype=dtype,
@@ -857,18 +904,19 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
         self.scheduler.set_timesteps(num_inference_steps, device=device)
         timesteps = self.scheduler.timesteps
 
-        # 5. Prepare latent variables
+        # 5. Prepare latent variables with image conditioning
         num_channels_latents = self.transformer.config.in_visual_dim
         latents = self.prepare_latents(
-            batch_size * num_videos_per_prompt,
-            num_channels_latents,
-            height,
-            width,
-            num_frames,
-            dtype,
-            device,
-            generator,
-            latents,
+            image=image,
+            batch_size=batch_size * num_videos_per_prompt,
+            num_channels_latents=num_channels_latents,
+            height=height,
+            width=width,
+            num_frames=num_frames,
+            dtype=dtype,
+            device=device,
+            generator=generator,
+            latents=latents,
         )
 
         # 6. Prepare rope positions for positional encoding
@@ -896,7 +944,7 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
         # 9. Denoising loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
         self._num_timesteps = len(timesteps)
-
+        
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
                 if self.interrupt:
@@ -931,9 +979,23 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
                     ).sample
 
                     pred_velocity = uncond_pred_velocity + guidance_scale * (pred_velocity - uncond_pred_velocity)
-                # Compute previous sample using the scheduler
-                latents[:, :, :, :, :num_channels_latents] = self.scheduler.step(
-                    pred_velocity, t, latents[:, :, :, :, :num_channels_latents], return_dict=False
+
+#                 # Create mask to preserve first frame (frame 0)
+#                 first_frame_mask = torch.ones_like(latents[:, :, :, :, :num_channels_latents])
+#                 first_frame_mask[:, 0:1] = 0  # Zero out first frame to preserve it
+
+#                 # Compute previous sample using the scheduler, but preserve first frame
+#                 new_latents = self.scheduler.step(
+#                     pred_velocity, t, latents[:, :, :, :, :num_channels_latents], return_dict=False
+#                 )[0]
+
+#                 # Apply mask: keep original first frame, use denoised frames for others
+#                 latents[:, :, :, :, :num_channels_latents] = (
+#                     first_frame_mask * new_latents + (1 - first_frame_mask) * latents[:, :, :, :, :num_channels_latents]
+#                 )
+
+                latents[:, 1:, :, :, :num_channels_latents] = self.scheduler.step(
+                    pred_velocity[:, 1:], t, latents[:, 1:, :, :, :num_channels_latents], return_dict=False
                 )[0]
 
                 if callback_on_step_end is not None:
@@ -958,10 +1020,10 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
                 if XLA_AVAILABLE:
                     xm.mark_step()
 
-        # 10. Post-processing - extract main latents
+        # 9. Post-processing - extract main latents
         latents = latents[:, :, :, :, :num_channels_latents]
 
-        # 11. Decode latents to video
+        # 10. Decode latents to video
         if output_type != "latent":
             latents = latents.to(self.vae.dtype)
             # Reshape and normalize latents
