@@ -20,6 +20,7 @@ if is_torch_available():
     from .transformer_bria import BriaTransformer2DModel
     from .transformer_bria_fibo import BriaFiboTransformer2DModel
     from .transformer_chroma import ChromaTransformer2DModel
+    from .transformer_chronoedit import ChronoEditTransformer3DModel
     from .transformer_cogview3plus import CogView3PlusTransformer2DModel
     from .transformer_cogview4 import CogView4Transformer2DModel
     from .transformer_cosmos import CosmosTransformer3DModel
@@ -37,8 +38,10 @@ if is_torch_available():
     from .transformer_omnigen import OmniGenTransformer2DModel
     from .transformer_prx import PRXTransformer2DModel
     from .transformer_qwenimage import QwenImageTransformer2DModel
+    from .transformer_sana_video import SanaVideoTransformer3DModel
     from .transformer_sd3 import SD3Transformer2DModel
     from .transformer_skyreels_v2 import SkyReelsV2Transformer3DModel
     from .transformer_temporal import TransformerTemporalModel
     from .transformer_wan import WanTransformer3DModel
+    from .transformer_wan_animate import WanAnimateTransformer3DModel
     from .transformer_wan_vace import WanVACETransformer3DModel

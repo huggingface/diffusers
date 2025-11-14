@@ -310,6 +310,7 @@ else:
         "SanaSprintPipeline",
         "SanaControlNetPipeline",
         "SanaSprintImg2ImgPipeline",
+        "SanaVideoPipeline",
     ]
     _import_structure["semantic_stable_diffusion"] = ["SemanticStableDiffusionPipeline"]
     _import_structure["shap_e"] = ["ShapEImg2ImgPipeline", "ShapEPipeline"]
@@ -386,7 +387,13 @@ else:
         "WuerstchenDecoderPipeline",
         "WuerstchenPriorPipeline",
     ]
-    _import_structure["wan"] = ["WanPipeline", "WanImageToVideoPipeline", "WanVideoToVideoPipeline", "WanVACEPipeline"]
+    _import_structure["wan"] = [
+        "WanPipeline",
+        "WanImageToVideoPipeline",
+        "WanVideoToVideoPipeline",
+        "WanVACEPipeline",
+        "WanAnimatePipeline",
+    ]
     _import_structure["kandinsky5"] = ["Kandinsky5T2VPipeline"]
     _import_structure["skyreels_v2"] = [
         "SkyReelsV2DiffusionForcingPipeline",
@@ -405,6 +412,7 @@ else:
         "QwenImageControlNetInpaintPipeline",
         "QwenImageControlNetPipeline",
     ]
+    _import_structure["chronoedit"] = ["ChronoEditPipeline"]
 try:
     if not is_onnx_available():
         raise OptionalDependencyNotAvailable()
@@ -567,6 +575,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .bria import BriaPipeline
         from .bria_fibo import BriaFiboPipeline
         from .chroma import ChromaImg2ImgPipeline, ChromaPipeline
+        from .chronoedit import ChronoEditPipeline
         from .cogvideo import (
             CogVideoXFunControlPipeline,
             CogVideoXImageToVideoPipeline,
@@ -738,7 +747,13 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             QwenImageInpaintPipeline,
             QwenImagePipeline,
         )
-        from .sana import SanaControlNetPipeline, SanaPipeline, SanaSprintImg2ImgPipeline, SanaSprintPipeline
+        from .sana import (
+            SanaControlNetPipeline,
+            SanaPipeline,
+            SanaSprintImg2ImgPipeline,
+            SanaSprintPipeline,
+            SanaVideoPipeline,
+        )
         from .semantic_stable_diffusion import SemanticStableDiffusionPipeline
         from .shap_e import ShapEImg2ImgPipeline, ShapEPipeline
         from .stable_audio import StableAudioPipeline, StableAudioProjectionModel
@@ -797,7 +812,13 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             UniDiffuserTextDecoder,
         )
         from .visualcloze import VisualClozeGenerationPipeline, VisualClozePipeline
-        from .wan import WanImageToVideoPipeline, WanPipeline, WanVACEPipeline, WanVideoToVideoPipeline
+        from .wan import (
+            WanAnimatePipeline,
+            WanImageToVideoPipeline,
+            WanPipeline,
+            WanVACEPipeline,
+            WanVideoToVideoPipeline,
+        )
         from .wuerstchen import (
             WuerstchenCombinedPipeline,
             WuerstchenDecoderPipeline,

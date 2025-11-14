@@ -299,6 +299,8 @@ class EDMDPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
     # Copied from diffusers.schedulers.scheduling_ddpm.DDPMScheduler._threshold_sample
     def _threshold_sample(self, sample: torch.Tensor) -> torch.Tensor:
         """
+        Apply dynamic thresholding to the predicted sample.
+
         "Dynamic thresholding: At each sampling step we set s to a certain percentile absolute pixel value in xt0 (the
         prediction of x_0 at timestep t), and if s > 1, then we threshold xt0 to the range [-s, s] and then divide by
         s. Dynamic thresholding pushes saturated pixels (those near -1 and 1) inwards, thereby actively preventing
@@ -306,6 +308,14 @@ class EDMDPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         photorealism as well as better image-text alignment, especially when using very large guidance weights."
 
         https://huggingface.co/papers/2205.11487
+
+        Args:
+            sample (`torch.Tensor`):
+                The predicted sample to be thresholded.
+
+        Returns:
+            `torch.Tensor`:
+                The thresholded sample.
         """
         dtype = sample.dtype
         batch_size, channels, *remaining_dims = sample.shape
