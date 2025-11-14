@@ -18,8 +18,11 @@ from typing import Callable, List, Optional
 import numpy as np
 import torch
 
+from ..utils import logging
 from .hooks import BaseState, HookRegistry, ModelHook, StateManager
 
+
+logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 _FLUX_TEACACHE_HOOK = "flux_teacache"
 
@@ -269,6 +272,7 @@ class FluxTeaCacheHook(ModelHook):
 
         # Reset counter if we've completed all steps (new inference run)
         if state.cnt == state.num_steps and state.num_steps > 0:
+            logger.info("TeaCache inference completed")
             state.cnt = 0
             state.accumulated_rel_l1_distance = 0.0
             state.previous_modulated_input = None
@@ -304,9 +308,17 @@ class FluxTeaCacheHook(ModelHook):
 
         if not should_calc:
             # Fast path: apply cached residual
+            logger.debug(
+                f"TeaCache: reusing cached residual at step {state.cnt}/{state.num_steps} "
+                f"(accumulated distance: {state.accumulated_rel_l1_distance:.6f})"
+            )
             output = hidden_states + state.previous_residual
         else:
             # Slow path: full computation inline (like original TeaCache)
+            logger.debug(
+                f"TeaCache: computing full transformer at step {state.cnt}/{state.num_steps} "
+                f"(accumulated distance: {state.accumulated_rel_l1_distance:.6f})"
+            )
             ori_hidden_states = hidden_states.clone()
 
             # Process encoder_hidden_states
