@@ -576,10 +576,10 @@ class ChronoEditTransformer3DModel(
         "blocks.0": {
             "hidden_states": ContextParallelInput(split_dim=1, expected_dims=3, split_output=False),
         },
-        # NOTE(DefTruth): We have to disable splitting encoder_hidden_states due to the
-        # image_encoder always produce 257 tokens for image_embed, causing the shape of
-        # encoder_hidden_states, the tokens of encoder_hidden_states is always be 769
-        # = 512 + 257 after concat, which is not divisible by number of devices in CP.
+        # NOTE(DefTruth): We need to disable the splitting of encoder_hidden_states because 
+        # the image_encoder consistently generates 257 tokens for image_embed. This causes 
+        # the shape of encoder_hidden_states—whose token count is always 769 (512 + 257) 
+        # after concatenation—to be indivisible by the number of devices in the CP.
         "proj_out": ContextParallelOutput(gather_dim=1, expected_dims=3),
     }
 
