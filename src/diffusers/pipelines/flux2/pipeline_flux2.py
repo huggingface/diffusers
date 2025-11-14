@@ -307,6 +307,38 @@ attribution and actions without speculation.""",
         return torch.stack(out_ids)
 
 
+    @staticmethod
+    def _prepare_latent_ids(
+        latents: torch.Tensor,  # (B, C, H, W)
+    ):   
+        r"""
+        Generates 4D position coordinates (T, H, W, L) for latent tensors.
+        
+        Args:
+            latents (torch.Tensor): 
+                Latent tensor of shape (B, C, H, W)
+        
+        Returns:
+            torch.Tensor: 
+                Position IDs tensor of shape (B, H*W, 4)
+                All batches share the same coordinate structure: T=0, H=[0..H-1], W=[0..W-1], L=0
+        """
+        
+        batch_size, _, height, width = latents.shape
+        
+        t = torch.arange(1)  # [0] - time dimension
+        h = torch.arange(height)
+        w = torch.arange(width)
+        l = torch.arange(1)  # [0] - layer dimension
+        
+        # Create position IDs: (H*W, 4)
+        latent_ids = torch.cartesian_prod(t, h, w, l).to(latents.device)
+        
+        # Expand to batch: (B, H*W, 4)
+        latent_ids = latent_ids.unsqueeze(0).expand(batch_size, -1, -1)
+        
+        return latent_ids
+
     # YiYi TODO: can optimize a bit
     @staticmethod
     def _prepare_image_ids(
@@ -463,7 +495,7 @@ attribution and actions without speculation.""",
         width = 2 * (int(width) // (self.vae_scale_factor * 2))
 
 
-        shape = (batch_size, num_latents_channels * 4, height // 16, width // 16)
+        shape = (batch_size, num_latents_channels * 4, height//2, width//2)
         if isinstance(generator, list) and len(generator) != batch_size:
             raise ValueError(
                 f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
@@ -474,15 +506,15 @@ attribution and actions without speculation.""",
         else:
             latents = latents.to(device=device, dtype=dtype)
 
-        latent_ids = self._prepare_image_ids(list(latents))
-        latents = self._pack_latents(latents)
-
+        latent_ids = self._prepare_latent_ids(latents)
+        latents = self._pack_latents(latents) # [B, C, H, W] -> [B, H*W, C]
         return latents, latent_ids
 
 
     def prepare_image_latents(
         self,
         images: List[torch.Tensor],
+        batch_size,
         generator: torch.Generator,
         device,
         dtype,
@@ -506,6 +538,10 @@ attribution and actions without speculation.""",
         # Concatenate all reference tokens along sequence dimension
         image_latents = torch.cat(packed_latents, dim=0)  # (N*1024, 128)
         image_latents = image_latents.unsqueeze(0)  # (1, N*1024, 128)
+
+        image_latents = image_latents.repeat(batch_size, 1, 1)
+        image_latent_ids = image_latent_ids.repeat(batch_size, 1, 1)
+
         return image_latents, image_latent_ids
 
     
@@ -740,9 +776,13 @@ attribution and actions without speculation.""",
         if condition_images is not None:
             image_latents, image_latent_ids = self.prepare_image_latents(
                 images=condition_images,
+                batch_size=batch_size * num_images_per_prompt,
                 generator=generator,
                 device=device,
                 dtype=self.vae.dtype,
             )
 
-        return image_latents, image_latent_ids
+            # YiYi Testing
+            # return image_latents, image_latent_ids, latents, latent_ids
+        # YiYi Testing
+        # return None, None, latents, latent_ids
