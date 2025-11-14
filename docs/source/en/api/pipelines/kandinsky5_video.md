@@ -58,6 +58,7 @@ Kandinsky 5.0 T2V Lite:
 ### Basic Text-to-Video Generation
 
 #### Pro
+**⚠️ Warning!** all Pro models should be infered with pipeline.enable_model_cpu_offload()  
 ```python
 import torch
 from diffusers import Kandinsky5T2VPipeline
@@ -168,7 +169,6 @@ output = pipe(
 export_to_video(output, "output.mp4", fps=24, quality=9)
 ```
 
-
 ## Kandinsky5I2VPipeline
 
 [[autodoc]] Kandinsky5I2VPipeline
@@ -176,7 +176,44 @@ export_to_video(output, "output.mp4", fps=24, quality=9)
     - __call__
 
 ## Usage Examples
+**⚠️ Warning!** all Pro models should be infered with pipeline.enable_model_cpu_offload()  
+```python
+import torch
+from diffusers import Kandinsky5T2VPipeline
+from diffusers.utils import export_to_video
 
+# Load the pipeline
+model_id = "kandinskylab/Kandinsky-5.0-Ш2V-Pro-sft-5s-Diffusers"
+pipe = Kandinsky5T2VPipeline.from_pretrained(model_id, torch_dtype=torch.bfloat16)
+
+pipe = pipe.to("cuda")
+pipeline.transformer.set_attention_backend("flex")                            # <--- Set attention bakend to Flex
+pipeline.transformer.compile(mode="max-autotune-no-cudagraphs", dynamic=True) # <--- Compile with max-autotune-no-cudagraphs
+pipeline.enable_model_cpu_offload()                                           # <--- Enable cpu offloading for single GPU inference
+
+# Generate video
+image = load_image(
+    "https://huggingface.co/kandinsky-community/kandinsky-3/resolve/main/assets/title.jpg?download=true"
+)
+height = 896
+width = 896
+image = image.resize((width, height))
+
+prompt = "An funny furry creture smiles happily and holds a sign that says 'Kandinsky'"
+negative_prompt = ""
+
+output = pipe(
+    prompt=prompt,
+    negative_prompt=negative_prompt,
+    height=height,
+    width=width,
+    num_frames=121,  # ~5 seconds at 24fps
+    num_inference_steps=50,
+    guidance_scale=5.0,
+).frames[0]
+
+export_to_video(output, "output.mp4", fps=24, quality=9)
+```
 
 
 ## Citation
