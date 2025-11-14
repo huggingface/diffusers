@@ -483,9 +483,12 @@ attribution and actions without speculation.""",
         self,
         images: List[torch.Tensor],
         generator: torch.Generator,
+        device,
+        dtype,
     ):
         image_latents = []
         for image in images:
+            image = image.to(device=device, dtype=dtype)
             imagge_latent = self._encode_vae_image(image=image, generator=generator)
             image_latents.append(imagge_latent) # (1, 128, 32, 32)
         
@@ -711,11 +714,13 @@ attribution and actions without speculation.""",
                 image_width, image_height = img.size
                 if image_width * image_height > 1024 * 1024:
                     img = self.image_processor._resize_to_target_area(img, 1024 * 1024)
+                    image_width, image_height = img.size
 
                 multiple_of = self.vae_scale_factor * 2
                 image_width = (image_width // multiple_of) * multiple_of
                 image_height = (image_height // multiple_of) * multiple_of
-                condition_images.append(self.image_processor.preprocess(img, height=image_height, width=image_width, resize_mode = "crop"))
+                img = self.image_processor.preprocess(img, height=image_height, width=image_width, resize_mode = "crop")
+                condition_images.append(img)
                 condition_image_sizes.append((image_width, image_height))
 
             
@@ -735,10 +740,8 @@ attribution and actions without speculation.""",
             image_latents, image_latent_ids = self.prepare_image_latents(
                 images=condition_images,
                 generator=generator,
+                device=device,
+                dtype=self.vae.dtype,
             )
 
-        print(f"latents.shape = {latents.shape}, latent_ids.shape = {latent_ids.shape}")
-        print(f"image_latents.shape = {image_latents.shape}, image_latent_ids.shape = {image_latent_ids.shape}")
-        print(f"prompt_embeds.shape = {prompt_embeds.shape}, txt_ids.shape = {txt_ids.shape}")
-
-        return latents, latent_ids, image_latents, image_latent_ids
+        return image_latents, image_latent_ids
