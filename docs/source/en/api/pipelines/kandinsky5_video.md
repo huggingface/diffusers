@@ -11,8 +11,11 @@ specific language governing permissions and limitations under the License.
 
 Kandinsky 5.0 Video is created by the Kandinsky team: Alexey Letunovskiy, Maria Kovaleva, Ivan Kirillov, Lev Novitskiy, Denis Koposov, Dmitrii Mikhailov, Anna Averchenkova, Andrey Shutkin, Julia Agafonova, Olga Kim, Anastasiia Kargapoltseva, Nikita Kiselev, Anna Dmitrienko,  Anastasia Maltseva, Kirill Chernyshev, Ilia Vasiliev, Viacheslav Vasilev, Vladimir Polovnikov, Yury Kolabushin, Alexander Belykh, Mikhail Mamaev, Anastasia Aliaskina, Tatiana Nikulina, Polina Gavrilova, Vladimir Arkhipkin, Vladimir Korviakov, Nikolai Gerasimenko, Denis Parkhomenko, Denis Dimitrov
 
+Kandinsky 5.0 is a family of diffusion models for Video & Image generation. 
 
-Kandinsky 5.0 is a family of diffusion models for Video & Image generation. Kandinsky 5.0 T2V Lite is a lightweight video generation model (2B parameters) that ranks #1 among open-source models in its class. It outperforms larger models and offers the best understanding of Russian concepts in the open-source ecosystem.
+Kandinsky 5.0 Lite is a lightweight video generation model (2B parameters) that ranks #1 among open-source models in its class. It outperforms larger models and offers the best understanding of Russian concepts in the open-source ecosystem.
+
+Kandinsky 5.0 Pro is a large high quality video generation model (19B parameters). It offers high qualty generation in HD and more generation formats like I2V.
 
 The model introduces several key innovations:
 - **Latent diffusion pipeline** with **Flow Matching** for improved training stability
@@ -29,10 +32,9 @@ The original codebase can be found at [kandinskylab/Kandinsky-5](https://github.
 ## Available Models
 
 Kandinsky 5.0 T2V Pro:
-
 | model_id | Description | Use Cases |
 |------------|-------------|-----------|
-| **kandinskylab/Kandinsky-5.0-T2V-Lite-pretrain-5s-Diffusers** | 5 second Base pretrained model | Research and fine-tuning |
+| **kandinskylab/Kandinsky-5.0-T2V-Pro-sft-5s-Diffusers** | 5 second Base pretrained model | High-quality text-to-video generation |
 | **kandinskylab/Kandinsky-5.0-I2V-Pro-sft-5s-Diffusers** | 5 second Image-to-Video Pro model | High-quality image-to-video generation |
 
 Kandinsky 5.0 T2V Lite:
@@ -183,7 +185,7 @@ from diffusers import Kandinsky5T2VPipeline
 from diffusers.utils import export_to_video
 
 # Load the pipeline
-model_id = "kandinskylab/Kandinsky-5.0-Ш2V-Pro-sft-5s-Diffusers"
+model_id = "kandinskylab/Kandinsky-5.0-I2V-Pro-sft-5s-Diffusers"
 pipe = Kandinsky5T2VPipeline.from_pretrained(model_id, torch_dtype=torch.bfloat16)
 
 pipe = pipe.to("cuda")
