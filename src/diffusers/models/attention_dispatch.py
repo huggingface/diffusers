@@ -220,7 +220,7 @@ class _AttentionBackendRegistry:
     _backends = {}
     _constraints = {}
     _supported_arg_names = {}
-    _supports_context_parallel = {}
+    _supports_context_parallel = set()
     _active_backend = AttentionBackendName(DIFFUSERS_ATTN_BACKEND)
     _checks_enabled = DIFFUSERS_ATTN_CHECKS
 
@@ -237,7 +237,9 @@ class _AttentionBackendRegistry:
             cls._backends[backend] = func
             cls._constraints[backend] = constraints or []
             cls._supported_arg_names[backend] = set(inspect.signature(func).parameters.keys())
-            cls._supports_context_parallel[backend] = supports_context_parallel
+            if supports_context_parallel:
+                cls._supports_context_parallel.add(backend.value)
+
             return func
 
         return decorator
@@ -251,15 +253,12 @@ class _AttentionBackendRegistry:
         return list(cls._backends.keys())
 
     @classmethod
-    def _is_context_parallel_enabled(
-        cls, backend: AttentionBackendName, parallel_config: Optional["ParallelConfig"]
+    def _is_context_parallel_available(
+        cls,
+        backend: AttentionBackendName,
     ) -> bool:
-        supports_context_parallel = backend in cls._supports_context_parallel
-        is_degree_greater_than_1 = parallel_config is not None and (
-            parallel_config.context_parallel_config.ring_degree > 1
-            or parallel_config.context_parallel_config.ulysses_degree > 1
-        )
-        return supports_context_parallel and is_degree_greater_than_1
+        supports_context_parallel = backend.value in cls._supports_context_parallel
+        return supports_context_parallel
 
 
 @contextlib.contextmanager
@@ -305,14 +304,6 @@ def dispatch_attention_fn(
     else:
         backend_name = AttentionBackendName(backend)
         backend_fn = _AttentionBackendRegistry._backends.get(backend_name)
-
-    if parallel_config is not None and not _AttentionBackendRegistry._is_context_parallel_enabled(
-        backend_name, parallel_config
-    ):
-        raise ValueError(
-            f"Backend {backend_name} either does not support context parallelism or context parallelism "
-            f"was enabled with a world size of 1."
-        )
 
     kwargs = {
         "query": query,
@@ -392,12 +383,18 @@ def _check_shape(
     attn_mask: Optional[torch.Tensor] = None,
     **kwargs,
 ) -> None:
+    # Expected shapes:
+    # query: (batch_size, seq_len_q, num_heads, head_dim)
+    # key:   (batch_size, seq_len_kv, num_heads, head_dim)
+    # value: (batch_size, seq_len_kv, num_heads, head_dim)
+    # attn_mask: (seq_len_q, seq_len_kv) or (batch_size, seq_len_q, seq_len_kv)
+    #            or (batch_size, num_heads, seq_len_q, seq_len_kv)
     if query.shape[-1] != key.shape[-1]:
-        raise ValueError("Query and key must have the same last dimension.")
-    if query.shape[-2] != value.shape[-2]:
-        raise ValueError("Query and value must have the same second to last dimension.")
-    if attn_mask is not None and attn_mask.shape[-1] != key.shape[-2]:
-        raise ValueError("Attention mask must match the key's second to last dimension.")
+        raise ValueError("Query and key must have the same head dimension.")
+    if key.shape[-3] != value.shape[-3]:
+        raise ValueError("Key and value must have the same sequence length.")
+    if attn_mask is not None and attn_mask.shape[-1] != key.shape[-3]:
+        raise ValueError("Attention mask must match the key's sequence length.")
 
 
 # ===== Helper functions =====

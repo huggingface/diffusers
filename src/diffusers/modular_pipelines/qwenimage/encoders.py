@@ -503,6 +503,8 @@ class QwenImageTextEncoderStep(ModularPipelineBlocks):
         block_state.prompt_embeds = block_state.prompt_embeds[:, : block_state.max_sequence_length]
         block_state.prompt_embeds_mask = block_state.prompt_embeds_mask[:, : block_state.max_sequence_length]
 
+        block_state.negative_prompt_embeds = None
+        block_state.negative_prompt_embeds_mask = None
         if components.requires_unconditional_embeds:
             negative_prompt = block_state.negative_prompt or ""
             block_state.negative_prompt_embeds, block_state.negative_prompt_embeds_mask = get_qwen_prompt_embeds(
@@ -627,6 +629,8 @@ class QwenImageEditTextEncoderStep(ModularPipelineBlocks):
             device=device,
         )
 
+        block_state.negative_prompt_embeds = None
+        block_state.negative_prompt_embeds_mask = None
         if components.requires_unconditional_embeds:
             negative_prompt = block_state.negative_prompt or " "
             block_state.negative_prompt_embeds, block_state.negative_prompt_embeds_mask = get_qwen_prompt_embeds_edit(
@@ -679,6 +683,8 @@ class QwenImageEditPlusTextEncoderStep(QwenImageEditTextEncoderStep):
             device=device,
         )
 
+        block_state.negative_prompt_embeds = None
+        block_state.negative_prompt_embeds_mask = None
         if components.requires_unconditional_embeds:
             negative_prompt = block_state.negative_prompt or " "
             block_state.negative_prompt_embeds, block_state.negative_prompt_embeds_mask = (

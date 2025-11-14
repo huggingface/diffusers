@@ -13,11 +13,17 @@ from transformers import (
     UMT5EncoderModel,
     Wav2Vec2ForCTC,
     Wav2Vec2Processor,
+    CLIPImageProcessor,
+    CLIPVisionModel,
+    CLIPVisionModelWithProjection,
+    UMT5EncoderModel,
 )
 
 from diffusers import (
     AutoencoderKLWan,
     UniPCMultistepScheduler,
+    WanAnimatePipeline,
+    WanAnimateTransformer3DModel,
     WanImageToVideoPipeline,
     WanPipeline,
     WanS2VTransformer3DModel,
@@ -476,6 +482,8 @@ def convert_transformer(model_type: str, stage: str = None):
             transformer = WanTransformer3DModel.from_config(diffusers_config)
         else:
             transformer = WanVACETransformer3DModel.from_config(diffusers_config)
+        else:
+            transformer = WanTransformer3DModel.from_config(diffusers_config)
 
     for key in list(original_state_dict.keys()):
         new_key = key[:]
@@ -489,7 +497,12 @@ def convert_transformer(model_type: str, stage: str = None):
                 continue
             handler_fn_inplace(key, original_state_dict)
 
+    # Load state dict into the meta model, which will materialize the tensors
     transformer.load_state_dict(original_state_dict, strict=True, assign=True)
+
+    # Move to CPU to ensure all tensors are materialized
+    transformer = transformer.to("cpu")
+
     return transformer
 
 
@@ -1046,6 +1059,8 @@ if __name__ == "__main__":
     if args.dtype != "none":
         dtype = DTYPE_MAPPING[args.dtype]
         transformer.to(dtype)
+        if transformer_2 is not None:
+            transformer_2.to(dtype)
 
     if "Wan2.2" and "I2V" in args.model_type and "TI2V" not in args.model_type:
         pipe = WanImageToVideoPipeline(

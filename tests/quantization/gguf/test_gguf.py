@@ -17,6 +17,7 @@ from diffusers import (
     SD3Transformer2DModel,
     StableDiffusion3Pipeline,
     WanS2VTransformer3DModel,
+    WanAnimateTransformer3DModel,
     WanTransformer3DModel,
     WanVACETransformer3DModel,
 )
@@ -726,6 +727,10 @@ class WanS2VGGUFSingleFileTests(GGUFSingleFileTesterMixin, unittest.TestCase):
     ckpt_path = "https://huggingface.co/QuantStack/Wan2.2-S2V-14B-GGUF/blob/main/Wan2.2-S2V-14B-Q3_K_S.gguf"
     torch_dtype = torch.bfloat16
     model_cls = WanS2VTransformer3DModel
+class WanAnimateGGUFSingleFileTests(GGUFSingleFileTesterMixin, unittest.TestCase):
+    ckpt_path = "https://huggingface.co/QuantStack/Wan2.2-Animate-14B-GGUF/blob/main/Wan2.2-Animate-14B-Q3_K_S.gguf"
+    torch_dtype = torch.bfloat16
+    model_cls = WanAnimateTransformer3DModel
     expected_memory_use_in_gb = 9
 
     def get_dummy_inputs(self):

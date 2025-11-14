@@ -22,6 +22,8 @@
     title: Reproducibility
   - local: using-diffusers/schedulers
     title: Schedulers
+  - local: using-diffusers/automodel
+    title: AutoModel
   - local: using-diffusers/other-formats
     title: Model formats
   - local: using-diffusers/push_to_hub
@@ -119,6 +121,8 @@
     title: ComponentsManager
   - local: modular_diffusers/guiders
     title: Guiders
+  - local: modular_diffusers/custom_blocks
+    title: Building Custom Blocks
   title: Modular Diffusers
 - isExpanded: false
   sections:
@@ -329,6 +333,8 @@
         title: BriaTransformer2DModel
       - local: api/models/chroma_transformer
         title: ChromaTransformer2DModel
+      - local: api/models/chronoedit_transformer_3d
+        title: ChronoEditTransformer3DModel
       - local: api/models/cogvideox_transformer3d
         title: CogVideoXTransformer3DModel
       - local: api/models/cogview3plus_transformer2d
@@ -373,6 +379,8 @@
         title: QwenImageTransformer2DModel
       - local: api/models/sana_transformer2d
         title: SanaTransformer2DModel
+      - local: api/models/sana_video_transformer3d
+        title: SanaVideoTransformer3DModel
       - local: api/models/sd3_transformer2d
         title: SD3Transformer2DModel
       - local: api/models/skyreels_v2_transformer_3d
@@ -383,6 +391,8 @@
         title: Transformer2DModel
       - local: api/models/transformer_temporal
         title: TransformerTemporalModel
+      - local: api/models/wan_animate_transformer_3d
+        title: WanAnimateTransformer3DModel
       - local: api/models/wan_transformer_3d
         title: WanTransformer3DModel
       title: Transformers
@@ -444,6 +454,8 @@
   - sections:
     - local: api/pipelines/overview
       title: Overview
+    - local: api/pipelines/auto_pipeline
+      title: AutoPipeline
     - sections:
       - local: api/pipelines/audioldm
         title: AudioLDM
@@ -456,8 +468,6 @@
       - local: api/pipelines/stable_audio
         title: Stable Audio
       title: Audio
-    - local: api/pipelines/auto_pipeline
-      title: AutoPipeline
     - sections:
       - local: api/pipelines/amused
         title: aMUSEd
@@ -521,6 +531,8 @@
         title: HiDream-I1
       - local: api/pipelines/hunyuandit
         title: Hunyuan-DiT
+      - local: api/pipelines/hunyuanimage21
+        title: HunyuanImage2.1
       - local: api/pipelines/pix2pix
         title: InstructPix2Pix
       - local: api/pipelines/kandinsky
@@ -563,6 +575,8 @@
         title: Sana
       - local: api/pipelines/sana_sprint
         title: Sana Sprint
+      - local: api/pipelines/sana_video
+        title: Sana Video
       - local: api/pipelines/self_attention_guidance
         title: Self-Attention Guidance
       - local: api/pipelines/semantic_stable_diffusion
@@ -624,14 +638,14 @@
     - sections:
       - local: api/pipelines/allegro
         title: Allegro
+      - local: api/pipelines/chronoedit
+        title: ChronoEdit
       - local: api/pipelines/cogvideox
         title: CogVideoX
       - local: api/pipelines/consisid
         title: ConsisID
       - local: api/pipelines/framepack
         title: Framepack
-      - local: api/pipelines/hunyuanimage21
-        title: HunyuanImage2.1
       - local: api/pipelines/hunyuan_video
         title: HunyuanVideo
       - local: api/pipelines/i2vgenxl
