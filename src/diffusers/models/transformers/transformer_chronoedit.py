@@ -137,7 +137,11 @@ class WanAttnProcessor:
                 dropout_p=0.0,
                 is_causal=False,
                 backend=self._attention_backend,
-                parallel_config=self._parallel_config,
+                # FIXME(DefTruth): Since the key/value in cross-attention depends
+                # solely on encoder_hidden_states_img (img), the (q_chunk * k) * v
+                # computation can be parallelized independently. Thus, there is
+                # no need to pass the parallel_config here.
+                parallel_config=None,
             )
             hidden_states_img = hidden_states_img.flatten(2, 3)
             hidden_states_img = hidden_states_img.type_as(query)
@@ -150,7 +154,11 @@ class WanAttnProcessor:
             dropout_p=0.0,
             is_causal=False,
             backend=self._attention_backend,
-            parallel_config=self._parallel_config,
+            # FIXME(DefTruth): Since the key/value in cross-attention depends
+            # solely on encoder_hidden_states (text), the (q_chunk * k) * v
+            # computation can be parallelized independently. Thus, there is
+            # no need to pass the parallel_config here.
+            parallel_config=(self._parallel_config if encoder_hidden_states is None else None),
         )
         hidden_states = hidden_states.flatten(2, 3)
         hidden_states = hidden_states.type_as(query)
@@ -568,9 +576,10 @@ class ChronoEditTransformer3DModel(
         "blocks.0": {
             "hidden_states": ContextParallelInput(split_dim=1, expected_dims=3, split_output=False),
         },
-        "blocks.*": {
-            "encoder_hidden_states": ContextParallelInput(split_dim=1, expected_dims=3, split_output=False),
-        },
+        # NOTE(DefTruth): We have to disable splitting encoder_hidden_states due to the
+        # image_encoder always produce 257 tokens for image_embed, causing the shape of
+        # encoder_hidden_states, the tokens of encoder_hidden_states is always be 769
+        # = 512 + 257 after concat, which is not divisible by number of devices in CP.
         "proj_out": ContextParallelOutput(gather_dim=1, expected_dims=3),
     }
 
