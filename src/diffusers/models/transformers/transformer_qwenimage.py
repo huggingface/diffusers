@@ -330,6 +330,31 @@ class QwenDoubleStreamAttnProcessor2_0:
         joint_key = torch.cat([txt_key, img_key], dim=1)
         joint_value = torch.cat([txt_value, img_value], dim=1)
 
+        # Convert encoder_hidden_states_mask to 2D attention mask if provided.
+        if encoder_hidden_states_mask is not None and attention_mask is None:
+            batch_size = hidden_states.shape[0]
+            image_seq_len = hidden_states.shape[1]
+            text_seq_len = encoder_hidden_states.shape[1]
+
+            if encoder_hidden_states_mask.shape[0] != batch_size:
+                raise ValueError(
+                    f"encoder_hidden_states_mask batch size ({encoder_hidden_states_mask.shape[0]}) "
+                    f"must match hidden_states batch size ({batch_size})"
+                )
+            if encoder_hidden_states_mask.shape[1] != text_seq_len:
+                raise ValueError(
+                    f"encoder_hidden_states_mask sequence length ({encoder_hidden_states_mask.shape[1]}) "
+                    f"must match encoder_hidden_states sequence length ({text_seq_len})"
+                )
+
+            text_attention_mask = encoder_hidden_states_mask.bool()
+            image_attention_mask = torch.ones(
+                (batch_size, image_seq_len), dtype=torch.bool, device=hidden_states.device
+            )
+
+            joint_attention_mask_1d = torch.cat([text_attention_mask, image_attention_mask], dim=1)
+            attention_mask = joint_attention_mask_1d[:, None, None, :] * joint_attention_mask_1d[:, None, :, None]
+
         # Compute joint attention
         joint_hidden_states = dispatch_attention_fn(
             joint_query,
@@ -630,7 +655,15 @@ class QwenImageTransformer2DModel(
             else self.time_text_embed(timestep, guidance, hidden_states)
         )
 
-        image_rotary_emb = self.pos_embed(img_shapes, txt_seq_lens, device=hidden_states.device)
+        # Use padded sequence length for RoPE when mask is present.
+        # The attention mask will handle excluding padding tokens.
+        if encoder_hidden_states_mask is not None:
+            txt_seq_lens_for_rope = [encoder_hidden_states.shape[1]] * encoder_hidden_states.shape[0]
+        else:
+            txt_seq_lens_for_rope = (
+                txt_seq_lens if txt_seq_lens is not None else [encoder_hidden_states.shape[1]] * encoder_hidden_states.shape[0]
+            )
+        image_rotary_emb = self.pos_embed(img_shapes, txt_seq_lens_for_rope, device=hidden_states.device)
 
         for index_block, block in enumerate(self.transformer_blocks):
             if torch.is_grad_enabled() and self.gradient_checkpointing:
