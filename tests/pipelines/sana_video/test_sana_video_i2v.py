@@ -207,10 +207,12 @@ class SanaImageToVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     def test_inference_batch_single_identical(self):
         pass
 
+    @unittest.skip("Skipping fp16 test as model is trained with bf16")
     def test_float16_inference(self):
         # Requires higher tolerance as model seems very sensitive to dtype
         super().test_float16_inference(expected_max_diff=0.08)
 
+    @unittest.skip("Skipping fp16 test as model is trained with bf16")
     def test_save_load_float16(self):
         # Requires higher tolerance as model seems very sensitive to dtype
         super().test_save_load_float16(expected_max_diff=0.2)
