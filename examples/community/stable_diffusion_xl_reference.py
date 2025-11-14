@@ -141,7 +141,7 @@ class StableDiffusionXLReferencePipeline(StableDiffusionXLPipeline):
         refimage = refimage.to(device=device)
         needs_upcasting = self.vae.dtype == torch.float16 and self.vae.config.force_upcast
         if needs_upcasting:
-            self.vae.to(torch.float32)
+            self.upcast_vae()
             refimage = refimage.to(next(iter(self.vae.post_quant_conv.parameters())).dtype)
         if refimage.dtype != self.vae.dtype:
             refimage = refimage.to(dtype=self.vae.dtype)
@@ -1156,7 +1156,7 @@ class StableDiffusionXLReferencePipeline(StableDiffusionXLPipeline):
             needs_upcasting = self.vae.dtype == torch.float16 and self.vae.config.force_upcast
 
             if needs_upcasting:
-                self.vae.to(torch.float32)
+                self.upcast_vae()
                 latents = latents.to(next(iter(self.vae.post_quant_conv.parameters())).dtype)
             elif latents.dtype != self.vae.dtype:
                 if torch.backends.mps.is_available():

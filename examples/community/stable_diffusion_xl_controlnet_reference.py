@@ -195,7 +195,7 @@ class StableDiffusionXLControlNetReferencePipeline(StableDiffusionXLControlNetPi
         refimage = refimage.to(device=device)
         needs_upcasting = self.vae.dtype == torch.float16 and self.vae.config.force_upcast
         if needs_upcasting:
-            self.vae.to(torch.float32)
+            self.upcast_vae()
             refimage = refimage.to(next(iter(self.vae.post_quant_conv.parameters())).dtype)
         if refimage.dtype != self.vae.dtype:
             refimage = refimage.to(dtype=self.vae.dtype)
@@ -1326,7 +1326,7 @@ class StableDiffusionXLControlNetReferencePipeline(StableDiffusionXLControlNetPi
             needs_upcasting = self.vae.dtype == torch.float16 and self.vae.config.force_upcast
 
             if needs_upcasting:
-                self.vae.to(torch.float32)
+                self.upcast_vae()
                 latents = latents.to(next(iter(self.vae.post_quant_conv.parameters())).dtype)
 
             # unscale/denormalize the latents

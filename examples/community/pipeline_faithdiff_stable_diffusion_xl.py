@@ -40,6 +40,13 @@ from diffusers.loaders import (
     UNet2DConditionLoadersMixin,
 )
 from diffusers.models import AutoencoderKL
+from diffusers.models.attention_processor import (
+    AttnProcessor2_0,
+    FusedAttnProcessor2_0,
+    LoRAAttnProcessor2_0,
+    LoRAXFormersAttnProcessor,
+    XFormersAttnProcessor,
+)
 from diffusers.models.lora import adjust_lora_scale_text_encoder
 from diffusers.models.unets.unet_2d_blocks import UNetMidBlock2D, get_down_block
 from diffusers.pipelines.pipeline_utils import DiffusionPipeline, StableDiffusionMixin
@@ -1630,7 +1637,24 @@ class FaithDiffStableDiffusionXLPipeline(
         return latents
 
     def upcast_vae(self):
-        deprecate("`upcast_vae` is deprecated")
+        dtype = self.vae.dtype
+        self.vae.to(dtype=torch.float32)
+        use_torch_2_0_or_xformers = isinstance(
+            self.vae.decoder.mid_block.attentions[0].processor,
+            (
+                AttnProcessor2_0,
+                XFormersAttnProcessor,
+                LoRAXFormersAttnProcessor,
+                LoRAAttnProcessor2_0,
+                FusedAttnProcessor2_0,
+            ),
+        )
+        # if xformers or torch_2_0 is used attention block does not need
+        # to be in float32 which can save lots of memory
+        if use_torch_2_0_or_xformers:
+            self.vae.post_quant_conv.to(dtype)
+            self.vae.decoder.conv_in.to(dtype)
+            self.vae.decoder.mid_block.to(dtype)
 
     # Copied from diffusers.pipelines.latent_consistency_models.pipeline_latent_consistency_text2img.LatentConsistencyModelPipeline.get_guidance_scale_embedding
     def get_guidance_scale_embedding(
@@ -1758,7 +1782,7 @@ class FaithDiffStableDiffusionXLPipeline(
             # needs_upcasting = self.vae.dtype == torch.float16 and self.vae.config.force_upcast
             # if needs_upcasting:
             #     image = image.float()
-            #     self.vae.to(torch.float32)
+            #     self.upcast_vae()
             self.unet.denoise_encoder.to(device=image.device, dtype=image.dtype)
             image_latents = self.unet.denoise_encoder(image)
             self.unet.denoise_encoder.to("cpu")
@@ -2211,7 +2235,7 @@ class FaithDiffStableDiffusionXLPipeline(
             needs_upcasting = self.vae.dtype == torch.float16 and self.vae.config.force_upcast
 
             if needs_upcasting:
-                self.vae.to(torch.float32)
+                self.upcast_vae()
                 latents = latents.to(next(iter(self.vae.post_quant_conv.parameters())).dtype)
             elif latents.dtype != self.vae.dtype:
                 if torch.backends.mps.is_available():
