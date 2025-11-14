@@ -44,12 +44,7 @@ def load_original_checkpoint(args):
     else:
         raise ValueError(" please provide either `original_state_dict_repo_id` or a local `checkpoint_path`")
 
-    if ckpt_path.endswith(".pt"):
-        original_state_dict = torch.load(ckpt_path, map_location="cpu")
-    elif ckpt_path.endswith(".safetensors"):
-        original_state_dict = safetensors.torch.load_file(ckpt_path)
-    else:
-        raise ValueError(f"Unsupported file extension: {ckpt_path}")
+    original_state_dict = safetensors.torch.load_file(ckpt_path)
     return original_state_dict
 
 
@@ -214,9 +209,6 @@ def main(args):
 
     if args.vae:
         vae = AutoencoderKLFlux2()
-        if "model" in original_ckpt:
-            # YiYi Notes: remove this depends on if it has "model" key
-            original_ckpt = original_ckpt["model"]
         converted_vae_state_dict = convert_flux2_vae_checkpoint_to_diffusers(original_ckpt, vae.config)
         vae.load_state_dict(converted_vae_state_dict, strict=True)
         vae.to(dtype).save_pretrained(f"{args.output_path}/vae")
