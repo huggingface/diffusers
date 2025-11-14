@@ -293,13 +293,10 @@ import numpy as np
 import torch
 from diffusers import AutoencoderKLWan, WanAnimatePipeline
 from diffusers.utils import export_to_video, load_image, load_video
-from transformers import CLIPVisionModel
 
 model_id = "Wan-AI/Wan2.2-Animate-14B-Diffusers"
 vae = AutoencoderKLWan.from_pretrained(model_id, subfolder="vae", torch_dtype=torch.float32)
-pipe = WanAnimatePipeline.from_pretrained(
-    model_id, vae=vae, torch_dtype=torch.bfloat16
-)
+pipe = WanAnimatePipeline.from_pretrained(model_id, vae=vae, torch_dtype=torch.bfloat16)
 pipe.to("cuda")
 
 # Load character image and preprocessed videos
@@ -330,11 +327,11 @@ output = pipe(
     negative_prompt=negative_prompt,
     height=height,
     width=width,
-    num_frames=81,
-    guidance_scale=5.0,
-    mode="animation",  # Animation mode (default)
+    segment_frame_length=77,
+    guidance_scale=1.0,
+    mode="animate",  # Animation mode (default)
 ).frames[0]
-export_to_video(output, "animated_character.mp4", fps=16)
+export_to_video(output, "animated_character.mp4", fps=30)
 ```
 
 </hfoption>
@@ -345,14 +342,10 @@ import numpy as np
 import torch
 from diffusers import AutoencoderKLWan, WanAnimatePipeline
 from diffusers.utils import export_to_video, load_image, load_video
-from transformers import CLIPVisionModel
 
 model_id = "Wan-AI/Wan2.2-Animate-14B-Diffusers"
-image_encoder = CLIPVisionModel.from_pretrained(model_id, subfolder="image_encoder", torch_dtype=torch.float16)
 vae = AutoencoderKLWan.from_pretrained(model_id, subfolder="vae", torch_dtype=torch.float32)
-pipe = WanAnimatePipeline.from_pretrained(
-    model_id, vae=vae, image_encoder=image_encoder, torch_dtype=torch.bfloat16
-)
+pipe = WanAnimatePipeline.from_pretrained(model_id, vae=vae, torch_dtype=torch.bfloat16)
 pipe.to("cuda")
 
 # Load all required inputs for replacement mode
@@ -387,11 +380,11 @@ output = pipe(
     negative_prompt=negative_prompt,
     height=height,
     width=width,
-    num_frames=81,
-    guidance_scale=5.0,
-    mode="replacement",  # Replacement mode
+    segment_frame_lengths=77,
+    guidance_scale=1.0,
+    mode="replace",  # Replacement mode
 ).frames[0]
-export_to_video(output, "character_replaced.mp4", fps=16)
+export_to_video(output, "character_replaced.mp4", fps=30)
 ```
 
 </hfoption>
@@ -402,14 +395,10 @@ import numpy as np
 import torch
 from diffusers import AutoencoderKLWan, WanAnimatePipeline
 from diffusers.utils import export_to_video, load_image, load_video
-from transformers import CLIPVisionModel
 
 model_id = "Wan-AI/Wan2.2-Animate-14B-Diffusers"
-image_encoder = CLIPVisionModel.from_pretrained(model_id, subfolder="image_encoder", torch_dtype=torch.float16)
 vae = AutoencoderKLWan.from_pretrained(model_id, subfolder="vae", torch_dtype=torch.float32)
-pipe = WanAnimatePipeline.from_pretrained(
-    model_id, vae=vae, image_encoder=image_encoder, torch_dtype=torch.bfloat16
-)
+pipe = WanAnimatePipeline.from_pretrained(model_id, vae=vae, torch_dtype=torch.bfloat16)
 pipe.to("cuda")
 
 image = load_image("path/to/character.jpg")
@@ -443,14 +432,14 @@ output = pipe(
     negative_prompt=negative_prompt,
     height=height,
     width=width,
-    num_frames=81,
+    segment_frame_length=77,
     num_inference_steps=50,
     guidance_scale=5.0,
-    num_frames_for_temporal_guidance=5,  # Use 5 frames for temporal guidance (1 or 5 recommended)
+    prev_segment_conditioning_frames=5,  # Use 5 frames for temporal guidance (1 or 5 recommended)
     callback_on_step_end=callback_fn,
     callback_on_step_end_tensor_inputs=["latents"],
 ).frames[0]
-export_to_video(output, "animated_advanced.mp4", fps=16)
+export_to_video(output, "animated_advanced.mp4", fps=30)
 ```
 
 </hfoption>
@@ -458,10 +447,9 @@ export_to_video(output, "animated_advanced.mp4", fps=16)
 
 #### Key Parameters
 
-- **mode**: Choose between `"animation"` (default) or `"replacement"`
-- **num_frames_for_temporal_guidance**: Number of frames for temporal guidance (1 or 5 recommended). Using 5 provides better temporal consistency but requires more memory
-- **guidance_scale**: Controls how closely the output follows the text prompt. Higher values (5-7) produce results more aligned with the prompt
-- **num_frames**: Total number of frames to generate. Should be divisible by `vae_scale_factor_temporal` (default: 4)
+- **mode**: Choose between `"animate"` (default) or `"replace"`
+- **prev_segment_conditioning_frames**: Number of frames for temporal guidance (1 or 5 recommended). Using 5 provides better temporal consistency but requires more memory
+- **guidance_scale**: Controls how closely the output follows the text prompt. Higher values (5-7) produce results more aligned with the prompt. For Wan-Animate, CFG is disabled by default (`guidance_scale=1.0`) but can be enabled to support negative prompts and finer control over facial expressions. (Note that CFG will only target the text prompt and face conditioning.)
 
 
 ## Notes
