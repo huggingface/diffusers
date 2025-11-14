@@ -541,8 +541,8 @@ class DPMSolverSDEScheduler(SchedulerMixin, ConfigMixin):
         self, in_sigmas: torch.Tensor, num_inference_steps: int, alpha: float = 0.6, beta: float = 0.6
     ) -> torch.Tensor:
         """
-        Construct a beta noise schedule as proposed in ["Beta Sampling is All You
-        Need"](https://huggingface.co/papers/2407.12173) (Lee et al., 2024).
+        Construct a beta noise schedule as proposed in [Beta Sampling is All You
+        Need](https://huggingface.co/papers/2407.12173).
 
         Args:
             in_sigmas (`torch.Tensor`):

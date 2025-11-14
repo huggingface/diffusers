@@ -512,7 +512,8 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
     # Copied from https://github.com/crowsonkb/k-diffusion/blob/686dbad0f39640ea25c8a8c6a6e56bb40eacefa2/k_diffusion/sampling.py#L17
     def _convert_to_karras(self, in_sigmas: torch.Tensor, num_inference_steps: int) -> torch.Tensor:
         """
-        Construct the noise schedule of Karras et al. (2022).
+        Construct the noise schedule as proposed in [Elucidating the Design Space of Diffusion-Based Generative
+        Models](https://huggingface.co/papers/2206.00364).
 
         Args:
             in_sigmas (`torch.Tensor`):
@@ -585,8 +586,8 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         self, in_sigmas: torch.Tensor, num_inference_steps: int, alpha: float = 0.6, beta: float = 0.6
     ) -> torch.Tensor:
         """
-        Construct a beta noise schedule as proposed in ["Beta Sampling is All You
-        Need"](https://huggingface.co/papers/2407.12173) (Lee et al., 2024).
+        Construct a beta noise schedule as proposed in [Beta Sampling is All You
+        Need](https://huggingface.co/papers/2407.12173).
 
         Args:
             in_sigmas (`torch.Tensor`):
