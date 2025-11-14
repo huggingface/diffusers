@@ -18,9 +18,7 @@ import PIL
 
 import numpy as np
 import torch
-from transformers import (
-    Mistral3ForConditionalGeneration, AutoProcessor
-)
+from transformers import Mistral3ForConditionalGeneration, AutoProcessor
 
 from ...loaders import FluxIPAdapterMixin, FluxLoraLoaderMixin, FromSingleFileMixin, TextualInversionLoaderMixin
 from ...models import AutoencoderKL, FluxTransformer2DModel
@@ -56,12 +54,12 @@ EXAMPLE_DOC_STRING = """
         >>> import torch
         >>> from diffusers import Flux2Pipeline
 
-        >>> pipe = Flux2Pipeline.from_pretrained("black-forest-labs/FLUX.2-schnell", torch_dtype=torch.bfloat16)
+        >>> pipe = Flux2Pipeline.from_pretrained("black-forest-labs/FLUX.2-dev", torch_dtype=torch.bfloat16)
         >>> pipe.to("cuda")
         >>> prompt = "A cat holding a sign that says hello world"
         >>> # Depending on the variant being used, the pipeline call will slightly vary.
         >>> # Refer to the pipeline documentation for more details.
-        >>> image = pipe(prompt, num_inference_steps=4, guidance_scale=0.0).images[0]
+        >>> image = pipe(prompt, num_inference_steps=50, guidance_scale=2.5).images[0]
         >>> image.save("flux.png")
         ```
 """
@@ -178,10 +176,10 @@ class Flux2Pipeline(
     FluxIPAdapterMixin,
 ):
     r"""
-    The Flux pipeline for text-to-image generation.
+    The Flux2 pipeline for text-to-image generation.
 
-    Reference: https://blackforestlabs.ai/announcing-black-forest-labs/
-
+    Reference: TODO
+    
     Args:
         transformer ([`FluxTransformer2DModel`]):
             Conditional Transformer (MMDiT) architecture to denoise the encoded image latents.
@@ -189,18 +187,11 @@ class Flux2Pipeline(
             A scheduler to be used in combination with `transformer` to denoise the encoded image latents.
         vae ([`AutoencoderKL`]):
             Variational Auto-Encoder (VAE) Model to encode and decode images to and from latent representations.
-        text_encoder ([`CLIPTextModel`]):
-            [CLIP](https://huggingface.co/docs/transformers/model_doc/clip#transformers.CLIPTextModel), specifically
-            the [clip-vit-large-patch14](https://huggingface.co/openai/clip-vit-large-patch14) variant.
-        text_encoder_2 ([`T5EncoderModel`]):
-            [T5](https://huggingface.co/docs/transformers/en/model_doc/t5#transformers.T5EncoderModel), specifically
-            the [google/t5-v1_1-xxl](https://huggingface.co/google/t5-v1_1-xxl) variant.
-        tokenizer (`CLIPTokenizer`):
+        text_encoder ([`Mistral3ForConditionalGeneration`]):
+            [Mistral3ForConditionalGeneration](https://huggingface.co/docs/transformers/en/model_doc/mistral3#transformers.Mistral3ForConditionalGeneration)
+        tokenizer (`AutoProcessor`):
             Tokenizer of class
-            [CLIPTokenizer](https://huggingface.co/docs/transformers/en/model_doc/clip#transformers.CLIPTokenizer).
-        tokenizer_2 (`T5TokenizerFast`):
-            Second Tokenizer of class
-            [T5TokenizerFast](https://huggingface.co/docs/transformers/en/model_doc/t5#transformers.T5TokenizerFast).
+            [PixtralProcessor](https://huggingface.co/docs/transformers/en/model_doc/pixtral#transformers.PixtralProcessor).
     """
 
     model_cpu_offload_seq = "text_encoder->image_encoder->transformer->vae"
@@ -267,6 +258,16 @@ attribution and actions without speculation.""",
         # Move to device
         input_ids = inputs["input_ids"].to(device)
         attention_mask = inputs["attention_mask"].to(device)
+
+        text_input_ids = input_ids
+        untruncated_ids = tokenizer(prompt, padding="longest", return_tensors="pt").input_ids
+
+        if untruncated_ids.shape[-1] >= text_input_ids.shape[-1] and not torch.equal(text_input_ids, untruncated_ids):
+            removed_text = tokenizer.batch_decode(untruncated_ids[:, max_sequence_length - 1 : -1])
+            logger.warning(
+                "The following part of your input was truncated because `max_sequence_length` is set to "
+                f" {max_sequence_length} tokens: {removed_text}"
+            )
 
         # Forward pass through the model
         output = text_encoder(

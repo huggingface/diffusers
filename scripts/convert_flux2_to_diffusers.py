@@ -8,7 +8,7 @@ from huggingface_hub import hf_hub_download
 
 from diffusers import AutoencoderKLFlux2
 from diffusers.utils.import_utils import is_accelerate_available
-
+from transformers import Mistral3ForConditionalGeneration, AutoProcessor
 
 
 """
@@ -213,6 +213,13 @@ def main(args):
         vae.load_state_dict(converted_vae_state_dict, strict=True)
         vae.to(dtype).save_pretrained(f"{args.output_path}/vae")
 
+    if args.full_pipe:
+        tokenizer_id = "mistralai/Mistral-Small-3.1-24B-Instruct-2503"
+        text_encoder_id = "mistralai/Mistral-Small-3.2-24B-Instruct-2506"
+        text_encoder = Mistral3ForConditionalGeneration.from_pretrained(text_encoder_id, torch_dtype=torch.bfloat16)
+        tokenizer = AutoProcessor.from_pretrained(tokenizer_id)
+
+        # TODO: collate denoiser, vae, text encoder, tokenizer here.
 
 if __name__ == "__main__":
     main(args)
