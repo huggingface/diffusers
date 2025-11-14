@@ -207,6 +207,7 @@ class Kandinsky5I2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
         else:  # 720p and above
             return (1, 3.16, 3.16)
 
+    # Add model CPU offload methods
     def enable_model_cpu_offload(self, gpu_id: Optional[int] = None):
         r"""
         Offloads all models to CPU using accelerate, reducing memory usage with a low impact on performance. Compared
@@ -263,7 +264,7 @@ class Kandinsky5I2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
         if hasattr(self, "vae"):
             models.append(self.vae)
         return models
-    
+
     def maybe_free_model_hooks(self):
         r"""
         Function that might remove all the `_hf_hook` if they are set (which is the case if
@@ -275,7 +276,7 @@ class Kandinsky5I2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
                 module._hf_hook = None
 
         if hasattr(self, "_offload_hook"):
-            self._offload_hook()   
+            self._offload_hook()
 
     @staticmethod
     def fast_sta_nabla(T: int, H: int, W: int, wT: int = 3, wH: int = 3, wW: int = 3, device="cuda") -> torch.Tensor:
