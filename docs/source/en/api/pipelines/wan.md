@@ -281,7 +281,7 @@ For replacement mode, you additionally need:
 - **Mask video**: A mask indicating where to generate content (white) vs. preserve original (black)
 
 > [!NOTE]
-> The preprocessing tools are available in the original Wan-Animate repository. Integration of these preprocessing steps into Diffusers is planned for a future release.
+> Raw videos should not be used for inputs such as `pose_video`, which the pipeline expects to be preprocessed to extract the proper information. Preprocessing scripts to prepare these inputs are available in the [original Wan-Animate repository](https://github.com/Wan-Video/Wan2.2?tab=readme-ov-file#1-preprocessing). Integration of these preprocessing steps into Diffusers is planned for a future release.
 
 The example below demonstrates how to use the Wan-Animate pipeline:
 
