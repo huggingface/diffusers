@@ -169,10 +169,12 @@ else:
             "LayerSkipConfig",
             "PyramidAttentionBroadcastConfig",
             "SmoothedEnergyGuidanceConfig",
+            "TaylorSeerCacheConfig",
             "apply_faster_cache",
             "apply_first_block_cache",
             "apply_layer_skip",
             "apply_pyramid_attention_broadcast",
+            "apply_taylorseer_cache",
         ]
     )
     _import_structure["models"].extend(
@@ -883,10 +885,12 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             LayerSkipConfig,
             PyramidAttentionBroadcastConfig,
             SmoothedEnergyGuidanceConfig,
+            TaylorSeerCacheConfig,
             apply_faster_cache,
             apply_first_block_cache,
             apply_layer_skip,
             apply_pyramid_attention_broadcast,
+            apply_taylorseer_cache,
         )
         from .models import (
             AllegroTransformer3DModel,
