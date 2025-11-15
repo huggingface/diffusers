@@ -321,7 +321,8 @@ class Flux2SingleTransformerBlock(nn.Module):
         self.norm = nn.LayerNorm(dim, elementwise_affine=False, eps=eps)
 
         # Note that the MLP in/out linear layers are fused with the attention QKV/out projections, respectively; this
-        # is often called a "parallel" transformer block
+        # is often called a "parallel" transformer block. See the [ViT-22B paper](https://arxiv.org/abs/2302.05442)
+        # for a visual depiction of this type of transformer block.
         self.attn = Flux2Attention(
             query_dim=dim,
             dim_head=attention_head_dim,
