@@ -811,12 +811,10 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         )
         from .visualcloze import VisualClozeGenerationPipeline, VisualClozePipeline
         from .wan import (
-            WanImageToVideoPipeline,
-            WanPipeline,
-            WanSpeechToVideoPipeline,
             WanAnimatePipeline,
             WanImageToVideoPipeline,
             WanPipeline,
+            WanSpeechToVideoPipeline,
             WanVACEPipeline,
             WanVideoToVideoPipeline,
         )

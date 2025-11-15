@@ -216,8 +216,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             T5FilmDecoder,
             Transformer2DModel,
             TransformerTemporalModel,
-            WanS2VTransformer3DModel,
             WanAnimateTransformer3DModel,
+            WanS2VTransformer3DModel,
             WanTransformer3DModel,
             WanVACETransformer3DModel,
         )

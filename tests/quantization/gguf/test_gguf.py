@@ -16,8 +16,8 @@ from diffusers import (
     HiDreamImageTransformer2DModel,
     SD3Transformer2DModel,
     StableDiffusion3Pipeline,
-    WanS2VTransformer3DModel,
     WanAnimateTransformer3DModel,
+    WanS2VTransformer3DModel,
     WanTransformer3DModel,
     WanVACETransformer3DModel,
 )
