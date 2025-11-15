@@ -641,8 +641,8 @@ class Flux2Transformer2DModel(
         self.single_stream_modulation = Flux2Modulation(self.inner_dim, mod_param_sets=1, bias=False)
 
         # 4. Input projections
-        self.x_embedder = nn.Linear(in_channels, self.inner_dim)
-        self.context_embedder = nn.Linear(joint_attention_dim, self.inner_dim)
+        self.x_embedder = nn.Linear(in_channels, self.inner_dim, bias=False)
+        self.context_embedder = nn.Linear(joint_attention_dim, self.inner_dim, bias=False)
 
         # 5. Double Stream Transformer Blocks
         self.transformer_blocks = nn.ModuleList(
@@ -675,7 +675,9 @@ class Flux2Transformer2DModel(
         )
 
         # 7. Output layers
-        self.norm_out = AdaLayerNormContinuous(self.inner_dim, self.inner_dim, elementwise_affine=False, eps=eps)
+        self.norm_out = AdaLayerNormContinuous(
+            self.inner_dim, self.inner_dim, elementwise_affine=False, eps=eps, bias=False
+        )
         self.proj_out = nn.Linear(self.inner_dim, patch_size * patch_size * self.out_channels, bias=False)
 
         self.gradient_checkpointing = False
