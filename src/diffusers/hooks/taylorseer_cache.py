@@ -273,7 +273,7 @@ def apply_taylorseer_cache(module: torch.nn.Module, config: TaylorSeerCacheConfi
     logger.debug(f"Special cache identifiers: {special_cache_identifiers}")
 
     for name, submodule in module.named_modules():
-        if skip_compute_identifiers and special_cache_identifiers:
+        if (skip_compute_identifiers and special_cache_identifiers) or (special_cache_identifiers):
             if any(re.fullmatch(identifier, name) for identifier in skip_compute_identifiers) or any(
                 re.fullmatch(identifier, name) for identifier in special_cache_identifiers
             ):
