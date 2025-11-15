@@ -18,7 +18,7 @@ The model can be loaded with the following code snippet.
 ```python
 from diffusers import WanAnimateTransformer3DModel
 
-transformer = WanAnimateTransformer3DModel.from_pretrained("Wan-AI/Wan2.2-Animate-14B-720P-Diffusers", subfolder="transformer", torch_dtype=torch.bfloat16)
+transformer = WanAnimateTransformer3DModel.from_pretrained("Wan-AI/Wan2.2-Animate-14B-Diffusers", subfolder="transformer", torch_dtype=torch.bfloat16)
 ```
 
 ## WanAnimateTransformer3DModel
