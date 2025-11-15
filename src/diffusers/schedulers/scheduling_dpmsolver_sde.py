@@ -251,7 +251,23 @@ class DPMSolverSDEScheduler(SchedulerMixin, ConfigMixin):
         self.sigmas = self.sigmas.to("cpu")  # to avoid too much CPU/GPU communication
 
     # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler.index_for_timestep
-    def index_for_timestep(self, timestep, schedule_timesteps=None):
+    def index_for_timestep(
+        self, timestep: Union[float, torch.Tensor], schedule_timesteps: Optional[torch.Tensor] = None
+    ) -> int:
+        """
+        Find the index of a given timestep in the timestep schedule.
+
+        Args:
+            timestep (`float` or `torch.Tensor`):
+                The timestep value to find in the schedule.
+            schedule_timesteps (`torch.Tensor`, *optional*):
+                The timestep schedule to search in. If `None`, uses `self.timesteps`.
+
+        Returns:
+            `int`:
+                The index of the timestep in the schedule. For the very first step, returns the second index if
+                multiple matches exist to avoid skipping a sigma when starting mid-schedule (e.g., for image-to-image).
+        """
         if schedule_timesteps is None:
             schedule_timesteps = self.timesteps
 
@@ -266,7 +282,14 @@ class DPMSolverSDEScheduler(SchedulerMixin, ConfigMixin):
         return indices[pos].item()
 
     # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler._init_step_index
-    def _init_step_index(self, timestep):
+    def _init_step_index(self, timestep: Union[float, torch.Tensor]) -> None:
+        """
+        Initialize the step index for the scheduler based on the given timestep.
+
+        Args:
+            timestep (`float` or `torch.Tensor`):
+                The current timestep to initialize the step index from.
+        """
         if self.begin_index is None:
             if isinstance(timestep, torch.Tensor):
                 timestep = timestep.to(self.timesteps.device)
@@ -302,7 +325,7 @@ class DPMSolverSDEScheduler(SchedulerMixin, ConfigMixin):
         Sets the begin index for the scheduler. This function should be run from pipeline before the inference.
 
         Args:
-            begin_index (`int`):
+            begin_index (`int`, defaults to `0`):
                 The begin index for the scheduler.
         """
         self._begin_index = begin_index
@@ -430,6 +453,19 @@ class DPMSolverSDEScheduler(SchedulerMixin, ConfigMixin):
 
     # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler._sigma_to_t
     def _sigma_to_t(self, sigma, log_sigmas):
+        """
+        Convert sigma values to corresponding timestep values through interpolation.
+
+        Args:
+            sigma (`np.ndarray`):
+                The sigma value(s) to convert to timestep(s).
+            log_sigmas (`np.ndarray`):
+                The logarithm of the sigma schedule used for interpolation.
+
+        Returns:
+            `np.ndarray`:
+                The interpolated timestep value(s) corresponding to the input sigma(s).
+        """
         # get log sigma
         log_sigma = np.log(np.maximum(sigma, 1e-10))
 
@@ -468,7 +504,19 @@ class DPMSolverSDEScheduler(SchedulerMixin, ConfigMixin):
 
     # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler._convert_to_exponential
     def _convert_to_exponential(self, in_sigmas: torch.Tensor, num_inference_steps: int) -> torch.Tensor:
-        """Constructs an exponential noise schedule."""
+        """
+        Construct an exponential noise schedule.
+
+        Args:
+            in_sigmas (`torch.Tensor`):
+                The input sigma values to be converted.
+            num_inference_steps (`int`):
+                The number of inference steps to generate the noise schedule for.
+
+        Returns:
+            `torch.Tensor`:
+                The converted sigma values following an exponential schedule.
+        """
 
         # Hack to make sure that other schedulers which copy this function don't break
         # TODO: Add this logic to the other schedulers
@@ -492,7 +540,24 @@ class DPMSolverSDEScheduler(SchedulerMixin, ConfigMixin):
     def _convert_to_beta(
         self, in_sigmas: torch.Tensor, num_inference_steps: int, alpha: float = 0.6, beta: float = 0.6
     ) -> torch.Tensor:
-        """From "Beta Sampling is All You Need" [arXiv:2407.12173] (Lee et. al, 2024)"""
+        """
+        Construct a beta noise schedule as proposed in [Beta Sampling is All You
+        Need](https://huggingface.co/papers/2407.12173).
+
+        Args:
+            in_sigmas (`torch.Tensor`):
+                The input sigma values to be converted.
+            num_inference_steps (`int`):
+                The number of inference steps to generate the noise schedule for.
+            alpha (`float`, *optional*, defaults to `0.6`):
+                The alpha parameter for the beta distribution.
+            beta (`float`, *optional*, defaults to `0.6`):
+                The beta parameter for the beta distribution.
+
+        Returns:
+            `torch.Tensor`:
+                The converted sigma values following a beta distribution schedule.
+        """
 
         # Hack to make sure that other schedulers which copy this function don't break
         # TODO: Add this logic to the other schedulers
@@ -646,6 +711,21 @@ class DPMSolverSDEScheduler(SchedulerMixin, ConfigMixin):
         noise: torch.Tensor,
         timesteps: torch.Tensor,
     ) -> torch.Tensor:
+        """
+        Add noise to the original samples according to the noise schedule at the specified timesteps.
+
+        Args:
+            original_samples (`torch.Tensor`):
+                The original samples to which noise will be added.
+            noise (`torch.Tensor`):
+                The noise tensor to add to the original samples.
+            timesteps (`torch.Tensor`):
+                The timesteps at which to add noise, determining the noise level from the schedule.
+
+        Returns:
+            `torch.Tensor`:
+                The noisy samples with added noise scaled according to the timestep schedule.
+        """
         # Make sure sigmas and timesteps have the same device and dtype as original_samples
         sigmas = self.sigmas.to(device=original_samples.device, dtype=original_samples.dtype)
         if original_samples.device.type == "mps" and torch.is_floating_point(timesteps):
