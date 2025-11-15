@@ -401,6 +401,7 @@ class Flux2TransformerBlock(nn.Module):
             heads=num_attention_heads,
             out_dim=dim,
             bias=bias,
+            added_proj_bias=bias,
             out_bias=bias,
             eps=eps,
             processor=Flux2AttnProcessor(),
