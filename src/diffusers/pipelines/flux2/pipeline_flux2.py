@@ -876,20 +876,10 @@ attribution and actions without speculation.""",
                     encoder_hidden_states=prompt_embeds,
                     txt_ids=text_ids,
                     img_ids=latent_image_ids,
-                    joint_attention_kwargs=self.joint_attention_kwargs,
+                    joint_attention_kwargs=self._attention_kwargs,
                     return_dict=False,
                 )[0]
 
-                # # YiYi NOTES: uncomment this to use the tranformer from original repo for testing
-                # # YIYI TODO: remove this before merging
-                # noise_pred = self.transformer(
-                #     x=latent_model_input,
-                #     x_ids=latent_image_ids,
-                #     timesteps=timestep / 1000,
-                #     guidance=guidance.to(self.transformer.dtype),
-                #     ctx=prompt_embeds.to(self.transformer.dtype),
-                #     ctx_ids=text_ids,
-                # )
                 noise_pred = noise_pred[:, : latents.size(1):]
 
                 # compute the previous noisy sample x_t -> x_t-1
