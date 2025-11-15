@@ -788,18 +788,6 @@ class Flux2Transformer2DModel(
                     joint_attention_kwargs=joint_attention_kwargs,
                 )
 
-            # controlnet residual
-            if controlnet_block_samples is not None:
-                interval_control = len(self.transformer_blocks) / len(controlnet_block_samples)
-                interval_control = int(np.ceil(interval_control))
-                # For Xlabs ControlNet.
-                if controlnet_blocks_repeat:
-                    hidden_states = (
-                        hidden_states + controlnet_block_samples[index_block % len(controlnet_block_samples)]
-                    )
-                else:
-                    hidden_states = hidden_states + controlnet_block_samples[index_block // interval_control]
-
         # 5. Single Stream Transformer Blocks
         for index_block, block in enumerate(self.single_transformer_blocks):
             if torch.is_grad_enabled() and self.gradient_checkpointing:
@@ -819,12 +807,6 @@ class Flux2Transformer2DModel(
                     image_rotary_emb=concat_rotary_emb,
                     joint_attention_kwargs=joint_attention_kwargs,
                 )
-
-            # controlnet residual
-            if controlnet_single_block_samples is not None:
-                interval_control = len(self.single_transformer_blocks) / len(controlnet_single_block_samples)
-                interval_control = int(np.ceil(interval_control))
-                hidden_states = hidden_states + controlnet_single_block_samples[index_block // interval_control]
 
         # 6. Output layers
         hidden_states = self.norm_out(hidden_states, temb)
