@@ -838,6 +838,8 @@ class WanS2VTransformer3DModel(
             Epsilon value for normalization layers.
         add_img_emb (`bool`, defaults to `False`):
             Whether to use img_emb.
+        image_dim (`int`, *optional*, defaults to `None`):
+            The dimension of image embeddings. Set to `None` for S2V model as it doesn't use image conditioning.
         added_kv_proj_dim (`int`, *optional*, defaults to `None`):
             The number of channels to use for the added key and value projections. If `None`, no projection is used.
         zero_timestep (`bool`, defaults to `True`):
@@ -872,6 +874,7 @@ class WanS2VTransformer3DModel(
         cross_attn_norm: bool = True,
         qk_norm: Optional[str] = "rms_norm_across_heads",
         eps: float = 1e-6,
+        image_dim: Optional[int] = None,
         added_kv_proj_dim: Optional[int] = None,
         rope_max_seq_len: int = 1024,
         enable_framepack: bool = True,
