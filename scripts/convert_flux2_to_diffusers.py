@@ -185,7 +185,7 @@ def load_original_checkpoint(
     else:
         raise ValueError("Please provide either `repo_id` or a local `checkpoint_path`")
 
-    if "safetensors" in model_file:
+    if "safetensors" in model_file or "sft" in model_file:
         original_state_dict = safetensors.torch.load_file(ckpt_path)
     else:
         original_state_dict = torch.load(ckpt_path, map_location="cpu")
