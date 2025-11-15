@@ -479,8 +479,6 @@ def convert_transformer(model_type: str, stage: str = None):
         if "S2V" in model_type:
             transformer = WanS2VTransformer3DModel.from_config(diffusers_config)
         elif "VACE" not in model_type:
-            transformer = WanTransformer3DModel.from_config(diffusers_config)
-        else:
             transformer = WanVACETransformer3DModel.from_config(diffusers_config)
         else:
             transformer = WanTransformer3DModel.from_config(diffusers_config)
