@@ -748,19 +748,6 @@ class Flux2Transformer2DModel(
         encoder_hidden_states = self.context_embedder(encoder_hidden_states)
 
         # 3. Calculate RoPE embeddings from image and text tokens
-        if txt_ids.ndim == 3:
-            logger.warning(
-                "Passing `txt_ids` 3d torch.Tensor is deprecated."
-                "Please remove the batch dimension and pass it as a 2d torch Tensor"
-            )
-            txt_ids = txt_ids[0]
-        if img_ids.ndim == 3:
-            logger.warning(
-                "Passing `img_ids` 3d torch.Tensor is deprecated."
-                "Please remove the batch dimension and pass it as a 2d torch Tensor"
-            )
-            img_ids = img_ids[0]
-
         if is_torch_npu_available():
             freqs_cos_image, freqs_sin_image = self.pos_embed(img_ids.cpu())
             image_rotary_emb = (freqs_cos_image.npu(), freqs_sin_image.npu())
