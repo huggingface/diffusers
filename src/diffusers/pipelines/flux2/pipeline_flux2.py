@@ -295,16 +295,6 @@ attribution and actions without speculation.""",
         input_ids = inputs["input_ids"].to(device)
         attention_mask = inputs["attention_mask"].to(device)
 
-        text_input_ids = input_ids
-        untruncated_ids = tokenizer(prompt, padding="longest", return_tensors="pt").input_ids
-
-        if untruncated_ids.shape[-1] >= text_input_ids.shape[-1] and not torch.equal(text_input_ids, untruncated_ids):
-            removed_text = tokenizer.batch_decode(untruncated_ids[:, max_sequence_length - 1 : -1])
-            logger.warning(
-                "The following part of your input was truncated because `max_sequence_length` is set to "
-                f" {max_sequence_length} tokens: {removed_text}"
-            )
-
         # Forward pass through the model
         output = text_encoder(
             input_ids=input_ids,
@@ -918,7 +908,9 @@ attribution and actions without speculation.""",
                 self.vae.bn.running_mean.view(1, -1, 1, 1)
                 .to(latents.device, latents.dtype)
             )
-            latents_bn_std = torch.sqrt(self.vae.bn.running_var.view(1, -1, 1, 1) + self.vae.config.batch_norm_eps)
+            latents_bn_std = torch.sqrt(
+                self.vae.bn.running_var.view(1, -1, 1, 1) + self.vae.config.batch_norm_eps
+            ).to(latents.device, latents.dtype)
             latents = latents * latents_bn_std + latents_bn_mean
             latents = self._unpatchify_latents(latents)
 

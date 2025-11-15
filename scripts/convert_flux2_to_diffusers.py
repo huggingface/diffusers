@@ -29,6 +29,7 @@ parser.add_argument("--original_state_dict_repo_id", default=None, type=str)
 parser.add_argument("--filename", default="flux.safetensors", type=str)
 parser.add_argument("--checkpoint_path", default=None, type=str)
 parser.add_argument("--vae", action="store_true")
+parser.add_argument("--full_pipe", action="store_true")
 parser.add_argument("--output_path", type=str)
 parser.add_argument("--dtype", type=str, default="bf16")
 
