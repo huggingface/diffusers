@@ -15,7 +15,6 @@
 import inspect
 from typing import Any, Dict, List, Optional, Tuple, Union
 
-import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F

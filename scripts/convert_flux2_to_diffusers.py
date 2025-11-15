@@ -1,6 +1,5 @@
 import argparse
 import os
-import pathlib
 from contextlib import nullcontext
 from typing import Any, Dict, Optional, Tuple
 
@@ -11,7 +10,6 @@ from huggingface_hub import hf_hub_download
 
 from diffusers import Flux2Transformer2DModel
 from diffusers.utils.import_utils import is_accelerate_available
-from transformers import Mistral3ForConditionalGeneration, AutoProcessor
 
 
 """
@@ -22,7 +20,7 @@ from transformers import Mistral3ForConditionalGeneration, AutoProcessor
 CTX = init_empty_weights if is_accelerate_available() else nullcontext
 
 
-FLUX2_TRANSFORMER_KEYS_RENAME_DICT ={
+FLUX2_TRANSFORMER_KEYS_RENAME_DICT = {
     # Image and text input projections
     "img_in": "x_embedder",
     "txt_in": "context_embedder",
@@ -82,7 +80,7 @@ def convert_ada_layer_norm_weights(key: str, state_dict: Dict[str, Any]) -> None
     # Skip if not a weight
     if ".weight" not in key:
         return
-    
+
     # If adaLN_modulation is in the key, swap scale and shift parameters
     # Original implementation is (shift, scale); diffusers implementation is (scale, shift)
     if "adaLN_modulation" in key:
@@ -100,7 +98,7 @@ def convert_flux2_double_stream_blocks(key: str, state_dict: Dict[str, Any]) -> 
     # Skip if not a weight, bias, or scale
     if ".weight" not in key and ".bias" not in key and ".scale" not in key:
         return
-    
+
     new_prefix = "transformer_blocks"
     if "double_blocks." in key:
         parts = key.split(".")
@@ -111,7 +109,7 @@ def convert_flux2_double_stream_blocks(key: str, state_dict: Dict[str, Any]) -> 
 
         if param_type == "scale":
             param_type = "weight"
-        
+
         if "qkv" in within_block_name:
             fused_qkv_weight = state_dict.pop(key)
             to_q_weight, to_k_weight, to_v_weight = torch.chunk(fused_qkv_weight, 3, dim=0)
@@ -146,7 +144,7 @@ def convert_flux2_single_stream_blocks(key: str, state_dict: Dict[str, Any]) -> 
     # Skip if not a weight, bias, or scale
     if ".weight" not in key and ".bias" not in key and ".scale" not in key:
         return
-    
+
     # Mapping:
     #     - single_blocks.{N}.linear1               --> single_transformer_blocks.{N}.attn.to_qkv_mlp_proj
     #     - single_blocks.{N}.linear2               --> single_transformer_blocks.{N}.attn.to_out
@@ -215,7 +213,7 @@ def get_flux2_transformer_config(model_type: str) -> Tuple[Dict[str, Any], ...]:
                 "axes_dims_rope": (32, 32, 32, 32),
                 "rope_theta": 2000,
                 "eps": 1e-6,
-            }
+            },
         }
         rename_dict = FLUX2_TRANSFORMER_KEYS_RENAME_DICT
         special_keys_remap = TRANSFORMER_SPECIAL_KEYS_REMAP
