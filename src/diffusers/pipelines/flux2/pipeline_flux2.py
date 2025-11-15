@@ -208,13 +208,7 @@ def retrieve_latents(
     else:
         raise AttributeError("Could not access latents of provided encoder_output")
 
-class Flux2Pipeline(
-    DiffusionPipeline,
-    FluxLoraLoaderMixin,
-    FromSingleFileMixin,
-    TextualInversionLoaderMixin,
-    FluxIPAdapterMixin,
-):
+class Flux2Pipeline(DiffusionPipeline):
     r"""
     The Flux2 pipeline for text-to-image generation.
 
@@ -244,6 +238,7 @@ class Flux2Pipeline(
         vae: AutoencoderKL,
         text_encoder: Mistral3ForConditionalGeneration,
         tokenizer: AutoProcessor,
+        transformer: FluxTransformer2DModel,
     ):
         super().__init__()
 
@@ -252,6 +247,7 @@ class Flux2Pipeline(
             text_encoder=text_encoder,
             tokenizer=tokenizer,
             scheduler=scheduler,
+            transformer=transformer,
         )
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1) if getattr(self, "vae", None) else 8
         # Flux latents are turned into 2x2 patches and packed. This means the latent width and height has to be divisible
@@ -341,7 +337,7 @@ attribution and actions without speculation.""",
             w = torch.arange(1)
             l = torch.arange(L)
 
-            coords = torch.cartesian_prod(t, h, w, l).to(x.device)
+            coords = torch.cartesian_prod(t, h, w, l)
             out_ids.append(coords)
 
         return torch.stack(out_ids)
@@ -372,7 +368,7 @@ attribution and actions without speculation.""",
         l = torch.arange(1)  # [0] - layer dimension
         
         # Create position IDs: (H*W, 4)
-        latent_ids = torch.cartesian_prod(t, h, w, l).to(latents.device)
+        latent_ids = torch.cartesian_prod(t, h, w, l)
         
         # Expand to batch: (B, H*W, 4)
         latent_ids = latent_ids.unsqueeze(0).expand(batch_size, -1, -1)
@@ -382,7 +378,7 @@ attribution and actions without speculation.""",
     # YiYi TODO: can optimize a bit
     @staticmethod
     def _prepare_image_ids(
-        image_latents: List[torch.Tensor], # [(C, H, W), (C, H, W), ...]
+        image_latents: List[torch.Tensor], # [(1, C, H, W), (1, C, H, W), ...]
         scale: int = 10
     ):   
 
@@ -422,10 +418,7 @@ attribution and actions without speculation.""",
         image_latent_ids = []
         for x, t in zip(image_latents, t_coords):
 
-            if x.ndim == 4:
-                x = x.squeeze(0)
-            if x.ndim != 3:
-                raise ValueError(f"Expected `image_latent` to be a list of tensors with dims 3 or 4, got {x.ndim}.")
+            x = x.squeeze(0)
             _, height, width = x.shape
 
             x_ids = torch.cartesian_prod(t, torch.arange(height), torch.arange(width), torch.arange(1))
@@ -496,6 +489,7 @@ attribution and actions without speculation.""",
         prompt_embeds = prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
 
         text_ids = self._prepare_text_ids(prompt_embeds)
+        text_ids = text_ids.to(device)
         return prompt_embeds, text_ids
 
 
@@ -547,6 +541,8 @@ attribution and actions without speculation.""",
             latents = latents.to(device=device, dtype=dtype)
 
         latent_ids = self._prepare_latent_ids(latents)
+        latent_ids = latent_ids.to(device)
+
         latents = self._pack_latents(latents) # [B, C, H, W] -> [B, H*W, C]
         return latents, latent_ids
 
@@ -581,6 +577,7 @@ attribution and actions without speculation.""",
 
         image_latents = image_latents.repeat(batch_size, 1, 1)
         image_latent_ids = image_latent_ids.repeat(batch_size, 1, 1)
+        image_latent_ids = image_latent_ids.to(device)
 
         return image_latents, image_latent_ids
 
@@ -812,7 +809,9 @@ attribution and actions without speculation.""",
             generator=generator,
             latents=latents,
         )
-
+        
+        image_latents = None
+        image_latent_ids = None
         if condition_images is not None:
             image_latents, image_latent_ids = self.prepare_image_latents(
                 images=condition_images,
@@ -821,11 +820,6 @@ attribution and actions without speculation.""",
                 device=device,
                 dtype=self.vae.dtype,
             )
-
-            # YiYi Testing
-            # return image_latents, image_latent_ids, latents, latent_ids
-        # YiYi Testing
-        # return None, None, latents, latent_ids
 
         # 6. Prepare timesteps
         sigmas = np.linspace(1.0, 1 / num_inference_steps, num_inference_steps) if sigmas is None else sigmas
@@ -867,25 +861,36 @@ attribution and actions without speculation.""",
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
                 timestep = t.expand(latents.shape[0]).to(latents.dtype)
 
-                latent_model_input = latents
+                latent_model_input = latents.to(self.transformer.dtype)
                 latent_image_ids = latent_ids
 
                 if image_latents is not None:
-                    latent_model_input = torch.cat([latents, image_latents], dim=1)
+                    latent_model_input = torch.cat([latents, image_latents], dim=1).to(self.transformer.dtype)
                     latent_image_ids = torch.cat([latent_ids, image_latent_ids],dim=1)
 
-                with self.transformer.cache_context("cond"):
-                    noise_pred = self.transformer(
-                        hidden_states=latent_model_input, # (B, L, C)
-                        timestep=timestep / 1000,
-                        guidance=guidance,
-                        encoder_hidden_states=prompt_embeds,
-                        txt_ids=text_ids,
-                        img_ids=latent_image_ids,
-                        joint_attention_kwargs=self.joint_attention_kwargs,
-                        return_dict=False,
-                    )[0]
-                    noise_pred = noise_pred[:, : latents.size(1):]
+
+                noise_pred = self.transformer(
+                    hidden_states=latent_model_input, # (B, L, C)
+                    timestep=timestep / 1000,
+                    guidance=guidance,
+                    encoder_hidden_states=prompt_embeds,
+                    txt_ids=text_ids,
+                    img_ids=latent_image_ids,
+                    joint_attention_kwargs=self.joint_attention_kwargs,
+                    return_dict=False,
+                )[0]
+
+                # # YiYi NOTES: uncomment this to use the tranformer from original repo for testing
+                # # YIYI TODO: remove this before merging
+                # noise_pred = self.transformer(
+                #     x=latent_model_input,
+                #     x_ids=latent_image_ids,
+                #     timesteps=timestep / 1000,
+                #     guidance=guidance.to(self.transformer.dtype),
+                #     ctx=prompt_embeds.to(self.transformer.dtype),
+                #     ctx_ids=text_ids,
+                # )
+                noise_pred = noise_pred[:, : latents.size(1):]
 
                 # compute the previous noisy sample x_t -> x_t-1
                 latents_dtype = latents.dtype
@@ -921,7 +926,7 @@ attribution and actions without speculation.""",
 
             latents_bn_mean = (
                 self.vae.bn.running_mean.view(1, -1, 1, 1)
-                .to(image_latents.device, image_latents.dtype)
+                .to(latents.device, latents.dtype)
             )
             latents_bn_std = torch.sqrt(self.vae.bn.running_var.view(1, -1, 1, 1) + self.vae.config.batch_norm_eps)
             latents = latents * latents_bn_std + latents_bn_mean
