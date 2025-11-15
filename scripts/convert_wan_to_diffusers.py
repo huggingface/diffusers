@@ -9,14 +9,12 @@ from safetensors.torch import load_file
 from transformers import (
     AutoProcessor,
     AutoTokenizer,
-    CLIPVisionModelWithProjection,
-    UMT5EncoderModel,
-    Wav2Vec2ForCTC,
-    Wav2Vec2Processor,
     CLIPImageProcessor,
     CLIPVisionModel,
     CLIPVisionModelWithProjection,
     UMT5EncoderModel,
+    Wav2Vec2ForCTC,
+    Wav2Vec2Processor,
 )
 
 from diffusers import (
@@ -222,6 +220,7 @@ S2V_TRANSFORMER_KEYS_RENAME_DICT = {
         for src, dst in [("q", "to_q"), ("k", "to_k"), ("v", "to_v"), ("o", "to_out.0")]
     },
 }
+
 
 # TODO: Verify this and simplify if possible.
 def convert_animate_motion_encoder_weights(key: str, state_dict: Dict[str, Any], final_conv_idx: int = 8) -> None:

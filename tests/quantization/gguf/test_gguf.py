@@ -749,6 +749,7 @@ class WanS2VGGUFSingleFileTests(GGUFSingleFileTesterMixin, unittest.TestCase):
             "timestep": torch.tensor([1]).to(torch_device, self.torch_dtype),
         }
 
+
 class WanAnimateGGUFSingleFileTests(GGUFSingleFileTesterMixin, unittest.TestCase):
     ckpt_path = "https://huggingface.co/QuantStack/Wan2.2-Animate-14B-GGUF/blob/main/Wan2.2-Animate-14B-Q3_K_S.gguf"
     torch_dtype = torch.bfloat16
