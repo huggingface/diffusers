@@ -376,19 +376,21 @@ class FramePackMotioner(nn.Module):
         ],  # Three numbers representing the number of frames sampled for patch operations from the nearest to the farthest frames
         drop_mode="drop",  # If not "drop", it will use "padd", meaning padding instead of deletion
         patch_size=(1, 2, 2),
+        in_channels=16,
     ):
         super().__init__()
         self.inner_dim = inner_dim
         self.num_attention_heads = num_attention_heads
+        self.in_channels = in_channels
         if (inner_dim % num_attention_heads) != 0 or (inner_dim // num_attention_heads) % 2 != 0:
             raise ValueError(
                 "inner_dim must be divisible by num_attention_heads and inner_dim // num_attention_heads must be even"
             )
         self.drop_mode = drop_mode
 
-        self.proj = nn.Conv3d(16, inner_dim, kernel_size=(1, 2, 2), stride=(1, 2, 2))
-        self.proj_2x = nn.Conv3d(16, inner_dim, kernel_size=(2, 4, 4), stride=(2, 4, 4))
-        self.proj_4x = nn.Conv3d(16, inner_dim, kernel_size=(4, 8, 8), stride=(4, 8, 8))
+        self.proj = nn.Conv3d(in_channels, inner_dim, kernel_size=(1, 2, 2), stride=(1, 2, 2))
+        self.proj_2x = nn.Conv3d(in_channels, inner_dim, kernel_size=(2, 4, 4), stride=(2, 4, 4))
+        self.proj_4x = nn.Conv3d(in_channels, inner_dim, kernel_size=(4, 8, 8), stride=(4, 8, 8))
         self.zip_frame_buckets = torch.tensor(zip_frame_buckets, dtype=torch.long)
 
         self.rope = WanS2VRotaryPosEmbed(
@@ -401,7 +403,7 @@ class FramePackMotioner(nn.Module):
     def forward(self, motion_latents, add_last_motion=2):
         latent_height, latent_width = motion_latents.shape[3], motion_latents.shape[4]
         padd_latent = torch.zeros(
-            (motion_latents.shape[0], 16, self.zip_frame_buckets.sum(), latent_height, latent_width),
+            (motion_latents.shape[0], self.in_channels, self.zip_frame_buckets.sum(), latent_height, latent_width),
             device=motion_latents.device,
             dtype=motion_latents.dtype,
         )
@@ -898,6 +900,7 @@ class WanS2VTransformer3DModel(
                 zip_frame_buckets=[1, 2, 16],
                 drop_mode=framepack_drop_mode,
                 patch_size=patch_size,
+                in_channels=in_channels,
             )
         else:
             self.motion_in = Motioner(
