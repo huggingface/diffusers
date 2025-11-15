@@ -79,7 +79,7 @@ jobs:
         config:
           - name: Fast PyTorch Pipeline CPU tests
             framework: pytorch_pipelines
-            runner: aws-highmemory-32-plus
+            runner: aws-highmemory-64-plus
             image: diffusers/diffusers-pytorch-cpu
             report: torch_cpu_pipelines
           - name: Fast PyTorch Models & Schedulers CPU tests
@@ -125,8 +125,8 @@ jobs:
     - name: Run fast PyTorch Pipeline CPU tests
       if: ${{ matrix.config.framework == 'pytorch_pipelines' }}
       run: |
-        pytest -n 8 --max-worker-restart=0 --dist=loadfile \
-          -s -v -k "not Flax and not Onnx" \
+        pytest -n 24 --max-worker-restart=0 --dist=loadfile \
+          -k "not Flax and not Onnx" \
           --make-reports=tests_${{ matrix.config.report }} \
           tests/pipelines
 
@@ -134,7 +134,7 @@ jobs:
       if: ${{ matrix.config.framework == 'pytorch_models' }}
       run: |
         pytest -n 4 --max-worker-restart=0 --dist=loadfile \
-          -s -v -k "not Flax and not Onnx and not Dependency" \
+          -s -k "not Flax and not Onnx and not Dependency" \
           --make-reports=tests_${{ matrix.config.report }} \
           tests/models tests/schedulers tests/others
 
