@@ -1623,7 +1623,6 @@ class VQModel(metaclass=DummyObject):
         requires_backends(cls, ["torch"])
 
 
-class WanS2VTransformer3DModel(metaclass=DummyObject):
 class WanAnimateTransformer3DModel(metaclass=DummyObject):
     _backends = ["torch"]
 
