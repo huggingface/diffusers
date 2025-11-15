@@ -64,6 +64,46 @@ EXAMPLE_DOC_STRING = """
         ```
 """
 
+# YiYi TODO: refactor later, remove rearrange and potentially compress_time is no-op here
+def compress_time(t_ids: torch.Tensor) -> torch.Tensor:
+    assert t_ids.ndim == 1
+    t_ids_max = torch.max(t_ids)
+    t_remap = torch.zeros((t_ids_max + 1,), device=t_ids.device, dtype=t_ids.dtype)
+    t_unique_sorted_ids = torch.unique(t_ids, sorted=True)
+    t_remap[t_unique_sorted_ids] = torch.arange(
+        len(t_unique_sorted_ids), device=t_ids.device, dtype=t_ids.dtype
+    )
+    t_ids_compressed = t_remap[t_ids]
+    return t_ids_compressed
+
+from einops import rearrange
+def scatter_ids(x: torch.Tensor, x_ids: torch.Tensor) -> list[torch.Tensor]:
+    """
+    using position ids to scatter tokens into place
+    """
+    x_list = []
+    t_coords = []
+    for data, pos in zip(x, x_ids):
+        _, ch = data.shape  # noqa: F841
+        t_ids = pos[:, 0].to(torch.int64)
+        h_ids = pos[:, 1].to(torch.int64)
+        w_ids = pos[:, 2].to(torch.int64)
+
+        t_ids_cmpr = compress_time(t_ids)
+
+        t = torch.max(t_ids_cmpr) + 1
+        h = torch.max(h_ids) + 1
+        w = torch.max(w_ids) + 1
+
+        flat_ids = t_ids_cmpr * w * h + h_ids * w + w_ids
+
+        out = torch.zeros((t * h * w, ch), device=data.device, dtype=data.dtype)
+        out.scatter_(0, flat_ids.unsqueeze(1).expand(-1, ch), data)
+
+        x_list.append(rearrange(out, "(t h w) c -> 1 c t h w", t=t, h=h, w=w))
+        t_coords.append(torch.unique(t_ids, sorted=True))
+    return x_list
+
 
 
 def format_text_input(prompts: List[str], system_message: str = None):
@@ -703,9 +743,6 @@ attribution and actions without speculation.""",
         width = width or self.default_sample_size * self.vae_scale_factor
 
         # 1. Check inputs. Raise error if not correct
-        # TODO:
-
-
         self.check_inputs(
             prompt=prompt,
             height=height,
@@ -728,15 +765,17 @@ attribution and actions without speculation.""",
             batch_size = prompt_embeds.shape[0]
 
         device = self._execution_device
-
-        prompt_embeds, txt_ids = self.encode_prompt(
+        
+        # 3. prepare text embeddings
+        prompt_embeds, text_ids = self.encode_prompt(
             prompt=prompt,
             prompt_embeds=prompt_embeds,
             device=device,
             num_images_per_prompt=num_images_per_prompt,
             max_sequence_length=max_sequence_length,
         )
-
+         
+         # 4. process images
         if image is not None and not isinstance(image, list):
             image = [image]
         
@@ -760,8 +799,9 @@ attribution and actions without speculation.""",
                 condition_images.append(img)
                 condition_image_sizes.append((image_width, image_height))
 
-            
+        # 5. prepare latent variables
         num_channels_latents = 32
+        # num_channels_latents = self.transformer.config.in_channels // 4
         latents, latent_ids = self.prepare_latents(
             batch_size=batch_size * num_images_per_prompt,
             num_latents_channels=num_channels_latents,
@@ -786,3 +826,114 @@ attribution and actions without speculation.""",
             # return image_latents, image_latent_ids, latents, latent_ids
         # YiYi Testing
         # return None, None, latents, latent_ids
+
+        # 6. Prepare timesteps
+        sigmas = np.linspace(1.0, 1 / num_inference_steps, num_inference_steps) if sigmas is None else sigmas
+        if hasattr(self.scheduler.config, "use_flow_sigmas") and self.scheduler.config.use_flow_sigmas:
+            sigmas = None
+        image_seq_len = latents.shape[1]
+        mu = calculate_shift(
+            image_seq_len,
+            self.scheduler.config.get("base_image_seq_len", 256),
+            self.scheduler.config.get("max_image_seq_len", 4096),
+            self.scheduler.config.get("base_shift", 0.5),
+            self.scheduler.config.get("max_shift", 1.15),
+        )
+        timesteps, num_inference_steps = retrieve_timesteps(
+            self.scheduler,
+            num_inference_steps,
+            device,
+            sigmas=sigmas,
+            mu=mu,
+        )
+        num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
+        self._num_timesteps = len(timesteps)
+
+        # handle guidance
+        guidance = torch.full([1], guidance_scale, device=device, dtype=torch.float32)
+        guidance = guidance.expand(latents.shape[0])
+
+
+        # 7. Denoising loop
+        # We set the index here to remove DtoH sync, helpful especially during compilation.
+        # Check out more details here: https://github.com/huggingface/diffusers/pull/11696
+        self.scheduler.set_begin_index(0)
+        with self.progress_bar(total=num_inference_steps) as progress_bar:
+            for i, t in enumerate(timesteps):
+                if self.interrupt:
+                    continue
+
+                self._current_timestep = t
+                # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
+                timestep = t.expand(latents.shape[0]).to(latents.dtype)
+
+                latent_model_input = latents
+                latent_image_ids = latent_ids
+
+                if image_latents is not None:
+                    latent_model_input = torch.cat([latents, image_latents], dim=1)
+                    latent_image_ids = torch.cat([latent_ids, image_latent_ids],dim=1)
+
+                with self.transformer.cache_context("cond"):
+                    noise_pred = self.transformer(
+                        hidden_states=latent_model_input, # (B, L, C)
+                        timestep=timestep / 1000,
+                        guidance=guidance,
+                        encoder_hidden_states=prompt_embeds,
+                        txt_ids=text_ids,
+                        img_ids=latent_image_ids,
+                        joint_attention_kwargs=self.joint_attention_kwargs,
+                        return_dict=False,
+                    )[0]
+                    noise_pred = noise_pred[:, : latents.size(1):]
+
+                # compute the previous noisy sample x_t -> x_t-1
+                latents_dtype = latents.dtype
+                latents = self.scheduler.step(noise_pred, t, latents, return_dict=False)[0]
+
+                if latents.dtype != latents_dtype:
+                    if torch.backends.mps.is_available():
+                        # some platforms (eg. apple mps) misbehave due to a pytorch bug: https://github.com/pytorch/pytorch/pull/99272
+                        latents = latents.to(latents_dtype)
+
+                if callback_on_step_end is not None:
+                    callback_kwargs = {}
+                    for k in callback_on_step_end_tensor_inputs:
+                        callback_kwargs[k] = locals()[k]
+                    callback_outputs = callback_on_step_end(self, i, t, callback_kwargs)
+
+                    latents = callback_outputs.pop("latents", latents)
+                    prompt_embeds = callback_outputs.pop("prompt_embeds", prompt_embeds)
+
+                # call the callback, if provided
+                if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
+                    progress_bar.update()
+
+                if XLA_AVAILABLE:
+                    xm.mark_step()
+
+        self._current_timestep = None
+
+        if output_type == "latent":
+            image = latents
+        else:
+            latents = torch.cat(scatter_ids(latents, latent_ids), dim=1).squeeze(2)
+
+            latents_bn_mean = (
+                self.vae.bn.running_mean.view(1, -1, 1, 1)
+                .to(image_latents.device, image_latents.dtype)
+            )
+            latents_bn_std = torch.sqrt(self.vae.bn.running_var.view(1, -1, 1, 1) + self.vae.config.batch_norm_eps)
+            latents = latents * latents_bn_std + latents_bn_mean
+            latents = self._unpatchify_latents(latents)
+
+            image = self.vae.decode(latents, return_dict=False)[0]
+            image = self.image_processor.postprocess(image, output_type=output_type)
+
+        # Offload all models
+        self.maybe_free_model_hooks()
+
+        if not return_dict:
+            return (image,)
+
+        return Flux2PipelineOutput(images=image)
