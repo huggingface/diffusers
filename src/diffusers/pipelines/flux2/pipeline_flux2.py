@@ -14,28 +14,23 @@
 
 import inspect
 from typing import Any, Callable, Dict, List, Optional, Union
-import PIL
 
 import numpy as np
+import PIL
 import torch
-from transformers import Mistral3ForConditionalGeneration, AutoProcessor
+from transformers import AutoProcessor, Mistral3ForConditionalGeneration
 
-from ...loaders import FluxIPAdapterMixin, FluxLoraLoaderMixin, FromSingleFileMixin, TextualInversionLoaderMixin
 from ...models import AutoencoderKL, FluxTransformer2DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import (
-    USE_PEFT_BACKEND,
-    deprecate,
     is_torch_xla_available,
     logging,
     replace_example_docstring,
-    scale_lora_layers,
-    unscale_lora_layers,
 )
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
-from .pipeline_output import Flux2PipelineOutput
 from .image_processor import Flux2ImageProcessor
+from .pipeline_output import Flux2PipelineOutput
 
 
 if is_torch_xla_available():
@@ -172,7 +167,7 @@ class Flux2Pipeline(DiffusionPipeline):
     The Flux2 pipeline for text-to-image generation.
 
     Reference: TODO
-    
+
     Args:
         transformer ([`FluxTransformer2DModel`]):
             Conditional Transformer (MMDiT) architecture to denoise the encoded image latents.
@@ -217,7 +212,7 @@ class Flux2Pipeline(DiffusionPipeline):
         self.system_message = """You are an AI that reasons about image descriptions. You give structured responses focusing on object relationships, object
 attribution and actions without speculation."""
         self.text_encoder_out_layers = (10, 20, 30)
-    
+
     @staticmethod
     def _get_mistral_3_small_prompt_embeds(
         text_encoder: Mistral3ForConditionalGeneration,
@@ -230,11 +225,11 @@ attribution and actions without speculation."""
 attribution and actions without speculation.""",
         hidden_states_layers: List[int] = (10, 20, 30),
     ):
-        dtype = text_encoder.dtype if dtype is None else dtype 
-        device = text_encoder.device if device is None else device 
+        dtype = text_encoder.dtype if dtype is None else dtype
+        device = text_encoder.device if device is None else device
 
         prompt = [prompt] if isinstance(prompt, str) else prompt
-        
+
         # Format input messages
         messages_batch = format_text_input(prompts=prompt, system_message=system_message)
 
@@ -268,7 +263,7 @@ attribution and actions without speculation.""",
 
         batch_size, num_channels, seq_len, hidden_dim = out.shape
         prompt_embeds = out.permute(0, 2, 1, 3).reshape(batch_size, seq_len, num_channels * hidden_dim)
-        
+
         return prompt_embeds
 
 
@@ -295,33 +290,33 @@ attribution and actions without speculation.""",
     @staticmethod
     def _prepare_latent_ids(
         latents: torch.Tensor,  # (B, C, H, W)
-    ):   
+    ):
         r"""
         Generates 4D position coordinates (T, H, W, L) for latent tensors.
-        
+
         Args:
-            latents (torch.Tensor): 
+            latents (torch.Tensor):
                 Latent tensor of shape (B, C, H, W)
-        
+
         Returns:
-            torch.Tensor: 
+            torch.Tensor:
                 Position IDs tensor of shape (B, H*W, 4)
                 All batches share the same coordinate structure: T=0, H=[0..H-1], W=[0..W-1], L=0
         """
-        
+
         batch_size, _, height, width = latents.shape
-        
+
         t = torch.arange(1)  # [0] - time dimension
         h = torch.arange(height)
         w = torch.arange(width)
         l = torch.arange(1)  # [0] - layer dimension
-        
+
         # Create position IDs: (H*W, 4)
         latent_ids = torch.cartesian_prod(t, h, w, l)
-        
+
         # Expand to batch: (B, H*W, 4)
         latent_ids = latent_ids.unsqueeze(0).expand(batch_size, -1, -1)
-        
+
         return latent_ids
 
     # YiYi TODO: can optimize a bit
@@ -329,7 +324,7 @@ attribution and actions without speculation.""",
     def _prepare_image_ids(
         image_latents: List[torch.Tensor], # [(1, C, H, W), (1, C, H, W), ...]
         scale: int = 10
-    ):   
+    ):
 
         r"""
         Generates 4D time-space coordinates (T, H, W, L) for a sequence of image latents.
@@ -338,14 +333,14 @@ attribution and actions without speculation.""",
         input latent with different dimensions.
 
         Args:
-            image_latents (List[torch.Tensor]): 
+            image_latents (List[torch.Tensor]):
                 A list of image latent feature tensors, typically of shape (C, H, W).
-            scale (int, optional): 
-                A factor used to define the time separation (T-coordinate) between latents. 
+            scale (int, optional):
+                A factor used to define the time separation (T-coordinate) between latents.
                 T-coordinate for the i-th latent is: 'scale + scale * i'. Defaults to 10.
 
         Returns:
-            torch.Tensor: 
+            torch.Tensor:
                 The combined coordinate tensor.
                 Shape: (1, N_total, 4)
                 Where N_total is the sum of (H * W) for all input latents.
@@ -363,7 +358,7 @@ attribution and actions without speculation.""",
         # create time offset for each reference image
         t_coords = [scale + scale * t for t in torch.arange(0, len(image_latents))]
         t_coords = [t.view(-1) for t in t_coords]
-        
+
         image_latent_ids = []
         for x, t in zip(image_latents, t_coords):
 
@@ -375,10 +370,10 @@ attribution and actions without speculation.""",
 
         image_latent_ids = torch.cat(image_latent_ids, dim=0)
         image_latent_ids = image_latent_ids.unsqueeze(0)
-        
+
         return image_latent_ids
 
-    
+
     @staticmethod
     def _patchify_latents(latents):
         batch_size, num_channels_latents, height, width = latents.shape
@@ -406,7 +401,7 @@ attribution and actions without speculation.""",
 
         return latents
 
-    
+
     @staticmethod
     def _unpack_latents_with_ids(x: torch.Tensor, x_ids: torch.Tensor) -> list[torch.Tensor]:
         """
@@ -426,7 +421,7 @@ attribution and actions without speculation.""",
             out = torch.zeros((h * w, ch), device=data.device, dtype=data.dtype)
             out.scatter_(0, flat_ids.unsqueeze(1).expand(-1, ch), data)
 
-            # reshape from (H * W, C) to (H, W, C) and permute to (C, H, W) 
+            # reshape from (H * W, C) to (H, W, C) and permute to (C, H, W)
 
             out = out.view(h, w, ch).permute(2, 0, 1)
             x_list.append(out)
@@ -459,7 +454,7 @@ attribution and actions without speculation.""",
                 system_message=self.system_message,
                 hidden_states_layers=self.text_encoder_out_layers,
             )
-        
+
         batch_size, seq_len, _ = prompt_embeds.shape
         prompt_embeds = prompt_embeds.repeat(1, num_images_per_prompt, 1)
         prompt_embeds = prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
@@ -476,7 +471,7 @@ attribution and actions without speculation.""",
 
         image_latents = retrieve_latents(self.vae.encode(image), generator=generator, sample_mode="argmax")
         image_latents = self._patchify_latents(image_latents)
-    
+
         latents_bn_mean = (
             self.vae.bn.running_mean.view(1, -1, 1, 1)
             .to(image_latents.device, image_latents.dtype)
@@ -536,7 +531,7 @@ attribution and actions without speculation.""",
             image = image.to(device=device, dtype=dtype)
             imagge_latent = self._encode_vae_image(image=image, generator=generator)
             image_latents.append(imagge_latent) # (1, 128, 32, 32)
-        
+
         image_latent_ids = self._prepare_image_ids(image_latents)
 
         # Pack each latent and concatenate
@@ -546,7 +541,7 @@ attribution and actions without speculation.""",
             packed = self._pack_latents(latent)  # (1, 1024, 128)
             packed = packed.squeeze(0)  # (1024, 128) - remove batch dim
             packed_latents.append(packed)
-        
+
         # Concatenate all reference tokens along sequence dimension
         image_latents = torch.cat(packed_latents, dim=0)  # (N*1024, 128)
         image_latents = image_latents.unsqueeze(0)  # (1, N*1024, 128)
@@ -557,7 +552,7 @@ attribution and actions without speculation.""",
 
         return image_latents, image_latent_ids
 
-    
+
     def check_inputs(
         self,
         prompt,
@@ -738,7 +733,7 @@ attribution and actions without speculation.""",
             batch_size = prompt_embeds.shape[0]
 
         device = self._execution_device
-        
+
         # 3. prepare text embeddings
         prompt_embeds, text_ids = self.encode_prompt(
             prompt=prompt,
@@ -747,11 +742,11 @@ attribution and actions without speculation.""",
             num_images_per_prompt=num_images_per_prompt,
             max_sequence_length=max_sequence_length,
         )
-         
+
          # 4. process images
         if image is not None and not isinstance(image, list):
             image = [image]
-        
+
         condition_images = None
         if image is not None:
             for img in image:
@@ -785,7 +780,7 @@ attribution and actions without speculation.""",
             generator=generator,
             latents=latents,
         )
-        
+
         image_latents = None
         image_latent_ids = None
         if condition_images is not None:

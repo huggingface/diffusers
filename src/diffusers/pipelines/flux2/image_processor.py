@@ -12,12 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Optional, Tuple, Union
-
-import numpy as np
-import PIL.Image
-import torch
 import math
+from typing import Tuple
+
+import PIL.Image
 
 from ...configuration_utils import register_to_config
 from ...image_processor import VaeImageProcessor
@@ -63,41 +61,41 @@ class Flux2ImageProcessor(VaeImageProcessor):
             do_convert_rgb=do_convert_rgb,
         )
 
-    
+
     @staticmethod
     def check_image_input(
-        image: PIL.Image.Image, 
-        max_aspect_ratio: int = 8, 
+        image: PIL.Image.Image,
+        max_aspect_ratio: int = 8,
         min_side_length: int = 64,
         max_area: int = 1024 * 1024
     ) -> PIL.Image.Image:
         """
         Check if image meets minimum size and aspect ratio requirements.
-        
+
         Args:
             image: PIL Image to validate
             max_aspect_ratio: Maximum allowed aspect ratio (width/height or height/width)
             min_side_length: Minimum pixels required for width and height
             max_area: Maximum allowed area in pixels²
-            
+
         Returns:
             The input image if valid
-            
+
         Raises:
             ValueError: If image is too small or aspect ratio is too extreme
         """
         if not isinstance(image, PIL.Image.Image):
             raise ValueError(f"Image must be a PIL.Image.Image, got {type(image)}")
-    
+
         width, height = image.size
-        
+
         # Check minimum dimensions
         if width < min_side_length or height < min_side_length:
             raise ValueError(
                 f"Image too small: {width}×{height}. "
                 f"Both dimensions must be at least {min_side_length}px"
             )
-        
+
         # Check aspect ratio
         aspect_ratio = max(width / height, height / width)
         if aspect_ratio > max_aspect_ratio:
@@ -113,14 +111,14 @@ class Flux2ImageProcessor(VaeImageProcessor):
     @staticmethod
     def _resize_to_target_area(image: PIL.Image.Image, target_area: int = 1024 * 1024) -> Tuple[int, int]:
         image_width, image_height = image.size
-        
+
         scale = math.sqrt(target_area/ (image_width * image_height))
         width = int(image_width * scale)
         height = int(image_height * scale)
 
         return image.resize((width, height), PIL.Image.Resampling.LANCZOS)
-    
-    
+
+
     def _resize_and_crop(
         self,
         image: PIL.Image.Image,
