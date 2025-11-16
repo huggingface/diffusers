@@ -64,47 +64,6 @@ EXAMPLE_DOC_STRING = """
         ```
 """
 
-# YiYi TODO: refactor later, remove rearrange and potentially compress_time is no-op here
-def compress_time(t_ids: torch.Tensor) -> torch.Tensor:
-    assert t_ids.ndim == 1
-    t_ids_max = torch.max(t_ids)
-    t_remap = torch.zeros((t_ids_max + 1,), device=t_ids.device, dtype=t_ids.dtype)
-    t_unique_sorted_ids = torch.unique(t_ids, sorted=True)
-    t_remap[t_unique_sorted_ids] = torch.arange(
-        len(t_unique_sorted_ids), device=t_ids.device, dtype=t_ids.dtype
-    )
-    t_ids_compressed = t_remap[t_ids]
-    return t_ids_compressed
-
-from einops import rearrange
-def scatter_ids(x: torch.Tensor, x_ids: torch.Tensor) -> list[torch.Tensor]:
-    """
-    using position ids to scatter tokens into place
-    """
-    x_list = []
-    t_coords = []
-    for data, pos in zip(x, x_ids):
-        _, ch = data.shape  # noqa: F841
-        t_ids = pos[:, 0].to(torch.int64)
-        h_ids = pos[:, 1].to(torch.int64)
-        w_ids = pos[:, 2].to(torch.int64)
-
-        t_ids_cmpr = compress_time(t_ids)
-
-        t = torch.max(t_ids_cmpr) + 1
-        h = torch.max(h_ids) + 1
-        w = torch.max(w_ids) + 1
-
-        flat_ids = t_ids_cmpr * w * h + h_ids * w + w_ids
-
-        out = torch.zeros((t * h * w, ch), device=data.device, dtype=data.dtype)
-        out.scatter_(0, flat_ids.unsqueeze(1).expand(-1, ch), data)
-
-        x_list.append(rearrange(out, "(t h w) c -> 1 c t h w", t=t, h=h, w=w))
-        t_coords.append(torch.unique(t_ids, sorted=True))
-    return x_list
-
-
 
 def format_text_input(prompts: List[str], system_message: str = None):
     # Remove [IMG] tokens from prompts to avoid Pixtral validation issues
@@ -446,6 +405,33 @@ attribution and actions without speculation.""",
         latents = latents.reshape(batch_size, num_channels, height * width).permute(0, 2, 1)
 
         return latents
+
+    
+    @staticmethod
+    def _unpack_latents_with_ids(x: torch.Tensor, x_ids: torch.Tensor) -> list[torch.Tensor]:
+        """
+        using position ids to scatter tokens into place
+        """
+        x_list = []
+        for data, pos in zip(x, x_ids):
+            _, ch = data.shape  # noqa: F841
+            h_ids = pos[:, 1].to(torch.int64)
+            w_ids = pos[:, 2].to(torch.int64)
+
+            h = torch.max(h_ids) + 1
+            w = torch.max(w_ids) + 1
+
+            flat_ids =h_ids * w + w_ids
+
+            out = torch.zeros((h * w, ch), device=data.device, dtype=data.dtype)
+            out.scatter_(0, flat_ids.unsqueeze(1).expand(-1, ch), data)
+
+            # reshape from (H * W, C) to (H, W, C) and permute to (C, H, W) 
+
+            out = out.view(h, w, ch).permute(2, 0, 1)
+            x_list.append(out)
+
+        return torch.stack(x_list, dim=0)
 
 
     def encode_prompt(
@@ -860,12 +846,12 @@ attribution and actions without speculation.""",
 
 
                 noise_pred = self.transformer(
-                    hidden_states=latent_model_input, # (B, L, C)
+                    hidden_states=latent_model_input, # (B, image_seq_len, C)
                     timestep=timestep / 1000,
                     guidance=guidance,
                     encoder_hidden_states=prompt_embeds,
-                    txt_ids=text_ids,
-                    img_ids=latent_image_ids,
+                    txt_ids=text_ids, #B, text_seq_len, 4
+                    img_ids=latent_image_ids, #B, image_seq_len, 4
                     joint_attention_kwargs=self._attention_kwargs,
                     return_dict=False,
                 )[0]
@@ -902,7 +888,7 @@ attribution and actions without speculation.""",
         if output_type == "latent":
             image = latents
         else:
-            latents = torch.cat(scatter_ids(latents, latent_ids), dim=1).squeeze(2)
+            latents = self._unpack_latents_with_ids(latents, latent_ids)
 
             latents_bn_mean = (
                 self.vae.bn.running_mean.view(1, -1, 1, 1)
