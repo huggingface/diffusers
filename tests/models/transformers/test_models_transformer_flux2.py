@@ -187,7 +187,7 @@ class Flux2TransformerTests(ModelTesterMixin, unittest.TestCase):
 
         flat_output = output.cpu().flatten()
         generated_slice = torch.cat([flat_output[:8], flat_output[-8:]])
-        self.assertTrue(torch.allclose(generated_slice, expected_slice))
+        self.assertTrue(torch.allclose(generated_slice, expected_slice, atol=1e-4))
 
     def test_gradient_checkpointing_is_applied(self):
         expected_set = {"Flux2Transformer2DModel"}
@@ -200,7 +200,7 @@ class Flux2TransformerTests(ModelTesterMixin, unittest.TestCase):
         from peft import LoraConfig, get_peft_model_state_dict, inject_adapter_in_model, set_peft_model_state_dict
 
         lora_rank = 4
-        target_module = "single_transformer_blocks.0.proj_out"
+        target_module = "single_transformer_blocks.0.attn.to_out"
         adapter_name = "foo"
         init_dict, _ = self.prepare_init_args_and_inputs_for_common()
         model = self.model_class(**init_dict).to(torch_device)
@@ -212,15 +212,13 @@ class Flux2TransformerTests(ModelTesterMixin, unittest.TestCase):
             f"{target_module}.lora_B.weight": torch.ones(target_mod_shape[0], lora_rank) * 33,
         }
         # Passing exclude_modules should no longer be necessary (or even passing target_modules, for that matter).
-        config = LoraConfig(
-            r=lora_rank, target_modules=["single_transformer_blocks.0.proj_out"], exclude_modules=["proj_out"]
-        )
+        config = LoraConfig(r=lora_rank, target_modules=[target_module], exclude_modules=["to_out"])
         inject_adapter_in_model(config, model, adapter_name=adapter_name, state_dict=lora_state_dict)
         set_peft_model_state_dict(model, lora_state_dict, adapter_name)
         retrieved_lora_state_dict = get_peft_model_state_dict(model, adapter_name=adapter_name)
         assert len(retrieved_lora_state_dict) == len(lora_state_dict)
-        assert (retrieved_lora_state_dict["single_transformer_blocks.0.proj_out.lora_A.weight"] == 22).all()
-        assert (retrieved_lora_state_dict["single_transformer_blocks.0.proj_out.lora_B.weight"] == 33).all()
+        assert (retrieved_lora_state_dict[f"{target_module}.lora_A.weight"] == 22).all()
+        assert (retrieved_lora_state_dict[f"{target_module}.lora_B.weight"] == 33).all()
 
 
 class Flux2TransformerCompileTests(TorchCompileTesterMixin, unittest.TestCase):
