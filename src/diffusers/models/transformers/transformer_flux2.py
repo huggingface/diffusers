@@ -775,11 +775,6 @@ class Flux2Transformer2DModel(
             torch.cat([text_rotary_emb[1], image_rotary_emb[1]], dim=0),
         )
 
-        if joint_attention_kwargs is not None and "ip_adapter_image_embeds" in joint_attention_kwargs:
-            ip_adapter_image_embeds = joint_attention_kwargs.pop("ip_adapter_image_embeds")
-            ip_hidden_states = self.encoder_hid_proj(ip_adapter_image_embeds)
-            joint_attention_kwargs.update({"ip_hidden_states": ip_hidden_states})
-
         # 4. Double Stream Transformer Blocks
         for index_block, block in enumerate(self.transformer_blocks):
             if torch.is_grad_enabled() and self.gradient_checkpointing:
