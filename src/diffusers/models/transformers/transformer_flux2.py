@@ -294,8 +294,7 @@ class Flux2Attention(torch.nn.Module, AttentionModuleMixin):
         **kwargs,
     ) -> torch.Tensor:
         attn_parameters = set(inspect.signature(self.processor.__call__).parameters.keys())
-        quiet_attn_parameters = {"ip_adapter_masks", "ip_hidden_states"}
-        unused_kwargs = [k for k, _ in kwargs.items() if k not in attn_parameters and k not in quiet_attn_parameters]
+        unused_kwargs = [k for k, _ in kwargs.items() if k not in attn_parameters]
         if len(unused_kwargs) > 0:
             logger.warning(
                 f"joint_attention_kwargs {unused_kwargs} are not expected by {self.processor.__class__.__name__} and will be ignored."
