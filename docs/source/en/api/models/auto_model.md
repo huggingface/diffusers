@@ -12,15 +12,7 @@ specific language governing permissions and limitations under the License.
 
 # AutoModel
 
-The `AutoModel` is designed to make it easy to load a checkpoint without needing to know the specific model class. `AutoModel` automatically retrieves the correct model class from the checkpoint `config.json` file.
-
-```python
-from diffusers import AutoModel, AutoPipelineForText2Image
-
-unet = AutoModel.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5", subfolder="unet")
-pipe = AutoPipelineForText2Image.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5", unet=unet)
-```
-
+[`AutoModel`] automatically retrieves the correct model class from the checkpoint `config.json` file.
 
 ## AutoModel
 
