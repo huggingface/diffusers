@@ -73,7 +73,7 @@ from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...loaders import FromSingleFileMixin, LTXVideoLoraLoaderMixin
 from ...models.autoencoders import AutoencoderKLLTXVideo
 from ...models.transformers import LTXVideoTransformer3DModel
-from ...schedulers import FlowMatchEulerDiscreteScheduler
+from ...schedulers import FlowMatchEulerDiscreteScheduler, LTXEulerAncestralRFScheduler
 from ...utils import is_torch_xla_available, logging
 from ...utils.torch_utils import randn_tensor
 from ...video_processor import VideoProcessor
@@ -144,7 +144,7 @@ class LTXI2VLongMultiPromptPipeline(DiffusionPipeline, FromSingleFileMixin, LTXV
     - VRAM control via temporal windowing and VAE tiled decoding.
 
     Components:
-    - scheduler: FlowMatchEulerDiscreteScheduler
+    - scheduler: FlowMatchEulerDiscreteScheduler or LTXEulerAncestralRFScheduler
     - vae: AutoencoderKLLTXVideo
     - text_encoder: T5EncoderModel
     - tokenizer: T5TokenizerFast
@@ -157,6 +157,7 @@ class LTXI2VLongMultiPromptPipeline(DiffusionPipeline, FromSingleFileMixin, LTXV
     - LTXImageToVideoPipeline.prepare_latents() cond_mask semantics (diffusers/src/diffusers/pipelines/ltx/pipeline_ltx_image2video.py:502)
     - FlowMatchEulerDiscreteScheduler.set_timesteps() (diffusers/src/diffusers/schedulers/scheduling_flow_match_euler_discrete.py:249)
     - FlowMatchEulerDiscreteScheduler.step() (diffusers/src/diffusers/schedulers/scheduling_flow_match_euler_discrete.py:374)
+    - LTXEulerAncestralRFScheduler.set_timesteps()/step() (diffusers/src/diffusers/schedulers/scheduling_ltx_euler_ancestral_rf.py)
     - rescale_noise_cfg() (diffusers/src/diffusers/pipelines/ltx/pipeline_ltx.py:144)
 
     Defaults:
@@ -214,6 +215,24 @@ class LTXI2VLongMultiPromptPipeline(DiffusionPipeline, FromSingleFileMixin, LTXV
         self.default_width = 704
         self.default_frames = 121
         self._current_tile_T = None
+
+    @classmethod
+    def from_pretrained(cls, pretrained_model_name_or_path, **kwargs):
+        """
+        Instantiate the pipeline and swap the scheduler to `LTXEulerAncestralRFScheduler`
+        by default for closer parity with the ComfyUI LTXV workflow, while keeping the
+        original scheduler config (e.g. `num_train_timesteps`) intact.
+
+        Users that want to keep using the default `FlowMatchEulerDiscreteScheduler`
+        can manually override `pipe.scheduler` after construction.
+        """
+        pipe = super().from_pretrained(pretrained_model_name_or_path, **kwargs)
+
+        # For ComfyUI parity, map the FlowMatch scheduler config onto the RF scheduler.
+        # Other custom schedulers are left untouched.
+        if isinstance(pipe.scheduler, FlowMatchEulerDiscreteScheduler):
+            pipe.scheduler = LTXEulerAncestralRFScheduler.from_config(pipe.scheduler.config)
+        return pipe
 
     @property
     def guidance_scale(self):
@@ -818,14 +837,14 @@ class LTXI2VLongMultiPromptPipeline(DiffusionPipeline, FromSingleFileMixin, LTXV
         width: int = 704,
         num_frames: int = 161,
         frame_rate: float = 25,
-        guidance_scale: float = 3.0,
+        guidance_scale: float = 1.0,
         guidance_rescale: float = 1.0,
         num_inference_steps: Optional[int] = 8,
         sigmas: Optional[Union[List[float], torch.Tensor]] = None,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         seed: Optional[int] = 0,
         cond_image: Optional[Union["PIL.Image.Image", torch.Tensor]] = None,
-        cond_strength: float = 1.0,
+        cond_strength: float = 0.5,
         latents: Optional[torch.Tensor] = None,
         temporal_tile_size: int = 80,
         temporal_overlap: int = 24,
@@ -835,7 +854,7 @@ class LTXI2VLongMultiPromptPipeline(DiffusionPipeline, FromSingleFileMixin, LTXV
         guiding_strength: float = 1.0,
         negative_index_latents: Optional[torch.Tensor] = None,
         negative_index_strength: float = 1.0,
-        skip_steps_sigma_threshold: Optional[float] = 0.997,
+        skip_steps_sigma_threshold: Optional[float] = 1,
         decode_timestep: Optional[float] = 0.05,
         decode_noise_scale: Optional[float] = 0.025,
         decode_horizontal_tiles: int = 4,
@@ -943,8 +962,8 @@ class LTXI2VLongMultiPromptPipeline(DiffusionPipeline, FromSingleFileMixin, LTXV
             latent_num_frames = (num_frames - 1) // self.vae_temporal_compression_ratio + 1
             latent_height = height // self.vae_spatial_compression_ratio
             latent_width = width // self.vae_spatial_compression_ratio
-            # Initialize latents with standard Gaussian noise (Diffusers-style)
-            latents = torch.ones((1, num_channels_latents, latent_num_frames, latent_height, latent_width), device=device, dtype=torch.float32)
+            # Initialize latents with zeros (ComfyUI parity: nodes_lt.py:34, 69)
+            latents = torch.zeros((1, num_channels_latents, latent_num_frames, latent_height, latent_width), device=device, dtype=torch.float32)
         else:
             latent_num_frames = latents.shape[2]
             latent_height = latents.shape[3]
@@ -961,7 +980,10 @@ class LTXI2VLongMultiPromptPipeline(DiffusionPipeline, FromSingleFileMixin, LTXV
             enc = self.vae.encode(img.unsqueeze(2))  # [B, C, 1, h, w]
             init_latents = enc.latent_dist.mode() if hasattr(enc, "latent_dist") else enc.latents
             init_latents = init_latents.to(torch.float32)
-            init_latents = LTXPipeline._normalize_latents(init_latents, self.vae.latents_mean, self.vae.latents_std)
+            # Normalize the encoded latents (standard VAE pipeline operation)
+            init_latents = LTXPipeline._normalize_latents(
+                init_latents, self.vae.latents_mean, self.vae.latents_std, self.vae.config.scaling_factor
+            )
             if negative_index_latents is None:
                 negative_index_latents = init_latents
             # Blend only first latent frame
@@ -1096,7 +1118,7 @@ class LTXI2VLongMultiPromptPipeline(DiffusionPipeline, FromSingleFileMixin, LTXV
             )
             cond_mask_tokens = LTXPipeline._pack_latents(
                 window_cond_mask_5d, self.transformer_spatial_patch_size, self.transformer_temporal_patch_size
-            ).squeeze(-1)
+            )
             if self.do_classifier_free_guidance:
                 cond_mask = torch.cat([cond_mask_tokens, cond_mask_tokens], dim=0)
             else:
@@ -1163,11 +1185,12 @@ class LTXI2VLongMultiPromptPipeline(DiffusionPipeline, FromSingleFileMixin, LTXV
                         )
 
                     # Use global timestep for scheduling, but apply suppressive blending with hard-condition tokens (e.g., first frame) after step to avoid brightness/flicker due to time misalignment
-                    noise_pred = noise_pred * cond_mask_tokens.unsqueeze(-1)+ window_latents_packed * (1.0 - cond_mask_tokens.unsqueeze(-1))
                     latents_packed = self.scheduler.step(
-                        noise_pred, t, latents_packed, return_dict=False
+                        noise_pred, t, latents_packed, generator=local_gen, return_dict=False
                     )[0]
-
+                    # Inpainting post-blend (ComfyUI parity: restore hard-conditioned regions after update)
+                    if cond_mask_tokens is not None:
+                        latents_packed = latents_packed * cond_mask_tokens + window_latents_packed * (1.0 - cond_mask_tokens)
                     if callback_on_step_end is not None:
                         callback_kwargs = {}
                         for k in callback_on_step_end_tensor_inputs:
@@ -1201,7 +1224,7 @@ class LTXI2VLongMultiPromptPipeline(DiffusionPipeline, FromSingleFileMixin, LTXV
                 out_latents = window_out
                 first_window_latents = out_latents
             else:
-                window_out=window_out[:, :, 1:]  # Drop the first frame of the new window
+                window_out = window_out[:, :, 1:]  # Drop the first frame of the new window
                 if adain_factor > 0 and first_window_latents is not None:
                     window_out = self._adain_normalize_latents(window_out, first_window_latents, adain_factor)
                 overlap_len = max(overlap_lat-1, 1)
