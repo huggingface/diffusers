@@ -523,10 +523,10 @@ class Flux2TimestepGuidanceEmbeddings(nn.Module):
 
     def forward(self, timestep: torch.Tensor, guidance: torch.Tensor) -> torch.Tensor:
         timesteps_proj = self.time_proj(timestep)
-        timesteps_emb = self.timestep_embedder(timesteps_proj)  # (N, D)
+        timesteps_emb = self.timestep_embedder(timesteps_proj.to(timestep.dtype))  # (N, D)
 
         guidance_proj = self.time_proj(guidance)
-        guidance_emb = self.guidance_embedder(guidance_proj)  # (N, D)
+        guidance_emb = self.guidance_embedder(guidance_proj.to(guidance.dtype))  # (N, D)
 
         time_guidance_emb = timesteps_emb + guidance_emb
 
