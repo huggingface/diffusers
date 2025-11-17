@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import inspect
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Union, Tuple
 
 import numpy as np
 import PIL
@@ -183,7 +183,6 @@ class Flux2Pipeline(DiffusionPipeline):
     """
 
     model_cpu_offload_seq = "text_encoder->image_encoder->transformer->vae"
-    _optional_components = ["image_encoder", "feature_extractor"]
     _callback_tensor_inputs = ["latents", "prompt_embeds"]
 
     def __init__(
@@ -211,8 +210,7 @@ class Flux2Pipeline(DiffusionPipeline):
         self.default_sample_size = 128
         self.system_message = """You are an AI that reasons about image descriptions. You give structured responses focusing on object relationships, object
 attribution and actions without speculation."""
-        self.text_encoder_out_layers = (10, 20, 30)
-
+        
     @staticmethod
     def _get_mistral_3_small_prompt_embeds(
         text_encoder: Mistral3ForConditionalGeneration,
@@ -248,7 +246,7 @@ attribution and actions without speculation.""",
         # Move to device
         input_ids = inputs["input_ids"].to(device)
         attention_mask = inputs["attention_mask"].to(device)
-
+        
         # Forward pass through the model
         output = text_encoder(
             input_ids=input_ids,
@@ -436,6 +434,7 @@ attribution and actions without speculation.""",
         num_images_per_prompt: int = 1,
         prompt_embeds: Optional[torch.Tensor] = None,
         max_sequence_length: int = 512,
+        text_encoder_out_layers: Tuple[int] = (10, 20, 30),
     ):
         device = device or self._execution_device
 
@@ -452,7 +451,7 @@ attribution and actions without speculation.""",
                 device=device,
                 max_sequence_length=max_sequence_length,
                 system_message=self.system_message,
-                hidden_states_layers=self.text_encoder_out_layers,
+                hidden_states_layers=text_encoder_out_layers,
             )
 
         batch_size, seq_len, _ = prompt_embeds.shape
@@ -492,13 +491,12 @@ attribution and actions without speculation.""",
         device,
         generator: torch.Generator,
         latents: Optional[torch.Tensor] = None,
-        ):
+    ):
 
         # VAE applies 8x compression on images but we must also account for packing which requires
         # latent height and width to be divisible by 2.
         height = 2 * (int(height) // (self.vae_scale_factor * 2))
         width = 2 * (int(width) // (self.vae_scale_factor * 2))
-
 
         shape = (batch_size, num_latents_channels * 4, height//2, width//2)
         if isinstance(generator, list) and len(generator) != batch_size:
@@ -628,6 +626,7 @@ attribution and actions without speculation.""",
         callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
         max_sequence_length: int = 512,
+        text_encoder_out_layers: Tuple[int] = (10, 20, 30),
     ):
         r"""
         Function invoked when calling the pipeline for generation.
@@ -741,6 +740,7 @@ attribution and actions without speculation.""",
             device=device,
             num_images_per_prompt=num_images_per_prompt,
             max_sequence_length=max_sequence_length,
+            text_encoder_out_layers=text_encoder_out_layers,
         )
 
          # 4. process images
@@ -768,8 +768,7 @@ attribution and actions without speculation.""",
                 condition_image_sizes.append((image_width, image_height))
 
         # 5. prepare latent variables
-        num_channels_latents = 32
-        # num_channels_latents = self.transformer.config.in_channels // 4
+        num_channels_latents = self.transformer.config.in_channels // 4
         latents, latent_ids = self.prepare_latents(
             batch_size=batch_size * num_images_per_prompt,
             num_latents_channels=num_channels_latents,
