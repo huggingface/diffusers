@@ -44,24 +44,14 @@ class TaylorSeerCacheConfig:
     See: https://huggingface.co/papers/2503.06923
 
     Attributes:
-        warmup_steps (int, defaults to 3): Number of warmup steps without caching.
-        predict_steps (int, defaults to 5): Number of prediction (cache) steps between non-cached steps.
-        stop_predicts (Optional[int], defaults to None): Step after which predictions are stopped and full computation is always performed.
-        max_order (int, defaults to 1): Maximum order of Taylor series expansion to approximate the features.
-        taylor_factors_dtype (torch.dtype, defaults to torch.float32): Data type for Taylor series expansion factors.
-        architecture (str, defaults to None): Architecture for which the cache is applied. If we know the architecture, we can use the special cache identifiers.
-        skip_identifiers (List[str], defaults to []): Identifiers for modules to skip computation.
-        cache_identifiers (List[str], defaults to []): Identifiers for modules to cache.
-
-    By default, this approximation can be applied to all attention modules, but in some architectures, where the outputs of attention modules are not used for any residual computation, we can skip this attention cache step, so we have to identify the next modules to cache.
-    Example:
-    ```python
-    ...
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        attn_output = self.attention(x) # mark this attention module to skip computation
-        ffn_output = self.ffn(attn_output) # ffn_output will be cached
-        return ffn_output
-    ```
+        warmup_steps (`int`, defaults to `3`): Calculate normal computations `N` times before applying this caching strategy. Higher `N` gives more closed outputs.
+        predict_steps (`int`, defaults to `5`): Calculate the module states every `N` iterations. If this is set to `N`, the module computation will be skipped `N - 1` times before computing the new module states again.
+        stop_predicts (`int`, *optional*, defaults to `None`): Disable caching strategy after this step, this feature helps produce fine-grained outputs. If not provided, the caching strategy will be applied until the end of the inference.
+        max_order (`int`, defaults to `1`): Maximum order of Taylor series expansion to approximate the features. In theory, the higher the order, the more closed the output is to the actual value but also the more computation is required.
+        taylor_factors_dtype (`torch.dtype`, defaults to `torch.float32`): Data type for calculating Taylor series expansion factors.
+        architecture (`str`, *optional*, defaults to `None`): Option to use cache strategy optimized for specific architectures. By default, this cache strategy will be applied to all `Attention` modules.
+        skip_identifiers (`List[str]`, *optional*, defaults to `[]`): Regex patterns to identify modules to skip computation.
+        cache_identifiers (`List[str]`, *optional*, defaults to `[]`): Regex patterns to identify modules to cache.
     """
 
     warmup_steps: int = 3
