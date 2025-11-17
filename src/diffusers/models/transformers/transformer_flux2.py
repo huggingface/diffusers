@@ -133,10 +133,10 @@ class Flux2AttnProcessor:
         if attn.parallel_proj_in:
             hidden_states = attn.to_qkv_mlp_proj(hidden_states)
             qkv, mlp_hidden_states = torch.split(
-                hidden_states, [3 * attn.inner_dim, attn.mlp_hidden_dim * attn.mlp_mult_factor]
+                hidden_states, [3 * attn.inner_dim, attn.mlp_hidden_dim * attn.mlp_mult_factor], dim=-1
             )
             query, key, value = qkv.chunk(3, dim=-1)
-            mlp_hidden_states = self.mlp_act_fn(mlp_hidden_states)
+            mlp_hidden_states = attn.mlp_act_fn(mlp_hidden_states)
 
             # Get encoder QKV, if available
             encoder_query = encoder_key = encoder_value = None
@@ -423,6 +423,7 @@ class Flux2TransformerBlock(nn.Module):
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         joint_attention_kwargs = joint_attention_kwargs or {}
 
+        # Modulation parameters shape: [1, 1, self.dim]
         (shift_msa, scale_msa, gate_msa), (shift_mlp, scale_mlp, gate_mlp) = temb_mod_params_img
         (c_shift_msa, c_scale_msa, c_gate_msa), (c_shift_mlp, c_scale_mlp, c_gate_mlp) = temb_mod_params_txt
 
@@ -448,27 +449,27 @@ class Flux2TransformerBlock(nn.Module):
             attn_output, context_attn_output, ip_attn_output = attention_outputs
 
         # Process attention outputs for the image stream (`hidden_states`).
-        attn_output = gate_msa.unsqueeze(1) * attn_output
+        attn_output = gate_msa * attn_output
         hidden_states = hidden_states + attn_output
 
         norm_hidden_states = self.norm2(hidden_states)
-        norm_hidden_states = norm_hidden_states * (1 + scale_mlp[:, None]) + shift_mlp[:, None]
+        norm_hidden_states = norm_hidden_states * (1 + scale_mlp) + shift_mlp
 
         ff_output = self.ff(norm_hidden_states)
-        hidden_states = hidden_states + gate_mlp.unsqueeze(1) * ff_output
+        hidden_states = hidden_states + gate_mlp * ff_output
 
         if len(attention_outputs) == 3:
             hidden_states = hidden_states + ip_attn_output
 
         # Process attention outputs for the text stream (`encoder_hidden_states`).
-        context_attn_output = c_gate_msa.unsqueeze(1) * context_attn_output
+        context_attn_output = c_gate_msa * context_attn_output
         encoder_hidden_states = encoder_hidden_states + context_attn_output
 
         norm_encoder_hidden_states = self.norm2_context(encoder_hidden_states)
-        norm_encoder_hidden_states = norm_encoder_hidden_states * (1 + c_scale_mlp[:, None]) + c_shift_mlp[:, None]
+        norm_encoder_hidden_states = norm_encoder_hidden_states * (1 + c_scale_mlp) + c_shift_mlp
 
         context_ff_output = self.ff_context(norm_encoder_hidden_states)
-        encoder_hidden_states = encoder_hidden_states + c_gate_mlp.unsqueeze(1) * context_ff_output
+        encoder_hidden_states = encoder_hidden_states + c_gate_mlp * context_ff_output
         if encoder_hidden_states.dtype == torch.float16:
             encoder_hidden_states = encoder_hidden_states.clip(-65504, 65504)
 
@@ -483,6 +484,7 @@ class Flux2PosEmbed(nn.Module):
         self.axes_dim = axes_dim
 
     def forward(self, ids: torch.Tensor) -> torch.Tensor:
+        # Expected ids shape: [S, len(self.axes_dim)]
         cos_out = []
         sin_out = []
         pos = ids.float()
@@ -493,7 +495,7 @@ class Flux2PosEmbed(nn.Module):
         for i in range(len(self.axes_dim)):
             cos, sin = get_1d_rotary_pos_embed(
                 self.axes_dim[i],
-                pos[:, i],
+                pos[..., i],
                 theta=self.theta,
                 repeat_interleave_real=True,
                 use_real=True,
@@ -736,6 +738,8 @@ class Flux2Transformer2DModel(
                     "Passing `scale` via `joint_attention_kwargs` when not using the PEFT backend is ineffective."
                 )
 
+        num_txt_tokens = encoder_hidden_states.shape[1]
+
         # 1. Calculate timestep embedding and modulation parameters
         timestep = timestep.to(hidden_states.dtype) * 1000
         guidance = guidance.to(hidden_states.dtype) * 1000
@@ -751,6 +755,13 @@ class Flux2Transformer2DModel(
         encoder_hidden_states = self.context_embedder(encoder_hidden_states)
 
         # 3. Calculate RoPE embeddings from image and text tokens
+        # NOTE: the below logic means that we can't support batched inference with images of different resolutions or
+        # text prompts of differents lengths. Is this a use case we want to support?
+        if img_ids.ndim == 3:
+            img_ids = img_ids[0]
+        if txt_ids.ndim == 3:
+            txt_ids = txt_ids[0]
+
         if is_torch_npu_available():
             freqs_cos_image, freqs_sin_image = self.pos_embed(img_ids.cpu())
             image_rotary_emb = (freqs_cos_image.npu(), freqs_sin_image.npu())
@@ -760,8 +771,8 @@ class Flux2Transformer2DModel(
             image_rotary_emb = self.pos_embed(img_ids)
             text_rotary_emb = self.pos_embed(txt_ids)
         concat_rotary_emb = (
-            torch.cat([text_rotary_emb[0], image_rotary_emb[0]], dim=2),
-            torch.cat([text_rotary_emb[1], image_rotary_emb[1]], dim=2),
+            torch.cat([text_rotary_emb[0], image_rotary_emb[0]], dim=0),
+            torch.cat([text_rotary_emb[1], image_rotary_emb[1]], dim=0),
         )
 
         if joint_attention_kwargs is not None and "ip_adapter_image_embeds" in joint_attention_kwargs:
@@ -790,26 +801,30 @@ class Flux2Transformer2DModel(
                     image_rotary_emb=concat_rotary_emb,
                     joint_attention_kwargs=joint_attention_kwargs,
                 )
+        # Concatenate text and image streams for single-block inference
+        hidden_states = torch.cat([encoder_hidden_states, hidden_states], dim=1)
 
         # 5. Single Stream Transformer Blocks
         for index_block, block in enumerate(self.single_transformer_blocks):
             if torch.is_grad_enabled() and self.gradient_checkpointing:
-                encoder_hidden_states, hidden_states = self._gradient_checkpointing_func(
+                hidden_states = self._gradient_checkpointing_func(
                     block,
                     hidden_states,
-                    encoder_hidden_states,
+                    None,
                     single_stream_mod,
                     concat_rotary_emb,
                     joint_attention_kwargs,
                 )
             else:
-                encoder_hidden_states, hidden_states = block(
+                hidden_states = block(
                     hidden_states=hidden_states,
-                    encoder_hidden_states=encoder_hidden_states,
+                    encoder_hidden_states=None,
                     temb_mod_params=single_stream_mod,
                     image_rotary_emb=concat_rotary_emb,
                     joint_attention_kwargs=joint_attention_kwargs,
                 )
+        # Remove text tokens from concatenated stream
+        hidden_states = hidden_states[:, num_txt_tokens:, ...]
 
         # 6. Output layers
         hidden_states = self.norm_out(hidden_states, temb)
