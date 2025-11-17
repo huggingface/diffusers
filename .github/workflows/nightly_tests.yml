@@ -85,7 +85,7 @@ jobs:
           CUBLAS_WORKSPACE_CONFIG: :16:8
         run: |
           pytest -n 1 --max-worker-restart=0 --dist=loadfile \
-            -s -v -k "not Flax and not Onnx" \
+             -k "not Flax and not Onnx" \
             --make-reports=tests_pipeline_${{ matrix.module }}_cuda \
             --report-log=tests_pipeline_${{ matrix.module }}_cuda.log \
             tests/pipelines/${{ matrix.module }}
@@ -140,7 +140,7 @@ jobs:
         CUBLAS_WORKSPACE_CONFIG: :16:8
       run: |
         pytest -n 1 --max-worker-restart=0 --dist=loadfile \
-          -s -v -k "not Flax and not Onnx" \
+          -k "not Flax and not Onnx" \
           --make-reports=tests_torch_${{ matrix.module }}_cuda \
           --report-log=tests_torch_${{ matrix.module }}_cuda.log \
           tests/${{ matrix.module }}
@@ -153,7 +153,7 @@ jobs:
         CUBLAS_WORKSPACE_CONFIG: :16:8
       run: |
         pytest -n 1 --max-worker-restart=0 --dist=loadfile \
-          -s -v --make-reports=examples_torch_cuda \
+          --make-reports=examples_torch_cuda \
           --report-log=examples_torch_cuda.log \
           examples/
 
@@ -201,7 +201,7 @@ jobs:
         HF_TOKEN: ${{ secrets.DIFFUSERS_HF_HUB_READ_TOKEN }}
         RUN_COMPILE: yes
       run: |
-        pytest -n 1 --max-worker-restart=0 --dist=loadfile -s -v -k "compile" --make-reports=tests_torch_compile_cuda tests/
+        pytest -n 1 --max-worker-restart=0 --dist=loadfile -k "compile" --make-reports=tests_torch_compile_cuda tests/
     - name: Failure short reports
       if: ${{ failure() }}
       run: cat reports/tests_torch_compile_cuda_failures_short.txt
@@ -298,7 +298,7 @@ jobs:
           CUBLAS_WORKSPACE_CONFIG: :16:8
         run: |
           pytest -n 1 --max-worker-restart=0 --dist=loadfile \
-            -s -v -k "not Flax and not Onnx" \
+            -k "not Flax and not Onnx" \
             --make-reports=tests_torch_minimum_version_cuda \
             tests/models/test_modeling_common.py \
             tests/pipelines/test_pipelines_common.py \
@@ -538,7 +538,7 @@ jobs:
 #          HF_HOME: /System/Volumes/Data/mnt/cache
 #          HF_TOKEN: ${{ secrets.DIFFUSERS_HF_HUB_READ_TOKEN }}
 #        run: |
-#          ${CONDA_RUN} pytest -n 1 -s -v --make-reports=tests_torch_mps \
+#          ${CONDA_RUN} pytest -n 1  --make-reports=tests_torch_mps \
 #            --report-log=tests_torch_mps.log \
 #            tests/
 #      - name: Failure short reports
@@ -594,7 +594,7 @@ jobs:
 #          HF_HOME: /System/Volumes/Data/mnt/cache
 #          HF_TOKEN: ${{ secrets.DIFFUSERS_HF_HUB_READ_TOKEN }}
 #        run: |
-#          ${CONDA_RUN} pytest -n 1 -s -v --make-reports=tests_torch_mps \
+#          ${CONDA_RUN} pytest -n 1  --make-reports=tests_torch_mps \
 #            --report-log=tests_torch_mps.log \
 #            tests/
 #      - name: Failure short reports
