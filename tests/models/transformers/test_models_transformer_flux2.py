@@ -17,7 +17,7 @@ import unittest
 
 import torch
 
-from diffusers import Flux2Transformer2DModel
+from diffusers import Flux2Transformer2DModel, attention_backend
 from diffusers.models.attention_processor import FluxIPAdapterJointAttnProcessor2_0
 from diffusers.models.embeddings import ImageProjection
 
@@ -166,11 +166,12 @@ class Flux2TransformerTests(ModelTesterMixin, unittest.TestCase):
         model.to(torch_device)
         model.eval()
 
-        with torch.no_grad():
-            output = model(**inputs_dict)
+        with attention_backend("native"):
+            with torch.no_grad():
+                output = model(**inputs_dict)
 
-            if isinstance(output, dict):
-                output = output.to_tuple()[0]
+                if isinstance(output, dict):
+                    output = output.to_tuple()[0]
 
         self.assertIsNotNone(output)
 
@@ -181,12 +182,12 @@ class Flux2TransformerTests(ModelTesterMixin, unittest.TestCase):
 
         # Check against expected slice
         # fmt: off
-        expected_slice = torch.tensor([-0.3180, 0.4818, 0.6621, -0.3386, 0.2313, 0.0688, 0.0985, -0.2686, -0.1480, -0.1607, -0.7245, 0.5385, -0.2842, 0.6575, -0.0697, 0.4951])
+        expected_slice = torch.tensor([-0.3662, 0.4844, 0.6334, -0.3497, 0.2162, 0.0188, 0.0521, -0.2061, -0.2041, -0.0342, -0.7107, 0.4797, -0.3280, 0.7059, -0.0849, 0.4416])
         # fmt: on
 
         flat_output = output.cpu().flatten()
         generated_slice = torch.cat([flat_output[:8], flat_output[-8:]])
-        self.assertTrue(torch.allclose(expected_slice, generated_slice))
+        self.assertTrue(torch.allclose(generated_slice, expected_slice))
 
     def test_gradient_checkpointing_is_applied(self):
         expected_set = {"Flux2Transformer2DModel"}
