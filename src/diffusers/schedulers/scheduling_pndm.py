@@ -403,18 +403,8 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
         self, sample: torch.Tensor, timestep: int, prev_timestep: int, model_output: torch.Tensor
     ) -> torch.Tensor:
         """
-        Compute the previous sample x_(t-δ) from the current sample x_t using formula (9) from the PNDM paper.
-
-        See formula (9) of [PNDM paper](https://huggingface.co/papers/2202.09778)
-
-        Notation (<variable name> -> <name in paper>):
-        - alpha_prod_t -> α_t
-        - alpha_prod_t_prev -> α_(t−δ)
-        - beta_prod_t -> (1 - α_t)
-        - beta_prod_t_prev -> (1 - α_(t−δ))
-        - sample -> x_t
-        - model_output -> e_θ(x_t, t)
-        - prev_sample -> x_(t−δ)
+        Compute the previous sample x_(t-δ) from the current sample x_t using formula (9) from the [PNDM
+        paper](https://huggingface.co/papers/2202.09778).
 
         Args:
             sample (`torch.Tensor`):
