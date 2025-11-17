@@ -828,8 +828,8 @@ class SanaVideoPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
 
         Returns:
             [`~pipelines.sana_video.pipeline_output.SanaVideoPipelineOutput`] or `tuple`:
-                If `return_dict` is `True`, [`~pipelines.sana_video.pipeline_output.SanaVideoPipelineOutput`] is returned,
-                otherwise a `tuple` is returned where the first element is a list with the generated videos
+                If `return_dict` is `True`, [`~pipelines.sana_video.pipeline_output.SanaVideoPipelineOutput`] is
+                returned, otherwise a `tuple` is returned where the first element is a list with the generated videos
         """
 
         if isinstance(callback_on_step_end, (PipelineCallback, MultiPipelineCallbacks)):

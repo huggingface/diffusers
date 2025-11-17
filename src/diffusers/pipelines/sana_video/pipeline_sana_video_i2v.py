@@ -68,6 +68,7 @@ EXAMPLE_DOC_STRING = """
         >>> import torch
         >>> from diffusers import SanaImageToVideoPipeline
         >>> from diffusers.utils import export_to_video, load_image
+
         >>> pipe = SanaImageToVideoPipeline.from_pretrained("Efficient-Large-Model/SANA-Video_2B_480p_diffusers")
         >>> pipe.transformer.to(torch.bfloat16)
         >>> pipe.text_encoder.to(torch.bfloat16)
@@ -82,15 +83,15 @@ EXAMPLE_DOC_STRING = """
         >>> image = load_image("https://raw.githubusercontent.com/NVlabs/Sana/refs/heads/main/asset/samples/i2v-1.png")
 
         >>> output = pipe(
-        ...    image=image,
-        ...    prompt=prompt,
-        ...    negative_prompt=negative_prompt,
-        ...    height=480,
-        ...    width=832,
-        ...    frames=81,
-        ...    guidance_scale=6,
-        ...    num_inference_steps=50,
-        ...    generator=torch.Generator(device="cuda").manual_seed(42),
+        ...     image=image,
+        ...     prompt=prompt,
+        ...     negative_prompt=negative_prompt,
+        ...     height=480,
+        ...     width=832,
+        ...     frames=81,
+        ...     guidance_scale=6,
+        ...     num_inference_steps=50,
+        ...     generator=torch.Generator(device="cuda").manual_seed(42),
         ... ).frames[0]
 
         >>> export_to_video(output, "sana-ti2v-output.mp4", fps=16)
@@ -174,9 +175,9 @@ def retrieve_latents(
 
 class SanaImageToVideoPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
     r"""
-    Pipeline for image/text-to-video generation using [Sana](https://huggingface.co/papers/2509.24695).
-    This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods
-    implemented for all pipelines (downloading, saving, running on a particular device, etc.).
+    Pipeline for image/text-to-video generation using [Sana](https://huggingface.co/papers/2509.24695). This model
+    inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods implemented for all
+    pipelines (downloading, saving, running on a particular device, etc.).
 
     Args:
         tokenizer ([`GemmaTokenizer`] or [`GemmaTokenizerFast`]):
@@ -766,8 +767,8 @@ class SanaImageToVideoPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
 
         Args:
             image (`PipelineImageInput`):
-                The input image to condition the video generation on. The first frame of the generated
-                video will be conditioned on this image.
+                The input image to condition the video generation on. The first frame of the generated video will be
+                conditioned on this image.
             prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts to guide the video generation. If not defined, one has to pass `prompt_embeds`.
                 instead.
@@ -833,8 +834,8 @@ class SanaImageToVideoPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
                 prompt.
             use_resolution_binning (`bool` defaults to `True`):
                 If set to `True`, the requested height and width are first mapped to the closest resolutions using
-                `ASPECT_RATIO_480_BIN` or `ASPECT_RATIO_720_BIN`. After the produced latents are decoded into videos, they are resized back to
-                the requested resolution. Useful for generating non-square videos.
+                `ASPECT_RATIO_480_BIN` or `ASPECT_RATIO_720_BIN`. After the produced latents are decoded into videos,
+                they are resized back to the requested resolution. Useful for generating non-square videos.
             callback_on_step_end (`Callable`, *optional*):
                 A function that calls at the end of each denoising steps during the inference. The function is called
                 with the following arguments: `callback_on_step_end(self: DiffusionPipeline, step: int, timestep: int,
@@ -854,8 +855,8 @@ class SanaImageToVideoPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
 
         Returns:
             [`~pipelines.sana_video.pipeline_output.SanaVideoPipelineOutput`] or `tuple`:
-                If `return_dict` is `True`, [`~pipelines.sana_video.pipeline_output.SanaVideoPipelineOutput`] is returned,
-                otherwise a `tuple` is returned where the first element is a list with the generated videos
+                If `return_dict` is `True`, [`~pipelines.sana_video.pipeline_output.SanaVideoPipelineOutput`] is
+                returned, otherwise a `tuple` is returned where the first element is a list with the generated videos
         """
 
         if isinstance(callback_on_step_end, (PipelineCallback, MultiPipelineCallbacks)):
