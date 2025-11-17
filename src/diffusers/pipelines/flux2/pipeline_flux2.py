@@ -20,7 +20,7 @@ import PIL
 import torch
 from transformers import AutoProcessor, Mistral3ForConditionalGeneration
 
-from ...models import AutoencoderKL, FluxTransformer2DModel
+from ...models import AutoencoderKLFlux2, Flux2Transformer2DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import (
     is_torch_xla_available,
@@ -169,11 +169,11 @@ class Flux2Pipeline(DiffusionPipeline):
     Reference: TODO
 
     Args:
-        transformer ([`FluxTransformer2DModel`]):
+        transformer ([`Flux2Transformer2DModel`]):
             Conditional Transformer (MMDiT) architecture to denoise the encoded image latents.
         scheduler ([`FlowMatchEulerDiscreteScheduler`]):
             A scheduler to be used in combination with `transformer` to denoise the encoded image latents.
-        vae ([`AutoencoderKL`]):
+        vae ([`AutoencoderKLFlux2`]):
             Variational Auto-Encoder (VAE) Model to encode and decode images to and from latent representations.
         text_encoder ([`Mistral3ForConditionalGeneration`]):
             [Mistral3ForConditionalGeneration](https://huggingface.co/docs/transformers/en/model_doc/mistral3#transformers.Mistral3ForConditionalGeneration)
@@ -189,10 +189,10 @@ class Flux2Pipeline(DiffusionPipeline):
     def __init__(
         self,
         scheduler: FlowMatchEulerDiscreteScheduler,
-        vae: AutoencoderKL,
+        vae: AutoencoderKLFlux2,
         text_encoder: Mistral3ForConditionalGeneration,
         tokenizer: AutoProcessor,
-        transformer: FluxTransformer2DModel,
+        transformer: Flux2Transformer2DModel,
     ):
         super().__init__()
 
