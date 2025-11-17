@@ -69,6 +69,39 @@ ASPECT_RATIO_512_BIN = {
     "2.0": [704, 352],
 }
 
+ASPECT_RATIO_1024_BIN = {
+    "0.49": [704, 1440],
+    "0.52": [736, 1408],
+    "0.53": [736, 1376],
+    "0.57": [768, 1344],
+    "0.59": [768, 1312],
+    "0.62": [800, 1280],
+    "0.67": [832, 1248],
+    "0.68": [832, 1216],
+    "0.78": [896, 1152],
+    "0.83": [928, 1120],
+    "0.94": [992, 1056],
+    "1.0": [1024, 1024],
+    "1.06": [1056, 992],
+    "1.13": [1088, 960],
+    "1.21": [1120, 928],
+    "1.29": [1152, 896],
+    "1.37": [1184, 864],
+    "1.46": [1216, 832],
+    "1.5": [1248, 832],
+    "1.71": [1312, 768],
+    "1.75": [1344, 768],
+    "1.87": [1376, 736],
+    "1.91": [1408, 736],
+    "2.05": [1440, 704],
+}
+
+ASPECT_RATIO_BINS = {
+    256: ASPECT_RATIO_256_BIN,
+    512: ASPECT_RATIO_512_BIN,
+    1024: ASPECT_RATIO_1024_BIN,
+}
+
 logger = logging.get_logger(__name__)
 
 
@@ -600,10 +633,12 @@ class PRXPipeline(
                     "Resolution binning requires a VAE with image_processor, but VAE is not available. "
                     "Set use_resolution_binning=False or provide a VAE."
                 )
-            if self.default_sample_size <= 256:
-                aspect_ratio_bin = ASPECT_RATIO_256_BIN
-            else:
-                aspect_ratio_bin = ASPECT_RATIO_512_BIN
+            if self.default_sample_size not in ASPECT_RATIO_BINS:
+                raise ValueError(
+                    f"Resolution binning is only supported for default_sample_size in {list(ASPECT_RATIO_BINS.keys())}, "
+                    f"but got {self.default_sample_size}. Set use_resolution_binning=False to disable aspect ratio binning."
+                )
+            aspect_ratio_bin = ASPECT_RATIO_BINS[self.default_sample_size]
 
             # Store original dimensions
             orig_height, orig_width = height, width
