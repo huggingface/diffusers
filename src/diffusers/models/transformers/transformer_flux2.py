@@ -209,9 +209,7 @@ class Flux2AttnProcessor:
 
 class Flux2Attention(torch.nn.Module, AttentionModuleMixin):
     _default_processor_cls = Flux2AttnProcessor
-    _available_processors = [
-        Flux2AttnProcessor,
-    ]
+    _available_processors = [Flux2AttnProcessor]
 
     def __init__(
         self,

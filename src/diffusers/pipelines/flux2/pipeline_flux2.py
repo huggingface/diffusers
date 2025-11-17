@@ -20,6 +20,7 @@ import PIL
 import torch
 from transformers import AutoProcessor, Mistral3ForConditionalGeneration
 
+from ...loaders import Flux2LoraLoaderMixin
 from ...models import AutoencoderKLFlux2, Flux2Transformer2DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import (
@@ -162,7 +163,7 @@ def retrieve_latents(
     else:
         raise AttributeError("Could not access latents of provided encoder_output")
 
-class Flux2Pipeline(DiffusionPipeline):
+class Flux2Pipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
     r"""
     The Flux2 pipeline for text-to-image generation.
 
