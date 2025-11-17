@@ -883,6 +883,7 @@ attribution and actions without speculation.""",
         if output_type == "latent":
             image = latents
         else:
+            torch.save({"pred": latents}, "pred_d.pt")
             latents = self._unpack_latents_with_ids(latents, latent_ids)
 
             latents_bn_mean = (
