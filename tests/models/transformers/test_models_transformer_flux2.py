@@ -212,9 +212,7 @@ class Flux2TransformerTests(ModelTesterMixin, unittest.TestCase):
             f"{target_module}.lora_B.weight": torch.ones(target_mod_shape[0], lora_rank) * 33,
         }
         # Passing exclude_modules should no longer be necessary (or even passing target_modules, for that matter).
-        config = LoraConfig(
-            r=lora_rank, target_modules=[target_module], exclude_modules=["to_out"]
-        )
+        config = LoraConfig(r=lora_rank, target_modules=[target_module], exclude_modules=["to_out"])
         inject_adapter_in_model(config, model, adapter_name=adapter_name, state_dict=lora_state_dict)
         set_peft_model_state_dict(model, lora_state_dict, adapter_name)
         retrieved_lora_state_dict = get_peft_model_state_dict(model, adapter_name=adapter_name)
