@@ -43,7 +43,6 @@ from diffusers.models import (
     T2IAdapter,
     UNet2DConditionModel,
 )
-from diffusers.models.attention_processor import AttnProcessor2_0, XFormersAttnProcessor
 from diffusers.models.lora import adjust_lora_scale_text_encoder
 from diffusers.pipelines.controlnet.multicontrolnet import MultiControlNetModel
 from diffusers.pipelines.pipeline_utils import StableDiffusionMixin

@@ -40,13 +40,6 @@ from diffusers.loaders import (
     UNet2DConditionLoadersMixin,
 )
 from diffusers.models import AutoencoderKL
-from diffusers.models.attention_processor import (
-    AttnProcessor2_0,
-    FusedAttnProcessor2_0,
-    LoRAAttnProcessor2_0,
-    LoRAXFormersAttnProcessor,
-    XFormersAttnProcessor,
-)
 from diffusers.models.lora import adjust_lora_scale_text_encoder
 from diffusers.models.unets.unet_2d_blocks import UNetMidBlock2D, get_down_block
 from diffusers.pipelines.pipeline_utils import DiffusionPipeline, StableDiffusionMixin

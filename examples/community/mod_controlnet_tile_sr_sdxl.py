@@ -39,10 +39,6 @@ from diffusers.models import (
     MultiControlNetModel,
     UNet2DConditionModel,
 )
-from diffusers.models.attention_processor import (
-    AttnProcessor2_0,
-    XFormersAttnProcessor,
-)
 from diffusers.models.lora import adjust_lora_scale_text_encoder
 from diffusers.pipelines.pipeline_utils import DiffusionPipeline, StableDiffusionMixin
 from diffusers.pipelines.stable_diffusion_xl.pipeline_output import StableDiffusionXLPipelineOutput
