@@ -104,15 +104,26 @@ class Flux2TransformerTests(ModelTesterMixin, unittest.TestCase):
     def prepare_dummy_input(self, height=4, width=4):
         batch_size = 1
         num_latent_channels = 4
-        num_image_channels = 3
         sequence_length = 48
         embedding_dim = 32
 
         hidden_states = torch.randn((batch_size, height * width, num_latent_channels)).to(torch_device)
         encoder_hidden_states = torch.randn((batch_size, sequence_length, embedding_dim)).to(torch_device)
-        # pooled_prompt_embeds = torch.randn((batch_size, embedding_dim)).to(torch_device)
-        text_ids = torch.randn((sequence_length, num_image_channels)).to(torch_device)
-        image_ids = torch.randn((height * width, num_image_channels)).to(torch_device)
+
+        t_coords = torch.arange(1)
+        h_coords = torch.arange(height)
+        w_coords = torch.arange(width)
+        l_coords = torch.arange(1)
+        image_ids = torch.cartesian_prod(t_coords, h_coords, w_coords, l_coords)  # [height * width, 4]
+        image_ids = image_ids.unsqueeze(0).expand(batch_size, -1, -1).to(torch_device)
+
+        text_t_coords = torch.arange(1)
+        text_h_coords = torch.arange(1)
+        text_w_coords = torch.arange(1)
+        text_l_coords = torch.arange(sequence_length)
+        text_ids = torch.cartesian_prod(text_t_coords, text_h_coords, text_w_coords, text_l_coords)
+        text_ids = text_ids.unsqueeze(0).expand(batch_size, -1, -1).to(torch_device)
+
         timestep = torch.tensor([1.0]).to(torch_device).expand(batch_size)
         guidance = torch.tensor([1.0]).to(torch_device).expand(batch_size)
 
@@ -135,44 +146,50 @@ class Flux2TransformerTests(ModelTesterMixin, unittest.TestCase):
             "attention_head_dim": 16,
             "num_attention_heads": 2,
             "joint_attention_dim": 32,
-            # "pooled_projection_dim": 32,
-            "timestep_guidance_channels": 16,
-            "axes_dims_rope": [4, 4, 8],
+            "timestep_guidance_channels": 256,  # Hardcoded in original code
+            "axes_dims_rope": [4, 4, 4, 4],
         }
 
         inputs_dict = self.dummy_input
         return init_dict, inputs_dict
 
-    def test_deprecated_inputs_img_txt_ids_3d(self):
+    def test_flux2_consistency(self, seed=0):
+        torch.manual_seed(seed)
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+
+        torch.manual_seed(seed)
         model = self.model_class(**init_dict)
+        # state_dict = model.state_dict()
+        # for key, param in state_dict.items():
+        #     print(f"{key} | {param.shape}")
+        # torch.save(state_dict, "/raid/daniel_gu/test_flux2_params/diffusers.pt")
         model.to(torch_device)
         model.eval()
 
         with torch.no_grad():
-            output_1 = model(**inputs_dict).to_tuple()[0]
+            output = model(**inputs_dict)
 
-        # update inputs_dict with txt_ids and img_ids as 3d tensors (deprecated)
-        text_ids_3d = inputs_dict["txt_ids"].unsqueeze(0)
-        image_ids_3d = inputs_dict["img_ids"].unsqueeze(0)
+            if isinstance(output, dict):
+                output = output.to_tuple()[0]
 
-        assert text_ids_3d.ndim == 3, "text_ids_3d should be a 3d tensor"
-        assert image_ids_3d.ndim == 3, "img_ids_3d should be a 3d tensor"
+        self.assertIsNotNone(output)
 
-        inputs_dict["txt_ids"] = text_ids_3d
-        inputs_dict["img_ids"] = image_ids_3d
+        # input & output have to have the same shape
+        input_tensor = inputs_dict[self.main_input_name]
+        expected_shape = input_tensor.shape
+        self.assertEqual(output.shape, expected_shape, "Input and output shapes do not match")
 
-        with torch.no_grad():
-            output_2 = model(**inputs_dict).to_tuple()[0]
+        # Check against expected slice
+        # fmt: off
+        expected_slice = torch.tensor([-0.3180, 0.4818, 0.6621, -0.3386, 0.2313, 0.0688, 0.0985, -0.2686, -0.1480, -0.1607, -0.7245, 0.5385, -0.2842, 0.6575, -0.0697, 0.4951])
+        # fmt: on
 
-        self.assertEqual(output_1.shape, output_2.shape)
-        self.assertTrue(
-            torch.allclose(output_1, output_2, atol=1e-5),
-            msg="output with deprecated inputs (img_ids and txt_ids as 3d torch tensors) are not equal as them as 2d inputs",
-        )
+        flat_output = output.cpu().flatten()
+        generated_slice = torch.cat([flat_output[:8], flat_output[-8:]])
+        self.assertTrue(torch.allclose(expected_slice, generated_slice))
 
     def test_gradient_checkpointing_is_applied(self):
-        expected_set = {"FluxTransformer2DModel"}
+        expected_set = {"Flux2Transformer2DModel"}
         super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
 
     # The test exists for cases like
@@ -205,7 +222,7 @@ class Flux2TransformerTests(ModelTesterMixin, unittest.TestCase):
         assert (retrieved_lora_state_dict["single_transformer_blocks.0.proj_out.lora_B.weight"] == 33).all()
 
 
-class FluxTransformerCompileTests(TorchCompileTesterMixin, unittest.TestCase):
+class Flux2TransformerCompileTests(TorchCompileTesterMixin, unittest.TestCase):
     model_class = Flux2Transformer2DModel
     different_shapes_for_compilation = [(4, 4), (4, 8), (8, 8)]
 
@@ -216,7 +233,7 @@ class FluxTransformerCompileTests(TorchCompileTesterMixin, unittest.TestCase):
         return Flux2TransformerTests().prepare_dummy_input(height=height, width=width)
 
 
-class FluxTransformerLoRAHotSwapTests(LoraHotSwappingForModelTesterMixin, unittest.TestCase):
+class Flux2TransformerLoRAHotSwapTests(LoraHotSwappingForModelTesterMixin, unittest.TestCase):
     model_class = Flux2Transformer2DModel
     different_shapes_for_compilation = [(4, 4), (4, 8), (8, 8)]
 
