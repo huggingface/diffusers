@@ -24,6 +24,8 @@ except OptionalDependencyNotAvailable:
 else:
     _import_structure["pipeline_kandinsky"] = ["Kandinsky5T2VPipeline"]
     _import_structure["pipeline_kandinsky_i2v"] = ["Kandinsky5I2VPipeline"]
+    _import_structure["pipeline_kandinsky_i2i"] = ["Kandinsky5I2IPipeline"]
+    _import_structure["pipeline_kandinsky_t2i"] = ["Kandinsky5T2IPipeline"]
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     try:

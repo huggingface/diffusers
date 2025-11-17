@@ -398,6 +398,8 @@ else:
     _import_structure["kandinsky5"] = [
         "Kandinsky5T2VPipeline",
         "Kandinsky5I2VPipeline",
+        "Kandinsky5T2IPipeline",
+        "Kandinsky5I2IPipeline",
     ]
     _import_structure["skyreels_v2"] = [
         "SkyReelsV2DiffusionForcingPipeline",
@@ -694,7 +696,9 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         )
         from .kandinsky5 import (
             Kandinsky5T2VPipeline,
-            Kandinsky5I2VPipeline
+            Kandinsky5I2VPipeline,
+            Kandinsky5T2IPipeline,
+            Kandinsky5I2IPipeline,
         )
         from .latent_consistency_models import (
             LatentConsistencyModelImg2ImgPipeline,
