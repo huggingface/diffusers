@@ -100,10 +100,11 @@ def rescale_zero_terminal_snr(betas):
 
     Args:
         betas (`torch.Tensor`):
-            the betas that the scheduler is being initialized with.
+            The betas that the scheduler is being initialized with.
 
     Returns:
-        `torch.Tensor`: rescaled betas with zero terminal SNR
+        `torch.Tensor`:
+            Rescaled betas with zero terminal SNR.
     """
     # Convert betas to alphas_bar_sqrt
     alphas = 1.0 - betas
