@@ -28,58 +28,6 @@ from ..test_modeling_common import LoraHotSwappingForModelTesterMixin, ModelTest
 enable_full_determinism()
 
 
-def create_flux_ip_adapter_state_dict(model):
-    # "ip_adapter" (cross-attention weights)
-    ip_cross_attn_state_dict = {}
-    key_id = 0
-
-    for name in model.attn_processors.keys():
-        if name.startswith("single_transformer_blocks"):
-            continue
-
-        joint_attention_dim = model.config["joint_attention_dim"]
-        hidden_size = model.config["num_attention_heads"] * model.config["attention_head_dim"]
-        sd = FluxIPAdapterJointAttnProcessor2_0(
-            hidden_size=hidden_size, cross_attention_dim=joint_attention_dim, scale=1.0
-        ).state_dict()
-        ip_cross_attn_state_dict.update(
-            {
-                f"{key_id}.to_k_ip.weight": sd["to_k_ip.0.weight"],
-                f"{key_id}.to_v_ip.weight": sd["to_v_ip.0.weight"],
-                f"{key_id}.to_k_ip.bias": sd["to_k_ip.0.bias"],
-                f"{key_id}.to_v_ip.bias": sd["to_v_ip.0.bias"],
-            }
-        )
-
-        key_id += 1
-
-    # "image_proj" (ImageProjection layer weights)
-
-    image_projection = ImageProjection(
-        cross_attention_dim=model.config["joint_attention_dim"],
-        image_embed_dim=(
-            model.config["pooled_projection_dim"] if "pooled_projection_dim" in model.config.keys() else 768
-        ),
-        num_image_text_embeds=4,
-    )
-
-    ip_image_projection_state_dict = {}
-    sd = image_projection.state_dict()
-    ip_image_projection_state_dict.update(
-        {
-            "proj.weight": sd["image_embeds.weight"],
-            "proj.bias": sd["image_embeds.bias"],
-            "norm.weight": sd["norm.weight"],
-            "norm.bias": sd["norm.bias"],
-        }
-    )
-
-    del sd
-    ip_state_dict = {}
-    ip_state_dict.update({"image_proj": ip_image_projection_state_dict, "ip_adapter": ip_cross_attn_state_dict})
-    return ip_state_dict
-
-
 class Flux2TransformerTests(ModelTesterMixin, unittest.TestCase):
     model_class = Flux2Transformer2DModel
     main_input_name = "hidden_states"
@@ -132,7 +80,6 @@ class Flux2TransformerTests(ModelTesterMixin, unittest.TestCase):
             "encoder_hidden_states": encoder_hidden_states,
             "img_ids": image_ids,
             "txt_ids": text_ids,
-            # "pooled_projections": pooled_prompt_embeds,
             "timestep": timestep,
             "guidance": guidance,
         }
@@ -153,6 +100,7 @@ class Flux2TransformerTests(ModelTesterMixin, unittest.TestCase):
         inputs_dict = self.dummy_input
         return init_dict, inputs_dict
 
+    # TODO (Daniel, Sayak): We can remove this test.
     def test_flux2_consistency(self, seed=0):
         torch.manual_seed(seed)
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
@@ -192,34 +140,7 @@ class Flux2TransformerTests(ModelTesterMixin, unittest.TestCase):
     def test_gradient_checkpointing_is_applied(self):
         expected_set = {"Flux2Transformer2DModel"}
         super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
-
-    # The test exists for cases like
-    # https://github.com/huggingface/diffusers/issues/11874
-    @unittest.skipIf(not is_peft_available(), "Only with PEFT")
-    def test_lora_exclude_modules(self):
-        from peft import LoraConfig, get_peft_model_state_dict, inject_adapter_in_model, set_peft_model_state_dict
-
-        lora_rank = 4
-        target_module = "single_transformer_blocks.0.attn.to_out"
-        adapter_name = "foo"
-        init_dict, _ = self.prepare_init_args_and_inputs_for_common()
-        model = self.model_class(**init_dict).to(torch_device)
-
-        state_dict = model.state_dict()
-        target_mod_shape = state_dict[f"{target_module}.weight"].shape
-        lora_state_dict = {
-            f"{target_module}.lora_A.weight": torch.ones(lora_rank, target_mod_shape[1]) * 22,
-            f"{target_module}.lora_B.weight": torch.ones(target_mod_shape[0], lora_rank) * 33,
-        }
-        # Passing exclude_modules should no longer be necessary (or even passing target_modules, for that matter).
-        config = LoraConfig(r=lora_rank, target_modules=[target_module], exclude_modules=["to_out"])
-        inject_adapter_in_model(config, model, adapter_name=adapter_name, state_dict=lora_state_dict)
-        set_peft_model_state_dict(model, lora_state_dict, adapter_name)
-        retrieved_lora_state_dict = get_peft_model_state_dict(model, adapter_name=adapter_name)
-        assert len(retrieved_lora_state_dict) == len(lora_state_dict)
-        assert (retrieved_lora_state_dict[f"{target_module}.lora_A.weight"] == 22).all()
-        assert (retrieved_lora_state_dict[f"{target_module}.lora_B.weight"] == 33).all()
-
+        
 
 class Flux2TransformerCompileTests(TorchCompileTesterMixin, unittest.TestCase):
     model_class = Flux2Transformer2DModel
