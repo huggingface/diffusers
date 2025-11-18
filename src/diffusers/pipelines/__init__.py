@@ -308,7 +308,10 @@ else:
         "SanaSprintPipeline",
         "SanaControlNetPipeline",
         "SanaSprintImg2ImgPipeline",
+    ]
+    _import_structure["sana_video"] = [
         "SanaVideoPipeline",
+        "SanaImageToVideoPipeline",
     ]
     _import_structure["semantic_stable_diffusion"] = ["SemanticStableDiffusionPipeline"]
     _import_structure["shap_e"] = ["ShapEImg2ImgPipeline", "ShapEPipeline"]
@@ -755,8 +758,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             SanaPipeline,
             SanaSprintImg2ImgPipeline,
             SanaSprintPipeline,
-            SanaVideoPipeline,
         )
+        from .sana_video import SanaImageToVideoPipeline, SanaVideoPipeline
         from .semantic_stable_diffusion import SemanticStableDiffusionPipeline
         from .shap_e import ShapEImg2ImgPipeline, ShapEPipeline
         from .stable_audio import StableAudioPipeline, StableAudioProjectionModel
