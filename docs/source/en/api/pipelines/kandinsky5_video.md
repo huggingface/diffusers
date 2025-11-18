@@ -13,9 +13,9 @@ Kandinsky 5.0 Video is created by the Kandinsky team: Alexey Letunovskiy, Maria 
 
 Kandinsky 5.0 is a family of diffusion models for Video & Image generation. 
 
-Kandinsky 5.0 Lite is a lightweight video generation model (2B parameters) that ranks #1 among open-source models in its class. It outperforms larger models and offers the best understanding of Russian concepts in the open-source ecosystem.
+Kandinsky 5.0 Lite line-up of lightweight video generation models (2B parameters) that ranks #1 among open-source models in its class. It outperforms larger models and offers the best understanding of Russian concepts in the open-source ecosystem.
 
-Kandinsky 5.0 Pro is a large high quality video generation model (19B parameters). It offers high qualty generation in HD and more generation formats like I2V.
+Kandinsky 5.0 Pro line-up of large high quality video generation models (19B parameters). It offers high qualty generation in HD and more generation formats like I2V.
 
 The model introduces several key innovations:
 - **Latent diffusion pipeline** with **Flow Matching** for improved training stability

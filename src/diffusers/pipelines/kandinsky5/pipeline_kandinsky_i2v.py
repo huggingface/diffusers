@@ -200,13 +200,14 @@ class Kandinsky5I2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
         Returns:
             tuple: Scale factor as (temporal_scale, height_scale, width_scale)
         """
-        # Determine if this is 480p or 720p based on resolution
-        # 480p typically has height around 480, 720p has height around 720
-        if height <= 480 and width <= 854:  # 480p (854x480 is common 480p widescreen)
+        
+        between_480p = lambda x: 480 <= x <= 854
+        
+        if between_480p(height) and between_480p(width):
             return (1, 2, 2)
-        else:  # 720p and above
+        else:
             return (1, 3.16, 3.16)
-
+        
     # Add model CPU offload methods
     def enable_model_cpu_offload(self, gpu_id: Optional[int] = None):
         r"""
@@ -953,6 +954,7 @@ class Kandinsky5I2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
 
                 timestep = t.unsqueeze(0).repeat(batch_size * num_videos_per_prompt)
 
+                print(scale_factor)
                 # Predict noise residual
                 pred_velocity = self.transformer(
                     hidden_states=latents.to(dtype),
