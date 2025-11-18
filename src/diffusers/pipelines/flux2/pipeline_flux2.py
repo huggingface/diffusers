@@ -78,6 +78,8 @@ def format_text_input(prompts: List[str], system_message: str = None):
         for prompt in cleaned_txt
     ]
 
+
+# Copied from diffusers.pipelines.flux.pipeline_flux.calculate_shift
 def calculate_shift(
     image_seq_len,
     base_seq_len: int = 256,
