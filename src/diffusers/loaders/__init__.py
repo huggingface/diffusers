@@ -114,6 +114,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
                 AuraFlowLoraLoaderMixin,
                 CogVideoXLoraLoaderMixin,
                 CogView4LoraLoaderMixin,
+                Flux2LoraLoaderMixin,
                 FluxLoraLoaderMixin,
                 HiDreamImageLoraLoaderMixin,
                 HunyuanVideoLoraLoaderMixin,
@@ -129,7 +130,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
                 StableDiffusionLoraLoaderMixin,
                 StableDiffusionXLLoraLoaderMixin,
                 WanLoraLoaderMixin,
-                Flux2LoraLoaderMixin,
             )
             from .single_file import FromSingleFileMixin
             from .textual_inversion import TextualInversionLoaderMixin

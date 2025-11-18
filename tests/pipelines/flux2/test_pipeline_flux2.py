@@ -1,32 +1,22 @@
 import unittest
-import pytest
+
 import numpy as np
+import pytest
 import torch
-from transformers import AutoProcessor, Mistral3ForConditionalGeneration, Mistral3Config
+from transformers import AutoProcessor, Mistral3Config, Mistral3ForConditionalGeneration
 
 from diffusers import (
     AutoencoderKLFlux2,
-    Flux2Pipeline,
-    FasterCacheConfig,
     FlowMatchEulerDiscreteScheduler,
+    Flux2Pipeline,
     Flux2Transformer2DModel,
 )
 
 from ...testing_utils import (
-    Expectations,
-    backend_empty_cache,
-    nightly,
-    numpy_cosine_similarity_distance,
-    require_big_accelerator,
-    slow,
     torch_device,
 )
 from ..test_pipelines_common import (
-    FasterCacheTesterMixin,
-    FirstBlockCacheTesterMixin,
-    FluxIPAdapterTesterMixin,
     PipelineTesterMixin,
-    PyramidAttentionBroadcastTesterMixin,
     check_qkv_fused_layers_exist,
 )
 
@@ -93,11 +83,13 @@ class Flux2PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         )
         torch.manual_seed(0)
         text_encoder = Mistral3ForConditionalGeneration(config)
-        tokenizer = AutoProcessor.from_pretrained("hf-internal-testing/Mistral-Small-3.1-24B-Instruct-2503-only-processor")
+        tokenizer = AutoProcessor.from_pretrained(
+            "hf-internal-testing/Mistral-Small-3.1-24B-Instruct-2503-only-processor"
+        )
 
         torch.manual_seed(0)
         vae = AutoencoderKLFlux2(
-            sample_size=32, 
+            sample_size=32,
             in_channels=3,
             out_channels=3,
             down_block_types=("DownEncoderBlock2D",),
@@ -135,7 +127,7 @@ class Flux2PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "width": 8,
             "max_sequence_length": 8,
             "output_type": "np",
-            "text_encoder_out_layers": (1,)
+            "text_encoder_out_layers": (1,),
         }
         return inputs
 

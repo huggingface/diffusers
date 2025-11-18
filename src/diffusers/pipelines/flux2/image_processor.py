@@ -57,13 +57,9 @@ class Flux2ImageProcessor(VaeImageProcessor):
             do_convert_rgb=do_convert_rgb,
         )
 
-
     @staticmethod
     def check_image_input(
-        image: PIL.Image.Image,
-        max_aspect_ratio: int = 8,
-        min_side_length: int = 64,
-        max_area: int = 1024 * 1024
+        image: PIL.Image.Image, max_aspect_ratio: int = 8, min_side_length: int = 64, max_area: int = 1024 * 1024
     ) -> PIL.Image.Image:
         """
         Check if image meets minimum size and aspect ratio requirements.
@@ -88,8 +84,7 @@ class Flux2ImageProcessor(VaeImageProcessor):
         # Check minimum dimensions
         if width < min_side_length or height < min_side_length:
             raise ValueError(
-                f"Image too small: {width}×{height}. "
-                f"Both dimensions must be at least {min_side_length}px"
+                f"Image too small: {width}×{height}. Both dimensions must be at least {min_side_length}px"
             )
 
         # Check aspect ratio
@@ -100,20 +95,17 @@ class Flux2ImageProcessor(VaeImageProcessor):
                 f"Maximum allowed ratio is {max_aspect_ratio}:1"
             )
 
-
         return image
-
 
     @staticmethod
     def _resize_to_target_area(image: PIL.Image.Image, target_area: int = 1024 * 1024) -> Tuple[int, int]:
         image_width, image_height = image.size
 
-        scale = math.sqrt(target_area/ (image_width * image_height))
+        scale = math.sqrt(target_area / (image_width * image_height))
         width = int(image_width * scale)
         height = int(image_height * scale)
 
         return image.resize((width, height), PIL.Image.Resampling.LANCZOS)
-
 
     def _resize_and_crop(
         self,

@@ -72,14 +72,29 @@ class AutoencoderKLFlux2(ModelMixin, AutoencoderMixin, ConfigMixin, FromOriginal
         self,
         in_channels: int = 3,
         out_channels: int = 3,
-        down_block_types: Tuple[str, ...] = ("DownEncoderBlock2D", "DownEncoderBlock2D", "DownEncoderBlock2D", "DownEncoderBlock2D"),
-        up_block_types: Tuple[str, ...] = ("UpDecoderBlock2D", "UpDecoderBlock2D", "UpDecoderBlock2D", "UpDecoderBlock2D"),
-        block_out_channels: Tuple[int, ...] = (128, 256, 512, 512,),
+        down_block_types: Tuple[str, ...] = (
+            "DownEncoderBlock2D",
+            "DownEncoderBlock2D",
+            "DownEncoderBlock2D",
+            "DownEncoderBlock2D",
+        ),
+        up_block_types: Tuple[str, ...] = (
+            "UpDecoderBlock2D",
+            "UpDecoderBlock2D",
+            "UpDecoderBlock2D",
+            "UpDecoderBlock2D",
+        ),
+        block_out_channels: Tuple[int, ...] = (
+            128,
+            256,
+            512,
+            512,
+        ),
         layers_per_block: int = 2,
         act_fn: str = "silu",
         latent_channels: int = 32,
         norm_num_groups: int = 32,
-        sample_size: int = 1024, # YiYi notes: not sure
+        sample_size: int = 1024,  # YiYi notes: not sure
         force_upcast: bool = True,
         use_quant_conv: bool = True,
         use_post_quant_conv: bool = True,
@@ -118,7 +133,13 @@ class AutoencoderKLFlux2(ModelMixin, AutoencoderMixin, ConfigMixin, FromOriginal
         self.quant_conv = nn.Conv2d(2 * latent_channels, 2 * latent_channels, 1) if use_quant_conv else None
         self.post_quant_conv = nn.Conv2d(latent_channels, latent_channels, 1) if use_post_quant_conv else None
 
-        self.bn = nn.BatchNorm2d(math.prod(patch_size) * latent_channels, eps=batch_norm_eps, momentum=batch_norm_momentum, affine=False, track_running_stats=True)
+        self.bn = nn.BatchNorm2d(
+            math.prod(patch_size) * latent_channels,
+            eps=batch_norm_eps,
+            momentum=batch_norm_momentum,
+            affine=False,
+            track_running_stats=True,
+        )
 
         self.use_slicing = False
         self.use_tiling = False

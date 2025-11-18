@@ -6,11 +6,9 @@ import safetensors.torch
 import torch
 from accelerate import init_empty_weights
 from huggingface_hub import hf_hub_download
-from transformers import AutoProcessor, Mistral3ForConditionalGeneration, GenerationConfig
+from transformers import AutoProcessor, GenerationConfig, Mistral3ForConditionalGeneration
 
-from diffusers import (
-    AutoencoderKLFlux2, Flux2Pipeline, Flux2Transformer2DModel, FlowMatchEulerDiscreteScheduler
-)
+from diffusers import AutoencoderKLFlux2, FlowMatchEulerDiscreteScheduler, Flux2Pipeline, Flux2Transformer2DModel
 from diffusers.utils.import_utils import is_accelerate_available
 
 
@@ -70,7 +68,6 @@ def load_original_checkpoint(args, filename):
     return original_state_dict
 
 
-
 DIFFUSERS_VAE_TO_FLUX2_MAPPING = {
     "encoder.conv_in.weight": "encoder.conv_in.weight",
     "encoder.conv_in.bias": "encoder.conv_in.bias",
@@ -90,7 +87,8 @@ DIFFUSERS_VAE_TO_FLUX2_MAPPING = {
     "post_quant_conv.bias": "decoder.post_quant_conv.bias",
     "bn.running_mean": "bn.running_mean",
     "bn.running_var": "bn.running_var",
-    }
+}
+
 
 # Copied from diffusers.pipelines.stable_diffusion.convert_from_ckpt.conv_attn_to_linear
 def conv_attn_to_linear(checkpoint):
@@ -103,6 +101,7 @@ def conv_attn_to_linear(checkpoint):
         elif "proj_attn.weight" in key:
             if checkpoint[key].ndim > 2:
                 checkpoint[key] = checkpoint[key][:, :, 0]
+
 
 def update_vae_resnet_ldm_to_diffusers(keys, new_checkpoint, checkpoint, mapping):
     for ldm_key in keys:
@@ -462,16 +461,15 @@ def main(args):
             text_encoder_id, generation_config=generate_config, torch_dtype=torch.bfloat16
         )
         tokenizer = AutoProcessor.from_pretrained(tokenizer_id)
-        scheduler = FlowMatchEulerDiscreteScheduler.from_pretrained("black-forest-labs/FLUX.1-dev", subfolder="scheduler")
+        scheduler = FlowMatchEulerDiscreteScheduler.from_pretrained(
+            "black-forest-labs/FLUX.1-dev", subfolder="scheduler"
+        )
 
         pipe = Flux2Pipeline(
-            vae=vae, 
-            transformer=transformer, 
-            text_encoder=text_encoder, 
-            tokenizer=tokenizer, 
-            scheduler=scheduler
+            vae=vae, transformer=transformer, text_encoder=text_encoder, tokenizer=tokenizer, scheduler=scheduler
         )
         pipe.save_pretrained(args.output_path)
+
 
 if __name__ == "__main__":
     main(args)

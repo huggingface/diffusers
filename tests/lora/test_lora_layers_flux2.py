@@ -18,15 +18,10 @@ import unittest
 import torch
 from transformers import AutoProcessor, Mistral3ForConditionalGeneration
 
-from diffusers import (
-    Flux2Pipeline,
-    Flux2Transformer2DModel,
-    FlowMatchEulerDiscreteScheduler,
-    AutoencoderKLFlux2
-)
+from diffusers import AutoencoderKLFlux2, FlowMatchEulerDiscreteScheduler, Flux2Pipeline, Flux2Transformer2DModel
 
 from ..testing_utils import floats_tensor, require_peft_backend
-   
+
 
 sys.path.append(".")
 
@@ -92,7 +87,7 @@ class Flux2LoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
             "width": 8,
             "max_sequence_length": 8,
             "output_type": "np",
-            "text_encoder_out_layers": (1,)
+            "text_encoder_out_layers": (1,),
         }
         if with_generator:
             pipeline_inputs.update({"generator": generator})
