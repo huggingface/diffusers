@@ -74,7 +74,7 @@ jobs:
           uv pip install -e ".[quality]"
           uv pip uninstall accelerate && uv pip install -U accelerate@git+https://github.com/huggingface/accelerate.git
           #uv pip uninstall transformers huggingface_hub && uv pip install --prerelease allow -U transformers@git+https://github.com/huggingface/transformers.git
-          uv pip uninstall transformers huggingface_hub && uv pip install transformers 
+          uv pip uninstall transformers huggingface_hub && uv pip install transformers==4.57.1 
           uv pip install pytest-reportlog
       - name: Environment
         run: |
@@ -129,7 +129,7 @@ jobs:
         uv pip install peft@git+https://github.com/huggingface/peft.git
         uv pip uninstall accelerate && uv pip install -U accelerate@git+https://github.com/huggingface/accelerate.git
         #uv pip uninstall transformers huggingface_hub && uv pip install --prerelease allow -U transformers@git+https://github.com/huggingface/transformers.git
-        uv pip uninstall transformers huggingface_hub && uv pip install transformers 
+        uv pip uninstall transformers huggingface_hub && uv pip install transformers==4.57.1 
         uv pip install pytest-reportlog
     - name: Environment
       run: python utils/print_env.py
@@ -195,7 +195,7 @@ jobs:
       run: |
         uv pip install -e ".[quality,training]"
         #uv pip uninstall transformers huggingface_hub && uv pip install --prerelease allow -U transformers@git+https://github.com/huggingface/transformers.git
-        uv pip uninstall transformers huggingface_hub && uv pip install transformers 
+        uv pip uninstall transformers huggingface_hub && uv pip install transformers==4.57.1 
     - name: Environment
       run: |
         python utils/print_env.py
@@ -239,7 +239,7 @@ jobs:
           uv pip install peft@git+https://github.com/huggingface/peft.git
           uv pip uninstall accelerate && uv pip install -U accelerate@git+https://github.com/huggingface/accelerate.git
           #uv pip uninstall transformers huggingface_hub && uv pip install --prerelease allow -U transformers@git+https://github.com/huggingface/transformers.git
-          uv pip uninstall transformers huggingface_hub && uv pip install transformers 
+          uv pip uninstall transformers huggingface_hub && uv pip install transformers==4.57.1 
           uv pip install pytest-reportlog
       - name: Environment
         run: |
@@ -290,7 +290,7 @@ jobs:
           uv pip install peft@git+https://github.com/huggingface/peft.git
           uv pip uninstall accelerate && uv pip install -U accelerate@git+https://github.com/huggingface/accelerate.git
           #uv pip uninstall transformers huggingface_hub && uv pip install --prerelease allow -U transformers@git+https://github.com/huggingface/transformers.git
-          uv pip uninstall transformers huggingface_hub && uv pip install transformers 
+          uv pip uninstall transformers huggingface_hub && uv pip install transformers==4.57.1 
 
       - name: Environment
         run: |
@@ -369,7 +369,7 @@ jobs:
           fi
           uv pip install pytest-reportlog
           #uv pip uninstall transformers huggingface_hub && uv pip install --prerelease allow -U transformers@git+https://github.com/huggingface/transformers.git
-          uv pip uninstall transformers huggingface_hub && uv pip install transformers 
+          uv pip uninstall transformers huggingface_hub && uv pip install transformers==4.57.1 
       - name: Environment
         run: |
           python utils/print_env.py
@@ -418,7 +418,7 @@ jobs:
           uv pip install -e ".[quality]"
           uv pip install -U bitsandbytes optimum_quanto
           #uv pip uninstall transformers huggingface_hub && uv pip install --prerelease allow -U transformers@git+https://github.com/huggingface/transformers.git
-          uv pip uninstall transformers huggingface_hub && uv pip install transformers 
+          uv pip uninstall transformers huggingface_hub && uv pip install transformers==4.57.1 
           uv pip install pytest-reportlog
       - name: Environment
         run: |
