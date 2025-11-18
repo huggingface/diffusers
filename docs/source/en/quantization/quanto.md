@@ -31,6 +31,9 @@ Now you can quantize a model by passing the `QuantoConfig` object to the `from_p
 ```python
 import torch
 from diffusers import FluxTransformer2DModel, QuantoConfig
+from diffusers.utils.torch_utils import get_device
+
+device = get_device()
 
 model_id = "black-forest-labs/FLUX.1-dev"
 quantization_config = QuantoConfig(weights_dtype="float8")
@@ -42,7 +45,7 @@ transformer = FluxTransformer2DModel.from_pretrained(
 )
 
 pipe = FluxPipeline.from_pretrained(model_id, transformer=transformer, torch_dtype=torch_dtype)
-pipe.to("cuda")
+pipe.to(device)
 
 prompt = "A cat holding a sign that says hello world"
 image = pipe(
@@ -117,6 +120,9 @@ Currently the Quanto backend supports `torch.compile` for the following quantiza
 ```python
 import torch
 from diffusers import FluxPipeline, FluxTransformer2DModel, QuantoConfig
+from diffusers.utils.torch_utils import get_device
+
+device = get_device()
 
 model_id = "black-forest-labs/FLUX.1-dev"
 quantization_config = QuantoConfig(weights_dtype="int8")
@@ -131,7 +137,7 @@ transformer = torch.compile(transformer, mode="max-autotune", fullgraph=True)
 pipe = FluxPipeline.from_pretrained(
     model_id, transformer=transformer, torch_dtype=torch_dtype
 )
-pipe.to("cuda")
+pipe.to(device)
 images = pipe("A cat holding a sign that says hello").images[0]
 images.save("flux-quanto-compile.png")
 ```
