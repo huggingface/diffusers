@@ -211,8 +211,7 @@ class Flux2Pipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
         self.image_processor = Flux2ImageProcessor(vae_scale_factor=self.vae_scale_factor * 2)
         self.tokenizer_max_length = 512
         self.default_sample_size = 128
-        self.system_message = """You are an AI that reasons about image descriptions. You give structured responses focusing on object relationships, object
-attribution and actions without speculation."""
+        self.system_message = """You are an AI that reasons about image descriptions. You give structured responses focusing on object relationships, object attribution and actions without speculation."""
         
     @staticmethod
     def _get_mistral_3_small_prompt_embeds(
@@ -222,8 +221,7 @@ attribution and actions without speculation."""
         dtype: Optional[torch.dtype] = None,
         device: Optional[torch.device] = None,
         max_sequence_length: int = 512,
-        system_message: str = """You are an AI that reasons about image descriptions. You give structured responses focusing on object relationships, object
-attribution and actions without speculation.""",
+        system_message: str = """You are an AI that reasons about image descriptions. You give structured responses focusing on object relationships, object attribution and actions without speculation.""",
         hidden_states_layers: List[int] = (10, 20, 30),
     ):
         dtype = text_encoder.dtype if dtype is None else dtype
@@ -320,7 +318,6 @@ attribution and actions without speculation.""",
 
         return latent_ids
 
-    # YiYi TODO: can optimize a bit
     @staticmethod
     def _prepare_image_ids(
         image_latents: List[torch.Tensor], # [(1, C, H, W), (1, C, H, W), ...]
@@ -709,8 +706,6 @@ attribution and actions without speculation.""",
             returning a tuple, the first element is a list with the generated images.
         """
 
-        height = height or self.default_sample_size * self.vae_scale_factor
-        width = width or self.default_sample_size * self.vae_scale_factor
 
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(
@@ -756,7 +751,6 @@ attribution and actions without speculation.""",
                 self.image_processor.check_image_input(img)
 
             condition_images = []
-            condition_image_sizes = []
             for img in image:
                 image_width, image_height = img.size
                 if image_width * image_height > 1024 * 1024:
@@ -768,7 +762,12 @@ attribution and actions without speculation.""",
                 image_height = (image_height // multiple_of) * multiple_of
                 img = self.image_processor.preprocess(img, height=image_height, width=image_width, resize_mode = "crop")
                 condition_images.append(img)
-                condition_image_sizes.append((image_width, image_height))
+                height = height or image_height
+                width = width or image_width
+
+
+        height = height or self.default_sample_size * self.vae_scale_factor
+        width = width or self.default_sample_size * self.vae_scale_factor
 
         # 5. prepare latent variables
         num_channels_latents = self.transformer.config.in_channels // 4

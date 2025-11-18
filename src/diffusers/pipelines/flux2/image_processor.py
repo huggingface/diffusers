@@ -29,18 +29,14 @@ class Flux2ImageProcessor(VaeImageProcessor):
         do_resize (`bool`, *optional*, defaults to `True`):
             Whether to downscale the image's (height, width) dimensions to multiples of `vae_scale_factor`. Can accept
             `height` and `width` arguments from [`image_processor.VaeImageProcessor.preprocess`] method.
-        vae_scale_factor (`int`, *optional*, defaults to `8`):
+        vae_scale_factor (`int`, *optional*, defaults to `16`):
             VAE (spatial) scale factor. If `do_resize` is `True`, the image is automatically resized to multiples of
             this factor.
-        vae_latent_channels (`int`, *optional*, defaults to `16`):
+        vae_latent_channels (`int`, *optional*, defaults to `32`):
             VAE latent channels.
-        spatial_patch_size (`Tuple[int, int]`, *optional*, defaults to `(2, 2)`):
-            The spatial patch size used by the diffusion transformer. For Wan models, this is typically (2, 2).
-        resample (`str`, *optional*, defaults to `lanczos`):
-            Resampling filter to use when resizing the image.
         do_normalize (`bool`, *optional*, defaults to `True`):
             Whether to normalize the image to [-1,1].
-        do_convert_rgb (`bool`, *optional*, defaults to be `False`):
+        do_convert_rgb (`bool`, *optional*, defaults to be `True`):
             Whether to convert the images to RGB format.
     """
 
