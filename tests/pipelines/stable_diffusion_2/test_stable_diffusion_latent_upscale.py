@@ -37,6 +37,7 @@ from ...testing_utils import (
     floats_tensor,
     load_image,
     load_numpy,
+    require_accelerator,
     require_torch_accelerator,
     slow,
     torch_device,
@@ -222,6 +223,7 @@ class StableDiffusionLatentUpscalePipelineFastTests(
     def test_attention_slicing_forward_pass(self):
         super().test_attention_slicing_forward_pass(expected_max_diff=7e-3)
 
+    @require_accelerator
     def test_sequential_cpu_offload_forward_pass(self):
         super().test_sequential_cpu_offload_forward_pass(expected_max_diff=3e-3)
 
