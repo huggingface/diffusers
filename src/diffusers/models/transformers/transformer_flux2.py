@@ -440,10 +440,7 @@ class Flux2TransformerBlock(nn.Module):
             **joint_attention_kwargs,
         )
 
-        if len(attention_outputs) == 2:
-            attn_output, context_attn_output = attention_outputs
-        elif len(attention_outputs) == 3:
-            attn_output, context_attn_output, ip_attn_output = attention_outputs
+        attn_output, context_attn_output = attention_outputs
 
         # Process attention outputs for the image stream (`hidden_states`).
         attn_output = gate_msa * attn_output
@@ -454,9 +451,6 @@ class Flux2TransformerBlock(nn.Module):
 
         ff_output = self.ff(norm_hidden_states)
         hidden_states = hidden_states + gate_mlp * ff_output
-
-        if len(attention_outputs) == 3:
-            hidden_states = hidden_states + ip_attn_output
 
         # Process attention outputs for the text stream (`encoder_hidden_states`).
         context_attn_output = c_gate_msa * context_attn_output
@@ -690,10 +684,7 @@ class Flux2Transformer2DModel(
         txt_ids: torch.Tensor = None,
         guidance: torch.Tensor = None,
         joint_attention_kwargs: Optional[Dict[str, Any]] = None,
-        controlnet_block_samples=None,
-        controlnet_single_block_samples=None,
         return_dict: bool = True,
-        controlnet_blocks_repeat: bool = False,
     ) -> Union[torch.Tensor, Transformer2DModelOutput]:
         """
         The [`FluxTransformer2DModel`] forward method.
