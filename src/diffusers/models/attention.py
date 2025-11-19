@@ -252,6 +252,9 @@ class AttentionModuleMixin:
         # Skip if the AttentionModuleMixin subclass does not support fusion (for example, the QKV projections are
         # always fused)
         if not self._supports_qkv_fusion:
+            logger.debug(
+                f"{self.__class__.__name__} does not support fusing QKV projections, so `fuse_projections` will no-op."
+            )
             return
 
         # Skip if already fused
