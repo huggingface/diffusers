@@ -29,7 +29,7 @@ Cache methods speedup diffusion transformers by storing and reusing intermediate
 
 [[autodoc]] apply_faster_cache
 
-### FirstBlockCacheConfig
+## FirstBlockCacheConfig
 
 [[autodoc]] FirstBlockCacheConfig
 
