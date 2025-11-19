@@ -40,9 +40,9 @@ from ...testing_utils import (
     require_accelerator,
     require_bitsandbytes_version_greater,
     require_gguf_version_greater_or_equal,
+    require_modelopt_version_greater_or_equal,
     require_quanto,
     require_torchao_version_greater_or_equal,
-    require_modelopt_version_greater_or_equal,
     torch_device,
 )
 

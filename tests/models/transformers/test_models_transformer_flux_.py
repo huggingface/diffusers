@@ -19,6 +19,7 @@ import torch
 
 from diffusers import FluxTransformer2DModel
 from diffusers.models.embeddings import ImageProjection
+from diffusers.models.transformers.transformer_flux import FluxIPAdapterAttnProcessor
 from diffusers.utils.torch_utils import randn_tensor
 
 from ...testing_utils import enable_full_determinism, torch_device
@@ -87,11 +88,11 @@ class FluxTransformerTesterConfig:
 
     @property
     def input_shape(self) -> tuple[int, int]:
-        return (1, 16, 4)
+        return (16, 4)
 
     @property
     def output_shape(self) -> tuple[int, int]:
-        return (1, 16, 4)
+        return (16, 4)
 
 
 class TestFluxTransformer(FluxTransformerTesterConfig, ModelTesterMixin):
@@ -147,6 +148,11 @@ class TestFluxTransformerAttention(FluxTransformerTesterConfig, AttentionTesterM
 
 class TestFluxTransformerIPAdapter(FluxTransformerTesterConfig, IPAdapterTesterMixin):
     """IP Adapter tests for Flux Transformer."""
+
+    def prepare_model(self, model):
+        joint_attention_dim = model.config["joint_attention_dim"]
+        hidden_size = model.config["num_attention_heads"] * model.config["attention_head_dim"]
+        model.set_attn_processor(FluxIPAdapterAttnProcessor(hidden_size, joint_attention_dim, scale=1.0))
 
     def create_ip_adapter_state_dict(self, model: Any) -> dict[str, dict[str, Any]]:
         from diffusers.models.transformers.transformer_flux import FluxIPAdapterAttnProcessor

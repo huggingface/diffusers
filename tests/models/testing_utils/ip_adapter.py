@@ -100,6 +100,7 @@ class IPAdapterTesterMixin:
         init_dict = self.get_init_dict()
         inputs_dict = self.get_dummy_inputs()
         model = self.model_class(**init_dict).to(torch_device)
+        self.prepare_model(model)
 
         torch.manual_seed(0)
         output_no_adapter = model(**inputs_dict, return_dict=False)[0]
@@ -128,9 +129,10 @@ class IPAdapterTesterMixin:
         init_dict = self.get_init_dict()
         inputs_dict = self.get_dummy_inputs()
         model = self.model_class(**init_dict).to(torch_device)
+        # self.prepare_model(model)
 
         # Create and load dummy IP adapter state dict
-        ip_adapter_state_dict = create_ip_adapter_state_dict(model)
+        ip_adapter_state_dict = self.create_ip_adapter_state_dict(model)
         model._load_ip_adapter_weights([ip_adapter_state_dict])
 
         # Test scale = 0.0 (no effect)
@@ -151,12 +153,13 @@ class IPAdapterTesterMixin:
     def test_unload_ip_adapter(self):
         init_dict = self.get_init_dict()
         model = self.model_class(**init_dict).to(torch_device)
+        self.prepare_model(model)
 
         # Save original processors
         original_processors = {k: type(v).__name__ for k, v in model.attn_processors.items()}
 
         # Create and load IP adapter
-        ip_adapter_state_dict = create_ip_adapter_state_dict(model)
+        ip_adapter_state_dict = self.create_ip_adapter_state_dict(model)
         model._load_ip_adapter_weights([ip_adapter_state_dict])
         assert check_if_ip_adapter_correctly_set(model), "IP Adapter should be set"
 
@@ -172,9 +175,10 @@ class IPAdapterTesterMixin:
         init_dict = self.get_init_dict()
         inputs_dict = self.get_dummy_inputs()
         model = self.model_class(**init_dict).to(torch_device)
+        self.prepare_model(model)
 
         # Create and load IP adapter
-        ip_adapter_state_dict = self.create_ip_adapter_state_dict()
+        ip_adapter_state_dict = self.create_ip_adapter_state_dict(model)
         model._load_ip_adapter_weights([ip_adapter_state_dict])
 
         torch.manual_seed(0)
