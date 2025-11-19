@@ -391,7 +391,6 @@ class Flux2ParallelSelfAttention(torch.nn.Module, AttentionModuleMixin):
         return self.processor(self, hidden_states, attention_mask, image_rotary_emb, **kwargs)
 
 
-@maybe_allow_in_graph
 class Flux2SingleTransformerBlock(nn.Module):
     def __init__(
         self,
@@ -461,7 +460,6 @@ class Flux2SingleTransformerBlock(nn.Module):
             return hidden_states
 
 
-@maybe_allow_in_graph
 class Flux2TransformerBlock(nn.Module):
     def __init__(
         self,
