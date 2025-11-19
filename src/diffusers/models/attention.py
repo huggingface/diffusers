@@ -249,8 +249,8 @@ class AttentionModuleMixin:
         """
         Fuse the query, key, and value projections into a single projection for efficiency.
         """
-        # Skip if the AttentionModuleMixin subclass does not support fusion (for example, the QKV projections are
-        # always fused)
+        # Skip if the AttentionModuleMixin subclass does not support fusion (for example, the QKV projections in Flux2
+        # single stream blocks are always fused)
         if not self._supports_qkv_fusion:
             logger.debug(
                 f"{self.__class__.__name__} does not support fusing QKV projections, so `fuse_projections` will no-op."
@@ -316,8 +316,8 @@ class AttentionModuleMixin:
         """
         Unfuse the query, key, and value projections back to separate projections.
         """
-        # Skip if the AttentionModuleMixin subclass does not support fusion (for example, the QKV projections are
-        # always fused)
+        # Skip if the AttentionModuleMixin subclass does not support fusion (for example, the QKV projections in Flux2
+        # single stream blocks are always fused)
         if not self._supports_qkv_fusion:
             return
 
