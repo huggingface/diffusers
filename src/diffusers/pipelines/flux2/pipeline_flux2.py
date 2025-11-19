@@ -549,7 +549,7 @@ class Flux2Pipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
         prompt_embeds=None,
         callback_on_step_end_tensor_inputs=None,
     ):
-        if height % (self.vae_scale_factor * 2) != 0 or width % (self.vae_scale_factor * 2) != 0:
+        if height is not None and height % (self.vae_scale_factor * 2) != 0 or width is not None and width % (self.vae_scale_factor * 2) != 0:
             logger.warning(
                 f"`height` and `width` have to be divisible by {self.vae_scale_factor * 2} but are {height} and {width}. Dimensions will be resized accordingly"
             )
