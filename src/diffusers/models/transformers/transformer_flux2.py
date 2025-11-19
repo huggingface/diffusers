@@ -275,8 +275,8 @@ class Flux2ParallelSelfAttnProcessor:
         # Parallel in (QKV + MLP in) projection
         hidden_states = attn.to_qkv_mlp_proj(hidden_states)
         qkv, mlp_hidden_states = torch.split(
-                hidden_states, [3 * attn.inner_dim, attn.mlp_hidden_dim * attn.mlp_mult_factor], dim=-1
-            )
+            hidden_states, [3 * attn.inner_dim, attn.mlp_hidden_dim * attn.mlp_mult_factor], dim=-1
+        )
 
         # Handle the attention logic
         query, key, value = qkv.chunk(3, dim=-1)
@@ -318,8 +318,8 @@ class Flux2ParallelSelfAttention(torch.nn.Module, AttentionModuleMixin):
     Flux 2 parallel self-attention for the Flux 2 single-stream transformer blocks.
 
     This implements a parallel transformer block, where the attention QKV projections are fused to the feedforward (FF)
-    input projections, and the attention output projections are fused to the FF output projections. See the
-    [ViT-22B paper](https://arxiv.org/abs/2302.05442) for a visual depiction of this type of transformer block.
+    input projections, and the attention output projections are fused to the FF output projections. See the [ViT-22B
+    paper](https://arxiv.org/abs/2302.05442) for a visual depiction of this type of transformer block.
     """
 
     _default_processor_cls = Flux2ParallelSelfAttnProcessor

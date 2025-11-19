@@ -1,7 +1,6 @@
 import unittest
 
 import numpy as np
-import pytest
 import torch
 from transformers import AutoProcessor, Mistral3Config, Mistral3ForConditionalGeneration
 
