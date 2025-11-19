@@ -25,7 +25,6 @@ from ...utils import USE_PEFT_BACKEND, is_torch_npu_available, logging, scale_lo
 from ...utils.torch_utils import maybe_allow_in_graph
 from .._modeling_parallel import ContextParallelInput, ContextParallelOutput
 from ..attention import AttentionMixin, AttentionModuleMixin
-from ..attention_processor import AttentionProcessor
 from ..attention_dispatch import dispatch_attention_fn
 from ..cache_utils import CacheMixin
 from ..embeddings import (
@@ -314,11 +313,7 @@ class Flux2ParallelSelfAttnProcessor:
         return hidden_states
 
 
-# NOTE: we don't inherit from AttentionModuleMixin because fuse_projections doesn't make sense for this Attention
-# subclass (as the QKV projections are always fused). This means that we end up copying some useful methods in that
-# mixin to this class. Is there a cleaner way (e.g. modifying AttentionModuleMixin to allow child classes to turn off
-# fuse_projections)?
-class Flux2ParallelSelfAttention(torch.nn.Module):
+class Flux2ParallelSelfAttention(torch.nn.Module, AttentionModuleMixin):
     """
     Flux 2 parallel self-attention for the Flux 2 single-stream transformer blocks.
 
@@ -329,6 +324,8 @@ class Flux2ParallelSelfAttention(torch.nn.Module):
 
     _default_processor_cls = Flux2ParallelSelfAttnProcessor
     _available_processors = [Flux2ParallelSelfAttnProcessor]
+    # Does not support QKV fusion as the QKV projections are always fused
+    _supports_qkv_fusion = False
 
     def __init__(
         self,
@@ -392,50 +389,6 @@ class Flux2ParallelSelfAttention(torch.nn.Module):
             )
         kwargs = {k: w for k, w in kwargs.items() if k in attn_parameters}
         return self.processor(self, hidden_states, attention_mask, image_rotary_emb, **kwargs)
-
-    def set_processor(self, processor: AttentionProcessor) -> None:
-        """
-        Set the attention processor to use.
-
-        Args:
-            processor (`AttnProcessor`):
-                The attention processor to use.
-        """
-        # if current processor is in `self._modules` and if passed `processor` is not, we need to
-        # pop `processor` from `self._modules`
-        if (
-            hasattr(self, "processor")
-            and isinstance(self.processor, torch.nn.Module)
-            and not isinstance(processor, torch.nn.Module)
-        ):
-            logger.info(f"You are removing possibly trained weights of {self.processor} with {processor}")
-            self._modules.pop("processor")
-
-        self.processor = processor
-
-    def get_processor(self, return_deprecated_lora: bool = False) -> "AttentionProcessor":
-        """
-        Get the attention processor in use.
-
-        Args:
-            return_deprecated_lora (`bool`, *optional*, defaults to `False`):
-                Set to `True` to return the deprecated LoRA attention processor.
-
-        Returns:
-            "AttentionProcessor": The attention processor in use.
-        """
-        if not return_deprecated_lora:
-            return self.processor
-
-    def set_attention_backend(self, backend: str):
-        from ..attention_dispatch import AttentionBackendName
-
-        available_backends = {x.value for x in AttentionBackendName.__members__.values()}
-        if backend not in available_backends:
-            raise ValueError(f"`{backend=}` must be one of the following: " + ", ".join(available_backends))
-
-        backend = AttentionBackendName(backend.lower())
-        self.processor._attention_backend = backend
 
 
 @maybe_allow_in_graph
