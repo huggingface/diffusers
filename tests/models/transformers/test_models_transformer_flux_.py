@@ -13,6 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from typing import Any
+
 import torch
 
 from diffusers import FluxTransformer2DModel
@@ -46,7 +48,11 @@ class FluxTransformerTesterConfig:
     pretrained_model_name_or_path = "hf-internal-testing/tiny-flux-pipe"
     pretrained_model_kwargs = {"subfolder": "transformer"}
 
-    def get_init_dict(self):
+    @property
+    def generator(self):
+        return torch.Generator("cpu").manual_seed(0)
+
+    def get_init_dict(self) -> dict[str, int | list[int]]:
         """Return Flux model initialization arguments."""
         return {
             "patch_size": 1,
@@ -60,30 +66,32 @@ class FluxTransformerTesterConfig:
             "axes_dims_rope": [4, 4, 8],
         }
 
-    def get_dummy_inputs(self):
+    def get_dummy_inputs(self) -> dict[str, torch.Tensor]:
         batch_size = 1
         height = width = 4
         num_latent_channels = 4
         num_image_channels = 3
-        sequence_length = 24
-        embedding_dim = 8
+        sequence_length = 48
+        embedding_dim = 32
 
         return {
-            "hidden_states": randn_tensor((batch_size, height * width, num_latent_channels)),
-            "encoder_hidden_states": randn_tensor((batch_size, sequence_length, embedding_dim)),
-            "pooled_projections": randn_tensor((batch_size, embedding_dim)),
-            "img_ids": randn_tensor((height * width, num_image_channels)),
-            "txt_ids": randn_tensor((sequence_length, num_image_channels)),
+            "hidden_states": randn_tensor((batch_size, height * width, num_latent_channels), generator=self.generator),
+            "encoder_hidden_states": randn_tensor(
+                (batch_size, sequence_length, embedding_dim), generator=self.generator
+            ),
+            "pooled_projections": randn_tensor((batch_size, embedding_dim), generator=self.generator),
+            "img_ids": randn_tensor((height * width, num_image_channels), generator=self.generator),
+            "txt_ids": randn_tensor((sequence_length, num_image_channels), generator=self.generator),
             "timestep": torch.tensor([1.0]).to(torch_device).expand(batch_size),
         }
 
     @property
-    def input_shape(self):
-        return (16, 4)
+    def input_shape(self) -> tuple[int, int]:
+        return (1, 16, 4)
 
     @property
-    def output_shape(self):
-        return (16, 4)
+    def output_shape(self) -> tuple[int, int]:
+        return (1, 16, 4)
 
 
 class TestFluxTransformer(FluxTransformerTesterConfig, ModelTesterMixin):
@@ -140,7 +148,7 @@ class TestFluxTransformerAttention(FluxTransformerTesterConfig, AttentionTesterM
 class TestFluxTransformerIPAdapter(FluxTransformerTesterConfig, IPAdapterTesterMixin):
     """IP Adapter tests for Flux Transformer."""
 
-    def create_ip_adapter_state_dict(self, model):
+    def create_ip_adapter_state_dict(self, model: Any) -> dict[str, dict[str, Any]]:
         from diffusers.models.transformers.transformer_flux import FluxIPAdapterAttnProcessor
 
         ip_cross_attn_state_dict = {}
@@ -202,7 +210,7 @@ class TestFluxTransformerLoRAHotSwap(FluxTransformerTesterConfig, LoraHotSwappin
 
     different_shapes_for_compilation = [(4, 4), (4, 8), (8, 8)]
 
-    def get_dummy_inputs(self, height=4, width=4):
+    def get_dummy_inputs(self, height: int = 4, width: int = 4) -> dict[str, torch.Tensor]:
         """Override to support dynamic height/width for LoRA hotswap tests."""
         batch_size = 1
         num_latent_channels = 4
@@ -223,7 +231,7 @@ class TestFluxTransformerLoRAHotSwap(FluxTransformerTesterConfig, LoraHotSwappin
 class TestFluxTransformerCompile(FluxTransformerTesterConfig, TorchCompileTesterMixin):
     different_shapes_for_compilation = [(4, 4), (4, 8), (8, 8)]
 
-    def get_dummy_inputs(self, height=4, width=4):
+    def get_dummy_inputs(self, height: int = 4, width: int = 4) -> dict[str, torch.Tensor]:
         """Override to support dynamic height/width for compilation tests."""
         batch_size = 1
         num_latent_channels = 4
@@ -250,7 +258,7 @@ class TestFluxSingleFile(FluxTransformerTesterConfig, SingleFileTesterMixin):
 
 
 class TestFluxTransformerBitsAndBytes(FluxTransformerTesterConfig, BitsAndBytesTesterMixin):
-    def get_dummy_inputs(self):
+    def get_dummy_inputs(self) -> dict[str, torch.Tensor]:
         return {
             "hidden_states": randn_tensor((1, 4096, 64)),
             "encoder_hidden_states": randn_tensor((1, 512, 4096)),
@@ -263,7 +271,7 @@ class TestFluxTransformerBitsAndBytes(FluxTransformerTesterConfig, BitsAndBytesT
 
 
 class TestFluxTransformerQuanto(FluxTransformerTesterConfig, QuantoTesterMixin):
-    def get_dummy_inputs(self):
+    def get_dummy_inputs(self) -> dict[str, torch.Tensor]:
         return {
             "hidden_states": randn_tensor((1, 4096, 64)),
             "encoder_hidden_states": randn_tensor((1, 512, 4096)),
@@ -276,7 +284,7 @@ class TestFluxTransformerQuanto(FluxTransformerTesterConfig, QuantoTesterMixin):
 
 
 class TestFluxTransformerTorchAo(FluxTransformerTesterConfig, TorchAoTesterMixin):
-    def get_dummy_inputs(self):
+    def get_dummy_inputs(self) -> dict[str, torch.Tensor]:
         return {
             "hidden_states": randn_tensor((1, 4096, 64)),
             "encoder_hidden_states": randn_tensor((1, 512, 4096)),
@@ -291,7 +299,7 @@ class TestFluxTransformerTorchAo(FluxTransformerTesterConfig, TorchAoTesterMixin
 class TestFluxTransformerGGUF(FluxTransformerTesterConfig, GGUFTesterMixin):
     gguf_filename = "https://huggingface.co/city96/FLUX.1-dev-gguf/blob/main/flux1-dev-Q8_0.gguf"
 
-    def get_dummy_inputs(self):
+    def get_dummy_inputs(self) -> dict[str, torch.Tensor]:
         return {
             "hidden_states": randn_tensor((1, 4096, 64)),
             "encoder_hidden_states": randn_tensor((1, 512, 4096)),
@@ -304,7 +312,7 @@ class TestFluxTransformerGGUF(FluxTransformerTesterConfig, GGUFTesterMixin):
 
 
 class TestFluxTransformerModelOpt(FluxTransformerTesterConfig, ModelOptTesterMixin):
-    def get_dummy_inputs(self):
+    def get_dummy_inputs(self) -> dict[str, torch.Tensor]:
         return {
             "hidden_states": randn_tensor((1, 4096, 64)),
             "encoder_hidden_states": randn_tensor((1, 512, 4096)),

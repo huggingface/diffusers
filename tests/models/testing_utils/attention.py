@@ -21,11 +21,10 @@ from diffusers.models.attention_processor import (
     AttnProcessor,
 )
 
-from ...testing_utils import is_attention, require_accelerator, torch_device
+from ...testing_utils import is_attention, torch_device
 
 
 @is_attention
-@require_accelerator
 class AttentionTesterMixin:
     """
     Mixin class for testing attention processor and module functionality on models.

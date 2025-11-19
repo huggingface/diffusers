@@ -16,10 +16,10 @@
 import json
 import os
 import tempfile
-from typing import Dict, List, Tuple
 
 import pytest
 import torch
+import torch.nn as nn
 from accelerate.utils.modeling import _get_proper_dtype, compute_module_sizes, dtype_byte_size
 
 from diffusers.utils import SAFE_WEIGHTS_INDEX_NAME, _add_variant
@@ -30,8 +30,8 @@ from ...testing_utils import torch_device
 
 def compute_module_persistent_sizes(
     model: nn.Module,
-    dtype: Optional[Union[str, torch.device]] = None,
-    special_dtypes: Optional[Dict[str, Union[str, torch.device]]] = None,
+    dtype: str | torch.device | None = None,
+    special_dtypes: dict[str, str | torch.device] | None = None,
 ):
     """
     Compute the size of each submodule of a given model (parameters + persistent buffers).
@@ -128,6 +128,7 @@ class ModelTesterMixin:
         )
 
     def test_from_save_pretrained(self, expected_max_diff=5e-5):
+        torch.manual_seed(0)
         model = self.model_class(**self.get_init_dict())
         model.to(torch_device)
         model.eval()
@@ -273,10 +274,10 @@ class ModelTesterMixin:
             return t.to(device)
 
         def recursive_check(tuple_object, dict_object):
-            if isinstance(tuple_object, (List, Tuple)):
+            if isinstance(tuple_object, (list, tuple)):
                 for tuple_iterable_value, dict_iterable_value in zip(tuple_object, dict_object.values()):
                     recursive_check(tuple_iterable_value, dict_iterable_value)
-            elif isinstance(tuple_object, Dict):
+            elif isinstance(tuple_object, dict):
                 for tuple_iterable_value, dict_iterable_value in zip(tuple_object.values(), dict_object.values()):
                     recursive_check(tuple_iterable_value, dict_iterable_value)
             elif tuple_object is None:

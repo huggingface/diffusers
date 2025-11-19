@@ -25,6 +25,7 @@ from diffusers.utils.import_utils import (
     is_gguf_available,
     is_nvidia_modelopt_available,
     is_optimum_quanto_available,
+    is_torchao_available,
 )
 
 from ...testing_utils import (
@@ -41,6 +42,7 @@ from ...testing_utils import (
     require_gguf_version_greater_or_equal,
     require_quanto,
     require_torchao_version_greater_or_equal,
+    require_modelopt_version_greater_or_equal,
     torch_device,
 )
 
@@ -58,7 +60,6 @@ if is_gguf_available():
     pass
 
 if is_torchao_available():
-
     if is_torchao_version(">=", "0.9.0"):
         pass
 
@@ -644,9 +645,7 @@ class TorchAoTesterMixin(QuantizationTesterMixin):
         if modules_to_exclude is None:
             pytest.skip("modules_to_not_convert_for_test not defined for this model")
 
-        self._test_quantization_modules_to_not_convert(
-            self.TORCHAO_QUANT_TYPES["int8wo"], modules_to_exclude
-        )
+        self._test_quantization_modules_to_not_convert(self.TORCHAO_QUANT_TYPES["int8wo"], modules_to_exclude)
 
     def test_torchao_device_map(self):
         """Test that device_map='auto' works correctly with quantization."""
