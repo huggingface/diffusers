@@ -142,6 +142,7 @@ class LTXAttention(torch.nn.Module, AttentionModuleMixin):
         self.dropout = dropout
         self.out_dim = query_dim
         self.heads = heads
+        self.is_cross_attention: Optional[bool] = None
 
         norm_eps = 1e-5
         norm_elementwise_affine = True
@@ -166,6 +167,7 @@ class LTXAttention(torch.nn.Module, AttentionModuleMixin):
         image_rotary_emb: Optional[torch.Tensor] = None,
         **kwargs,
     ) -> torch.Tensor:
+        self.is_cross_attention = encoder_hidden_states is not None
         attn_parameters = set(inspect.signature(self.processor.__call__).parameters.keys())
         unused_kwargs = [k for k, _ in kwargs.items() if k not in attn_parameters]
         if len(unused_kwargs) > 0:
@@ -324,6 +326,7 @@ class LTXVideoTransformerBlock(nn.Module):
             out_bias=attention_out_bias,
             qk_norm=qk_norm,
         )
+        self.attn1.is_cross_attention = False
 
         self.norm2 = RMSNorm(dim, eps=eps, elementwise_affine=elementwise_affine)
         self.attn2 = LTXAttention(
@@ -336,6 +339,7 @@ class LTXVideoTransformerBlock(nn.Module):
             out_bias=attention_out_bias,
             qk_norm=qk_norm,
         )
+        self.attn2.is_cross_attention = True
 
         self.ff = FeedForward(dim, activation_fn=activation_fn)
 
