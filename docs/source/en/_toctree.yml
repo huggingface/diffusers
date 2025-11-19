@@ -670,8 +670,8 @@
         title: Text2Video-Zero
       - local: api/pipelines/wan
         title: Wan
-      - local: api/pipelines/kandinsky5_video
-        title: Kandinsky 5.0 Video
+      - local: api/pipelines/kandinsky5_image
+        title: Kandinsky 5.0 Image
       title: Video
     title: Pipelines
   - sections:
