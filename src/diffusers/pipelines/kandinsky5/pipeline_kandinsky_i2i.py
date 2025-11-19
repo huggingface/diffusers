@@ -243,7 +243,7 @@ class Kandinsky5I2IPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
     def _encode_prompt_qwen(
         self,
         prompt: List[str],
-        image: Optional[torch.Tensor] = None,
+        image: Optional[PipelineImageInput] = None,
         device: Optional[torch.device] = None,
         max_sequence_length: int = 256,
         dtype: Optional[torch.dtype] = None,
@@ -256,7 +256,7 @@ class Kandinsky5I2IPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
 
         Args:
             prompt List[str]: Input list of prompts
-            image (torch.Tensor): Input list of images to condition the generation on
+            image (PipelineImageInput): Input list of images to condition the generation on
             device (torch.device): Device to run encoding on
             max_sequence_length (int): Maximum sequence length for tokenization
             dtype (torch.dtype): Data type for embeddings
@@ -266,7 +266,9 @@ class Kandinsky5I2IPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
         """
         device = device or self._execution_device
         dtype = dtype or self.text_encoder.dtype
-
+        if not isinstance(image, list):
+            image = [image]
+        image = [i.resize((i.size[0]//2,i.size[1]//2)) for i in image]
         full_texts = [self.prompt_template.format(p) for p in prompt]
         inputs = self.tokenizer(
             text=full_texts,
@@ -559,7 +561,6 @@ class Kandinsky5I2IPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
         # Encode the input image to use as first frame
         # Preprocess image
         image_tensor = self.image_processor.preprocess(image, height=height, width=width).to(device, dtype=dtype)
-        print('image_tensor',image_tensor.shape)
 
         # Encode image to latents using VAE
         with torch.no_grad():
@@ -572,7 +573,6 @@ class Kandinsky5I2IPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
 
             # Reshape to match latent dimensions [batch, 1, height, width, channels]
             image_latents = image_latents.permute(0, 2, 3, 4, 1)  # [batch, 1, H, W, C]
-            print('latents image_latents',latents.shape,image_latents.shape)
             latents = torch.cat([latents, image_latents, torch.ones_like(latents[...,:1])], -1)
 
         return latents
