@@ -16,6 +16,8 @@ from diffusers.loaders import FluxLoraLoaderMixin, FromSingleFileMixin, TextualI
 from diffusers.models.autoencoders import AutoencoderKL
 from diffusers.models.controlnets.controlnet_flux import FluxControlNetModel, FluxMultiControlNetModel
 from diffusers.models.transformers import FluxTransformer2DModel
+from diffusers.pipelines.flux.pipeline_output import FluxPipelineOutput
+from diffusers.pipelines.pipeline_utils import DiffusionPipeline
 from diffusers.schedulers import FlowMatchEulerDiscreteScheduler
 from diffusers.utils import (
     USE_PEFT_BACKEND,
@@ -26,8 +28,6 @@ from diffusers.utils import (
     unscale_lora_layers,
 )
 from diffusers.utils.torch_utils import randn_tensor
-from diffusers.pipelines.pipeline_utils import DiffusionPipeline
-from diffusers.pipelines.flux.pipeline_output import FluxPipelineOutput
 
 
 if is_torch_xla_available():
@@ -109,6 +109,7 @@ def retrieve_latents(
         return encoder_output.latents
     else:
         raise AttributeError("Could not access latents of provided encoder_output")
+
 
 def retrieve_latents_fill(
     encoder_output: torch.Tensor, generator: Optional[torch.Generator] = None, sample_mode: str = "sample"
@@ -550,7 +551,6 @@ class FluxControlNetFillInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, 
     @staticmethod
     # Copied from diffusers.pipelines.flux.pipeline_flux.FluxPipeline._pack_latents
     def _pack_latents(latents, batch_size, num_channels_latents, height, width):
-
         latents = latents.view(batch_size, num_channels_latents, height // 2, 2, width // 2, 2)
         latents = latents.permute(0, 2, 4, 1, 3, 5)
         latents = latents.reshape(batch_size, (height // 2) * (width // 2), num_channels_latents * 4)
@@ -1021,7 +1021,6 @@ class FluxControlNetFillInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, 
         # num_channels_latents = self.transformer.config.in_channels // 4
         num_channels_latents = self.vae.config.latent_channels
 
-
         if isinstance(self.controlnet, FluxControlNetModel):
             control_image = self.prepare_image(
                 image=control_image,
@@ -1245,7 +1244,7 @@ class FluxControlNetFillInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, 
                     guidance = None
 
                 masked_image_latents_fill = torch.cat((masked_image_latentsss, maskkk), dim=-1)
-                latent_model_input = torch.cat([latents,masked_image_latents_fill], dim=2)
+                latent_model_input = torch.cat([latents, masked_image_latents_fill], dim=2)
 
                 noise_pred = self.transformer(
                     hidden_states=latent_model_input,
