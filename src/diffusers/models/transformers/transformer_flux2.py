@@ -128,31 +128,10 @@ class Flux2AttnProcessor:
         encoder_hidden_states: torch.Tensor = None,
         attention_mask: Optional[torch.Tensor] = None,
         image_rotary_emb: Optional[torch.Tensor] = None,
-        mlp_hidden_states: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        if attn.parallel_proj_in:
-            hidden_states = attn.to_qkv_mlp_proj(hidden_states)
-            qkv, mlp_hidden_states = torch.split(
-                hidden_states, [3 * attn.inner_dim, attn.mlp_hidden_dim * attn.mlp_mult_factor], dim=-1
-            )
-            query, key, value = qkv.chunk(3, dim=-1)
-            mlp_hidden_states = attn.mlp_act_fn(mlp_hidden_states)
-
-            # Get encoder QKV, if available
-            encoder_query = encoder_key = encoder_value = None
-            if encoder_hidden_states is not None:
-                if hasattr(attn, "to_added_qkv"):
-                    encoder_query, encoder_key, encoder_value = attn.to_added_qkv(encoder_hidden_states).chunk(
-                        3, dim=-1
-                    )
-                elif attn.added_kv_proj_dim is not None:
-                    encoder_query = attn.add_q_proj(encoder_hidden_states)
-                    encoder_key = attn.add_k_proj(encoder_hidden_states)
-                    encoder_value = attn.add_v_proj(encoder_hidden_states)
-        else:
-            query, key, value, encoder_query, encoder_key, encoder_value = _get_qkv_projections(
-                attn, hidden_states, encoder_hidden_states
-            )
+        query, key, value, encoder_query, encoder_key, encoder_value = _get_qkv_projections(
+            attn, hidden_states, encoder_hidden_states
+        )
 
         query = query.unflatten(-1, (attn.heads, -1))
         key = key.unflatten(-1, (attn.heads, -1))
@@ -194,12 +173,8 @@ class Flux2AttnProcessor:
             )
             encoder_hidden_states = attn.to_add_out(encoder_hidden_states)
 
-        if attn.parallel_proj_out:
-            hidden_states = torch.cat([hidden_states, mlp_hidden_states], dim=-1)
-            hidden_states = attn.to_out(hidden_states)
-        else:
-            hidden_states = attn.to_out[0](hidden_states)
-            hidden_states = attn.to_out[1](hidden_states)
+        hidden_states = attn.to_out[0](hidden_states)
+        hidden_states = attn.to_out[1](hidden_states)
 
         if encoder_hidden_states is not None:
             return hidden_states, encoder_hidden_states
@@ -224,10 +199,6 @@ class Flux2Attention(torch.nn.Module, AttentionModuleMixin):
         eps: float = 1e-5,
         out_dim: int = None,
         elementwise_affine: bool = True,
-        parallel_proj_in: bool = False,
-        parallel_proj_out: bool = False,
-        mlp_ratio: float = 4.0,
-        mlp_mult_factor: int = 2,
         processor=None,
     ):
         super().__init__()
@@ -244,32 +215,17 @@ class Flux2Attention(torch.nn.Module, AttentionModuleMixin):
         self.added_kv_proj_dim = added_kv_proj_dim
         self.added_proj_bias = added_proj_bias
 
-        self.parallel_proj_in = parallel_proj_in
-        self.parallel_proj_out = parallel_proj_out
-        self.mlp_ratio = mlp_ratio
-        self.mlp_hidden_dim = int(query_dim * self.mlp_ratio)
-        self.mlp_mult_factor = mlp_mult_factor
-
-        if self.parallel_proj_in:
-            self.to_qkv_mlp_proj = torch.nn.Linear(
-                self.query_dim, self.inner_dim * 3 + self.mlp_hidden_dim * self.mlp_mult_factor, bias=bias
-            )
-            self.mlp_act_fn = Flux2SwiGLU()
-        else:
-            self.to_q = torch.nn.Linear(query_dim, self.inner_dim, bias=bias)
-            self.to_k = torch.nn.Linear(query_dim, self.inner_dim, bias=bias)
-            self.to_v = torch.nn.Linear(query_dim, self.inner_dim, bias=bias)
+        self.to_q = torch.nn.Linear(query_dim, self.inner_dim, bias=bias)
+        self.to_k = torch.nn.Linear(query_dim, self.inner_dim, bias=bias)
+        self.to_v = torch.nn.Linear(query_dim, self.inner_dim, bias=bias)
 
         # QK Norm
         self.norm_q = torch.nn.RMSNorm(dim_head, eps=eps, elementwise_affine=elementwise_affine)
         self.norm_k = torch.nn.RMSNorm(dim_head, eps=eps, elementwise_affine=elementwise_affine)
 
-        if self.parallel_proj_out:
-            self.to_out = torch.nn.Linear(self.inner_dim + self.mlp_hidden_dim, self.out_dim, bias=out_bias)
-        else:
-            self.to_out = torch.nn.ModuleList([])
-            self.to_out.append(torch.nn.Linear(self.inner_dim, self.out_dim, bias=out_bias))
-            self.to_out.append(torch.nn.Dropout(dropout))
+        self.to_out = torch.nn.ModuleList([])
+        self.to_out.append(torch.nn.Linear(self.inner_dim, self.out_dim, bias=out_bias))
+        self.to_out.append(torch.nn.Dropout(dropout))
 
         if added_kv_proj_dim is not None:
             self.norm_added_q = torch.nn.RMSNorm(dim_head, eps=eps)
@@ -301,6 +257,140 @@ class Flux2Attention(torch.nn.Module, AttentionModuleMixin):
         return self.processor(self, hidden_states, encoder_hidden_states, attention_mask, image_rotary_emb, **kwargs)
 
 
+class Flux2ParallelSelfAttnProcessor:
+    _attention_backend = None
+    _parallel_config = None
+
+    def __init__(self):
+        if not hasattr(F, "scaled_dot_product_attention"):
+            raise ImportError(f"{self.__class__.__name__} requires PyTorch 2.0. Please upgrade your pytorch version.")
+
+    def __call__(
+        self,
+        attn: "Flux2ParallelSelfAttention",
+        hidden_states: torch.Tensor,
+        attention_mask: Optional[torch.Tensor] = None,
+        image_rotary_emb: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        # Parallel in (QKV + MLP in) projection
+        hidden_states = attn.to_qkv_mlp_proj(hidden_states)
+        qkv, mlp_hidden_states = torch.split(
+                hidden_states, [3 * attn.inner_dim, attn.mlp_hidden_dim * attn.mlp_mult_factor], dim=-1
+            )
+
+        # Handle the attention logic
+        query, key, value = qkv.chunk(3, dim=-1)
+
+        query = query.unflatten(-1, (attn.heads, -1))
+        key = key.unflatten(-1, (attn.heads, -1))
+        value = value.unflatten(-1, (attn.heads, -1))
+
+        query = attn.norm_q(query)
+        key = attn.norm_k(key)
+
+        if image_rotary_emb is not None:
+            query = apply_rotary_emb(query, image_rotary_emb, sequence_dim=1)
+            key = apply_rotary_emb(key, image_rotary_emb, sequence_dim=1)
+
+        hidden_states = dispatch_attention_fn(
+            query,
+            key,
+            value,
+            attn_mask=attention_mask,
+            backend=self._attention_backend,
+            parallel_config=self._parallel_config,
+        )
+        hidden_states = hidden_states.flatten(2, 3)
+        hidden_states = hidden_states.to(query.dtype)
+
+        # Handle the feedforward (FF) logic
+        mlp_hidden_states = attn.mlp_act_fn(mlp_hidden_states)
+
+        # Concatenate and parallel output projection
+        hidden_states = torch.cat([hidden_states, mlp_hidden_states], dim=-1)
+        hidden_states = attn.to_out(hidden_states)
+
+        return hidden_states
+
+
+class Flux2ParallelSelfAttention(torch.nn.Module, AttentionModuleMixin):
+    """
+    Flux 2 parallel self-attention for the Flux 2 single-stream transformer blocks.
+
+    This implements a parallel transformer block, where the attention QKV projections are fused to the feedforward (FF)
+    input projections, and the attention output projections are fused to the FF output projections. See the
+    [ViT-22B paper](https://arxiv.org/abs/2302.05442) for a visual depiction of this type of transformer block.
+    """
+
+    _default_processor_cls = Flux2ParallelSelfAttnProcessor
+    _available_processors = [Flux2ParallelSelfAttnProcessor]
+    # Does not support QKV fusion as the QKV projections are always fused
+    _supports_qkv_fusion = False
+
+    def __init__(
+        self,
+        query_dim: int,
+        heads: int = 8,
+        dim_head: int = 64,
+        dropout: float = 0.0,
+        bias: bool = False,
+        out_bias: bool = True,
+        eps: float = 1e-5,
+        out_dim: int = None,
+        elementwise_affine: bool = True,
+        mlp_ratio: float = 4.0,
+        mlp_mult_factor: int = 2,
+        processor=None,
+    ):
+        super().__init__()
+
+        self.head_dim = dim_head
+        self.inner_dim = out_dim if out_dim is not None else dim_head * heads
+        self.query_dim = query_dim
+        self.out_dim = out_dim if out_dim is not None else query_dim
+        self.heads = out_dim // dim_head if out_dim is not None else heads
+
+        self.use_bias = bias
+        self.dropout = dropout
+
+        self.mlp_ratio = mlp_ratio
+        self.mlp_hidden_dim = int(query_dim * self.mlp_ratio)
+        self.mlp_mult_factor = mlp_mult_factor
+
+        # Fused QKV projections + MLP input projection
+        self.to_qkv_mlp_proj = torch.nn.Linear(
+            self.query_dim, self.inner_dim * 3 + self.mlp_hidden_dim * self.mlp_mult_factor, bias=bias
+        )
+        self.mlp_act_fn = Flux2SwiGLU()
+
+        # QK Norm
+        self.norm_q = torch.nn.RMSNorm(dim_head, eps=eps, elementwise_affine=elementwise_affine)
+        self.norm_k = torch.nn.RMSNorm(dim_head, eps=eps, elementwise_affine=elementwise_affine)
+
+        # Fused attention output projection + MLP output projection
+        self.to_out = torch.nn.Linear(self.inner_dim + self.mlp_hidden_dim, self.out_dim, bias=out_bias)
+
+        if processor is None:
+            processor = self._default_processor_cls()
+        self.set_processor(processor)
+
+    def forward(
+        self,
+        hidden_states: torch.Tensor,
+        attention_mask: Optional[torch.Tensor] = None,
+        image_rotary_emb: Optional[torch.Tensor] = None,
+        **kwargs,
+    ) -> torch.Tensor:
+        attn_parameters = set(inspect.signature(self.processor.__call__).parameters.keys())
+        unused_kwargs = [k for k, _ in kwargs.items() if k not in attn_parameters]
+        if len(unused_kwargs) > 0:
+            logger.warning(
+                f"joint_attention_kwargs {unused_kwargs} are not expected by {self.processor.__class__.__name__} and will be ignored."
+            )
+        kwargs = {k: w for k, w in kwargs.items() if k in attn_parameters}
+        return self.processor(self, hidden_states, attention_mask, image_rotary_emb, **kwargs)
+
+
 @maybe_allow_in_graph
 class Flux2SingleTransformerBlock(nn.Module):
     def __init__(
@@ -319,7 +409,7 @@ class Flux2SingleTransformerBlock(nn.Module):
         # Note that the MLP in/out linear layers are fused with the attention QKV/out projections, respectively; this
         # is often called a "parallel" transformer block. See the [ViT-22B paper](https://arxiv.org/abs/2302.05442)
         # for a visual depiction of this type of transformer block.
-        self.attn = Flux2Attention(
+        self.attn = Flux2ParallelSelfAttention(
             query_dim=dim,
             dim_head=attention_head_dim,
             heads=num_attention_heads,
@@ -327,11 +417,9 @@ class Flux2SingleTransformerBlock(nn.Module):
             bias=bias,
             out_bias=bias,
             eps=eps,
-            parallel_proj_in=True,
-            parallel_proj_out=True,
             mlp_ratio=mlp_ratio,
             mlp_mult_factor=2,
-            processor=Flux2AttnProcessor(),
+            processor=Flux2ParallelSelfAttnProcessor(),
         )
 
     def forward(

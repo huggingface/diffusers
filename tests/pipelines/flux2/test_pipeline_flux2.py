@@ -131,7 +131,6 @@ class Flux2PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         }
         return inputs
 
-    @pytest.mark.xfail(condition=True, reason="Flux2 uses parallel projections which are incompatible here.")
     def test_fused_qkv_projections(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components()

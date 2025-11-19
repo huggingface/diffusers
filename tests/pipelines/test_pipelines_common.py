@@ -103,7 +103,7 @@ def check_qkv_fusion_processors_exist(model):
 def check_qkv_fused_layers_exist(model, layer_names):
     is_fused_submodules = []
     for submodule in model.modules():
-        if not isinstance(submodule, AttentionModuleMixin):
+        if not isinstance(submodule, AttentionModuleMixin) or not submodule._supports_qkv_fusion:
             continue
         is_fused_attribute_set = submodule.fused_projections
         is_fused_layer = True
