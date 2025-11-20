@@ -264,7 +264,7 @@ _HUB_KERNELS_REGISTRY: Dict["AttentionBackendName", _HubKernelConfig] = {
         repo_id="kernels-community/flash-attn3", function_attr="flash_attn_func", revision="fake-ops-return-probs"
     ),
     AttentionBackendName.FLASH_HUB: _HubKernelConfig(
-        repo_id="kernels-community/flash-attn", function_attr="flash_attn_func", revision=None
+        repo_id="kernels-community/flash-attn2", function_attr="flash_attn_func", revision=None
     ),
     AttentionBackendName.SAGE_HUB: _HubKernelConfig(
         repo_id="kernels-community/sage_attention", function_attr="sageattn", revision=None
