@@ -82,3 +82,7 @@ class AutoencoderDCTests(ModelTesterMixin, AutoencoderTesterMixin, unittest.Test
     @unittest.skipIf(IS_GITHUB_ACTIONS, reason="Skipping test inside GitHub Actions environment")
     def test_layerwise_casting_inference(self):
         super().test_layerwise_casting_inference()
+
+    @unittest.skipIf(IS_GITHUB_ACTIONS, reason="Skipping test inside GitHub Actions environment")
+    def test_layerwise_casting_memory(self):
+        super().test_layerwise_casting_memory()
