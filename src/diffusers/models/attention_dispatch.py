@@ -1040,22 +1040,23 @@ def _all_to_all_single(x: torch.Tensor, group) -> torch.Tensor:
     x = _wait_tensor(x)
     return x
 
-def _all_to_all_double(x: torch.Tensor, scatter_idx: int = 2, gather_idx: int = 1, group=None) -> torch.Tensor:
+def _all_to_all_dim_exchange(x: torch.Tensor, scatter_idx: int = 2, gather_idx: int = 1, group=None) -> torch.Tensor:
     group_world_size = funcol.get_world_size(group)
-    #dist.get_world_size(group)
 
     if scatter_idx == 2 and gather_idx == 1:
         B, S_LOCAL, H, D = x.shape
         S = S_LOCAL * group_world_size
         H_LOCAL = H // group_world_size
 
+        # B, S_LOCAL, H, D -> group_world_size, S_LOCAL, B, H_LOCAL, D
         x_temp = (x.reshape(B, S_LOCAL, group_world_size, H_LOCAL, D)
-                  .permute(0, 2, 1, 3, 4).contiguous()
+                  .transpose(0, 2).contiguous()
         )
 
-        out = torch.empty_like(x_temp)
         if group_world_size >1:
-            funcol.all_to_all_single(out, x_temp, None, None, group)
+            #maybe here need to use the _all_to_all_single helper to avoid contiguity issues
+            out = funcol.all_to_all_single(x_temp, None, None, group=group)
+            out = _wait_tensor(out)
         else:
             out = x_temp
         out = out.reshape(S, B, H_LOCAL, D).permute(1, 0, 2, 3).contiguous()
@@ -1069,19 +1070,20 @@ def _all_to_all_double(x: torch.Tensor, scatter_idx: int = 2, gather_idx: int = 
         #
         x_temp = (x.reshape(B, group_world_size, S_LOCAL, H_LOCAL, D)
                   .permute(1, 3, 2, 0, 4).reshape(group_world_size, H_LOCAL, S_LOCAL, B, D))
-        output = torch.empty_like(x_temp)
+        
         if group_world_size >1:
-            funcol.all_to_all_single(output, x_temp, None, None, group)
+            output = funcol.all_to_all_single(x_temp, None, None, group)
+            output = _wait_tensor(output)
         else:
             output = x_temp
         output = output.reshape(H, S_LOCAL, B, D).transpose(0, 2).contiguous()
         output = output.reshape(B, S_LOCAL, H, D)
         return output
     else:
-        raise ValueError("Invalid scatter/gather indices for all_to_all_double.")
+        raise ValueError("Invalid scatter/gather indices for _all_to_all_dim_exchange.")
 
 
-class SeqAllToAllDouble(torch.autograd.Function):
+class SeqAllToAllDim(torch.autograd.Function):
     @staticmethod
     def forward():
         pass
