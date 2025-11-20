@@ -42,4 +42,4 @@ pipe = FluxControlNetPipeline.from_pretrained("black-forest-labs/FLUX.1-dev", co
 
 ## FluxControlNetOutput
 
-[[autodoc]] models.controlnet_flux.FluxControlNetOutput
+[[autodoc]] models.controlnets.controlnet_flux.FluxControlNetOutput
