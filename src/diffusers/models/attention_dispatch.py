@@ -1040,6 +1040,14 @@ def _all_to_all_single(x: torch.Tensor, group) -> torch.Tensor:
     x = _wait_tensor(x)
     return x
 
+def _all_to_all_double(x: torch.Tensor, scatter_idx: int = 2, gather_idx: int = 1, group=None) -> torch.Tensor:
+    pass
+
+
+class SeqAllToAllDouble(torch.autograd.Function):
+    pass
+
+
 
 class TemplatedRingAttention(torch.autograd.Function):
     @staticmethod
@@ -1259,6 +1267,56 @@ class TemplatedUlyssesAttention(torch.autograd.Function):
 
         return grad_query, grad_key, grad_value, None, None, None, None, None, None, None, None
 
+class TemplatedUnifiedAttention(torch.nn.Module):
+    @staticmethod
+    def forward(ctx: torch.autograd.function.FunctionCtx,
+        query: torch.Tensor,
+        key: torch.Tensor,
+        value: torch.Tensor,
+        attn_mask: Optional[torch.Tensor],
+        dropout_p: float,
+        is_causal: bool,
+        scale: Optional[float],
+        enable_gqa: bool,
+        return_lse: bool,
+        forward_op,
+        backward_op,
+        _parallel_config: Optional["ParallelConfig"] = None,
+        ):
+        ulysses_mesh = _parallel_config.context_parallel_config._ulysses_mesh
+        ulysses_group = ulysses_mesh.get_group()
+        ring_mesh = _parallel_config.context_parallel_config._ring_mesh
+        ring_group = ring_mesh.get_group()
+        scatter_idx = 2
+        gather_idx = 1
+
+        query = SeqAllToAllDouble.apply(ulysses_group, query, scatter_idx, gather_idx)
+        key = SeqAllToAllDouble.apply(ulysses_group, key, scatter_idx, gather_idx)
+        value = SeqAllToAllDouble.apply(ulysses_group, value, scatter_idx, gather_idx)
+        out = TemplatedRingAttention.apply(
+            query,
+            key,
+            value,
+            attn_mask,
+            dropout_p,
+            is_causal,
+            scale,
+            enable_gqa,
+            return_lse,
+            forward_op,
+            backward_op,
+            _parallel_config,
+        )
+        if return_lse:
+            context_layer, lse, *_ = out
+        else:
+            context_layer = out
+        output = SeqAllToAllDouble.apply(
+            ulysses_group,
+            context_layer,
+            gather_idx,
+            scatter_idx,
+        )
 
 def _templated_context_parallel_attention(
     query: torch.Tensor,
