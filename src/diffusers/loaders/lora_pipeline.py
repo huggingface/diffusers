@@ -45,6 +45,7 @@ from .lora_conversion_utils import (
     _convert_hunyuan_video_lora_to_diffusers,
     _convert_kohya_flux_lora_to_diffusers,
     _convert_musubi_wan_lora_to_diffusers,
+    _convert_non_diffusers_flux2_lora_to_diffusers,
     _convert_non_diffusers_hidream_lora_to_diffusers,
     _convert_non_diffusers_lora_to_diffusers,
     _convert_non_diffusers_ltxv_lora_to_diffusers,
@@ -5143,6 +5144,10 @@ class Flux2LoraLoaderMixin(LoraBaseMixin):
             warn_msg = "It seems like you are using a DoRA checkpoint that is not compatible in Diffusers at the moment. So, we are going to filter out the keys associated to 'dora_scale` from the state dict. If you think this is a mistake please open an issue https://github.com/huggingface/diffusers/issues/new."
             logger.warning(warn_msg)
             state_dict = {k: v for k, v in state_dict.items() if "dora_scale" not in k}
+
+        is_ai_toolkit = any(k.startswith("diffusion_model.") for k in state_dict)
+        if is_ai_toolkit:
+            state_dict = _convert_non_diffusers_flux2_lora_to_diffusers(state_dict)
 
         out = (state_dict, metadata) if return_lora_metadata else state_dict
         return out
