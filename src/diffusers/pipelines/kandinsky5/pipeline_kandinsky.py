@@ -173,8 +173,10 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
         )
         self.prompt_template_encode_start_idx = 129
 
-        self.vae_scale_factor_temporal = vae.config.temporal_compression_ratio
-        self.vae_scale_factor_spatial = vae.config.spatial_compression_ratio
+        self.vae_scale_factor_temporal = (
+            self.vae.config.temporal_compression_ratio if getattr(self, "vae", None) else 4
+        )
+        self.vae_scale_factor_spatial = self.vae.config.spatial_compression_ratio if getattr(self, "vae", None) else 8
         self.video_processor = VideoProcessor(vae_scale_factor=self.vae_scale_factor_spatial)
 
     @staticmethod
@@ -383,6 +385,9 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
         """
         device = device or self._execution_device
         dtype = dtype or self.text_encoder.dtype
+
+        if not isinstance(prompt, list):
+            prompt = [prompt]
 
         batch_size = len(prompt)
 
@@ -744,11 +749,13 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
                 )
 
             if negative_prompt_embeds_qwen is None:
-                negative_prompt_embeds_qwen, negative_prompt_embeds_clip, negative_cu_seqlens = self.encode_prompt(
-                    prompt=negative_prompt,
-                    max_sequence_length=max_sequence_length,
-                    device=device,
-                    dtype=dtype,
+                negative_prompt_embeds_qwen, negative_prompt_embeds_clip, negative_prompt_cu_seqlens = (
+                    self.encode_prompt(
+                        prompt=negative_prompt,
+                        max_sequence_length=max_sequence_length,
+                        device=device,
+                        dtype=dtype,
+                    )
                 )
 
         # 4. Prepare timesteps
@@ -780,8 +787,8 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
         text_rope_pos = torch.arange(prompt_cu_seqlens.diff().max().item(), device=device)
 
         negative_text_rope_pos = (
-            torch.arange(negative_cu_seqlens.diff().max().item(), device=device)
-            if negative_cu_seqlens is not None
+            torch.arange(negative_prompt_cu_seqlens.diff().max().item(), device=device)
+            if negative_prompt_cu_seqlens is not None
             else None
         )
 
