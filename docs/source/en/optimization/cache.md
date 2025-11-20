@@ -70,4 +70,4 @@ pipeline.transformer.enable_cache(config)
 
 ## FirstBlockCache
 
-[First Block Cache](https://huggingface.co/docs/diffusers/main/en/api/cache#diffusers.FirstBlockCacheConfig) builds on the ideas of [TeaCache](https://huggingface.co/papers/2411.19108). It is much simpler to implement generically for a wide range of models and has been integrated first for experimental purposes.
+[FirstBlock Cache](https://huggingface.co/docs/diffusers/main/en/api/cache#diffusers.FirstBlockCacheConfig) builds on the ideas of [TeaCache](https://huggingface.co/papers/2411.19108). It is much simpler to implement generically for a wide range of models and has been integrated first for experimental purposes.
