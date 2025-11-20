@@ -132,6 +132,7 @@ CHECKPOINT_KEY_NAMES = {
     "wan": ["model.diffusion_model.head.modulation", "head.modulation"],
     "wan_vae": "decoder.middle.0.residual.0.gamma",
     "wan_vace": "vace_blocks.0.after_proj.bias",
+    "wan_animate": "motion_encoder.dec.direction.weight",
     "hidream": "double_stream_blocks.0.block.adaLN_modulation.1.bias",
     "cosmos-1.0": [
         "net.x_embedder.proj.1.weight",
@@ -210,6 +211,7 @@ DIFFUSERS_DEFAULT_PIPELINE_PATHS = {
     "wan-t2v-1.3B": {"pretrained_model_name_or_path": "Wan-AI/Wan2.1-T2V-1.3B-Diffusers"},
     "wan-t2v-14B": {"pretrained_model_name_or_path": "Wan-AI/Wan2.1-T2V-14B-Diffusers"},
     "wan-i2v-14B": {"pretrained_model_name_or_path": "Wan-AI/Wan2.1-I2V-14B-480P-Diffusers"},
+    "wan-animate-14B": {"pretrained_model_name_or_path": "Wan-AI/Wan2.2-Animate-14B-Diffusers"},
     "wan-vace-1.3B": {"pretrained_model_name_or_path": "Wan-AI/Wan2.1-VACE-1.3B-diffusers"},
     "wan-vace-14B": {"pretrained_model_name_or_path": "Wan-AI/Wan2.1-VACE-14B-diffusers"},
     "hidream": {"pretrained_model_name_or_path": "HiDream-ai/HiDream-I1-Dev"},
@@ -750,6 +752,9 @@ def infer_diffusers_model_type(checkpoint):
                 model_type = "wan-vace-1.3B"
             elif checkpoint[target_key].shape[0] == 5120:
                 model_type = "wan-vace-14B"
+
+        if CHECKPOINT_KEY_NAMES["wan-animate"] in checkpoint:
+            model_type = "wan-animate-14B"
 
         elif checkpoint[target_key].shape[0] == 1536:
             model_type = "wan-t2v-1.3B"
@@ -3178,14 +3183,82 @@ def convert_wan_transformer_to_diffusers(checkpoint, **kwargs):
         # For the VACE model
         "before_proj": "proj_in",
         "after_proj": "proj_out",
+        # For Wan Animate
+        "face_adapter.fuser_blocks": "face_adapter",
+        ".k_norm.": ".norm_k.",
+        ".q_norm.": ".norm_q.",
+        # Requires tensor split
+        ".linear1_kv.": [".to_k.", ".to_v."],
+        ".linear1_q.": ".to_q.",
+        ".linear2.": ".to_out.",
+        "conv1_local.conv": "conv1_local",
+        "conv2.conv": "conv2",
+        "conv3.conv": "conv3",
+        "motion_encoder.dec.direction.weight": "motion_encoder.motion_synthesis_weight",
+        "motion_encoder.enc.net_app.convs.0.0.weight": "motion_encoder.conv_in.weight",
+        "motion_encoder.enc.net_app.convs.0.1.bias": "motion_encoder.conv_in.act_fn.bias",
+        "motion_encoder.enc.net_app.convs.8.weight": "motion_encoder.conv_out.weight",
+        "motion_encoder.enc.fc": "motion_encoder.motion_network",
+        "motion_encoder.enc.net_app.convs.7.conv1.0.weight": "motion_encoder.res_blocks.6.conv1.weight",
+        "motion_encoder.enc.net_app.convs.6.conv1.0.weight": "motion_encoder.res_blocks.5.conv1.weight",
+        "motion_encoder.enc.net_app.convs.5.conv1.0.weight": "motion_encoder.res_blocks.4.conv1.weight",
+        "motion_encoder.enc.net_app.convs.4.conv1.0.weight": "motion_encoder.res_blocks.3.conv1.weight",
+        "motion_encoder.enc.net_app.convs.3.conv1.0.weight": "motion_encoder.res_blocks.2.conv1.weight",
+        "motion_encoder.enc.net_app.convs.2.conv1.0.weight": "motion_encoder.res_blocks.1.conv1.weight",
+        "motion_encoder.enc.net_app.convs.1.conv1.0.weight": "motion_encoder.res_blocks.0.conv1.weight",
+        "motion_encoder.enc.net_app.convs.7.conv2.1.weight": "motion_encoder.res_blocks.6.conv2.weight",
+        "motion_encoder.enc.net_app.convs.6.conv2.1.weight": "motion_encoder.res_blocks.5.conv2.weight",
+        "motion_encoder.enc.net_app.convs.5.conv2.1.weight": "motion_encoder.res_blocks.4.conv2.weight",
+        "motion_encoder.enc.net_app.convs.4.conv2.1.weight": "motion_encoder.res_blocks.3.conv2.weight",
+        "motion_encoder.enc.net_app.convs.3.conv2.1.weight": "motion_encoder.res_blocks.2.conv2.weight",
+        "motion_encoder.enc.net_app.convs.2.conv2.1.weight": "motion_encoder.res_blocks.1.conv2.weight",
+        "motion_encoder.enc.net_app.convs.1.conv2.1.weight": "motion_encoder.res_blocks.0.conv2.weight",
+        "motion_encoder.enc.net_app.convs.7.conv1.1.bias": "motion_encoder.res_blocks.6.conv1.act_fn.bias",
+        "motion_encoder.enc.net_app.convs.6.conv1.1.bias": "motion_encoder.res_blocks.5.conv1.act_fn.bias",
+        "motion_encoder.enc.net_app.convs.5.conv1.1.bias": "motion_encoder.res_blocks.4.conv1.act_fn.bias",
+        "motion_encoder.enc.net_app.convs.4.conv1.1.bias": "motion_encoder.res_blocks.3.conv1.act_fn.bias",
+        "motion_encoder.enc.net_app.convs.3.conv1.1.bias": "motion_encoder.res_blocks.2.conv1.act_fn.bias",
+        "motion_encoder.enc.net_app.convs.2.conv1.1.bias": "motion_encoder.res_blocks.1.conv1.act_fn.bias",
+        "motion_encoder.enc.net_app.convs.1.conv1.1.bias": "motion_encoder.res_blocks.0.conv1.act_fn.bias",
+        "motion_encoder.enc.net_app.convs.7.conv2.2.bias": "motion_encoder.res_blocks.6.conv2.act_fn.bias",
+        "motion_encoder.enc.net_app.convs.6.conv2.2.bias": "motion_encoder.res_blocks.5.conv2.act_fn.bias",
+        "motion_encoder.enc.net_app.convs.5.conv2.2.bias": "motion_encoder.res_blocks.4.conv2.act_fn.bias",
+        "motion_encoder.enc.net_app.convs.4.conv2.2.bias": "motion_encoder.res_blocks.3.conv2.act_fn.bias",
+        "motion_encoder.enc.net_app.convs.3.conv2.2.bias": "motion_encoder.res_blocks.2.conv2.act_fn.bias",
+        "motion_encoder.enc.net_app.convs.2.conv2.2.bias": "motion_encoder.res_blocks.1.conv2.act_fn.bias",
+        "motion_encoder.enc.net_app.convs.1.conv2.2.bias": "motion_encoder.res_blocks.0.conv2.act_fn.bias",
+        "motion_encoder.enc.net_app.convs.7.skip.1.weight": "motion_encoder.res_blocks.6.conv_skip.weight",
+        "motion_encoder.enc.net_app.convs.6.skip.1.weight": "motion_encoder.res_blocks.5.conv_skip.weight",
+        "motion_encoder.enc.net_app.convs.5.skip.1.weight": "motion_encoder.res_blocks.4.conv_skip.weight",
+        "motion_encoder.enc.net_app.convs.4.skip.1.weight": "motion_encoder.res_blocks.3.conv_skip.weight",
+        "motion_encoder.enc.net_app.convs.3.skip.1.weight": "motion_encoder.res_blocks.2.conv_skip.weight",
+        "motion_encoder.enc.net_app.convs.2.skip.1.weight": "motion_encoder.res_blocks.1.conv_skip.weight",
+        "motion_encoder.enc.net_app.convs.1.skip.1.weight": "motion_encoder.res_blocks.0.conv_skip.weight",
     }
 
     for key in list(checkpoint.keys()):
         new_key = key[:]
+        extra_key = ""
+        index = 0
         for replace_key, rename_key in TRANSFORMER_KEYS_RENAME_DICT.items():
-            new_key = new_key.replace(replace_key, rename_key)
-
-        converted_state_dict[new_key] = checkpoint.pop(key)
+            if isinstance(rename_key, list):
+                if replace_key in new_key:
+                    index = int(checkpoint[key].shape[0] / 2)
+                    new_key = new_key.replace(replace_key, rename_key[0])
+                    extra_key = new_key.replace(rename_key[0], rename_key[1])
+            else:
+                new_key = new_key.replace(replace_key, rename_key)
+        if extra_key != "":
+            converted_state_dict[new_key] = checkpoint[key][index:]
+            converted_state_dict[extra_key] = checkpoint[key][:index]
+            checkpoint.pop(key)
+        else:
+            if key == "motion_encoder.enc.net_app.convs.0.1.bias":
+                converted_state_dict[new_key] = checkpoint.pop(key)[0, :, 0, 0]
+            elif "motion_encoder.enc.net_app.convs." in key and ".bias" in key:
+                converted_state_dict[new_key] = checkpoint.pop(key)[0, :, 0, 0]
+            else:
+                converted_state_dict[new_key] = checkpoint.pop(key)
 
     return converted_state_dict
 
