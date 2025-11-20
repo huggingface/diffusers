@@ -55,6 +55,9 @@ class TestFluxModularPipelineFast(ModularPipelineTesterMixin):
         }
         return inputs
 
+    def test_float16_inference(self):
+        super().test_float16_inference(9e-2)
+
 
 class TestFluxImg2ImgModularPipelineFast(ModularPipelineTesterMixin):
     pipeline_class = FluxModularPipeline
@@ -118,6 +121,9 @@ class TestFluxImg2ImgModularPipelineFast(ModularPipelineTesterMixin):
 
         assert torch.abs(image_slices[0] - image_slices[1]).max() < 1e-3
 
+    def test_float16_inference(self):
+        super().test_float16_inference(8e-2)
+
 
 class TestFluxKontextModularPipelineFast(ModularPipelineTesterMixin):
     pipeline_class = FluxKontextModularPipeline
@@ -170,3 +176,6 @@ class TestFluxKontextModularPipelineFast(ModularPipelineTesterMixin):
             image_slices.append(image[0, -3:, -3:, -1].flatten())
 
         assert torch.abs(image_slices[0] - image_slices[1]).max() < 1e-3
+
+    def test_float16_inference(self):
+        super().test_float16_inference(9e-2)

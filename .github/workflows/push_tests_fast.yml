@@ -70,7 +70,7 @@ jobs:
       if: ${{ matrix.config.framework == 'pytorch' }}
       run: |
         pytest -n 4 --max-worker-restart=0 --dist=loadfile \
-          -s -v -k "not Flax and not Onnx" \
+          -k "not Flax and not Onnx" \
           --make-reports=tests_${{ matrix.config.report }} \
           tests/
 
