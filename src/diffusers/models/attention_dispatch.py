@@ -1041,11 +1041,54 @@ def _all_to_all_single(x: torch.Tensor, group) -> torch.Tensor:
     return x
 
 def _all_to_all_double(x: torch.Tensor, scatter_idx: int = 2, gather_idx: int = 1, group=None) -> torch.Tensor:
-    pass
+    group_world_size = funcol.get_world_size(group)
+    #dist.get_world_size(group)
+
+    if scatter_idx == 2 and gather_idx == 1:
+        B, S_LOCAL, H, D = x.shape
+        S = S_LOCAL * group_world_size
+        H_LOCAL = H // group_world_size
+
+        x_temp = (x.reshape(B, S_LOCAL, group_world_size, H_LOCAL, D)
+                  .permute(0, 2, 1, 3, 4).contiguous()
+        )
+
+        out = torch.empty_like(x_temp)
+        if group_world_size >1:
+            funcol.all_to_all_single(out, x_temp, None, None, group)
+        else:
+            out = x_temp
+        out = out.reshape(S, B, H_LOCAL, D).permute(1, 0, 2, 3).contiguous()
+        out = out.reshape(B, S, H_LOCAL, D)
+        return out
+    elif scatter_idx == 1 and gather_idx == 2:
+        B, S, H_LOCAL, D = x.shape
+        H = H_LOCAL * group_world_size
+        S_LOCAL = S // group_world_size
+
+        #
+        x_temp = (x.reshape(B, group_world_size, S_LOCAL, H_LOCAL, D)
+                  .permute(1, 3, 2, 0, 4).reshape(group_world_size, H_LOCAL, S_LOCAL, B, D))
+        output = torch.empty_like(x_temp)
+        if group_world_size >1:
+            funcol.all_to_all_single(output, x_temp, None, None, group)
+        else:
+            output = x_temp
+        output = output.reshape(H, S_LOCAL, B, D).transpose(0, 2).contiguous()
+        output = output.reshape(B, S_LOCAL, H, D)
+        return output
+    else:
+        raise ValueError("Invalid scatter/gather indices for all_to_all_double.")
 
 
 class SeqAllToAllDouble(torch.autograd.Function):
-    pass
+    @staticmethod
+    def forward():
+        pass
+
+    @staticmethod
+    def backward():
+        pass
 
 
 
