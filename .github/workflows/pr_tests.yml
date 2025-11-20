@@ -115,7 +115,8 @@ jobs:
     - name: Install dependencies
       run: |
         uv pip install -e ".[quality]"
-        uv pip uninstall transformers huggingface_hub && uv pip install --prerelease allow -U transformers@git+https://github.com/huggingface/transformers.git
+        #uv pip uninstall transformers huggingface_hub && uv pip install --prerelease allow -U transformers@git+https://github.com/huggingface/transformers.git
+        uv pip uninstall transformers huggingface_hub && uv pip install transformers==4.57.1
         uv pip uninstall accelerate && uv pip install -U accelerate@git+https://github.com/huggingface/accelerate.git --no-deps
 
     - name: Environment
@@ -126,7 +127,7 @@ jobs:
       if: ${{ matrix.config.framework == 'pytorch_pipelines' }}
       run: |
         pytest -n 8 --max-worker-restart=0 --dist=loadfile \
-          -s -v -k "not Flax and not Onnx" \
+          -k "not Flax and not Onnx" \
           --make-reports=tests_${{ matrix.config.report }} \
           tests/pipelines
 
@@ -134,7 +135,7 @@ jobs:
       if: ${{ matrix.config.framework == 'pytorch_models' }}
       run: |
         pytest -n 4 --max-worker-restart=0 --dist=loadfile \
-          -s -v -k "not Flax and not Onnx and not Dependency" \
+          -k "not Flax and not Onnx and not Dependency" \
           --make-reports=tests_${{ matrix.config.report }} \
           tests/models tests/schedulers tests/others
 
@@ -246,7 +247,8 @@ jobs:
         uv pip install -U peft@git+https://github.com/huggingface/peft.git --no-deps
         uv pip install -U tokenizers
         uv pip uninstall accelerate && uv pip install -U accelerate@git+https://github.com/huggingface/accelerate.git --no-deps
-        uv pip uninstall transformers huggingface_hub && uv pip install --prerelease allow -U transformers@git+https://github.com/huggingface/transformers.git
+        #uv pip uninstall transformers huggingface_hub && uv pip install --prerelease allow -U transformers@git+https://github.com/huggingface/transformers.git
+        uv pip uninstall transformers huggingface_hub && uv pip install transformers==4.57.1
 
     - name: Environment
       run: |
@@ -255,11 +257,11 @@ jobs:
     - name: Run fast PyTorch LoRA tests with PEFT
       run: |
         pytest -n 4 --max-worker-restart=0 --dist=loadfile \
-          -s -v \
+          \
           --make-reports=tests_peft_main \
           tests/lora/
         pytest -n 4 --max-worker-restart=0 --dist=loadfile \
-          -s -v \
+          \
           --make-reports=tests_models_lora_peft_main \
           tests/models/ -k "lora"
 
