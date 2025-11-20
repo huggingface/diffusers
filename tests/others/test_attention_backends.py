@@ -7,7 +7,6 @@ To run this test suite:
 
 ```bash
 export RUN_ATTENTION_BACKEND_TESTS=yes
-export DIFFUSERS_ENABLE_HUB_KERNELS=yes
 
 pytest tests/others/test_attention_backends.py
 ```
