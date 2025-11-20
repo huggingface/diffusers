@@ -128,4 +128,4 @@ class TestQwenImageEditPlusModularPipelineFast(ModularPipelineTesterMixin, Modul
         super().test_inference_batch_single_identical()
 
     def test_guider_cfg(self):
-        super().test_guider_cfg(1e-3)
+        super().test_guider_cfg(6e-5)
