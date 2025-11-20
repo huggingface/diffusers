@@ -428,7 +428,8 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
     # copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler._convert_to_karras
     def _convert_to_karras(self, in_sigmas: torch.Tensor) -> torch.Tensor:
         """
-        Construct the noise schedule of Karras et al. (2022).
+        Construct the noise schedule as proposed in [Elucidating the Design Space of Diffusion-Based Generative
+        Models](https://huggingface.co/papers/2206.00364).
 
         Args:
             in_sigmas (`torch.Tensor`):
