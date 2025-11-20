@@ -43,14 +43,17 @@ from tqdm.auto import tqdm
 from transformers import CLIPTextModel, CLIPTokenizer
 
 import diffusers
-from diffusers import AutoencoderKL, DDPMScheduler, DiffusionPipeline, StableDiffusionPipeline, UNet2DConditionModel
+from diffusers import (AutoencoderKL, DDPMScheduler, DiffusionPipeline,
+                       StableDiffusionPipeline, UNet2DConditionModel)
 from diffusers.optimization import get_scheduler
 from diffusers.training_utils import cast_training_params, compute_snr
-from diffusers.utils import check_min_version, convert_state_dict_to_diffusers, is_wandb_available
-from diffusers.utils.hub_utils import load_or_create_model_card, populate_model_card
+from diffusers.utils import (check_min_version,
+                             convert_state_dict_to_diffusers,
+                             is_wandb_available)
+from diffusers.utils.hub_utils import (load_or_create_model_card,
+                                       populate_model_card)
 from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.torch_utils import is_compiled_module
-
 
 if is_wandb_available():
     import wandb
@@ -784,6 +787,22 @@ def main():
             accelerator.print(f"Resuming from checkpoint {path}")
             accelerator.load_state(os.path.join(args.output_dir, path))
             global_step = int(path.split("-")[1])
+
+            # Loading the LoRA weights
+            unet_lora_path = os.path.join(args.output_dir, path, "pytorch_lora_weights.safetensors")
+            if os.path.exists(unet_lora_path):
+                # Import here to avoid unnecessary dependency if not resuming from checkpoint
+                from safetensors.torch import load_file
+
+                lora_state_dict = load_file(unet_lora_path)
+                unwrapped_unet = unwrap_model(unet)
+                unwrapped_unet.load_state_dict(lora_state_dict, strict=False)
+                logger.info(f"Successfully loaded LoRA weights from {unet_lora_path}")
+            else:
+                # If LoRA weights are not found, throw a warning and continue without loading them
+                logger.warning(
+                    f"LoRA weights not found at {unet_lora_path}. Continuing with optimizer/scheduler state only."
+                )
 
             initial_global_step = global_step
             first_epoch = global_step // num_update_steps_per_epoch
