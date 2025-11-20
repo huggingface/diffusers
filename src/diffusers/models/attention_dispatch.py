@@ -1999,7 +1999,15 @@ def _sage_attention_hub(
     lse = None
     func = _HUB_KERNELS_REGISTRY[AttentionBackendName.SAGE_HUB].kernel_fn
     if _parallel_config is None:
-        out = func(q=query, k=key, v=value)
+        out = func(
+            q=query,
+            k=key,
+            v=value,
+            tensor_layout="NHD",
+            is_causal=is_causal,
+            sm_scale=scale,
+            return_lse=return_lse,
+        )
         if return_lse:
             out, lse, *_ = out
 
