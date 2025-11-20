@@ -44,3 +44,4 @@ if is_torch_available():
     from .transformer_wan import WanTransformer3DModel
     from .transformer_wan_animate import WanAnimateTransformer3DModel
     from .transformer_wan_vace import WanVACETransformer3DModel
+    from .transformer_hunyuan_video15 import HunyuanVideo15Transformer3DModel
