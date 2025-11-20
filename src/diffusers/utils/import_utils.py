@@ -192,6 +192,7 @@ except importlib_metadata.PackageNotFoundError:
 
 _torch_xla_available, _torch_xla_version = _is_package_available("torch_xla")
 _torch_npu_available, _torch_npu_version = _is_package_available("torch_npu")
+_torch_mlu_available, _torch_mlu_version = _is_package_available("torch_mlu")
 _transformers_available, _transformers_version = _is_package_available("transformers")
 _hf_hub_available, _hf_hub_version = _is_package_available("huggingface_hub")
 _kernels_available, _kernels_version = _is_package_available("kernels")
@@ -241,6 +242,10 @@ def is_torch_xla_available():
 
 def is_torch_npu_available():
     return _torch_npu_available
+
+
+def is_torch_mlu_available():
+    return _torch_mlu_available
 
 
 def is_flax_available():
