@@ -11,8 +11,11 @@ specific language governing permissions and limitations under the License.
 
 Kandinsky 5.0 Video is created by the Kandinsky team: Alexey Letunovskiy, Maria Kovaleva, Ivan Kirillov, Lev Novitskiy, Denis Koposov, Dmitrii Mikhailov, Anna Averchenkova, Andrey Shutkin, Julia Agafonova, Olga Kim, Anastasiia Kargapoltseva, Nikita Kiselev, Anna Dmitrienko,  Anastasia Maltseva, Kirill Chernyshev, Ilia Vasiliev, Viacheslav Vasilev, Vladimir Polovnikov, Yury Kolabushin, Alexander Belykh, Mikhail Mamaev, Anastasia Aliaskina, Tatiana Nikulina, Polina Gavrilova, Vladimir Arkhipkin, Vladimir Korviakov, Nikolai Gerasimenko, Denis Parkhomenko, Denis Dimitrov
 
+Kandinsky 5.0 is a family of diffusion models for Video & Image generation. 
 
-Kandinsky 5.0 is a family of diffusion models for Video & Image generation. Kandinsky 5.0 T2V Lite is a lightweight video generation model (2B parameters) that ranks #1 among open-source models in its class. It outperforms larger models and offers the best understanding of Russian concepts in the open-source ecosystem.
+Kandinsky 5.0 Lite line-up of lightweight video generation models (2B parameters) that ranks #1 among open-source models in its class. It outperforms larger models and offers the best understanding of Russian concepts in the open-source ecosystem.
+
+Kandinsky 5.0 Pro line-up of large high quality video generation models (19B parameters). It offers high qualty generation in HD and more generation formats like I2V.
 
 The model introduces several key innovations:
 - **Latent diffusion pipeline** with **Flow Matching** for improved training stability
@@ -21,27 +24,30 @@ The model introduces several key innovations:
 - **HunyuanVideo 3D VAE** for efficient video encoding and decoding
 - **Sparse attention mechanisms** (NABLA) for efficient long-sequence processing
 
-The original codebase can be found at [ai-forever/Kandinsky-5](https://github.com/ai-forever/Kandinsky-5).
+The original codebase can be found at [kandinskylab/Kandinsky-5](https://github.com/kandinskylab/Kandinsky-5).
 
 > [!TIP]
-> Check out the [AI Forever](https://huggingface.co/ai-forever) organization on the Hub for the official model checkpoints for text-to-video generation, including pretrained, SFT, no-CFG, and distilled variants.
+> Check out the [AI Forever](https://huggingface.co/kandinskylab) organization on the Hub for the official model checkpoints for text-to-video generation, including pretrained, SFT, no-CFG, and distilled variants.
 
 ## Available Models
 
-Kandinsky 5.0 T2V Lite comes in several variants optimized for different use cases:
-
+Kandinsky 5.0 T2V Pro:
 | model_id | Description | Use Cases |
 |------------|-------------|-----------|
-| **ai-forever/Kandinsky-5.0-T2V-Lite-sft-5s-Diffusers** | 5 second Supervised Fine-Tuned model | Highest generation quality |
-| **ai-forever/Kandinsky-5.0-T2V-Lite-sft-10s-Diffusers** | 10 second Supervised Fine-Tuned model | Highest generation quality |
-| **ai-forever/Kandinsky-5.0-T2V-Lite-nocfg-5s-Diffusers** | 5 second Classifier-Free Guidance distilled | 2× faster inference |
-| **ai-forever/Kandinsky-5.0-T2V-Lite-nocfg-10s-Diffusers** | 10 second Classifier-Free Guidance distilled | 2× faster inference |
-| **ai-forever/Kandinsky-5.0-T2V-Lite-distilled16steps-5s-Diffusers** | 5 second Diffusion distilled to 16 steps | 6× faster inference, minimal quality loss |
-| **ai-forever/Kandinsky-5.0-T2V-Lite-distilled16steps-10s-Diffusers** | 10 second Diffusion distilled to 16 steps | 6× faster inference, minimal quality loss |
-| **ai-forever/Kandinsky-5.0-T2V-Lite-pretrain-5s-Diffusers** | 5 second Base pretrained model | Research and fine-tuning |
-| **ai-forever/Kandinsky-5.0-T2V-Lite-pretrain-10s-Diffusers** | 10 second Base pretrained model | Research and fine-tuning |
+| **kandinskylab/Kandinsky-5.0-T2V-Pro-sft-5s-Diffusers** | 5 second Base pretrained model | High-quality text-to-video generation |
+| **kandinskylab/Kandinsky-5.0-I2V-Pro-sft-5s-Diffusers** | 5 second Image-to-Video Pro model | High-quality image-to-video generation |
 
-All models are available in 5-second and 10-second video generation versions.
+Kandinsky 5.0 T2V Lite:
+| model_id | Description | Use Cases |
+|------------|-------------|-----------|
+| **kandinskylab/Kandinsky-5.0-T2V-Lite-sft-5s-Diffusers** | 5 second Supervised Fine-Tuned model | Highest generation quality |
+| **kandinskylab/Kandinsky-5.0-T2V-Lite-sft-10s-Diffusers** | 10 second Supervised Fine-Tuned model | Highest generation quality |
+| **kandinskylab/Kandinsky-5.0-T2V-Lite-nocfg-5s-Diffusers** | 5 second Classifier-Free Guidance distilled | 2× faster inference |
+| **kandinskylab/Kandinsky-5.0-T2V-Lite-nocfg-10s-Diffusers** | 10 second Classifier-Free Guidance distilled | 2× faster inference |
+| **kandinskylab/Kandinsky-5.0-T2V-Lite-distilled16steps-5s-Diffusers** | 5 second Diffusion distilled to 16 steps | 6× faster inference, minimal quality loss |
+| **kandinskylab/Kandinsky-5.0-T2V-Lite-distilled16steps-10s-Diffusers** | 10 second Diffusion distilled to 16 steps | 6× faster inference, minimal quality loss |
+| **kandinskylab/Kandinsky-5.0-T2V-Lite-pretrain-5s-Diffusers** | 5 second Base pretrained model | Research and fine-tuning |
+| **kandinskylab/Kandinsky-5.0-T2V-Lite-pretrain-10s-Diffusers** | 10 second Base pretrained model | Research and fine-tuning |
 
 ## Kandinsky5T2VPipeline
 
@@ -53,13 +59,47 @@ All models are available in 5-second and 10-second video generation versions.
 
 ### Basic Text-to-Video Generation
 
+#### Pro
+**⚠️ Warning!** all Pro models should be infered with pipeline.enable_model_cpu_offload()  
 ```python
 import torch
 from diffusers import Kandinsky5T2VPipeline
 from diffusers.utils import export_to_video
 
 # Load the pipeline
-model_id = "ai-forever/Kandinsky-5.0-T2V-Lite-sft-5s-Diffusers"
+model_id = "kandinskylab/Kandinsky-5.0-T2V-Pro-sft-5s-Diffusers"
+pipe = Kandinsky5T2VPipeline.from_pretrained(model_id, torch_dtype=torch.bfloat16)
+
+pipe = pipe.to("cuda")
+pipeline.transformer.set_attention_backend("flex")                            # <--- Set attention bakend to Flex
+pipeline.transformer.compile(mode="max-autotune-no-cudagraphs", dynamic=True) # <--- Compile with max-autotune-no-cudagraphs
+pipeline.enable_model_cpu_offload()                                           # <--- Enable cpu offloading for single GPU inference
+
+# Generate video
+prompt = "A cat and a dog baking a cake together in a kitchen."
+negative_prompt = "Static, 2D cartoon, cartoon, 2d animation, paintings, images, worst quality, low quality, ugly, deformed, walking backwards"
+
+output = pipe(
+    prompt=prompt,
+    negative_prompt=negative_prompt,
+    height=768,
+    width=1024,
+    num_frames=121,  # ~5 seconds at 24fps
+    num_inference_steps=50,
+    guidance_scale=5.0,
+).frames[0]
+
+export_to_video(output, "output.mp4", fps=24, quality=9)
+```
+
+#### Lite
+```python
+import torch
+from diffusers import Kandinsky5T2VPipeline
+from diffusers.utils import export_to_video
+
+# Load the pipeline
+model_id = "kandinskylab/Kandinsky-5.0-T2V-Lite-sft-5s-Diffusers"
 pipe = Kandinsky5T2VPipeline.from_pretrained(model_id, torch_dtype=torch.bfloat16)
 pipe = pipe.to("cuda")
 
@@ -85,14 +125,14 @@ export_to_video(output, "output.mp4", fps=24, quality=9)
 
 ```python
 pipe = Kandinsky5T2VPipeline.from_pretrained(
-    "ai-forever/Kandinsky-5.0-T2V-Lite-sft-10s-Diffusers", 
+    "kandinskylab/Kandinsky-5.0-T2V-Lite-sft-10s-Diffusers", 
     torch_dtype=torch.bfloat16
 )
 pipe = pipe.to("cuda")
 
 pipe.transformer.set_attention_backend(
     "flex"
-)                                       # <--- Sett attention bakend to Flex
+)                                       # <--- Set attention bakend to Flex
 pipe.transformer.compile(
     mode="max-autotune-no-cudagraphs", 
     dynamic=True
@@ -118,7 +158,7 @@ export_to_video(output, "output.mp4", fps=24, quality=9)
 **⚠️ Warning!** all nocfg and diffusion distilled models should be infered wothout CFG (```guidance_scale=1.0```):
 
 ```python
-model_id = "ai-forever/Kandinsky-5.0-T2V-Lite-distilled16steps-5s-Diffusers"
+model_id = "kandinskylab/Kandinsky-5.0-T2V-Lite-distilled16steps-5s-Diffusers"
 pipe = Kandinsky5T2VPipeline.from_pretrained(model_id, torch_dtype=torch.bfloat16)
 pipe = pipe.to("cuda")
 
@@ -131,19 +171,59 @@ output = pipe(
 export_to_video(output, "output.mp4", fps=24, quality=9)
 ```
 
+## Kandinsky5I2VPipeline
+
+[[autodoc]] Kandinsky5I2VPipeline
+    - all
+    - __call__
+
+## Usage Examples
+**⚠️ Warning!** all Pro models should be infered with pipeline.enable_model_cpu_offload()  
+```python
+import torch
+from diffusers import Kandinsky5T2VPipeline
+from diffusers.utils import export_to_video
+
+# Load the pipeline
+model_id = "kandinskylab/Kandinsky-5.0-I2V-Pro-sft-5s-Diffusers"
+pipe = Kandinsky5T2VPipeline.from_pretrained(model_id, torch_dtype=torch.bfloat16)
+
+pipe = pipe.to("cuda")
+pipeline.transformer.set_attention_backend("flex")                            # <--- Set attention bakend to Flex
+pipeline.transformer.compile(mode="max-autotune-no-cudagraphs", dynamic=True) # <--- Compile with max-autotune-no-cudagraphs
+pipeline.enable_model_cpu_offload()                                           # <--- Enable cpu offloading for single GPU inference
+
+# Generate video
+image = load_image(
+    "https://huggingface.co/kandinsky-community/kandinsky-3/resolve/main/assets/title.jpg?download=true"
+)
+height = 896
+width = 896
+image = image.resize((width, height))
+
+prompt = "An funny furry creture smiles happily and holds a sign that says 'Kandinsky'"
+negative_prompt = ""
+
+output = pipe(
+    prompt=prompt,
+    negative_prompt=negative_prompt,
+    height=height,
+    width=width,
+    num_frames=121,  # ~5 seconds at 24fps
+    num_inference_steps=50,
+    guidance_scale=5.0,
+).frames[0]
+
+export_to_video(output, "output.mp4", fps=24, quality=9)
+```
+
 
 ## Citation
 ```bibtex
 @misc{kandinsky2025,
-    author = {Alexey Letunovskiy and Maria Kovaleva and Ivan Kirillov and Lev Novitskiy and Denis Koposov and
-              Dmitrii Mikhailov and Anna Averchenkova and Andrey Shutkin and Julia Agafonova and Olga Kim and
-              Anastasiia Kargapoltseva and Nikita Kiselev and Vladimir Arkhipkin and Vladimir Korviakov and
-              Nikolai Gerasimenko and Denis Parkhomenko and Anna Dmitrienko and Anastasia Maltseva and
-              Kirill Chernyshev and Ilia Vasiliev and Viacheslav Vasilev and Vladimir Polovnikov and
-              Yury Kolabushin and Alexander Belykh and Mikhail Mamaev and Anastasia Aliaskina and
-              Tatiana Nikulina and Polina Gavrilova and Denis Dimitrov},
+    author = {Alexander Belykh and Alexander Varlamov and Alexey Letunovskiy and Anastasia Aliaskina and Anastasia Maltseva and Anastasiia Kargapoltseva and Andrey Shutkin and Anna Averchenkova and Anna Dmitrienko and Bulat Akhmatov and Denis Dimitrov and Denis Koposov and Denis Parkhomenko and Dmitrii and Ilya Vasiliev and Ivan Kirillov and Julia Agafonova and Kirill Chernyshev and Kormilitsyn Semen and Lev Novitskiy and Maria Kovaleva and Mikhail Mamaev and Mikhailov and Nikita Kiselev and Nikita Osterov and Nikolai Gerasimenko and Nikolai Vaulin and Olga Kim and Olga Vdovchenko and Polina Gavrilova and Polina Mikhailova and Tatiana Nikulina and Viacheslav Vasilev and Vladimir Arkhipkin and Vladimir Korviakov and Vladimir Polovnikov and Yury Kolabushin},
     title = {Kandinsky 5.0: A family of diffusion models for Video & Image generation},
-    howpublished = {\url{https://github.com/ai-forever/Kandinsky-5}},
+    howpublished = {\url{https://github.com/kandinskylab/Kandinsky-5}},
     year = 2025
 }
 ```
