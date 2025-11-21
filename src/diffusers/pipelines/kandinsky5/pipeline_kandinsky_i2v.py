@@ -207,77 +207,6 @@ class Kandinsky5I2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
             return (1, 2, 2)
         else:
             return (1, 3.16, 3.16)
-        
-    # Add model CPU offload methods
-    def enable_model_cpu_offload(self, gpu_id: Optional[int] = None):
-        r"""
-        Offloads all models to CPU using accelerate, reducing memory usage with a low impact on performance. Compared
-        to `enable_sequential_cpu_offload`, this method is faster for both offloading and onloading the models, but
-        uses more peak memory as each model is only offloaded after the previous one has already been executed.
-
-        Args:
-            gpu_id (`int`, *optional*):
-                The GPU ID on which the models should be executed. If not specified, the first GPU (index 0) will be
-                used.
-        """
-        if is_accelerate_available() and is_accelerate_version(">=", "0.17.0.dev0"):
-            from accelerate import cpu_offload_with_hook
-        else:
-            raise ImportError("`enable_model_cpu_offload` requires `accelerate v0.17.0` or higher.")
-
-        device = torch.device(f"cuda:{gpu_id}") if gpu_id is not None else torch.device("cuda:0")
-        hook = None
-
-        if self.device.type != "cpu":
-            self.to("cpu")
-            torch.cuda.empty_cache()  # otherwise we don't see the memory savings (but they probably exist)
-
-        model_sequence = [
-            self.text_encoder,
-            self.text_encoder_2,
-            self.transformer,
-            self.vae,
-        ]
-
-        for model in model_sequence:
-            _, hook = cpu_offload_with_hook(model, device, prev_module_hook=hook)
-
-        # We'll offload the last model to the CPU as well.
-        final_hook = hook
-
-        def offload_hook():
-            final_hook.offload()
-
-        self._offload_hook = offload_hook
-
-    @property
-    def models(self):
-        """
-        Return all models used by the pipeline for hook management.
-        """
-        models = []
-        if hasattr(self, "text_encoder"):
-            models.append(self.text_encoder)
-        if hasattr(self, "text_encoder_2"):
-            models.append(self.text_encoder_2)
-        if hasattr(self, "transformer"):
-            models.append(self.transformer)
-        if hasattr(self, "vae"):
-            models.append(self.vae)
-        return models
-
-    def maybe_free_model_hooks(self):
-        r"""
-        Function that might remove all the `_hf_hook` if they are set (which is the case if
-        `enable_sequential_cpu_offload` was called). This would then make sure the model is not kept in GPU memory if
-        it's not needed.
-        """
-        for module in self.models:
-            if hasattr(module, "_hf_hook"):
-                module._hf_hook = None
-
-        if hasattr(self, "_offload_hook"):
-            self._offload_hook()
 
     @staticmethod
     def fast_sta_nabla(T: int, H: int, W: int, wT: int = 3, wH: int = 3, wW: int = 3, device="cuda") -> torch.Tensor:
@@ -954,7 +883,6 @@ class Kandinsky5I2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
 
                 timestep = t.unsqueeze(0).repeat(batch_size * num_videos_per_prompt)
 
-                print(scale_factor)
                 # Predict noise residual
                 pred_velocity = self.transformer(
                     hidden_states=latents.to(dtype),
