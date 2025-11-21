@@ -126,7 +126,7 @@ def pipe(device):
     return pipe
 
 
-@pytest.mark.parametrize("backend_name,expected_slice", [FORWARD_CASES[0]], ids=[c[0] for c in [FORWARD_CASES[0]]])
+@pytest.mark.parametrize("backend_name,expected_slice", FORWARD_CASES, ids=[c[0] for c in FORWARD_CASES])
 def test_forward(pipe, backend_name, expected_slice):
     out = _backend_is_probably_supported(pipe, backend_name)
     if isinstance(out, bool):
@@ -139,8 +139,8 @@ def test_forward(pipe, backend_name, expected_slice):
 
 @pytest.mark.parametrize(
     "backend_name,expected_slice,error_on_recompile",
-    [COMPILE_CASES[0]],
-    ids=[c[0] for c in [COMPILE_CASES[0]]],
+    COMPILE_CASES,
+    ids=[c[0] for c in COMPILE_CASES],
 )
 def test_forward_with_compile(pipe, backend_name, expected_slice, error_on_recompile):
     if "native" in backend_name and error_on_recompile and not is_torch_version(">=", "2.9.0"):
