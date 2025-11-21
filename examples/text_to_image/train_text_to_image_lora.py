@@ -37,7 +37,6 @@ from datasets import load_dataset
 from huggingface_hub import create_repo, upload_folder
 from packaging import version
 from peft import LoraConfig
-from peft.utils import get_peft_model_state_dict
 from peft.utils import get_peft_model_state_dict, set_peft_model_state_dict
 from torchvision import transforms
 from tqdm.auto import tqdm
@@ -58,7 +57,8 @@ from diffusers.utils.torch_utils import is_compiled_module
 
 # compatible with both older and new version of diffusers -- more robust approach
 try:
-    from diffusers.loaders.lora_conversion_utils import convert_unet_state_dict_to_peft
+    from diffusers.loaders.lora_conversion_utils import \
+        convert_unet_state_dict_to_peft
 except ImportError:
     try:
         from diffusers.loaders.peft import convert_unet_state_dict_to_peft
@@ -724,16 +724,16 @@ def main():
     def save_model_hook(models, weights, output_dir):
         if accelerator.is_main_process:
             unet_lora_layers_to_save = None
-            
+
             for model in models:
                 if isinstance(model, type(unwrap_model(unet))):
                     unet_lora_layers_to_save = get_peft_model_state_dict(model)
                 else:
                     raise ValueError(f"Unexpected save model: {model.__class__}")
-                
+
                 # make sure to pop weight so that corresponding model is not saved again
                 weights.pop()
-            
+
             StableDiffusionPipeline.save_lora_weights(
                 save_directory=output_dir,
                 unet_lora_layers=unet_lora_layers_to_save,
@@ -742,23 +742,21 @@ def main():
 
     def load_model_hook(models, input_dir):
         unet_ = None
-        
+
         while len(models) > 0:
             model = models.pop()
             if isinstance(model, type(unwrap_model(unet))):
                 unet_ = model
             else:
                 raise ValueError(f"unexpected save model: {model.__class__}")
-            
+
         # returns a tuple of state dictionary and network alphas
-        lora_state_dict, network_alphas = StableDiffusionPipeline.lora_state_dict(input_dir)      
-        
-        unet_state_dict = {
-            f'{k.replace("unet.", "")}': v for k, v in lora_state_dict.items() if k.startswith("unet.")
-        }
+        lora_state_dict, network_alphas = StableDiffusionPipeline.lora_state_dict(input_dir)
+
+        unet_state_dict = {f"{k.replace('unet.', '')}": v for k, v in lora_state_dict.items() if k.startswith("unet.")}
         unet_state_dict = convert_unet_state_dict_to_peft(unet_state_dict)
         incompatible_keys = set_peft_model_state_dict(unet_, unet_state_dict, adapter_name="default")
-        
+
         if incompatible_keys is not None:
             # check only for unexpected keys
             unexpected_keys = getattr(incompatible_keys, "unexpected_keys", None)
@@ -768,7 +766,7 @@ def main():
                     f"Loading adapter weights from state_dict led to unexpected keys not found in the model: "
                     f" {unexpected_keys}. "
                 )
-        
+
         # Make sure the trainable params are in float32
         if args.mixed_precision in ["fp16", "bf16"]:
             cast_training_params([unet_], dtype=torch.float32)
