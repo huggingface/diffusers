@@ -1041,7 +1041,7 @@ def _all_to_all_single(x: torch.Tensor, group) -> torch.Tensor:
     return x
 
 def _all_to_all_dim_exchange(x: torch.Tensor, scatter_idx: int = 2, gather_idx: int = 1, group=None) -> torch.Tensor:
-    group_world_size = funcol.get_world_size(group)
+    group_world_size = torch.distributed.get_world_size(group)
 
     if scatter_idx == 2 and gather_idx == 1:
         B, S_LOCAL, H, D = x.shape
