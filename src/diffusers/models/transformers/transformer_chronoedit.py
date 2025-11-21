@@ -137,7 +137,8 @@ class WanAttnProcessor:
                 dropout_p=0.0,
                 is_causal=False,
                 backend=self._attention_backend,
-                # FIXME(DefTruth): Since the key/value in cross-attention depends
+                # Reference: https://github.com/huggingface/diffusers/pull/12660
+                # Since the key/value in cross-attention depends
                 # solely on encoder_hidden_states_img (img), the (q_chunk * k) * v
                 # computation can be parallelized independently. Thus, there is
                 # no need to pass the parallel_config here.
