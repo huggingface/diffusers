@@ -488,9 +488,20 @@ class DPMSolverSDEScheduler(SchedulerMixin, ConfigMixin):
         t = t.reshape(sigma.shape)
         return t
 
-    # copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler._convert_to_karras
+    # Copied from diffusers.schedulers.scheduling_lms_discrete.LMSDiscreteScheduler._convert_to_karras
     def _convert_to_karras(self, in_sigmas: torch.Tensor) -> torch.Tensor:
-        """Constructs the noise schedule of Karras et al. (2022)."""
+        """
+        Construct the noise schedule as proposed in [Elucidating the Design Space of Diffusion-Based Generative
+        Models](https://huggingface.co/papers/2206.00364).
+
+        Args:
+            in_sigmas (`torch.Tensor`):
+                The input sigma values to be converted.
+
+        Returns:
+            `torch.Tensor`:
+                The converted sigma values following the Karras noise schedule.
+        """
 
         sigma_min: float = in_sigmas[-1].item()
         sigma_max: float = in_sigmas[0].item()
