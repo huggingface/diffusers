@@ -514,7 +514,7 @@ class HunyuanVideoTransformerBlock(nn.Module):
             out_dim=hidden_size,
             context_pre_only=False,
             bias=True,
-            processor=HunyuanVideoAttnProcessor2_0(),
+            processor=HunyuanVideo15AttnProcessor2_0(),
             qk_norm=qk_norm,
             eps=1e-6,
         )
@@ -645,6 +645,9 @@ class HunyuanVideo15Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin
         rope_theta: float = 256.0,
         rope_axes_dim: Tuple[int, ...] = (16, 56, 56),
         use_meanflow: bool = False,
+        # YiYi Notes: config based on target_size_config https://github.com/yiyixuxu/hy15/blob/main/hyvideo/pipelines/hunyuan_video_pipeline.py#L205
+        target_size: int = 640, # did not name sample_size since it is in pixel spaces
+        task_type: str = "i2v",
     ) -> None:
         super().__init__()
 
