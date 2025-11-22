@@ -729,10 +729,12 @@ class QwenImageEditPlusPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
         if image is not None and not (isinstance(image, torch.Tensor) and image.size(1) == self.latent_channels):
             if not isinstance(image, list):
                 image = [image]
+            
             condition_image_sizes = []
             condition_images = []
             vae_image_sizes = []
             vae_images = []
+            
             for img in image:
                 image_width, image_height = img.size
                 condition_width, condition_height = calculate_dimensions(
@@ -742,7 +744,15 @@ class QwenImageEditPlusPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
                 condition_image_sizes.append((condition_width, condition_height))
                 vae_image_sizes.append((vae_width, vae_height))
                 condition_images.append(self.image_processor.resize(img, condition_height, condition_width))
+                
+                # [5D Fix] Ensure (B, C, F, H, W)
                 vae_images.append(self.image_processor.preprocess(img, vae_height, vae_width).unsqueeze(2))
+
+            # [FIX] Handle Batch vs Multi-Condition Ambiguity
+            # If user provides N prompts and N images, stack them for 1-to-1 batching.
+            if isinstance(prompt, list) and len(prompt) > 1 and len(vae_images) == len(prompt):
+                batch_tensor = torch.cat(vae_images, dim=0)
+                vae_images = [batch_tensor]
 
         has_neg_prompt = negative_prompt is not None or (
             negative_prompt_embeds is not None and negative_prompt_embeds_mask is not None
