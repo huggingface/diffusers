@@ -140,10 +140,7 @@ class HunyuanVideo15AttnProcessor2_0:
         
 
         batch_size, seq_len, heads, dim = query.shape
-        print(f" query.shape: {query.shape}")
-        print(f" attention_mask.shape: {attention_mask.shape}")
         attention_mask = F.pad(attention_mask, (seq_len - attention_mask.shape[1], 0), value=True)
-        print(f" attention_mask.shape: {attention_mask.shape}")
         attention_mask = attention_mask.bool()
         self_attn_mask_1 = attention_mask.view(batch_size, 1, 1, seq_len).repeat(1, 1, seq_len, 1)
         self_attn_mask_2 = self_attn_mask_1.transpose(2, 3)
@@ -160,8 +157,6 @@ class HunyuanVideo15AttnProcessor2_0:
             backend=self._attention_backend,
             parallel_config=self._parallel_config,
         )
-        print(f" hidden_states.shape: {hidden_states.shape}")
-        print(f" hidden_states[0,:10,:3]: {hidden_states[0,:10,:3]}")
 
         hidden_states = hidden_states.flatten(2, 3)
         hidden_states = hidden_states.to(query.dtype)
@@ -407,14 +402,8 @@ class HunyuanVideoTokenRefiner(nn.Module):
             pooled_projections = pooled_projections.to(original_dtype)
 
         temb = self.time_text_embed(timestep, pooled_projections)
-        print(f" temb(time_text_embed).shape: {temb.shape}, {temb[0,:10]}")
         hidden_states = self.proj_in(hidden_states)
-        print(f" hidden_states: {hidden_states.shape}, {hidden_states[0,:3,:3]}")
-        print(f" temb: {temb.shape}, {temb[0,:10]}")
-        print(f" attention_mask: {attention_mask.shape}, {attention_mask[0,:3]}, {attention_mask.abs().sum()}")
-        print(f" -> token_refiner")
         hidden_states = self.token_refiner(hidden_states, temb, attention_mask)
-        print(f" hidden_states(token_refiner) {hidden_states.shape}, {hidden_states[0,:3,:3]}")
 
         return hidden_states
 
@@ -537,11 +526,9 @@ class HunyuanVideoTransformerBlock(nn.Module):
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         # 1. Input normalization
         norm_hidden_states, gate_msa, shift_mlp, scale_mlp, gate_mlp = self.norm1(hidden_states, emb=temb)
-        print(f" norm_hidden_states(norm1).shape: {norm_hidden_states.shape}, {norm_hidden_states[0,:10,:3]}")
         norm_encoder_hidden_states, c_gate_msa, c_shift_mlp, c_scale_mlp, c_gate_mlp = self.norm1_context(
             encoder_hidden_states, emb=temb
         )
-        print(f" norm_encoder_hidden_states(norm1_context).shape: {norm_encoder_hidden_states.shape}, {norm_encoder_hidden_states[0,:10,:3]}")
         
         # 2. Joint attention
         attn_output, context_attn_output = self.attn(
@@ -550,8 +537,6 @@ class HunyuanVideoTransformerBlock(nn.Module):
             attention_mask=attention_mask,
             image_rotary_emb=freqs_cis,
         )
-        print(f" attn_output.shape: {attn_output.shape}, {attn_output[0,:10,:3]}")
-        print(f" context_attn_output.shape: {context_attn_output.shape}, {context_attn_output[0,:10,:3]}")
 
 
         # 3. Modulation and residual connection
@@ -570,8 +555,6 @@ class HunyuanVideoTransformerBlock(nn.Module):
 
         hidden_states = hidden_states + gate_mlp.unsqueeze(1) * ff_output
         encoder_hidden_states = encoder_hidden_states + c_gate_mlp.unsqueeze(1) * context_ff_output
-        print(f" hidden_states(ff): {hidden_states.shape}, {hidden_states[0,:10,:3]}")
-        print(f" encoder_hidden_states(ff): {encoder_hidden_states.shape}, {encoder_hidden_states[0,:10,:3]}")
 
         return hidden_states, encoder_hidden_states
 
@@ -791,31 +774,23 @@ class HunyuanVideo15Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin
         hidden_states = self.x_embedder(hidden_states)
 
         # qwen text embedding
-        print(f" encoder_hidden_states(qwen).shape: {encoder_hidden_states.shape}, {encoder_hidden_states[0,:10,:3]}")
-        print(f" timestep: {timestep}, {timestep[:10]}")
-        print(f" encoder_attention_mask: {encoder_attention_mask.shape}, {encoder_attention_mask[0,:10]}, {encoder_attention_mask.abs().sum()}")
         encoder_hidden_states = self.context_embedder(encoder_hidden_states, timestep, encoder_attention_mask)
-        print(f" encoder_hidden_states(token_refiner).shape: {encoder_hidden_states.shape}, {encoder_hidden_states[0,:10,:3]}")
 
         encoder_hidden_states_cond_emb = self.cond_type_embed(
             torch.zeros_like(encoder_hidden_states[:, :, 0], dtype=torch.long)
         )
         encoder_hidden_states = encoder_hidden_states + encoder_hidden_states_cond_emb
-        print(f" encoder_hidden_states(+ cond_emb).shape: {encoder_hidden_states.shape}, {encoder_hidden_states[0,:10,:3]}")
 
         # byt5 text embedding
         encoder_hidden_states_2 = self.context_embedder_2(encoder_hidden_states_2)
-        print(f" encoder_hidden_states_2(byt5).shape: {encoder_hidden_states_2.shape}, {encoder_hidden_states_2[0,:10,:3]}")
 
         encoder_hidden_states_2_cond_emb = self.cond_type_embed(
             torch.ones_like(encoder_hidden_states_2[:, :, 0], dtype=torch.long)
         )
         encoder_hidden_states_2 = encoder_hidden_states_2 + encoder_hidden_states_2_cond_emb
-        print(f" encoder_hidden_states_2(+ cond_emb).shape: {encoder_hidden_states_2.shape}, {encoder_hidden_states_2[0,:10,:3]}")
 
         # image embed
         encoder_hidden_states_3 = self.image_embedder(image_embeds)
-        print(f" encoder_hidden_states_3(image).shape: {encoder_hidden_states_3.shape}, {encoder_hidden_states_3[0,:10,:3]}")
         is_t2v = torch.all(image_embeds == 0)
         if is_t2v:
             encoder_hidden_states_3 = encoder_hidden_states_3 * 0.0
@@ -824,8 +799,6 @@ class HunyuanVideo15Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin
                     dtype=encoder_attention_mask.dtype,
                     device=encoder_attention_mask.device,
                 )
-            print(f" encoder_hidden_states_3(image).shape: {encoder_hidden_states_3.shape}, {encoder_hidden_states_3[0,:10,:3]}")
-            print(f" encoder_attention_mask_3: {encoder_attention_mask_3.shape}, {encoder_attention_mask_3[0,:10]}, {encoder_attention_mask_3.abs().sum()}")
         else:
             encoder_attention_mask_3 = torch.ones(
                 (batch_size, encoder_hidden_states_3.shape[1]),
@@ -840,9 +813,6 @@ class HunyuanVideo15Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin
         )
         encoder_hidden_states_3 = encoder_hidden_states_3 + encoder_hidden_states_3_cond_emb
 
-        print(f" encoder_hidden_states_3(+ cond_emb).shape: {encoder_hidden_states_3.shape}, {encoder_hidden_states_3[0,:10,:3]}")
-
-        
         # reorder and combine text tokens: combine valid tokens first, then padding
         encoder_attention_mask = encoder_attention_mask.bool()
         encoder_attention_mask_2 = encoder_attention_mask_2.bool()
@@ -890,12 +860,6 @@ class HunyuanVideo15Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin
 
         encoder_hidden_states = torch.stack(new_encoder_hidden_states)
         encoder_attention_mask = torch.stack(new_encoder_attention_mask)
-
-        print(f" hidden_states.shape: {hidden_states.shape}, {hidden_states[0,:3,:3]}")
-        print(f" encoder_hidden_states.shape: {encoder_hidden_states.shape}, {encoder_hidden_states[0,:10,:3]}")
-        print(f" encoder_attention_mask.shape: {encoder_attention_mask.shape}, {encoder_attention_mask[0,:10]}, {encoder_attention_mask.dtype}, {encoder_attention_mask.sum()}")
-        print(f" image_rotary_emb: {image_rotary_emb[0].shape}, {image_rotary_emb[1].shape}, {image_rotary_emb[0][:3,:10]}, {image_rotary_emb[1][:3,:10]}")
-        print(f" temb.shape: {temb.shape}, {temb[0,:10]}")
 
 
         # 4. Transformer blocks

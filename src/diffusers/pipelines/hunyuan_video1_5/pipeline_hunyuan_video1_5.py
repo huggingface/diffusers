@@ -27,6 +27,7 @@ from .image_processor import HunyuanVideo15ImageProcessor
 from ..pipeline_utils import DiffusionPipeline
 from .pipeline_output import HunyuanVideo15PipelineOutput
 from ...guiders import ClassifierFreeGuidance
+from ...utils.torch_utils import randn_tensor
 
 
 if is_torch_xla_available():
@@ -225,7 +226,7 @@ class HunyuanVideo15Pipeline(DiffusionPipeline):
         self.vae_scale_factor_spatial = self.vae.spatial_compression_ratio if getattr(self, "vae", None) else 16
         self.video_processor = HunyuanVideo15ImageProcessor(vae_scale_factor=self.vae_scale_factor_spatial)
         self.target_size = self.transformer.config.target_size if getattr(self, "transformer", None) else 640
-        self.vision_states_dim = self.transformer.config.vision_states_dim if getattr(self, "transformer", None) else 729
+        self.vision_states_dim = self.transformer.config.image_embed_dim if getattr(self, "transformer", None) else 1152
         # fmt: off
         self.system_message ="You are a helpful assistant. Describe the video by detailing the following aspects: \
                 1. The main content and theme of the video. \
@@ -236,8 +237,9 @@ class HunyuanVideo15Pipeline(DiffusionPipeline):
         # fmt: on
         self.prompt_template_encode_start_idx = 108
         self.tokenizer_max_length = 1000
-        self.text_encoder_2_max_length = 256
+        self.tokenizer_2_max_length = 256
         self.vision_num_semantic_tokens = 729
+        self.default_aspect_ratio = (16, 9) # (width: height)
 
 
     @staticmethod
@@ -282,7 +284,7 @@ class HunyuanVideo15Pipeline(DiffusionPipeline):
         prompt_embeds = text_encoder(
             input_ids=text_input_ids,
             attention_mask=prompt_attention_mask,
-            output_hidden_states=False,
+            output_hidden_states=True,
         ).hidden_states[-(num_hidden_layers_to_skip + 1)]
         prompt_embeds = prompt_embeds.to(dtype=dtype)
 
@@ -521,7 +523,7 @@ class HunyuanVideo15Pipeline(DiffusionPipeline):
         return latents
 
 
-    def prepare_cond_latents_and_mask(self, latents):
+    def prepare_cond_latents_and_mask(self, latents, dtype: Optional[torch.dtype], device: Optional[torch.device]):
         """
         Prepare conditional latents and mask for t2v generation.
         
@@ -535,13 +537,14 @@ class HunyuanVideo15Pipeline(DiffusionPipeline):
         
         cond_latents_concat = torch.zeros(
             batch, channels, frames, height, width,
-            device=latents.device,
-            dtype=latents.dtype
+            dtype=dtype,
+            device=device
         )
         
         mask_concat = torch.zeros(
             batch, 1, frames, height, width,
-            device=latents.device
+            dtype=dtype,
+            device=device
         )
         
         return cond_latents_concat, mask_concat
@@ -702,7 +705,7 @@ class HunyuanVideo15Pipeline(DiffusionPipeline):
         )
 
         if height is None and width is None:
-            height, width = self.video_processor.calculate_default_height_width(height, width, self.target_size)
+            height, width = self.video_processor.calculate_default_height_width(self.default_aspect_ratio[1], self.default_aspect_ratio[0], self.target_size)
 
         self._attention_kwargs = attention_kwargs
         self._current_timestep = None
@@ -761,8 +764,19 @@ class HunyuanVideo15Pipeline(DiffusionPipeline):
             generator,
             latents,
         )
-        cond_latents_concat, mask_concat = self.prepare_cond_latents_and_mask(latents)
-        vision_states = torch.zeros(batch_size, self.vision_num_semantic_tokens, self.vision_states_dim).to(latents.device)
+        cond_latents_concat, mask_concat = self.prepare_cond_latents_and_mask(latents, torch.float32, device)
+        image_embeds = torch.zeros(
+            batch_size, 
+            self.vision_num_semantic_tokens, 
+            self.vision_states_dim,
+            dtype=torch.float32,
+            device=device
+        )
+
+        image_embeds = image_embeds.to(self.transformer.dtype)
+        latents=latents.to(self.transformer.dtype)
+        cond_latents_concat=cond_latents_concat.to(self.transformer.dtype)
+        mask_concat=mask_concat.to(self.transformer.dtype)
 
 
         # 7. Denoising loop
@@ -817,8 +831,8 @@ class HunyuanVideo15Pipeline(DiffusionPipeline):
                     with self.transformer.cache_context(context_name):
                         # Run denoiser and store noise prediction in this batch
                         guider_state_batch.noise_pred = self.transformer(
-                            hidden_states=latents,
-                            image_embeds=vision_states,
+                            hidden_states=latent_model_input,
+                            image_embeds=image_embeds,
                             timestep=timestep,
                             attention_kwargs=self.attention_kwargs,
                             return_dict=False,
@@ -863,9 +877,7 @@ class HunyuanVideo15Pipeline(DiffusionPipeline):
 
         if not output_type == "latent":
             latents = latents.to(self.vae.dtype) / self.vae.config.scaling_factor
-            self.vae.enable_tiling()
             video = self.vae.decode(latents, return_dict=False, generator=generator)[0]
-            self.vae.disable_tiling()
             video = self.video_processor.postprocess_video(video, output_type=output_type)
         else:
             video = latents
