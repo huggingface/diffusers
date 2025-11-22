@@ -224,11 +224,7 @@ class QwenImageTextInputsStep(ModularPipelineBlocks):
 class QwenImageInputsDynamicStep(ModularPipelineBlocks):
     model_name = "qwenimage"
 
-    def __init__(
-        self,
-        image_latent_inputs: List[str] = ["image_latents"],
-        additional_batch_inputs: List[str] = [],
-    ):
+    def __init__(self, image_latent_inputs: List[str] = ["image_latents"], additional_batch_inputs: List[str] = []):
         """Initialize a configurable step that standardizes the inputs for the denoising step. It:\n"
 
         This step handles multiple common tasks to prepare inputs for the denoising step:
@@ -351,6 +347,76 @@ class QwenImageInputsDynamicStep(ModularPipelineBlocks):
             )
 
             setattr(block_state, image_latent_input_name, image_latent_tensor)
+
+        # Process additional batch inputs (only batch expansion)
+        for input_name in self._additional_batch_inputs:
+            input_tensor = getattr(block_state, input_name)
+            if input_tensor is None:
+                continue
+
+            # Only expand batch size
+            input_tensor = repeat_tensor_to_batch_size(
+                input_name=input_name,
+                input_tensor=input_tensor,
+                num_images_per_prompt=block_state.num_images_per_prompt,
+                batch_size=block_state.batch_size,
+            )
+
+            setattr(block_state, input_name, input_tensor)
+
+        self.set_block_state(state, block_state)
+        return components, state
+
+
+class QwenImageEditPlusInputsDynamicStep(QwenImageInputsDynamicStep):
+    model_name = "qwenimage-edit-plus"
+
+    @property
+    def intermediate_outputs(self) -> List[OutputParam]:
+        return [
+            OutputParam(name="image_height", type_hint=List[int], description="The height of the image latents"),
+            OutputParam(name="image_width", type_hint=List[int], description="The width of the image latents"),
+        ]
+
+    def __call__(self, components: QwenImageModularPipeline, state: PipelineState) -> PipelineState:
+        block_state = self.get_block_state(state)
+
+        # Process image latent inputs (height/width calculation, patchify, and batch expansion)
+        for image_latent_input_name in self._image_latent_inputs:
+            image_latent_tensor = getattr(block_state, image_latent_input_name)
+            if image_latent_tensor is None:
+                continue
+
+            # Each image latent can have different size in QwenImage Edit Plus.
+            image_heights = []
+            image_widths = []
+            packed_image_latent_tensors = []
+
+            for img_latent_tensor in image_latent_tensor:
+                # 1. Calculate height/width from latents
+                height, width = calculate_dimension_from_latents(img_latent_tensor, components.vae_scale_factor)
+                image_heights.append(height)
+                image_widths.append(width)
+
+                # 2. Patchify the image latent tensor
+                img_latent_tensor = components.pachifier.pack_latents(img_latent_tensor)
+
+                # 3. Expand batch size
+                img_latent_tensor = repeat_tensor_to_batch_size(
+                    input_name=image_latent_input_name,
+                    input_tensor=img_latent_tensor,
+                    num_images_per_prompt=block_state.num_images_per_prompt,
+                    batch_size=block_state.batch_size,
+                )
+                packed_image_latent_tensors.append(img_latent_tensor)
+
+            packed_image_latent_tensors = torch.cat(packed_image_latent_tensors, dim=1)
+            block_state.image_height = image_heights
+            block_state.image_width = image_widths
+            setattr(block_state, image_latent_input_name, packed_image_latent_tensors)
+
+            block_state.height = block_state.height or image_heights[-1]
+            block_state.width = block_state.width or image_widths[-1]
 
         # Process additional batch inputs (only batch expansion)
         for input_name in self._additional_batch_inputs:
