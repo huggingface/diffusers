@@ -146,6 +146,7 @@ _deps = [
     "phonemizer",
     "opencv-python",
     "timm",
+    "flashpack",
 ]
 
 # this is a lookup table with items like:
