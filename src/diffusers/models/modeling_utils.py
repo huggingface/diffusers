@@ -739,7 +739,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
 
                 flashpack.serialization.pack_to_file(
                     state_dict_or_model=state_dict,
-                    destination_path=save_directory,
+                    destination_path=os.path.join(save_directory, weights_name),
                     target_dtype=self.dtype,
                 )
         else:
