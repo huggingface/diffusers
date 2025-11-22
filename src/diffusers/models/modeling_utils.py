@@ -740,7 +740,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 flashpack.serialization.pack_to_file(
                     state_dict_or_model=state_dict,
                     destination_path=save_directory,
-                    target_dtype=self.dtype(),
+                    target_dtype=self.dtype,
                 )
         else:
             # Save the model
