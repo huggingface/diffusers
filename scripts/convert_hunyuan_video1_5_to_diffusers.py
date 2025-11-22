@@ -1,8 +1,15 @@
 """
 python scripts/convert_hunyuan_video1_5_to_diffusers.py \
     --original_state_dict_folder /raid/yiyi/new-model-vid \
-    --output_path /raid/yiyi/hunyuanvideo15-480p_i2v-diffusers \
+    --output_transformer_path /raid/yiyi/hunyuanvideo15-480p_i2v-diffusers \
     --transformer_type 480p_i2v \
+    --dtype fp32
+"""
+
+"""
+python scripts/convert_hunyuan_video1_5_to_diffusers.py \
+    --original_state_dict_folder /raid/yiyi/new-model-vid \
+    --output_vae_path /raid/yiyi/hunyuanvideo15-vae \
     --dtype fp32
 """
 
@@ -12,10 +19,14 @@ from typing import Any, Dict
 import torch
 from accelerate import init_empty_weights
 from safetensors.torch import load_file
-from huggingface_hub import snapshot_download
+from huggingface_hub import snapshot_download, hf_hub_download
 
 import pathlib  
-from diffusers import HunyuanVideo15Transformer3DModel
+from diffusers import HunyuanVideo15Transformer3DModel, AutoencoderKLHunyuanVideo15
+from transformers import AutoModel, AutoTokenizer, T5EncoderModel, ByT5Tokenizer
+
+import json
+import argparse
 
 TRANSFORMER_CONFIGS = {
     "480p_i2v": {
@@ -316,6 +327,193 @@ def convert_hyvideo15_transformer_to_diffusers(original_state_dict):
     return converted_state_dict
 
 
+def convert_hunyuan_video_15_vae_checkpoint_to_diffusers(
+    original_state_dict, block_out_channels=[128, 256, 512, 1024, 1024], layers_per_block=2
+):
+    converted = {}
+
+    # 1. Encoder
+    # 1.1 conv_in
+    converted["encoder.conv_in.conv.weight"] = original_state_dict.pop("encoder.conv_in.conv.weight")
+    converted["encoder.conv_in.conv.bias"] = original_state_dict.pop("encoder.conv_in.conv.bias")
+
+    # 1.2 Down blocks
+    for down_block_index in range(len(block_out_channels)):  # 0 to 4
+        # ResNet blocks
+        for resnet_block_index in range(layers_per_block):  # 0 to 1
+            converted[f"encoder.down_blocks.{down_block_index}.resnets.{resnet_block_index}.norm1.gamma"] = (
+                original_state_dict.pop(f"encoder.down.{down_block_index}.block.{resnet_block_index}.norm1.gamma")
+            )
+            converted[f"encoder.down_blocks.{down_block_index}.resnets.{resnet_block_index}.conv1.conv.weight"] = (
+                original_state_dict.pop(
+                    f"encoder.down.{down_block_index}.block.{resnet_block_index}.conv1.conv.weight"
+                )
+            )
+            converted[f"encoder.down_blocks.{down_block_index}.resnets.{resnet_block_index}.conv1.conv.bias"] = (
+                original_state_dict.pop(f"encoder.down.{down_block_index}.block.{resnet_block_index}.conv1.conv.bias")
+            )
+            converted[f"encoder.down_blocks.{down_block_index}.resnets.{resnet_block_index}.norm2.gamma"] = (
+                original_state_dict.pop(f"encoder.down.{down_block_index}.block.{resnet_block_index}.norm2.gamma")
+            )
+            converted[f"encoder.down_blocks.{down_block_index}.resnets.{resnet_block_index}.conv2.conv.weight"] = (
+                original_state_dict.pop(
+                    f"encoder.down.{down_block_index}.block.{resnet_block_index}.conv2.conv.weight"
+                )
+            )
+            converted[f"encoder.down_blocks.{down_block_index}.resnets.{resnet_block_index}.conv2.conv.bias"] = (
+                original_state_dict.pop(f"encoder.down.{down_block_index}.block.{resnet_block_index}.conv2.conv.bias")
+            )
+
+        # Downsample (if exists)
+        if f"encoder.down.{down_block_index}.downsample.conv.conv.weight" in original_state_dict:
+            converted[f"encoder.down_blocks.{down_block_index}.downsamplers.0.conv.conv.weight"] = (
+                original_state_dict.pop(f"encoder.down.{down_block_index}.downsample.conv.conv.weight")
+            )
+            converted[f"encoder.down_blocks.{down_block_index}.downsamplers.0.conv.conv.bias"] = (
+                original_state_dict.pop(f"encoder.down.{down_block_index}.downsample.conv.conv.bias")
+            )
+
+    # 1.3 Mid block
+    converted["encoder.mid_block.resnets.0.norm1.gamma"] = original_state_dict.pop("encoder.mid.block_1.norm1.gamma")
+    converted["encoder.mid_block.resnets.0.conv1.conv.weight"] = original_state_dict.pop(
+        "encoder.mid.block_1.conv1.conv.weight"
+    )
+    converted["encoder.mid_block.resnets.0.conv1.conv.bias"] = original_state_dict.pop(
+        "encoder.mid.block_1.conv1.conv.bias"
+    )
+    converted["encoder.mid_block.resnets.0.norm2.gamma"] = original_state_dict.pop("encoder.mid.block_1.norm2.gamma")
+    converted["encoder.mid_block.resnets.0.conv2.conv.weight"] = original_state_dict.pop(
+        "encoder.mid.block_1.conv2.conv.weight"
+    )
+    converted["encoder.mid_block.resnets.0.conv2.conv.bias"] = original_state_dict.pop(
+        "encoder.mid.block_1.conv2.conv.bias"
+    )
+
+    converted["encoder.mid_block.resnets.1.norm1.gamma"] = original_state_dict.pop("encoder.mid.block_2.norm1.gamma")
+    converted["encoder.mid_block.resnets.1.conv1.conv.weight"] = original_state_dict.pop(
+        "encoder.mid.block_2.conv1.conv.weight"
+    )
+    converted["encoder.mid_block.resnets.1.conv1.conv.bias"] = original_state_dict.pop(
+        "encoder.mid.block_2.conv1.conv.bias"
+    )
+    converted["encoder.mid_block.resnets.1.norm2.gamma"] = original_state_dict.pop("encoder.mid.block_2.norm2.gamma")
+    converted["encoder.mid_block.resnets.1.conv2.conv.weight"] = original_state_dict.pop(
+        "encoder.mid.block_2.conv2.conv.weight"
+    )
+    converted["encoder.mid_block.resnets.1.conv2.conv.bias"] = original_state_dict.pop(
+        "encoder.mid.block_2.conv2.conv.bias"
+    )
+
+    # Attention block
+    converted["encoder.mid_block.attentions.0.norm.gamma"] = original_state_dict.pop("encoder.mid.attn_1.norm.gamma")
+    converted["encoder.mid_block.attentions.0.to_q.weight"] = original_state_dict.pop("encoder.mid.attn_1.q.weight")
+    converted["encoder.mid_block.attentions.0.to_q.bias"] = original_state_dict.pop("encoder.mid.attn_1.q.bias")
+    converted["encoder.mid_block.attentions.0.to_k.weight"] = original_state_dict.pop("encoder.mid.attn_1.k.weight")
+    converted["encoder.mid_block.attentions.0.to_k.bias"] = original_state_dict.pop("encoder.mid.attn_1.k.bias")
+    converted["encoder.mid_block.attentions.0.to_v.weight"] = original_state_dict.pop("encoder.mid.attn_1.v.weight")
+    converted["encoder.mid_block.attentions.0.to_v.bias"] = original_state_dict.pop("encoder.mid.attn_1.v.bias")
+    converted["encoder.mid_block.attentions.0.proj_out.weight"] = original_state_dict.pop(
+        "encoder.mid.attn_1.proj_out.weight"
+    )
+    converted["encoder.mid_block.attentions.0.proj_out.bias"] = original_state_dict.pop(
+        "encoder.mid.attn_1.proj_out.bias"
+    )
+
+    # 1.4 Encoder output
+    converted["encoder.norm_out.gamma"] = original_state_dict.pop("encoder.norm_out.gamma")
+    converted["encoder.conv_out.conv.weight"] = original_state_dict.pop("encoder.conv_out.conv.weight")
+    converted["encoder.conv_out.conv.bias"] = original_state_dict.pop("encoder.conv_out.conv.bias")
+
+    # 2. Decoder
+    # 2.1 conv_in
+    converted["decoder.conv_in.conv.weight"] = original_state_dict.pop("decoder.conv_in.conv.weight")
+    converted["decoder.conv_in.conv.bias"] = original_state_dict.pop("decoder.conv_in.conv.bias")
+
+    # 2.2 Mid block
+    converted["decoder.mid_block.resnets.0.norm1.gamma"] = original_state_dict.pop("decoder.mid.block_1.norm1.gamma")
+    converted["decoder.mid_block.resnets.0.conv1.conv.weight"] = original_state_dict.pop(
+        "decoder.mid.block_1.conv1.conv.weight"
+    )
+    converted["decoder.mid_block.resnets.0.conv1.conv.bias"] = original_state_dict.pop(
+        "decoder.mid.block_1.conv1.conv.bias"
+    )
+    converted["decoder.mid_block.resnets.0.norm2.gamma"] = original_state_dict.pop("decoder.mid.block_1.norm2.gamma")
+    converted["decoder.mid_block.resnets.0.conv2.conv.weight"] = original_state_dict.pop(
+        "decoder.mid.block_1.conv2.conv.weight"
+    )
+    converted["decoder.mid_block.resnets.0.conv2.conv.bias"] = original_state_dict.pop(
+        "decoder.mid.block_1.conv2.conv.bias"
+    )
+
+    converted["decoder.mid_block.resnets.1.norm1.gamma"] = original_state_dict.pop("decoder.mid.block_2.norm1.gamma")
+    converted["decoder.mid_block.resnets.1.conv1.conv.weight"] = original_state_dict.pop(
+        "decoder.mid.block_2.conv1.conv.weight"
+    )
+    converted["decoder.mid_block.resnets.1.conv1.conv.bias"] = original_state_dict.pop(
+        "decoder.mid.block_2.conv1.conv.bias"
+    )
+    converted["decoder.mid_block.resnets.1.norm2.gamma"] = original_state_dict.pop("decoder.mid.block_2.norm2.gamma")
+    converted["decoder.mid_block.resnets.1.conv2.conv.weight"] = original_state_dict.pop(
+        "decoder.mid.block_2.conv2.conv.weight"
+    )
+    converted["decoder.mid_block.resnets.1.conv2.conv.bias"] = original_state_dict.pop(
+        "decoder.mid.block_2.conv2.conv.bias"
+    )
+
+    # Decoder attention block
+    converted["decoder.mid_block.attentions.0.norm.gamma"] = original_state_dict.pop("decoder.mid.attn_1.norm.gamma")
+    converted["decoder.mid_block.attentions.0.to_q.weight"] = original_state_dict.pop("decoder.mid.attn_1.q.weight")
+    converted["decoder.mid_block.attentions.0.to_q.bias"] = original_state_dict.pop("decoder.mid.attn_1.q.bias")
+    converted["decoder.mid_block.attentions.0.to_k.weight"] = original_state_dict.pop("decoder.mid.attn_1.k.weight")
+    converted["decoder.mid_block.attentions.0.to_k.bias"] = original_state_dict.pop("decoder.mid.attn_1.k.bias")
+    converted["decoder.mid_block.attentions.0.to_v.weight"] = original_state_dict.pop("decoder.mid.attn_1.v.weight")
+    converted["decoder.mid_block.attentions.0.to_v.bias"] = original_state_dict.pop("decoder.mid.attn_1.v.bias")
+    converted["decoder.mid_block.attentions.0.proj_out.weight"] = original_state_dict.pop(
+        "decoder.mid.attn_1.proj_out.weight"
+    )
+    converted["decoder.mid_block.attentions.0.proj_out.bias"] = original_state_dict.pop(
+        "decoder.mid.attn_1.proj_out.bias"
+    )
+
+    # 2.3 Up blocks
+    for up_block_index in range(len(block_out_channels)):  # 0 to 5
+        # ResNet blocks
+        for resnet_block_index in range(layers_per_block + 1):  # 0 to 2 (decoder has 3 resnets per level)
+            converted[f"decoder.up_blocks.{up_block_index}.resnets.{resnet_block_index}.norm1.gamma"] = (
+                original_state_dict.pop(f"decoder.up.{up_block_index}.block.{resnet_block_index}.norm1.gamma")
+            )
+            converted[f"decoder.up_blocks.{up_block_index}.resnets.{resnet_block_index}.conv1.conv.weight"] = (
+                original_state_dict.pop(f"decoder.up.{up_block_index}.block.{resnet_block_index}.conv1.conv.weight")
+            )
+            converted[f"decoder.up_blocks.{up_block_index}.resnets.{resnet_block_index}.conv1.conv.bias"] = (
+                original_state_dict.pop(f"decoder.up.{up_block_index}.block.{resnet_block_index}.conv1.conv.bias")
+            )
+            converted[f"decoder.up_blocks.{up_block_index}.resnets.{resnet_block_index}.norm2.gamma"] = (
+                original_state_dict.pop(f"decoder.up.{up_block_index}.block.{resnet_block_index}.norm2.gamma")
+            )
+            converted[f"decoder.up_blocks.{up_block_index}.resnets.{resnet_block_index}.conv2.conv.weight"] = (
+                original_state_dict.pop(f"decoder.up.{up_block_index}.block.{resnet_block_index}.conv2.conv.weight")
+            )
+            converted[f"decoder.up_blocks.{up_block_index}.resnets.{resnet_block_index}.conv2.conv.bias"] = (
+                original_state_dict.pop(f"decoder.up.{up_block_index}.block.{resnet_block_index}.conv2.conv.bias")
+            )
+
+        # Upsample (if exists)
+        if f"decoder.up.{up_block_index}.upsample.conv.conv.weight" in original_state_dict:
+            converted[f"decoder.up_blocks.{up_block_index}.upsamplers.0.conv.conv.weight"] = original_state_dict.pop(
+                f"decoder.up.{up_block_index}.upsample.conv.conv.weight"
+            )
+            converted[f"decoder.up_blocks.{up_block_index}.upsamplers.0.conv.conv.bias"] = original_state_dict.pop(
+                f"decoder.up.{up_block_index}.upsample.conv.conv.bias"
+            )
+
+    # 2.4 Decoder output
+    converted["decoder.norm_out.gamma"] = original_state_dict.pop("decoder.norm_out.gamma")
+    converted["decoder.conv_out.conv.weight"] = original_state_dict.pop("decoder.conv_out.conv.weight")
+    converted["decoder.conv_out.conv.bias"] = original_state_dict.pop("decoder.conv_out.conv.bias")
+
+    return converted
+
 def load_sharded_safetensors(dir: pathlib.Path):
     file_paths = list(dir.glob("diffusion_pytorch_model*.safetensors"))
     state_dict = {}
@@ -324,7 +522,7 @@ def load_sharded_safetensors(dir: pathlib.Path):
     return state_dict
 
 
-def load_original_state_dict(args):
+def load_original_transformer_state_dict(args):
     if args.original_state_dict_repo_id is not None:
         model_dir = snapshot_download(
             args.original_state_dict_repo_id, 
@@ -339,8 +537,23 @@ def load_original_state_dict(args):
     model_dir = model_dir / "transformer" / args.transformer_type
     return load_sharded_safetensors(model_dir)
 
+def load_original_vae_state_dict(args):
+    if args.original_state_dict_repo_id is not None:
+        ckpt_path = hf_hub_download(
+            repo_id=args.original_state_dict_repo_id, 
+            filename= "vae/diffusion_pytorch_model.safetensors"
+        )
+    elif args.original_state_dict_folder is not None:
+        model_dir = pathlib.Path(args.original_state_dict_folder)
+        ckpt_path = model_dir / "vae/diffusion_pytorch_model.safetensors"
+    else:
+        raise ValueError("Please provide either `original_state_dict_repo_id` or `original_state_dict_folder`")
+
+    original_state_dict = load_file(ckpt_path)
+    return original_state_dict
+
 def convert_transformer(args):
-    original_state_dict = load_original_state_dict(args)
+    original_state_dict = load_original_transformer_state_dict(args)
 
     config = TRANSFORMER_CONFIGS[args.transformer_type]
     with init_empty_weights():
@@ -350,13 +563,152 @@ def convert_transformer(args):
 
     return transformer
 
+def convert_vae(args):
+    original_state_dict = load_original_vae_state_dict(args)
+    with init_empty_weights():
+        vae = AutoencoderKLHunyuanVideo15()
+    state_dict = convert_hunyuan_video_15_vae_checkpoint_to_diffusers(original_state_dict)
+    vae.load_state_dict(state_dict, strict=True, assign=True)
+    return vae
+
+def save_text_encoder(output_path):
+    text_encoder = AutoModel.from_pretrained("Qwen/Qwen2.5-VL-7B-Instruct", low_cpu_mem_usage=True)
+    if hasattr(text_encoder, 'language_model'):
+        text_encoder = text_encoder.language_model
+
+    
+    text_encoder.save_pretrained(output_path + "/text_encoder")
+
+    tokenizer = AutoTokenizer.from_pretrained("Qwen/Qwen2.5-VL-7B-Instruct", padding_side="right")
+    tokenizer.save_pretrained(output_path + "/tokenizer")
+
+
+def add_special_token(
+    tokenizer,
+    text_encoder,
+    add_color=True,
+    add_font=True,
+    multilingual=True,
+    color_ann_path='assets/color_idx.json',
+    font_ann_path='assets/multilingual_10-lang_idx.json',
+):
+    """
+    Add special tokens for color and font to tokenizer and text encoder.
+
+    Args:
+        tokenizer: Huggingface tokenizer.
+        text_encoder: Huggingface T5 encoder.
+        add_color (bool): Whether to add color tokens.
+        add_font (bool): Whether to add font tokens.
+        color_ann_path (str): Path to color annotation JSON.
+        font_ann_path (str): Path to font annotation JSON.
+        multilingual (bool): Whether to use multilingual font tokens.
+    """
+    with open(font_ann_path, 'r') as f:
+        idx_font_dict = json.load(f)
+    with open(color_ann_path, 'r') as f:
+        idx_color_dict = json.load(f)
+
+    if multilingual:
+        font_token = [f'<{font_code[:2]}-font-{idx_font_dict[font_code]}>' for font_code in idx_font_dict]
+    else:
+        font_token = [f'<font-{i}>' for i in range(len(idx_font_dict))]
+    color_token = [f'<color-{i}>' for i in range(len(idx_color_dict))]
+    additional_special_tokens = []
+    if add_color:
+        additional_special_tokens += color_token
+    if add_font:
+        additional_special_tokens += font_token
+
+    tokenizer.add_tokens(additional_special_tokens, special_tokens=True)
+    # Set mean_resizing=False to avoid PyTorch LAPACK dependency
+    text_encoder.resize_token_embeddings(len(tokenizer), mean_resizing=False)
+
+
+def save_text_encoder_2(
+    byt5_base_path,
+    byt5_checkpoint_path,
+    color_ann_path,
+    font_ann_path,
+    output_path,
+    multilingual=True
+):
+    """
+    Load ByT5 encoder with Glyph-SDXL-v2 weights and save in HuggingFace format.
+    
+    Args:
+        byt5_base_path: Path to base byt5-small model (e.g., "google/byt5-small")
+        byt5_checkpoint_path: Path to Glyph-SDXL-v2 checkpoint (byt5_model.pt)
+        color_ann_path: Path to color_idx.json
+        font_ann_path: Path to multilingual_10-lang_idx.json
+        output_path: Where to save the converted model
+        multilingual: Whether to use multilingual font tokens
+    """
+    
+    
+    # 1. Load base tokenizer and encoder
+    tokenizer = AutoTokenizer.from_pretrained(byt5_base_path)
+    
+    # Load as T5EncoderModel
+    encoder = T5EncoderModel.from_pretrained(byt5_base_path)
+    
+    # 2. Add special tokens
+    add_special_token(
+        tokenizer,
+        encoder,
+        color_ann_path=color_ann_path,
+        font_ann_path=font_ann_path,
+        multilingual=multilingual
+    )
+    
+    # 3. Load Glyph-SDXL-v2 checkpoint
+    print(f"\n3. Loading Glyph-SDXL-v2 checkpoint: {byt5_checkpoint_path}")
+    checkpoint = torch.load(byt5_checkpoint_path, map_location='cpu')
+    
+    # Handle different checkpoint formats
+    if 'state_dict' in checkpoint:
+        state_dict = checkpoint['state_dict']
+    else:
+        state_dict = checkpoint
+    
+    # add 'encoder.' prefix to the keys 
+    # Remove 'module.text_tower.encoder.' prefix if present
+    cleaned_state_dict = {}
+    for key, value in state_dict.items():
+        if key.startswith('module.text_tower.encoder.'):
+            new_key = 'encoder.' + key[len('module.text_tower.encoder.'):]
+            cleaned_state_dict[new_key] = value
+        else:
+            new_key = 'encoder.' + key
+            cleaned_state_dict[new_key] = value
+    
+    
+    # 4. Load weights
+    missing_keys, unexpected_keys = encoder.load_state_dict(cleaned_state_dict, strict=False)
+    if unexpected_keys:
+        raise ValueError(f"Unexpected keys: {unexpected_keys}")
+    if "shared.weight" in missing_keys:
+        print(f"  Missing shared.weight as expected")
+        missing_keys.remove("shared.weight")
+    if missing_keys:
+        raise ValueError(f"Missing keys: {missing_keys}")
+    
+    
+    # Save encoder
+    encoder.save_pretrained(output_path + "/text_encoder_2")
+    
+    # Save tokenizer
+    tokenizer.save_pretrained(output_path + "/tokenizer_2")
+
+
 def get_args():
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--original_state_dict_repo_id", type=str, default=None, help="Path to original hub_id for the model"
     )
-    parser.add_argument("--original_state_dict_folder", type=str, default=None, help="Folder name of the original state dict")
-    parser.add_argument("--output_path", type=str, required=True, help="Path where converted model should be saved")
+    parser.add_argument("--original_state_dict_folder", type=str, default=None, help="Local folder name of the original state dict")
+    parser.add_argument("--output_vae_path", type=str, default=None, help="Path where converted VAE should be saved")
+    parser.add_argument("--output_transformer_path", type=str, default=None, help="Path where converted transformer should be saved")
     parser.add_argument("--dtype", default="bf16", help="Torch dtype to save the transformer in.")
     parser.add_argument(
         "--transformer_type", type=str, default="480p_i2v", choices=list(TRANSFORMER_CONFIGS.keys())
@@ -377,6 +729,13 @@ if __name__ == "__main__":
     transformer = None
     dtype = DTYPE_MAPPING[args.dtype]
 
-    transformer = convert_transformer(args)
-    transformer = transformer.to(dtype=dtype)
-    transformer.save_pretrained(args.output_path, safe_serialization=True, max_shard_size="5GB")
+    if args.output_transformer_path is not None:
+        transformer = convert_transformer(args)
+        transformer = transformer.to(dtype=dtype)
+        transformer.save_pretrained(args.output_transformer_path, safe_serialization=True)
+
+    if args.output_vae_path is not None:
+        vae = convert_vae(args)
+        vae = vae.to(dtype=dtype)
+        vae.save_pretrained(args.output_vae_path, safe_serialization=True)
+
