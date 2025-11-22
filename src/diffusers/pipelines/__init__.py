@@ -242,6 +242,7 @@ else:
         "HunyuanVideoImageToVideoPipeline",
         "HunyuanVideoFramepackPipeline",
     ]
+    _import_structure["hunyuan_video1_5"] = ["HunyuanVideo15Pipeline"]
     _import_structure["hunyuan_image"] = ["HunyuanImagePipeline", "HunyuanImageRefinerPipeline"]
     _import_structure["kandinsky"] = [
         "KandinskyCombinedPipeline",
@@ -662,6 +663,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             HunyuanVideoImageToVideoPipeline,
             HunyuanVideoPipeline,
         )
+        from .hunyuan_video1_5 import HunyuanVideo15Pipeline
         from .hunyuandit import HunyuanDiTPipeline
         from .i2vgen_xl import I2VGenXLPipeline
         from .kandinsky import (
