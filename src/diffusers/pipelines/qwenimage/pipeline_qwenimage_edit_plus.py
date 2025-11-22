@@ -748,11 +748,31 @@ class QwenImageEditPlusPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
                 # [5D Fix] Ensure (B, C, F, H, W)
                 vae_images.append(self.image_processor.preprocess(img, vae_height, vae_width).unsqueeze(2))
 
-            # [FIX] Handle Batch vs Multi-Condition Ambiguity
-            # If user provides N prompts and N images, stack them for 1-to-1 batching.
+            # [FIX] Handle Batch vs Multi-Condition Ambiguity + Variable Resolutions
             if isinstance(prompt, list) and len(prompt) > 1 and len(vae_images) == len(prompt):
-                batch_tensor = torch.cat(vae_images, dim=0)
+                # 1. Find max dims (Height=[-2], Width=[-1])
+                max_h = max(img.shape[-2] for img in vae_images)
+                max_w = max(img.shape[-1] for img in vae_images)
+                
+                padded_images = []
+                for img in vae_images:
+                    h, w = img.shape[-2], img.shape[-1]
+                    pad_h = max_h - h
+                    pad_w = max_w - w
+                    if pad_h > 0 or pad_w > 0:
+                        # Pad (left, right, top, bottom)
+                        img = torch.nn.functional.pad(img, (0, pad_w, 0, pad_h))
+                    padded_images.append(img)
+                
+                # 2. 1-to-1 Batching
+                batch_tensor = torch.cat(padded_images, dim=0)
                 vae_images = [batch_tensor]
+
+                # 3. [FIX] Update metadata to match padded dims - Rotary Positional Embeddings
+                # We must tell the model that each batch item has exactly 1 condition image with the new padded dimensions.
+                height = max_h
+                width = max_w
+                vae_image_sizes = [(max_w, max_h)]
 
         has_neg_prompt = negative_prompt is not None or (
             negative_prompt_embeds is not None and negative_prompt_embeds_mask is not None
