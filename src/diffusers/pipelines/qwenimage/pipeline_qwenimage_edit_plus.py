@@ -313,7 +313,7 @@ class QwenImageEditPlusPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
         if isinstance(prompt, list) and len(prompt) > 1:
             prompt_embeds_list = []
             mask_list = []
-            
+
             # Normalize images to a list matching the prompt length
             if isinstance(image, list):
                 current_images = image
@@ -323,36 +323,32 @@ class QwenImageEditPlusPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
             for i, single_prompt in enumerate(prompt):
                 # Safety: Ensure we have an image for this prompt
                 single_image = current_images[i] if i < len(current_images) else current_images[0]
-                
-                pe, pem = self._get_qwen_prompt_embeds(
-                    single_prompt,
-                    image=single_image,
-                    device=device
-                )
+
+                pe, pem = self._get_qwen_prompt_embeds(single_prompt, image=single_image, device=device)
                 prompt_embeds_list.append(pe)
                 mask_list.append(pem)
-            
+
             # [Fix] Pad embeddings to the maximum length in the batch before stacking
             max_len = max([p.shape[1] for p in prompt_embeds_list])
-            
+
             padded_embeds = []
             padded_masks = []
-            
+
             for pe, pem in zip(prompt_embeds_list, mask_list):
                 cur_len = pe.shape[1]
                 pad_len = max_len - cur_len
-                
+
                 if pad_len > 0:
                     # Pad sequence dim (2nd last dim for embeds, last dim for mask)
                     pe = torch.nn.functional.pad(pe, (0, 0, 0, pad_len))
                     pem = torch.nn.functional.pad(pem, (0, pad_len))
-                
+
                 padded_embeds.append(pe)
                 padded_masks.append(pem)
 
             prompt_embeds = torch.cat(padded_embeds, dim=0)
             prompt_embeds_mask = torch.cat(padded_masks, dim=0)
-        
+
         else:
             # Standard path for single prompt
             prompt = [prompt] if isinstance(prompt, str) else prompt
@@ -678,7 +674,7 @@ class QwenImageEditPlusPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
             # Handle potential nested lists (e.g. if batching logic gets complex)
             while isinstance(check_img, (list, tuple)):
                 check_img = check_img[0]
-            
+
             if isinstance(check_img, torch.Tensor):
                 # Tensor shape is usually (C, H, W) or (B, C, H, W) -> take last two dims
                 image_size = (check_img.shape[-1], check_img.shape[-2])
@@ -729,12 +725,12 @@ class QwenImageEditPlusPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
         if image is not None and not (isinstance(image, torch.Tensor) and image.size(1) == self.latent_channels):
             if not isinstance(image, list):
                 image = [image]
-            
+
             condition_image_sizes = []
             condition_images = []
             vae_image_sizes = []
             vae_images = []
-            
+
             for img in image:
                 image_width, image_height = img.size
                 condition_width, condition_height = calculate_dimensions(
@@ -744,7 +740,7 @@ class QwenImageEditPlusPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
                 condition_image_sizes.append((condition_width, condition_height))
                 vae_image_sizes.append((vae_width, vae_height))
                 condition_images.append(self.image_processor.resize(img, condition_height, condition_width))
-                
+
                 # [5D Fix] Ensure (B, C, F, H, W)
                 vae_images.append(self.image_processor.preprocess(img, vae_height, vae_width).unsqueeze(2))
 
@@ -753,7 +749,7 @@ class QwenImageEditPlusPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
                 # 1. Find max dims (Height=[-2], Width=[-1])
                 max_h = max(img.shape[-2] for img in vae_images)
                 max_w = max(img.shape[-1] for img in vae_images)
-                
+
                 padded_images = []
                 for img in vae_images:
                     h, w = img.shape[-2], img.shape[-1]
@@ -763,7 +759,7 @@ class QwenImageEditPlusPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
                         # Pad (left, right, top, bottom)
                         img = torch.nn.functional.pad(img, (0, pad_w, 0, pad_h))
                     padded_images.append(img)
-                
+
                 # 2. 1-to-1 Batching
                 batch_tensor = torch.cat(padded_images, dim=0)
                 vae_images = [batch_tensor]
