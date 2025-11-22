@@ -289,7 +289,7 @@ def convert_unet_state_dict_to_peft(state_dict):
     return convert_state_dict(state_dict, mapping)
 
 
-def convert_control_lora_state_dict_to_peft(state_dict):
+def convert_sai_sd_control_lora_state_dict_to_peft(state_dict):
     def _convert_controlnet_to_diffusers(state_dict):
         is_sdxl = "input_blocks.11.0.in_layers.0.weight" not in state_dict
         logger.info(f"Using ControlNet lora ({'SDXL' if is_sdxl else 'SD15'})")

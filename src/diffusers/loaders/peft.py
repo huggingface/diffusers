@@ -26,7 +26,7 @@ from ..utils import (
     MIN_PEFT_VERSION,
     USE_PEFT_BACKEND,
     check_peft_version,
-    convert_control_lora_state_dict_to_peft,
+    convert_sai_sd_control_lora_state_dict_to_peft,
     convert_unet_state_dict_to_peft,
     delete_adapter_layers,
     get_adapter_name,
@@ -233,9 +233,9 @@ class PeftAdapterMixin:
             # Control LoRA from SAI is different from BFL Control LoRA
             # https://huggingface.co/stabilityai/control-lora
             # https://huggingface.co/comfyanonymous/ControlNet-v1-1_fp16_safetensors
-            is_control_lora = "lora_controlnet" in state_dict
-            if is_control_lora:
-                state_dict = convert_control_lora_state_dict_to_peft(state_dict)
+            is_sai_sd_control_lora = "lora_controlnet" in state_dict
+            if is_sai_sd_control_lora:
+                state_dict = convert_sai_sd_control_lora_state_dict_to_peft(state_dict)
 
             rank = {}
             for key, val in state_dict.items():
@@ -269,7 +269,7 @@ class PeftAdapterMixin:
             )
 
             # Adjust LoRA config for Control LoRA
-            if is_control_lora:
+            if is_sai_sd_control_lora:
                 lora_config.lora_alpha = lora_config.r
                 lora_config.alpha_pattern = lora_config.rank_pattern
                 lora_config.bias = "all"
