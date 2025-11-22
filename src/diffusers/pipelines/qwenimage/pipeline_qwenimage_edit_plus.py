@@ -627,7 +627,26 @@ class QwenImageEditPlusPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
             [`~pipelines.qwenimage.QwenImagePipelineOutput`] if `return_dict` is True, otherwise a `tuple`. When
             returning a tuple, the first element is a list with the generated images.
         """
-        image_size = image[-1].size if isinstance(image, list) else image.size
+        # [Fix] Robustly determine image size (Handles Lists, Tensors, and PIL)
+        if isinstance(image, list):
+            # Grab the first valid image to determine dimensions
+            check_img = image[0]
+            # Handle potential nested lists (e.g. if batching logic gets complex)
+            while isinstance(check_img, (list, tuple)):
+                check_img = check_img[0]
+            
+            if isinstance(check_img, torch.Tensor):
+                # Tensor shape is usually (C, H, W) or (B, C, H, W) -> take last two dims
+                image_size = (check_img.shape[-1], check_img.shape[-2])
+            else:
+                # PIL Image
+                image_size = check_img.size
+        elif isinstance(image, torch.Tensor):
+            image_size = (image.shape[-1], image.shape[-2])
+        else:
+            # Single PIL Image
+            image_size = image.size
+
         calculated_width, calculated_height = calculate_dimensions(1024 * 1024, image_size[0] / image_size[1])
         height = height or calculated_height
         width = width or calculated_width
