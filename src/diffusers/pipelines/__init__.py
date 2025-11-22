@@ -393,6 +393,7 @@ else:
         "WanImageToVideoPipeline",
         "WanVideoToVideoPipeline",
         "WanVACEPipeline",
+        "WanSpeechToVideoPipeline",
         "WanAnimatePipeline",
     ]
     _import_structure["kandinsky5"] = ["Kandinsky5T2VPipeline"]
@@ -816,6 +817,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             WanAnimatePipeline,
             WanImageToVideoPipeline,
             WanPipeline,
+            WanSpeechToVideoPipeline,
             WanVACEPipeline,
             WanVideoToVideoPipeline,
         )
