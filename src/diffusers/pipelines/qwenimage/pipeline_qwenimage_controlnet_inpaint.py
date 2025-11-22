@@ -28,6 +28,7 @@ from ...utils import is_torch_xla_available, logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
 from .pipeline_output import QwenImagePipelineOutput
+from .pipeline_qwen_utils import QwenImagePipelineMixin
 
 
 if is_torch_xla_available():
@@ -162,7 +163,7 @@ def retrieve_timesteps(
     return timesteps, num_inference_steps
 
 
-class QwenImageControlNetInpaintPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
+class QwenImageControlNetInpaintPipeline(DiffusionPipeline, QwenImagePipelineMixin, QwenImageLoraLoaderMixin):
     r"""
     The QwenImage pipeline for text-to-image generation.
 
@@ -221,92 +222,6 @@ class QwenImageControlNetInpaintPipeline(DiffusionPipeline, QwenImageLoraLoaderM
         self.prompt_template_encode_start_idx = 34
         self.default_sample_size = 128
 
-    # Coped from diffusers.pipelines.qwenimage.pipeline_qwenimage.extract_masked_hidden
-    def _extract_masked_hidden(self, hidden_states: torch.Tensor, mask: torch.Tensor):
-        bool_mask = mask.bool()
-        valid_lengths = bool_mask.sum(dim=1)
-        selected = hidden_states[bool_mask]
-        split_result = torch.split(selected, valid_lengths.tolist(), dim=0)
-
-        return split_result
-
-    # Coped from diffusers.pipelines.qwenimage.pipeline_qwenimage.get_qwen_prompt_embeds
-    def _get_qwen_prompt_embeds(
-        self,
-        prompt: Union[str, List[str]] = None,
-        device: Optional[torch.device] = None,
-        dtype: Optional[torch.dtype] = None,
-    ):
-        device = device or self._execution_device
-        dtype = dtype or self.text_encoder.dtype
-
-        prompt = [prompt] if isinstance(prompt, str) else prompt
-
-        template = self.prompt_template_encode
-        drop_idx = self.prompt_template_encode_start_idx
-        txt = [template.format(e) for e in prompt]
-        txt_tokens = self.tokenizer(
-            txt, max_length=self.tokenizer_max_length + drop_idx, padding=True, truncation=True, return_tensors="pt"
-        ).to(self.device)
-        encoder_hidden_states = self.text_encoder(
-            input_ids=txt_tokens.input_ids,
-            attention_mask=txt_tokens.attention_mask,
-            output_hidden_states=True,
-        )
-        hidden_states = encoder_hidden_states.hidden_states[-1]
-        split_hidden_states = self._extract_masked_hidden(hidden_states, txt_tokens.attention_mask)
-        split_hidden_states = [e[drop_idx:] for e in split_hidden_states]
-        attn_mask_list = [torch.ones(e.size(0), dtype=torch.long, device=e.device) for e in split_hidden_states]
-        max_seq_len = max([e.size(0) for e in split_hidden_states])
-        prompt_embeds = torch.stack(
-            [torch.cat([u, u.new_zeros(max_seq_len - u.size(0), u.size(1))]) for u in split_hidden_states]
-        )
-        encoder_attention_mask = torch.stack(
-            [torch.cat([u, u.new_zeros(max_seq_len - u.size(0))]) for u in attn_mask_list]
-        )
-
-        prompt_embeds = prompt_embeds.to(dtype=dtype, device=device)
-
-        return prompt_embeds, encoder_attention_mask
-
-    # Coped from diffusers.pipelines.qwenimage.pipeline_qwenimage.encode_prompt
-    def encode_prompt(
-        self,
-        prompt: Union[str, List[str]],
-        device: Optional[torch.device] = None,
-        num_images_per_prompt: int = 1,
-        prompt_embeds: Optional[torch.Tensor] = None,
-        prompt_embeds_mask: Optional[torch.Tensor] = None,
-        max_sequence_length: int = 1024,
-    ):
-        r"""
-        Args:
-            prompt (`str` or `List[str]`, *optional*):
-                prompt to be encoded
-            device: (`torch.device`):
-                torch device
-            num_images_per_prompt (`int`):
-                number of images that should be generated per prompt
-            prompt_embeds (`torch.Tensor`, *optional*):
-                Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
-                provided, text embeddings will be generated from `prompt` input argument.
-        """
-        device = device or self._execution_device
-
-        prompt = [prompt] if isinstance(prompt, str) else prompt
-        batch_size = len(prompt) if prompt_embeds is None else prompt_embeds.shape[0]
-
-        if prompt_embeds is None:
-            prompt_embeds, prompt_embeds_mask = self._get_qwen_prompt_embeds(prompt, device)
-
-        _, seq_len, _ = prompt_embeds.shape
-        prompt_embeds = prompt_embeds.repeat(1, num_images_per_prompt, 1)
-        prompt_embeds = prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
-        prompt_embeds_mask = prompt_embeds_mask.repeat(1, num_images_per_prompt, 1)
-        prompt_embeds_mask = prompt_embeds_mask.view(batch_size * num_images_per_prompt, seq_len)
-
-        return prompt_embeds, prompt_embeds_mask
-
     def check_inputs(
         self,
         prompt,
@@ -361,61 +276,6 @@ class QwenImageControlNetInpaintPipeline(DiffusionPipeline, QwenImageLoraLoaderM
 
         if max_sequence_length is not None and max_sequence_length > 1024:
             raise ValueError(f"`max_sequence_length` cannot be greater than 1024 but is {max_sequence_length}")
-
-    @staticmethod
-    # Copied from diffusers.pipelines.qwenimage.pipeline_qwenimage.QwenImagePipeline._pack_latents
-    def _pack_latents(latents, batch_size, num_channels_latents, height, width):
-        latents = latents.view(batch_size, num_channels_latents, height // 2, 2, width // 2, 2)
-        latents = latents.permute(0, 2, 4, 1, 3, 5)
-        latents = latents.reshape(batch_size, (height // 2) * (width // 2), num_channels_latents * 4)
-
-        return latents
-
-    @staticmethod
-    # Copied from diffusers.pipelines.qwenimage.pipeline_qwenimage.QwenImagePipeline._unpack_latents
-    def _unpack_latents(latents, height, width, vae_scale_factor):
-        batch_size, num_patches, channels = latents.shape
-
-        # VAE applies 8x compression on images but we must also account for packing which requires
-        # latent height and width to be divisible by 2.
-        height = 2 * (int(height) // (vae_scale_factor * 2))
-        width = 2 * (int(width) // (vae_scale_factor * 2))
-
-        latents = latents.view(batch_size, height // 2, width // 2, channels // 4, 2, 2)
-        latents = latents.permute(0, 3, 1, 4, 2, 5)
-
-        latents = latents.reshape(batch_size, channels // (2 * 2), 1, height, width)
-
-        return latents
-
-    def enable_vae_slicing(self):
-        r"""
-        Enable sliced VAE decoding. When this option is enabled, the VAE will split the input tensor in slices to
-        compute decoding in several steps. This is useful to save some memory and allow larger batch sizes.
-        """
-        self.vae.enable_slicing()
-
-    def disable_vae_slicing(self):
-        r"""
-        Disable sliced VAE decoding. If `enable_vae_slicing` was previously enabled, this method will go back to
-        computing decoding in one step.
-        """
-        self.vae.disable_slicing()
-
-    def enable_vae_tiling(self):
-        r"""
-        Enable tiled VAE decoding. When this option is enabled, the VAE will split the input tensor into tiles to
-        compute decoding and encoding in several steps. This is useful for saving a large amount of memory and to allow
-        processing larger images.
-        """
-        self.vae.enable_tiling()
-
-    def disable_vae_tiling(self):
-        r"""
-        Disable tiled VAE decoding. If `enable_vae_tiling` was previously enabled, this method will go back to
-        computing decoding in one step.
-        """
-        self.vae.disable_tiling()
 
     # Copied from diffusers.pipelines.qwenimage.pipeline_qwenimage.QwenImagePipeline.prepare_latents
     def prepare_latents(
@@ -567,26 +427,6 @@ class QwenImageControlNetInpaintPipeline(DiffusionPipeline, QwenImageLoraLoaderM
             control_image = torch.cat([control_image] * 2)
 
         return control_image
-
-    @property
-    def guidance_scale(self):
-        return self._guidance_scale
-
-    @property
-    def attention_kwargs(self):
-        return self._attention_kwargs
-
-    @property
-    def num_timesteps(self):
-        return self._num_timesteps
-
-    @property
-    def current_timestep(self):
-        return self._current_timestep
-
-    @property
-    def interrupt(self):
-        return self._interrupt
 
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
