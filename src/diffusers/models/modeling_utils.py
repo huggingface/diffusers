@@ -42,6 +42,7 @@ from ..quantizers import DiffusersAutoQuantizer, DiffusersQuantizer
 from ..quantizers.quantization_config import QuantizationMethod
 from ..utils import (
     CONFIG_NAME,
+    FLASHPACK_WEIGHTS_NAME,
     FLAX_WEIGHTS_NAME,
     HF_ENABLE_PARALLEL_LOADING,
     SAFE_WEIGHTS_INDEX_NAME,
@@ -55,6 +56,7 @@ from ..utils import (
     is_accelerate_available,
     is_bitsandbytes_available,
     is_bitsandbytes_version,
+    is_flashpack_available,
     is_peft_available,
     is_torch_version,
     logging,
@@ -913,6 +915,8 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             disable_mmap ('bool', *optional*, defaults to 'False'):
                 Whether to disable mmap when loading a Safetensors model. This option can perform better when the model
                 is on a network mount or hard drive, which may not handle the seeky-ness of mmap very well.
+            use_flashpack (`bool`, *optional*, defaults to `False`):
+                If set to `True`, the model is loaded from `flashpack` weights.
 
         > [!TIP] > To use private or [gated models](https://huggingface.co/docs/hub/models-gated#gated-models), log-in
         with `hf > auth login`. You can also activate the special >
@@ -957,6 +961,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         dduf_entries: Optional[Dict[str, DDUFEntry]] = kwargs.pop("dduf_entries", None)
         disable_mmap = kwargs.pop("disable_mmap", False)
         parallel_config: Optional[Union[ParallelConfig, ContextParallelConfig]] = kwargs.pop("parallel_config", None)
+        use_flashpack = kwargs.pop("use_flashpack", False)
 
         is_parallel_loading_enabled = HF_ENABLE_PARALLEL_LOADING
         if is_parallel_loading_enabled and not low_cpu_mem_usage:
@@ -1185,6 +1190,30 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                     subfolder=subfolder or "",
                     dduf_entries=dduf_entries,
                 )
+            elif use_flashpack:
+                try:
+                    resolved_model_file = _get_model_file(
+                        pretrained_model_name_or_path,
+                        weights_name=FLASHPACK_WEIGHTS_NAME,
+                        cache_dir=cache_dir,
+                        force_download=force_download,
+                        proxies=proxies,
+                        local_files_only=local_files_only,
+                        token=token,
+                        revision=revision,
+                        subfolder=subfolder,
+                        user_agent=user_agent,
+                        commit_hash=commit_hash,
+                        dduf_entries=dduf_entries,
+                    )
+
+                except IOError as e:
+                    logger.error(f"An error occurred while trying to fetch {pretrained_model_name_or_path}: {e}")
+                    if not allow_pickle:
+                        raise
+                    logger.warning(
+                        "Defaulting to unsafe serialization. Pass `allow_pickle=False` to raise an error instead."
+                    )
             elif use_safetensors:
                 try:
                     resolved_model_file = _get_model_file(
@@ -1247,6 +1276,32 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
 
         with ContextManagers(init_contexts):
             model = cls.from_config(config, **unused_kwargs)
+
+        if use_flashpack:
+            if is_flashpack_available():
+                import flashpack
+
+                flashpack.mixin.assign_from_file(
+                    model=model,
+                    path=resolved_model_file[0],
+                    device=None if device_map is None else device_map[""],
+                    # silent=silent,
+                    # strict=strict,
+                    # strict_params=strict_params,
+                    # strict_buffers=strict_buffers,
+                    # keep_flash_ref_on_model=keep_flash_ref_on_model,
+                    # num_streams=num_streams,
+                    # chunk_bytes=chunk_bytes,
+                    # ignore_names=ignore_names or cls.flashpack_ignore_names,
+                    # ignore_prefixes=ignore_prefixes or cls.flashpack_ignore_prefixes,
+                    # ignore_suffixes=ignore_suffixes or cls.flashpack_ignore_suffixes,
+                    # use_distributed_loading=use_distributed_loading,
+                    # rank=rank,
+                    # local_rank=local_rank,
+                    # world_size=world_size,
+                    # coerce_dtype=coerce_dtype or cls.flashpack_coerce_dtype,
+                )
+                return model
 
         if dtype_orig is not None:
             torch.set_default_dtype(dtype_orig)

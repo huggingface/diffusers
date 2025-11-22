@@ -413,6 +413,9 @@ def get_class_obj_and_candidates(
     """Simple helper method to retrieve class object of module as well as potential parent class objects"""
     component_folder = os.path.join(cache_dir, component_name) if component_name and cache_dir else None
 
+    if class_name.startswith("FlashPack"):
+        class_name = class_name.removeprefix("FlashPack")
+
     if is_pipeline_module:
         pipeline_module = getattr(pipelines, library_name)
 
