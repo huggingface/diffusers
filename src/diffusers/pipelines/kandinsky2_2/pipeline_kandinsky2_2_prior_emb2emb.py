@@ -35,8 +35,7 @@ EXAMPLE_DOC_STRING = """
 
         >>> prompt = "red cat, 4k photo"
         >>> img = load_image(
-        ...     "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
-        ...     "/kandinsky/cat.png"
+        ...     "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/kandinsky/cat.png"
         ... )
         >>> image_emb, nagative_image_emb = pipe_prior(prompt, image=img, strength=0.2).to_tuple()
 
@@ -73,8 +72,7 @@ EXAMPLE_INTERPOLATE_DOC_STRING = """
         >>> pipe_prior.to("cuda")
 
         >>> img1 = load_image(
-        ...     "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
-        ...     "/kandinsky/cat.png"
+        ...     "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/kandinsky/cat.png"
         ... )
 
         >>> img2 = load_image(

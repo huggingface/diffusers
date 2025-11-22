@@ -283,7 +283,6 @@ class QwenImageEditPlusPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
 
         return prompt_embeds, encoder_attention_mask
 
-    # Copied from diffusers.pipelines.qwenimage.pipeline_qwenimage_edit.QwenImageEditPipeline.encode_prompt
     def encode_prompt(
         self,
         prompt: Union[str, List[str]],
@@ -295,7 +294,6 @@ class QwenImageEditPlusPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
         max_sequence_length: int = 1024,
     ):
         r"""
-
         Args:
             prompt (`str` or `List[str]`, *optional*):
                 prompt to be encoded
@@ -311,17 +309,59 @@ class QwenImageEditPlusPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
         """
         device = device or self._execution_device
 
-        prompt = [prompt] if isinstance(prompt, str) else prompt
-        batch_size = len(prompt) if prompt_embeds is None else prompt_embeds.shape[0]
+        # [Fix] Loop over prompts to avoid Qwen2VLProcessor batching bugs & IndexError
+        if isinstance(prompt, list) and len(prompt) > 1:
+            prompt_embeds_list = []
+            mask_list = []
 
-        if prompt_embeds is None:
-            prompt_embeds, prompt_embeds_mask = self._get_qwen_prompt_embeds(prompt, image, device)
+            # Normalize images to a list matching the prompt length
+            if isinstance(image, list):
+                current_images = image
+            else:
+                current_images = [image] * len(prompt)
 
-        _, seq_len, _ = prompt_embeds.shape
-        prompt_embeds = prompt_embeds.repeat(1, num_images_per_prompt, 1)
-        prompt_embeds = prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
-        prompt_embeds_mask = prompt_embeds_mask.repeat(1, num_images_per_prompt, 1)
-        prompt_embeds_mask = prompt_embeds_mask.view(batch_size * num_images_per_prompt, seq_len)
+            for i, single_prompt in enumerate(prompt):
+                # Safety: Ensure we have an image for this prompt
+                single_image = current_images[i] if i < len(current_images) else current_images[0]
+
+                pe, pem = self._get_qwen_prompt_embeds(single_prompt, image=single_image, device=device)
+                prompt_embeds_list.append(pe)
+                mask_list.append(pem)
+
+            # [Fix] Pad embeddings to the maximum length in the batch before stacking
+            max_len = max([p.shape[1] for p in prompt_embeds_list])
+
+            padded_embeds = []
+            padded_masks = []
+
+            for pe, pem in zip(prompt_embeds_list, mask_list):
+                cur_len = pe.shape[1]
+                pad_len = max_len - cur_len
+
+                if pad_len > 0:
+                    # Pad sequence dim (2nd last dim for embeds, last dim for mask)
+                    pe = torch.nn.functional.pad(pe, (0, 0, 0, pad_len))
+                    pem = torch.nn.functional.pad(pem, (0, pad_len))
+
+                padded_embeds.append(pe)
+                padded_masks.append(pem)
+
+            prompt_embeds = torch.cat(padded_embeds, dim=0)
+            prompt_embeds_mask = torch.cat(padded_masks, dim=0)
+
+        else:
+            # Standard path for single prompt
+            prompt = [prompt] if isinstance(prompt, str) else prompt
+            batch_size = len(prompt) if prompt_embeds is None else prompt_embeds.shape[0]
+
+            if prompt_embeds is None:
+                prompt_embeds, prompt_embeds_mask = self._get_qwen_prompt_embeds(prompt, image, device)
+
+            _, seq_len, _ = prompt_embeds.shape
+            prompt_embeds = prompt_embeds.repeat(1, num_images_per_prompt, 1)
+            prompt_embeds = prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
+            prompt_embeds_mask = prompt_embeds_mask.repeat(1, num_images_per_prompt, 1)
+            prompt_embeds_mask = prompt_embeds_mask.view(batch_size * num_images_per_prompt, seq_len)
 
         return prompt_embeds, prompt_embeds_mask
 
@@ -627,7 +667,24 @@ class QwenImageEditPlusPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
             [`~pipelines.qwenimage.QwenImagePipelineOutput`] if `return_dict` is True, otherwise a `tuple`. When
             returning a tuple, the first element is a list with the generated images.
         """
-        image_size = image[-1].size if isinstance(image, list) else image.size
+        # [Fix] Robustly determine image size (Handles Lists, Tensors, and PIL)
+        if isinstance(image, list):
+            # Grab the first valid image to determine dimensions
+            check_img = image[0]
+            # Handle potential nested lists (e.g. if batching logic gets complex)
+            while isinstance(check_img, (list, tuple)):
+                check_img = check_img[0]
+
+            if isinstance(check_img, torch.Tensor):
+                # Tensor shape is usually (C, H, W) or (B, C, H, W) -> take last two dims
+                image_size = (check_img.shape[-1], check_img.shape[-2])
+            else:
+                image_size = check_img.size
+        elif isinstance(image, torch.Tensor):
+            image_size = (image.shape[-1], image.shape[-2])
+        else:
+            image_size = image.size
+
         calculated_width, calculated_height = calculate_dimensions(1024 * 1024, image_size[0] / image_size[1])
         height = height or calculated_height
         width = width or calculated_width
@@ -668,10 +725,12 @@ class QwenImageEditPlusPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
         if image is not None and not (isinstance(image, torch.Tensor) and image.size(1) == self.latent_channels):
             if not isinstance(image, list):
                 image = [image]
+
             condition_image_sizes = []
             condition_images = []
             vae_image_sizes = []
             vae_images = []
+
             for img in image:
                 image_width, image_height = img.size
                 condition_width, condition_height = calculate_dimensions(
@@ -681,7 +740,35 @@ class QwenImageEditPlusPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
                 condition_image_sizes.append((condition_width, condition_height))
                 vae_image_sizes.append((vae_width, vae_height))
                 condition_images.append(self.image_processor.resize(img, condition_height, condition_width))
+
+                # [5D Fix] Ensure (B, C, F, H, W)
                 vae_images.append(self.image_processor.preprocess(img, vae_height, vae_width).unsqueeze(2))
+
+            # [FIX] Handle Batch vs Multi-Condition Ambiguity + Variable Resolutions
+            if isinstance(prompt, list) and len(prompt) > 1 and len(vae_images) == len(prompt):
+                # 1. Find max dims (Height=[-2], Width=[-1])
+                max_h = max(img.shape[-2] for img in vae_images)
+                max_w = max(img.shape[-1] for img in vae_images)
+
+                padded_images = []
+                for img in vae_images:
+                    h, w = img.shape[-2], img.shape[-1]
+                    pad_h = max_h - h
+                    pad_w = max_w - w
+                    if pad_h > 0 or pad_w > 0:
+                        # Pad (left, right, top, bottom)
+                        img = torch.nn.functional.pad(img, (0, pad_w, 0, pad_h))
+                    padded_images.append(img)
+
+                # 2. 1-to-1 Batching
+                batch_tensor = torch.cat(padded_images, dim=0)
+                vae_images = [batch_tensor]
+
+                # 3. [FIX] Update metadata to match padded dims - Rotary Positional Embeddings
+                # We must tell the model that each batch item has exactly 1 condition image with the new padded dimensions.
+                height = max_h
+                width = max_w
+                vae_image_sizes = [(max_w, max_h)]
 
         has_neg_prompt = negative_prompt is not None or (
             negative_prompt_embeds is not None and negative_prompt_embeds_mask is not None
