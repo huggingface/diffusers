@@ -16,7 +16,6 @@ from dataclasses import dataclass
 from typing import Dict, Tuple, Union
 
 import torch
-import torch.utils.checkpoint
 from torch import nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
@@ -55,7 +54,7 @@ class Kandinsky3UNet(ModelMixin, ConfigMixin):
         groups: int = 32,
         attention_head_dim: int = 64,
         layers_per_block: Union[int, Tuple[int]] = 3,
-        block_out_channels: Tuple[int] = (384, 768, 1536, 3072),
+        block_out_channels: Tuple[int, ...] = (384, 768, 1536, 3072),
         cross_attention_dim: Union[int, Tuple[int]] = 4096,
         encoder_hid_dim: int = 4096,
     ):

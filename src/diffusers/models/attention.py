@@ -111,11 +111,7 @@ class AttentionMixin:
     def unfuse_qkv_projections(self):
         """Disables the fused QKV projection if enabled.
 
-        <Tip warning={true}>
-
-        This API is 🧪 experimental.
-
-        </Tip>
+        > [!WARNING] > This API is 🧪 experimental.
         """
         for module in self.modules():
             if isinstance(module, AttentionModuleMixin):
@@ -241,7 +237,7 @@ class AttentionModuleMixin:
                             op_fw, op_bw = attention_op
                             dtype, *_ = op_fw.SUPPORTED_DTYPES
                         q = torch.randn((1, 2, 40), device="cuda", dtype=dtype)
-                        _ = xops.memory_efficient_attention(q, q, q)
+                        _ = xops.ops.memory_efficient_attention(q, q, q)
                 except Exception as e:
                     raise e
 

@@ -52,6 +52,9 @@ pipeline = QwenImagePipeline.from_pretrained(
 )
 ```
 
+> [!TIP]
+> Refer to the [Single file format](./other-formats#single-file-format) docs to learn how to load single file models.
+
 ### Local pipelines
 
 Pipelines can also be run locally. Use [`~huggingface_hub.snapshot_download`] to download a model repository.

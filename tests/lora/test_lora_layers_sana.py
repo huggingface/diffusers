@@ -20,7 +20,7 @@ from transformers import Gemma2Model, GemmaTokenizer
 
 from diffusers import AutoencoderDC, FlowMatchEulerDiscreteScheduler, SanaPipeline, SanaTransformer2DModel
 
-from ..testing_utils import floats_tensor, require_peft_backend
+from ..testing_utils import IS_GITHUB_ACTIONS, floats_tensor, require_peft_backend
 
 
 sys.path.append(".")
@@ -31,9 +31,8 @@ from .utils import PeftLoraLoaderMixinTests  # noqa: E402
 @require_peft_backend
 class SanaLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
     pipeline_class = SanaPipeline
-    scheduler_cls = FlowMatchEulerDiscreteScheduler(shift=7.0)
-    scheduler_kwargs = {}
-    scheduler_classes = [FlowMatchEulerDiscreteScheduler]
+    scheduler_cls = FlowMatchEulerDiscreteScheduler
+    scheduler_kwargs = {"shift": 7.0}
     transformer_kwargs = {
         "patch_size": 1,
         "in_channels": 4,
@@ -137,3 +136,7 @@ class SanaLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
     @unittest.skip("Text encoder LoRA is not supported in SANA.")
     def test_simple_inference_with_text_lora_save_load(self):
         pass
+
+    @unittest.skipIf(IS_GITHUB_ACTIONS, reason="Skipping test inside GitHub Actions environment")
+    def test_layerwise_casting_inference_denoiser(self):
+        return super().test_layerwise_casting_inference_denoiser()

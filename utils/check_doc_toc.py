@@ -21,20 +21,23 @@ import yaml
 
 PATH_TO_TOC = "docs/source/en/_toctree.yml"
 
+# Titles that should maintain their position and not be sorted alphabetically
+FIXED_POSITION_TITLES = {"overview", "autopipeline"}
+
 
 def clean_doc_toc(doc_list):
     """
     Cleans the table of content of the model documentation by removing duplicates and sorting models alphabetically.
     """
     counts = defaultdict(int)
-    overview_doc = []
+    fixed_position_docs = []
     new_doc_list = []
     for doc in doc_list:
         if "local" in doc:
             counts[doc["local"]] += 1
 
-        if doc["title"].lower() == "overview":
-            overview_doc.append({"local": doc["local"], "title": doc["title"]})
+        if doc["title"].lower() in FIXED_POSITION_TITLES:
+            fixed_position_docs.append({"local": doc["local"], "title": doc["title"]})
         else:
             new_doc_list.append(doc)
 
@@ -57,14 +60,13 @@ def clean_doc_toc(doc_list):
     new_doc.extend([doc for doc in doc_list if "local" not in counts or counts[doc["local"]] == 1])
     new_doc = sorted(new_doc, key=lambda s: s["title"].lower())
 
-    # "overview" gets special treatment and is always first
-    if len(overview_doc) > 1:
-        raise ValueError("{doc_list} has two 'overview' docs which is not allowed.")
+    # Fixed-position titles maintain their original order
+    result = []
+    for doc in fixed_position_docs:
+        result.append(doc)
 
-    overview_doc.extend(new_doc)
-
-    # Sort
-    return overview_doc
+    result.extend(new_doc)
+    return result
 
 
 def check_scheduler_doc(overwrite=False):

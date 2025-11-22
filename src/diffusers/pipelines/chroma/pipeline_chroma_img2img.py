@@ -53,8 +53,8 @@ EXAMPLE_DOC_STRING = """
         >>> import torch
         >>> from diffusers import ChromaTransformer2DModel, ChromaImg2ImgPipeline
 
-        >>> model_id = "lodestones/Chroma"
-        >>> ckpt_path = "https://huggingface.co/lodestones/Chroma/blob/main/chroma-unlocked-v37.safetensors"
+        >>> model_id = "lodestones/Chroma1-HD"
+        >>> ckpt_path = "https://huggingface.co/lodestones/Chroma1-HD/blob/main/Chroma1-HD.safetensors"
         >>> pipe = ChromaImg2ImgPipeline.from_pretrained(
         ...     model_id,
         ...     transformer=transformer,
@@ -170,7 +170,7 @@ class ChromaImg2ImgPipeline(
     r"""
     The Chroma pipeline for image-to-image generation.
 
-    Reference: https://huggingface.co/lodestones/Chroma/
+    Reference: https://huggingface.co/lodestones/Chroma1-HD/
 
     Args:
         transformer ([`ChromaTransformer2DModel`]):
@@ -247,20 +247,21 @@ class ChromaImg2ImgPipeline(
             return_tensors="pt",
         )
         text_input_ids = text_inputs.input_ids
-        attention_mask = text_inputs.attention_mask.clone()
+        tokenizer_mask = text_inputs.attention_mask
 
-        # Chroma requires the attention mask to include one padding token
-        seq_lengths = attention_mask.sum(dim=1)
-        mask_indices = torch.arange(attention_mask.size(1)).unsqueeze(0).expand(batch_size, -1)
-        attention_mask = (mask_indices <= seq_lengths.unsqueeze(1)).long()
+        tokenizer_mask_device = tokenizer_mask.to(device)
 
         prompt_embeds = self.text_encoder(
-            text_input_ids.to(device), output_hidden_states=False, attention_mask=attention_mask.to(device)
+            text_input_ids.to(device),
+            output_hidden_states=False,
+            attention_mask=tokenizer_mask_device,
         )[0]
 
-        dtype = self.text_encoder.dtype
         prompt_embeds = prompt_embeds.to(dtype=dtype, device=device)
-        attention_mask = attention_mask.to(dtype=dtype, device=device)
+
+        seq_lengths = tokenizer_mask_device.sum(dim=1)
+        mask_indices = torch.arange(tokenizer_mask_device.size(1), device=device).unsqueeze(0).expand(batch_size, -1)
+        attention_mask = (mask_indices <= seq_lengths.unsqueeze(1)).to(dtype=dtype, device=device)
 
         _, seq_len, _ = prompt_embeds.shape
 
@@ -749,12 +750,12 @@ class ChromaImg2ImgPipeline(
                 Custom sigmas to use for the denoising process with schedulers which support a `sigmas` argument in
                 their `set_timesteps` method. If not defined, the default behavior when `num_inference_steps` is passed
                 will be used.
-            guidance_scale (`float`, *optional*, defaults to 5.0):
-                Embedded guiddance scale is enabled by setting `guidance_scale` > 1. Higher `guidance_scale` encourages
-                a model to generate images more aligned with `prompt` at the expense of lower image quality.
-
-                Guidance-distilled models approximates true classifer-free guidance for `guidance_scale` > 1. Refer to
-                the [paper](https://huggingface.co/papers/2210.03142) to learn more.
+            guidance_scale (`float`, *optional*, defaults to 3.5):
+                Guidance scale as defined in [Classifier-Free Diffusion
+                Guidance](https://huggingface.co/papers/2207.12598). `guidance_scale` is defined as `w` of equation 2.
+                of [Imagen Paper](https://huggingface.co/papers/2205.11487). Guidance scale is enabled by setting
+                `guidance_scale > 1`. Higher guidance scale encourages to generate images that are closely linked to
+                the text `prompt`, usually at the expense of lower image quality.
             strength (`float, *optional*, defaults to 0.9):
                 Conceptually, indicates how much to transform the reference image. Must be between 0 and 1. image will
                 be used as a starting point, adding more noise to it the larger the strength. The number of denoising

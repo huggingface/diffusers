@@ -25,6 +25,7 @@ from ..utils import (
 _import_structure = {}
 
 if is_torch_available():
+    _import_structure["_modeling_parallel"] = ["ContextParallelConfig", "ParallelConfig"]
     _import_structure["adapter"] = ["MultiAdapter", "T2IAdapter"]
     _import_structure["attention_dispatch"] = ["AttentionBackendName", "attention_backend"]
     _import_structure["auto_model"] = ["AutoModel"]
@@ -35,6 +36,8 @@ if is_torch_available():
     _import_structure["autoencoders.autoencoder_kl_cogvideox"] = ["AutoencoderKLCogVideoX"]
     _import_structure["autoencoders.autoencoder_kl_cosmos"] = ["AutoencoderKLCosmos"]
     _import_structure["autoencoders.autoencoder_kl_hunyuan_video"] = ["AutoencoderKLHunyuanVideo"]
+    _import_structure["autoencoders.autoencoder_kl_hunyuanimage"] = ["AutoencoderKLHunyuanImage"]
+    _import_structure["autoencoders.autoencoder_kl_hunyuanimage_refiner"] = ["AutoencoderKLHunyuanImageRefiner"]
     _import_structure["autoencoders.autoencoder_kl_ltx"] = ["AutoencoderKLLTXVideo"]
     _import_structure["autoencoders.autoencoder_kl_magvit"] = ["AutoencoderKLMagvit"]
     _import_structure["autoencoders.autoencoder_kl_mochi"] = ["AutoencoderKLMochi"]
@@ -81,7 +84,9 @@ if is_torch_available():
     _import_structure["transformers.transformer_2d"] = ["Transformer2DModel"]
     _import_structure["transformers.transformer_allegro"] = ["AllegroTransformer3DModel"]
     _import_structure["transformers.transformer_bria"] = ["BriaTransformer2DModel"]
+    _import_structure["transformers.transformer_bria_fibo"] = ["BriaFiboTransformer2DModel"]
     _import_structure["transformers.transformer_chroma"] = ["ChromaTransformer2DModel"]
+    _import_structure["transformers.transformer_chronoedit"] = ["ChronoEditTransformer3DModel"]
     _import_structure["transformers.transformer_cogview3plus"] = ["CogView3PlusTransformer2DModel"]
     _import_structure["transformers.transformer_cogview4"] = ["CogView4Transformer2DModel"]
     _import_structure["transformers.transformer_cosmos"] = ["CosmosTransformer3DModel"]
@@ -90,15 +95,20 @@ if is_torch_available():
     _import_structure["transformers.transformer_hidream_image"] = ["HiDreamImageTransformer2DModel"]
     _import_structure["transformers.transformer_hunyuan_video"] = ["HunyuanVideoTransformer3DModel"]
     _import_structure["transformers.transformer_hunyuan_video_framepack"] = ["HunyuanVideoFramepackTransformer3DModel"]
+    _import_structure["transformers.transformer_hunyuanimage"] = ["HunyuanImageTransformer2DModel"]
+    _import_structure["transformers.transformer_kandinsky"] = ["Kandinsky5Transformer3DModel"]
     _import_structure["transformers.transformer_ltx"] = ["LTXVideoTransformer3DModel"]
     _import_structure["transformers.transformer_lumina2"] = ["Lumina2Transformer2DModel"]
     _import_structure["transformers.transformer_mochi"] = ["MochiTransformer3DModel"]
     _import_structure["transformers.transformer_omnigen"] = ["OmniGenTransformer2DModel"]
+    _import_structure["transformers.transformer_prx"] = ["PRXTransformer2DModel"]
     _import_structure["transformers.transformer_qwenimage"] = ["QwenImageTransformer2DModel"]
+    _import_structure["transformers.transformer_sana_video"] = ["SanaVideoTransformer3DModel"]
     _import_structure["transformers.transformer_sd3"] = ["SD3Transformer2DModel"]
     _import_structure["transformers.transformer_skyreels_v2"] = ["SkyReelsV2Transformer3DModel"]
     _import_structure["transformers.transformer_temporal"] = ["TransformerTemporalModel"]
     _import_structure["transformers.transformer_wan"] = ["WanTransformer3DModel"]
+    _import_structure["transformers.transformer_wan_animate"] = ["WanAnimateTransformer3DModel"]
     _import_structure["transformers.transformer_wan_vace"] = ["WanVACETransformer3DModel"]
     _import_structure["unets.unet_1d"] = ["UNet1DModel"]
     _import_structure["unets.unet_2d"] = ["UNet2DModel"]
@@ -119,6 +129,7 @@ if is_flax_available():
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     if is_torch_available():
+        from ._modeling_parallel import ContextParallelConfig, ParallelConfig
         from .adapter import MultiAdapter, T2IAdapter
         from .attention_dispatch import AttentionBackendName, attention_backend
         from .auto_model import AutoModel
@@ -129,6 +140,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AutoencoderKLAllegro,
             AutoencoderKLCogVideoX,
             AutoencoderKLCosmos,
+            AutoencoderKLHunyuanImage,
+            AutoencoderKLHunyuanImageRefiner,
             AutoencoderKLHunyuanVideo,
             AutoencoderKLLTXVideo,
             AutoencoderKLMagvit,
@@ -165,8 +178,10 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .transformers import (
             AllegroTransformer3DModel,
             AuraFlowTransformer2DModel,
+            BriaFiboTransformer2DModel,
             BriaTransformer2DModel,
             ChromaTransformer2DModel,
+            ChronoEditTransformer3DModel,
             CogVideoXTransformer3DModel,
             CogView3PlusTransformer2DModel,
             CogView4Transformer2DModel,
@@ -178,8 +193,10 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             FluxTransformer2DModel,
             HiDreamImageTransformer2DModel,
             HunyuanDiT2DModel,
+            HunyuanImageTransformer2DModel,
             HunyuanVideoFramepackTransformer3DModel,
             HunyuanVideoTransformer3DModel,
+            Kandinsky5Transformer3DModel,
             LatteTransformer3DModel,
             LTXVideoTransformer3DModel,
             Lumina2Transformer2DModel,
@@ -188,14 +205,17 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             OmniGenTransformer2DModel,
             PixArtTransformer2DModel,
             PriorTransformer,
+            PRXTransformer2DModel,
             QwenImageTransformer2DModel,
             SanaTransformer2DModel,
+            SanaVideoTransformer3DModel,
             SD3Transformer2DModel,
             SkyReelsV2Transformer3DModel,
             StableAudioDiTModel,
             T5FilmDecoder,
             Transformer2DModel,
             TransformerTemporalModel,
+            WanAnimateTransformer3DModel,
             WanTransformer3DModel,
             WanVACETransformer3DModel,
         )

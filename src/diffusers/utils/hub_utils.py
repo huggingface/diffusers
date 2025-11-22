@@ -38,13 +38,13 @@ from huggingface_hub.constants import HF_HUB_DISABLE_TELEMETRY, HF_HUB_OFFLINE
 from huggingface_hub.file_download import REGEX_COMMIT_HASH
 from huggingface_hub.utils import (
     EntryNotFoundError,
+    HfHubHTTPError,
     RepositoryNotFoundError,
     RevisionNotFoundError,
     is_jinja_available,
     validate_hf_hub_args,
 )
 from packaging import version
-from requests import HTTPError
 
 from .. import __version__
 from .constants import (
@@ -113,7 +113,8 @@ def load_or_create_model_card(
 
     Args:
         repo_id_or_path (`str`):
-            The repo id (e.g., "runwayml/stable-diffusion-v1-5") or local path where to look for the model card.
+            The repo id (e.g., "stable-diffusion-v1-5/stable-diffusion-v1-5") or local path where to look for the model
+            card.
         token (`str`, *optional*):
             Authentication token. Will default to the stored token. See https://huggingface.co/settings/token for more
             details.
@@ -316,7 +317,7 @@ def _get_model_file(
             raise EnvironmentError(
                 f"{pretrained_model_name_or_path} does not appear to have a file named {weights_name}."
             ) from e
-        except HTTPError as e:
+        except HfHubHTTPError as e:
             raise EnvironmentError(
                 f"There was a specific connection error when trying to load {pretrained_model_name_or_path}:\n{e}"
             ) from e
@@ -432,7 +433,7 @@ def _get_checkpoint_shard_files(
 
     # We have already dealt with RepositoryNotFoundError and RevisionNotFoundError when getting the index, so
     # we don't have to catch them here. We have also dealt with EntryNotFoundError.
-    except HTTPError as e:
+    except HfHubHTTPError as e:
         raise EnvironmentError(
             f"We couldn't connect to '{HUGGINGFACE_CO_RESOLVE_ENDPOINT}' to load {pretrained_model_name_or_path}. You should try"
             " again after checking your internet connection."

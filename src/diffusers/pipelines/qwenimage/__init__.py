@@ -27,8 +27,8 @@ else:
     _import_structure["pipeline_qwenimage_controlnet"] = ["QwenImageControlNetPipeline"]
     _import_structure["pipeline_qwenimage_controlnet_inpaint"] = ["QwenImageControlNetInpaintPipeline"]
     _import_structure["pipeline_qwenimage_edit"] = ["QwenImageEditPipeline"]
-    _import_structure["pipeline_qwenimage_edit_plus"] = ["QwenImageEditPlusPipeline"]
     _import_structure["pipeline_qwenimage_edit_inpaint"] = ["QwenImageEditInpaintPipeline"]
+    _import_structure["pipeline_qwenimage_edit_plus"] = ["QwenImageEditPlusPipeline"]
     _import_structure["pipeline_qwenimage_img2img"] = ["QwenImageImg2ImgPipeline"]
     _import_structure["pipeline_qwenimage_inpaint"] = ["QwenImageInpaintPipeline"]
 

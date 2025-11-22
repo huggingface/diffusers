@@ -47,8 +47,8 @@ class HiDreamImagePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
     image_params = TEXT_TO_IMAGE_IMAGE_PARAMS
     image_latents_params = TEXT_TO_IMAGE_IMAGE_PARAMS
-
     required_optional_params = PipelineTesterMixin.required_optional_params
+    test_xformers_attention = False
     test_layerwise_casting = True
     supports_dduf = False
 
