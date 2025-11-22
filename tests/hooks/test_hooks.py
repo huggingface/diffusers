@@ -14,10 +14,12 @@
 
 import gc
 import unittest
+from unittest.mock import patch
 
 import torch
 
 from diffusers.hooks import HookRegistry, ModelHook
+from diffusers.hooks.context_parallel import ContextParallelSplitHook, EquipartitionSharder
 from diffusers.training_utils import free_memory
 from diffusers.utils.logging import get_logger
 
@@ -60,6 +62,28 @@ class DummyModel(torch.nn.Module):
             x = block(x)
         x = self.linear_2(x)
         return x
+
+
+# Small helpers to simulate the parallel_config._flattened_mesh used by the hook
+class _DummyMesh:
+    def __init__(self, size: int):
+        self._size = size
+
+    def size(self):
+        return self._size
+
+
+class _DummyParallelConfig:
+    def __init__(self, mesh_size: int):
+        self._flattened_mesh = _DummyMesh(mesh_size)
+
+
+# Lightweight object that behaves like a ContextParallelInput for testing.
+class _DummyCPInput:
+    def __init__(self, split_dim: int, expected_dims: int = None, split_output: bool = False):
+        self.split_dim = split_dim
+        self.expected_dims = expected_dims
+        self.split_output = split_output
 
 
 class AddHook(ModelHook):
@@ -375,3 +399,75 @@ class HookTests(unittest.TestCase):
             .replace("\n", "")
         )
         self.assertEqual(output, expected_invocation_order_log)
+
+
+class ContextParallelHooksTests(unittest.TestCase):
+    def setUp(self):
+        # world_size 3 will force padding for seq_len that isn't divisible by 3
+        self.parallel_config = _DummyParallelConfig(mesh_size=3)
+        # metadata may be empty for our direct call to _prepare_cp_input
+        self.hook = ContextParallelSplitHook(metadata={}, parallel_config=self.parallel_config)
+        self.module = DummyModel(in_features=1, hidden_features=1, out_features=1, num_layers=1)
+        # initialize_hook builds module_forward_metadata inside the hook
+        self.hook.initialize_hook(self.module)
+        # attach forward metadata to the module exactly how HookRegistry would do
+        self.module._forward_metadata = self.hook.module_forward_metadata
+
+    def test_prepare_cp_input_pads_hidden_states_and_stores_original(self):
+        # create a tensor with seq_len = 7 along dim=1 (batch, seq, hidden)
+        x = torch.randn(1, 7, 16)
+
+        cp_input = _DummyCPInput(split_dim=1, expected_dims=3, split_output=False)
+
+        # Patch shard to identity so we can inspect the padded tensor directly
+        with patch.object(EquipartitionSharder, "shard", side_effect=lambda t, dim, mesh: t) as mock_shard:
+            out = self.hook._prepare_cp_input(x, cp_input, name="hidden_states")
+
+        # The hook should have padded seq_len from 7 -> 9 since world_size=3
+        self.assertEqual(out.shape[1], 9)
+
+        # ensure shard was called once with the expected dim and mesh
+        mock_shard.assert_called_once()
+        called_args, _ = mock_shard.call_args
+        # called_args = (tensor, dim, mesh)
+        self.assertEqual(called_args[1], cp_input.split_dim)
+        self.assertIs(called_args[2], self.parallel_config._flattened_mesh)
+
+        # The hook should have recorded the original sequence length and pad dim
+        # on the module's metadata so the gather hook can later trim.
+        self.assertTrue(hasattr(self.module._forward_metadata, "_cp_original_s"))
+        self.assertTrue(hasattr(self.module._forward_metadata, "_cp_pad_dim"))
+        self.assertEqual(self.module._forward_metadata._cp_original_s, 7)
+        self.assertEqual(self.module._forward_metadata._cp_pad_dim, 1)
+
+    def test_prepare_cp_input_pads_attention_mask_with_zeros(self):
+        # attention masks are typically shape (batch, seq)
+        # create seq_len = 7 mask with ones
+        mask = torch.ones(1, 7, dtype=torch.long)
+
+        cp_input = _DummyCPInput(split_dim=1, expected_dims=2, split_output=False)
+
+        # Patch shard to identity
+        with patch.object(EquipartitionSharder, "shard", side_effect=lambda t, dim, mesh: t):
+            out_mask = self.hook._prepare_cp_input(mask, cp_input, name="encoder_attention_mask")
+
+        # After padding it should be shape (1, 9)
+        self.assertEqual(out_mask.shape[1], 9)
+        # The padded values should be zeros (pad_value used in code for masks)
+        # Check the last two positions are zero
+        padded_portion = out_mask[:, -2:]
+        self.assertTrue(torch.equal(padded_portion, torch.zeros_like(padded_portion)))
+
+    def test_prepare_cp_input_no_pad_when_divisible(self):
+        # seq_len is already divisible by world_size (3), e.g., 6
+        x = torch.randn(1, 6, 16)
+        cp_input = _DummyCPInput(split_dim=1, expected_dims=3, split_output=False)
+
+        with patch.object(EquipartitionSharder, "shard", side_effect=lambda t, dim, mesh: t):
+            out = self.hook._prepare_cp_input(x, cp_input, name="hidden_states")
+
+        # no padding should be performed
+        self.assertEqual(out.shape[1], 6)
+        # and no _cp_original_s/_cp_pad_dim set because not padded
+        self.assertFalse(hasattr(self.hook.module_forward_metadata, "_cp_original_s"))
+        self.assertFalse(hasattr(self.hook.module_forward_metadata, "_cp_pad_dim"))
