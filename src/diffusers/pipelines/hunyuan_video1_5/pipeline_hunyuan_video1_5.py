@@ -227,13 +227,14 @@ class HunyuanVideo15Pipeline(DiffusionPipeline):
         self.video_processor = HunyuanVideo15ImageProcessor(vae_scale_factor=self.vae_scale_factor_spatial)
         self.target_size = self.transformer.config.target_size if getattr(self, "transformer", None) else 640
         self.vision_states_dim = self.transformer.config.image_embed_dim if getattr(self, "transformer", None) else 1152
+        self.num_channels_latents = self.vae.latent_channels if hasattr(self, "vae") else 32
         # fmt: off
-        self.system_message ="You are a helpful assistant. Describe the video by detailing the following aspects: \
-                1. The main content and theme of the video. \
-                2. The color, shape, size, texture, quantity, text, and spatial relationships of the objects. \
-                3. Actions, events, behaviors temporal relationships, physical movement changes of the objects. \
-                4. background environment, light, style and atmosphere. \
-                5. camera angles, movements, and transitions used in the video."
+        self.system_message = "You are a helpful assistant. Describe the video by detailing the following aspects: \
+        1. The main content and theme of the video. \
+        2. The color, shape, size, texture, quantity, text, and spatial relationships of the objects. \
+        3. Actions, events, behaviors temporal relationships, physical movement changes of the objects. \
+        4. background environment, light, style and atmosphere. \
+        5. camera angles, movements, and transitions used in the video."
         # fmt: on
         self.prompt_template_encode_start_idx = 108
         self.tokenizer_max_length = 1000
@@ -253,11 +254,11 @@ class HunyuanVideo15Pipeline(DiffusionPipeline):
         num_hidden_layers_to_skip: int = 2,
         # fmt: off
         system_message: str = "You are a helpful assistant. Describe the video by detailing the following aspects: \
-                1. The main content and theme of the video. \
-                2. The color, shape, size, texture, quantity, text, and spatial relationships of the objects. \
-                3. Actions, events, behaviors temporal relationships, physical movement changes of the objects. \
-                4. background environment, light, style and atmosphere. \
-                5. camera angles, movements, and transitions used in the video.",
+        1. The main content and theme of the video. \
+        2. The color, shape, size, texture, quantity, text, and spatial relationships of the objects. \
+        3. Actions, events, behaviors temporal relationships, physical movement changes of the objects. \
+        4. background environment, light, style and atmosphere. \
+        5. camera angles, movements, and transitions used in the video.",
         # fmt: on
         crop_start: int = 108,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -286,11 +287,12 @@ class HunyuanVideo15Pipeline(DiffusionPipeline):
             attention_mask=prompt_attention_mask,
             output_hidden_states=True,
         ).hidden_states[-(num_hidden_layers_to_skip + 1)]
-        prompt_embeds = prompt_embeds.to(dtype=dtype)
 
         if crop_start is not None and crop_start > 0:
             prompt_embeds = prompt_embeds[:, crop_start:]
             prompt_attention_mask = prompt_attention_mask[:, crop_start:]
+
+        prompt_embeds = prompt_embeds.to(dtype=dtype)
 
         return prompt_embeds, prompt_attention_mask
 
@@ -578,7 +580,7 @@ class HunyuanVideo15Pipeline(DiffusionPipeline):
         negative_prompt: Union[str, List[str]] = None,
         height: Optional[int] = None,
         width: Optional[int] = None,
-        num_frames: int = 129,
+        num_frames: int = 121,
         num_inference_steps: int = 50,
         sigmas: List[float] = None,
         num_videos_per_prompt: Optional[int] = 1,
@@ -752,10 +754,9 @@ class HunyuanVideo15Pipeline(DiffusionPipeline):
         timesteps, num_inference_steps = retrieve_timesteps(self.scheduler, num_inference_steps, device, sigmas=sigmas)
 
         # 5. Prepare latent variables
-        num_channels_latents = self.transformer.config.in_channels
         latents = self.prepare_latents(
             batch_size * num_videos_per_prompt,
-            num_channels_latents,
+            self.num_channels_latents,
             height,
             width,
             num_frames,
@@ -877,7 +878,7 @@ class HunyuanVideo15Pipeline(DiffusionPipeline):
 
         if not output_type == "latent":
             latents = latents.to(self.vae.dtype) / self.vae.config.scaling_factor
-            video = self.vae.decode(latents, return_dict=False, generator=generator)[0]
+            video = self.vae.decode(latents, return_dict=False)[0]
             video = self.video_processor.postprocess_video(video, output_type=output_type)
         else:
             video = latents
