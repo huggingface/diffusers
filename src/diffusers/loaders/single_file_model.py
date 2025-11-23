@@ -134,6 +134,10 @@ SINGLE_FILE_LOADABLE_CLASSES = {
         "checkpoint_mapping_fn": convert_lumina2_to_diffusers,
         "default_subfolder": "transformer",
     },
+    "Lumina2AccessoryTransformer2DModel": {
+        "checkpoint_mapping_fn": convert_lumina2_to_diffusers,
+        "default_subfolder": "transformer",
+    },
     "SanaTransformer2DModel": {
         "checkpoint_mapping_fn": convert_sana_transformer_to_diffusers,
         "default_subfolder": "transformer",
