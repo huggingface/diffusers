@@ -250,9 +250,7 @@ class QwenImageControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
         batch_size, text_seq_len = encoder_hidden_states.shape[:2]
         if txt_seq_lens is not None:
             if len(txt_seq_lens) != batch_size:
-                raise ValueError(
-                    f"`txt_seq_lens` must have length {batch_size}, but got {len(txt_seq_lens)} instead."
-                )
+                raise ValueError(f"`txt_seq_lens` must have length {batch_size}, but got {len(txt_seq_lens)} instead.")
             text_seq_len = max(text_seq_len, max(txt_seq_lens))
         elif encoder_hidden_states_mask is not None:
             text_seq_len = max(text_seq_len, int(encoder_hidden_states_mask.sum(dim=1).max().item()))
