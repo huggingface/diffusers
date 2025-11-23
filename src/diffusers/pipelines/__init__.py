@@ -820,12 +820,12 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             WanVACEPipeline,
             WanVideoToVideoPipeline,
         )
-        from .z_image import ZImagePipeline
         from .wuerstchen import (
             WuerstchenCombinedPipeline,
             WuerstchenDecoderPipeline,
             WuerstchenPriorPipeline,
         )
+        from .z_image import ZImagePipeline
 
         try:
             if not is_onnx_available():

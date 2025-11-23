@@ -16,10 +16,11 @@ import itertools
 import math
 from typing import List, Optional, Tuple
 
-from einops import rearrange
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from einops import rearrange
+
 
 try:
     from flash_attn import flash_attn_varlen_func
@@ -33,10 +34,10 @@ except ImportError:
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
+from ...models.attention_processor import Attention
 from ...models.modeling_utils import ModelMixin
 from ...utils.torch_utils import maybe_allow_in_graph
-from ...models.attention_processor import Attention
-from ...models.attention_dispatch import dispatch_attention_fn
+
 
 ADALN_EMBED_DIM = 256
 SEQ_MULTI_OF = 32
@@ -88,10 +89,10 @@ class TimestepEmbedder(nn.Module):
 
 class ZSingleStreamAttnProcessor:
     """
-    Processor for Z-Image single stream attention that adapts the existing Attention class
-    to match the behavior of the original Z-ImageAttention module.
+    Processor for Z-Image single stream attention that adapts the existing Attention class to match the behavior of the
+    original Z-ImageAttention module.
     """
-    
+
     _attention_backend = None
     _parallel_config = None
 
@@ -107,24 +108,24 @@ class ZSingleStreamAttnProcessor:
     ) -> torch.Tensor:
         x_shard = hidden_states
         x_freqs_cis_shard = image_rotary_emb
-        
+
         query = attn.to_q(x_shard)
         key = attn.to_k(x_shard)
         value = attn.to_v(x_shard)
-        
+
         seqlen_shard = x_shard.shape[0]
-        
+
         # Reshape to [seq_len, heads, head_dim]
         head_dim = query.shape[-1] // attn.heads
         query = query.view(seqlen_shard, attn.heads, head_dim)
         key = key.view(seqlen_shard, attn.heads, head_dim)
-        value = value.view(seqlen_shard, attn.heads, head_dim)        
+        value = value.view(seqlen_shard, attn.heads, head_dim)
         # Apply Norms
         if attn.norm_q is not None:
             query = attn.norm_q(query)
         if attn.norm_k is not None:
             key = attn.norm_k(key)
-            
+
         # Apply RoPE
         def apply_rotary_emb(x_in: torch.Tensor, freqs_cis: torch.Tensor) -> torch.Tensor:
             with torch.amp.autocast("cuda", enabled=False):
@@ -136,17 +137,17 @@ class ZSingleStreamAttnProcessor:
         if x_freqs_cis_shard is not None:
             query = apply_rotary_emb(query, x_freqs_cis_shard)
             key = apply_rotary_emb(key, x_freqs_cis_shard)
-            
+
         # Cast to correct dtype
         dtype = query.dtype
         query, key = query.to(dtype), key.to(dtype)
-        
+
         # Flash Attention
         softmax_scale = math.sqrt(1 / head_dim)
         assert dtype in [torch.float16, torch.bfloat16]
-        
+
         if x_cu_seqlens is None or x_max_item_seqlen is None:
-             raise ValueError("x_cu_seqlens and x_max_item_seqlen are required for ZSingleStreamAttnProcessor")
+            raise ValueError("x_cu_seqlens and x_max_item_seqlen are required for ZSingleStreamAttnProcessor")
 
         if flash_attn_varlen_func is not None:
             output = flash_attn_varlen_func(
@@ -164,45 +165,50 @@ class ZSingleStreamAttnProcessor:
             output = output.flatten(-2)
         else:
             seqlens = (x_cu_seqlens[1:] - x_cu_seqlens[:-1]).cpu().tolist()
-            
+
             q_split = torch.split(query, seqlens, dim=0)
             k_split = torch.split(key, seqlens, dim=0)
             v_split = torch.split(value, seqlens, dim=0)
-            
+
             q_padded = torch.nn.utils.rnn.pad_sequence(q_split, batch_first=True)
             k_padded = torch.nn.utils.rnn.pad_sequence(k_split, batch_first=True)
             v_padded = torch.nn.utils.rnn.pad_sequence(v_split, batch_first=True)
-            
+
             batch_size, max_seqlen, _, _ = q_padded.shape
-            
+
             mask = torch.zeros((batch_size, max_seqlen), dtype=torch.bool, device=query.device)
             for i, l in enumerate(seqlens):
                 mask[i, :l] = True
-                
+
             attn_mask = torch.zeros((batch_size, 1, 1, max_seqlen), dtype=query.dtype, device=query.device)
             attn_mask.masked_fill_(~mask[:, None, None, :], torch.finfo(query.dtype).min)
-            
+
             q_padded = q_padded.transpose(1, 2)
             k_padded = k_padded.transpose(1, 2)
             v_padded = v_padded.transpose(1, 2)
-            
+
             output = F.scaled_dot_product_attention(
-                q_padded, k_padded, v_padded, attn_mask=attn_mask, dropout_p=0.0, scale=softmax_scale
+                q_padded,
+                k_padded,
+                v_padded,
+                attn_mask=attn_mask,
+                dropout_p=0.0,
+                scale=softmax_scale,
             )
-            
+
             output = output.transpose(1, 2)
-            
+
             out_list = []
             for i, l in enumerate(seqlens):
                 out_list.append(output[i, :l])
-            
+
             output = torch.cat(out_list, dim=0)
             output = output.flatten(-2)
 
         output = attn.to_out[0](output)
-        if len(attn.to_out) > 1: # dropout
-             output = attn.to_out[1](output)
-             
+        if len(attn.to_out) > 1:  # dropout
+            output = attn.to_out[1](output)
+
         return output
 
 
@@ -226,12 +232,19 @@ class FeedForward(nn.Module):
 @maybe_allow_in_graph
 class ZImageTransformerBlock(nn.Module):
     def __init__(
-        self, layer_id: int, dim: int, n_heads: int, n_kv_heads: int, norm_eps: float, qk_norm: bool, modulation=True
+        self,
+        layer_id: int,
+        dim: int,
+        n_heads: int,
+        n_kv_heads: int,
+        norm_eps: float,
+        qk_norm: bool,
+        modulation=True,
     ):
         super().__init__()
         self.dim = dim
         self.head_dim = dim // n_heads
-        
+
         # Refactored to use diffusers Attention with custom processor
         # Original Z-Image params: dim, n_heads, n_kv_heads, qk_norm
         self.attention = Attention(
@@ -244,7 +257,7 @@ class ZImageTransformerBlock(nn.Module):
             bias=False,
             processor=ZSingleStreamAttnProcessor(),
         )
-        
+
         self.feed_forward = FeedForward(dim=dim, hidden_dim=int(dim / 3 * 8))
         self.layer_id = layer_id
 
@@ -284,7 +297,12 @@ class ZImageTransformerBlock(nn.Module):
             x_src_ids_shard = None
 
         x_shard = self.attn_forward(
-            x_shard, x_freqs_cis_shard, x_cu_seqlens, x_max_item_seqlen, scale_gate_msa, x_src_ids_shard
+            x_shard,
+            x_freqs_cis_shard,
+            x_cu_seqlens,
+            x_max_item_seqlen,
+            scale_gate_msa,
+            x_src_ids_shard,
         )
 
         x_shard = self.ffn_forward(x_shard, scale_gate_mlp, x_src_ids_shard)
@@ -303,22 +321,22 @@ class ZImageTransformerBlock(nn.Module):
         if self.modulation:
             assert scale_gate is not None and x_src_ids_shard is not None
             scale_msa, gate_msa = scale_gate
-            
+
             # Pass extra args needed for ZSingleStreamAttnProcessor
             attn_out = self.attention(
                 self.attention_norm1(x_shard) * scale_msa[x_src_ids_shard],
                 image_rotary_emb=x_freqs_cis_shard,
                 x_cu_seqlens=x_cu_seqlens,
-                x_max_item_seqlen=x_max_item_seqlen
+                x_max_item_seqlen=x_max_item_seqlen,
             )
-            
+
             x_shard = x_shard + gate_msa[x_src_ids_shard] * self.attention_norm2(attn_out)
         else:
             attn_out = self.attention(
                 self.attention_norm1(x_shard),
                 image_rotary_emb=x_freqs_cis_shard,
                 x_cu_seqlens=x_cu_seqlens,
-                x_max_item_seqlen=x_max_item_seqlen
+                x_max_item_seqlen=x_max_item_seqlen,
             )
             x_shard = x_shard + self.attention_norm2(attn_out)
         return x_shard
@@ -371,7 +389,10 @@ class FinalLayer(nn.Module):
 
 class RopeEmbedder:
     def __init__(
-        self, theta: float = 256.0, axes_dims: List[int] = (16, 56, 56), axes_lens: List[int] = (64, 128, 128)
+        self,
+        theta: float = 256.0,
+        axes_dims: List[int] = (16, 56, 56),
+        axes_lens: List[int] = (64, 128, 128),
     ):
         self.theta = theta
         self.axes_dims = axes_dims
@@ -458,13 +479,29 @@ class ZImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
         self.all_final_layer = nn.ModuleDict(all_final_layer)
         self.noise_refiner = nn.ModuleList(
             [
-                ZImageTransformerBlock(1000 + layer_id, dim, n_heads, n_kv_heads, norm_eps, qk_norm, modulation=True)
+                ZImageTransformerBlock(
+                    1000 + layer_id,
+                    dim,
+                    n_heads,
+                    n_kv_heads,
+                    norm_eps,
+                    qk_norm,
+                    modulation=True,
+                )
                 for layer_id in range(n_refiner_layers)
             ]
         )
         self.context_refiner = nn.ModuleList(
             [
-                ZImageTransformerBlock(layer_id, dim, n_heads, n_kv_heads, norm_eps, qk_norm, modulation=False)
+                ZImageTransformerBlock(
+                    layer_id,
+                    dim,
+                    n_heads,
+                    n_kv_heads,
+                    norm_eps,
+                    qk_norm,
+                    modulation=False,
+                )
                 for layer_id in range(n_refiner_layers)
             ]
         )
@@ -524,8 +561,6 @@ class ZImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
         patch_size: int,
         f_patch_size: int,
     ):
-
-        bsz = len(all_image)
         pH = pW = patch_size
         pF = f_patch_size
         device = all_image[0].device
@@ -560,7 +595,10 @@ class ZImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
                 )
             )
             # padded feature
-            cap_padded_feat = torch.cat([all_cap_feats[i], all_cap_feats[i][-1:].repeat(cap_padding_len, 1)], dim=0)
+            cap_padded_feat = torch.cat(
+                [all_cap_feats[i], all_cap_feats[i][-1:].repeat(cap_padding_len, 1)],
+                dim=0,
+            )
             all_cap_feats_out.append(cap_padded_feat)
 
             ### Process Image
@@ -623,7 +661,6 @@ class ZImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
         patch_size=2,
         f_patch_size=1,
     ):
-
         assert patch_size in self.all_patch_size
         assert f_patch_size in self.all_f_patch_size
 
@@ -649,7 +686,11 @@ class ZImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
         assert all(_ % SEQ_MULTI_OF == 0 for _ in x_item_seqlens)
         x_max_item_seqlen = max(x_item_seqlens)
         x_cu_seqlens = F.pad(
-            torch.cumsum(torch.tensor(x_item_seqlens, dtype=torch.int32, device=device), dim=0, dtype=torch.int32),
+            torch.cumsum(
+                torch.tensor(x_item_seqlens, dtype=torch.int32, device=device),
+                dim=0,
+                dtype=torch.int32,
+            ),
             (1, 0),
         )
         x_src_ids = [
@@ -666,7 +707,14 @@ class ZImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
         x_shard = self.all_x_embedder[f"{patch_size}-{f_patch_size}"](x_shard)
         x_shard[x_pad_mask_shard] = self.x_pad_token
         for layer in self.noise_refiner:
-            x_shard = layer(x_shard, x_src_ids_shard, x_freqs_cis_shard, x_cu_seqlens, x_max_item_seqlen, adaln_input)
+            x_shard = layer(
+                x_shard,
+                x_src_ids_shard,
+                x_freqs_cis_shard,
+                x_cu_seqlens,
+                x_max_item_seqlen,
+                adaln_input,
+            )
         x_flatten = x_shard
 
         # cap embed & refine
@@ -674,7 +722,11 @@ class ZImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
         assert all(_ % SEQ_MULTI_OF == 0 for _ in cap_item_seqlens)
         cap_max_item_seqlen = max(cap_item_seqlens)
         cap_cu_seqlens = F.pad(
-            torch.cumsum(torch.tensor(cap_item_seqlens, dtype=torch.int32, device=device), dim=0, dtype=torch.int32),
+            torch.cumsum(
+                torch.tensor(cap_item_seqlens, dtype=torch.int32, device=device),
+                dim=0,
+                dtype=torch.int32,
+            ),
             (1, 0),
         )
         cap_src_ids = [
@@ -705,14 +757,20 @@ class ZImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
             return list(itertools.chain(*zip(l1, l2)))
 
         unified = torch.cat(
-            merge_interleave(cap_flatten.split(cap_item_seqlens, dim=0), x_flatten.split(x_item_seqlens, dim=0)), dim=0
+            merge_interleave(
+                cap_flatten.split(cap_item_seqlens, dim=0),
+                x_flatten.split(x_item_seqlens, dim=0),
+            ),
+            dim=0,
         )
         unified_item_seqlens = [a + b for a, b in zip(cap_item_seqlens, x_item_seqlens)]
         assert len(unified) == sum(unified_item_seqlens)
         unified_max_item_seqlen = max(unified_item_seqlens)
         unified_cu_seqlens = F.pad(
             torch.cumsum(
-                torch.tensor(unified_item_seqlens, dtype=torch.int32, device=device), dim=0, dtype=torch.int32
+                torch.tensor(unified_item_seqlens, dtype=torch.int32, device=device),
+                dim=0,
+                dtype=torch.int32,
             ),
             (1, 0),
         )

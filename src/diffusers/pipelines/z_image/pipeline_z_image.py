@@ -13,7 +13,6 @@
 # limitations under the License.
 
 import inspect
-import math
 from typing import Any, Callable, Dict, List, Optional, Union
 
 import torch
@@ -25,9 +24,10 @@ from ...models.autoencoders import AutoencoderKL
 from ...models.transformers import ZImageTransformer2DModel
 from ...pipelines.pipeline_utils import DiffusionPipeline
 from ...schedulers import FlowMatchEulerDiscreteScheduler
-from ...utils import USE_PEFT_BACKEND, logging, replace_example_docstring
+from ...utils import logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from .pipeline_output import ZImagePipelineOutput
+
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
@@ -42,7 +42,14 @@ EXAMPLE_DOC_STRING = """
         >>> prompt = "一幅为名为“造相「Z-IMAGE-TURBO」”的项目设计的创意海报。画面巧妙地将文字概念视觉化：一辆复古蒸汽小火车化身为巨大的拉链头，正拉开厚厚的冬日积雪，展露出一个生机盎然的春天。"
         >>> # Depending on the variant being used, the pipeline call will slightly vary.
         >>> # Refer to the pipeline documentation for more details.
-        >>> image = pipe(prompt, height=1024, width=1024, num_inference_steps=9, guidance_scale=0.0, generator=torch.Generator("cuda").manual_seed(42)).images[0]
+        >>> image = pipe(
+        ...     prompt,
+        ...     height=1024,
+        ...     width=1024,
+        ...     num_inference_steps=9,
+        ...     guidance_scale=0.0,
+        ...     generator=torch.Generator("cuda").manual_seed(42),
+        ... ).images[0]
         >>> image.save("zimage.png")
         ```
 """
@@ -162,7 +169,6 @@ class ZImagePipeline(DiffusionPipeline, FromSingleFileMixin):
         max_sequence_length: int = 512,
         lora_scale: Optional[float] = None,
     ):
-
         prompt = [prompt] if isinstance(prompt, str) else prompt
         prompt_embeds = self._encode_prompt(
             prompt=prompt,
@@ -198,7 +204,6 @@ class ZImagePipeline(DiffusionPipeline, FromSingleFileMixin):
         prompt_embeds: Optional[List[torch.FloatTensor]] = None,
         max_sequence_length: int = 512,
     ) -> List[torch.FloatTensor]:
-
         assert num_images_per_prompt == 1
         device = device or self._execution_device
 
@@ -326,7 +331,6 @@ class ZImagePipeline(DiffusionPipeline, FromSingleFileMixin):
             return config.item()
         elif isinstance(config, (tuple, list)):
             assert isinstance(config[0], (float, int, str))
-            assert all([isinstance(x, (tuple, list, str)) for x in config[1:]])
             result = config[0]
             for thresh, val in config[1:]:
                 if t >= thresh:
@@ -414,8 +418,8 @@ class ZImagePipeline(DiffusionPipeline, FromSingleFileMixin):
                 The output format of the generate image. Choose between
                 [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
             return_dict (`bool`, *optional*, defaults to `True`):
-                Whether or not to return a [`~pipelines.stable_diffusion.ZImagePipelineOutput`] instead of a
-                plain tuple.
+                Whether or not to return a [`~pipelines.stable_diffusion.ZImagePipelineOutput`] instead of a plain
+                tuple.
             joint_attention_kwargs (`dict`, *optional*):
                 A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
                 `self.processor` in
@@ -435,9 +439,9 @@ class ZImagePipeline(DiffusionPipeline, FromSingleFileMixin):
         Examples:
 
         Returns:
-            [`~pipelines.z_image.ZImagePipelineOutput`] or `tuple`:
-            [`~pipelines.z_image.ZImagePipelineOutput`] if `return_dict` is True, otherwise a `tuple`. When
-            returning a tuple, the first element is a list with the generated images.
+            [`~pipelines.z_image.ZImagePipelineOutput`] or `tuple`: [`~pipelines.z_image.ZImagePipelineOutput`] if
+            `return_dict` is True, otherwise a `tuple`. When returning a tuple, the first element is a list with the
+            generated images.
         """
         height = height or 1024
         width = width or 1024
@@ -459,7 +463,9 @@ class ZImagePipeline(DiffusionPipeline, FromSingleFileMixin):
         else:
             batch_size = prompt_embeds.shape[0]
 
-        lora_scale = self.joint_attention_kwargs.get("scale", None) if self.joint_attention_kwargs is not None else None
+        lora_scale = (
+            self.joint_attention_kwargs.get("scale", None) if self.joint_attention_kwargs is not None else None
+        )
         (
             prompt_embeds,
             negative_prompt_embeds,
