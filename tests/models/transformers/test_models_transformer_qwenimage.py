@@ -68,7 +68,6 @@ class QwenImageTransformerTests(ModelTesterMixin, unittest.TestCase):
             "encoder_hidden_states_mask": encoder_hidden_states_mask,
             "timestep": timestep,
             "img_shapes": img_shapes,
-            "txt_seq_lens": encoder_hidden_states_mask.sum(dim=1).tolist(),
         }
 
     def prepare_init_args_and_inputs_for_common(self):
@@ -90,6 +89,34 @@ class QwenImageTransformerTests(ModelTesterMixin, unittest.TestCase):
     def test_gradient_checkpointing_is_applied(self):
         expected_set = {"QwenImageTransformer2DModel"}
         super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
+
+    def test_accepts_short_txt_seq_lens(self):
+        init_dict, inputs = self.prepare_init_args_and_inputs_for_common()
+        model = self.model_class(**init_dict).to(torch_device)
+
+        # Provide a deliberately short txt_seq_lens to ensure the model falls back to the embedding length.
+        inputs["txt_seq_lens"] = [2] * inputs["encoder_hidden_states"].shape[0]
+
+        with torch.no_grad():
+            output = model(**inputs)
+
+        self.assertEqual(output.sample.shape[1], inputs["hidden_states"].shape[1])
+
+    def test_builds_attention_mask_from_encoder_mask(self):
+        init_dict, inputs = self.prepare_init_args_and_inputs_for_common()
+        model = self.model_class(**init_dict).to(torch_device)
+
+        # Create a mask with padding on the last two tokens.
+        encoder_hidden_states_mask = inputs["encoder_hidden_states_mask"].clone()
+        encoder_hidden_states_mask[:, -2:] = 0
+
+        inputs["encoder_hidden_states_mask"] = encoder_hidden_states_mask
+        inputs.pop("txt_seq_lens", None)
+
+        with torch.no_grad():
+            output = model(**inputs)
+
+        self.assertEqual(output.sample.shape[1], inputs["hidden_states"].shape[1])
 
 
 class QwenImageTransformerCompileTests(TorchCompileTesterMixin, unittest.TestCase):

@@ -211,6 +211,9 @@ class QwenImageControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
                 Used to indicate denoising step.
             block_controlnet_hidden_states: (`list` of `torch.Tensor`):
                 A list of tensors that if specified are added to the residuals of transformer blocks.
+            txt_seq_lens (`List[int]`, *optional*):
+                Optional text sequence lengths. If omitted, or shorter than the encoder hidden states length, the model
+                derives the length from the encoder hidden states (or their mask).
             joint_attention_kwargs (`dict`, *optional*):
                 A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
                 `self.processor` in
@@ -244,7 +247,17 @@ class QwenImageControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
 
         temb = self.time_text_embed(timestep, hidden_states)
 
-        image_rotary_emb = self.pos_embed(img_shapes, txt_seq_lens, device=hidden_states.device)
+        batch_size, text_seq_len = encoder_hidden_states.shape[:2]
+        if txt_seq_lens is not None:
+            if len(txt_seq_lens) != batch_size:
+                raise ValueError(
+                    f"`txt_seq_lens` must have length {batch_size}, but got {len(txt_seq_lens)} instead."
+                )
+            text_seq_len = max(text_seq_len, max(txt_seq_lens))
+        elif encoder_hidden_states_mask is not None:
+            text_seq_len = max(text_seq_len, int(encoder_hidden_states_mask.sum(dim=1).max().item()))
+
+        image_rotary_emb = self.pos_embed(img_shapes, text_seq_len, device=hidden_states.device)
 
         timestep = timestep.to(hidden_states.dtype)
         encoder_hidden_states = self.txt_norm(encoder_hidden_states)
