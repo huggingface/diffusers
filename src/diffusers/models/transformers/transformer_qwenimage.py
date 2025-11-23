@@ -346,7 +346,9 @@ class QwenDoubleStreamAttnProcessor2_0:
                 )
 
             text_attention_mask = encoder_hidden_states_mask.to(dtype=torch.bool, device=hidden_states.device)
-            image_attention_mask = torch.ones((batch_size, image_seq_len), dtype=torch.bool, device=hidden_states.device)
+            image_attention_mask = torch.ones(
+                (batch_size, image_seq_len), dtype=torch.bool, device=hidden_states.device
+            )
             joint_attention_mask = torch.cat([text_attention_mask, image_attention_mask], dim=1)
             attention_mask = joint_attention_mask[:, None, None, :]
 
@@ -609,8 +611,8 @@ class QwenImageTransformer2DModel(
             timestep ( `torch.LongTensor`):
                 Used to indicate denoising step.
             txt_seq_lens (`List[int]`, *optional*):
-                Optional text sequence lengths. If not provided, or if any provided values are shorter than the
-                encoder hidden states length, the model falls back to the encoder hidden states length.
+                Optional text sequence lengths. If not provided, or if any provided values are shorter than the encoder
+                hidden states length, the model falls back to the encoder hidden states length.
             attention_kwargs (`dict`, *optional*):
                 A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
                 `self.processor` in
@@ -647,9 +649,7 @@ class QwenImageTransformer2DModel(
         batch_size, text_seq_len = encoder_hidden_states.shape[:2]
         if txt_seq_lens is not None:
             if len(txt_seq_lens) != batch_size:
-                raise ValueError(
-                    f"`txt_seq_lens` must have length {batch_size}, but got {len(txt_seq_lens)} instead."
-                )
+                raise ValueError(f"`txt_seq_lens` must have length {batch_size}, but got {len(txt_seq_lens)} instead.")
             text_seq_len = max(text_seq_len, max(txt_seq_lens))
         elif encoder_hidden_states_mask is not None:
             text_seq_len = max(text_seq_len, int(encoder_hidden_states_mask.sum(dim=1).max().item()))
