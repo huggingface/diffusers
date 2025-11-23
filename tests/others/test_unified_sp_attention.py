@@ -102,10 +102,8 @@ def run(rank, world_size):
             grad_v,
         )
 
-    attn = TemplatedUnifiedAttention()
 
-    out = attn(
-        None,
+    out = TemplatedUnifiedAttention(
         q, k, v, None,
         dropout_p=0.0,
         is_causal=False,
