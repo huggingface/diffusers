@@ -1049,14 +1049,13 @@ def _all_to_all_dim_exchange(x: torch.Tensor, scatter_idx: int = 2, gather_idx: 
         H_LOCAL = H // group_world_size
 
         # B, S_LOCAL, H, D -> group_world_size, S_LOCAL, B, H_LOCAL, D
-        x_temp = (x.reshape(B, S_LOCAL, group_world_size, H_LOCAL, D)
-                  .transpose(0, 2).contiguous()
-        )
+        x_temp = x.reshape(B, S_LOCAL, group_world_size, H_LOCAL, D).transpose(0, 2).contiguous()
+        
 
         if group_world_size >1:
             #maybe here need to use the _all_to_all_single helper to avoid contiguity issues
-            out = funcol.all_to_all_single(x_temp, None, None, group=group)
-            out = _wait_tensor(out)
+            out = _all_to_all_single(x_temp, group=group)
+            #out = _wait_tensor(out)
         else:
             out = x_temp
         # group_world_size, S_LOCAL, B, H_LOCAL, D -> B, S, H_LOCAL, D
@@ -1068,14 +1067,13 @@ def _all_to_all_dim_exchange(x: torch.Tensor, scatter_idx: int = 2, gather_idx: 
         H = H_LOCAL * group_world_size
         S_LOCAL = S // group_world_size
 
-        #
-        x_temp = (x.reshape(B, group_world_size, S_LOCAL, H_LOCAL, D)
-                  .permute(1, 3, 2, 0, 4).reshape(group_world_size, H_LOCAL, S_LOCAL, B, D))
+        #B, S, H_LOCAL, D -> group_world_size, H_LOCAL, S_LOCAL, B, D
+        x_temp = x.reshape(B, group_world_size, S_LOCAL, H_LOCAL, D).permute(1, 3, 2, 0, 4).reshape(group_world_size, H_LOCAL, S_LOCAL, B, D)
         
         if group_world_size >1:
             #maybe here need to use the _all_to_all_single helper to avoid contiguity issues
-            output = funcol.all_to_all_single(x_temp, None, None, group)
-            output = _wait_tensor(output)
+            output = _all_to_all_single(x_temp, group)
+            #output = _wait_tensor(output)
         else:
             output = x_temp
         output = output.reshape(H, S_LOCAL, B, D).transpose(0, 2).contiguous()
@@ -1094,8 +1092,14 @@ class SeqAllToAllDim(torch.autograd.Function):
         return _all_to_all_dim_exchange(input, scatter_id, gather_id, group)
 
     @staticmethod
-    def backward(ctx, *grad_outputs):
-        return (None, _all_to_all_dim_exchange(grad_outputs[0], ctx.gather_id, ctx.scatter_id, ctx.group), None, None)
+    def backward(ctx, grad_outputs):
+        grad_input = SeqAllToAllDim.apply(
+            ctx.group,
+            grad_outputs,
+            ctx.gather_id,   # reversed
+            ctx.scatter_id,  # reversed
+        )
+        return (None, grad_input, None, None)
 
 
 
@@ -1317,62 +1321,64 @@ class TemplatedUlyssesAttention(torch.autograd.Function):
 
         return grad_query, grad_key, grad_value, None, None, None, None, None, None, None, None
 
-class TemplatedUnifiedAttention(torch.nn.Module):
-    @staticmethod
-    def forward(ctx: torch.autograd.function.FunctionCtx,
-        query: torch.Tensor,
-        key: torch.Tensor,
-        value: torch.Tensor,
-        attn_mask: Optional[torch.Tensor],
-        dropout_p: float,
-        is_causal: bool,
-        scale: Optional[float],
-        enable_gqa: bool,
-        return_lse: bool,
+def TemplatedUnifiedAttention(
+    query: torch.Tensor,
+    key: torch.Tensor,
+    value: torch.Tensor,
+    attn_mask: Optional[torch.Tensor],
+    dropout_p: float,
+    is_causal: bool,
+    scale: Optional[float],
+    enable_gqa: bool,
+    return_lse: bool,
+    forward_op,
+    backward_op,
+    _parallel_config: Optional["ParallelConfig"] = None,
+    ):
+    ulysses_mesh = _parallel_config.context_parallel_config._ulysses_mesh
+    ulysses_group = ulysses_mesh.get_group()
+    ring_mesh = _parallel_config.context_parallel_config._ring_mesh
+    ring_group = ring_mesh.get_group()
+    #hardcoded for now
+    scatter_idx = 2
+    gather_idx = 1
+
+    query = SeqAllToAllDim.apply(ulysses_group, query, scatter_idx, gather_idx)
+    key = SeqAllToAllDim.apply(ulysses_group, key, scatter_idx, gather_idx)
+    value = SeqAllToAllDim.apply(ulysses_group, value, scatter_idx, gather_idx)
+    out = TemplatedRingAttention.apply(
+        query,
+        key,
+        value,
+        attn_mask,
+        dropout_p,
+        is_causal,
+        scale,
+        enable_gqa,
+        return_lse,
         forward_op,
         backward_op,
-        _parallel_config: Optional["ParallelConfig"] = None,
-        ):
-        ulysses_mesh = _parallel_config.context_parallel_config._ulysses_mesh
-        ulysses_group = ulysses_mesh.get_group()
-        ring_mesh = _parallel_config.context_parallel_config._ring_mesh
-        ring_group = ring_mesh.get_group()
-        #hardcoded for now
-        scatter_idx = 2
-        gather_idx = 1
-
-        query = SeqAllToAllDim.apply(ulysses_group, query, scatter_idx, gather_idx)
-        key = SeqAllToAllDim.apply(ulysses_group, key, scatter_idx, gather_idx)
-        value = SeqAllToAllDim.apply(ulysses_group, value, scatter_idx, gather_idx)
-        out = TemplatedRingAttention.apply(
-            query,
-            key,
-            value,
-            attn_mask,
-            dropout_p,
-            is_causal,
-            scale,
-            enable_gqa,
-            return_lse,
-            forward_op,
-            backward_op,
-            _parallel_config,
-        )
-        if return_lse:
-            context_layer, lse, *_ = out
-        else:
-            context_layer = out
-        output = SeqAllToAllDim.apply(
-            ulysses_group,
-            context_layer,
-            gather_idx,
-            scatter_idx,
-        )
-        if return_lse:
-            # not sure if this is correct
-            lse = SeqAllToAllDim.apply(ulysses_group, lse, gather_idx, scatter_idx)
-            return (output, lse)
-        return output
+        _parallel_config,
+    )
+    if return_lse:
+        context_layer, lse, *_ = out
+    else:
+        context_layer = out
+    # Assuming (based on forward ops implementations) context_layer is of shape (B, S, H_LOCAL, D)
+    output = SeqAllToAllDim.apply(
+        ulysses_group,
+        context_layer,
+        gather_idx,
+        scatter_idx,
+    )
+    if return_lse:
+        # not sure if this is correct: Assuming (based on forward ops in ringAttention) 
+        # the lse is of shape (B, S, H_LOCAL)
+        lse = lse.unsqueeze(-1)  # (B, S, H_LOCAL, 1)
+        lse = SeqAllToAllDim.apply(ulysses_group, lse, scatter_idx=2, gather_idx=1)
+        lse = lse.squeeze(-1)
+        return (output, lse)
+    return output
 
 def _templated_context_parallel_attention(
     query: torch.Tensor,
@@ -1397,7 +1403,22 @@ def _templated_context_parallel_attention(
         raise ValueError("GQA is not yet supported for templated attention.")
 
     # TODO: add support for unified attention with ring/ulysses degree both being > 1
-    if _parallel_config.context_parallel_config.ring_degree > 1:
+    if _parallel_config.context_parallel_config.ring_degree > 1 and _parallel_config.context_parallel_config.ulysses_degree > 1:
+        return TemplatedUnifiedAttention(
+            query,
+            key,
+            value,
+            attn_mask,
+            dropout_p,
+            is_causal,
+            scale,
+            enable_gqa,
+            return_lse,
+            forward_op,
+            backward_op,
+            _parallel_config,
+        )
+    elif _parallel_config.context_parallel_config.ring_degree > 1:
         return TemplatedRingAttention.apply(
             query,
             key,
