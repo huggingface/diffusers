@@ -72,8 +72,8 @@ pipe = Kandinsky5T2VPipeline.from_pretrained(model_id, torch_dtype=torch.bfloat1
 
 pipe = pipe.to("cuda")
 pipeline.transformer.set_attention_backend("flex")                            # <--- Set attention bakend to Flex
-pipeline.transformer.compile(mode="max-autotune-no-cudagraphs", dynamic=True) # <--- Compile with max-autotune-no-cudagraphs
 pipeline.enable_model_cpu_offload()                                           # <--- Enable cpu offloading for single GPU inference
+pipeline.transformer.compile(mode="max-autotune-no-cudagraphs", dynamic=True) # <--- Compile with max-autotune-no-cudagraphs
 
 # Generate video
 prompt = "A cat and a dog baking a cake together in a kitchen."
@@ -190,8 +190,8 @@ pipe = Kandinsky5T2VPipeline.from_pretrained(model_id, torch_dtype=torch.bfloat1
 
 pipe = pipe.to("cuda")
 pipeline.transformer.set_attention_backend("flex")                            # <--- Set attention bakend to Flex
-pipeline.transformer.compile(mode="max-autotune-no-cudagraphs", dynamic=True) # <--- Compile with max-autotune-no-cudagraphs
 pipeline.enable_model_cpu_offload()                                           # <--- Enable cpu offloading for single GPU inference
+pipeline.transformer.compile(mode="max-autotune-no-cudagraphs", dynamic=True) # <--- Compile with max-autotune-no-cudagraphs
 
 # Generate video
 image = load_image(
