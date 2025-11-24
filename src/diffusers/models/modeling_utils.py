@@ -1223,32 +1223,29 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                             torch.set_default_dtype(dtype_orig)
 
                         # flashpack requires a single dtype across all parameters
-                        param_dtypes = {p.dtype for p in model.parameters()}
-                        if len(param_dtypes) > 1:
+
+                        try:
+                            assign_from_file(model, flashpack_file)
+                            model.register_to_config(_name_or_path=pretrained_model_name_or_path)
+
+                            if torch_dtype is not None and torch_dtype != getattr(torch, "float8_e4m3fn", None):
+                                model = model.to(torch_dtype)
+
+                            model.eval()
+
+                            if output_loading_info:
+                                loading_info = {
+                                    "missing_keys": [],
+                                    "unexpected_keys": [],
+                                    "mismatched_keys": [],
+                                    "error_msgs": [],
+                                }
+                                return model, loading_info
+
+                            return model
+
+                        except Exception:
                             pass
-                        else:
-                            try:
-                                assign_from_file(model, flashpack_file)
-                                model.register_to_config(_name_or_path=pretrained_model_name_or_path)
-
-                                if torch_dtype is not None and torch_dtype != getattr(torch, "float8_e4m3fn", None):
-                                    model = model.to(torch_dtype)
-
-                                model.eval()
-
-                                if output_loading_info:
-                                    loading_info = {
-                                        "missing_keys": [],
-                                        "unexpected_keys": [],
-                                        "mismatched_keys": [],
-                                        "error_msgs": [],
-                                    }
-                                    return model, loading_info
-
-                                return model
-
-                            except Exception:
-                                pass
             # in the case it is sharded, we have already the index
             if is_sharded:
                 resolved_model_file, sharded_metadata = _get_checkpoint_shard_files(
