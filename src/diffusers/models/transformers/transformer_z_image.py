@@ -304,10 +304,11 @@ class RopeEmbedder:
     def __call__(self, ids: torch.Tensor):
         assert ids.ndim == 2
         assert ids.shape[-1] == len(self.axes_dims)
+        device = ids.device
 
         if self.freqs_cis is None:
             self.freqs_cis = self.precompute_freqs_cis(self.axes_dims, self.axes_lens, theta=self.theta)
-            self.freqs_cis = [freqs_cis.cuda() for freqs_cis in self.freqs_cis]
+            self.freqs_cis = [freqs_cis.to(device) for freqs_cis in self.freqs_cis]
 
         result = []
         for i in range(len(self.axes_dims)):
@@ -596,6 +597,7 @@ class ZImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
             x_freqs_cis[i] = torch.cat([freqs_item, freqs_pad_tensor.repeat(pad_len, 1)])
             x_attn_mask[i, seq_len:] = 0
         x = torch.stack(x)
+        x_freqs_cis = torch.stack(x_freqs_cis)
 
         for layer in self.noise_refiner:
             x = layer(
@@ -638,6 +640,7 @@ class ZImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
             cap_freqs_cis[i] = torch.cat([freqs_item, freqs_pad_tensor.repeat(pad_len, 1)])
             cap_attn_mask[i, seq_len:] = 0
         cap_feats = torch.stack(cap_feats)
+        cap_freqs_cis = torch.stack(cap_freqs_cis)
 
         for layer in self.context_refiner:
             cap_feats = layer(
@@ -680,6 +683,7 @@ class ZImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
             unified_freqs_cis[i] = torch.cat([freqs_item, freqs_pad_tensor.repeat(pad_len, 1)])
             unified_attn_mask[i, seq_len:] = 0
         unified = torch.stack(unified)
+        unified_freqs_cis = torch.stack(unified_freqs_cis)
 
         for layer in self.layers:
             unified = layer(
