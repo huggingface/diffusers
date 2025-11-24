@@ -90,6 +90,12 @@ class ZSingleStreamAttnProcessor:
     _attention_backend = None
     _parallel_config = None
 
+    def __init__(self):
+        if not hasattr(F, "scaled_dot_product_attention"):
+            raise ImportError(
+                "ZSingleStreamAttnProcessor requires PyTorch 2.0. To use it, please upgrade PyTorch to version 2.0 or higher."
+            )
+
     def __call__(
         self,
         attn: Attention,
@@ -493,7 +499,6 @@ class ZImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
 
             image_ori_len = len(image)
             image_padding_len = (-image_ori_len) % SEQ_MULTI_OF
-            # padded_pos_ids
 
             image_ori_pos_ids = self.create_coordinate_grid(
                 size=(F_tokens, H_tokens, W_tokens),
@@ -574,11 +579,7 @@ class ZImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
         x = list(x.split(x_item_seqlens, dim=0))
         x_freqs_cis = list(self.rope_embedder(torch.cat(x_pos_ids, dim=0)).split(x_item_seqlens, dim=0))
 
-        pad_tensor = torch.zeros(
-            (1, self.dim),
-            dtype=x[0].dtype,
-            device=device,
-        )
+        pad_tensor = torch.zeros((1, self.dim), dtype=x[0].dtype, device=device)
         freqs_pad_tensor = torch.zeros(
             (1, self.dim // self.n_heads // 2),
             dtype=x_freqs_cis[0].dtype,
@@ -613,22 +614,19 @@ class ZImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
         cap_feats = list(cap_feats.split(cap_item_seqlens, dim=0))
         cap_freqs_cis = list(self.rope_embedder(torch.cat(cap_pos_ids, dim=0)).split(cap_item_seqlens, dim=0))
 
-        pad_tensor = torch.zeros(
-            (1, self.dim),
-            dtype=cap_feats[0].dtype,
-            device=device,
-        )
-        freqs_pad_tensor = torch.zeros(
-            (1, self.dim // self.n_heads // 2),
-            dtype=cap_freqs_cis[0].dtype,
-            device=device,
+        # Reuse padding tensors (convert dtype if needed)
+        cap_pad_tensor = pad_tensor.to(cap_feats[0].dtype) if pad_tensor.dtype != cap_feats[0].dtype else pad_tensor
+        cap_freqs_pad_tensor = (
+            freqs_pad_tensor.to(cap_freqs_cis[0].dtype)
+            if freqs_pad_tensor.dtype != cap_freqs_cis[0].dtype
+            else freqs_pad_tensor
         )
         cap_attn_mask = torch.ones((bsz, cap_max_item_seqlen), dtype=torch.bool, device=device)
         for i, (item, freqs_item) in enumerate(zip(cap_feats, cap_freqs_cis)):
             seq_len = cap_item_seqlens[i]
             pad_len = cap_max_item_seqlen - seq_len
-            cap_feats[i] = torch.cat([item, pad_tensor.repeat(pad_len, 1)])
-            cap_freqs_cis[i] = torch.cat([freqs_item, freqs_pad_tensor.repeat(pad_len, 1)])
+            cap_feats[i] = torch.cat([item, cap_pad_tensor.repeat(pad_len, 1)])
+            cap_freqs_cis[i] = torch.cat([freqs_item, cap_freqs_pad_tensor.repeat(pad_len, 1)])
             cap_attn_mask[i, seq_len:] = 0
         cap_feats = torch.stack(cap_feats)
         cap_freqs_cis = torch.stack(cap_freqs_cis)
@@ -652,22 +650,18 @@ class ZImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
         assert unified_item_seqlens == [len(_) for _ in unified]
         unified_max_item_seqlen = max(unified_item_seqlens)
 
-        pad_tensor = torch.zeros(
-            (1, self.dim),
-            dtype=unified[0].dtype,
-            device=device,
-        )
-        freqs_pad_tensor = torch.zeros(
-            (1, self.dim // self.n_heads // 2),
-            dtype=unified_freqs_cis[0].dtype,
-            device=device,
+        unified_pad_tensor = pad_tensor.to(unified[0].dtype) if pad_tensor.dtype != unified[0].dtype else pad_tensor
+        unified_freqs_pad_tensor = (
+            freqs_pad_tensor.to(unified_freqs_cis[0].dtype)
+            if freqs_pad_tensor.dtype != unified_freqs_cis[0].dtype
+            else freqs_pad_tensor
         )
         unified_attn_mask = torch.ones((bsz, unified_max_item_seqlen), dtype=torch.bool, device=device)
         for i, (item, freqs_item) in enumerate(zip(unified, unified_freqs_cis)):
             seq_len = unified_item_seqlens[i]
             pad_len = unified_max_item_seqlen - seq_len
-            unified[i] = torch.cat([item, pad_tensor.repeat(pad_len, 1)])
-            unified_freqs_cis[i] = torch.cat([freqs_item, freqs_pad_tensor.repeat(pad_len, 1)])
+            unified[i] = torch.cat([item, unified_pad_tensor.repeat(pad_len, 1)])
+            unified_freqs_cis[i] = torch.cat([freqs_item, unified_freqs_pad_tensor.repeat(pad_len, 1)])
             unified_attn_mask[i, seq_len:] = 0
         unified = torch.stack(unified)
         unified_freqs_cis = torch.stack(unified_freqs_cis)

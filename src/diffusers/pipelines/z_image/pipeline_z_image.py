@@ -193,6 +193,8 @@ class ZImagePipeline(DiffusionPipeline, FromSingleFileMixin):
                 prompt_embeds=negative_prompt_embeds,
                 max_sequence_length=max_sequence_length,
             )
+        else:
+            negative_prompt_embeds = []
         return prompt_embeds, negative_prompt_embeds
 
     def _encode_prompt(
@@ -398,6 +400,18 @@ class ZImagePipeline(DiffusionPipeline, FromSingleFileMixin):
         height = height or 1024
         width = width or 1024
 
+        vae_scale = self.vae_scale_factor * 2
+        if height % vae_scale != 0:
+            raise ValueError(
+                f"Height must be divisible by {vae_scale} (got {height}). "
+                f"Please adjust the height to a multiple of {vae_scale}."
+            )
+        if width % vae_scale != 0:
+            raise ValueError(
+                f"Width must be divisible by {vae_scale} (got {width}). "
+                f"Please adjust the width to a multiple of {vae_scale}."
+            )
+
         assert self.dtype == torch.bfloat16
         dtype = self.dtype
         device = self._execution_device
@@ -447,7 +461,7 @@ class ZImagePipeline(DiffusionPipeline, FromSingleFileMixin):
             generator,
             latents,
         )
-        image_seq_len = (latents.shape[2] // 2) * (latents.shape[3] / 2)
+        image_seq_len = (latents.shape[2] // 2) * (latents.shape[3] // 2)
 
         # 5. Prepare timesteps
         mu = calculate_shift(
@@ -495,12 +509,12 @@ class ZImagePipeline(DiffusionPipeline, FromSingleFileMixin):
                 apply_cfg = self.do_classifier_free_guidance and current_guidance_scale > 0
 
                 if apply_cfg:
-                    # Prepare inputs for CFG
-                    latent_model_input = torch.cat([latents.to(dtype)] * 2)
+                    latents_typed = latents if latents.dtype == dtype else latents.to(dtype)
+                    latent_model_input = latents_typed.repeat(2, 1, 1, 1)
                     prompt_embeds_model_input = prompt_embeds + negative_prompt_embeds
-                    timestep_model_input = torch.cat([timestep] * 2)
+                    timestep_model_input = timestep.repeat(2)
                 else:
-                    latent_model_input = latents.to(dtype)
+                    latent_model_input = latents if latents.dtype == dtype else latents.to(dtype)
                     prompt_embeds_model_input = prompt_embeds
                     timestep_model_input = timestep
 
