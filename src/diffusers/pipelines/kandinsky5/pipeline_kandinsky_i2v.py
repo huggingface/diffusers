@@ -438,13 +438,6 @@ class Kandinsky5I2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
         nFr = 4
         first_frames = samples.clone()[:, :nFr]
         reference_frames_data = samples[:, nFr:nFr + min(reference_frames, samples.shape[1] - 1)]
-        
-        print(samples.shape, first_frames.shape, reference_frames_data.shape, nFr, min(reference_frames, samples.shape[1] - 1))
-        
-        print(reference_frames_data.mean(), reference_frames_data.std(), reference_frames_data.shape)
-
-        print("First frame stats - Mean:", first_frames.mean(dim=(1,2,3)), "Std: ", first_frames.std(dim=(1,2,3)))
-        print(f"Reference frames stats - Mean: {reference_frames_data.mean().item():.4f}, Std: {reference_frames_data.std().item():.4f}")
 
         normalized_first = self.adaptive_mean_std_normalization(first_frames, reference_frames_data)
         if clump_values:
