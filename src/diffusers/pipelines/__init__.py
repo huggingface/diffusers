@@ -152,6 +152,7 @@ else:
         "AudioLDM2ProjectionModel",
         "AudioLDM2UNet2DConditionModel",
     ]
+    _import_structure["autoregressive_block_diffusion"] = ["BaseAutoregressiveDiffusionPipeline"]
     _import_structure["blip_diffusion"] = ["BlipDiffusionPipeline"]
     _import_structure["chroma"] = ["ChromaPipeline", "ChromaImg2ImgPipeline"]
     _import_structure["cogvideo"] = [
@@ -562,6 +563,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AudioLDM2UNet2DConditionModel,
         )
         from .aura_flow import AuraFlowPipeline
+        from .autoregressive_block_diffusion import BaseAutoregressiveDiffusionPipeline
         from .blip_diffusion import BlipDiffusionPipeline
         from .bria import BriaPipeline
         from .bria_fibo import BriaFiboPipeline
