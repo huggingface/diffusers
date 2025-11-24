@@ -1357,6 +1357,7 @@ def _flash_attention(
 @_AttentionBackendRegistry.register(
     AttentionBackendName.FLASH_HUB,
     constraints=[_check_device, _check_qkv_dtype_bf16_or_fp16, _check_shape],
+    supports_context_parallel=False,
 )
 def _flash_attention_hub(
     query: torch.Tensor,
@@ -1368,9 +1369,6 @@ def _flash_attention_hub(
     return_lse: bool = False,
     _parallel_config: Optional["ParallelConfig"] = None,
 ) -> torch.Tensor:
-    if _parallel_config:
-        raise NotImplementedError(f"{AttentionBackendName.FLASH_HUB.value} is not implemented for parallelism yet.")
-
     lse = None
     func = _HUB_KERNELS_REGISTRY[AttentionBackendName.FLASH_HUB].kernel_fn
     out = func(
@@ -1469,6 +1467,7 @@ def _flash_attention_3(
 @_AttentionBackendRegistry.register(
     AttentionBackendName._FLASH_3_HUB,
     constraints=[_check_device, _check_qkv_dtype_bf16_or_fp16, _check_shape],
+    supports_context_parallel=False,
 )
 def _flash_attention_3_hub(
     query: torch.Tensor,
@@ -1993,9 +1992,6 @@ def _sage_attention_hub(
     return_lse: bool = False,
     _parallel_config: Optional["ParallelConfig"] = None,
 ) -> torch.Tensor:
-    if _parallel_config:
-        raise NotImplementedError(f"{AttentionBackendName.SAGE_HUB.value} is not implemented for parallelism yet.")
-
     lse = None
     func = _HUB_KERNELS_REGISTRY[AttentionBackendName.SAGE_HUB].kernel_fn
     if _parallel_config is None:
