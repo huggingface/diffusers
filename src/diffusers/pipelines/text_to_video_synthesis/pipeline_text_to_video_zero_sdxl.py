@@ -461,11 +461,7 @@ class TextToVideoZeroSDXLPipeline(
         self.vae.to(dtype=torch.float32)
         use_torch_2_0_or_xformers = isinstance(
             self.vae.decoder.mid_block.attentions[0].processor,
-            (
-                AttnProcessor2_0,
-                XFormersAttnProcessor,
-                FusedAttnProcessor2_0,
-            ),
+            (AttnProcessor2_0, XFormersAttnProcessor, FusedAttnProcessor2_0),
         )
         # if xformers or torch_2_0 is used attention block does not need
         # to be in float32 which can save lots of memory

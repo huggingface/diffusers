@@ -32,10 +32,7 @@ from ...loaders import (
     TextualInversionLoaderMixin,
 )
 from ...models import AutoencoderKL, ImageProjection, UNet2DConditionModel
-from ...models.attention_processor import (
-    AttnProcessor2_0,
-    XFormersAttnProcessor,
-)
+from ...models.attention_processor import AttnProcessor2_0, FusedAttnProcessor2_0, XFormersAttnProcessor
 from ...models.lora import adjust_lora_scale_text_encoder
 from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import (
@@ -765,10 +762,7 @@ class StableDiffusionXLPAGPipeline(
         self.vae.to(dtype=torch.float32)
         use_torch_2_0_or_xformers = isinstance(
             self.vae.decoder.mid_block.attentions[0].processor,
-            (
-                AttnProcessor2_0,
-                XFormersAttnProcessor,
-            ),
+            (AttnProcessor2_0, XFormersAttnProcessor, FusedAttnProcessor2_0),
         )
         # if xformers or torch_2_0 is used attention block does not need
         # to be in float32 which can save lots of memory
