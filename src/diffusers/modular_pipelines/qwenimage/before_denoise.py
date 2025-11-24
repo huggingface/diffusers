@@ -26,7 +26,7 @@ from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
 from .modular_pipeline import QwenImageModularPipeline, QwenImagePachifier
 
 
-# Copied from diffusers.pipelines.qwenimage.pipeline_qwenimage.calculate_shift
+# Copied from diffusers.pipelines.qwenimage.pipeline_qwen_utils.calculate_shift
 def calculate_shift(
     image_seq_len,
     base_seq_len: int = 256,
