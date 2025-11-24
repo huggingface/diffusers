@@ -91,7 +91,7 @@ def get_resize_crop_region_for_grid(src, tgt_width, tgt_height):
     return (crop_top, crop_left), (crop_top + resize_height, crop_left + resize_width)
 
 
-# Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.retrieve_timesteps
+# Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_utils.retrieve_timesteps
 def retrieve_timesteps(
     scheduler,
     num_inference_steps: Optional[int] = None,

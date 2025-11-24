@@ -128,7 +128,7 @@ def _preprocess_adapter_image(image, height, width):
     return image
 
 
-# Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.retrieve_timesteps
+# Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_utils.retrieve_timesteps
 def retrieve_timesteps(
     scheduler,
     num_inference_steps: Optional[int] = None,

@@ -39,6 +39,7 @@ from ...utils import (
 )
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
+from .pipeline_stable_diffusion_utils import retrieve_latents
 
 
 if is_torch_xla_available():
@@ -49,20 +50,6 @@ else:
     XLA_AVAILABLE = False
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
-
-
-# Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.retrieve_latents
-def retrieve_latents(
-    encoder_output: torch.Tensor, generator: Optional[torch.Generator] = None, sample_mode: str = "sample"
-):
-    if hasattr(encoder_output, "latent_dist") and sample_mode == "sample":
-        return encoder_output.latent_dist.sample(generator)
-    elif hasattr(encoder_output, "latent_dist") and sample_mode == "argmax":
-        return encoder_output.latent_dist.mode()
-    elif hasattr(encoder_output, "latents"):
-        return encoder_output.latents
-    else:
-        raise AttributeError("Could not access latents of provided encoder_output")
 
 
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.preprocess
