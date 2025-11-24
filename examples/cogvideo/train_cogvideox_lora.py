@@ -140,7 +140,7 @@ def get_args():
         "--validation_prompt",
         type=str,
         default=None,
-        help="One or more prompt(s) that is used during validation to verify that the model is learning. Multiple validation prompts should be separated by the '--validation_prompt_seperator' string.",
+        help="One or more prompt(s) that is used during validation to verify that the model is learning. Multiple validation prompts should be separated by the '--validation_prompt_separator' string.",
     )
     parser.add_argument(
         "--validation_prompt_separator",
