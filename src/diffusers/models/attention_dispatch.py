@@ -18,7 +18,17 @@ import inspect
 import math
 from dataclasses import dataclass
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Literal, Optional, Tuple, Union
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Dict,
+    List,
+    Literal,
+    Optional,
+    Tuple,
+    Union,
+)
 
 import torch
 
@@ -68,7 +78,10 @@ _CAN_USE_XFORMERS_ATTN = is_xformers_available() and is_xformers_version(">=", _
 
 if _CAN_USE_FLASH_ATTN:
     from flash_attn import flash_attn_func, flash_attn_varlen_func
-    from flash_attn.flash_attn_interface import _wrapped_flash_attn_backward, _wrapped_flash_attn_forward
+    from flash_attn.flash_attn_interface import (
+        _wrapped_flash_attn_backward,
+        _wrapped_flash_attn_forward,
+    )
 else:
     flash_attn_func = None
     flash_attn_varlen_func = None
@@ -77,9 +90,9 @@ else:
 
 
 if _CAN_USE_FLASH_ATTN_3:
+    from flash_attn_interface import _flash_attn_forward as flash_attn_3_forward
     from flash_attn_interface import flash_attn_func as flash_attn_3_func
     from flash_attn_interface import flash_attn_varlen_func as flash_attn_3_varlen_func
-    from flash_attn_interface import _flash_attn_forward as flash_attn_3_forward
 else:
     flash_attn_3_func = None
     flash_attn_3_varlen_func = None
@@ -122,7 +135,9 @@ else:
 
 
 if _CAN_USE_XLA_ATTN:
-    from torch_xla.experimental.custom_kernel import flash_attention as xla_flash_attention
+    from torch_xla.experimental.custom_kernel import (
+        flash_attention as xla_flash_attention,
+    )
 else:
     xla_flash_attention = None
 
@@ -265,13 +280,17 @@ class _HubKernelConfig:
 _HUB_KERNELS_REGISTRY: Dict["AttentionBackendName", _HubKernelConfig] = {
     # TODO: temporary revision for now. Remove when merged upstream into `main`.
     AttentionBackendName._FLASH_3_HUB: _HubKernelConfig(
-        repo_id="kernels-community/flash-attn3", function_attr="flash_attn_func", revision="fake-ops-return-probs"
+        repo_id="kernels-community/flash-attn3",
+        function_attr="flash_attn_func",
+        revision="fake-ops-return-probs",
     )
 }
 
 
 @contextlib.contextmanager
-def attention_backend(backend: Union[str, AttentionBackendName] = AttentionBackendName.NATIVE):
+def attention_backend(
+    backend: Union[str, AttentionBackendName] = AttentionBackendName.NATIVE,
+):
     """
     Context manager to set the active attention backend.
     """
@@ -416,7 +435,10 @@ def _check_attention_backend_requirements(backend: AttentionBackendName) -> None
                 f"Flash Attention backend '{backend.value}' is not usable because of missing package or the version is too old. Please install `flash-attn>={_REQUIRED_FLASH_VERSION}`."
             )
 
-    elif backend in [AttentionBackendName._FLASH_3, AttentionBackendName._FLASH_VARLEN_3]:
+    elif backend in [
+        AttentionBackendName._FLASH_3,
+        AttentionBackendName._FLASH_VARLEN_3,
+    ]:
         if not _CAN_USE_FLASH_ATTN_3:
             raise RuntimeError(
                 f"Flash Attention 3 backend '{backend.value}' is not usable because of missing package or the version is too old. Please build FA3 beta release from source."
@@ -488,7 +510,11 @@ def _prepare_for_flash_attn_or_sage_varlen_without_mask(
     cu_seqlens_k[1:] = torch.cumsum(seqlens_k, dim=0)
     max_seqlen_q = seqlens_q.max().item()
     max_seqlen_k = seqlens_k.max().item()
-    return (seqlens_q, seqlens_k), (cu_seqlens_q, cu_seqlens_k), (max_seqlen_q, max_seqlen_k)
+    return (
+        (seqlens_q, seqlens_k),
+        (cu_seqlens_q, cu_seqlens_k),
+        (max_seqlen_q, max_seqlen_k),
+    )
 
 
 def _prepare_for_flash_attn_or_sage_varlen_with_mask(
@@ -505,7 +531,11 @@ def _prepare_for_flash_attn_or_sage_varlen_with_mask(
     cu_seqlens_k[1:] = torch.cumsum(seqlens_k, dim=0)
     max_seqlen_q = seqlens_q.max().item()
     max_seqlen_k = seqlens_k.max().item()
-    return (seqlens_q, seqlens_k), (cu_seqlens_q, cu_seqlens_k), (max_seqlen_q, max_seqlen_k)
+    return (
+        (seqlens_q, seqlens_k),
+        (cu_seqlens_q, cu_seqlens_k),
+        (max_seqlen_q, max_seqlen_k),
+    )
 
 
 def _prepare_for_flash_attn_or_sage_varlen(
@@ -625,7 +655,7 @@ def _wrapped_flash_attn_3(
     window_size = (-1, -1)
     max_seqlen_q = q.shape[2]
     max_seqlen_k = k.shape[2]
-    
+
     out, lse, *_ = flash_attn_3_forward(
         q=q,
         k=k,
@@ -764,7 +794,10 @@ def _native_attention_backward_op(
 
     grad_out_t = grad_out.permute(0, 2, 1, 3)
     grad_query_t, grad_key_t, grad_value_t = torch.autograd.grad(
-        outputs=out, inputs=[query_t, key_t, value_t], grad_outputs=grad_out_t, retain_graph=False
+        outputs=out,
+        inputs=[query_t, key_t, value_t],
+        grad_outputs=grad_out_t,
+        retain_graph=False,
     )
 
     grad_query = grad_query_t.permute(0, 2, 1, 3)
@@ -803,18 +836,26 @@ def _cudnn_attention_forward_op(
     value = value.transpose(1, 2).contiguous()
     tensors_to_save += (query, key, value)
 
-    out, lse, cum_seq_q, cum_seq_k, max_q, max_k, philox_seed, philox_offset, debug_attn_mask = (
-        torch.ops.aten._scaled_dot_product_cudnn_attention(
-            query=query,
-            key=key,
-            value=value,
-            attn_bias=attn_mask,
-            compute_log_sumexp=return_lse,
-            dropout_p=dropout_p,
-            is_causal=is_causal,
-            return_debug_mask=False,
-            scale=scale,
-        )
+    (
+        out,
+        lse,
+        cum_seq_q,
+        cum_seq_k,
+        max_q,
+        max_k,
+        philox_seed,
+        philox_offset,
+        debug_attn_mask,
+    ) = torch.ops.aten._scaled_dot_product_cudnn_attention(
+        query=query,
+        key=key,
+        value=value,
+        attn_bias=attn_mask,
+        compute_log_sumexp=return_lse,
+        dropout_p=dropout_p,
+        is_causal=is_causal,
+        return_debug_mask=False,
+        scale=scale,
     )
 
     tensors_to_save += (out, lse, cum_seq_q, cum_seq_k, philox_seed, philox_offset)
@@ -941,7 +982,11 @@ def _flash_attention_backward_op(
     **kwargs,
 ):
     query, key, value, out, lse, rng_state = ctx.saved_tensors
-    grad_query, grad_key, grad_value = torch.empty_like(query), torch.empty_like(key), torch.empty_like(value)
+    grad_query, grad_key, grad_value = (
+        torch.empty_like(query),
+        torch.empty_like(key),
+        torch.empty_like(value),
+    )
 
     lse_d = _wrapped_flash_attn_backward(  # noqa: F841
         grad_out,
@@ -1165,7 +1210,19 @@ class TemplatedRingAttention(torch.autograd.Function):
 
         grad_query, grad_key, grad_value = (x.to(grad_out.dtype) for x in (grad_query, grad_key, grad_value))
 
-        return grad_query, grad_key, grad_value, None, None, None, None, None, None, None, None
+        return (
+            grad_query,
+            grad_key,
+            grad_value,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
 
 
 class TemplatedUlyssesAttention(torch.autograd.Function):
@@ -1260,7 +1317,19 @@ class TemplatedUlyssesAttention(torch.autograd.Function):
             x.flatten(0, 1).permute(1, 2, 0, 3).contiguous() for x in (grad_query, grad_key, grad_value)
         )
 
-        return grad_query, grad_key, grad_value, None, None, None, None, None, None, None, None
+        return (
+            grad_query,
+            grad_key,
+            grad_value,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
 
 
 def _templated_context_parallel_attention(
@@ -1608,7 +1677,12 @@ def _native_flex_attention(
         block_mask = attn_mask
     elif is_causal:
         block_mask = flex_attention.create_block_mask(
-            _flex_attention_causal_mask_mod, batch_size, num_heads, seq_len_q, seq_len_kv, query.device
+            _flex_attention_causal_mask_mod,
+            batch_size,
+            num_heads,
+            seq_len_q,
+            seq_len_kv,
+            query.device,
         )
     elif torch.is_tensor(attn_mask):
         if attn_mask.ndim == 2:
@@ -1628,6 +1702,7 @@ def _native_flex_attention(
 
             def score_mod(score, batch_idx, head_idx, q_idx, kv_idx):
                 return score + attn_mask[batch_idx, head_idx, q_idx, kv_idx]
+
     else:
         raise ValueError("Attention mask must be either None, a BlockMask, or a 2D/4D tensor.")
 

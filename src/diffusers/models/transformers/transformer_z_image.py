@@ -638,7 +638,9 @@ class ZImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
 
         if torch.is_grad_enabled() and self.gradient_checkpointing:
             for layer in self.layers:
-                unified = self._gradient_checkpointing_func(layer, unified, unified_attn_mask, unified_freqs_cis, adaln_input)
+                unified = self._gradient_checkpointing_func(
+                    layer, unified, unified_attn_mask, unified_freqs_cis, adaln_input
+                )
         else:
             for layer in self.layers:
                 unified = layer(unified, unified_attn_mask, unified_freqs_cis, adaln_input)
