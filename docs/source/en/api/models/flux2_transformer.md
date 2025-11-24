@@ -12,7 +12,7 @@ specific language governing permissions and limitations under the License.
 
 # Flux2Transformer2DModel
 
-A Transformer model for image-like data from [Flux2] (TODO).
+A Transformer model for image-like data from [Flux2](https://hf.co/black-forest-labs/FLUX.2-dev).
 
 ## Flux2Transformer2DModel
 
