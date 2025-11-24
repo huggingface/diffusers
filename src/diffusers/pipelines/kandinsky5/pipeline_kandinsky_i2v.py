@@ -94,7 +94,11 @@ EXAMPLE_DOC_STRING = """
 
 
 def basic_clean(text):
-    """Clean text using ftfy if available and unescape HTML entities."""
+    """
+    Copied from https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/wan/pipeline_wan.py
+    
+    Clean text using ftfy if available and unescape HTML entities.
+    """
     if is_ftfy_available():
         text = ftfy.fix_text(text)
     text = html.unescape(html.unescape(text))
@@ -102,14 +106,22 @@ def basic_clean(text):
 
 
 def whitespace_clean(text):
-    """Normalize whitespace in text by replacing multiple spaces with single space."""
+    """
+    Copied from https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/wan/pipeline_wan.py
+    
+    Normalize whitespace in text by replacing multiple spaces with single space.
+    """
     text = re.sub(r"\s+", " ", text)
     text = text.strip()
     return text
 
 
 def prompt_clean(text):
-    """Apply both basic cleaning and whitespace normalization to prompts."""
+    """
+    Copied from https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/wan/pipeline_wan.py
+    
+    Apply both basic cleaning and whitespace normalization to prompts.
+    """
     text = whitespace_clean(basic_clean(text))
     return text
 
@@ -396,6 +408,53 @@ class Kandinsky5I2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
         pooled_embed = self.text_encoder_2(**inputs)["pooler_output"]
 
         return pooled_embed.to(dtype)
+    
+    @staticmethod
+    def adaptive_mean_std_normalization(source, reference):
+        source_mean = source.mean(dim=(1,2,3,4),keepdim=True)
+        source_std = source.std(dim=(1,2,3,4),keepdim=True)
+        #magic constants - limit changes in latents
+        clump_mean_low = 0.05
+        clump_mean_high = 0.1
+        clump_std_low = 0.1
+        clump_std_high = 0.25
+
+        reference_mean = torch.clamp(reference.mean(), source_mean - clump_mean_low, source_mean + clump_mean_high)
+        reference_std = torch.clamp(reference.std(), source_std - clump_std_low, source_std + clump_std_high)
+
+        # normalization
+        normalized = (source - source_mean) / source_std
+        normalized = normalized * reference_std + reference_mean
+
+        return normalized
+    
+    def normalize_first_frame(self, latents, reference_frames=5, clump_values=False):
+        latents_copy = latents.clone()
+        samples = latents_copy
+
+        if samples.shape[1] <= 1:
+            return (latents, "Only one frame, no normalization needed")
+        
+        nFr = 4
+        first_frames = samples.clone()[:, :nFr]
+        reference_frames_data = samples[:, nFr:nFr + min(reference_frames, samples.shape[1] - 1)]
+        
+        print(samples.shape, first_frames.shape, reference_frames_data.shape, nFr, min(reference_frames, samples.shape[1] - 1))
+        
+        print(reference_frames_data.mean(), reference_frames_data.std(), reference_frames_data.shape)
+
+        print("First frame stats - Mean:", first_frames.mean(dim=(1,2,3)), "Std: ", first_frames.std(dim=(1,2,3)))
+        print(f"Reference frames stats - Mean: {reference_frames_data.mean().item():.4f}, Std: {reference_frames_data.std().item():.4f}")
+
+        normalized_first = self.adaptive_mean_std_normalization(first_frames, reference_frames_data)
+        if clump_values:
+            min_val = reference_frames_data.min()
+            max_val = reference_frames_data.max()
+            normalized_first = torch.clamp(normalized_first, min_val, max_val)
+
+        samples[:, :nFr] = normalized_first
+
+        return samples
 
     def encode_prompt(
         self,
@@ -973,8 +1032,11 @@ class Kandinsky5I2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
 
         # 9. Post-processing - extract main latents
         latents = latents[:, :, :, :, :num_channels_latents]
+        
+        # 10. fix mesh artifacts
+        latents = self.normalize_first_frame(latents)
 
-        # 10. Decode latents to video
+        # 11. Decode latents to video
         if output_type != "latent":
             latents = latents.to(self.vae.dtype)
             # Reshape and normalize latents

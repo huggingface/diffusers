@@ -83,7 +83,11 @@ EXAMPLE_DOC_STRING = """
 
 
 def basic_clean(text):
-    """Clean text using ftfy if available and unescape HTML entities."""
+    """
+    Copied from https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/wan/pipeline_wan.py
+    
+    Clean text using ftfy if available and unescape HTML entities.
+    """
     if is_ftfy_available():
         text = ftfy.fix_text(text)
     text = html.unescape(html.unescape(text))
@@ -91,14 +95,22 @@ def basic_clean(text):
 
 
 def whitespace_clean(text):
-    """Normalize whitespace in text by replacing multiple spaces with single space."""
+    """
+    Copied from https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/wan/pipeline_wan.py
+    
+    Normalize whitespace in text by replacing multiple spaces with single space.
+    """
     text = re.sub(r"\s+", " ", text)
     text = text.strip()
     return text
 
 
 def prompt_clean(text):
-    """Apply both basic cleaning and whitespace normalization to prompts."""
+    """
+    Copied from https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/wan/pipeline_wan.py
+    
+    Apply both basic cleaning and whitespace normalization to prompts.
+    """
     text = whitespace_clean(basic_clean(text))
     return text
 
