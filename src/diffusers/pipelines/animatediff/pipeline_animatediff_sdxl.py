@@ -325,7 +325,7 @@ class AnimateDiffSDXLPipeline(
             else 128
         )
 
-    # Copied from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl.StableDiffusionXLPipeline.encode_prompt with num_images_per_prompt->num_videos_per_prompt
+    # Copied from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl_utils.StableDiffusionXLMixin.encode_prompt with num_images_per_prompt->num_videos_per_prompt
     def encode_prompt(
         self,
         prompt: str,

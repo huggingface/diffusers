@@ -19,7 +19,7 @@ import torch
 
 from ...loaders import StableDiffusionXLLoraLoaderMixin, TextualInversionLoaderMixin
 from ...models import ImageProjection
-from ...models.attention_processor import AttnProcessor2_0, XFormersAttnProcessor
+from ...models.attention_processor import AttnProcessor2_0, FusedAttnProcessor2_0, XFormersAttnProcessor
 from ...models.lora import adjust_lora_scale_text_encoder
 from ...utils import USE_PEFT_BACKEND, logging, scale_lora_layers, unscale_lora_layers
 
@@ -392,13 +392,12 @@ class StableDiffusionXLMixin:
 
             return image_embeds, uncond_image_embeds
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_upscale.StableDiffusionUpscalePipeline.upcast_vae
     def upcast_vae(self):
         dtype = self.vae.dtype
         self.vae.to(dtype=torch.float32)
         use_torch_2_0_or_xformers = isinstance(
             self.vae.decoder.mid_block.attentions[0].processor,
-            (AttnProcessor2_0, XFormersAttnProcessor),
+            (AttnProcessor2_0, XFormersAttnProcessor, FusedAttnProcessor2_0),
         )
         # if xformers or torch_2_0 is used attention block does not need
         # to be in float32 which can save lots of memory

@@ -1712,7 +1712,7 @@ class LEditsPPPipelineStableDiffusionXL(
         return LEditsPPInversionPipelineOutput(images=resized, vae_reconstruction_images=image_rec)
 
 
-# Copied from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl.rescale_noise_cfg
+# Copied from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl_utils.rescale_noise_cfg
 def rescale_noise_cfg(noise_cfg, noise_pred_text, guidance_rescale=0.0):
     r"""
     Rescales `noise_cfg` tensor based on `guidance_rescale` to improve image quality and fix overexposure. Based on
