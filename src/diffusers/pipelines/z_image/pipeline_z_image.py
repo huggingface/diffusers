@@ -293,25 +293,6 @@ class ZImagePipeline(DiffusionPipeline, FromSingleFileMixin):
     def interrupt(self):
         return self._interrupt
 
-    @staticmethod
-    def value_from_time_aware_config(config, t):
-        if isinstance(config, (float, int, str)):
-            return config
-        elif isinstance(config, torch.Tensor):
-            assert config.numel() == 1
-            return config.item()
-        elif isinstance(config, (tuple, list)):
-            assert isinstance(config[0], (float, int, str))
-            result = config[0]
-            for thresh, val in config[1:]:
-                if t >= thresh:
-                    result = val
-                else:
-                    break
-            return result
-        else:
-            raise ValueError(f"invalid time-aware config {config} of type {type(config)}")
-
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
@@ -507,9 +488,8 @@ class ZImagePipeline(DiffusionPipeline, FromSingleFileMixin):
                     and self._cfg_truncation is not None
                     and float(self._cfg_truncation) <= 1
                 ):
-                    current_guidance_scale = self.value_from_time_aware_config(
-                        (self.guidance_scale, (self._cfg_truncation, 0.0)), t_norm
-                    )
+                    if t_norm > self._cfg_truncation:
+                        current_guidance_scale = 0.0
 
                 # Run CFG only if configured AND scale is non-zero
                 apply_cfg = self.do_classifier_free_guidance and current_guidance_scale > 0
