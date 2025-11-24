@@ -23,6 +23,7 @@ from einops import rearrange
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
+from ..attention_dispatch import dispatch_attention_fn
 from ...models.attention_processor import Attention
 from ...models.modeling_utils import ModelMixin
 from ...utils.import_utils import is_apex_available, is_flash_attn_available
@@ -34,11 +35,7 @@ if is_flash_attn_available():
 else:
     flash_attn_varlen_func = None
 
-if is_apex_available():
-    # Here needs apex with "APEX_CPP_EXT=1 APEX_CUDA_EXT=1 pip install -v --no-build-isolation ."
-    from apex.normalization import FusedRMSNorm as RMSNorm
-else:
-    from torch.nn import RMSNorm
+from diffusers.models.normalization import RMSNorm
 
 
 ADALN_EMBED_DIM = 256
@@ -98,26 +95,18 @@ class ZSingleStreamAttnProcessor:
         self,
         attn: Attention,
         hidden_states: torch.Tensor,
-        encoder_hidden_states: Optional[torch.Tensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
-        image_rotary_emb: Optional[torch.Tensor] = None,
-        x_cu_seqlens: Optional[torch.Tensor] = None,
-        x_max_item_seqlen: Optional[int] = None,
+        freqs_cis: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        x = hidden_states
-        x_freqs_cis = image_rotary_emb
 
-        query = attn.to_q(x)
-        key = attn.to_k(x)
-        value = attn.to_v(x)
+        query = attn.to_q(hidden_states)
+        key = attn.to_k(hidden_states)
+        value = attn.to_v(hidden_states)
 
-        seqlen = x.shape[0]
+        query = query.unflatten(-1, (attn.heads, -1))
+        key = key.unflatten(-1, (attn.heads, -1))
+        value = value.unflatten(-1, (attn.heads, -1))
 
-        # Reshape to [seq_len, heads, head_dim]
-        head_dim = query.shape[-1] // attn.heads
-        query = query.view(seqlen, attn.heads, head_dim)
-        key = key.view(seqlen, attn.heads, head_dim)
-        value = value.view(seqlen, attn.heads, head_dim)
         # Apply Norms
         if attn.norm_q is not None:
             query = attn.norm_q(query)
@@ -128,82 +117,35 @@ class ZSingleStreamAttnProcessor:
         def apply_rotary_emb(x_in: torch.Tensor, freqs_cis: torch.Tensor) -> torch.Tensor:
             with torch.amp.autocast("cuda", enabled=False):
                 x = torch.view_as_complex(x_in.float().reshape(*x_in.shape[:-1], -1, 2))
-                freqs_cis = freqs_cis.unsqueeze(1)
-                x_out = torch.view_as_real(x * freqs_cis).flatten(2)
-                return x_out.type_as(x_in)
+                freqs_cis = freqs_cis.unsqueeze(2)
+                x_out = torch.view_as_real(x * freqs_cis).flatten(3)
+                return x_out.type_as(x_in)  # todo
 
-        if x_freqs_cis is not None:
-            query = apply_rotary_emb(query, x_freqs_cis)
-            key = apply_rotary_emb(key, x_freqs_cis)
+        if freqs_cis is not None:
+            query = apply_rotary_emb(query, freqs_cis)
+            key = apply_rotary_emb(key, freqs_cis)
 
         # Cast to correct dtype
         dtype = query.dtype
         query, key = query.to(dtype), key.to(dtype)
 
-        # Flash Attention
-        softmax_scale = math.sqrt(1 / head_dim)
-        assert dtype in [torch.float16, torch.bfloat16]
+        # Compute joint attention
+        hidden_states = dispatch_attention_fn(
+            query,
+            key,
+            value,
+            attn_mask=attention_mask,
+            dropout_p=0.0,
+            is_causal=False,
+            backend=self._attention_backend,
+            parallel_config=self._parallel_config,
+        )
 
-        if x_cu_seqlens is None or x_max_item_seqlen is None:
-            raise ValueError("x_cu_seqlens and x_max_item_seqlen are required for ZSingleStreamAttnProcessor")
+        # Reshape back
+        hidden_states = hidden_states.flatten(2, 3)
+        hidden_states = hidden_states.to(dtype)
 
-        if flash_attn_varlen_func is not None:
-            output = flash_attn_varlen_func(
-                query,
-                key,
-                value,
-                cu_seqlens_q=x_cu_seqlens,
-                cu_seqlens_k=x_cu_seqlens,
-                max_seqlen_q=x_max_item_seqlen,
-                max_seqlen_k=x_max_item_seqlen,
-                dropout_p=0.0,
-                causal=False,
-                softmax_scale=softmax_scale,
-            )
-            output = output.flatten(-2)
-        else:
-            seqlens = (x_cu_seqlens[1:] - x_cu_seqlens[:-1]).cpu().tolist()
-
-            q_split = torch.split(query, seqlens, dim=0)
-            k_split = torch.split(key, seqlens, dim=0)
-            v_split = torch.split(value, seqlens, dim=0)
-
-            q_padded = torch.nn.utils.rnn.pad_sequence(q_split, batch_first=True)
-            k_padded = torch.nn.utils.rnn.pad_sequence(k_split, batch_first=True)
-            v_padded = torch.nn.utils.rnn.pad_sequence(v_split, batch_first=True)
-
-            batch_size, max_seqlen, _, _ = q_padded.shape
-
-            mask = torch.zeros((batch_size, max_seqlen), dtype=torch.bool, device=query.device)
-            for i, l in enumerate(seqlens):
-                mask[i, :l] = True
-
-            attn_mask = torch.zeros((batch_size, 1, 1, max_seqlen), dtype=query.dtype, device=query.device)
-            attn_mask.masked_fill_(~mask[:, None, None, :], torch.finfo(query.dtype).min)
-
-            q_padded = q_padded.transpose(1, 2)
-            k_padded = k_padded.transpose(1, 2)
-            v_padded = v_padded.transpose(1, 2)
-
-            output = F.scaled_dot_product_attention(
-                q_padded,
-                k_padded,
-                v_padded,
-                attn_mask=attn_mask,
-                dropout_p=0.0,
-                scale=softmax_scale,
-            )
-
-            output = output.transpose(1, 2)
-
-            out_list = []
-            for i, l in enumerate(seqlens):
-                out_list.append(output[i, :l])
-
-            output = torch.cat(out_list, dim=0)
-            output = output.flatten(-2)
-
-        output = attn.to_out[0](output)
+        output = attn.to_out[0](hidden_states)
         if len(attn.to_out) > 1:  # dropout
             output = attn.to_out[1](output)
 
@@ -214,11 +156,8 @@ class FeedForward(nn.Module):
     def __init__(self, dim: int, hidden_dim: int):
         super().__init__()
         self.w1 = nn.Linear(dim, hidden_dim, bias=False)
-        nn.init.xavier_uniform_(self.w1.weight)
         self.w2 = nn.Linear(hidden_dim, dim, bias=False)
-        nn.init.xavier_uniform_(self.w2.weight)
         self.w3 = nn.Linear(dim, hidden_dim, bias=False)
-        nn.init.xavier_uniform_(self.w3.weight)
 
     def _forward_silu_gating(self, x1, x3):
         return F.silu(x1) * x3
@@ -251,8 +190,9 @@ class ZImageTransformerBlock(nn.Module):
             dim_head=dim // n_heads,
             heads=n_heads,
             qk_norm="rms_norm" if qk_norm else None,
-            eps=1e-6,
+            eps=1e-5,
             bias=False,
+            out_bias=False,
             processor=ZSingleStreamAttnProcessor(),
         )
 
@@ -270,16 +210,12 @@ class ZImageTransformerBlock(nn.Module):
             self.adaLN_modulation = nn.Sequential(
                 nn.Linear(min(dim, ADALN_EMBED_DIM), 4 * dim, bias=True),
             )
-            nn.init.zeros_(self.adaLN_modulation[0].weight)
-            nn.init.zeros_(self.adaLN_modulation[0].bias)
 
     def forward(
         self,
         x: torch.Tensor,
-        x_src_ids: torch.Tensor,
-        x_freqs_cis: torch.Tensor,
-        x_cu_seqlens: torch.Tensor,
-        x_max_item_seqlen: int,
+        attn_mask: torch.Tensor,
+        freqs_cis: torch.Tensor,
         adaln_input: Optional[torch.Tensor] = None,
     ):
         if self.modulation:
@@ -290,26 +226,24 @@ class ZImageTransformerBlock(nn.Module):
 
             # Attention block
             attn_out = self.attention(
-                self.attention_norm1(x) * scale_msa[x_src_ids],
-                image_rotary_emb=x_freqs_cis,
-                x_cu_seqlens=x_cu_seqlens,
-                x_max_item_seqlen=x_max_item_seqlen,
+                self.attention_norm1(x) * scale_msa,
+                attention_mask=attn_mask,
+                freqs_cis=freqs_cis,
             )
-            x = x + gate_msa[x_src_ids] * self.attention_norm2(attn_out)
+            x = x + gate_msa * self.attention_norm2(attn_out)
 
             # FFN block
-            x = x + gate_mlp[x_src_ids] * self.ffn_norm2(
+            x = x + gate_mlp * self.ffn_norm2(
                 self.feed_forward(
-                    self.ffn_norm1(x) * scale_mlp[x_src_ids],
+                    self.ffn_norm1(x) * scale_mlp,
                 )
             )
         else:
             # Attention block
             attn_out = self.attention(
                 self.attention_norm1(x),
-                image_rotary_emb=x_freqs_cis,
-                x_cu_seqlens=x_cu_seqlens,
-                x_max_item_seqlen=x_max_item_seqlen,
+                attention_mask=attn_mask,
+                freqs_cis=freqs_cis,
             )
             x = x + self.attention_norm2(attn_out)
 
@@ -328,19 +262,15 @@ class FinalLayer(nn.Module):
         super().__init__()
         self.norm_final = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
         self.linear = nn.Linear(hidden_size, out_channels, bias=True)
-        nn.init.zeros_(self.linear.weight)
-        nn.init.zeros_(self.linear.bias)
 
         self.adaLN_modulation = nn.Sequential(
             nn.SiLU(),
             nn.Linear(min(hidden_size, ADALN_EMBED_DIM), hidden_size, bias=True),
         )
-        nn.init.zeros_(self.adaLN_modulation[1].weight)
-        nn.init.zeros_(self.adaLN_modulation[1].bias)
 
-    def forward(self, x, x_src_ids, c):
+    def forward(self, x, c):
         scale = 1.0 + self.adaLN_modulation(c)
-        x = self.norm_final(x) * scale[x_src_ids]
+        x = self.norm_final(x) * scale
         x = self.linear(x)
         return x
 
@@ -466,13 +396,9 @@ class ZImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
             RMSNorm(cap_feat_dim, eps=norm_eps),
             nn.Linear(cap_feat_dim, dim, bias=True),
         )
-        nn.init.trunc_normal_(self.cap_embedder[1].weight, std=0.02)
-        nn.init.zeros_(self.cap_embedder[1].bias)
 
         self.x_pad_token = nn.Parameter(torch.empty((1, dim)))
-        nn.init.normal_(self.x_pad_token, std=0.02)
         self.cap_pad_token = nn.Parameter(torch.empty((1, dim)))
-        nn.init.normal_(self.cap_pad_token, std=0.02)
 
         self.layers = nn.ModuleList(
             [
@@ -646,31 +572,38 @@ class ZImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
         x = self.all_x_embedder[f"{patch_size}-{f_patch_size}"](x)
         x[torch.cat(x_inner_pad_mask)] = self.x_pad_token
         x = x.split(x_item_seqlens, dim=0)
-        x_freqs_cis = self.rope_embedder(torch.cat(x_pos_ids, dim=0)).split(x_item_seqlens, dim=0)  # todo
+        x_freqs_cis = self.rope_embedder(torch.cat(x_pos_ids, dim=0)).split(x_item_seqlens, dim=0)
 
         pad_tensor = torch.zeros(
             (1, self.dim),
             dtype=x[0].dtype,
             device=device,
         )
-        x_pad_mask = torch.zeros(
+        freqs_pad_tensor = torch.zeros(
+            (1, self.dim // self.n_heads),
+            dtype=x_freqs_cis[0].dtype,
+            device=device,
+        )
+        x_attn_mask = torch.ones(
             (bsz, x_max_item_seqlen),
             dtype=torch.bool,
             device=device
         )
-        for i, item in enumerate(x):
+        for i, (item, freqs_item) in enumerate(zip(x, x_freqs_cis)):
             seq_len = x_item_seqlens[i]
-            x[i] = torch.cat([item, pad_tensor.repeat(x_max_item_seqlen - seq_len, 1)])
-            x_pad_mask[i, seq_len:] = 1
+            pad_len = x_max_item_seqlen - seq_len
+            x[i] = torch.cat([item, pad_tensor.repeat(pad_len, 1)])
+            x_freqs_cis[i] = torch.cat([freqs_item, freqs_pad_tensor.repeat(pad_len, 1)])
+            x_attn_mask[i, seq_len:] = 0
         x = torch.stack(x)
 
         for layer in self.noise_refiner:
             x = layer(
                 x,
-                x_pad_mask,
+                x_attn_mask,
                 x_freqs_cis,
                 adaln_input,
-            )  # todo
+            )
 
         # cap embed & refine
         cap_item_seqlens = [len(_) for _ in cap_feats]
@@ -681,72 +614,83 @@ class ZImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
         cap_feats = self.cap_embedder(cap_feats)
         cap_feats[torch.cat(cap_inner_pad_mask)] = self.cap_pad_token
         cap_feats = cap_feats.split(cap_item_seqlens, dim=0)
-        cap_freqs_cis = self.rope_embedder(torch.cat(cap_pos_ids, dim=0)).split(cap_item_seqlens, dim=0) # todo
+        cap_freqs_cis = self.rope_embedder(torch.cat(cap_pos_ids, dim=0)).split(cap_item_seqlens, dim=0)
 
         pad_tensor = torch.zeros(
             (1, self.dim),
-            dtype=x[0].dtype,
+            dtype=cap_feats[0].dtype,
             device=device,
         )
-        cap_pad_mask = torch.zeros(
+        freqs_pad_tensor = torch.zeros(
+            (1, self.dim // self.n_heads),
+            dtype=cap_freqs_cis[0].dtype,
+            device=device,
+        )
+        cap_attn_mask = torch.ones(
             (bsz, cap_max_item_seqlen),
             dtype=torch.bool,
             device=device
         )
-        for i, item in enumerate(cap_feats):
+        for i, (item, freqs_item) in enumerate(zip(cap_feats, cap_freqs_cis)):
             seq_len = cap_item_seqlens[i]
-            cap_feats[i] = torch.cat([item, pad_tensor.repeat(cap_max_item_seqlen - seq_len, 1)])
-            cap_pad_mask[i, seq_len:] = 1
+            pad_len = cap_max_item_seqlen - seq_len
+            cap_feats[i] = torch.cat([item, pad_tensor.repeat(pad_len, 1)])
+            cap_freqs_cis[i] = torch.cat([freqs_item, freqs_pad_tensor.repeat(pad_len, 1)])
+            cap_attn_mask[i, seq_len:] = 0
         cap_feats = torch.stack(cap_feats)
+
         for layer in self.context_refiner:
             cap_feats = layer(
                 cap_feats,
-                cap_pad_mask,
+                cap_attn_mask,
                 cap_freqs_cis,
             )
 
-        # unified todo
+        # unified
+        unified = []
+        unified_freqs_cis = []
+        for i in range(bsz):
+            x_len = x_item_seqlens[i]
+            cap_len = cap_item_seqlens[i]
+            unified.append(torch.cat([x[i][:x_len], cap_feats[i][:cap_len]]))
+            unified_freqs_cis.append(torch.cat([x_freqs_cis[i][:x_len], cap_freqs_cis[i][:cap_len]]))
         unified_item_seqlens = [a + b for a, b in zip(cap_item_seqlens, x_item_seqlens)]
+        assert unified_item_seqlens == [len(_) for _ in unified]
         unified_max_item_seqlen = max(unified_item_seqlens)
 
         pad_tensor = torch.zeros(
             (1, self.dim),
-            dtype=x[0].dtype,
+            dtype=unified[0].dtype,
             device=device,
         )
-        unified_pad_mask = torch.zeros(
+        freqs_pad_tensor = torch.zeros(
+            (1, self.dim // self.n_heads),
+            dtype=unified_freqs_cis[0].dtype,
+            device=device,
+        )
+        unified_attn_mask = torch.ones(
             (bsz, unified_max_item_seqlen),
             dtype=torch.bool,
             device=device
         )
-
-        unified = []
-        for i in range(bsz):
-            x_len = x_item_seqlens[i]
-            cap_len = cap_item_seqlens[i]
-            unified.append(
-                torch.cat(
-                    [
-                        x[i][:x_item_seqlens[i]],
-                        cap_feats[i][:cap_item_seqlens[i]],
-                        pad_tensor.repeat(unified_max_item_seqlen - x_len - cap_len, 1)
-                    ]
-                )
-            )
-            unified_pad_mask[i, x_len + cap_len:] = 1
-
-        unified_freqs_cis = torch.cat(merge_interleave(cap_freqs_cis, x_freqs_cis))  # todo
+        for i, (item, freqs_item) in enumerate(zip(unified, unified_freqs_cis)):
+            seq_len = unified_item_seqlens[i]
+            pad_len = unified_max_item_seqlen - seq_len
+            unified[i] = torch.cat([item, pad_tensor.repeat(pad_len, 1)])
+            unified_freqs_cis[i] = torch.cat([freqs_item, freqs_pad_tensor.repeat(pad_len, 1)])
+            unified_attn_mask[i, seq_len:] = 0
+        unified = torch.stack(unified)
 
         for layer in self.layers:
-            unified_shard = layer(
+            unified = layer(
                 unified,
-                unified_pad_mask,
+                unified_attn_mask,
                 unified_freqs_cis,
                 adaln_input,
             )
 
         unified = self.all_final_layer[f"{patch_size}-{f_patch_size}"](
-            unified, adaln_input  # todo
+            unified, adaln_input
         )
         unified = unified.split(unified_item_seqlens, dim=0)
         x = self.unpatchify(unified, x_size, patch_size, f_patch_size)
