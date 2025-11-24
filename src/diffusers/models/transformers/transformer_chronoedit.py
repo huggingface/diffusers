@@ -67,7 +67,7 @@ def _get_added_kv_projections(attn: "WanAttention", encoder_hidden_states_img: t
     return key_img, value_img
 
 
-# Copied from diffusers.models.transformers.transformer_wan.WanAttnProcessor
+# modified from diffusers.models.transformers.transformer_wan.WanAttnProcessor
 class WanAttnProcessor:
     _attention_backend = None
     _parallel_config = None
