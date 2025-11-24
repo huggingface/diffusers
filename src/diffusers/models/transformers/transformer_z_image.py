@@ -26,7 +26,7 @@ from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
 from ..attention_dispatch import dispatch_attention_fn
 from ...models.attention_processor import Attention
 from ...models.modeling_utils import ModelMixin
-from ...utils.import_utils import is_apex_available, is_flash_attn_available
+from ...utils.import_utils import is_flash_attn_available
 from ...utils.torch_utils import maybe_allow_in_graph
 
 
@@ -220,7 +220,7 @@ class ZImageTransformerBlock(nn.Module):
     ):
         if self.modulation:
             assert adaln_input is not None
-            scale_msa, gate_msa, scale_mlp, gate_mlp = self.adaLN_modulation(adaln_input).chunk(4, dim=1)
+            scale_msa, gate_msa, scale_mlp, gate_mlp = self.adaLN_modulation(adaln_input).unsqueeze(1).chunk(4, dim=2)
             gate_msa, gate_mlp = gate_msa.tanh(), gate_mlp.tanh()
             scale_msa, scale_mlp = 1.0 + scale_msa, 1.0 + scale_mlp
 
@@ -270,7 +270,7 @@ class FinalLayer(nn.Module):
 
     def forward(self, x, c):
         scale = 1.0 + self.adaLN_modulation(c)
-        x = self.norm_final(x) * scale
+        x = self.norm_final(x) * scale.unsqueeze(1)
         x = self.linear(x)
         return x
 
@@ -696,7 +696,7 @@ class ZImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
         unified = self.all_final_layer[f"{patch_size}-{f_patch_size}"](
             unified, adaln_input
         )
-        unified = unified.split(unified_item_seqlens, dim=0)
+        unified = unified.unbind(dim=0)
         x = self.unpatchify(unified, x_size, patch_size, f_patch_size)
 
         return x, {}
