@@ -693,6 +693,11 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 If set to `None`, the safetensors weights are downloaded if they're available **and** if the
                 safetensors library is installed. If set to `True`, the model is forcibly loaded from safetensors
                 weights. If set to `False`, safetensors weights are not loaded.
+            use_flashpack (`bool`, *optional*, defaults to `False`):
+                If set to `True`, the model is first loaded from `flashpack` weights if a compatible `.flashpack` file
+                is found. If flashpack is unavailable or the `.flashpack` file cannot be used, automatic fallback to
+                the standard loading path (for example, `safetensors`). Requires the `flashpack` library: `pip install
+                flashpack`.
             use_onnx (`bool`, *optional*, defaults to `None`):
                 If set to `True`, ONNX weights will always be downloaded if present. If set to `False`, ONNX weights
                 will never be downloaded. By default `use_onnx` defaults to the `_is_onnx` class attribute which is
@@ -755,6 +760,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         variant = kwargs.pop("variant", None)
         dduf_file = kwargs.pop("dduf_file", None)
         use_safetensors = kwargs.pop("use_safetensors", None)
+        use_flashpack = kwargs.pop("use_flashpack", False)
         use_onnx = kwargs.pop("use_onnx", None)
         load_connected_pipeline = kwargs.pop("load_connected_pipeline", False)
         quantization_config = kwargs.pop("quantization_config", None)
@@ -1039,6 +1045,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                     low_cpu_mem_usage=low_cpu_mem_usage,
                     cached_folder=cached_folder,
                     use_safetensors=use_safetensors,
+                    use_flashpack=use_flashpack,
                     dduf_entries=dduf_entries,
                     provider_options=provider_options,
                     quantization_config=quantization_config,

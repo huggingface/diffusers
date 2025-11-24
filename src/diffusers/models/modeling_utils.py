@@ -916,6 +916,11 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 If set to `None`, the `safetensors` weights are downloaded if they're available **and** if the
                 `safetensors` library is installed. If set to `True`, the model is forcibly loaded from `safetensors`
                 weights. If set to `False`, `safetensors` weights are not loaded.
+            use_flashpack (`bool`, *optional*, defaults to `False`):
+                If set to `True`, the model is first loaded from `flashpack` weights if a compatible `.flashpack` file
+                is found. If flashpack is unavailable or the `.flashpack` file cannot be used, automatic fallback to
+                the standard loading path (for example, `safetensors`). Requires the `flashpack` library: `pip install
+                flashpack`.
             disable_mmap ('bool', *optional*, defaults to 'False'):
                 Whether to disable mmap when loading a Safetensors model. This option can perform better when the model
                 is on a network mount or hard drive, which may not handle the seeky-ness of mmap very well.
@@ -959,6 +964,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT)
         variant = kwargs.pop("variant", None)
         use_safetensors = kwargs.pop("use_safetensors", None)
+        use_flashpack = kwargs.pop("use_flashpack", False)
         quantization_config = kwargs.pop("quantization_config", None)
         dduf_entries: Optional[Dict[str, DDUFEntry]] = kwargs.pop("dduf_entries", None)
         disable_mmap = kwargs.pop("disable_mmap", False)
@@ -1177,6 +1183,72 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
 
             model = load_flax_checkpoint_in_pytorch_model(model, resolved_model_file)
         else:
+            if use_flashpack:
+                try:
+                    from flashpack import assign_from_file
+                except ImportError:
+                    pass
+                else:
+                    flashpack_weights_name = _add_variant("model.flashpack", variant)
+
+                    try:
+                        flashpack_file = _get_model_file(
+                            pretrained_model_name_or_path,
+                            weights_name=flashpack_weights_name,
+                            cache_dir=cache_dir,
+                            force_download=force_download,
+                            proxies=proxies,
+                            local_files_only=local_files_only,
+                            token=token,
+                            revision=revision,
+                            subfolder=subfolder,
+                            user_agent=user_agent,
+                            commit_hash=commit_hash,
+                        )
+                    except EnvironmentError:
+                        pass
+                    else:
+                        dtype_orig = None
+                        if torch_dtype is not None and torch_dtype != getattr(torch, "float8_e4m3fn", None):
+                            if not isinstance(torch_dtype, torch.dtype):
+                                raise ValueError(
+                                    f"{torch_dtype} needs to be a `torch.dtype`, e.g. `torch.float16`, but is {type(torch_dtype)}."
+                                )
+                            dtype_orig = cls._set_default_torch_dtype(torch_dtype)
+
+                        with no_init_weights():
+                            model = cls.from_config(config, **unused_kwargs)
+
+                        if dtype_orig is not None:
+                            torch.set_default_dtype(dtype_orig)
+
+                        # flashpack requires a single dtype across all parameters
+                        param_dtypes = {p.dtype for p in model.parameters()}
+                        if len(param_dtypes) > 1:
+                            pass
+                        else:
+                            try:
+                                assign_from_file(model, flashpack_file)
+                                model.register_to_config(_name_or_path=pretrained_model_name_or_path)
+
+                                if torch_dtype is not None and torch_dtype != getattr(torch, "float8_e4m3fn", None):
+                                    model = model.to(torch_dtype)
+
+                                model.eval()
+
+                                if output_loading_info:
+                                    loading_info = {
+                                        "missing_keys": [],
+                                        "unexpected_keys": [],
+                                        "mismatched_keys": [],
+                                        "error_msgs": [],
+                                    }
+                                    return model, loading_info
+
+                                return model
+
+                            except Exception:
+                                pass
             # in the case it is sharded, we have already the index
             if is_sharded:
                 resolved_model_file, sharded_metadata = _get_checkpoint_shard_files(
