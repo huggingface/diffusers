@@ -36,7 +36,9 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from ...utils.dummy_torch_and_transformers_objects import *
     else:
         from .pipeline_kandinsky import Kandinsky5T2VPipeline
-        from .pipeline_kandinsky import Kandinsky5I2VPipeline
+        from .pipeline_kandinsky_i2v import Kandinsky5I2VPipeline
+        from .pipeline_kandinsky_t2i import Kandinsky5T2IPipeline
+        from .pipeline_kandinsky_i2i import Kandinsky5I2IPipeline
 
 else:
     import sys
