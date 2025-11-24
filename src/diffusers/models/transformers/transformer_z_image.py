@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import itertools
 import math
 from typing import List, Optional, Tuple
 
@@ -23,11 +22,11 @@ from einops import rearrange
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
-from ..attention_dispatch import dispatch_attention_fn
 from ...models.attention_processor import Attention
 from ...models.modeling_utils import ModelMixin
 from ...utils.import_utils import is_flash_attn_available
 from ...utils.torch_utils import maybe_allow_in_graph
+from ..attention_dispatch import dispatch_attention_fn
 
 
 if is_flash_attn_available():
@@ -99,7 +98,6 @@ class ZSingleStreamAttnProcessor:
         attention_mask: Optional[torch.Tensor] = None,
         freqs_cis: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-
         query = attn.to_q(hidden_states)
         key = attn.to_k(hidden_states)
         value = attn.to_v(hidden_states)
@@ -586,11 +584,7 @@ class ZImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
             dtype=x_freqs_cis[0].dtype,
             device=device,
         )
-        x_attn_mask = torch.ones(
-            (bsz, x_max_item_seqlen),
-            dtype=torch.bool,
-            device=device
-        )
+        x_attn_mask = torch.ones((bsz, x_max_item_seqlen), dtype=torch.bool, device=device)
         for i, (item, freqs_item) in enumerate(zip(x, x_freqs_cis)):
             seq_len = x_item_seqlens[i]
             pad_len = x_max_item_seqlen - seq_len
@@ -629,11 +623,7 @@ class ZImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
             dtype=cap_freqs_cis[0].dtype,
             device=device,
         )
-        cap_attn_mask = torch.ones(
-            (bsz, cap_max_item_seqlen),
-            dtype=torch.bool,
-            device=device
-        )
+        cap_attn_mask = torch.ones((bsz, cap_max_item_seqlen), dtype=torch.bool, device=device)
         for i, (item, freqs_item) in enumerate(zip(cap_feats, cap_freqs_cis)):
             seq_len = cap_item_seqlens[i]
             pad_len = cap_max_item_seqlen - seq_len
@@ -672,11 +662,7 @@ class ZImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
             dtype=unified_freqs_cis[0].dtype,
             device=device,
         )
-        unified_attn_mask = torch.ones(
-            (bsz, unified_max_item_seqlen),
-            dtype=torch.bool,
-            device=device
-        )
+        unified_attn_mask = torch.ones((bsz, unified_max_item_seqlen), dtype=torch.bool, device=device)
         for i, (item, freqs_item) in enumerate(zip(unified, unified_freqs_cis)):
             seq_len = unified_item_seqlens[i]
             pad_len = unified_max_item_seqlen - seq_len
@@ -694,9 +680,7 @@ class ZImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
                 adaln_input,
             )
 
-        unified = self.all_final_layer[f"{patch_size}-{f_patch_size}"](
-            unified, adaln_input
-        )
+        unified = self.all_final_layer[f"{patch_size}-{f_patch_size}"](unified, adaln_input)
         unified = list(unified.unbind(dim=0))
         x = self.unpatchify(unified, x_size, patch_size, f_patch_size)
 
