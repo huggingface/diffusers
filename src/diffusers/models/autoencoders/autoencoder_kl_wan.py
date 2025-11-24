@@ -964,6 +964,7 @@ class AutoencoderKLWan(ModelMixin, AutoencoderMixin, ConfigMixin, FromOriginalMo
     # keys toignore when AlignDeviceHook moves inputs/outputs between devices
     # these are shared mutable state modified in-place
     _skip_keys = ["feat_cache", "feat_idx"]
+    _group_offload_block_modules = ["quant_conv", "post_quant_conv", "encoder", "decoder"]
 
     @register_to_config
     def __init__(
