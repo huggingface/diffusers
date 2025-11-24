@@ -27,6 +27,7 @@ try:
 except ImportError:
     flash_attn_varlen_func = None
 
+# todo see how other teams do this
 try:
     from apex.normalization import FusedRMSNorm as RMSNorm
 except ImportError:
@@ -61,10 +62,6 @@ class TimestepEmbedder(nn.Module):
                 bias=True,
             ),
         )
-        nn.init.normal_(self.mlp[0].weight, std=0.02)
-        nn.init.zeros_(self.mlp[0].bias)
-        nn.init.normal_(self.mlp[2].weight, std=0.02)
-        nn.init.zeros_(self.mlp[2].bias)
 
         self.frequency_embedding_size = frequency_embedding_size
 
@@ -573,9 +570,9 @@ class ZImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
         all_cap_pad_mask = []
         all_cap_feats_out = []
 
-        for i, image in enumerate(all_image):
-            ### LLM Text Encoder
-            cap_ori_len = len(all_cap_feats[i])
+        for i, (image, cap_feat) in enumerate(zip(all_image, all_cap_feats)):
+            ### Process Caption
+            cap_ori_len = len(cap_feat)
             cap_padding_len = (-cap_ori_len) % SEQ_MULTI_OF
             # padded position ids
             cap_padded_pos_ids = self.create_coordinate_grid(
@@ -596,7 +593,7 @@ class ZImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
             )
             # padded feature
             cap_padded_feat = torch.cat(
-                [all_cap_feats[i], all_cap_feats[i][-1:].repeat(cap_padding_len, 1)],
+                [cap_feat, cap_feat[-1:].repeat(cap_padding_len, 1)],
                 dim=0,
             )
             all_cap_feats_out.append(cap_padded_feat)
@@ -677,126 +674,123 @@ class ZImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
             x_size,
             x_pos_ids,
             cap_pos_ids,
-            x_pad_mask,
-            cap_pad_mask,
+            x_inner_pad_mask,
+            cap_inner_pad_mask,
         ) = self.patchify_and_embed(x, cap_feats, patch_size, f_patch_size)
 
         # x embed & refine
         x_item_seqlens = [len(_) for _ in x]
         assert all(_ % SEQ_MULTI_OF == 0 for _ in x_item_seqlens)
         x_max_item_seqlen = max(x_item_seqlens)
-        x_cu_seqlens = F.pad(
-            torch.cumsum(
-                torch.tensor(x_item_seqlens, dtype=torch.int32, device=device),
-                dim=0,
-                dtype=torch.int32,
-            ),
-            (1, 0),
+
+        x = torch.cat(x, dim=0)
+        x = self.all_x_embedder[f"{patch_size}-{f_patch_size}"](x)
+        x[torch.cat(x_inner_pad_mask)] = self.x_pad_token
+        x = x.split(x_item_seqlens, dim=0)
+        x_freqs_cis = self.rope_embedder(torch.cat(x_pos_ids, dim=0)).split(x_item_seqlens, dim=0)  # todo
+
+        pad_tensor = torch.zeros(
+            (1, self.dim),
+            dtype=x[0].dtype,
+            device=device,
         )
-        x_src_ids = [
-            torch.full((count,), i, dtype=torch.int32, device=device) for i, count in enumerate(x_item_seqlens)
-        ]
-        x_freqs_cis = self.rope_embedder(torch.cat(x_pos_ids, dim=0)).split(x_item_seqlens, dim=0)
+        x_pad_mask = torch.zeros(
+            (bsz, x_max_item_seqlen),
+            dtype=torch.bool,
+            device=device
+        )
+        for i, item in enumerate(x):
+            seq_len = x_item_seqlens[i]
+            x[i] = torch.cat([item, pad_tensor.repeat(x_max_item_seqlen - seq_len, 1)])
+            x_pad_mask[i, seq_len:] = 1
+        x = torch.stack(x)
 
-        x_shard = torch.cat(x, dim=0)
-        x_src_ids_shard = torch.cat(x_src_ids, dim=0)
-        x_freqs_cis_shard = torch.cat(x_freqs_cis, dim=0)
-        x_pad_mask_shard = torch.cat(x_pad_mask, dim=0)
-        del x
-
-        x_shard = self.all_x_embedder[f"{patch_size}-{f_patch_size}"](x_shard)
-        x_shard[x_pad_mask_shard] = self.x_pad_token
         for layer in self.noise_refiner:
-            x_shard = layer(
-                x_shard,
-                x_src_ids_shard,
-                x_freqs_cis_shard,
-                x_cu_seqlens,
-                x_max_item_seqlen,
+            x = layer(
+                x,
+                x_pad_mask,
+                x_freqs_cis,
                 adaln_input,
-            )
-        x_flatten = x_shard
+            )  # todo
 
         # cap embed & refine
         cap_item_seqlens = [len(_) for _ in cap_feats]
         assert all(_ % SEQ_MULTI_OF == 0 for _ in cap_item_seqlens)
         cap_max_item_seqlen = max(cap_item_seqlens)
-        cap_cu_seqlens = F.pad(
-            torch.cumsum(
-                torch.tensor(cap_item_seqlens, dtype=torch.int32, device=device),
-                dim=0,
-                dtype=torch.int32,
-            ),
-            (1, 0),
+
+        cap_feats = torch.cat(cap_feats, dim=0)
+        cap_feats = self.cap_embedder(cap_feats)
+        cap_feats[torch.cat(cap_inner_pad_mask)] = self.cap_pad_token
+        cap_feats = cap_feats.split(cap_item_seqlens, dim=0)
+        cap_freqs_cis = self.rope_embedder(torch.cat(cap_pos_ids, dim=0)).split(cap_item_seqlens, dim=0) # todo
+
+        pad_tensor = torch.zeros(
+            (1, self.dim),
+            dtype=x[0].dtype,
+            device=device,
         )
-        cap_src_ids = [
-            torch.full((count,), i, dtype=torch.int32, device=device) for i, count in enumerate(cap_item_seqlens)
-        ]
-        cap_freqs_cis = self.rope_embedder(torch.cat(cap_pos_ids, dim=0)).split(cap_item_seqlens, dim=0)
-
-        cap_shard = torch.cat(cap_feats, dim=0)
-        cap_src_ids_shard = torch.cat(cap_src_ids, dim=0)
-        cap_freqs_cis_shard = torch.cat(cap_freqs_cis, dim=0)
-        cap_pad_mask_shard = torch.cat(cap_pad_mask, dim=0)
-        del cap_feats
-
-        cap_shard = self.cap_embedder(cap_shard)
-        cap_shard[cap_pad_mask_shard] = self.cap_pad_token
+        cap_pad_mask = torch.zeros(
+            (bsz, cap_max_item_seqlen),
+            dtype=torch.bool,
+            device=device
+        )
+        for i, item in enumerate(cap_feats):
+            seq_len = cap_item_seqlens[i]
+            cap_feats[i] = torch.cat([item, pad_tensor.repeat(cap_max_item_seqlen - seq_len, 1)])
+            cap_pad_mask[i, seq_len:] = 1
+        cap_feats = torch.stack(cap_feats)
         for layer in self.context_refiner:
-            cap_shard = layer(
-                cap_shard,
-                cap_src_ids_shard,
-                cap_freqs_cis_shard,
-                cap_cu_seqlens,
-                cap_max_item_seqlen,
+            cap_feats = layer(
+                cap_feats,
+                cap_pad_mask,
+                cap_freqs_cis,
             )
-        cap_flatten = cap_shard
 
-        # unified
-        def merge_interleave(l1, l2):
-            return list(itertools.chain(*zip(l1, l2)))
-
-        unified = torch.cat(
-            merge_interleave(
-                cap_flatten.split(cap_item_seqlens, dim=0),
-                x_flatten.split(x_item_seqlens, dim=0),
-            ),
-            dim=0,
-        )
+        # unified todo
         unified_item_seqlens = [a + b for a, b in zip(cap_item_seqlens, x_item_seqlens)]
-        assert len(unified) == sum(unified_item_seqlens)
         unified_max_item_seqlen = max(unified_item_seqlens)
-        unified_cu_seqlens = F.pad(
-            torch.cumsum(
-                torch.tensor(unified_item_seqlens, dtype=torch.int32, device=device),
-                dim=0,
-                dtype=torch.int32,
-            ),
-            (1, 0),
-        )
-        unified_src_ids = torch.cat(merge_interleave(cap_src_ids, x_src_ids))
-        unified_freqs_cis = torch.cat(merge_interleave(cap_freqs_cis, x_freqs_cis))
 
-        unified_shard = unified
-        unified_src_ids_shard = unified_src_ids
-        unified_freqs_cis_shard = unified_freqs_cis
+        pad_tensor = torch.zeros(
+            (1, self.dim),
+            dtype=x[0].dtype,
+            device=device,
+        )
+        unified_pad_mask = torch.zeros(
+            (bsz, unified_max_item_seqlen),
+            dtype=torch.bool,
+            device=device
+        )
+
+        unified = []
+        for i in range(bsz):
+            x_len = x_item_seqlens[i]
+            cap_len = cap_item_seqlens[i]
+            unified.append(
+                torch.cat(
+                    [
+                        x[i][:x_item_seqlens[i]],
+                        cap_feats[i][:cap_item_seqlens[i]],
+                        pad_tensor.repeat(unified_max_item_seqlen - x_len - cap_len, 1)
+                    ]
+                )
+            )
+            unified_pad_mask[i, x_len + cap_len:] = 1
+
+        unified_freqs_cis = torch.cat(merge_interleave(cap_freqs_cis, x_freqs_cis))  # todo
+
         for layer in self.layers:
             unified_shard = layer(
-                unified_shard,
-                unified_src_ids_shard,
-                unified_freqs_cis_shard,
-                unified_cu_seqlens,
-                unified_max_item_seqlen,
+                unified,
+                unified_pad_mask,
+                unified_freqs_cis,
                 adaln_input,
             )
-        unified_shard = self.all_final_layer[f"{patch_size}-{f_patch_size}"](
-            unified_shard, unified_src_ids_shard, adaln_input
-        )
-        unified = unified_shard.split(unified_item_seqlens, dim=0)
-        x = [unified[i][cap_item_seqlens[i] :] for i in range(bsz)]
-        assert all(len(x[i]) == x_item_seqlens[i] for i in range(bsz))
 
-        x = self.unpatchify(x, x_size, patch_size, f_patch_size)
+        unified = self.all_final_layer[f"{patch_size}-{f_patch_size}"](
+            unified, adaln_input  # todo
+        )
+        unified = unified.split(unified_item_seqlens, dim=0)
+        x = self.unpatchify(unified, x_size, patch_size, f_patch_size)
 
         return x, {}
 
