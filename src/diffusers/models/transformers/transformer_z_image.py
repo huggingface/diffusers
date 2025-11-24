@@ -21,23 +21,24 @@ import torch.nn as nn
 import torch.nn.functional as F
 from einops import rearrange
 
-
-try:
-    from flash_attn import flash_attn_varlen_func
-except ImportError:
-    flash_attn_varlen_func = None
-
-# todo see how other teams do this
-try:
-    from apex.normalization import FusedRMSNorm as RMSNorm
-except ImportError:
-    from torch.nn import RMSNorm
-
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
 from ...models.attention_processor import Attention
 from ...models.modeling_utils import ModelMixin
+from ...utils.import_utils import is_apex_available, is_flash_attn_available
 from ...utils.torch_utils import maybe_allow_in_graph
+
+
+if is_flash_attn_available():
+    from flash_attn import flash_attn_varlen_func
+else:
+    flash_attn_varlen_func = None
+
+if is_apex_available():
+    # Here needs apex with "APEX_CPP_EXT=1 APEX_CUDA_EXT=1 pip install -v --no-build-isolation ."
+    from apex.normalization import FusedRMSNorm as RMSNorm
+else:
+    from torch.nn import RMSNorm
 
 
 ADALN_EMBED_DIM = 256
@@ -103,20 +104,20 @@ class ZSingleStreamAttnProcessor:
         x_cu_seqlens: Optional[torch.Tensor] = None,
         x_max_item_seqlen: Optional[int] = None,
     ) -> torch.Tensor:
-        x_shard = hidden_states
-        x_freqs_cis_shard = image_rotary_emb
+        x = hidden_states
+        x_freqs_cis = image_rotary_emb
 
-        query = attn.to_q(x_shard)
-        key = attn.to_k(x_shard)
-        value = attn.to_v(x_shard)
+        query = attn.to_q(x)
+        key = attn.to_k(x)
+        value = attn.to_v(x)
 
-        seqlen_shard = x_shard.shape[0]
+        seqlen = x.shape[0]
 
         # Reshape to [seq_len, heads, head_dim]
         head_dim = query.shape[-1] // attn.heads
-        query = query.view(seqlen_shard, attn.heads, head_dim)
-        key = key.view(seqlen_shard, attn.heads, head_dim)
-        value = value.view(seqlen_shard, attn.heads, head_dim)
+        query = query.view(seqlen, attn.heads, head_dim)
+        key = key.view(seqlen, attn.heads, head_dim)
+        value = value.view(seqlen, attn.heads, head_dim)
         # Apply Norms
         if attn.norm_q is not None:
             query = attn.norm_q(query)
@@ -131,9 +132,9 @@ class ZSingleStreamAttnProcessor:
                 x_out = torch.view_as_real(x * freqs_cis).flatten(2)
                 return x_out.type_as(x_in)
 
-        if x_freqs_cis_shard is not None:
-            query = apply_rotary_emb(query, x_freqs_cis_shard)
-            key = apply_rotary_emb(key, x_freqs_cis_shard)
+        if x_freqs_cis is not None:
+            query = apply_rotary_emb(query, x_freqs_cis)
+            key = apply_rotary_emb(key, x_freqs_cis)
 
         # Cast to correct dtype
         dtype = query.dtype
@@ -274,9 +275,9 @@ class ZImageTransformerBlock(nn.Module):
 
     def forward(
         self,
-        x_shard: torch.Tensor,
-        x_src_ids_shard: torch.Tensor,
-        x_freqs_cis_shard: torch.Tensor,
+        x: torch.Tensor,
+        x_src_ids: torch.Tensor,
+        x_freqs_cis: torch.Tensor,
         x_cu_seqlens: torch.Tensor,
         x_max_item_seqlen: int,
         adaln_input: Optional[torch.Tensor] = None,
@@ -286,80 +287,40 @@ class ZImageTransformerBlock(nn.Module):
             scale_msa, gate_msa, scale_mlp, gate_mlp = self.adaLN_modulation(adaln_input).chunk(4, dim=1)
             gate_msa, gate_mlp = gate_msa.tanh(), gate_mlp.tanh()
             scale_msa, scale_mlp = 1.0 + scale_msa, 1.0 + scale_mlp
-            scale_gate_msa = (scale_msa, gate_msa)
-            scale_gate_mlp = (scale_mlp, gate_mlp)
-        else:
-            scale_gate_msa = None
-            scale_gate_mlp = None
-            x_src_ids_shard = None
 
-        x_shard = self.attn_forward(
-            x_shard,
-            x_freqs_cis_shard,
-            x_cu_seqlens,
-            x_max_item_seqlen,
-            scale_gate_msa,
-            x_src_ids_shard,
-        )
-
-        x_shard = self.ffn_forward(x_shard, scale_gate_mlp, x_src_ids_shard)
-
-        return x_shard
-
-    def attn_forward(
-        self,
-        x_shard,
-        x_freqs_cis_shard,
-        x_cu_seqlens,
-        x_max_item_seqlen,
-        scale_gate: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
-        x_src_ids_shard: Optional[torch.Tensor] = None,
-    ):
-        if self.modulation:
-            assert scale_gate is not None and x_src_ids_shard is not None
-            scale_msa, gate_msa = scale_gate
-
-            # Pass extra args needed for ZSingleStreamAttnProcessor
+            # Attention block
             attn_out = self.attention(
-                self.attention_norm1(x_shard) * scale_msa[x_src_ids_shard],
-                image_rotary_emb=x_freqs_cis_shard,
+                self.attention_norm1(x) * scale_msa[x_src_ids],
+                image_rotary_emb=x_freqs_cis,
                 x_cu_seqlens=x_cu_seqlens,
                 x_max_item_seqlen=x_max_item_seqlen,
             )
+            x = x + gate_msa[x_src_ids] * self.attention_norm2(attn_out)
 
-            x_shard = x_shard + gate_msa[x_src_ids_shard] * self.attention_norm2(attn_out)
+            # FFN block
+            x = x + gate_mlp[x_src_ids] * self.ffn_norm2(
+                self.feed_forward(
+                    self.ffn_norm1(x) * scale_mlp[x_src_ids],
+                )
+            )
         else:
+            # Attention block
             attn_out = self.attention(
-                self.attention_norm1(x_shard),
-                image_rotary_emb=x_freqs_cis_shard,
+                self.attention_norm1(x),
+                image_rotary_emb=x_freqs_cis,
                 x_cu_seqlens=x_cu_seqlens,
                 x_max_item_seqlen=x_max_item_seqlen,
             )
-            x_shard = x_shard + self.attention_norm2(attn_out)
-        return x_shard
+            x = x + self.attention_norm2(attn_out)
 
-    def ffn_forward(
-        self,
-        x_shard,
-        scale_gate: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
-        x_src_ids_shard: Optional[torch.Tensor] = None,
-    ):
-        if self.modulation:
-            assert scale_gate is not None and x_src_ids_shard is not None
-            scale_mlp, gate_mlp = scale_gate
-            x_shard = x_shard + gate_mlp[x_src_ids_shard] * self.ffn_norm2(
+            # FFN block
+            x = x + self.ffn_norm2(
                 self.feed_forward(
-                    self.ffn_norm1(x_shard) * scale_mlp[x_src_ids_shard],
+                    self.ffn_norm1(x),
                 )
             )
 
-        else:
-            x_shard = x_shard + self.ffn_norm2(
-                self.feed_forward(
-                    self.ffn_norm1(x_shard),
-                )
-            )
-        return x_shard
+        return x
 
 
 class FinalLayer(nn.Module):
@@ -377,11 +338,11 @@ class FinalLayer(nn.Module):
         nn.init.zeros_(self.adaLN_modulation[1].weight)
         nn.init.zeros_(self.adaLN_modulation[1].bias)
 
-    def forward(self, x_shard, x_src_ids_shard, c):
+    def forward(self, x, x_src_ids, c):
         scale = 1.0 + self.adaLN_modulation(c)
-        x_shard = self.norm_final(x_shard) * scale[x_src_ids_shard]
-        x_shard = self.linear(x_shard)
-        return x_shard
+        x = self.norm_final(x) * scale[x_src_ids]
+        x = self.linear(x)
+        return x
 
 
 class RopeEmbedder:
@@ -465,8 +426,6 @@ class ZImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
         all_final_layer = {}
         for patch_idx, (patch_size, f_patch_size) in enumerate(zip(all_patch_size, all_f_patch_size)):
             x_embedder = nn.Linear(f_patch_size * patch_size * patch_size * in_channels, dim, bias=True)
-            nn.init.xavier_uniform_(x_embedder.weight)
-            nn.init.constant_(x_embedder.bias, 0.0)
             all_x_embedder[f"{patch_size}-{f_patch_size}"] = x_embedder
 
             final_layer = FinalLayer(dim, patch_size * patch_size * f_patch_size * self.out_channels)
@@ -793,16 +752,3 @@ class ZImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
         x = self.unpatchify(unified, x_size, patch_size, f_patch_size)
 
         return x, {}
-
-    def parameter_count(self) -> int:
-        total_params = 0
-
-        def _recursive_count_params(module):
-            nonlocal total_params
-            for param in module.parameters(recurse=False):
-                total_params += param.numel()
-            for submodule in module.children():
-                _recursive_count_params(submodule)
-
-        _recursive_count_params(self)
-        return total_params
