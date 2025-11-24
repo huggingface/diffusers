@@ -1,4 +1,4 @@
-<!--Copyright 2025 The HuggingFace Team. All rights reserved.
+<!--Copyright 2025 The HuggingFace Team and Kandinsky Lab Team. All rights reserved.
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
 http://www.apache.org/licenses/LICENSE-2.0
@@ -9,9 +9,7 @@ specific language governing permissions and limitations under the License.
 
 # Kandinsky 5.0 Image
 
-Kandinsky 5.0 Image is created by the Kandinsky team: Nikolay Vaulin, Alexey Letunovskiy, Maria Kovaleva, Ivan Kirillov, Lev Novitskiy, Denis Koposov, Dmitrii Mikhailov, Anna Averchenkova, Andrey Shutkin, Julia Agafonova, Olga Kim, Anastasiia Kargapoltseva, Nikita Kiselev, Anna Dmitrienko,  Anastasia Maltseva, Kirill Chernyshev, Ilia Vasiliev, Viacheslav Vasilev, Vladimir Polovnikov, Yury Kolabushin, Alexander Belykh, Mikhail Mamaev, Anastasia Aliaskina, Tatiana Nikulina, Polina Gavrilova, Vladimir Arkhipkin, Vladimir Korviakov, Nikolai Gerasimenko, Denis Parkhomenko, Denis Dimitrov
-
-Kandinsky 5.0 is a family of diffusion models for Video & Image generation. 
+[Kandinsky 5.0](https://arxiv.org/abs/2511.14993) is a family of diffusion models for Video & Image generation. 
 
 Kandinsky 5.0 Image Lite is a lightweight image generation model (6B parameters) 
 
@@ -29,20 +27,15 @@ The original codebase can be found at [kandinskylab/Kandinsky-5](https://github.
 Kandinsky 5.0 Image Lite:
 | model_id | Description | Use Cases |
 |------------|-------------|-----------|
-| **kandinskylab/Kandinsky-5.0-T2I-Lite-sft-Diffusers** | 6B image Supervised Fine-Tuned model | Highest generation quality |
-| **kandinskylab/Kandinsky-5.0-I2I-Lite-sft-Diffusers** | 6B image editing Supervised Fine-Tuned model | Highest generation quality |
-| **kandinskylab/Kandinsky-5.0-T2I-Lite-pretrain-Diffusers** | 6B image Base pretrained model | Research and fine-tuning |
-| **kandinskylab/Kandinsky-5.0-I2I-Lite-pretrain-Diffusers** | 6B image editing Base pretrained model | Research and fine-tuning |
-
-## Kandinsky5T2IPipeline
-
-[[autodoc]] Kandinsky5T2IPipeline
-    - all
-    - __call__
+| [**kandinskylab/Kandinsky-5.0-T2I-Lite-sft-Diffusers**](https://huggingface.co/kandinskylab/Kandinsky-5.0-T2I-Lite-sft-Diffusers) | 6B image Supervised Fine-Tuned model | Highest generation quality |
+| [**kandinskylab/Kandinsky-5.0-I2I-Lite-sft-Diffusers**](https://huggingface.co/kandinskylab/Kandinsky-5.0-I2I-Lite-sft-Diffusers) | 6B image editing Supervised Fine-Tuned model | Highest generation quality |
+| [**kandinskylab/Kandinsky-5.0-T2I-Lite-pretrain-Diffusers**](https://huggingface.co/kandinskylab/Kandinsky-5.0-T2I-Lite-pretrain-Diffusers) | 6B image Base pretrained model | Research and fine-tuning |
+| [**kandinskylab/Kandinsky-5.0-I2I-Lite-pretrain-Diffusers**](https://huggingface.co/kandinskylab/Kandinsky-5.0-I2I-Lite-pretrain-Diffusers) | 6B image editing Base pretrained model | Research and fine-tuning |
 
 ## Usage Examples
 
 ### Basic Text-to-Image Generation
+
 ```python
 import torch
 from diffusers import Kandinsky5T2IPipeline
@@ -65,11 +58,7 @@ output = pipe(
 ).image[0]
 ```
 
-## Kandinsky5I2IPipeline
-
-[[autodoc]] Kandinsky5I2IPipeline
-    - all
-    - __call__
+### Basic Image-to-Image Generation
 
 ```python
 import torch
@@ -97,6 +86,19 @@ output = pipe(
     guidance_scale=3.5,
 ).image[0]
 ```
+
+
+## Kandinsky5T2IPipeline
+
+[[autodoc]] Kandinsky5T2IPipeline
+    - all
+    - __call__
+
+## Kandinsky5I2IPipeline
+
+[[autodoc]] Kandinsky5I2IPipeline
+    - all
+    - __call__
 
 
 ## Citation

@@ -118,13 +118,14 @@ class Kandinsky5I2IPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
         transformer ([`Kandinsky5Transformer3DModel`]):
             Conditional Transformer to denoise the encoded image latents.
         vae ([`AutoencoderKL`]):
-            Variational Auto-Encoder (VAE) Model to encode and decode iamges to and from latent representations.
+            Variational Auto-Encoder Model [black-forest-labs/FLUX.1-dev (vae)](https://huggingface.co/black-forest-labs/FLUX.1-dev) to encode and decode videos to and from latent representations.
         text_encoder ([`Qwen2_5_VLForConditionalGeneration`]):
-            Frozen text-encoder (Qwen2.5-VL).
+            Frozen text-encoder [Qwen2.5-VL](https://huggingface.co/Qwen/Qwen2.5-VL-7B-Instruct).
         tokenizer ([`AutoProcessor`]):
             Tokenizer for Qwen2.5-VL.
         text_encoder_2 ([`CLIPTextModel`]):
-            Frozen CLIP text encoder.
+            Frozen [CLIP](https://huggingface.co/docs/transformers/model_doc/clip#transformers.CLIPTextModel), specifically
+            the [clip-vit-large-patch14](https://huggingface.co/openai/clip-vit-large-patch14) variant.
         tokenizer_2 ([`CLIPTokenizer`]):
             Tokenizer for CLIP.
         scheduler ([`FlowMatchEulerDiscreteScheduler`]):
@@ -169,83 +170,12 @@ class Kandinsky5I2IPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor_spatial)
         self.resolutions = [(1024, 1024), (640, 1408), (1408, 640), (768, 1280), (1280, 768), (896, 1152), (1152, 896)]
 
-    # Add model CPU offload methods
-    def enable_model_cpu_offload(self, gpu_id: Optional[int] = None):
-        r"""
-        Offloads all models to CPU using accelerate, reducing memory usage with a low impact on performance. Compared
-        to `enable_sequential_cpu_offload`, this method is faster for both offloading and onloading the models, but
-        uses more peak memory as each model is only offloaded after the previous one has already been executed.
-
-        Args:
-            gpu_id (`int`, *optional*):
-                The GPU ID on which the models should be executed. If not specified, the first GPU (index 0) will be
-                used.
-        """
-        if is_accelerate_available() and is_accelerate_version(">=", "0.17.0.dev0"):
-            from accelerate import cpu_offload_with_hook
-        else:
-            raise ImportError("`enable_model_cpu_offload` requires `accelerate v0.17.0` or higher.")
-
-        device = torch.device(f"cuda:{gpu_id}") if gpu_id is not None else torch.device("cuda:0")
-        hook = None
-
-        if self.device.type != "cpu":
-            self.to("cpu")
-            torch.cuda.empty_cache()  # otherwise we don't see the memory savings (but they probably exist)
-
-        model_sequence = [
-            self.text_encoder,
-            self.text_encoder_2,
-            self.transformer,
-            self.vae,
-        ]
-
-        for model in model_sequence:
-            _, hook = cpu_offload_with_hook(model, device, prev_module_hook=hook)
-
-        # We'll offload the last model to the CPU as well.
-        final_hook = hook
-
-        def offload_hook():
-            final_hook.offload()
-
-        self._offload_hook = offload_hook
-
-    @property
-    def models(self):
-        """
-        Return all models used by the pipeline for hook management.
-        """
-        models = []
-        if hasattr(self, "text_encoder"):
-            models.append(self.text_encoder)
-        if hasattr(self, "text_encoder_2"):
-            models.append(self.text_encoder_2)
-        if hasattr(self, "transformer"):
-            models.append(self.transformer)
-        if hasattr(self, "vae"):
-            models.append(self.vae)
-        return models
-
-    def maybe_free_model_hooks(self):
-        r"""
-        Function that might remove all the `_hf_hook` if they are set (which is the case if
-        `enable_sequential_cpu_offload` was called). This would then make sure the model is not kept in GPU memory if
-        it's not needed.
-        """
-        for module in self.models:
-            if hasattr(module, "_hf_hook"):
-                module._hf_hook = None
-
-        if hasattr(self, "_offload_hook"):
-            self._offload_hook()
-
     def _encode_prompt_qwen(
         self,
         prompt: List[str],
         image: Optional[PipelineImageInput] = None,
         device: Optional[torch.device] = None,
-        max_sequence_length: int = 256,
+        max_sequence_length: int = 1024,
         dtype: Optional[torch.dtype] = None,
     ):
         """
@@ -270,11 +200,34 @@ class Kandinsky5I2IPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
             image = [image]
         image = [i.resize((i.size[0]//2,i.size[1]//2)) for i in image]
         full_texts = [self.prompt_template.format(p) for p in prompt]
+        max_allowed_len = self.prompt_template_encode_start_idx + max_sequence_length
+
+        untruncated_ids = self.tokenizer(
+            text=full_texts,
+            images=image,
+            videos=None,
+            return_tensors="pt",
+            padding="longest",
+        )['input_ids']
+
+        if untruncated_ids.shape[-1] > max_allowed_len:
+            for i,text in enumerate(full_texts):
+                tokens = untruncated_ids[i]
+                num_image_tokens = (tokens==self.tokenizer.image_token_id).sum()
+                tokens = tokens[tokens!=self.tokenizer.image_token_id][self.prompt_template_encode_start_idx:-3]
+                removed_text = self.tokenizer.decode(tokens[max_sequence_length-num_image_tokens-3:])
+                if len(removed_text) > 0:
+                    full_texts[i] = text[:-len(removed_text)]
+                    logger.warning(
+                        "The following part of your input was truncated because `max_sequence_length` is set to "
+                        f" {max_sequence_length} tokens: {removed_text}"
+                    )
+
         inputs = self.tokenizer(
             text=full_texts,
             images=image,
             videos=None,
-            max_length=max_sequence_length if image is None else None,
+            max_length=max_allowed_len,
             truncation=True,
             return_tensors="pt",
             padding=True,
@@ -332,7 +285,7 @@ class Kandinsky5I2IPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
         prompt: Union[str, List[str]],
         image: torch.Tensor,
         num_images_per_prompt: int = 1,
-        max_sequence_length: int = 512,
+        max_sequence_length: int = 1024,
         device: Optional[torch.device] = None,
         dtype: Optional[torch.dtype] = None,
     ):
@@ -347,8 +300,8 @@ class Kandinsky5I2IPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
                 Prompt to be encoded.
             num_images_per_prompt (`int`, *optional*, defaults to 1):
                 Number of images to generate per prompt.
-            max_sequence_length (`int`, *optional*, defaults to 512):
-                Maximum sequence length for text encoding.
+            max_sequence_length (`int`, *optional*, defaults to 1024):
+                Maximum sequence length for text encoding. Must be less than 1024
             device (`torch.device`, *optional*):
                 Torch device.
             dtype (`torch.dtype`, *optional*):
@@ -434,6 +387,7 @@ class Kandinsky5I2IPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
         prompt_cu_seqlens=None,
         negative_prompt_cu_seqlens=None,
         callback_on_step_end_tensor_inputs=None,
+        max_sequence_length=None,
     ):
         """
         Validate input parameters for the pipeline.
@@ -455,6 +409,10 @@ class Kandinsky5I2IPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
         Raises:
             ValueError: If inputs are invalid
         """
+
+        if max_sequence_length is not None and max_sequence_length > 1024:
+            raise ValueError(f"max_sequence_length must be less than 1024")
+
         if image is None:
             raise ValueError("`image` must be provided for image-to-image generation")
 
@@ -583,11 +541,6 @@ class Kandinsky5I2IPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
         return self._guidance_scale
 
     @property
-    def do_classifier_free_guidance(self):
-        """Check if classifier-free guidance is enabled."""
-        return self._guidance_scale > 1.0
-
-    @property
     def num_timesteps(self):
         """Get the number of denoising timesteps."""
         return self._num_timesteps
@@ -623,8 +576,7 @@ class Kandinsky5I2IPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
             Union[Callable[[int, int, Dict], None], PipelineCallback, MultiPipelineCallbacks]
         ] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
-        max_sequence_length: int = 512,
-        **kwargs,
+        max_sequence_length: int = 1024,
     ):
         r"""
         The call function to the pipeline for image-to-image generation.
@@ -637,9 +589,9 @@ class Kandinsky5I2IPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
             negative_prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts to avoid during image generation. If not defined, pass `negative_prompt_embeds`
                 instead. Ignored when not using guidance (`guidance_scale` < `1`).
-            height (`int`, defaults to `512`):
+            height (`int`):
                 The height in pixels of the generated image.
-            width (`int`:
+            width (`int`):
                 The width in pixels of the generated image.
             num_inference_steps (`int`, defaults to `50`):
                 The number of denoising steps.
@@ -671,8 +623,8 @@ class Kandinsky5I2IPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
                 A function that is called at the end of each denoising step.
             callback_on_step_end_tensor_inputs (`List`, *optional*):
                 The list of tensor inputs for the `callback_on_step_end` function.
-            max_sequence_length (`int`, defaults to `512`):
-                The maximum sequence length for text encoding.
+            max_sequence_length (`int`, defaults to `1024`):
+                The maximum sequence length for text and image qwen encoding. Must be less than 1024
 
         Examples:
 
@@ -699,6 +651,7 @@ class Kandinsky5I2IPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
             prompt_cu_seqlens=prompt_cu_seqlens,
             negative_prompt_cu_seqlens=negative_prompt_cu_seqlens,
             callback_on_step_end_tensor_inputs=callback_on_step_end_tensor_inputs,
+            max_sequence_length=max_sequence_length,
         )
         if (width, height) not in self.resolutions:
             width, height = self.resolutions[np.argmin([abs((i[0] / i[1]) - (width / height)) for i in self.resolutions])]
@@ -729,7 +682,7 @@ class Kandinsky5I2IPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
                 dtype=dtype,
             )
 
-        if self.do_classifier_free_guidance:
+        if self.guidance_scale > 1.:
             if negative_prompt is None:
                 negative_prompt = ""
 
@@ -815,7 +768,7 @@ class Kandinsky5I2IPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
                     return_dict=True,
                 ).sample
 
-                if self.do_classifier_free_guidance and negative_prompt_embeds_qwen is not None:
+                if self.guidance_scale > 1. and negative_prompt_embeds_qwen is not None:
                     uncond_pred_velocity = self.transformer(
                         hidden_states=latents.to(dtype),
                         encoder_hidden_states=negative_prompt_embeds_qwen.to(dtype),

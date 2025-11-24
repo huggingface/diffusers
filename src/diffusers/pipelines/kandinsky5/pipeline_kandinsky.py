@@ -120,13 +120,14 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
         transformer ([`Kandinsky5Transformer3DModel`]):
             Conditional Transformer to denoise the encoded video latents.
         vae ([`AutoencoderKLHunyuanVideo`]):
-            Variational Auto-Encoder (VAE) Model to encode and decode videos to and from latent representations.
+            Variational Auto-Encoder Model [hunyuanvideo-community/HunyuanVideo (vae)](https://huggingface.co/hunyuanvideo-community/HunyuanVideo) to encode and decode videos to and from latent representations.
         text_encoder ([`Qwen2_5_VLForConditionalGeneration`]):
-            Frozen text-encoder (Qwen2.5-VL).
+            Frozen text-encoder [Qwen2.5-VL](https://huggingface.co/Qwen/Qwen2.5-VL-7B-Instruct).
         tokenizer ([`AutoProcessor`]):
             Tokenizer for Qwen2.5-VL.
         text_encoder_2 ([`CLIPTextModel`]):
-            Frozen CLIP text encoder.
+            Frozen [CLIP](https://huggingface.co/docs/transformers/model_doc/clip#transformers.CLIPTextModel), specifically
+            the [clip-vit-large-patch14](https://huggingface.co/openai/clip-vit-large-patch14) variant.
         tokenizer_2 ([`CLIPTokenizer`]):
             Tokenizer for CLIP.
         scheduler ([`FlowMatchEulerDiscreteScheduler`]):
@@ -315,12 +316,32 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
         dtype = dtype or self.text_encoder.dtype
 
         full_texts = [self.prompt_template.format(p) for p in prompt]
+        max_allowed_len = self.prompt_template_encode_start_idx + max_sequence_length
+
+        untruncated_ids = self.tokenizer(
+            text=full_texts,
+            images=None,
+            videos=None,
+            return_tensors="pt",
+            padding="longest",
+        )['input_ids']
+
+        if untruncated_ids.shape[-1] > max_allowed_len:
+            for i,text in enumerate(full_texts):
+                tokens = untruncated_ids[i][self.prompt_template_encode_start_idx:-2]
+                removed_text = self.tokenizer.decode(tokens[max_sequence_length-2:])
+                if len(removed_text) > 0:
+                    full_texts[i] = text[:-len(removed_text)]
+                    logger.warning(
+                        "The following part of your input was truncated because `max_sequence_length` is set to "
+                        f" {max_sequence_length} tokens: {removed_text}"
+                    )
 
         inputs = self.tokenizer(
             text=full_texts,
             images=None,
             videos=None,
-            max_length=max_sequence_length + self.prompt_template_encode_start_idx,
+            max_length=max_allowed_len,
             truncation=True,
             return_tensors="pt",
             padding=True,
@@ -481,6 +502,7 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
         prompt_cu_seqlens=None,
         negative_prompt_cu_seqlens=None,
         callback_on_step_end_tensor_inputs=None,
+        max_sequence_length=None,
     ):
         """
         Validate input parameters for the pipeline.
@@ -501,6 +523,10 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
         Raises:
             ValueError: If inputs are invalid
         """
+
+        if max_sequence_length is not None and max_sequence_length > 1024:
+            raise ValueError(f"max_sequence_length must be less than 1024")
+
         if height % 16 != 0 or width % 16 != 0:
             raise ValueError(f"`height` and `width` have to be divisible by 16 but are {height} and {width}.")
 
@@ -623,11 +649,6 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
         return self._guidance_scale
 
     @property
-    def do_classifier_free_guidance(self):
-        """Check if classifier-free guidance is enabled."""
-        return self._guidance_scale > 1.0
-
-    @property
     def num_timesteps(self):
         """Get the number of denoising timesteps."""
         return self._num_timesteps
@@ -664,7 +685,6 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
         ] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
         max_sequence_length: int = 512,
-        **kwargs,
     ):
         r"""
         The call function to the pipeline for generation.
@@ -729,6 +749,7 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
             prompt_cu_seqlens=prompt_cu_seqlens,
             negative_prompt_cu_seqlens=negative_prompt_cu_seqlens,
             callback_on_step_end_tensor_inputs=callback_on_step_end_tensor_inputs,
+            max_sequence_length=max_sequence_length,
         )
 
         if num_frames % self.vae_scale_factor_temporal != 1:
@@ -762,7 +783,7 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
                 dtype=dtype,
             )
 
-        if self.do_classifier_free_guidance:
+        if self.guidance_scale > 1.:
             if negative_prompt is None:
                 negative_prompt = "Static, 2D cartoon, cartoon, 2d animation, paintings, images, worst quality, low quality, ugly, deformed, walking backwards"
 
@@ -847,7 +868,7 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
                     return_dict=True,
                 ).sample
 
-                if self.do_classifier_free_guidance and negative_prompt_embeds_qwen is not None:
+                if self.guidance_scale > 1. and negative_prompt_embeds_qwen is not None:
                     uncond_pred_velocity = self.transformer(
                         hidden_states=latents.to(dtype),
                         encoder_hidden_states=negative_prompt_embeds_qwen.to(dtype),

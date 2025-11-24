@@ -1,4 +1,4 @@
-<!--Copyright 2025 The HuggingFace Team. All rights reserved.
+<!--Copyright 2025 The HuggingFace Team Kandinsky Lab Team. All rights reserved.
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
 http://www.apache.org/licenses/LICENSE-2.0
@@ -9,9 +9,7 @@ specific language governing permissions and limitations under the License.
 
 # Kandinsky 5.0 Video
 
-Kandinsky 5.0 Video is created by the Kandinsky team: Alexey Letunovskiy, Maria Kovaleva, Ivan Kirillov, Lev Novitskiy, Denis Koposov, Dmitrii Mikhailov, Anna Averchenkova, Andrey Shutkin, Julia Agafonova, Olga Kim, Anastasiia Kargapoltseva, Nikita Kiselev, Anna Dmitrienko,  Anastasia Maltseva, Kirill Chernyshev, Ilia Vasiliev, Viacheslav Vasilev, Vladimir Polovnikov, Yury Kolabushin, Alexander Belykh, Mikhail Mamaev, Anastasia Aliaskina, Tatiana Nikulina, Polina Gavrilova, Vladimir Arkhipkin, Vladimir Korviakov, Nikolai Gerasimenko, Denis Parkhomenko, Denis Dimitrov
-
-Kandinsky 5.0 is a family of diffusion models for Video & Image generation. 
+[Kandinsky 5.0](https://arxiv.org/abs/2511.14993) is a family of diffusion models for Video & Image generation.
 
 Kandinsky 5.0 Lite line-up of lightweight video generation models (2B parameters) that ranks #1 among open-source models in its class. It outperforms larger models and offers the best understanding of Russian concepts in the open-source ecosystem.
 
@@ -27,7 +25,7 @@ The model introduces several key innovations:
 The original codebase can be found at [kandinskylab/Kandinsky-5](https://github.com/kandinskylab/Kandinsky-5).
 
 > [!TIP]
-> Check out the [AI Forever](https://huggingface.co/kandinskylab) organization on the Hub for the official model checkpoints for text-to-video generation, including pretrained, SFT, no-CFG, and distilled variants.
+> Check out the [Kandinsky Lab](https://huggingface.co/kandinskylab) organization on the Hub for the official model checkpoints for text-to-video generation, including pretrained, SFT, no-CFG, and distilled variants.
 
 ## Available Models
 
@@ -49,11 +47,6 @@ Kandinsky 5.0 T2V Lite:
 | **kandinskylab/Kandinsky-5.0-T2V-Lite-pretrain-5s-Diffusers** | 5 second Base pretrained model | Research and fine-tuning |
 | **kandinskylab/Kandinsky-5.0-T2V-Lite-pretrain-10s-Diffusers** | 10 second Base pretrained model | Research and fine-tuning |
 
-## Kandinsky5T2VPipeline
-
-[[autodoc]] Kandinsky5T2VPipeline
-    - all
-    - __call__
 
 ## Usage Examples
 
@@ -171,13 +164,8 @@ output = pipe(
 export_to_video(output, "output.mp4", fps=24, quality=9)
 ```
 
-## Kandinsky5I2VPipeline
 
-[[autodoc]] Kandinsky5I2VPipeline
-    - all
-    - __call__
-
-## Usage Examples
+### Basic Image-to-Video Generation
 **⚠️ Warning!** all Pro models should be infered with pipeline.enable_model_cpu_offload()  
 ```python
 import torch
@@ -296,6 +284,18 @@ The evaluation is based on the expanded prompts from the [Movie Gen benchmark](h
       </td>
 
 </table>
+
+## Kandinsky5T2VPipeline
+
+[[autodoc]] Kandinsky5T2VPipeline
+    - all
+    - __call__
+
+## Kandinsky5I2VPipeline
+
+[[autodoc]] Kandinsky5I2VPipeline
+    - all
+    - __call__
 
 
 ## Citation
