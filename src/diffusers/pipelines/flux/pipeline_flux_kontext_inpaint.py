@@ -22,7 +22,7 @@ from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import is_torch_xla_available, logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
-from .pipeline_flux_utils import FluxMixin, retrieve_latents, retrieve_timesteps
+from .pipeline_flux_utils import FluxMixin, calculate_shift, retrieve_latents, retrieve_timesteps
 from .pipeline_output import FluxPipelineOutput
 
 
@@ -115,19 +115,6 @@ PREFERRED_KONTEXT_RESOLUTIONS = [
     (1504, 688),
     (1568, 672),
 ]
-
-
-def calculate_shift(
-    image_seq_len,
-    base_seq_len: int = 256,
-    max_seq_len: int = 4096,
-    base_shift: float = 0.5,
-    max_shift: float = 1.15,
-):
-    m = (max_shift - base_shift) / (max_seq_len - base_seq_len)
-    b = base_shift - m * base_seq_len
-    mu = image_seq_len * m + b
-    return mu
 
 
 class FluxKontextInpaintPipeline(

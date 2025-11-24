@@ -134,7 +134,7 @@ def linear_quadratic_schedule(num_steps, threshold_noise=0.025, linear_steps=Non
     return torch.tensor(sigma_schedule[:-1])
 
 
-# Copied from diffusers.pipelines.flux.pipeline_flux.calculate_shift
+# Copied from diffusers.pipelines.flux.pipeline_flux_utils.calculate_shift
 def calculate_shift(
     image_seq_len,
     base_seq_len: int = 256,

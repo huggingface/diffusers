@@ -161,7 +161,7 @@ DEFAULT_PROMPT_TEMPLATE = {
 }
 
 
-# Copied from diffusers.pipelines.flux.pipeline_flux.calculate_shift
+# Copied from diffusers.pipelines.flux.pipeline_flux_utils.calculate_shift
 def calculate_shift(
     image_seq_len,
     base_seq_len: int = 256,
