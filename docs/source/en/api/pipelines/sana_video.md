@@ -48,7 +48,7 @@ The example below demonstrates how to use the text-to-video pipeline to generate
 ```python
 pipe = SanaVideoPipeline.from_pretrained(
     "Efficient-Large-Model/SANA-Video_2B_480p_diffusers", 
-    torch_dtype=torch.bfloat16
+    torch_dtype=torch.bfloat16,
 )
 pipe.text_encoder.to(torch.bfloat16)
 pipe.vae.to(torch.float32)
