@@ -132,7 +132,7 @@ export MODEL_NAME="black-forest-labs/FLUX.2-dev"
 export INSTANCE_DIR="dog"
 export OUTPUT_DIR="trained-flux2"
 
-accelerate launch train_dreambooth_flux.py \
+accelerate launch train_dreambooth_lora_flux2.py \
   --pretrained_model_name_or_path=$MODEL_NAME  \
   --instance_data_dir=$INSTANCE_DIR \
   --output_dir=$OUTPUT_DIR \
@@ -190,7 +190,7 @@ export MODEL_NAME="black-forest-labs/FLUX.2-dev"
 export INSTANCE_DIR="dog"
 export OUTPUT_DIR="trained-flux2-lora"
 
-accelerate launch train_dreambooth_lora_flux.py \
+accelerate launch train_dreambooth_lora_flux2.py \
   --pretrained_model_name_or_path=$MODEL_NAME  \
   --instance_data_dir=$INSTANCE_DIR \
   --output_dir=$OUTPUT_DIR \
