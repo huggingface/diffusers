@@ -464,6 +464,8 @@ class ZImagePipeline(DiffusionPipeline, FromSingleFileMixin):
             prompt_embeds = [pe for pe in prompt_embeds for _ in range(num_images_per_prompt)]
             if self.do_classifier_free_guidance and negative_prompt_embeds:
                 negative_prompt_embeds = [npe for npe in negative_prompt_embeds for _ in range(num_images_per_prompt)]
+        
+        actual_batch_size = batch_size * num_images_per_prompt
         image_seq_len = (latents.shape[2] // 2) * (latents.shape[3] // 2)
 
         # 5. Prepare timesteps
@@ -532,11 +534,11 @@ class ZImagePipeline(DiffusionPipeline, FromSingleFileMixin):
 
                 if apply_cfg:
                     # Perform CFG
-                    pos_out = model_out_list[:batch_size]
-                    neg_out = model_out_list[batch_size:]
+                    pos_out = model_out_list[:actual_batch_size]
+                    neg_out = model_out_list[actual_batch_size:]
 
                     noise_pred = []
-                    for j in range(batch_size):
+                    for j in range(actual_batch_size):
                         pos = pos_out[j].float()
                         neg = neg_out[j].float()
 
