@@ -432,26 +432,35 @@ class ZImagePipeline(DiffusionPipeline, FromSingleFileMixin):
         elif prompt is not None and isinstance(prompt, list):
             batch_size = len(prompt)
         else:
-            batch_size = prompt_embeds.shape[0]
+            batch_size = len(prompt_embeds)
 
         lora_scale = (
             self.joint_attention_kwargs.get("scale", None) if self.joint_attention_kwargs is not None else None
         )
-        (
-            prompt_embeds,
-            negative_prompt_embeds,
-        ) = self.encode_prompt(
-            prompt=prompt,
-            negative_prompt=negative_prompt,
-            do_classifier_free_guidance=self.do_classifier_free_guidance,
-            prompt_embeds=prompt_embeds,
-            negative_prompt_embeds=negative_prompt_embeds,
-            dtype=dtype,
-            device=device,
-            num_images_per_prompt=num_images_per_prompt,
-            max_sequence_length=max_sequence_length,
-            lora_scale=lora_scale,
-        )
+
+        # If prompt_embeds is provided and prompt is None, skip encoding
+        if prompt_embeds is not None and prompt is None:
+            if self.do_classifier_free_guidance and negative_prompt_embeds is None:
+                raise ValueError(
+                    "When `prompt_embeds` is provided without `prompt`, "
+                    "`negative_prompt_embeds` must also be provided for classifier-free guidance."
+                )
+        else:
+            (
+                prompt_embeds,
+                negative_prompt_embeds,
+            ) = self.encode_prompt(
+                prompt=prompt,
+                negative_prompt=negative_prompt,
+                do_classifier_free_guidance=self.do_classifier_free_guidance,
+                prompt_embeds=prompt_embeds,
+                negative_prompt_embeds=negative_prompt_embeds,
+                dtype=dtype,
+                device=device,
+                num_images_per_prompt=num_images_per_prompt,
+                max_sequence_length=max_sequence_length,
+                lora_scale=lora_scale,
+            )
 
         # 4. Prepare latent variables
         num_channels_latents = self.transformer.in_channels
