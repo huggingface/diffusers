@@ -23,11 +23,7 @@ from transformers import AutoProcessor, Mistral3ForConditionalGeneration
 from ...loaders import Flux2LoraLoaderMixin
 from ...models import AutoencoderKLFlux2, Flux2Transformer2DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
-from ...utils import (
-    is_torch_xla_available,
-    logging,
-    replace_example_docstring,
-)
+from ...utils import is_torch_xla_available, logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
 from .image_processor import Flux2ImageProcessor
@@ -79,17 +75,21 @@ def format_text_input(prompts: List[str], system_message: str = None):
     ]
 
 
-
 def compute_empirical_mu(image_seq_len: int, num_steps: int) -> float:
-    a1, b1 = 0.00020573, 1.85733333
+    a1, b1 = 8.73809524e-05, 1.89833333
     a2, b2 = 0.00016927, 0.45666666
 
-    m_200 = a2 * image_seq_len + b2
-    m_30 = a1 * image_seq_len + b1
+    if image_seq_len > 4300:
+        mu = a2 * image_seq_len + b2
+        return float(mu)
 
-    a = (m_200 - m_30) / 170.0
+    m_200 = a2 * image_seq_len + b2
+    m_10 = a1 * image_seq_len + b1
+
+    a = (m_200 - m_10) / 190.0
     b = m_200 - 200.0 * a
     mu = a * num_steps + b
+
     return float(mu)
 
 
@@ -171,7 +171,7 @@ class Flux2Pipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
     r"""
     The Flux2 pipeline for text-to-image generation.
 
-    Reference: TODO
+    Reference: [https://bfl.ai/blog/flux-2](https://bfl.ai/blog/flux-2)
 
     Args:
         transformer ([`Flux2Transformer2DModel`]):
@@ -783,10 +783,7 @@ class Flux2Pipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
         if hasattr(self.scheduler.config, "use_flow_sigmas") and self.scheduler.config.use_flow_sigmas:
             sigmas = None
         image_seq_len = latents.shape[1]
-        mu = compute_empirical_mu(
-            image_seq_len=image_seq_len, 
-            num_steps= num_inference_steps,
-            )
+        mu = compute_empirical_mu(image_seq_len=image_seq_len, num_steps=num_inference_steps)
         timesteps, num_inference_steps = retrieve_timesteps(
             self.scheduler,
             num_inference_steps,
