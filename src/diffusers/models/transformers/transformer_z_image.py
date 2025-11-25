@@ -69,7 +69,10 @@ class TimestepEmbedder(nn.Module):
 
     def forward(self, t):
         t_freq = self.timestep_embedding(t, self.frequency_embedding_size)
-        t_emb = self.mlp(t_freq.to(self.mlp[0].weight.dtype))
+        weight_dtype = self.mlp[0].weight.dtype
+        if weight_dtype in [torch.float32, torch.float16, torch.bfloat16]:
+            t_freq = t_freq.to(weight_dtype)
+        t_emb = self.mlp(t_freq)
         return t_emb
 
 
@@ -125,6 +128,10 @@ class ZSingleStreamAttnProcessor:
         # Cast to correct dtype
         dtype = query.dtype
         query, key = query.to(dtype), key.to(dtype)
+
+        # From [batch, seq_len] to [batch, 1, 1, seq_len] -> broadcast to [batch, heads, seq_len, seq_len]
+        if attention_mask is not None and attention_mask.ndim == 2:
+            attention_mask = attention_mask[:, None, None, :]
 
         # Compute joint attention
         hidden_states = dispatch_attention_fn(
@@ -306,6 +313,10 @@ class RopeEmbedder:
         if self.freqs_cis is None:
             self.freqs_cis = self.precompute_freqs_cis(self.axes_dims, self.axes_lens, theta=self.theta)
             self.freqs_cis = [freqs_cis.to(device) for freqs_cis in self.freqs_cis]
+        else:
+            # Ensure freqs_cis are on the same device as ids
+            if self.freqs_cis[0].device != device:
+                self.freqs_cis = [freqs_cis.to(device) for freqs_cis in self.freqs_cis]
 
         result = []
         for i in range(len(self.axes_dims)):
@@ -317,6 +328,7 @@ class RopeEmbedder:
 class ZImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginalModelMixin):
     _supports_gradient_checkpointing = True
     _no_split_modules = ["ZImageTransformerBlock"]
+    _skip_layerwise_casting_patterns = ["t_embedder", "cap_embedder"]  # precision sensitive layers
 
     @register_to_config
     def __init__(
@@ -553,8 +565,6 @@ class ZImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
         t = t * self.t_scale
         t = self.t_embedder(t)
 
-        adaln_input = t
-
         (
             x,
             cap_feats,
@@ -572,6 +582,9 @@ class ZImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
 
         x = torch.cat(x, dim=0)
         x = self.all_x_embedder[f"{patch_size}-{f_patch_size}"](x)
+
+        # Match t_embedder output dtype to x for layerwise casting compatibility
+        adaln_input = t.type_as(x)
         x[torch.cat(x_inner_pad_mask)] = self.x_pad_token
         x = list(x.split(x_item_seqlens, dim=0))
         x_freqs_cis = list(self.rope_embedder(torch.cat(x_pos_ids, dim=0)).split(x_item_seqlens, dim=0))
