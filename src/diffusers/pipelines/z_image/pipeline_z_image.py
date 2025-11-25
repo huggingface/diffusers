@@ -165,21 +165,16 @@ class ZImagePipeline(DiffusionPipeline, FromSingleFileMixin):
         self,
         prompt: Union[str, List[str]],
         device: Optional[torch.device] = None,
-        dtype: Optional[torch.dtype] = None,
-        num_images_per_prompt: int = 1,
         do_classifier_free_guidance: bool = True,
         negative_prompt: Optional[Union[str, List[str]]] = None,
         prompt_embeds: Optional[List[torch.FloatTensor]] = None,
         negative_prompt_embeds: Optional[torch.FloatTensor] = None,
         max_sequence_length: int = 512,
-        lora_scale: Optional[float] = None,
     ):
         prompt = [prompt] if isinstance(prompt, str) else prompt
         prompt_embeds = self._encode_prompt(
             prompt=prompt,
             device=device,
-            dtype=dtype,
-            num_images_per_prompt=num_images_per_prompt,
             prompt_embeds=prompt_embeds,
             max_sequence_length=max_sequence_length,
         )
@@ -193,8 +188,6 @@ class ZImagePipeline(DiffusionPipeline, FromSingleFileMixin):
             negative_prompt_embeds = self._encode_prompt(
                 prompt=negative_prompt,
                 device=device,
-                dtype=dtype,
-                num_images_per_prompt=num_images_per_prompt,
                 prompt_embeds=negative_prompt_embeds,
                 max_sequence_length=max_sequence_length,
             )
@@ -206,12 +199,9 @@ class ZImagePipeline(DiffusionPipeline, FromSingleFileMixin):
         self,
         prompt: Union[str, List[str]],
         device: Optional[torch.device] = None,
-        dtype: Optional[torch.dtype] = None,
-        num_images_per_prompt: int = 1,
         prompt_embeds: Optional[List[torch.FloatTensor]] = None,
         max_sequence_length: int = 512,
     ) -> List[torch.FloatTensor]:
-        assert num_images_per_prompt == 1
         device = device or self._execution_device
 
         if prompt_embeds is not None:
@@ -417,8 +407,8 @@ class ZImagePipeline(DiffusionPipeline, FromSingleFileMixin):
                 f"Please adjust the width to a multiple of {vae_scale}."
             )
 
-        assert self.dtype == torch.bfloat16
-        dtype = self.dtype
+        # assert self.dtype == torch.bfloat16
+        dtype = self.dtype if hasattr(self, "dtype") and self.dtype is not None else torch.float32
         device = self._execution_device
 
         self._guidance_scale = guidance_scale
@@ -433,10 +423,6 @@ class ZImagePipeline(DiffusionPipeline, FromSingleFileMixin):
             batch_size = len(prompt)
         else:
             batch_size = len(prompt_embeds)
-
-        lora_scale = (
-            self.joint_attention_kwargs.get("scale", None) if self.joint_attention_kwargs is not None else None
-        )
 
         # If prompt_embeds is provided and prompt is None, skip encoding
         if prompt_embeds is not None and prompt is None:
@@ -455,11 +441,8 @@ class ZImagePipeline(DiffusionPipeline, FromSingleFileMixin):
                 do_classifier_free_guidance=self.do_classifier_free_guidance,
                 prompt_embeds=prompt_embeds,
                 negative_prompt_embeds=negative_prompt_embeds,
-                dtype=dtype,
                 device=device,
-                num_images_per_prompt=num_images_per_prompt,
                 max_sequence_length=max_sequence_length,
-                lora_scale=lora_scale,
             )
 
         # 4. Prepare latent variables
@@ -475,6 +458,12 @@ class ZImagePipeline(DiffusionPipeline, FromSingleFileMixin):
             generator,
             latents,
         )
+
+        # Repeat prompt_embeds for num_images_per_prompt
+        if num_images_per_prompt > 1:
+            prompt_embeds = [pe for pe in prompt_embeds for _ in range(num_images_per_prompt)]
+            if self.do_classifier_free_guidance and negative_prompt_embeds:
+                negative_prompt_embeds = [npe for npe in negative_prompt_embeds for _ in range(num_images_per_prompt)]
         image_seq_len = (latents.shape[2] // 2) * (latents.shape[3] // 2)
 
         # 5. Prepare timesteps
