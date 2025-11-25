@@ -20,23 +20,25 @@ import torch
 from torch.nn import functional as F
 from transformers import CLIPTextModel, CLIPTokenizer, Qwen2_5_VLForConditionalGeneration, Qwen2VLProcessor
 
-from ...image_processor import PipelineImageInput
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
+from ...image_processor import PipelineImageInput
 from ...loaders import KandinskyLoraLoaderMixin
 from ...models import AutoencoderKLHunyuanVideo
 from ...models.transformers import Kandinsky5Transformer3DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
-from ...utils import is_ftfy_available, is_torch_xla_available, logging, replace_example_docstring
+
+# Add imports for offloading and tiling
+from ...utils import (
+    is_ftfy_available,
+    is_torch_xla_available,
+    logging,
+    replace_example_docstring,
+)
 from ...utils.torch_utils import randn_tensor
 from ...video_processor import VideoProcessor
 from ..pipeline_utils import DiffusionPipeline
 from .pipeline_output import KandinskyPipelineOutput
 
-# Add imports for offloading and tiling
-from ...utils import (
-    is_accelerate_available,
-    is_accelerate_version,
-)
 
 if is_torch_xla_available():
     import torch_xla.core.xla_model as xm
@@ -96,7 +98,7 @@ EXAMPLE_DOC_STRING = """
 def basic_clean(text):
     """
     Copied from https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/wan/pipeline_wan.py
-    
+
     Clean text using ftfy if available and unescape HTML entities.
     """
     if is_ftfy_available():
@@ -108,7 +110,7 @@ def basic_clean(text):
 def whitespace_clean(text):
     """
     Copied from https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/wan/pipeline_wan.py
-    
+
     Normalize whitespace in text by replacing multiple spaces with single space.
     """
     text = re.sub(r"\s+", " ", text)
@@ -119,7 +121,7 @@ def whitespace_clean(text):
 def prompt_clean(text):
     """
     Copied from https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/wan/pipeline_wan.py
-    
+
     Apply both basic cleaning and whitespace normalization to prompts.
     """
     text = whitespace_clean(basic_clean(text))
@@ -137,14 +139,16 @@ class Kandinsky5I2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
         transformer ([`Kandinsky5Transformer3DModel`]):
             Conditional Transformer to denoise the encoded video latents.
         vae ([`AutoencoderKLHunyuanVideo`]):
-            Variational Auto-Encoder Model [hunyuanvideo-community/HunyuanVideo (vae)](https://huggingface.co/hunyuanvideo-community/HunyuanVideo) to encode and decode videos to and from latent representations.
+            Variational Auto-Encoder Model [hunyuanvideo-community/HunyuanVideo
+            (vae)](https://huggingface.co/hunyuanvideo-community/HunyuanVideo) to encode and decode videos to and from
+            latent representations.
         text_encoder ([`Qwen2_5_VLForConditionalGeneration`]):
             Frozen text-encoder [Qwen2.5-VL](https://huggingface.co/Qwen/Qwen2.5-VL-7B-Instruct).
         tokenizer ([`AutoProcessor`]):
             Tokenizer for Qwen2.5-VL.
         text_encoder_2 ([`CLIPTextModel`]):
-            Frozen [CLIP](https://huggingface.co/docs/transformers/model_doc/clip#transformers.CLIPTextModel), specifically
-            the [clip-vit-large-patch14](https://huggingface.co/openai/clip-vit-large-patch14) variant.
+            Frozen [CLIP](https://huggingface.co/docs/transformers/model_doc/clip#transformers.CLIPTextModel),
+            specifically the [clip-vit-large-patch14](https://huggingface.co/openai/clip-vit-large-patch14) variant.
         tokenizer_2 ([`CLIPTokenizer`]):
             Tokenizer for CLIP.
         scheduler ([`FlowMatchEulerDiscreteScheduler`]):
@@ -205,17 +209,18 @@ class Kandinsky5I2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
     def _get_scale_factor(self, height: int, width: int) -> tuple:
         """
         Calculate the scale factor based on resolution.
-        
+
         Args:
             height (int): Video height
             width (int): Video width
-            
+
         Returns:
             tuple: Scale factor as (temporal_scale, height_scale, width_scale)
         """
-        
-        between_480p = lambda x: 480 <= x <= 854
-        
+
+        def between_480p(x):
+            return 480 <= x <= 854
+
         if between_480p(height) and between_480p(width):
             return (1, 2, 2)
         else:
@@ -339,14 +344,14 @@ class Kandinsky5I2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
             videos=None,
             return_tensors="pt",
             padding="longest",
-        )['input_ids']
+        )["input_ids"]
 
         if untruncated_ids.shape[-1] > max_allowed_len:
-            for i,text in enumerate(full_texts):
-                tokens = untruncated_ids[i][self.prompt_template_encode_start_idx:-2]
-                removed_text = self.tokenizer.decode(tokens[max_sequence_length-2:])
+            for i, text in enumerate(full_texts):
+                tokens = untruncated_ids[i][self.prompt_template_encode_start_idx : -2]
+                removed_text = self.tokenizer.decode(tokens[max_sequence_length - 2 :])
                 if len(removed_text) > 0:
-                    full_texts[i] = text[:-len(removed_text)]
+                    full_texts[i] = text[: -len(removed_text)]
                     logger.warning(
                         "The following part of your input was truncated because `max_sequence_length` is set to "
                         f" {max_sequence_length} tokens: {removed_text}"
@@ -408,12 +413,12 @@ class Kandinsky5I2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
         pooled_embed = self.text_encoder_2(**inputs)["pooler_output"]
 
         return pooled_embed.to(dtype)
-    
+
     @staticmethod
     def adaptive_mean_std_normalization(source, reference):
-        source_mean = source.mean(dim=(1,2,3,4),keepdim=True)
-        source_std = source.std(dim=(1,2,3,4),keepdim=True)
-        #magic constants - limit changes in latents
+        source_mean = source.mean(dim=(1, 2, 3, 4), keepdim=True)
+        source_std = source.std(dim=(1, 2, 3, 4), keepdim=True)
+        # magic constants - limit changes in latents
         clump_mean_low = 0.05
         clump_mean_high = 0.1
         clump_std_low = 0.1
@@ -427,17 +432,17 @@ class Kandinsky5I2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
         normalized = normalized * reference_std + reference_mean
 
         return normalized
-    
+
     def normalize_first_frame(self, latents, reference_frames=5, clump_values=False):
         latents_copy = latents.clone()
         samples = latents_copy
 
         if samples.shape[1] <= 1:
             return (latents, "Only one frame, no normalization needed")
-        
+
         nFr = 4
         first_frames = samples.clone()[:, :nFr]
-        reference_frames_data = samples[:, nFr:nFr + min(reference_frames, samples.shape[1] - 1)]
+        reference_frames_data = samples[:, nFr : nFr + min(reference_frames, samples.shape[1] - 1)]
 
         normalized_first = self.adaptive_mean_std_normalization(first_frames, reference_frames_data)
         if clump_values:
@@ -578,7 +583,7 @@ class Kandinsky5I2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
         """
 
         if max_sequence_length is not None and max_sequence_length > 1024:
-            raise ValueError(f"max_sequence_length must be less than 1024")
+            raise ValueError("max_sequence_length must be less than 1024")
 
         if image is None:
             raise ValueError("`image` must be provided for image-to-video generation")
@@ -647,8 +652,8 @@ class Kandinsky5I2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
         """
         Prepare initial latent variables for image-to-video generation.
 
-        This method creates random noise latents for all frames except the first frame,
-        which is replaced with the encoded input image.
+        This method creates random noise latents for all frames except the first frame, which is replaced with the
+        encoded input image.
 
         Args:
             image (PipelineImageInput): Input image to condition the generation on
@@ -676,7 +681,7 @@ class Kandinsky5I2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
             int(width) // self.vae_scale_factor_spatial,
             num_channels_latents,
         )
-        
+
         if isinstance(generator, list) and len(generator) != batch_size:
             raise ValueError(
                 f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
@@ -685,24 +690,24 @@ class Kandinsky5I2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
 
         # Generate random noise for all frames
         latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
-        
+
         # Encode the input image to use as first frame
         # Preprocess image
         image_tensor = self.video_processor.preprocess(image, height=height, width=width).to(device, dtype=dtype)
-        
+
         # Encode image to latents using VAE
         with torch.no_grad():
             # Convert image to video format [batch, channels, 1, height, width]
             image_video = image_tensor.unsqueeze(2)  # Add temporal dimension
             image_latents = self.vae.encode(image_video).latent_dist.sample()
-            
+
             # Normalize latents if needed
-            if hasattr(self.vae.config, 'scaling_factor'):
+            if hasattr(self.vae.config, "scaling_factor"):
                 image_latents = image_latents * self.vae.config.scaling_factor
-            
+
             # Reshape to match latent dimensions [batch, frames, height, width, channels]
             image_latents = image_latents.permute(0, 2, 3, 4, 1)  # [batch, 1, H, W, C]
-            
+
             # Replace first frame with encoded image
             latents[:, 0:1] = image_latents
 
@@ -720,10 +725,10 @@ class Kandinsky5I2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
                 dtype=latents.dtype,
                 device=latents.device,
             )
-            
+
             visual_cond_mask[:, 0:1] = 1
             visual_cond[:, 0:1] = image_latents
-            
+
             latents = torch.cat([latents, visual_cond, visual_cond_mask], dim=-1)
 
         return latents
@@ -881,7 +886,7 @@ class Kandinsky5I2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
                 dtype=dtype,
             )
 
-        if self.guidance_scale > 1.:
+        if self.guidance_scale > 1.0:
             if negative_prompt is None:
                 negative_prompt = "Static, 2D cartoon, cartoon, 2d animation, paintings, images, worst quality, low quality, ugly, deformed, walking backwards"
 
@@ -947,7 +952,7 @@ class Kandinsky5I2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
         # 9. Denoising loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
         self._num_timesteps = len(timesteps)
-        
+
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
                 if self.interrupt:
@@ -968,7 +973,7 @@ class Kandinsky5I2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
                     return_dict=True,
                 ).sample
 
-                if self.guidance_scale > 1. and negative_prompt_embeds_qwen is not None:
+                if self.guidance_scale > 1.0 and negative_prompt_embeds_qwen is not None:
                     uncond_pred_velocity = self.transformer(
                         hidden_states=latents.to(dtype),
                         encoder_hidden_states=negative_prompt_embeds_qwen.to(dtype),
@@ -982,20 +987,6 @@ class Kandinsky5I2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
                     ).sample
 
                     pred_velocity = uncond_pred_velocity + guidance_scale * (pred_velocity - uncond_pred_velocity)
-
-#                 # Create mask to preserve first frame (frame 0)
-#                 first_frame_mask = torch.ones_like(latents[:, :, :, :, :num_channels_latents])
-#                 first_frame_mask[:, 0:1] = 0  # Zero out first frame to preserve it
-
-#                 # Compute previous sample using the scheduler, but preserve first frame
-#                 new_latents = self.scheduler.step(
-#                     pred_velocity, t, latents[:, :, :, :, :num_channels_latents], return_dict=False
-#                 )[0]
-
-#                 # Apply mask: keep original first frame, use denoised frames for others
-#                 latents[:, :, :, :, :num_channels_latents] = (
-#                     first_frame_mask * new_latents + (1 - first_frame_mask) * latents[:, :, :, :, :num_channels_latents]
-#                 )
 
                 latents[:, 1:, :, :, :num_channels_latents] = self.scheduler.step(
                     pred_velocity[:, 1:], t, latents[:, 1:, :, :, :num_channels_latents], return_dict=False
@@ -1025,7 +1016,7 @@ class Kandinsky5I2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
 
         # 9. Post-processing - extract main latents
         latents = latents[:, :, :, :, :num_channels_latents]
-        
+
         # 10. fix mesh artifacts
         latents = self.normalize_first_frame(latents)
 

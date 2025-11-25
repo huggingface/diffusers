@@ -25,17 +25,19 @@ from ...loaders import KandinskyLoraLoaderMixin
 from ...models import AutoencoderKLHunyuanVideo
 from ...models.transformers import Kandinsky5Transformer3DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
-from ...utils import is_ftfy_available, is_torch_xla_available, logging, replace_example_docstring
+
+# Add imports for offloading and tiling
+from ...utils import (
+    is_ftfy_available,
+    is_torch_xla_available,
+    logging,
+    replace_example_docstring,
+)
 from ...utils.torch_utils import randn_tensor
 from ...video_processor import VideoProcessor
 from ..pipeline_utils import DiffusionPipeline
 from .pipeline_output import KandinskyPipelineOutput
 
-# Add imports for offloading and tiling
-from ...utils import (
-    is_accelerate_available,
-    is_accelerate_version,
-)
 
 if is_torch_xla_available():
     import torch_xla.core.xla_model as xm
@@ -91,7 +93,7 @@ EXAMPLE_DOC_STRING = """
 def basic_clean(text):
     """
     Copied from https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/wan/pipeline_wan.py
-    
+
     Clean text using ftfy if available and unescape HTML entities.
     """
     if is_ftfy_available():
@@ -103,7 +105,7 @@ def basic_clean(text):
 def whitespace_clean(text):
     """
     Copied from https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/wan/pipeline_wan.py
-    
+
     Normalize whitespace in text by replacing multiple spaces with single space.
     """
     text = re.sub(r"\s+", " ", text)
@@ -114,12 +116,11 @@ def whitespace_clean(text):
 def prompt_clean(text):
     """
     Copied from https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/wan/pipeline_wan.py
-    
+
     Apply both basic cleaning and whitespace normalization to prompts.
     """
     text = whitespace_clean(basic_clean(text))
     return text
-
 
 
 class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
@@ -133,14 +134,16 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
         transformer ([`Kandinsky5Transformer3DModel`]):
             Conditional Transformer to denoise the encoded video latents.
         vae ([`AutoencoderKLHunyuanVideo`]):
-            Variational Auto-Encoder Model [hunyuanvideo-community/HunyuanVideo (vae)](https://huggingface.co/hunyuanvideo-community/HunyuanVideo) to encode and decode videos to and from latent representations.
+            Variational Auto-Encoder Model [hunyuanvideo-community/HunyuanVideo
+            (vae)](https://huggingface.co/hunyuanvideo-community/HunyuanVideo) to encode and decode videos to and from
+            latent representations.
         text_encoder ([`Qwen2_5_VLForConditionalGeneration`]):
             Frozen text-encoder [Qwen2.5-VL](https://huggingface.co/Qwen/Qwen2.5-VL-7B-Instruct).
         tokenizer ([`AutoProcessor`]):
             Tokenizer for Qwen2.5-VL.
         text_encoder_2 ([`CLIPTextModel`]):
-            Frozen [CLIP](https://huggingface.co/docs/transformers/model_doc/clip#transformers.CLIPTextModel), specifically
-            the [clip-vit-large-patch14](https://huggingface.co/openai/clip-vit-large-patch14) variant.
+            Frozen [CLIP](https://huggingface.co/docs/transformers/model_doc/clip#transformers.CLIPTextModel),
+            specifically the [clip-vit-large-patch14](https://huggingface.co/openai/clip-vit-large-patch14) variant.
         tokenizer_2 ([`CLIPTokenizer`]):
             Tokenizer for CLIP.
         scheduler ([`FlowMatchEulerDiscreteScheduler`]):
@@ -198,21 +201,21 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
         self.vae_scale_factor_spatial = self.vae.config.spatial_compression_ratio if getattr(self, "vae", None) else 8
         self.video_processor = VideoProcessor(vae_scale_factor=self.vae_scale_factor_spatial)
 
-
     def _get_scale_factor(self, height: int, width: int) -> tuple:
         """
         Calculate the scale factor based on resolution.
-        
+
         Args:
             height (int): Video height
             width (int): Video width
-            
+
         Returns:
             tuple: Scale factor as (temporal_scale, height_scale, width_scale)
         """
-        
-        between_480p = lambda x: 480 <= x <= 854
-        
+
+        def between_480p(x):
+            return 480 <= x <= 854
+
         if between_480p(height) and between_480p(width):
             return (1, 2, 2)
         else:
@@ -337,14 +340,14 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
             videos=None,
             return_tensors="pt",
             padding="longest",
-        )['input_ids']
+        )["input_ids"]
 
         if untruncated_ids.shape[-1] > max_allowed_len:
-            for i,text in enumerate(full_texts):
-                tokens = untruncated_ids[i][self.prompt_template_encode_start_idx:-2]
-                removed_text = self.tokenizer.decode(tokens[max_sequence_length-2:])
+            for i, text in enumerate(full_texts):
+                tokens = untruncated_ids[i][self.prompt_template_encode_start_idx : -2]
+                removed_text = self.tokenizer.decode(tokens[max_sequence_length - 2 :])
                 if len(removed_text) > 0:
-                    full_texts[i] = text[:-len(removed_text)]
+                    full_texts[i] = text[: -len(removed_text)]
                     logger.warning(
                         "The following part of your input was truncated because `max_sequence_length` is set to "
                         f" {max_sequence_length} tokens: {removed_text}"
@@ -538,7 +541,7 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
         """
 
         if max_sequence_length is not None and max_sequence_length > 1024:
-            raise ValueError(f"max_sequence_length must be less than 1024")
+            raise ValueError("max_sequence_length must be less than 1024")
 
         if height % 16 != 0 or width % 16 != 0:
             raise ValueError(f"`height` and `width` have to be divisible by 16 but are {height} and {width}.")
@@ -796,7 +799,7 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
                 dtype=dtype,
             )
 
-        if self.guidance_scale > 1.:
+        if self.guidance_scale > 1.0:
             if negative_prompt is None:
                 negative_prompt = "Static, 2D cartoon, cartoon, 2d animation, paintings, images, worst quality, low quality, ugly, deformed, walking backwards"
 
@@ -867,7 +870,7 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
                     continue
 
                 timestep = t.unsqueeze(0).repeat(batch_size * num_videos_per_prompt)
-                
+
                 # Predict noise residual
                 pred_velocity = self.transformer(
                     hidden_states=latents.to(dtype),
@@ -881,7 +884,7 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
                     return_dict=True,
                 ).sample
 
-                if self.guidance_scale > 1. and negative_prompt_embeds_qwen is not None:
+                if self.guidance_scale > 1.0 and negative_prompt_embeds_qwen is not None:
                     uncond_pred_velocity = self.transformer(
                         hidden_states=latents.to(dtype),
                         encoder_hidden_states=negative_prompt_embeds_qwen.to(dtype),

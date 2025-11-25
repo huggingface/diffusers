@@ -28,8 +28,8 @@ class KandinskyImagePipelineOutput(BaseOutput):
     Args:
         image (`torch.Tensor`, `np.ndarray`, or List[PIL.Image.Image]):
             List of image outputs - It can be a nested list of length `batch_size,` with each sub-list containing
-            denoised PIL image. It can also be a NumPy array or Torch tensor of shape
-            `(batch_size, channels, height, width)`.
+            denoised PIL image. It can also be a NumPy array or Torch tensor of shape `(batch_size, channels, height,
+            width)`.
     """
 
     image: torch.Tensor

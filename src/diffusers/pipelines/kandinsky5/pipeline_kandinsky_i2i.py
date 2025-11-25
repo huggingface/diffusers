@@ -30,8 +30,6 @@ from ...schedulers import FlowMatchEulerDiscreteScheduler
 
 # Add imports for offloading and tiling
 from ...utils import (
-    is_accelerate_available,
-    is_accelerate_version,
     is_ftfy_available,
     is_torch_xla_available,
     logging,
@@ -89,7 +87,7 @@ EXAMPLE_DOC_STRING = """
 def basic_clean(text):
     """
     Copied from https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/wan/pipeline_wan.py
-    
+
     Clean text using ftfy if available and unescape HTML entities.
     """
     if is_ftfy_available():
@@ -101,7 +99,7 @@ def basic_clean(text):
 def whitespace_clean(text):
     """
     Copied from https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/wan/pipeline_wan.py
-    
+
     Normalize whitespace in text by replacing multiple spaces with single space.
     """
     text = re.sub(r"\s+", " ", text)
@@ -112,7 +110,7 @@ def whitespace_clean(text):
 def prompt_clean(text):
     """
     Copied from https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/wan/pipeline_wan.py
-    
+
     Apply both basic cleaning and whitespace normalization to prompts.
     """
     text = whitespace_clean(basic_clean(text))
@@ -130,14 +128,16 @@ class Kandinsky5I2IPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
         transformer ([`Kandinsky5Transformer3DModel`]):
             Conditional Transformer to denoise the encoded image latents.
         vae ([`AutoencoderKL`]):
-            Variational Auto-Encoder Model [black-forest-labs/FLUX.1-dev (vae)](https://huggingface.co/black-forest-labs/FLUX.1-dev) to encode and decode videos to and from latent representations.
+            Variational Auto-Encoder Model [black-forest-labs/FLUX.1-dev
+            (vae)](https://huggingface.co/black-forest-labs/FLUX.1-dev) to encode and decode videos to and from latent
+            representations.
         text_encoder ([`Qwen2_5_VLForConditionalGeneration`]):
             Frozen text-encoder [Qwen2.5-VL](https://huggingface.co/Qwen/Qwen2.5-VL-7B-Instruct).
         tokenizer ([`AutoProcessor`]):
             Tokenizer for Qwen2.5-VL.
         text_encoder_2 ([`CLIPTextModel`]):
-            Frozen [CLIP](https://huggingface.co/docs/transformers/model_doc/clip#transformers.CLIPTextModel), specifically
-            the [clip-vit-large-patch14](https://huggingface.co/openai/clip-vit-large-patch14) variant.
+            Frozen [CLIP](https://huggingface.co/docs/transformers/model_doc/clip#transformers.CLIPTextModel),
+            specifically the [clip-vit-large-patch14](https://huggingface.co/openai/clip-vit-large-patch14) variant.
         tokenizer_2 ([`CLIPTokenizer`]):
             Tokenizer for CLIP.
         scheduler ([`FlowMatchEulerDiscreteScheduler`]):
@@ -175,7 +175,7 @@ class Kandinsky5I2IPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
             scheduler=scheduler,
         )
 
-        self.prompt_template ="<|im_start|>system\nYou are a promt engineer. Based on the provided source image (first image) and target image (second image), create an interesting text prompt that can be used together with the source image to create the target image:<|im_end|><|im_start|>user{}<|vision_start|><|image_pad|><|vision_end|><|im_end|>"
+        self.prompt_template = "<|im_start|>system\nYou are a promt engineer. Based on the provided source image (first image) and target image (second image), create an interesting text prompt that can be used together with the source image to create the target image:<|im_end|><|im_start|>user{}<|vision_start|><|image_pad|><|vision_end|><|im_end|>"
         self.prompt_template_encode_start_idx = 55
 
         self.vae_scale_factor_spatial = 8
@@ -210,7 +210,7 @@ class Kandinsky5I2IPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
         dtype = dtype or self.text_encoder.dtype
         if not isinstance(image, list):
             image = [image]
-        image = [i.resize((i.size[0]//2,i.size[1]//2)) for i in image]
+        image = [i.resize((i.size[0] // 2, i.size[1] // 2)) for i in image]
         full_texts = [self.prompt_template.format(p) for p in prompt]
         max_allowed_len = self.prompt_template_encode_start_idx + max_sequence_length
 
@@ -220,16 +220,16 @@ class Kandinsky5I2IPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
             videos=None,
             return_tensors="pt",
             padding="longest",
-        )['input_ids']
+        )["input_ids"]
 
         if untruncated_ids.shape[-1] > max_allowed_len:
-            for i,text in enumerate(full_texts):
+            for i, text in enumerate(full_texts):
                 tokens = untruncated_ids[i]
-                num_image_tokens = (tokens==self.tokenizer.image_token_id).sum()
-                tokens = tokens[tokens!=self.tokenizer.image_token_id][self.prompt_template_encode_start_idx:-3]
-                removed_text = self.tokenizer.decode(tokens[max_sequence_length-num_image_tokens-3:])
+                num_image_tokens = (tokens == self.tokenizer.image_token_id).sum()
+                tokens = tokens[tokens != self.tokenizer.image_token_id][self.prompt_template_encode_start_idx : -3]
+                removed_text = self.tokenizer.decode(tokens[max_sequence_length - num_image_tokens - 3 :])
                 if len(removed_text) > 0:
-                    full_texts[i] = text[:-len(removed_text)]
+                    full_texts[i] = text[: -len(removed_text)]
                     logger.warning(
                         "The following part of your input was truncated because `max_sequence_length` is set to "
                         f" {max_sequence_length} tokens: {removed_text}"
@@ -245,7 +245,8 @@ class Kandinsky5I2IPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
             padding=True,
         ).to(device)
 
-        embeds = self.text_encoder(**inputs,
+        embeds = self.text_encoder(
+            **inputs,
             return_dict=True,
             output_hidden_states=True,
         )["hidden_states"][-1][:, self.prompt_template_encode_start_idx :]
@@ -423,14 +424,16 @@ class Kandinsky5I2IPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
         """
 
         if max_sequence_length is not None and max_sequence_length > 1024:
-            raise ValueError(f"max_sequence_length must be less than 1024")
+            raise ValueError("max_sequence_length must be less than 1024")
 
         if image is None:
             raise ValueError("`image` must be provided for image-to-image generation")
 
         if (width, height) not in self.resolutions:
-            resolutions_str = ','.join([f'({w},{h})' for w, h in self.resolutions])
-            logger.warning(f"`height` and `width` have to be one of {resolutions_str}, but are {height} and {width}. Dimensions will be resized accordingly")
+            resolutions_str = ",".join([f"({w},{h})" for w, h in self.resolutions])
+            logger.warning(
+                f"`height` and `width` have to be one of {resolutions_str}, but are {height} and {width}. Dimensions will be resized accordingly"
+            )
 
         if callback_on_step_end_tensor_inputs is not None and not all(
             k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
@@ -538,12 +541,12 @@ class Kandinsky5I2IPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
             image_latents = image_latents.unsqueeze(2)  # Add temporal dimension
 
             # Normalize latents if needed
-            if hasattr(self.vae.config, 'scaling_factor'):
+            if hasattr(self.vae.config, "scaling_factor"):
                 image_latents = image_latents * self.vae.config.scaling_factor
 
             # Reshape to match latent dimensions [batch, 1, height, width, channels]
             image_latents = image_latents.permute(0, 2, 3, 4, 1)  # [batch, 1, H, W, C]
-            latents = torch.cat([latents, image_latents, torch.ones_like(latents[...,:1])], -1)
+            latents = torch.cat([latents, image_latents, torch.ones_like(latents[..., :1])], -1)
 
         return latents
 
@@ -642,8 +645,8 @@ class Kandinsky5I2IPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
 
         Returns:
             [`~KandinskyImagePipelineOutput`] or `tuple`:
-                If `return_dict` is `True`, [`KandinskyImagePipelineOutput`] is returned, otherwise a `tuple` is returned
-                where the first element is a list with the generated images.
+                If `return_dict` is `True`, [`KandinskyImagePipelineOutput`] is returned, otherwise a `tuple` is
+                returned where the first element is a list with the generated images.
         """
         if isinstance(callback_on_step_end, (PipelineCallback, MultiPipelineCallbacks)):
             callback_on_step_end_tensor_inputs = callback_on_step_end.tensor_inputs
@@ -666,7 +669,9 @@ class Kandinsky5I2IPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
             max_sequence_length=max_sequence_length,
         )
         if (width, height) not in self.resolutions:
-            width, height = self.resolutions[np.argmin([abs((i[0] / i[1]) - (width / height)) for i in self.resolutions])]
+            width, height = self.resolutions[
+                np.argmin([abs((i[0] / i[1]) - (width / height)) for i in self.resolutions])
+            ]
 
         self._guidance_scale = guidance_scale
         self._interrupt = False
@@ -694,7 +699,7 @@ class Kandinsky5I2IPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
                 dtype=dtype,
             )
 
-        if self.guidance_scale > 1.:
+        if self.guidance_scale > 1.0:
             if negative_prompt is None:
                 negative_prompt = ""
 
@@ -780,7 +785,7 @@ class Kandinsky5I2IPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
                     return_dict=True,
                 ).sample
 
-                if self.guidance_scale > 1. and negative_prompt_embeds_qwen is not None:
+                if self.guidance_scale > 1.0 and negative_prompt_embeds_qwen is not None:
                     uncond_pred_velocity = self.transformer(
                         hidden_states=latents.to(dtype),
                         encoder_hidden_states=negative_prompt_embeds_qwen.to(dtype),
@@ -830,7 +835,8 @@ class Kandinsky5I2IPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
             # Reshape and normalize latents
             latents = latents.reshape(
                 batch_size,
-                num_images_per_prompt,1,
+                num_images_per_prompt,
+                1,
                 height // self.vae_scale_factor_spatial,
                 width // self.vae_scale_factor_spatial,
                 num_channels_latents,

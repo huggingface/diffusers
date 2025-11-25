@@ -695,10 +695,10 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             Kandinsky3Pipeline,
         )
         from .kandinsky5 import (
-            Kandinsky5T2VPipeline,
+            Kandinsky5I2IPipeline,
             Kandinsky5I2VPipeline,
             Kandinsky5T2IPipeline,
-            Kandinsky5I2IPipeline,
+            Kandinsky5T2VPipeline,
         )
         from .latent_consistency_models import (
             LatentConsistencyModelImg2ImgPipeline,

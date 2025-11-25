@@ -35,7 +35,7 @@ from ...testing_utils import (
     enable_full_determinism,
     torch_device,
 )
-from ..pipeline_params import IMAGE_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_VIDEO_BATCH_PARAMS
+from ..pipeline_params import TEXT_TO_VIDEO_BATCH_PARAMS
 from ..test_pipelines_common import PipelineTesterMixin
 
 
@@ -164,10 +164,10 @@ class Kandinsky5I2VPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             generator = torch.manual_seed(seed)
         else:
             generator = torch.Generator(device=device).manual_seed(seed)
-        
+
         # Create dummy image
         image = torch.randn(1, 3, 32, 32, device=device, generator=generator)
-        
+
         inputs = {
             "prompt": "A cat dancing",
             "image": image,
@@ -383,9 +383,9 @@ class Kandinsky5I2VPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         # Create dummy sample
         sample = torch.randn(1, 5, 32, 32, 4, device=device)  # [batch, frames, H, W, channels]
-        
+
         sparse_params = pipe.get_sparse_params(sample, device)
-        
+
         # Should return None or dict with sparse attention parameters
         self.assertTrue(sparse_params is None or isinstance(sparse_params, dict))
 
@@ -394,7 +394,8 @@ class Kandinsky5I2VPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         device = "cpu"
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
-        
+        pipe.to(device)
+
         # Test basic cleaning
         dirty_prompt = "  Hello   world!  "
         cleaned = pipe.prompt_clean(dirty_prompt)
@@ -454,13 +455,11 @@ class Kandinsky5I2VPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         # Get regular inputs
         inputs = self.get_dummy_inputs(device)
-        
+
         # Precompute negative prompt embeddings
         with torch.no_grad():
             neg_embeds_qwen, neg_embeds_clip, neg_cu_seqlens = pipe.encode_prompt(
-                inputs["negative_prompt"],
-                device=device,
-                max_sequence_length=inputs["max_sequence_length"]
+                inputs["negative_prompt"], device=device, max_sequence_length=inputs["max_sequence_length"]
             )
 
         # Use precomputed embeddings
@@ -481,13 +480,13 @@ class Kandinsky5I2VPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         pipe.to(device)
 
         inputs = self.get_dummy_inputs(device)
-        
+
         # Test with incompatible num_frames (not divisible by vae_scale_factor_temporal + 1)
         inputs["num_frames"] = 6  # 6-1=5, not divisible by 4
-        
+
         # Should run without error (will adjust internally)
         video = pipe(**inputs).frames
-        
+
         # Should still produce valid output
         self.assertEqual(video.shape[1], 5)  # Should use adjusted num_frames
 
@@ -504,15 +503,15 @@ class Kandinsky5I2VPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         inputs_480p["width"] = 854
         # Adjust image size to match
         inputs_480p["image"] = torch.randn(1, 3, 480, 854, device=device, generator=inputs_480p["generator"])
-        
+
         video_480p = pipe(**inputs_480p).frames
         self.assertEqual(video_480p.shape, (1, 5, 3, 480, 854))
 
-        # Test 720p resolution  
+        # Test 720p resolution
         inputs_720p = self.get_dummy_inputs(device)
         inputs_720p["height"] = 720
         inputs_720p["width"] = 1280
         inputs_720p["image"] = torch.randn(1, 3, 720, 1280, device=device, generator=inputs_720p["generator"])
-        
+
         video_720p = pipe(**inputs_720p).frames
         self.assertEqual(video_720p.shape, (1, 5, 3, 720, 1280))
