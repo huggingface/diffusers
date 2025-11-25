@@ -97,7 +97,7 @@ class CacheMixin:
         from ..hooks.faster_cache import _FASTER_CACHE_BLOCK_HOOK, _FASTER_CACHE_DENOISER_HOOK
         from ..hooks.first_block_cache import _FBC_BLOCK_HOOK, _FBC_LEADER_BLOCK_HOOK
         from ..hooks.pyramid_attention_broadcast import _PYRAMID_ATTENTION_BROADCAST_HOOK
-        from ..hooks.taylorseer_cache import _TAYLORSEER_ATTENTION_CACHE_HOOK
+        from ..hooks.taylorseer_cache import _TAYLORSEER_CACHE_HOOK
 
         if self._cache_config is None:
             logger.warning("Caching techniques have not been enabled, so there's nothing to disable.")
@@ -113,7 +113,7 @@ class CacheMixin:
         elif isinstance(self._cache_config, PyramidAttentionBroadcastConfig):
             registry.remove_hook(_PYRAMID_ATTENTION_BROADCAST_HOOK, recurse=True)
         elif isinstance(self._cache_config, TaylorSeerCacheConfig):
-            registry.remove_hook(_TAYLORSEER_ATTENTION_CACHE_HOOK, recurse=True)
+            registry.remove_hook(_TAYLORSEER_CACHE_HOOK, recurse=True)
         else:
             raise ValueError(f"Cache config {type(self._cache_config)} is not supported.")
 
