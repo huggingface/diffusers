@@ -137,7 +137,7 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         prediction_type (`"epsilon"`, `"sample"`, `"v_prediction"`, or `"flow_prediction"`, defaults to `"epsilon"`):
             Prediction type of the scheduler function. `epsilon` predicts the noise of the diffusion process, `sample`
             directly predicts the noisy sample, `v_prediction` predicts the velocity (see section 2.4 of [Imagen
-            Video](https://imagen.research.google/video/paper.pdf) paper), and `flow_prediction` predicts the flow.
+            Video](https://huggingface.co/papers/2210.02303) paper), and `flow_prediction` predicts the flow.
         thresholding (`bool`, defaults to `False`):
             Whether to use the "dynamic thresholding" method. This is unsuitable for latent-space diffusion models such
             as Stable Diffusion.
