@@ -42,6 +42,10 @@ torch.backends.cudnn.benchmark = False
 if hasattr(torch.backends, "cuda"):
     torch.backends.cuda.matmul.allow_tf32 = False
 
+# Note: Some tests (test_float16_inference, test_save_load_float16) may fail in full suite
+# due to RopeEmbedder cache state pollution between tests. They pass when run individually.
+# This is a known test isolation issue, not a functional bug.
+
 
 class ZImagePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     pipeline_class = ZImagePipeline
@@ -291,6 +295,12 @@ class ZImagePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         # Block-level offloading conflicts with RoPE cache. Pipeline-level offloading (tested separately) works fine.
         self.skipTest("Using test_pipeline_level_group_offloading_inference instead")
 
-    @unittest.skip("Known issue: fails in full suite due to test isolation (passes when run individually)")
     def test_save_load_float16(self, expected_max_diff=1e-2):
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+            torch.cuda.synchronize()
+        torch.manual_seed(0)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(0)
         super().test_save_load_float16(expected_max_diff=expected_max_diff)
