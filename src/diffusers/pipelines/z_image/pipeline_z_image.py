@@ -464,7 +464,7 @@ class ZImagePipeline(DiffusionPipeline, FromSingleFileMixin):
             prompt_embeds = [pe for pe in prompt_embeds for _ in range(num_images_per_prompt)]
             if self.do_classifier_free_guidance and negative_prompt_embeds:
                 negative_prompt_embeds = [npe for npe in negative_prompt_embeds for _ in range(num_images_per_prompt)]
-        
+
         actual_batch_size = batch_size * num_images_per_prompt
         image_seq_len = (latents.shape[2] // 2) * (latents.shape[3] // 2)
 
