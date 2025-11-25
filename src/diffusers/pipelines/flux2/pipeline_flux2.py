@@ -79,18 +79,18 @@ def format_text_input(prompts: List[str], system_message: str = None):
     ]
 
 
-# Copied from diffusers.pipelines.flux.pipeline_flux.calculate_shift
-def calculate_shift(
-    image_seq_len,
-    base_seq_len: int = 256,
-    max_seq_len: int = 4096,
-    base_shift: float = 0.5,
-    max_shift: float = 1.15,
-):
-    m = (max_shift - base_shift) / (max_seq_len - base_seq_len)
-    b = base_shift - m * base_seq_len
-    mu = image_seq_len * m + b
-    return mu
+
+def compute_empirical_mu(image_seq_len: int, num_steps: int) -> float:
+    a1, b1 = 0.00020573, 1.85733333
+    a2, b2 = 0.00016927, 0.45666666
+
+    m_200 = a2 * image_seq_len + b2
+    m_30 = a1 * image_seq_len + b1
+
+    a = (m_200 - m_30) / 170.0
+    b = m_200 - 200.0 * a
+    mu = a * num_steps + b
+    return float(mu)
 
 
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.retrieve_timesteps
@@ -608,7 +608,7 @@ class Flux2Pipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
         width: Optional[int] = None,
         num_inference_steps: int = 50,
         sigmas: Optional[List[float]] = None,
-        guidance_scale: Optional[float] = 2.5,
+        guidance_scale: Optional[float] = 4.0,
         num_images_per_prompt: int = 1,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.Tensor] = None,
@@ -783,13 +783,10 @@ class Flux2Pipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
         if hasattr(self.scheduler.config, "use_flow_sigmas") and self.scheduler.config.use_flow_sigmas:
             sigmas = None
         image_seq_len = latents.shape[1]
-        mu = calculate_shift(
-            image_seq_len,
-            self.scheduler.config.get("base_image_seq_len", 256),
-            self.scheduler.config.get("max_image_seq_len", 4096),
-            self.scheduler.config.get("base_shift", 0.5),
-            self.scheduler.config.get("max_shift", 1.15),
-        )
+        mu = compute_empirical_mu(
+            image_seq_len=image_seq_len, 
+            num_steps= num_inference_steps,
+            )
         timesteps, num_inference_steps = retrieve_timesteps(
             self.scheduler,
             num_inference_steps,
