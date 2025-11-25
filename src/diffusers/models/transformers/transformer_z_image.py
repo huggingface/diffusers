@@ -20,21 +20,14 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn.utils.rnn import pad_sequence
 
+from diffusers.models.normalization import RMSNorm
+
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
 from ...models.attention_processor import Attention
 from ...models.modeling_utils import ModelMixin
-from ...utils.import_utils import is_flash_attn_available
 from ...utils.torch_utils import maybe_allow_in_graph
 from ..attention_dispatch import dispatch_attention_fn
-
-
-if is_flash_attn_available():
-    from flash_attn import flash_attn_varlen_func
-else:
-    flash_attn_varlen_func = None
-
-from diffusers.models.normalization import RMSNorm
 
 
 ADALN_EMBED_DIM = 256
