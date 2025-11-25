@@ -45,8 +45,7 @@ EXAMPLE_DOC_STRING = """
         >>> # pipe.transformer.set_attention_backend("flash")
         >>> # (2) Use flash attention 3
         >>> # pipe.transformer.set_attention_backend("_flash_3")
-        
-        >>> prompt = "一幅为名为“造相「Z-IMAGE-TURBO」”的项目设计的创意海报。画面巧妙地将文字概念视觉化：一辆复古蒸汽小火车化身为巨大的拉链头，正拉开厚厚的冬日积雪，展露出一个生机盎然的春天。"
+        >>> prompt = '一幅为名为"造相「Z-IMAGE-TURBO」"的项目设计的创意海报。画面巧妙地将文字概念视觉化：一辆复古蒸汽小火车化身为巨大的拉链头，正拉开厚厚的冬日积雪，展露出一个生机盎然的春天。'
         >>> image = pipe(
         ...     prompt,
         ...     height=1024,
@@ -432,26 +431,35 @@ class ZImagePipeline(DiffusionPipeline, FromSingleFileMixin):
         elif prompt is not None and isinstance(prompt, list):
             batch_size = len(prompt)
         else:
-            batch_size = prompt_embeds.shape[0]
+            batch_size = len(prompt_embeds)
 
         lora_scale = (
             self.joint_attention_kwargs.get("scale", None) if self.joint_attention_kwargs is not None else None
         )
-        (
-            prompt_embeds,
-            negative_prompt_embeds,
-        ) = self.encode_prompt(
-            prompt=prompt,
-            negative_prompt=negative_prompt,
-            do_classifier_free_guidance=self.do_classifier_free_guidance,
-            prompt_embeds=prompt_embeds,
-            negative_prompt_embeds=negative_prompt_embeds,
-            dtype=dtype,
-            device=device,
-            num_images_per_prompt=num_images_per_prompt,
-            max_sequence_length=max_sequence_length,
-            lora_scale=lora_scale,
-        )
+
+        # If prompt_embeds is provided and prompt is None, skip encoding
+        if prompt_embeds is not None and prompt is None:
+            if self.do_classifier_free_guidance and negative_prompt_embeds is None:
+                raise ValueError(
+                    "When `prompt_embeds` is provided without `prompt`, "
+                    "`negative_prompt_embeds` must also be provided for classifier-free guidance."
+                )
+        else:
+            (
+                prompt_embeds,
+                negative_prompt_embeds,
+            ) = self.encode_prompt(
+                prompt=prompt,
+                negative_prompt=negative_prompt,
+                do_classifier_free_guidance=self.do_classifier_free_guidance,
+                prompt_embeds=prompt_embeds,
+                negative_prompt_embeds=negative_prompt_embeds,
+                dtype=dtype,
+                device=device,
+                num_images_per_prompt=num_images_per_prompt,
+                max_sequence_length=max_sequence_length,
+                lora_scale=lora_scale,
+            )
 
         # 4. Prepare latent variables
         num_channels_latents = self.transformer.in_channels
