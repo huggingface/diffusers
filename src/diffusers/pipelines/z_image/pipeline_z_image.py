@@ -39,14 +39,9 @@ EXAMPLE_DOC_STRING = """
 
         >>> pipe = ZImagePipeline.from_pretrained("Z-a-o/Z-Image-Turbo", torch_dtype=torch.bfloat16)
         >>> pipe.to("cuda")
-
-        >>> # Optionally, set the attention backend to flash-attn 2 or 3, default is SDPA in PyTorch.
-        >>> # (1) Use flash attention 2
-        >>> # pipe.transformer.set_attention_backend("flash")
-        >>> # (2) Use flash attention 3
-        >>> # pipe.transformer.set_attention_backend("_flash_3")
-        
         >>> prompt = "一幅为名为“造相「Z-IMAGE-TURBO」”的项目设计的创意海报。画面巧妙地将文字概念视觉化：一辆复古蒸汽小火车化身为巨大的拉链头，正拉开厚厚的冬日积雪，展露出一个生机盎然的春天。"
+        >>> # Depending on the variant being used, the pipeline call will slightly vary.
+        >>> # Refer to the pipeline documentation for more details.
         >>> image = pipe(
         ...     prompt,
         ...     height=1024,

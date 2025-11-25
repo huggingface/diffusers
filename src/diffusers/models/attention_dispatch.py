@@ -79,11 +79,9 @@ else:
 if _CAN_USE_FLASH_ATTN_3:
     from flash_attn_interface import flash_attn_func as flash_attn_3_func
     from flash_attn_interface import flash_attn_varlen_func as flash_attn_3_varlen_func
-    from flash_attn_interface import _flash_attn_forward as flash_attn_3_forward
 else:
     flash_attn_3_func = None
     flash_attn_3_varlen_func = None
-    flash_attn_3_forward = None
 
 if _CAN_USE_AITER_ATTN:
     from aiter import flash_attn_func as aiter_flash_attn_func
@@ -623,42 +621,22 @@ def _wrapped_flash_attn_3(
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     # Hardcoded for now because pytorch does not support tuple/int type hints
     window_size = (-1, -1)
-    max_seqlen_q = q.shape[2]
-    max_seqlen_k = k.shape[2]
-    
-    out, lse, *_ = flash_attn_3_forward(
+    out, lse, *_ = flash_attn_3_func(
         q=q,
         k=k,
         v=v,
-        k_new=None,
-        v_new=None,
+        softmax_scale=softmax_scale,
+        causal=causal,
         qv=qv,
-        out=None,
-        cu_seqlens_q=None,
-        cu_seqlens_k=None,
-        cu_seqlens_k_new=None,
-        seqused_q=None,
-        seqused_k=None,
-        max_seqlen_q=max_seqlen_q,
-        max_seqlen_k=max_seqlen_k,
-        page_table=None,
-        kv_batch_idx=None,
-        leftpad_k=None,
-        rotary_cos=None,
-        rotary_sin=None,
-        seqlens_rotary=None,
         q_descale=q_descale,
         k_descale=k_descale,
         v_descale=v_descale,
-        softmax_scale=softmax_scale,
-        causal=causal,
         window_size=window_size,
         attention_chunk=attention_chunk,
         softcap=softcap,
-        rotary_interleaved=True,
-        scheduler_metadata=None,
         num_splits=num_splits,
         pack_gqa=pack_gqa,
+        deterministic=deterministic,
         sm_margin=sm_margin,
     )
     lse = lse.permute(0, 2, 1)
