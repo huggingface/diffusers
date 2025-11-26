@@ -21,11 +21,9 @@ import numpy as np
 import pytest
 import torch
 from transformers import (
-    ClapAudioConfig,
     ClapConfig,
     ClapFeatureExtractor,
     ClapModel,
-    ClapTextConfig,
     GPT2Config,
     GPT2LMHeadModel,
     RobertaTokenizer,
@@ -111,33 +109,33 @@ class AudioLDM2PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             latent_channels=4,
         )
         torch.manual_seed(0)
-        text_branch_config = ClapTextConfig(
-            bos_token_id=0,
-            eos_token_id=2,
-            hidden_size=8,
-            intermediate_size=37,
-            layer_norm_eps=1e-05,
-            num_attention_heads=1,
-            num_hidden_layers=1,
-            pad_token_id=1,
-            vocab_size=1000,
-            projection_dim=8,
-        )
-        audio_branch_config = ClapAudioConfig(
-            spec_size=8,
-            window_size=4,
-            num_mel_bins=8,
-            intermediate_size=37,
-            layer_norm_eps=1e-05,
-            depths=[1, 1],
-            num_attention_heads=[1, 1],
-            num_hidden_layers=1,
-            hidden_size=192,
-            projection_dim=8,
-            patch_size=2,
-            patch_stride=2,
-            patch_embed_input_channels=4,
-        )
+        text_branch_config = {
+            "bos_token_id": 0,
+            "eos_token_id": 2,
+            "hidden_size": 8,
+            "intermediate_size": 37,
+            "layer_norm_eps": 1e-05,
+            "num_attention_heads": 1,
+            "num_hidden_layers": 1,
+            "pad_token_id": 1,
+            "vocab_size": 1000,
+            "projection_dim": 8,
+        }
+        audio_branch_config = {
+            "spec_size": 8,
+            "window_size": 4,
+            "num_mel_bins": 8,
+            "intermediate_size": 37,
+            "layer_norm_eps": 1e-05,
+            "depths": [1, 1],
+            "num_attention_heads": [1, 1],
+            "num_hidden_layers": 1,
+            "hidden_size": 192,
+            "projection_dim": 8,
+            "patch_size": 2,
+            "patch_stride": 2,
+            "patch_embed_input_channels": 4,
+        }
         text_encoder_config = ClapConfig(
             text_config=text_branch_config, audio_config=audio_branch_config, projection_dim=16
         )
