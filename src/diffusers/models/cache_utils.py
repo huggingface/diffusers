@@ -94,7 +94,13 @@ class CacheMixin:
         self._cache_config = config
 
     def disable_cache(self) -> None:
-        from ..hooks import FasterCacheConfig, FirstBlockCacheConfig, HookRegistry, PyramidAttentionBroadcastConfig, TeaCacheConfig
+        from ..hooks import (
+            FasterCacheConfig,
+            FirstBlockCacheConfig,
+            HookRegistry,
+            PyramidAttentionBroadcastConfig,
+            TeaCacheConfig,
+        )
         from ..hooks.faster_cache import _FASTER_CACHE_BLOCK_HOOK, _FASTER_CACHE_DENOISER_HOOK
         from ..hooks.first_block_cache import _FBC_BLOCK_HOOK, _FBC_LEADER_BLOCK_HOOK
         from ..hooks.pyramid_attention_broadcast import _PYRAMID_ATTENTION_BROADCAST_HOOK

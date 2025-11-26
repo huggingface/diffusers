@@ -17,7 +17,7 @@ import warnings
 
 import torch
 
-from diffusers.hooks import TeaCacheConfig, HookRegistry
+from diffusers.hooks import HookRegistry, TeaCacheConfig
 
 
 class TeaCacheConfigTests(unittest.TestCase):
@@ -147,12 +147,40 @@ class TeaCacheHookTests(unittest.TestCase):
         self.assertIsNotNone(hook.rescale_func)
         self.assertIsNotNone(hook.state_manager)
 
+    def test_should_compute_full_transformer_logic(self):
+        """Test _should_compute_full_transformer decision logic."""
+        from diffusers.hooks.teacache import TeaCacheHook, TeaCacheState
+
+        config = TeaCacheConfig(rel_l1_thresh=1.0, coefficients=[1, 0, 0, 0, 0])
+        hook = TeaCacheHook(config)
+        state = TeaCacheState()
+
+        x0 = torch.ones(1, 4)
+        x1 = torch.ones(1, 4) * 1.1
+
+        # First step should always compute
+        self.assertTrue(hook._should_compute_full_transformer(state, x0))
+
+        state.previous_modulated_input = x0
+        state.cnt = 1
+        state.num_steps = 4
+
+        # Middle step: accumulate distance and stay below threshold => reuse cache
+        self.assertFalse(hook._should_compute_full_transformer(state, x1))
+
+        # Last step: must compute regardless of distance
+        state.cnt = state.num_steps - 1
+        self.assertTrue(hook._should_compute_full_transformer(state, x1))
+
     def test_apply_teacache_with_custom_extractor(self):
         """Test apply_teacache works with custom extractor function."""
         from diffusers.hooks import apply_teacache
+        from diffusers.models import CacheMixin
 
-        class DummyModule(torch.nn.Module):
-            pass
+        class DummyModule(torch.nn.Module, CacheMixin):
+            def __init__(self):
+                super().__init__()
+                self.dummy = torch.nn.Linear(4, 4)
 
         module = DummyModule()
 
@@ -164,6 +192,12 @@ class TeaCacheHookTests(unittest.TestCase):
 
         # Should not raise - TeaCache is now model-agnostic
         apply_teacache(module, config)
+
+        # Verify registry and disable path work
+        registry = HookRegistry.check_if_exists_or_initialize(module)
+        self.assertIn("teacache", registry.hooks)
+
+        module.disable_cache()
 
 
 if __name__ == "__main__":

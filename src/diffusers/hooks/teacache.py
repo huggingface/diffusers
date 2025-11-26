@@ -46,38 +46,36 @@ class TeaCacheConfig:
     r"""
     Configuration for [TeaCache](https://liewfeng.github.io/TeaCache/) applied to transformer models.
 
-    TeaCache (Timestep Embedding Aware Cache) is an adaptive caching technique that speeds up diffusion model
-    inference by reusing transformer block computations when consecutive timestep embeddings are similar. It uses
-    polynomial rescaling of L1 distances between modulated inputs to intelligently decide when to cache.
+    TeaCache (Timestep Embedding Aware Cache) is an adaptive caching technique that speeds up diffusion model inference
+    by reusing transformer block computations when consecutive timestep embeddings are similar. It uses polynomial
+    rescaling of L1 distances between modulated inputs to intelligently decide when to cache.
 
     Args:
         rel_l1_thresh (`float`, defaults to `0.2`):
-            Threshold for accumulated relative L1 distance. When the accumulated distance is below this threshold,
-            the cached residual from the previous timestep is reused instead of computing the full transformer.
-            Based on the original TeaCache paper, values in the range [0.1, 0.3] work best for balancing speed
-            and quality:
+            Threshold for accumulated relative L1 distance. When the accumulated distance is below this threshold, the
+            cached residual from the previous timestep is reused instead of computing the full transformer. Based on
+            the original TeaCache paper, values in the range [0.1, 0.3] work best for balancing speed and quality:
             - 0.25 for ~1.5x speedup with minimal quality loss
             - 0.4 for ~1.8x speedup with slight quality loss
             - 0.6 for ~2.0x speedup with noticeable quality loss
             - 0.8 for ~2.25x speedup with significant quality loss
             Higher thresholds lead to more aggressive caching and faster inference, but may reduce output quality.
         coefficients (`List[float]`, *optional*, defaults to polynomial coefficients from TeaCache paper):
-            Polynomial coefficients used for rescaling the raw L1 distance. These coefficients
-            transform the relative L1 distance into a model-specific caching signal. If not provided, defaults
-            to the coefficients determined for FLUX models in the TeaCache paper:
-            [4.98651651e+02, -2.83781631e+02, 5.58554382e+01, -3.82021401e+00, 2.64230861e-01].
-            The polynomial is evaluated as: `c[0]*x^4 + c[1]*x^3 + c[2]*x^2 + c[3]*x + c[4]` where x is the
-            relative L1 distance.
+            Polynomial coefficients used for rescaling the raw L1 distance. These coefficients transform the relative
+            L1 distance into a model-specific caching signal. If not provided, defaults to the coefficients determined
+            for FLUX models in the TeaCache paper: [4.98651651e+02, -2.83781631e+02, 5.58554382e+01, -3.82021401e+00,
+            2.64230861e-01]. The polynomial is evaluated as: `c[0]*x^4 + c[1]*x^3 + c[2]*x^2 + c[3]*x + c[4]` where x
+            is the relative L1 distance.
         extract_modulated_input_fn (`Callable`, *optional*, defaults to auto-detection):
-            Function to extract modulated input from the transformer module. Takes (module, hidden_states, timestep_emb)
-            and returns the modulated input tensor. If not provided, auto-detects based on model type.
+            Function to extract modulated input from the transformer module. Takes (module, hidden_states,
+            timestep_emb) and returns the modulated input tensor. If not provided, auto-detects based on model type.
         current_timestep_callback (`Callable[[], int]`, *optional*, defaults to `None`):
-            Callback function that returns the current timestep during inference. This is used internally for
-            debugging and statistics tracking. If not provided, TeaCache will still function correctly.
+            Callback function that returns the current timestep during inference. This is used internally for debugging
+            and statistics tracking. If not provided, TeaCache will still function correctly.
         num_inference_steps_callback (`Callable[[], int]`, *optional*, defaults to `None`):
-            Callback function that returns the total number of inference steps. This is used to ensure the first
-            and last timesteps are always computed (never cached) for maximum quality. If not provided, TeaCache
-            will attempt to detect the number of steps automatically from the pipeline.
+            Callback function that returns the total number of inference steps. This is used to ensure the first and
+            last timesteps are always computed (never cached) for maximum quality. If not provided, TeaCache will
+            attempt to detect the number of steps automatically from the pipeline.
 
     Examples:
         ```python
@@ -102,6 +100,7 @@ class TeaCacheConfig:
         pipe.transformer.disable_cache()
         ```
     """
+
     rel_l1_thresh: float = 0.2
     coefficients: Optional[List[float]] = None
     extract_modulated_input_fn: Optional[Callable] = None
@@ -123,24 +122,25 @@ class TeaCacheConfig:
             )
         if self.rel_l1_thresh < 0.05:
             import warnings
+
             warnings.warn(
                 f"rel_l1_thresh={self.rel_l1_thresh} is very low and may result in minimal caching. "
                 f"Consider using values between 0.1 and 0.3 for optimal performance.",
-                UserWarning
+                UserWarning,
             )
         if self.rel_l1_thresh > 1.0:
             import warnings
+
             warnings.warn(
                 f"rel_l1_thresh={self.rel_l1_thresh} is very high and may cause quality degradation. "
                 f"Consider using values between 0.1 and 0.6 for better quality-speed tradeoff.",
-                UserWarning
+                UserWarning,
             )
 
         # Set default coefficients if not provided
         if self.coefficients is None:
             # Original FLUX coefficients from TeaCache paper
-            self.coefficients = [4.98651651e+02, -2.83781631e+02,
-                               5.58554382e+01, -3.82021401e+00, 2.64230861e-01]
+            self.coefficients = [4.98651651e02, -2.83781631e02, 5.58554382e01, -3.82021401e00, 2.64230861e-01]
 
         # Validate coefficients
         if not isinstance(self.coefficients, (list, tuple)):
@@ -156,8 +156,7 @@ class TeaCacheConfig:
             )
         if not all(isinstance(c, (int, float)) for c in self.coefficients):
             raise TypeError(
-                f"All coefficients must be numbers. "
-                f"Got types: {[type(c).__name__ for c in self.coefficients]}"
+                f"All coefficients must be numbers. Got types: {[type(c).__name__ for c in self.coefficients]}"
             )
 
     def __repr__(self) -> str:
@@ -176,27 +175,28 @@ class TeaCacheState(BaseState):
     """
     State management for TeaCache hook.
 
-    This class tracks the caching state across diffusion timesteps, managing counters, accumulated distances,
-    and cached values needed for the TeaCache algorithm. The state persists across multiple forward passes
-    during a single inference run and is automatically reset when a new inference begins.
+    This class tracks the caching state across diffusion timesteps, managing counters, accumulated distances, and
+    cached values needed for the TeaCache algorithm. The state persists across multiple forward passes during a single
+    inference run and is automatically reset when a new inference begins.
 
     Attributes:
         cnt (int):
-            Current timestep counter, incremented with each forward pass. Used to identify first/last timesteps
-            which are always computed (never cached) for maximum quality.
+            Current timestep counter, incremented with each forward pass. Used to identify first/last timesteps which
+            are always computed (never cached) for maximum quality.
         num_steps (int):
             Total number of inference steps for the current run. Used to identify the last timestep. Automatically
             detected from callbacks or pipeline attributes if not explicitly set.
         accumulated_rel_l1_distance (float):
-            Running accumulator for rescaled L1 distances between consecutive modulated inputs. Compared against
-            the threshold to make caching decisions. Reset to 0 when the decision is made to recompute.
+            Running accumulator for rescaled L1 distances between consecutive modulated inputs. Compared against the
+            threshold to make caching decisions. Reset to 0 when the decision is made to recompute.
         previous_modulated_input (torch.Tensor):
-            Modulated input from the previous timestep, extracted from the first transformer block's norm1 layer.
-            Used for computing L1 distance to determine similarity between consecutive timesteps.
+            Modulated input from the previous timestep, extracted from the first transformer block's norm1 layer. Used
+            for computing L1 distance to determine similarity between consecutive timesteps.
         previous_residual (torch.Tensor):
             Cached residual (output - input) from the previous timestep's full transformer computation. Applied
             directly when caching is triggered instead of computing all transformer blocks.
     """
+
     def __init__(self):
         self.cnt = 0
         self.num_steps = 0
@@ -228,9 +228,9 @@ class TeaCacheHook(ModelHook):
     """
     ModelHook implementing TeaCache for transformer models.
 
-    This hook intercepts transformer forward pass and implements adaptive caching based on timestep
-    embedding similarity. It extracts modulated inputs, computes L1 distances,
-    applies polynomial rescaling, and decides whether to reuse cached residuals or compute full transformer blocks.
+    This hook intercepts transformer forward pass and implements adaptive caching based on timestep embedding
+    similarity. It extracts modulated inputs, computes L1 distances, applies polynomial rescaling, and decides whether
+    to reuse cached residuals or compute full transformer blocks.
 
     The hook follows the original TeaCache algorithm from the paper:
     1. Extract modulated input using provided extractor function
@@ -259,7 +259,7 @@ class TeaCacheHook(ModelHook):
         self.rescale_func = np.poly1d(config.coefficients)
         self.state_manager = StateManager(TeaCacheState, (), {})
         self.extractor_fn = None
-        
+
     def initialize_hook(self, module):
         self.state_manager.set_context("teacache")
         # Auto-detect extractor if not provided
@@ -268,15 +268,16 @@ class TeaCacheHook(ModelHook):
         else:
             self.extractor_fn = self.config.extract_modulated_input_fn
         return module
-        
-    def new_forward(self, module, hidden_states, timestep, pooled_projections,
-                   encoder_hidden_states, txt_ids, img_ids, **kwargs):
+
+    def new_forward(
+        self, module, hidden_states, timestep, pooled_projections, encoder_hidden_states, txt_ids, img_ids, **kwargs
+    ):
         """
         Replace FLUX transformer forward pass with TeaCache-enabled version.
 
-        This method implements the full TeaCache algorithm inline, processing transformer blocks directly instead
-        of calling the original forward method. It extracts modulated inputs, makes caching decisions, and either
-        applies cached residuals (fast path) or computes full transformer blocks (slow path).
+        This method implements the full TeaCache algorithm inline, processing transformer blocks directly instead of
+        calling the original forward method. It extracts modulated inputs, makes caching decisions, and either applies
+        cached residuals (fast path) or computes full transformer blocks (slow path).
 
         Args:
             module: The FluxTransformer2DModel instance.
@@ -300,23 +301,23 @@ class TeaCacheHook(ModelHook):
             state.accumulated_rel_l1_distance = 0.0
             state.previous_modulated_input = None
             state.previous_residual = None
-        
+
         # Set num_steps on first timestep if not already set
         if state.cnt == 0 and state.num_steps == 0:
             if self.config.num_inference_steps_callback is not None:
                 state.num_steps = self.config.num_inference_steps_callback()
             # If still not set, try to get from module attribute (set by pipeline)
-            if state.num_steps == 0 and hasattr(module, 'num_steps'):
+            if state.num_steps == 0 and hasattr(module, "num_steps"):
                 state.num_steps = module.num_steps
-        
+
         # Process inputs like original TeaCache
         # Must process hidden_states through x_embedder first
         hidden_states = module.x_embedder(hidden_states)
 
         # Extract timestep embedding
         timestep_scaled = timestep.to(hidden_states.dtype) * 1000
-        if kwargs.get('guidance') is not None:
-            guidance = kwargs['guidance'].to(hidden_states.dtype) * 1000
+        if kwargs.get("guidance") is not None:
+            guidance = kwargs["guidance"].to(hidden_states.dtype) * 1000
             temb = module.time_text_embed(timestep_scaled, guidance, pooled_projections)
         else:
             temb = module.time_text_embed(timestep_scaled, pooled_projections)
@@ -363,7 +364,7 @@ class TeaCacheHook(ModelHook):
                     encoder_hidden_states=encoder_hidden_states,
                     temb=temb,
                     image_rotary_emb=image_rotary_emb,
-                    joint_attention_kwargs=kwargs.get('joint_attention_kwargs'),
+                    joint_attention_kwargs=kwargs.get("joint_attention_kwargs"),
                 )
 
             # Process through single transformer blocks
@@ -374,7 +375,7 @@ class TeaCacheHook(ModelHook):
                     encoder_hidden_states=encoder_hidden_states,
                     temb=temb,
                     image_rotary_emb=image_rotary_emb,
-                    joint_attention_kwargs=kwargs.get('joint_attention_kwargs'),
+                    joint_attention_kwargs=kwargs.get("joint_attention_kwargs"),
                 )
 
             # Cache the residual
@@ -388,7 +389,7 @@ class TeaCacheHook(ModelHook):
         output = module.proj_out(hidden_states)
 
         return output
-        
+
     def _should_compute_full_transformer(self, state, modulated_inp):
         """
         Determine whether to compute full transformer blocks or reuse cached residual.
@@ -411,31 +412,37 @@ class TeaCacheHook(ModelHook):
         if state.cnt == 0:
             state.accumulated_rel_l1_distance = 0
             return True
-        
+
         # compute last timestep (if num_steps is set)
         if state.num_steps > 0 and state.cnt == state.num_steps - 1:
             state.accumulated_rel_l1_distance = 0
             return True
-        
+
         # Need previous modulated input for comparison
         if state.previous_modulated_input is None:
             return True
-            
-        # Compute relative L1 distance 
-        rel_distance = ((modulated_inp - state.previous_modulated_input).abs().mean() 
-                       / state.previous_modulated_input.abs().mean()).cpu().item()
-        
+
+        # Compute relative L1 distance
+        rel_distance = (
+            (
+                (modulated_inp - state.previous_modulated_input).abs().mean()
+                / state.previous_modulated_input.abs().mean()
+            )
+            .cpu()
+            .item()
+        )
+
         # Apply polynomial rescaling
         rescaled_distance = self.rescale_func(rel_distance)
         state.accumulated_rel_l1_distance += rescaled_distance
-        
+
         # Make decision based on accumulated threshold
         if state.accumulated_rel_l1_distance < self.config.rel_l1_thresh:
-            return False  
+            return False
         else:
             state.accumulated_rel_l1_distance = 0  # Reset accumulator
-            return True   
-    
+            return True
+
     def reset_state(self, module):
         self.state_manager.reset()
         return module
@@ -445,9 +452,9 @@ def apply_teacache(module, config: TeaCacheConfig):
     """
     Apply TeaCache optimization to a transformer model.
 
-    This function registers a TeaCacheHook on the provided transformer, enabling adaptive caching of
-    transformer block computations based on timestep embedding similarity. The hook intercepts the forward pass
-    and implements the TeaCache algorithm to achieve 1.5x-2x speedup with minimal quality loss.
+    This function registers a TeaCacheHook on the provided transformer, enabling adaptive caching of transformer block
+    computations based on timestep embedding similarity. The hook intercepts the forward pass and implements the
+    TeaCache algorithm to achieve 1.5x-2x speedup with minimal quality loss.
 
     Args:
         module: The transformer model to optimize (e.g., FluxTransformer2DModel, CogVideoXTransformer3DModel).
@@ -474,9 +481,8 @@ def apply_teacache(module, config: TeaCacheConfig):
         ```
 
     Note:
-        For most use cases, it's recommended to use the CacheMixin interface:
-        `pipe.transformer.enable_teacache(...)` which provides additional convenience methods
-        like `disable_cache()` for easy toggling.
+        For most use cases, it's recommended to use the CacheMixin interface: `pipe.transformer.enable_teacache(...)`
+        which provides additional convenience methods like `disable_cache()` for easy toggling.
     """
     # Register hook on main transformer
     registry = HookRegistry.check_if_exists_or_initialize(module)
