@@ -80,6 +80,8 @@ def main(args):
 
     # scheduler
     flow_shift = 8.0
+    if args.task == "i2v":
+        assert args.scheduler_type == "flow-euler", "Scheduler type must be flow-euler for i2v task."
 
     # model config
     layer_num = 20
@@ -312,6 +314,7 @@ if __name__ == "__main__":
         choices=["flow-dpm_solver", "flow-euler", "uni-pc"],
         help="Scheduler type to use.",
     )
+    parser.add_argument("--task", default="t2v", type=str, required=True, help="Task to convert, t2v or i2v.")
     parser.add_argument("--dump_path", default=None, type=str, required=True, help="Path to the output pipeline.")
     parser.add_argument("--save_full_pipeline", action="store_true", help="save all the pipeline elements in one.")
     parser.add_argument("--dtype", default="fp32", type=str, choices=["fp32", "fp16", "bf16"], help="Weight dtype.")

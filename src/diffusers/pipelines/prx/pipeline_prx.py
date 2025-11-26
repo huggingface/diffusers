@@ -69,6 +69,39 @@ ASPECT_RATIO_512_BIN = {
     "2.0": [704, 352],
 }
 
+ASPECT_RATIO_1024_BIN = {
+    "0.49": [704, 1440],
+    "0.52": [736, 1408],
+    "0.53": [736, 1376],
+    "0.57": [768, 1344],
+    "0.59": [768, 1312],
+    "0.62": [800, 1280],
+    "0.67": [832, 1248],
+    "0.68": [832, 1216],
+    "0.78": [896, 1152],
+    "0.83": [928, 1120],
+    "0.94": [992, 1056],
+    "1.0": [1024, 1024],
+    "1.06": [1056, 992],
+    "1.13": [1088, 960],
+    "1.21": [1120, 928],
+    "1.29": [1152, 896],
+    "1.37": [1184, 864],
+    "1.46": [1216, 832],
+    "1.5": [1248, 832],
+    "1.71": [1312, 768],
+    "1.75": [1344, 768],
+    "1.87": [1376, 736],
+    "1.91": [1408, 736],
+    "2.05": [1440, 704],
+}
+
+ASPECT_RATIO_BINS = {
+    256: ASPECT_RATIO_256_BIN,
+    512: ASPECT_RATIO_512_BIN,
+    1024: ASPECT_RATIO_1024_BIN,
+}
+
 logger = logging.get_logger(__name__)
 
 
@@ -536,11 +569,11 @@ class PRXPipeline(
                 in their `set_timesteps` method. If not defined, the default behavior when `num_inference_steps` is
                 passed will be used. Must be in descending order.
             guidance_scale (`float`, *optional*, defaults to 4.0):
-                Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598).
-                `guidance_scale` is defined as `w` of equation 2. of [Imagen
-                Paper](https://arxiv.org/pdf/2205.11487.pdf). Guidance scale is enabled by setting `guidance_scale >
-                1`. Higher guidance scale encourages to generate images that are closely linked to the text `prompt`,
-                usually at the expense of lower image quality.
+                Guidance scale as defined in [Classifier-Free Diffusion
+                Guidance](https://huggingface.co/papers/2207.12598). `guidance_scale` is defined as `w` of equation 2.
+                of [Imagen Paper](https://huggingface.co/papers/2205.11487). Guidance scale is enabled by setting
+                `guidance_scale > 1`. Higher guidance scale encourages to generate images that are closely linked to
+                the text `prompt`, usually at the expense of lower image quality.
             num_images_per_prompt (`int`, *optional*, defaults to 1):
                 The number of images to generate per prompt.
             generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
@@ -600,10 +633,12 @@ class PRXPipeline(
                     "Resolution binning requires a VAE with image_processor, but VAE is not available. "
                     "Set use_resolution_binning=False or provide a VAE."
                 )
-            if self.default_sample_size <= 256:
-                aspect_ratio_bin = ASPECT_RATIO_256_BIN
-            else:
-                aspect_ratio_bin = ASPECT_RATIO_512_BIN
+            if self.default_sample_size not in ASPECT_RATIO_BINS:
+                raise ValueError(
+                    f"Resolution binning is only supported for default_sample_size in {list(ASPECT_RATIO_BINS.keys())}, "
+                    f"but got {self.default_sample_size}. Set use_resolution_binning=False to disable aspect ratio binning."
+                )
+            aspect_ratio_bin = ASPECT_RATIO_BINS[self.default_sample_size]
 
             # Store original dimensions
             orig_height, orig_width = height, width

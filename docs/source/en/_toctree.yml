@@ -22,6 +22,8 @@
     title: Reproducibility
   - local: using-diffusers/schedulers
     title: Schedulers
+  - local: using-diffusers/automodel
+    title: AutoModel
   - local: using-diffusers/other-formats
     title: Model formats
   - local: using-diffusers/push_to_hub
@@ -119,6 +121,8 @@
     title: ComponentsManager
   - local: modular_diffusers/guiders
     title: Guiders
+  - local: modular_diffusers/custom_blocks
+    title: Building Custom Blocks
   title: Modular Diffusers
 - isExpanded: false
   sections:
@@ -345,6 +349,8 @@
         title: DiTTransformer2DModel
       - local: api/models/easyanimate_transformer3d
         title: EasyAnimateTransformer3DModel
+      - local: api/models/flux2_transformer
+        title: Flux2Transformer2DModel
       - local: api/models/flux_transformer
         title: FluxTransformer2DModel
       - local: api/models/hidream_image_transformer
@@ -387,6 +393,8 @@
         title: Transformer2DModel
       - local: api/models/transformer_temporal
         title: TransformerTemporalModel
+      - local: api/models/wan_animate_transformer_3d
+        title: WanAnimateTransformer3DModel
       - local: api/models/wan_transformer_3d
         title: WanTransformer3DModel
       title: Transformers
@@ -448,6 +456,8 @@
   - sections:
     - local: api/pipelines/overview
       title: Overview
+    - local: api/pipelines/auto_pipeline
+      title: AutoPipeline
     - sections:
       - local: api/pipelines/audioldm
         title: AudioLDM
@@ -460,8 +470,6 @@
       - local: api/pipelines/stable_audio
         title: Stable Audio
       title: Audio
-    - local: api/pipelines/auto_pipeline
-      title: AutoPipeline
     - sections:
       - local: api/pipelines/amused
         title: aMUSEd
@@ -519,6 +527,8 @@
         title: EasyAnimate
       - local: api/pipelines/flux
         title: Flux
+      - local: api/pipelines/flux2
+        title: Flux2
       - local: api/pipelines/control_flux_inpaint
         title: FluxControlInpaint
       - local: api/pipelines/hidream
