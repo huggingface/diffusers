@@ -349,6 +349,8 @@
         title: DiTTransformer2DModel
       - local: api/models/easyanimate_transformer3d
         title: EasyAnimateTransformer3DModel
+      - local: api/models/flux2_transformer
+        title: Flux2Transformer2DModel
       - local: api/models/flux_transformer
         title: FluxTransformer2DModel
       - local: api/models/hidream_image_transformer
@@ -525,6 +527,8 @@
         title: EasyAnimate
       - local: api/pipelines/flux
         title: Flux
+      - local: api/pipelines/flux2
+        title: Flux2
       - local: api/pipelines/control_flux_inpaint
         title: FluxControlInpaint
       - local: api/pipelines/hidream

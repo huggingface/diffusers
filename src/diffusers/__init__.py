@@ -186,6 +186,7 @@ else:
             "AutoencoderKLAllegro",
             "AutoencoderKLCogVideoX",
             "AutoencoderKLCosmos",
+            "AutoencoderKLFlux2",
             "AutoencoderKLHunyuanImage",
             "AutoencoderKLHunyuanImageRefiner",
             "AutoencoderKLHunyuanVideo",
@@ -215,6 +216,7 @@ else:
             "CosmosTransformer3DModel",
             "DiTTransformer2DModel",
             "EasyAnimateTransformer3DModel",
+            "Flux2Transformer2DModel",
             "FluxControlNetModel",
             "FluxMultiControlNetModel",
             "FluxTransformer2DModel",
@@ -271,6 +273,7 @@ else:
             "WanAnimateTransformer3DModel",
             "WanTransformer3DModel",
             "WanVACETransformer3DModel",
+            "ZImageTransformer2DModel",
             "attention_backend",
         ]
     )
@@ -457,6 +460,7 @@ else:
             "EasyAnimateControlPipeline",
             "EasyAnimateInpaintPipeline",
             "EasyAnimatePipeline",
+            "Flux2Pipeline",
             "FluxControlImg2ImgPipeline",
             "FluxControlInpaintPipeline",
             "FluxControlNetImg2ImgPipeline",
@@ -650,6 +654,7 @@ else:
             "WuerstchenCombinedPipeline",
             "WuerstchenDecoderPipeline",
             "WuerstchenPriorPipeline",
+            "ZImagePipeline",
         ]
     )
 
@@ -903,6 +908,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AutoencoderKLAllegro,
             AutoencoderKLCogVideoX,
             AutoencoderKLCosmos,
+            AutoencoderKLFlux2,
             AutoencoderKLHunyuanImage,
             AutoencoderKLHunyuanImageRefiner,
             AutoencoderKLHunyuanVideo,
@@ -932,6 +938,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             CosmosTransformer3DModel,
             DiTTransformer2DModel,
             EasyAnimateTransformer3DModel,
+            Flux2Transformer2DModel,
             FluxControlNetModel,
             FluxMultiControlNetModel,
             FluxTransformer2DModel,
@@ -1144,6 +1151,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             EasyAnimateControlPipeline,
             EasyAnimateInpaintPipeline,
             EasyAnimatePipeline,
+            Flux2Pipeline,
             FluxControlImg2ImgPipeline,
             FluxControlInpaintPipeline,
             FluxControlNetImg2ImgPipeline,
@@ -1335,6 +1343,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             WuerstchenCombinedPipeline,
             WuerstchenDecoderPipeline,
             WuerstchenPriorPipeline,
+            ZImagePipeline,
         )
 
     try:
