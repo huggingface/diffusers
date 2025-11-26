@@ -227,7 +227,7 @@ class HunyuanVideo15Pipeline(DiffusionPipeline):
         self.video_processor = HunyuanVideo15ImageProcessor(vae_scale_factor=self.vae_scale_factor_spatial)
         self.target_size = self.transformer.config.target_size if getattr(self, "transformer", None) else 640
         self.vision_states_dim = self.transformer.config.image_embed_dim if getattr(self, "transformer", None) else 1152
-        self.num_channels_latents = self.vae.latent_channels if hasattr(self, "vae") else 32
+        self.num_channels_latents = self.vae.config.latent_channels if hasattr(self, "vae") else 32
         # fmt: off
         self.system_message = "You are a helpful assistant. Describe the video by detailing the following aspects: \
         1. The main content and theme of the video. \
@@ -594,7 +594,7 @@ class HunyuanVideo15Pipeline(DiffusionPipeline):
         prompt_embeds_mask_2: Optional[torch.Tensor] = None,
         negative_prompt_embeds_2: Optional[torch.Tensor] = None,
         negative_prompt_embeds_mask_2: Optional[torch.Tensor] = None,
-        output_type: Optional[str] = "pil",
+        output_type: Optional[str] = "np",
         return_dict: bool = True,
         attention_kwargs: Optional[Dict[str, Any]] = None,
     ):
