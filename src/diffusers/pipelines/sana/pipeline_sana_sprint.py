@@ -26,7 +26,7 @@ from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...image_processor import PixArtImageProcessor
 from ...loaders import SanaLoraLoaderMixin
 from ...models import AutoencoderDC, SanaTransformer2DModel
-from ...schedulers import DPMSolverMultistepScheduler
+from ...schedulers import SCMScheduler
 from ...utils import (
     BACKENDS_MAPPING,
     USE_PEFT_BACKEND,
@@ -156,7 +156,7 @@ class SanaSprintPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
         text_encoder: Gemma2PreTrainedModel,
         vae: AutoencoderDC,
         transformer: SanaTransformer2DModel,
-        scheduler: DPMSolverMultistepScheduler,
+        scheduler: SCMScheduler,
     ):
         super().__init__()
 
