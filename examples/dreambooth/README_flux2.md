@@ -2,7 +2,7 @@
 
 [DreamBooth](https://huggingface.co/papers/2208.12242) is a method to personalize image generation models given just a few (3~5) images of a subject/concept.
 
-The `train_dreambooth_lora_flux2.py` script shows how to implement the training procedure for [LoRAs](https://huggingface.co/blog/lora) and adapt it for [FLUX.2 [dev]](https://github.com/black-forest-labs/flux2-dev).
+The `train_dreambooth_lora_flux2.py` script shows how to implement the training procedure for [LoRAs](https://huggingface.co/blog/lora) and adapt it for [FLUX.2 [dev]](https://github.com/black-forest-labs/flux2).
 
 > [!NOTE]
 > **Memory consumption**
@@ -132,7 +132,7 @@ export MODEL_NAME="black-forest-labs/FLUX.2-dev"
 export INSTANCE_DIR="dog"
 export OUTPUT_DIR="trained-flux2"
 
-accelerate launch train_dreambooth_flux.py \
+accelerate launch train_dreambooth_lora_flux2.py \
   --pretrained_model_name_or_path=$MODEL_NAME  \
   --instance_data_dir=$INSTANCE_DIR \
   --output_dir=$OUTPUT_DIR \
@@ -190,7 +190,7 @@ export MODEL_NAME="black-forest-labs/FLUX.2-dev"
 export INSTANCE_DIR="dog"
 export OUTPUT_DIR="trained-flux2-lora"
 
-accelerate launch train_dreambooth_lora_flux.py \
+accelerate launch train_dreambooth_lora_flux2.py \
   --pretrained_model_name_or_path=$MODEL_NAME  \
   --instance_data_dir=$INSTANCE_DIR \
   --output_dir=$OUTPUT_DIR \
