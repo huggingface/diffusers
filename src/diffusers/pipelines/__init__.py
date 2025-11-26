@@ -129,6 +129,7 @@ else:
     ]
     _import_structure["bria"] = ["BriaPipeline"]
     _import_structure["bria_fibo"] = ["BriaFiboPipeline"]
+    _import_structure["flux2"] = ["Flux2Pipeline"]
     _import_structure["flux"] = [
         "FluxControlPipeline",
         "FluxControlInpaintPipeline",
@@ -655,6 +656,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             FluxPriorReduxPipeline,
             ReduxImageEncoder,
         )
+        from .flux2 import Flux2Pipeline
         from .hidream_image import HiDreamImagePipeline
         from .hunyuan_image import HunyuanImagePipeline, HunyuanImageRefinerPipeline
         from .hunyuan_video import (
