@@ -1,0 +1,18 @@
+.vs/
+.vscode/
+.cache/
+build*/
+unix/
+python/
+deps/
+
+# Python
+__pycache__/
+*.py[cod]
+
+*.password
+resources/shaders/generatedcompute.comp
+*.pem
+resources/.luarc.json
+compile_commands.json
+Session.vim
