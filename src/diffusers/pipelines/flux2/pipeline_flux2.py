@@ -57,24 +57,6 @@ EXAMPLE_DOC_STRING = """
         ```
 """
 
-# def format_text_input(prompts: List[str], system_message: str = None):
-#     # Remove [IMG] tokens from prompts to avoid Pixtral validation issues
-#     # when truncation is enabled. The processor counts [IMG] tokens and fails
-#     # if the count changes after truncation.
-#     cleaned_txt = [prompt.replace("[IMG]", "") for prompt in prompts]
-
-#     return [
-#         [
-#             {
-#                 "role": "system",
-#                 "content": [{"type": "text", "text": system_message}],
-#             },
-#             {"role": "user", "content": [{"type": "text", "text": prompt}]},
-#         ]
-#         for prompt in cleaned_txt
-#     ]
-
-
 # Adapted from
 # https://github.com/black-forest-labs/flux2/blob/5a5d316b1b42f6b59a8c9194b77c8256be848432/src/flux2/text_encoder.py#L68
 def format_input(
@@ -328,9 +310,7 @@ class Flux2Pipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
         dtype: Optional[torch.dtype] = None,
         device: Optional[torch.device] = None,
         max_sequence_length: int = 512,
-        # fmt: off
-        system_message: str = "You are an AI that reasons about image descriptions. You give structured responses focusing on object relationships, object attribution and actions without speculation.",
-        # fmt: on
+        system_message: str = SYSTEM_MESSAGE,
         hidden_states_layers: List[int] = (10, 20, 30),
     ):
         dtype = text_encoder.dtype if dtype is None else dtype
@@ -885,6 +865,7 @@ class Flux2Pipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
             prompt = self.upsample_prompt(
                 prompt, images=image, temperature=caption_upsample_temperature, device=device
             )
+            print(f"{prompt=}")
 
         prompt_embeds, text_ids = self.encode_prompt(
             prompt=prompt,
