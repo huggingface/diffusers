@@ -70,7 +70,7 @@ class TimestepEmbedder(nn.Module):
     def forward(self, t):
         t_freq = self.timestep_embedding(t, self.frequency_embedding_size)
         weight_dtype = self.mlp[0].weight.dtype
-        if weight_dtype in [torch.float32, torch.float16, torch.bfloat16]:
+        if weight_dtype.is_floating_point:
             t_freq = t_freq.to(weight_dtype)
         t_emb = self.mlp(t_freq)
         return t_emb

@@ -407,8 +407,6 @@ class ZImagePipeline(DiffusionPipeline, FromSingleFileMixin):
                 f"Please adjust the width to a multiple of {vae_scale}."
             )
 
-        # assert self.dtype == torch.bfloat16
-        dtype = self.dtype if hasattr(self, "dtype") and self.dtype is not None else torch.float32
         device = self._execution_device
 
         self._guidance_scale = guidance_scale
@@ -514,12 +512,12 @@ class ZImagePipeline(DiffusionPipeline, FromSingleFileMixin):
                 apply_cfg = self.do_classifier_free_guidance and current_guidance_scale > 0
 
                 if apply_cfg:
-                    latents_typed = latents if latents.dtype == dtype else latents.to(dtype)
+                    latents_typed = latents.to(self.transformer.dtype)
                     latent_model_input = latents_typed.repeat(2, 1, 1, 1)
                     prompt_embeds_model_input = prompt_embeds + negative_prompt_embeds
                     timestep_model_input = timestep.repeat(2)
                 else:
-                    latent_model_input = latents if latents.dtype == dtype else latents.to(dtype)
+                    latent_model_input = latents.to(self.transformer.dtype)
                     prompt_embeds_model_input = prompt_embeds
                     timestep_model_input = timestep
 
@@ -579,11 +577,11 @@ class ZImagePipeline(DiffusionPipeline, FromSingleFileMixin):
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                     progress_bar.update()
 
-        latents = latents.to(dtype)
         if output_type == "latent":
             image = latents
 
         else:
+            latents = latents.to(self.vae.dtype)
             latents = (latents / self.vae.config.scaling_factor) + self.vae.config.shift_factor
 
             image = self.vae.decode(latents, return_dict=False)[0]
