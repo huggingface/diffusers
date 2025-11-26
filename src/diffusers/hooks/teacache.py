@@ -24,13 +24,27 @@ from .hooks import BaseState, HookRegistry, ModelHook, StateManager
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
-_FLUX_TEACACHE_HOOK = "flux_teacache"
+_TEACACHE_HOOK = "teacache"
+
+
+def _flux_modulated_input_extractor(module, hidden_states, timestep_emb):
+    """Extract modulated input for FLUX models."""
+    return module.transformer_blocks[0].norm1(hidden_states, emb=timestep_emb)[0]
+
+
+def _auto_detect_extractor(module):
+    """Auto-detect and return appropriate extractor based on model type."""
+    module_class_name = module.__class__.__name__
+    if "Flux" in module_class_name:
+        return _flux_modulated_input_extractor
+    # Add more model types as needed
+    return _flux_modulated_input_extractor  # Default to FLUX for now
 
 
 @dataclass
-class FluxTeaCacheConfig:
+class TeaCacheConfig:
     r"""
-    Configuration for [TeaCache](https://liewfeng.github.io/TeaCache/) applied to FLUX models.
+    Configuration for [TeaCache](https://liewfeng.github.io/TeaCache/) applied to transformer models.
 
     TeaCache (Timestep Embedding Aware Cache) is an adaptive caching technique that speeds up diffusion model
     inference by reusing transformer block computations when consecutive timestep embeddings are similar. It uses
@@ -47,13 +61,16 @@ class FluxTeaCacheConfig:
             - 0.6 for ~2.0x speedup with noticeable quality loss
             - 0.8 for ~2.25x speedup with significant quality loss
             Higher thresholds lead to more aggressive caching and faster inference, but may reduce output quality.
-        coefficients (`List[float]`, *optional*, defaults to FLUX-specific polynomial coefficients):
-            FLUX-specific polynomial coefficients used for rescaling the raw L1 distance. These coefficients
+        coefficients (`List[float]`, *optional*, defaults to polynomial coefficients from TeaCache paper):
+            Polynomial coefficients used for rescaling the raw L1 distance. These coefficients
             transform the relative L1 distance into a model-specific caching signal. If not provided, defaults
             to the coefficients determined for FLUX models in the TeaCache paper:
             [4.98651651e+02, -2.83781631e+02, 5.58554382e+01, -3.82021401e+00, 2.64230861e-01].
             The polynomial is evaluated as: `c[0]*x^4 + c[1]*x^3 + c[2]*x^2 + c[3]*x + c[4]` where x is the
             relative L1 distance.
+        extract_modulated_input_fn (`Callable`, *optional*, defaults to auto-detection):
+            Function to extract modulated input from the transformer module. Takes (module, hidden_states, timestep_emb)
+            and returns the modulated input tensor. If not provided, auto-detects based on model type.
         current_timestep_callback (`Callable[[], int]`, *optional*, defaults to `None`):
             Callback function that returns the current timestep during inference. This is used internally for
             debugging and statistics tracking. If not provided, TeaCache will still function correctly.
@@ -65,14 +82,17 @@ class FluxTeaCacheConfig:
     Examples:
         ```python
         from diffusers import FluxPipeline
-        from diffusers.hooks import FluxTeaCacheConfig
+        from diffusers.hooks import TeaCacheConfig
 
         # Load FLUX pipeline
         pipe = FluxPipeline.from_pretrained("black-forest-labs/FLUX.1-schnell", torch_dtype=torch.bfloat16)
         pipe.to("cuda")
 
-        # Enable TeaCache with default settings (1.5x speedup)
-        config = FluxTeaCacheConfig(rel_l1_thresh=0.2)
+        # Enable TeaCache with auto-detection (1.5x speedup)
+        pipe.transformer.enable_teacache(rel_l1_thresh=0.2)
+
+        # Or with explicit config
+        config = TeaCacheConfig(rel_l1_thresh=0.2)
         pipe.transformer.enable_cache(config)
 
         # Generate image with caching
@@ -80,15 +100,11 @@ class FluxTeaCacheConfig:
 
         # Disable caching
         pipe.transformer.disable_cache()
-
-        # For more aggressive caching (2x speedup, slight quality loss)
-        config = FluxTeaCacheConfig(rel_l1_thresh=0.6)
-        pipe.transformer.enable_cache(config)
-        image = pipe("A cat sitting on a windowsill", num_inference_steps=4).images[0]
         ```
     """
     rel_l1_thresh: float = 0.2
     coefficients: Optional[List[float]] = None
+    extract_modulated_input_fn: Optional[Callable] = None
     current_timestep_callback: Optional[Callable[[], int]] = None
     num_inference_steps_callback: Optional[Callable[[], int]] = None
 
@@ -146,18 +162,19 @@ class FluxTeaCacheConfig:
 
     def __repr__(self) -> str:
         return (
-            f"FluxTeaCacheConfig(\n"
+            f"TeaCacheConfig(\n"
             f"  rel_l1_thresh={self.rel_l1_thresh},\n"
             f"  coefficients={self.coefficients},\n"
+            f"  extract_modulated_input_fn={self.extract_modulated_input_fn},\n"
             f"  current_timestep_callback={self.current_timestep_callback},\n"
             f"  num_inference_steps_callback={self.num_inference_steps_callback}\n"
             f")"
         )
 
 
-class FluxTeaCacheState(BaseState):
+class TeaCacheState(BaseState):
     """
-    State management for FLUX TeaCache hook.
+    State management for TeaCache hook.
 
     This class tracks the caching state across diffusion timesteps, managing counters, accumulated distances,
     and cached values needed for the TeaCache algorithm. The state persists across multiple forward passes
@@ -197,7 +214,7 @@ class FluxTeaCacheState(BaseState):
 
     def __repr__(self) -> str:
         return (
-            f"FluxTeaCacheState(\n"
+            f"TeaCacheState(\n"
             f"  cnt={self.cnt},\n"
             f"  num_steps={self.num_steps},\n"
             f"  accumulated_rel_l1_distance={self.accumulated_rel_l1_distance:.6f},\n"
@@ -207,18 +224,18 @@ class FluxTeaCacheState(BaseState):
         )
 
 
-class FluxTeaCacheHook(ModelHook):
+class TeaCacheHook(ModelHook):
     """
-    ModelHook implementing TeaCache for FLUX transformer models.
+    ModelHook implementing TeaCache for transformer models.
 
-    This hook intercepts the FLUX transformer forward pass and implements adaptive caching based on timestep
-    embedding similarity. It extracts modulated inputs from the first transformer block, computes L1 distances,
+    This hook intercepts transformer forward pass and implements adaptive caching based on timestep
+    embedding similarity. It extracts modulated inputs, computes L1 distances,
     applies polynomial rescaling, and decides whether to reuse cached residuals or compute full transformer blocks.
 
     The hook follows the original TeaCache algorithm from the paper:
-    1. Extract modulated input from first transformer block's norm1 layer with timestep embedding
+    1. Extract modulated input using provided extractor function
     2. Compute relative L1 distance between current and previous modulated inputs
-    3. Apply polynomial rescaling with FLUX-specific coefficients to the distance
+    3. Apply polynomial rescaling with model-specific coefficients to the distance
     4. Accumulate rescaled distances and compare to threshold
     5. If below threshold: reuse cached residual (fast path, skip transformer computation)
     6. If above threshold: compute full transformer blocks and cache new residual (slow path)
@@ -226,24 +243,30 @@ class FluxTeaCacheHook(ModelHook):
     The first and last timesteps are always computed fully (never cached) to ensure maximum quality.
 
     Attributes:
-        config (FluxTeaCacheConfig):
+        config (TeaCacheConfig):
             Configuration containing threshold, polynomial coefficients, and optional callbacks.
         rescale_func (np.poly1d):
-            Polynomial function for rescaling L1 distances using FLUX-specific coefficients.
+            Polynomial function for rescaling L1 distances using model-specific coefficients.
         state_manager (StateManager):
-            Manages FluxTeaCacheState across forward passes, maintaining counters and cached values.
+            Manages TeaCacheState across forward passes, maintaining counters and cached values.
     """
 
     _is_stateful = True
 
-    def __init__(self, config: FluxTeaCacheConfig):
+    def __init__(self, config: TeaCacheConfig):
         super().__init__()
         self.config = config
         self.rescale_func = np.poly1d(config.coefficients)
-        self.state_manager = StateManager(FluxTeaCacheState, (), {})
+        self.state_manager = StateManager(TeaCacheState, (), {})
+        self.extractor_fn = None
         
     def initialize_hook(self, module):
-        self.state_manager.set_context("flux_teacache")
+        self.state_manager.set_context("teacache")
+        # Auto-detect extractor if not provided
+        if self.config.extract_modulated_input_fn is None:
+            self.extractor_fn = _auto_detect_extractor(module)
+        else:
+            self.extractor_fn = self.config.extract_modulated_input_fn
         return module
         
     def new_forward(self, module, hidden_states, timestep, pooled_projections,
@@ -298,10 +321,10 @@ class FluxTeaCacheHook(ModelHook):
         else:
             temb = module.time_text_embed(timestep_scaled, pooled_projections)
 
-        # Extract modulated input from first transformer block like original
+        # Extract modulated input using configured extractor
         inp = hidden_states.clone()
         temb_clone = temb.clone()
-        modulated_inp, _, _, _, _ = module.transformer_blocks[0].norm1(inp, emb=temb_clone)
+        modulated_inp = self.extractor_fn(module, inp, temb_clone)
 
         # Make caching decision
         should_calc = self._should_compute_full_transformer(state, modulated_inp)
@@ -312,7 +335,7 @@ class FluxTeaCacheHook(ModelHook):
                 f"TeaCache: reusing cached residual at step {state.cnt}/{state.num_steps} "
                 f"(accumulated distance: {state.accumulated_rel_l1_distance:.6f})"
             )
-            output = hidden_states + state.previous_residual
+            hidden_states = hidden_states + state.previous_residual
         else:
             # Slow path: full computation inline (like original TeaCache)
             logger.debug(
@@ -378,8 +401,8 @@ class FluxTeaCacheHook(ModelHook):
         - Return True (compute) if accumulated distance exceeds threshold, False (cache) otherwise
 
         Args:
-            state (`FluxTeaCacheState`): Current state containing counters and cached values.
-            modulated_inp (`torch.Tensor`): Modulated input from first transformer block's norm1 layer.
+            state (`TeaCacheState`): Current state containing counters and cached values.
+            modulated_inp (`torch.Tensor`): Modulated input extracted using configured extractor function.
 
         Returns:
             `bool`: True to compute full transformer, False to reuse cached residual.
@@ -418,57 +441,44 @@ class FluxTeaCacheHook(ModelHook):
         return module
 
 
-def apply_flux_teacache(module, config: FluxTeaCacheConfig):
+def apply_teacache(module, config: TeaCacheConfig):
     """
-    Apply TeaCache optimization to a FLUX transformer model.
+    Apply TeaCache optimization to a transformer model.
 
-    This function registers a FluxTeaCacheHook on the provided FLUX transformer, enabling adaptive caching of
+    This function registers a TeaCacheHook on the provided transformer, enabling adaptive caching of
     transformer block computations based on timestep embedding similarity. The hook intercepts the forward pass
     and implements the TeaCache algorithm to achieve 1.5x-2x speedup with minimal quality loss.
 
     Args:
-        module: The FLUX transformer model (FluxTransformer2DModel) to optimize.
-        config (`FluxTeaCacheConfig`): Configuration specifying caching threshold and optional callbacks.
-
-    Raises:
-        ValueError: If the module is not a FluxTransformer2DModel.
+        module: The transformer model to optimize (e.g., FluxTransformer2DModel, CogVideoXTransformer3DModel).
+        config (`TeaCacheConfig`): Configuration specifying caching threshold and optional callbacks.
 
     Examples:
         ```python
         from diffusers import FluxPipeline
-        from diffusers.hooks import FluxTeaCacheConfig, apply_flux_teacache
+        from diffusers.hooks import TeaCacheConfig, apply_teacache
 
         # Load FLUX pipeline
         pipe = FluxPipeline.from_pretrained("black-forest-labs/FLUX.1-schnell", torch_dtype=torch.bfloat16)
         pipe.to("cuda")
 
         # Apply TeaCache directly to transformer
-        config = FluxTeaCacheConfig(rel_l1_thresh=0.2)
-        apply_flux_teacache(pipe.transformer, config)
+        config = TeaCacheConfig(rel_l1_thresh=0.2)
+        apply_teacache(pipe.transformer, config)
 
         # Generate with caching enabled
         image = pipe("A cat on a windowsill", num_inference_steps=4).images[0]
 
         # Or use the convenience method via CacheMixin
-        pipe.transformer.enable_cache(config)
+        pipe.transformer.enable_teacache(rel_l1_thresh=0.2)
         ```
 
     Note:
         For most use cases, it's recommended to use the CacheMixin interface:
-        `pipe.transformer.enable_cache(FluxTeaCacheConfig(...))` which provides additional convenience methods
+        `pipe.transformer.enable_teacache(...)` which provides additional convenience methods
         like `disable_cache()` for easy toggling.
     """
-    from ..models.transformers.transformer_flux import FluxTransformer2DModel
-
-    # Validate FLUX model
-    if not isinstance(module, FluxTransformer2DModel):
-        raise ValueError(
-            f"TeaCache currently supports only FLUX transformer models. "
-            f"Got {type(module).__name__}. Please ensure you're applying TeaCache to a "
-            f"FluxTransformer2DModel instance (e.g., pipe.transformer)."
-        )
-
     # Register hook on main transformer
     registry = HookRegistry.check_if_exists_or_initialize(module)
-    hook = FluxTeaCacheHook(config)
-    registry.register_hook(hook, _FLUX_TEACACHE_HOOK)
+    hook = TeaCacheHook(config)
+    registry.register_hook(hook, _TEACACHE_HOOK)

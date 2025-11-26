@@ -19,7 +19,7 @@ if is_torch_available():
     from .context_parallel import apply_context_parallel
     from .faster_cache import FasterCacheConfig, apply_faster_cache
     from .first_block_cache import FirstBlockCacheConfig, apply_first_block_cache
-    from .flux_teacache import FluxTeaCacheConfig, apply_flux_teacache
+    from .teacache import TeaCacheConfig, apply_teacache
     from .group_offloading import apply_group_offloading
     from .hooks import HookRegistry, ModelHook
     from .layer_skip import LayerSkipConfig, apply_layer_skip
