@@ -57,6 +57,7 @@ EXAMPLE_DOC_STRING = """
         ```
 """
 
+
 # Adapted from
 # https://github.com/black-forest-labs/flux2/blob/5a5d316b1b42f6b59a8c9194b77c8256be848432/src/flux2/text_encoder.py#L68
 def format_input(
@@ -510,12 +511,13 @@ class Flux2Pipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
 
     def upsample_prompt(
         self,
-        prompts: List[str],
+        prompt: Union[str, List[str]],
         images: Union[List[PIL.Image.Image], List[List[PIL.Image.Image]]] = None,
         temperature: float = 0.15,
         device: torch.device = None,
     ) -> List[str]:
-        device = device or self._execution_device
+        prompt = [prompt] if isinstance(prompt, str) else prompt
+        device = self.text_encoder.device if device is None else device
 
         # Set system message based on whether images are provided
         if images is None or len(images) == 0 or images[0] is None:
@@ -524,7 +526,7 @@ class Flux2Pipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
             system_message = SYSTEM_MESSAGE_UPSAMPLING_I2I
 
         # Format input messages
-        messages_batch = format_input(prompts=prompts, system_message=system_message, images=images)
+        messages_batch = format_input(prompts=prompt, system_message=system_message, images=images)
 
         # Process all messages at once
         # with image processing a too short max length can throw an error in here.
@@ -560,10 +562,10 @@ class Flux2Pipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
         input_length = inputs["input_ids"].shape[1]
         generated_tokens = generated_ids[:, input_length:]
 
-        raw_txt = self.tokenizer.tokenizer.batch_decode(
+        upsampled_prompt = self.tokenizer.tokenizer.batch_decode(
             generated_tokens, skip_special_tokens=True, clean_up_tokenization_spaces=True
         )
-        return raw_txt
+        return upsampled_prompt
 
     def encode_prompt(
         self,
@@ -775,11 +777,11 @@ class Flux2Pipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
                 The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds`.
                 instead.
             guidance_scale (`float`, *optional*, defaults to 1.0):
-                Guidance scale as defined in [Classifier-Free Diffusion
-                Guidance](https://huggingface.co/papers/2207.12598). `guidance_scale` is defined as `w` of equation 2.
-                of [Imagen Paper](https://huggingface.co/papers/2205.11487). Guidance scale is enabled by setting
-                `guidance_scale > 1`. Higher guidance scale encourages to generate images that are closely linked to
-                the text `prompt`, usually at the expense of lower image quality.
+                Embedded guiddance scale is enabled by setting `guidance_scale` > 1. Higher `guidance_scale` encourages
+                a model to generate images more aligned with `prompt` at the expense of lower image quality.
+
+                Guidance-distilled models approximates true classifer-free guidance for `guidance_scale` > 1. Refer to
+                the [paper](https://huggingface.co/papers/2210.03142) to learn more.
             height (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
                 The height in pixels of the generated image. This is set to 1024 by default for the best results.
             width (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
@@ -865,8 +867,6 @@ class Flux2Pipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
             prompt = self.upsample_prompt(
                 prompt, images=image, temperature=caption_upsample_temperature, device=device
             )
-            print(f"{prompt=}")
-
         prompt_embeds, text_ids = self.encode_prompt(
             prompt=prompt,
             prompt_embeds=prompt_embeds,
