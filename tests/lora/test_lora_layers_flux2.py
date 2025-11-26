@@ -95,6 +95,8 @@ class Flux2LoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
 
         return noise, input_ids, pipeline_inputs
 
+    # Overriding because (1) text encoder LoRAs are not supported in Flux 2 and (2) because the Flux 2 single block
+    # QKV projections are always fused, it has no `to_q` param as expected by the original test.
     def test_lora_fuse_nan(self):
         components, _, denoiser_lora_config = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
