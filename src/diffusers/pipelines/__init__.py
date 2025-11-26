@@ -757,7 +757,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             SanaSprintImg2ImgPipeline,
             SanaSprintPipeline,
         )
-        from .sana_video import SanaImageToVideoPipeline, SanaVideoPipeline, LongSanaVideoPipeline
+        from .sana_video import LongSanaVideoPipeline, SanaImageToVideoPipeline, SanaVideoPipeline
         from .semantic_stable_diffusion import SemanticStableDiffusionPipeline
         from .shap_e import ShapEImg2ImgPipeline, ShapEPipeline
         from .stable_audio import StableAudioPipeline, StableAudioProjectionModel

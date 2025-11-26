@@ -15,9 +15,9 @@ from diffusers import (
     AutoencoderKLWan,
     DPMSolverMultistepScheduler,
     FlowMatchEulerDiscreteScheduler,
+    SanaVideoCausalTransformer3DModel,
     SanaVideoPipeline,
     SanaVideoTransformer3DModel,
-    SanaVideoCausalTransformer3DModel,
     UniPCMultistepScheduler,
 )
 from diffusers.utils.import_utils import is_accelerate_available

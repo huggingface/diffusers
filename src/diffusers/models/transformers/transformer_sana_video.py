@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import inspect
 import math
 from typing import Any, Dict, Optional, Tuple, Union
 
@@ -765,7 +764,7 @@ class SanaVideoCausalTransformerBlock(nn.Module):
             attn_output, kv_cache = attn_result
         else:
             attn_output = attn_result
-        
+
         hidden_states = hidden_states + gate_msa * attn_output
 
         # 3. Cross Attention (no cache)
@@ -782,7 +781,7 @@ class SanaVideoCausalTransformerBlock(nn.Module):
         norm_hidden_states = norm_hidden_states * (1 + scale_mlp) + shift_mlp
 
         norm_hidden_states = norm_hidden_states.unflatten(1, (frames, height, width))
-        
+
         # Cached conv always supports kv_cache
         ff_result = self.ff(
             norm_hidden_states,
@@ -793,7 +792,7 @@ class SanaVideoCausalTransformerBlock(nn.Module):
             ff_output, kv_cache = ff_result
         else:
             ff_output = ff_result
-        
+
         ff_output = ff_output.flatten(1, 3)
         hidden_states = hidden_states + gate_mlp * ff_output
 
@@ -1248,7 +1247,7 @@ class SanaVideoCausalTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixi
             if kv_cache is not None:
                 logger.warning("KV cache is not supported with gradient checkpointing. Disabling KV cache.")
                 kv_cache = None
-            
+
             for index_block, block in enumerate(self.transformer_blocks):
                 hidden_states = self._gradient_checkpointing_func(
                     block,
@@ -1269,7 +1268,7 @@ class SanaVideoCausalTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixi
             for index_block, block in enumerate(self.transformer_blocks):
                 # Get kv_cache for this block if available
                 block_kv_cache = kv_cache[index_block] if kv_cache is not None else None
-                
+
                 block_result = block(
                     hidden_states,
                     attention_mask,
@@ -1283,7 +1282,7 @@ class SanaVideoCausalTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixi
                     save_kv_cache=save_kv_cache,
                     kv_cache=block_kv_cache,
                 )
-                
+
                 # Handle return value (could be tensor or tuple)
                 if isinstance(block_result, tuple):
                     hidden_states, updated_kv_cache = block_result
@@ -1291,7 +1290,7 @@ class SanaVideoCausalTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixi
                         kv_cache[index_block] = updated_kv_cache
                 else:
                     hidden_states = block_result
-                
+
                 if controlnet_block_samples is not None and 0 < index_block <= len(controlnet_block_samples):
                     hidden_states = hidden_states + controlnet_block_samples[index_block - 1]
 
