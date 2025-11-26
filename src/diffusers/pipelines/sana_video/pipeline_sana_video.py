@@ -95,17 +95,16 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers import SanaVideoPipeline
         >>> from diffusers.utils import export_to_video
 
-        >>> model_id = "Efficient-Large-Model/SANA-Video_2B_480p_diffusers"
-        >>> pipe = SanaVideoPipeline.from_pretrained(model_id)
+        >>> pipe = SanaVideoPipeline.from_pretrained("Efficient-Large-Model/SANA-Video_2B_480p_diffusers")
         >>> pipe.transformer.to(torch.bfloat16)
         >>> pipe.text_encoder.to(torch.bfloat16)
         >>> pipe.vae.to(torch.float32)
         >>> pipe.to("cuda")
-        >>> model_score = 30
+        >>> motion_score = 30
 
         >>> prompt = "Evening, backlight, side lighting, soft light, high contrast, mid-shot, centered composition, clean solo shot, warm color. A young Caucasian man stands in a forest, golden light glimmers on his hair as sunlight filters through the leaves. He wears a light shirt, wind gently blowing his hair and collar, light dances across his face with his movements. The background is blurred, with dappled light and soft tree shadows in the distance. The camera focuses on his lifted gaze, clear and emotional."
         >>> negative_prompt = "A chaotic sequence with misshapen, deformed limbs in heavy motion blur, sudden disappearance, jump cuts, jerky movements, rapid shot changes, frames out of sync, inconsistent character shapes, temporal artifacts, jitter, and ghosting effects, creating a disorienting visual experience."
-        >>> motion_prompt = f" motion score: {model_score}."
+        >>> motion_prompt = f" motion score: {motion_score}."
         >>> prompt = prompt + motion_prompt
 
         >>> output = pipe(
@@ -231,6 +230,7 @@ class SanaVideoPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
 
         self.video_processor = VideoProcessor(vae_scale_factor=self.vae_scale_factor_spatial)
 
+    # Copied from diffusers.pipelines.sana.pipeline_sana.SanaPipeline._get_gemma_prompt_embeds
     def _get_gemma_prompt_embeds(
         self,
         prompt: Union[str, List[str]],
@@ -827,9 +827,9 @@ class SanaVideoPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
         Examples:
 
         Returns:
-            [`~pipelines.sana.pipeline_output.SanaVideoPipelineOutput`] or `tuple`:
-                If `return_dict` is `True`, [`~pipelines.sana.pipeline_output.SanaVideoPipelineOutput`] is returned,
-                otherwise a `tuple` is returned where the first element is a list with the generated videos
+            [`~pipelines.sana_video.pipeline_output.SanaVideoPipelineOutput`] or `tuple`:
+                If `return_dict` is `True`, [`~pipelines.sana_video.pipeline_output.SanaVideoPipelineOutput`] is
+                returned, otherwise a `tuple` is returned where the first element is a list with the generated videos
         """
 
         if isinstance(callback_on_step_end, (PipelineCallback, MultiPipelineCallbacks)):
