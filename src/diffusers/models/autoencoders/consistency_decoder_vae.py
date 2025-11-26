@@ -32,7 +32,7 @@ from ..attention_processor import (
 )
 from ..modeling_utils import ModelMixin
 from ..unets.unet_2d import UNet2DModel
-from .vae import DecoderOutput, DiagonalGaussianDistribution, Encoder
+from .vae import AutoencoderMixin, DecoderOutput, DiagonalGaussianDistribution, Encoder
 
 
 @dataclass
@@ -49,7 +49,7 @@ class ConsistencyDecoderVAEOutput(BaseOutput):
     latent_dist: "DiagonalGaussianDistribution"
 
 
-class ConsistencyDecoderVAE(ModelMixin, ConfigMixin):
+class ConsistencyDecoderVAE(ModelMixin, AutoencoderMixin, ConfigMixin):
     r"""
     The consistency decoder used with DALL-E 3.
 
@@ -166,39 +166,6 @@ class ConsistencyDecoderVAE(ModelMixin, ConfigMixin):
         )
         self.tile_latent_min_size = int(sample_size / (2 ** (len(self.config.block_out_channels) - 1)))
         self.tile_overlap_factor = 0.25
-
-    # Copied from diffusers.models.autoencoders.autoencoder_kl.AutoencoderKL.enable_tiling
-    def enable_tiling(self, use_tiling: bool = True):
-        r"""
-        Enable tiled VAE decoding. When this option is enabled, the VAE will split the input tensor into tiles to
-        compute decoding and encoding in several steps. This is useful for saving a large amount of memory and to allow
-        processing larger images.
-        """
-        self.use_tiling = use_tiling
-
-    # Copied from diffusers.models.autoencoders.autoencoder_kl.AutoencoderKL.disable_tiling
-    def disable_tiling(self):
-        r"""
-        Disable tiled VAE decoding. If `enable_tiling` was previously enabled, this method will go back to computing
-        decoding in one step.
-        """
-        self.enable_tiling(False)
-
-    # Copied from diffusers.models.autoencoders.autoencoder_kl.AutoencoderKL.enable_slicing
-    def enable_slicing(self):
-        r"""
-        Enable sliced VAE decoding. When this option is enabled, the VAE will split the input tensor in slices to
-        compute decoding in several steps. This is useful to save some memory and allow larger batch sizes.
-        """
-        self.use_slicing = True
-
-    # Copied from diffusers.models.autoencoders.autoencoder_kl.AutoencoderKL.disable_slicing
-    def disable_slicing(self):
-        r"""
-        Disable sliced VAE decoding. If `enable_slicing` was previously enabled, this method will go back to computing
-        decoding in one step.
-        """
-        self.use_slicing = False
 
     @property
     # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.attn_processors

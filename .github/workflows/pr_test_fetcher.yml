@@ -33,8 +33,7 @@ jobs:
         fetch-depth: 0
     - name: Install dependencies
       run: |
-        python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
-        python -m uv pip install -e [quality,test]
+        uv pip install -e ".[quality]"
     - name: Environment
       run: |
         python utils/print_env.py
@@ -90,19 +89,16 @@ jobs:
 
     - name: Install dependencies
       run: |
-        python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
-        python -m pip install -e [quality,test]
-        python -m pip install accelerate
+        uv pip install -e ".[quality]"
+        uv pip install accelerate
 
     - name: Environment
       run: |
-        python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
         python utils/print_env.py
 
     - name: Run all selected tests on CPU
       run: |
-        python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
-        python -m pytest -n 2 --dist=loadfile -v --make-reports=${{ matrix.modules }}_tests_cpu ${{ fromJson(needs.setup_pr_tests.outputs.test_map)[matrix.modules] }}
+        pytest -n 2 --dist=loadfile -v --make-reports=${{ matrix.modules }}_tests_cpu ${{ fromJson(needs.setup_pr_tests.outputs.test_map)[matrix.modules] }}
 
     - name: Failure short reports
       if: ${{ failure() }}
@@ -148,19 +144,16 @@ jobs:
 
     - name: Install dependencies
       run: |
-        python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
-        python -m pip install -e [quality,test]
+        pip install -e [quality]
 
     - name: Environment
       run: |
-        python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
         python utils/print_env.py
 
     - name: Run Hub tests for models, schedulers, and pipelines on a staging env
       if: ${{ matrix.config.framework == 'hub_tests_pytorch' }}
       run: |
-        python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
-        HUGGINGFACE_CO_STAGING=true python -m pytest \
+        HUGGINGFACE_CO_STAGING=true pytest \
           -m "is_staging_test" \
           --make-reports=tests_${{ matrix.config.report }} \
           tests

@@ -372,12 +372,8 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         Performs Pipeline dtype and/or device conversion. A torch.dtype and torch.device are inferred from the
         arguments of `self.to(*args, **kwargs).`
 
-        <Tip>
-
-            If the pipeline already has the correct torch.dtype and torch.device, then it is returned as is. Otherwise,
-            the returned pipeline is a copy of self with the desired torch.dtype and torch.device.
-
-        </Tip>
+        > [!TIP] > If the pipeline already has the correct torch.dtype and torch.device, then it is returned as is.
+        Otherwise, > the returned pipeline is a copy of self with the desired torch.dtype and torch.device.
 
 
         Here are the ways to call `to`:
@@ -627,11 +623,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 `torch.float32` is used.
             custom_pipeline (`str`, *optional*):
 
-                <Tip warning={true}>
-
-                🧪 This is an experimental feature and may change in the future.
-
-                </Tip>
+                > [!WARNING] > 🧪 This is an experimental feature and may change in the future.
 
                 Can be either:
 
@@ -716,12 +708,8 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             dduf_file(`str`, *optional*):
                 Load weights from the specified dduf file.
 
-        <Tip>
-
-        To use private or [gated](https://huggingface.co/docs/hub/models-gated#gated-models) models, log-in with `hf
-        auth login`.
-
-        </Tip>
+        > [!TIP] > To use private or [gated](https://huggingface.co/docs/hub/models-gated#gated-models) models, log-in
+        with `hf > auth login`.
 
         Examples:
 
@@ -1508,11 +1496,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                     - A path to a *directory* (`./my_pipeline_directory/`) containing a custom pipeline. The directory
                       must contain a file called `pipeline.py` that defines the custom pipeline.
 
-                <Tip warning={true}>
-
-                🧪 This is an experimental feature and may change in the future.
-
-                </Tip>
+                > [!WARNING] > 🧪 This is an experimental feature and may change in the future.
 
                 For more information on how to load and create custom pipelines, take a look at [How to contribute a
                 community pipeline](https://huggingface.co/docs/diffusers/main/en/using-diffusers/contribute_pipeline).
@@ -1566,12 +1550,8 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             `os.PathLike`:
                 A path to the downloaded pipeline.
 
-        <Tip>
-
-        To use private or [gated models](https://huggingface.co/docs/hub/models-gated#gated-models), log-in with `hf
-        auth login
-
-        </Tip>
+        > [!TIP] > To use private or [gated models](https://huggingface.co/docs/hub/models-gated#gated-models), log-in
+        with `hf > auth login
 
         """
         cache_dir = kwargs.pop("cache_dir", None)
@@ -1944,12 +1924,8 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         option is enabled, you should observe lower GPU memory usage and a potential speed up during inference. Speed
         up during training is not guaranteed.
 
-        <Tip warning={true}>
-
-        ⚠️ When memory efficient attention and sliced attention are both enabled, memory efficient attention takes
-        precedent.
-
-        </Tip>
+        > [!WARNING] > ⚠️ When memory efficient attention and sliced attention are both enabled, memory efficient
+        attention takes > precedent.
 
         Parameters:
             attention_op (`Callable`, *optional*):
@@ -2005,13 +1981,10 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         in slices to compute attention in several steps. For more than one attention head, the computation is performed
         sequentially over each head. This is useful to save some memory in exchange for a small speed decrease.
 
-        <Tip warning={true}>
-
-        ⚠️ Don't enable attention slicing if you're already using `scaled_dot_product_attention` (SDPA) from PyTorch
-        2.0 or xFormers. These attention computations are already very memory efficient so you won't need to enable
-        this function. If you enable attention slicing with SDPA or xFormers, it can lead to serious slow downs!
-
-        </Tip>
+        > [!WARNING] > ⚠️ Don't enable attention slicing if you're already using `scaled_dot_product_attention` (SDPA)
+        from PyTorch > 2.0 or xFormers. These attention computations are already very memory efficient so you won't
+        need to enable > this function. If you enable attention slicing with SDPA or xFormers, it can lead to serious
+        slow downs!
 
         Args:
             slice_size (`str` or `int`, *optional*, defaults to `"auto"`):
@@ -2288,11 +2261,7 @@ class StableDiffusionMixin:
         Enables fused QKV projections. For self-attention modules, all projection matrices (i.e., query, key, value)
         are fused. For cross-attention modules, key and value projection matrices are fused.
 
-        <Tip warning={true}>
-
-        This API is 🧪 experimental.
-
-        </Tip>
+        > [!WARNING] > This API is 🧪 experimental.
 
         Args:
             unet (`bool`, defaults to `True`): To apply fusion on the UNet.
@@ -2317,11 +2286,7 @@ class StableDiffusionMixin:
     def unfuse_qkv_projections(self, unet: bool = True, vae: bool = True):
         """Disable QKV projection fusion if enabled.
 
-        <Tip warning={true}>
-
-        This API is 🧪 experimental.
-
-        </Tip>
+        > [!WARNING] > This API is 🧪 experimental.
 
         Args:
             unet (`bool`, defaults to `True`): To apply fusion on the UNet.

@@ -145,6 +145,7 @@ _deps = [
     "black",
     "phonemizer",
     "opencv-python",
+    "timm",
 ]
 
 # this is a lookup table with items like:
@@ -218,7 +219,7 @@ class DepsTableUpdateCommand(Command):
 extras = {}
 extras["quality"] = deps_list("urllib3", "isort", "ruff", "hf-doc-builder")
 extras["docs"] = deps_list("hf-doc-builder")
-extras["training"] = deps_list("accelerate", "datasets", "protobuf", "tensorboard", "Jinja2", "peft")
+extras["training"] = deps_list("accelerate", "datasets", "protobuf", "tensorboard", "Jinja2", "peft", "timm")
 extras["test"] = deps_list(
     "compel",
     "GitPython",

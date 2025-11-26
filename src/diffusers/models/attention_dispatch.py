@@ -16,14 +16,20 @@ import contextlib
 import functools
 import inspect
 import math
+from dataclasses import dataclass
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Literal, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, Union
 
 import torch
-import torch.distributed._functional_collectives as funcol
+
+
+if torch.distributed.is_available():
+    import torch.distributed._functional_collectives as funcol
 
 from ..utils import (
     get_logger,
+    is_aiter_available,
+    is_aiter_version,
     is_flash_attn_3_available,
     is_flash_attn_available,
     is_flash_attn_version,
@@ -37,13 +43,14 @@ from ..utils import (
     is_xformers_available,
     is_xformers_version,
 )
-from ..utils.constants import DIFFUSERS_ATTN_BACKEND, DIFFUSERS_ATTN_CHECKS, DIFFUSERS_ENABLE_HUB_KERNELS
+from ..utils.constants import DIFFUSERS_ATTN_BACKEND, DIFFUSERS_ATTN_CHECKS
 
 
 if TYPE_CHECKING:
     from ._modeling_parallel import ParallelConfig
 
 _REQUIRED_FLASH_VERSION = "2.6.3"
+_REQUIRED_AITER_VERSION = "0.1.5"
 _REQUIRED_SAGE_VERSION = "2.1.1"
 _REQUIRED_FLEX_VERSION = "2.5.0"
 _REQUIRED_XLA_VERSION = "2.2"
@@ -51,6 +58,7 @@ _REQUIRED_XFORMERS_VERSION = "0.0.29"
 
 _CAN_USE_FLASH_ATTN = is_flash_attn_available() and is_flash_attn_version(">=", _REQUIRED_FLASH_VERSION)
 _CAN_USE_FLASH_ATTN_3 = is_flash_attn_3_available()
+_CAN_USE_AITER_ATTN = is_aiter_available() and is_aiter_version(">=", _REQUIRED_AITER_VERSION)
 _CAN_USE_SAGE_ATTN = is_sageattention_available() and is_sageattention_version(">=", _REQUIRED_SAGE_VERSION)
 _CAN_USE_FLEX_ATTN = is_torch_version(">=", _REQUIRED_FLEX_VERSION)
 _CAN_USE_NPU_ATTN = is_torch_npu_available()
@@ -75,17 +83,10 @@ else:
     flash_attn_3_func = None
     flash_attn_3_varlen_func = None
 
-if DIFFUSERS_ENABLE_HUB_KERNELS:
-    if not is_kernels_available():
-        raise ImportError(
-            "To use FA3 kernel for your hardware from the Hub, the `kernels` library must be installed. Install with `pip install kernels`."
-        )
-    from ..utils.kernels_utils import _get_fa3_from_hub
-
-    flash_attn_interface_hub = _get_fa3_from_hub()
-    flash_attn_3_func_hub = flash_attn_interface_hub.flash_attn_func
+if _CAN_USE_AITER_ATTN:
+    from aiter import flash_attn_func as aiter_flash_attn_func
 else:
-    flash_attn_3_func_hub = None
+    aiter_flash_attn_func = None
 
 if _CAN_USE_SAGE_ATTN:
     from sageattention import (
@@ -159,21 +160,21 @@ logger = get_logger(__name__)  # pylint: disable=invalid-name
 # - CP with sage attention, flex, xformers, other missing backends
 # - Add support for normal and CP training with backends that don't support it yet
 
-_SAGE_ATTENTION_PV_ACCUM_DTYPE = Literal["fp32", "fp32+fp32"]
-_SAGE_ATTENTION_QK_QUANT_GRAN = Literal["per_thread", "per_warp"]
-_SAGE_ATTENTION_QUANTIZATION_BACKEND = Literal["cuda", "triton"]
-
 
 class AttentionBackendName(str, Enum):
     # EAGER = "eager"
 
     # `flash-attn`
     FLASH = "flash"
+    FLASH_HUB = "flash_hub"
     FLASH_VARLEN = "flash_varlen"
     _FLASH_3 = "_flash_3"
     _FLASH_VARLEN_3 = "_flash_varlen_3"
     _FLASH_3_HUB = "_flash_3_hub"
     # _FLASH_VARLEN_3_HUB = "_flash_varlen_3_hub"  # not supported yet.
+
+    # `aiter`
+    AITER = "aiter"
 
     # PyTorch native
     FLEX = "flex"
@@ -187,6 +188,7 @@ class AttentionBackendName(str, Enum):
 
     # `sageattention`
     SAGE = "sage"
+    SAGE_HUB = "sage_hub"
     SAGE_VARLEN = "sage_varlen"
     _SAGE_QK_INT8_PV_FP8_CUDA = "_sage_qk_int8_pv_fp8_cuda"
     _SAGE_QK_INT8_PV_FP8_CUDA_SM90 = "_sage_qk_int8_pv_fp8_cuda_sm90"
@@ -204,7 +206,7 @@ class _AttentionBackendRegistry:
     _backends = {}
     _constraints = {}
     _supported_arg_names = {}
-    _supports_context_parallel = {}
+    _supports_context_parallel = set()
     _active_backend = AttentionBackendName(DIFFUSERS_ATTN_BACKEND)
     _checks_enabled = DIFFUSERS_ATTN_CHECKS
 
@@ -221,7 +223,9 @@ class _AttentionBackendRegistry:
             cls._backends[backend] = func
             cls._constraints[backend] = constraints or []
             cls._supported_arg_names[backend] = set(inspect.signature(func).parameters.keys())
-            cls._supports_context_parallel[backend] = supports_context_parallel
+            if supports_context_parallel:
+                cls._supports_context_parallel.add(backend.value)
+
             return func
 
         return decorator
@@ -235,15 +239,37 @@ class _AttentionBackendRegistry:
         return list(cls._backends.keys())
 
     @classmethod
-    def _is_context_parallel_enabled(
-        cls, backend: AttentionBackendName, parallel_config: Optional["ParallelConfig"]
+    def _is_context_parallel_available(
+        cls,
+        backend: AttentionBackendName,
     ) -> bool:
-        supports_context_parallel = backend in cls._supports_context_parallel
-        is_degree_greater_than_1 = parallel_config is not None and (
-            parallel_config.context_parallel_config.ring_degree > 1
-            or parallel_config.context_parallel_config.ulysses_degree > 1
-        )
-        return supports_context_parallel and is_degree_greater_than_1
+        supports_context_parallel = backend.value in cls._supports_context_parallel
+        return supports_context_parallel
+
+
+@dataclass
+class _HubKernelConfig:
+    """Configuration for downloading and using a hub-based attention kernel."""
+
+    repo_id: str
+    function_attr: str
+    revision: Optional[str] = None
+    kernel_fn: Optional[Callable] = None
+
+
+# Registry for hub-based attention kernels
+_HUB_KERNELS_REGISTRY: Dict["AttentionBackendName", _HubKernelConfig] = {
+    # TODO: temporary revision for now. Remove when merged upstream into `main`.
+    AttentionBackendName._FLASH_3_HUB: _HubKernelConfig(
+        repo_id="kernels-community/flash-attn3", function_attr="flash_attn_func", revision="fake-ops-return-probs"
+    ),
+    AttentionBackendName.FLASH_HUB: _HubKernelConfig(
+        repo_id="kernels-community/flash-attn2", function_attr="flash_attn_func", revision=None
+    ),
+    AttentionBackendName.SAGE_HUB: _HubKernelConfig(
+        repo_id="kernels-community/sage_attention", function_attr="sageattn", revision=None
+    ),
+}
 
 
 @contextlib.contextmanager
@@ -289,14 +315,6 @@ def dispatch_attention_fn(
     else:
         backend_name = AttentionBackendName(backend)
         backend_fn = _AttentionBackendRegistry._backends.get(backend_name)
-
-    if parallel_config is not None and not _AttentionBackendRegistry._is_context_parallel_enabled(
-        backend_name, parallel_config
-    ):
-        raise ValueError(
-            f"Backend {backend_name} either does not support context parallelism or context parallelism "
-            f"was enabled with a world size of 1."
-        )
 
     kwargs = {
         "query": query,
@@ -376,12 +394,18 @@ def _check_shape(
     attn_mask: Optional[torch.Tensor] = None,
     **kwargs,
 ) -> None:
+    # Expected shapes:
+    # query: (batch_size, seq_len_q, num_heads, head_dim)
+    # key:   (batch_size, seq_len_kv, num_heads, head_dim)
+    # value: (batch_size, seq_len_kv, num_heads, head_dim)
+    # attn_mask: (seq_len_q, seq_len_kv) or (batch_size, seq_len_q, seq_len_kv)
+    #            or (batch_size, num_heads, seq_len_q, seq_len_kv)
     if query.shape[-1] != key.shape[-1]:
-        raise ValueError("Query and key must have the same last dimension.")
-    if query.shape[-2] != value.shape[-2]:
-        raise ValueError("Query and value must have the same second to last dimension.")
-    if attn_mask is not None and attn_mask.shape[-1] != key.shape[-2]:
-        raise ValueError("Attention mask must match the key's second to last dimension.")
+        raise ValueError("Query and key must have the same head dimension.")
+    if key.shape[-3] != value.shape[-3]:
+        raise ValueError("Key and value must have the same sequence length.")
+    if attn_mask is not None and attn_mask.shape[-1] != key.shape[-3]:
+        raise ValueError("Attention mask must match the key's sequence length.")
 
 
 # ===== Helper functions =====
@@ -400,15 +424,17 @@ def _check_attention_backend_requirements(backend: AttentionBackendName) -> None
                 f"Flash Attention 3 backend '{backend.value}' is not usable because of missing package or the version is too old. Please build FA3 beta release from source."
             )
 
-    # TODO: add support Hub variant of FA3 varlen later
-    elif backend in [AttentionBackendName._FLASH_3_HUB]:
-        if not DIFFUSERS_ENABLE_HUB_KERNELS:
-            raise RuntimeError(
-                f"Flash Attention 3 Hub backend '{backend.value}' is not usable because the `DIFFUSERS_ENABLE_HUB_KERNELS` env var isn't set. Please set it like `export DIFFUSERS_ENABLE_HUB_KERNELS=yes`."
-            )
+    # TODO: add support Hub variant of varlen later
+    elif backend in [AttentionBackendName._FLASH_3_HUB, AttentionBackendName.FLASH_HUB, AttentionBackendName.SAGE_HUB]:
         if not is_kernels_available():
             raise RuntimeError(
-                f"Flash Attention 3 Hub backend '{backend.value}' is not usable because the `kernels` package isn't available. Please install it with `pip install kernels`."
+                f"Backend '{backend.value}' is not usable because the `kernels` package isn't available. Please install it with `pip install kernels`."
+            )
+
+    elif backend == AttentionBackendName.AITER:
+        if not _CAN_USE_AITER_ATTN:
+            raise RuntimeError(
+                f"Aiter Attention backend '{backend.value}' is not usable because of missing package or the version is too old. Please install `aiter>={_REQUIRED_AITER_VERSION}`."
             )
 
     elif backend in [
@@ -552,6 +578,29 @@ def _flex_attention_causal_mask_mod(batch_idx, head_idx, q_idx, kv_idx):
     return q_idx >= kv_idx
 
 
+# ===== Helpers for downloading kernels =====
+def _maybe_download_kernel_for_backend(backend: AttentionBackendName) -> None:
+    if backend not in _HUB_KERNELS_REGISTRY:
+        return
+    config = _HUB_KERNELS_REGISTRY[backend]
+
+    if config.kernel_fn is not None:
+        return
+
+    try:
+        from kernels import get_kernel
+
+        kernel_module = get_kernel(config.repo_id, revision=config.revision)
+        kernel_func = getattr(kernel_module, config.function_attr)
+
+        # Cache the downloaded kernel function in the config object
+        config.kernel_fn = kernel_func
+
+    except Exception as e:
+        logger.error(f"An error occurred while fetching kernel '{config.repo_id}' from the Hub: {e}")
+        raise
+
+
 # ===== torch op registrations =====
 # Registrations are required for fullgraph tracing compatibility
 # TODO: this is only required because the beta release FA3 does not have it. There is a PR adding
@@ -625,6 +674,86 @@ def _(
 
 
 # ===== Helper functions to use attention backends with templated CP autograd functions =====
+
+
+def _native_attention_forward_op(
+    ctx: torch.autograd.function.FunctionCtx,
+    query: torch.Tensor,
+    key: torch.Tensor,
+    value: torch.Tensor,
+    attn_mask: Optional[torch.Tensor] = None,
+    dropout_p: float = 0.0,
+    is_causal: bool = False,
+    scale: Optional[float] = None,
+    enable_gqa: bool = False,
+    return_lse: bool = False,
+    _save_ctx: bool = True,
+    _parallel_config: Optional["ParallelConfig"] = None,
+):
+    # Native attention does not return_lse
+    if return_lse:
+        raise ValueError("Native attention does not support return_lse=True")
+
+    # used for backward pass
+    if _save_ctx:
+        ctx.save_for_backward(query, key, value)
+        ctx.attn_mask = attn_mask
+        ctx.dropout_p = dropout_p
+        ctx.is_causal = is_causal
+        ctx.scale = scale
+        ctx.enable_gqa = enable_gqa
+
+    query, key, value = (x.permute(0, 2, 1, 3) for x in (query, key, value))
+    out = torch.nn.functional.scaled_dot_product_attention(
+        query=query,
+        key=key,
+        value=value,
+        attn_mask=attn_mask,
+        dropout_p=dropout_p,
+        is_causal=is_causal,
+        scale=scale,
+        enable_gqa=enable_gqa,
+    )
+    out = out.permute(0, 2, 1, 3)
+
+    return out
+
+
+def _native_attention_backward_op(
+    ctx: torch.autograd.function.FunctionCtx,
+    grad_out: torch.Tensor,
+    *args,
+    **kwargs,
+):
+    query, key, value = ctx.saved_tensors
+
+    query.requires_grad_(True)
+    key.requires_grad_(True)
+    value.requires_grad_(True)
+
+    query_t, key_t, value_t = (x.permute(0, 2, 1, 3) for x in (query, key, value))
+    out = torch.nn.functional.scaled_dot_product_attention(
+        query=query_t,
+        key=key_t,
+        value=value_t,
+        attn_mask=ctx.attn_mask,
+        dropout_p=ctx.dropout_p,
+        is_causal=ctx.is_causal,
+        scale=ctx.scale,
+        enable_gqa=ctx.enable_gqa,
+    )
+    out = out.permute(0, 2, 1, 3)
+
+    grad_out_t = grad_out.permute(0, 2, 1, 3)
+    grad_query_t, grad_key_t, grad_value_t = torch.autograd.grad(
+        outputs=out, inputs=[query_t, key_t, value_t], grad_outputs=grad_out_t, retain_graph=False
+    )
+
+    grad_query = grad_query_t.permute(0, 2, 1, 3)
+    grad_key = grad_key_t.permute(0, 2, 1, 3)
+    grad_value = grad_value_t.permute(0, 2, 1, 3)
+
+    return grad_query, grad_key, grad_value
 
 
 # https://github.com/pytorch/pytorch/blob/8904ba638726f8c9a5aff5977c4aa76c9d2edfa6/aten/src/ATen/native/native_functions.yaml#L14958
@@ -1226,6 +1355,38 @@ def _flash_attention(
 
 
 @_AttentionBackendRegistry.register(
+    AttentionBackendName.FLASH_HUB,
+    constraints=[_check_device, _check_qkv_dtype_bf16_or_fp16, _check_shape],
+    supports_context_parallel=False,
+)
+def _flash_attention_hub(
+    query: torch.Tensor,
+    key: torch.Tensor,
+    value: torch.Tensor,
+    dropout_p: float = 0.0,
+    is_causal: bool = False,
+    scale: Optional[float] = None,
+    return_lse: bool = False,
+    _parallel_config: Optional["ParallelConfig"] = None,
+) -> torch.Tensor:
+    lse = None
+    func = _HUB_KERNELS_REGISTRY[AttentionBackendName.FLASH_HUB].kernel_fn
+    out = func(
+        q=query,
+        k=key,
+        v=value,
+        dropout_p=dropout_p,
+        softmax_scale=scale,
+        causal=is_causal,
+        return_attn_probs=return_lse,
+    )
+    if return_lse:
+        out, lse, *_ = out
+
+    return (out, lse) if return_lse else out
+
+
+@_AttentionBackendRegistry.register(
     AttentionBackendName.FLASH_VARLEN,
     constraints=[_check_device, _check_qkv_dtype_bf16_or_fp16, _check_shape],
 )
@@ -1306,6 +1467,7 @@ def _flash_attention_3(
 @_AttentionBackendRegistry.register(
     AttentionBackendName._FLASH_3_HUB,
     constraints=[_check_device, _check_qkv_dtype_bf16_or_fp16, _check_shape],
+    supports_context_parallel=False,
 )
 def _flash_attention_3_hub(
     query: torch.Tensor,
@@ -1319,7 +1481,11 @@ def _flash_attention_3_hub(
     return_attn_probs: bool = False,
     _parallel_config: Optional["ParallelConfig"] = None,
 ) -> torch.Tensor:
-    out = flash_attn_3_func_hub(
+    if _parallel_config:
+        raise NotImplementedError(f"{AttentionBackendName._FLASH_3_HUB.value} is not implemented for parallelism yet.")
+
+    func = _HUB_KERNELS_REGISTRY[AttentionBackendName._FLASH_3_HUB].kernel_fn
+    out = func(
         q=query,
         k=key,
         v=value,
@@ -1395,6 +1561,47 @@ def _flash_varlen_attention_3(
 
 
 @_AttentionBackendRegistry.register(
+    AttentionBackendName.AITER,
+    constraints=[_check_device_cuda, _check_qkv_dtype_bf16_or_fp16, _check_shape],
+)
+def _aiter_flash_attention(
+    query: torch.Tensor,
+    key: torch.Tensor,
+    value: torch.Tensor,
+    dropout_p: float = 0.0,
+    is_causal: bool = False,
+    scale: Optional[float] = None,
+    return_lse: bool = False,
+    _parallel_config: Optional["ParallelConfig"] = None,
+) -> torch.Tensor:
+    if not return_lse and torch.is_grad_enabled():
+        # aiter requires return_lse=True by assertion when gradients are enabled.
+        out, lse, *_ = aiter_flash_attn_func(
+            q=query,
+            k=key,
+            v=value,
+            dropout_p=dropout_p,
+            softmax_scale=scale,
+            causal=is_causal,
+            return_lse=True,
+        )
+    else:
+        out = aiter_flash_attn_func(
+            q=query,
+            k=key,
+            v=value,
+            dropout_p=dropout_p,
+            softmax_scale=scale,
+            causal=is_causal,
+            return_lse=return_lse,
+        )
+        if return_lse:
+            out, lse, *_ = out
+
+    return (out, lse) if return_lse else out
+
+
+@_AttentionBackendRegistry.register(
     AttentionBackendName.FLEX,
     constraints=[_check_attn_mask_or_causal, _check_device, _check_shape],
 )
@@ -1460,6 +1667,7 @@ def _native_flex_attention(
 @_AttentionBackendRegistry.register(
     AttentionBackendName.NATIVE,
     constraints=[_check_device, _check_shape],
+    supports_context_parallel=True,
 )
 def _native_attention(
     query: torch.Tensor,
@@ -1475,18 +1683,35 @@ def _native_attention(
 ) -> torch.Tensor:
     if return_lse:
         raise ValueError("Native attention backend does not support setting `return_lse=True`.")
-    query, key, value = (x.permute(0, 2, 1, 3) for x in (query, key, value))
-    out = torch.nn.functional.scaled_dot_product_attention(
-        query=query,
-        key=key,
-        value=value,
-        attn_mask=attn_mask,
-        dropout_p=dropout_p,
-        is_causal=is_causal,
-        scale=scale,
-        enable_gqa=enable_gqa,
-    )
-    out = out.permute(0, 2, 1, 3)
+    if _parallel_config is None:
+        query, key, value = (x.permute(0, 2, 1, 3) for x in (query, key, value))
+        out = torch.nn.functional.scaled_dot_product_attention(
+            query=query,
+            key=key,
+            value=value,
+            attn_mask=attn_mask,
+            dropout_p=dropout_p,
+            is_causal=is_causal,
+            scale=scale,
+            enable_gqa=enable_gqa,
+        )
+        out = out.permute(0, 2, 1, 3)
+    else:
+        out = _templated_context_parallel_attention(
+            query,
+            key,
+            value,
+            attn_mask,
+            dropout_p,
+            is_causal,
+            scale,
+            enable_gqa,
+            return_lse,
+            forward_op=_native_attention_forward_op,
+            backward_op=_native_attention_backward_op,
+            _parallel_config=_parallel_config,
+        )
+
     return out
 
 
@@ -1749,6 +1974,38 @@ def _sage_attention(
         )
         if return_lse:
             out, lse = out
+
+    return (out, lse) if return_lse else out
+
+
+@_AttentionBackendRegistry.register(
+    AttentionBackendName.SAGE_HUB,
+    constraints=[_check_device_cuda, _check_qkv_dtype_bf16_or_fp16, _check_shape],
+    supports_context_parallel=False,
+)
+def _sage_attention_hub(
+    query: torch.Tensor,
+    key: torch.Tensor,
+    value: torch.Tensor,
+    is_causal: bool = False,
+    scale: Optional[float] = None,
+    return_lse: bool = False,
+    _parallel_config: Optional["ParallelConfig"] = None,
+) -> torch.Tensor:
+    lse = None
+    func = _HUB_KERNELS_REGISTRY[AttentionBackendName.SAGE_HUB].kernel_fn
+    if _parallel_config is None:
+        out = func(
+            q=query,
+            k=key,
+            v=value,
+            tensor_layout="NHD",
+            is_causal=is_causal,
+            sm_scale=scale,
+            return_lse=return_lse,
+        )
+        if return_lse:
+            out, lse, *_ = out
 
     return (out, lse) if return_lse else out
 

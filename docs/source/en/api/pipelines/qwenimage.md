@@ -28,11 +28,8 @@ Qwen-Image comes in the following variants:
 | Qwen-Image-Edit | [`Qwen/Qwen-Image-Edit`](https://huggingface.co/Qwen/Qwen-Image-Edit) |
 | Qwen-Image-Edit Plus | [Qwen/Qwen-Image-Edit-2509](https://huggingface.co/Qwen/Qwen-Image-Edit-2509) |
 
-<Tip>
-
-[Caching](../../optimization/cache) may also speed up inference by storing and reusing intermediate outputs.
-
-</Tip>
+> [!TIP]
+> [Caching](../../optimization/cache) may also speed up inference by storing and reusing intermediate outputs.
 
 ## LoRA for faster inference
 
@@ -91,11 +88,8 @@ image.save("qwen_fewsteps.png")
 
 </details>
 
-<Tip>
-
-The `guidance_scale` parameter in the pipeline is there to support future guidance-distilled models when they come up. Note that passing `guidance_scale` to the pipeline is ineffective. To enable classifier-free guidance, please pass `true_cfg_scale` and `negative_prompt` (even an empty negative prompt like " ") should enable classifier-free guidance computations.
-
-</Tip>
+> [!TIP]
+> The `guidance_scale` parameter in the pipeline is there to support future guidance-distilled models when they come up. Note that passing `guidance_scale` to the pipeline is ineffective. To enable classifier-free guidance, please pass `true_cfg_scale` and `negative_prompt` (even an empty negative prompt like " ") should enable classifier-free guidance computations.
 
 ## Multi-image reference with QwenImageEditPlusPipeline
 
@@ -115,7 +109,7 @@ image_1 = load_image("https://huggingface.co/datasets/huggingface/documentation-
 image_2 = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/peng.png")
 image = pipe(
     image=[image_1, image_2], 
-    prompt="put the penguin and the cat at a game show called "Qwen Edit Plus Games"", 
+    prompt='''put the penguin and the cat at a game show called "Qwen Edit Plus Games"''', 
     num_inference_steps=50
 ).images[0]
 ```

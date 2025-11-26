@@ -7,7 +7,7 @@ on:
 
 env:
   DIFFUSERS_IS_CI: yes
-  HF_HUB_ENABLE_HF_TRANSFER: 1
+  HF_XET_HIGH_PERFORMANCE: 1
   HF_HOME: /mnt/cache
   OMP_NUM_THREADS: 8
   MKL_NUM_THREADS: 8
@@ -38,9 +38,8 @@ jobs:
         run: |
           apt update
           apt install -y libpq-dev postgresql-client
-          python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
-          python -m uv pip install -e [quality,test]
-          python -m uv pip install -r benchmarks/requirements.txt
+          uv pip install -e ".[quality]"
+          uv pip install -r benchmarks/requirements.txt
       - name: Environment
         run: |
           python utils/print_env.py

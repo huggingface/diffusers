@@ -362,6 +362,11 @@ class WanRotaryPosEmbed(nn.Module):
 
         h_dim = w_dim = 2 * (attention_head_dim // 6)
         t_dim = attention_head_dim - h_dim - w_dim
+
+        self.t_dim = t_dim
+        self.h_dim = h_dim
+        self.w_dim = w_dim
+
         freqs_dtype = torch.float32 if torch.backends.mps.is_available() else torch.float64
 
         freqs_cos = []
@@ -387,11 +392,7 @@ class WanRotaryPosEmbed(nn.Module):
         p_t, p_h, p_w = self.patch_size
         ppf, pph, ppw = num_frames // p_t, height // p_h, width // p_w
 
-        split_sizes = [
-            self.attention_head_dim - 2 * (self.attention_head_dim // 3),
-            self.attention_head_dim // 3,
-            self.attention_head_dim // 3,
-        ]
+        split_sizes = [self.t_dim, self.h_dim, self.w_dim]
 
         freqs_cos = self.freqs_cos.split(split_sizes, dim=1)
         freqs_sin = self.freqs_sin.split(split_sizes, dim=1)
@@ -555,12 +556,15 @@ class WanTransformer3DModel(
             "encoder_hidden_states": ContextParallelInput(split_dim=1, expected_dims=3, split_output=False),
         },
         "proj_out": ContextParallelOutput(gather_dim=1, expected_dims=3),
+        "": {
+            "timestep": ContextParallelInput(split_dim=1, expected_dims=2, split_output=False),
+        },
     }
 
     @register_to_config
     def __init__(
         self,
-        patch_size: Tuple[int] = (1, 2, 2),
+        patch_size: Tuple[int, ...] = (1, 2, 2),
         num_attention_heads: int = 40,
         attention_head_dim: int = 128,
         in_channels: int = 16,
@@ -682,12 +686,12 @@ class WanTransformer3DModel(
         # 5. Output norm, projection & unpatchify
         if temb.ndim == 3:
             # batch_size, seq_len, inner_dim (wan 2.2 ti2v)
-            shift, scale = (self.scale_shift_table.unsqueeze(0) + temb.unsqueeze(2)).chunk(2, dim=2)
+            shift, scale = (self.scale_shift_table.unsqueeze(0).to(temb.device) + temb.unsqueeze(2)).chunk(2, dim=2)
             shift = shift.squeeze(2)
             scale = scale.squeeze(2)
         else:
             # batch_size, inner_dim
-            shift, scale = (self.scale_shift_table + temb.unsqueeze(1)).chunk(2, dim=1)
+            shift, scale = (self.scale_shift_table.to(temb.device) + temb.unsqueeze(1)).chunk(2, dim=1)
 
         # Move the shift and scale tensors to the same device as hidden_states.
         # When using multi-GPU inference via accelerate these will be on the

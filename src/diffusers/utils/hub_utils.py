@@ -113,7 +113,8 @@ def load_or_create_model_card(
 
     Args:
         repo_id_or_path (`str`):
-            The repo id (e.g., "runwayml/stable-diffusion-v1-5") or local path where to look for the model card.
+            The repo id (e.g., "stable-diffusion-v1-5/stable-diffusion-v1-5") or local path where to look for the model
+            card.
         token (`str`, *optional*):
             Authentication token. Will default to the stored token. See https://huggingface.co/settings/token for more
             details.

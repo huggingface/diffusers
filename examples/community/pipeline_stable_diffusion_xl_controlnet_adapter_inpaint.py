@@ -330,7 +330,7 @@ class StableDiffusionXLControlNetAdapterInpaintPipeline(
             [`DDIMScheduler`], [`LMSDiscreteScheduler`], or [`PNDMScheduler`].
         safety_checker ([`StableDiffusionSafetyChecker`]):
             Classification module that estimates whether generated images could be considered offensive or harmful.
-            Please, refer to the [model card](https://huggingface.co/runwayml/stable-diffusion-v1-5) for details.
+            Please, refer to the [model card](https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5) for details.
         feature_extractor ([`CLIPImageProcessor`]):
             Model that extracts features from generated images to be used as inputs for the `safety_checker`.
         requires_aesthetics_score (`bool`, *optional*, defaults to `"False"`):
@@ -1569,7 +1569,7 @@ class StableDiffusionXLControlNetAdapterInpaintPipeline(
 
         # 8. Check that sizes of mask, masked image and latents match
         if num_channels_unet == 9:
-            # default case for runwayml/stable-diffusion-inpainting
+            # default case for stable-diffusion-v1-5/stable-diffusion-inpainting
             num_channels_mask = mask.shape[1]
             num_channels_masked_image = masked_image_latents.shape[1]
             if num_channels_latents + num_channels_mask + num_channels_masked_image != self.unet.config.in_channels:
