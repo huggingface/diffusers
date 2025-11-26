@@ -29,8 +29,9 @@ For an additional speed-up, use `torch.compile` to generate multiple images in <
 ```diff
   import torch
   from diffusers import ConsistencyModelPipeline
+  from diffusers.utils.torch_utils import get_device
 
-  device = "cuda"
+  device = get_device()
   # Load the cd_bedroom256_lpips checkpoint.
   model_id_or_path = "openai/diffusers-cd_bedroom256_lpips"
   pipe = ConsistencyModelPipeline.from_pretrained(model_id_or_path, torch_dtype=torch.float16)
