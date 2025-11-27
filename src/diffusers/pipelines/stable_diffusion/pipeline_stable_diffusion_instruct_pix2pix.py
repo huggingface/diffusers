@@ -838,3 +838,7 @@ class StableDiffusionInstructPix2PixPipeline(
             image_latents = torch.cat([image_latents, image_latents, uncond_image_latents], dim=0)
 
         return image_latents
+
+    @property
+    def image_guidance_scale(self):
+        return self._image_guidance_scale
