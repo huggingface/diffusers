@@ -1318,7 +1318,9 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             else:
                 flashpack_device = device_map[""]
                 if flashpack_device in ["auto", "balanced", "balanced_low_0", "sequential"]:
-                    raise ValueError("FlashPack `device_map` should be a device, not one of `auto`, `balanced`, `balanced_low_0`, `sequential`.")
+                    raise ValueError(
+                        "FlashPack `device_map` should be a device, not one of `auto`, `balanced`, `balanced_low_0`, `sequential`."
+                    )
 
             flashpack.mixin.assign_from_file(
                 model=model,
@@ -1342,9 +1344,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             )
 
             if output_loading_info:
-                logger.warning(
-                    "`output_loading_info` is not supported with FlashPack."
-                )
+                logger.warning("`output_loading_info` is not supported with FlashPack.")
                 return model, {}
 
             return model
