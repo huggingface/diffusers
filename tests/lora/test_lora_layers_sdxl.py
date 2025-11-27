@@ -17,9 +17,9 @@ import gc
 import importlib
 import sys
 import time
-import unittest
 
 import numpy as np
+import pytest
 import torch
 from packaging import version
 from transformers import CLIPTextModel, CLIPTextModelWithProjection, CLIPTokenizer
@@ -59,7 +59,7 @@ if is_accelerate_available():
     from accelerate.utils import release_memory
 
 
-class StableDiffusionXLLoRATests(PeftLoraLoaderMixinTests, unittest.TestCase):
+class TestStableDiffusionXLLoRA(PeftLoraLoaderMixinTests):
     has_two_text_encoders = True
     pipeline_class = StableDiffusionXLPipeline
     scheduler_cls = EulerDiscreteScheduler
@@ -104,21 +104,11 @@ class StableDiffusionXLLoRATests(PeftLoraLoaderMixinTests, unittest.TestCase):
     def output_shape(self):
         return (1, 64, 64, 3)
 
-    def setUp(self):
-        super().setUp()
-        gc.collect()
-        backend_empty_cache(torch_device)
-
-    def tearDown(self):
-        super().tearDown()
-        gc.collect()
-        backend_empty_cache(torch_device)
-
     @is_flaky
     def test_multiple_wrong_adapter_name_raises_error(self):
         super().test_multiple_wrong_adapter_name_raises_error()
 
-    def test_simple_inference_with_text_denoiser_lora_unfused(self):
+    def test_simple_inference_with_text_denoiser_lora_unfused(self, pipe):
         if torch.cuda.is_available():
             expected_atol = 9e-2
             expected_rtol = 9e-2
@@ -127,10 +117,10 @@ class StableDiffusionXLLoRATests(PeftLoraLoaderMixinTests, unittest.TestCase):
             expected_rtol = 1e-3
 
         super().test_simple_inference_with_text_denoiser_lora_unfused(
-            expected_atol=expected_atol, expected_rtol=expected_rtol
+            pipe=pipe, expected_atol=expected_atol, expected_rtol=expected_rtol
         )
 
-    def test_simple_inference_with_text_lora_denoiser_fused_multi(self):
+    def test_simple_inference_with_text_lora_denoiser_fused_multi(self, pipe):
         if torch.cuda.is_available():
             expected_atol = 9e-2
             expected_rtol = 9e-2
@@ -139,10 +129,10 @@ class StableDiffusionXLLoRATests(PeftLoraLoaderMixinTests, unittest.TestCase):
             expected_rtol = 1e-3
 
         super().test_simple_inference_with_text_lora_denoiser_fused_multi(
-            expected_atol=expected_atol, expected_rtol=expected_rtol
+            pipe=pipe, expected_atol=expected_atol, expected_rtol=expected_rtol
         )
 
-    def test_lora_scale_kwargs_match_fusion(self):
+    def test_lora_scale_kwargs_match_fusion(self, base_pipe_output):
         if torch.cuda.is_available():
             expected_atol = 9e-2
             expected_rtol = 9e-2
@@ -150,21 +140,21 @@ class StableDiffusionXLLoRATests(PeftLoraLoaderMixinTests, unittest.TestCase):
             expected_atol = 1e-3
             expected_rtol = 1e-3
 
-        super().test_lora_scale_kwargs_match_fusion(expected_atol=expected_atol, expected_rtol=expected_rtol)
+        super().test_lora_scale_kwargs_match_fusion(
+            base_pipe_output=base_pipe_output, expected_atol=expected_atol, expected_rtol=expected_rtol
+        )
 
 
 @slow
 @nightly
 @require_torch_accelerator
 @require_peft_backend
-class LoraSDXLIntegrationTests(unittest.TestCase):
-    def setUp(self):
-        super().setUp()
+class TestLoraSDXLIntegration:
+    @pytest.fixture(autouse=True)
+    def _gc_and_cache_cleanup(self, torch_device):
         gc.collect()
         backend_empty_cache(torch_device)
-
-    def tearDown(self):
-        super().tearDown()
+        yield
         gc.collect()
         backend_empty_cache(torch_device)
 
@@ -383,7 +373,7 @@ class LoraSDXLIntegrationTests(unittest.TestCase):
         end_time = time.time()
         elapsed_time_fusion = end_time - start_time
 
-        self.assertTrue(elapsed_time_fusion < elapsed_time_non_fusion)
+        assert elapsed_time_fusion < elapsed_time_non_fusion
 
         release_memory(pipe)
 
@@ -439,14 +429,14 @@ class LoraSDXLIntegrationTests(unittest.TestCase):
 
         for key, value in text_encoder_1_sd.items():
             key = remap_key(key, fused_te_state_dict)
-            self.assertTrue(torch.allclose(fused_te_state_dict[key], value))
+            assert torch.allclose(fused_te_state_dict[key], value)
 
         for key, value in text_encoder_2_sd.items():
             key = remap_key(key, fused_te_2_state_dict)
-            self.assertTrue(torch.allclose(fused_te_2_state_dict[key], value))
+            assert torch.allclose(fused_te_2_state_dict[key], value)
 
         for key, value in unet_state_dict.items():
-            self.assertTrue(torch.allclose(unet_state_dict[key], value))
+            assert torch.allclose(unet_state_dict[key], value)
 
         pipe.fuse_lora()
         pipe.unload_lora_weights()
@@ -589,7 +579,7 @@ class LoraSDXLIntegrationTests(unittest.TestCase):
         pipe.load_lora_weights(lora_id, weight_name="toy_face_sdxl.safetensors", adapter_name="toy")
         pipe = pipe.to(torch_device)
 
-        self.assertTrue(check_if_lora_correctly_set(pipe.unet), "Lora not correctly set in Unet")
+        assert check_if_lora_correctly_set(pipe.unet), "Lora not correctly set in Unet"
 
         prompt = "toy_face of a hacker with a hoodie"
 
