@@ -1551,6 +1551,9 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 Whether or not to allow for custom pipelines and components defined on the Hub in their own files. This
                 option should only be set to `True` for repositories you trust and in which you have read the code, as
                 it will execute code present on the Hub on your local machine.
+            use_onnx (`bool`, *optional*, defaults to `False`):
+                If set to `True`, FlashPack weights will always be downloaded if present. If set to `False`, ONNX weights
+                will never be downloaded.
 
         Returns:
             `os.PathLike`:
@@ -1575,6 +1578,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         load_connected_pipeline = kwargs.pop("load_connected_pipeline", False)
         trust_remote_code = kwargs.pop("trust_remote_code", False)
         dduf_file: Optional[Dict[str, DDUFEntry]] = kwargs.pop("dduf_file", None)
+        use_flashpack = kwargs.pop("use_flashpack", True)
 
         if dduf_file:
             if custom_pipeline:
@@ -1694,6 +1698,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 allow_pickle,
                 use_onnx,
                 pipeline_class._is_onnx,
+                use_flashpack,
                 variant,
             )
 

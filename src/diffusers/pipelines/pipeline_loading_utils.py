@@ -28,6 +28,7 @@ from packaging import version
 
 from .. import __version__
 from ..utils import (
+    FLASHPACK_WEIGHTS_NAME,
     FLAX_WEIGHTS_NAME,
     ONNX_EXTERNAL_WEIGHTS_NAME,
     ONNX_WEIGHTS_NAME,
@@ -194,6 +195,7 @@ def filter_model_files(filenames):
         FLAX_WEIGHTS_NAME,
         ONNX_WEIGHTS_NAME,
         ONNX_EXTERNAL_WEIGHTS_NAME,
+        FLASHPACK_WEIGHTS_NAME,
     ]
 
     if is_transformers_available():
@@ -1091,6 +1093,7 @@ def _get_ignore_patterns(
     allow_pickle: bool,
     use_onnx: bool,
     is_onnx: bool,
+    use_flashpack: bool,
     variant: Optional[str] = None,
 ) -> List[str]:
     if (
@@ -1115,6 +1118,9 @@ def _get_ignore_patterns(
         use_onnx = use_onnx if use_onnx is not None else is_onnx
         if not use_onnx:
             ignore_patterns += ["*.onnx", "*.pb"]
+
+    elif use_flashpack:
+        ignore_patterns = ["*.bin", "*.safetensors", "*.onnx", "*.pb", "*.msgpack"]
 
     else:
         ignore_patterns = ["*.safetensors", "*.msgpack"]
