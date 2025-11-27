@@ -216,7 +216,7 @@ class StableDiffusionGLIGENPipeline(DeprecatedPipelineMixin, DiffusionPipeline, 
 
         return prompt_embeds
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.encode_prompt
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_utils.StableDiffusionMixin.encode_prompt
     def encode_prompt(
         self,
         prompt,
