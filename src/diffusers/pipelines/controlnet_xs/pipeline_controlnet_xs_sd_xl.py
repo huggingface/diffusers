@@ -702,7 +702,7 @@ class StableDiffusionXLControlNetXSPipeline(
             self.vae.decoder.mid_block.to(dtype)
 
     @property
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_utils.StableDiffusionMixinguidance_scale
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_utils.StableDiffusionMixin.guidance_scale
     def guidance_scale(self):
         return self._guidance_scale
 
@@ -722,7 +722,7 @@ class StableDiffusionXLControlNetXSPipeline(
         return self._cross_attention_kwargs
 
     @property
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.num_timesteps
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_utils.StableDiffusionMixin.num_timesteps
     def num_timesteps(self):
         return self._num_timesteps
 
