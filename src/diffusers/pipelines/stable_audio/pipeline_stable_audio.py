@@ -124,7 +124,7 @@ class StableAudioPipeline(DiffusionPipeline):
         )
         self.rotary_embed_dim = self.transformer.config.attention_head_dim // 2
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_utils.StableDiffusionMixin.enable_vae_slicing
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_utils.SDMixin.enable_vae_slicing
     def enable_vae_slicing(self):
         r"""
         Enable sliced VAE decoding. When this option is enabled, the VAE will split the input tensor in slices to
@@ -138,7 +138,7 @@ class StableAudioPipeline(DiffusionPipeline):
         )
         self.vae.enable_slicing()
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_utils.StableDiffusionMixin.disable_vae_slicing
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_utils.SDMixin.disable_vae_slicing
     def disable_vae_slicing(self):
         r"""
         Disable sliced VAE decoding. If `enable_vae_slicing` was previously enabled, this method will go back to
@@ -310,7 +310,7 @@ class StableAudioPipeline(DiffusionPipeline):
 
         return seconds_start_hidden_states, seconds_end_hidden_states
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_utils.StableDiffusionMixin.prepare_extra_step_kwargs
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_utils.SDMixin.prepare_extra_step_kwargs
     def prepare_extra_step_kwargs(self, generator, eta):
         # prepare extra kwargs for the scheduler step, since not all schedulers have the same signature
         # eta (η) is only used with the DDIMScheduler, it will be ignored for other schedulers.

@@ -150,7 +150,7 @@ class UniDiffuserPipeline(DeprecatedPipelineMixin, DiffusionPipeline):
         # TODO: handle safety checking?
         self.safety_checker = None
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_utils.StableDiffusionMixin.prepare_extra_step_kwargs
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_utils.SDMixin.prepare_extra_step_kwargs
     def prepare_extra_step_kwargs(self, generator, eta):
         # prepare extra kwargs for the scheduler step, since not all schedulers have the same signature
         # eta (η) is only used with the DDIMScheduler, it will be ignored for other schedulers.
@@ -226,7 +226,7 @@ class UniDiffuserPipeline(DeprecatedPipelineMixin, DiffusionPipeline):
 
         return mode
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_utils.StableDiffusionMixin.enable_vae_slicing
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_utils.SDMixin.enable_vae_slicing
     def enable_vae_slicing(self):
         r"""
         Enable sliced VAE decoding. When this option is enabled, the VAE will split the input tensor in slices to
@@ -240,7 +240,7 @@ class UniDiffuserPipeline(DeprecatedPipelineMixin, DiffusionPipeline):
         )
         self.vae.enable_slicing()
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_utils.StableDiffusionMixin.disable_vae_slicing
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_utils.SDMixin.disable_vae_slicing
     def disable_vae_slicing(self):
         r"""
         Disable sliced VAE decoding. If `enable_vae_slicing` was previously enabled, this method will go back to
@@ -254,7 +254,7 @@ class UniDiffuserPipeline(DeprecatedPipelineMixin, DiffusionPipeline):
         )
         self.vae.disable_slicing()
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_utils.StableDiffusionMixin.enable_vae_tiling
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_utils.SDMixin.enable_vae_tiling
     def enable_vae_tiling(self):
         r"""
         Enable tiled VAE decoding. When this option is enabled, the VAE will split the input tensor into tiles to
@@ -269,7 +269,7 @@ class UniDiffuserPipeline(DeprecatedPipelineMixin, DiffusionPipeline):
         )
         self.vae.enable_tiling()
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_utils.StableDiffusionMixin.disable_vae_tiling
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_utils.SDMixin.disable_vae_tiling
     def disable_vae_tiling(self):
         r"""
         Disable tiled VAE decoding. If `enable_vae_tiling` was previously enabled, this method will go back to
@@ -384,7 +384,7 @@ class UniDiffuserPipeline(DeprecatedPipelineMixin, DiffusionPipeline):
                 )
         return batch_size, multiplier
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_utils.StableDiffusionMixin._encode_prompt
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_utils.SDMixin._encode_prompt
     def _encode_prompt(
         self,
         prompt,
@@ -417,7 +417,7 @@ class UniDiffuserPipeline(DeprecatedPipelineMixin, DiffusionPipeline):
 
         return prompt_embeds
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_utils.StableDiffusionMixin.encode_prompt with self.tokenizer->self.clip_tokenizer
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_utils.SDMixin.encode_prompt with self.tokenizer->self.clip_tokenizer
     def encode_prompt(
         self,
         prompt,

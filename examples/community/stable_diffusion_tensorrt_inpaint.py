@@ -915,7 +915,7 @@ class TensorRTStableDiffusionInpaintPipeline(DiffusionPipeline):
 
         return outputs
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_utils.StableDiffusionMixin.run_safety_checker
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_utils.SDMixin.run_safety_checker
     def run_safety_checker(
         self, image: Union[torch.Tensor, PIL.Image.Image], device: torch.device, dtype: torch.dtype
     ) -> Tuple[Union[torch.Tensor, PIL.Image.Image], Optional[bool]]:

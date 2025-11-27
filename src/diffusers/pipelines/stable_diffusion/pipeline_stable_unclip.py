@@ -252,7 +252,7 @@ class StableUnCLIPPipeline(
 
         return prompt_embeds, text_enc_hid_states, text_mask
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_utils.StableDiffusionMixin.prepare_extra_step_kwargs with prepare_extra_step_kwargs->prepare_prior_extra_step_kwargs, scheduler->prior_scheduler
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_utils.SDMixin.prepare_extra_step_kwargs with prepare_extra_step_kwargs->prepare_prior_extra_step_kwargs, scheduler->prior_scheduler
     def prepare_prior_extra_step_kwargs(self, generator, eta):
         # prepare extra kwargs for the prior_scheduler step, since not all prior_schedulers have the same signature
         # eta (η) is only used with the DDIMScheduler, it will be ignored for other prior_schedulers.
