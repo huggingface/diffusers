@@ -762,6 +762,7 @@ def load_sub_model(
     dduf_entries: Optional[Dict[str, DDUFEntry]],
     provider_options: Any,
     quantization_config: Optional[Any] = None,
+    use_flashpack: bool = False,
 ):
     """Helper method to load the module `name` from `library_name` and `class_name`"""
     from ..quantizers import PipelineQuantizationConfig
@@ -835,6 +836,9 @@ def load_sub_model(
         loading_kwargs["variant"] = model_variants.pop(name, None)
         loading_kwargs["use_safetensors"] = use_safetensors
 
+        if is_diffusers_model:
+            loading_kwargs["use_flashpack"] = use_flashpack
+
         if from_flax:
             loading_kwargs["from_flax"] = True
 
@@ -881,7 +885,7 @@ def load_sub_model(
         # else load from the root directory
         loaded_sub_model = load_method(cached_folder, **loading_kwargs)
 
-    if isinstance(loaded_sub_model, torch.nn.Module) and isinstance(device_map, dict):
+    if isinstance(loaded_sub_model, torch.nn.Module) and isinstance(device_map, dict) and not use_flashpack:
         # remove hooks
         remove_hook_from_module(loaded_sub_model, recurse=True)
         needs_offloading_to_cpu = device_map[""] == "cpu"

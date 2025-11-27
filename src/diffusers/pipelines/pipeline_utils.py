@@ -241,6 +241,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         variant: Optional[str] = None,
         max_shard_size: Optional[Union[int, str]] = None,
         push_to_hub: bool = False,
+        use_flashpack: bool = False,
         **kwargs,
     ):
         """
@@ -338,6 +339,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             save_method_accept_safe = "safe_serialization" in save_method_signature.parameters
             save_method_accept_variant = "variant" in save_method_signature.parameters
             save_method_accept_max_shard_size = "max_shard_size" in save_method_signature.parameters
+            save_method_accept_flashpack = "use_flashpack" in save_method_signature.parameters
 
             save_kwargs = {}
             if save_method_accept_safe:
@@ -347,6 +349,8 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             if save_method_accept_max_shard_size and max_shard_size is not None:
                 # max_shard_size is expected to not be None in ModelMixin
                 save_kwargs["max_shard_size"] = max_shard_size
+            if save_method_accept_flashpack:
+                save_kwargs["use_flashpack"] = use_flashpack
 
             save_method(os.path.join(save_directory, pipeline_component_name), **save_kwargs)
 
@@ -758,6 +762,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         use_onnx = kwargs.pop("use_onnx", None)
         load_connected_pipeline = kwargs.pop("load_connected_pipeline", False)
         quantization_config = kwargs.pop("quantization_config", None)
+        use_flashpack = kwargs.pop("use_flashpack", False)
 
         if torch_dtype is not None and not isinstance(torch_dtype, dict) and not isinstance(torch_dtype, torch.dtype):
             torch_dtype = torch.float32
@@ -1042,6 +1047,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                     dduf_entries=dduf_entries,
                     provider_options=provider_options,
                     quantization_config=quantization_config,
+                    use_flashpack=use_flashpack,
                 )
                 logger.info(
                     f"Loaded {name} as {class_name} from `{name}` subfolder of {pretrained_model_name_or_path}."
