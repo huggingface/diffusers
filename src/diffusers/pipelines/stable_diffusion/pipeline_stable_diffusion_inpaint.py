@@ -25,15 +25,11 @@ from ...image_processor import PipelineImageInput, VaeImageProcessor
 from ...loaders import FromSingleFileMixin, IPAdapterMixin, StableDiffusionLoraLoaderMixin, TextualInversionLoaderMixin
 from ...models import AsymmetricAutoencoderKL, AutoencoderKL, ImageProjection, UNet2DConditionModel
 from ...schedulers import KarrasDiffusionSchedulers
-from ...utils import (
-    deprecate,
-    is_torch_xla_available,
-    logging,
-)
+from ...utils import deprecate, is_torch_xla_available, logging
 from ...utils.torch_utils import randn_tensor
-from ..pipeline_utils import DiffusionPipeline
+from ..pipeline_utils import DiffusionPipeline, StableDiffusionMixin
 from . import StableDiffusionPipelineOutput
-from .pipeline_stable_diffusion_utils import StableDiffusionMixin, retrieve_latents, retrieve_timesteps
+from .pipeline_stable_diffusion_utils import SDMixin, retrieve_latents, retrieve_timesteps
 from .safety_checker import StableDiffusionSafetyChecker
 
 
@@ -50,6 +46,7 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 class StableDiffusionInpaintPipeline(
     DiffusionPipeline,
     StableDiffusionMixin,
+    SDMixin,
     TextualInversionLoaderMixin,
     IPAdapterMixin,
     StableDiffusionLoraLoaderMixin,

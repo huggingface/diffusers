@@ -27,8 +27,8 @@ from ...models import AutoencoderKL, UNet2DConditionModel
 from ...schedulers import EulerDiscreteScheduler
 from ...utils import deprecate, is_torch_xla_available, logging
 from ...utils.torch_utils import randn_tensor
-from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
-from .pipeline_stable_diffusion_utils import StableDiffusionMixin, retrieve_latents
+from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput, StableDiffusionMixin
+from .pipeline_stable_diffusion_utils import SDMixin, retrieve_latents
 
 
 if is_torch_xla_available():
@@ -68,7 +68,7 @@ def preprocess(image):
     return image
 
 
-class StableDiffusionLatentUpscalePipeline(DiffusionPipeline, StableDiffusionMixin, FromSingleFileMixin):
+class StableDiffusionLatentUpscalePipeline(DiffusionPipeline, StableDiffusionMixin, SDMixin, FromSingleFileMixin):
     r"""
     Pipeline for upscaling Stable Diffusion output image resolution by a factor of 2.
 

@@ -34,9 +34,9 @@ from ...utils import (
     replace_example_docstring,
 )
 from ...utils.torch_utils import randn_tensor
-from ..pipeline_utils import DiffusionPipeline
+from ..pipeline_utils import DiffusionPipeline, StableDiffusionMixin
 from . import StableDiffusionPipelineOutput
-from .pipeline_stable_diffusion_utils import StableDiffusionMixin, retrieve_latents, retrieve_timesteps
+from .pipeline_stable_diffusion_utils import SDMixin, retrieve_latents, retrieve_timesteps
 from .safety_checker import StableDiffusionSafetyChecker
 
 
@@ -105,6 +105,7 @@ def preprocess(image):
 class StableDiffusionImg2ImgPipeline(
     DiffusionPipeline,
     StableDiffusionMixin,
+    SDMixin,
     TextualInversionLoaderMixin,
     IPAdapterMixin,
     StableDiffusionLoraLoaderMixin,

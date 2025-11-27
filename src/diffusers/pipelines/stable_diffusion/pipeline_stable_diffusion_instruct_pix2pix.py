@@ -26,9 +26,9 @@ from ...models import AutoencoderKL, ImageProjection, UNet2DConditionModel
 from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import PIL_INTERPOLATION, deprecate, is_torch_xla_available, logging
 from ...utils.torch_utils import randn_tensor
-from ..pipeline_utils import DiffusionPipeline
+from ..pipeline_utils import DiffusionPipeline, StableDiffusionMixin
 from . import StableDiffusionPipelineOutput
-from .pipeline_stable_diffusion_utils import StableDiffusionMixin, retrieve_latents
+from .pipeline_stable_diffusion_utils import SDMixin, retrieve_latents
 from .safety_checker import StableDiffusionSafetyChecker
 
 
@@ -69,6 +69,7 @@ def preprocess(image):
 class StableDiffusionInstructPix2PixPipeline(
     DiffusionPipeline,
     StableDiffusionMixin,
+    SDMixin,
     TextualInversionLoaderMixin,
     StableDiffusionLoraLoaderMixin,
     IPAdapterMixin,

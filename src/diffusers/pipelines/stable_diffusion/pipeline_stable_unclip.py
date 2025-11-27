@@ -24,14 +24,10 @@ from ...loaders import StableDiffusionLoraLoaderMixin, TextualInversionLoaderMix
 from ...models import AutoencoderKL, PriorTransformer, UNet2DConditionModel
 from ...models.embeddings import get_timestep_embedding
 from ...schedulers import KarrasDiffusionSchedulers
-from ...utils import (
-    is_torch_xla_available,
-    logging,
-    replace_example_docstring,
-)
+from ...utils import is_torch_xla_available, logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
-from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
-from .pipeline_stable_diffusion_utils import StableDiffusionMixin
+from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput, StableDiffusionMixin
+from .pipeline_stable_diffusion_utils import SDMixin
 from .stable_unclip_image_normalizer import StableUnCLIPImageNormalizer
 
 
@@ -64,7 +60,7 @@ EXAMPLE_DOC_STRING = """
 
 
 class StableUnCLIPPipeline(
-    DiffusionPipeline, StableDiffusionMixin, TextualInversionLoaderMixin, StableDiffusionLoraLoaderMixin
+    DiffusionPipeline, StableDiffusionMixin, SDMixin, TextualInversionLoaderMixin, StableDiffusionLoraLoaderMixin
 ):
     """
     Pipeline for text-to-image generation using stable unCLIP.

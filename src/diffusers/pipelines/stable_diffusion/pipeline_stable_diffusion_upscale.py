@@ -25,15 +25,11 @@ from ...loaders import FromSingleFileMixin, StableDiffusionLoraLoaderMixin, Text
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...models.attention_processor import AttnProcessor2_0, XFormersAttnProcessor
 from ...schedulers import DDPMScheduler, KarrasDiffusionSchedulers
-from ...utils import (
-    deprecate,
-    is_torch_xla_available,
-    logging,
-)
+from ...utils import deprecate, is_torch_xla_available, logging
 from ...utils.torch_utils import randn_tensor
-from ..pipeline_utils import DiffusionPipeline
+from ..pipeline_utils import DiffusionPipeline, StableDiffusionMixin
 from . import StableDiffusionPipelineOutput
-from .pipeline_stable_diffusion_utils import StableDiffusionMixin
+from .pipeline_stable_diffusion_utils import SDMixin
 
 
 if is_torch_xla_available():
@@ -75,6 +71,7 @@ def preprocess(image):
 class StableDiffusionUpscalePipeline(
     DiffusionPipeline,
     StableDiffusionMixin,
+    SDMixin,
     TextualInversionLoaderMixin,
     StableDiffusionLoraLoaderMixin,
     FromSingleFileMixin,

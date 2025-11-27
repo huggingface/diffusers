@@ -34,7 +34,7 @@ from ...utils import (
 )
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
-from .pipeline_stable_diffusion_utils import StableDiffusionMixin, retrieve_latents
+from .pipeline_stable_diffusion_utils import SDMixin, retrieve_latents
 
 
 if is_torch_xla_available():
@@ -72,7 +72,7 @@ def preprocess(image):
 
 
 class StableDiffusionDepth2ImgPipeline(
-    DiffusionPipeline, StableDiffusionMixin, TextualInversionLoaderMixin, StableDiffusionLoraLoaderMixin
+    DiffusionPipeline, SDMixin, TextualInversionLoaderMixin, StableDiffusionLoraLoaderMixin
 ):
     r"""
     Pipeline for text-guided depth-based image-to-image generation using Stable Diffusion.
