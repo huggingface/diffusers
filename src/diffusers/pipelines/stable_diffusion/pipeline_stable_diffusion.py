@@ -23,16 +23,11 @@ from ...image_processor import PipelineImageInput, VaeImageProcessor
 from ...loaders import FromSingleFileMixin, IPAdapterMixin, StableDiffusionLoraLoaderMixin, TextualInversionLoaderMixin
 from ...models import AutoencoderKL, ImageProjection, UNet2DConditionModel
 from ...schedulers import KarrasDiffusionSchedulers
-from ...utils import (
-    deprecate,
-    is_torch_xla_available,
-    logging,
-    replace_example_docstring,
-)
+from ...utils import deprecate, is_torch_xla_available, logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
-from ..pipeline_utils import DiffusionPipeline
+from ..pipeline_utils import DiffusionPipeline, StableDiffusionMixin
 from .pipeline_output import StableDiffusionPipelineOutput
-from .pipeline_stable_diffusion_utils import StableDiffusionMixin, rescale_noise_cfg, retrieve_timesteps
+from .pipeline_stable_diffusion_utils import SDMixin, rescale_noise_cfg, retrieve_timesteps
 from .safety_checker import StableDiffusionSafetyChecker
 
 
@@ -65,6 +60,7 @@ EXAMPLE_DOC_STRING = """
 class StableDiffusionPipeline(
     DiffusionPipeline,
     StableDiffusionMixin,
+    SDMixin,
     TextualInversionLoaderMixin,
     StableDiffusionLoraLoaderMixin,
     IPAdapterMixin,
