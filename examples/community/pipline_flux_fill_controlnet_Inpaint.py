@@ -1168,12 +1168,12 @@ class FluxControlNetFillInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, 
             generator,
         )
 
-        mask_imagee = self.mask_processor.preprocess(mask_image, height=height, width=width)
-        masked_imagee = init_image * (1 - mask_imagee)
-        masked_imagee = masked_imagee.to(dtype=self.vae.dtype, device=device)
-        maskkk, masked_image_latentsss = self.prepare_mask_latents_fill(
-            mask_imagee,
-            masked_imagee,
+        mask_image_fill = self.mask_processor.preprocess(mask_image, height=height, width=width)
+        masked_image_fill = init_image * (1 - mask_image_fill)
+        masked_image_fill = masked_image_fill.to(dtype=self.vae.dtype, device=device)
+        mask_fill, masked_latents_fill = self.prepare_mask_latents_fill(
+            mask_image_fill,
+            masked_image_fill,
             batch_size,
             num_channels_latents,
             num_images_per_prompt,
@@ -1243,7 +1243,7 @@ class FluxControlNetFillInpaintPipeline(DiffusionPipeline, FluxLoraLoaderMixin, 
                 else:
                     guidance = None
 
-                masked_image_latents_fill = torch.cat((masked_image_latentsss, maskkk), dim=-1)
+                masked_image_latents_fill = torch.cat((masked_latents_fill, mask_fill), dim=-1)
                 latent_model_input = torch.cat([latents, masked_image_latents_fill], dim=2)
 
                 noise_pred = self.transformer(

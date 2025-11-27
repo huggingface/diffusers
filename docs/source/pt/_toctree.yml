@@ -1,8 +1,10 @@
 - sections:
-    - local: index
-      title: 🧨 Diffusers
-    - local: quicktour
-      title: Tour rápido
-    - local: installation
-      title: Instalação
+  - local: index
+    title: Diffusers
+  - local: installation
+    title: Instalação
+  - local: quicktour
+    title: Tour rápido
+  - local: stable_diffusion
+    title: Desempenho básico
   title: Primeiros passos
