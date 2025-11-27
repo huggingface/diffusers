@@ -31,24 +31,6 @@ import argparse
 import os
 
 TRANSFORMER_CONFIGS = {
-    "480p_i2v": {
-        "in_channels": 65,
-        "out_channels": 32,
-        "num_attention_heads": 16,
-        "attention_head_dim": 128,
-        "num_layers": 54,
-        "num_refiner_layers": 2,
-        "mlp_ratio": 4.0,
-        "patch_size": 1,
-        "patch_size_t": 1,
-        "qk_norm": "rms_norm",
-        "text_embed_dim": 3584,
-        "text_embed_2_dim": 1472,
-        "image_embed_dim": 1152,
-        "rope_theta": 256.0,
-        "rope_axes_dim": (16, 56, 56),
-        "use_meanflow": False,
-    },
     "480p_t2v": {
         "in_channels": 65,
         "out_channels": 32,
@@ -66,29 +48,128 @@ TRANSFORMER_CONFIGS = {
         "rope_theta": 256.0,
         "rope_axes_dim": (16, 56, 56),
         "use_meanflow": False,
+        "target_size": 640,
+        "task_type": "t2v",
     },
+    "480p_i2v": {
+        "in_channels": 65,
+        "out_channels": 32,
+        "num_attention_heads": 16,
+        "attention_head_dim": 128,
+        "num_layers": 54,
+        "num_refiner_layers": 2,
+        "mlp_ratio": 4.0,
+        "patch_size": 1,
+        "patch_size_t": 1,
+        "qk_norm": "rms_norm",
+        "text_embed_dim": 3584,
+        "text_embed_2_dim": 1472,
+        "image_embed_dim": 1152,
+        "rope_theta": 256.0,
+        "rope_axes_dim": (16, 56, 56),
+        "use_meanflow": False,
+        "target_size": 640,
+        "task_type": "i2v",
+    },
+    "720p_t2v": {
+        "in_channels": 65,
+        "out_channels": 32,
+        "num_attention_heads": 16,
+        "attention_head_dim": 128,
+        "num_layers": 54,
+        "num_refiner_layers": 2,
+        "mlp_ratio": 4.0,
+        "patch_size": 1,
+        "patch_size_t": 1,
+        "qk_norm": "rms_norm",
+        "text_embed_dim": 3584,
+        "text_embed_2_dim": 1472,
+        "image_embed_dim": 1152,
+        "rope_theta": 256.0,
+        "rope_axes_dim": (16, 56, 56),
+        "use_meanflow": False,
+        "target_size": 960,
+        "task_type": "t2v",
+    },
+    "720p_i2v": {},
+    "480p_t2v_distilled": {
+        "in_channels": 65,
+        "out_channels": 32,
+        "num_attention_heads": 16,
+        "attention_head_dim": 128,
+        "num_layers": 54,
+        "num_refiner_layers": 2,
+        "mlp_ratio": 4.0,
+        "patch_size": 1,
+        "patch_size_t": 1,
+        "qk_norm": "rms_norm",
+        "text_embed_dim": 3584,
+        "text_embed_2_dim": 1472,
+        "image_embed_dim": 1152,
+        "rope_theta": 256.0,
+        "rope_axes_dim": (16, 56, 56),
+        "use_meanflow": False,
+        "target_size": 640,
+        "task_type": "t2v",
+    },
+    "480p_i2v_distilled": {},
+    "720p_t2v_distilled": {},
+    "720p_i2v_distilled": {},
 }
 
 SCHEDULER_CONFIGS = {
+    "480p_t2v": {
+        "shift": 5.0,
+    },
     "480p_i2v": {
         "shift": 5.0,
     },
-    "480p_t2v": {
+    "720p_t2v": {
+        "shift": 9.0,
+    },
+    "720p_i2v": {
+        "shift": 7.0,
+    },
+    "480p_t2v_distilled": {
         "shift": 5.0,
+    },
+    "480p_i2v_distilled": {
+        "shift": 5.0,
+    },
+    "720p_t2v_distilled": {
+        "shift": 9.0,
+    },
+    "720p_i2v_distilled": {
+        "shift": 7.0,
     },
 }
 
 GUIDANCE_CONFIGS = {
-    "480p_i2v": {
-        "guidance_scale": 6.0,
-        "embedded_guidance_scale": None,
-    },
     "480p_t2v": {
         "guidance_scale": 6.0,
-        "embedded_guidance_scale": None,
     },
-
-    }
+    "480p_i2v": {
+        "guidance_scale": 6.0,
+    },
+    "720p_t2v": {
+        "guidance_scale": 6.0,
+    },
+    "720p_i2v": {
+        "guidance_scale": 6.0,
+    },
+    "480p_t2v_distilled": {
+        "guidance_scale": 1.0,
+    },
+    "480p_i2v_distilled": {
+        "guidance_scale": 1.0,
+    },
+    "720p_t2v_distilled": {
+        "guidance_scale": 1.0,
+    },
+    "720p_i2v_distilled": {
+        "guidance_scale": 1.0,
+    },
+}
 
 def swap_scale_shift(weight):
     shift, scale = weight.chunk(2, dim=0)
