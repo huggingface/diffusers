@@ -43,15 +43,10 @@ from mindiesd import attention_forward as mindie_sd_attn_forward
 
 STREAM_VECTOR = torch.npu.Stream()
 
-
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 if torch.distributed.is_available():
     import torch.distributed._functional_collectives as funcol
-current_stream = torch.npu.current_stream()
-stream2 = torch.npu.Stream()
-current_event = torch.npu.Event()
-event2 = torch.npu.Event()
 
 from ..attention_dispatch import npu_fusion_attention
 def _get_projections(attn: "FluxAttention", hidden_states, encoder_hidden_states=None, cal_q=True):
