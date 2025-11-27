@@ -939,6 +939,9 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 is on a network mount or hard drive, which may not handle the seeky-ness of mmap very well.
             use_flashpack (`bool`, *optional*, defaults to `False`):
                 If set to `True`, the model is loaded from `flashpack` weights.
+            flashpack_kwargs(`dict[str, Any]`, *optional*, defaults to `{}`):
+                Kwargs passed to [`flashpack.deserialization.assign_from_file`](https://github.com/fal-ai/flashpack/blob/f1aa91c5cd9532a3dbf5bcc707ab9b01c274b76c/src/flashpack/deserialization.py#L408-L422)
+
 
         > [!TIP] > To use private or [gated models](https://huggingface.co/docs/hub/models-gated#gated-models), log-in
         with `hf > auth login`. You can also activate the special >
@@ -984,6 +987,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         disable_mmap = kwargs.pop("disable_mmap", False)
         parallel_config: Optional[Union[ParallelConfig, ContextParallelConfig]] = kwargs.pop("parallel_config", None)
         use_flashpack = kwargs.pop("use_flashpack", False)
+        flashpack_kwargs = kwargs.pop("flashpack_kwargs", {})
 
         is_parallel_loading_enabled = HF_ENABLE_PARALLEL_LOADING
         if is_parallel_loading_enabled and not low_cpu_mem_usage:
@@ -1326,21 +1330,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 model=model,
                 path=resolved_model_file[0],
                 device=flashpack_device,
-                # silent=silent,
-                # strict=strict,
-                # strict_params=strict_params,
-                # strict_buffers=strict_buffers,
-                # keep_flash_ref_on_model=keep_flash_ref_on_model,
-                # num_streams=num_streams,
-                # chunk_bytes=chunk_bytes,
-                # ignore_names=ignore_names or cls.flashpack_ignore_names,
-                # ignore_prefixes=ignore_prefixes or cls.flashpack_ignore_prefixes,
-                # ignore_suffixes=ignore_suffixes or cls.flashpack_ignore_suffixes,
-                # use_distributed_loading=use_distributed_loading,
-                # rank=rank,
-                # local_rank=local_rank,
-                # world_size=world_size,
-                # coerce_dtype=coerce_dtype or cls.flashpack_coerce_dtype,
+                **flashpack_kwargs,
             )
 
             if output_loading_info:
