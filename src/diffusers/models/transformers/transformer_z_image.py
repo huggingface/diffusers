@@ -328,6 +328,7 @@ class RopeEmbedder:
 class ZImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginalModelMixin):
     _supports_gradient_checkpointing = True
     _no_split_modules = ["ZImageTransformerBlock"]
+    _repeated_blocks = ["ZImageTransformerBlock"]
     _skip_layerwise_casting_patterns = ["t_embedder", "cap_embedder"]  # precision sensitive layers
 
     @register_to_config
