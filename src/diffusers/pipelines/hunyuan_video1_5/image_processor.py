@@ -90,7 +90,7 @@ class HunyuanVideo15ImageProcessor(VideoProcessor):
 
     def calculate_default_height_width(self, height: int, width: int, target_size: int):
 
-        crop_size_list = generate_crop_size_list(base_size=target_size, patch_size=self.vae_scale_factor)
+        crop_size_list = generate_crop_size_list(base_size=target_size, patch_size=self.config.vae_scale_factor)
         aspect_ratios = np.array([round(float(h) / float(w), 5) for h, w in crop_size_list])
         height, width = get_closest_ratio(height, width, aspect_ratios, crop_size_list)[0]
         
