@@ -1380,7 +1380,7 @@ class FrescoV2VPipeline(StableDiffusionControlNetImg2ImgPipeline):
         flow_model.eval()
         self.flow_model = flow_model
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline._encode_prompt
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_utils.StableDiffusionMixin._encode_prompt
     def _encode_prompt(
         self,
         prompt,
@@ -1672,7 +1672,7 @@ class FrescoV2VPipeline(StableDiffusionControlNetImg2ImgPipeline):
 
         return image_embeds
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.run_safety_checker
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_utils.StableDiffusionMixin.run_safety_checker
     def run_safety_checker(self, image, device, dtype):
         if self.safety_checker is None:
             has_nsfw_concept = None

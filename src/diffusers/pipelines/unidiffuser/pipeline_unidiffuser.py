@@ -384,7 +384,7 @@ class UniDiffuserPipeline(DeprecatedPipelineMixin, DiffusionPipeline):
                 )
         return batch_size, multiplier
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline._encode_prompt
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_utils.StableDiffusionMixin._encode_prompt
     def _encode_prompt(
         self,
         prompt,

@@ -152,7 +152,7 @@ class StableDiffusionParadigmsPipeline(
         # attribute to wrap the unet with torch.nn.DataParallel when running multiple denoising steps on multiple GPUs
         self.wrapped_unet = self.unet
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline._encode_prompt
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_utils.StableDiffusionMixin._encode_prompt
     def _encode_prompt(
         self,
         prompt,
@@ -368,7 +368,7 @@ class StableDiffusionParadigmsPipeline(
 
         return prompt_embeds, negative_prompt_embeds
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.run_safety_checker
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_utils.StableDiffusionMixin.run_safety_checker
     def run_safety_checker(self, image, device, dtype):
         if self.safety_checker is None:
             has_nsfw_concept = None

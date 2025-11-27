@@ -788,7 +788,7 @@ class TensorRTStableDiffusionPipeline(DiffusionPipeline):
         latents = latents * self.scheduler.init_noise_sigma
         return latents
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.run_safety_checker
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_utils.StableDiffusionMixin.run_safety_checker
     def run_safety_checker(
         self, image: Union[torch.Tensor, PIL.Image.Image], device: torch.device, dtype: torch.dtype
     ) -> Tuple[Union[torch.Tensor, PIL.Image.Image], Optional[bool]]:
