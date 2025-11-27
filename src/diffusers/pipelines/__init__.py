@@ -129,6 +129,7 @@ else:
     ]
     _import_structure["bria"] = ["BriaPipeline"]
     _import_structure["bria_fibo"] = ["BriaFiboPipeline"]
+    _import_structure["flux2"] = ["Flux2Pipeline"]
     _import_structure["flux"] = [
         "FluxControlPipeline",
         "FluxControlInpaintPipeline",
@@ -308,7 +309,10 @@ else:
         "SanaSprintPipeline",
         "SanaControlNetPipeline",
         "SanaSprintImg2ImgPipeline",
+    ]
+    _import_structure["sana_video"] = [
         "SanaVideoPipeline",
+        "SanaImageToVideoPipeline",
     ]
     _import_structure["semantic_stable_diffusion"] = ["SemanticStableDiffusionPipeline"]
     _import_structure["shap_e"] = ["ShapEImg2ImgPipeline", "ShapEPipeline"]
@@ -392,6 +396,7 @@ else:
         "WanVACEPipeline",
         "WanAnimatePipeline",
     ]
+    _import_structure["z_image"] = ["ZImagePipeline"]
     _import_structure["kandinsky5"] = ["Kandinsky5T2VPipeline"]
     _import_structure["skyreels_v2"] = [
         "SkyReelsV2DiffusionForcingPipeline",
@@ -651,6 +656,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             FluxPriorReduxPipeline,
             ReduxImageEncoder,
         )
+        from .flux2 import Flux2Pipeline
         from .hidream_image import HiDreamImagePipeline
         from .hunyuan_image import HunyuanImagePipeline, HunyuanImageRefinerPipeline
         from .hunyuan_video import (
@@ -749,8 +755,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             SanaPipeline,
             SanaSprintImg2ImgPipeline,
             SanaSprintPipeline,
-            SanaVideoPipeline,
         )
+        from .sana_video import SanaImageToVideoPipeline, SanaVideoPipeline
         from .semantic_stable_diffusion import SemanticStableDiffusionPipeline
         from .shap_e import ShapEImg2ImgPipeline, ShapEPipeline
         from .stable_audio import StableAudioPipeline, StableAudioProjectionModel
@@ -821,6 +827,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             WuerstchenDecoderPipeline,
             WuerstchenPriorPipeline,
         )
+        from .z_image import ZImagePipeline
 
         try:
             if not is_onnx_available():
