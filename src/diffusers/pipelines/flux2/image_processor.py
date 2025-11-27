@@ -96,21 +96,24 @@ class Flux2ImageProcessor(VaeImageProcessor):
             )
 
         return image
-
+    
     @staticmethod
-    def _resize_to_target_area(
-        image: PIL.Image.Image, target_area: int = 1024 * 1024, return_if_small_image: bool = False
-    ) -> PIL.Image.Image:
+    def _resize_to_target_area(image: PIL.Image.Image, target_area: int = 1024 * 1024) -> PIL.Image.Image:
         image_width, image_height = image.size
-        pixel_count = image_width * image_height
-        if return_if_small_image and pixel_count <= target_area:
-            return image
 
-        scale = math.sqrt(target_area / pixel_count)
+        scale = math.sqrt(target_area / (image_width * image_height))
         width = int(image_width * scale)
         height = int(image_height * scale)
 
         return image.resize((width, height), PIL.Image.Resampling.LANCZOS)
+    
+    @staticmethod
+    def _resize_if_exceeds_area(image, target_area=1024 * 1024) -> PIL.Image.Image:
+        image_width, image_height = image.size
+        pixel_count = image_width * image_height
+        if pixel_count <= target_area:
+            return image
+        return Flux2ImageProcessor._resize_to_target_area(image, target_area)
 
     def _resize_and_crop(
         self,
