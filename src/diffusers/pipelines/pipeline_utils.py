@@ -67,7 +67,6 @@ from ..utils import (
 )
 from ..utils.hub_utils import _check_legacy_sharding_variant_format, load_or_create_model_card, populate_model_card
 from ..utils.torch_utils import empty_device_cache, get_device, is_compiled_module
-from .stable_diffusion.pipeline_stable_diffusion_utils import StableDiffusionMixin as ActualStableDiffusionMixin
 
 
 if is_torch_npu_available():
@@ -2171,8 +2170,14 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         return False
 
 
-class StableDiffusionMixin(ActualStableDiffusionMixin):
+class StableDiffusionMixin:
     def __init__(self, *args, **kwargs):
         deprecation_message = "`StableDiffusionMixin` from `diffusers.pipelines.pipeline_utils` is deprecated and this will be removed in a future version. Please use `StableDiffusionMixin` from `diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_utils`, instead."
         deprecate("StableDiffusionMixin", "1.0.0", deprecation_message)
-        super().__init__(*args, **kwargs)
+
+        # To avoid circular imports and for being backwards-compatible.
+        from .stable_diffusion.pipeline_stable_diffusion_utils import (
+            StableDiffusionMixin as ActualStableDiffusionMixin,
+        )
+
+        ActualStableDiffusionMixin.__init__(self, *args, **kwargs)
