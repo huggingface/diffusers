@@ -43,27 +43,19 @@ from tqdm.auto import tqdm
 from transformers import CLIPTextModel, CLIPTokenizer
 
 import diffusers
-from diffusers import (AutoencoderKL, DDPMScheduler, DiffusionPipeline,
-                       StableDiffusionPipeline, UNet2DConditionModel)
+from diffusers import AutoencoderKL, DDPMScheduler, DiffusionPipeline, StableDiffusionPipeline, UNet2DConditionModel
 from diffusers.optimization import get_scheduler
 from diffusers.training_utils import cast_training_params, compute_snr
-from diffusers.utils import (check_min_version,
-                             convert_state_dict_to_diffusers,
-                             is_wandb_available)
-from diffusers.utils.hub_utils import (load_or_create_model_card,
-                                       populate_model_card)
+from diffusers.utils import (
+    check_min_version,
+    convert_state_dict_to_diffusers,
+    convert_unet_state_dict_to_peft,
+    is_wandb_available,
+)
+from diffusers.utils.hub_utils import load_or_create_model_card, populate_model_card
 from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.torch_utils import is_compiled_module
 
-# compatible with both older and new version of diffusers -- more robust approach
-try:
-    from diffusers.loaders.lora_conversion_utils import \
-        convert_unet_state_dict_to_peft
-except ImportError:
-    try:
-        from diffusers.loaders.peft import convert_unet_state_dict_to_peft
-    except ImportError:
-        from diffusers.loaders.lora import convert_unet_state_dict_to_peft
 
 if is_wandb_available():
     import wandb
@@ -768,7 +760,7 @@ def main():
                 )
 
         # Make sure the trainable params are in float32
-        if args.mixed_precision in ["fp16", "bf16"]:
+        if args.mixed_precision in ["fp16"]:
             cast_training_params([unet_], dtype=torch.float32)
 
     # Scheduler and math around the number of training steps.
