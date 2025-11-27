@@ -736,12 +736,18 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         if use_flashpack:
             if is_flashpack_available():
                 import flashpack
-
-                flashpack.serialization.pack_to_file(
-                    state_dict_or_model=state_dict,
-                    destination_path=os.path.join(save_directory, weights_name),
-                    target_dtype=self.dtype,
+            else:
+                logger.error(
+                    "Saving a FlashPack checkpoint in PyTorch, requires both PyTorch and flashpack to be installed. Please see "
+                    "https://pytorch.org/ and https://github.com/fal-ai/flashpack for installation instructions."
                 )
+                raise ImportError("Please install torch and flashpack to load a FlashPack checkpoint in PyTorch.")
+
+            flashpack.serialization.pack_to_file(
+                state_dict_or_model=state_dict,
+                destination_path=os.path.join(save_directory, weights_name),
+                target_dtype=self.dtype,
+            )
         else:
             # Save the model
             state_dict_split = split_torch_state_dict_into_shards(
@@ -1296,28 +1302,52 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         if use_flashpack:
             if is_flashpack_available():
                 import flashpack
-
-                flashpack.mixin.assign_from_file(
-                    model=model,
-                    path=resolved_model_file[0],
-                    device=None if device_map is None else device_map[""],
-                    # silent=silent,
-                    # strict=strict,
-                    # strict_params=strict_params,
-                    # strict_buffers=strict_buffers,
-                    # keep_flash_ref_on_model=keep_flash_ref_on_model,
-                    # num_streams=num_streams,
-                    # chunk_bytes=chunk_bytes,
-                    # ignore_names=ignore_names or cls.flashpack_ignore_names,
-                    # ignore_prefixes=ignore_prefixes or cls.flashpack_ignore_prefixes,
-                    # ignore_suffixes=ignore_suffixes or cls.flashpack_ignore_suffixes,
-                    # use_distributed_loading=use_distributed_loading,
-                    # rank=rank,
-                    # local_rank=local_rank,
-                    # world_size=world_size,
-                    # coerce_dtype=coerce_dtype or cls.flashpack_coerce_dtype,
+            else:
+                logger.error(
+                    "Loading a FlashPack checkpoint in PyTorch, requires both PyTorch and flashpack to be installed. Please see "
+                    "https://pytorch.org/ and https://github.com/fal-ai/flashpack for installation instructions."
                 )
-                return model
+                raise ImportError("Please install torch and flashpack to load a FlashPack checkpoint in PyTorch.")
+
+            if device_map is None:
+                logger.warning(
+                    "`device_map` has not been provided for FlashPack, model will be on `cpu` - provide `device_map` to fully utilize "
+                    "the benefit of FlashPack."
+                )
+                flashpack_device = None
+            else:
+                flashpack_device = device_map[""]
+                if flashpack_device in ["auto", "balanced", "balanced_low_0", "sequential"]:
+                    raise ValueError("FlashPack `device_map` should be a device, not one of `auto`, `balanced`, `balanced_low_0`, `sequential`.")
+
+            flashpack.mixin.assign_from_file(
+                model=model,
+                path=resolved_model_file[0],
+                device=flashpack_device,
+                # silent=silent,
+                # strict=strict,
+                # strict_params=strict_params,
+                # strict_buffers=strict_buffers,
+                # keep_flash_ref_on_model=keep_flash_ref_on_model,
+                # num_streams=num_streams,
+                # chunk_bytes=chunk_bytes,
+                # ignore_names=ignore_names or cls.flashpack_ignore_names,
+                # ignore_prefixes=ignore_prefixes or cls.flashpack_ignore_prefixes,
+                # ignore_suffixes=ignore_suffixes or cls.flashpack_ignore_suffixes,
+                # use_distributed_loading=use_distributed_loading,
+                # rank=rank,
+                # local_rank=local_rank,
+                # world_size=world_size,
+                # coerce_dtype=coerce_dtype or cls.flashpack_coerce_dtype,
+            )
+
+            if output_loading_info:
+                logger.warning(
+                    "`output_loading_info` is not supported with FlashPack."
+                )
+                return model, {}
+
+            return model
 
         if dtype_orig is not None:
             torch.set_default_dtype(dtype_orig)
