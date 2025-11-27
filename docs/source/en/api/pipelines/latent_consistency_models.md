@@ -32,12 +32,24 @@ The pipelines were contributed by [luosiallen](https://luosiallen.github.io/), [
 [[autodoc]] LatentConsistencyModelPipeline
     - all
     - __call__
+    - enable_freeu
+    - disable_freeu
+    - enable_vae_slicing
+    - disable_vae_slicing
+    - enable_vae_tiling
+    - disable_vae_tiling
 
 ## LatentConsistencyModelImg2ImgPipeline
 
 [[autodoc]] LatentConsistencyModelImg2ImgPipeline
     - all
     - __call__
+    - enable_freeu
+    - disable_freeu
+    - enable_vae_slicing
+    - disable_vae_slicing
+    - enable_vae_tiling
+    - disable_vae_tiling
 
 ## StableDiffusionPipelineOutput
 
