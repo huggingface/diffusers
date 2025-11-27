@@ -208,13 +208,14 @@ class ModuleGroup:
             self.stream.synchronize()
 
         context = nullcontext() if self.stream is None else self._torch_accelerator_module.stream(self.stream)
-        default_stream = self._torch_accelerator_module.current_stream()
+        default_stream = self._torch_accelerator_module.current_stream() if self.stream is not None else None
+
         with context:
             if self.stream is not None:
                 with self._pinned_memory_tensors() as pinned_memory:
                     self._process_tensors_from_modules(pinned_memory, default_stream=default_stream)
             else:
-                self._process_tensors_from_modules(None, default_stream=default_stream)
+                self._process_tensors_from_modules(None)
 
     def _offload_to_disk(self):
         # TODO: we can potentially optimize this code path by checking if the _all_ the desired
