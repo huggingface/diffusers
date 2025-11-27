@@ -413,6 +413,17 @@ class DPMSolverMultistepInverseScheduler(SchedulerMixin, ConfigMixin):
 
     # Copied from diffusers.schedulers.scheduling_dpmsolver_multistep.DPMSolverMultistepScheduler._sigma_to_alpha_sigma_t
     def _sigma_to_alpha_sigma_t(self, sigma):
+        """
+        Convert sigma values to alpha_t and sigma_t values.
+
+        Args:
+            sigma (`torch.Tensor`):
+                The sigma value(s) to convert.
+
+        Returns:
+            `Tuple[torch.Tensor, torch.Tensor]`:
+                A tuple containing (alpha_t, sigma_t) values.
+        """
         if self.config.use_flow_sigmas:
             alpha_t = 1 - sigma
             sigma_t = sigma
