@@ -362,3 +362,87 @@ class GroupOffloadTests(unittest.TestCase):
             self.assertLess(
                 cumulated_absmax, 1e-5, f"Output differences for {name} exceeded threshold: {cumulated_absmax:.5f}"
             )
+
+    def test_block_level_pin_first_last_groups_stay_on_device(self):
+        if torch.device(torch_device).type not in ["cuda", "xpu"]:
+            return
+
+        def first_param_device(mod):
+            p = next(mod.parameters(), None)  # recurse=True by default
+            self.assertIsNotNone(p, f"No parameters found for module {mod}")
+            return p.device
+
+        def assert_all_modules_device(mods, expected_type: str, msg: str = ""):
+            bad = []
+            for i, m in enumerate(mods):
+                dev_type = first_param_device(m).type
+                if dev_type != expected_type:
+                    bad.append((i, m.__class__.__name__, dev_type))
+            self.assertFalse(
+                bad,
+                (msg + "\n" if msg else "")
+                + f"Expected all modules on {expected_type}, but found mismatches: {bad}",
+            )
+
+        def get_param_modules_from_exec_order(model):
+            root_registry = HookRegistry.check_if_exists_or_initialize(model)
+
+            lazy_hook = root_registry.get_hook("lazy_prefetch_group_offloading")
+            self.assertIsNotNone(lazy_hook, "lazy_prefetch_group_offloading hook was not registered")
+
+            with torch.no_grad():
+                #record execution order with first forward
+                model(self.input)
+
+            mods = [m for _, m in lazy_hook.execution_order]
+            param_mods = [m for m in mods if next(m.parameters(), None) is not None]
+            self.assertGreaterEqual(
+                len(param_mods), 2, f"Expected >=2 param-bearing modules in execution_order, got {len(param_mods)}"
+            )
+
+            first = param_mods[0]
+            last = param_mods[-1]
+            middle = param_mods[1:-1]  # <- ALL middle layers
+            return first, middle, last
+
+        accel_type = torch.device(torch_device).type
+
+        # -------------------------
+        # No pin: everything on CPU
+        # -------------------------
+        model_no_pin = self.get_model()
+        model_no_pin.enable_group_offload(
+            torch_device,
+            offload_type="block_level",
+            num_blocks_per_group=1,
+            use_stream=True,
+        )
+        model_no_pin.eval()
+        first, middle, last = get_param_modules_from_exec_order(model_no_pin)
+
+        self.assertEqual(first_param_device(first).type, "cpu")
+        self.assertEqual(first_param_device(last).type, "cpu")
+        assert_all_modules_device(middle, "cpu", msg="No-pin: expected ALL middle layers on CPU")
+
+        model_pin = self.get_model()
+        model_pin.enable_group_offload(
+            torch_device,
+            offload_type="block_level",
+            num_blocks_per_group=1,
+            use_stream=True,
+            pin_first_last=True,
+        )
+        model_pin.eval()
+        first, middle, last = get_param_modules_from_exec_order(model_pin)
+
+        self.assertEqual(first_param_device(first).type, accel_type)
+        self.assertEqual(first_param_device(last).type, accel_type)
+        assert_all_modules_device(middle, "cpu", msg="Pin: expected ALL middle layers on CPU")
+
+        # Should still hold after another invocation
+        with torch.no_grad():
+            model_pin(self.input)
+
+        self.assertEqual(first_param_device(first).type, accel_type)
+        self.assertEqual(first_param_device(last).type, accel_type)
+        assert_all_modules_device(middle, "cpu", msg="Pin (2nd forward): expected ALL middle layers on CPU")
