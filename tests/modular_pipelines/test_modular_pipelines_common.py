@@ -45,7 +45,7 @@ class ModularPipelineTesterMixin:
     @property
     def pretrained_model_name_or_path(self) -> str:
         raise NotImplementedError(
-            "You need to set the attribute `repo` in the child test class. See existing pipeline tests for reference."
+            "You need to set the attribute `pretrained_model_name_or_path` in the child test class. See existing pipeline tests for reference."
         )
 
     @property
