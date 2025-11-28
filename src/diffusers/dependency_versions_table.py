@@ -9,7 +9,8 @@ deps = {
     "filelock": "filelock",
     "flax": "flax>=0.4.1",
     "hf-doc-builder": "hf-doc-builder>=0.3.0",
-    "huggingface-hub": "huggingface-hub>=0.34.0",
+    "httpx": "httpx<1.0.0",
+    "huggingface-hub": "huggingface-hub>=0.34.0,<2.0",
     "requests-mock": "requests-mock==1.10.0",
     "importlib_metadata": "importlib_metadata",
     "invisible-watermark": "invisible-watermark>=0.2.0",
@@ -39,6 +40,7 @@ deps = {
     "gguf": "gguf>=0.10.0",
     "torchao": "torchao>=0.7.0",
     "bitsandbytes": "bitsandbytes>=0.43.3",
+    "nvidia_modelopt[hf]": "nvidia_modelopt[hf]>=0.33.1",
     "regex": "regex!=2019.12.17",
     "requests": "requests",
     "tensorboard": "tensorboard",
@@ -50,4 +52,5 @@ deps = {
     "black": "black",
     "phonemizer": "phonemizer",
     "opencv-python": "opencv-python",
+    "timm": "timm",
 }

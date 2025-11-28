@@ -21,6 +21,7 @@ import operator as op
 import os
 import sys
 from collections import OrderedDict, defaultdict
+from functools import lru_cache as cache
 from itertools import chain
 from types import ModuleType
 from typing import Any, Tuple, Union
@@ -191,6 +192,7 @@ except importlib_metadata.PackageNotFoundError:
 
 _torch_xla_available, _torch_xla_version = _is_package_available("torch_xla")
 _torch_npu_available, _torch_npu_version = _is_package_available("torch_npu")
+_torch_mlu_available, _torch_mlu_version = _is_package_available("torch_mlu")
 _transformers_available, _transformers_version = _is_package_available("transformers")
 _hf_hub_available, _hf_hub_version = _is_package_available("huggingface_hub")
 _kernels_available, _kernels_version = _is_package_available("kernels")
@@ -225,7 +227,9 @@ _cosmos_guardrail_available, _cosmos_guardrail_version = _is_package_available("
 _sageattention_available, _sageattention_version = _is_package_available("sageattention")
 _flash_attn_available, _flash_attn_version = _is_package_available("flash_attn")
 _flash_attn_3_available, _flash_attn_3_version = _is_package_available("flash_attn_3")
+_aiter_available, _aiter_version = _is_package_available("aiter")
 _kornia_available, _kornia_version = _is_package_available("kornia")
+_nvidia_modelopt_available, _nvidia_modelopt_version = _is_package_available("modelopt", get_dist_name=True)
 
 
 def is_torch_available():
@@ -238,6 +242,10 @@ def is_torch_xla_available():
 
 def is_torch_npu_available():
     return _torch_npu_available
+
+
+def is_torch_mlu_available():
+    return _torch_mlu_available
 
 
 def is_flax_available():
@@ -364,6 +372,10 @@ def is_optimum_quanto_available():
     return _optimum_quanto_available
 
 
+def is_nvidia_modelopt_available():
+    return _nvidia_modelopt_available
+
+
 def is_timm_available():
     return _timm_available
 
@@ -398,6 +410,10 @@ def is_flash_attn_available():
 
 def is_flash_attn_3_available():
     return _flash_attn_3_available
+
+
+def is_aiter_available():
+    return _aiter_available
 
 
 def is_kornia_available():
@@ -668,6 +684,7 @@ def compare_versions(library_or_version: Union[str, Version], operation: str, re
 
 
 # This function was copied from: https://github.com/huggingface/accelerate/blob/874c4967d94badd24f893064cc3bef45f57cadf7/src/accelerate/utils/versions.py#L338
+@cache
 def is_torch_version(operation: str, version: str):
     """
     Compares the current PyTorch version to a given reference with an operation.
@@ -681,6 +698,7 @@ def is_torch_version(operation: str, version: str):
     return compare_versions(parse(_torch_version), operation, version)
 
 
+@cache
 def is_torch_xla_version(operation: str, version: str):
     """
     Compares the current torch_xla version to a given reference with an operation.
@@ -696,6 +714,7 @@ def is_torch_xla_version(operation: str, version: str):
     return compare_versions(parse(_torch_xla_version), operation, version)
 
 
+@cache
 def is_transformers_version(operation: str, version: str):
     """
     Compares the current Transformers version to a given reference with an operation.
@@ -711,6 +730,7 @@ def is_transformers_version(operation: str, version: str):
     return compare_versions(parse(_transformers_version), operation, version)
 
 
+@cache
 def is_hf_hub_version(operation: str, version: str):
     """
     Compares the current Hugging Face Hub version to a given reference with an operation.
@@ -726,6 +746,7 @@ def is_hf_hub_version(operation: str, version: str):
     return compare_versions(parse(_hf_hub_version), operation, version)
 
 
+@cache
 def is_accelerate_version(operation: str, version: str):
     """
     Compares the current Accelerate version to a given reference with an operation.
@@ -741,6 +762,7 @@ def is_accelerate_version(operation: str, version: str):
     return compare_versions(parse(_accelerate_version), operation, version)
 
 
+@cache
 def is_peft_version(operation: str, version: str):
     """
     Compares the current PEFT version to a given reference with an operation.
@@ -756,6 +778,7 @@ def is_peft_version(operation: str, version: str):
     return compare_versions(parse(_peft_version), operation, version)
 
 
+@cache
 def is_bitsandbytes_version(operation: str, version: str):
     """
     Args:
@@ -770,6 +793,7 @@ def is_bitsandbytes_version(operation: str, version: str):
     return compare_versions(parse(_bitsandbytes_version), operation, version)
 
 
+@cache
 def is_gguf_version(operation: str, version: str):
     """
     Compares the current Accelerate version to a given reference with an operation.
@@ -785,6 +809,7 @@ def is_gguf_version(operation: str, version: str):
     return compare_versions(parse(_gguf_version), operation, version)
 
 
+@cache
 def is_torchao_version(operation: str, version: str):
     """
     Compares the current torchao version to a given reference with an operation.
@@ -800,6 +825,7 @@ def is_torchao_version(operation: str, version: str):
     return compare_versions(parse(_torchao_version), operation, version)
 
 
+@cache
 def is_k_diffusion_version(operation: str, version: str):
     """
     Compares the current k-diffusion version to a given reference with an operation.
@@ -815,6 +841,7 @@ def is_k_diffusion_version(operation: str, version: str):
     return compare_versions(parse(_k_diffusion_version), operation, version)
 
 
+@cache
 def is_optimum_quanto_version(operation: str, version: str):
     """
     Compares the current Accelerate version to a given reference with an operation.
@@ -830,6 +857,23 @@ def is_optimum_quanto_version(operation: str, version: str):
     return compare_versions(parse(_optimum_quanto_version), operation, version)
 
 
+@cache
+def is_nvidia_modelopt_version(operation: str, version: str):
+    """
+    Compares the current Nvidia ModelOpt version to a given reference with an operation.
+
+    Args:
+        operation (`str`):
+            A string representation of an operator, such as `">"` or `"<="`
+        version (`str`):
+            A version string
+    """
+    if not _nvidia_modelopt_available:
+        return False
+    return compare_versions(parse(_nvidia_modelopt_version), operation, version)
+
+
+@cache
 def is_xformers_version(operation: str, version: str):
     """
     Compares the current xformers version to a given reference with an operation.
@@ -845,6 +889,7 @@ def is_xformers_version(operation: str, version: str):
     return compare_versions(parse(_xformers_version), operation, version)
 
 
+@cache
 def is_sageattention_version(operation: str, version: str):
     """
     Compares the current sageattention version to a given reference with an operation.
@@ -860,6 +905,7 @@ def is_sageattention_version(operation: str, version: str):
     return compare_versions(parse(_sageattention_version), operation, version)
 
 
+@cache
 def is_flash_attn_version(operation: str, version: str):
     """
     Compares the current flash-attention version to a given reference with an operation.
@@ -873,6 +919,22 @@ def is_flash_attn_version(operation: str, version: str):
     if not _flash_attn_available:
         return False
     return compare_versions(parse(_flash_attn_version), operation, version)
+
+
+@cache
+def is_aiter_version(operation: str, version: str):
+    """
+    Compares the current aiter version to a given reference with an operation.
+
+    Args:
+        operation (`str`):
+            A string representation of an operator, such as `">"` or `"<="`
+        version (`str`):
+            A version string
+    """
+    if not _aiter_available:
+        return False
+    return compare_versions(parse(_aiter_version), operation, version)
 
 
 def get_objects_from_module(module):

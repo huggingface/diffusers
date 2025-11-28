@@ -51,19 +51,16 @@ if is_accelerate_available():
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
+# map regular pipeline to modular pipeline class name
 MODULAR_PIPELINE_MAPPING = OrderedDict(
     [
         ("stable-diffusion-xl", "StableDiffusionXLModularPipeline"),
         ("wan", "WanModularPipeline"),
         ("flux", "FluxModularPipeline"),
-    ]
-)
-
-MODULAR_PIPELINE_BLOCKS_MAPPING = OrderedDict(
-    [
-        ("StableDiffusionXLModularPipeline", "StableDiffusionXLAutoBlocks"),
-        ("WanModularPipeline", "WanAutoBlocks"),
-        ("FluxModularPipeline", "FluxAutoBlocks"),
+        ("flux-kontext", "FluxKontextModularPipeline"),
+        ("qwenimage", "QwenImageModularPipeline"),
+        ("qwenimage-edit", "QwenImageEditModularPipeline"),
+        ("qwenimage-edit-plus", "QwenImageEditPlusModularPipeline"),
     ]
 )
 
@@ -133,8 +130,14 @@ class PipelineState:
         Allow attribute access to intermediate values. If an attribute is not found in the object, look for it in the
         intermediates dict.
         """
-        if name in self.intermediates:
-            return self.intermediates[name]
+        # Use object.__getattribute__ to avoid infinite recursion during deepcopy
+        try:
+            values = object.__getattribute__(self, "values")
+        except AttributeError:
+            raise AttributeError(f"'{self.__class__.__name__}' object has no attribute '{name}'")
+
+        if name in values:
+            return values[name]
         raise AttributeError(f"'{self.__class__.__name__}' object has no attribute '{name}'")
 
     def __repr__(self):
@@ -229,13 +232,9 @@ class ModularPipelineBlocks(ConfigMixin, PushToHubMixin):
     Base class for all Pipeline Blocks: PipelineBlock, AutoPipelineBlocks, SequentialPipelineBlocks,
     LoopSequentialPipelineBlocks
 
-    [`ModularPipelineBlocks`] provides method to load and save the defination of pipeline blocks.
+    [`ModularPipelineBlocks`] provides method to load and save the definition of pipeline blocks.
 
-    <Tip warning={true}>
-
-        This is an experimental feature and is likely to change in the future.
-
-    </Tip>
+    > [!WARNING] > This is an experimental feature and is likely to change in the future.
     """
 
     config_name = "modular_config.json"
@@ -306,20 +305,20 @@ class ModularPipelineBlocks(ConfigMixin, PushToHubMixin):
             "cache_dir",
             "force_download",
             "local_files_only",
+            "local_dir",
             "proxies",
-            "resume_download",
             "revision",
             "subfolder",
             "token",
         ]
         hub_kwargs = {name: kwargs.pop(name) for name in hub_kwargs_names if name in kwargs}
 
-        config = cls.load_config(pretrained_model_name_or_path)
+        config = cls.load_config(pretrained_model_name_or_path, **hub_kwargs)
         has_remote_code = "auto_map" in config and cls.__name__ in config["auto_map"]
         trust_remote_code = resolve_trust_remote_code(
             trust_remote_code, pretrained_model_name_or_path, has_remote_code
         )
-        if not (has_remote_code and trust_remote_code):
+        if not has_remote_code and trust_remote_code:
             raise ValueError(
                 "Selected model repository does not happear to have any custom code or does not have a valid `config.json` file."
             )
@@ -332,11 +331,10 @@ class ModularPipelineBlocks(ConfigMixin, PushToHubMixin):
             module_file=module_file,
             class_name=class_name,
             **hub_kwargs,
-            **kwargs,
         )
         expected_kwargs, optional_kwargs = block_cls._get_signature_keys(block_cls)
         block_kwargs = {
-            name: kwargs.pop(name) for name in kwargs if name in expected_kwargs or name in optional_kwargs
+            name: kwargs.get(name) for name in kwargs if name in expected_kwargs or name in optional_kwargs
         }
 
         return block_cls(**block_kwargs)
@@ -419,7 +417,7 @@ class ModularPipelineBlocks(ConfigMixin, PushToHubMixin):
                     state.set(input_param.name, param, input_param.kwargs_type)
 
             elif input_param.kwargs_type:
-                # if it is a kwargs type, e.g. "guider_input_fields", it is likely to be a list of parameters
+                # if it is a kwargs type, e.g. "denoiser_input_fields", it is likely to be a list of parameters
                 # we need to first find out which inputs are and loop through them.
                 intermediate_kwargs = state.get_by_kwargs(input_param.kwargs_type)
                 for param_name, current_value in intermediate_kwargs.items():
@@ -530,11 +528,7 @@ class AutoPipelineBlocks(ModularPipelineBlocks):
     This class inherits from [`ModularPipelineBlocks`]. Check the superclass documentation for the generic methods the
     library implements for all the pipeline blocks (such as loading or saving etc.)
 
-    <Tip warning={true}>
-
-        This is an experimental feature and is likely to change in the future.
-
-    </Tip>
+    > [!WARNING] > This is an experimental feature and is likely to change in the future.
 
     Attributes:
         block_classes: List of block classes to be used
@@ -548,8 +542,11 @@ class AutoPipelineBlocks(ModularPipelineBlocks):
 
     def __init__(self):
         sub_blocks = InsertableDict()
-        for block_name, block_cls in zip(self.block_names, self.block_classes):
-            sub_blocks[block_name] = block_cls()
+        for block_name, block in zip(self.block_names, self.block_classes):
+            if inspect.isclass(block):
+                sub_blocks[block_name] = block()
+            else:
+                sub_blocks[block_name] = block
         self.sub_blocks = sub_blocks
         if not (len(self.block_classes) == len(self.block_names) == len(self.block_trigger_inputs)):
             raise ValueError(
@@ -789,11 +786,7 @@ class SequentialPipelineBlocks(ModularPipelineBlocks):
     This class inherits from [`ModularPipelineBlocks`]. Check the superclass documentation for the generic methods the
     library implements for all the pipeline blocks (such as loading or saving etc.)
 
-    <Tip warning={true}>
-
-        This is an experimental feature and is likely to change in the future.
-
-    </Tip>
+    > [!WARNING] > This is an experimental feature and is likely to change in the future.
 
     Attributes:
         block_classes: List of block classes to be used
@@ -830,7 +823,9 @@ class SequentialPipelineBlocks(ModularPipelineBlocks):
         return expected_configs
 
     @classmethod
-    def from_blocks_dict(cls, blocks_dict: Dict[str, Any]) -> "SequentialPipelineBlocks":
+    def from_blocks_dict(
+        cls, blocks_dict: Dict[str, Any], description: Optional[str] = None
+    ) -> "SequentialPipelineBlocks":
         """Creates a SequentialPipelineBlocks instance from a dictionary of blocks.
 
         Args:
@@ -852,13 +847,24 @@ class SequentialPipelineBlocks(ModularPipelineBlocks):
         instance.block_classes = [block.__class__ for block in sub_blocks.values()]
         instance.block_names = list(sub_blocks.keys())
         instance.sub_blocks = sub_blocks
+
+        if description is not None:
+            instance.description = description
+
         return instance
 
     def __init__(self):
         sub_blocks = InsertableDict()
-        for block_name, block_cls in zip(self.block_names, self.block_classes):
-            sub_blocks[block_name] = block_cls()
+        for block_name, block in zip(self.block_names, self.block_classes):
+            if inspect.isclass(block):
+                sub_blocks[block_name] = block()
+            else:
+                sub_blocks[block_name] = block
         self.sub_blocks = sub_blocks
+        if not len(self.block_names) == len(self.block_classes):
+            raise ValueError(
+                f"In {self.__class__.__name__}, the number of block_names and block_classes must be the same."
+            )
 
     def _get_inputs(self):
         inputs = []
@@ -1139,11 +1145,7 @@ class LoopSequentialPipelineBlocks(ModularPipelineBlocks):
     This class inherits from [`ModularPipelineBlocks`]. Check the superclass documentation for the generic methods the
     library implements for all the pipeline blocks (such as loading or saving etc.)
 
-    <Tip warning={true}>
-
-        This is an experimental feature and is likely to change in the future.
-
-    </Tip>
+    > [!WARNING] > This is an experimental feature and is likely to change in the future.
 
     Attributes:
         block_classes: List of block classes to be used
@@ -1280,8 +1282,11 @@ class LoopSequentialPipelineBlocks(ModularPipelineBlocks):
 
     def __init__(self):
         sub_blocks = InsertableDict()
-        for block_name, block_cls in zip(self.block_names, self.block_classes):
-            sub_blocks[block_name] = block_cls()
+        for block_name, block in zip(self.block_names, self.block_classes):
+            if inspect.isclass(block):
+                sub_blocks[block_name] = block()
+            else:
+                sub_blocks[block_name] = block
         self.sub_blocks = sub_blocks
 
     @classmethod
@@ -1418,16 +1423,12 @@ class LoopSequentialPipelineBlocks(ModularPipelineBlocks):
 # YiYi TODO:
 # 1. look into the serialization of modular_model_index.json, make sure the items are properly ordered like model_index.json (currently a mess)
 # 2. do we need ConfigSpec? the are basically just key/val kwargs
-# 3. imnprove docstring and potentially add validator for methods where we accpet kwargs to be passed to from_pretrained/save_pretrained/load_components()
+# 3. imnprove docstring and potentially add validator for methods where we accept kwargs to be passed to from_pretrained/save_pretrained/load_components()
 class ModularPipeline(ConfigMixin, PushToHubMixin):
     """
     Base class for all Modular pipelines.
 
-    <Tip warning={true}>
-
-        This is an experimental feature and is likely to change in the future.
-
-    </Tip>
+    > [!WARNING] > This is an experimental feature and is likely to change in the future.
 
     Args:
         blocks: ModularPipelineBlocks, the blocks to be used in the pipeline
@@ -1435,6 +1436,7 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
 
     config_name = "modular_model_index.json"
     hf_device_map = None
+    default_blocks_name = None
 
     # YiYi TODO: add warning for passing multiple ComponentSpec/ConfigSpec with the same name
     def __init__(
@@ -1443,6 +1445,8 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
         pretrained_model_name_or_path: Optional[Union[str, os.PathLike]] = None,
         components_manager: Optional[ComponentsManager] = None,
         collection: Optional[str] = None,
+        modular_config_dict: Optional[Dict[str, Any]] = None,
+        config_dict: Optional[Dict[str, Any]] = None,
         **kwargs,
     ):
         """
@@ -1494,23 +1498,8 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
             - The pipeline's config dict is also used to store the pipeline blocks's class name, which will be saved as
               `_blocks_class_name` in the config dict
         """
-        if blocks is None:
-            blocks_class_name = MODULAR_PIPELINE_BLOCKS_MAPPING.get(self.__class__.__name__)
-            if blocks_class_name is not None:
-                diffusers_module = importlib.import_module("diffusers")
-                blocks_class = getattr(diffusers_module, blocks_class_name)
-                blocks = blocks_class()
-            else:
-                logger.warning(f"`blocks` is `None`, no default blocks class found for {self.__class__.__name__}")
 
-        self.blocks = blocks
-        self._components_manager = components_manager
-        self._collection = collection
-        self._component_specs = {spec.name: deepcopy(spec) for spec in self.blocks.expected_components}
-        self._config_specs = {spec.name: deepcopy(spec) for spec in self.blocks.expected_configs}
-
-        # update component_specs and config_specs from modular_repo
-        if pretrained_model_name_or_path is not None:
+        if modular_config_dict is None and config_dict is None and pretrained_model_name_or_path is not None:
             cache_dir = kwargs.pop("cache_dir", None)
             force_download = kwargs.pop("force_download", False)
             proxies = kwargs.pop("proxies", None)
@@ -1526,52 +1515,59 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
                 "local_files_only": local_files_only,
                 "revision": revision,
             }
-            # try to load modular_model_index.json
-            try:
-                config_dict = self.load_config(pretrained_model_name_or_path, **load_config_kwargs)
-            except EnvironmentError as e:
-                logger.debug(f"modular_model_index.json not found: {e}")
-                config_dict = None
 
-            # update component_specs and config_specs based on modular_model_index.json
-            if config_dict is not None:
-                for name, value in config_dict.items():
-                    # all the components in modular_model_index.json are from_pretrained components
-                    if name in self._component_specs and isinstance(value, (tuple, list)) and len(value) == 3:
-                        library, class_name, component_spec_dict = value
-                        component_spec = self._dict_to_component_spec(name, component_spec_dict)
-                        component_spec.default_creation_method = "from_pretrained"
-                        self._component_specs[name] = component_spec
+            modular_config_dict, config_dict = self._load_pipeline_config(
+                pretrained_model_name_or_path, **load_config_kwargs
+            )
 
-                    elif name in self._config_specs:
-                        self._config_specs[name].default = value
-
-            # if modular_model_index.json is not found, try to load model_index.json
+        if blocks is None:
+            if modular_config_dict is not None:
+                blocks_class_name = modular_config_dict.get("_blocks_class_name")
+            elif config_dict is not None:
+                blocks_class_name = self.get_default_blocks_name(config_dict)
             else:
-                logger.debug(" loading config from model_index.json")
-                try:
-                    from diffusers import DiffusionPipeline
+                blocks_class_name = None
+            if blocks_class_name is not None:
+                diffusers_module = importlib.import_module("diffusers")
+                blocks_class = getattr(diffusers_module, blocks_class_name)
+                blocks = blocks_class()
+            else:
+                logger.warning(f"`blocks` is `None`, no default blocks class found for {self.__class__.__name__}")
 
-                    config_dict = DiffusionPipeline.load_config(pretrained_model_name_or_path, **load_config_kwargs)
-                except EnvironmentError as e:
-                    logger.debug(f" model_index.json not found in the repo: {e}")
-                    config_dict = None
+        self.blocks = blocks
+        self._components_manager = components_manager
+        self._collection = collection
+        self._component_specs = {spec.name: deepcopy(spec) for spec in self.blocks.expected_components}
+        self._config_specs = {spec.name: deepcopy(spec) for spec in self.blocks.expected_configs}
 
-                # update component_specs and config_specs based on model_index.json
-                if config_dict is not None:
-                    for name, value in config_dict.items():
-                        if name in self._component_specs and isinstance(value, (tuple, list)) and len(value) == 2:
-                            library, class_name = value
-                            component_spec_dict = {
-                                "repo": pretrained_model_name_or_path,
-                                "subfolder": name,
-                                "type_hint": (library, class_name),
-                            }
-                            component_spec = self._dict_to_component_spec(name, component_spec_dict)
-                            component_spec.default_creation_method = "from_pretrained"
-                            self._component_specs[name] = component_spec
-                        elif name in self._config_specs:
-                            self._config_specs[name].default = value
+        # update component_specs and config_specs based on modular_model_index.json
+        if modular_config_dict is not None:
+            for name, value in modular_config_dict.items():
+                # all the components in modular_model_index.json are from_pretrained components
+                if name in self._component_specs and isinstance(value, (tuple, list)) and len(value) == 3:
+                    library, class_name, component_spec_dict = value
+                    component_spec = self._dict_to_component_spec(name, component_spec_dict)
+                    component_spec.default_creation_method = "from_pretrained"
+                    self._component_specs[name] = component_spec
+
+                elif name in self._config_specs:
+                    self._config_specs[name].default = value
+
+        # if `modular_config_dict` is None (i.e. `modular_model_index.json` is not found), update based on `config_dict` (i.e. `model_index.json`)
+        elif config_dict is not None:
+            for name, value in config_dict.items():
+                if name in self._component_specs and isinstance(value, (tuple, list)) and len(value) == 2:
+                    library, class_name = value
+                    component_spec_dict = {
+                        "repo": pretrained_model_name_or_path,
+                        "subfolder": name,
+                        "type_hint": (library, class_name),
+                    }
+                    component_spec = self._dict_to_component_spec(name, component_spec_dict)
+                    component_spec.default_creation_method = "from_pretrained"
+                    self._component_specs[name] = component_spec
+                elif name in self._config_specs:
+                    self._config_specs[name].default = value
 
         if len(kwargs) > 0:
             logger.warning(f"Unexpected input '{kwargs.keys()}' provided. This input will be ignored.")
@@ -1602,6 +1598,35 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
         for input_param in self.blocks.inputs:
             params[input_param.name] = input_param.default
         return params
+
+    def get_default_blocks_name(self, config_dict: Optional[Dict[str, Any]]) -> Optional[str]:
+        return self.default_blocks_name
+
+    @classmethod
+    def _load_pipeline_config(
+        cls,
+        pretrained_model_name_or_path: Optional[Union[str, os.PathLike]],
+        **load_config_kwargs,
+    ):
+        try:
+            # try to load modular_model_index.json
+            modular_config_dict = cls.load_config(pretrained_model_name_or_path, **load_config_kwargs)
+            return modular_config_dict, None
+
+        except EnvironmentError as e:
+            logger.debug(f" modular_model_index.json not found in the repo: {e}")
+
+        try:
+            logger.debug(" try to load model_index.json")
+            from diffusers import DiffusionPipeline
+
+            config_dict = DiffusionPipeline.load_config(pretrained_model_name_or_path, **load_config_kwargs)
+            return None, config_dict
+
+        except EnvironmentError as e:
+            logger.debug(f" model_index.json not found in the repo: {e}")
+
+        return None, None
 
     @classmethod
     @validate_hf_hub_args
@@ -1637,7 +1662,8 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
             blocks = ModularPipelineBlocks.from_pretrained(
                 pretrained_model_name_or_path, trust_remote_code=trust_remote_code, **kwargs
             )
-        except EnvironmentError:
+        except EnvironmentError as e:
+            logger.debug(f"EnvironmentError: {e}")
             blocks = None
 
         cache_dir = kwargs.pop("cache_dir", None)
@@ -1656,42 +1682,33 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
             "revision": revision,
         }
 
-        try:
-            # try to load modular_model_index.json
-            config_dict = cls.load_config(pretrained_model_name_or_path, **load_config_kwargs)
-        except EnvironmentError as e:
-            logger.debug(f" modular_model_index.json not found in the repo: {e}")
-            config_dict = None
+        modular_config_dict, config_dict = cls._load_pipeline_config(
+            pretrained_model_name_or_path, **load_config_kwargs
+        )
 
-        if config_dict is not None:
-            pipeline_class = _get_pipeline_class(cls, config=config_dict)
+        if modular_config_dict is not None:
+            pipeline_class = _get_pipeline_class(cls, config=modular_config_dict)
+        elif config_dict is not None:
+            from diffusers.pipelines.auto_pipeline import _get_model
+
+            logger.debug(" try to determine the modular pipeline class from model_index.json")
+            standard_pipeline_class = _get_pipeline_class(cls, config=config_dict)
+            model_name = _get_model(standard_pipeline_class.__name__)
+            pipeline_class_name = MODULAR_PIPELINE_MAPPING.get(model_name, ModularPipeline.__name__)
+            diffusers_module = importlib.import_module("diffusers")
+            pipeline_class = getattr(diffusers_module, pipeline_class_name)
         else:
-            try:
-                logger.debug(" try to load model_index.json")
-                from diffusers import DiffusionPipeline
-                from diffusers.pipelines.auto_pipeline import _get_model
-
-                config_dict = DiffusionPipeline.load_config(pretrained_model_name_or_path, **load_config_kwargs)
-            except EnvironmentError as e:
-                logger.debug(f" model_index.json not found in the repo: {e}")
-
-            if config_dict is not None:
-                logger.debug(" try to determine the modular pipeline class from model_index.json")
-                standard_pipeline_class = _get_pipeline_class(cls, config=config_dict)
-                model_name = _get_model(standard_pipeline_class.__name__)
-                pipeline_class_name = MODULAR_PIPELINE_MAPPING.get(model_name, ModularPipeline.__name__)
-                diffusers_module = importlib.import_module("diffusers")
-                pipeline_class = getattr(diffusers_module, pipeline_class_name)
-            else:
-                # there is no config for modular pipeline, assuming that the pipeline block does not need any from_pretrained components
-                pipeline_class = cls
-                pretrained_model_name_or_path = None
+            # there is no config for modular pipeline, assuming that the pipeline block does not need any from_pretrained components
+            pipeline_class = cls
+            pretrained_model_name_or_path = None
 
         pipeline = pipeline_class(
             blocks=blocks,
             pretrained_model_name_or_path=pretrained_model_name_or_path,
             components_manager=components_manager,
             collection=collection,
+            modular_config_dict=modular_config_dict,
+            config_dict=config_dict,
             **kwargs,
         )
         return pipeline
@@ -2131,8 +2148,15 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
                         component_load_kwargs[key] = value["default"]
             try:
                 components_to_register[name] = spec.load(**component_load_kwargs)
-            except Exception as e:
-                logger.warning(f"Failed to create component '{name}': {e}")
+            except Exception:
+                logger.warning(
+                    f"\nFailed to create component {name}:\n"
+                    f"- Component spec: {spec}\n"
+                    f"- load() called with kwargs: {component_load_kwargs}\n"
+                    "If this component is not required for your workflow you can safely ignore this message.\n\n"
+                    "Traceback:\n"
+                    f"{traceback.format_exc()}"
+                )
 
         # Register all components at once
         self.register_components(**components_to_register)
@@ -2162,12 +2186,8 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
         Performs Pipeline dtype and/or device conversion. A torch.dtype and torch.device are inferred from the
         arguments of `self.to(*args, **kwargs).`
 
-        <Tip>
-
-            If the pipeline already has the correct torch.dtype and torch.device, then it is returned as is. Otherwise,
-            the returned pipeline is a copy of self with the desired torch.dtype and torch.device.
-
-        </Tip>
+        > [!TIP] > If the pipeline already has the correct torch.dtype and torch.device, then it is returned as is.
+        Otherwise, > the returned pipeline is a copy of self with the desired torch.dtype and torch.device.
 
 
         Here are the ways to call `to`:
@@ -2502,6 +2522,8 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
         """
         if state is None:
             state = PipelineState()
+        else:
+            state = deepcopy(state)
 
         # Make a copy of the input kwargs
         passed_kwargs = kwargs.copy()

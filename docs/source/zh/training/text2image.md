@@ -12,11 +12,8 @@ specific language governing permissions and limitations under the License.
 
 # 文生图
 
-<Tip warning={true}>
-
-文生图训练脚本目前处于实验阶段，容易出现过拟合和灾难性遗忘等问题。建议尝试不同超参数以获得最佳数据集适配效果。
-
-</Tip>
+> [!WARNING]
+> 文生图训练脚本目前处于实验阶段，容易出现过拟合和灾难性遗忘等问题。建议尝试不同超参数以获得最佳数据集适配效果。
 
 Stable Diffusion 等文生图模型能够根据文本提示生成对应图像。
 
@@ -49,11 +46,8 @@ pip install -r requirements_flax.txt
 </hfoption>
 </hfoptions>
 
-<Tip>
-
-🤗 Accelerate 是支持多GPU/TPU训练和混合精度的工具库，能根据硬件环境自动配置训练参数。参阅 🤗 Accelerate [快速入门](https://huggingface.co/docs/accelerate/quicktour) 了解更多。
-
-</Tip>
+> [!TIP]
+> 🤗 Accelerate 是支持多GPU/TPU训练和混合精度的工具库，能根据硬件环境自动配置训练参数。参阅 🤗 Accelerate [快速入门](https://huggingface.co/docs/accelerate/quicktour) 了解更多。
 
 初始化 🤗 Accelerate 环境：
 
@@ -79,11 +73,8 @@ write_basic_config()
 
 ## 脚本参数
 
-<Tip>
-
-以下重点介绍脚本中影响训练效果的关键参数，如需完整参数说明可查阅 [脚本源码](https://github.com/huggingface/diffusers/blob/main/examples/text_to_image/train_text_to_image.py)。如有疑问欢迎反馈。
-
-</Tip>
+> [!TIP]
+> 以下重点介绍脚本中影响训练效果的关键参数，如需完整参数说明可查阅 [脚本源码](https://github.com/huggingface/diffusers/blob/main/examples/text_to_image/train_text_to_image.py)。如有疑问欢迎反馈。
 
 训练脚本提供丰富参数供自定义训练流程，所有参数及说明详见 [`parse_args()`](https://github.com/huggingface/diffusers/blob/8959c5b9dec1c94d6ba482c94a58d2215c5fd026/examples/text_to_image/train_text_to_image.py#L193) 函数。该函数为每个参数提供默认值（如批次大小、学习率等），也可通过命令行参数覆盖。
 
@@ -160,11 +151,8 @@ def preprocess_train(examples):
 
 以 [火影忍者BLIP标注数据集](https://huggingface.co/datasets/lambdalabs/naruto-blip-captions) 为例训练生成火影角色。设置环境变量 `MODEL_NAME` 和 `dataset_name` 指定模型和数据集（Hub或本地路径）。多GPU训练需在 `accelerate launch` 命令中添加 `--multi_gpu` 参数。
 
-<Tip>
-
-使用本地数据集时，设置 `TRAIN_DIR` 和 `OUTPUT_DIR` 环境变量为数据集路径和模型保存路径。
-
-</Tip>
+> [!TIP]
+> 使用本地数据集时，设置 `TRAIN_DIR` 和 `OUTPUT_DIR` 环境变量为数据集路径和模型保存路径。
 
 ```bash
 export MODEL_NAME="stable-diffusion-v1-5/stable-diffusion-v1-5"
@@ -194,11 +182,8 @@ Flax训练方案在TPU/GPU上效率更高（由 [@duongna211](https://github.com
 
 设置环境变量 `MODEL_NAME` 和 `dataset_name` 指定模型和数据集（Hub或本地路径）。
 
-<Tip>
-
-使用本地数据集时，设置 `TRAIN_DIR` 和 `OUTPUT_DIR` 环境变量为数据集路径和模型保存路径。
-
-</Tip>
+> [!TIP]
+> 使用本地数据集时，设置 `TRAIN_DIR` 和 `OUTPUT_DIR` 环境变量为数据集路径和模型保存路径。
 
 ```bash
 export MODEL_NAME="stable-diffusion-v1-5/stable-diffusion-v1-5"

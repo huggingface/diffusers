@@ -9,6 +9,7 @@ from typing import Any, Callable, Dict, Union
 
 import numpy as np
 import PIL.Image
+import pytest
 import torch
 import torch.nn as nn
 from huggingface_hub import ModelCard, delete_repo
@@ -102,7 +103,7 @@ def check_qkv_fusion_processors_exist(model):
 def check_qkv_fused_layers_exist(model, layer_names):
     is_fused_submodules = []
     for submodule in model.modules():
-        if not isinstance(submodule, AttentionModuleMixin):
+        if not isinstance(submodule, AttentionModuleMixin) or not submodule._supports_qkv_fusion:
             continue
         is_fused_attribute_set = submodule.fused_projections
         is_fused_layer = True
@@ -1421,7 +1422,18 @@ class PipelineTesterMixin:
     def test_save_load_float16(self, expected_max_diff=1e-2):
         components = self.get_dummy_components()
         for name, module in components.items():
-            if hasattr(module, "half"):
+            # Account for components with _keep_in_fp32_modules
+            if hasattr(module, "_keep_in_fp32_modules") and module._keep_in_fp32_modules is not None:
+                for name, param in module.named_parameters():
+                    if any(
+                        module_to_keep_in_fp32 in name.split(".")
+                        for module_to_keep_in_fp32 in module._keep_in_fp32_modules
+                    ):
+                        param.data = param.data.to(torch_device).to(torch.float32)
+                    else:
+                        param.data = param.data.to(torch_device).to(torch.float16)
+
+            elif hasattr(module, "half"):
                 components[name] = module.to(torch_device).half()
 
         pipe = self.pipeline_class(**components)
@@ -1459,6 +1471,8 @@ class PipelineTesterMixin:
 
     def test_save_load_optional_components(self, expected_max_difference=1e-4):
         if not hasattr(self.pipeline_class, "_optional_components"):
+            return
+        if not self.pipeline_class._optional_components:
             return
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
@@ -2360,6 +2374,73 @@ class PipelineTesterMixin:
         inputs["generator"] = torch.manual_seed(0)
         loaded_out = loaded_pipe(**inputs)[0]
         max_diff = np.abs(to_np(out) - to_np(loaded_out)).max()
+        self.assertLess(max_diff, expected_max_difference)
+
+    @require_torch_accelerator
+    def test_pipeline_level_group_offloading_sanity_checks(self):
+        components = self.get_dummy_components()
+        pipe: DiffusionPipeline = self.pipeline_class(**components)
+
+        for name, component in pipe.components.items():
+            if hasattr(component, "_supports_group_offloading"):
+                if not component._supports_group_offloading:
+                    pytest.skip(f"{self.pipeline_class.__name__} is not suitable for this test.")
+
+        module_names = sorted(
+            [name for name, component in pipe.components.items() if isinstance(component, torch.nn.Module)]
+        )
+        exclude_module_name = module_names[0]
+        offload_device = "cpu"
+        pipe.enable_group_offload(
+            onload_device=torch_device,
+            offload_device=offload_device,
+            offload_type="leaf_level",
+            exclude_modules=exclude_module_name,
+        )
+        excluded_module = getattr(pipe, exclude_module_name)
+        self.assertTrue(torch.device(excluded_module.device).type == torch.device(torch_device).type)
+
+        for name, component in pipe.components.items():
+            if name not in [exclude_module_name] and isinstance(component, torch.nn.Module):
+                # `component.device` prints the `onload_device` type. We should probably override the
+                # `device` property in `ModelMixin`.
+                component_device = next(component.parameters())[0].device
+                self.assertTrue(torch.device(component_device).type == torch.device(offload_device).type)
+
+    @require_torch_accelerator
+    def test_pipeline_level_group_offloading_inference(self, expected_max_difference=1e-4):
+        components = self.get_dummy_components()
+        pipe: DiffusionPipeline = self.pipeline_class(**components)
+
+        for name, component in pipe.components.items():
+            if hasattr(component, "_supports_group_offloading"):
+                if not component._supports_group_offloading:
+                    pytest.skip(f"{self.pipeline_class.__name__} is not suitable for this test.")
+
+        # Regular inference.
+        pipe = pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+        torch.manual_seed(0)
+        inputs = self.get_dummy_inputs(torch_device)
+        inputs["generator"] = torch.manual_seed(0)
+        out = pipe(**inputs)[0]
+
+        pipe.to("cpu")
+        del pipe
+
+        # Inference with offloading
+        pipe: DiffusionPipeline = self.pipeline_class(**components)
+        offload_device = "cpu"
+        pipe.enable_group_offload(
+            onload_device=torch_device,
+            offload_device=offload_device,
+            offload_type="leaf_level",
+        )
+        pipe.set_progress_bar_config(disable=None)
+        inputs["generator"] = torch.manual_seed(0)
+        out_offload = pipe(**inputs)[0]
+
+        max_diff = np.abs(to_np(out) - to_np(out_offload)).max()
         self.assertLess(max_diff, expected_max_difference)
 
 

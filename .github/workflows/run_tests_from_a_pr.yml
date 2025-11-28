@@ -63,9 +63,8 @@ jobs:
 
       - name: Install pytest
         run: |
-          python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
-          python -m uv pip install -e [quality,test]
-          python -m uv pip install peft
+          uv pip install -e ".[quality]"
+          uv pip install peft
 
       - name: Run tests
         env:
