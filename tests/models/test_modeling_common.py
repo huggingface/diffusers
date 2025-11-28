@@ -1344,7 +1344,6 @@ class ModelTesterMixin:
                 max_memory = {0: max_size, "cpu": model_size * 2}
                 new_model = self.model_class.from_pretrained(tmp_dir, device_map="auto", max_memory=max_memory)
                 # Making sure part of the model will actually end up offloaded
-                print(f"{max_size=} {new_model.hf_device_map.values()=}")
                 self.assertSetEqual(set(new_model.hf_device_map.values()), {0, "cpu"})
 
                 self.check_device_map_is_respected(new_model, new_model.hf_device_map)
@@ -1353,8 +1352,12 @@ class ModelTesterMixin:
 
                 if isinstance(base_output[0], list):
                     base_output = torch.stack(base_output[0])
+                else:
+                    base_output = base_output[0]
                 if isinstance(new_output[0], list):
                     new_output = torch.stack(new_output[0])
+                else:
+                    new_output = new_output[0]
 
                 self.assertTrue(torch.allclose(base_output, new_output, atol=1e-5))
 
@@ -1391,8 +1394,12 @@ class ModelTesterMixin:
 
             if isinstance(base_output[0], list):
                 base_output = torch.stack(base_output[0])
+            else:
+                base_output = base_output[0]
             if isinstance(new_output[0], list):
                 new_output = torch.stack(new_output[0])
+            else:
+                new_output = new_output[0]
 
             self.assertTrue(torch.allclose(base_output, new_output, atol=1e-5))
 
@@ -1424,8 +1431,12 @@ class ModelTesterMixin:
 
             if isinstance(base_output[0], list):
                 base_output = torch.stack(base_output[0])
+            else:
+                base_output = base_output[0]
             if isinstance(new_output[0], list):
                 new_output = torch.stack(new_output[0])
+            else:
+                new_output = new_output[0]
 
             self.assertTrue(torch.allclose(base_output, new_output, atol=1e-5))
 
@@ -1492,8 +1503,12 @@ class ModelTesterMixin:
 
             if isinstance(base_output[0], list):
                 base_output = torch.stack(base_output[0])
+            else:
+                base_output = base_output[0]
             if isinstance(new_output[0], list):
                 new_output = torch.stack(new_output[0])
+            else:
+                new_output = new_output[0]
 
             self.assertTrue(torch.allclose(base_output, new_output, atol=1e-5))
 
@@ -1535,8 +1550,12 @@ class ModelTesterMixin:
 
             if isinstance(base_output[0], list):
                 base_output = torch.stack(base_output[0])
+            else:
+                base_output = base_output[0]
             if isinstance(new_output[0], list):
                 new_output = torch.stack(new_output[0])
+            else:
+                new_output = new_output[0]
 
             self.assertTrue(torch.allclose(base_output, new_output, atol=1e-5))
 
@@ -1574,8 +1593,12 @@ class ModelTesterMixin:
 
             if isinstance(base_output[0], list):
                 base_output = torch.stack(base_output[0])
+            else:
+                base_output = base_output[0]
             if isinstance(new_output[0], list):
                 new_output = torch.stack(new_output[0])
+            else:
+                new_output = new_output[0]
 
             self.assertTrue(torch.allclose(base_output, new_output, atol=1e-5))
             # set to no.
@@ -1614,8 +1637,12 @@ class ModelTesterMixin:
 
             if isinstance(base_output[0], list):
                 base_output = torch.stack(base_output[0])
+            else:
+                base_output = base_output[0]
             if isinstance(new_output[0], list):
                 new_output = torch.stack(new_output[0])
+            else:
+                new_output = new_output[0]
 
             self.assertTrue(torch.allclose(base_output, new_output, atol=1e-5))
 
