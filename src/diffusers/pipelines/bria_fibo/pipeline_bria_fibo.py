@@ -73,7 +73,7 @@ EXAMPLE_DOC_STRING = """
 """
 
 
-class BriaFiboPipeline(DiffusionPipeline):
+class BriaFiboPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
     r"""
     Args:
         transformer (`BriaFiboTransformer2DModel`):
