@@ -141,7 +141,3 @@ class Flux2TransformerCompileTests(TorchCompileTesterMixin, unittest.TestCase):
     @unittest.skip("Fullgraph is broken")
     def test_compile_on_different_shapes(self):
         super().test_compile_on_different_shapes()
-
-    @unittest.skip("Broken because the block being repeated encounters shape changes.")
-    def test_torch_compile_repeated_blocks(self):
-        super().test_torch_compile_repeated_blocks()
