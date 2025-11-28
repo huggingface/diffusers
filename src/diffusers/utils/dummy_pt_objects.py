@@ -408,6 +408,21 @@ class AutoencoderKLCosmos(metaclass=DummyObject):
         requires_backends(cls, ["torch"])
 
 
+class AutoencoderKLFlux2(metaclass=DummyObject):
+    _backends = ["torch"]
+
+    def __init__(self, *args, **kwargs):
+        requires_backends(self, ["torch"])
+
+    @classmethod
+    def from_config(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+    @classmethod
+    def from_pretrained(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+
 class AutoencoderKLHunyuanImage(metaclass=DummyObject):
     _backends = ["torch"]
 
@@ -648,6 +663,21 @@ class ChromaTransformer2DModel(metaclass=DummyObject):
         requires_backends(cls, ["torch"])
 
 
+class ChronoEditTransformer3DModel(metaclass=DummyObject):
+    _backends = ["torch"]
+
+    def __init__(self, *args, **kwargs):
+        requires_backends(self, ["torch"])
+
+    @classmethod
+    def from_config(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+    @classmethod
+    def from_pretrained(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+
 class CogVideoXTransformer3DModel(metaclass=DummyObject):
     _backends = ["torch"]
 
@@ -814,6 +844,21 @@ class DiTTransformer2DModel(metaclass=DummyObject):
 
 
 class EasyAnimateTransformer3DModel(metaclass=DummyObject):
+    _backends = ["torch"]
+
+    def __init__(self, *args, **kwargs):
+        requires_backends(self, ["torch"])
+
+    @classmethod
+    def from_config(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+    @classmethod
+    def from_pretrained(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+
+class Flux2Transformer2DModel(metaclass=DummyObject):
     _backends = ["torch"]
 
     def __init__(self, *args, **kwargs):
@@ -1308,6 +1353,21 @@ class SanaTransformer2DModel(metaclass=DummyObject):
         requires_backends(cls, ["torch"])
 
 
+class SanaVideoTransformer3DModel(metaclass=DummyObject):
+    _backends = ["torch"]
+
+    def __init__(self, *args, **kwargs):
+        requires_backends(self, ["torch"])
+
+    @classmethod
+    def from_config(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+    @classmethod
+    def from_pretrained(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+
 class SD3ControlNetModel(metaclass=DummyObject):
     _backends = ["torch"]
 
@@ -1579,6 +1639,21 @@ class UVit2DModel(metaclass=DummyObject):
 
 
 class VQModel(metaclass=DummyObject):
+    _backends = ["torch"]
+
+    def __init__(self, *args, **kwargs):
+        requires_backends(self, ["torch"])
+
+    @classmethod
+    def from_config(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+    @classmethod
+    def from_pretrained(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+
+class WanAnimateTransformer3DModel(metaclass=DummyObject):
     _backends = ["torch"]
 
     def __init__(self, *args, **kwargs):

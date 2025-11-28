@@ -7,7 +7,7 @@ from accelerate import init_empty_weights
 
 from diffusers import AutoencoderKL, SD3Transformer2DModel
 from diffusers.loaders.single_file_utils import convert_ldm_vae_checkpoint
-from diffusers.models.modeling_utils import load_model_dict_into_meta
+from diffusers.models.model_loading_utils import load_model_dict_into_meta
 from diffusers.utils.import_utils import is_accelerate_available
 
 
