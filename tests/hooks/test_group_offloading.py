@@ -368,7 +368,7 @@ class GroupOffloadTests(unittest.TestCase):
             return
 
         def first_param_device(mod):
-            p = next(mod.parameters(), None)  # recurse=True by default
+            p = next(mod.parameters(), None)
             self.assertIsNotNone(p, f"No parameters found for module {mod}")
             return p.device
 
@@ -390,8 +390,8 @@ class GroupOffloadTests(unittest.TestCase):
             lazy_hook = root_registry.get_hook("lazy_prefetch_group_offloading")
             self.assertIsNotNone(lazy_hook, "lazy_prefetch_group_offloading hook was not registered")
 
+            #record execution order with first forward
             with torch.no_grad():
-                #record execution order with first forward
                 model(self.input)
 
             mods = [m for _, m in lazy_hook.execution_order]
@@ -402,14 +402,11 @@ class GroupOffloadTests(unittest.TestCase):
 
             first = param_mods[0]
             last = param_mods[-1]
-            middle = param_mods[1:-1]  # <- ALL middle layers
-            return first, middle, last
+            middle_layers = param_mods[1:-1]
+            return first, middle_layers, last
 
         accel_type = torch.device(torch_device).type
 
-        # -------------------------
-        # No pin: everything on CPU
-        # -------------------------
         model_no_pin = self.get_model()
         model_no_pin.enable_group_offload(
             torch_device,
