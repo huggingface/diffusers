@@ -58,6 +58,7 @@ MODULAR_PIPELINE_MAPPING = OrderedDict(
         ("wan", "WanModularPipeline"),
         ("flux", "FluxModularPipeline"),
         ("flux-kontext", "FluxKontextModularPipeline"),
+        ("flux2", "Flux2ModularPipeline"),
         ("qwenimage", "QwenImageModularPipeline"),
         ("qwenimage-edit", "QwenImageEditModularPipeline"),
         ("qwenimage-edit-plus", "QwenImageEditPlusModularPipeline"),

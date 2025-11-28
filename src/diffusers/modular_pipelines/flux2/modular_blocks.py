@@ -204,7 +204,7 @@ class Flux2CoreDenoiseStep(SequentialPipelineBlocks):
 
 AUTO_BLOCKS = InsertableDict(
     [
-        ("text_encoder", Flux2TextEncoderStep()),
+        ("text_encoder", Flux2AutoTextEncoderStep()),
         ("image_encoder", Flux2AutoVaeEncoderStep()),
         ("denoise", Flux2CoreDenoiseStep()),
         ("decode", Flux2DecodeStep()),
