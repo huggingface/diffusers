@@ -2405,9 +2405,9 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
                 variant=None, ... revision=None, ... default_creation_method="from_pretrained",
             ... ) >>> ModularPipeline._component_spec_to_dict(spec) {
                 "type_hint": ("diffusers", "UNet2DConditionModel"), "pretrained_model_name_or_path": "path/to/repo",
-                "subfolder": "subfolder", "variant": None, "revision": None,
-                "type_hint": ("diffusers", "UNet2DConditionModel"), "pretrained_model_name_or_path": "path/to/repo",
-                "subfolder": "subfolder", "variant": None, "revision": None,
+                "subfolder": "subfolder", "variant": None, "revision": None, "type_hint": ("diffusers",
+                "UNet2DConditionModel"), "pretrained_model_name_or_path": "path/to/repo", "subfolder": "subfolder",
+                "variant": None, "revision": None,
             }
         """
         if component_spec.default_creation_method != "from_pretrained":
