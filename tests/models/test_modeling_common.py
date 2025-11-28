@@ -108,6 +108,11 @@ def check_if_lora_correctly_set(model) -> bool:
     return False
 
 
+def normalize_output(out):
+    out0 = out[0]
+    return torch.stack(out0) if isinstance(out0, list) else out0
+
+
 # Will be run via run_test_in_subprocess
 def _test_from_save_pretrained_dynamo(in_queue, out_queue, timeout):
     error = None
@@ -1325,41 +1330,34 @@ class ModelTesterMixin:
     def test_cpu_offload(self):
         if self.model_class._no_split_modules is None:
             pytest.skip("Test not supported for this model as `_no_split_modules` is not set.")
+
         config, inputs_dict = self.prepare_init_args_and_inputs_for_common()
         model = self.model_class(**config).eval()
-
         model = model.to(torch_device)
 
         torch.manual_seed(0)
         base_output = model(**inputs_dict)
+        base_normalized_output = normalize_output(base_output)
 
         model_size = compute_module_sizes(model)[""]
-        # We test several splits of sizes to make sure it works.
         max_gpu_sizes = [int(p * model_size) for p in self.model_split_percents[1:]]
-        print(f"{max_gpu_sizes=}")
+
         with tempfile.TemporaryDirectory() as tmp_dir:
             model.cpu().save_pretrained(tmp_dir)
 
             for max_size in max_gpu_sizes:
                 max_memory = {0: max_size, "cpu": model_size * 2}
                 new_model = self.model_class.from_pretrained(tmp_dir, device_map="auto", max_memory=max_memory)
-                # Making sure part of the model will actually end up offloaded
-                self.assertSetEqual(set(new_model.hf_device_map.values()), {0, "cpu"})
 
+                # Offload check
+                self.assertSetEqual(set(new_model.hf_device_map.values()), {0, "cpu"})
                 self.check_device_map_is_respected(new_model, new_model.hf_device_map)
+
                 torch.manual_seed(0)
                 new_output = new_model(**inputs_dict)
+                new_normalized_out = normalize_output(new_output)
 
-                if isinstance(base_output[0], list):
-                    base_output = torch.stack(base_output[0])
-                else:
-                    base_output = base_output[0]
-                if isinstance(new_output[0], list):
-                    new_output = torch.stack(new_output[0])
-                else:
-                    new_output = new_output[0]
-
-                self.assertTrue(torch.allclose(base_output, new_output, atol=1e-5))
+                self.assertTrue(torch.allclose(base_normalized_output, new_normalized_out, atol=1e-5))
 
     @require_torch_accelerator
     def test_disk_offload_without_safetensors(self):
@@ -1372,6 +1370,7 @@ class ModelTesterMixin:
 
         torch.manual_seed(0)
         base_output = model(**inputs_dict)
+        base_normalized_output = normalize_output(base_output)
 
         model_size = compute_module_sizes(model)[""]
         max_size = int(self.model_split_percents[0] * model_size)
@@ -1391,17 +1390,8 @@ class ModelTesterMixin:
             self.check_device_map_is_respected(new_model, new_model.hf_device_map)
             torch.manual_seed(0)
             new_output = new_model(**inputs_dict)
-
-            if isinstance(base_output[0], list):
-                base_output = torch.stack(base_output[0])
-            else:
-                base_output = base_output[0]
-            if isinstance(new_output[0], list):
-                new_output = torch.stack(new_output[0])
-            else:
-                new_output = new_output[0]
-
-            self.assertTrue(torch.allclose(base_output, new_output, atol=1e-5))
+            new_normalized_output = normalize_output(new_output)
+            self.assertTrue(torch.allclose(base_normalized_output, new_normalized_output, atol=1e-5))
 
     @require_torch_accelerator
     def test_disk_offload_with_safetensors(self):
@@ -1414,6 +1404,7 @@ class ModelTesterMixin:
 
         torch.manual_seed(0)
         base_output = model(**inputs_dict)
+        base_normalized_output = normalize_output(base_output)
 
         model_size = compute_module_sizes(model)[""]
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -1428,17 +1419,9 @@ class ModelTesterMixin:
             self.check_device_map_is_respected(new_model, new_model.hf_device_map)
             torch.manual_seed(0)
             new_output = new_model(**inputs_dict)
+            new_normalized_output = normalize_output(new_output)
 
-            if isinstance(base_output[0], list):
-                base_output = torch.stack(base_output[0])
-            else:
-                base_output = base_output[0]
-            if isinstance(new_output[0], list):
-                new_output = torch.stack(new_output[0])
-            else:
-                new_output = new_output[0]
-
-            self.assertTrue(torch.allclose(base_output, new_output, atol=1e-5))
+            self.assertTrue(torch.allclose(base_normalized_output, new_normalized_output, atol=1e-5))
 
     @require_torch_multi_accelerator
     def test_model_parallelism(self):
@@ -1479,6 +1462,7 @@ class ModelTesterMixin:
         model = model.to(torch_device)
 
         base_output = model(**inputs_dict)
+        base_normalized_output = normalize_output(base_output)
 
         model_size = compute_module_persistent_sizes(model)[""]
         max_shard_size = int((model_size * 0.75) / (2**10))  # Convert to KB as these test models are small.
@@ -1500,17 +1484,9 @@ class ModelTesterMixin:
             if "generator" in inputs_dict:
                 _, inputs_dict = self.prepare_init_args_and_inputs_for_common()
             new_output = new_model(**inputs_dict)
+            new_normalized_output = normalize_output(new_output)
 
-            if isinstance(base_output[0], list):
-                base_output = torch.stack(base_output[0])
-            else:
-                base_output = base_output[0]
-            if isinstance(new_output[0], list):
-                new_output = torch.stack(new_output[0])
-            else:
-                new_output = new_output[0]
-
-            self.assertTrue(torch.allclose(base_output, new_output, atol=1e-5))
+            self.assertTrue(torch.allclose(base_normalized_output, new_normalized_output, atol=1e-5))
 
     @require_torch_accelerator
     def test_sharded_checkpoints_with_variant(self):
@@ -1520,6 +1496,7 @@ class ModelTesterMixin:
         model = model.to(torch_device)
 
         base_output = model(**inputs_dict)
+        base_normalized_output = normalize_output(base_output)
 
         model_size = compute_module_persistent_sizes(model)[""]
         max_shard_size = int((model_size * 0.75) / (2**10))  # Convert to KB as these test models are small.
@@ -1547,17 +1524,9 @@ class ModelTesterMixin:
             if "generator" in inputs_dict:
                 _, inputs_dict = self.prepare_init_args_and_inputs_for_common()
             new_output = new_model(**inputs_dict)
+            new_normalized_output = normalize_output(new_output)
 
-            if isinstance(base_output[0], list):
-                base_output = torch.stack(base_output[0])
-            else:
-                base_output = base_output[0]
-            if isinstance(new_output[0], list):
-                new_output = torch.stack(new_output[0])
-            else:
-                new_output = new_output[0]
-
-            self.assertTrue(torch.allclose(base_output, new_output, atol=1e-5))
+            self.assertTrue(torch.allclose(base_normalized_output, new_normalized_output, atol=1e-5))
 
     @require_torch_accelerator
     def test_sharded_checkpoints_with_parallel_loading(self):
@@ -1567,6 +1536,7 @@ class ModelTesterMixin:
         model = model.to(torch_device)
 
         base_output = model(**inputs_dict)
+        base_normalized_output = normalize_output(base_output)
 
         model_size = compute_module_persistent_sizes(model)[""]
         max_shard_size = int((model_size * 0.75) / (2**10))  # Convert to KB as these test models are small.
@@ -1590,17 +1560,9 @@ class ModelTesterMixin:
             if "generator" in inputs_dict:
                 _, inputs_dict = self.prepare_init_args_and_inputs_for_common()
             new_output = new_model(**inputs_dict)
+            new_normalized_output = normalize_output(new_output)
 
-            if isinstance(base_output[0], list):
-                base_output = torch.stack(base_output[0])
-            else:
-                base_output = base_output[0]
-            if isinstance(new_output[0], list):
-                new_output = torch.stack(new_output[0])
-            else:
-                new_output = new_output[0]
-
-            self.assertTrue(torch.allclose(base_output, new_output, atol=1e-5))
+            self.assertTrue(torch.allclose(base_normalized_output, new_normalized_output, atol=1e-5))
             # set to no.
             os.environ["HF_ENABLE_PARALLEL_LOADING"] = "no"
 
@@ -1614,6 +1576,7 @@ class ModelTesterMixin:
 
         torch.manual_seed(0)
         base_output = model(**inputs_dict)
+        base_normalized_output = normalize_output(base_output)
 
         model_size = compute_module_persistent_sizes(model)[""]
         max_shard_size = int((model_size * 0.75) / (2**10))  # Convert to KB as these test models are small.
@@ -1634,17 +1597,9 @@ class ModelTesterMixin:
             if "generator" in inputs_dict:
                 _, inputs_dict = self.prepare_init_args_and_inputs_for_common()
             new_output = new_model(**inputs_dict)
+            new_normalized_output = normalize_output(new_output)
 
-            if isinstance(base_output[0], list):
-                base_output = torch.stack(base_output[0])
-            else:
-                base_output = base_output[0]
-            if isinstance(new_output[0], list):
-                new_output = torch.stack(new_output[0])
-            else:
-                new_output = new_output[0]
-
-            self.assertTrue(torch.allclose(base_output, new_output, atol=1e-5))
+            self.assertTrue(torch.allclose(base_normalized_output, new_normalized_output, atol=1e-5))
 
     # This test is okay without a GPU because we're not running any execution. We're just serializing
     # and check if the resultant files are following an expected format.
