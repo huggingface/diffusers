@@ -152,7 +152,9 @@ class TaylorSeerState:
                         if prev is None:
                             break
                         new_factors[j + 1] = (new_factors[j] - prev.to(features.dtype)) / delta_step
-                self.taylor_factors[i] = {order: factor.to(self.taylor_factors_dtype) for order, factor in new_factors.items()}
+                self.taylor_factors[i] = {
+                    order: factor.to(self.taylor_factors_dtype) for order, factor in new_factors.items()
+                }
 
         self.last_update_step = self.current_step
 
