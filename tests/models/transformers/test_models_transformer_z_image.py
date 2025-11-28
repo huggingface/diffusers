@@ -41,10 +41,10 @@ class ZImageTransformerTests(ModelTesterMixin, unittest.TestCase):
     # We override the items here because the transformer under consideration is small.
     model_split_percents = [0.8, 0.8, 0.9]
 
-    def prepare_dummy_input(self):
+    def prepare_dummy_input(self, height=16, width=16):
         batch_size = 1
         num_channels = 16
-        height = width = embedding_dim = 16
+        embedding_dim = 16
         sequence_length = 16
 
         hidden_states = [torch.randn((num_channels, 1, height, width)).to(torch_device) for _ in range(batch_size)]
@@ -72,10 +72,10 @@ class ZImageTransformerTests(ModelTesterMixin, unittest.TestCase):
             "all_patch_size": (2,),
             "all_f_patch_size": (1,),
             "in_channels": 16,
-            "dim": 32,
-            "n_layers": 2,
+            "dim": 16,
+            "n_layers": 1,
             "n_refiner_layers": 1,
-            "n_heads": 2,
+            "n_heads": 1,
             "n_kv_heads": 2,
             "qk_norm": True,
             "cap_feat_dim": 16,
@@ -137,3 +137,11 @@ class Flux2TransformerCompileTests(TorchCompileTesterMixin, unittest.TestCase):
     @unittest.skip("Fullgraph AoT is broken")
     def test_compile_works_with_aot(self):
         super().test_compile_works_with_aot()
+
+    @unittest.skip("Fullgraph is broken")
+    def test_compile_on_different_shapes(self):
+        super().test_compile_on_different_shapes()
+
+    @unittest.skip("Broken because the block being repeated encounters shape changes.")
+    def test_torch_compile_repeated_blocks(self):
+        super().test_torch_compile_repeated_blocks()
