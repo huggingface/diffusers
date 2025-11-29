@@ -40,7 +40,7 @@ class ZImageTransformerTests(ModelTesterMixin, unittest.TestCase):
     model_class = ZImageTransformer2DModel
     main_input_name = "x"
     # We override the items here because the transformer under consideration is small.
-    model_split_percents = [0.8, 0.8, 0.9]
+    model_split_percents = [0.9, 0.9, 0.9]
 
     def prepare_dummy_input(self, height=16, width=16):
         batch_size = 1
