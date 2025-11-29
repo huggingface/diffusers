@@ -14,7 +14,7 @@
 # limitations under the License.
 #
 # Modifications by Decart AI Team:
-# - Based on pipeline_wan.py, but with supports recieving a condition video appended to the channel dimension.
+# - Based on pipeline_wan.py, but with supports receiving a condition video appended to the channel dimension.
 
 import html
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
