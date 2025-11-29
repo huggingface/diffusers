@@ -570,6 +570,10 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 f"`_supports_group_offloading` to `True` in the class definition. If you believe this is a mistake, please "
                 f"open an issue at https://github.com/huggingface/diffusers/issues."
             )
+
+        # Get block modules from the model if available
+        block_modules = getattr(self, "_group_offload_block_modules", None)
+
         apply_group_offloading(
             module=self,
             onload_device=onload_device,
@@ -581,6 +585,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             record_stream=record_stream,
             low_cpu_mem_usage=low_cpu_mem_usage,
             offload_to_disk_path=offload_to_disk_path,
+            block_modules=block_modules,
         )
 
     def set_attention_backend(self, backend: str) -> None:
