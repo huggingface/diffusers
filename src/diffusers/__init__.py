@@ -167,11 +167,13 @@ else:
             "FirstBlockCacheConfig",
             "HookRegistry",
             "LayerSkipConfig",
+            "MagCacheConfig",
             "PyramidAttentionBroadcastConfig",
             "SmoothedEnergyGuidanceConfig",
             "apply_faster_cache",
             "apply_first_block_cache",
             "apply_layer_skip",
+            "apply_mag_cache",
             "apply_pyramid_attention_broadcast",
         ]
     )
@@ -888,11 +890,13 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             FirstBlockCacheConfig,
             HookRegistry,
             LayerSkipConfig,
+            MagCacheConfig,
             PyramidAttentionBroadcastConfig,
             SmoothedEnergyGuidanceConfig,
             apply_faster_cache,
             apply_first_block_cache,
             apply_layer_skip,
+            apply_mag_cache,
             apply_pyramid_attention_broadcast,
         )
         from .models import (
