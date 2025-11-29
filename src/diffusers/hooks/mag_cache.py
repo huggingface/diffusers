@@ -162,7 +162,6 @@ class MagCacheHeadHook(ModelHook):
 
         current_step = state.step_index
         if current_step >= len(self.config.mag_ratios):
-            # Safety fallback if steps exceed config
             current_scale = 1.0
         else:
             current_scale = self.config.mag_ratios[current_step]
@@ -174,8 +173,6 @@ class MagCacheHeadHook(ModelHook):
             state.accumulated_steps += 1
             state.accumulated_err += abs(1.0 - state.accumulated_ratio)
 
-            # Check skip condition
-            # We must have a previous residual to skip
             if (
                 state.previous_residual is not None
                 and state.accumulated_err <= self.config.threshold
@@ -183,7 +180,6 @@ class MagCacheHeadHook(ModelHook):
             ):
                 should_compute = False
             else:
-                # Reset accumulators if we decide to compute (and we are past retention)
                 state.accumulated_ratio = 1.0
                 state.accumulated_steps = 0
                 state.accumulated_err = 0.0
@@ -207,7 +203,6 @@ class MagCacheHeadHook(ModelHook):
             ):
                 diff = output.shape[1] - res.shape[1]
                 if diff > 0:
-                    # Add residual to the end
                     output = output.clone()
                     output[:, diff:, :] = output[:, diff:, :] + res
                 else:
@@ -239,7 +234,6 @@ class MagCacheHeadHook(ModelHook):
                 return output
 
         else:
-            # Run original forward
             output = self.fn_ref.original_forward(*args, **kwargs)
             return output
 
@@ -302,7 +296,6 @@ class MagCacheBlockHook(ModelHook):
 
             in_hidden = state.head_block_input
 
-            # Calculate residual
             if out_hidden.shape == in_hidden.shape:
                 residual = out_hidden - in_hidden
             elif out_hidden.ndim == 3 and in_hidden.ndim == 3 and out_hidden.shape[2] == in_hidden.shape[2]:
@@ -310,7 +303,6 @@ class MagCacheBlockHook(ModelHook):
                 if diff == 0:
                     residual = out_hidden - in_hidden
                 else:
-                    # Fallback: Just calculate residual on matching tail (Image part usually at end)
                     residual = out_hidden - in_hidden
 
             state.previous_residual = residual
