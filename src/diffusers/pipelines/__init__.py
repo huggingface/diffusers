@@ -394,6 +394,7 @@ else:
         "WanImageToVideoPipeline",
         "WanVideoToVideoPipeline",
         "WanVACEPipeline",
+        "WanSpeechToVideoPipeline",
         "WanAnimatePipeline",
     ]
     _import_structure["z_image"] = ["ZImagePipeline"]
@@ -819,6 +820,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             WanAnimatePipeline,
             WanImageToVideoPipeline,
             WanPipeline,
+            WanSpeechToVideoPipeline,
             WanVACEPipeline,
             WanVideoToVideoPipeline,
         )

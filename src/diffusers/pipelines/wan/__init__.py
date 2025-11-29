@@ -25,6 +25,7 @@ else:
     _import_structure["pipeline_wan"] = ["WanPipeline"]
     _import_structure["pipeline_wan_animate"] = ["WanAnimatePipeline"]
     _import_structure["pipeline_wan_i2v"] = ["WanImageToVideoPipeline"]
+    _import_structure["pipeline_wan_s2v"] = ["WanSpeechToVideoPipeline"]
     _import_structure["pipeline_wan_vace"] = ["WanVACEPipeline"]
     _import_structure["pipeline_wan_video2video"] = ["WanVideoToVideoPipeline"]
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
@@ -38,6 +39,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .pipeline_wan import WanPipeline
         from .pipeline_wan_animate import WanAnimatePipeline
         from .pipeline_wan_i2v import WanImageToVideoPipeline
+        from .pipeline_wan_s2v import WanSpeechToVideoPipeline
         from .pipeline_wan_vace import WanVACEPipeline
         from .pipeline_wan_video2video import WanVideoToVideoPipeline
 else:
