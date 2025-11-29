@@ -18,7 +18,7 @@ import re
 
 import numpy as np
 import torch
-from transformers import Qwen2_5_VLTextModel, Qwen2Tokenizer, T5EncoderModel, ByT5Tokenizer
+from transformers import Qwen2_5_VLTextModel, Qwen2Tokenizer, T5EncoderModel, ByT5Tokenizer, SiglipVisionModel, SiglipImageProcessor
 
 from ...models import AutoencoderKLHunyuanVideo15, HunyuanVideo15Transformer3DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
@@ -109,6 +109,19 @@ def extract_glyph_texts(prompt: str) -> List[str]:
     return formatted_result
 
 
+# Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.retrieve_latents
+def retrieve_latents(
+    encoder_output: torch.Tensor, generator: Optional[torch.Generator] = None, sample_mode: str = "sample"
+):
+    if hasattr(encoder_output, "latent_dist") and sample_mode == "sample":
+        return encoder_output.latent_dist.sample(generator)
+    elif hasattr(encoder_output, "latent_dist") and sample_mode == "argmax":
+        return encoder_output.latent_dist.mode()
+    elif hasattr(encoder_output, "latents"):
+        return encoder_output.latents
+    else:
+        raise AttributeError("Could not access latents of provided encoder_output")
+
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.retrieve_timesteps
 def retrieve_timesteps(
     scheduler,
@@ -169,9 +182,9 @@ def retrieve_timesteps(
     return timesteps, num_inference_steps
 
 
-class HunyuanVideo15Pipeline(DiffusionPipeline):
+class HunyuanVideo15Image2VideoPipeline(DiffusionPipeline):
     r"""
-    Pipeline for text-to-video generation using HunyuanVideo1.5.
+    Pipeline for image-to-video generation using HunyuanVideo1.5.
 
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods
     implemented for all pipelines (downloading, saving, running on a particular device, etc.).
@@ -208,6 +221,8 @@ class HunyuanVideo15Pipeline(DiffusionPipeline):
         text_encoder_2: T5EncoderModel,
         tokenizer_2: ByT5Tokenizer,
         guider: ClassifierFreeGuidance,
+        image_encoder: SiglipVisionModel,
+        feature_extractor: SiglipImageProcessor,
     ):
         super().__init__()
 
@@ -220,11 +235,13 @@ class HunyuanVideo15Pipeline(DiffusionPipeline):
             text_encoder_2=text_encoder_2,
             tokenizer_2=tokenizer_2,
             guider=guider,
+            image_encoder=image_encoder,
+            feature_extractor=feature_extractor,
         )
 
         self.vae_scale_factor_temporal = self.vae.temporal_compression_ratio if getattr(self, "vae", None) else 4
         self.vae_scale_factor_spatial = self.vae.spatial_compression_ratio if getattr(self, "vae", None) else 16
-        self.video_processor = HunyuanVideo15ImageProcessor(vae_scale_factor=self.vae_scale_factor_spatial)
+        self.video_processor = HunyuanVideo15ImageProcessor(vae_scale_factor=self.vae_scale_factor_spatial, do_resize=False, do_convert_rgb=True)
         self.target_size = self.transformer.config.target_size if getattr(self, "transformer", None) else 640
         self.vision_states_dim = self.transformer.config.image_embed_dim if getattr(self, "transformer", None) else 1152
         self.num_channels_latents = self.vae.config.latent_channels if hasattr(self, "vae") else 32
@@ -240,15 +257,15 @@ class HunyuanVideo15Pipeline(DiffusionPipeline):
         self.tokenizer_max_length = 1000
         self.tokenizer_2_max_length = 256
         self.vision_num_semantic_tokens = 729
-        self.default_aspect_ratio = (16, 9) # (width: height)
 
 
     @staticmethod
+    # Copied from diffusers.pipelines.hunyuan_video1_5.pipeline_hunyuan_video1_5.HunyuanVideo15Pipeline._get_mllm_prompt_embeds
     def _get_mllm_prompt_embeds(
         text_encoder: Qwen2_5_VLTextModel,
         tokenizer: Qwen2Tokenizer,
         prompt: Union[str, List[str]],
-        device: torch.device,
+        device: Optional[torch.device] = None,
         tokenizer_max_length: int = 1000,
         num_hidden_layers_to_skip: int = 2,
         # fmt: off
@@ -291,15 +308,17 @@ class HunyuanVideo15Pipeline(DiffusionPipeline):
             prompt_embeds = prompt_embeds[:, crop_start:]
             prompt_attention_mask = prompt_attention_mask[:, crop_start:]
 
+
         return prompt_embeds, prompt_attention_mask
 
     
     @staticmethod
+    # Copied from diffusers.pipelines.hunyuan_video1_5.pipeline_hunyuan_video1_5.HunyuanVideo15Pipeline._get_byt5_prompt_embeds
     def _get_byt5_prompt_embeds(
         tokenizer: ByT5Tokenizer,
         text_encoder: T5EncoderModel,
         prompt: Union[str, List[str]],
-        device: torch.device,
+        device: Optional[torch.device] = None,
         tokenizer_max_length: int = 256,
     ):
 
@@ -344,6 +363,59 @@ class HunyuanVideo15Pipeline(DiffusionPipeline):
         return prompt_embeds, prompt_embeds_mask
 
 
+    @staticmethod
+    def _get_vae_image_latents(
+        vae: AutoencoderKLHunyuanVideo15, 
+        image_processor: HunyuanVideo15ImageProcessor,
+        image: PIL.Image.Image,
+        height: int,
+        width: int,
+        device: torch.device,
+    ) -> torch.Tensor:
+        
+        vae_dtype = self.vae.dtype
+        image_tensor = image_processor.preprocess(image, height=height, width=width).to(device, dtype=vae_dtype)
+        image_latents = retrieve_latents(vae.encode(image_tensor), sample_mode="argmax")
+        image_latents = image_latents * vae.config.scaling_factor
+        return image_latents
+
+    
+    @staticmethod
+    def _get_image_embeds(
+        image_encoder: SiglipVisionModel,
+        feature_extractor: SiglipImageProcessor,
+        image: PIL.Image.Image,
+        device: torch.device,
+    ) -> torch.Tensor:
+        
+        image_encoder_dtype = next(image_encoder.parameters()).dtype
+        image = feature_extractor.preprocess(
+            images=image, do_resize=True, return_tensors="pt", do_convert_rgb=True
+        )
+        image = image.to(device=device, dtype=image_encoder_dtype)
+        image_enc_hidden_states = image_encoder(**image).last_hidden_state
+
+        return image_enc_hidden_states
+
+    def encode_image(
+        self,
+        image: PIL.Image.Image,
+        batch_size: int,
+        device: torch.device,
+        dtype: torch.dtype,
+    ) -> torch.Tensor:
+        
+        image_embeds = self._get_image_embeds(
+            image_encoder=self.image_encoder,
+            feature_extractor=self.feature_extractor,
+            image=image,
+            device=device,
+        )
+        image_embeds = image_embeds.repeat(batch_size, 1, 1)
+        image_embeds = image_embeds.to(device=device, dtype=dtype)
+        return image_embeds
+    
+    # Copied from diffusers.pipelines.hunyuan_video1_5.pipeline_hunyuan_video1_5.HunyuanVideo15Pipeline.encode_prompt
     def encode_prompt(
         self,
         prompt: Union[str, List[str]],
@@ -419,18 +491,17 @@ class HunyuanVideo15Pipeline(DiffusionPipeline):
         prompt_embeds_mask_2 = prompt_embeds_mask_2.repeat(1, num_videos_per_prompt, 1)
         prompt_embeds_mask_2 = prompt_embeds_mask_2.view(batch_size * num_videos_per_prompt, seq_len_2)
 
-        prompt_embeds = prompt_embeds.to(dtype=dtype, device=device)
-        prompt_embeds_mask = prompt_embeds_mask.to(dtype=dtype, device=device)
-        prompt_embeds_2 = prompt_embeds_2.to(dtype=dtype, device=device)
-        prompt_embeds_mask_2 = prompt_embeds_mask_2.to(dtype=dtype, device=device)
+        prompt_embeds = prompt_embeds.to(device=device, dtype=dtype)
+        prompt_embeds_mask = prompt_embeds_mask.to(device=device, dtype=dtype)
+        prompt_embeds_2 = prompt_embeds_2.to(device=device, dtype=dtype)
+        prompt_embeds_mask_2 = prompt_embeds_mask_2.to(device=device, dtype=dtype)
 
         return prompt_embeds, prompt_embeds_mask, prompt_embeds_2, prompt_embeds_mask_2
 
     def check_inputs(
         self,
         prompt,
-        height,
-        width,
+        image: PIL.Image.Image,
         negative_prompt=None,
         prompt_embeds=None,
         negative_prompt_embeds=None,
@@ -441,15 +512,8 @@ class HunyuanVideo15Pipeline(DiffusionPipeline):
         negative_prompt_embeds_2=None,
         negative_prompt_embeds_mask_2=None,
     ):  
-
-        if height is None and width is not None:
-            raise ValueError(
-                "If `width` is provided, `height` also have to be provided."
-            )
-        elif width is None and height is not None:
-            raise ValueError(
-                "If `height` is provided, `width` also have to be provided."
-            )
+        if not isinstance(image, PIL.Image.Image):
+            raise ValueError(f"`image` has to be of type `PIL.Image.Image` but is {type(image)}")
 
         if prompt is not None and prompt_embeds is not None:
             raise ValueError(
@@ -492,6 +556,7 @@ class HunyuanVideo15Pipeline(DiffusionPipeline):
                 "If `negative_prompt_embeds_2` are provided, `negative_prompt_embeds_mask_2` also have to be passed. Make sure to generate `negative_prompt_embeds_mask_2` from the same text encoder that was used to generate `negative_prompt_embeds_2`."
             )
 
+    # Copied from diffusers.pipelines.hunyuan_video1_5.pipeline_hunyuan_video1_5.HunyuanVideo15Pipeline.prepare_latents
     def prepare_latents(
         self,
         batch_size: int,
@@ -524,7 +589,16 @@ class HunyuanVideo15Pipeline(DiffusionPipeline):
         return latents
 
 
-    def prepare_cond_latents_and_mask(self, latents, dtype: Optional[torch.dtype], device: Optional[torch.device]):
+    def prepare_cond_latents_and_mask(
+        self, 
+        latents: torch.Tensor, 
+        image: PIL.Image.Image,
+        batch_size: int,
+        height: int,
+        width: int,
+        dtype: torch.dtype, 
+        device: torch.device,
+    ):
         """
         Prepare conditional latents and mask for t2v generation.
         
@@ -534,21 +608,30 @@ class HunyuanVideo15Pipeline(DiffusionPipeline):
         Returns:
             tuple: (cond_latents_concat, mask_concat) - both are zero tensors for t2v
         """
+
         batch, channels, frames, height, width = latents.shape
-        
-        cond_latents_concat = torch.zeros(
-            batch, channels, frames, height, width,
-            dtype=dtype,
-            device=device
+
+        image_latents = self._get_vae_image_latents(
+            vae=self.vae,
+            image_processor=self.video_processor,
+            image=image,
+            height=height,
+            width=width,
+            device=device,
         )
         
-        mask_concat = torch.zeros(
+        latent_condition = image_latents.repeat(batch_size, 1, frames, 1, 1)
+        latent_condition[:,:,1:, :, :] = 0
+        latent_condition = latent_condition.to(device=device, dtype=dtype)
+        
+        latent_mask = torch.zeros(
             batch, 1, frames, height, width,
             dtype=dtype,
             device=device
         )
+        latent_mask[:,:, 0, :, :] = 1.0
         
-        return cond_latents_concat, mask_concat
+        return latent_condition, latent_mask
 
 
     @property
@@ -575,10 +658,9 @@ class HunyuanVideo15Pipeline(DiffusionPipeline):
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
+        image: PIL.Image.Image,
         prompt: Union[str, List[str]] = None,
         negative_prompt: Union[str, List[str]] = None,
-        height: Optional[int] = None,
-        width: Optional[int] = None,
         num_frames: int = 121,
         num_inference_steps: int = 50,
         sigmas: List[float] = None,
@@ -692,8 +774,7 @@ class HunyuanVideo15Pipeline(DiffusionPipeline):
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(
             prompt=prompt,
-            height=height,
-            width=width,
+            image=image,
             negative_prompt=negative_prompt,
             prompt_embeds=prompt_embeds,
             negative_prompt_embeds=negative_prompt_embeds,
@@ -705,8 +786,9 @@ class HunyuanVideo15Pipeline(DiffusionPipeline):
             negative_prompt_embeds_mask_2=negative_prompt_embeds_mask_2,
         )
 
-        if height is None and width is None:
-            height, width = self.video_processor.calculate_default_height_width(self.default_aspect_ratio[1], self.default_aspect_ratio[0], self.target_size)
+        
+        height, width = self.video_processor.calculate_default_height_width(height=image.size[1], width=image.size[0], target_size=self.target_size)
+        image = self.video_processor.resize(image, height=height, width=width, resize_mode="crop")
 
         self._attention_kwargs = attention_kwargs
         self._current_timestep = None
@@ -754,23 +836,31 @@ class HunyuanVideo15Pipeline(DiffusionPipeline):
 
         # 5. Prepare latent variables
         latents = self.prepare_latents(
-            batch_size * num_videos_per_prompt,
-            self.num_channels_latents,
-            height,
-            width,
-            num_frames,
-            self.transformer.dtype,
-            device,
-            generator,
-            latents,
-        )
-        cond_latents_concat, mask_concat = self.prepare_cond_latents_and_mask(latents, self.transformer.dtype, device)
-        image_embeds = torch.zeros(
-            batch_size, 
-            self.vision_num_semantic_tokens, 
-            self.vision_states_dim,
+            batch_size=batch_size * num_videos_per_prompt,
+            num_channels_latents=self.num_channels_latents,
+            height=height,
+            width=width,
+            num_frames=num_frames,
             dtype=self.transformer.dtype,
+            device=device,
+            generator=generator,
+            latents=latents,
+        )
+       
+        cond_latents_concat, mask_concat = self.prepare_cond_latents_and_mask(
+            latents =latenets, 
+            image=image,
+            batch_size=batch_size * num_videos_per_prompt,
+            height=height,
+            width=width,
+            dtype=self.transformer.dtype, 
             device=device
+        )
+        image_embeds = self.encode_image(
+            image=image,
+            batch_size=batch_size * num_videos_per_prompt,
+            device=device,
+            dtype=self.transformer.dtype,
         )
 
         # 7. Denoising loop

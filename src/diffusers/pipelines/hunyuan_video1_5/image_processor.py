@@ -80,11 +80,13 @@ class HunyuanVideo15ImageProcessor(VideoProcessor):
         do_resize: bool = True,
         vae_scale_factor: int = 16,
         vae_latent_channels: int = 32,
+        do_convert_rgb: bool = True,
     ):
         super().__init__(
             do_resize=do_resize,
             vae_scale_factor=vae_scale_factor,
-            vae_latent_channels=vae_latent_channels
+            vae_latent_channels=vae_latent_channels,
+            do_convert_rgb=do_convert_rgb,
         )
 
 

@@ -1,3 +1,4 @@
+# to convert only transformer
 """
 python scripts/convert_hunyuan_video1_5_to_diffusers.py \
     --original_state_dict_repo_id tencent/HunyuanVideo-1.5\
@@ -5,6 +6,7 @@ python scripts/convert_hunyuan_video1_5_to_diffusers.py \
     --transformer_type 480p_t2v
 """
 
+# to convert full pipeline
 """
 python scripts/convert_hunyuan_video1_5_to_diffusers.py \
     --original_state_dict_repo_id tencent/HunyuanVideo-1.5\
@@ -23,8 +25,8 @@ from safetensors.torch import load_file
 from huggingface_hub import snapshot_download, hf_hub_download
 
 import pathlib  
-from diffusers import HunyuanVideo15Transformer3DModel, AutoencoderKLHunyuanVideo15, FlowMatchEulerDiscreteScheduler, ClassifierFreeGuidance, HunyuanVideo15Pipeline
-from transformers import AutoModel, AutoTokenizer, T5EncoderModel, ByT5Tokenizer
+from diffusers import HunyuanVideo15Transformer3DModel, AutoencoderKLHunyuanVideo15, FlowMatchEulerDiscreteScheduler, ClassifierFreeGuidance, HunyuanVideo15Pipeline, HunyuanVideo15Image2VideoPipeline, HunyuanVideo15Text2VideoPipeline
+from transformers import AutoModel, AutoTokenizer, T5EncoderModel, ByT5Tokenizer, SiglipVisionModel, SiglipImageProcessor
 
 import json
 import argparse
@@ -812,6 +814,16 @@ def load_byt5(args):
     return encoder, tokenizer
 
 
+def load_siglip():
+    image_encoder = SiglipVisionModel.from_pretrained(
+        "black-forest-labs/FLUX.1-Redux-dev", subfolder="image_encoder", torch_dtype=torch.bfloat16
+        )
+    feature_extractor = SiglipImageProcessor.from_pretrained(
+        "black-forest-labs/FLUX.1-Redux-dev", subfolder="feature_extractor"
+    )
+    return image_encoder, feature_extractor
+
+
 def get_args():
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -852,8 +864,9 @@ if __name__ == "__main__":
     if not args.save_pipeline:
         transformer.save_pretrained(args.output_path, safe_serialization=True)
     else:
-        vae = convert_vae(args)
+        task_type = transformer.config.task_type
 
+        vae = convert_vae(args)
 
         text_encoder, tokenizer = load_mllm()
         text_encoder_2, tokenizer_2 = load_byt5(args)
@@ -864,17 +877,35 @@ if __name__ == "__main__":
         guidance_scale = GUIDANCE_CONFIGS[args.transformer_type]["guidance_scale"]
         guider = ClassifierFreeGuidance(guidance_scale=guidance_scale)
 
-        pipeline = HunyuanVideo15Pipeline(
-            vae=vae,
-            text_encoder=text_encoder,
-            text_encoder_2=text_encoder_2,
-            tokenizer=tokenizer,
-            tokenizer_2=tokenizer_2,
-            transformer=transformer,
-            guider=guider,
-            scheduler=scheduler,
-        )
-        pipeline.save_pretrained(args.output_path, safe_serialization=True, max_shard_size="5GB")
+        if task_type == "i2v":
+            image_encoder, feature_extractor = load_siglip()
+            pipeline = HunyuanVideo15Image2VideoPipeline(
+                vae=vae,
+                text_encoder=text_encoder,
+                text_encoder_2=text_encoder_2,
+                tokenizer=tokenizer,
+                tokenizer_2=tokenizer_2,
+                transformer=transformer,
+                guider=guider,
+                scheduler=scheduler,
+                image_encoder=image_encoder,
+                feature_extractor=feature_extractor,
+            )
+        elif task_type == "t2v":
+            pipeline = HunyuanVideo15Text2VideoPipeline(
+                vae=vae,
+                text_encoder=text_encoder,
+                text_encoder_2=text_encoder_2,
+                tokenizer=tokenizer,
+                tokenizer_2=tokenizer_2,
+                transformer=transformer,
+                guider=guider,
+                scheduler=scheduler,
+            )
+        else:
+            raise ValueError(f"Task type {task_type} is not supported")
+
+        pipeline.save_pretrained(args.output_path, safe_serialization=True)
 
 
 

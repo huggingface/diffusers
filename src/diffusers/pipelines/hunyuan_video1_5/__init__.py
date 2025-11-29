@@ -23,6 +23,7 @@ except OptionalDependencyNotAvailable:
     _dummy_objects.update(get_objects_from_module(dummy_torch_and_transformers_objects))
 else:
     _import_structure["pipeline_hunyuan_video1_5"] = ["HunyuanVideo15Pipeline"]
+    _import_structure["pipeline_hunyuan_video1_5_image2video"] = ["HunyuanVideo15ImageToVideoPipeline"]
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     try:
@@ -33,6 +34,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from ...utils.dummy_torch_and_transformers_objects import *
     else:
         from .pipeline_hunyuan_video1_5 import HunyuanVideo15Pipeline
+        from .pipeline_hunyuan_video1_5_image2video import HunyuanVideo15ImageToVideoPipeline
 
 else:
     import sys
