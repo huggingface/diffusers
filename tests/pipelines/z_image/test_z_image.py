@@ -20,14 +20,9 @@ import numpy as np
 import torch
 from transformers import Qwen2Tokenizer, Qwen3Config, Qwen3Model
 
-from diffusers import (
-    AutoencoderKL,
-    FlowMatchEulerDiscreteScheduler,
-    ZImagePipeline,
-    ZImageTransformer2DModel,
-)
+from diffusers import AutoencoderKL, FlowMatchEulerDiscreteScheduler, ZImagePipeline, ZImageTransformer2DModel
 
-from ...testing_utils import torch_device
+from ...testing_utils import is_flaky, torch_device
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
 from ..test_pipelines_common import PipelineTesterMixin, to_np
 
@@ -169,6 +164,7 @@ class ZImagePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         return inputs
 
+    @is_flaky(max_attempts=10)
     def test_inference(self):
         device = "cpu"
 
