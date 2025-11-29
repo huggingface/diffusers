@@ -21,7 +21,7 @@ import torch
 
 from diffusers import ZImageTransformer2DModel
 
-from ...testing_utils import is_flaky, torch_device
+from ...testing_utils import torch_device
 from ..test_modeling_common import ModelTesterMixin, TorchCompileTesterMixin
 
 
@@ -138,22 +138,6 @@ class ZImageTransformerTests(ModelTesterMixin, unittest.TestCase):
     @unittest.skip("Group offloading needs to revisited for this model because of state population.")
     def test_group_offloading_with_disk(self):
         super().test_group_offloading_with_disk()
-
-    @is_flaky(max_attempts=10)
-    def test_auto_model(self):
-        super().test_auto_model()
-
-    @is_flaky(max_attempts=10)
-    def test_determinism(self):
-        super().test_determinism()
-
-    @is_flaky(max_attempts=10)
-    def test_from_save_pretrained(self):
-        super().test_from_save_pretrained()
-
-    @is_flaky(max_attempts=10)
-    def test_from_save_pretrained_variant(self):
-        super().test_from_save_pretrained_variant()
 
 
 class Flux2TransformerCompileTests(TorchCompileTesterMixin, unittest.TestCase):
