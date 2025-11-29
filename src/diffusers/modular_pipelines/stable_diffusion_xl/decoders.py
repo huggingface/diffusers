@@ -81,10 +81,7 @@ class StableDiffusionXLDecodeStep(ModularPipelineBlocks):
         components.vae.to(dtype=torch.float32)
         use_torch_2_0_or_xformers = isinstance(
             components.vae.decoder.mid_block.attentions[0].processor,
-            (
-                AttnProcessor2_0,
-                XFormersAttnProcessor,
-            ),
+            (AttnProcessor2_0, XFormersAttnProcessor),
         )
         # if xformers or torch_2_0 is used attention block does not need
         # to be in float32 which can save lots of memory
