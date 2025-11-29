@@ -25,7 +25,7 @@ from safetensors.torch import load_file
 from huggingface_hub import snapshot_download, hf_hub_download
 
 import pathlib  
-from diffusers import HunyuanVideo15Transformer3DModel, AutoencoderKLHunyuanVideo15, FlowMatchEulerDiscreteScheduler, ClassifierFreeGuidance, HunyuanVideo15Pipeline, HunyuanVideo15Image2VideoPipeline, HunyuanVideo15Text2VideoPipeline
+from diffusers import HunyuanVideo15Transformer3DModel, AutoencoderKLHunyuanVideo15, FlowMatchEulerDiscreteScheduler, ClassifierFreeGuidance, HunyuanVideo15Pipeline, HunyuanVideo15ImageToVideoPipeline
 from transformers import AutoModel, AutoTokenizer, T5EncoderModel, ByT5Tokenizer, SiglipVisionModel, SiglipImageProcessor
 
 import json
@@ -879,7 +879,7 @@ if __name__ == "__main__":
 
         if task_type == "i2v":
             image_encoder, feature_extractor = load_siglip()
-            pipeline = HunyuanVideo15Image2VideoPipeline(
+            pipeline = HunyuanVideo15ImageToVideoPipeline(
                 vae=vae,
                 text_encoder=text_encoder,
                 text_encoder_2=text_encoder_2,

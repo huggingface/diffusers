@@ -313,8 +313,7 @@ class HunyuanVideo15Pipeline(DiffusionPipeline):
         for glyph_text in glyph_texts:
             if glyph_text is None:
                 glyph_text_embeds = torch.zeros(
-                    (1, tokenizer_max_length, text_encoder.config.d_model), device=device, text_encoder.dtype
-                )
+                    (1, tokenizer_max_length, text_encoder.config.d_model), device=device, dtype=text_encoder.dtype)
                 glyph_text_embeds_mask = torch.zeros(
                     (1, tokenizer_max_length), device=device, dtype=torch.int64
                 )

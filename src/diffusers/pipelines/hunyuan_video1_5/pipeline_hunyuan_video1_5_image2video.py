@@ -15,8 +15,9 @@
 import inspect
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 import re
-
+import PIL
 import numpy as np
+
 import torch
 from transformers import Qwen2_5_VLTextModel, Qwen2Tokenizer, T5EncoderModel, ByT5Tokenizer, SiglipVisionModel, SiglipImageProcessor
 
@@ -182,7 +183,7 @@ def retrieve_timesteps(
     return timesteps, num_inference_steps
 
 
-class HunyuanVideo15Image2VideoPipeline(DiffusionPipeline):
+class HunyuanVideo15ImageToVideoPipeline(DiffusionPipeline):
     r"""
     Pipeline for image-to-video generation using HunyuanVideo1.5.
 
@@ -318,7 +319,7 @@ class HunyuanVideo15Image2VideoPipeline(DiffusionPipeline):
         tokenizer: ByT5Tokenizer,
         text_encoder: T5EncoderModel,
         prompt: Union[str, List[str]],
-        device: Optional[torch.device] = None,
+        device: torch.device,
         tokenizer_max_length: int = 256,
     ):
 
@@ -332,7 +333,7 @@ class HunyuanVideo15Image2VideoPipeline(DiffusionPipeline):
         for glyph_text in glyph_texts:
             if glyph_text is None:
                 glyph_text_embeds = torch.zeros(
-                    (1, tokenizer_max_length, text_encoder.config.d_model), device=device, text_encoder.dtype
+                    (1, tokenizer_max_length, text_encoder.config.d_model), device=device, dtype=text_encoder.dtype
                 )
                 glyph_text_embeds_mask = torch.zeros(
                     (1, tokenizer_max_length), device=device, dtype=torch.int64
@@ -373,8 +374,9 @@ class HunyuanVideo15Image2VideoPipeline(DiffusionPipeline):
         device: torch.device,
     ) -> torch.Tensor:
         
-        vae_dtype = self.vae.dtype
+        vae_dtype = vae.dtype
         image_tensor = image_processor.preprocess(image, height=height, width=width).to(device, dtype=vae_dtype)
+        image_tensor = image_tensor.unsqueeze(2)
         image_latents = retrieve_latents(vae.encode(image_tensor), sample_mode="argmax")
         image_latents = image_latents * vae.config.scaling_factor
         return image_latents
@@ -848,7 +850,7 @@ class HunyuanVideo15Image2VideoPipeline(DiffusionPipeline):
         )
        
         cond_latents_concat, mask_concat = self.prepare_cond_latents_and_mask(
-            latents =latenets, 
+            latents =latents, 
             image=image,
             batch_size=batch_size * num_videos_per_prompt,
             height=height,
