@@ -25,7 +25,7 @@ from diffusers import (
     SD3Transformer2DModel,
     StableDiffusion3ControlNetInpaintingPipeline,
 )
-from diffusers.models import SD3ControlNetModel
+from diffusers.models import SD3ControlNetModel, SD3MultiControlNetModel
 from diffusers.utils.torch_utils import randn_tensor
 
 from ...testing_utils import (
@@ -201,3 +201,26 @@ class StableDiffusion3ControlInpaintNetPipelineFastTests(unittest.TestCase, Pipe
     @unittest.skip("xFormersAttnProcessor does not work with SD3 Joint Attention")
     def test_xformers_attention_forwardGenerator_pass(self):
         pass
+
+    def test_controlnet_inpaint_sd3_multi_control(self):
+        components = self.get_dummy_components()
+        # Duplicate the single controlnet into a MultiControlNet for smoke test
+        cn = components["controlnet"]
+        components["controlnet"] = SD3MultiControlNetModel([cn, cn])
+
+        sd_pipe = StableDiffusion3ControlNetInpaintingPipeline(**components)
+        sd_pipe = sd_pipe.to(torch_device, dtype=torch.float16)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(torch_device)
+        # Provide lists for multi-control
+        inputs["control_image"] = [inputs["control_image"], inputs["control_image"]]
+        inputs["control_mask"] = [inputs["control_mask"], inputs["control_mask"]]
+        inputs["controlnet_conditioning_scale"] = [1.0, 0.5]
+        inputs["num_inference_steps"] = 2
+
+        output = sd_pipe(**inputs)
+        image = output.images
+
+        # Shape check only (deterministic slice check not required for multi-control smoke test)
+        assert image.shape == (1, 32, 32, 3)
