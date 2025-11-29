@@ -67,3 +67,30 @@ config = FasterCacheConfig(
 )
 pipeline.transformer.enable_cache(config)
 ```
+
+## TaylorSeer Cache
+
+[TaylorSeer Cache](https://huggingface.co/papers/2403.06923) accelerates diffusion inference by using Taylor series expansions to approximate and cache intermediate activations across denoising steps. This method predicts future outputs based on past computations, reusing them over specified intervals to reduce redundant calculations.
+
+It supports selective module skipping (inactive mode), where certain modules return zero tensors during prediction steps to skip computations cheaply, and a lightweight "lite" mode for optimized memory usage with predefined patterns for skipping and caching.
+
+Set up and pass a [`TaylorSeerCacheConfig`] to a pipeline's transformer to enable it. The `cache_interval` controls how many steps to reuse cached outputs before refreshing with a full forward pass. The `disable_cache_before_step` specifies the initial steps where full computations are performed to gather data for approximations. Higher `max_order` improves approximation accuracy but increases memory usage.
+
+```python
+import torch
+from diffusers import FluxPipeline, TaylorSeerCacheConfig
+
+pipe = FluxPipeline.from_pretrained(
+    "black-forest-labs/FLUX.1-dev",
+    torch_dtype=torch.bfloat16,
+)
+pipe.to("cuda")
+
+config = TaylorSeerCacheConfig(
+    cache_interval=5,
+    max_order=1,
+    disable_cache_before_step=10,
+    taylor_factors_dtype=torch.bfloat16,
+)
+pipe.transformer.enable_cache(config)
+```
