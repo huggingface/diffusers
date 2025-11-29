@@ -26,6 +26,12 @@ Original model checkpoints for Flux can be found [here](https://huggingface.co/b
 >
 > [Caching](../../optimization/cache) may also speed up inference by storing and reusing intermediate outputs.
 
+## Caption upsampling
+
+Flux.2 can potentially generate better better outputs with better prompts. We can "upsample"
+an input prompt by setting the `caption_upsample_temperature` argument in the pipeline call arguments.
+The [official implementation](https://github.com/black-forest-labs/flux2/blob/5a5d316b1b42f6b59a8c9194b77c8256be848432/src/flux2/text_encoder.py#L140) recommends this value to be 0.15.
+
 ## Flux2Pipeline
 
 [[autodoc]] Flux2Pipeline
