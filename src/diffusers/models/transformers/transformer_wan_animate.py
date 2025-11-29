@@ -166,9 +166,11 @@ class MotionConv2d(nn.Module):
             # NOTE: the original implementation uses a 2D upfirdn operation with the upsampling and downsampling rates
             # set to 1, which should be equivalent to a 2D convolution
             expanded_kernel = self.blur_kernel[None, None, :, :].expand(self.in_channels, 1, -1, -1)
+            x = x.to(expanded_kernel.dtype)
             x = F.conv2d(x, expanded_kernel, padding=self.blur_padding, groups=self.in_channels)
 
         # Main Conv2D with scaling
+        x = x.to(self.weight.dtype)
         x = F.conv2d(x, self.weight * self.scale, bias=self.bias, stride=self.stride, padding=self.padding)
 
         # Activation with fused bias, if using
@@ -338,8 +340,8 @@ class WanAnimateMotionEncoder(nn.Module):
         weight = self.motion_synthesis_weight + 1e-8
         # Upcast the QR orthogonalization operation to FP32
         original_motion_dtype = motion_feat.dtype
-        motion_feat = motion_feat.to(torch.float32)
-        weight = weight.to(torch.float32)
+        motion_feat = motion_feat.to(weight.dtype)
+        # weight = weight.to(torch.float32)
 
         Q = torch.linalg.qr(weight)[0].to(device=motion_feat.device)
 
@@ -802,8 +804,10 @@ class WanTimeTextImageEmbedding(nn.Module):
             timestep = timestep.unflatten(0, (-1, timestep_seq_len))
 
         time_embedder_dtype = next(iter(self.time_embedder.parameters())).dtype
-        if timestep.dtype != time_embedder_dtype and time_embedder_dtype != torch.int8:
+        if timestep.dtype != time_embedder_dtype and time_embedder_dtype not in [torch.int8, torch.uint8]:
             timestep = timestep.to(time_embedder_dtype)
+        if timestep.dtype != encoder_hidden_states.dtype:
+            timestep = timestep.to(encoder_hidden_states.dtype)
         temb = self.time_embedder(timestep).type_as(encoder_hidden_states)
         timestep_proj = self.time_proj(self.act_fn(temb))
 
