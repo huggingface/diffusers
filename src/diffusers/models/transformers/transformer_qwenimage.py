@@ -197,15 +197,15 @@ class QwenEmbedRope(nn.Module):
     def forward(
         self,
         video_fhw: Union[Tuple[int, int, int], List[Tuple[int, int, int]]],
-        txt_seq_lens: List[int],
+        txt_seq_len: int,
         device: torch.device,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """
         Args:
             video_fhw (`Tuple[int, int, int]` or `List[Tuple[int, int, int]]`):
                 A list of 3 integers [frame, height, width] representing the shape of the video.
-            txt_seq_lens (`List[int]`):
-                A list of integers of length batch_size representing the length of each text prompt.
+            txt_seq_len (`int`):
+                The length of the text sequence. This should match the encoder hidden states length.
             device: (`torch.device`):
                 The device on which to perform the RoPE computation.
         """
@@ -232,8 +232,7 @@ class QwenEmbedRope(nn.Module):
             else:
                 max_vid_index = max(height, width, max_vid_index)
 
-        max_len = max(txt_seq_lens)
-        txt_freqs = self.pos_freqs[max_vid_index : max_vid_index + max_len, ...]
+        txt_freqs = self.pos_freqs[max_vid_index : max_vid_index + txt_seq_len, ...]
         vid_freqs = torch.cat(vid_freqs, dim=0)
 
         return vid_freqs, txt_freqs
@@ -329,6 +328,33 @@ class QwenDoubleStreamAttnProcessor2_0:
         joint_query = torch.cat([txt_query, img_query], dim=1)
         joint_key = torch.cat([txt_key, img_key], dim=1)
         joint_value = torch.cat([txt_value, img_value], dim=1)
+
+        # If an encoder_hidden_states_mask is provided, turn it into a broadcastable attention mask.
+        # The encoder_hidden_states_mask is expected to have 1.0 for valid tokens and 0.0 for padding.
+        # We convert it to a boolean mask where True means "attend" and False means "mask out" (don't attend).
+        if encoder_hidden_states_mask is not None and attention_mask is None:
+            batch_size, image_seq_len = hidden_states.shape[:2]
+            text_seq_len = encoder_hidden_states.shape[1]
+
+            if encoder_hidden_states_mask.shape[0] != batch_size:
+                raise ValueError(
+                    f"`encoder_hidden_states_mask` batch size ({encoder_hidden_states_mask.shape[0]}) "
+                    f"must match hidden_states batch size ({batch_size})."
+                )
+            if encoder_hidden_states_mask.shape[1] != text_seq_len:
+                raise ValueError(
+                    f"`encoder_hidden_states_mask` sequence length ({encoder_hidden_states_mask.shape[1]}) "
+                    f"must match encoder_hidden_states sequence length ({text_seq_len})."
+                )
+
+            # Convert mask to boolean: 1/1.0 -> True (attend), 0/0.0 -> False (don't attend)
+            # This is the correct semantics for PyTorch's scaled_dot_product_attention with boolean masks.
+            text_attention_mask = encoder_hidden_states_mask.bool()
+            image_attention_mask = torch.ones(
+                (batch_size, image_seq_len), dtype=torch.bool, device=hidden_states.device
+            )
+            joint_attention_mask = torch.cat([text_attention_mask, image_attention_mask], dim=1)
+            attention_mask = joint_attention_mask[:, None, None, :]
 
         # Compute joint attention
         joint_hidden_states = dispatch_attention_fn(
@@ -570,7 +596,6 @@ class QwenImageTransformer2DModel(
         encoder_hidden_states_mask: torch.Tensor = None,
         timestep: torch.LongTensor = None,
         img_shapes: Optional[List[Tuple[int, int, int]]] = None,
-        txt_seq_lens: Optional[List[int]] = None,
         guidance: torch.Tensor = None,  # TODO: this should probably be removed
         attention_kwargs: Optional[Dict[str, Any]] = None,
         controlnet_block_samples=None,
@@ -584,14 +609,22 @@ class QwenImageTransformer2DModel(
                 Input `hidden_states`.
             encoder_hidden_states (`torch.Tensor` of shape `(batch_size, text_sequence_length, joint_attention_dim)`):
                 Conditional embeddings (embeddings computed from the input conditions such as prompts) to use.
-            encoder_hidden_states_mask (`torch.Tensor` of shape `(batch_size, text_sequence_length)`):
-                Mask of the input conditions.
+            encoder_hidden_states_mask (`torch.Tensor` of shape `(batch_size, text_sequence_length)`, *optional*):
+                Mask for the encoder hidden states. Expected to have 1.0 for valid tokens and 0.0 for padding tokens.
+                Used in the attention processor to prevent attending to padding tokens. The mask can have any pattern
+                (not just contiguous valid tokens followed by padding) since it's applied element-wise in attention.
             timestep ( `torch.LongTensor`):
                 Used to indicate denoising step.
+            img_shapes (`List[Tuple[int, int, int]]`, *optional*):
+                Image shapes for RoPE computation.
+            guidance (`torch.Tensor`, *optional*):
+                Guidance tensor for conditional generation.
             attention_kwargs (`dict`, *optional*):
                 A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
                 `self.processor` in
                 [diffusers.models.attention_processor](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
+            controlnet_block_samples (*optional*):
+                ControlNet block samples to add to the transformer blocks.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~models.transformer_2d.Transformer2DModelOutput`] instead of a plain
                 tuple.
@@ -621,6 +654,10 @@ class QwenImageTransformer2DModel(
         encoder_hidden_states = self.txt_norm(encoder_hidden_states)
         encoder_hidden_states = self.txt_in(encoder_hidden_states)
 
+        # Use the encoder_hidden_states sequence length for RoPE computation
+        # The mask is used for attention masking in the attention processor
+        _, text_seq_len = encoder_hidden_states.shape[:2]
+
         if guidance is not None:
             guidance = guidance.to(hidden_states.dtype) * 1000
 
@@ -630,7 +667,7 @@ class QwenImageTransformer2DModel(
             else self.time_text_embed(timestep, guidance, hidden_states)
         )
 
-        image_rotary_emb = self.pos_embed(img_shapes, txt_seq_lens, device=hidden_states.device)
+        image_rotary_emb = self.pos_embed(img_shapes, text_seq_len, device=hidden_states.device)
 
         for index_block, block in enumerate(self.transformer_blocks):
             if torch.is_grad_enabled() and self.gradient_checkpointing:

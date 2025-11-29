@@ -1513,14 +1513,12 @@ def main(args):
                     height=model_input.shape[3],
                     width=model_input.shape[4],
                 )
-                print(f"{prompt_embeds_mask.sum(dim=1).tolist()=}")
                 model_pred = transformer(
                     hidden_states=packed_noisy_model_input,
                     encoder_hidden_states=prompt_embeds,
                     encoder_hidden_states_mask=prompt_embeds_mask,
                     timestep=timesteps / 1000,
                     img_shapes=img_shapes,
-                    txt_seq_lens=prompt_embeds_mask.sum(dim=1).tolist(),
                     return_dict=False,
                 )[0]
                 model_pred = QwenImagePipeline._unpack_latents(
