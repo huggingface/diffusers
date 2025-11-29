@@ -230,20 +230,11 @@ class HunyuanVideo15TimeEmbedding(nn.Module):
     def __init__(
         self,
         embedding_dim: int,
-        use_meanflow: bool = False,
     ):
         super().__init__()
 
         self.time_proj = Timesteps(num_channels=256, flip_sin_to_cos=True, downscale_freq_shift=0)
         self.timestep_embedder = TimestepEmbedding(in_channels=256, time_embed_dim=embedding_dim)
-
-        self.use_meanflow = use_meanflow
-
-        self.time_proj_r = None
-        self.timestep_embedder_r = None
-        if use_meanflow:
-            self.time_proj_r = Timesteps(num_channels=256, flip_sin_to_cos=True, downscale_freq_shift=0)
-            self.timestep_embedder_r = TimestepEmbedding(in_channels=256, time_embed_dim=embedding_dim)
 
 
     def forward(
@@ -612,11 +603,11 @@ class HunyuanVideo15Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin
     @register_to_config
     def __init__(
         self,
-        in_channels: int = 16,
-        out_channels: int = 16,
-        num_attention_heads: int = 24,
+        in_channels: int = 65,
+        out_channels: int = 32,
+        num_attention_heads: int = 16,
         attention_head_dim: int = 128,
-        num_layers: int = 20,
+        num_layers: int = 54,
         num_refiner_layers: int = 2,
         mlp_ratio: float = 4.0,
         patch_size: int = 1,
@@ -627,7 +618,6 @@ class HunyuanVideo15Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin
         image_embed_dim: int = 1152,
         rope_theta: float = 256.0,
         rope_axes_dim: Tuple[int, ...] = (16, 56, 56),
-        use_meanflow: bool = False,
         # YiYi Notes: config based on target_size_config https://github.com/yiyixuxu/hy15/blob/main/hyvideo/pipelines/hunyuan_video_pipeline.py#L205
         target_size: int = 640, # did not name sample_size since it is in pixel spaces
         task_type: str = "i2v",
@@ -646,7 +636,7 @@ class HunyuanVideo15Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin
         )
         self.context_embedder_2 = HunyuanVideo15ByT5TextProjection(text_embed_2_dim, 2048, inner_dim)
 
-        self.time_embed = HunyuanVideo15TimeEmbedding(inner_dim, use_meanflow)
+        self.time_embed = HunyuanVideo15TimeEmbedding(inner_dim)
 
         self.cond_type_embed = nn.Embedding(3, inner_dim)
 
