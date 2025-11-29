@@ -91,6 +91,124 @@ class QwenImageTransformerTests(ModelTesterMixin, unittest.TestCase):
         expected_set = {"QwenImageTransformer2DModel"}
         super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
 
+    def test_attention_mask_with_padding(self):
+        """Test that encoder_hidden_states_mask properly handles padded sequences."""
+        init_dict, _ = self.prepare_init_args_and_inputs_for_common()
+        model = self.model_class(**init_dict).to(torch_device).eval()
+
+        batch_size = 2
+        height = width = 4
+        num_latent_channels = embedding_dim = 16
+        text_seq_len = 7
+        vae_scale_factor = 4
+
+        # Create inputs with padding
+        hidden_states = torch.randn((batch_size, height * width, num_latent_channels)).to(torch_device)
+        encoder_hidden_states = torch.randn((batch_size, text_seq_len, embedding_dim)).to(torch_device)
+
+        # First sample: 5 real tokens, 2 padding
+        # Second sample: 3 real tokens, 4 padding
+        encoder_hidden_states_mask = torch.tensor(
+            [[1, 1, 1, 1, 1, 0, 0], [1, 1, 1, 0, 0, 0, 0]], dtype=torch.long
+        ).to(torch_device)
+
+        # Zero out padding in embeddings
+        encoder_hidden_states = encoder_hidden_states * encoder_hidden_states_mask.unsqueeze(-1).float()
+
+        timestep = torch.tensor([1.0]).to(torch_device).expand(batch_size)
+        orig_height = height * 2 * vae_scale_factor
+        orig_width = width * 2 * vae_scale_factor
+        img_shapes = [(1, orig_height // vae_scale_factor // 2, orig_width // vae_scale_factor // 2)] * batch_size
+        txt_seq_lens = encoder_hidden_states_mask.sum(dim=1).tolist()
+
+        inputs_with_mask = {
+            "hidden_states": hidden_states,
+            "encoder_hidden_states": encoder_hidden_states,
+            "encoder_hidden_states_mask": encoder_hidden_states_mask,
+            "timestep": timestep,
+            "img_shapes": img_shapes,
+            "txt_seq_lens": txt_seq_lens,
+        }
+
+        # Run with proper mask
+        with torch.no_grad():
+            output_with_mask = model(**inputs_with_mask).sample
+
+        # Run with all-ones mask (treating padding as real tokens)
+        inputs_without_mask = {
+            "hidden_states": hidden_states.clone(),
+            "encoder_hidden_states": encoder_hidden_states.clone(),
+            "encoder_hidden_states_mask": torch.ones_like(encoder_hidden_states_mask),
+            "timestep": timestep,
+            "img_shapes": img_shapes,
+            "txt_seq_lens": [text_seq_len] * batch_size,
+        }
+
+        with torch.no_grad():
+            output_without_mask = model(**inputs_without_mask).sample
+
+        # Outputs should differ when mask is applied correctly
+        diff = (output_with_mask - output_without_mask).abs().mean().item()
+        assert diff > 1e-5, f"Mask appears to be ignored (diff={diff})"
+
+    def test_attention_mask_padding_isolation(self):
+        """Test that changing padding content doesn't affect output when mask is used."""
+        init_dict, _ = self.prepare_init_args_and_inputs_for_common()
+        model = self.model_class(**init_dict).to(torch_device).eval()
+
+        batch_size = 2
+        height = width = 4
+        num_latent_channels = embedding_dim = 16
+        text_seq_len = 7
+        vae_scale_factor = 4
+
+        # Create inputs
+        hidden_states = torch.randn((batch_size, height * width, num_latent_channels)).to(torch_device)
+        encoder_hidden_states = torch.randn((batch_size, text_seq_len, embedding_dim)).to(torch_device)
+        encoder_hidden_states_mask = torch.tensor(
+            [[1, 1, 1, 1, 1, 0, 0], [1, 1, 1, 0, 0, 0, 0]], dtype=torch.long
+        ).to(torch_device)
+
+        timestep = torch.tensor([1.0]).to(torch_device).expand(batch_size)
+        orig_height = height * 2 * vae_scale_factor
+        orig_width = width * 2 * vae_scale_factor
+        img_shapes = [(1, orig_height // vae_scale_factor // 2, orig_width // vae_scale_factor // 2)] * batch_size
+        txt_seq_lens = encoder_hidden_states_mask.sum(dim=1).tolist()
+
+        inputs1 = {
+            "hidden_states": hidden_states,
+            "encoder_hidden_states": encoder_hidden_states,
+            "encoder_hidden_states_mask": encoder_hidden_states_mask,
+            "timestep": timestep,
+            "img_shapes": img_shapes,
+            "txt_seq_lens": txt_seq_lens,
+        }
+
+        with torch.no_grad():
+            output1 = model(**inputs1).sample
+
+        # Modify padding content with large noise
+        encoder_hidden_states2 = encoder_hidden_states.clone()
+        mask = encoder_hidden_states_mask.unsqueeze(-1).float()
+        noise = torch.randn_like(encoder_hidden_states2) * 10.0
+        encoder_hidden_states2 = encoder_hidden_states2 + noise * (1 - mask)
+
+        inputs2 = {
+            "hidden_states": hidden_states,
+            "encoder_hidden_states": encoder_hidden_states2,
+            "encoder_hidden_states_mask": encoder_hidden_states_mask,
+            "timestep": timestep,
+            "img_shapes": img_shapes,
+            "txt_seq_lens": txt_seq_lens,
+        }
+
+        with torch.no_grad():
+            output2 = model(**inputs2).sample
+
+        # Outputs should be nearly identical (padding is masked out)
+        diff = (output1 - output2).abs().mean().item()
+        assert diff < 1e-4, f"Padding content affected output (diff={diff})"
+
 
 class QwenImageTransformerCompileTests(TorchCompileTesterMixin, unittest.TestCase):
     model_class = QwenImageTransformer2DModel
