@@ -21,9 +21,10 @@ With only 8 billion parameters, FIBO provides a new level of image quality, prom
 FIBO is trained exclusively on a structured prompt and will not work with freeform text prompts.
 you can use the [FIBO-VLM-prompt-to-JSON](https://huggingface.co/briaai/FIBO-VLM-prompt-to-JSON) model or the [FIBO-gemini-prompt-to-JSON](https://huggingface.co/briaai/FIBO-gemini-prompt-to-JSON)  to convert your freeform text prompt to a structured JSON prompt.
 
-its not recommended to use freeform text prompts directly with FIBO, as it will not produce the best results.
+> [!NOTE]
+> It's not recommended to use freeform text prompts directly with FIBO, as it will not produce the best results.
 
-you can learn more about FIBO in  [Bria Fibo Hugging Face page](https://huggingface.co/briaai/FIBO).
+You can learn more about FIBO in  [Bria Fibo Hugging Face page](https://huggingface.co/briaai/FIBO).
 
 
 ## Usage
