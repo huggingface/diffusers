@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import gc
 import os
 import unittest
 
@@ -86,6 +87,25 @@ class ZImageTransformerTests(ModelTesterMixin, unittest.TestCase):
         }
         inputs_dict = self.dummy_input
         return init_dict, inputs_dict
+
+    def setUp(self):
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+            torch.cuda.synchronize()
+        torch.manual_seed(0)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(0)
+
+    def tearDown(self):
+        super().tearDown()
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+            torch.cuda.synchronize()
+        torch.manual_seed(0)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(0)
 
     def test_gradient_checkpointing_is_applied(self):
         expected_set = {"ZImageTransformer2DModel"}
