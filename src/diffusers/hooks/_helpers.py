@@ -111,6 +111,7 @@ def _register_attention_processors_metadata():
     from ..models.transformers.transformer_hunyuanimage import HunyuanImageAttnProcessor
     from ..models.transformers.transformer_qwenimage import QwenDoubleStreamAttnProcessor2_0
     from ..models.transformers.transformer_wan import WanAttnProcessor2_0
+    from ..models.transformers.transformer_z_image import ZSingleStreamAttnProcessor
 
     # AttnProcessor2_0
     AttentionProcessorRegistry.register(
@@ -158,6 +159,14 @@ def _register_attention_processors_metadata():
         ),
     )
 
+    # ZSingleStreamAttnProcessor
+    AttentionProcessorRegistry.register(
+        model_class=ZSingleStreamAttnProcessor,
+        metadata=AttentionProcessorMetadata(
+            skip_processor_output_fn=_skip_proc_output_fn_Attention_ZSingleStreamAttnProcessor,
+        ),
+    )
+
 
 def _register_transformer_blocks_metadata():
     from ..models.attention import BasicTransformerBlock
@@ -179,6 +188,7 @@ def _register_transformer_blocks_metadata():
     from ..models.transformers.transformer_mochi import MochiTransformerBlock
     from ..models.transformers.transformer_qwenimage import QwenImageTransformerBlock
     from ..models.transformers.transformer_wan import WanTransformerBlock
+    from ..models.transformers.transformer_z_image import ZImageTransformerBlock
 
     # BasicTransformerBlock
     TransformerBlockRegistry.register(
@@ -312,6 +322,15 @@ def _register_transformer_blocks_metadata():
         ),
     )
 
+    # ZImage
+    TransformerBlockRegistry.register(
+        model_class=ZImageTransformerBlock,
+        metadata=TransformerBlockMetadata(
+            return_hidden_states_index=0,
+            return_encoder_hidden_states_index=None,
+        ),
+    )
+
 
 # fmt: off
 def _skip_attention___ret___hidden_states(self, *args, **kwargs):
@@ -338,4 +357,5 @@ _skip_proc_output_fn_Attention_WanAttnProcessor2_0 = _skip_attention___ret___hid
 _skip_proc_output_fn_Attention_FluxAttnProcessor = _skip_attention___ret___hidden_states
 _skip_proc_output_fn_Attention_QwenDoubleStreamAttnProcessor2_0 = _skip_attention___ret___hidden_states
 _skip_proc_output_fn_Attention_HunyuanImageAttnProcessor = _skip_attention___ret___hidden_states
+_skip_proc_output_fn_Attention_ZSingleStreamAttnProcessor = _skip_attention___ret___hidden_states
 # fmt: on
