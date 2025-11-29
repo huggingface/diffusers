@@ -248,8 +248,7 @@ class HunyuanVideo15Pipeline(DiffusionPipeline):
         text_encoder: Qwen2_5_VLTextModel,
         tokenizer: Qwen2Tokenizer,
         prompt: Union[str, List[str]],
-        device: Optional[torch.device] = None,
-        dtype: Optional[torch.dtype] = None,
+        device: torch.device,
         tokenizer_max_length: int = 1000,
         num_hidden_layers_to_skip: int = 2,
         # fmt: off
@@ -292,8 +291,6 @@ class HunyuanVideo15Pipeline(DiffusionPipeline):
             prompt_embeds = prompt_embeds[:, crop_start:]
             prompt_attention_mask = prompt_attention_mask[:, crop_start:]
 
-        prompt_embeds = prompt_embeds.to(dtype=dtype)
-
         return prompt_embeds, prompt_attention_mask
 
     
@@ -302,8 +299,7 @@ class HunyuanVideo15Pipeline(DiffusionPipeline):
         tokenizer: ByT5Tokenizer,
         text_encoder: T5EncoderModel,
         prompt: Union[str, List[str]],
-        dtype: Optional[torch.dtype] = None,
-        device: Optional[torch.device] = None,
+        device: torch.device,
         tokenizer_max_length: int = 256,
     ):
 
@@ -317,7 +313,7 @@ class HunyuanVideo15Pipeline(DiffusionPipeline):
         for glyph_text in glyph_texts:
             if glyph_text is None:
                 glyph_text_embeds = torch.zeros(
-                    (1, tokenizer_max_length, text_encoder.config.d_model), device=device, dtype=dtype
+                    (1, tokenizer_max_length, text_encoder.config.d_model), device=device, text_encoder.dtype
                 )
                 glyph_text_embeds_mask = torch.zeros(
                     (1, tokenizer_max_length), device=device, dtype=torch.int64
@@ -336,7 +332,7 @@ class HunyuanVideo15Pipeline(DiffusionPipeline):
                     input_ids=txt_tokens.input_ids,
                     attention_mask=txt_tokens.attention_mask.float(),
                 )[0]
-                glyph_text_embeds = glyph_text_embeds.to(dtype=dtype, device=device)
+                glyph_text_embeds = glyph_text_embeds.to(device=device)
                 glyph_text_embeds_mask = txt_tokens.attention_mask.to(device=device)
 
             prompt_embeds_list.append(glyph_text_embeds)
@@ -397,7 +393,6 @@ class HunyuanVideo15Pipeline(DiffusionPipeline):
                 text_encoder=self.text_encoder,
                 prompt=prompt,
                 device=device,
-                dtype=dtype,
                 tokenizer_max_length=self.tokenizer_max_length,
                 system_message=self.system_message,
                 crop_start=self.prompt_template_encode_start_idx,
@@ -409,7 +404,6 @@ class HunyuanVideo15Pipeline(DiffusionPipeline):
                 text_encoder=self.text_encoder_2,
                 prompt=prompt,
                 device=device,
-                dtype=dtype,
                 tokenizer_max_length=self.tokenizer_2_max_length,
             )
 
@@ -424,6 +418,11 @@ class HunyuanVideo15Pipeline(DiffusionPipeline):
         prompt_embeds_2 = prompt_embeds_2.view(batch_size * num_videos_per_prompt, seq_len_2, -1)
         prompt_embeds_mask_2 = prompt_embeds_mask_2.repeat(1, num_videos_per_prompt, 1)
         prompt_embeds_mask_2 = prompt_embeds_mask_2.view(batch_size * num_videos_per_prompt, seq_len_2)
+
+        prompt_embeds = prompt_embeds.to(dtype=dtype, device=device)
+        prompt_embeds_mask = prompt_embeds_mask.to(dtype=dtype, device=device)
+        prompt_embeds_2 = prompt_embeds_2.to(dtype=dtype, device=device)
+        prompt_embeds_mask_2 = prompt_embeds_mask_2.to(dtype=dtype, device=device)
 
         return prompt_embeds, prompt_embeds_mask, prompt_embeds_2, prompt_embeds_mask_2
 
