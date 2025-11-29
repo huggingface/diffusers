@@ -90,16 +90,20 @@ class QwenImageTransformerTests(ModelTesterMixin, unittest.TestCase):
         expected_set = {"QwenImageTransformer2DModel"}
         super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
 
-    def test_accepts_short_txt_seq_lens(self):
+    def test_infers_text_seq_len_from_mask(self):
         init_dict, inputs = self.prepare_init_args_and_inputs_for_common()
         model = self.model_class(**init_dict).to(torch_device)
 
-        # Provide a deliberately short txt_seq_lens to ensure the model falls back to the embedding length.
-        inputs["txt_seq_lens"] = [2] * inputs["encoder_hidden_states"].shape[0]
+        # Create a mask with only 2 valid tokens (rest are padding)
+        encoder_hidden_states_mask = inputs["encoder_hidden_states_mask"].clone()
+        encoder_hidden_states_mask[:, 2:] = 0  # Only first 2 tokens are valid
+
+        inputs["encoder_hidden_states_mask"] = encoder_hidden_states_mask
 
         with torch.no_grad():
             output = model(**inputs)
 
+        # The model should infer text_seq_len=2 from the mask for RoPE computation
         self.assertEqual(output.sample.shape[1], inputs["hidden_states"].shape[1])
 
     def test_builds_attention_mask_from_encoder_mask(self):
@@ -111,11 +115,31 @@ class QwenImageTransformerTests(ModelTesterMixin, unittest.TestCase):
         encoder_hidden_states_mask[:, -2:] = 0
 
         inputs["encoder_hidden_states_mask"] = encoder_hidden_states_mask
-        inputs.pop("txt_seq_lens", None)
 
         with torch.no_grad():
             output = model(**inputs)
 
+        self.assertEqual(output.sample.shape[1], inputs["hidden_states"].shape[1])
+
+    def test_non_contiguous_attention_mask(self):
+        """Test that non-contiguous masks work correctly (e.g., [1, 0, 1, 0, 1, 0, 0])"""
+        init_dict, inputs = self.prepare_init_args_and_inputs_for_common()
+        model = self.model_class(**init_dict).to(torch_device)
+
+        # Create a non-contiguous mask pattern: valid, padding, valid, padding, etc.
+        encoder_hidden_states_mask = inputs["encoder_hidden_states_mask"].clone()
+        # Pattern: [True, False, True, False, True, False, False]
+        encoder_hidden_states_mask[:, 1] = 0
+        encoder_hidden_states_mask[:, 3] = 0
+        encoder_hidden_states_mask[:, 5:] = 0
+
+        inputs["encoder_hidden_states_mask"] = encoder_hidden_states_mask
+
+        with torch.no_grad():
+            output = model(**inputs)
+
+        # The model should handle non-contiguous masks correctly
+        # RoPE uses the full sequence length, attention masking handles the pattern
         self.assertEqual(output.sample.shape[1], inputs["hidden_states"].shape[1])
 
 
