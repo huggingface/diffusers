@@ -16,11 +16,12 @@ from ...testing_utils import (
 )
 from ..test_pipelines_common import (
     PipelineTesterMixin,
+    TaylorSeerCacheTesterMixin,
     check_qkv_fused_layers_exist,
 )
 
 
-class Flux2PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+class Flux2PipelineFastTests(PipelineTesterMixin, TaylorSeerCacheTesterMixin, unittest.TestCase):
     pipeline_class = Flux2Pipeline
     params = frozenset(["prompt", "height", "width", "guidance_scale", "prompt_embeds"])
     batch_params = frozenset(["prompt"])
