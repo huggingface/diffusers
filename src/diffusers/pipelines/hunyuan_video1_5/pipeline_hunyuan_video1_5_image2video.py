@@ -92,7 +92,7 @@ def format_text_input(prompt: List[str], system_message: str) -> List[Dict[str, 
     return template
 
 
-# Copied from diffusers.pipelines.hunyuan_image.pipeline_hunyuanimage.extract_glyph_text
+# Copied from diffusers.pipelines.hunyuan_video1_5.pipeline_hunyuan_video1_5.extract_glyph_texts
 def extract_glyph_texts(prompt: str) -> List[str]:
     """
     Extract glyph texts from prompt using regex pattern.
@@ -281,7 +281,7 @@ class HunyuanVideo15ImageToVideoPipeline(DiffusionPipeline):
         text_encoder: Qwen2_5_VLTextModel,
         tokenizer: Qwen2Tokenizer,
         prompt: Union[str, List[str]],
-        device: Optional[torch.device] = None,
+        device: torch.device,
         tokenizer_max_length: int = 1000,
         num_hidden_layers_to_skip: int = 2,
         # fmt: off
@@ -494,10 +494,10 @@ class HunyuanVideo15ImageToVideoPipeline(DiffusionPipeline):
         prompt_embeds_mask_2 = prompt_embeds_mask_2.repeat(1, num_videos_per_prompt, 1)
         prompt_embeds_mask_2 = prompt_embeds_mask_2.view(batch_size * num_videos_per_prompt, seq_len_2)
 
-        prompt_embeds = prompt_embeds.to(device=device, dtype=dtype)
-        prompt_embeds_mask = prompt_embeds_mask.to(device=device, dtype=dtype)
-        prompt_embeds_2 = prompt_embeds_2.to(device=device, dtype=dtype)
-        prompt_embeds_mask_2 = prompt_embeds_mask_2.to(device=device, dtype=dtype)
+        prompt_embeds = prompt_embeds.to(dtype=dtype, device=device)
+        prompt_embeds_mask = prompt_embeds_mask.to(dtype=dtype, device=device)
+        prompt_embeds_2 = prompt_embeds_2.to(dtype=dtype, device=device)
+        prompt_embeds_mask_2 = prompt_embeds_mask_2.to(dtype=dtype, device=device)
 
         return prompt_embeds, prompt_embeds_mask, prompt_embeds_2, prompt_embeds_mask_2
 
