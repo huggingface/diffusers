@@ -14,8 +14,9 @@
 
 import numpy as np
 
-from ...video_processor import VideoProcessor
 from ...configuration_utils import register_to_config
+from ...video_processor import VideoProcessor
+
 
 # copied from https://github.com/Tencent-Hunyuan/HunyuanVideo-1.5/blob/main/hyvideo/utils/data_utils.py#L20
 def generate_crop_size_list(base_size=256, patch_size=16, max_ratio=4.0):
@@ -31,6 +32,7 @@ def generate_crop_size_list(base_size=256, patch_size=16, max_ratio=4.0):
         else:
             wp -= 1
     return crop_size_list
+
 
 # copied fromhttps://github.com/Tencent-Hunyuan/HunyuanVideo-1.5/blob/main/hyvideo/utils/data_utils.py#L38
 def get_closest_ratio(height: float, width: float, ratios: list, buckets: list):
@@ -60,9 +62,11 @@ def get_closest_ratio(height: float, width: float, ratios: list, buckets: list):
 
     return closest_size, closest_ratio
 
+
 class HunyuanVideo15ImageProcessor(VideoProcessor):
     r"""
     Image/video processor to preproces/postprocess the reference image/generatedvideo for the HunyuanVideo1.5 model.
+
     Args:
         do_resize (`bool`, *optional*, defaults to `True`):
             Whether to downscale the image's (height, width) dimensions to multiples of `vae_scale_factor`. Can accept
@@ -91,11 +95,9 @@ class HunyuanVideo15ImageProcessor(VideoProcessor):
             do_convert_rgb=do_convert_rgb,
         )
 
-
     def calculate_default_height_width(self, height: int, width: int, target_size: int):
-
         crop_size_list = generate_crop_size_list(base_size=target_size, patch_size=self.config.vae_scale_factor)
         aspect_ratios = np.array([round(float(h) / float(w), 5) for h, w in crop_size_list])
         height, width = get_closest_ratio(height, width, aspect_ratios, crop_size_list)[0]
-        
+
         return height, width

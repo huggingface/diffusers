@@ -59,7 +59,6 @@ class HunyuanVideo15AttnProcessor2_0:
         attention_mask: Optional[torch.Tensor] = None,
         image_rotary_emb: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-
         # 1. QKV projections
         query = attn.to_q(hidden_states)
         key = attn.to_k(hidden_states)
@@ -76,6 +75,7 @@ class HunyuanVideo15AttnProcessor2_0:
         # 3. Rotational positional embeddings applied to latent stream
         if image_rotary_emb is not None:
             from ..embeddings import apply_rotary_emb
+
             query = apply_rotary_emb(query, image_rotary_emb, sequence_dim=1)
             key = apply_rotary_emb(key, image_rotary_emb, sequence_dim=1)
 
@@ -175,14 +175,15 @@ class HunyuanVideo15AdaNorm(nn.Module):
 class HunyuanVideo15TimeEmbedding(nn.Module):
     r"""
     Time embedding for HunyuanVideo 1.5.
-    
-    Supports standard timestep embedding and optional reference timestep embedding
-    for MeanFlow-based super-resolution models.
-    
+
+    Supports standard timestep embedding and optional reference timestep embedding for MeanFlow-based super-resolution
+    models.
+
     Args:
         embedding_dim (`int`):
             The dimension of the output embedding.
     """
+
     def __init__(
         self,
         embedding_dim: int,
@@ -192,14 +193,12 @@ class HunyuanVideo15TimeEmbedding(nn.Module):
         self.time_proj = Timesteps(num_channels=256, flip_sin_to_cos=True, downscale_freq_shift=0)
         self.timestep_embedder = TimestepEmbedding(in_channels=256, time_embed_dim=embedding_dim)
 
-
     def forward(
         self,
         timestep: torch.Tensor,
     ) -> torch.Tensor:
         timesteps_proj = self.time_proj(timestep)
         timesteps_emb = self.timestep_embedder(timesteps_proj.to(dtype=timestep.dtype))
-
 
         return timesteps_emb
 
@@ -469,7 +468,7 @@ class HunyuanVideo15TransformerBlock(nn.Module):
         norm_encoder_hidden_states, c_gate_msa, c_shift_mlp, c_scale_mlp, c_gate_mlp = self.norm1_context(
             encoder_hidden_states, emb=temb
         )
-        
+
         # 2. Joint attention
         attn_output, context_attn_output = self.attn(
             hidden_states=norm_hidden_states,
@@ -477,7 +476,6 @@ class HunyuanVideo15TransformerBlock(nn.Module):
             attention_mask=attention_mask,
             image_rotary_emb=freqs_cis,
         )
-
 
         # 3. Modulation and residual connection
         hidden_states = hidden_states + attn_output * gate_msa.unsqueeze(1)
@@ -568,7 +566,7 @@ class HunyuanVideo15Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin
         rope_theta: float = 256.0,
         rope_axes_dim: Tuple[int, ...] = (16, 56, 56),
         # YiYi Notes: config based on target_size_config https://github.com/yiyixuxu/hy15/blob/main/hyvideo/pipelines/hunyuan_video_pipeline.py#L205
-        target_size: int = 640, # did not name sample_size since it is in pixel spaces
+        target_size: int = 640,  # did not name sample_size since it is in pixel spaces
         task_type: str = "i2v",
     ) -> None:
         super().__init__()
@@ -579,7 +577,7 @@ class HunyuanVideo15Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin
         # 1. Latent and condition embedders
         self.x_embedder = HunyuanVideo15PatchEmbed((patch_size_t, patch_size, patch_size), in_channels, inner_dim)
         self.image_embedder = HunyuanVideo15ImageProjection(image_embed_dim, inner_dim)
-        
+
         self.context_embedder = HunyuanVideo15TokenRefiner(
             text_embed_dim, num_attention_heads, attention_head_dim, num_layers=num_refiner_layers
         )
@@ -668,8 +666,7 @@ class HunyuanVideo15Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin
 
         for name, module in self.named_children():
             fn_recursive_attn_processor(name, module, processor)
-    
-    
+
     def forward(
         self,
         hidden_states: torch.Tensor,
@@ -733,10 +730,10 @@ class HunyuanVideo15Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin
         if is_t2v:
             encoder_hidden_states_3 = encoder_hidden_states_3 * 0.0
             encoder_attention_mask_3 = torch.zeros(
-                    (batch_size, encoder_hidden_states_3.shape[1]),
-                    dtype=encoder_attention_mask.dtype,
-                    device=encoder_attention_mask.device,
-                )
+                (batch_size, encoder_hidden_states_3.shape[1]),
+                dtype=encoder_attention_mask.dtype,
+                device=encoder_attention_mask.device,
+            )
         else:
             encoder_attention_mask_3 = torch.ones(
                 (batch_size, encoder_hidden_states_3.shape[1]),
@@ -744,7 +741,8 @@ class HunyuanVideo15Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin
                 device=encoder_attention_mask.device,
             )
         encoder_hidden_states_3_cond_emb = self.cond_type_embed(
-            2 * torch.ones_like(
+            2
+            * torch.ones_like(
                 encoder_hidden_states_3[:, :, 0],
                 dtype=torch.long,
             )
@@ -759,17 +757,17 @@ class HunyuanVideo15Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin
         new_encoder_attention_mask = []
 
         for text, text_mask, text_2, text_mask_2, image, image_mask in zip(
-            encoder_hidden_states, 
-            encoder_attention_mask, 
-            encoder_hidden_states_2, 
-            encoder_attention_mask_2, 
-            encoder_hidden_states_3, 
+            encoder_hidden_states,
+            encoder_attention_mask,
+            encoder_hidden_states_2,
+            encoder_attention_mask_2,
+            encoder_hidden_states_3,
             encoder_attention_mask_3,
         ):
             # Concatenate: [valid_image, valid_byt5, valid_mllm, invalid_image, invalid_byt5, invalid_mllm]
             new_encoder_hidden_states.append(
                 torch.cat(
-                    [   
+                    [
                         image[image_mask],  # valid image
                         text_2[text_mask_2],  # valid byt5
                         text[text_mask],  # valid mllm
@@ -798,7 +796,6 @@ class HunyuanVideo15Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin
 
         encoder_hidden_states = torch.stack(new_encoder_hidden_states)
         encoder_attention_mask = torch.stack(new_encoder_attention_mask)
-
 
         # 4. Transformer blocks
         if torch.is_grad_enabled() and self.gradient_checkpointing:

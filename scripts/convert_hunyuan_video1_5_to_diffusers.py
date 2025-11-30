@@ -1,3 +1,30 @@
+import argparse
+import json
+import os
+import pathlib
+
+import torch
+from accelerate import init_empty_weights
+from huggingface_hub import hf_hub_download, snapshot_download
+from safetensors.torch import load_file
+from transformers import (
+    AutoModel,
+    AutoTokenizer,
+    SiglipImageProcessor,
+    SiglipVisionModel,
+    T5EncoderModel,
+)
+
+from diffusers import (
+    AutoencoderKLHunyuanVideo15,
+    ClassifierFreeGuidance,
+    FlowMatchEulerDiscreteScheduler,
+    HunyuanVideo15ImageToVideoPipeline,
+    HunyuanVideo15Pipeline,
+    HunyuanVideo15Transformer3DModel,
+)
+
+
 # to convert only transformer
 """
 python scripts/convert_hunyuan_video1_5_to_diffusers.py \
@@ -16,21 +43,6 @@ python scripts/convert_hunyuan_video1_5_to_diffusers.py \
     --transformer_type 480p_t2v
 """
 
-import argparse
-from typing import Any, Dict
-
-import torch
-from accelerate import init_empty_weights
-from safetensors.torch import load_file
-from huggingface_hub import snapshot_download, hf_hub_download
-
-import pathlib  
-from diffusers import HunyuanVideo15Transformer3DModel, AutoencoderKLHunyuanVideo15, FlowMatchEulerDiscreteScheduler, ClassifierFreeGuidance, HunyuanVideo15Pipeline, HunyuanVideo15ImageToVideoPipeline
-from transformers import AutoModel, AutoTokenizer, T5EncoderModel, ByT5Tokenizer, SiglipVisionModel, SiglipImageProcessor
-
-import json
-import argparse
-import os
 
 TRANSFORMER_CONFIGS = {
     "480p_t2v": {
@@ -107,6 +119,7 @@ GUIDANCE_CONFIGS = {
     },
 }
 
+
 def swap_scale_shift(weight):
     shift, scale = weight.chunk(2, dim=0)
     new_weight = torch.cat([scale, shift], dim=0)
@@ -123,48 +136,42 @@ def convert_hyvideo15_transformer_to_diffusers(original_state_dict):
     converted_state_dict["time_embed.timestep_embedder.linear_1.weight"] = original_state_dict.pop(
         "time_in.mlp.0.weight"
     )
-    converted_state_dict["time_embed.timestep_embedder.linear_1.bias"] = original_state_dict.pop(
-        "time_in.mlp.0.bias"
-    )
+    converted_state_dict["time_embed.timestep_embedder.linear_1.bias"] = original_state_dict.pop("time_in.mlp.0.bias")
     converted_state_dict["time_embed.timestep_embedder.linear_2.weight"] = original_state_dict.pop(
         "time_in.mlp.2.weight"
     )
-    converted_state_dict["time_embed.timestep_embedder.linear_2.bias"] = original_state_dict.pop(
-        "time_in.mlp.2.bias"
-    )
+    converted_state_dict["time_embed.timestep_embedder.linear_2.bias"] = original_state_dict.pop("time_in.mlp.2.bias")
 
     # 2. context_embedder.time_text_embed.timestep_embedder <- txt_in.t_embedder
     converted_state_dict["context_embedder.time_text_embed.timestep_embedder.linear_1.weight"] = (
         original_state_dict.pop("txt_in.t_embedder.mlp.0.weight")
     )
-    converted_state_dict["context_embedder.time_text_embed.timestep_embedder.linear_1.bias"] = (
-        original_state_dict.pop("txt_in.t_embedder.mlp.0.bias")
+    converted_state_dict["context_embedder.time_text_embed.timestep_embedder.linear_1.bias"] = original_state_dict.pop(
+        "txt_in.t_embedder.mlp.0.bias"
     )
     converted_state_dict["context_embedder.time_text_embed.timestep_embedder.linear_2.weight"] = (
         original_state_dict.pop("txt_in.t_embedder.mlp.2.weight")
     )
-    converted_state_dict["context_embedder.time_text_embed.timestep_embedder.linear_2.bias"] = (
-        original_state_dict.pop("txt_in.t_embedder.mlp.2.bias")
+    converted_state_dict["context_embedder.time_text_embed.timestep_embedder.linear_2.bias"] = original_state_dict.pop(
+        "txt_in.t_embedder.mlp.2.bias"
     )
 
     # 3. context_embedder.time_text_embed.text_embedder <- txt_in.c_embedder
-    converted_state_dict["context_embedder.time_text_embed.text_embedder.linear_1.weight"] = (
-        original_state_dict.pop("txt_in.c_embedder.linear_1.weight")
+    converted_state_dict["context_embedder.time_text_embed.text_embedder.linear_1.weight"] = original_state_dict.pop(
+        "txt_in.c_embedder.linear_1.weight"
     )
-    converted_state_dict["context_embedder.time_text_embed.text_embedder.linear_1.bias"] = (
-        original_state_dict.pop("txt_in.c_embedder.linear_1.bias")
+    converted_state_dict["context_embedder.time_text_embed.text_embedder.linear_1.bias"] = original_state_dict.pop(
+        "txt_in.c_embedder.linear_1.bias"
     )
-    converted_state_dict["context_embedder.time_text_embed.text_embedder.linear_2.weight"] = (
-        original_state_dict.pop("txt_in.c_embedder.linear_2.weight")
+    converted_state_dict["context_embedder.time_text_embed.text_embedder.linear_2.weight"] = original_state_dict.pop(
+        "txt_in.c_embedder.linear_2.weight"
     )
-    converted_state_dict["context_embedder.time_text_embed.text_embedder.linear_2.bias"] = (
-        original_state_dict.pop("txt_in.c_embedder.linear_2.bias")
+    converted_state_dict["context_embedder.time_text_embed.text_embedder.linear_2.bias"] = original_state_dict.pop(
+        "txt_in.c_embedder.linear_2.bias"
     )
 
     # 4. context_embedder.proj_in <- txt_in.input_embedder
-    converted_state_dict["context_embedder.proj_in.weight"] = original_state_dict.pop(
-        "txt_in.input_embedder.weight"
-    )
+    converted_state_dict["context_embedder.proj_in.weight"] = original_state_dict.pop("txt_in.input_embedder.weight")
     converted_state_dict["context_embedder.proj_in.bias"] = original_state_dict.pop("txt_in.input_embedder.bias")
 
     # 5. context_embedder.token_refiner <- txt_in.individual_token_refiner
@@ -375,10 +382,12 @@ def convert_hyvideo15_transformer_to_diffusers(original_state_dict):
         )
 
     # 11. norm_out and proj_out <- final_layer
-    converted_state_dict["norm_out.linear.weight"] = swap_scale_shift(original_state_dict.pop(
-        "final_layer.adaLN_modulation.1.weight"
-    ))
-    converted_state_dict["norm_out.linear.bias"] = swap_scale_shift(original_state_dict.pop("final_layer.adaLN_modulation.1.bias"))
+    converted_state_dict["norm_out.linear.weight"] = swap_scale_shift(
+        original_state_dict.pop("final_layer.adaLN_modulation.1.weight")
+    )
+    converted_state_dict["norm_out.linear.bias"] = swap_scale_shift(
+        original_state_dict.pop("final_layer.adaLN_modulation.1.bias")
+    )
     converted_state_dict["proj_out.weight"] = original_state_dict.pop("final_layer.linear.weight")
     converted_state_dict["proj_out.bias"] = original_state_dict.pop("final_layer.linear.bias")
 
@@ -572,6 +581,7 @@ def convert_hunyuan_video_15_vae_checkpoint_to_diffusers(
 
     return converted
 
+
 def load_sharded_safetensors(dir: pathlib.Path):
     file_paths = list(dir.glob("diffusion_pytorch_model*.safetensors"))
     state_dict = {}
@@ -583,9 +593,9 @@ def load_sharded_safetensors(dir: pathlib.Path):
 def load_original_transformer_state_dict(args):
     if args.original_state_dict_repo_id is not None:
         model_dir = snapshot_download(
-            args.original_state_dict_repo_id, 
+            args.original_state_dict_repo_id,
             repo_type="model",
-            allow_patterns="transformer/" + args.transformer_type + "/*"
+            allow_patterns="transformer/" + args.transformer_type + "/*",
         )
     elif args.original_state_dict_folder is not None:
         model_dir = pathlib.Path(args.original_state_dict_folder)
@@ -599,8 +609,7 @@ def load_original_transformer_state_dict(args):
 def load_original_vae_state_dict(args):
     if args.original_state_dict_repo_id is not None:
         ckpt_path = hf_hub_download(
-            repo_id=args.original_state_dict_repo_id, 
-            filename= "vae/diffusion_pytorch_model.safetensors"
+            repo_id=args.original_state_dict_repo_id, filename="vae/diffusion_pytorch_model.safetensors"
         )
     elif args.original_state_dict_folder is not None:
         model_dir = pathlib.Path(args.original_state_dict_folder)
@@ -632,24 +641,27 @@ def convert_vae(args):
     vae.load_state_dict(state_dict, strict=True, assign=True)
     return vae
 
+
 def load_mllm():
-    print(f" loading from Qwen/Qwen2.5-VL-7B-Instruct")
-    text_encoder = AutoModel.from_pretrained("Qwen/Qwen2.5-VL-7B-Instruct", torch_dtype=torch.bfloat16,low_cpu_mem_usage=True)
-    if hasattr(text_encoder, 'language_model'):
+    print(" loading from Qwen/Qwen2.5-VL-7B-Instruct")
+    text_encoder = AutoModel.from_pretrained(
+        "Qwen/Qwen2.5-VL-7B-Instruct", torch_dtype=torch.bfloat16, low_cpu_mem_usage=True
+    )
+    if hasattr(text_encoder, "language_model"):
         text_encoder = text_encoder.language_model
     tokenizer = AutoTokenizer.from_pretrained("Qwen/Qwen2.5-VL-7B-Instruct", padding_side="right")
     return text_encoder, tokenizer
 
 
-#copied from https://github.com/Tencent-Hunyuan/HunyuanVideo-1.5/blob/910da2a829c484ea28982e8cff3bbc2cacdf1681/hyvideo/models/text_encoders/byT5/__init__.py#L89
+# copied from https://github.com/Tencent-Hunyuan/HunyuanVideo-1.5/blob/910da2a829c484ea28982e8cff3bbc2cacdf1681/hyvideo/models/text_encoders/byT5/__init__.py#L89
 def add_special_token(
     tokenizer,
     text_encoder,
     add_color=True,
     add_font=True,
     multilingual=True,
-    color_ann_path='assets/color_idx.json',
-    font_ann_path='assets/multilingual_10-lang_idx.json',
+    color_ann_path="assets/color_idx.json",
+    font_ann_path="assets/multilingual_10-lang_idx.json",
 ):
     """
     Add special tokens for color and font to tokenizer and text encoder.
@@ -663,16 +675,16 @@ def add_special_token(
         font_ann_path (str): Path to font annotation JSON.
         multilingual (bool): Whether to use multilingual font tokens.
     """
-    with open(font_ann_path, 'r') as f:
+    with open(font_ann_path, "r") as f:
         idx_font_dict = json.load(f)
-    with open(color_ann_path, 'r') as f:
+    with open(color_ann_path, "r") as f:
         idx_color_dict = json.load(f)
 
     if multilingual:
-        font_token = [f'<{font_code[:2]}-font-{idx_font_dict[font_code]}>' for font_code in idx_font_dict]
+        font_token = [f"<{font_code[:2]}-font-{idx_font_dict[font_code]}>" for font_code in idx_font_dict]
     else:
-        font_token = [f'<font-{i}>' for i in range(len(idx_font_dict))]
-    color_token = [f'<color-{i}>' for i in range(len(idx_color_dict))]
+        font_token = [f"<font-{i}>" for i in range(len(idx_font_dict))]
+    color_token = [f"<color-{i}>" for i in range(len(idx_color_dict))]
     additional_special_tokens = []
     if add_color:
         additional_special_tokens += color_token
@@ -688,14 +700,13 @@ def load_byt5(args):
     """
     Load ByT5 encoder with Glyph-SDXL-v2 weights and save in HuggingFace format.
     """
-    
 
     # 1. Load base tokenizer and encoder
     tokenizer = AutoTokenizer.from_pretrained("google/byt5-small")
-    
+
     # Load as T5EncoderModel
     encoder = T5EncoderModel.from_pretrained("google/byt5-small")
-    
+
     byt5_checkpoint_path = os.path.join(args.byt5_path, "checkpoints/byt5_model.pt")
     color_ann_path = os.path.join(args.byt5_path, "assets/color_idx.json")
     font_ann_path = os.path.join(args.byt5_path, "assets/multilingual_10-lang_idx.json")
@@ -710,48 +721,45 @@ def load_byt5(args):
         font_ann_path=font_ann_path,
         multilingual=True,
     )
-    
-    
+
     # 3. Load Glyph-SDXL-v2 checkpoint
     print(f"\n3. Loading Glyph-SDXL-v2 checkpoint: {byt5_checkpoint_path}")
-    checkpoint = torch.load(byt5_checkpoint_path, map_location='cpu')
-    
+    checkpoint = torch.load(byt5_checkpoint_path, map_location="cpu")
+
     # Handle different checkpoint formats
-    if 'state_dict' in checkpoint:
-        state_dict = checkpoint['state_dict']
+    if "state_dict" in checkpoint:
+        state_dict = checkpoint["state_dict"]
     else:
         state_dict = checkpoint
-    
-    # add 'encoder.' prefix to the keys 
+
+    # add 'encoder.' prefix to the keys
     # Remove 'module.text_tower.encoder.' prefix if present
     cleaned_state_dict = {}
     for key, value in state_dict.items():
-        if key.startswith('module.text_tower.encoder.'):
-            new_key = 'encoder.' + key[len('module.text_tower.encoder.'):]
+        if key.startswith("module.text_tower.encoder."):
+            new_key = "encoder." + key[len("module.text_tower.encoder.") :]
             cleaned_state_dict[new_key] = value
         else:
-            new_key = 'encoder.' + key
+            new_key = "encoder." + key
             cleaned_state_dict[new_key] = value
-    
-    
+
     # 4. Load weights
     missing_keys, unexpected_keys = encoder.load_state_dict(cleaned_state_dict, strict=False)
     if unexpected_keys:
         raise ValueError(f"Unexpected keys: {unexpected_keys}")
     if "shared.weight" in missing_keys:
-        print(f"  Missing shared.weight as expected")
+        print("  Missing shared.weight as expected")
         missing_keys.remove("shared.weight")
     if missing_keys:
         raise ValueError(f"Missing keys: {missing_keys}")
-    
-    
+
     return encoder, tokenizer
 
 
 def load_siglip():
     image_encoder = SiglipVisionModel.from_pretrained(
         "black-forest-labs/FLUX.1-Redux-dev", subfolder="image_encoder", torch_dtype=torch.bfloat16
-        )
+    )
     feature_extractor = SiglipImageProcessor.from_pretrained(
         "black-forest-labs/FLUX.1-Redux-dev", subfolder="feature_extractor"
     )
@@ -763,11 +771,11 @@ def get_args():
     parser.add_argument(
         "--original_state_dict_repo_id", type=str, default=None, help="Path to original hub_id for the model"
     )
-    parser.add_argument("--original_state_dict_folder", type=str, default=None, help="Local folder name of the original state dict")
-    parser.add_argument("--output_path", type=str, required=True, help="Path where converted model(s) should be saved")
     parser.add_argument(
-        "--transformer_type", type=str, default="480p_i2v", choices=list(TRANSFORMER_CONFIGS.keys())
+        "--original_state_dict_folder", type=str, default=None, help="Local folder name of the original state dict"
     )
+    parser.add_argument("--output_path", type=str, required=True, help="Path where converted model(s) should be saved")
+    parser.add_argument("--transformer_type", type=str, default="480p_i2v", choices=list(TRANSFORMER_CONFIGS.keys()))
     parser.add_argument(
         "--byt5_path",
         type=str,
@@ -826,7 +834,7 @@ if __name__ == "__main__":
                 feature_extractor=feature_extractor,
             )
         elif task_type == "t2v":
-            pipeline = HunyuanVideo15Text2VideoPipeline(
+            pipeline = HunyuanVideo15Pipeline(
                 vae=vae,
                 text_encoder=text_encoder,
                 text_encoder_2=text_encoder_2,
@@ -840,6 +848,3 @@ if __name__ == "__main__":
             raise ValueError(f"Task type {task_type} is not supported")
 
         pipeline.save_pretrained(args.output_path, safe_serialization=True)
-
-
-

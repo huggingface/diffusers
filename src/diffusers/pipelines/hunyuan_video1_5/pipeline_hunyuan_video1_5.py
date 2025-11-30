@@ -13,21 +13,21 @@
 # limitations under the License.
 
 import inspect
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 import re
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import torch
-from transformers import Qwen2_5_VLTextModel, Qwen2Tokenizer, T5EncoderModel, ByT5Tokenizer
+from transformers import ByT5Tokenizer, Qwen2_5_VLTextModel, Qwen2Tokenizer, T5EncoderModel
 
+from ...guiders import ClassifierFreeGuidance
 from ...models import AutoencoderKLHunyuanVideo15, HunyuanVideo15Transformer3DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import is_torch_xla_available, logging, replace_example_docstring
-from .image_processor import HunyuanVideo15ImageProcessor
-from ..pipeline_utils import DiffusionPipeline
-from .pipeline_output import HunyuanVideo15PipelineOutput
-from ...guiders import ClassifierFreeGuidance
 from ...utils.torch_utils import randn_tensor
+from ..pipeline_utils import DiffusionPipeline
+from .image_processor import HunyuanVideo15ImageProcessor
+from .pipeline_output import HunyuanVideo15PipelineOutput
 
 
 if is_torch_xla_available():
@@ -61,8 +61,7 @@ EXAMPLE_DOC_STRING = """
 """
 
 
-def format_text_input(prompt: List[str], system_message: str
-        ) -> List[Dict[str, Any]]:
+def format_text_input(prompt: List[str], system_message: str) -> List[Dict[str, Any]]:
     """
     Apply text to template.
 
@@ -75,13 +74,8 @@ def format_text_input(prompt: List[str], system_message: str
     """
 
     template = [
-        [
-            {
-                'role': 'system', 
-                'content': system_message}, 
-            {'role': 'user', 'content': p if p else " "}
-        ]
-        for p in prompt]
+        [{"role": "system", "content": system_message}, {"role": "user", "content": p if p else " "}] for p in prompt
+    ]
 
     return template
 
@@ -89,14 +83,14 @@ def format_text_input(prompt: List[str], system_message: str
 def extract_glyph_texts(prompt: str) -> List[str]:
     """
     Extract glyph texts from prompt using regex pattern.
-    
+
     Args:
         prompt: Input prompt string
-        
+
     Returns:
         List of extracted glyph texts
     """
-    pattern = r'\"(.*?)\"|“(.*?)”'
+    pattern = r"\"(.*?)\"|“(.*?)”"
     matches = re.findall(pattern, prompt)
     result = [match[0] or match[1] for match in matches]
     result = list(dict.fromkeys(result)) if len(result) > 1 else result
@@ -225,7 +219,9 @@ class HunyuanVideo15Pipeline(DiffusionPipeline):
         self.vae_scale_factor_spatial = self.vae.spatial_compression_ratio if getattr(self, "vae", None) else 16
         self.video_processor = HunyuanVideo15ImageProcessor(vae_scale_factor=self.vae_scale_factor_spatial)
         self.target_size = self.transformer.config.target_size if getattr(self, "transformer", None) else 640
-        self.vision_states_dim = self.transformer.config.image_embed_dim if getattr(self, "transformer", None) else 1152
+        self.vision_states_dim = (
+            self.transformer.config.image_embed_dim if getattr(self, "transformer", None) else 1152
+        )
         self.num_channels_latents = self.vae.config.latent_channels if hasattr(self, "vae") else 32
         # fmt: off
         self.system_message = "You are a helpful assistant. Describe the video by detailing the following aspects: \
@@ -239,8 +235,7 @@ class HunyuanVideo15Pipeline(DiffusionPipeline):
         self.tokenizer_max_length = 1000
         self.tokenizer_2_max_length = 256
         self.vision_num_semantic_tokens = 729
-        self.default_aspect_ratio = (16, 9) # (width: height)
-
+        self.default_aspect_ratio = (16, 9)  # (width: height)
 
     @staticmethod
     def _get_mllm_prompt_embeds(
@@ -260,8 +255,6 @@ class HunyuanVideo15Pipeline(DiffusionPipeline):
         # fmt: on
         crop_start: int = 108,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
-
-
         prompt = [prompt] if isinstance(prompt, str) else prompt
 
         prompt = format_text_input(prompt, system_message)
@@ -292,7 +285,6 @@ class HunyuanVideo15Pipeline(DiffusionPipeline):
 
         return prompt_embeds, prompt_attention_mask
 
-    
     @staticmethod
     def _get_byt5_prompt_embeds(
         tokenizer: ByT5Tokenizer,
@@ -301,7 +293,6 @@ class HunyuanVideo15Pipeline(DiffusionPipeline):
         device: torch.device,
         tokenizer_max_length: int = 256,
     ):
-
         prompt = [prompt] if isinstance(prompt, str) else prompt
 
         glyph_texts = [extract_glyph_texts(p) for p in prompt]
@@ -312,10 +303,9 @@ class HunyuanVideo15Pipeline(DiffusionPipeline):
         for glyph_text in glyph_texts:
             if glyph_text is None:
                 glyph_text_embeds = torch.zeros(
-                    (1, tokenizer_max_length, text_encoder.config.d_model), device=device, dtype=text_encoder.dtype)
-                glyph_text_embeds_mask = torch.zeros(
-                    (1, tokenizer_max_length), device=device, dtype=torch.int64
+                    (1, tokenizer_max_length, text_encoder.config.d_model), device=device, dtype=text_encoder.dtype
                 )
+                glyph_text_embeds_mask = torch.zeros((1, tokenizer_max_length), device=device, dtype=torch.int64)
             else:
                 txt_tokens = tokenizer(
                     glyph_text,
@@ -340,7 +330,6 @@ class HunyuanVideo15Pipeline(DiffusionPipeline):
         prompt_embeds_mask = torch.cat(prompt_embeds_mask_list, dim=0)
 
         return prompt_embeds, prompt_embeds_mask
-
 
     def encode_prompt(
         self,
@@ -438,16 +427,11 @@ class HunyuanVideo15Pipeline(DiffusionPipeline):
         prompt_embeds_mask_2=None,
         negative_prompt_embeds_2=None,
         negative_prompt_embeds_mask_2=None,
-    ):  
-
+    ):
         if height is None and width is not None:
-            raise ValueError(
-                "If `width` is provided, `height` also have to be provided."
-            )
+            raise ValueError("If `width` is provided, `height` also have to be provided.")
         elif width is None and height is not None:
-            raise ValueError(
-                "If `height` is provided, `width` also have to be provided."
-            )
+            raise ValueError("If `height` is provided, `width` also have to be provided.")
 
         if prompt is not None and prompt_embeds is not None:
             raise ValueError(
@@ -521,33 +505,23 @@ class HunyuanVideo15Pipeline(DiffusionPipeline):
         latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
         return latents
 
-
     def prepare_cond_latents_and_mask(self, latents, dtype: Optional[torch.dtype], device: Optional[torch.device]):
         """
         Prepare conditional latents and mask for t2v generation.
-        
+
         Args:
             latents: Main latents tensor (B, C, F, H, W)
-            
+
         Returns:
             tuple: (cond_latents_concat, mask_concat) - both are zero tensors for t2v
         """
         batch, channels, frames, height, width = latents.shape
-        
-        cond_latents_concat = torch.zeros(
-            batch, channels, frames, height, width,
-            dtype=dtype,
-            device=device
-        )
-        
-        mask_concat = torch.zeros(
-            batch, 1, frames, height, width,
-            dtype=dtype,
-            device=device
-        )
-        
-        return cond_latents_concat, mask_concat
 
+        cond_latents_concat = torch.zeros(batch, channels, frames, height, width, dtype=dtype, device=device)
+
+        mask_concat = torch.zeros(batch, 1, frames, height, width, dtype=dtype, device=device)
+
+        return cond_latents_concat, mask_concat
 
     @property
     def num_timesteps(self):
@@ -655,8 +629,8 @@ class HunyuanVideo15Pipeline(DiffusionPipeline):
 
         Returns:
             [`~HunyuanVideo15PipelineOutput`] or `tuple`:
-                If `return_dict` is `True`, [`HunyuanVideo15PipelineOutput`] is returned, otherwise a `tuple` is returned
-                where the first element is a list with the generated videos.
+                If `return_dict` is `True`, [`HunyuanVideo15PipelineOutput`] is returned, otherwise a `tuple` is
+                returned where the first element is a list with the generated videos.
         """
 
         # 1. Check inputs. Raise error if not correct
@@ -676,7 +650,9 @@ class HunyuanVideo15Pipeline(DiffusionPipeline):
         )
 
         if height is None and width is None:
-            height, width = self.video_processor.calculate_default_height_width(self.default_aspect_ratio[1], self.default_aspect_ratio[0], self.target_size)
+            height, width = self.video_processor.calculate_default_height_width(
+                self.default_aspect_ratio[1], self.default_aspect_ratio[0], self.target_size
+            )
 
         self._attention_kwargs = attention_kwargs
         self._current_timestep = None
@@ -705,8 +681,13 @@ class HunyuanVideo15Pipeline(DiffusionPipeline):
             prompt_embeds_mask_2=prompt_embeds_mask_2,
         )
 
-        if self.guider._enabled and self.guider.num_conditions >1 :
-            negative_prompt_embeds, negative_prompt_embeds_mask, negative_prompt_embeds_2, negative_prompt_embeds_mask_2 = self.encode_prompt(
+        if self.guider._enabled and self.guider.num_conditions > 1:
+            (
+                negative_prompt_embeds,
+                negative_prompt_embeds_mask,
+                negative_prompt_embeds_2,
+                negative_prompt_embeds_mask_2,
+            ) = self.encode_prompt(
                 prompt=negative_prompt,
                 device=device,
                 dtype=self.transformer.dtype,
@@ -736,11 +717,11 @@ class HunyuanVideo15Pipeline(DiffusionPipeline):
         )
         cond_latents_concat, mask_concat = self.prepare_cond_latents_and_mask(latents, self.transformer.dtype, device)
         image_embeds = torch.zeros(
-            batch_size, 
-            self.vision_num_semantic_tokens, 
+            batch_size,
+            self.vision_num_semantic_tokens,
             self.vision_states_dim,
             dtype=self.transformer.dtype,
-            device=device
+            device=device,
         )
 
         # 7. Denoising loop
@@ -838,7 +819,7 @@ class HunyuanVideo15Pipeline(DiffusionPipeline):
                     xm.mark_step()
 
         self._current_timestep = None
-        
+
         # 8. decode the latents to video and postprocess
         if not output_type == "latent":
             latents = latents.to(self.vae.dtype) / self.vae.config.scaling_factor

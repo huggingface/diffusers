@@ -141,7 +141,9 @@ class HunyuanVideo15AttnBlock(nn.Module):
         key = key.reshape(batch_size, channels, frames * height * width).permute(0, 2, 1).unsqueeze(1).contiguous()
         value = value.reshape(batch_size, channels, frames * height * width).permute(0, 2, 1).unsqueeze(1).contiguous()
 
-        attention_mask = self.prepare_causal_attention_mask(frames, height * width, query.dtype, query.device, batch_size=batch_size)
+        attention_mask = self.prepare_causal_attention_mask(
+            frames, height * width, query.dtype, query.device, batch_size=batch_size
+        )
 
         x = nn.functional.scaled_dot_product_attention(query, key, value, attn_mask=attention_mask)
 
@@ -196,7 +198,7 @@ class HunyuanVideo15Upsample(nn.Module):
             x_first = x[:, :, :1, :, :]
             x_first = self._dcae_upsample_rearrange(x_first, r1=1, r2=2, r3=2)
             x_first = x_first.repeat_interleave(repeats=self.repeats // 2, dim=1)
-    
+
             x_next = x[:, :, 1:, :, :]
             x_next = self._dcae_upsample_rearrange(x_next, r1=r1, r2=2, r3=2)
             x_next = x_next.repeat_interleave(repeats=self.repeats, dim=1)
