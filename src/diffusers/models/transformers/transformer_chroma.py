@@ -656,10 +656,7 @@ class ChromaTransformer2DModel(
                     "Passing `scale` via `joint_attention_kwargs` when not using the PEFT backend is ineffective."
                 )
         
-        pixels = nn.functional.unfold(hidden_states, kernel_size=self.patch_size, stride=self.patch_size)
-        pixels = pixels.transpose(1, 2)
-        hidden_states = self.transformer.img_in_patch(hidden_states)
-        hidden_states = hidden_states.flatten(2).transpose(1, 2)
+        hidden_states = self.x_embedder(hidden_states)
 
         timestep = timestep.to(hidden_states.dtype) * 1000
 
@@ -859,6 +856,7 @@ class ChromaRadianceTransformer2DModel(
             nerf_max_freqs,
             nerf_mlp_ratio,
         )
+        
         self.img_in_patch = nn.Conv2d(
             in_channels,
             self.inner_dim,
@@ -868,7 +866,6 @@ class ChromaRadianceTransformer2DModel(
         )
 
         self.context_embedder = nn.Linear(joint_attention_dim, self.inner_dim)
-        self.x_embedder = nn.Linear(in_channels, self.inner_dim)
 
         self.transformer_blocks = nn.ModuleList(
             [
@@ -891,11 +888,6 @@ class ChromaRadianceTransformer2DModel(
                 for _ in range(num_single_layers)
             ]
         )
-
-        #self.norm_out = ChromaAdaLayerNormContinuousPruned(
-        #    self.inner_dim, self.inner_dim, elementwise_affine=False, eps=1e-6
-        #)
-        #self.proj_out = nn.Linear(self.inner_dim, patch_size * patch_size * self.out_channels, bias=True)
 
         self.gradient_checkpointing = False
 
@@ -951,8 +943,11 @@ class ChromaRadianceTransformer2DModel(
                 logger.warning(
                     "Passing `scale` via `joint_attention_kwargs` when not using the PEFT backend is ineffective."
                 )
-
-        hidden_states = self.x_embedder(hidden_states)
+        
+        pixels = nn.functional.unfold(hidden_states, kernel_size=self.patch_size, stride=self.patch_size)
+        pixels = pixels.transpose(1, 2)
+        hidden_states = self.transformer.img_in_patch(hidden_states)
+        hidden_states = hidden_states.flatten(2).transpose(1, 2)
 
         timestep = timestep.to(hidden_states.dtype) * 1000
 
@@ -1053,9 +1048,6 @@ class ChromaRadianceTransformer2DModel(
 
         hidden_states = hidden_states[:, encoder_hidden_states.shape[1] :, ...]
 
-        #temb = pooled_temb[:, -2:]
-        #hidden_states = self.norm_out(hidden_states, temb)
-        #output = self.proj_out(hidden_states)
         output = self.nerf(hidden_states, self.transformer.patch_size, num_patches)
 
         if USE_PEFT_BACKEND:

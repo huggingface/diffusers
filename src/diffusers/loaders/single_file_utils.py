@@ -191,6 +191,7 @@ DIFFUSERS_DEFAULT_PIPELINE_PATHS = {
     "flux-depth": {"pretrained_model_name_or_path": "black-forest-labs/FLUX.1-Depth-dev"},
     "flux-schnell": {"pretrained_model_name_or_path": "black-forest-labs/FLUX.1-schnell"},
     "flux-2-dev": {"pretrained_model_name_or_path": "black-forest-labs/FLUX.2-dev"},
+    "chroma": {"pretrained_model_name_or_path": "lodestones/Chroma1-HD"},
     "ltx-video": {"pretrained_model_name_or_path": "diffusers/LTX-Video-0.9.0"},
     "ltx-video-0.9.1": {"pretrained_model_name_or_path": "diffusers/LTX-Video-0.9.1"},
     "ltx-video-0.9.5": {"pretrained_model_name_or_path": "Lightricks/LTX-Video-0.9.5"},
@@ -663,6 +664,14 @@ def infer_diffusers_model_type(checkpoint):
 
     elif any(key in checkpoint for key in CHECKPOINT_KEY_NAMES["flux"]):
         if any(
+            c in checkpoint for c in ["distilled_guidance_layer.in_proj.bias"]
+        ):
+            # Should be updated once a repo exists
+            # if any(h in checkpoint for h in ["nerf_blocks.0.param_generator.bias"]):
+            #     model_type = "chroma-radiance"
+            # else:
+            model_type = "chroma"
+        elif any(
             g in checkpoint for g in ["guidance_in.in_layer.bias", "model.diffusion_model.guidance_in.in_layer.bias"]
         ):
             if "model.diffusion_model.img_in.weight" in checkpoint:
@@ -3709,10 +3718,10 @@ def convert_chroma_radiance_transformer_checkpoint_to_diffusers(checkpoint, **kw
     
     # nerf
     
-    converted_state_dict["nerf.nerf_embedder.embedder.bias"] = checkpoint.pop(
+    converted_state_dict["nerf.nerf_embedder.embedder.0.bias"] = checkpoint.pop(
         "nerf_image_embedder.embedder.0.bias"
     )
-    converted_state_dict["nerf.nerf_embedder.embedder.weight"] = checkpoint.pop(
+    converted_state_dict["nerf.nerf_embedder.embedder.0.weight"] = checkpoint.pop(
         "nerf_image_embedder.embedder.0.weight"
     )
     converted_state_dict["nerf.final_layer.conv.bias"] = checkpoint.pop(
@@ -3721,13 +3730,13 @@ def convert_chroma_radiance_transformer_checkpoint_to_diffusers(checkpoint, **kw
     converted_state_dict["nerf.final_layer.conv.weight"] = checkpoint.pop(
         "nerf_final_layer_conv.conv.weight"
     )
-    converted_state_dict["nerf.final_layer.norm.scale"] = checkpoint.pop(
+    converted_state_dict["nerf.final_layer.norm.weight"] = checkpoint.pop(
         "nerf_final_layer_conv.norm.scale"
     )
 
     for i in range(num_nerf_layers):
         block_prefix = f"nerf.blocks.{i}."
-        converted_state_dict[f"{block_prefix}norm.scale"] = checkpoint.pop(
+        converted_state_dict[f"{block_prefix}norm.weight"] = checkpoint.pop(
             f"nerf_blocks.{i}.norm.scale"
         )
         converted_state_dict[f"{block_prefix}param_generator.bias"] = checkpoint.pop(
@@ -3736,6 +3745,15 @@ def convert_chroma_radiance_transformer_checkpoint_to_diffusers(checkpoint, **kw
         converted_state_dict[f"{block_prefix}param_generator.weight"] = checkpoint.pop(
             f"nerf_blocks.{i}.param_generator.weight"
         )
+
+    # patch
+    
+    converted_state_dict["img_in_patch.bias"] = checkpoint.pop(
+        "img_in_patch.bias"
+    )
+    converted_state_dict["img_in_patch.weight"] = checkpoint.pop(
+        "img_in_patch.weight"
+    )
 
     return converted_state_dict
 

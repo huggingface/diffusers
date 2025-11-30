@@ -21,7 +21,7 @@ from transformers import CLIPImageProcessor, CLIPVisionModelWithProjection, T5En
 
 from ...image_processor import PipelineImageInput, VaeImageProcessor
 from ...loaders import FluxIPAdapterMixin, FluxLoraLoaderMixin, FromSingleFileMixin, TextualInversionLoaderMixin
-from ...models import AutoencoderKL, ChromaTransformer2DModel
+from ...models import AutoencoderKL, ChromaTransformer2DModel, ChromaRadianceTransformer2DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import (
     USE_PEFT_BACKEND,
