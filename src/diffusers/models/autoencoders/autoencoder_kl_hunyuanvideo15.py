@@ -215,8 +215,6 @@ class HunyuanVideo15Downsample(nn.Module):
     def __init__(self, in_channels: int, out_channels: int, add_temporal_downsample: bool = True):
         super().__init__()
         factor = 2 * 2 * 2 if add_temporal_downsample else 1 * 2 * 2
-        assert out_channels % factor == 0
-        # self.conv = Conv3d(in_channels, out_channels // factor, kernel_size=3, stride=1, padding=1)
         self.conv = HunyuanVideo15CausalConv3d(in_channels, out_channels // factor, kernel_size=3)
 
         self.add_temporal_downsample = add_temporal_downsample
@@ -531,7 +529,6 @@ class HunyuanVideo15Encoder3D(nn.Module):
 
             hidden_states = self.mid_block(hidden_states)
 
-        # short_cut = rearrange(hidden_states, "b (c r) f h w -> b c r f h w", r=self.group_size).mean(dim=2)
         batch_size, _, frame, height, width = hidden_states.shape
         short_cut = hidden_states.view(batch_size, -1, self.group_size, frame, height, width).mean(dim=2)
 
@@ -546,7 +543,7 @@ class HunyuanVideo15Encoder3D(nn.Module):
 
 class HunyuanVideo15Decoder3D(nn.Module):
     r"""
-    Causal decoder for 3D video-like data used for HunyuanImage-2.1 Refiner.
+    Causal decoder for 3D video-like data used for HunyuanImage-1.5 Refiner.
     """
 
     def __init__(

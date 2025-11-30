@@ -184,10 +184,7 @@ class HunyuanVideo15TimeEmbedding(nn.Module):
             The dimension of the output embedding.
     """
 
-    def __init__(
-        self,
-        embedding_dim: int,
-    ):
+    def __init__(self, embedding_dim: int):
         super().__init__()
 
         self.time_proj = Timesteps(num_channels=256, flip_sin_to_cos=True, downscale_freq_shift=0)
@@ -362,7 +359,7 @@ class HunyuanVideo15RotaryPosEmbed(nn.Module):
         rope_sizes = [num_frames // self.patch_size_t, height // self.patch_size, width // self.patch_size]
 
         axes_grids = []
-        for i in range(3):
+        for i in range(len(rope_sizes)):
             # Note: The following line diverges from original behaviour. We create the grid on the device, whereas
             # original implementation creates it on CPU and then moves it to device. This results in numerical
             # differences in layerwise debugging outputs, but visually it is the same.
