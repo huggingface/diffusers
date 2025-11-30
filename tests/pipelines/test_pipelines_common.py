@@ -2924,6 +2924,7 @@ class FirstBlockCacheTesterMixin:
             "Outputs from normal inference and after disabling cache should not differ."
         )
 
+
 class TaylorSeerCacheTesterMixin:
     taylorseer_cache_config = TaylorSeerCacheConfig(
         cache_interval=5,
