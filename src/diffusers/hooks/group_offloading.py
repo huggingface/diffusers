@@ -537,7 +537,6 @@ def apply_group_offloading(
     offload_to_disk_path: Optional[str] = None,
     block_modules: Optional[List[str]] = None,
     pin_groups: Optional[Union[str, Callable]] = None,
-    pin_first_last: bool = False,
 ) -> None:
     r"""
     Applies group offloading to the internal layers of a torch.nn.Module. To understand what group offloading is, and
@@ -602,8 +601,6 @@ def apply_group_offloading(
             Optionally keeps selected groups on the onload device permanently. Use `"first_last"` to pin the first
             and last parameter-bearing groups, `"all"` to pin every parameter-bearing group, or pass a callable that
             receives a module (and optionally the module name and index) and returns `True` to pin that group.
-        pin_first_last (`bool`, *optional*, defaults to `False`):
-            Deprecated alias for `pin_groups="first_last"`.
 
     Example:
         ```python
@@ -642,11 +639,6 @@ def apply_group_offloading(
         raise ValueError("`record_stream` cannot be True when `use_stream=False`.")
     if offload_type == GroupOffloadingType.BLOCK_LEVEL and num_blocks_per_group is None:
         raise ValueError("`num_blocks_per_group` must be provided when using `offload_type='block_level'.")
-
-    if pin_first_last:
-        if pin_groups is not None and pin_groups != "first_last":
-            raise ValueError("`pin_first_last` cannot be combined with a different `pin_groups` setting.")
-        pin_groups = "first_last"
 
     normalized_pin_groups = pin_groups
     if isinstance(pin_groups, str):
@@ -747,6 +739,7 @@ def _apply_group_offloading_block_level(module: torch.nn.Module, config: GroupOf
         else:
             # This is an unmatched module
             unmatched_modules.append((name, submodule))
+            modules_with_group_offloading.add(name)
 
     # Apply group offloading hooks to the module groups
     for i, group in enumerate(matched_module_groups):

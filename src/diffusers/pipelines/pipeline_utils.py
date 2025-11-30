@@ -1343,7 +1343,6 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         offload_to_disk_path: Optional[str] = None,
         exclude_modules: Optional[Union[str, List[str]]] = None,
         pin_groups: Optional[Union[str, Callable]] = None,
-        pin_first_last: bool = False,
     ) -> None:
         r"""
         Applies group offloading to the internal layers of a torch.nn.Module. To understand what group offloading is,
@@ -1407,8 +1406,6 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             pin_groups (`\"first_last\"` | `\"all\"` | `Callable`, *optional*):
                 Optionally keep selected groups on the onload device permanently. See `ModelMixin.enable_group_offload`
                 for details.
-            pin_first_last (`bool`, *optional*, defaults to `False`):
-                Deprecated alias for `pin_groups=\"first_last\"`.
 
         Example:
             ```python
@@ -1450,7 +1447,6 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             "low_cpu_mem_usage": low_cpu_mem_usage,
             "offload_to_disk_path": offload_to_disk_path,
             "pin_groups": pin_groups,
-            "pin_first_last": pin_first_last,
         }
         for name, component in self.components.items():
             if name not in exclude_modules and isinstance(component, torch.nn.Module):

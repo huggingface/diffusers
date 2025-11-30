@@ -427,7 +427,7 @@ class GroupOffloadTests(unittest.TestCase):
             offload_type="block_level",
             num_blocks_per_group=1,
             use_stream=True,
-            pin_first_last=True,
+            pin_groups="first_last",
         )
         model_pin.eval()
         first, middle, last = get_param_modules_from_exec_order(model_pin)
