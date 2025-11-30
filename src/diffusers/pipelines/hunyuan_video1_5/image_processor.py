@@ -52,7 +52,7 @@ def get_closest_ratio(height: float, width: float, ratios: list, buckets: list):
     if aspect_ratio >= 1:
         indices = [(index, x) for index, x in enumerate(diff_ratios) if x <= 0]
     else:
-        indices = [(index, x) for index, x in enumerate(diff_ratios) if x > 0]
+        indices = [(index, x) for index, x in enumerate(diff_ratios) if x >= 0]
 
     closest_ratio_id = min(indices, key=lambda pair: abs(pair[1]))[0]
     closest_size = buckets[closest_ratio_id]

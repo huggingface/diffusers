@@ -195,7 +195,7 @@ class HunyuanVideo15Pipeline(DiffusionPipeline):
             [ClassifierFreeGuidance]for classifier free guidance.
     """
 
-    model_cpu_offload_seq = "text_encoder->text_encoder_2->transformer->vae"
+    model_cpu_offload_seq = "text_encoder->transformer->vae"
     _callback_tensor_inputs = ["latents", "prompt_embeds"]
 
     def __init__(

@@ -278,6 +278,7 @@ def attention_backend(backend: Union[str, AttentionBackendName] = AttentionBacke
 
     backend = AttentionBackendName(backend)
     _check_attention_backend_requirements(backend)
+    _maybe_download_kernel_for_backend(backend)
 
     old_backend = _AttentionBackendRegistry._active_backend
     _AttentionBackendRegistry._active_backend = backend
