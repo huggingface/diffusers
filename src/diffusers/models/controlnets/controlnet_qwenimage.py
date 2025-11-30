@@ -261,7 +261,7 @@ class QwenImageControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
         encoder_hidden_states = self.txt_in(encoder_hidden_states)
 
         block_samples = ()
-        for index_block, block in enumerate(self.transformer_blocks):
+        for block in self.transformer_blocks:
             if torch.is_grad_enabled() and self.gradient_checkpointing:
                 encoder_hidden_states, hidden_states = self._gradient_checkpointing_func(
                     block,
