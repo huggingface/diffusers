@@ -994,6 +994,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             WanAnimateTransformer3DModel,
             WanTransformer3DModel,
             WanVACETransformer3DModel,
+            ZImageTransformer2DModel,
             attention_backend,
         )
         from .modular_pipelines import ComponentsManager, ComponentSpec, ModularPipeline, ModularPipelineBlocks
