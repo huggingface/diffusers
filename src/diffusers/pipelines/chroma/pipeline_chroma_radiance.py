@@ -752,9 +752,7 @@ class ChromaRadiancePipeline(
             latents,
         )
         
-        latents = self.transformer.img_in_patch(latents)
-        latents = latents.flatten(2).transpose(1, 2)
-        num_patches = latents.shape[1]
+        num_patches = (height * width) // self.transformer.patch_size
 
         # 5. Prepare timesteps
         sigmas = np.linspace(1.0, 1 / num_inference_steps, num_inference_steps) if sigmas is None else sigmas
@@ -893,7 +891,6 @@ class ChromaRadiancePipeline(
         if output_type == "latent":
             image = latents
         else:
-            image = self.nerf(latents, self.patch_size, num_patches)
             image = self._unpack_latents(image, height, width)
             image = self.image_processor.postprocess(image, output_type=output_type)
 

@@ -46,6 +46,7 @@ class Nerf(nn.Module):
         mlp_ratio: int,
         eps = 1e-6,
     ):
+        super().__init__()
         self.nerf_embedder = NerfEmbedder(
             in_channels=in_channels,
             hidden_size=nerf_hidden_size,
@@ -65,17 +66,17 @@ class Nerf(nn.Module):
         self.final_layer = NerfFinalLayer(
             hidden_size=nerf_hidden_size,
             out_channels=in_channels,
+            eps=eps,
         )
         self.transformer_hidden_size = transformer_hidden_size
     def __call__(
         self,
+        pixels,
         latents,
         patch_size,
         num_patches,
     ):
         batch_size, channels, height, width = latents.shape
-        pixels = nn.functional.unfold(latents, kernel_size=patch_size, stride=patch_size)
-        pixels = pixels.transpose(1, 2)
         hidden = latents.reshape(batch_size * num_patches, self.transformer_hidden_size)
         pixels = pixels.reshape(batch_size * num_patches, channels, patch_size**2).transpose(1, 2)
         
@@ -99,7 +100,7 @@ class NerfEmbedder(nn.Module):
     def __init__(
         self,
         in_channels: int,
-        hidden_size_input: int,
+        hidden_size: int,
         max_freqs: int,
     ):
         super().__init__()
@@ -153,9 +154,9 @@ class NerfGLUBlock(nn.Module):
         return x + res_x
 
 class NerfFinalLayer(nn.Module):
-    def __init__(self, hidden_size: int, out_channels: int):
+    def __init__(self, hidden_size: int, out_channels: int, eps):
         super().__init__()
-        self.norm = RMSNorm(hidden_size)
+        self.norm = RMSNorm(hidden_size, eps=eps)
         self.conv = nn.Conv2d(
             in_channels=hidden_size,
             out_channels=out_channels,
@@ -654,8 +655,11 @@ class ChromaTransformer2DModel(
                 logger.warning(
                     "Passing `scale` via `joint_attention_kwargs` when not using the PEFT backend is ineffective."
                 )
-
-        hidden_states = self.x_embedder(hidden_states)
+        
+        pixels = nn.functional.unfold(hidden_states, kernel_size=self.patch_size, stride=self.patch_size)
+        pixels = pixels.transpose(1, 2)
+        hidden_states = self.transformer.img_in_patch(hidden_states)
+        hidden_states = hidden_states.flatten(2).transpose(1, 2)
 
         timestep = timestep.to(hidden_states.dtype) * 1000
 
@@ -889,10 +893,10 @@ class ChromaRadianceTransformer2DModel(
             ]
         )
 
-        self.norm_out = ChromaAdaLayerNormContinuousPruned(
-            self.inner_dim, self.inner_dim, elementwise_affine=False, eps=1e-6
-        )
-        self.proj_out = nn.Linear(self.inner_dim, patch_size * patch_size * self.out_channels, bias=True)
+        #self.norm_out = ChromaAdaLayerNormContinuousPruned(
+        #    self.inner_dim, self.inner_dim, elementwise_affine=False, eps=1e-6
+        #)
+        #self.proj_out = nn.Linear(self.inner_dim, patch_size * patch_size * self.out_channels, bias=True)
 
         self.gradient_checkpointing = False
 
@@ -1050,9 +1054,10 @@ class ChromaRadianceTransformer2DModel(
 
         hidden_states = hidden_states[:, encoder_hidden_states.shape[1] :, ...]
 
-        temb = pooled_temb[:, -2:]
-        hidden_states = self.norm_out(hidden_states, temb)
-        output = self.proj_out(hidden_states)
+        #temb = pooled_temb[:, -2:]
+        #hidden_states = self.norm_out(hidden_states, temb)
+        #output = self.proj_out(hidden_states)
+        output = self.nerf(hidden_states, self.transformer.patch_size, num_patches)
 
         if USE_PEFT_BACKEND:
             # remove `lora_scale` from each PEFT layer

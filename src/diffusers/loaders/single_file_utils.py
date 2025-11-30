@@ -3606,10 +3606,6 @@ def convert_chroma_radiance_transformer_checkpoint_to_diffusers(checkpoint, **kw
     converted_state_dict["context_embedder.weight"] = checkpoint.pop("txt_in.weight")
     converted_state_dict["context_embedder.bias"] = checkpoint.pop("txt_in.bias")
 
-    # x_embedder
-    converted_state_dict["x_embedder.weight"] = checkpoint.pop("img_in.weight")
-    converted_state_dict["x_embedder.bias"] = checkpoint.pop("img_in.bias")
-
     # double transformer blocks
     for i in range(num_layers):
         block_prefix = f"transformer_blocks.{i}."
@@ -3710,9 +3706,6 @@ def convert_chroma_radiance_transformer_checkpoint_to_diffusers(checkpoint, **kw
         # output projections.
         converted_state_dict[f"{block_prefix}proj_out.weight"] = checkpoint.pop(f"single_blocks.{i}.linear2.weight")
         converted_state_dict[f"{block_prefix}proj_out.bias"] = checkpoint.pop(f"single_blocks.{i}.linear2.bias")
-
-    converted_state_dict["proj_out.weight"] = checkpoint.pop("final_layer.linear.weight")
-    converted_state_dict["proj_out.bias"] = checkpoint.pop("final_layer.linear.bias")
     
     # nerf
     
