@@ -21,7 +21,7 @@ from ..configuration_utils import ConfigMixin
 from ..models.controlnets import ControlNetUnionModel
 from ..utils import is_sentencepiece_available
 from .aura_flow import AuraFlowPipeline
-from .chroma import ChromaPipeline
+from .chroma import ChromaPipeline, ChromaRadiancePipeline
 from .cogview3 import CogView3PlusPipeline
 from .cogview4 import CogView4ControlPipeline, CogView4Pipeline
 from .controlnet import (
@@ -157,6 +157,7 @@ AUTO_TEXT2IMAGE_PIPELINES_MAPPING = OrderedDict(
         ("lumina", LuminaPipeline),
         ("lumina2", Lumina2Pipeline),
         ("chroma", ChromaPipeline),
+        ("chroma-radiance", ChromaRadiancePipeline),
         ("cogview3", CogView3PlusPipeline),
         ("cogview4", CogView4Pipeline),
         ("cogview4-control", CogView4ControlPipeline),
