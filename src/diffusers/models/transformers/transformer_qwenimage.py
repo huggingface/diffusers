@@ -143,7 +143,7 @@ def apply_rotary_emb_qwen(
 
 def compute_text_seq_len_from_mask(
     encoder_hidden_states: torch.Tensor, encoder_hidden_states_mask: Optional[torch.Tensor]
-) -> Tuple[int, Optional[torch.Tensor]]:
+) -> Tuple[int, Optional[torch.Tensor], Optional[torch.Tensor]]:
     """
     Compute text sequence length without assuming contiguous masks. Returns length for RoPE and a normalized bool mask.
     """
@@ -166,7 +166,7 @@ def compute_text_seq_len_from_mask(
     per_sample_len = torch.where(has_active, active_positions.max(dim=1).values + 1, torch.as_tensor(text_seq_len))
     rope_text_seq_len = max(text_seq_len, int(per_sample_len.max().item()))
 
-    return rope_text_seq_len, encoder_hidden_states_mask
+    return rope_text_seq_len, per_sample_len, encoder_hidden_states_mask
 
 
 class QwenTimestepProjEmbeddings(nn.Module):
@@ -308,6 +308,7 @@ class QwenDoubleStreamAttnProcessor2_0:
         encoder_hidden_states_mask: torch.FloatTensor = None,
         attention_mask: Optional[torch.FloatTensor] = None,
         image_rotary_emb: Optional[torch.Tensor] = None,
+        text_seq_lens: Optional[torch.Tensor] = None,
     ) -> torch.FloatTensor:
         if encoder_hidden_states is None:
             raise ValueError("QwenDoubleStreamAttnProcessor2_0 requires encoder_hidden_states (text stream)")
@@ -394,6 +395,7 @@ class QwenDoubleStreamAttnProcessor2_0:
             is_causal=False,
             backend=self._attention_backend,
             parallel_config=self._parallel_config,
+            seq_lens=text_seq_lens,
         )
 
         # Reshape back
@@ -665,6 +667,7 @@ class QwenImageTransformer2DModel(
             attention_kwargs = attention_kwargs.copy()
             lora_scale = attention_kwargs.pop("scale", 1.0)
         else:
+            attention_kwargs = {}
             lora_scale = 1.0
 
         if USE_PEFT_BACKEND:
@@ -683,9 +686,12 @@ class QwenImageTransformer2DModel(
         encoder_hidden_states = self.txt_in(encoder_hidden_states)
 
         # Use the encoder_hidden_states sequence length for RoPE computation and normalize mask
-        text_seq_len, encoder_hidden_states_mask = compute_text_seq_len_from_mask(
+        text_seq_len, text_seq_lens_per_sample, encoder_hidden_states_mask = compute_text_seq_len_from_mask(
             encoder_hidden_states, encoder_hidden_states_mask
         )
+
+        if text_seq_lens_per_sample is not None:
+            attention_kwargs.setdefault("text_seq_lens", text_seq_lens_per_sample)
 
         if guidance is not None:
             guidance = guidance.to(hidden_states.dtype) * 1000

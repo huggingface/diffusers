@@ -134,9 +134,10 @@ class QwenImageTransformerTests(ModelTesterMixin, unittest.TestCase):
         encoder_hidden_states_mask[:, 3] = 0
         encoder_hidden_states_mask[:, 5:] = 0
 
-        inferred_rope_len, normalized_mask = compute_text_seq_len_from_mask(
+        inferred_rope_len, per_sample_len, normalized_mask = compute_text_seq_len_from_mask(
             inputs["encoder_hidden_states"], encoder_hidden_states_mask
         )
+        self.assertEqual(int(per_sample_len.max().item()), 5)
         self.assertEqual(inferred_rope_len, inputs["encoder_hidden_states"].shape[1])
         self.assertTrue(normalized_mask.dtype == torch.bool)
 

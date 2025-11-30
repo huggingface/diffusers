@@ -228,6 +228,7 @@ class QwenImageControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
             joint_attention_kwargs = joint_attention_kwargs.copy()
             lora_scale = joint_attention_kwargs.pop("scale", 1.0)
         else:
+            joint_attention_kwargs = {}
             lora_scale = 1.0
 
         if USE_PEFT_BACKEND:
@@ -246,9 +247,12 @@ class QwenImageControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
         temb = self.time_text_embed(timestep, hidden_states)
 
         # Use the encoder_hidden_states sequence length for RoPE computation and normalize mask
-        text_seq_len, encoder_hidden_states_mask = compute_text_seq_len_from_mask(
+        text_seq_len, text_seq_lens_per_sample, encoder_hidden_states_mask = compute_text_seq_len_from_mask(
             encoder_hidden_states, encoder_hidden_states_mask
         )
+
+        if text_seq_lens_per_sample is not None:
+            joint_attention_kwargs.setdefault("text_seq_lens", text_seq_lens_per_sample)
 
         image_rotary_emb = self.pos_embed(img_shapes, text_seq_len, device=hidden_states.device)
 

@@ -305,6 +305,7 @@ def dispatch_attention_fn(
     *,
     backend: Optional[AttentionBackendName] = None,
     parallel_config: Optional["ParallelConfig"] = None,
+    seq_lens: Optional[torch.Tensor] = None,
 ) -> torch.Tensor:
     attention_kwargs = attention_kwargs or {}
 
@@ -327,6 +328,8 @@ def dispatch_attention_fn(
         **attention_kwargs,
         "_parallel_config": parallel_config,
     }
+    if seq_lens is not None:
+        kwargs["seq_lens"] = seq_lens
     if is_torch_version(">=", "2.5.0"):
         kwargs["enable_gqa"] = enable_gqa
 
@@ -1400,18 +1403,29 @@ def _flash_varlen_attention(
     is_causal: bool = False,
     return_lse: bool = False,
     _parallel_config: Optional["ParallelConfig"] = None,
+    seq_lens: Optional[torch.Tensor] = None,
 ) -> torch.Tensor:
     batch_size, seq_len_q, _, _ = query.shape
     _, seq_len_kv, _, _ = key.shape
 
-    if attn_mask is not None:
-        attn_mask = _normalize_attn_mask(attn_mask, batch_size, seq_len_kv)
+    if seq_lens is not None:
+        seq_lens = seq_lens.to(query.device)
+        # use the same lengths for Q and KV
+        seqlens_k = seq_lens
+        cu_seqlens_q = torch.cat([seq_lens.new_zeros(1), seq_lens.cumsum(0)], dim=0).to(torch.int32)
+        cu_seqlens_k = cu_seqlens_q
+        max_seqlen_q = int(seq_lens.max().item())
+        max_seqlen_k = max_seqlen_q
+        attn_mask = None  # varlen uses lengths
+    else:
+        if attn_mask is not None:
+            attn_mask = _normalize_attn_mask(attn_mask, batch_size, seq_len_kv)
 
-    (_, seqlens_k), (cu_seqlens_q, cu_seqlens_k), (max_seqlen_q, max_seqlen_k) = (
-        _prepare_for_flash_attn_or_sage_varlen(
-            batch_size, seq_len_q, seq_len_kv, attn_mask=attn_mask, device=query.device
+        (_, seqlens_k), (cu_seqlens_q, cu_seqlens_k), (max_seqlen_q, max_seqlen_k) = (
+            _prepare_for_flash_attn_or_sage_varlen(
+                batch_size, seq_len_q, seq_len_kv, attn_mask=attn_mask, device=query.device
+            )
         )
-    )
 
     key_valid, value_valid = [], []
     for b in range(batch_size):
@@ -1521,18 +1535,28 @@ def _flash_varlen_attention_3(
     is_causal: bool = False,
     return_lse: bool = False,
     _parallel_config: Optional["ParallelConfig"] = None,
+    seq_lens: Optional[torch.Tensor] = None,
 ) -> torch.Tensor:
     batch_size, seq_len_q, _, _ = query.shape
     _, seq_len_kv, _, _ = key.shape
 
-    if attn_mask is not None:
-        attn_mask = _normalize_attn_mask(attn_mask, batch_size, seq_len_kv)
+    if seq_lens is not None:
+        seq_lens = seq_lens.to(query.device)
+        seqlens_k = seq_lens
+        cu_seqlens_q = torch.cat([seq_lens.new_zeros(1), seq_lens.cumsum(0)], dim=0).to(torch.int32)
+        cu_seqlens_k = cu_seqlens_q
+        max_seqlen_q = int(seq_lens.max().item())
+        max_seqlen_k = max_seqlen_q
+        attn_mask = None  # varlen uses lengths
+    else:
+        if attn_mask is not None:
+            attn_mask = _normalize_attn_mask(attn_mask, batch_size, seq_len_kv)
 
-    (_, seqlens_k), (cu_seqlens_q, cu_seqlens_k), (max_seqlen_q, max_seqlen_k) = (
-        _prepare_for_flash_attn_or_sage_varlen(
-            batch_size, seq_len_q, seq_len_kv, attn_mask=attn_mask, device=query.device
+        (_, seqlens_k), (cu_seqlens_q, cu_seqlens_k), (max_seqlen_q, max_seqlen_k) = (
+            _prepare_for_flash_attn_or_sage_varlen(
+                batch_size, seq_len_q, seq_len_kv, attn_mask=attn_mask, device=query.device
+            )
         )
-    )
 
     key_valid, value_valid = [], []
     for b in range(batch_size):
@@ -2023,6 +2047,7 @@ def _sage_varlen_attention(
     scale: Optional[float] = None,
     return_lse: bool = False,
     _parallel_config: Optional["ParallelConfig"] = None,
+    seq_lens: Optional[torch.Tensor] = None,
 ) -> torch.Tensor:
     if return_lse:
         raise ValueError("Sage varlen backend does not support setting `return_lse=True`.")
@@ -2030,14 +2055,23 @@ def _sage_varlen_attention(
     batch_size, seq_len_q, _, _ = query.shape
     _, seq_len_kv, _, _ = key.shape
 
-    if attn_mask is not None:
-        attn_mask = _normalize_attn_mask(attn_mask, batch_size, seq_len_kv)
+    if seq_lens is not None:
+        seq_lens = seq_lens.to(query.device)
+        seqlens_k = seq_lens
+        cu_seqlens_q = torch.cat([seq_lens.new_zeros(1), seq_lens.cumsum(0)], dim=0).to(torch.int32)
+        cu_seqlens_k = cu_seqlens_q
+        max_seqlen_q = int(seq_lens.max().item())
+        max_seqlen_k = max_seqlen_q
+        attn_mask = None  # varlen uses lengths
+    else:
+        if attn_mask is not None:
+            attn_mask = _normalize_attn_mask(attn_mask, batch_size, seq_len_kv)
 
-    (_, seqlens_k), (cu_seqlens_q, cu_seqlens_k), (max_seqlen_q, max_seqlen_k) = (
-        _prepare_for_flash_attn_or_sage_varlen(
-            batch_size, seq_len_q, seq_len_kv, attn_mask=attn_mask, device=query.device
+        (_, seqlens_k), (cu_seqlens_q, cu_seqlens_k), (max_seqlen_q, max_seqlen_k) = (
+            _prepare_for_flash_attn_or_sage_varlen(
+                batch_size, seq_len_q, seq_len_kv, attn_mask=attn_mask, device=query.device
+            )
         )
-    )
 
     key_valid, value_valid = [], []
     for b in range(batch_size):
