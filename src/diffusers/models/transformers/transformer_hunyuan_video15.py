@@ -59,9 +59,6 @@ class HunyuanVideo15AttnProcessor2_0:
         attention_mask: Optional[torch.Tensor] = None,
         image_rotary_emb: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        if attn.add_q_proj is None and encoder_hidden_states is not None:
-            assert False # YiYi Notes: remove this condition if this code path is never used
-            hidden_states = torch.cat([hidden_states, encoder_hidden_states], dim=1)
 
         # 1. QKV projections
         query = attn.to_q(hidden_states)
@@ -73,51 +70,17 @@ class HunyuanVideo15AttnProcessor2_0:
         value = value.unflatten(2, (attn.heads, -1))
 
         # 2. QK normalization
-        if attn.norm_q is not None:
-            query = attn.norm_q(query)
-        else:
-            assert False
-            # YiYi Notes: remove this condition if this code path is never used
-        if attn.norm_k is not None:
-            key = attn.norm_k(key)
-        else:
-            assert False
-            # YiYi Notes: remove this condition if this code path is never used
+        query = attn.norm_q(query)
+        key = attn.norm_k(key)
 
         # 3. Rotational positional embeddings applied to latent stream
         if image_rotary_emb is not None:
             from ..embeddings import apply_rotary_emb
-
-            if attn.add_q_proj is None and encoder_hidden_states is not None:
-                assert False # YiYi Notes: remove this condition if this code path is never used
-                query = torch.cat(
-                    [
-                        apply_rotary_emb(
-                            query[:, : -encoder_hidden_states.shape[1]],
-                            image_rotary_emb,
-                            sequence_dim=1,
-                        ),
-                        query[:, -encoder_hidden_states.shape[1] :],
-                    ],
-                    dim=1,
-                )
-                key = torch.cat(
-                    [
-                        apply_rotary_emb(
-                            key[:, : -encoder_hidden_states.shape[1]],
-                            image_rotary_emb,
-                            sequence_dim=1,
-                        ),
-                        key[:, -encoder_hidden_states.shape[1] :],
-                    ],
-                    dim=1,
-                )
-            else:
-                query = apply_rotary_emb(query, image_rotary_emb, sequence_dim=1)
-                key = apply_rotary_emb(key, image_rotary_emb, sequence_dim=1)
+            query = apply_rotary_emb(query, image_rotary_emb, sequence_dim=1)
+            key = apply_rotary_emb(key, image_rotary_emb, sequence_dim=1)
 
         # 4. Encoder condition QKV projection and normalization
-        if attn.add_q_proj is not None and encoder_hidden_states is not None:
+        if encoder_hidden_states is not None:
             encoder_query = attn.add_q_proj(encoder_hidden_states)
             encoder_key = attn.add_k_proj(encoder_hidden_states)
             encoder_value = attn.add_v_proj(encoder_hidden_states)
@@ -134,10 +97,6 @@ class HunyuanVideo15AttnProcessor2_0:
             query = torch.cat([query, encoder_query], dim=1)
             key = torch.cat([key, encoder_key], dim=1)
             value = torch.cat([value, encoder_value], dim=1)
-        
-        else:
-            assert False # YiYi Notes: remove this condition if this code path is never used
-        
 
         batch_size, seq_len, heads, dim = query.shape
         attention_mask = F.pad(attention_mask, (seq_len - attention_mask.shape[1], 0), value=True)
@@ -178,7 +137,7 @@ class HunyuanVideo15AttnProcessor2_0:
         return hidden_states, encoder_hidden_states
 
 
-class HunyuanVideoPatchEmbed(nn.Module):
+class HunyuanVideo15PatchEmbed(nn.Module):
     def __init__(
         self,
         patch_size: Union[int, Tuple[int, int, int]] = 16,
@@ -196,7 +155,7 @@ class HunyuanVideoPatchEmbed(nn.Module):
         return hidden_states
 
 
-class HunyuanVideoAdaNorm(nn.Module):
+class HunyuanVideo15AdaNorm(nn.Module):
     def __init__(self, in_features: int, out_features: Optional[int] = None) -> None:
         super().__init__()
 
@@ -223,9 +182,6 @@ class HunyuanVideo15TimeEmbedding(nn.Module):
     Args:
         embedding_dim (`int`):
             The dimension of the output embedding.
-        use_meanflow (`bool`, defaults to `False`):
-            Whether to support reference timestep embeddings for temporal consistency.
-            Set to `True` for super-resolution models.
     """
     def __init__(
         self,
@@ -240,20 +196,15 @@ class HunyuanVideo15TimeEmbedding(nn.Module):
     def forward(
         self,
         timestep: torch.Tensor,
-        timestep_r: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         timesteps_proj = self.time_proj(timestep)
         timesteps_emb = self.timestep_embedder(timesteps_proj.to(dtype=timestep.dtype))
 
-        if timestep_r is not None:
-            timesteps_proj_r = self.time_proj_r(timestep_r)
-            timesteps_emb_r = self.timestep_embedder_r(timesteps_proj_r.to(dtype=timestep.dtype))
-            timesteps_emb = timesteps_emb + timesteps_emb_r
 
         return timesteps_emb
 
 
-class HunyuanVideoIndividualTokenRefinerBlock(nn.Module):
+class HunyuanVideo15IndividualTokenRefinerBlock(nn.Module):
     def __init__(
         self,
         num_attention_heads: int,
@@ -278,7 +229,7 @@ class HunyuanVideoIndividualTokenRefinerBlock(nn.Module):
         self.norm2 = nn.LayerNorm(hidden_size, elementwise_affine=True, eps=1e-6)
         self.ff = FeedForward(hidden_size, mult=mlp_width_ratio, activation_fn="linear-silu", dropout=mlp_drop_rate)
 
-        self.norm_out = HunyuanVideoAdaNorm(hidden_size, 2 * hidden_size)
+        self.norm_out = HunyuanVideo15AdaNorm(hidden_size, 2 * hidden_size)
 
     def forward(
         self,
@@ -303,7 +254,7 @@ class HunyuanVideoIndividualTokenRefinerBlock(nn.Module):
         return hidden_states
 
 
-class HunyuanVideoIndividualTokenRefiner(nn.Module):
+class HunyuanVideo15IndividualTokenRefiner(nn.Module):
     def __init__(
         self,
         num_attention_heads: int,
@@ -317,7 +268,7 @@ class HunyuanVideoIndividualTokenRefiner(nn.Module):
 
         self.refiner_blocks = nn.ModuleList(
             [
-                HunyuanVideoIndividualTokenRefinerBlock(
+                HunyuanVideo15IndividualTokenRefinerBlock(
                     num_attention_heads=num_attention_heads,
                     attention_head_dim=attention_head_dim,
                     mlp_width_ratio=mlp_width_ratio,
@@ -336,7 +287,6 @@ class HunyuanVideoIndividualTokenRefiner(nn.Module):
     ) -> None:
         self_attn_mask = None
         if attention_mask is not None:
-            # YiYi TODO convert 1D mask to 4d Bx1xLxL
             batch_size = attention_mask.shape[0]
             seq_len = attention_mask.shape[1]
             attention_mask = attention_mask.to(hidden_states.device).bool()
@@ -350,7 +300,7 @@ class HunyuanVideoIndividualTokenRefiner(nn.Module):
         return hidden_states
 
 
-class HunyuanVideoTokenRefiner(nn.Module):
+class HunyuanVideo15TokenRefiner(nn.Module):
     def __init__(
         self,
         in_channels: int,
@@ -369,7 +319,7 @@ class HunyuanVideoTokenRefiner(nn.Module):
             embedding_dim=hidden_size, pooled_projection_dim=in_channels
         )
         self.proj_in = nn.Linear(in_channels, hidden_size, bias=True)
-        self.token_refiner = HunyuanVideoIndividualTokenRefiner(
+        self.token_refiner = HunyuanVideo15IndividualTokenRefiner(
             num_attention_heads=num_attention_heads,
             attention_head_dim=attention_head_dim,
             num_layers=num_layers,
@@ -399,7 +349,7 @@ class HunyuanVideoTokenRefiner(nn.Module):
         return hidden_states
 
 
-class HunyuanVideoRotaryPosEmbed(nn.Module):
+class HunyuanVideo15RotaryPosEmbed(nn.Module):
     def __init__(self, patch_size: int, patch_size_t: int, rope_dim: List[int], theta: float = 256.0) -> None:
         super().__init__()
 
@@ -432,7 +382,6 @@ class HunyuanVideoRotaryPosEmbed(nn.Module):
         return freqs_cos, freqs_sin
 
 
-# Copied from diffusers.models.transformers.transformer_hunyuanimage.HunyuanImageByT5TextProjection
 class HunyuanVideo15ByT5TextProjection(nn.Module):
     def __init__(self, in_features: int, hidden_size: int, out_features: int):
         super().__init__()
@@ -470,7 +419,7 @@ class HunyuanVideo15ImageProjection(nn.Module):
         return hidden_states
 
 
-class HunyuanVideoTransformerBlock(nn.Module):
+class HunyuanVideo15TransformerBlock(nn.Module):
     def __init__(
         self,
         num_attention_heads: int,
@@ -552,7 +501,7 @@ class HunyuanVideoTransformerBlock(nn.Module):
 
 class HunyuanVideo15Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginalModelMixin, CacheMixin):
     r"""
-    A Transformer model for video-like data used in [HunyuanVideo](https://huggingface.co/tencent/HunyuanVideo).
+    A Transformer model for video-like data used in [HunyuanVideo1.5](https://huggingface.co/tencent/HunyuanVideo1.5).
 
     Args:
         in_channels (`int`, defaults to `16`):
@@ -590,14 +539,14 @@ class HunyuanVideo15Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin
     _supports_gradient_checkpointing = True
     _skip_layerwise_casting_patterns = ["x_embedder", "context_embedder", "norm"]
     _no_split_modules = [
-        "HunyuanVideoTransformerBlock",
-        "HunyuanVideoPatchEmbed",
-        "HunyuanVideoTokenRefiner",
+        "HunyuanVideo15TransformerBlock",
+        "HunyuanVideo15PatchEmbed",
+        "HunyuanVideo15TokenRefiner",
     ]
     _repeated_blocks = [
-        "HunyuanVideoTransformerBlock",
-        "HunyuanVideoPatchEmbed",
-        "HunyuanVideoTokenRefiner",
+        "HunyuanVideo15TransformerBlock",
+        "HunyuanVideo15PatchEmbed",
+        "HunyuanVideo15TokenRefiner",
     ]
 
     @register_to_config
@@ -628,10 +577,10 @@ class HunyuanVideo15Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin
         out_channels = out_channels or in_channels
 
         # 1. Latent and condition embedders
-        self.x_embedder = HunyuanVideoPatchEmbed((patch_size_t, patch_size, patch_size), in_channels, inner_dim)
+        self.x_embedder = HunyuanVideo15PatchEmbed((patch_size_t, patch_size, patch_size), in_channels, inner_dim)
         self.image_embedder = HunyuanVideo15ImageProjection(image_embed_dim, inner_dim)
         
-        self.context_embedder = HunyuanVideoTokenRefiner(
+        self.context_embedder = HunyuanVideo15TokenRefiner(
             text_embed_dim, num_attention_heads, attention_head_dim, num_layers=num_refiner_layers
         )
         self.context_embedder_2 = HunyuanVideo15ByT5TextProjection(text_embed_2_dim, 2048, inner_dim)
@@ -641,13 +590,13 @@ class HunyuanVideo15Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin
         self.cond_type_embed = nn.Embedding(3, inner_dim)
 
         # 2. RoPE
-        self.rope = HunyuanVideoRotaryPosEmbed(patch_size, patch_size_t, rope_axes_dim, rope_theta)
+        self.rope = HunyuanVideo15RotaryPosEmbed(patch_size, patch_size_t, rope_axes_dim, rope_theta)
 
         # 3. Dual stream transformer blocks
 
         self.transformer_blocks = nn.ModuleList(
             [
-                HunyuanVideoTransformerBlock(
+                HunyuanVideo15TransformerBlock(
                     num_attention_heads, attention_head_dim, mlp_ratio=mlp_ratio, qk_norm=qk_norm
                 )
                 for _ in range(num_layers)
@@ -730,7 +679,6 @@ class HunyuanVideo15Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin
         encoder_hidden_states_2: Optional[torch.Tensor] = None,
         encoder_attention_mask_2: Optional[torch.Tensor] = None,
         image_embeds: Optional[torch.Tensor] = None,
-        timestep_r: Optional[torch.LongTensor] = None,
         attention_kwargs: Optional[Dict[str, Any]] = None,
         return_dict: bool = True,
     ) -> Union[Tuple[torch.Tensor], Transformer2DModelOutput]:
@@ -759,7 +707,7 @@ class HunyuanVideo15Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin
         image_rotary_emb = self.rope(hidden_states)
 
         # 2. Conditional embeddings
-        temb = self.time_embed(timestep, timestep_r=timestep_r)
+        temb = self.time_embed(timestep)
 
         hidden_states = self.x_embedder(hidden_states)
 
