@@ -361,6 +361,7 @@ class QwenDoubleStreamAttnProcessor2_0:
         # If an encoder_hidden_states_mask is provided, turn it into a broadcastable attention mask.
         # The encoder_hidden_states_mask is expected to have 1.0 for valid tokens and 0.0 for padding.
         # We convert it to a boolean mask where True means "attend" and False means "mask out" (don't attend).
+        joint_seq_lens = None
         if encoder_hidden_states_mask is not None and attention_mask is None:
             batch_size, image_seq_len = hidden_states.shape[:2]
             text_seq_len = encoder_hidden_states.shape[1]
@@ -385,6 +386,12 @@ class QwenDoubleStreamAttnProcessor2_0:
             joint_attention_mask = torch.cat([text_attention_mask, image_attention_mask], dim=1)
             attention_mask = joint_attention_mask[:, None, None, :]
 
+            # For varlen flash attention, we need the JOINT sequence lengths (text + image), not just text
+            if text_seq_lens is not None:
+                # text_seq_lens contains per-sample text lengths
+                # Add the image sequence length to get total joint sequence length
+                joint_seq_lens = text_seq_lens + image_seq_len
+
         # Compute joint attention
         joint_hidden_states = dispatch_attention_fn(
             joint_query,
@@ -395,7 +402,7 @@ class QwenDoubleStreamAttnProcessor2_0:
             is_causal=False,
             backend=self._attention_backend,
             parallel_config=self._parallel_config,
-            seq_lens=text_seq_lens,
+            seq_lens=joint_seq_lens,
         )
 
         # Reshape back
