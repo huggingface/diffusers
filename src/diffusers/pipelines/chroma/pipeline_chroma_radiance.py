@@ -181,7 +181,7 @@ class ChromaRadiancePipeline(
         scheduler: FlowMatchEulerDiscreteScheduler,
         text_encoder: T5EncoderModel,
         tokenizer: T5TokenizerFast,
-        transformer: ChromaTransformer2DModel,
+        transformer: ChromaRadianceTransformer2DModel,
         image_encoder: CLIPVisionModelWithProjection = None,
         feature_extractor: CLIPImageProcessor = None,
     ):

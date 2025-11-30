@@ -790,7 +790,7 @@ class ChromaRadianceTransformer2DModel(
     Args:
         patch_size (`int`, defaults to `1`):
             Patch size to turn the input data into small patches.
-        in_channels (`int`, defaults to `64`):
+        in_channels (`int`, defaults to `3`):
             The number of channels in the input.
         out_channels (`int`, *optional*, defaults to `None`):
             The number of channels in the output. If not specified, it defaults to `in_channels`.
@@ -818,7 +818,7 @@ class ChromaRadianceTransformer2DModel(
     def __init__(
         self,
         patch_size: int = 16,
-        in_channels: int = 64,
+        in_channels: int = 3,
         out_channels: Optional[int] = None,
         num_layers: int = 19,
         num_single_layers: int = 38,
@@ -859,7 +859,6 @@ class ChromaRadianceTransformer2DModel(
             nerf_max_freqs,
             nerf_mlp_ratio,
         )
-        
         self.img_in_patch = nn.Conv2d(
             in_channels,
             self.inner_dim,
