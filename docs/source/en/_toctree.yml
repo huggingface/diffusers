@@ -359,10 +359,10 @@
         title: HunyuanDiT2DModel
       - local: api/models/hunyuanimage_transformer_2d
         title: HunyuanImageTransformer2DModel
-      - local: api/models/hunyuan_video_transformer_3d
-        title: HunyuanVideoTransformer3DModel
       - local: api/models/hunyuan_video15_transformer_3d
         title: HunyuanVideo15Transformer3DModel
+      - local: api/models/hunyuan_video_transformer_3d
+        title: HunyuanVideoTransformer3DModel
       - local: api/models/latte_transformer3d
         title: LatteTransformer3DModel
       - local: api/models/ltx_video_transformer3d
