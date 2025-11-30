@@ -17,6 +17,7 @@ import sys
 import unittest
 
 import torch
+from peft import LoraConfig
 from transformers import Qwen2Tokenizer, Qwen3Config, Qwen3Model
 
 from diffusers import (
@@ -88,7 +89,7 @@ class ZImageLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
 
     @property
     def output_shape(self):
-        return (1, 8, 8, 3)
+        return (1, 32, 32, 3)
 
     def get_dummy_inputs(self, with_generator=True):
         batch_size = 1
@@ -136,13 +137,34 @@ class ZImageLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
             scheduler_cls = self.scheduler_cls
         scheduler = scheduler_cls(**self.scheduler_kwargs)
 
-        return {
+        rank = 4
+        lora_alpha = rank if lora_alpha is None else lora_alpha
+
+        text_lora_config = LoraConfig(
+            r=rank,
+            lora_alpha=lora_alpha,
+            target_modules=["q_proj", "k_proj", "v_proj", "o_proj"],
+            init_lora_weights=False,
+            use_dora=use_dora,
+        )
+
+        denoiser_lora_config = LoraConfig(
+            r=rank,
+            lora_alpha=lora_alpha,
+            target_modules=self.denoiser_target_modules,
+            init_lora_weights=False,
+            use_dora=use_dora,
+        )
+
+        pipeline_components = {
             "transformer": transformer,
             "vae": vae,
             "scheduler": scheduler,
             "text_encoder": text_encoder,
             "tokenizer": tokenizer,
         }
+
+        return pipeline_components, text_lora_config, denoiser_lora_config
 
     @unittest.skip("Not supported in ZImage.")
     def test_simple_inference_with_text_denoiser_block_scale(self):
