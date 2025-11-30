@@ -17,7 +17,7 @@ import numpy as np
 from ...video_processor import VideoProcessor
 from ...configuration_utils import register_to_config
 
-# Copied from hyvideo/utils/data_utils.py
+# copied from https://github.com/Tencent-Hunyuan/HunyuanVideo-1.5/blob/main/hyvideo/utils/data_utils.py#L20
 def generate_crop_size_list(base_size=256, patch_size=16, max_ratio=4.0):
     num_patches = round((base_size / patch_size) ** 2)
     assert max_ratio >= 1.0
@@ -32,7 +32,7 @@ def generate_crop_size_list(base_size=256, patch_size=16, max_ratio=4.0):
             wp -= 1
     return crop_size_list
 
-# Copied from hyvideo/utils/data_utils.py
+# copied fromhttps://github.com/Tencent-Hunyuan/HunyuanVideo-1.5/blob/main/hyvideo/utils/data_utils.py#L38
 def get_closest_ratio(height: float, width: float, ratios: list, buckets: list):
     """
     Get the closest ratio in the buckets.
@@ -72,6 +72,8 @@ class HunyuanVideo15ImageProcessor(VideoProcessor):
             this factor.
         vae_latent_channels (`int`, *optional*, defaults to `32`):
             VAE latent channels.
+        do_convert_rgb (`bool`, *optional*, defaults to `True`):
+            Whether to convert the image to RGB.
     """
 
     @register_to_config

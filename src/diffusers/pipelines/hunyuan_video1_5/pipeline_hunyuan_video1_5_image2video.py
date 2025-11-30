@@ -45,23 +45,28 @@ EXAMPLE_DOC_STRING = """
     Examples:
         ```python
         >>> import torch
-        >>> from diffusers import HunyuanVideo15Pipeline
+        >>> from diffusers import HunyuanVideo15ImageToVideoPipeline
         >>> from diffusers.utils import export_to_video
 
-        >>> model_id = "hunyuanvideo-community/HunyuanVideo15"
-        >>> pipe = HunyuanVideo15Pipeline.from_pretrained(model_id, torch_dtype=torch.float16)
+        >>> model_id = "hunyuanvideo-community/HunyuanVideo-1.5-480p_i2v"
+        >>> pipe = HunyuanVideo15ImageToVideoPipeline.from_pretrained(model_id, torch_dtype=torch.float16)
         >>> pipe.vae.enable_tiling()
         >>> pipe.to("cuda")
 
+        >>> image = load_image(
+        ...     "https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/wan_i2v_input.JPG"
+        ... )
+
         >>> output = pipe(
-        ...     prompt="A cat walks on the grass, realistic",
+        ...     prompt="Summer beach vacation style, a white cat wearing sunglasses sits on a surfboard. The fluffy-furred feline gazes directly at the camera with a relaxed expression. Blurred beach scenery forms the background featuring crystal-clear waters, distant green hills, and a blue sky dotted with white clouds. The cat assumes a naturally relaxed posture, as if savoring the sea breeze and warm sunlight. A close-up shot highlights the feline's intricate details and the refreshing atmosphere of the seaside.",
+        ...     image=image,
         ...     num_inference_steps=50,
         ... ).frames[0]
-        >>> export_to_video(output, "output.mp4", fps=15)
+        >>> export_to_video(output, "output.mp4", fps=24)
         ```
 """
 
-
+# Copied from diffusers.pipelines.hunyuan_video1_5.pipeline_hunyuan_video1_5.format_text_input
 def format_text_input(prompt: List[str], system_message: str
         ) -> List[Dict[str, Any]]:
     """
@@ -87,6 +92,7 @@ def format_text_input(prompt: List[str], system_message: str
     return template
 
 
+# Copied from diffusers.pipelines.hunyuan_image.pipeline_hunyuanimage.extract_glyph_text
 def extract_glyph_texts(prompt: str) -> List[str]:
     """
     Extract glyph texts from prompt using regex pattern.
@@ -207,10 +213,15 @@ class HunyuanVideo15ImageToVideoPipeline(DiffusionPipeline):
         tokenizer_2 (`ByT5Tokenizer`): Tokenizer of class [ByT5Tokenizer]
         guider ([`ClassifierFreeGuidance`]):
             [ClassifierFreeGuidance]for classifier free guidance.
+        image_encoder ([`SiglipVisionModel`]):
+            [SiglipVisionModel](https://huggingface.co/docs/transformers/en/model_doc/siglip#transformers.SiglipVisionModel)
+            variant.
+        feature_extractor ([`SiglipImageProcessor`]):
+            [SiglipImageProcessor](https://huggingface.co/docs/transformers/en/model_doc/siglip#transformers.SiglipImageProcessor)
+            variant.
     """
 
-    model_cpu_offload_seq = "text_encoder->text_encoder_2->transformer->vae"
-    _callback_tensor_inputs = ["latents", "prompt_embeds"]
+    model_cpu_offload_seq = "image_encoder->text_encoder->transformer->vae"
 
     def __init__(
         self,
@@ -365,7 +376,7 @@ class HunyuanVideo15ImageToVideoPipeline(DiffusionPipeline):
 
 
     @staticmethod
-    def _get_vae_image_latents(
+    def _get_image_latents(
         vae: AutoencoderKLHunyuanVideo15, 
         image_processor: HunyuanVideo15ImageProcessor,
         image: PIL.Image.Image,
@@ -613,7 +624,7 @@ class HunyuanVideo15ImageToVideoPipeline(DiffusionPipeline):
 
         batch, channels, frames, height, width = latents.shape
 
-        image_latents = self._get_vae_image_latents(
+        image_latents = self._get_image_latents(
             vae=self.vae,
             image_processor=self.video_processor,
             image=image,
@@ -635,10 +646,6 @@ class HunyuanVideo15ImageToVideoPipeline(DiffusionPipeline):
         
         return latent_condition, latent_mask
 
-
-    @property
-    def guidance_scale(self):
-        return self._guidance_scale
 
     @property
     def num_timesteps(self):
@@ -685,92 +692,66 @@ class HunyuanVideo15ImageToVideoPipeline(DiffusionPipeline):
         The call function to the pipeline for generation.
 
         Args:
+            image (`PIL.Image.Image`):
+                The input image to condition video generation on.
             prompt (`str` or `List[str]`, *optional*):
-                The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds`.
+                The prompt or prompts to guide the video generation. If not defined, one has to pass `prompt_embeds`
                 instead.
-            prompt_2 (`str` or `List[str]`, *optional*):
-                The prompt or prompts to be sent to `tokenizer_2` and `text_encoder_2`. If not defined, `prompt` is
-                will be used instead.
             negative_prompt (`str` or `List[str]`, *optional*):
-                The prompt or prompts not to guide the image generation. If not defined, one has to pass
-                `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `true_cfg_scale` is
-                not greater than `1`).
-            negative_prompt_2 (`str` or `List[str]`, *optional*):
-                The prompt or prompts not to guide the image generation to be sent to `tokenizer_2` and
-                `text_encoder_2`. If not defined, `negative_prompt` is used in all the text-encoders.
-            height (`int`, defaults to `720`):
-                The height in pixels of the generated image.
-            width (`int`, defaults to `1280`):
-                The width in pixels of the generated image.
-            num_frames (`int`, defaults to `129`):
+                The prompt or prompts not to guide the video generation. If not defined, one has to pass
+                `negative_prompt_embeds` instead.
+            num_frames (`int`, defaults to `121`):
                 The number of frames in the generated video.
             num_inference_steps (`int`, defaults to `50`):
-                The number of denoising steps. More denoising steps usually lead to a higher quality image at the
+                The number of denoising steps. More denoising steps usually lead to a higher quality video at the
                 expense of slower inference.
             sigmas (`List[float]`, *optional*):
                 Custom sigmas to use for the denoising process with schedulers which support a `sigmas` argument in
                 their `set_timesteps` method. If not defined, the default behavior when `num_inference_steps` is passed
                 will be used.
-            true_cfg_scale (`float`, *optional*, defaults to 1.0):
-                True classifier-free guidance (guidance scale) is enabled when `true_cfg_scale` > 1 and
-                `negative_prompt` is provided.
-            guidance_scale (`float`, defaults to `6.0`):
-                Embedded guiddance scale is enabled by setting `guidance_scale` > 1. Higher `guidance_scale` encourages
-                a model to generate images more aligned with `prompt` at the expense of lower image quality.
-
-                Guidance-distilled models approximates true classifer-free guidance for `guidance_scale` > 1. Refer to
-                the [paper](https://huggingface.co/papers/2210.03142) to learn more.
             num_videos_per_prompt (`int`, *optional*, defaults to 1):
-                The number of images to generate per prompt.
+                The number of videos to generate per prompt.
             generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
                 A [`torch.Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make
                 generation deterministic.
             latents (`torch.Tensor`, *optional*):
-                Pre-generated noisy latents sampled from a Gaussian distribution, to be used as inputs for image
+                Pre-generated noisy latents sampled from a Gaussian distribution, to be used as inputs for video
                 generation. Can be used to tweak the same generation with different prompts. If not provided, a latents
                 tensor is generated by sampling using the supplied random `generator`.
             prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated text embeddings. Can be used to easily tweak text inputs (prompt weighting). If not
                 provided, text embeddings are generated from the `prompt` input argument.
-            pooled_prompt_embeds (`torch.FloatTensor`, *optional*):
-                Pre-generated pooled text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting.
-                If not provided, pooled text embeddings will be generated from `prompt` input argument.
-            negative_prompt_embeds (`torch.FloatTensor`, *optional*):
+            prompt_embeds_mask (`torch.Tensor`, *optional*):
+                Pre-generated mask for prompt embeddings.
+            negative_prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated negative text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
                 weighting. If not provided, negative_prompt_embeds will be generated from `negative_prompt` input
                 argument.
-            negative_pooled_prompt_embeds (`torch.FloatTensor`, *optional*):
-                Pre-generated negative pooled text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
-                weighting. If not provided, pooled negative_prompt_embeds will be generated from `negative_prompt`
-                input argument.
-            output_type (`str`, *optional*, defaults to `"pil"`):
-                The output format of the generated image. Choose between `PIL.Image` or `np.array`.
+            negative_prompt_embeds_mask (`torch.Tensor`, *optional*):
+                Pre-generated mask for negative prompt embeddings.
+            prompt_embeds_2 (`torch.Tensor`, *optional*):
+                Pre-generated text embeddings from the second text encoder. Can be used to easily tweak text inputs.
+            prompt_embeds_mask_2 (`torch.Tensor`, *optional*):
+                Pre-generated mask for prompt embeddings from the second text encoder.
+            negative_prompt_embeds_2 (`torch.Tensor`, *optional*):
+                Pre-generated negative text embeddings from the second text encoder.
+            negative_prompt_embeds_mask_2 (`torch.Tensor`, *optional*):
+                Pre-generated mask for negative prompt embeddings from the second text encoder.
+            output_type (`str`, *optional*, defaults to `"np"`):
+                The output format of the generated video. Choose between "np", "pt", or "latent".
             return_dict (`bool`, *optional*, defaults to `True`):
-                Whether or not to return a [`HunyuanVideoPipelineOutput`] instead of a plain tuple.
+                Whether or not to return a [`HunyuanVideo15PipelineOutput`] instead of a plain tuple.
             attention_kwargs (`dict`, *optional*):
                 A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
                 `self.processor` in
                 [diffusers.models.attention_processor](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
-            clip_skip (`int`, *optional*):
-                Number of layers to be skipped from CLIP while computing the prompt embeddings. A value of 1 means that
-                the output of the pre-final layer will be used for computing the prompt embeddings.
-            callback_on_step_end (`Callable`, `PipelineCallback`, `MultiPipelineCallbacks`, *optional*):
-                A function or a subclass of `PipelineCallback` or `MultiPipelineCallbacks` that is called at the end of
-                each denoising step during the inference. with the following arguments: `callback_on_step_end(self:
-                DiffusionPipeline, step: int, timestep: int, callback_kwargs: Dict)`. `callback_kwargs` will include a
-                list of all tensors as specified by `callback_on_step_end_tensor_inputs`.
-            callback_on_step_end_tensor_inputs (`List`, *optional*):
-                The list of tensor inputs for the `callback_on_step_end` function. The tensors specified in the list
-                will be passed as `callback_kwargs` argument. You will only be able to include variables listed in the
-                `._callback_tensor_inputs` attribute of your pipeline class.
 
         Examples:
 
         Returns:
-            [`~HunyuanVideoPipelineOutput`] or `tuple`:
-                If `return_dict` is `True`, [`HunyuanVideoPipelineOutput`] is returned, otherwise a `tuple` is returned
-                where the first element is a list with the generated images and the second element is a list of `bool`s
-                indicating whether the corresponding generated image contains "not-safe-for-work" (nsfw) content.
+            [`~HunyuanVideo15PipelineOutput`] or `tuple`:
+                If `return_dict` is `True`, [`HunyuanVideo15PipelineOutput`] is returned, otherwise a `tuple` is returned
+                where the first element is a list with the generated videos.
         """
 
         # 1. Check inputs. Raise error if not correct
@@ -806,7 +787,15 @@ class HunyuanVideo15ImageToVideoPipeline(DiffusionPipeline):
         else:
             batch_size = prompt_embeds.shape[0]
 
-        # 3. Encode input prompt
+        # 3. Encode image
+        image_embeds = self.encode_image(
+            image=image,
+            batch_size=batch_size * num_videos_per_prompt,
+            device=device,
+            dtype=self.transformer.dtype,
+        )
+
+        # 4. Encode input prompt
         prompt_embeds, prompt_embeds_mask, prompt_embeds_2, prompt_embeds_mask_2 = self.encode_prompt(
             prompt=prompt,
             device=device,
@@ -832,11 +821,11 @@ class HunyuanVideo15ImageToVideoPipeline(DiffusionPipeline):
                 prompt_embeds_mask_2=negative_prompt_embeds_mask_2,
             )
 
-        # 4. Prepare timesteps
+        # 5. Prepare timesteps
         sigmas = np.linspace(1.0, 0.0, num_inference_steps + 1)[:-1] if sigmas is None else sigmas
         timesteps, num_inference_steps = retrieve_timesteps(self.scheduler, num_inference_steps, device, sigmas=sigmas)
 
-        # 5. Prepare latent variables
+        # 6. Prepare latent variables
         latents = self.prepare_latents(
             batch_size=batch_size * num_videos_per_prompt,
             num_channels_latents=self.num_channels_latents,
@@ -857,12 +846,6 @@ class HunyuanVideo15ImageToVideoPipeline(DiffusionPipeline):
             width=width,
             dtype=self.transformer.dtype, 
             device=device
-        )
-        image_embeds = self.encode_image(
-            image=image,
-            batch_size=batch_size * num_videos_per_prompt,
-            device=device,
-            dtype=self.transformer.dtype,
         )
 
         # 7. Denoising loop
@@ -961,6 +944,7 @@ class HunyuanVideo15ImageToVideoPipeline(DiffusionPipeline):
 
         self._current_timestep = None
 
+        
         if not output_type == "latent":
             latents = latents.to(self.vae.dtype) / self.vae.config.scaling_factor
             video = self.vae.decode(latents, return_dict=False)[0]
