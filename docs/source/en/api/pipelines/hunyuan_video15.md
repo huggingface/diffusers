@@ -12,13 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License. -->
 
-<div style="float: right;">
-  <div class="flex flex-wrap space-x-1">
-    <a href="https://huggingface.co/docs/diffusers/main/en/tutorials/using_peft_for_inference" target="_blank" rel="noopener">
-      <img alt="LoRA" src="https://img.shields.io/badge/LoRA-d8b4fe?style=flat"/>
-    </a>
-  </div>
-</div>
 
 # HunyuanVideo-1.5
 
