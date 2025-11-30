@@ -141,6 +141,34 @@ def apply_rotary_emb_qwen(
         return x_out.type_as(x)
 
 
+def compute_text_seq_len_from_mask(
+    encoder_hidden_states: torch.Tensor, encoder_hidden_states_mask: Optional[torch.Tensor]
+) -> Tuple[int, Optional[torch.Tensor]]:
+    """
+    Compute text sequence length without assuming contiguous masks. Returns length for RoPE and a normalized bool mask.
+    """
+    batch_size, text_seq_len = encoder_hidden_states.shape[:2]
+    if encoder_hidden_states_mask is None:
+        return text_seq_len, None
+
+    if encoder_hidden_states_mask.shape[:2] != (batch_size, text_seq_len):
+        raise ValueError(
+            f"`encoder_hidden_states_mask` shape {encoder_hidden_states_mask.shape} must match "
+            f"(batch_size, text_seq_len)=({batch_size}, {text_seq_len})."
+        )
+
+    if encoder_hidden_states_mask.dtype != torch.bool:
+        encoder_hidden_states_mask = encoder_hidden_states_mask.to(torch.bool)
+
+    position_ids = torch.arange(text_seq_len, device=encoder_hidden_states.device, dtype=torch.long)
+    active_positions = torch.where(encoder_hidden_states_mask, position_ids, position_ids.new_zeros(()))
+    has_active = encoder_hidden_states_mask.any(dim=1)
+    per_sample_len = torch.where(has_active, active_positions.max(dim=1).values + 1, torch.as_tensor(text_seq_len))
+    rope_text_seq_len = max(text_seq_len, int(per_sample_len.max().item()))
+
+    return rope_text_seq_len, encoder_hidden_states_mask
+
+
 class QwenTimestepProjEmbeddings(nn.Module):
     def __init__(self, embedding_dim):
         super().__init__()
@@ -654,9 +682,10 @@ class QwenImageTransformer2DModel(
         encoder_hidden_states = self.txt_norm(encoder_hidden_states)
         encoder_hidden_states = self.txt_in(encoder_hidden_states)
 
-        # Use the encoder_hidden_states sequence length for RoPE computation
-        # The mask is used for attention masking in the attention processor
-        _, text_seq_len = encoder_hidden_states.shape[:2]
+        # Use the encoder_hidden_states sequence length for RoPE computation and normalize mask
+        text_seq_len, encoder_hidden_states_mask = compute_text_seq_len_from_mask(
+            encoder_hidden_states, encoder_hidden_states_mask
+        )
 
         if guidance is not None:
             guidance = guidance.to(hidden_states.dtype) * 1000

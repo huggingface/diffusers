@@ -19,6 +19,7 @@ import pytest
 import torch
 
 from diffusers import QwenImageTransformer2DModel
+from diffusers.models.transformers.transformer_qwenimage import compute_text_seq_len_from_mask
 
 from ...testing_utils import enable_full_determinism, torch_device
 from ..test_modeling_common import ModelTesterMixin, TorchCompileTesterMixin
@@ -133,13 +134,17 @@ class QwenImageTransformerTests(ModelTesterMixin, unittest.TestCase):
         encoder_hidden_states_mask[:, 3] = 0
         encoder_hidden_states_mask[:, 5:] = 0
 
-        inputs["encoder_hidden_states_mask"] = encoder_hidden_states_mask
+        inferred_rope_len, normalized_mask = compute_text_seq_len_from_mask(
+            inputs["encoder_hidden_states"], encoder_hidden_states_mask
+        )
+        self.assertEqual(inferred_rope_len, inputs["encoder_hidden_states"].shape[1])
+        self.assertTrue(normalized_mask.dtype == torch.bool)
+
+        inputs["encoder_hidden_states_mask"] = normalized_mask
 
         with torch.no_grad():
             output = model(**inputs)
 
-        # The model should handle non-contiguous masks correctly
-        # RoPE uses the full sequence length, attention masking handles the pattern
         self.assertEqual(output.sample.shape[1], inputs["hidden_states"].shape[1])
 
 

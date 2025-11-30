@@ -31,6 +31,7 @@ from ..transformers.transformer_qwenimage import (
     QwenImageTransformerBlock,
     QwenTimestepProjEmbeddings,
     RMSNorm,
+    compute_text_seq_len_from_mask,
 )
 
 
@@ -244,9 +245,10 @@ class QwenImageControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
 
         temb = self.time_text_embed(timestep, hidden_states)
 
-        # Use the encoder_hidden_states sequence length for RoPE computation
-        # The mask is used for attention masking in the attention processor
-        _, text_seq_len = encoder_hidden_states.shape[:2]
+        # Use the encoder_hidden_states sequence length for RoPE computation and normalize mask
+        text_seq_len, encoder_hidden_states_mask = compute_text_seq_len_from_mask(
+            encoder_hidden_states, encoder_hidden_states_mask
+        )
 
         image_rotary_emb = self.pos_embed(img_shapes, text_seq_len, device=hidden_states.device)
 
