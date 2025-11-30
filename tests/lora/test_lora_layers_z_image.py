@@ -16,6 +16,7 @@ import os
 import sys
 import unittest
 
+import numpy as np
 import torch
 from peft import LoraConfig
 from transformers import Qwen2Tokenizer, Qwen3Config, Qwen3Model
@@ -27,7 +28,7 @@ from diffusers import (
     ZImageTransformer2DModel,
 )
 
-from ..testing_utils import floats_tensor, require_peft_backend
+from ..testing_utils import floats_tensor, require_peft_backend, torch_device
 
 
 # Z-Image requires torch.use_deterministic_algorithms(False) due to complex64 RoPE operations
@@ -42,7 +43,7 @@ if hasattr(torch.backends, "cuda"):
 
 sys.path.append(".")
 
-from .utils import PeftLoraLoaderMixinTests  # noqa: E402
+from .utils import PeftLoraLoaderMixinTests, check_if_lora_correctly_set  # noqa: E402
 
 
 @require_peft_backend
@@ -197,3 +198,33 @@ class ZImageLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
     @unittest.skip("Text encoder LoRA is not supported in ZImage.")
     def test_simple_inference_with_text_lora_save_load(self):
         pass
+
+    @unittest.skip("Not supported in ZImage.")
+    def test_simple_inference_with_text_denoiser_multi_adapter_block_lora(self):
+        pass
+
+    def test_lora_fuse_nan(self):
+        """Override to use ZImage's 'layers' attribute instead of 'transformer_blocks'."""
+        components, _, denoiser_lora_config = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe = pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+        _, _, inputs = self.get_dummy_inputs(with_generator=False)
+
+        denoiser = pipe.transformer
+        denoiser.add_adapter(denoiser_lora_config, "adapter-1")
+        self.assertTrue(check_if_lora_correctly_set(denoiser), "Lora not correctly set in denoiser.")
+
+        # corrupt one LoRA weight with `inf` values - ZImage uses 'layers.X.attention'
+        with torch.no_grad():
+            pipe.transformer.layers[0].attention.to_q.lora_A["adapter-1"].weight += float("inf")
+
+        # with `safe_fusing=True` we should see an Error
+        with self.assertRaises(ValueError):
+            pipe.fuse_lora(components=self.pipeline_class._lora_loadable_modules, safe_fusing=True)
+
+        # without we should not see an error, but every image will be black
+        pipe.fuse_lora(components=self.pipeline_class._lora_loadable_modules, safe_fusing=False)
+        out = pipe(**inputs)[0]
+
+        self.assertTrue(np.isnan(out).all())
