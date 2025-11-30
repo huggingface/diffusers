@@ -105,7 +105,7 @@ class SDXLModularIPAdapterTesterMixin:
 
         blocks = self.pipeline_blocks_class()
         _ = blocks.sub_blocks.pop("ip_adapter")
-        pipe = blocks.init_pipeline(self.repo)
+        pipe = blocks.init_pipeline(self.pretrained_model_name_or_path)
         pipe.load_components(torch_dtype=torch.float32)
         pipe = pipe.to(torch_device)
 
@@ -278,7 +278,7 @@ class TestSDXLModularPipelineFast(
 
     pipeline_class = StableDiffusionXLModularPipeline
     pipeline_blocks_class = StableDiffusionXLAutoBlocks
-    repo = "hf-internal-testing/tiny-sdxl-modular"
+    pretrained_model_name_or_path = "hf-internal-testing/tiny-sdxl-modular"
     params = frozenset(
         [
             "prompt",
@@ -325,7 +325,7 @@ class TestSDXLImg2ImgModularPipelineFast(
 
     pipeline_class = StableDiffusionXLModularPipeline
     pipeline_blocks_class = StableDiffusionXLAutoBlocks
-    repo = "hf-internal-testing/tiny-sdxl-modular"
+    pretrained_model_name_or_path = "hf-internal-testing/tiny-sdxl-modular"
     params = frozenset(
         [
             "prompt",
@@ -378,7 +378,7 @@ class SDXLInpaintingModularPipelineFastTests(
 
     pipeline_class = StableDiffusionXLModularPipeline
     pipeline_blocks_class = StableDiffusionXLAutoBlocks
-    repo = "hf-internal-testing/tiny-sdxl-modular"
+    pretrained_model_name_or_path = "hf-internal-testing/tiny-sdxl-modular"
     params = frozenset(
         [
             "prompt",
