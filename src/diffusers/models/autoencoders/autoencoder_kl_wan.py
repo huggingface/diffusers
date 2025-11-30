@@ -1259,14 +1259,20 @@ class AutoencoderKLWan(ModelMixin, AutoencoderMixin, ConfigMixin, FromOriginalMo
             `torch.Tensor`:
                 The latent representation of the encoded videos.
         """
-        _, _, num_frames, height, width = x.shape
-        latent_height = height // self.spatial_compression_ratio
-        latent_width = width // self.spatial_compression_ratio
 
-        tile_latent_min_height = self.tile_sample_min_height // self.spatial_compression_ratio
-        tile_latent_min_width = self.tile_sample_min_width // self.spatial_compression_ratio
-        tile_latent_stride_height = self.tile_sample_stride_height // self.spatial_compression_ratio
-        tile_latent_stride_width = self.tile_sample_stride_width // self.spatial_compression_ratio
+        _, _, num_frames, height, width = x.shape
+        encode_spatial_compression_ratio = self.spatial_compression_ratio
+        if self.config.patch_size is not None:
+            assert encode_spatial_compression_ratio % self.config.patch_size == 0
+            encode_spatial_compression_ratio = self.spatial_compression_ratio // self.config.patch_size
+
+        latent_height = height // encode_spatial_compression_ratio
+        latent_width = width // encode_spatial_compression_ratio
+
+        tile_latent_min_height = self.tile_sample_min_height // encode_spatial_compression_ratio
+        tile_latent_min_width = self.tile_sample_min_width // encode_spatial_compression_ratio
+        tile_latent_stride_height = self.tile_sample_stride_height // encode_spatial_compression_ratio
+        tile_latent_stride_width = self.tile_sample_stride_width // encode_spatial_compression_ratio
 
         blend_height = tile_latent_min_height - tile_latent_stride_height
         blend_width = tile_latent_min_width - tile_latent_stride_width
