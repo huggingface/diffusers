@@ -54,18 +54,53 @@ export_to_video(video, "output.mp4", fps=15)
 
 ## Notes
 
-- HunyuanVideo1.5 use attention masks with avariable-length sequences. For best performance, we recommend using an attention backend that handles padding efficiently.
+- HunyuanVideo1.5 use attention masks with variable-length sequences. For best performance, we recommend using an attention backend that handles padding efficiently.
 
     - **H100/H800:** `_flash_3_hub` or `_flash_varlen_3`
-    - **A100/A800/RTX 4090:** `flash` or `flash_varlen`
-    - **Other GPUs:** `sage`
+    - **A100/A800/RTX 4090:** `flash_hub` or `flash_varlen`
+    - **Other GPUs:** `sage_hub`
 
 Refer to the [Attention backends](../../optimization/attention_backends) guide for more details about using a different backend.
 
 
 ```py
-pipe.transformer.set_attention_backend("flash_varlen")  # or your preferred backend
+pipe.transformer.set_attention_backend("flash_hub")  # or your preferred backend
 ```
+
+- [`HunyuanVideo15Pipeline`] use guider and does not take `guidance_scale` parameter at runtime. 
+
+You can check the default guider configuration using `pipe.guider`:
+
+```py
+>>> pipe.guider 
+ClassifierFreeGuidance {
+  "_class_name": "ClassifierFreeGuidance",
+  "_diffusers_version": "0.36.0.dev0",
+  "enabled": true,
+  "guidance_rescale": 0.0,
+  "guidance_scale": 6.0,
+  "start": 0.0,
+  "stop": 1.0,
+  "use_original_formulation": false
+}
+
+State:
+  step: None
+  num_inference_steps: None
+  timestep: None
+  count_prepared: 0
+  enabled: True
+  num_conditions: 2
+```
+
+To update guider configuration, you can run `pipe.guider = pipe.guider.new(...)`
+
+```py
+pipe.guider = pipe.guider.new(guidance_scale=5.0)
+```
+
+Read more on Guider [here](../../modular_diffusers/guiders).
+
 
 
 ## HunyuanVideo15Pipeline
