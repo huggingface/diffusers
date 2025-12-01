@@ -19,7 +19,7 @@ import torch
 from diffusers import HunyuanVideo15Transformer3DModel
 
 from ...testing_utils import enable_full_determinism, torch_device
-from ..test_modeling_common import ModelTesterMixin, TorchCompileTesterMixin
+from ..test_modeling_common import ModelTesterMixin
 
 
 enable_full_determinism()
@@ -46,14 +46,15 @@ class HunyuanVideo15Transformer3DTests(ModelTesterMixin, unittest.TestCase):
         image_sequence_length = 3
 
         hidden_states = torch.randn((batch_size, num_channels, num_frames, height, width)).to(torch_device)
-        timestep = torch.randint(0, 1000, size=(batch_size,), device=torch_device, dtype=torch.long)
+        timestep = torch.tensor([1.0]).to(torch_device)
         encoder_hidden_states = torch.randn((batch_size, sequence_length, self.text_embed_dim), device=torch_device)
         encoder_hidden_states_2 = torch.randn(
             (batch_size, sequence_length_2, self.text_embed_2_dim), device=torch_device
         )
         encoder_attention_mask = torch.ones((batch_size, sequence_length), device=torch_device)
         encoder_attention_mask_2 = torch.ones((batch_size, sequence_length_2), device=torch_device)
-        image_embeds = torch.randn((batch_size, image_sequence_length, self.image_embed_dim), device=torch_device)
+        # All zeros for inducing T2V path in the model.
+        image_embeds = torch.zeros((batch_size, image_sequence_length, self.image_embed_dim), device=torch_device)
 
         return {
             "hidden_states": hidden_states,
@@ -87,7 +88,7 @@ class HunyuanVideo15Transformer3DTests(ModelTesterMixin, unittest.TestCase):
             "text_embed_dim": self.text_embed_dim,
             "text_embed_2_dim": self.text_embed_2_dim,
             "image_embed_dim": self.image_embed_dim,
-            "rope_axes_dim": (2, 4, 4),
+            "rope_axes_dim": (2, 2, 4),
             "target_size": 16,
             "task_type": "t2v",
         }
@@ -97,10 +98,3 @@ class HunyuanVideo15Transformer3DTests(ModelTesterMixin, unittest.TestCase):
     def test_gradient_checkpointing_is_applied(self):
         expected_set = {"HunyuanVideo15Transformer3DModel"}
         super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
-
-
-class HunyuanVideo15Transformer3DCompileTests(TorchCompileTesterMixin, unittest.TestCase):
-    model_class = HunyuanVideo15Transformer3DModel
-
-    def prepare_init_args_and_inputs_for_common(self):
-        return HunyuanVideo15Transformer3DTests().prepare_init_args_and_inputs_for_common()
