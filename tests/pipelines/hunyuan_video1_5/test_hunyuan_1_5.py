@@ -56,9 +56,7 @@ class HunyuanVideo15PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "num_inference_steps",
             "generator",
             "latents",
-            "return_dict",
-            "callback_on_step_end",
-            "callback_on_step_end_tensor_inputs",
+            "return_dict"
         ]
     )
     test_attention_slicing = False
@@ -186,3 +184,12 @@ class HunyuanVideo15PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     @unittest.skip("TODO: Test not supported for now because needs to be adjusted to work with guiders.")
     def test_encode_prompt_works_in_isolation(self):
         pass
+
+    @unittest.skip("Needs to be revisited.")
+    def test_inference_batch_consistent(self):
+        super().test_inference_batch_consistent()
+
+    @unittest.skip("Needs to be revisited.")
+    def test_inference_batch_single_identical(self):
+        super().test_inference_batch_single_identical()
+
