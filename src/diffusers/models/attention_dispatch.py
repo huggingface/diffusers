@@ -172,7 +172,7 @@ class AttentionBackendName(str, Enum):
     _FLASH_3 = "_flash_3"
     _FLASH_VARLEN_3 = "_flash_varlen_3"
     _FLASH_3_HUB = "_flash_3_hub"
-    _FLASH_VARLEN_3_HUB = "_flash_varlen_3_hub"
+    _FLASH_3_VARLEN_HUB = "_flash_3_varlen_hub"
 
     # `aiter`
     AITER = "aiter"
@@ -264,10 +264,10 @@ _HUB_KERNELS_REGISTRY: Dict["AttentionBackendName", _HubKernelConfig] = {
     AttentionBackendName._FLASH_3_HUB: _HubKernelConfig(
         repo_id="kernels-community/flash-attn3", function_attr="flash_attn_func", revision="fake-ops-return-probs"
     ),
-    AttentionBackendName._FLASH_VARLEN_3_HUB: _HubKernelConfig(
+    AttentionBackendName._FLASH_3_VARLEN_HUB: _HubKernelConfig(
         repo_id="kernels-community/flash-attn3",
         function_attr="flash_attn_varlen_func",
-        revision="fake-ops-return-probs",
+        # revision="fake-ops-return-probs",
     ),
     AttentionBackendName.FLASH_HUB: _HubKernelConfig(
         repo_id="kernels-community/flash-attn2", function_attr="flash_attn_func", revision=None
@@ -438,7 +438,7 @@ def _check_attention_backend_requirements(backend: AttentionBackendName) -> None
         AttentionBackendName.FLASH_HUB,
         AttentionBackendName.FLASH_VARLEN_HUB,
         AttentionBackendName._FLASH_3_HUB,
-        AttentionBackendName._FLASH_VARLEN_3_HUB,
+        AttentionBackendName._FLASH_3_VARLEN_HUB,
         AttentionBackendName.SAGE_HUB,
     ]:
         if not is_kernels_available():
@@ -1552,7 +1552,6 @@ def _flash_attention_3(
         softmax_scale=scale,
         causal=is_causal,
     )
-    out = _maybe_unflatten_attention_heads(out, query)
     return (out, lse) if return_lse else out
 
 
@@ -1597,17 +1596,15 @@ def _flash_attention_3_hub(
     )
     # When `return_attn_probs` is True, the above returns a tuple of
     # actual outputs and lse.
-    if return_attn_probs:
-        return (_maybe_unflatten_attention_heads(out[0], query), out[1])
-    return _maybe_unflatten_attention_heads(out, query)
+    return (out[0], out[1]) if return_attn_probs else out
 
 
 @_AttentionBackendRegistry.register(
-    AttentionBackendName._FLASH_VARLEN_3_HUB,
+    AttentionBackendName._FLASH_3_VARLEN_HUB,
     constraints=[_check_device, _check_qkv_dtype_bf16_or_fp16, _check_shape],
     supports_context_parallel=False,
 )
-def _flash_varlen_attention_3_hub(
+def _flash_attention_3_varlen_hub(
     query: torch.Tensor,
     key: torch.Tensor,
     value: torch.Tensor,
@@ -1639,7 +1636,7 @@ def _flash_varlen_attention_3_hub(
     key_packed = torch.cat(key_valid, dim=0)
     value_packed = torch.cat(value_valid, dim=0)
 
-    func = _HUB_KERNELS_REGISTRY[AttentionBackendName._FLASH_VARLEN_3_HUB].kernel_fn
+    func = _HUB_KERNELS_REGISTRY[AttentionBackendName._FLASH_3_VARLEN_HUB].kernel_fn
     out, lse, *_ = func(
         q=query_packed,
         k=key_packed,
@@ -1652,7 +1649,6 @@ def _flash_varlen_attention_3_hub(
         causal=is_causal,
     )
     out = out.unflatten(0, (batch_size, -1))
-    out = _maybe_unflatten_attention_heads(out, query)
 
     return (out, lse) if return_lse else out
 
