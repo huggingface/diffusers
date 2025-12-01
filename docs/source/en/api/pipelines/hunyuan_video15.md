@@ -52,6 +52,18 @@ video = pipeline(prompt=prompt, num_frames=61, num_inference_steps=30).frames[0]
 export_to_video(video, "output.mp4", fps=15)
 ```
 
+## Notes
+
+- HunyuanVideo1.5 use attention masks with avariable-length sequences. For best performance, we recommend using an attention backend that handles padding efficiently.
+
+    - **H100/H800:** `_flash_3_hub` or `_flash_varlen_3`
+    - **A100/A800/RTX 4090:** `flash` or `flash_varlen`
+    - **Other GPUs:** `sage`
+
+```py
+pipe.transformer.set_attention_backend("flash_varlen")  # or your preferred backend
+```
+
 
 ## HunyuanVideo15Pipeline
 
