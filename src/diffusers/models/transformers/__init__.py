@@ -29,6 +29,7 @@ if is_torch_available():
     from .transformer_flux2 import Flux2Transformer2DModel
     from .transformer_hidream_image import HiDreamImageTransformer2DModel
     from .transformer_hunyuan_video import HunyuanVideoTransformer3DModel
+    from .transformer_hunyuan_video15 import HunyuanVideo15Transformer3DModel
     from .transformer_hunyuan_video_framepack import HunyuanVideoFramepackTransformer3DModel
     from .transformer_hunyuanimage import HunyuanImageTransformer2DModel
     from .transformer_kandinsky import Kandinsky5Transformer3DModel
