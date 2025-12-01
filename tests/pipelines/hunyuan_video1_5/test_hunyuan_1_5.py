@@ -51,14 +51,7 @@ class HunyuanVideo15PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         ]
     )
     batch_params = ["prompt", "negative_prompt"]
-    required_optional_params = frozenset(
-        [
-            "num_inference_steps",
-            "generator",
-            "latents",
-            "return_dict"
-        ]
-    )
+    required_optional_params = frozenset(["num_inference_steps", "generator", "latents", "return_dict"])
     test_attention_slicing = False
     test_xformers_attention = False
     test_layerwise_casting = True
@@ -192,4 +185,3 @@ class HunyuanVideo15PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     @unittest.skip("Needs to be revisited.")
     def test_inference_batch_single_identical(self):
         super().test_inference_batch_single_identical()
-
