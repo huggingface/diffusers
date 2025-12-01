@@ -15,18 +15,17 @@
 import unittest
 
 import torch
-from transformers import T5EncoderModel, Qwen2_5_VLTextConfig, Qwen2_5_VLTextModel, Qwen2Tokenizer, ByT5Tokenizer
+from transformers import ByT5Tokenizer, Qwen2_5_VLTextConfig, Qwen2_5_VLTextModel, Qwen2Tokenizer, T5EncoderModel
 
 from diffusers import (
     AutoencoderKLHunyuanVideo15,
     FlowMatchEulerDiscreteScheduler,
     HunyuanVideo15Pipeline,
-    HunyuanVideo15Transformer3DModel
+    HunyuanVideo15Transformer3DModel,
 )
 from diffusers.guiders import ClassifierFreeGuidance
 
 from ...testing_utils import enable_full_determinism
-from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS
 from ..test_pipelines_common import PipelineTesterMixin
 
 
@@ -119,7 +118,6 @@ class HunyuanVideo15PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
                 },
                 "rope_theta": 1000000.0,
             }
-
         )
         text_encoder = Qwen2_5_VLTextModel(qwen_config)
         tokenizer = Qwen2Tokenizer.from_pretrained("hf-internal-testing/tiny-random-Qwen2VLForConditionalGeneration")
@@ -175,11 +173,11 @@ class HunyuanVideo15PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         self.assertEqual(generated_video.shape, (9, 3, 16, 16))
         generated_slice = generated_video.flatten()
         generated_slice = torch.cat([generated_slice[:8], generated_slice[-8:]])
-        
+
         # fmt: off
         expected_slice = torch.tensor([0.4296, 0.5549, 0.3088, 0.9115, 0.5049, 0.7926, 0.5549, 0.8618, 0.5091, 0.5075, 0.7117, 0.5292, 0.7053, 0.4864, 0.5206, 0.3878])
         # fmt: on
-        
+
         self.assertTrue(
             torch.abs(generated_slice - expected_slice).max() < 1e-3,
             f"output_slice: {generated_slice}, expected_slice: {expected_slice}",
@@ -188,4 +186,3 @@ class HunyuanVideo15PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     @unittest.skip("TODO: Test not supported for now because needs to be adjusted to work with guiders.")
     def test_encode_prompt_works_in_isolation(self):
         pass
-
