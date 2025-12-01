@@ -589,6 +589,25 @@ def _normalize_attn_mask(attn_mask: torch.Tensor, batch_size: int, seq_len_k: in
     return attn_mask
 
 
+def _maybe_unflatten_attention_heads(out: torch.Tensor, reference_q: torch.Tensor) -> torch.Tensor:
+    """
+    Flash Attention 3 (and some hub builds) may return tensors where the head and head-dim axes are packed together.
+    Use the original query to restore the canonical [B, S, H, D] shape expected by the rest of the codebase.
+    """
+    if reference_q.ndim != 4 or out.ndim != 3:
+        return out
+
+    if out.shape[0] != reference_q.shape[0] or out.shape[1] != reference_q.shape[1]:
+        return out
+
+    num_heads, head_dim = reference_q.shape[-2:]
+    expected_width = num_heads * head_dim
+    if out.shape[-1] != expected_width:
+        return out
+
+    return out.reshape(reference_q.shape[0], reference_q.shape[1], num_heads, head_dim)
+
+
 def _flex_attention_causal_mask_mod(batch_idx, head_idx, q_idx, kv_idx):
     return q_idx >= kv_idx
 
@@ -1533,6 +1552,7 @@ def _flash_attention_3(
         softmax_scale=scale,
         causal=is_causal,
     )
+    out = _maybe_unflatten_attention_heads(out, query)
     return (out, lse) if return_lse else out
 
 
@@ -1577,7 +1597,9 @@ def _flash_attention_3_hub(
     )
     # When `return_attn_probs` is True, the above returns a tuple of
     # actual outputs and lse.
-    return (out[0], out[1]) if return_attn_probs else out
+    if return_attn_probs:
+        return (_maybe_unflatten_attention_heads(out[0], query), out[1])
+    return _maybe_unflatten_attention_heads(out, query)
 
 
 @_AttentionBackendRegistry.register(
@@ -1630,6 +1652,7 @@ def _flash_varlen_attention_3_hub(
         causal=is_causal,
     )
     out = out.unflatten(0, (batch_size, -1))
+    out = _maybe_unflatten_attention_heads(out, query)
 
     return (out, lse) if return_lse else out
 
