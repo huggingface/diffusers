@@ -526,7 +526,7 @@ class ZImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
                     .repeat(image_padding_len, 1)
                 )
                 image_padded_pos_ids = torch.cat([image_ori_pos_ids, image_padding_pos_ids], dim=0)
-            else :
+            else:
                 image_padded_pos_ids = image_ori_pos_ids
             all_image_pos_ids.append(image_padded_pos_ids)
             # pad mask
@@ -537,10 +537,14 @@ class ZImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
                         torch.ones((image_padding_len,), dtype=torch.bool, device=device),
                     ],
                     dim=0,
-                ) if image_padding_len > 0 else torch.zeros((image_ori_len,), dtype=torch.bool, device=device)
+                )
+                if image_padding_len > 0
+                else torch.zeros((image_ori_len,), dtype=torch.bool, device=device)
             )
             # padded feature
-            image_padded_feat = torch.cat([image, image[-1:].repeat(image_padding_len, 1)], dim=0) if image_padding_len > 0 else image
+            image_padded_feat = (
+                torch.cat([image, image[-1:].repeat(image_padding_len, 1)], dim=0) if image_padding_len > 0 else image
+            )
             all_image_out.append(image_padded_feat)
 
         return (
