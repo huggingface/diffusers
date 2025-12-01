@@ -231,3 +231,39 @@ class ZImageLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
         out = pipe(**inputs)[0]
 
         self.assertTrue(np.isnan(out).all())
+
+    def test_correct_lora_configs_with_different_ranks(self):
+        """Override to use ZImage's 'attention' naming instead of 'attn'."""
+        components, _, denoiser_lora_config = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe = pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+        _, _, inputs = self.get_dummy_inputs(with_generator=False)
+
+        original_output = pipe(**inputs, generator=torch.manual_seed(0))[0]
+
+        pipe.transformer.add_adapter(denoiser_lora_config, "adapter-1")
+        lora_output_same_rank = pipe(**inputs, generator=torch.manual_seed(0))[0]
+        pipe.transformer.delete_adapters("adapter-1")
+
+        # ZImage uses 'attention.to_k' not 'attn.to_k'
+        denoiser = pipe.transformer
+        for name, _ in denoiser.named_modules():
+            if "to_k" in name and "attention" in name and "lora" not in name:
+                module_name_to_rank_update = name.replace(".base_layer.", ".")
+                break
+
+        updated_rank = denoiser_lora_config.r * 2
+        denoiser_lora_config.rank_pattern = {module_name_to_rank_update: updated_rank}
+
+        denoiser.add_adapter(denoiser_lora_config, "adapter-2")
+        lora_output_different_rank = pipe(**inputs, generator=torch.manual_seed(0))[0]
+
+        self.assertFalse(
+            np.allclose(original_output, lora_output_same_rank, atol=1e-3, rtol=1e-3),
+            "LoRA should change the output.",
+        )
+        self.assertFalse(
+            np.allclose(lora_output_same_rank, lora_output_different_rank, atol=1e-3, rtol=1e-3),
+            "Different LoRA ranks should produce different outputs.",
+        )
