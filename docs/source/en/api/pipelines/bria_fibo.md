@@ -37,9 +37,8 @@ hf auth login
 ```
 
 
-## BriaPipeline
+## BriaFiboPipeline
 
-[[autodoc]] BriaPipeline
+[[autodoc]] BriaFiboPipeline
 	- all
 	- __call__
-
