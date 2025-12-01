@@ -64,7 +64,7 @@ Refer to the [Attention backends](../../optimization/attention_backends) guide f
 
 
 ```py
-pipe.transformer.set_attention_backend("flash_varlen")  # or your preferred backend
+pipe.transformer.set_attention_backend("flash_hub")  # or your preferred backend
 ```
 
 - [`HunyuanVideo15Pipeline`] use guider and does not take `guidance_scale` parameter at runtime. 
