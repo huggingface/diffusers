@@ -12,13 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License. -->
 
-<div style="float: right;">
-  <div class="flex flex-wrap space-x-1">
-    <a href="https://huggingface.co/docs/diffusers/main/en/tutorials/using_peft_for_inference" target="_blank" rel="noopener">
-      <img alt="LoRA" src="https://img.shields.io/badge/LoRA-d8b4fe?style=flat"/>
-    </a>
-  </div>
-</div>
 
 # HunyuanVideo-1.5
 
@@ -57,6 +50,21 @@ pipeline.vae.enable_tiling()
 prompt = "A fluffy teddy bear sits on a bed of soft pillows surrounded by children's toys."
 video = pipeline(prompt=prompt, num_frames=61, num_inference_steps=30).frames[0]
 export_to_video(video, "output.mp4", fps=15)
+```
+
+## Notes
+
+- HunyuanVideo1.5 use attention masks with avariable-length sequences. For best performance, we recommend using an attention backend that handles padding efficiently.
+
+    - **H100/H800:** `_flash_3_hub` or `_flash_varlen_3`
+    - **A100/A800/RTX 4090:** `flash` or `flash_varlen`
+    - **Other GPUs:** `sage`
+
+Refer to the [Attention backends](../../optimization/attention_backends) guide for more details about using a different backend.
+
+
+```py
+pipe.transformer.set_attention_backend("flash_varlen")  # or your preferred backend
 ```
 
 
