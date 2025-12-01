@@ -53,12 +53,11 @@ else:
         "Flux2AutoBlocks",
         "Flux2AutoDecodeStep",
         "Flux2AutoDenoiseStep",
-        "Flux2AutoInputStep",
+        "Flux2AutoImageInputStep",
         "Flux2AutoTextEncoderStep",
+        "Flux2AutoTextInputStep",
         "Flux2AutoVaeEncoderStep",
         "Flux2BeforeDenoiseStep",
-        "Flux2CoreDenoiseStep",
-        "Flux2InputSequentialStep",
         "Flux2VaeEncoderSequentialStep",
     ]
     _import_structure["modular_pipeline"] = ["Flux2ModularPipeline"]
@@ -102,12 +101,11 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             Flux2AutoBlocks,
             Flux2AutoDecodeStep,
             Flux2AutoDenoiseStep,
-            Flux2AutoInputStep,
+            Flux2AutoImageInputStep,
             Flux2AutoTextEncoderStep,
+            Flux2AutoTextInputStep,
             Flux2AutoVaeEncoderStep,
             Flux2BeforeDenoiseStep,
-            Flux2CoreDenoiseStep,
-            Flux2InputSequentialStep,
             Flux2VaeEncoderSequentialStep,
         )
         from .modular_pipeline import Flux2ModularPipeline

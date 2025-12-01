@@ -366,7 +366,7 @@ class Flux2RoPEInputsStep(ModularPipelineBlocks):
                 description="4D position IDs (T, H, W, L) for text tokens, used for RoPE calculation.",
             ),
             OutputParam(
-                name="img_ids",
+                name="latent_ids",
                 kwargs_type="denoiser_input_fields",
                 type_hint=torch.Tensor,
                 description="4D position IDs (T, H, W, L) for image latents, used for RoPE calculation.",
