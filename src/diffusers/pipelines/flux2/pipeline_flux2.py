@@ -59,6 +59,7 @@ EXAMPLE_DOC_STRING = """
 
 UPSAMPLING_MAX_IMAGE_SIZE = 768**2
 
+
 # Adapted from
 # https://github.com/black-forest-labs/flux2/blob/5a5d316b1b42f6b59a8c9194b77c8256be848432/src/flux2/text_encoder.py#L68
 def format_input(
@@ -147,10 +148,7 @@ def _validate_and_process_images(
 
     # cap the pixels
     images = [
-        [
-            image_processor._resize_if_exceeds_area(img_i, upsampling_max_image_size)
-            for img_i in img_i
-        ]
+        [image_processor._resize_if_exceeds_area(img_i, upsampling_max_image_size) for img_i in img_i]
         for img_i in images
     ]
     return images
@@ -527,7 +525,7 @@ class Flux2Pipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
         # Validate and process the input images
         if images:
             images = _validate_and_process_images(images, self.image_processor, self.upsampling_max_image_size)
-        
+
         # Format input messages
         messages_batch = format_input(prompts=prompt, system_message=system_message, images=images)
 

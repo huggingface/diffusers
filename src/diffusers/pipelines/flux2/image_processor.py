@@ -96,7 +96,7 @@ class Flux2ImageProcessor(VaeImageProcessor):
             )
 
         return image
-    
+
     @staticmethod
     def _resize_to_target_area(image: PIL.Image.Image, target_area: int = 1024 * 1024) -> PIL.Image.Image:
         image_width, image_height = image.size
@@ -106,7 +106,7 @@ class Flux2ImageProcessor(VaeImageProcessor):
         height = int(image_height * scale)
 
         return image.resize((width, height), PIL.Image.Resampling.LANCZOS)
-    
+
     @staticmethod
     def _resize_if_exceeds_area(image, target_area=1024 * 1024) -> PIL.Image.Image:
         image_width, image_height = image.size
