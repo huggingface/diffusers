@@ -22,9 +22,9 @@ FIBO is trained exclusively on a structured prompt and will not work with freefo
 you can use the [FIBO-VLM-prompt-to-JSON](https://huggingface.co/briaai/FIBO-VLM-prompt-to-JSON) model or the [FIBO-gemini-prompt-to-JSON](https://huggingface.co/briaai/FIBO-gemini-prompt-to-JSON)  to convert your freeform text prompt to a structured JSON prompt.
 
 > [!NOTE]
-> It's not recommended to use freeform text prompts directly with FIBO, as it will not produce the best results.
+> Avoid using freeform text prompts directly with FIBO because it does not produce the best results.
 
-You can learn more about FIBO in  [Bria Fibo Hugging Face page](https://huggingface.co/briaai/FIBO).
+Refer to the Bria Fibo Hugging Face [page](https://huggingface.co/briaai/FIBO) to learn more.
 
 
 ## Usage
