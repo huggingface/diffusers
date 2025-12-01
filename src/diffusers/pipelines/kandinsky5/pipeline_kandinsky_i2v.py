@@ -62,12 +62,9 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers.utils import export_to_video, load_image
 
         >>> # Available models:
-        >>> # ai-forever/Kandinsky-5.0-T2V-Lite-sft-5s-Diffusers
-        >>> # ai-forever/Kandinsky-5.0-T2V-Lite-nocfg-5s-Diffusers
-        >>> # ai-forever/Kandinsky-5.0-T2V-Lite-distilled16steps-5s-Diffusers
-        >>> # ai-forever/Kandinsky-5.0-T2V-Lite-pretrain-5s-Diffusers
+        >>> # kandinskylab/Kandinsky-5.0-I2V-Pro-sft-5s-Diffusers
 
-        >>> model_id = "ai-forever/Kandinsky-5.0-T2V-Lite-sft-5s-Diffusers"
+        >>> model_id = "kandinskylab/Kandinsky-5.0-I2V-Pro-sft-5s-Diffusers"
         >>> pipe = Kandinsky5I2VPipeline.from_pretrained(model_id, torch_dtype=torch.bfloat16)
         >>> pipe = pipe.to("cuda")
 

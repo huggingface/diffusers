@@ -25,9 +25,11 @@ from transformers import (
 from diffusers import (
     AutoencoderKLHunyuanVideo,
     FlowMatchEulerDiscreteScheduler,
-    Kandinsky5T2VPipeline,
+    Kandinsky5I2VPipeline,
     Kandinsky5Transformer3DModel,
 )
+from diffusers.utils import load_image
+
 from diffusers.utils.testing_utils import enable_full_determinism
 
 from ..test_pipelines_common import PipelineTesterMixin
@@ -35,8 +37,8 @@ from ..test_pipelines_common import PipelineTesterMixin
 enable_full_determinism()
 
 
-class Kandinsky5T2VPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
-    pipeline_class = Kandinsky5T2VPipeline
+class Kandinsky5I2VPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+    pipeline_class = Kandinsky5I2VPipeline
 
     required_optional_params = {
         "num_inference_steps",
@@ -103,7 +105,7 @@ class Kandinsky5T2VPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             num_text_blocks=1,
             num_visual_blocks=2,
             axes_dims=(1, 1, 2),  # tiny latent grid
-            visual_cond=False,
+            visual_cond=True,
             attention_type="regular",
         )
 
@@ -122,10 +124,16 @@ class Kandinsky5T2VPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             generator = torch.manual_seed(seed)
         else:
             generator = torch.Generator(device=device).manual_seed(seed)
+        
+        image = load_image(
+            "https://huggingface.co/kandinsky-community/kandinsky-3/resolve/main/assets/title.jpg?download=true"
+        ).resize((1024, 1024))
+        
         return {
+            "image": image,
             "prompt": "a red square",
-            "height": 32,
-            "width": 32,
+            "height": 1024,
+            "width": 1024,
             "num_frames": 5,
             "num_inference_steps": 2,
             "guidance_scale": 4.0,
@@ -146,7 +154,7 @@ class Kandinsky5T2VPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         video = output.frames[0]
 
         # 5 frames, RGB, 32×32
-        self.assertEqual(video.shape, (5, 3, 32, 32))
+        self.assertEqual(video.shape, (5, 3, 1024, 1024))
 
     @unittest.skip("Test not supported")
     def test_attention_slicing_forward_pass(self):
@@ -159,11 +167,11 @@ class Kandinsky5T2VPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     @unittest.skip("All encoders are needed")
     def test_encode_prompt_works_in_isolation(self):
         pass
-    
+
     @unittest.skip("Meant for eiter FP32 or BF16 inference")
     def test_float16_inference(self):
         pass
-
+    
     test_inference_batch_single_identical = None
     test_pipeline_call_signature = None
     test_inference_batch_consistent = None

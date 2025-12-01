@@ -23,11 +23,13 @@ from transformers import (
 )
 
 from diffusers import (
-    AutoencoderKLHunyuanVideo,
+    AutoencoderKL,
     FlowMatchEulerDiscreteScheduler,
-    Kandinsky5T2VPipeline,
+    Kandinsky5I2IPipeline,
     Kandinsky5Transformer3DModel,
 )
+from diffusers.utils import load_image
+
 from diffusers.utils.testing_utils import enable_full_determinism
 
 from ..test_pipelines_common import PipelineTesterMixin
@@ -35,8 +37,8 @@ from ..test_pipelines_common import PipelineTesterMixin
 enable_full_determinism()
 
 
-class Kandinsky5T2VPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
-    pipeline_class = Kandinsky5T2VPipeline
+class Kandinsky5I2IPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+    pipeline_class = Kandinsky5I2IPipeline
 
     required_optional_params = {
         "num_inference_steps",
@@ -52,7 +54,7 @@ class Kandinsky5T2VPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
     def get_dummy_components(self):
         torch.manual_seed(0)
-        vae = AutoencoderKLHunyuanVideo(
+        vae = AutoencoderKL(
           act_fn="silu",
           block_out_channels=[
             128,
@@ -61,26 +63,29 @@ class Kandinsky5T2VPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             512
           ],
           down_block_types=[
-            "HunyuanVideoDownBlock3D",
-            "HunyuanVideoDownBlock3D",
-            "HunyuanVideoDownBlock3D",
-            "HunyuanVideoDownBlock3D"
+            "DownEncoderBlock2D",
+            "DownEncoderBlock2D",
+            "DownEncoderBlock2D",
+            "DownEncoderBlock2D"
           ],
+          force_upcast=True,
           in_channels=3,
           latent_channels=16,
           layers_per_block=2,
           mid_block_add_attention=True,
           norm_num_groups=32,
           out_channels=3,
-          scaling_factor=0.476986,
-          spatial_compression_ratio=8,
-          temporal_compression_ratio=4,
+          sample_size=1024,
+          scaling_factor=0.3611,
+          shift_factor=0.1159,
           up_block_types=[
-            "HunyuanVideoUpBlock3D",
-            "HunyuanVideoUpBlock3D",
-            "HunyuanVideoUpBlock3D",
-            "HunyuanVideoUpBlock3D"
-          ]
+            "UpDecoderBlock2D",
+            "UpDecoderBlock2D",
+            "UpDecoderBlock2D",
+            "UpDecoderBlock2D"
+          ],
+          use_post_quant_conv=False,
+          use_quant_conv=False
         )
 
         scheduler = FlowMatchEulerDiscreteScheduler(shift=7.0)
@@ -122,11 +127,16 @@ class Kandinsky5T2VPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             generator = torch.manual_seed(seed)
         else:
             generator = torch.Generator(device=device).manual_seed(seed)
+            
+        image = load_image(
+            "https://huggingface.co/kandinsky-community/kandinsky-3/resolve/main/assets/title.jpg?download=true"
+        ).resize((1024, 1024))
+                
         return {
+            "image": image,
             "prompt": "a red square",
-            "height": 32,
-            "width": 32,
-            "num_frames": 5,
+            "height": 1024,
+            "width": 1024,
             "num_inference_steps": 2,
             "guidance_scale": 4.0,
             "generator": generator,
@@ -143,10 +153,10 @@ class Kandinsky5T2VPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         inputs = self.get_dummy_inputs(device)
         output = pipe(**inputs)
-        video = output.frames[0]
+        image = output.image
 
         # 5 frames, RGB, 32×32
-        self.assertEqual(video.shape, (5, 3, 32, 32))
+        self.assertEqual(image.shape, (5, 3, 1024, 1024))
 
     @unittest.skip("Test not supported")
     def test_attention_slicing_forward_pass(self):
@@ -167,5 +177,5 @@ class Kandinsky5T2VPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     test_inference_batch_single_identical = None
     test_pipeline_call_signature = None
     test_inference_batch_consistent = None
-    test_save_load_dduf = None
+    test_save_load_dduf = None    
     test_pipeline_with_accelerator_device_map = None
