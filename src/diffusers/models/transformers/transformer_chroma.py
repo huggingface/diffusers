@@ -74,9 +74,13 @@ class Nerf(nn.Module):
         pixels,
         latents,
         patch_size,
-        num_patches,
     ):
-        batch_size, channels, height, width = latents.shape
+        batch_size, channels, height, width = pixels.shape
+        num_patches = latents.shape[1]
+        
+        pixels = nn.functional.unfold(pixels, kernel_size=self.patch_size, stride=self.patch_size)
+        pixels = pixels.transpose(1, 2)
+        
         hidden = latents.reshape(batch_size * num_patches, self.transformer_hidden_size)
         pixels = pixels.reshape(batch_size * num_patches, channels, patch_size**2).transpose(1, 2)
         
@@ -85,7 +89,7 @@ class Nerf(nn.Module):
         
         # Pass through blocks
         for block in self.blocks:
-            latents_dct = block(latents_dct)
+            latents_dct = block(latents_dct, hidden)
         
         latents_dct = latents_dct.transpose(1, 2).reshape(batch_size, -1).transpose(1, 2)
         latents_dct = nn.functional.fold(
@@ -929,6 +933,7 @@ class ChromaRadianceTransformer2DModel(
             If `return_dict` is True, an [`~models.transformer_2d.Transformer2DModelOutput`] is returned, otherwise a
             `tuple` where the first element is the sample tensor.
         """
+        print(hidden_states.shape)
         if joint_attention_kwargs is not None:
             joint_attention_kwargs = joint_attention_kwargs.copy()
             lora_scale = joint_attention_kwargs.pop("scale", 1.0)
@@ -944,10 +949,10 @@ class ChromaRadianceTransformer2DModel(
                     "Passing `scale` via `joint_attention_kwargs` when not using the PEFT backend is ineffective."
                 )
         
-        pixels = nn.functional.unfold(hidden_states, kernel_size=self.patch_size, stride=self.patch_size)
-        pixels = pixels.transpose(1, 2)
-        hidden_states = self.transformer.img_in_patch(hidden_states)
+        pixels = hidden_states
+        hidden_states = self.img_in_patch(hidden_states)
         hidden_states = hidden_states.flatten(2).transpose(1, 2)
+        print(hidden_states.shape)
 
         timestep = timestep.to(hidden_states.dtype) * 1000
 
@@ -955,6 +960,7 @@ class ChromaRadianceTransformer2DModel(
         pooled_temb = self.distilled_guidance_layer(input_vec)
 
         encoder_hidden_states = self.context_embedder(encoder_hidden_states)
+        print(encoder_hidden_states.shape)
 
         if txt_ids.ndim == 3:
             logger.warning(
@@ -1048,7 +1054,7 @@ class ChromaRadianceTransformer2DModel(
 
         hidden_states = hidden_states[:, encoder_hidden_states.shape[1] :, ...]
 
-        output = self.nerf(hidden_states, self.transformer.patch_size, num_patches)
+        output = self.nerf(pixels, hidden_states, self.transformer.patch_size)
 
         if USE_PEFT_BACKEND:
             # remove `lora_scale` from each PEFT layer

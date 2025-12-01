@@ -503,6 +503,7 @@ class ChromaRadiancePipeline(
     ):
 
         shape = (batch_size, num_channels_latents, height, width)
+        print(shape)
 
         if latents is not None:
             latent_image_ids = self._prepare_latent_image_ids(batch_size, height // 2, width // 2, device, dtype)
@@ -515,7 +516,7 @@ class ChromaRadiancePipeline(
             )
 
         latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
-        latents = self._pack_latents(latents, batch_size, num_channels_latents, height, width)
+        #latents = self._pack_latents(latents, batch_size, num_channels_latents, height, width)
 
         latent_image_ids = self._prepare_latent_image_ids(batch_size, height // 2, width // 2, device, dtype)
 
@@ -740,7 +741,7 @@ class ChromaRadiancePipeline(
         )
 
         # 4. Prepare latent variables
-        num_channels_latents = self.transformer.config.in_channels // 4
+        num_channels_latents = self.transformer.config.in_channels
         latents, latent_image_ids = self.prepare_latents(
             batch_size * num_images_per_prompt,
             num_channels_latents,
@@ -751,8 +752,6 @@ class ChromaRadiancePipeline(
             generator,
             latents,
         )
-        
-        num_patches = (height * width) // self.transformer.patch_size
 
         # 5. Prepare timesteps
         sigmas = np.linspace(1.0, 1 / num_inference_steps, num_inference_steps) if sigmas is None else sigmas
@@ -819,6 +818,7 @@ class ChromaRadiancePipeline(
                 device,
                 batch_size * num_images_per_prompt,
             )
+
 
         # 6. Denoising loop
         with self.progress_bar(total=num_inference_steps) as progress_bar:
@@ -891,8 +891,14 @@ class ChromaRadiancePipeline(
         if output_type == "latent":
             image = latents
         else:
-            image = self._unpack_latents(image, height, width)
-            image = self.image_processor.postprocess(image, output_type=output_type)
+            #image = self.transformer.nerf(
+            #    pixels,
+            #    latents,
+            #    self.transformer.config.patch_size,
+            #    num_patches,
+            #)
+            #image = self._unpack_latents(image, height, width)
+            image = self.image_processor.postprocess(latents, output_type=output_type)
 
         # Offload all models
         self.maybe_free_model_hooks()
