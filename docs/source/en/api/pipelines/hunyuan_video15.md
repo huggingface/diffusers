@@ -60,6 +60,9 @@ export_to_video(video, "output.mp4", fps=15)
     - **A100/A800/RTX 4090:** `flash` or `flash_varlen`
     - **Other GPUs:** `sage`
 
+Refer to the [Attention backends](../../optimization/attention_backends) guide for more details about using a different backend.
+
+
 ```py
 pipe.transformer.set_attention_backend("flash_varlen")  # or your preferred backend
 ```
