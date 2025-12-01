@@ -18,7 +18,6 @@ import unittest
 
 import numpy as np
 import torch
-from peft import LoraConfig
 from transformers import Qwen2Tokenizer, Qwen3Config, Qwen3Model
 
 from diffusers import (
@@ -28,7 +27,11 @@ from diffusers import (
     ZImageTransformer2DModel,
 )
 
-from ..testing_utils import floats_tensor, require_peft_backend, torch_device
+from ..testing_utils import floats_tensor, is_peft_available, require_peft_backend, torch_device
+
+
+if is_peft_available():
+    from peft import LoraConfig
 
 
 # Z-Image requires torch.use_deterministic_algorithms(False) due to complex64 RoPE operations
