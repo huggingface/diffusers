@@ -99,7 +99,7 @@ To update guider configuration, you can run `pipe.guider = pipe.guider.new(...)`
 pipe.guider = pipe.guider.new(guidance_scale=5.0)
 ```
 
-Read more on Guider [here](../../modular_diffusers/guider).
+Read more on Guider [here](../../modular_diffusers/guiders).
 
 
 
