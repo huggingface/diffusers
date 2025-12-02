@@ -26,10 +26,48 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 _TEACACHE_HOOK = "teacache"
 
+# Model-specific polynomial coefficients from TeaCache paper/reference implementations
+_MODEL_COEFFICIENTS = {
+    "Flux": [4.98651651e02, -2.83781631e02, 5.58554382e01, -3.82021401e00, 2.64230861e-01],
+    "Mochi": [-3.51241319e03, 8.11675948e02, -6.09400215e01, 2.42429681e00, 3.05291719e-03],
+    "Lumina2": [393.76566581, -603.50993606, 209.10239044, -23.00726601, 0.86377344],
+    "CogVideoX": [
+        -1.53880483e03,
+        8.43202495e02,
+        -1.34363087e02,
+        7.97131516e00,
+        -5.23162339e-02,
+    ],  # Default to 5b variant
+    # CogVideoX model variants with specific coefficients
+    "CogVideoX-2b": [-3.10658903e01, 2.54732368e01, -5.92380459e00, 1.75769064e00, -3.61568434e-03],
+    "CogVideoX-5b": [-1.53880483e03, 8.43202495e02, -1.34363087e02, 7.97131516e00, -5.23162339e-02],
+    "CogVideoX1.5-5B": [2.50210439e02, -1.65061612e02, 3.57804877e01, -7.81551492e-01, 3.58559703e-02],
+    "CogVideoX1.5-5B-I2V": [1.22842302e02, -1.04088754e02, 2.62981677e01, -3.06001e-01, 3.71213220e-02],
+}
+
 
 def _flux_modulated_input_extractor(module, hidden_states, timestep_emb):
     """Extract modulated input for FLUX models."""
     return module.transformer_blocks[0].norm1(hidden_states, emb=timestep_emb)[0]
+
+
+def _mochi_modulated_input_extractor(module, hidden_states, timestep_emb):
+    """Extract modulated input for Mochi models."""
+    # Mochi norm1 returns tuple: (modulated_inp, gate_msa, scale_mlp, gate_mlp)
+    return module.transformer_blocks[0].norm1(hidden_states, timestep_emb)[0]
+
+
+def _lumina2_modulated_input_extractor(module, hidden_states, timestep_emb):
+    """Extract modulated input for Lumina2 models."""
+    # Lumina2 uses 'layers' instead of 'transformer_blocks' and norm1 returns tuple
+    # Note: This extractor expects input_to_main_loop as hidden_states (after preprocessing)
+    return module.layers[0].norm1(hidden_states, timestep_emb)[0]
+
+
+def _cogvideox_modulated_input_extractor(module, hidden_states, timestep_emb):
+    """Extract modulated input for CogVideoX models."""
+    # CogVideoX uses the timestep embedding directly, not from a block
+    return timestep_emb
 
 
 def _auto_detect_extractor(module):
@@ -37,8 +75,18 @@ def _auto_detect_extractor(module):
     module_class_name = module.__class__.__name__
     if "Flux" in module_class_name:
         return _flux_modulated_input_extractor
-    # Add more model types as needed
-    return _flux_modulated_input_extractor  # Default to FLUX for now
+    elif "Mochi" in module_class_name:
+        return _mochi_modulated_input_extractor
+    elif "Lumina2" in module_class_name:
+        return _lumina2_modulated_input_extractor
+    elif "CogVideoX" in module_class_name:
+        return _cogvideox_modulated_input_extractor
+    # Default to FLUX for backward compatibility
+    logger.warning(
+        f"TeaCache: Unknown model type {module_class_name}, defaulting to FLUX extractor. "
+        f"Results may be incorrect. Please provide extract_modulated_input_fn explicitly."
+    )
+    return _flux_modulated_input_extractor
 
 
 @dataclass
@@ -49,6 +97,9 @@ class TeaCacheConfig:
     TeaCache (Timestep Embedding Aware Cache) is an adaptive caching technique that speeds up diffusion model inference
     by reusing transformer block computations when consecutive timestep embeddings are similar. It uses polynomial
     rescaling of L1 distances between modulated inputs to intelligently decide when to cache.
+
+    Currently supports: FLUX, Mochi, Lumina2, and CogVideoX models. Model type is auto-detected, and model-specific
+    polynomial coefficients are automatically applied.
 
     Args:
         rel_l1_thresh (`float`, defaults to `0.2`):
@@ -137,10 +188,12 @@ class TeaCacheConfig:
                 UserWarning,
             )
 
-        # Set default coefficients if not provided
+        # Set default coefficients if not provided (will be auto-detected in hook initialization)
         if self.coefficients is None:
-            # Original FLUX coefficients from TeaCache paper
-            self.coefficients = [4.98651651e02, -2.83781631e02, 5.58554382e01, -3.82021401e00, 2.64230861e-01]
+            # Default to FLUX coefficients (will be overridden by auto-detection if model is recognized)
+            self.coefficients = _MODEL_COEFFICIENTS.get(
+                "Flux", [4.98651651e02, -2.83781631e02, 5.58554382e01, -3.82021401e00, 2.64230861e-01]
+            )
 
         # Validate coefficients
         if not isinstance(self.coefficients, (list, tuple)):
@@ -195,6 +248,9 @@ class TeaCacheState(BaseState):
         previous_residual (torch.Tensor):
             Cached residual (output - input) from the previous timestep's full transformer computation. Applied
             directly when caching is triggered instead of computing all transformer blocks.
+        previous_residual_encoder (torch.Tensor, optional):
+            Cached encoder residual for models that cache both encoder and hidden_states residuals (e.g., CogVideoX).
+            None for models that only cache hidden_states residual.
     """
 
     def __init__(self):
@@ -203,6 +259,8 @@ class TeaCacheState(BaseState):
         self.accumulated_rel_l1_distance = 0.0
         self.previous_modulated_input = None
         self.previous_residual = None
+        # For models that cache both encoder and hidden_states residuals (e.g., CogVideoX)
+        self.previous_residual_encoder = None
 
     def reset(self):
         """Reset all state variables to initial values for a new inference run."""
@@ -211,6 +269,7 @@ class TeaCacheState(BaseState):
         self.accumulated_rel_l1_distance = 0.0
         self.previous_modulated_input = None
         self.previous_residual = None
+        self.previous_residual_encoder = None
 
     def __repr__(self) -> str:
         return (
@@ -256,38 +315,100 @@ class TeaCacheHook(ModelHook):
     def __init__(self, config: TeaCacheConfig):
         super().__init__()
         self.config = config
-        self.rescale_func = np.poly1d(config.coefficients)
+        # Set default rescale_func with config coefficients (will be updated in initialize_hook if needed)
+        # This ensures rescale_func is always valid, even if initialize_hook isn't called (e.g., in tests)
+        default_coeffs = config.coefficients if config.coefficients else _MODEL_COEFFICIENTS["Flux"]
+        self.rescale_func = np.poly1d(default_coeffs)
         self.state_manager = StateManager(TeaCacheState, (), {})
         self.extractor_fn = None
+        self.model_type = None
 
     def initialize_hook(self, module):
         self.state_manager.set_context("teacache")
-        # Auto-detect extractor if not provided
+
+        # Auto-detect model type and extractor
+        module_class_name = module.__class__.__name__
         if self.config.extract_modulated_input_fn is None:
             self.extractor_fn = _auto_detect_extractor(module)
+            # Detect model type for coefficient auto-detection
+            if "Flux" in module_class_name:
+                self.model_type = "Flux"
+            elif "Mochi" in module_class_name:
+                self.model_type = "Mochi"
+            elif "Lumina2" in module_class_name:
+                self.model_type = "Lumina2"
+            elif "CogVideoX" in module_class_name:
+                # Try to detect specific CogVideoX variant from config
+                if hasattr(module, "config") and hasattr(module.config, "_name_or_path"):
+                    name_or_path = module.config._name_or_path.lower()
+                    if "1.5" in name_or_path or "1-5" in name_or_path:
+                        if "i2v" in name_or_path:
+                            self.model_type = "CogVideoX1.5-5B-I2V"
+                        else:
+                            self.model_type = "CogVideoX1.5-5B"
+                    elif "2b" in name_or_path:
+                        self.model_type = "CogVideoX-2b"
+                    elif "5b" in name_or_path:
+                        self.model_type = "CogVideoX-5b"
+                    else:
+                        self.model_type = "CogVideoX"  # Default to generic 5b
+                else:
+                    self.model_type = "CogVideoX"  # Default to generic 5b
+            else:
+                self.model_type = "Flux"  # Default
         else:
             self.extractor_fn = self.config.extract_modulated_input_fn
+            self.model_type = "Flux"  # Default if custom extractor provided
+
+        # Auto-set coefficients from registry if not explicitly provided
+        if self.config.coefficients is None or (
+            self.model_type in _MODEL_COEFFICIENTS and self.config.coefficients == _MODEL_COEFFICIENTS.get("Flux")
+        ):
+            if self.model_type in _MODEL_COEFFICIENTS:
+                self.config.coefficients = _MODEL_COEFFICIENTS[self.model_type]
+                logger.info(f"TeaCache: Auto-detected {self.model_type} coefficients")
+
+        # Initialize rescale function with final coefficients
+        self.rescale_func = np.poly1d(self.config.coefficients)
+
         return module
 
-    def new_forward(
+    def new_forward(self, module, *args, **kwargs):
+        """
+        Route to model-specific forward handler based on detected model type.
+        """
+        module_class_name = module.__class__.__name__
+
+        if "Flux" in module_class_name:
+            return self._handle_flux_forward(module, *args, **kwargs)
+        elif "Mochi" in module_class_name:
+            return self._handle_mochi_forward(module, *args, **kwargs)
+        elif "Lumina2" in module_class_name:
+            return self._handle_lumina2_forward(module, *args, **kwargs)
+        elif "CogVideoX" in module_class_name:
+            return self._handle_cogvideox_forward(module, *args, **kwargs)
+        else:
+            # Default to FLUX handler for backward compatibility
+            logger.warning(
+                f"TeaCache: Unknown model type {module_class_name}, using FLUX handler. Results may be incorrect."
+            )
+            return self._handle_flux_forward(module, *args, **kwargs)
+
+    def _handle_flux_forward(
         self, module, hidden_states, timestep, pooled_projections, encoder_hidden_states, txt_ids, img_ids, **kwargs
     ):
         """
-        Replace FLUX transformer forward pass with TeaCache-enabled version.
-
-        This method implements the full TeaCache algorithm inline, processing transformer blocks directly instead of
-        calling the original forward method. It extracts modulated inputs, makes caching decisions, and either applies
-        cached residuals (fast path) or computes full transformer blocks (slow path).
+        Handle FLUX transformer forward pass with TeaCache.
 
         Args:
             module: The FluxTransformer2DModel instance.
-            hidden_states (`torch.Tensor`): Input latent tensor of shape (batch, channels, height, width).
+            hidden_states (`torch.Tensor`): Input latent tensor.
             timestep (`torch.Tensor`): Current diffusion timestep.
-            pooled_projections (`torch.Tensor`): Pooled text embeddings for timestep conditioning.
-            encoder_hidden_states (`torch.Tensor`): Text encoder outputs for cross-attention.
+            pooled_projections (`torch.Tensor`): Pooled text embeddings.
+            encoder_hidden_states (`torch.Tensor`): Text encoder outputs.
             txt_ids (`torch.Tensor`): Position IDs for text tokens.
             img_ids (`torch.Tensor`): Position IDs for image tokens.
-            **kwargs: Additional arguments including 'guidance' and 'joint_attention_kwargs'.
+            **kwargs: Additional arguments.
 
         Returns:
             `torch.Tensor`: Denoised output tensor.
@@ -332,17 +453,9 @@ class TeaCacheHook(ModelHook):
 
         if not should_calc:
             # Fast path: apply cached residual
-            logger.debug(
-                f"TeaCache: reusing cached residual at step {state.cnt}/{state.num_steps} "
-                f"(accumulated distance: {state.accumulated_rel_l1_distance:.6f})"
-            )
             hidden_states = hidden_states + state.previous_residual
         else:
             # Slow path: full computation inline (like original TeaCache)
-            logger.debug(
-                f"TeaCache: computing full transformer at step {state.cnt}/{state.num_steps} "
-                f"(accumulated distance: {state.accumulated_rel_l1_distance:.6f})"
-            )
             ori_hidden_states = hidden_states.clone()
 
             # Process encoder_hidden_states
@@ -389,6 +502,432 @@ class TeaCacheHook(ModelHook):
         output = module.proj_out(hidden_states)
 
         return output
+
+    def _handle_mochi_forward(
+        self,
+        module,
+        hidden_states,
+        encoder_hidden_states,
+        timestep,
+        encoder_attention_mask,
+        attention_kwargs=None,
+        return_dict=True,
+    ):
+        """
+        Handle Mochi transformer forward pass with TeaCache.
+
+        Args:
+            module: The MochiTransformer3DModel instance.
+            hidden_states (`torch.Tensor`): Input latent tensor.
+            encoder_hidden_states (`torch.Tensor`): Text encoder outputs.
+            timestep (`torch.Tensor`): Current diffusion timestep.
+            encoder_attention_mask (`torch.Tensor`): Attention mask for encoder.
+            attention_kwargs (`dict`, optional): Additional attention arguments.
+            return_dict (`bool`): Whether to return a dict.
+
+        Returns:
+            `torch.Tensor` or `Transformer2DModelOutput`: Denoised output.
+        """
+        from diffusers.models.modeling_outputs import Transformer2DModelOutput
+        from diffusers.utils import USE_PEFT_BACKEND, scale_lora_layers, unscale_lora_layers
+
+        if attention_kwargs is not None:
+            attention_kwargs = attention_kwargs.copy()
+            lora_scale = attention_kwargs.pop("scale", 1.0)
+        else:
+            lora_scale = 1.0
+
+        if USE_PEFT_BACKEND:
+            scale_lora_layers(module, lora_scale)
+
+        state = self.state_manager.get_state()
+
+        # Reset counter if we've completed all steps
+        if state.cnt == state.num_steps and state.num_steps > 0:
+            logger.info("TeaCache inference completed")
+            state.cnt = 0
+            state.accumulated_rel_l1_distance = 0.0
+            state.previous_modulated_input = None
+            state.previous_residual = None
+
+        # Set num_steps on first timestep if not already set
+        if state.cnt == 0 and state.num_steps == 0:
+            if self.config.num_inference_steps_callback is not None:
+                state.num_steps = self.config.num_inference_steps_callback()
+            elif hasattr(module, "num_steps"):
+                state.num_steps = module.num_steps
+
+        batch_size, num_channels, num_frames, height, width = hidden_states.shape
+        p = module.config.patch_size
+        post_patch_height = height // p
+        post_patch_width = width // p
+
+        # Process time embedding
+        temb, encoder_hidden_states = module.time_embed(
+            timestep,
+            encoder_hidden_states,
+            encoder_attention_mask,
+            hidden_dtype=hidden_states.dtype,
+        )
+
+        # Process patch embedding
+        hidden_states = hidden_states.permute(0, 2, 1, 3, 4).flatten(0, 1)
+        hidden_states = module.patch_embed(hidden_states)
+        hidden_states = hidden_states.unflatten(0, (batch_size, -1)).flatten(1, 2)
+
+        # Get rotary embeddings
+        image_rotary_emb = module.rope(
+            module.pos_frequencies,
+            num_frames,
+            post_patch_height,
+            post_patch_width,
+            device=hidden_states.device,
+            dtype=torch.float32,
+        )
+
+        # Extract modulated input
+        inp = hidden_states.clone()
+        temb_clone = temb.clone()
+        modulated_inp = self.extractor_fn(module, inp, temb_clone)
+
+        # Make caching decision
+        should_calc = self._should_compute_full_transformer(state, modulated_inp)
+
+        if not should_calc:
+            # Fast path: apply cached residual
+            hidden_states = hidden_states + state.previous_residual
+        else:
+            # Slow path: full computation
+            ori_hidden_states = hidden_states.clone()
+
+            # Process through transformer blocks
+            for block in module.transformer_blocks:
+                if torch.is_grad_enabled() and module.gradient_checkpointing:
+                    hidden_states, encoder_hidden_states = module._gradient_checkpointing_func(
+                        block,
+                        hidden_states,
+                        encoder_hidden_states,
+                        temb,
+                        encoder_attention_mask,
+                        image_rotary_emb,
+                    )
+                else:
+                    hidden_states, encoder_hidden_states = block(
+                        hidden_states=hidden_states,
+                        encoder_hidden_states=encoder_hidden_states,
+                        temb=temb,
+                        encoder_attention_mask=encoder_attention_mask,
+                        image_rotary_emb=image_rotary_emb,
+                    )
+
+            # Cache the residual
+            state.previous_residual = hidden_states - ori_hidden_states
+
+        state.previous_modulated_input = modulated_inp
+        state.cnt += 1
+
+        # Apply final norm and projection
+        hidden_states = module.norm_out(hidden_states, temb)
+        hidden_states = module.proj_out(hidden_states)
+
+        # Reshape output
+        hidden_states = hidden_states.reshape(batch_size, num_frames, post_patch_height, post_patch_width, p, p, -1)
+        hidden_states = hidden_states.permute(0, 6, 1, 2, 4, 3, 5)
+        output = hidden_states.reshape(batch_size, -1, num_frames, height, width)
+
+        if USE_PEFT_BACKEND:
+            unscale_lora_layers(module, lora_scale)
+
+        if not return_dict:
+            return (output,)
+        return Transformer2DModelOutput(sample=output)
+
+    def _handle_lumina2_forward(
+        self,
+        module,
+        hidden_states,
+        timestep,
+        encoder_hidden_states,
+        encoder_attention_mask,
+        attention_kwargs=None,
+        return_dict=True,
+    ):
+        """
+        Handle Lumina2 transformer forward pass with TeaCache.
+
+        Note: Lumina2 has complex preprocessing and uses 'layers' instead of 'transformer_blocks'.
+        The modulated input extraction happens after preprocessing to input_to_main_loop.
+
+        Args:
+            module: The Lumina2Transformer2DModel instance.
+            hidden_states (`torch.Tensor`): Input latent tensor.
+            timestep (`torch.Tensor`): Current diffusion timestep.
+            encoder_hidden_states (`torch.Tensor`): Text encoder outputs.
+            encoder_attention_mask (`torch.Tensor`): Attention mask for encoder.
+            attention_kwargs (`dict`, optional): Additional attention arguments.
+            return_dict (`bool`): Whether to return a dict.
+
+        Returns:
+            `torch.Tensor` or `Transformer2DModelOutput`: Denoised output.
+        """
+        from diffusers.models.modeling_outputs import Transformer2DModelOutput
+        from diffusers.utils import USE_PEFT_BACKEND, scale_lora_layers, unscale_lora_layers
+
+        if attention_kwargs is not None:
+            attention_kwargs = attention_kwargs.copy()
+            lora_scale = attention_kwargs.pop("scale", 1.0)
+        else:
+            lora_scale = 1.0
+
+        if USE_PEFT_BACKEND:
+            scale_lora_layers(module, lora_scale)
+
+        state = self.state_manager.get_state()
+
+        # Reset counter if we've completed all steps
+        if state.cnt == state.num_steps and state.num_steps > 0:
+            logger.info("TeaCache inference completed")
+            state.cnt = 0
+            state.accumulated_rel_l1_distance = 0.0
+            state.previous_modulated_input = None
+            state.previous_residual = None
+
+        # Set num_steps on first timestep if not already set
+        if state.cnt == 0 and state.num_steps == 0:
+            if self.config.num_inference_steps_callback is not None:
+                state.num_steps = self.config.num_inference_steps_callback()
+            elif hasattr(module, "num_steps"):
+                state.num_steps = module.num_steps
+
+        batch_size, _, height, width = hidden_states.shape
+
+        # Lumina2 preprocessing (matches original forward)
+        temb, encoder_hidden_states_processed = module.time_caption_embed(
+            hidden_states, timestep, encoder_hidden_states
+        )
+        (
+            image_patch_embeddings,
+            context_rotary_emb,
+            noise_rotary_emb,
+            joint_rotary_emb,
+            encoder_seq_lengths,
+            seq_lengths,
+        ) = module.rope_embedder(hidden_states, encoder_attention_mask)
+        image_patch_embeddings = module.x_embedder(image_patch_embeddings)
+
+        for layer in module.context_refiner:
+            encoder_hidden_states_processed = layer(
+                encoder_hidden_states_processed, encoder_attention_mask, context_rotary_emb
+            )
+        for layer in module.noise_refiner:
+            image_patch_embeddings = layer(image_patch_embeddings, None, noise_rotary_emb, temb)
+
+        max_seq_len = max(seq_lengths)
+        input_to_main_loop = image_patch_embeddings.new_zeros(batch_size, max_seq_len, module.config.hidden_size)
+        for i, (enc_len, seq_len_val) in enumerate(zip(encoder_seq_lengths, seq_lengths)):
+            input_to_main_loop[i, :enc_len] = encoder_hidden_states_processed[i, :enc_len]
+            input_to_main_loop[i, enc_len:seq_len_val] = image_patch_embeddings[i]
+
+        use_mask = len(set(seq_lengths)) > 1
+        attention_mask_for_main_loop_arg = None
+        if use_mask:
+            mask = input_to_main_loop.new_zeros(batch_size, max_seq_len, dtype=torch.bool)
+            for i, (enc_len, seq_len_val) in enumerate(zip(encoder_seq_lengths, seq_lengths)):
+                mask[i, :seq_len_val] = True
+            attention_mask_for_main_loop_arg = mask
+
+        # Extract modulated input (after preprocessing)
+        modulated_inp = self.extractor_fn(module, input_to_main_loop, temb)
+
+        # Make caching decision
+        should_calc = self._should_compute_full_transformer(state, modulated_inp)
+
+        if not should_calc:
+            # Fast path: apply cached residual
+            processed_hidden_states = input_to_main_loop + state.previous_residual
+        else:
+            # Slow path: full computation
+            current_processing_states = input_to_main_loop
+            for layer in module.layers:
+                current_processing_states = layer(
+                    current_processing_states, attention_mask_for_main_loop_arg, joint_rotary_emb, temb
+                )
+            processed_hidden_states = current_processing_states
+            # Cache the residual
+            state.previous_residual = processed_hidden_states - input_to_main_loop
+
+        state.previous_modulated_input = modulated_inp
+        state.cnt += 1
+
+        # Apply final norm and reshape
+        output_after_norm = module.norm_out(processed_hidden_states, temb)
+        p = module.config.patch_size
+        final_output_list = []
+        for i, (enc_len, seq_len_val) in enumerate(zip(encoder_seq_lengths, seq_lengths)):
+            image_part = output_after_norm[i][enc_len:seq_len_val]
+            h_p, w_p = height // p, width // p
+            reconstructed_image = (
+                image_part.view(h_p, w_p, p, p, module.out_channels).permute(4, 0, 2, 1, 3).flatten(3, 4).flatten(1, 2)
+            )
+            final_output_list.append(reconstructed_image)
+
+        final_output_tensor = torch.stack(final_output_list, dim=0)
+
+        if USE_PEFT_BACKEND:
+            unscale_lora_layers(module, lora_scale)
+
+        if not return_dict:
+            return (final_output_tensor,)
+        return Transformer2DModelOutput(sample=final_output_tensor)
+
+    def _handle_cogvideox_forward(
+        self,
+        module,
+        hidden_states,
+        encoder_hidden_states,
+        timestep,
+        timestep_cond=None,
+        ofs=None,
+        image_rotary_emb=None,
+        attention_kwargs=None,
+        return_dict=True,
+    ):
+        """
+        Handle CogVideoX transformer forward pass with TeaCache.
+
+        Note: CogVideoX uses timestep embedding directly (not from a block) and caches
+        both encoder_hidden_states and hidden_states residuals.
+
+        Args:
+            module: The CogVideoXTransformer3DModel instance.
+            hidden_states (`torch.Tensor`): Input latent tensor.
+            encoder_hidden_states (`torch.Tensor`): Text encoder outputs.
+            timestep (`torch.Tensor`): Current diffusion timestep.
+            timestep_cond (`torch.Tensor`, optional): Additional timestep conditioning.
+            ofs (`torch.Tensor`, optional): Offset tensor.
+            image_rotary_emb (`torch.Tensor`, optional): Rotary embeddings.
+            attention_kwargs (`dict`, optional): Additional attention arguments.
+            return_dict (`bool`): Whether to return a dict.
+
+        Returns:
+            `torch.Tensor` or `Transformer2DModelOutput`: Denoised output.
+        """
+        from diffusers.models.modeling_outputs import Transformer2DModelOutput
+        from diffusers.utils import USE_PEFT_BACKEND, is_torch_version, scale_lora_layers, unscale_lora_layers
+
+        if attention_kwargs is not None:
+            attention_kwargs = attention_kwargs.copy()
+            lora_scale = attention_kwargs.pop("scale", 1.0)
+        else:
+            lora_scale = 1.0
+
+        if USE_PEFT_BACKEND:
+            scale_lora_layers(module, lora_scale)
+
+        state = self.state_manager.get_state()
+
+        # Reset counter if we've completed all steps
+        if state.cnt == state.num_steps and state.num_steps > 0:
+            logger.info("TeaCache inference completed")
+            state.cnt = 0
+            state.accumulated_rel_l1_distance = 0.0
+            state.previous_modulated_input = None
+            state.previous_residual = None
+            state.previous_residual_encoder = None
+
+        # Set num_steps on first timestep if not already set
+        if state.cnt == 0 and state.num_steps == 0:
+            if self.config.num_inference_steps_callback is not None:
+                state.num_steps = self.config.num_inference_steps_callback()
+            elif hasattr(module, "num_steps"):
+                state.num_steps = module.num_steps
+
+        batch_size, num_frames, channels, height, width = hidden_states.shape
+
+        # Process time embedding
+        timesteps = timestep
+        t_emb = module.time_proj(timesteps)
+        t_emb = t_emb.to(dtype=hidden_states.dtype)
+        emb = module.time_embedding(t_emb, timestep_cond)
+
+        if module.ofs_embedding is not None:
+            ofs_emb = module.ofs_proj(ofs)
+            ofs_emb = ofs_emb.to(dtype=hidden_states.dtype)
+            ofs_emb = module.ofs_embedding(ofs_emb)
+            emb = emb + ofs_emb
+
+        # Process patch embedding
+        hidden_states = module.patch_embed(encoder_hidden_states, hidden_states)
+        hidden_states = module.embedding_dropout(hidden_states)
+
+        text_seq_length = encoder_hidden_states.shape[1]
+        encoder_hidden_states = hidden_states[:, :text_seq_length]
+        hidden_states = hidden_states[:, text_seq_length:]
+
+        # Extract modulated input (CogVideoX uses timestep embedding directly)
+        modulated_inp = self.extractor_fn(module, hidden_states, emb)
+
+        # Make caching decision
+        should_calc = self._should_compute_full_transformer(state, modulated_inp)
+
+        if not should_calc:
+            # Fast path: apply cached residuals (both encoder and hidden_states)
+            if state.previous_residual_encoder is not None:
+                hidden_states = hidden_states + state.previous_residual
+                encoder_hidden_states = encoder_hidden_states + state.previous_residual_encoder
+            else:
+                # Fallback: compute if encoder residual not cached
+                should_calc = True
+        else:
+            # Slow path: full computation
+            ori_hidden_states = hidden_states.clone()
+            ori_encoder_hidden_states = encoder_hidden_states.clone()
+
+            # Process through transformer blocks
+            for block in module.transformer_blocks:
+                if torch.is_grad_enabled() and module.gradient_checkpointing:
+                    ckpt_kwargs = {"use_reentrant": False} if is_torch_version(">=", "1.11.0") else {}
+                    hidden_states, encoder_hidden_states = torch.utils.checkpoint.checkpoint(
+                        lambda *args: block(*args),
+                        hidden_states,
+                        encoder_hidden_states,
+                        emb,
+                        image_rotary_emb,
+                        **ckpt_kwargs,
+                    )
+                else:
+                    hidden_states, encoder_hidden_states = block(
+                        hidden_states=hidden_states,
+                        encoder_hidden_states=encoder_hidden_states,
+                        temb=emb,
+                        image_rotary_emb=image_rotary_emb,
+                    )
+
+            # Cache both residuals
+            state.previous_residual = hidden_states - ori_hidden_states
+            state.previous_residual_encoder = encoder_hidden_states - ori_encoder_hidden_states
+
+        state.previous_modulated_input = modulated_inp
+        state.cnt += 1
+
+        # Apply final norm
+        if not module.config.use_rotary_positional_embeddings:
+            # CogVideoX-2B
+            hidden_states = module.norm_final(hidden_states)
+        else:
+            # CogVideoX-5B and CogVideoX1.5-5B
+            hidden_states = torch.cat([encoder_hidden_states, hidden_states], dim=1)
+            hidden_states = module.norm_final(hidden_states)
+            hidden_states = hidden_states[:, text_seq_length:]
+
+        output = module.proj_out(hidden_states)
+
+        if USE_PEFT_BACKEND:
+            unscale_lora_layers(module, lora_scale)
+
+        if not return_dict:
+            return (output,)
+        return Transformer2DModelOutput(sample=output)
 
     def _should_compute_full_transformer(self, state, modulated_inp):
         """
