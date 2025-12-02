@@ -65,6 +65,25 @@ def _get_added_kv_projections(attn: "KreaAttention", encoder_hidden_states_img: 
     return key_img, value_img
 
 
+class KreaRMSNorm(nn.Module):
+    """
+    KreaRMSNorm is equivalent to LlamaRMSNorm
+    """
+
+    def __init__(self, dim, eps=1e-5):
+        super().__init__()
+        self.dim = dim
+        self.eps = eps
+        self.weight = nn.Parameter(torch.ones(dim))
+
+    def forward(self, hidden_states):
+        input_dtype = hidden_states.dtype
+        hidden_states = hidden_states.to(torch.float32)
+        variance = hidden_states.pow(2).mean(-1, keepdim=True)
+        hidden_states = hidden_states * torch.rsqrt(variance + self.eps)
+        return self.weight * hidden_states.to(input_dtype)
+
+
 class KreaAttnProcessor:
     _attention_backend = None
     _parallel_config = None
@@ -82,6 +101,7 @@ class KreaAttnProcessor:
         encoder_hidden_states: Optional[torch.Tensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
         rotary_emb: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
+        kv_cache: list[torch.Tensor] = None,
     ) -> torch.Tensor:
         encoder_hidden_states_img = None
         if attn.add_k_proj is not None:
@@ -116,6 +136,9 @@ class KreaAttnProcessor:
 
             query = apply_rotary_emb(query, *rotary_emb)
             key = apply_rotary_emb(key, *rotary_emb)
+
+        if kv_cache is not None:
+            key, value = kv_cache.update(key, value)
 
         # I2V task
         hidden_states_img = None
@@ -198,14 +221,14 @@ class KreaAttention(torch.nn.Module, AttentionModuleMixin):
         self.to_v = torch.nn.Linear(dim, self.kv_inner_dim, bias=True)
         self.to_out = torch.nn.Linear(self.inner_dim, dim, bias=True)
 
-        self.norm_q = torch.nn.RMSNorm(dim_head * heads, eps=eps, elementwise_affine=True)
-        self.norm_k = torch.nn.RMSNorm(dim_head * heads, eps=eps, elementwise_affine=True)
+        self.norm_q = KreaRMSNorm(dim_head * heads, eps=eps)
+        self.norm_k = KreaRMSNorm(dim_head * heads, eps=eps)
 
         self.add_k_proj = self.add_v_proj = None
         if added_kv_proj_dim is not None:
             self.add_k_proj = torch.nn.Linear(added_kv_proj_dim, self.inner_dim, bias=True)
             self.add_v_proj = torch.nn.Linear(added_kv_proj_dim, self.inner_dim, bias=True)
-            self.norm_added_k = torch.nn.RMSNorm(dim_head * heads, eps=eps)
+            self.norm_added_k = nn.RMSNorm(dim_head * heads, eps=eps)
 
         self.is_cross_attention = cross_attention_dim_head is not None
 
@@ -266,9 +289,12 @@ class KreaAttention(torch.nn.Module, AttentionModuleMixin):
         encoder_hidden_states: Optional[torch.Tensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
         rotary_emb: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
+        kv_cache: list[torch.Tensor] = None,
         **kwargs,
     ) -> torch.Tensor:
-        return self.processor(self, hidden_states, encoder_hidden_states, attention_mask, rotary_emb, **kwargs)
+        return self.processor(
+            self, hidden_states, encoder_hidden_states, attention_mask, rotary_emb, kv_cache, **kwargs
+        )
 
 
 class KreaImageEmbedding(torch.nn.Module):
@@ -322,12 +348,8 @@ class KreaTimeTextImageEmbedding(nn.Module):
         timestep: torch.Tensor,
         encoder_hidden_states: torch.Tensor,
         encoder_hidden_states_image: Optional[torch.Tensor] = None,
-        timestep_seq_len: Optional[int] = None,
     ):
         timestep = self.timesteps_proj(timestep)
-        if timestep_seq_len is not None:
-            timestep = timestep.unflatten(0, (-1, timestep_seq_len))
-
         time_embedder_dtype = next(iter(self.time_embedder.parameters())).dtype
         if timestep.dtype != time_embedder_dtype and time_embedder_dtype != torch.int8:
             timestep = timestep.to(time_embedder_dtype)
@@ -419,8 +441,12 @@ class KreaTransformerBlock(nn.Module):
     ):
         super().__init__()
 
+        self.num_heads = num_heads
+        self.dim = dim
+        self.encoder_dim = dim
+
         # 1. Self-attention
-        self.norm1 = FP32LayerNorm(dim, eps, elementwise_affine=False)
+        self.norm1 = nn.LayerNorm(dim, eps, elementwise_affine=False)
         self.attn1 = KreaAttention(
             dim=dim,
             heads=num_heads,
@@ -440,16 +466,11 @@ class KreaTransformerBlock(nn.Module):
             cross_attention_dim_head=dim // num_heads,
             processor=KreaAttnProcessor(),
         )
-        self.norm3 = FP32LayerNorm(dim, eps, elementwise_affine=True) if cross_attn_norm else nn.Identity()
+        self.norm3 = nn.LayerNorm(dim, eps, elementwise_affine=True) if cross_attn_norm else nn.Identity()
 
         # 3. Feed-forward
         self.ffn = FeedForward(dim, inner_dim=ffn_dim, activation_fn="gelu-approximate")
-        # self.ffn = nn.Sequential(
-        #     nn.Linear(dim, ffn_dim),
-        #     nn.GELU(approximate="tanh"),
-        #     nn.Linear(ffn_dim, dim),
-        # )
-        self.norm2 = FP32LayerNorm(dim, eps, elementwise_affine=False)
+        self.norm2 = nn.LayerNorm(dim, eps, elementwise_affine=False)
 
         self.scale_shift_table = nn.Parameter(torch.randn(1, 6, dim) / dim**0.5)
 
@@ -459,41 +480,32 @@ class KreaTransformerBlock(nn.Module):
         encoder_hidden_states: torch.Tensor,
         temb: torch.Tensor,
         rotary_emb: torch.Tensor,
+        clean_latents: bool = False,
+        kv_cache: list[torch.Tensor] = None,
     ) -> torch.Tensor:
-        if temb.ndim == 4:
-            # temb: batch_size, seq_len, 6, inner_dim (wan2.2 ti2v)
-            shift_msa, scale_msa, gate_msa, c_shift_msa, c_scale_msa, c_gate_msa = (
-                self.scale_shift_table.unsqueeze(0) + temb.float()
-            ).chunk(6, dim=2)
-            # batch_size, seq_len, 1, inner_dim
-            shift_msa = shift_msa.squeeze(2)
-            scale_msa = scale_msa.squeeze(2)
-            gate_msa = gate_msa.squeeze(2)
-            c_shift_msa = c_shift_msa.squeeze(2)
-            c_scale_msa = c_scale_msa.squeeze(2)
-            c_gate_msa = c_gate_msa.squeeze(2)
-        else:
-            # temb: batch_size, 6, inner_dim (wan2.1/wan2.2 14B)
-            shift_msa, scale_msa, gate_msa, c_shift_msa, c_scale_msa, c_gate_msa = (
-                self.scale_shift_table + temb.float()
-            ).chunk(6, dim=1)
+        # temb: batch_size, 6, inner_dim (wan2.1/wan2.2 14B)
+        shift_msa, scale_msa, gate_msa, c_shift_msa, c_scale_msa, c_gate_msa = (
+            self.scale_shift_table + temb  # .float()
+        ).chunk(6, dim=1)
 
         # 1. Self-attention
-        norm_hidden_states = (self.norm1(hidden_states.float()) * (1 + scale_msa) + shift_msa).type_as(hidden_states)
-        attn_output = self.attn1(norm_hidden_states, None, None, rotary_emb)
-        hidden_states = (hidden_states.float() + attn_output * gate_msa).type_as(hidden_states)
+        norm_hidden_states = (self.norm1(hidden_states) * (1 + scale_msa) + shift_msa).type_as(hidden_states)
+        attn_output = self.attn1(norm_hidden_states, None, None, rotary_emb, kv_cache)
+        hidden_states = (hidden_states + attn_output * gate_msa).type_as(hidden_states)
 
         # 2. Cross-attention
-        norm_hidden_states = self.norm3(hidden_states.float()).type_as(hidden_states)
+        norm_hidden_states = self.norm3(hidden_states).type_as(hidden_states)
         attn_output = self.attn2(norm_hidden_states, encoder_hidden_states, None, None)
         hidden_states = hidden_states + attn_output
 
         # 3. Feed-forward
-        norm_hidden_states = (self.norm2(hidden_states.float()) * (1 + c_scale_msa) + c_shift_msa).type_as(
-            hidden_states
-        )
+        norm_hidden_states = (self.norm2(hidden_states) * (1 + c_scale_msa) + c_shift_msa).type_as(hidden_states)
         ff_output = self.ffn(norm_hidden_states)
-        hidden_states = (hidden_states.float() + ff_output.float() * c_gate_msa).type_as(hidden_states)
+        hidden_states = (hidden_states + ff_output * c_gate_msa).type_as(hidden_states)
+
+        # Last: update the cache position once per denoising loop - when recomputing cache with clean latent
+        if clean_latents:
+            kv_cache.local_start_index += hidden_states.shape[1]
 
         return hidden_states
 
@@ -540,7 +552,7 @@ class KreaTransformerModel(
     _supports_gradient_checkpointing = True
     _skip_layerwise_casting_patterns = ["patch_embedding", "condition_embedder", "norm"]
     _no_split_modules = ["KreaTransformerBlock"]
-    _keep_in_fp32_modules = ["time_embedder", "scale_shift_table", "norm1", "norm2", "norm3"]
+    # _keep_in_fp32_modules = ["time_embedder", "scale_shift_table", "norm1", "norm2", "norm3"]
     _keys_to_ignore_on_load_unexpected = ["norm_added_q"]
     _repeated_blocks = ["KreaTransformerBlock"]
     _cp_plan = {
@@ -611,7 +623,7 @@ class KreaTransformerModel(
         )
 
         # 4. Output norm & projection
-        self.norm_out = FP32LayerNorm(inner_dim, eps, elementwise_affine=False)
+        self.norm_out = nn.LayerNorm(inner_dim, eps, elementwise_affine=False)
         self.proj_out = nn.Linear(inner_dim, out_channels * math.prod(patch_size))
         self.scale_shift_table = nn.Parameter(torch.randn(1, 2, inner_dim) / inner_dim**0.5)
 
@@ -623,6 +635,7 @@ class KreaTransformerModel(
         timestep: torch.LongTensor,
         encoder_hidden_states: torch.Tensor,
         encoder_hidden_states_image: Optional[torch.Tensor] = None,
+        clean_latents: bool = False,
         return_dict: bool = True,
         attention_kwargs: Optional[Dict[str, Any]] = None,
     ) -> Union[torch.Tensor, Dict[str, torch.Tensor]]:
@@ -641,7 +654,7 @@ class KreaTransformerModel(
                     "Passing `scale` via `attention_kwargs` when not using the PEFT backend is ineffective."
                 )
 
-        batch_size, num_channels, num_frames, height, width = hidden_states.shape
+        batch_size, _, num_frames, height, width = hidden_states.shape
         p_t, p_h, p_w = self.config.patch_size
         post_patch_num_frames = num_frames // p_t
         post_patch_height = height // p_h
@@ -652,22 +665,11 @@ class KreaTransformerModel(
         hidden_states = self.patch_embedding(hidden_states)
         hidden_states = hidden_states.flatten(2).transpose(1, 2)
 
-        # timestep shape: batch_size, or batch_size, seq_len (wan 2.2 ti2v)
-        if timestep.ndim == 2:
-            ts_seq_len = timestep.shape[1]
-            timestep = timestep.flatten()  # batch_size * seq_len
-        else:
-            ts_seq_len = None
-
         temb, timestep_proj, encoder_hidden_states, encoder_hidden_states_image = self.condition_embedder(
-            timestep, encoder_hidden_states, encoder_hidden_states_image, timestep_seq_len=ts_seq_len
+            timestep, encoder_hidden_states, encoder_hidden_states_image
         )
-        if ts_seq_len is not None:
-            # batch_size, seq_len, 6, inner_dim
-            timestep_proj = timestep_proj.unflatten(2, (6, -1))
-        else:
-            # batch_size, 6, inner_dim
-            timestep_proj = timestep_proj.unflatten(1, (6, -1))
+        # batch_size, 6, inner_dim
+        timestep_proj = timestep_proj.unflatten(1, (6, -1))
 
         if encoder_hidden_states_image is not None:
             encoder_hidden_states = torch.concat([encoder_hidden_states_image, encoder_hidden_states], dim=1)
@@ -676,21 +678,25 @@ class KreaTransformerModel(
         if torch.is_grad_enabled() and self.gradient_checkpointing:
             for block in self.blocks:
                 hidden_states = self._gradient_checkpointing_func(
-                    block, hidden_states, encoder_hidden_states, timestep_proj, rotary_emb
+                    block,
+                    hidden_states,
+                    encoder_hidden_states,
+                    timestep_proj,
+                    rotary_emb,
+                    clean_latents,
                 )
         else:
             for block in self.blocks:
-                hidden_states = block(hidden_states, encoder_hidden_states, timestep_proj, rotary_emb)
+                hidden_states = block(
+                    hidden_states,
+                    encoder_hidden_states,
+                    timestep_proj,
+                    rotary_emb,
+                    clean_latents,
+                )
 
         # 5. Output norm, projection & unpatchify
-        if temb.ndim == 3:
-            # batch_size, seq_len, inner_dim (wan 2.2 ti2v)
-            shift, scale = (self.scale_shift_table.unsqueeze(0).to(temb.device) + temb.unsqueeze(2)).chunk(2, dim=2)
-            shift = shift.squeeze(2)
-            scale = scale.squeeze(2)
-        else:
-            # batch_size, inner_dim
-            shift, scale = (self.scale_shift_table.to(temb.device) + temb.unsqueeze(1)).chunk(2, dim=1)
+        shift, scale = (self.scale_shift_table.to(temb.device) + temb.unsqueeze(1)).chunk(2, dim=1)
 
         # Move the shift and scale tensors to the same device as hidden_states.
         # When using multi-GPU inference via accelerate these will be on the
@@ -699,7 +705,7 @@ class KreaTransformerModel(
         shift = shift.to(hidden_states.device)
         scale = scale.to(hidden_states.device)
 
-        hidden_states = (self.norm_out(hidden_states.float()) * (1 + scale) + shift).type_as(hidden_states)
+        hidden_states = (self.norm_out(hidden_states) * (1 + scale) + shift).type_as(hidden_states)
         hidden_states = self.proj_out(hidden_states)
 
         hidden_states = hidden_states.reshape(

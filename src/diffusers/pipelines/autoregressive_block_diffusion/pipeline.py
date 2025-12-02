@@ -152,9 +152,9 @@ class BaseAutoregressiveDiffusionPipeline(DiffusionPipeline, WanLoraLoaderMixin)
         tokenizer (`T5Tokenizer`):
             Tokenizer of class
             [T5Tokenizer](https://huggingface.co/docs/transformers/model_doc/t5#transformers.T5Tokenizer).
-        transformer ([`UniPCMultistepScheduler`]):
+        transformer ([`FlowMatchEulerDiscreteScheduler`]):
             A text conditioned `KreaTransformerModel` to denoise the encoded video latents.
-        scheduler ([`UniPCMultistepScheduler`]):
+        scheduler ([`FlowMatchEulerDiscreteScheduler`]):
             A scheduler to be used in combination with `transformer` to denoise the encoded video latents.
     """
 
@@ -438,9 +438,20 @@ class BaseAutoregressiveDiffusionPipeline(DiffusionPipeline, WanLoraLoaderMixin)
         for module_name, module in self.transformer.named_modules():
             if module_name == "":
                 continue
-            if hasattr(module, "_diffusers_hook") and "rolling_kv_hook" in module._diffusers_hook.hooks.keys():
+            if hasattr(module, "_diffusers_hook") and "rolling_kv_cache_hook" in module._diffusers_hook.hooks.keys():
                 return True
         return False
+
+    def prepare_blockwise_mask(self, batch_size, kv_length, block_size, dtype, device):
+        idx = torch.arange(kv_length, device=device)
+        blocks = idx // block_size
+
+        # blockwise permission: j’s block <= i’s block
+        block_mask = blocks[:, None] >= blocks[None, :]
+        block_mask = block_mask[None, None, :, :].expand(batch_size, 1, -1, -1)
+        inverted_mask = 1.0 - block_mask.int()
+
+        return inverted_mask.masked_fill(inverted_mask.to(torch.bool), torch.finfo(dtype).min)
 
     @torch.no_grad()
     def __call__(
@@ -452,7 +463,6 @@ class BaseAutoregressiveDiffusionPipeline(DiffusionPipeline, WanLoraLoaderMixin)
         num_frames: int = 81,
         num_inference_steps: int = 6,
         guidance_scale: float = 5.0,
-        guidance_scale_2: Optional[float] = None,
         num_videos_per_prompt: Optional[int] = 1,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.Tensor] = None,
@@ -550,7 +560,6 @@ class BaseAutoregressiveDiffusionPipeline(DiffusionPipeline, WanLoraLoaderMixin)
             prompt_embeds,
             negative_prompt_embeds,
             callback_on_step_end_tensor_inputs,
-            guidance_scale_2,
         )
 
         if num_frames % self.vae_scale_factor_temporal != 1:
@@ -560,11 +569,7 @@ class BaseAutoregressiveDiffusionPipeline(DiffusionPipeline, WanLoraLoaderMixin)
             num_frames = num_frames // self.vae_scale_factor_temporal * self.vae_scale_factor_temporal + 1
         num_frames = max(num_frames, 1)
 
-        if self.config.boundary_ratio is not None and guidance_scale_2 is None:
-            guidance_scale_2 = guidance_scale
-
         self._guidance_scale = guidance_scale
-        self._guidance_scale_2 = guidance_scale_2
         self._attention_kwargs = attention_kwargs
         self._current_timestep = None
         self._interrupt = False
@@ -628,54 +633,78 @@ class BaseAutoregressiveDiffusionPipeline(DiffusionPipeline, WanLoraLoaderMixin)
         mask = torch.ones(latents.shape, dtype=torch.float32, device=device)
         latent_h, latent_w = latents.shape[-2:]
 
-        # 6. Denoising loop
+        # 7. Denoising loop
         # num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
         self._num_timesteps = len(timesteps)
 
         output = torch.zeros(
-            batch_size, num_channels_latents, num_frames, latent_h, latent_w, device=latents.device, dtype=latents.dtype
+            batch_size,
+            num_channels_latents,
+            num_frames,
+            latent_h,
+            latent_w,
+            device=latents.device,
+            dtype=latents.dtype,
         )
         with self.progress_bar(total=num_blocks) as progress_bar:
             for block in range(num_blocks):
-                cache_start_frame = block * block_size if self.using_cache else 0
+                cache_start_frame = block * block_size
                 current_latents = latents[:, :, cache_start_frame : cache_start_frame + block_size]
+                kv_length = cache_start_frame + block_size
+                if not self.using_cache():
+                    # If the transformer has no cache hooks attached, we need a causal blockwise mask
+                    # and concatenate past latents with the inputs
+                    current_latents = torch.cat([output[:, :, :cache_start_frame], current_latents], dim=2)
+                    attention_kwargs["attention_mask"] = self.prepare_blockwise_mask(
+                        batch_size=batch_size,
+                        kv_length=kv_length,
+                        block_size=block_size,
+                        dtype=transformer_dtype,
+                        device=current_latents.device,
+                    )
+
                 current_latents = current_latents.to(transformer_dtype)
-                denoised_latents = self.denoise_once(
-                    current_latents,
-                    timesteps,
-                    mask,
-                    prompt_embeds,
-                    negative_prompt_embeds,
-                    attention_kwargs,
-                    guidance_scale,
-                    callback_on_step_end,
-                    callback_on_step_end_tensor_inputs,
+                denoised_latents = self.denoise_single_block(
+                    latent_model_input=current_latents,
+                    timesteps=timesteps,
+                    mask=mask,
+                    prompt_embeds=prompt_embeds,
+                    negative_prompt_embeds=negative_prompt_embeds,
+                    attention_kwargs=attention_kwargs,
+                    guidance_scale=guidance_scale,
+                    callback_on_step_end=callback_on_step_end,
+                    callback_on_step_end_tensor_inputs=callback_on_step_end_tensor_inputs,
                 )
 
                 self.scheduler._init_step_index(timesteps[0])
-                output[:, :, cache_start_frame : cache_start_frame + block_size] = denoised_latents
+                output[:, :, cache_start_frame : cache_start_frame + block_size] = denoised_latents[:, :, -block_size:]
+
                 # TODO: update cache and recompute with clean latents
-                with self.transformer.cache_context("cond"):
-                    _ = self.transformer(
-                        hidden_states=denoised_latents,
-                        encoder_hidden_states=prompt_embeds,
-                        timestep=torch.tensor([0] * batch_size, device=timesteps.device),
-                        attention_kwargs=attention_kwargs,
-                        return_dict=False,
-                    )
-                with self.transformer.cache_context("uncond"):
-                    _ = self.transformer(
-                        hidden_states=denoised_latents,
-                        encoder_hidden_states=negative_prompt_embeds,
-                        timestep=torch.tensor([0] * batch_size, device=timesteps.device),
-                        attention_kwargs=attention_kwargs,
-                        return_dict=False,
-                    )
+                if self.using_cache():
+                    with self.transformer.cache_context("cond"):
+                        _ = self.transformer(
+                            hidden_states=denoised_latents,
+                            encoder_hidden_states=prompt_embeds,
+                            timestep=torch.tensor([0] * batch_size, device=timesteps.device),
+                            attention_kwargs=attention_kwargs,
+                            clean_latents=True,
+                            return_dict=False,
+                        )
+                    if self.do_classifier_free_guidance:
+                        with self.transformer.cache_context("uncond"):
+                            _ = self.transformer(
+                                hidden_states=denoised_latents,
+                                encoder_hidden_states=negative_prompt_embeds,
+                                timestep=torch.tensor([0] * batch_size, device=timesteps.device),
+                                attention_kwargs=attention_kwargs,
+                                clean_latents=True,
+                                return_dict=False,
+                            )
                 progress_bar.update()
 
         self._current_timestep = None
 
-        if not output_type == "latent":
+        if output_type != "latent":
             latents = latents.to(self.vae.dtype)
             latents_mean = (
                 torch.tensor(self.vae.config.latents_mean)
@@ -699,7 +728,7 @@ class BaseAutoregressiveDiffusionPipeline(DiffusionPipeline, WanLoraLoaderMixin)
 
         return KreaPipelineOutput(frames=video)
 
-    def denoise_once(
+    def denoise_single_block(
         self,
         latent_model_input,
         timesteps,
@@ -716,13 +745,7 @@ class BaseAutoregressiveDiffusionPipeline(DiffusionPipeline, WanLoraLoaderMixin)
                 continue
 
             self._current_timestep = t
-            if self.config.expand_timesteps:
-                # seq_len: num_latent_frames * latent_height//2 * latent_width//2
-                temp_ts = (mask[0][0][:, ::2, ::2] * t).flatten()
-                # batch_size, seq_len
-                timestep = temp_ts.unsqueeze(0).expand(latent_model_input.shape[0], -1)
-            else:
-                timestep = t.expand(latent_model_input.shape[0])
+            timestep = t.expand(latent_model_input.shape[0])
 
             with self.transformer.cache_context("cond"):
                 noise_pred = self.transformer(
@@ -732,7 +755,6 @@ class BaseAutoregressiveDiffusionPipeline(DiffusionPipeline, WanLoraLoaderMixin)
                     attention_kwargs=attention_kwargs,
                     return_dict=False,
                 )[0]
-
             if self.do_classifier_free_guidance:
                 with self.transformer.cache_context("uncond"):
                     noise_uncond = self.transformer(

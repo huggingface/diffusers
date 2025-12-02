@@ -175,6 +175,7 @@ def _register_transformer_blocks_metadata():
         HunyuanImageSingleTransformerBlock,
         HunyuanImageTransformerBlock,
     )
+    from ..models.transformers.transformer_krea import KreaTransformerBlock
     from ..models.transformers.transformer_ltx import LTXVideoTransformerBlock
     from ..models.transformers.transformer_mochi import MochiTransformerBlock
     from ..models.transformers.transformer_qwenimage import QwenImageTransformerBlock
@@ -281,6 +282,15 @@ def _register_transformer_blocks_metadata():
     # Wan
     TransformerBlockRegistry.register(
         model_class=WanTransformerBlock,
+        metadata=TransformerBlockMetadata(
+            return_hidden_states_index=0,
+            return_encoder_hidden_states_index=None,
+        ),
+    )
+
+    # Krea
+    TransformerBlockRegistry.register(
+        model_class=KreaTransformerBlock,
         metadata=TransformerBlockMetadata(
             return_hidden_states_index=0,
             return_encoder_hidden_states_index=None,

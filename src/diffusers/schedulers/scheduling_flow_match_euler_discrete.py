@@ -114,7 +114,7 @@ class FlowMatchEulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         if time_shift_type not in {"exponential", "linear"}:
             raise ValueError("`time_shift_type` must either be 'exponential' or 'linear'.")
 
-        timesteps = np.linspace(1, num_train_timesteps, num_train_timesteps, dtype=np.float32)[::-1].copy()
+        timesteps = np.linspace(0, num_train_timesteps, num_train_timesteps, dtype=np.float32)[::-1].copy()
         timesteps = torch.from_numpy(timesteps).to(dtype=torch.float32)
 
         sigmas = timesteps / num_train_timesteps
@@ -315,7 +315,7 @@ class FlowMatchEulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
             sigmas = self.shift * sigmas / (1 + (self.shift - 1) * sigmas)
 
         # 3. If required, stretch the sigmas schedule to terminate at the configured `shift_terminal` value
-        if self.config.shift_terminal:
+        if self.config.shift_terminal is not None:
             sigmas = self.stretch_shift_to_terminal(sigmas)
 
         # 4. If required, convert sigmas to one of karras, exponential, or beta sigma schedules
