@@ -242,7 +242,7 @@ class QwenImageEditPlusPipelineFastTests(PipelineTesterMixin, unittest.TestCase)
         self, extra_required_param_value_dict=None, keep_params=None, atol=1e-4, rtol=1e-4
     ):
         # We include `image` because it's needed in both `encode_prompt` and some other subsequent calculations.
-        # `max_sequence_length` to maintain parity between its value during all invokations of `encode_prompt`
+        # `max_sequence_length` to maintain parity between its value during all invocations of `encode_prompt`
         # in the following test.
         keep_params = ["image", "max_sequence_length"]
         super().test_encode_prompt_works_in_isolation(extra_required_param_value_dict, keep_params, atol, rtol)
