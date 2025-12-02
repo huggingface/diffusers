@@ -22,7 +22,7 @@ from transformers import (
     Qwen2TokenizerFast,
 )
 
-from ...image_processor import PipelineImageInput, VaeImageProcessor
+from ...image_processor import VaeImageProcessor
 from ...models import AutoencoderKL, OvisImageTransformer2DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import (
@@ -220,11 +220,11 @@ class OvisImagePipeline(
         batch_size = len(messages)
 
         tokens = self.tokenizer(
-            messages, 
-            padding="max_length", 
+            messages,
+            padding="max_length",
             truncation=True,
-            max_length=self.tokenizer_max_length, 
-            return_tensors="pt", 
+            max_length=self.tokenizer_max_length,
+            return_tensors="pt",
             add_special_tokens=False,
         )
         input_ids = tokens.input_ids.to(device)

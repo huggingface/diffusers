@@ -6,8 +6,7 @@ import torch
 from accelerate import init_empty_weights
 from huggingface_hub import hf_hub_download
 
-from diffusers import AutoencoderKL, OvisImageTransformer2DModel
-from diffusers.loaders.single_file_utils import convert_ldm_vae_checkpoint
+from diffusers import OvisImageTransformer2DModel
 from diffusers.utils.import_utils import is_accelerate_available
 
 
@@ -277,7 +276,7 @@ def main(args):
         transformer.load_state_dict(converted_transformer_state_dict, strict=True)
 
         print(
-            f"Saving Ovis-Image Transformer in Diffusers format."
+            "Saving Ovis-Image Transformer in Diffusers format."
         )
         transformer.to(dtype).save_pretrained(f"{args.output_path}/transformer")
 
