@@ -35,6 +35,7 @@ from diffusers.models.attention_processor import Attention
 from diffusers.quantizers import PipelineQuantizationConfig
 
 from ...testing_utils import (
+    Expectations,
     backend_empty_cache,
     backend_synchronize,
     enable_full_determinism,
@@ -497,8 +498,14 @@ class TorchAoTest(unittest.TestCase):
 
     def test_model_memory_usage(self):
         model_id = "hf-internal-testing/tiny-flux-pipe"
-        expected_memory_saving_ratio = 2.0
-
+        expected_memory_saving_ratios = Expectations(
+            {
+                ("xpu", None): 1.15,
+                ("cuda", 8): 1.02,
+                ("cuda", 9): 2.0,
+            }
+        )
+        expected_memory_saving_ratio = expected_memory_saving_ratios.get_expectation()
         inputs = self.get_dummy_tensor_inputs(device=torch_device)
 
         transformer_bf16 = self.get_dummy_components(None, model_id=model_id)["transformer"]
