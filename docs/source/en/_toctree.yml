@@ -375,6 +375,8 @@
         title: MochiTransformer3DModel
       - local: api/models/omnigen_transformer
         title: OmniGenTransformer2DModel
+      - local: api/models/ovisimage_transformer_2d
+        title: OvisImageTransformer2DModel
       - local: api/models/pixart_transformer2d
         title: PixArtTransformer2DModel
       - local: api/models/prior_transformer
@@ -567,6 +569,8 @@
         title: MultiDiffusion
       - local: api/pipelines/omnigen
         title: OmniGen
+      - local: api/pipelines/ovis_image
+        title: Ovis-Image
       - local: api/pipelines/pag
         title: PAG
       - local: api/pipelines/paint_by_example
