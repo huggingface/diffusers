@@ -140,7 +140,7 @@ class ZImageTransformerTests(ModelTesterMixin, unittest.TestCase):
         super().test_group_offloading_with_disk()
 
 
-class Flux2TransformerCompileTests(TorchCompileTesterMixin, unittest.TestCase):
+class ZImageTransformerCompileTests(TorchCompileTesterMixin, unittest.TestCase):
     model_class = ZImageTransformer2DModel
     different_shapes_for_compilation = [(4, 4), (4, 8), (8, 8)]
 
