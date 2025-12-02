@@ -412,6 +412,33 @@ class OvisImageTransformer2DModel(
     FromOriginalModelMixin,
     CacheMixin,
 ):
+    """
+    The Transformer model introduced in Ovis-Image.
+
+    Reference: https://github.com/AIDC-AI/Ovis-Image
+
+    Args:
+        patch_size (`int`, defaults to `1`):
+            Patch size to turn the input data into small patches.
+        in_channels (`int`, defaults to `64`):
+            The number of channels in the input.
+        out_channels (`int`, *optional*, defaults to `None`):
+            The number of channels in the output. If not specified, it defaults to `in_channels`.
+        num_layers (`int`, defaults to `6`):
+            The number of layers of dual stream DiT blocks to use.
+        num_single_layers (`int`, defaults to `27`):
+            The number of layers of single stream DiT blocks to use.
+        attention_head_dim (`int`, defaults to `128`):
+            The number of dimensions to use for each attention head.
+        num_attention_heads (`int`, defaults to `24`):
+            The number of attention heads to use.
+        joint_attention_dim (`int`, defaults to `2048`):
+            The number of dimensions to use for the joint attention (embedding/channel dimension of
+            `encoder_hidden_states`).
+        axes_dims_rope (`Tuple[int]`, defaults to `(16, 56, 56)`):
+            The dimensions to use for the rotary positional embeddings.
+    """
+
     _supports_gradient_checkpointing = True
     _no_split_modules = ["OvisImageTransformerBlock",
                          "OvisImageSingleTransformerBlock"]
@@ -486,7 +513,28 @@ class OvisImageTransformer2DModel(
         txt_ids: torch.Tensor = None,
         return_dict: bool = True,
     ) -> Union[torch.Tensor, Transformer2DModelOutput]:
+        """
+        The [`OvisImageTransformer2DModel`] forward method.
 
+        Args:
+            hidden_states (`torch.Tensor` of shape `(batch_size, image_sequence_length, in_channels)`):
+                Input `hidden_states`.
+            encoder_hidden_states (`torch.Tensor` of shape `(batch_size, text_sequence_length, joint_attention_dim)`):
+                Conditional embeddings (embeddings computed from the input conditions such as prompts) to use.
+            timestep (`torch.LongTensor`):
+                Used to indicate denoising step.
+            img_ids: (`torch.Tensor`):
+                The position ids for image tokens.
+            txt_ids (`torch.Tensor`):
+                The position ids for text tokens.
+            return_dict (`bool`, *optional*, defaults to `True`):
+                Whether or not to return a [`~models.transformer_2d.Transformer2DModelOutput`] instead of a plain
+                tuple.
+
+        Returns:
+            If `return_dict` is True, an [`~models.transformer_2d.Transformer2DModelOutput`] is returned, otherwise a
+            `tuple` where the first element is the sample tensor.
+        """
         hidden_states = self.x_embedder(hidden_states)
 
         timestep = timestep.to(hidden_states.dtype) * 1000
