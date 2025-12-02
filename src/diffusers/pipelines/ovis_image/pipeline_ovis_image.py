@@ -46,7 +46,7 @@ EXAMPLE_DOC_STRING = """
 
         >>> pipe = OvisImagePipeline.from_pretrained("AIDC-AI/Ovis-Image-7B", torch_dtype=torch.bfloat16)
         >>> pipe.to("cuda")
-        >>> prompt = "A creative 3D artistic render where the text \"OVIS-IMAGE\" is written in a bold, expressive handwritten brush style using thick, wet oil paint. The paint is a mix of vibrant rainbow colors (red, blue, yellow) swirling together like toothpaste or impasto art. You can see the ridges of the brush bristles and the glossy, wet texture of the paint. The background is a clean artist's canvas. Dynamic lighting creates soft shadows behind the floating paint strokes. Colorful, expressive, tactile texture, 4k detail."
+        >>> prompt = 'A creative 3D artistic render where the text "OVIS-IMAGE" is written in a bold, expressive handwritten brush style using thick, wet oil paint. The paint is a mix of vibrant rainbow colors (red, blue, yellow) swirling together like toothpaste or impasto art. You can see the ridges of the brush bristles and the glossy, wet texture of the paint. The background is a clean artist\'s canvas. Dynamic lighting creates soft shadows behind the floating paint strokes. Colorful, expressive, tactile texture, 4k detail.'
         >>> image = pipe(prompt, negative_prompt="", num_inference_steps=50, guidance_scale=5.0).images[0]
         >>> image.save("ovis_image.png")
         ```
@@ -142,7 +142,8 @@ class OvisImagePipeline(
         vae ([`AutoencoderKL`]):
             Variational Auto-Encoder (VAE) Model to encode and decode images to and from latent representations.
         text_encoder ([`Qwen3Model`]):
-            Text encoder of class [Qwen3Model](https://huggingface.co/docs/transformers/en/model_doc/qwen3#transformers.Qwen3Model).
+            Text encoder of class
+            [Qwen3Model](https://huggingface.co/docs/transformers/en/model_doc/qwen3#transformers.Qwen3Model).
         tokenizer (`Qwen2TokenizerFast`):
             Tokenizer of class
             [Qwen2TokenizerFast](https://huggingface.co/docs/transformers/en/model_doc/qwen2#transformers.Qwen2TokenizerFast).
@@ -495,9 +496,9 @@ class OvisImagePipeline(
         Examples:
 
         Returns:
-            [`~pipelines.ovis_image.OvisImagePipelineOutput`] or `tuple`: [`~pipelines.ovis_image.OvisImagePipelineOutput`] if `return_dict`
-            is True, otherwise a `tuple`. When returning a tuple, the first element is a list with the generated
-            images.
+            [`~pipelines.ovis_image.OvisImagePipelineOutput`] or `tuple`:
+            [`~pipelines.ovis_image.OvisImagePipelineOutput`] if `return_dict` is True, otherwise a `tuple`. When
+            returning a tuple, the first element is a list with the generated images.
         """
 
         height = height or self.default_sample_size * self.vae_scale_factor
