@@ -167,11 +167,11 @@ class Kandinsky5I2VPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     @unittest.skip("All encoders are needed")
     def test_encode_prompt_works_in_isolation(self):
         pass
-
+    
     @unittest.skip("Meant for eiter FP32 or BF16 inference")
     def test_float16_inference(self):
         pass
-    
+
     test_inference_batch_single_identical = None
     test_pipeline_call_signature = None
     test_inference_batch_consistent = None

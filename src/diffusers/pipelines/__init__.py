@@ -129,6 +129,7 @@ else:
     ]
     _import_structure["bria"] = ["BriaPipeline"]
     _import_structure["bria_fibo"] = ["BriaFiboPipeline"]
+    _import_structure["flux2"] = ["Flux2Pipeline"]
     _import_structure["flux"] = [
         "FluxControlPipeline",
         "FluxControlInpaintPipeline",
@@ -242,6 +243,7 @@ else:
         "HunyuanVideoImageToVideoPipeline",
         "HunyuanVideoFramepackPipeline",
     ]
+    _import_structure["hunyuan_video1_5"] = ["HunyuanVideo15Pipeline", "HunyuanVideo15ImageToVideoPipeline"]
     _import_structure["hunyuan_image"] = ["HunyuanImagePipeline", "HunyuanImageRefinerPipeline"]
     _import_structure["kandinsky"] = [
         "KandinskyCombinedPipeline",
@@ -401,6 +403,7 @@ else:
         "Kandinsky5T2IPipeline",
         "Kandinsky5I2IPipeline",
     ]
+    _import_structure["z_image"] = ["ZImagePipeline"]
     _import_structure["skyreels_v2"] = [
         "SkyReelsV2DiffusionForcingPipeline",
         "SkyReelsV2DiffusionForcingImageToVideoPipeline",
@@ -659,6 +662,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             FluxPriorReduxPipeline,
             ReduxImageEncoder,
         )
+        from .flux2 import Flux2Pipeline
         from .hidream_image import HiDreamImagePipeline
         from .hunyuan_image import HunyuanImagePipeline, HunyuanImageRefinerPipeline
         from .hunyuan_video import (
@@ -667,6 +671,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             HunyuanVideoImageToVideoPipeline,
             HunyuanVideoPipeline,
         )
+        from .hunyuan_video1_5 import HunyuanVideo15ImageToVideoPipeline, HunyuanVideo15Pipeline
         from .hunyuandit import HunyuanDiTPipeline
         from .i2vgen_xl import I2VGenXLPipeline
         from .kandinsky import (
@@ -695,10 +700,10 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             Kandinsky3Pipeline,
         )
         from .kandinsky5 import (
-            Kandinsky5T2VPipeline,
+            Kandinsky5I2IPipeline,
             Kandinsky5I2VPipeline,
             Kandinsky5T2IPipeline,
-            Kandinsky5I2IPipeline,
+            Kandinsky5T2VPipeline,
         )
         from .latent_consistency_models import (
             LatentConsistencyModelImg2ImgPipeline,
@@ -834,6 +839,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             WuerstchenDecoderPipeline,
             WuerstchenPriorPipeline,
         )
+        from .z_image import ZImagePipeline
 
         try:
             if not is_onnx_available():

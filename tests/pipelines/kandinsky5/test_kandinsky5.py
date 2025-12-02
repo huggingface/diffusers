@@ -30,6 +30,11 @@ from diffusers import (
 )
 from diffusers.utils.testing_utils import enable_full_determinism
 
+from ...testing_utils import (
+    enable_full_determinism,
+    torch_device,
+)
+
 from ..test_pipelines_common import PipelineTesterMixin
 
 enable_full_determinism()
@@ -122,7 +127,8 @@ class Kandinsky5T2VPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             generator = torch.manual_seed(seed)
         else:
             generator = torch.Generator(device=device).manual_seed(seed)
-        return {
+
+            return {
             "prompt": "a red square",
             "height": 32,
             "width": 32,
@@ -148,7 +154,6 @@ class Kandinsky5T2VPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         # 5 frames, RGB, 32×32
         self.assertEqual(video.shape, (5, 3, 32, 32))
 
-    @unittest.skip("Test not supported")
     def test_attention_slicing_forward_pass(self):
         pass
     
@@ -169,3 +174,4 @@ class Kandinsky5T2VPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     test_inference_batch_consistent = None
     test_save_load_dduf = None
     test_pipeline_with_accelerator_device_map = None
+

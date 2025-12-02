@@ -212,10 +212,10 @@ export_to_video(output, "output.mp4", fps=24, quality=9)
 <table border="0" style="width: 200; text-align: left; margin-top: 20px;">
   <tr>
       <td>
-          <img width="200" alt="image" src="https://github.com/user-attachments/assets/73e5ff00-2735-40fd-8f01-767de9181918" /></img>
+          <img width="200" alt="image" src="https://github.com/user-attachments/assets/73e5ff00-2735-40fd-8f01-767de9181918" />
       </td>
       <td>
-         <img width="200" alt="image" src="https://github.com/user-attachments/assets/f449a9e7-74b7-481d-82da-02723e396acd" /></img>
+         <img width="200" alt="image" src="https://github.com/user-attachments/assets/f449a9e7-74b7-481d-82da-02723e396acd" />
       </td>
 
   <tr>
@@ -227,10 +227,10 @@ export_to_video(output, "output.mp4", fps=24, quality=9)
       </td>
   <tr>
       <td>
-          <img width="200" alt="image" src="https://github.com/user-attachments/assets/a6902fb6-b5e8-4093-adad-aa4caab79c6d" /></img>
+          <img width="200" alt="image" src="https://github.com/user-attachments/assets/a6902fb6-b5e8-4093-adad-aa4caab79c6d" />
       </td>
       <td>
-          <img width="200" alt="image" src="https://github.com/user-attachments/assets/09986015-3d07-4de8-b942-c145039b9b2d" /></img>
+          <img width="200" alt="image" src="https://github.com/user-attachments/assets/09986015-3d07-4de8-b942-c145039b9b2d" />
       </td>
   <tr>
       <td>
@@ -250,21 +250,21 @@ The evaluation is based on the expanded prompts from the [Movie Gen benchmark](h
 <table border="0" style="width: 400; text-align: left; margin-top: 20px;">
   <tr>
       <td>
-          <img src="https://github.com/kandinskylab/kandinsky-5/raw/main/assets/sbs/kandinsky_5_video_lite_vs_sora.jpg" width=400 ></img>
+          <img src="https://github.com/kandinskylab/kandinsky-5/raw/main/assets/sbs/kandinsky_5_video_lite_vs_sora.jpg" width=400 >
       </td>
       <td>
-          <img src="https://github.com/kandinskylab/kandinsky-5/raw/main/assets/sbs/kandinsky_5_video_lite_vs_wan_2.1_14B.jpg" width=400 ></img>
-      </td>
-  <tr>
-      <td>
-          <img src="https://github.com/kandinskylab/kandinsky-5/raw/main/assets/sbs/kandinsky_5_video_lite_vs_wan_2.2_5B.jpg" width=400 ></img>
-      </td>
-      <td>
-          <img src="https://github.com/kandinskylab/kandinsky-5/raw/main/assets/sbs/kandinsky_5_video_lite_vs_wan_2.2_A14B.jpg" width=400 ></img>
+          <img src="https://github.com/kandinskylab/kandinsky-5/raw/main/assets/sbs/kandinsky_5_video_lite_vs_wan_2.1_14B.jpg" width=400 >
       </td>
   <tr>
       <td>
-          <img src="https://github.com/kandinskylab/kandinsky-5/raw/main/assets/sbs/kandinsky_5_video_lite_vs_wan_2.1_1.3B.jpg" width=400 ></img>
+          <img src="https://github.com/kandinskylab/kandinsky-5/raw/main/assets/sbs/kandinsky_5_video_lite_vs_wan_2.2_5B.jpg" width=400 >
+      </td>
+      <td>
+          <img src="https://github.com/kandinskylab/kandinsky-5/raw/main/assets/sbs/kandinsky_5_video_lite_vs_wan_2.2_A14B.jpg" width=400 >
+      </td>
+  <tr>
+      <td>
+          <img src="https://github.com/kandinskylab/kandinsky-5/raw/main/assets/sbs/kandinsky_5_video_lite_vs_wan_2.1_1.3B.jpg" width=400 >
       </td>
 
 </table>
@@ -277,10 +277,10 @@ The evaluation is based on the expanded prompts from the [Movie Gen benchmark](h
 <table border="0" style="width: 400; text-align: left; margin-top: 20px;">
   <tr>
       <td>
-          <img src="https://github.com/kandinskylab/kandinsky-5/raw/main/assets/sbs/kandinsky_5_video_lite_5s_vs_kandinsky_5_video_lite_distill_5s.jpg" width=400 ></img>
+          <img src="https://github.com/kandinskylab/kandinsky-5/raw/main/assets/sbs/kandinsky_5_video_lite_5s_vs_kandinsky_5_video_lite_distill_5s.jpg" width=400 >
       </td>
       <td>
-          <img src="https://github.com/kandinskylab/kandinsky-5/raw/main/assets/sbs/kandinsky_5_video_lite_10s_vs_kandinsky_5_video_lite_distill_10s.jpg" width=400 ></img>
+          <img src="https://github.com/kandinskylab/kandinsky-5/raw/main/assets/sbs/kandinsky_5_video_lite_10s_vs_kandinsky_5_video_lite_distill_10s.jpg" width=400 >
       </td>
 
 </table>

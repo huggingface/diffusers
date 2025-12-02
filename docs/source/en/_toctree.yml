@@ -349,6 +349,8 @@
         title: DiTTransformer2DModel
       - local: api/models/easyanimate_transformer3d
         title: EasyAnimateTransformer3DModel
+      - local: api/models/flux2_transformer
+        title: Flux2Transformer2DModel
       - local: api/models/flux_transformer
         title: FluxTransformer2DModel
       - local: api/models/hidream_image_transformer
@@ -357,6 +359,8 @@
         title: HunyuanDiT2DModel
       - local: api/models/hunyuanimage_transformer_2d
         title: HunyuanImageTransformer2DModel
+      - local: api/models/hunyuan_video15_transformer_3d
+        title: HunyuanVideo15Transformer3DModel
       - local: api/models/hunyuan_video_transformer_3d
         title: HunyuanVideoTransformer3DModel
       - local: api/models/latte_transformer3d
@@ -431,6 +435,8 @@
         title: AutoencoderKLHunyuanImageRefiner
       - local: api/models/autoencoder_kl_hunyuan_video
         title: AutoencoderKLHunyuanVideo
+      - local: api/models/autoencoder_kl_hunyuan_video15
+        title: AutoencoderKLHunyuanVideo15
       - local: api/models/autoencoderkl_ltx_video
         title: AutoencoderKLLTXVideo
       - local: api/models/autoencoderkl_magvit
@@ -525,6 +531,8 @@
         title: EasyAnimate
       - local: api/pipelines/flux
         title: Flux
+      - local: api/pipelines/flux2
+        title: Flux2
       - local: api/pipelines/control_flux_inpaint
         title: FluxControlInpaint
       - local: api/pipelines/hidream
@@ -648,8 +656,12 @@
         title: Framepack
       - local: api/pipelines/hunyuan_video
         title: HunyuanVideo
+      - local: api/pipelines/hunyuan_video15
+        title: HunyuanVideo1.5
       - local: api/pipelines/i2vgenxl
         title: I2VGen-XL
+      - local: api/pipelines/kandinsky5_image
+        title: Kandinsky 5.0 Image
       - local: api/pipelines/kandinsky5_video
         title: Kandinsky 5.0 Video
       - local: api/pipelines/latte
@@ -670,8 +682,6 @@
         title: Text2Video-Zero
       - local: api/pipelines/wan
         title: Wan
-      - local: api/pipelines/kandinsky5_image
-        title: Kandinsky 5.0 Image
       title: Video
     title: Pipelines
   - sections:

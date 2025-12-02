@@ -14,29 +14,31 @@
 
 import html
 from typing import Callable, Dict, List, Optional, Union
-import numpy as np
 
+import numpy as np
 import regex as re
 import torch
 from torch.nn import functional as F
 from transformers import CLIPTextModel, CLIPTokenizer, Qwen2_5_VLForConditionalGeneration, Qwen2VLProcessor
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
+from ...image_processor import VaeImageProcessor
 from ...loaders import KandinskyLoraLoaderMixin
 from ...models import AutoencoderKL
 from ...models.transformers import Kandinsky5Transformer3DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
-from ...utils import is_ftfy_available, is_torch_xla_available, logging, replace_example_docstring
-from ...utils.torch_utils import randn_tensor
-from ...image_processor import VaeImageProcessor
-from ..pipeline_utils import DiffusionPipeline
-from .pipeline_output import KandinskyImagePipelineOutput
 
 # Add imports for offloading and tiling
 from ...utils import (
-    is_accelerate_available,
-    is_accelerate_version,
+    is_ftfy_available,
+    is_torch_xla_available,
+    logging,
+    replace_example_docstring,
 )
+from ...utils.torch_utils import randn_tensor
+from ..pipeline_utils import DiffusionPipeline
+from .pipeline_output import KandinskyImagePipelineOutput
+
 
 if is_torch_xla_available():
     import torch_xla.core.xla_model as xm
@@ -85,7 +87,7 @@ EXAMPLE_DOC_STRING = """
 def basic_clean(text):
     """
     Copied from https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/wan/pipeline_wan.py
-    
+
     Clean text using ftfy if available and unescape HTML entities.
     """
     if is_ftfy_available():
@@ -97,7 +99,7 @@ def basic_clean(text):
 def whitespace_clean(text):
     """
     Copied from https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/wan/pipeline_wan.py
-    
+
     Normalize whitespace in text by replacing multiple spaces with single space.
     """
     text = re.sub(r"\s+", " ", text)
@@ -108,7 +110,7 @@ def whitespace_clean(text):
 def prompt_clean(text):
     """
     Copied from https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/wan/pipeline_wan.py
-    
+
     Apply both basic cleaning and whitespace normalization to prompts.
     """
     text = whitespace_clean(basic_clean(text))
@@ -126,14 +128,16 @@ class Kandinsky5T2IPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
         transformer ([`Kandinsky5Transformer3DModel`]):
             Conditional Transformer to denoise the encoded image latents.
         vae ([`AutoencoderKL`]):
-            Variational Auto-Encoder Model [black-forest-labs/FLUX.1-dev (vae)](https://huggingface.co/black-forest-labs/FLUX.1-dev) to encode and decode videos to and from latent representations.
+            Variational Auto-Encoder Model [black-forest-labs/FLUX.1-dev
+            (vae)](https://huggingface.co/black-forest-labs/FLUX.1-dev) to encode and decode videos to and from latent
+            representations.
         text_encoder ([`Qwen2_5_VLForConditionalGeneration`]):
             Frozen text-encoder [Qwen2.5-VL](https://huggingface.co/Qwen/Qwen2.5-VL-7B-Instruct).
         tokenizer ([`AutoProcessor`]):
             Tokenizer for Qwen2.5-VL.
         text_encoder_2 ([`CLIPTextModel`]):
-            Frozen [CLIP](https://huggingface.co/docs/transformers/model_doc/clip#transformers.CLIPTextModel), specifically
-            the [clip-vit-large-patch14](https://huggingface.co/openai/clip-vit-large-patch14) variant.
+            Frozen [CLIP](https://huggingface.co/docs/transformers/model_doc/clip#transformers.CLIPTextModel),
+            specifically the [clip-vit-large-patch14](https://huggingface.co/openai/clip-vit-large-patch14) variant.
         tokenizer_2 ([`CLIPTokenizer`]):
             Tokenizer for CLIP.
         scheduler ([`FlowMatchEulerDiscreteScheduler`]):
@@ -212,14 +216,14 @@ class Kandinsky5T2IPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
             videos=None,
             return_tensors="pt",
             padding="longest",
-        )['input_ids']
+        )["input_ids"]
 
         if untruncated_ids.shape[-1] > max_allowed_len:
-            for i,text in enumerate(full_texts):
-                tokens = untruncated_ids[i][self.prompt_template_encode_start_idx:-2]
-                removed_text = self.tokenizer.decode(tokens[max_sequence_length-2:])
+            for i, text in enumerate(full_texts):
+                tokens = untruncated_ids[i][self.prompt_template_encode_start_idx : -2]
+                removed_text = self.tokenizer.decode(tokens[max_sequence_length - 2 :])
                 if len(removed_text) > 0:
-                    full_texts[i] = text[:-len(removed_text)]
+                    full_texts[i] = text[: -len(removed_text)]
                     logger.warning(
                         "The following part of your input was truncated because `max_sequence_length` is set to "
                         f" {max_sequence_length} tokens: {removed_text}"
@@ -239,8 +243,8 @@ class Kandinsky5T2IPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
             input_ids=inputs["input_ids"],
             return_dict=True,
             output_hidden_states=True,
-        )["hidden_states"][-1][:, self.prompt_template_encode_start_idx:]
-        attention_mask = inputs["attention_mask"][:, self.prompt_template_encode_start_idx:]
+        )["hidden_states"][-1][:, self.prompt_template_encode_start_idx :]
+        attention_mask = inputs["attention_mask"][:, self.prompt_template_encode_start_idx :]
         cu_seqlens = torch.cumsum(attention_mask.sum(1), dim=0)
         cu_seqlens = F.pad(cu_seqlens, (1, 0), value=0).to(dtype=torch.int32)
 
@@ -409,12 +413,13 @@ class Kandinsky5T2IPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
         """
 
         if max_sequence_length is not None and max_sequence_length > 1024:
-            raise ValueError(f"max_sequence_length must be less than 1024")
+            raise ValueError("max_sequence_length must be less than 1024")
 
         if (width, height) not in self.resolutions:
-            resolutions_str = ','.join([f'({w},{h})' for w, h in self.resolutions])
+            resolutions_str = ",".join([f"({w},{h})" for w, h in self.resolutions])
             logger.warning(
-                f"`height` and `width` have to be one of {resolutions_str}, but are {height} and {width}. Dimensions will be resized accordingly")
+                f"`height` and `width` have to be one of {resolutions_str}, but are {height} and {width}. Dimensions will be resized accordingly"
+            )
 
         if callback_on_step_end_tensor_inputs is not None and not all(
             k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
@@ -475,7 +480,7 @@ class Kandinsky5T2IPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
         """
         Prepare initial latent variables for text-to-image generation.
 
-        This method creates random noise latents 
+        This method creates random noise latents
 
         Args:
             batch_size (int): Number of images to generate
@@ -603,8 +608,8 @@ class Kandinsky5T2IPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
 
         Returns:
             [`~KandinskyImagePipelineOutput`] or `tuple`:
-                If `return_dict` is `True`, [`KandinskyImagePipelineOutput`] is returned, otherwise a `tuple` is returned
-                where the first element is a list with the generated images.
+                If `return_dict` is `True`, [`KandinskyImagePipelineOutput`] is returned, otherwise a `tuple` is
+                returned where the first element is a list with the generated images.
         """
         if isinstance(callback_on_step_end, (PipelineCallback, MultiPipelineCallbacks)):
             callback_on_step_end_tensor_inputs = callback_on_step_end.tensor_inputs
@@ -623,8 +628,9 @@ class Kandinsky5T2IPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
             max_sequence_length=max_sequence_length,
         )
         if (width, height) not in self.resolutions:
-            width, height = self.resolutions[np.argmin(
-                [abs((i[0] / i[1]) - (width / height)) for i in self.resolutions])]
+            width, height = self.resolutions[
+                np.argmin([abs((i[0] / i[1]) - (width / height)) for i in self.resolutions])
+            ]
 
         self._guidance_scale = guidance_scale
         self._interrupt = False
@@ -651,7 +657,7 @@ class Kandinsky5T2IPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
                 dtype=dtype,
             )
 
-        if self.guidance_scale > 1.:
+        if self.guidance_scale > 1.0:
             if negative_prompt is None:
                 negative_prompt = ""
 
@@ -734,7 +740,7 @@ class Kandinsky5T2IPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
                     return_dict=True,
                 ).sample
 
-                if self.guidance_scale > 1. and negative_prompt_embeds_qwen is not None:
+                if self.guidance_scale > 1.0 and negative_prompt_embeds_qwen is not None:
                     uncond_pred_velocity = self.transformer(
                         hidden_states=latents.to(dtype),
                         encoder_hidden_states=negative_prompt_embeds_qwen.to(dtype),
@@ -749,9 +755,7 @@ class Kandinsky5T2IPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
 
                     pred_velocity = uncond_pred_velocity + guidance_scale * (pred_velocity - uncond_pred_velocity)
 
-                latents = self.scheduler.step(
-                    pred_velocity[:, :], t, latents, return_dict=False
-                )[0]
+                latents = self.scheduler.step(pred_velocity[:, :], t, latents, return_dict=False)[0]
 
                 if callback_on_step_end is not None:
                     callback_kwargs = {}
@@ -784,7 +788,8 @@ class Kandinsky5T2IPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
             # Reshape and normalize latents
             latents = latents.reshape(
                 batch_size,
-                num_images_per_prompt, 1,
+                num_images_per_prompt,
+                1,
                 height // self.vae_scale_factor_spatial,
                 width // self.vae_scale_factor_spatial,
                 num_channels_latents,
