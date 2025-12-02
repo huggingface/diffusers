@@ -19,7 +19,7 @@ import torch
 from transformers import AutoTokenizer, PreTrainedModel
 
 from ...image_processor import VaeImageProcessor
-from ...loaders import FromSingleFileMixin
+from ...loaders import FromSingleFileMixin, ZImageLoraLoaderMixin
 from ...models.autoencoders import AutoencoderKL
 from ...models.transformers import ZImageTransformer2DModel
 from ...pipelines.pipeline_utils import DiffusionPipeline
@@ -134,7 +134,7 @@ def retrieve_timesteps(
     return timesteps, num_inference_steps
 
 
-class ZImagePipeline(DiffusionPipeline, FromSingleFileMixin):
+class ZImagePipeline(DiffusionPipeline, ZImageLoraLoaderMixin, FromSingleFileMixin):
     model_cpu_offload_seq = "text_encoder->transformer->vae"
     _optional_components = []
     _callback_tensor_inputs = ["latents", "prompt_embeds"]
@@ -165,21 +165,16 @@ class ZImagePipeline(DiffusionPipeline, FromSingleFileMixin):
         self,
         prompt: Union[str, List[str]],
         device: Optional[torch.device] = None,
-        dtype: Optional[torch.dtype] = None,
-        num_images_per_prompt: int = 1,
         do_classifier_free_guidance: bool = True,
         negative_prompt: Optional[Union[str, List[str]]] = None,
         prompt_embeds: Optional[List[torch.FloatTensor]] = None,
         negative_prompt_embeds: Optional[torch.FloatTensor] = None,
         max_sequence_length: int = 512,
-        lora_scale: Optional[float] = None,
     ):
         prompt = [prompt] if isinstance(prompt, str) else prompt
         prompt_embeds = self._encode_prompt(
             prompt=prompt,
             device=device,
-            dtype=dtype,
-            num_images_per_prompt=num_images_per_prompt,
             prompt_embeds=prompt_embeds,
             max_sequence_length=max_sequence_length,
         )
@@ -193,8 +188,6 @@ class ZImagePipeline(DiffusionPipeline, FromSingleFileMixin):
             negative_prompt_embeds = self._encode_prompt(
                 prompt=negative_prompt,
                 device=device,
-                dtype=dtype,
-                num_images_per_prompt=num_images_per_prompt,
                 prompt_embeds=negative_prompt_embeds,
                 max_sequence_length=max_sequence_length,
             )
@@ -206,12 +199,9 @@ class ZImagePipeline(DiffusionPipeline, FromSingleFileMixin):
         self,
         prompt: Union[str, List[str]],
         device: Optional[torch.device] = None,
-        dtype: Optional[torch.dtype] = None,
-        num_images_per_prompt: int = 1,
         prompt_embeds: Optional[List[torch.FloatTensor]] = None,
         max_sequence_length: int = 512,
     ) -> List[torch.FloatTensor]:
-        assert num_images_per_prompt == 1
         device = device or self._execution_device
 
         if prompt_embeds is not None:
@@ -417,8 +407,6 @@ class ZImagePipeline(DiffusionPipeline, FromSingleFileMixin):
                 f"Please adjust the width to a multiple of {vae_scale}."
             )
 
-        assert self.dtype == torch.bfloat16
-        dtype = self.dtype
         device = self._execution_device
 
         self._guidance_scale = guidance_scale
@@ -433,10 +421,6 @@ class ZImagePipeline(DiffusionPipeline, FromSingleFileMixin):
             batch_size = len(prompt)
         else:
             batch_size = len(prompt_embeds)
-
-        lora_scale = (
-            self.joint_attention_kwargs.get("scale", None) if self.joint_attention_kwargs is not None else None
-        )
 
         # If prompt_embeds is provided and prompt is None, skip encoding
         if prompt_embeds is not None and prompt is None:
@@ -455,11 +439,8 @@ class ZImagePipeline(DiffusionPipeline, FromSingleFileMixin):
                 do_classifier_free_guidance=self.do_classifier_free_guidance,
                 prompt_embeds=prompt_embeds,
                 negative_prompt_embeds=negative_prompt_embeds,
-                dtype=dtype,
                 device=device,
-                num_images_per_prompt=num_images_per_prompt,
                 max_sequence_length=max_sequence_length,
-                lora_scale=lora_scale,
             )
 
         # 4. Prepare latent variables
@@ -475,6 +456,14 @@ class ZImagePipeline(DiffusionPipeline, FromSingleFileMixin):
             generator,
             latents,
         )
+
+        # Repeat prompt_embeds for num_images_per_prompt
+        if num_images_per_prompt > 1:
+            prompt_embeds = [pe for pe in prompt_embeds for _ in range(num_images_per_prompt)]
+            if self.do_classifier_free_guidance and negative_prompt_embeds:
+                negative_prompt_embeds = [npe for npe in negative_prompt_embeds for _ in range(num_images_per_prompt)]
+
+        actual_batch_size = batch_size * num_images_per_prompt
         image_seq_len = (latents.shape[2] // 2) * (latents.shape[3] // 2)
 
         # 5. Prepare timesteps
@@ -523,12 +512,12 @@ class ZImagePipeline(DiffusionPipeline, FromSingleFileMixin):
                 apply_cfg = self.do_classifier_free_guidance and current_guidance_scale > 0
 
                 if apply_cfg:
-                    latents_typed = latents if latents.dtype == dtype else latents.to(dtype)
+                    latents_typed = latents.to(self.transformer.dtype)
                     latent_model_input = latents_typed.repeat(2, 1, 1, 1)
                     prompt_embeds_model_input = prompt_embeds + negative_prompt_embeds
                     timestep_model_input = timestep.repeat(2)
                 else:
-                    latent_model_input = latents if latents.dtype == dtype else latents.to(dtype)
+                    latent_model_input = latents.to(self.transformer.dtype)
                     prompt_embeds_model_input = prompt_embeds
                     timestep_model_input = timestep
 
@@ -543,11 +532,11 @@ class ZImagePipeline(DiffusionPipeline, FromSingleFileMixin):
 
                 if apply_cfg:
                     # Perform CFG
-                    pos_out = model_out_list[:batch_size]
-                    neg_out = model_out_list[batch_size:]
+                    pos_out = model_out_list[:actual_batch_size]
+                    neg_out = model_out_list[actual_batch_size:]
 
                     noise_pred = []
-                    for j in range(batch_size):
+                    for j in range(actual_batch_size):
                         pos = pos_out[j].float()
                         neg = neg_out[j].float()
 
@@ -588,11 +577,11 @@ class ZImagePipeline(DiffusionPipeline, FromSingleFileMixin):
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                     progress_bar.update()
 
-        latents = latents.to(dtype)
         if output_type == "latent":
             image = latents
 
         else:
+            latents = latents.to(self.vae.dtype)
             latents = (latents / self.vae.config.scaling_factor) + self.vae.config.shift_factor
 
             image = self.vae.decode(latents, return_dict=False)[0]
