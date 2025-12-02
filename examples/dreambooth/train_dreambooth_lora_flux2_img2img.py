@@ -1652,6 +1652,8 @@ def main(args):
 
                 # concatenate the model inputs with the cond inputs
                 packed_noisy_model_input = torch.cat([packed_noisy_model_input, packed_cond_model_input], dim=1)
+                orig_inp_shape = packed_noisy_model_input.shape
+                orig_inp_ids_shape = model_input_ids.shape
                 model_input_ids = torch.cat([model_input_ids, cond_model_input_ids], dim=1)
 
                 # handle guidance
@@ -1668,8 +1670,8 @@ def main(args):
                     img_ids=model_input_ids,  # B, image_seq_len, 4
                     return_dict=False,
                 )[0]
-                model_pred = model_pred[:, : packed_noisy_model_input.size(1) :]
-
+                model_pred = model_pred[:, : orig_inp_shape[1] :]
+                model_input_ids = model_input_ids[:, :orig_inp_ids_shape[1] :]
                 model_pred = Flux2Pipeline._unpack_latents_with_ids(model_pred, model_input_ids)
 
                 # these weighting schemes use a uniform timestep sampling
