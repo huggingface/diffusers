@@ -115,6 +115,8 @@ class FluxAttnProcessor:
             query = apply_rotary_emb(query, image_rotary_emb, sequence_dim=1)
             key = apply_rotary_emb(key, image_rotary_emb, sequence_dim=1)
 
+        print("query", query.shape, "key", key.shape, "value", value.shape)
+
         hidden_states = dispatch_attention_fn(
             query,
             key,
