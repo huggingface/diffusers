@@ -189,6 +189,7 @@ class ZImageImg2ImgPipeline(DiffusionPipeline, ZImageLoraLoaderMixin, FromSingle
         )
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor * 2)
 
+    # Copied from diffusers.pipelines.z_image.pipeline_z_image.ZImagePipeline.encode_prompt
     def encode_prompt(
         self,
         prompt: Union[str, List[str]],
@@ -223,6 +224,7 @@ class ZImageImg2ImgPipeline(DiffusionPipeline, ZImageLoraLoaderMixin, FromSingle
             negative_prompt_embeds = []
         return prompt_embeds, negative_prompt_embeds
 
+    # Copied from diffusers.pipelines.z_image.pipeline_z_image.ZImagePipeline._encode_prompt
     def _encode_prompt(
         self,
         prompt: Union[str, List[str]],
