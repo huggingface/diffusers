@@ -5,7 +5,7 @@ import os
 import tempfile
 import unittest
 import uuid
-from typing import Any, Callable, Dict, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Union
 
 import numpy as np
 import PIL.Image
@@ -2084,8 +2084,8 @@ class PipelineTesterMixin:
 
     def test_encode_prompt_works_in_isolation(
         self,
-        extra_required_param_value_dict: Optional[dict] = None,
-        keep_params: Optional[list] = None,
+        extra_required_param_value_dict: Optional[Dict] = None,
+        keep_params: Optional[List] = None,
         atol=1e-4,
         rtol=1e-4,
     ):
