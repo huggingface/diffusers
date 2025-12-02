@@ -203,6 +203,7 @@ else:
             "StableDiffusionXLPAGImg2ImgPipeline",
             "PixArtSigmaPAGPipeline",
             "SanaPAGPipeline",
+            "FluxPAGPipeline",
         ]
     )
     _import_structure["controlnet_xs"].extend(
