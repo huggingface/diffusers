@@ -26,16 +26,12 @@ from ...utils.torch_utils import maybe_allow_in_graph
 from ..attention import AttentionModuleMixin, FeedForward
 from ..attention_dispatch import dispatch_attention_fn
 from ..cache_utils import CacheMixin
-from ..embeddings import (
-    Timesteps,
-    TimestepEmbedding,
-    apply_rotary_emb,
-    get_1d_rotary_pos_embed,
-)
+from ..embeddings import (TimestepEmbedding, Timesteps, apply_rotary_emb,
+                          get_1d_rotary_pos_embed)
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
-from ..normalization import AdaLayerNormContinuous, AdaLayerNormZero, AdaLayerNormZeroSingle
-
+from ..normalization import (AdaLayerNormContinuous, AdaLayerNormZero,
+                             AdaLayerNormZeroSingle)
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 

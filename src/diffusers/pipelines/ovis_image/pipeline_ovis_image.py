@@ -17,24 +17,15 @@ from typing import Any, Callable, Dict, List, Optional, Union
 
 import numpy as np
 import torch
-from transformers import (
-    Qwen3Model,
-    Qwen2TokenizerFast,
-)
+from transformers import Qwen2TokenizerFast, Qwen3Model
 
 from ...image_processor import VaeImageProcessor
 from ...models import AutoencoderKL, OvisImageTransformer2DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
-from ...utils import (
-    deprecate,
-    is_torch_xla_available,
-    logging,
-    replace_example_docstring,
-)
+from ...utils import is_torch_xla_available, logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
 from .pipeline_output import OvisImagePipelineOutput
-
 
 if is_torch_xla_available():
     import torch_xla.core.xla_model as xm
