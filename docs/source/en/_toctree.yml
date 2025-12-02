@@ -399,7 +399,7 @@
         title: WanAnimateTransformer3DModel
       - local: api/models/wan_transformer_3d
         title: WanTransformer3DModel
-      - local: z_image_transformer2d.md
+      - local: z_image_transformer2d
         title: ZImageTransformer2DModel        
       title: Transformers
     - sections:
@@ -644,7 +644,7 @@
         title: VisualCloze
       - local: api/pipelines/wuerstchen
         title: Wuerstchen
-      - local: api/pipelines/z_image.md
+      - local: api/pipelines/z_image
         title: Z-Image        
       title: Image
     - sections:
