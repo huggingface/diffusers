@@ -182,7 +182,6 @@ class DummyCallableBySubmodule:
             return mods[0] if len(mods) == 1 else None
         return None
     
-# Test for https://github.com/huggingface/diffusers/pull/12747
 class DummyCallableByNameSubmodule(DummyCallableBySubmodule):
     """
     Callable group offloading pinner that pins first and last DummyBlock
@@ -193,7 +192,6 @@ class DummyCallableByNameSubmodule(DummyCallableBySubmodule):
         self.calls_track.append((name, submodule))
         return self._normalize_module_type(submodule) in self.pin_targets
     
-# Test for https://github.com/huggingface/diffusers/pull/12747
 class DummyCallableByNameSubmoduleIdx(DummyCallableBySubmodule):
     """
     Callable group offloading pinner that pins first and last DummyBlock.
@@ -204,7 +202,6 @@ class DummyCallableByNameSubmoduleIdx(DummyCallableBySubmodule):
         self.calls_track.append((name, submodule, idx))
         return self._normalize_module_type(submodule) in self.pin_targets
     
-# Test for https://github.com/huggingface/diffusers/pull/12747
 class DummyInvalidCallable(DummyCallableBySubmodule):
     """
     Callable group offloading pinner that uses invalid call signature
