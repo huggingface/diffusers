@@ -150,7 +150,9 @@ class Flux2TransformerCompileTests(TorchCompileTesterMixin, unittest.TestCase):
     def prepare_dummy_input(self, height, width):
         return ZImageTransformerTests().prepare_dummy_input(height=height, width=width)
 
-    @unittest.skip("Fullgraph is broken")
+    @unittest.skip(
+        "The repeated block in this model is ZImageTransformerBlock, which is used for noise_refiner, context_refiner, and layers. As a consequence of this, the inputs recorded for the block would vary during compilation and full compilation with fullgraph=True would trigger recompilation at least thrice."
+    )
     def test_torch_compile_recompilation_and_graph_break(self):
         super().test_torch_compile_recompilation_and_graph_break()
 
