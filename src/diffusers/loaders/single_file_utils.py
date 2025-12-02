@@ -3748,10 +3748,10 @@ def convert_chroma_radiance_transformer_checkpoint_to_diffusers(checkpoint, **kw
 
     # patch
     
-    converted_state_dict["img_in_patch.bias"] = checkpoint.pop(
+    converted_state_dict["x_embedder_patch.bias"] = checkpoint.pop(
         "img_in_patch.bias"
     )
-    converted_state_dict["img_in_patch.weight"] = checkpoint.pop(
+    converted_state_dict["x_embedder_patch.weight"] = checkpoint.pop(
         "img_in_patch.weight"
     )
 

@@ -74,9 +74,9 @@ class Nerf(nn.Module):
         pixels,
         latents,
         patch_size,
+        num_patches,
     ):
         batch_size, channels, height, width = pixels.shape
-        num_patches = latents.shape[1]
         
         pixels = nn.functional.unfold(pixels, kernel_size=self.patch_size, stride=self.patch_size)
         pixels = pixels.transpose(1, 2)
@@ -861,7 +861,7 @@ class ChromaRadianceTransformer2DModel(
             nerf_mlp_ratio,
         )
         
-        self.img_in_patch = nn.Conv2d(
+        self.x_embedder_patch = nn.Conv2d(
             in_channels,
             self.inner_dim,
             kernel_size=patch_size,
@@ -933,7 +933,7 @@ class ChromaRadianceTransformer2DModel(
             If `return_dict` is True, an [`~models.transformer_2d.Transformer2DModelOutput`] is returned, otherwise a
             `tuple` where the first element is the sample tensor.
         """
-        print(hidden_states.shape)
+        print("states", hidden_states.shape, encoder_hidden_states.shape)
         if joint_attention_kwargs is not None:
             joint_attention_kwargs = joint_attention_kwargs.copy()
             lora_scale = joint_attention_kwargs.pop("scale", 1.0)
@@ -949,8 +949,12 @@ class ChromaRadianceTransformer2DModel(
                     "Passing `scale` via `joint_attention_kwargs` when not using the PEFT backend is ineffective."
                 )
         
-        pixels = hidden_states
-        hidden_states = self.img_in_patch(hidden_states)
+        pixels = nn.functional.unfold(hidden_states, kernel_size=self.config.patch_size, stride=self.config.patch_size)
+        pixels = pixels.transpose(1, 2)
+        print("pixels", pixels.shape)
+        hidden_states = self.x_embedder_patch(hidden_states)
+        print("img_patch:", hidden_states.shape)
+        num_patches = hidden_states.shape[2] * hidden_states.shape[3]
         hidden_states = hidden_states.flatten(2).transpose(1, 2)
         print(hidden_states.shape)
 
@@ -975,8 +979,10 @@ class ChromaRadianceTransformer2DModel(
             )
             img_ids = img_ids[0]
 
+        print("txt", txt_ids.shape, "img", img_ids.shape)
         ids = torch.cat((txt_ids, img_ids), dim=0)
         image_rotary_emb = self.pos_embed(ids)
+        print("ids:", ids.shape, "emb:", image_rotary_emb[0].shape, image_rotary_emb[1].shape)
 
         if joint_attention_kwargs is not None and "ip_adapter_image_embeds" in joint_attention_kwargs:
             ip_adapter_image_embeds = joint_attention_kwargs.pop("ip_adapter_image_embeds")
@@ -1054,7 +1060,7 @@ class ChromaRadianceTransformer2DModel(
 
         hidden_states = hidden_states[:, encoder_hidden_states.shape[1] :, ...]
 
-        output = self.nerf(pixels, hidden_states, self.transformer.patch_size)
+        output = self.nerf(pixels, hidden_states, self.config.patch_size, num_patches)
 
         if USE_PEFT_BACKEND:
             # remove `lora_scale` from each PEFT layer

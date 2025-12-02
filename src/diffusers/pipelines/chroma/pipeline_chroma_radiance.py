@@ -500,6 +500,7 @@ class ChromaRadiancePipeline(
         device,
         generator,
         latents=None,
+        patch_size=2,
     ):
 
         shape = (batch_size, num_channels_latents, height, width)
@@ -518,7 +519,7 @@ class ChromaRadiancePipeline(
         latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
         #latents = self._pack_latents(latents, batch_size, num_channels_latents, height, width)
 
-        latent_image_ids = self._prepare_latent_image_ids(batch_size, height // 2, width // 2, device, dtype)
+        latent_image_ids = self._prepare_latent_image_ids(batch_size, height // patch_size, width // patch_size, device, dtype)
 
         return latents, latent_image_ids
 
@@ -751,6 +752,7 @@ class ChromaRadiancePipeline(
             device,
             generator,
             latents,
+            patch_size=self.transformer.config.patch_size,
         )
 
         # 5. Prepare timesteps
