@@ -204,6 +204,15 @@ class DummyCallableByNameSubmoduleIdx(DummyCallableBySubmodule):
     def __call__(self, name, submodule, idx):
         self.calls_track.append((name, submodule, idx))
         return self._normalize_module_type(submodule) in self.pin_targets
+    
+# Test for https://github.com/huggingface/diffusers/pull/12747
+class DummyInvalidCallable(DummyCallableBySubmodule):
+    """
+    Callable group offloading pinner that uses invalid call signature
+    """
+    def __call__(self, name, submodule, idx, extra):
+        self.calls_track.append((name, submodule, idx, extra))
+        return self._normalize_module_type(submodule) in self.pin_targets
 
 
 @require_torch_accelerator
@@ -420,7 +429,7 @@ class GroupOffloadTests(unittest.TestCase):
                 cumulated_absmax, 1e-5, f"Output differences for {name} exceeded threshold: {cumulated_absmax:.5f}"
             )
     
-    def test_block_level_pin_groups_stay_on_device(self):
+    def test_block_level_offloading_with_pin_groups_stay_on_device(self):
         if torch.device(torch_device).type not in ["cuda", "xpu"]:
             return
 
@@ -537,4 +546,40 @@ class GroupOffloadTests(unittest.TestCase):
         assert_callables_offloading_tests(param_modules, 
                                           callable_by_name_submodule_idx,
                                           header_error_msg="pin_groups with callable(name, submodule, idx)")
+        
+    def test_error_raised_if_pin_groups_received_invalid_value(self):
+        default_parameters = {
+            "onload_device": torch_device,
+            "offload_type": "block_level",
+            "num_blocks_per_group": 1,
+            "use_stream": True,
+        }
+        model = self.get_model()
+        with self.assertRaisesRegex(ValueError, 
+                                    "`pin_groups` must be one of `None`, 'first_last', 'all', or a callable."):
+            model.enable_group_offload(
+                **default_parameters,
+                pin_groups="invalid value",
+            )
+
+    def test_error_raised_if_pin_groups_received_invalid_callables(self):
+        default_parameters = {
+            "onload_device": torch_device,
+            "offload_type": "block_level",
+            "num_blocks_per_group": 1,
+            "use_stream": True,
+        }
+        model = self.get_model()
+        invalid_callable = DummyInvalidCallable(pin_targets=[model.blocks[0], model.blocks[-1]])
+        model.enable_group_offload(
+            **default_parameters,
+            pin_groups=invalid_callable,
+        )
+        with self.assertRaisesRegex(TypeError, 
+                                    r"missing\s+\d+\s+required\s+positional\s+argument(s)?:"):
+            with torch.no_grad():
+                model(self.input)
+            
+        
+
         
