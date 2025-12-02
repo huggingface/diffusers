@@ -62,6 +62,8 @@ _SET_ADAPTER_SCALE_FN_MAPPING = {
     "WanVACETransformer3DModel": lambda model_cls, weights: weights,
     "ChromaTransformer2DModel": lambda model_cls, weights: weights,
     "QwenImageTransformer2DModel": lambda model_cls, weights: weights,
+    "Flux2Transformer2DModel": lambda model_cls, weights: weights,
+    "ZImageTransformer2DModel": lambda model_cls, weights: weights,
 }
 
 

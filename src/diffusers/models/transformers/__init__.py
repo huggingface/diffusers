@@ -26,8 +26,10 @@ if is_torch_available():
     from .transformer_cosmos import CosmosTransformer3DModel
     from .transformer_easyanimate import EasyAnimateTransformer3DModel
     from .transformer_flux import FluxTransformer2DModel
+    from .transformer_flux2 import Flux2Transformer2DModel
     from .transformer_hidream_image import HiDreamImageTransformer2DModel
     from .transformer_hunyuan_video import HunyuanVideoTransformer3DModel
+    from .transformer_hunyuan_video15 import HunyuanVideo15Transformer3DModel
     from .transformer_hunyuan_video_framepack import HunyuanVideoFramepackTransformer3DModel
     from .transformer_hunyuanimage import HunyuanImageTransformer2DModel
     from .transformer_kandinsky import Kandinsky5Transformer3DModel
@@ -42,4 +44,6 @@ if is_torch_available():
     from .transformer_skyreels_v2 import SkyReelsV2Transformer3DModel
     from .transformer_temporal import TransformerTemporalModel
     from .transformer_wan import WanTransformer3DModel
+    from .transformer_wan_animate import WanAnimateTransformer3DModel
     from .transformer_wan_vace import WanVACETransformer3DModel
+    from .transformer_z_image import ZImageTransformer2DModel

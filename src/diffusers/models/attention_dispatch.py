@@ -16,8 +16,9 @@ import contextlib
 import functools
 import inspect
 import math
+from dataclasses import dataclass
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Literal, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, Union
 
 import torch
 
@@ -42,7 +43,7 @@ from ..utils import (
     is_xformers_available,
     is_xformers_version,
 )
-from ..utils.constants import DIFFUSERS_ATTN_BACKEND, DIFFUSERS_ATTN_CHECKS, DIFFUSERS_ENABLE_HUB_KERNELS
+from ..utils.constants import DIFFUSERS_ATTN_BACKEND, DIFFUSERS_ATTN_CHECKS
 
 
 if TYPE_CHECKING:
@@ -82,23 +83,10 @@ else:
     flash_attn_3_func = None
     flash_attn_3_varlen_func = None
 
-
 if _CAN_USE_AITER_ATTN:
     from aiter import flash_attn_func as aiter_flash_attn_func
 else:
     aiter_flash_attn_func = None
-
-if DIFFUSERS_ENABLE_HUB_KERNELS:
-    if not is_kernels_available():
-        raise ImportError(
-            "To use FA3 kernel for your hardware from the Hub, the `kernels` library must be installed. Install with `pip install kernels`."
-        )
-    from ..utils.kernels_utils import _get_fa3_from_hub
-
-    flash_attn_interface_hub = _get_fa3_from_hub()
-    flash_attn_3_func_hub = flash_attn_interface_hub.flash_attn_func
-else:
-    flash_attn_3_func_hub = None
 
 if _CAN_USE_SAGE_ATTN:
     from sageattention import (
@@ -172,16 +160,13 @@ logger = get_logger(__name__)  # pylint: disable=invalid-name
 # - CP with sage attention, flex, xformers, other missing backends
 # - Add support for normal and CP training with backends that don't support it yet
 
-_SAGE_ATTENTION_PV_ACCUM_DTYPE = Literal["fp32", "fp32+fp32"]
-_SAGE_ATTENTION_QK_QUANT_GRAN = Literal["per_thread", "per_warp"]
-_SAGE_ATTENTION_QUANTIZATION_BACKEND = Literal["cuda", "triton"]
-
 
 class AttentionBackendName(str, Enum):
     # EAGER = "eager"
 
     # `flash-attn`
     FLASH = "flash"
+    FLASH_HUB = "flash_hub"
     FLASH_VARLEN = "flash_varlen"
     _FLASH_3 = "_flash_3"
     _FLASH_VARLEN_3 = "_flash_varlen_3"
@@ -203,6 +188,7 @@ class AttentionBackendName(str, Enum):
 
     # `sageattention`
     SAGE = "sage"
+    SAGE_HUB = "sage_hub"
     SAGE_VARLEN = "sage_varlen"
     _SAGE_QK_INT8_PV_FP8_CUDA = "_sage_qk_int8_pv_fp8_cuda"
     _SAGE_QK_INT8_PV_FP8_CUDA_SM90 = "_sage_qk_int8_pv_fp8_cuda_sm90"
@@ -261,6 +247,31 @@ class _AttentionBackendRegistry:
         return supports_context_parallel
 
 
+@dataclass
+class _HubKernelConfig:
+    """Configuration for downloading and using a hub-based attention kernel."""
+
+    repo_id: str
+    function_attr: str
+    revision: Optional[str] = None
+    kernel_fn: Optional[Callable] = None
+
+
+# Registry for hub-based attention kernels
+_HUB_KERNELS_REGISTRY: Dict["AttentionBackendName", _HubKernelConfig] = {
+    # TODO: temporary revision for now. Remove when merged upstream into `main`.
+    AttentionBackendName._FLASH_3_HUB: _HubKernelConfig(
+        repo_id="kernels-community/flash-attn3", function_attr="flash_attn_func", revision="fake-ops-return-probs"
+    ),
+    AttentionBackendName.FLASH_HUB: _HubKernelConfig(
+        repo_id="kernels-community/flash-attn2", function_attr="flash_attn_func", revision=None
+    ),
+    AttentionBackendName.SAGE_HUB: _HubKernelConfig(
+        repo_id="kernels-community/sage_attention", function_attr="sageattn", revision=None
+    ),
+}
+
+
 @contextlib.contextmanager
 def attention_backend(backend: Union[str, AttentionBackendName] = AttentionBackendName.NATIVE):
     """
@@ -271,6 +282,7 @@ def attention_backend(backend: Union[str, AttentionBackendName] = AttentionBacke
 
     backend = AttentionBackendName(backend)
     _check_attention_backend_requirements(backend)
+    _maybe_download_kernel_for_backend(backend)
 
     old_backend = _AttentionBackendRegistry._active_backend
     _AttentionBackendRegistry._active_backend = backend
@@ -383,12 +395,18 @@ def _check_shape(
     attn_mask: Optional[torch.Tensor] = None,
     **kwargs,
 ) -> None:
+    # Expected shapes:
+    # query: (batch_size, seq_len_q, num_heads, head_dim)
+    # key:   (batch_size, seq_len_kv, num_heads, head_dim)
+    # value: (batch_size, seq_len_kv, num_heads, head_dim)
+    # attn_mask: (seq_len_q, seq_len_kv) or (batch_size, seq_len_q, seq_len_kv)
+    #            or (batch_size, num_heads, seq_len_q, seq_len_kv)
     if query.shape[-1] != key.shape[-1]:
-        raise ValueError("Query and key must have the same last dimension.")
-    if query.shape[-2] != value.shape[-2]:
-        raise ValueError("Query and value must have the same second to last dimension.")
-    if attn_mask is not None and attn_mask.shape[-1] != key.shape[-2]:
-        raise ValueError("Attention mask must match the key's second to last dimension.")
+        raise ValueError("Query and key must have the same head dimension.")
+    if key.shape[-3] != value.shape[-3]:
+        raise ValueError("Key and value must have the same sequence length.")
+    if attn_mask is not None and attn_mask.shape[-1] != key.shape[-3]:
+        raise ValueError("Attention mask must match the key's sequence length.")
 
 
 # ===== Helper functions =====
@@ -407,15 +425,11 @@ def _check_attention_backend_requirements(backend: AttentionBackendName) -> None
                 f"Flash Attention 3 backend '{backend.value}' is not usable because of missing package or the version is too old. Please build FA3 beta release from source."
             )
 
-    # TODO: add support Hub variant of FA3 varlen later
-    elif backend in [AttentionBackendName._FLASH_3_HUB]:
-        if not DIFFUSERS_ENABLE_HUB_KERNELS:
-            raise RuntimeError(
-                f"Flash Attention 3 Hub backend '{backend.value}' is not usable because the `DIFFUSERS_ENABLE_HUB_KERNELS` env var isn't set. Please set it like `export DIFFUSERS_ENABLE_HUB_KERNELS=yes`."
-            )
+    # TODO: add support Hub variant of varlen later
+    elif backend in [AttentionBackendName._FLASH_3_HUB, AttentionBackendName.FLASH_HUB, AttentionBackendName.SAGE_HUB]:
         if not is_kernels_available():
             raise RuntimeError(
-                f"Flash Attention 3 Hub backend '{backend.value}' is not usable because the `kernels` package isn't available. Please install it with `pip install kernels`."
+                f"Backend '{backend.value}' is not usable because the `kernels` package isn't available. Please install it with `pip install kernels`."
             )
 
     elif backend == AttentionBackendName.AITER:
@@ -563,6 +577,29 @@ def _normalize_attn_mask(attn_mask: torch.Tensor, batch_size: int, seq_len_k: in
 
 def _flex_attention_causal_mask_mod(batch_idx, head_idx, q_idx, kv_idx):
     return q_idx >= kv_idx
+
+
+# ===== Helpers for downloading kernels =====
+def _maybe_download_kernel_for_backend(backend: AttentionBackendName) -> None:
+    if backend not in _HUB_KERNELS_REGISTRY:
+        return
+    config = _HUB_KERNELS_REGISTRY[backend]
+
+    if config.kernel_fn is not None:
+        return
+
+    try:
+        from kernels import get_kernel
+
+        kernel_module = get_kernel(config.repo_id, revision=config.revision)
+        kernel_func = getattr(kernel_module, config.function_attr)
+
+        # Cache the downloaded kernel function in the config object
+        config.kernel_fn = kernel_func
+
+    except Exception as e:
+        logger.error(f"An error occurred while fetching kernel '{config.repo_id}' from the Hub: {e}")
+        raise
 
 
 # ===== torch op registrations =====
@@ -1319,6 +1356,38 @@ def _flash_attention(
 
 
 @_AttentionBackendRegistry.register(
+    AttentionBackendName.FLASH_HUB,
+    constraints=[_check_device, _check_qkv_dtype_bf16_or_fp16, _check_shape],
+    supports_context_parallel=False,
+)
+def _flash_attention_hub(
+    query: torch.Tensor,
+    key: torch.Tensor,
+    value: torch.Tensor,
+    dropout_p: float = 0.0,
+    is_causal: bool = False,
+    scale: Optional[float] = None,
+    return_lse: bool = False,
+    _parallel_config: Optional["ParallelConfig"] = None,
+) -> torch.Tensor:
+    lse = None
+    func = _HUB_KERNELS_REGISTRY[AttentionBackendName.FLASH_HUB].kernel_fn
+    out = func(
+        q=query,
+        k=key,
+        v=value,
+        dropout_p=dropout_p,
+        softmax_scale=scale,
+        causal=is_causal,
+        return_attn_probs=return_lse,
+    )
+    if return_lse:
+        out, lse, *_ = out
+
+    return (out, lse) if return_lse else out
+
+
+@_AttentionBackendRegistry.register(
     AttentionBackendName.FLASH_VARLEN,
     constraints=[_check_device, _check_qkv_dtype_bf16_or_fp16, _check_shape],
 )
@@ -1399,6 +1468,7 @@ def _flash_attention_3(
 @_AttentionBackendRegistry.register(
     AttentionBackendName._FLASH_3_HUB,
     constraints=[_check_device, _check_qkv_dtype_bf16_or_fp16, _check_shape],
+    supports_context_parallel=False,
 )
 def _flash_attention_3_hub(
     query: torch.Tensor,
@@ -1412,7 +1482,11 @@ def _flash_attention_3_hub(
     return_attn_probs: bool = False,
     _parallel_config: Optional["ParallelConfig"] = None,
 ) -> torch.Tensor:
-    out = flash_attn_3_func_hub(
+    if _parallel_config:
+        raise NotImplementedError(f"{AttentionBackendName._FLASH_3_HUB.value} is not implemented for parallelism yet.")
+
+    func = _HUB_KERNELS_REGISTRY[AttentionBackendName._FLASH_3_HUB].kernel_fn
+    out = func(
         q=query,
         k=key,
         v=value,
@@ -1901,6 +1975,38 @@ def _sage_attention(
         )
         if return_lse:
             out, lse = out
+
+    return (out, lse) if return_lse else out
+
+
+@_AttentionBackendRegistry.register(
+    AttentionBackendName.SAGE_HUB,
+    constraints=[_check_device_cuda, _check_qkv_dtype_bf16_or_fp16, _check_shape],
+    supports_context_parallel=False,
+)
+def _sage_attention_hub(
+    query: torch.Tensor,
+    key: torch.Tensor,
+    value: torch.Tensor,
+    is_causal: bool = False,
+    scale: Optional[float] = None,
+    return_lse: bool = False,
+    _parallel_config: Optional["ParallelConfig"] = None,
+) -> torch.Tensor:
+    lse = None
+    func = _HUB_KERNELS_REGISTRY[AttentionBackendName.SAGE_HUB].kernel_fn
+    if _parallel_config is None:
+        out = func(
+            q=query,
+            k=key,
+            v=value,
+            tensor_layout="NHD",
+            is_causal=is_causal,
+            sm_scale=scale,
+            return_lse=return_lse,
+        )
+        if return_lse:
+            out, lse, *_ = out
 
     return (out, lse) if return_lse else out
 
