@@ -389,6 +389,14 @@ def is_valid_url(url):
     return False
 
 
+def _is_single_file_path_or_url(pretrained_model_name_or_path):
+    if not os.path.isfile(pretrained_model_name_or_path) or not is_valid_url(pretrained_model_name_or_path):
+        return False
+
+    repo_id, weight_name = _extract_repo_id_and_weights_name(pretrained_model_name_or_path)
+    return bool(repo_id and weight_name)
+
+
 def _extract_repo_id_and_weights_name(pretrained_model_name_or_path):
     if not is_valid_url(pretrained_model_name_or_path):
         raise ValueError("Invalid `pretrained_model_name_or_path` provided. Please set it to a valid URL.")
@@ -400,7 +408,6 @@ def _extract_repo_id_and_weights_name(pretrained_model_name_or_path):
         pretrained_model_name_or_path = pretrained_model_name_or_path.replace(prefix, "")
     match = re.match(pattern, pretrained_model_name_or_path)
     if not match:
-        logger.warning("Unable to identify the repo_id and weights_name from the provided URL.")
         return repo_id, weights_name
 
     repo_id = f"{match.group(1)}/{match.group(2)}"
