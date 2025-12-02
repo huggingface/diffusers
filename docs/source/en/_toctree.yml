@@ -399,7 +399,7 @@
         title: WanAnimateTransformer3DModel
       - local: api/models/wan_transformer_3d
         title: WanTransformer3DModel
-      - local: z_image_transformer2d
+      - local: api/models/z_image_transformer2d
         title: ZImageTransformer2DModel        
       title: Transformers
     - sections:
