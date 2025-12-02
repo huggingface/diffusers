@@ -1229,8 +1229,6 @@ def apply_rotary_emb(
         else:
             raise ValueError(f"`use_real_unbind_dim={use_real_unbind_dim}` but should be -1 or -2.")
 
-        print(x.shape, cos.shape)
-
         out = (x.float() * cos + x_rotated.float() * sin).to(x.dtype)
 
         return out
