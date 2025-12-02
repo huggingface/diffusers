@@ -134,7 +134,7 @@ class Kandinsky5I2VPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "prompt": "a red square",
             "height": 1024,
             "width": 1024,
-            "num_frames": 5,
+            "num_frames": 11,
             "num_inference_steps": 2,
             "guidance_scale": 4.0,
             "generator": generator,
@@ -154,7 +154,7 @@ class Kandinsky5I2VPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         video = output.frames[0]
 
         # 5 frames, RGB, 32×32
-        self.assertEqual(video.shape, (5, 3, 1024, 1024))
+        self.assertEqual(video.shape, (11, 3, 1024, 1024))
 
     @unittest.skip("Test not supported")
     def test_attention_slicing_forward_pass(self):
