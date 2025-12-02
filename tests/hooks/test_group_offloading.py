@@ -25,7 +25,7 @@ from diffusers.pipelines.pipeline_utils import DiffusionPipeline
 from diffusers.utils import get_logger
 from diffusers.utils.import_utils import compare_versions
 
-from typing import Union
+from typing import Any, Iterable, List, Optional, Sequence, Union
 
 from ..testing_utils import (
     backend_empty_cache,
@@ -157,16 +157,15 @@ class DummyCallableBySubmodule:
     Callable group offloading pinner that pins first and last DummyBlock
     called in the program by callable(submodule)
     """
-    def __init__(self, pin_targets):
+    def __init__(self, pin_targets: Iterable[torch.nn.Module]) -> None:
         self.pin_targets = set(pin_targets)
-        self.calls_track = [] #only for testing purposes
+        self.calls_track = [] # testing only
 
-    def __call__(self, submodule):
+    def __call__(self, submodule: torch.nn.Module) -> bool:
         self.calls_track.append(submodule)
-
         return self._normalize_module_type(submodule) in self.pin_targets
     
-    def _normalize_module_type(self, obj):
+    def _normalize_module_type(self, obj: Any) -> Optional[torch.nn.Module]:
         # group might be a single module, or a container of modules
         # The group-offloading code may pass either:
         #   - a single `torch.nn.Module`, or
@@ -190,7 +189,7 @@ class DummyCallableByNameSubmodule(DummyCallableBySubmodule):
     Same behaviour with DummyCallableBySubmodule, only with different call signature
     called in the program by callable(name, submodule)
     """
-    def __call__(self, name, submodule):
+    def __call__(self, name: str, submodule: torch.nn.Module) -> bool:
         self.calls_track.append((name, submodule))
         return self._normalize_module_type(submodule) in self.pin_targets
     
@@ -201,7 +200,7 @@ class DummyCallableByNameSubmoduleIdx(DummyCallableBySubmodule):
     Same behaviour with DummyCallableBySubmodule, only with different call signature
     Called in the program by callable(name, submodule, idx)
     """
-    def __call__(self, name, submodule, idx):
+    def __call__(self, name: str, submodule: torch.nn.Module, idx: int) -> bool:
         self.calls_track.append((name, submodule, idx))
         return self._normalize_module_type(submodule) in self.pin_targets
     
@@ -210,7 +209,7 @@ class DummyInvalidCallable(DummyCallableBySubmodule):
     """
     Callable group offloading pinner that uses invalid call signature
     """
-    def __call__(self, name, submodule, idx, extra):
+    def __call__(self, name: str, submodule: torch.nn.Module, idx: int, extra: Any) -> bool:
         self.calls_track.append((name, submodule, idx, extra))
         return self._normalize_module_type(submodule) in self.pin_targets
 
@@ -433,10 +432,10 @@ class GroupOffloadTests(unittest.TestCase):
         if torch.device(torch_device).type not in ["cuda", "xpu"]:
             return
 
-        def assert_all_modules_on_expected_device(modules, 
-                                                  expected_device: Union[torch.device, str], 
-                                                  header_error_msg: str = ""):
-            def first_param_device(modules):
+        def assert_all_modules_on_expected_device(modules: Sequence[torch.nn.Module],
+                                                  expected_device: Union[torch.device, str],
+                                                  header_error_msg: str = "") -> None:
+            def first_param_device(modules: torch.nn.Module) -> torch.device:
                 p = next(modules.parameters(), None)
                 self.assertIsNotNone(p, f"No parameters found for module {modules}")
                 return p.device
@@ -455,7 +454,7 @@ class GroupOffloadTests(unittest.TestCase):
                 + f"Expected all modules on {expected_device}, but found mismatches: {bad}",
             )
 
-        def get_param_modules_from_execution_order(model):
+        def get_param_modules_from_execution_order(model: DummyModel) -> List[torch.nn.Module]:
             model.eval()
             root_registry = HookRegistry.check_if_exists_or_initialize(model)
 
@@ -470,12 +469,14 @@ class GroupOffloadTests(unittest.TestCase):
             param_modules = [m for m in mods if next(m.parameters(), None) is not None]
             return param_modules
         
-        def assert_callables_offloading_tests(param_modules, 
-                                              callables,
-                                              header_error_msg: str = ""):
-            pinned_modules = [m for m in param_modules if m in callables.pin_targets]
-            unpinned_modules = [m for m in param_modules if m not in callables.pin_targets]
-            self.assertTrue(len(callables.calls_track) > 0, f"{header_error_msg}: callable should have been called at least once")
+        def assert_callables_offloading_tests(
+            param_modules: Sequence[torch.nn.Module],
+            callable: Any,
+            header_error_msg: str = "",
+        ) -> None:
+            pinned_modules = [m for m in param_modules if m in callable.pin_targets]
+            unpinned_modules = [m for m in param_modules if m not in callable.pin_targets]
+            self.assertTrue(len(callable.calls_track) > 0, f"{header_error_msg}: callable should have been called at least once")
             assert_all_modules_on_expected_device(pinned_modules, torch_device, f"{header_error_msg}: pinned blocks should stay on device")
             assert_all_modules_on_expected_device(unpinned_modules, "cpu", f"{header_error_msg}: unpinned blocks should be offloaded")
 
