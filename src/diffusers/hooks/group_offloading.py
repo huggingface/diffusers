@@ -376,9 +376,10 @@ class LazyPrefetchGroupOffloadingHook(ModelHook):
 
     _is_stateful = False
 
-    def __init__(self):
+    def __init__(self, pin_groups: Optional[Union[str, Callable]] = None):
         self.execution_order: List[Tuple[str, torch.nn.Module]] = []
         self._layer_execution_tracker_module_names = set()
+        self.pin_groups = pin_groups
 
     def initialize_hook(self, module):
         def make_execution_order_update_callback(current_name, current_submodule):
@@ -460,8 +461,7 @@ class LazyPrefetchGroupOffloadingHook(ModelHook):
             group_offloading_hooks[i].next_group = group_offloading_hooks[i + 1].group
             group_offloading_hooks[i].next_group.onload_self = False
 
-        pin_groups = getattr(base_module_registry, "_group_offload_pin_groups", None)
-        if pin_groups is not None and num_executed > 0:
+        if self.pin_groups is not None and num_executed > 0:
             param_exec_info = []
             for idx, ((name, submodule), hook) in enumerate(zip(self.execution_order, group_offloading_hooks)):
                 if hook is None:
@@ -473,22 +473,22 @@ class LazyPrefetchGroupOffloadingHook(ModelHook):
             num_param_modules = len(param_exec_info)
             if num_param_modules > 0:
                 pinned_indices = set()
-                if isinstance(pin_groups, str):
-                    if pin_groups == "all":
+                if isinstance(self.pin_groups, str):
+                    if self.pin_groups == "all":
                         pinned_indices = set(range(num_param_modules))
-                    elif pin_groups == "first_last":
+                    elif self.pin_groups == "first_last":
                         pinned_indices.add(0)
                         pinned_indices.add(num_param_modules - 1)
-                elif callable(pin_groups):
+                elif callable(self.pin_groups):
                     for idx, (name, submodule, _) in enumerate(param_exec_info):
                         should_pin = False
                         try:
-                            should_pin = bool(pin_groups(submodule))
+                            should_pin = bool(self.pin_groups(submodule))
                         except TypeError:
                             try:
-                                should_pin = bool(pin_groups(name, submodule))
+                                should_pin = bool(self.pin_groups(name, submodule))
                             except TypeError:
-                                should_pin = bool(pin_groups(name, submodule, idx))
+                                should_pin = bool(self.pin_groups(name, submodule, idx))
                         if should_pin:
                             pinned_indices.add(idx)
 
@@ -651,8 +651,6 @@ def apply_group_offloading(
     pin_groups = normalized_pin_groups
 
     _raise_error_if_accelerate_model_or_sequential_hook_present(module)
-    registry = HookRegistry.check_if_exists_or_initialize(module)
-    registry._group_offload_pin_groups = pin_groups
 
     config = GroupOffloadingConfig(
         onload_device=onload_device,
@@ -671,9 +669,6 @@ def apply_group_offloading(
 
 
 def _apply_group_offloading(module: torch.nn.Module, config: GroupOffloadingConfig) -> None:
-    registry = HookRegistry.check_if_exists_or_initialize(module)
-    registry._group_offload_pin_groups = config.pin_groups
-
     if config.offload_type == GroupOffloadingType.BLOCK_LEVEL:
         _apply_group_offloading_block_level(module, config)
     elif config.offload_type == GroupOffloadingType.LEAF_LEVEL:
@@ -966,8 +961,8 @@ def _apply_lazy_group_offloading_hook(
     if registry.get_hook(_GROUP_OFFLOADING) is None:
         hook = GroupOffloadingHook(group, config=config)
         registry.register_hook(hook, _GROUP_OFFLOADING)
-
-    lazy_prefetch_hook = LazyPrefetchGroupOffloadingHook()
+        
+    lazy_prefetch_hook = LazyPrefetchGroupOffloadingHook(pin_groups = config.pin_groups)
     registry.register_hook(lazy_prefetch_hook, _LAZY_PREFETCH_GROUP_OFFLOADING)
 
 

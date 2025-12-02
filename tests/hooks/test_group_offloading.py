@@ -362,8 +362,8 @@ class GroupOffloadTests(unittest.TestCase):
             self.assertLess(
                 cumulated_absmax, 1e-5, f"Output differences for {name} exceeded threshold: {cumulated_absmax:.5f}"
             )
-
-    def test_block_level_pin_first_last_groups_stay_on_device(self):
+    
+    def test_block_level_pin_groups_stay_on_device(self):
         if torch.device(torch_device).type not in ["cuda", "xpu"]:
             return
 
