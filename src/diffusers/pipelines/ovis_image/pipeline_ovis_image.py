@@ -55,7 +55,7 @@ EXAMPLE_DOC_STRING = """
         >>> pipe = OvisImagePipeline.from_pretrained("AIDC-AI/Ovis-Image-7B", torch_dtype=torch.bfloat16)
         >>> pipe.to("cuda")
         >>> prompt = "A creative 3D artistic render where the text \"OVIS-IMAGE\" is written in a bold, expressive handwritten brush style using thick, wet oil paint. The paint is a mix of vibrant rainbow colors (red, blue, yellow) swirling together like toothpaste or impasto art. You can see the ridges of the brush bristles and the glossy, wet texture of the paint. The background is a clean artist's canvas. Dynamic lighting creates soft shadows behind the floating paint strokes. Colorful, expressive, tactile texture, 4k detail."
-        >>> image = pipe(prompt, negative_prompt="", num_inference_steps=50, true_cfg_scale=5.0).images[0]
+        >>> image = pipe(prompt, negative_prompt="", num_inference_steps=50, guidance_scale=5.0).images[0]
         >>> image.save("ovis_image.png")
         ```
 """
@@ -362,59 +362,6 @@ class OvisImagePipeline(
 
         return latents
 
-    def enable_vae_slicing(self):
-        r"""
-        Enable sliced VAE decoding. When this option is enabled, the VAE will split the input tensor in slices to
-        compute decoding in several steps. This is useful to save some memory and allow larger batch sizes.
-        """
-        depr_message = f"Calling `enable_vae_slicing()` on a `{self.__class__.__name__}` is deprecated and this method will be removed in a future version. Please use `pipe.vae.enable_slicing()`."
-        deprecate(
-            "enable_vae_slicing",
-            "0.40.0",
-            depr_message,
-        )
-        self.vae.enable_slicing()
-
-    def disable_vae_slicing(self):
-        r"""
-        Disable sliced VAE decoding. If `enable_vae_slicing` was previously enabled, this method will go back to
-        computing decoding in one step.
-        """
-        depr_message = f"Calling `disable_vae_slicing()` on a `{self.__class__.__name__}` is deprecated and this method will be removed in a future version. Please use `pipe.vae.disable_slicing()`."
-        deprecate(
-            "disable_vae_slicing",
-            "0.40.0",
-            depr_message,
-        )
-        self.vae.disable_slicing()
-
-    def enable_vae_tiling(self):
-        r"""
-        Enable tiled VAE decoding. When this option is enabled, the VAE will split the input tensor into tiles to
-        compute decoding and encoding in several steps. This is useful for saving a large amount of memory and to allow
-        processing larger images.
-        """
-        depr_message = f"Calling `enable_vae_tiling()` on a `{self.__class__.__name__}` is deprecated and this method will be removed in a future version. Please use `pipe.vae.enable_tiling()`."
-        deprecate(
-            "enable_vae_tiling",
-            "0.40.0",
-            depr_message,
-        )
-        self.vae.enable_tiling()
-
-    def disable_vae_tiling(self):
-        r"""
-        Disable tiled VAE decoding. If `enable_vae_tiling` was previously enabled, this method will go back to
-        computing decoding in one step.
-        """
-        depr_message = f"Calling `disable_vae_tiling()` on a `{self.__class__.__name__}` is deprecated and this method will be removed in a future version. Please use `pipe.vae.disable_tiling()`."
-        deprecate(
-            "disable_vae_tiling",
-            "0.40.0",
-            depr_message,
-        )
-        self.vae.disable_tiling()
-
     def prepare_latents(
         self,
         batch_size,
@@ -475,8 +422,8 @@ class OvisImagePipeline(
     def __call__(
         self,
         prompt: Union[str, List[str]] = None,
-        negative_prompt: Union[str, List[str]] = None,
-        true_cfg_scale: float = 5.0,
+        negative_prompt: Union[str, List[str]] = "",
+        guidance_scale: float = 5.0,
         height: Optional[int] = None,
         width: Optional[int] = None,
         num_inference_steps: int = 50,
@@ -502,10 +449,10 @@ class OvisImagePipeline(
                 instead.
             negative_prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts not to guide the image generation. If not defined, one has to pass
-                `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `true_cfg_scale` is
+                `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
                 not greater than `1`).
-            true_cfg_scale (`float`, *optional*, defaults to 1.0):
-                True classifier-free guidance (guidance scale) is enabled when `true_cfg_scale` > 1 and
+            guidance_scale (`float`, *optional*, defaults to 1.0):
+                True classifier-free guidance (guidance scale) is enabled when `guidance_scale` > 1 and
                 `negative_prompt` is provided.
             height (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
                 The height in pixels of the generated image. This is set to 1024 by default for the best results.
@@ -591,10 +538,7 @@ class OvisImagePipeline(
 
         device = self._execution_device
 
-        has_neg_prompt = negative_prompt is not None or (
-            negative_prompt_embeds is not None
-        )
-        do_true_cfg = true_cfg_scale > 1 and has_neg_prompt
+        do_classifier_free_guidance = guidance_scale > 1
         (
             prompt_embeds,
             text_ids,
@@ -604,7 +548,7 @@ class OvisImagePipeline(
             device=device,
             num_images_per_prompt=num_images_per_prompt,
         )
-        if do_true_cfg:
+        if do_classifier_free_guidance:
             (
                 negative_prompt_embeds,
                 negative_text_ids,
@@ -653,9 +597,6 @@ class OvisImagePipeline(
         if self.joint_attention_kwargs is None:
             self._joint_attention_kwargs = {}
 
-        image_embeds = None
-        negative_image_embeds = None
-
         # 6. Denoising loop
         # We set the index here to remove DtoH sync, helpful especially during compilation.
         # Check out more details here: https://github.com/huggingface/diffusers/pull/11696
@@ -666,8 +607,6 @@ class OvisImagePipeline(
                     continue
 
                 self._current_timestep = t
-                if image_embeds is not None:
-                    self._joint_attention_kwargs["ip_adapter_image_embeds"] = image_embeds
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
                 timestep = t.expand(latents.shape[0]).to(latents.dtype)
 
@@ -681,7 +620,7 @@ class OvisImagePipeline(
                         return_dict=False,
                     )[0]
 
-                if do_true_cfg:
+                if do_classifier_free_guidance:
                     with self.transformer.cache_context("uncond"):
                         neg_noise_pred = self.transformer(
                             hidden_states=latents,
@@ -691,7 +630,7 @@ class OvisImagePipeline(
                             img_ids=latent_image_ids,
                             return_dict=False,
                         )[0]
-                    noise_pred = neg_noise_pred + true_cfg_scale * (noise_pred - neg_noise_pred)
+                    noise_pred = neg_noise_pred + guidance_scale * (noise_pred - neg_noise_pred)
 
                 # compute the previous noisy sample x_t -> x_t-1
                 latents_dtype = latents.dtype
