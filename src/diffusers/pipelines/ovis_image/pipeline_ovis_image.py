@@ -27,6 +27,7 @@ from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
 from .pipeline_output import OvisImagePipelineOutput
 
+
 if is_torch_xla_available():
     import torch_xla.core.xla_model as xm
 
@@ -184,15 +185,14 @@ class OvisImagePipeline(
         prompt = [prompt] if isinstance(prompt, str) else prompt
         messages = []
         for each_prompt in prompt:
-            message = [{
-                "role": "user",
-                "content": self.system_prompt + each_prompt,
-            }]
+            message = [
+                {
+                    "role": "user",
+                    "content": self.system_prompt + each_prompt,
+                }
+            ]
             message = self.tokenizer.apply_chat_template(
-                message,
-                tokenize=False,
-                add_generation_prompt=True,
-                enable_thinking=False
+                message, tokenize=False, add_generation_prompt=True, enable_thinking=False
             )
             messages.append(message)
         return messages
@@ -226,7 +226,7 @@ class OvisImagePipeline(
         )
         prompt_embeds = outputs.last_hidden_state
         prompt_embeds = prompt_embeds * attention_mask[..., None]
-        prompt_embeds = prompt_embeds[:, self.user_prompt_begin_id:, :]
+        prompt_embeds = prompt_embeds[:, self.user_prompt_begin_id :, :]
 
         _, seq_len, _ = prompt_embeds.shape
 

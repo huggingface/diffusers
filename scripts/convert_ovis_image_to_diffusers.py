@@ -63,29 +63,15 @@ def convert_ovis_image_transformer_checkpoint_to_diffusers(
     converted_state_dict = {}
 
     ## time_text_embed.timestep_embedder <-  time_in
-    converted_state_dict["timestep_embedder.linear_1.weight"] = original_state_dict.pop(
-        "time_in.in_layer.weight"
-    )
-    converted_state_dict["timestep_embedder.linear_1.bias"] = original_state_dict.pop(
-        "time_in.in_layer.bias"
-    )
-    converted_state_dict["timestep_embedder.linear_2.weight"] = original_state_dict.pop(
-        "time_in.out_layer.weight"
-    )
-    converted_state_dict["timestep_embedder.linear_2.bias"] = original_state_dict.pop(
-        "time_in.out_layer.bias"
-    )
+    converted_state_dict["timestep_embedder.linear_1.weight"] = original_state_dict.pop("time_in.in_layer.weight")
+    converted_state_dict["timestep_embedder.linear_1.bias"] = original_state_dict.pop("time_in.in_layer.bias")
+    converted_state_dict["timestep_embedder.linear_2.weight"] = original_state_dict.pop("time_in.out_layer.weight")
+    converted_state_dict["timestep_embedder.linear_2.bias"] = original_state_dict.pop("time_in.out_layer.bias")
 
     # context_embedder
-    converted_state_dict["context_embedder_norm.weight"] = original_state_dict.pop(
-        "semantic_txt_norm.weight"
-    )
-    converted_state_dict["context_embedder.weight"] = original_state_dict.pop(
-        "semantic_txt_in.weight"
-    )
-    converted_state_dict["context_embedder.bias"] = original_state_dict.pop(
-        "semantic_txt_in.bias"
-    )
+    converted_state_dict["context_embedder_norm.weight"] = original_state_dict.pop("semantic_txt_norm.weight")
+    converted_state_dict["context_embedder.weight"] = original_state_dict.pop("semantic_txt_in.weight")
+    converted_state_dict["context_embedder.bias"] = original_state_dict.pop("semantic_txt_in.bias")
 
     # x_embedder
     converted_state_dict["x_embedder.weight"] = original_state_dict.pop("img_in.weight")
@@ -151,14 +137,14 @@ def convert_ovis_image_transformer_checkpoint_to_diffusers(
         converted_state_dict[f"{block_prefix}ff.net.0.proj.weight"] = torch.cat(
             [
                 original_state_dict.pop(f"double_blocks.{i}.img_mlp.up_proj.weight"),
-                original_state_dict.pop(f"double_blocks.{i}.img_mlp.gate_proj.weight")
+                original_state_dict.pop(f"double_blocks.{i}.img_mlp.gate_proj.weight"),
             ],
             dim=0,
         )
         converted_state_dict[f"{block_prefix}ff.net.0.proj.bias"] = torch.cat(
             [
                 original_state_dict.pop(f"double_blocks.{i}.img_mlp.up_proj.bias"),
-                original_state_dict.pop(f"double_blocks.{i}.img_mlp.gate_proj.bias")
+                original_state_dict.pop(f"double_blocks.{i}.img_mlp.gate_proj.bias"),
             ],
             dim=0,
         )
@@ -171,14 +157,14 @@ def convert_ovis_image_transformer_checkpoint_to_diffusers(
         converted_state_dict[f"{block_prefix}ff_context.net.0.proj.weight"] = torch.cat(
             [
                 original_state_dict.pop(f"double_blocks.{i}.txt_mlp.up_proj.weight"),
-                original_state_dict.pop(f"double_blocks.{i}.txt_mlp.gate_proj.weight")
+                original_state_dict.pop(f"double_blocks.{i}.txt_mlp.gate_proj.weight"),
             ],
             dim=0,
         )
         converted_state_dict[f"{block_prefix}ff_context.net.0.proj.bias"] = torch.cat(
             [
                 original_state_dict.pop(f"double_blocks.{i}.txt_mlp.up_proj.bias"),
-                original_state_dict.pop(f"double_blocks.{i}.txt_mlp.gate_proj.bias")
+                original_state_dict.pop(f"double_blocks.{i}.txt_mlp.gate_proj.bias"),
             ],
             dim=0,
         )
@@ -242,12 +228,8 @@ def convert_ovis_image_transformer_checkpoint_to_diffusers(
             f"single_blocks.{i}.linear2.bias"
         )
 
-    converted_state_dict["proj_out.weight"] = original_state_dict.pop(
-        "final_layer.linear.weight"
-    )
-    converted_state_dict["proj_out.bias"] = original_state_dict.pop(
-        "final_layer.linear.bias"
-    )
+    converted_state_dict["proj_out.weight"] = original_state_dict.pop("final_layer.linear.weight")
+    converted_state_dict["proj_out.bias"] = original_state_dict.pop("final_layer.linear.bias")
     converted_state_dict["norm_out.linear.weight"] = swap_scale_shift(
         original_state_dict.pop("final_layer.adaLN_modulation.1.weight")
     )
@@ -270,14 +252,10 @@ def main(args):
         converted_transformer_state_dict = convert_ovis_image_transformer_checkpoint_to_diffusers(
             original_ckpt, num_layers, num_single_layers, inner_dim, mlp_ratio=mlp_ratio
         )
-        transformer = OvisImageTransformer2DModel(
-            in_channels=args.in_channels, out_channels=args.out_channels
-        )
+        transformer = OvisImageTransformer2DModel(in_channels=args.in_channels, out_channels=args.out_channels)
         transformer.load_state_dict(converted_transformer_state_dict, strict=True)
 
-        print(
-            "Saving Ovis-Image Transformer in Diffusers format."
-        )
+        print("Saving Ovis-Image Transformer in Diffusers format.")
         transformer.to(dtype).save_pretrained(f"{args.output_path}/transformer")
 
 
