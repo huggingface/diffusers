@@ -1814,9 +1814,6 @@ class ModelTesterMixin:
             torch.manual_seed(0)
             return model(**inputs_dict)[0]
 
-        if self.__class__.__name__ == "AutoencoderKLCosmosTests" and offload_type == "leaf_level":
-            pytest.skip("With `leaf_type` as the offloading type, it fails. Needs investigation.")
-
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
         torch.manual_seed(0)
         model = self.model_class(**init_dict)
