@@ -21,7 +21,7 @@ import torch
 
 from diffusers import ZImageTransformer2DModel
 
-from ...testing_utils import torch_device
+from ...testing_utils import IS_GITHUB_ACTIONS, torch_device
 from ..test_modeling_common import ModelTesterMixin, TorchCompileTesterMixin
 
 
@@ -36,6 +36,10 @@ if hasattr(torch.backends, "cuda"):
     torch.backends.cuda.matmul.allow_tf32 = False
 
 
+@unittest.skipIf(
+    IS_GITHUB_ACTIONS,
+    reason="Skipping test-suite inside the CI because the model has `torch.empty()` inside of it during init and we don't have a clear way to override it in the modeling tests.",
+)
 class ZImageTransformerTests(ModelTesterMixin, unittest.TestCase):
     model_class = ZImageTransformer2DModel
     main_input_name = "x"
