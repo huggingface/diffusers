@@ -140,6 +140,7 @@ CHECKPOINT_KEY_NAMES = {
         "net.blocks.0.self_attn.q_proj.weight",
         "net.pos_embedder.dim_spatial_range",
     ],
+    "flux2": ["model.diffusion_model.single_stream_modulation.lin.weight", "single_stream_modulation.lin.weight"],
 }
 
 DIFFUSERS_DEFAULT_PIPELINE_PATHS = {
@@ -189,6 +190,7 @@ DIFFUSERS_DEFAULT_PIPELINE_PATHS = {
     "flux-fill": {"pretrained_model_name_or_path": "black-forest-labs/FLUX.1-Fill-dev"},
     "flux-depth": {"pretrained_model_name_or_path": "black-forest-labs/FLUX.1-Depth-dev"},
     "flux-schnell": {"pretrained_model_name_or_path": "black-forest-labs/FLUX.1-schnell"},
+    "flux-2-dev": {"pretrained_model_name_or_path": "black-forest-labs/FLUX.2-dev"},
     "ltx-video": {"pretrained_model_name_or_path": "diffusers/LTX-Video-0.9.0"},
     "ltx-video-0.9.1": {"pretrained_model_name_or_path": "diffusers/LTX-Video-0.9.1"},
     "ltx-video-0.9.5": {"pretrained_model_name_or_path": "Lightricks/LTX-Video-0.9.5"},
@@ -387,6 +389,14 @@ def is_valid_url(url):
     return False
 
 
+def _is_single_file_path_or_url(pretrained_model_name_or_path):
+    if not os.path.isfile(pretrained_model_name_or_path) or not is_valid_url(pretrained_model_name_or_path):
+        return False
+
+    repo_id, weight_name = _extract_repo_id_and_weights_name(pretrained_model_name_or_path)
+    return bool(repo_id and weight_name)
+
+
 def _extract_repo_id_and_weights_name(pretrained_model_name_or_path):
     if not is_valid_url(pretrained_model_name_or_path):
         raise ValueError("Invalid `pretrained_model_name_or_path` provided. Please set it to a valid URL.")
@@ -398,7 +408,6 @@ def _extract_repo_id_and_weights_name(pretrained_model_name_or_path):
         pretrained_model_name_or_path = pretrained_model_name_or_path.replace(prefix, "")
     match = re.match(pattern, pretrained_model_name_or_path)
     if not match:
-        logger.warning("Unable to identify the repo_id and weights_name from the provided URL.")
         return repo_id, weights_name
 
     repo_id = f"{match.group(1)}/{match.group(2)}"
@@ -648,6 +657,9 @@ def infer_diffusers_model_type(checkpoint):
 
         else:
             model_type = "animatediff_v3"
+
+    elif any(key in checkpoint for key in CHECKPOINT_KEY_NAMES["flux2"]):
+        model_type = "flux-2-dev"
 
     elif any(key in checkpoint for key in CHECKPOINT_KEY_NAMES["flux"]):
         if any(
@@ -3641,6 +3653,171 @@ def convert_cosmos_transformer_checkpoint_to_diffusers(checkpoint, **kwargs):
 
     state_dict_keys = list(converted_state_dict.keys())
     for key in state_dict_keys:
+        for special_key, handler_fn_inplace in TRANSFORMER_SPECIAL_KEYS_REMAP.items():
+            if special_key not in key:
+                continue
+            handler_fn_inplace(key, converted_state_dict)
+
+    return converted_state_dict
+
+
+def convert_flux2_transformer_checkpoint_to_diffusers(checkpoint, **kwargs):
+    FLUX2_TRANSFORMER_KEYS_RENAME_DICT = {
+        # Image and text input projections
+        "img_in": "x_embedder",
+        "txt_in": "context_embedder",
+        # Timestep and guidance embeddings
+        "time_in.in_layer": "time_guidance_embed.timestep_embedder.linear_1",
+        "time_in.out_layer": "time_guidance_embed.timestep_embedder.linear_2",
+        "guidance_in.in_layer": "time_guidance_embed.guidance_embedder.linear_1",
+        "guidance_in.out_layer": "time_guidance_embed.guidance_embedder.linear_2",
+        # Modulation parameters
+        "double_stream_modulation_img.lin": "double_stream_modulation_img.linear",
+        "double_stream_modulation_txt.lin": "double_stream_modulation_txt.linear",
+        "single_stream_modulation.lin": "single_stream_modulation.linear",
+        # Final output layer
+        # "final_layer.adaLN_modulation.1": "norm_out.linear",  # Handle separately since we need to swap mod params
+        "final_layer.linear": "proj_out",
+    }
+
+    FLUX2_TRANSFORMER_ADA_LAYER_NORM_KEY_MAP = {
+        "final_layer.adaLN_modulation.1": "norm_out.linear",
+    }
+
+    FLUX2_TRANSFORMER_DOUBLE_BLOCK_KEY_MAP = {
+        # Handle fused QKV projections separately as we need to break into Q, K, V projections
+        "img_attn.norm.query_norm": "attn.norm_q",
+        "img_attn.norm.key_norm": "attn.norm_k",
+        "img_attn.proj": "attn.to_out.0",
+        "img_mlp.0": "ff.linear_in",
+        "img_mlp.2": "ff.linear_out",
+        "txt_attn.norm.query_norm": "attn.norm_added_q",
+        "txt_attn.norm.key_norm": "attn.norm_added_k",
+        "txt_attn.proj": "attn.to_add_out",
+        "txt_mlp.0": "ff_context.linear_in",
+        "txt_mlp.2": "ff_context.linear_out",
+    }
+
+    FLUX2_TRANSFORMER_SINGLE_BLOCK_KEY_MAP = {
+        "linear1": "attn.to_qkv_mlp_proj",
+        "linear2": "attn.to_out",
+        "norm.query_norm": "attn.norm_q",
+        "norm.key_norm": "attn.norm_k",
+    }
+
+    def convert_flux2_single_stream_blocks(key: str, state_dict: dict[str, object]) -> None:
+        # Skip if not a weight, bias, or scale
+        if ".weight" not in key and ".bias" not in key and ".scale" not in key:
+            return
+
+        # Mapping:
+        #     - single_blocks.{N}.linear1               --> single_transformer_blocks.{N}.attn.to_qkv_mlp_proj
+        #     - single_blocks.{N}.linear2               --> single_transformer_blocks.{N}.attn.to_out
+        #     - single_blocks.{N}.norm.query_norm.scale --> single_transformer_blocks.{N}.attn.norm_q.weight
+        #     - single_blocks.{N}.norm.key_norm.scale   --> single_transformer_blocks.{N}.attn.norm_k.weight
+        new_prefix = "single_transformer_blocks"
+        if "single_blocks." in key:
+            parts = key.split(".")
+            block_idx = parts[1]
+            within_block_name = ".".join(parts[2:-1])
+            param_type = parts[-1]
+
+            if param_type == "scale":
+                param_type = "weight"
+
+            new_within_block_name = FLUX2_TRANSFORMER_SINGLE_BLOCK_KEY_MAP[within_block_name]
+            new_key = ".".join([new_prefix, block_idx, new_within_block_name, param_type])
+
+            param = state_dict.pop(key)
+            state_dict[new_key] = param
+
+        return
+
+    def convert_ada_layer_norm_weights(key: str, state_dict: dict[str, object]) -> None:
+        # Skip if not a weight
+        if ".weight" not in key:
+            return
+
+        # If adaLN_modulation is in the key, swap scale and shift parameters
+        # Original implementation is (shift, scale); diffusers implementation is (scale, shift)
+        if "adaLN_modulation" in key:
+            key_without_param_type, param_type = key.rsplit(".", maxsplit=1)
+            # Assume all such keys are in the AdaLayerNorm key map
+            new_key_without_param_type = FLUX2_TRANSFORMER_ADA_LAYER_NORM_KEY_MAP[key_without_param_type]
+            new_key = ".".join([new_key_without_param_type, param_type])
+
+            swapped_weight = swap_scale_shift(state_dict.pop(key), 0)
+            state_dict[new_key] = swapped_weight
+
+        return
+
+    def convert_flux2_double_stream_blocks(key: str, state_dict: dict[str, object]) -> None:
+        # Skip if not a weight, bias, or scale
+        if ".weight" not in key and ".bias" not in key and ".scale" not in key:
+            return
+
+        new_prefix = "transformer_blocks"
+        if "double_blocks." in key:
+            parts = key.split(".")
+            block_idx = parts[1]
+            modality_block_name = parts[2]  # img_attn, img_mlp, txt_attn, txt_mlp
+            within_block_name = ".".join(parts[2:-1])
+            param_type = parts[-1]
+
+            if param_type == "scale":
+                param_type = "weight"
+
+            if "qkv" in within_block_name:
+                fused_qkv_weight = state_dict.pop(key)
+                to_q_weight, to_k_weight, to_v_weight = torch.chunk(fused_qkv_weight, 3, dim=0)
+                if "img" in modality_block_name:
+                    # double_blocks.{N}.img_attn.qkv --> transformer_blocks.{N}.attn.{to_q|to_k|to_v}
+                    to_q_weight, to_k_weight, to_v_weight = torch.chunk(fused_qkv_weight, 3, dim=0)
+                    new_q_name = "attn.to_q"
+                    new_k_name = "attn.to_k"
+                    new_v_name = "attn.to_v"
+                elif "txt" in modality_block_name:
+                    # double_blocks.{N}.txt_attn.qkv --> transformer_blocks.{N}.attn.{add_q_proj|add_k_proj|add_v_proj}
+                    to_q_weight, to_k_weight, to_v_weight = torch.chunk(fused_qkv_weight, 3, dim=0)
+                    new_q_name = "attn.add_q_proj"
+                    new_k_name = "attn.add_k_proj"
+                    new_v_name = "attn.add_v_proj"
+                new_q_key = ".".join([new_prefix, block_idx, new_q_name, param_type])
+                new_k_key = ".".join([new_prefix, block_idx, new_k_name, param_type])
+                new_v_key = ".".join([new_prefix, block_idx, new_v_name, param_type])
+                state_dict[new_q_key] = to_q_weight
+                state_dict[new_k_key] = to_k_weight
+                state_dict[new_v_key] = to_v_weight
+            else:
+                new_within_block_name = FLUX2_TRANSFORMER_DOUBLE_BLOCK_KEY_MAP[within_block_name]
+                new_key = ".".join([new_prefix, block_idx, new_within_block_name, param_type])
+
+                param = state_dict.pop(key)
+                state_dict[new_key] = param
+        return
+
+    def update_state_dict(state_dict: dict[str, object], old_key: str, new_key: str) -> None:
+        state_dict[new_key] = state_dict.pop(old_key)
+
+    TRANSFORMER_SPECIAL_KEYS_REMAP = {
+        "adaLN_modulation": convert_ada_layer_norm_weights,
+        "double_blocks": convert_flux2_double_stream_blocks,
+        "single_blocks": convert_flux2_single_stream_blocks,
+    }
+
+    converted_state_dict = {key: checkpoint.pop(key) for key in list(checkpoint.keys())}
+
+    # Handle official code --> diffusers key remapping via the remap dict
+    for key in list(converted_state_dict.keys()):
+        new_key = key[:]
+        for replace_key, rename_key in FLUX2_TRANSFORMER_KEYS_RENAME_DICT.items():
+            new_key = new_key.replace(replace_key, rename_key)
+
+        update_state_dict(converted_state_dict, key, new_key)
+
+    # Handle any special logic which can't be expressed by a simple 1:1 remapping with the handlers in
+    # special_keys_remap
+    for key in list(converted_state_dict.keys()):
         for special_key, handler_fn_inplace in TRANSFORMER_SPECIAL_KEYS_REMAP.items():
             if special_key not in key:
                 continue

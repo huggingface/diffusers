@@ -21,7 +21,7 @@ specific language governing permissions and limitations under the License.
 
 Recomenda-se instalar 🤗 Diffusers em um [ambiente virtual](https://docs.python.org/3/library/venv.html).
 Se você não está familiarizado com ambiente virtuals, veja o [guia](https://packaging.python.org/guides/installing-using-pip-and-virtual-environments/).
-Um ambiente virtual deixa mais fácil gerenciar diferentes projetos e evitar problemas de compatibilidade entre dependências.
+Um ambiente virtual facilita gerenciar diferentes projetos e evitar problemas de compatibilidade entre dependências.
 
 Comece criando um ambiente virtual no diretório do projeto:
 
@@ -100,12 +100,12 @@ pip install -e ".[flax]"
 </jax>
 </frameworkcontent>
 
-Esses comandos irá linkar a pasta que você clonou o repositório e os caminhos das suas bibliotecas Python.
+Esses comandos irão vincular a pasta que você clonou o repositório e os caminhos das suas bibliotecas Python.
 Python então irá procurar dentro da pasta que você clonou além dos caminhos normais das bibliotecas.
 Por exemplo, se o pacote python for tipicamente instalado no `~/anaconda3/envs/main/lib/python3.10/site-packages/`, o Python também irá procurar na pasta `~/diffusers/` que você clonou.
 
 > [!WARNING]
-> Você deve deixar a pasta `diffusers` se você quiser continuar usando a biblioteca.
+> Você deve manter a pasta `diffusers` se quiser continuar usando a biblioteca.
 
 Agora você pode facilmente atualizar seu clone para a última versão do 🤗 Diffusers com o seguinte comando:
 
