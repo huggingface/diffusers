@@ -123,7 +123,9 @@ class ZImageTransformerTests(ModelTesterMixin, unittest.TestCase):
     def test_effective_gradient_checkpointing(self):
         super().test_effective_gradient_checkpointing()
 
-    @unittest.skip("Test needs to be revisited.")
+    @unittest.skip(
+        "Test needs to be revisited. But we need to ensure `x_pad_token` and `cap_pad_token` are cast to the same dtype as the destination tensor before they are assigned to the padding indices."
+    )
     def test_layerwise_casting_training(self):
         super().test_layerwise_casting_training()
 
@@ -131,11 +133,11 @@ class ZImageTransformerTests(ModelTesterMixin, unittest.TestCase):
     def test_outputs_equivalence(self):
         super().test_outputs_equivalence()
 
-    @unittest.skip("Group offloading needs to revisited for this model because of state population.")
+    @unittest.skip("Test will pass if we change to deterministic values instead of empty in the DiT.")
     def test_group_offloading(self):
         super().test_group_offloading()
 
-    @unittest.skip("Group offloading needs to revisited for this model because of state population.")
+    @unittest.skip("Test will pass if we change to deterministic values instead of empty in the DiT.")
     def test_group_offloading_with_disk(self):
         super().test_group_offloading_with_disk()
 
