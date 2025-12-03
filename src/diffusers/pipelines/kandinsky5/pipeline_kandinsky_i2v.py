@@ -696,7 +696,7 @@ class Kandinsky5I2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
         with torch.no_grad():
             # Convert image to video format [batch, channels, 1, height, width]
             image_video = image_tensor.unsqueeze(2)  # Add temporal dimension
-            image_latents = self.vae.encode(image_video).latent_dist.sample()
+            image_latents = self.vae.encode(image_video).latent_dist.sample(generator=generator)
 
             # Normalize latents if needed
             if hasattr(self.vae.config, "scaling_factor"):
