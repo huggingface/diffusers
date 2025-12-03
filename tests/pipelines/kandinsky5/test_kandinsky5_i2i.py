@@ -13,14 +13,9 @@
 # limitations under the License.
 
 import unittest
+
 import torch
-from torch import nn
-from transformers import (
-    CLIPTextModel,
-    CLIPTokenizer,
-    Qwen2_5_VLForConditionalGeneration,
-    AutoProcessor
-)
+from transformers import AutoProcessor, CLIPTextModel, CLIPTokenizer, Qwen2_5_VLForConditionalGeneration
 
 from diffusers import (
     AutoencoderKL,
@@ -29,10 +24,10 @@ from diffusers import (
     Kandinsky5Transformer3DModel,
 )
 from diffusers.utils import load_image
-
 from diffusers.utils.testing_utils import enable_full_determinism
 
 from ..test_pipelines_common import PipelineTesterMixin
+
 
 enable_full_determinism()
 
@@ -55,37 +50,22 @@ class Kandinsky5I2IPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     def get_dummy_components(self):
         torch.manual_seed(0)
         vae = AutoencoderKL(
-          act_fn="silu",
-          block_out_channels=[
-            128,
-            256,
-            512,
-            512
-          ],
-          down_block_types=[
-            "DownEncoderBlock2D",
-            "DownEncoderBlock2D",
-            "DownEncoderBlock2D",
-            "DownEncoderBlock2D"
-          ],
-          force_upcast=True,
-          in_channels=3,
-          latent_channels=16,
-          layers_per_block=2,
-          mid_block_add_attention=True,
-          norm_num_groups=32,
-          out_channels=3,
-          sample_size=1024,
-          scaling_factor=0.3611,
-          shift_factor=0.1159,
-          up_block_types=[
-            "UpDecoderBlock2D",
-            "UpDecoderBlock2D",
-            "UpDecoderBlock2D",
-            "UpDecoderBlock2D"
-          ],
-          use_post_quant_conv=False,
-          use_quant_conv=False
+            act_fn="silu",
+            block_out_channels=[128, 256, 512, 512],
+            down_block_types=["DownEncoderBlock2D", "DownEncoderBlock2D", "DownEncoderBlock2D", "DownEncoderBlock2D"],
+            force_upcast=True,
+            in_channels=3,
+            latent_channels=16,
+            layers_per_block=2,
+            mid_block_add_attention=True,
+            norm_num_groups=32,
+            out_channels=3,
+            sample_size=1024,
+            scaling_factor=0.3611,
+            shift_factor=0.1159,
+            up_block_types=["UpDecoderBlock2D", "UpDecoderBlock2D", "UpDecoderBlock2D", "UpDecoderBlock2D"],
+            use_post_quant_conv=False,
+            use_quant_conv=False,
         )
 
         scheduler = FlowMatchEulerDiscreteScheduler(shift=7.0)
@@ -95,7 +75,7 @@ class Kandinsky5I2IPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         text_encoder_2 = CLIPTextModel.from_pretrained("openai/clip-vit-large-patch14")
         tokenizer_2 = CLIPTokenizer.from_pretrained("openai/clip-vit-large-patch14")
-        
+
         transformer = Kandinsky5Transformer3DModel(
             in_visual_dim=16,
             in_text_dim=3584,
@@ -127,11 +107,11 @@ class Kandinsky5I2IPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             generator = torch.manual_seed(seed)
         else:
             generator = torch.Generator(device=device).manual_seed(seed)
-            
+
         image = load_image(
             "https://huggingface.co/kandinsky-community/kandinsky-3/resolve/main/assets/title.jpg?download=true"
         ).resize((1024, 1024))
-                
+
         return {
             "image": image,
             "prompt": "a red square",
@@ -161,15 +141,15 @@ class Kandinsky5I2IPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     @unittest.skip("Test not supported")
     def test_attention_slicing_forward_pass(self):
         pass
-    
+
     @unittest.skip("Only SDPA or NABLA (flex)")
     def test_xformers_memory_efficient_attention(self):
         pass
-    
+
     @unittest.skip("All encoders are needed")
     def test_encode_prompt_works_in_isolation(self):
         pass
-    
+
     @unittest.skip("Meant for eiter FP32 or BF16 inference")
     def test_float16_inference(self):
         pass
@@ -177,5 +157,5 @@ class Kandinsky5I2IPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     test_inference_batch_single_identical = None
     test_pipeline_call_signature = None
     test_inference_batch_consistent = None
-    test_save_load_dduf = None    
+    test_save_load_dduf = None
     test_pipeline_with_accelerator_device_map = None
