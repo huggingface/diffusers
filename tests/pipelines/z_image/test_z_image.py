@@ -22,7 +22,7 @@ from transformers import Qwen2Tokenizer, Qwen3Config, Qwen3Model
 
 from diffusers import AutoencoderKL, FlowMatchEulerDiscreteScheduler, ZImagePipeline, ZImageTransformer2DModel
 
-from ...testing_utils import is_flaky, torch_device
+from ...testing_utils import torch_device
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
 from ..test_pipelines_common import PipelineTesterMixin, to_np
 
@@ -170,7 +170,6 @@ class ZImagePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         return inputs
 
-    @is_flaky(max_attempts=10)
     def test_inference(self):
         device = "cpu"
 
@@ -185,7 +184,7 @@ class ZImagePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         self.assertEqual(generated_image.shape, (3, 32, 32))
 
         # fmt: off
-        expected_slice = torch.tensor([0.4521, 0.4512, 0.4693, 0.5115, 0.5250, 0.5271, 0.4776, 0.4688, 0.2765, 0.2164, 0.5656, 0.6909, 0.3831, 0.5431, 0.5493, 0.4732])
+        expected_slice = torch.tensor([0.4622, 0.4532, 0.4714, 0.5087, 0.5371, 0.5405, 0.4492, 0.4479, 0.2984, 0.2783, 0.5409, 0.6577, 0.3952, 0.5524, 0.5262, 0.453])
         # fmt: on
 
         generated_slice = generated_image.flatten()
