@@ -1875,15 +1875,6 @@ class ModelTesterMixin:
             torch.manual_seed(0)
             return model(**inputs_dict)[0]
 
-        for cls in inspect.getmro(self.__class__):
-            if "test_group_offloading_with_disk" in cls.__dict__ and cls is not ModelTesterMixin:
-                # Skip this test if it is overwritten by child class. We need to do this because parameterized
-                # materializes the test methods on invocation which cannot be overridden.
-                pytest.skip("Model does not support group offloading with disk.")
-
-        if self.__class__.__name__ == "AutoencoderKLCosmosTests" and offload_type == "leaf_level":
-            pytest.skip("With `leaf_type` as the offloading type, it fails. Needs investigation.")
-
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
         torch.manual_seed(0)
         model = self.model_class(**init_dict)
