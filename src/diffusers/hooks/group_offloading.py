@@ -513,8 +513,8 @@ def apply_group_offloading(
             option only matters when using streamed CPU offloading (i.e. `use_stream=True`). This can be useful when
             the CPU memory is a bottleneck but may counteract the benefits of using streams.
         block_modules (`List[str]`, *optional*):
-            List of module names that should be treated as blocks for offloading. If provided, only these modules
-            will be considered for block-level offloading. If not provided, the default block detection logic will be used.
+            List of module names that should be treated as blocks for offloading. If provided, only these modules will
+            be considered for block-level offloading. If not provided, the default block detection logic will be used.
 
     Example:
         ```python
@@ -583,8 +583,8 @@ def _apply_group_offloading(module: torch.nn.Module, config: GroupOffloadingConf
 def _apply_group_offloading_block_level(module: torch.nn.Module, config: GroupOffloadingConfig) -> None:
     r"""
     This function applies offloading to groups of torch.nn.ModuleList or torch.nn.Sequential blocks, and explicitly
-    defined block modules. In comparison to the "leaf_level" offloading, which is more fine-grained, this offloading
-    is done at the top-level blocks and modules specified in block_modules.
+    defined block modules. In comparison to the "leaf_level" offloading, which is more fine-grained, this offloading is
+    done at the top-level blocks and modules specified in block_modules.
 
     When block_modules is provided, only those modules will be treated as blocks for offloading. For each specified
     module, we either offload the entire submodule or recursively apply block offloading to it.
