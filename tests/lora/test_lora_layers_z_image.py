@@ -244,13 +244,11 @@ class ZImageLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
     def test_lora_scale_kwargs_match_fusion(self):
         super().test_lora_scale_kwargs_match_fusion(5e-2, 5e-2)
 
-    unittest.skip("Needs to be debugged.")
-
+    @unittest.skip("Needs to be debugged.")
     def test_set_adapters_match_attention_kwargs(self):
         super().test_set_adapters_match_attention_kwargs()
 
-    unittest.skip("Needs to be debugged.")
-
+    @unittest.skip("Needs to be debugged.")
     def test_simple_inference_with_text_denoiser_lora_and_scale(self):
         super().test_simple_inference_with_text_denoiser_lora_and_scale()
 
