@@ -25,27 +25,24 @@ from transformers import (
 )
 
 from diffusers import (
-    AutoencoderKLHunyuanVideo,
+    AutoencoderKL,
     FlowMatchEulerDiscreteScheduler,
-    Kandinsky5T2VPipeline,
+    Kandinsky5T2IPipeline,
     Kandinsky5Transformer3DModel,
 )
+from diffusers.utils.testing_utils import enable_full_determinism
 
-from ...testing_utils import (
-    enable_full_determinism,
-)
 from ..test_pipelines_common import PipelineTesterMixin
 
 
 enable_full_determinism()
 
 
-class Kandinsky5T2VPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
-    pipeline_class = Kandinsky5T2VPipeline
+class Kandinsky5T2IPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+    pipeline_class = Kandinsky5T2IPipeline
 
     batch_params = ["prompt", "negative_prompt"]
-
-    params = frozenset(["prompt", "height", "width", "num_frames", "num_inference_steps", "guidance_scale"])
+    params = frozenset(["prompt", "height", "width", "num_inference_steps", "guidance_scale"])
 
     required_optional_params = {
         "num_inference_steps",
@@ -63,26 +60,23 @@ class Kandinsky5T2VPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
     def get_dummy_components(self):
         torch.manual_seed(0)
-        vae = AutoencoderKLHunyuanVideo(
+        vae = AutoencoderKL(
             act_fn="silu",
             block_out_channels=[32, 64],
-            down_block_types=[
-                "HunyuanVideoDownBlock3D",
-                "HunyuanVideoDownBlock3D",
-            ],
+            down_block_types=["DownEncoderBlock2D", "DownEncoderBlock2D"],
+            force_upcast=True,
             in_channels=3,
             latent_channels=16,
             layers_per_block=1,
             mid_block_add_attention=False,
             norm_num_groups=32,
             out_channels=3,
-            scaling_factor=0.476986,
-            spatial_compression_ratio=8,
-            temporal_compression_ratio=4,
-            up_block_types=[
-                "HunyuanVideoUpBlock3D",
-                "HunyuanVideoUpBlock3D",
-            ],
+            sample_size=128,
+            scaling_factor=0.3611,
+            shift_factor=0.1159,
+            up_block_types=["UpDecoderBlock2D", "UpDecoderBlock2D"],
+            use_post_quant_conv=False,
+            use_quant_conv=False,
         )
 
         scheduler = FlowMatchEulerDiscreteScheduler(shift=7.0)
@@ -168,12 +162,10 @@ class Kandinsky5T2VPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             generator = torch.manual_seed(seed)
         else:
             generator = torch.Generator(device=device).manual_seed(seed)
-
         return {
             "prompt": "a red square",
-            "height": 32,
-            "width": 32,
-            "num_frames": 5,
+            "height": 64,
+            "width": 64,
             "num_inference_steps": 2,
             "guidance_scale": 4.0,
             "generator": generator,
@@ -185,15 +177,20 @@ class Kandinsky5T2VPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         device = "cpu"
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
+        pipe.resolutions = [(64, 64)]
         pipe.to(device)
         pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_dummy_inputs(device)
         output = pipe(**inputs)
-        video = output.frames[0]
+        image = output.image
 
-        self.assertEqual(video.shape, (3, 3, 16, 16))
+        self.assertEqual(image.shape, (1, 3, 16, 16))
 
+    def test_inference_batch_single_identical(self):
+        super().test_inference_batch_single_identical(expected_max_diff=5e-3)
+
+    @unittest.skip("Test not supported")
     def test_attention_slicing_forward_pass(self):
         pass
 
@@ -201,10 +198,10 @@ class Kandinsky5T2VPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     def test_xformers_memory_efficient_attention(self):
         pass
 
-    @unittest.skip("TODO:Test does not work")
+    @unittest.skip("All encoders are needed")
     def test_encode_prompt_works_in_isolation(self):
         pass
 
-    @unittest.skip("TODO: revisit")
-    def test_inference_batch_single_identical(self):
+    @unittest.skip("Meant for eiter FP32 or BF16 inference")
+    def test_float16_inference(self):
         pass

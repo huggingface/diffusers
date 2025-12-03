@@ -664,6 +664,8 @@
         title: HunyuanVideo1.5
       - local: api/pipelines/i2vgenxl
         title: I2VGen-XL
+      - local: api/pipelines/kandinsky5_image
+        title: Kandinsky 5.0 Image
       - local: api/pipelines/kandinsky5_video
         title: Kandinsky 5.0 Video
       - local: api/pipelines/latte
