@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import html
-from typing import Callable, Dict, List, Optional, Union, Tuple
+from typing import Callable, Dict, List, Optional, Union
 
 import numpy as np
 import regex as re

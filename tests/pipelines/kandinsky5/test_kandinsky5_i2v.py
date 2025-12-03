@@ -119,7 +119,6 @@ class Kandinsky5I2VPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         text_encoder = Qwen2_5_VLForConditionalGeneration(qwen_config)
         tokenizer = AutoProcessor.from_pretrained("hf-internal-testing/tiny-random-Qwen2VLForConditionalGeneration")
 
-
         clip_hidden_size = 16
         torch.manual_seed(0)
         clip_config = CLIPTextConfig(
@@ -198,7 +197,6 @@ class Kandinsky5I2VPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         # 17 frames, RGB, 32×32
         self.assertEqual(video.shape, (17, 3, 32, 32))
-
 
     @unittest.skip("TODO:Test does not work")
     def test_encode_prompt_works_in_isolation(self):

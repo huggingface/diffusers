@@ -185,7 +185,7 @@ class Kandinsky5T2IPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         output = pipe(**inputs)
         image = output.image
 
-        self.assertEqual(image.shape, (1, 3, 16,16))
+        self.assertEqual(image.shape, (1, 3, 16, 16))
 
     def test_inference_batch_single_identical(self):
         super().test_inference_batch_single_identical(expected_max_diff=5e-3)

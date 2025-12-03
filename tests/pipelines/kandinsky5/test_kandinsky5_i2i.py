@@ -192,11 +192,9 @@ class Kandinsky5I2IPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         self.assertEqual(image.shape, (1, 3, 64, 64))
 
-
     @unittest.skip("TODO: Test does not work")
     def test_encode_prompt_works_in_isolation(self):
         pass
-
 
     @unittest.skip("TODO: revisit, Batch isnot yet supported in this pipeline")
     def test_num_images_per_prompt(self):
