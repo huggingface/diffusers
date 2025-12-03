@@ -1860,6 +1860,12 @@ class ModelTesterMixin:
     @torch.no_grad()
     @torch.inference_mode()
     def test_group_offloading_with_disk(self, offload_type, record_stream, atol=1e-5):
+        for cls in inspect.getmro(self.__class__):
+            if "test_group_offloading_with_disk" in cls.__dict__ and cls is not ModelTesterMixin:
+                # Skip this test if it is overwritten by child class. We need to do this because parameterized
+                # materializes the test methods on invocation which cannot be overridden.
+                pytest.skip("Model does not support group offloading with disk yet.")
+
         if not self.model_class._supports_group_offloading:
             pytest.skip("Model does not support group offloading.")
 
