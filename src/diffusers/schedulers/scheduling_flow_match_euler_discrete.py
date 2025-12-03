@@ -454,8 +454,13 @@ class FlowMatchEulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
             dt = sigma_next - sigma
 
         if self.config.stochastic_sampling:
-            x0 = sample - current_sigma * model_output
-            noise = torch.randn_like(sample)
+            x0 = (sample.double() - current_sigma.double() * model_output.double()).to(sample.dtype)
+            noise = torch.randn(
+                sample.shape,
+                device=sample.device,
+                dtype=sample.dtype,
+                generator=generator,
+            )
             prev_sample = (1.0 - next_sigma) * x0 + next_sigma * noise
         else:
             prev_sample = sample + dt * model_output
