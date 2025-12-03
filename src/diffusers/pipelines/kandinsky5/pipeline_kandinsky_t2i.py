@@ -162,7 +162,6 @@ class Kandinsky5T2IPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
         text_encoder_2: CLIPTextModel,
         tokenizer_2: CLIPTokenizer,
         scheduler: FlowMatchEulerDiscreteScheduler,
-        resolutions: Tuple[Tuple[int, int]] = ((1024, 1024), (640, 1408), (1408, 640), (768, 1280), (1280, 768), (896, 1152), (1152, 896)),
     ):
         super().__init__()
 
@@ -175,14 +174,13 @@ class Kandinsky5T2IPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
             tokenizer_2=tokenizer_2,
             scheduler=scheduler,
         )
-        self.register_to_config(resolutions=resolutions)
 
         self.prompt_template = "<|im_start|>system\nYou are a promt engineer. Describe the image by detailing the color, shape, size, texture, quantity, text, spatial relationships of the objects and background:<|im_end|>\n<|im_start|>user\n{}<|im_end|>"
         self.prompt_template_encode_start_idx = 41
 
         self.vae_scale_factor_spatial = 8
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor_spatial)
-        self.resolutions = resolutions
+        self.resolutions = [(1024, 1024), (640, 1408), (1408, 640), (768, 1280), (1280, 768), (896, 1152), (1152, 896)]
 
     def _encode_prompt_qwen(
         self,
@@ -417,8 +415,8 @@ class Kandinsky5T2IPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
         if max_sequence_length is not None and max_sequence_length > 1024:
             raise ValueError("max_sequence_length must be less than 1024")
 
-        if (width, height) not in self.config.resolutions:
-            resolutions_str = ",".join([f"({w},{h})" for w, h in self.config.resolutions])
+        if (width, height) not in self.resolutions:
+            resolutions_str = ",".join([f"({w},{h})" for w, h in self.resolutions])
             logger.warning(
                 f"`height` and `width` have to be one of {resolutions_str}, but are {height} and {width}. Dimensions will be resized accordingly"
             )
@@ -629,9 +627,9 @@ class Kandinsky5T2IPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
             callback_on_step_end_tensor_inputs=callback_on_step_end_tensor_inputs,
             max_sequence_length=max_sequence_length,
         )
-        if (width, height) not in self.config.resolutions:
-            width, height = self.config.resolutions[
-                np.argmin([abs((i[0] / i[1]) - (width / height)) for i in self.config.resolutions])
+        if (width, height) not in self.resolutions:
+            width, height = self.resolutions[
+                np.argmin([abs((i[0] / i[1]) - (width / height)) for i in self.resolutions])
             ]
 
         self._guidance_scale = guidance_scale
