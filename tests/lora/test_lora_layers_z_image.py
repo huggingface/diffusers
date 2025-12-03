@@ -37,10 +37,10 @@ sys.path.append(".")
 from .utils import PeftLoraLoaderMixinTests  # noqa: E402
 
 
-@unittest.skip(
-    "ZImage LoRA tests are skipped due to non-deterministic behavior from complex64 RoPE operations "
-    "and torch.empty padding tokens. LoRA functionality works correctly with real models."
-)
+# @unittest.skip(
+#     "ZImage LoRA tests are skipped due to non-deterministic behavior from complex64 RoPE operations "
+#     "and torch.empty padding tokens. LoRA functionality works correctly with real models."
+# )
 @require_peft_backend
 class ZImageLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
     pipeline_class = ZImagePipeline
@@ -127,6 +127,11 @@ class ZImageLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
         tokenizer = Qwen2Tokenizer.from_pretrained(self.tokenizer_id)
 
         transformer = self.transformer_cls(**self.transformer_kwargs)
+        # `x_pad_token` and `cap_pad_token` are initialized with `torch.empty`.
+        # This can cause NaN data values in our testing environment. Fixating them
+        # helps prevent that issue.
+        transformer.x_pad_token.copy_(torch.ones_like(transformer.x_pad_token.data))
+        transformer.cap_pad_token.copy_(torch.ones_like(transformer.cap_pad_token.data))
         vae = self.vae_cls(**self.vae_kwargs)
 
         if scheduler_cls is None:

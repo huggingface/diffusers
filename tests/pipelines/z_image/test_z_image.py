@@ -101,6 +101,11 @@ class ZImagePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             axes_dims=[8, 4, 4],
             axes_lens=[256, 32, 32],
         )
+        # `x_pad_token` and `cap_pad_token` are initialized with `torch.empty`.
+        # This can cause NaN data values in our testing environment. Fixating them
+        # helps prevent that issue.
+        transformer.x_pad_token.copy_(torch.ones_like(transformer.x_pad_token.data))
+        transformer.cap_pad_token.copy_(torch.ones_like(transformer.cap_pad_token.data))
 
         torch.manual_seed(0)
         vae = AutoencoderKL(
