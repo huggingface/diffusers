@@ -562,14 +562,8 @@ class BaseAutoregressiveDiffusionPipeline(DiffusionPipeline, WanLoraLoaderMixin)
             callback_on_step_end_tensor_inputs,
         )
 
-        if num_frames % self.vae_scale_factor_temporal != 1:
-            logger.warning(
-                f"`num_frames - 1` has to be divisible by {self.vae_scale_factor_temporal}. Rounding to the nearest number."
-            )
-            num_frames = num_frames // self.vae_scale_factor_temporal * self.vae_scale_factor_temporal + 1
-        num_frames = max(num_frames, 1)
-
         self._guidance_scale = guidance_scale
+        attention_kwargs = attention_kwargs if attention_kwargs is not None else {}
         self._attention_kwargs = attention_kwargs
         self._current_timestep = None
         self._interrupt = False
@@ -665,13 +659,14 @@ class BaseAutoregressiveDiffusionPipeline(DiffusionPipeline, WanLoraLoaderMixin)
 
                 current_latents = current_latents.to(transformer_dtype)
                 denoised_latents = self.denoise_single_block(
-                    latent_model_input=current_latents,
+                    latents=current_latents,
                     timesteps=timesteps,
                     mask=mask,
                     prompt_embeds=prompt_embeds,
                     negative_prompt_embeds=negative_prompt_embeds,
                     attention_kwargs=attention_kwargs,
                     guidance_scale=guidance_scale,
+                    generator=generator,
                     callback_on_step_end=callback_on_step_end,
                     callback_on_step_end_tensor_inputs=callback_on_step_end_tensor_inputs,
                 )
@@ -705,20 +700,20 @@ class BaseAutoregressiveDiffusionPipeline(DiffusionPipeline, WanLoraLoaderMixin)
         self._current_timestep = None
 
         if output_type != "latent":
-            latents = latents.to(self.vae.dtype)
+            output = output.to(self.vae.dtype)
             latents_mean = (
                 torch.tensor(self.vae.config.latents_mean)
                 .view(1, self.vae.config.z_dim, 1, 1, 1)
-                .to(latents.device, latents.dtype)
+                .to(output.device, output.dtype)
             )
             latents_std = 1.0 / torch.tensor(self.vae.config.latents_std).view(1, self.vae.config.z_dim, 1, 1, 1).to(
-                latents.device, latents.dtype
+                output.device, output.dtype
             )
-            latents = latents / latents_std + latents_mean
-            video = self.vae.decode(latents, return_dict=False)[0]
+            output = output / latents_std + latents_mean
+            video = self.vae.decode(output, return_dict=False)[0]
             video = self.video_processor.postprocess_video(video, output_type=output_type)
         else:
-            video = latents
+            video = output
 
         # Offload all models
         self.maybe_free_model_hooks()
@@ -730,13 +725,14 @@ class BaseAutoregressiveDiffusionPipeline(DiffusionPipeline, WanLoraLoaderMixin)
 
     def denoise_single_block(
         self,
-        latent_model_input,
+        latents,
         timesteps,
         mask,
         prompt_embeds,
         negative_prompt_embeds,
         attention_kwargs,
         guidance_scale,
+        generator,
         callback_on_step_end,
         callback_on_step_end_tensor_inputs,
     ):
@@ -745,11 +741,11 @@ class BaseAutoregressiveDiffusionPipeline(DiffusionPipeline, WanLoraLoaderMixin)
                 continue
 
             self._current_timestep = t
-            timestep = t.expand(latent_model_input.shape[0])
+            timestep = t.expand(latents.shape[0])
 
             with self.transformer.cache_context("cond"):
                 noise_pred = self.transformer(
-                    hidden_states=latent_model_input,
+                    hidden_states=latents,
                     timestep=timestep,
                     encoder_hidden_states=prompt_embeds,
                     attention_kwargs=attention_kwargs,
@@ -758,7 +754,7 @@ class BaseAutoregressiveDiffusionPipeline(DiffusionPipeline, WanLoraLoaderMixin)
             if self.do_classifier_free_guidance:
                 with self.transformer.cache_context("uncond"):
                     noise_uncond = self.transformer(
-                        hidden_states=latent_model_input,
+                        hidden_states=latents,
                         timestep=timestep,
                         encoder_hidden_states=negative_prompt_embeds,
                         attention_kwargs=attention_kwargs,
@@ -767,7 +763,7 @@ class BaseAutoregressiveDiffusionPipeline(DiffusionPipeline, WanLoraLoaderMixin)
                 noise_pred = noise_uncond + guidance_scale * (noise_pred - noise_uncond)
 
             # compute the previous noisy sample x_t -> x_t-1
-            latents = self.scheduler.step(noise_pred, t, latent_model_input, return_dict=False)[0]
+            latents = self.scheduler.step(noise_pred, t, latents, generator=generator, return_dict=False)[0]
 
             if callback_on_step_end is not None:
                 callback_kwargs = {}
