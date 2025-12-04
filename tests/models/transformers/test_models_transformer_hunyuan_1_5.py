@@ -29,6 +29,7 @@ class HunyuanVideo15Transformer3DTests(ModelTesterMixin, unittest.TestCase):
     model_class = HunyuanVideo15Transformer3DModel
     main_input_name = "hidden_states"
     uses_custom_attn_processor = True
+    model_split_percents = [0.99, 0.99, 0.99]
 
     text_embed_dim = 16
     text_embed_2_dim = 8

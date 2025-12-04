@@ -15,6 +15,7 @@
 import unittest
 
 import torch
+from PIL import Image
 from transformers import (
     AutoProcessor,
     CLIPTextConfig,
@@ -27,25 +28,22 @@ from transformers import (
 from diffusers import (
     AutoencoderKLHunyuanVideo,
     FlowMatchEulerDiscreteScheduler,
-    Kandinsky5T2VPipeline,
+    Kandinsky5I2VPipeline,
     Kandinsky5Transformer3DModel,
 )
+from diffusers.utils.testing_utils import enable_full_determinism
 
-from ...testing_utils import (
-    enable_full_determinism,
-)
 from ..test_pipelines_common import PipelineTesterMixin
 
 
 enable_full_determinism()
 
 
-class Kandinsky5T2VPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
-    pipeline_class = Kandinsky5T2VPipeline
+class Kandinsky5I2VPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+    pipeline_class = Kandinsky5I2VPipeline
 
     batch_params = ["prompt", "negative_prompt"]
-
-    params = frozenset(["prompt", "height", "width", "num_frames", "num_inference_steps", "guidance_scale"])
+    params = frozenset(["image", "prompt", "height", "width", "num_frames", "num_inference_steps", "guidance_scale"])
 
     required_optional_params = {
         "num_inference_steps",
@@ -65,8 +63,9 @@ class Kandinsky5T2VPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         torch.manual_seed(0)
         vae = AutoencoderKLHunyuanVideo(
             act_fn="silu",
-            block_out_channels=[32, 64],
+            block_out_channels=[32, 64, 64],
             down_block_types=[
+                "HunyuanVideoDownBlock3D",
                 "HunyuanVideoDownBlock3D",
                 "HunyuanVideoDownBlock3D",
             ],
@@ -80,6 +79,7 @@ class Kandinsky5T2VPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             spatial_compression_ratio=8,
             temporal_compression_ratio=4,
             up_block_types=[
+                "HunyuanVideoUpBlock3D",
                 "HunyuanVideoUpBlock3D",
                 "HunyuanVideoUpBlock3D",
             ],
@@ -149,7 +149,7 @@ class Kandinsky5T2VPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             num_text_blocks=1,
             num_visual_blocks=2,
             axes_dims=(1, 1, 2),
-            visual_cond=False,
+            visual_cond=True,
             attention_type="regular",
         )
 
@@ -169,11 +169,14 @@ class Kandinsky5T2VPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         else:
             generator = torch.Generator(device=device).manual_seed(seed)
 
+        image = Image.new("RGB", (32, 32), color="red")
+
         return {
+            "image": image,
             "prompt": "a red square",
             "height": 32,
             "width": 32,
-            "num_frames": 5,
+            "num_frames": 17,
             "num_inference_steps": 2,
             "guidance_scale": 4.0,
             "generator": generator,
@@ -192,17 +195,15 @@ class Kandinsky5T2VPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         output = pipe(**inputs)
         video = output.frames[0]
 
-        self.assertEqual(video.shape, (3, 3, 16, 16))
-
-    def test_attention_slicing_forward_pass(self):
-        pass
-
-    @unittest.skip("Only SDPA or NABLA (flex)")
-    def test_xformers_memory_efficient_attention(self):
-        pass
+        # 17 frames, RGB, 32×32
+        self.assertEqual(video.shape, (17, 3, 32, 32))
 
     @unittest.skip("TODO:Test does not work")
     def test_encode_prompt_works_in_isolation(self):
+        pass
+
+    @unittest.skip("TODO: revisit")
+    def test_callback_inputs(self):
         pass
 
     @unittest.skip("TODO: revisit")

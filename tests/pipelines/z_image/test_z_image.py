@@ -20,12 +20,7 @@ import numpy as np
 import torch
 from transformers import Qwen2Tokenizer, Qwen3Config, Qwen3Model
 
-from diffusers import (
-    AutoencoderKL,
-    FlowMatchEulerDiscreteScheduler,
-    ZImagePipeline,
-    ZImageTransformer2DModel,
-)
+from diffusers import AutoencoderKL, FlowMatchEulerDiscreteScheduler, ZImagePipeline, ZImageTransformer2DModel
 
 from ...testing_utils import torch_device
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
@@ -106,6 +101,12 @@ class ZImagePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             axes_dims=[8, 4, 4],
             axes_lens=[256, 32, 32],
         )
+        # `x_pad_token` and `cap_pad_token` are initialized with `torch.empty`.
+        # This can cause NaN data values in our testing environment. Fixating them
+        # helps prevent that issue.
+        with torch.no_grad():
+            transformer.x_pad_token.copy_(torch.ones_like(transformer.x_pad_token.data))
+            transformer.cap_pad_token.copy_(torch.ones_like(transformer.cap_pad_token.data))
 
         torch.manual_seed(0)
         vae = AutoencoderKL(
@@ -183,7 +184,7 @@ class ZImagePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         self.assertEqual(generated_image.shape, (3, 32, 32))
 
         # fmt: off
-        expected_slice = torch.tensor([0.4521, 0.4512, 0.4693, 0.5115, 0.5250, 0.5271, 0.4776, 0.4688, 0.2765, 0.2164, 0.5656, 0.6909, 0.3831, 0.5431, 0.5493, 0.4732])
+        expected_slice = torch.tensor([0.4622, 0.4532, 0.4714, 0.5087, 0.5371, 0.5405, 0.4492, 0.4479, 0.2984, 0.2783, 0.5409, 0.6577, 0.3952, 0.5524, 0.5262, 0.453])
         # fmt: on
 
         generated_slice = generated_image.flatten()

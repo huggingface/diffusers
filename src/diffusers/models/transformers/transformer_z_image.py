@@ -27,6 +27,7 @@ from ...models.modeling_utils import ModelMixin
 from ...models.normalization import RMSNorm
 from ...utils.torch_utils import maybe_allow_in_graph
 from ..attention_dispatch import dispatch_attention_fn
+from ..modeling_outputs import Transformer2DModelOutput
 
 
 ADALN_EMBED_DIM = 256
@@ -39,17 +40,9 @@ class TimestepEmbedder(nn.Module):
         if mid_size is None:
             mid_size = out_size
         self.mlp = nn.Sequential(
-            nn.Linear(
-                frequency_embedding_size,
-                mid_size,
-                bias=True,
-            ),
+            nn.Linear(frequency_embedding_size, mid_size, bias=True),
             nn.SiLU(),
-            nn.Linear(
-                mid_size,
-                out_size,
-                bias=True,
-            ),
+            nn.Linear(mid_size, out_size, bias=True),
         )
 
         self.frequency_embedding_size = frequency_embedding_size
@@ -70,8 +63,11 @@ class TimestepEmbedder(nn.Module):
     def forward(self, t):
         t_freq = self.timestep_embedding(t, self.frequency_embedding_size)
         weight_dtype = self.mlp[0].weight.dtype
+        compute_dtype = getattr(self.mlp[0], "compute_dtype", None)
         if weight_dtype.is_floating_point:
             t_freq = t_freq.to(weight_dtype)
+        elif compute_dtype is not None:
+            t_freq = t_freq.to(compute_dtype)
         t_emb = self.mlp(t_freq)
         return t_emb
 
@@ -211,9 +207,7 @@ class ZImageTransformerBlock(nn.Module):
 
         self.modulation = modulation
         if modulation:
-            self.adaLN_modulation = nn.Sequential(
-                nn.Linear(min(dim, ADALN_EMBED_DIM), 4 * dim, bias=True),
-            )
+            self.adaLN_modulation = nn.Sequential(nn.Linear(min(dim, ADALN_EMBED_DIM), 4 * dim, bias=True))
 
     def forward(
         self,
@@ -230,33 +224,19 @@ class ZImageTransformerBlock(nn.Module):
 
             # Attention block
             attn_out = self.attention(
-                self.attention_norm1(x) * scale_msa,
-                attention_mask=attn_mask,
-                freqs_cis=freqs_cis,
+                self.attention_norm1(x) * scale_msa, attention_mask=attn_mask, freqs_cis=freqs_cis
             )
             x = x + gate_msa * self.attention_norm2(attn_out)
 
             # FFN block
-            x = x + gate_mlp * self.ffn_norm2(
-                self.feed_forward(
-                    self.ffn_norm1(x) * scale_mlp,
-                )
-            )
+            x = x + gate_mlp * self.ffn_norm2(self.feed_forward(self.ffn_norm1(x) * scale_mlp))
         else:
             # Attention block
-            attn_out = self.attention(
-                self.attention_norm1(x),
-                attention_mask=attn_mask,
-                freqs_cis=freqs_cis,
-            )
+            attn_out = self.attention(self.attention_norm1(x), attention_mask=attn_mask, freqs_cis=freqs_cis)
             x = x + self.attention_norm2(attn_out)
 
             # FFN block
-            x = x + self.ffn_norm2(
-                self.feed_forward(
-                    self.ffn_norm1(x),
-                )
-            )
+            x = x + self.ffn_norm2(self.feed_forward(self.ffn_norm1(x)))
 
         return x
 
@@ -404,10 +384,7 @@ class ZImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
             ]
         )
         self.t_embedder = TimestepEmbedder(min(dim, ADALN_EMBED_DIM), mid_size=1024)
-        self.cap_embedder = nn.Sequential(
-            RMSNorm(cap_feat_dim, eps=norm_eps),
-            nn.Linear(cap_feat_dim, dim, bias=True),
-        )
+        self.cap_embedder = nn.Sequential(RMSNorm(cap_feat_dim, eps=norm_eps), nn.Linear(cap_feat_dim, dim, bias=True))
 
         self.x_pad_token = nn.Parameter(torch.empty((1, dim)))
         self.cap_pad_token = nn.Parameter(torch.empty((1, dim)))
@@ -494,11 +471,8 @@ class ZImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
             )
 
             # padded feature
-            cap_padded_feat = torch.cat(
-                [cap_feat, cap_feat[-1:].repeat(cap_padding_len, 1)],
-                dim=0,
-            )
-            all_cap_feats_out.append(cap_padded_feat if cap_padding_len > 0 else cap_feat)
+            cap_padded_feat = torch.cat([cap_feat, cap_feat[-1:].repeat(cap_padding_len, 1)], dim=0)
+            all_cap_feats_out.append(cap_padded_feat)
 
             ### Process Image
             C, F, H, W = image.size()
@@ -564,6 +538,7 @@ class ZImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
         cap_feats: List[torch.Tensor],
         patch_size=2,
         f_patch_size=1,
+        return_dict: bool = True,
     ):
         assert patch_size in self.all_patch_size
         assert f_patch_size in self.all_f_patch_size
@@ -672,4 +647,7 @@ class ZImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
         unified = list(unified.unbind(dim=0))
         x = self.unpatchify(unified, x_size, patch_size, f_patch_size)
 
-        return x, {}
+        if not return_dict:
+            return (x,)
+
+        return Transformer2DModelOutput(sample=x)
