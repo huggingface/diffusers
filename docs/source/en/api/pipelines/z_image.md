@@ -18,7 +18,7 @@ specific language governing permissions and limitations under the License.
 
 [Z-Image](https://huggingface.co/papers/2511.22699) is a powerful and highly efficient image generation model with 6B parameters. Currently there's only one model with two more to be released:
 
-|Model|HuggingFace|
+|Model|Hugging Face|
 |---|---|
 |Z-Image-Turbo|https://huggingface.co/Tongyi-MAI/Z-Image-Turbo|
 
