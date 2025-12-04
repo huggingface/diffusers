@@ -52,9 +52,9 @@ class TaylorSeerCacheConfig:
             affect stability; higher precision improves accuracy at the cost of more memory.
 
         skip_predict_identifiers (`List[str]`, *optional*, defaults to `None`):
-            Regex patterns (using `re.fullmatch`) for module names to place as "skip" in "cache" mode. In this mode, the
-            module computes fully during initial or refresh steps but returns a zero tensor (matching recorded shape)
-            during prediction steps to skip computation cheaply.
+            Regex patterns (using `re.fullmatch`) for module names to place as "skip" in "cache" mode. In this mode,
+            the module computes fully during initial or refresh steps but returns a zero tensor (matching recorded
+            shape) during prediction steps to skip computation cheaply.
 
         cache_identifiers (`List[str]`, *optional*, defaults to `None`):
             Regex patterns (using `re.fullmatch`) for module names to place in Taylor-series caching mode, where
