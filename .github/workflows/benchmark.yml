@@ -38,8 +38,8 @@ jobs:
         run: |
           apt update
           apt install -y libpq-dev postgresql-client
-          uv pip install -e ".[quality]"
-          uv pip install -r benchmarks/requirements.txt
+          uv pip install --prerelease=allow -e ".[quality]"
+          uv pip install --prerelease=allow -r benchmarks/requirements.txt
       - name: Environment
         run: |
           python utils/print_env.py
