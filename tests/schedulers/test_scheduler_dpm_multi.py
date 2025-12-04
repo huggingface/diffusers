@@ -366,3 +366,31 @@ class DPMSolverMultistepSchedulerTest(SchedulerCommonTest):
 
     def test_exponential_sigmas(self):
         self.check_over_configs(use_exponential_sigmas=True)
+
+    def test_no_duplicate_timesteps_with_sigma_methods(self):
+        sigma_configs = [
+            {"use_karras_sigmas": True},
+            {"use_lu_lambdas": True},
+            {"use_exponential_sigmas": True},
+            {"use_beta_sigmas": True},
+        ]
+
+        for config in sigma_configs:
+            scheduler = DPMSolverMultistepScheduler(
+                num_train_timesteps=1000,
+                beta_schedule="squaredcos_cap_v2",
+                **config,
+            )
+            scheduler.set_timesteps(20)
+
+            sample = torch.randn(4, 3, 32, 32)
+            
+            try:
+                for t in scheduler.timesteps:
+                    model_output = torch.randn_like(sample)
+                    output = scheduler.step(model_output, t, sample)
+                    sample = output.prev_sample
+            except IndexError as e:
+                self.fail(f"Index error occurred with config {config}: {e}")
+            except Exception as e:
+                self.fail(f"Unexpected error with config {config}: {e}")
