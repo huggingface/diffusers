@@ -300,8 +300,8 @@ class ZImageControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         f_patch_size=1,
         conditioning_scale: float = 1.0,
     ):
-        assert patch_size in self.all_patch_size
-        assert f_patch_size in self.all_f_patch_size
+        assert patch_size in self.config.all_patch_size
+        assert f_patch_size in self.config.all_f_patch_size
 
         bsz = len(x)
         device = x[0].device
