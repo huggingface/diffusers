@@ -56,8 +56,8 @@ export_to_video(video, "output.mp4", fps=15)
 
 - HunyuanVideo1.5 use attention masks with variable-length sequences. For best performance, we recommend using an attention backend that handles padding efficiently.
 
-    - **H100/H800:** `_flash_3_hub` or `_flash_varlen_3`
-    - **A100/A800/RTX 4090:** `flash_hub` or `flash_varlen`
+    - **H100/H800:** `_flash_3_hub` or `_flash_3_varlen_hub`
+    - **A100/A800/RTX 4090:** `flash_hub` or `flash_varlen_hub`
     - **Other GPUs:** `sage_hub`
 
 Refer to the [Attention backends](../../optimization/attention_backends) guide for more details about using a different backend.
