@@ -36,9 +36,13 @@ EXAMPLE_DOC_STRING = """
     Examples:
         ```py
         >>> import torch
-        >>> from diffusers import ZImagePipeline
+        >>> from diffusers import ZImageControlNetPipeline
+        >>> from diffusers import ZImageControlNetModel
 
-        >>> pipe = ZImagePipeline.from_pretrained("Z-a-o/Z-Image-Turbo", torch_dtype=torch.bfloat16)
+        >>> controlnet_model = "..."
+        >>> controlnet = ZImageControlNetModel.from_pretrained(controlnet_model, torch_dtype=torch.bfloat16)
+
+        >>> pipe = ZImageControlNetPipeline.from_pretrained("Z-a-o/Z-Image-Turbo", controlnet=controlnet, torch_dtype=torch.bfloat16)
         >>> pipe.to("cuda")
 
         >>> # Optionally, set the attention backend to flash-attn 2 or 3, default is SDPA in PyTorch.
@@ -47,9 +51,11 @@ EXAMPLE_DOC_STRING = """
         >>> # (2) Use flash attention 3
         >>> # pipe.transformer.set_attention_backend("_flash_3")
 
-        >>> prompt = "一幅为名为“造相「Z-IMAGE-TURBO」”的项目设计的创意海报。画面巧妙地将文字概念视觉化：一辆复古蒸汽小火车化身为巨大的拉链头，正拉开厚厚的冬日积雪，展露出一个生机盎然的春天。"
+        >>> control_image = load_image("https://huggingface.co/InstantX/SD3-Controlnet-Canny/resolve/main/canny.jpg")
+        >>> prompt = "A girl in city, 25 years old, cool, futuristic"
         >>> image = pipe(
         ...     prompt,
+        ...     control_image=control_image,
         ...     height=1024,
         ...     width=1024,
         ...     num_inference_steps=9,
