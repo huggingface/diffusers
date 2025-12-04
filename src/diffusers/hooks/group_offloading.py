@@ -322,6 +322,7 @@ class GroupOffloadingHook(ModelHook):
 
         args = send_to_device(args, self.group.onload_device, non_blocking=self.group.non_blocking)
         kwargs = send_to_device(kwargs, self.group.onload_device, non_blocking=self.group.non_blocking)
+
         return args, kwargs
 
     def post_forward(self, module: torch.nn.Module, output):
@@ -608,6 +609,7 @@ def _apply_group_offloading_block_level(module: torch.nn.Module, config: GroupOf
             # Apply block offloading to the specified submodule
             _apply_group_offloading_block_level(submodule, config)
             modules_with_group_offloading.add(name)
+
         elif isinstance(submodule, (torch.nn.ModuleList, torch.nn.Sequential)):
             # Handle ModuleList and Sequential blocks as before
             for i in range(0, len(submodule), config.num_blocks_per_group):
@@ -653,7 +655,9 @@ def _apply_group_offloading_block_level(module: torch.nn.Module, config: GroupOf
     # Create a group for the remaining unmatched submodules of the top-level
     # module so that they are on the correct device when the forward pass is called.
     unmatched_modules = [unmatched_module for _, unmatched_module in unmatched_modules]
-    if len(unmatched_modules) > 0 or len(parameters) > 0 or len(buffers) > 0:
+    has_unmatched = len(unmatched_modules) > 0 or len(parameters) > 0 or len(buffers) > 0
+
+    if has_unmatched or len(block_modules) > 0:
         unmatched_group = ModuleGroup(
             modules=unmatched_modules,
             offload_device=config.offload_device,

@@ -1424,7 +1424,7 @@ if is_torch_available():
         offload_to_disk_path: str,
         offload_type: str,
         num_blocks_per_group: Optional[int] = None,
-        block_modules: Optional[List[str]] = None
+        block_modules: Optional[List[str]] = None,
     ) -> Set[str]:
         expected_files = set()
 

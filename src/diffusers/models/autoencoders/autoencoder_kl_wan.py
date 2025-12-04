@@ -1146,6 +1146,9 @@ class AutoencoderKLWan(ModelMixin, AutoencoderMixin, ConfigMixin, FromOriginalMo
                     feat_idx=self._enc_conv_idx,
                 )
                 out = torch.cat([out, out_], 2)
+        __import__("ipdb").set_trace()
+        # cache_devices = [i.device.type for i in self._enc_feat_map]
+        # any((d != "cuda" for d in cache_devices))
 
         enc = self.quant_conv(out)
         self.clear_cache()
@@ -1409,6 +1412,7 @@ class AutoencoderKLWan(ModelMixin, AutoencoderMixin, ConfigMixin, FromOriginalMo
         """
         x = sample
         posterior = self.encode(x).latent_dist
+
         if sample_posterior:
             z = posterior.sample(generator=generator)
         else:
