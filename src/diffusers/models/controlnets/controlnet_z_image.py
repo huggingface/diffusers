@@ -452,10 +452,6 @@ class ZImageControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
                 c = layer(c, **new_kwargs)
 
         hints = torch.unbind(c)[:-1] * conditioning_scale
-        controlnet_block_samples = {}
-        for layer_idx in range(self.n_layers):
-            if layer_idx in self.control_layers_places:
-                hints_idx = self.control_layers_places.index(layer_idx)
-                controlnet_block_samples[layer_idx] = hints[hints_idx]
+        controlnet_block_samples = {layer_idx: hints[idx] for idx, layer_idx in enumerate(self.control_layers_places)}
 
         return controlnet_block_samples
