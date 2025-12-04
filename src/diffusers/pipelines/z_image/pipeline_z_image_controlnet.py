@@ -594,6 +594,7 @@ class ZImageControlNetPipeline(DiffusionPipeline, FromSingleFileMixin):
                 latent_model_input_list = list(latent_model_input.unbind(dim=0))
 
                 controlnet_block_samples = self.controlnet(
+                    self.transformer,
                     latent_model_input_list,
                     prompt_embeds_model_input,
                     control_image,

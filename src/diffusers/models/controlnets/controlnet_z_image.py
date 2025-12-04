@@ -23,7 +23,7 @@ from ...loaders import PeftAdapterMixin
 from ...models.normalization import RMSNorm
 from ..controlnets.controlnet import zero_module
 from ..modeling_utils import ModelMixin
-from ..transformers.transformer_z_image import ZImageTransformerBlock, RopeEmbedder, TimestepEmbedder, SEQ_MULTI_OF, ADALN_EMBED_DIM
+from ..transformers.transformer_z_image import ZImageTransformer2DModel, ZImageTransformerBlock, RopeEmbedder, TimestepEmbedder, SEQ_MULTI_OF, ADALN_EMBED_DIM
 
 
 class ZImageControlTransformerBlock(ZImageTransformerBlock):
@@ -66,87 +66,16 @@ class ZImageControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         self,
         all_patch_size=(2,),
         all_f_patch_size=(1,),
-        in_channels=16,
         dim=3840,
-        n_layers=30,
         n_refiner_layers=2,
         n_heads=30,
         n_kv_heads=30,
         norm_eps=1e-5,
         qk_norm=True,
-        cap_feat_dim=2560,
-        rope_theta=256.0,
-        t_scale=1000.0,
-        axes_dims=[32, 48, 48],
-        axes_lens=[1024, 512, 512],
         control_layers_places: List[int]=None,
         control_in_dim=None,
     ):
         super().__init__()
-        self.in_channels = in_channels
-        self.out_channels = in_channels
-        self.all_patch_size = all_patch_size
-        self.all_f_patch_size = all_f_patch_size
-        self.dim = dim
-        self.n_heads = n_heads
-
-        self.rope_theta = rope_theta
-        self.t_scale = t_scale
-        self.gradient_checkpointing = False
-        self.n_layers = n_layers
-
-        assert len(all_patch_size) == len(all_f_patch_size)
-
-        all_x_embedder = {}
-        for patch_idx, (patch_size, f_patch_size) in enumerate(zip(all_patch_size, all_f_patch_size)):
-            x_embedder = nn.Linear(f_patch_size * patch_size * patch_size * in_channels, dim, bias=True)
-            all_x_embedder[f"{patch_size}-{f_patch_size}"] = x_embedder
-
-        self.all_x_embedder = nn.ModuleDict(all_x_embedder)
-        self.noise_refiner = nn.ModuleList(
-            [
-                ZImageTransformerBlock(
-                    1000 + layer_id,
-                    dim,
-                    n_heads,
-                    n_kv_heads,
-                    norm_eps,
-                    qk_norm,
-                    modulation=True,
-                )
-                for layer_id in range(n_refiner_layers)
-            ]
-        )
-        self.context_refiner = nn.ModuleList(
-            [
-                ZImageTransformerBlock(
-                    layer_id,
-                    dim,
-                    n_heads,
-                    n_kv_heads,
-                    norm_eps,
-                    qk_norm,
-                    modulation=False,
-                )
-                for layer_id in range(n_refiner_layers)
-            ]
-        )
-        self.t_embedder = TimestepEmbedder(min(dim, ADALN_EMBED_DIM), mid_size=1024)
-        self.cap_embedder = nn.Sequential(
-            RMSNorm(cap_feat_dim, eps=norm_eps),
-            nn.Linear(cap_feat_dim, dim, bias=True),
-        )
-
-        self.x_pad_token = nn.Parameter(torch.empty((1, dim)))
-        self.cap_pad_token = nn.Parameter(torch.empty((1, dim)))
-
-        self.axes_dims = axes_dims
-        self.axes_lens = axes_lens
-
-        self.rope_embedder = RopeEmbedder(theta=rope_theta, axes_dims=axes_dims, axes_lens=axes_lens)
-
-        ## Original Control layers
-
         self.control_layers_places = control_layers_places
         self.control_in_dim = control_in_dim
 
@@ -366,6 +295,7 @@ class ZImageControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
 
     def forward(
         self,
+        transformer: ZImageTransformer2DModel,
         x: List[torch.Tensor],
         cap_feats: List[torch.Tensor],
         control_context: List[torch.Tensor],
@@ -380,7 +310,7 @@ class ZImageControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         bsz = len(x)
         device = x[0].device
         t = t * self.t_scale
-        t = self.t_embedder(t)
+        t = transformer.t_embedder(t)
 
         (
             x,
@@ -398,13 +328,13 @@ class ZImageControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         x_max_item_seqlen = max(x_item_seqlens)
 
         x = torch.cat(x, dim=0)
-        x = self.all_x_embedder[f"{patch_size}-{f_patch_size}"](x)
+        x = transformer.all_x_embedder[f"{patch_size}-{f_patch_size}"](x)
 
         # Match t_embedder output dtype to x for layerwise casting compatibility
         adaln_input = t.type_as(x)
-        x[torch.cat(x_inner_pad_mask)] = self.x_pad_token
+        x[torch.cat(x_inner_pad_mask)] = transformer.x_pad_token
         x = list(x.split(x_item_seqlens, dim=0))
-        x_freqs_cis = list(self.rope_embedder(torch.cat(x_pos_ids, dim=0)).split(x_item_seqlens, dim=0))
+        x_freqs_cis = list(transformer.rope_embedder(torch.cat(x_pos_ids, dim=0)).split(x_item_seqlens, dim=0))
 
         x = pad_sequence(x, batch_first=True, padding_value=0.0)
         x_freqs_cis = pad_sequence(x_freqs_cis, batch_first=True, padding_value=0.0)
@@ -413,10 +343,10 @@ class ZImageControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
             x_attn_mask[i, :seq_len] = 1
 
         if torch.is_grad_enabled() and self.gradient_checkpointing:
-            for layer in self.noise_refiner:
+            for layer in transformer.noise_refiner:
                 x = self._gradient_checkpointing_func(layer, x, x_attn_mask, x_freqs_cis, adaln_input)
         else:
-            for layer in self.noise_refiner:
+            for layer in transformer.noise_refiner:
                 x = layer(x, x_attn_mask, x_freqs_cis, adaln_input)
 
         # cap embed & refine
@@ -425,10 +355,10 @@ class ZImageControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         cap_max_item_seqlen = max(cap_item_seqlens)
 
         cap_feats = torch.cat(cap_feats, dim=0)
-        cap_feats = self.cap_embedder(cap_feats)
-        cap_feats[torch.cat(cap_inner_pad_mask)] = self.cap_pad_token
+        cap_feats = transformer.cap_embedder(cap_feats)
+        cap_feats[torch.cat(cap_inner_pad_mask)] = transformer.cap_pad_token
         cap_feats = list(cap_feats.split(cap_item_seqlens, dim=0))
-        cap_freqs_cis = list(self.rope_embedder(torch.cat(cap_pos_ids, dim=0)).split(cap_item_seqlens, dim=0))
+        cap_freqs_cis = list(transformer.rope_embedder(torch.cat(cap_pos_ids, dim=0)).split(cap_item_seqlens, dim=0))
 
         cap_feats = pad_sequence(cap_feats, batch_first=True, padding_value=0.0)
         cap_freqs_cis = pad_sequence(cap_freqs_cis, batch_first=True, padding_value=0.0)
@@ -437,10 +367,10 @@ class ZImageControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
             cap_attn_mask[i, :seq_len] = 1
 
         if torch.is_grad_enabled() and self.gradient_checkpointing:
-            for layer in self.context_refiner:
+            for layer in transformer.context_refiner:
                 cap_feats = self._gradient_checkpointing_func(layer, cap_feats, cap_attn_mask, cap_freqs_cis)
         else:
-            for layer in self.context_refiner:
+            for layer in transformer.context_refiner:
                 cap_feats = layer(cap_feats, cap_attn_mask, cap_freqs_cis)
 
         # unified
@@ -485,7 +415,7 @@ class ZImageControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         adaln_input = t.type_as(control_context)
         control_context[torch.cat(x_inner_pad_mask)] = self.x_pad_token
         control_context = list(control_context.split(x_item_seqlens, dim=0))
-        x_freqs_cis = list(self.rope_embedder(torch.cat(x_pos_ids, dim=0)).split(x_item_seqlens, dim=0))
+        x_freqs_cis = list(transformer.rope_embedder(torch.cat(x_pos_ids, dim=0)).split(x_item_seqlens, dim=0))
 
         control_context = pad_sequence(control_context, batch_first=True, padding_value=0.0)
         x_freqs_cis = pad_sequence(x_freqs_cis, batch_first=True, padding_value=0.0)
