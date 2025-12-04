@@ -360,7 +360,7 @@ class ZImageControlNetPipeline(DiffusionPipeline, FromSingleFileMixin):
         sigmas: Optional[List[float]] = None,
         guidance_scale: float = 5.0,
         control_image: PipelineImageInput = None,
-        controlnet_conditioning_scale: Union[float, List[float]] = 1.0,
+        controlnet_conditioning_scale: Union[float, List[float]] = 0.75,
         cfg_normalization: bool = False,
         cfg_truncation: float = 1.0,
         negative_prompt: Optional[Union[str, List[str]]] = None,
@@ -517,7 +517,7 @@ class ZImageControlNetPipeline(DiffusionPipeline, FromSingleFileMixin):
             dtype=self.vae.dtype,
         )
         height, width = control_image.shape[-2:]
-        control_image = retrieve_latents(self.vae.encode(control_image), generator=generator)
+        control_image = retrieve_latents(self.vae.encode(control_image), generator=generator, sample_mode="argmax")
         control_image = (control_image - self.vae.config.shift_factor) * self.vae.config.scaling_factor
         control_image = control_image.unsqueeze(2)
 
