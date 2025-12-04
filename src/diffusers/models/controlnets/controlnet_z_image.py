@@ -305,7 +305,7 @@ class ZImageControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
 
         bsz = len(x)
         device = x[0].device
-        t = t * self.t_scale
+        t = t * transformer.t_scale
         t = transformer.t_embedder(t)
 
         (
