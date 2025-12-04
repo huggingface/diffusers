@@ -1005,8 +1005,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             WanAnimateTransformer3DModel,
             WanTransformer3DModel,
             WanVACETransformer3DModel,
-            ZImageTransformer2DModel,
             ZImageControlNetModel,
+            ZImageTransformer2DModel,
             attention_backend,
         )
         from .modular_pipelines import ComponentsManager, ComponentSpec, ModularPipeline, ModularPipelineBlocks
@@ -1359,8 +1359,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             WuerstchenCombinedPipeline,
             WuerstchenDecoderPipeline,
             WuerstchenPriorPipeline,
-            ZImagePipeline,
             ZImageControlNetPipeline,
+            ZImagePipeline,
         )
 
     try:

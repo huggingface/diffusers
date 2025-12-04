@@ -438,7 +438,12 @@ class ZImageControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         control_context_unified = pad_sequence(control_context_unified, batch_first=True, padding_value=0.0)
         c = control_context_unified
 
-        new_kwargs = {"x": unified, "attn_mask": unified_attn_mask, "freqs_cis": unified_freqs_cis, "adaln_input": adaln_input}
+        new_kwargs = {
+            "x": unified,
+            "attn_mask": unified_attn_mask,
+            "freqs_cis": unified_freqs_cis,
+            "adaln_input": adaln_input,
+        }
 
         for layer in self.control_layers:
             if torch.is_grad_enabled() and self.gradient_checkpointing:

@@ -841,7 +841,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             WuerstchenDecoderPipeline,
             WuerstchenPriorPipeline,
         )
-        from .z_image import ZImagePipeline, ZImageControlNetPipeline
+        from .z_image import ZImageControlNetPipeline, ZImagePipeline
 
         try:
             if not is_onnx_available():

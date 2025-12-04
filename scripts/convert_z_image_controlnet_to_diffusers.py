@@ -1,8 +1,8 @@
 import argparse
 from contextlib import nullcontext
 
-import torch
 import safetensors.torch
+import torch
 from accelerate import init_empty_weights
 from huggingface_hub import hf_hub_download
 
