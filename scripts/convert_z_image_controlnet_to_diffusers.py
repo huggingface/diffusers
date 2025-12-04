@@ -1,14 +1,15 @@
 import argparse
 from contextlib import nullcontext
 
-import torch
 import safetensors.torch
+import torch
 from accelerate import init_empty_weights
 from huggingface_hub import hf_hub_download
 
-from diffusers.utils.import_utils import is_accelerate_available
 from diffusers.models import ZImageTransformer2DModel
 from diffusers.models.controlnets.controlnet_z_image import ZImageControlNetModel
+from diffusers.utils.import_utils import is_accelerate_available
+
 
 """
 python scripts/convert_z_image_controlnet_to_diffusers.py  \
@@ -42,16 +43,28 @@ def load_original_checkpoint(args):
     original_state_dict = safetensors.torch.load_file(ckpt_path)
     return original_state_dict
 
+
 def load_z_image(args):
-    model = ZImageTransformer2DModel.from_pretrained(args.original_z_image_repo_id, subfolder="transformer", torch_dtype=torch.bfloat16)
+    model = ZImageTransformer2DModel.from_pretrained(
+        args.original_z_image_repo_id, subfolder="transformer", torch_dtype=torch.bfloat16
+    )
     return model.state_dict(), model.config
+
 
 def convert_z_image_controlnet_checkpoint_to_diffusers(z_image, original_state_dict):
     converted_state_dict = {}
 
     converted_state_dict.update(original_state_dict)
 
-    to_copy = {"all_x_embedder.", "noise_refiner.", "context_refiner.", "t_embedder.", "cap_embedder.", "x_pad_token", "cap_pad_token"}
+    to_copy = {
+        "all_x_embedder.",
+        "noise_refiner.",
+        "context_refiner.",
+        "t_embedder.",
+        "cap_embedder.",
+        "x_pad_token",
+        "cap_pad_token",
+    }
 
     for key in z_image.keys():
         for copy_key in to_copy:

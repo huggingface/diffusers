@@ -538,7 +538,7 @@ class ZImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
         cap_feats: List[torch.Tensor],
         patch_size=2,
         f_patch_size=1,
-        controlnet_block_samples: Optional[dict[int, torch.Tensor]]=None,
+        controlnet_block_samples: Optional[dict[int, torch.Tensor]] = None,
         return_dict: bool = True,
     ):
         assert patch_size in self.all_patch_size

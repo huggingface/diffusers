@@ -20,15 +20,18 @@ from torch.nn.utils.rnn import pad_sequence
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import PeftAdapterMixin
-from ...models.normalization import RMSNorm
 from ..controlnets.controlnet import zero_module
 from ..modeling_utils import ModelMixin
-from ..transformers.transformer_z_image import ZImageTransformer2DModel, ZImageTransformerBlock, RopeEmbedder, TimestepEmbedder, SEQ_MULTI_OF, ADALN_EMBED_DIM
+from ..transformers.transformer_z_image import (
+    SEQ_MULTI_OF,
+    ZImageTransformer2DModel,
+    ZImageTransformerBlock,
+)
 
 
 class ZImageControlTransformerBlock(ZImageTransformerBlock):
     def __init__(
-        self, 
+        self,
         layer_id: int,
         dim: int,
         n_heads: int,
@@ -36,7 +39,7 @@ class ZImageControlTransformerBlock(ZImageTransformerBlock):
         norm_eps: float,
         qk_norm: bool,
         modulation=True,
-        block_id=0
+        block_id=0,
     ):
         super().__init__(layer_id, dim, n_heads, n_kv_heads, norm_eps, qk_norm, modulation)
         self.block_id = block_id
@@ -57,7 +60,8 @@ class ZImageControlTransformerBlock(ZImageTransformerBlock):
         all_c += [c_skip, c]
         c = torch.stack(all_c)
         return c
-    
+
+
 class ZImageControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
     _supports_gradient_checkpointing = True
 
@@ -72,7 +76,7 @@ class ZImageControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         n_kv_heads=30,
         norm_eps=1e-5,
         qk_norm=True,
-        control_layers_places: List[int]=None,
+        control_layers_places: List[int] = None,
         control_in_dim=None,
     ):
         super().__init__()
@@ -84,15 +88,7 @@ class ZImageControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         # control blocks
         self.control_layers = nn.ModuleList(
             [
-                ZImageControlTransformerBlock(
-                    i, 
-                    dim, 
-                    n_heads, 
-                    n_kv_heads, 
-                    norm_eps, 
-                    qk_norm,
-                    block_id=i
-                )
+                ZImageControlTransformerBlock(i, dim, n_heads, n_kv_heads, norm_eps, qk_norm, block_id=i)
                 for i in self.control_layers_places
             ]
         )
@@ -425,7 +421,9 @@ class ZImageControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
 
         if torch.is_grad_enabled() and self.gradient_checkpointing:
             for layer in self.control_noise_refiner:
-                control_context = self._gradient_checkpointing_func(layer, control_context, x_attn_mask, x_freqs_cis, adaln_input)
+                control_context = self._gradient_checkpointing_func(
+                    layer, control_context, x_attn_mask, x_freqs_cis, adaln_input
+                )
         else:
             for layer in self.control_noise_refiner:
                 control_context = layer(control_context, x_attn_mask, x_freqs_cis, adaln_input)
@@ -440,14 +438,14 @@ class ZImageControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         control_context_unified = pad_sequence(control_context_unified, batch_first=True, padding_value=0.0)
         c = control_context_unified
 
-        new_kwargs = dict(x=unified, attn_mask=unified_attn_mask, freqs_cis=unified_freqs_cis, adaln_input=adaln_input)
-        
+        new_kwargs = {"x": unified, "attn_mask": unified_attn_mask, "freqs_cis": unified_freqs_cis, "adaln_input": adaln_input}
+
         for layer in self.control_layers:
             if torch.is_grad_enabled() and self.gradient_checkpointing:
                 c = self._gradient_checkpointing_func(layer, c, **new_kwargs)
             else:
                 c = layer(c, **new_kwargs)
- 
+
         hints = torch.unbind(c)[:-1] * conditioning_scale
         controlnet_block_samples = {}
         for layer_idx in range(self.n_layers):

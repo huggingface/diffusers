@@ -89,7 +89,6 @@ def retrieve_latents(
         raise AttributeError("Could not access latents of provided encoder_output")
 
 
-
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.retrieve_timesteps
 def retrieve_timesteps(
     scheduler,
@@ -509,7 +508,7 @@ class ZImageControlNetPipeline(DiffusionPipeline, FromSingleFileMixin):
             num_images_per_prompt=num_images_per_prompt,
             device=device,
             dtype=self.vae.dtype,
-        )        
+        )
         height, width = control_image.shape[-2:]
         control_image = retrieve_latents(self.vae.encode(control_image), generator=generator)
         control_image = (control_image - self.vae.config.shift_factor) * self.vae.config.scaling_factor
