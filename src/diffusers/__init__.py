@@ -277,6 +277,7 @@ else:
             "WanTransformer3DModel",
             "WanVACETransformer3DModel",
             "ZImageTransformer2DModel",
+            "ZImageControlNetModel",
             "attention_backend",
         ]
     )
@@ -661,6 +662,7 @@ else:
             "WuerstchenDecoderPipeline",
             "WuerstchenPriorPipeline",
             "ZImagePipeline",
+            "ZImageControlNetPipeline",
         ]
     )
 
@@ -1004,6 +1006,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             WanTransformer3DModel,
             WanVACETransformer3DModel,
             ZImageTransformer2DModel,
+            ZImageControlNetModel,
             attention_backend,
         )
         from .modular_pipelines import ComponentsManager, ComponentSpec, ModularPipeline, ModularPipelineBlocks
@@ -1357,6 +1360,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             WuerstchenDecoderPipeline,
             WuerstchenPriorPipeline,
             ZImagePipeline,
+            ZImageControlNetPipeline,
         )
 
     try:
