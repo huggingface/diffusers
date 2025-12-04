@@ -694,6 +694,7 @@ class PRXTransformer2DModel(ModelMixin, ConfigMixin, AttentionMixin):
                 max_period=self.time_max_period,
                 scale=self.time_factor,
                 flip_sin_to_cos=True,  # Match original cos, sin order
+                downscale_freq_shift=0.0,
             ).to(dtype)
         )
 
