@@ -38,6 +38,7 @@ EXAMPLE_DOC_STRING = """
         >>> import torch
         >>> from diffusers import ZImageControlNetPipeline
         >>> from diffusers import ZImageControlNetModel
+        >>> from diffusers.utils import load_image
 
         >>> controlnet_model = "..."
         >>> controlnet = ZImageControlNetModel.from_pretrained(controlnet_model, torch_dtype=torch.bfloat16)
