@@ -409,7 +409,7 @@ class ZImageControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
 
         # Match t_embedder output dtype to control_context for layerwise casting compatibility
         adaln_input = t.type_as(control_context)
-        control_context[torch.cat(x_inner_pad_mask)] = self.x_pad_token
+        control_context[torch.cat(x_inner_pad_mask)] = transformer.x_pad_token
         control_context = list(control_context.split(x_item_seqlens, dim=0))
         x_freqs_cis = list(transformer.rope_embedder(torch.cat(x_pos_ids, dim=0)).split(x_item_seqlens, dim=0))
 
