@@ -1851,6 +1851,7 @@ class ModelTesterMixin:
                     offload_to_disk_path=tmpdir,
                     offload_type=offload_type,
                     num_blocks_per_group=num_blocks_per_group,
+                    block_modules=model._group_offload_block_modules if hasattr(model, "_group_offload_block_modules") else None
                 )
                 if not is_correct:
                     if extra_files:

@@ -1424,6 +1424,7 @@ if is_torch_available():
         offload_to_disk_path: str,
         offload_type: str,
         num_blocks_per_group: Optional[int] = None,
+        block_modules: Optional[List[str]] = None
     ) -> Set[str]:
         expected_files = set()
 
@@ -1435,22 +1436,32 @@ if is_torch_available():
             if num_blocks_per_group is None:
                 raise ValueError("num_blocks_per_group must be provided for 'block_level' offloading.")
 
-            # Handle groups of ModuleList and Sequential blocks
+            block_modules_set = set(block_modules) if block_modules is not None else set()
+
+            # Handle groups of ModuleList and Sequential blocks, and explicitly defined block modules
             unmatched_modules = []
             for name, submodule in module.named_children():
-                if not isinstance(submodule, (torch.nn.ModuleList, torch.nn.Sequential)):
+                # Check if this is an explicitly defined block module
+                if name in block_modules_set:
+                    # Recursively get expected files for the specified submodule
+                    submodule_files = _get_expected_safetensors_files(
+                        submodule, offload_to_disk_path, offload_type, num_blocks_per_group, block_modules
+                    )
+                    expected_files.update(submodule_files)
+                elif isinstance(submodule, (torch.nn.ModuleList, torch.nn.Sequential)):
+                    # Handle ModuleList and Sequential blocks as before
+                    for i in range(0, len(submodule), num_blocks_per_group):
+                        current_modules = submodule[i : i + num_blocks_per_group]
+                        if not current_modules:
+                            continue
+                        group_id = f"{name}_{i}_{i + len(current_modules) - 1}"
+                        expected_files.add(get_hashed_filename(group_id))
+                else:
+                    # This is an unmatched module
                     unmatched_modules.append(module)
-                    continue
-
-                for i in range(0, len(submodule), num_blocks_per_group):
-                    current_modules = submodule[i : i + num_blocks_per_group]
-                    if not current_modules:
-                        continue
-                    group_id = f"{name}_{i}_{i + len(current_modules) - 1}"
-                    expected_files.add(get_hashed_filename(group_id))
 
             # Handle the group for unmatched top-level modules and parameters
-            for module in unmatched_modules:
+            if len(unmatched_modules) > 0:
                 expected_files.add(get_hashed_filename(f"{module.__class__.__name__}_unmatched_group"))
 
         elif offload_type == "leaf_level":
@@ -1492,12 +1503,13 @@ if is_torch_available():
         offload_to_disk_path: str,
         offload_type: str,
         num_blocks_per_group: Optional[int] = None,
+        block_modules: Optional[List[str]] = None,
     ) -> bool:
         if not os.path.isdir(offload_to_disk_path):
             return False, None, None
 
         expected_files = _get_expected_safetensors_files(
-            module, offload_to_disk_path, offload_type, num_blocks_per_group
+            module, offload_to_disk_path, offload_type, num_blocks_per_group, block_modules
         )
         actual_files = set(glob.glob(os.path.join(offload_to_disk_path, "*.safetensors")))
         missing_files = expected_files - actual_files
