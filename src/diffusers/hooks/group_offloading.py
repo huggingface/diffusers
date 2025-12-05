@@ -615,7 +615,7 @@ def _apply_group_offloading_block_level(module: torch.nn.Module, config: GroupOf
     done at the top-level blocks and modules specified in block_modules.
 
     When block_modules is provided, only those modules will be treated as blocks for offloading. For each specified
-    module, we either offload the entire submodule or recursively apply block offloading to it.
+    module, recursively apply block offloading to it.
     """
     if config.stream is not None and config.num_blocks_per_group != 1:
         logger.warning(
