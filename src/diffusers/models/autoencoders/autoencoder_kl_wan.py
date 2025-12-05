@@ -963,11 +963,9 @@ class AutoencoderKLWan(ModelMixin, AutoencoderMixin, ConfigMixin, FromOriginalMo
 
     _supports_gradient_checkpointing = False
     _group_offload_block_modules = ["quant_conv", "post_quant_conv", "encoder", "decoder"]
-
-    # kwargs to ignore when send_to_device moves inputs/outputs between devices
-    # these are shared mutable states that are modified in-place and
-    # should not be subjected to copy operations
-    _group_offload_exclude_kwargs = ["feat_cache", "feat_idx"]
+    # keys toignore when AlignDeviceHook moves inputs/outputs between devices
+    # these are shared mutable state modified in-place
+    _skip_keys = ["feat_cache", "feat_idx"]
 
     @register_to_config
     def __init__(

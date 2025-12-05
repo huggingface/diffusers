@@ -535,7 +535,7 @@ def apply_group_offloading(
         exclude_kwargs (`List[str]`, *optional*):
             List of kwarg keys that should not be processed by send_to_device. This is useful for mutable state like
             caching lists that need to maintain their object identity across forward passes. If not provided, will be
-            inferred from the module's `_group_offload_exclude_kwargs` attribute if it exists.
+            inferred from the module's `_skip_keys` attribute if it exists.
 
     Example:
         ```python
@@ -581,7 +581,7 @@ def apply_group_offloading(
         block_modules = getattr(module, "_group_offload_block_modules", None)
 
     if exclude_kwargs is None:
-        exclude_kwargs = getattr(module, "_group_offload_exclude_kwargs", None)
+        exclude_kwargs = getattr(module, "_skip_keys", None)
 
     config = GroupOffloadingConfig(
         onload_device=onload_device,
