@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import math
-from typing import Tuple
+from typing import List
 
 import PIL.Image
 
@@ -98,7 +98,7 @@ class Flux2ImageProcessor(VaeImageProcessor):
         return image
 
     @staticmethod
-    def _resize_to_target_area(image: PIL.Image.Image, target_area: int = 1024 * 1024) -> Tuple[int, int]:
+    def _resize_to_target_area(image: PIL.Image.Image, target_area: int = 1024 * 1024) -> PIL.Image.Image:
         image_width, image_height = image.size
 
         scale = math.sqrt(target_area / (image_width * image_height))
@@ -106,6 +106,14 @@ class Flux2ImageProcessor(VaeImageProcessor):
         height = int(image_height * scale)
 
         return image.resize((width, height), PIL.Image.Resampling.LANCZOS)
+
+    @staticmethod
+    def _resize_if_exceeds_area(image, target_area=1024 * 1024) -> PIL.Image.Image:
+        image_width, image_height = image.size
+        pixel_count = image_width * image_height
+        if pixel_count <= target_area:
+            return image
+        return Flux2ImageProcessor._resize_to_target_area(image, target_area)
 
     def _resize_and_crop(
         self,
@@ -136,3 +144,35 @@ class Flux2ImageProcessor(VaeImageProcessor):
         bottom = top + height
 
         return image.crop((left, top, right, bottom))
+
+    # Taken from
+    # https://github.com/black-forest-labs/flux2/blob/5a5d316b1b42f6b59a8c9194b77c8256be848432/src/flux2/sampling.py#L310C1-L339C19
+    @staticmethod
+    def concatenate_images(images: List[PIL.Image.Image]) -> PIL.Image.Image:
+        """
+        Concatenate a list of PIL images horizontally with center alignment and white background.
+        """
+
+        # If only one image, return a copy of it
+        if len(images) == 1:
+            return images[0].copy()
+
+        # Convert all images to RGB if not already
+        images = [img.convert("RGB") if img.mode != "RGB" else img for img in images]
+
+        # Calculate dimensions for horizontal concatenation
+        total_width = sum(img.width for img in images)
+        max_height = max(img.height for img in images)
+
+        # Create new image with white background
+        background_color = (255, 255, 255)
+        new_img = PIL.Image.new("RGB", (total_width, max_height), background_color)
+
+        # Paste images with center alignment
+        x_offset = 0
+        for img in images:
+            y_offset = (max_height - img.height) // 2
+            new_img.paste(img, (x_offset, y_offset))
+            x_offset += img.width
+
+        return new_img
