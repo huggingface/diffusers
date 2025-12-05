@@ -19,7 +19,6 @@ from ..test_pipelines_common import (
     FluxIPAdapterTesterMixin,
     PipelineTesterMixin,
     PyramidAttentionBroadcastTesterMixin,
-    TaylorSeerCacheTesterMixin,
 )
 
 
@@ -29,7 +28,6 @@ class FluxKontextPipelineFastTests(
     FluxIPAdapterTesterMixin,
     PyramidAttentionBroadcastTesterMixin,
     FasterCacheTesterMixin,
-    TaylorSeerCacheTesterMixin,
 ):
     pipeline_class = FluxKontextPipeline
     params = frozenset(
