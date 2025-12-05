@@ -471,8 +471,8 @@ class ZImageControlTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin,
         for i, control_layer in enumerate(controlnet.control_layers):
             model.control_layers[i].load_state_dict(control_layer.state_dict())
 
-        for i, control_all_x_embedder in enumerate(controlnet.control_all_x_embedder):
-            model.control_all_x_embedder[i].load_state_dict(control_all_x_embedder.state_dict())
+        for key, control_all_x_embedder in controlnet.control_all_x_embedder.items():
+            model.control_all_x_embedder[key].load_state_dict(control_all_x_embedder.state_dict())
 
         for i, control_noise_refiner in enumerate(controlnet.control_noise_refiner):
             model.control_noise_refiner[i].load_state_dict(control_noise_refiner.state_dict())
