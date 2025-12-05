@@ -619,6 +619,7 @@ class WanEncoder3d(nn.Module):
             feat_idx[0] += 1
         else:
             x = self.conv_out(x)
+
         return x
 
 
@@ -961,10 +962,12 @@ class AutoencoderKLWan(ModelMixin, AutoencoderMixin, ConfigMixin, FromOriginalMo
     """
 
     _supports_gradient_checkpointing = False
-    # keys toignore when AlignDeviceHook moves inputs/outputs between devices
-    # these are shared mutable state modified in-place
-    _skip_keys = ["feat_cache", "feat_idx"]
     _group_offload_block_modules = ["quant_conv", "post_quant_conv", "encoder", "decoder"]
+
+    # kwargs to ignore when send_to_device moves inputs/outputs between devices
+    # these are shared mutable states that are modified in-place and
+    # should not be subjected to copy operations
+    _group_offload_exclude_kwargs = ["feat_cache", "feat_idx"]
 
     @register_to_config
     def __init__(
@@ -1146,9 +1149,6 @@ class AutoencoderKLWan(ModelMixin, AutoencoderMixin, ConfigMixin, FromOriginalMo
                     feat_idx=self._enc_conv_idx,
                 )
                 out = torch.cat([out, out_], 2)
-        __import__("ipdb").set_trace()
-        # cache_devices = [i.device.type for i in self._enc_feat_map]
-        # any((d != "cuda" for d in cache_devices))
 
         enc = self.quant_conv(out)
         self.clear_cache()

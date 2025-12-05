@@ -1735,7 +1735,6 @@ class ModelTesterMixin:
             return model(**inputs_dict)[0]
 
         model = self.model_class(**init_dict)
-
         model.to(torch_device)
         output_without_group_offloading = run_forward(model)
 

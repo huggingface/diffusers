@@ -1425,6 +1425,7 @@ if is_torch_available():
         offload_type: str,
         num_blocks_per_group: Optional[int] = None,
         block_modules: Optional[List[str]] = None,
+        module_prefix: str = "",
     ) -> Set[str]:
         expected_files = set()
 
@@ -1439,30 +1440,40 @@ if is_torch_available():
             block_modules_set = set(block_modules) if block_modules is not None else set()
 
             # Handle groups of ModuleList and Sequential blocks, and explicitly defined block modules
+            modules_with_group_offloading = set()
             unmatched_modules = []
             for name, submodule in module.named_children():
                 # Check if this is an explicitly defined block module
                 if name in block_modules_set:
-                    # Recursively get expected files for the specified submodule
+                    # Recursively get expected files for the specified submodule with updated prefix
+                    new_prefix = f"{module_prefix}{name}." if module_prefix else f"{name}."
                     submodule_files = _get_expected_safetensors_files(
-                        submodule, offload_to_disk_path, offload_type, num_blocks_per_group, block_modules
+                        submodule, offload_to_disk_path, offload_type, num_blocks_per_group, block_modules, new_prefix
                     )
                     expected_files.update(submodule_files)
+                    modules_with_group_offloading.add(name)
+
                 elif isinstance(submodule, (torch.nn.ModuleList, torch.nn.Sequential)):
                     # Handle ModuleList and Sequential blocks as before
                     for i in range(0, len(submodule), num_blocks_per_group):
                         current_modules = submodule[i : i + num_blocks_per_group]
                         if not current_modules:
                             continue
-                        group_id = f"{name}_{i}_{i + len(current_modules) - 1}"
+                        group_id = f"{module_prefix}{name}_{i}_{i + len(current_modules) - 1}"
                         expected_files.add(get_hashed_filename(group_id))
+                        for j in range(i, i + len(current_modules)):
+                            modules_with_group_offloading.add(f"{name}.{j}")
                 else:
                     # This is an unmatched module
-                    unmatched_modules.append(module)
+                    unmatched_modules.append(submodule)
 
-            # Handle the group for unmatched top-level modules and parameters
-            if len(unmatched_modules) > 0:
-                expected_files.add(get_hashed_filename(f"{module.__class__.__name__}_unmatched_group"))
+            # Handle the group for unmatched top-level modules and parameters/buffers
+            # We need to check if there are any parameters/buffers that don't belong to modules with group offloading
+            parameters = _gather_parameters_with_no_group_offloading_parent(module, modules_with_group_offloading)
+            buffers = _gather_buffers_with_no_group_offloading_parent(module, modules_with_group_offloading)
+
+            if len(unmatched_modules) > 0 or len(parameters) > 0 or len(buffers) > 0:
+                expected_files.add(get_hashed_filename(f"{module_prefix}{module.__class__.__name__}_unmatched_group"))
 
         elif offload_type == "leaf_level":
             # Handle leaf-level module groups
