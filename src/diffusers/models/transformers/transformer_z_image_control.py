@@ -468,6 +468,29 @@ class ZImageControlTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin,
         if not load_weights:
             return model
 
+        for key, all_x_embedder in transformer.all_x_embedder.items():
+            model.all_x_embedder[key].load_state_dict(all_x_embedder.state_dict())
+
+        for key, all_final_layer in transformer.all_final_layer.items():
+            model.all_final_layer[key].load_state_dict(all_final_layer.state_dict())
+
+        for i, noise_refiner in enumerate(transformer.noise_refiner):
+            model.noise_refiner[i].load_state_dict(noise_refiner.state_dict())
+
+        for i, context_refiner in enumerate(transformer.context_refiner):
+            model.context_refiner[i].load_state_dict(context_refiner.state_dict())
+
+        model.t_embedder.load_state_dict(transformer.t_embedder.state_dict())
+
+        model.cap_embedder.load_state_dict(transformer.cap_embedder.state_dict())
+
+        model.x_pad_token = transformer.x_pad_token
+
+        model.cap_pad_token = transformer.cap_pad_token
+
+        for i, layer in enumerate(transformer.layers):
+            model.layers[i].load_state_dict(layer.state_dict())
+
         for i, control_layer in enumerate(controlnet.control_layers):
             model.control_layers[i].load_state_dict(control_layer.state_dict())
 
