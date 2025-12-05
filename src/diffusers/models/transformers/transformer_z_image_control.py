@@ -610,6 +610,34 @@ class ZImageControlTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin,
             all_cap_pad_mask,
         )
 
+    def patchify(
+        self,
+        all_image: List[torch.Tensor],
+        patch_size: int,
+        f_patch_size: int,
+    ):
+        pH = pW = patch_size
+        pF = f_patch_size
+        all_image_out = []
+
+        for i, image in enumerate(all_image):
+            ### Process Image
+            C, F, H, W = image.size()
+            F_tokens, H_tokens, W_tokens = F // pF, H // pH, W // pW
+
+            image = image.view(C, F_tokens, pF, H_tokens, pH, W_tokens, pW)
+            # "c f pf h ph w pw -> (f h w) (pf ph pw c)"
+            image = image.permute(1, 3, 5, 2, 4, 6, 0).reshape(F_tokens * H_tokens * W_tokens, pF * pH * pW * C)
+
+            image_ori_len = len(image)
+            image_padding_len = (-image_ori_len) % SEQ_MULTI_OF
+
+            # padded feature
+            image_padded_feat = torch.cat([image, image[-1:].repeat(image_padding_len, 1)], dim=0)
+            all_image_out.append(image_padded_feat)
+
+        return all_image_out
+
     def forward(
         self,
         x: List[torch.Tensor],
@@ -719,6 +747,7 @@ class ZImageControlTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin,
 
         controlnet_block_samples = None
         if control_context is not None:
+            control_context = self.patchify(control_context, patch_size, f_patch_size)
             control_context = torch.cat(control_context, dim=0)
             control_context = self.control_all_x_embedder[f"{patch_size}-{f_patch_size}"](control_context)
 
