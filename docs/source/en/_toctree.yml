@@ -401,6 +401,8 @@
         title: WanAnimateTransformer3DModel
       - local: api/models/wan_transformer_3d
         title: WanTransformer3DModel
+      - local: api/models/z_image_transformer2d
+        title: ZImageTransformer2DModel        
       title: Transformers
     - sections:
       - local: api/models/stable_cascade_unet
@@ -646,6 +648,8 @@
         title: VisualCloze
       - local: api/pipelines/wuerstchen
         title: Wuerstchen
+      - local: api/pipelines/z_image
+        title: Z-Image        
       title: Image
     - sections:
       - local: api/pipelines/allegro
