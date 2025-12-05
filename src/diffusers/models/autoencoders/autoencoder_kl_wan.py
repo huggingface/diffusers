@@ -619,6 +619,7 @@ class WanEncoder3d(nn.Module):
             feat_idx[0] += 1
         else:
             x = self.conv_out(x)
+
         return x
 
 
@@ -961,6 +962,7 @@ class AutoencoderKLWan(ModelMixin, AutoencoderMixin, ConfigMixin, FromOriginalMo
     """
 
     _supports_gradient_checkpointing = False
+    _group_offload_block_modules = ["quant_conv", "post_quant_conv", "encoder", "decoder"]
     # keys toignore when AlignDeviceHook moves inputs/outputs between devices
     # these are shared mutable state modified in-place
     _skip_keys = ["feat_cache", "feat_idx"]
@@ -1414,6 +1416,7 @@ class AutoencoderKLWan(ModelMixin, AutoencoderMixin, ConfigMixin, FromOriginalMo
         """
         x = sample
         posterior = self.encode(x).latent_dist
+
         if sample_posterior:
             z = posterior.sample(generator=generator)
         else:
