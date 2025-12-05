@@ -69,13 +69,15 @@ class TaylorSeerCacheConfig:
         - Patterns are matched using `re.fullmatch` on the module name.
         - If `skip_predict_identifiers` or `cache_identifiers` are provided, only matching modules are hooked.
         - If neither is provided, all attention-like modules are hooked by default.
-        - Example of inactive and active usage:
-          ```
-          def forward(x):
-              x = self.module1(x)  # inactive module: returns zeros tensor based on shape recorded during full compute
-              x = self.module2(x)  # active module: caches output here, avoiding recomputation of prior steps
-              return x
-          ```
+
+    Example of inactive and active usage:
+
+    ```py
+    def forward(x):
+        x = self.module1(x)  # inactive module: returns zeros tensor based on shape recorded during full compute
+        x = self.module2(x)  # active module: caches output here, avoiding recomputation of prior steps
+        return x
+    ```
     """
 
     cache_interval: int = 5
