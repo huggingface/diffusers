@@ -67,7 +67,7 @@ class TaylorSeerCacheConfig:
 
     Notes:
         - Patterns are matched using `re.fullmatch` on the module name.
-        - If `inactive_identifiers` or `active_identifiers` are provided, only matching modules are hooked.
+        - If `skip_predict_identifiers` or `cache_identifiers` are provided, only matching modules are hooked.
         - If neither is provided, all attention-like modules are hooked by default.
         - Example of inactive and active usage:
           ```
