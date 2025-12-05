@@ -72,6 +72,29 @@ class DDPMSchedulerTest(SchedulerCommonTest):
         for rescale_betas_zero_snr in [True, False]:
             self.check_over_configs(rescale_betas_zero_snr=rescale_betas_zero_snr)
 
+    def test_scale_betas_for_timesteps(self):
+        scheduler_class = self.scheduler_classes[0]
+
+        # 1. Test that betas are scaled when the flag is True and T != 1000.
+        config = self.get_scheduler_config(num_train_timesteps=2000, scale_betas_for_timesteps=True)
+        scheduler = scheduler_class(**config)
+        last_beta = scheduler.betas[-1].item()
+        # The original beta_end is 0.02. Scaled should be 0.02 * (1000/2000) = 0.01
+        self.assertAlmostEqual(last_beta, 0.01)
+
+        # 2. Test that betas are NOT scaled when the flag is False.
+        config = self.get_scheduler_config(num_train_timesteps=2000, scale_betas_for_timesteps=False)
+        scheduler = scheduler_class(**config)
+        last_beta = scheduler.betas[-1].item()
+        # Should be the original, unscaled value
+        self.assertAlmostEqual(last_beta, 0.02)
+
+        # 3. Test that betas are NOT scaled when T=1000, even if the flag is True.
+        config = self.get_scheduler_config(num_train_timesteps=1000, scale_betas_for_timesteps=True)
+        scheduler = scheduler_class(**config)
+        last_beta = scheduler.betas[-1].item()
+        self.assertAlmostEqual(last_beta, 0.02)
+
     def test_full_loop_no_noise(self):
         scheduler_class = self.scheduler_classes[0]
         scheduler_config = self.get_scheduler_config()
