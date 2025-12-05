@@ -341,7 +341,6 @@ class WanAnimateMotionEncoder(nn.Module):
         # Upcast the QR orthogonalization operation to FP32
         original_motion_dtype = motion_feat.dtype
         motion_feat = motion_feat.to(weight.dtype)
-        # weight = weight.to(torch.float32)
 
         Q = torch.linalg.qr(weight)[0].to(device=motion_feat.device)
 
@@ -803,12 +802,9 @@ class WanTimeTextImageEmbedding(nn.Module):
         if timestep_seq_len is not None:
             timestep = timestep.unflatten(0, (-1, timestep_seq_len))
 
-        time_embedder_dtype = next(iter(self.time_embedder.parameters())).dtype
-        if timestep.dtype != time_embedder_dtype and time_embedder_dtype not in [torch.int8, torch.uint8]:
-            timestep = timestep.to(time_embedder_dtype)
-        if timestep.dtype != encoder_hidden_states.dtype:
-            timestep = timestep.to(encoder_hidden_states.dtype)
-        temb = self.time_embedder(timestep).type_as(encoder_hidden_states)
+        timestep = timestep.to(encoder_hidden_states.dtype)
+        
+        temb = self.time_embedder(timestep)
         timestep_proj = self.time_proj(self.act_fn(temb))
 
         encoder_hidden_states = self.text_embedder(encoder_hidden_states)
