@@ -70,11 +70,15 @@ pipeline.transformer.enable_cache(config)
 
 ## TaylorSeer Cache
 
-[TaylorSeer Cache](https://huggingface.co/papers/2403.06923) accelerates diffusion inference by using Taylor series expansions to approximate and cache intermediate activations across denoising steps. This method predicts future outputs based on past computations, reusing them over specified intervals to reduce redundant calculations.
+[TaylorSeer Cache](https://huggingface.co/papers/2403.06923) accelerates diffusion inference by using Taylor series expansions to approximate and cache intermediate activations across denoising steps. The method predicts future outputs based on past computations, reusing them at specified intervals to reduce redundant calculations.
 
-It supports selective module skipping (inactive mode), where certain modules return zero tensors during prediction steps to skip computations cheaply, and a lightweight "lite" mode for optimized memory usage with predefined patterns for skipping and caching.
+This caching mechanism delivers strong results with minimal additional memory overhead. For detailed performance analysis, see [our findings here](https://github.com/huggingface/diffusers/pull/12648#issuecomment-3610615080).
 
-Set up and pass a [`TaylorSeerCacheConfig`] to a pipeline's transformer to enable it. The `cache_interval` controls how many steps to reuse cached outputs before refreshing with a full forward pass. The `disable_cache_before_step` specifies the initial steps where full computations are performed to gather data for approximations. Higher `max_order` improves approximation accuracy but increases memory usage.
+To enable TaylorSeer Cache, create a [`TaylorSeerCacheConfig`] and pass it to your pipeline's transformer:
+
+- `cache_interval`: Number of steps to reuse cached outputs before performing a full forward pass
+- `disable_cache_before_step`: Initial steps that use full computations to gather data for approximations
+- `max_order`: Approximation accuracy (in theory, higher values improve quality but increase memory usage but we recommend it should be set to `1`)
 
 ```python
 import torch
