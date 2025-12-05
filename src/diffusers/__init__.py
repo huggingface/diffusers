@@ -277,6 +277,7 @@ else:
             "WanTransformer3DModel",
             "WanVACETransformer3DModel",
             "ZImageTransformer2DModel",
+            "ZImageControlTransformer2DModel",
             "ZImageControlNetModel",
             "attention_backend",
         ]
@@ -1006,6 +1007,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             WanTransformer3DModel,
             WanVACETransformer3DModel,
             ZImageControlNetModel,
+            ZImageControlTransformer2DModel,
             ZImageTransformer2DModel,
             attention_backend,
         )

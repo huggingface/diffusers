@@ -22,7 +22,7 @@ from ...image_processor import PipelineImageInput, VaeImageProcessor
 from ...loaders import FromSingleFileMixin
 from ...models.autoencoders import AutoencoderKL
 from ...models.controlnets import ZImageControlNetModel
-from ...models.transformers import ZImageTransformer2DModel
+from ...models.transformers import ZImageControlTransformer2DModel, ZImageTransformer2DModel
 from ...pipelines.pipeline_utils import DiffusionPipeline
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import logging, replace_example_docstring
@@ -167,10 +167,12 @@ class ZImageControlNetPipeline(DiffusionPipeline, FromSingleFileMixin):
         vae: AutoencoderKL,
         text_encoder: PreTrainedModel,
         tokenizer: AutoTokenizer,
-        transformer: ZImageTransformer2DModel,
+        transformer: Union[ZImageControlTransformer2DModel, ZImageTransformer2DModel],
         controlnet: ZImageControlNetModel,
     ):
         super().__init__()
+        if isinstance(transformer, ZImageTransformer2DModel):
+            transformer = ZImageControlTransformer2DModel.from_controlnet(transformer, controlnet)
 
         self.register_modules(
             vae=vae,
@@ -599,20 +601,12 @@ class ZImageControlNetPipeline(DiffusionPipeline, FromSingleFileMixin):
                 latent_model_input = latent_model_input.unsqueeze(2)
                 latent_model_input_list = list(latent_model_input.unbind(dim=0))
 
-                controlnet_block_samples = self.controlnet(
-                    self.transformer,
-                    latent_model_input_list,
-                    prompt_embeds_model_input,
-                    control_image,
-                    timestep_model_input,
-                    conditioning_scale=controlnet_conditioning_scale,
-                )
-
                 model_out_list = self.transformer(
                     latent_model_input_list,
                     timestep_model_input,
                     prompt_embeds_model_input,
-                    controlnet_block_samples=controlnet_block_samples,
+                    control_context=control_image,
+                    conditioning_scale=controlnet_conditioning_scale,
                 )[0]
 
                 if apply_cfg:
