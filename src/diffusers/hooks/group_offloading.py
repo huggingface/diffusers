@@ -326,7 +326,7 @@ class GroupOffloadingHook(ModelHook):
 
         # Some Autoencoder models use a feature cache that is passed through submodules
         # and modified in place. The `send_to_device` call returns a copy of this feature cache object
-        # which causes issues with inplace updates. Use `exclude_kwargs` to mark these cache features
+        # which breaks the inplace updates. Use `exclude_kwargs` to mark these cache features
         exclude_kwargs = self.config.exclude_kwargs or []
         if exclude_kwargs:
             moved_kwargs = send_to_device(
@@ -633,7 +633,9 @@ def _apply_group_offloading_block_level(module: torch.nn.Module, config: GroupOf
     for name, submodule in module.named_children():
         # Check if this is an explicitly defined block module
         if name in block_modules:
-            # track submodule using a prefix
+            # Track submodule using a prefix to avoid filename collisions during disk offload.
+            # Without this, submodules sharing the same model class would be assigned identical
+            # filenames (derived from the class name).
             prefix = f"{config.module_prefix}{name}." if config.module_prefix else f"{name}."
             submodule_config = replace(config, module_prefix=prefix)
 
