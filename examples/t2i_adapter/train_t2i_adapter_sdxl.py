@@ -48,6 +48,7 @@ from diffusers import (
     T2IAdapter,
     UNet2DConditionModel,
 )
+from diffusers.models.adapter import GatedMultiAdapter
 from diffusers.optimization import get_scheduler
 from diffusers.utils import check_min_version, is_wandb_available
 from diffusers.utils.hub_utils import load_or_create_model_card, populate_model_card
@@ -516,6 +517,19 @@ def parse_args(input_args=None):
         help="The column of the dataset containing a caption or a list of captions.",
     )
     parser.add_argument(
+        "--sketch_image_column",
+        type=str,
+        default=None,
+        help="The dataset column containing the sketch conditioning image (modality 1).",
+    )
+
+    parser.add_argument(
+        "--depth_image_column",
+        type=str,
+        default=None,
+        help="The dataset column containing the depth conditioning image (modality 2).",
+    )
+    parser.add_argument(
         "--max_train_samples",
         type=int,
         default=None,
@@ -676,6 +690,20 @@ def get_train_dataset(args, accelerator):
                 f"`--conditioning_image_column` value '{args.conditioning_image_column}' not found in dataset columns. Dataset columns are: {', '.join(column_names)}"
             )
 
+    if args.sketch_image_column is not None:
+        if args.sketch_image_column not in column_names:
+            raise ValueError(
+                f"`--sketch_image_column` value '{args.sketch_image_column}' not found in dataset columns. "
+                f"Dataset columns are: {', '.join(column_names)}"
+            )
+
+    if args.depth_image_column is not None:
+        if args.depth_image_column not in column_names:
+            raise ValueError(
+                f"`--depth_image_column` value '{args.depth_image_column}' not found in dataset columns. "
+                f"Dataset columns are: {', '.join(column_names)}"
+            )
+
     with accelerator.main_process_first():
         train_dataset = dataset["train"].shuffle(seed=args.seed)
         if args.max_train_samples is not None:
@@ -745,12 +773,23 @@ def prepare_train_dataset(dataset, accelerator):
     def preprocess_train(examples):
         images = [image.convert("RGB") for image in examples[args.image_column]]
         images = [image_transforms(image) for image in images]
-
-        conditioning_images = [image.convert("RGB") for image in examples[args.conditioning_image_column]]
-        conditioning_images = [conditioning_image_transforms(image) for image in conditioning_images]
-
         examples["pixel_values"] = images
-        examples["conditioning_pixel_values"] = conditioning_images
+
+        if args.sketch_image_column is not None and args.depth_image_column is not None:
+            # Sketch images
+            sketch_images = [image.convert("RGB") for image in examples[args.sketch_image_column]]
+            sketch_images = [conditioning_image_transforms(image) for image in sketch_images]
+
+            # Depth images
+            depth_images = [image.convert("RGB") for image in examples[args.depth_image_column]]
+            depth_images = [conditioning_image_transforms(image) for image in depth_images]
+
+            examples["conditioning_sketch_pixel_values"] = sketch_images
+            examples["conditioning_depth_pixel_values"] = depth_images
+        else:
+            conditioning_images = [image.convert("RGB") for image in examples[args.conditioning_image_column]]
+            conditioning_images = [conditioning_image_transforms(image) for image in conditioning_images]
+            examples["conditioning_pixel_values"] = conditioning_images
 
         return examples
 
@@ -764,20 +803,31 @@ def collate_fn(examples):
     pixel_values = torch.stack([example["pixel_values"] for example in examples])
     pixel_values = pixel_values.to(memory_format=torch.contiguous_format).float()
 
-    conditioning_pixel_values = torch.stack([example["conditioning_pixel_values"] for example in examples])
-    conditioning_pixel_values = conditioning_pixel_values.to(memory_format=torch.contiguous_format).float()
-
     prompt_ids = torch.stack([torch.tensor(example["prompt_embeds"]) for example in examples])
-
     add_text_embeds = torch.stack([torch.tensor(example["text_embeds"]) for example in examples])
     add_time_ids = torch.stack([torch.tensor(example["time_ids"]) for example in examples])
 
-    return {
+    batch = {
         "pixel_values": pixel_values,
-        "conditioning_pixel_values": conditioning_pixel_values,
         "prompt_ids": prompt_ids,
         "unet_added_conditions": {"text_embeds": add_text_embeds, "time_ids": add_time_ids},
     }
+
+    if "conditioning_sketch_pixel_values" in examples[0]:
+        sketch = torch.stack([ex["conditioning_sketch_pixel_values"] for ex in examples])
+        depth = torch.stack([ex["conditioning_depth_pixel_values"] for ex in examples])
+
+        sketch = sketch.to(memory_format=torch.contiguous_format).float()
+        depth = depth.to(memory_format=torch.contiguous_format).float()
+
+        batch["conditioning_sketch_pixel_values"] = sketch
+        batch["conditioning_depth_pixel_values"] = depth
+    else:
+        conditioning_pixel_values = torch.stack([ex["conditioning_pixel_values"] for ex in examples])
+        conditioning_pixel_values = conditioning_pixel_values.to(memory_format=torch.contiguous_format).float()
+        batch["conditioning_pixel_values"] = conditioning_pixel_values
+
+    return batch
 
 
 def main(args):
@@ -880,16 +930,28 @@ def main(args):
 
     if args.adapter_model_name_or_path:
         logger.info("Loading existing adapter weights.")
-        t2iadapter = T2IAdapter.from_pretrained(args.adapter_model_name_or_path)
+        t2iadapter = GatedMultiAdapter.from_pretrained(args.adapter_model_name_or_path)
     else:
-        logger.info("Initializing t2iadapter weights.")
-        t2iadapter = T2IAdapter(
-            in_channels=3,
-            channels=(320, 640, 1280, 1280),
-            num_res_blocks=2,
-            downscale_factor=16,
-            adapter_type="full_adapter_xl",
+        raise ValueError(
+            "For GatedMultiAdapter training you must provide "
+            "--adapter_model_name_or_path pointing to a directory with pre-trained adapters."
         )
+    if not isinstance(t2iadapter, GatedMultiAdapter):
+        raise ValueError(
+            "The adapter is not GatedMultiAdapter"
+        )
+
+    if isinstance(t2iadapter, GatedMultiAdapter):
+        if not (args.sketch_image_column and args.depth_image_column):
+            raise ValueError(
+                "GatedMultiAdapter training expects both --sketch_image_column and --depth_image_column "
+                "to be set (two conditioning modalities: sketch + depth)."
+            )
+        if t2iadapter.num_adapter != 2:
+            raise ValueError(
+                f"GatedMultiAdapter has num_adapter={t2iadapter.num_adapter}, but this training script "
+                "assumes exactly 2 adapters (sketch, depth)."
+            )
 
     # `accelerate` 0.16.0 will have better support for customized saving
     if version.parse(accelerate.__version__) >= version.parse("0.16.0"):
@@ -912,7 +974,8 @@ def main(args):
                 model = models.pop()
 
                 # load diffusers style into model
-                load_model = T2IAdapter.from_pretrained(os.path.join(input_dir, "t2iadapter"))
+                load_dir = os.path.join(input_dir, "t2iadapter")
+                load_model = type(model).from_pretrained(load_dir)
 
                 if args.control_type != "style":
                     model.register_to_config(**load_model.config)
@@ -926,6 +989,20 @@ def main(args):
     vae.requires_grad_(False)
     text_encoder_one.requires_grad_(False)
     text_encoder_two.requires_grad_(False)
+
+    if isinstance(t2iadapter, GatedMultiAdapter):
+        # Freeze each underlying adapter
+        for base_adapter in t2iadapter.adapters:
+            base_adapter.requires_grad_(False)
+            base_adapter.eval()
+
+        # Ensure FiLM + gate MLPs are trainable
+        t2iadapter.film_mlps.requires_grad_(True)
+        t2iadapter.gate_mlps.requires_grad_(True)
+    else:
+        # fallback – original behaviour
+        t2iadapter.requires_grad_(True)
+
     t2iadapter.train()
     unet.train()
 
@@ -985,7 +1062,11 @@ def main(args):
         optimizer_class = torch.optim.AdamW
 
     # Optimizer creation
-    params_to_optimize = t2iadapter.parameters()
+    if isinstance(t2iadapter, GatedMultiAdapter):
+        gate_params = list(t2iadapter.film_mlps.parameters()) + list(t2iadapter.gate_mlps.parameters())
+        params_to_optimize = gate_params
+    else:
+        params_to_optimize = t2iadapter.parameters()
     optimizer = optimizer_class(
         params_to_optimize,
         lr=args.learning_rate,
@@ -1011,6 +1092,26 @@ def main(args):
     unet.to(accelerator.device, dtype=weight_dtype)
     text_encoder_one.to(accelerator.device, dtype=weight_dtype)
     text_encoder_two.to(accelerator.device, dtype=weight_dtype)
+
+    # --- Warm-up GatedMultiAdapter MLPs so they exist before creating optimizer ---
+    if isinstance(t2iadapter, GatedMultiAdapter) and not t2iadapter._mlp_inited:
+        dummy_H = args.resolution
+        dummy_W = args.resolution
+        in_ch = t2iadapter.adapters[0].in_channels  # usually 3
+
+        dummy = torch.zeros(
+            1,
+            in_ch,
+            dummy_H,
+            dummy_W,
+            device=accelerator.device,
+            dtype=weight_dtype,
+        )
+        # one dummy input per adapter
+        dummy_list = [dummy for _ in range(t2iadapter.num_adapter)]
+        # this will internally call _init_mlps_from_features(...)
+        with torch.no_grad():
+            _ = t2iadapter.forward_static(dummy_list)
 
     # Here, we compute not just the text embeddings but also the additional embeddings
     # needed for the SD XL UNet to operate.
@@ -1206,8 +1307,15 @@ def main(args):
                 inp_noisy_latents = noisy_latents / ((sigmas**2 + 1) ** 0.5)
 
                 # Adapter conditioning.
-                t2iadapter_image = batch["conditioning_pixel_values"].to(dtype=weight_dtype)
-                down_block_additional_residuals = t2iadapter(t2iadapter_image)
+                if isinstance(t2iadapter, GatedMultiAdapter):
+                    sketch = batch["conditioning_sketch_pixel_values"].to(dtype=weight_dtype)
+                    depth = batch["conditioning_depth_pixel_values"].to(dtype=weight_dtype)
+                    adapter_inputs = [sketch, depth]
+                    down_block_additional_residuals = t2iadapter(adapter_inputs, timesteps)
+                else:
+                    t2iadapter_image = batch["conditioning_pixel_values"].to(dtype=weight_dtype)
+                    down_block_additional_residuals = t2iadapter(t2iadapter_image)
+
                 down_block_additional_residuals = [
                     sample.to(dtype=weight_dtype) for sample in down_block_additional_residuals
                 ]
@@ -1243,7 +1351,11 @@ def main(args):
 
                 accelerator.backward(loss)
                 if accelerator.sync_gradients:
-                    params_to_clip = t2iadapter.parameters()
+                    if isinstance(t2iadapter, GatedMultiAdapter):
+                        params_to_clip = list(t2iadapter.film_mlps.parameters()) + list(
+                            t2iadapter.gate_mlps.parameters())
+                    else:
+                        params_to_clip = t2iadapter.parameters()
                     accelerator.clip_grad_norm_(params_to_clip, args.max_grad_norm)
                 optimizer.step()
                 lr_scheduler.step()
