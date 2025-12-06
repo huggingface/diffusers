@@ -38,7 +38,7 @@ class MultiAdapter(ModelMixin):
             A list of `T2IAdapter` model instances.
     """
 
-    def __init__(self, adapters: List["T2IAdapter"]):
+    def __init__(self, adapters: List["T2IAdapter"], hidden_dim: int = 128):
         super(MultiAdapter, self).__init__()
 
         self.num_adapter = len(adapters)
@@ -73,34 +73,137 @@ class MultiAdapter(ModelMixin):
         self.total_downscale_factor = first_adapter_total_downscale_factor
         self.downscale_factor = first_adapter_downscale_factor
 
-    def forward(self, xs: torch.Tensor, adapter_weights: Optional[List[float]] = None) -> List[torch.Tensor]:
+
+        # ---------- NEW: FiLM + gating MLP ----------
+        # FiLM: maps [adapter_feature, timestep] → (gamma, beta)
+        # gating network: [adapter_feature, timestep] → scalar gate
+        self.hidden_dim = hidden_dim
+        self.film_mlps = nn.ModuleList()  # len = num_scales (default = 4 len of channels) channels: List[int] = [320, 640, 1280, 1280], seen in T2I-adapter
+        self.gate_mlps = nn.ModuleList()
+        self._mlp_inited = False
+    
+    def _init_mlps_from_features(self, adapter_outputs):
+        first_adapter_feats = adapter_outputs[0]  # list of 4 scales
+        num_scales = len(first_adapter_feats)
+
+        for k in range(num_scales):
+            C_k = first_adapter_feats[k].shape[1]  # channel size, 如320 (4个channel分别是[320, 640, 1280, 1280])
+            assert C_k in [320, 640, 1280, 1280]
+
+            in_dim = C_k + 1  # pooled feature + timestep
+
+            # FiLM_k
+            film_mlp_k = nn.Sequential(
+                nn.Linear(in_dim, self.hidden_dim),
+                nn.SiLU(),
+                nn.Linear(self.hidden_dim, 2 * C_k )  # [gamma, beta]
+            )
+
+            # safe init: to let gamma ≈ 1, beta ≈ 0
+            film_mlp_k[-1].weight.data.zero_()
+            # bias: [ones for gamma | zeros for beta]
+            film_mlp_k[-1].bias.data = torch.cat([
+                torch.ones(C_k), 
+                torch.zeros(C_k)
+            ])
+
+            # gate_k
+            gate_mlp_k = nn.Sequential(
+                nn.Linear(in_dim, self.hidden_dim),
+                nn.SiLU(),
+                nn.Linear(self.hidden_dim, 1), # scalar
+            )
+
+            self.film_mlps.append(film_mlp_k)
+            self.gate_mlps.append(gate_mlp_k)
+
+        self._mlp_inited = True
+
+    def forward(self, xs: torch.Tensor, timestep: torch.Tensor) -> List[torch.Tensor]:
         r"""
         Args:
             xs (`torch.Tensor`):
                 A tensor of shape (batch, channel, height, width) representing input images for multiple adapter
-                models, concatenated along dimension 1(channel dimension). The `channel` dimension should be equal to
-                `num_adapter` * number of channel per image.
+                models, concatenated along dimension 1(channel dimension). 
+                The `channel` dimension should be equal to `num_adapter` * number of channel per image.
 
-            adapter_weights (`List[float]`, *optional*, defaults to None):
-                A list of floats representing the weights which will be multiplied by each adapter's output before
-                summing them together. If `None`, equal weights will be used for all adapters.
+            timestep: diffusion timestep (batch or scalar)
         """
-        if adapter_weights is None:
-            adapter_weights = torch.tensor([1 / self.num_adapter] * self.num_adapter)
-        else:
-            adapter_weights = torch.tensor(adapter_weights)
+        B, C_total, H, W = xs.shape
+        C = C_total // self.num_adapter  # C = channels per adapter modality
 
-        accume_state = None
-        for x, w, adapter in zip(xs, adapter_weights, self.adapters):
-            features = adapter(x)
-            if accume_state is None:
-                accume_state = features
-                for i in range(len(accume_state)):
-                    accume_state[i] = w * accume_state[i]
-            else:
-                for i in range(len(features)):
-                    accume_state[i] += w * features[i]
-        return accume_state
+        # split input into individual modalities: list of (B, C, H, W)
+        xs_split = torch.chunk(xs, self.num_adapter, dim=1)
+
+        # =====Collect adapter outputs first=====
+        adapter_outputs = []  # each element is a list of 4 feature maps
+
+        for i, adapter in enumerate(self.adapters):
+            x_i = xs_split[i]        # shape (B, C, H, W)
+            feats_i = adapter(x_i)   # list of 4 tensors (B, Ck, Hk, Wk)
+            adapter_outputs.append(feats_i)
+        # =====init mlps=====
+        if not self._mlp_inited:
+            self._init_mlps_from_features(adapter_outputs)
+
+        # ======prepare timestep embedding=====
+        if timestep.dim() == 0:
+            t = timestep.view(1).expand(B)
+        else:
+            t = timestep
+        t = t.view(B, 1)
+
+
+        # =====FiLM + gating========
+        fused_outputs = []
+        num_channels = len(adapter_outputs[0]) # 4
+
+        for k in range(num_channels):
+            # 对每一个channel，独立做FiLM和gating；
+            # i: 不同adapter
+            # k: 不同大小
+            gamma_list = []
+            beta_list = []
+            gate_logit_list = []
+
+            for i in range(self.num_adapter):
+                m_i_k = adapter_outputs[i][k] # (B, C_k, H_k, W_k)
+                C_k = m_i_k.shape[1] # channel size
+
+                pooled = m_i_k.mean(dim=(2,3)) # (B, Ck)
+                cond = torch.cat([pooled, t], dim = 1)
+                
+                # film
+                film_out = self.film_mlps[k](cond) # shape = (B, 2*C_k)
+                # split to let: gamma_k_i.shape = (B, C_k); beta_k_i.shape  = (B, C_k)
+                gamma_k_i, beta_k_i = torch.split(film_out, C_k, dim=-1) 
+                gamma_k_i = gamma_k_i.view(B, C_k, 1, 1)
+                beta_k_i = beta_k_i.view(B, C_k, 1, 1)
+                gamma_list.append(gamma_k_i)
+                beta_list.append(beta_k_i)
+
+                # gate
+                logit_i = self.gate_mlps[k](cond)          # (B,1)
+                gate_logit_list.append(logit_i)
+
+            # softmax over modalities i: (B, num_adapter)
+            gate_logits_k = torch.cat(gate_logit_list, dim=1)
+            alpha_k = torch.softmax(gate_logits_k, dim=1)  # (B, num_adapter)
+
+            # >> fuse modalities at this channel
+            fused_k = 0
+            for i in range(self.num_adapter):
+                m_i_k = adapter_outputs[i][k]              # (B, C_k, H_k, W_k)
+                gamma_k_i = gamma_list[i]                  # (B, C_k, 1, 1)
+                beta_k_i = beta_list[i]                    # (B, C_k, 1, 1)
+                w_i = alpha_k[:, i].view(B, 1, 1, 1)       # (B,1,1,1)
+
+                modulated = gamma_k_i * m_i_k + beta_k_i   # (B, C_k, H_k, W_k)
+                fused_k = fused_k + w_i * modulated
+
+            fused_outputs.append(fused_k)
+
+        return fused_outputs
 
     def save_pretrained(
         self,
@@ -130,6 +233,7 @@ class MultiAdapter(ModelMixin):
             variant (`str`, *optional*):
                 If specified, weights are saved in the format `pytorch_model.<variant>.bin`.
         """
+        os.makedirs(save_directory, exist_ok=True)
         idx = 0
         model_path_to_save = save_directory
         for adapter in self.adapters:
@@ -143,6 +247,26 @@ class MultiAdapter(ModelMixin):
 
             idx += 1
             model_path_to_save = model_path_to_save + f"_{idx}"
+        
+        # Save FiLM + gate MLPs
+        film_gate_state = {
+            "film_mlps": self.film_mlps.state_dict(),
+            "gate_mlps": self.gate_mlps.state_dict(),
+            "hidden_dim": self.hidden_dim,
+            "num_adapter": self.num_adapter,
+        }
+        torch.save(film_gate_state, os.path.join(save_directory, "pytorch_film_gate.bin"))
+
+        # Save config (optional but recommended)
+        config = {
+            "hidden_dim": self.hidden_dim,
+            "num_adapter": self.num_adapter,
+            "total_downscale_factor": self.total_downscale_factor,
+            "downscale_factor": self.downscale_factor,
+        }
+        with open(os.path.join(save_directory, "config.json"), "w") as f:
+            json.dump(config, f, indent=2)
+
 
     @classmethod
     def from_pretrained(cls, pretrained_model_path: Optional[Union[str, os.PathLike]], **kwargs):
@@ -210,7 +334,36 @@ class MultiAdapter(ModelMixin):
                 f"No T2IAdapters found under {os.path.dirname(pretrained_model_path)}. Expected at least {pretrained_model_path + '_0'}."
             )
 
-        return cls(adapters)
+        # >> Instantiate MultiAdapter (MLPs not initialized yet)
+        config_path = os.path.join(pretrained_model_path, "config.json")
+        if os.path.exists(config_path):
+            with open(config_path, "r") as f:
+                cfg = json.load(f)
+            hidden_dim = cfg["hidden_dim"]
+        else:
+            hidden_dim = 128   # fallback
+
+        multi = cls(adapters, hidden_dim=hidden_dim)
+
+        # >> Load FiLM + gating mlps
+        film_gate_path = os.path.join(pretrained_model_path, "pytorch_film_gate.bin")
+        if os.path.exists(film_gate_path):
+            state = torch.load(film_gate_path, map_location="cpu")
+            
+            # FiLM/MLP 的结构依赖于 C_k（实际 feature channel 数）
+            # C_k 必须在 adapter_outputs[i][k] 经过一次前向推理后才能确定
+            # Must initialize MLPs shape → run a dummy forward
+            # We need adapter_outputs[k].shape to infer C_k
+            dummy = torch.zeros(1, multi.num_adapter * adapters[0].in_channels, 8, 8)
+            dummy_timestep = torch.tensor(1)
+            _ = multi(dummy, dummy_timestep)   # this triggers MLP init
+
+            multi.film_mlps.load_state_dict(state["film_mlps"])
+            multi.gate_mlps.load_state_dict(state["gate_mlps"])
+        else:
+            print("⚠️ WARNING: No FiLM/gate state found; using fresh initialization")
+
+        return multi
 
 
 class T2IAdapter(ModelMixin, ConfigMixin):
