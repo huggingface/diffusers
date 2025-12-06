@@ -13,9 +13,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import sys
-import unittest
 
 import numpy as np
+import pytest
 import torch
 from transformers import AutoProcessor, Mistral3ForConditionalGeneration
 
@@ -30,7 +30,7 @@ from .utils import PeftLoraLoaderMixinTests, check_if_lora_correctly_set  # noqa
 
 
 @require_peft_backend
-class Flux2LoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
+class TestFlux2LoRA(PeftLoraLoaderMixinTests):
     pipeline_class = Flux2Pipeline
     scheduler_cls = FlowMatchEulerDiscreteScheduler
     scheduler_kwargs = {}
@@ -133,36 +133,36 @@ class Flux2LoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
         pipe.fuse_lora(components=self.pipeline_class._lora_loadable_modules, safe_fusing=False)
         out = pipe(**inputs)[0]
 
-        self.assertTrue(np.isnan(out).all())
+        assert np.isnan(out).all()
 
-    @unittest.skip("Not supported in Flux2.")
+    @pytest.mark.skip("Not supported in Flux2.")
     def test_simple_inference_with_text_denoiser_block_scale(self):
         pass
 
-    @unittest.skip("Not supported in Flux2.")
+    @pytest.mark.skip("Not supported in Flux2.")
     def test_simple_inference_with_text_denoiser_block_scale_for_all_dict_options(self):
         pass
 
-    @unittest.skip("Not supported in Flux2.")
+    @pytest.mark.skip("Not supported in Flux2.")
     def test_modify_padding_mode(self):
         pass
 
-    @unittest.skip("Text encoder LoRA is not supported in Flux2.")
+    @pytest.mark.skip("Text encoder LoRA is not supported in Flux2.")
     def test_simple_inference_with_partial_text_lora(self):
         pass
 
-    @unittest.skip("Text encoder LoRA is not supported in Flux2.")
+    @pytest.mark.skip("Text encoder LoRA is not supported in Flux2.")
     def test_simple_inference_with_text_lora(self):
         pass
 
-    @unittest.skip("Text encoder LoRA is not supported in Flux2.")
+    @pytest.mark.skip("Text encoder LoRA is not supported in Flux2.")
     def test_simple_inference_with_text_lora_and_scale(self):
         pass
 
-    @unittest.skip("Text encoder LoRA is not supported in Flux2.")
+    @pytest.mark.skip("Text encoder LoRA is not supported in Flux2.")
     def test_simple_inference_with_text_lora_fused(self):
         pass
 
-    @unittest.skip("Text encoder LoRA is not supported in Flux2.")
+    @pytest.mark.skip("Text encoder LoRA is not supported in Flux2.")
     def test_simple_inference_with_text_lora_save_load(self):
         pass

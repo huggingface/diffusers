@@ -14,9 +14,9 @@
 # limitations under the License.
 import gc
 import sys
-import unittest
 
 import numpy as np
+import pytest
 import torch
 from transformers import AutoTokenizer, CLIPTextModelWithProjection, CLIPTokenizer, T5EncoderModel
 
@@ -51,7 +51,7 @@ if is_accelerate_available():
 
 
 @require_peft_backend
-class SD3LoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
+class TestSD3LoRA(PeftLoraLoaderMixinTests):
     pipeline_class = StableDiffusion3Pipeline
     scheduler_cls = FlowMatchEulerDiscreteScheduler
     scheduler_kwargs = {}
@@ -113,19 +113,19 @@ class SD3LoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
         lora_filename = "lora_peft_format.safetensors"
         pipe.load_lora_weights(lora_model_id, weight_name=lora_filename)
 
-    @unittest.skip("Not supported in SD3.")
+    @pytest.mark.skip("Not supported in SD3.")
     def test_simple_inference_with_text_denoiser_block_scale(self):
         pass
 
-    @unittest.skip("Not supported in SD3.")
+    @pytest.mark.skip("Not supported in SD3.")
     def test_simple_inference_with_text_denoiser_multi_adapter_block_lora(self):
         pass
 
-    @unittest.skip("Not supported in SD3.")
+    @pytest.mark.skip("Not supported in SD3.")
     def test_simple_inference_with_text_denoiser_block_scale_for_all_dict_options(self):
         pass
 
-    @unittest.skip("Not supported in SD3.")
+    @pytest.mark.skip("Not supported in SD3.")
     def test_modify_padding_mode(self):
         pass
 
@@ -138,17 +138,15 @@ class SD3LoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
 @require_torch_accelerator
 @require_peft_backend
 @require_big_accelerator
-class SD3LoraIntegrationTests(unittest.TestCase):
+class TestSD3LoraIntegration:
     pipeline_class = StableDiffusion3Img2ImgPipeline
     repo_id = "stabilityai/stable-diffusion-3-medium-diffusers"
 
-    def setUp(self):
-        super().setUp()
+    @pytest.fixture(autouse=True)
+    def _gc_and_cache_cleanup(self, torch_device):
         gc.collect()
         backend_empty_cache(torch_device)
-
-    def tearDown(self):
-        super().tearDown()
+        yield
         gc.collect()
         backend_empty_cache(torch_device)
 
