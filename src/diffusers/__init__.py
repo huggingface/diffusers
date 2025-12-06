@@ -280,6 +280,7 @@ else:
             "WanVACETransformer3DModel",
             "ZImageTransformer2DModel",
             "attention_backend",
+            "NextDiT_3B_GQA_patch2_Adaln_Refiner_WHIT_CLIP",
         ]
     )
     _import_structure["modular_pipelines"].extend(
@@ -663,6 +664,7 @@ else:
             "WuerstchenDecoderPipeline",
             "WuerstchenPriorPipeline",
             "ZImagePipeline",
+            "NewbiePipeline",
         ]
     )
 
@@ -1009,6 +1011,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             WanVACETransformer3DModel,
             ZImageTransformer2DModel,
             attention_backend,
+            NextDiT_3B_GQA_patch2_Adaln_Refiner_WHIT_CLIP,
         )
         from .modular_pipelines import ComponentsManager, ComponentSpec, ModularPipeline, ModularPipelineBlocks
         from .optimization import (
@@ -1361,6 +1364,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             WuerstchenDecoderPipeline,
             WuerstchenPriorPipeline,
             ZImagePipeline,
+            NewbiePipeline,
         )
 
     try:

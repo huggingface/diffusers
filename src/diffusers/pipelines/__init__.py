@@ -423,6 +423,7 @@ else:
         "QwenImageControlNetPipeline",
     ]
     _import_structure["chronoedit"] = ["ChronoEditPipeline"]
+    _import_structure["newbie"] = ["NewbiePipeline"]
 try:
     if not is_onnx_available():
         raise OptionalDependencyNotAvailable()
@@ -842,7 +843,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             WuerstchenPriorPipeline,
         )
         from .z_image import ZImagePipeline
-
+        from .newbie import NewbiePipeline
         try:
             if not is_onnx_available():
                 raise OptionalDependencyNotAvailable()
