@@ -24,6 +24,7 @@ except OptionalDependencyNotAvailable:
 else:
     _import_structure["pipeline_sana_video"] = ["SanaVideoPipeline"]
     _import_structure["pipeline_sana_video_i2v"] = ["SanaImageToVideoPipeline"]
+    _import_structure["pipeline_longsana"] = ["LongSanaVideoPipeline"]
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     try:
@@ -33,6 +34,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     except OptionalDependencyNotAvailable:
         from ...utils.dummy_torch_and_transformers_objects import *
     else:
+        from .pipeline_longsana import LongSanaVideoPipeline
         from .pipeline_sana_video import SanaVideoPipeline
         from .pipeline_sana_video_i2v import SanaImageToVideoPipeline
 else:
