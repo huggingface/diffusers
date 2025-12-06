@@ -43,11 +43,13 @@ Note: The recommended dtype mentioned is for the transformer weights. The text e
 <hfoptions id="generation pipelines">`
 <hfoption id="Text-to-Video">
 
-The example below demonstrates how to use the text-to-video pipeline to generate a video using a text descriptio and a starting frame.
+The example below demonstrates how to use the text-to-video pipeline to generate a video using a text description.
 
 ```python
-model_id = 
-pipe = SanaVideoPipeline.from_pretrained("Efficient-Large-Model/SANA-Video_2B_480p_diffusers", torch_dtype=torch.bfloat16)
+pipe = SanaVideoPipeline.from_pretrained(
+    "Efficient-Large-Model/SANA-Video_2B_480p_diffusers", 
+    torch_dtype=torch.bfloat16,
+)
 pipe.text_encoder.to(torch.bfloat16)
 pipe.vae.to(torch.float32)
 pipe.to("cuda")
@@ -75,12 +77,11 @@ export_to_video(video, "sana_video.mp4", fps=16)
 </hfoption>
 <hfoption id="Image-to-Video">
 
-The example below demonstrates how to use the image-to-video pipeline to generate a video using a text descriptio and a starting frame.
+The example below demonstrates how to use the image-to-video pipeline to generate a video using a text description and a starting frame.
 
 ```python
-model_id = "Efficient-Large-Model/SANA-Video_2B_480p_diffusers"
 pipe = SanaImageToVideoPipeline.from_pretrained(
-    model_id,
+    "Efficient-Large-Model/SANA-Video_2B_480p_diffusers",
     torch_dtype=torch.bfloat16,
 )
 pipe.scheduler = FlowMatchEulerDiscreteScheduler.from_config(pipe.scheduler.config, flow_shift=8.0)

@@ -105,7 +105,7 @@ class SASolverScheduler(SchedulerMixin, ConfigMixin):
         prediction_type (`str`, defaults to `epsilon`, *optional*):
             Prediction type of the scheduler function; can be `epsilon` (predicts the noise of the diffusion process),
             `sample` (directly predicts the noisy sample`) or `v_prediction` (see section 2.4 of [Imagen
-            Video](https://imagen.research.google/video/paper.pdf) paper).
+            Video](https://huggingface.co/papers/2210.02303) paper).
         tau_func (`Callable`, *optional*):
             Stochasticity during the sampling. Default in init is `lambda t: 1 if t >= 200 and t <= 800 else 0`.
             SA-Solver will sample from vanilla diffusion ODE if tau_func is set to `lambda t: 0`. SA-Solver will sample
@@ -423,6 +423,17 @@ class SASolverScheduler(SchedulerMixin, ConfigMixin):
 
     # Copied from diffusers.schedulers.scheduling_dpmsolver_multistep.DPMSolverMultistepScheduler._sigma_to_alpha_sigma_t
     def _sigma_to_alpha_sigma_t(self, sigma):
+        """
+        Convert sigma values to alpha_t and sigma_t values.
+
+        Args:
+            sigma (`torch.Tensor`):
+                The sigma value(s) to convert.
+
+        Returns:
+            `Tuple[torch.Tensor, torch.Tensor]`:
+                A tuple containing (alpha_t, sigma_t) values.
+        """
         if self.config.use_flow_sigmas:
             alpha_t = 1 - sigma
             sigma_t = sigma
@@ -1103,7 +1114,22 @@ class SASolverScheduler(SchedulerMixin, ConfigMixin):
         return x_t
 
     # Copied from diffusers.schedulers.scheduling_dpmsolver_multistep.DPMSolverMultistepScheduler.index_for_timestep
-    def index_for_timestep(self, timestep, schedule_timesteps=None):
+    def index_for_timestep(
+        self, timestep: Union[int, torch.Tensor], schedule_timesteps: Optional[torch.Tensor] = None
+    ) -> int:
+        """
+        Find the index for a given timestep in the schedule.
+
+        Args:
+            timestep (`int` or `torch.Tensor`):
+                The timestep for which to find the index.
+            schedule_timesteps (`torch.Tensor`, *optional*):
+                The timestep schedule to search in. If `None`, uses `self.timesteps`.
+
+        Returns:
+            `int`:
+                The index of the timestep in the schedule.
+        """
         if schedule_timesteps is None:
             schedule_timesteps = self.timesteps
 
@@ -1126,6 +1152,10 @@ class SASolverScheduler(SchedulerMixin, ConfigMixin):
     def _init_step_index(self, timestep):
         """
         Initialize the step_index counter for the scheduler.
+
+        Args:
+            timestep (`int` or `torch.Tensor`):
+                The current timestep for which to initialize the step index.
         """
 
         if self.begin_index is None:

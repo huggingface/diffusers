@@ -1424,6 +1424,8 @@ if is_torch_available():
         offload_to_disk_path: str,
         offload_type: str,
         num_blocks_per_group: Optional[int] = None,
+        block_modules: Optional[List[str]] = None,
+        module_prefix: str = "",
     ) -> Set[str]:
         expected_files = set()
 
@@ -1435,23 +1437,36 @@ if is_torch_available():
             if num_blocks_per_group is None:
                 raise ValueError("num_blocks_per_group must be provided for 'block_level' offloading.")
 
-            # Handle groups of ModuleList and Sequential blocks
+            block_modules_set = set(block_modules) if block_modules is not None else set()
+
+            modules_with_group_offloading = set()
             unmatched_modules = []
             for name, submodule in module.named_children():
-                if not isinstance(submodule, (torch.nn.ModuleList, torch.nn.Sequential)):
-                    unmatched_modules.append(module)
-                    continue
+                if name in block_modules_set:
+                    new_prefix = f"{module_prefix}{name}." if module_prefix else f"{name}."
+                    submodule_files = _get_expected_safetensors_files(
+                        submodule, offload_to_disk_path, offload_type, num_blocks_per_group, block_modules, new_prefix
+                    )
+                    expected_files.update(submodule_files)
+                    modules_with_group_offloading.add(name)
 
-                for i in range(0, len(submodule), num_blocks_per_group):
-                    current_modules = submodule[i : i + num_blocks_per_group]
-                    if not current_modules:
-                        continue
-                    group_id = f"{name}_{i}_{i + len(current_modules) - 1}"
-                    expected_files.add(get_hashed_filename(group_id))
+                elif isinstance(submodule, (torch.nn.ModuleList, torch.nn.Sequential)):
+                    for i in range(0, len(submodule), num_blocks_per_group):
+                        current_modules = submodule[i : i + num_blocks_per_group]
+                        if not current_modules:
+                            continue
+                        group_id = f"{module_prefix}{name}_{i}_{i + len(current_modules) - 1}"
+                        expected_files.add(get_hashed_filename(group_id))
+                        for j in range(i, i + len(current_modules)):
+                            modules_with_group_offloading.add(f"{name}.{j}")
+                else:
+                    unmatched_modules.append(submodule)
 
-            # Handle the group for unmatched top-level modules and parameters
-            for module in unmatched_modules:
-                expected_files.add(get_hashed_filename(f"{module.__class__.__name__}_unmatched_group"))
+            parameters = _gather_parameters_with_no_group_offloading_parent(module, modules_with_group_offloading)
+            buffers = _gather_buffers_with_no_group_offloading_parent(module, modules_with_group_offloading)
+
+            if len(unmatched_modules) > 0 or len(parameters) > 0 or len(buffers) > 0:
+                expected_files.add(get_hashed_filename(f"{module_prefix}{module.__class__.__name__}_unmatched_group"))
 
         elif offload_type == "leaf_level":
             # Handle leaf-level module groups
@@ -1492,12 +1507,13 @@ if is_torch_available():
         offload_to_disk_path: str,
         offload_type: str,
         num_blocks_per_group: Optional[int] = None,
+        block_modules: Optional[List[str]] = None,
     ) -> bool:
         if not os.path.isdir(offload_to_disk_path):
             return False, None, None
 
         expected_files = _get_expected_safetensors_files(
-            module, offload_to_disk_path, offload_type, num_blocks_per_group
+            module, offload_to_disk_path, offload_type, num_blocks_per_group, block_modules
         )
         actual_files = set(glob.glob(os.path.join(offload_to_disk_path, "*.safetensors")))
         missing_files = expected_files - actual_files

@@ -160,7 +160,7 @@ class DDPMParallelScheduler(SchedulerMixin, ConfigMixin):
         prediction_type (`str`, default `epsilon`, optional):
             prediction type of the scheduler function, one of `epsilon` (predicting the noise of the diffusion
             process), `sample` (directly predicting the noisy sample`) or `v_prediction` (see section 2.4
-            https://imagen.research.google/video/paper.pdf)
+            https://huggingface.co/papers/2210.02303)
         thresholding (`bool`, default `False`):
             whether to use the "dynamic thresholding" method (introduced by Imagen,
             https://huggingface.co/papers/2205.11487). Note that the thresholding method is unsuitable for latent-space

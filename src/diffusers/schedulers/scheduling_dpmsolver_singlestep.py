@@ -103,7 +103,7 @@ class DPMSolverSinglestepScheduler(SchedulerMixin, ConfigMixin):
         prediction_type (`str`, defaults to `epsilon`, *optional*):
             Prediction type of the scheduler function; can be `epsilon` (predicts the noise of the diffusion process),
             `sample` (directly predicts the noisy sample`) or `v_prediction` (see section 2.4 of [Imagen
-            Video](https://imagen.research.google/video/paper.pdf) paper).
+            Video](https://huggingface.co/papers/2210.02303) paper).
         thresholding (`bool`, defaults to `False`):
             Whether to use the "dynamic thresholding" method. This is unsuitable for latent-space diffusion models such
             as Stable Diffusion.
@@ -491,6 +491,17 @@ class DPMSolverSinglestepScheduler(SchedulerMixin, ConfigMixin):
 
     # Copied from diffusers.schedulers.scheduling_dpmsolver_multistep.DPMSolverMultistepScheduler._sigma_to_alpha_sigma_t
     def _sigma_to_alpha_sigma_t(self, sigma):
+        """
+        Convert sigma values to alpha_t and sigma_t values.
+
+        Args:
+            sigma (`torch.Tensor`):
+                The sigma value(s) to convert.
+
+        Returns:
+            `Tuple[torch.Tensor, torch.Tensor]`:
+                A tuple containing (alpha_t, sigma_t) values.
+        """
         if self.config.use_flow_sigmas:
             alpha_t = 1 - sigma
             sigma_t = sigma
@@ -1079,7 +1090,22 @@ class DPMSolverSinglestepScheduler(SchedulerMixin, ConfigMixin):
             raise ValueError(f"Order must be 1, 2, 3, got {order}")
 
     # Copied from diffusers.schedulers.scheduling_dpmsolver_multistep.DPMSolverMultistepScheduler.index_for_timestep
-    def index_for_timestep(self, timestep, schedule_timesteps=None):
+    def index_for_timestep(
+        self, timestep: Union[int, torch.Tensor], schedule_timesteps: Optional[torch.Tensor] = None
+    ) -> int:
+        """
+        Find the index for a given timestep in the schedule.
+
+        Args:
+            timestep (`int` or `torch.Tensor`):
+                The timestep for which to find the index.
+            schedule_timesteps (`torch.Tensor`, *optional*):
+                The timestep schedule to search in. If `None`, uses `self.timesteps`.
+
+        Returns:
+            `int`:
+                The index of the timestep in the schedule.
+        """
         if schedule_timesteps is None:
             schedule_timesteps = self.timesteps
 
@@ -1102,6 +1128,10 @@ class DPMSolverSinglestepScheduler(SchedulerMixin, ConfigMixin):
     def _init_step_index(self, timestep):
         """
         Initialize the step_index counter for the scheduler.
+
+        Args:
+            timestep (`int` or `torch.Tensor`):
+                The current timestep for which to initialize the step index.
         """
 
         if self.begin_index is None:
@@ -1204,6 +1234,21 @@ class DPMSolverSinglestepScheduler(SchedulerMixin, ConfigMixin):
         noise: torch.Tensor,
         timesteps: torch.IntTensor,
     ) -> torch.Tensor:
+        """
+        Add noise to the original samples according to the noise schedule at the specified timesteps.
+
+        Args:
+            original_samples (`torch.Tensor`):
+                The original samples without noise.
+            noise (`torch.Tensor`):
+                The noise to add to the samples.
+            timesteps (`torch.IntTensor`):
+                The timesteps at which to add noise to the samples.
+
+        Returns:
+            `torch.Tensor`:
+                The noisy samples.
+        """
         # Make sure sigmas and timesteps have the same device and dtype as original_samples
         sigmas = self.sigmas.to(device=original_samples.device, dtype=original_samples.dtype)
         if original_samples.device.type == "mps" and torch.is_floating_point(timesteps):

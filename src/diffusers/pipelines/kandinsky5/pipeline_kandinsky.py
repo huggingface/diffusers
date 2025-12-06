@@ -25,7 +25,14 @@ from ...loaders import KandinskyLoraLoaderMixin
 from ...models import AutoencoderKLHunyuanVideo
 from ...models.transformers import Kandinsky5Transformer3DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
-from ...utils import is_ftfy_available, is_torch_xla_available, logging, replace_example_docstring
+
+# Add imports for offloading and tiling
+from ...utils import (
+    is_ftfy_available,
+    is_torch_xla_available,
+    logging,
+    replace_example_docstring,
+)
 from ...utils.torch_utils import randn_tensor
 from ...video_processor import VideoProcessor
 from ..pipeline_utils import DiffusionPipeline
@@ -56,12 +63,17 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers.utils import export_to_video
 
         >>> # Available models:
-        >>> # ai-forever/Kandinsky-5.0-T2V-Lite-sft-5s-Diffusers
-        >>> # ai-forever/Kandinsky-5.0-T2V-Lite-nocfg-5s-Diffusers
-        >>> # ai-forever/Kandinsky-5.0-T2V-Lite-distilled16steps-5s-Diffusers
-        >>> # ai-forever/Kandinsky-5.0-T2V-Lite-pretrain-5s-Diffusers
+        >>> # kandinskylab/Kandinsky-5.0-T2V-Pro-sft-5s-Diffusers
+        >>> # kandinskylab/Kandinsky-5.0-T2V-Lite-sft-5s-Diffusers
+        >>> # kandinskylab/Kandinsky-5.0-T2V-Lite-nocfg-5s-Diffusers
+        >>> # kandinskylab/Kandinsky-5.0-T2V-Lite-distilled16steps-5s-Diffusers
+        >>> # kandinskylab/Kandinsky-5.0-T2V-Lite-pretrain-5s-Diffusers
+        >>> # kandinskylab/Kandinsky-5.0-T2V-Lite-sft-10s-Diffusers
+        >>> # kandinskylab/Kandinsky-5.0-T2V-Lite-nocfg-10s-Diffusers
+        >>> # kandinskylab/Kandinsky-5.0-T2V-Lite-distilled16steps-10s-Diffusers
+        >>> # kandinskylab/Kandinsky-5.0-T2V-Lite-pretrain-10s-Diffusers
 
-        >>> model_id = "ai-forever/Kandinsky-5.0-T2V-Lite-sft-5s-Diffusers"
+        >>> model_id = "kandinskylab/Kandinsky-5.0-T2V-Lite-sft-5s-Diffusers"
         >>> pipe = Kandinsky5T2VPipeline.from_pretrained(model_id, torch_dtype=torch.bfloat16)
         >>> pipe = pipe.to("cuda")
 
@@ -84,7 +96,11 @@ EXAMPLE_DOC_STRING = """
 
 
 def basic_clean(text):
-    """Clean text using ftfy if available and unescape HTML entities."""
+    """
+    Copied from https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/wan/pipeline_wan.py
+
+    Clean text using ftfy if available and unescape HTML entities.
+    """
     if is_ftfy_available():
         text = ftfy.fix_text(text)
     text = html.unescape(html.unescape(text))
@@ -92,14 +108,22 @@ def basic_clean(text):
 
 
 def whitespace_clean(text):
-    """Normalize whitespace in text by replacing multiple spaces with single space."""
+    """
+    Copied from https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/wan/pipeline_wan.py
+
+    Normalize whitespace in text by replacing multiple spaces with single space.
+    """
     text = re.sub(r"\s+", " ", text)
     text = text.strip()
     return text
 
 
 def prompt_clean(text):
-    """Apply both basic cleaning and whitespace normalization to prompts."""
+    """
+    Copied from https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/wan/pipeline_wan.py
+
+    Apply both basic cleaning and whitespace normalization to prompts.
+    """
     text = whitespace_clean(basic_clean(text))
     return text
 
@@ -115,13 +139,16 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
         transformer ([`Kandinsky5Transformer3DModel`]):
             Conditional Transformer to denoise the encoded video latents.
         vae ([`AutoencoderKLHunyuanVideo`]):
-            Variational Auto-Encoder (VAE) Model to encode and decode videos to and from latent representations.
+            Variational Auto-Encoder Model [hunyuanvideo-community/HunyuanVideo
+            (vae)](https://huggingface.co/hunyuanvideo-community/HunyuanVideo) to encode and decode videos to and from
+            latent representations.
         text_encoder ([`Qwen2_5_VLForConditionalGeneration`]):
-            Frozen text-encoder (Qwen2.5-VL).
+            Frozen text-encoder [Qwen2.5-VL](https://huggingface.co/Qwen/Qwen2.5-VL-7B-Instruct).
         tokenizer ([`AutoProcessor`]):
             Tokenizer for Qwen2.5-VL.
         text_encoder_2 ([`CLIPTextModel`]):
-            Frozen CLIP text encoder.
+            Frozen [CLIP](https://huggingface.co/docs/transformers/model_doc/clip#transformers.CLIPTextModel),
+            specifically the [clip-vit-large-patch14](https://huggingface.co/openai/clip-vit-large-patch14) variant.
         tokenizer_2 ([`CLIPTokenizer`]):
             Tokenizer for CLIP.
         scheduler ([`FlowMatchEulerDiscreteScheduler`]):
@@ -178,6 +205,26 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
         )
         self.vae_scale_factor_spatial = self.vae.config.spatial_compression_ratio if getattr(self, "vae", None) else 8
         self.video_processor = VideoProcessor(vae_scale_factor=self.vae_scale_factor_spatial)
+
+    def _get_scale_factor(self, height: int, width: int) -> tuple:
+        """
+        Calculate the scale factor based on resolution.
+
+        Args:
+            height (int): Video height
+            width (int): Video width
+
+        Returns:
+            tuple: Scale factor as (temporal_scale, height_scale, width_scale)
+        """
+
+        def between_480p(x):
+            return 480 <= x <= 854
+
+        if between_480p(height) and between_480p(width):
+            return (1, 2, 2)
+        else:
+            return (1, 3.16, 3.16)
 
     @staticmethod
     def fast_sta_nabla(T: int, H: int, W: int, wT: int = 3, wH: int = 3, wW: int = 3, device="cuda") -> torch.Tensor:
@@ -290,12 +337,32 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
         dtype = dtype or self.text_encoder.dtype
 
         full_texts = [self.prompt_template.format(p) for p in prompt]
+        max_allowed_len = self.prompt_template_encode_start_idx + max_sequence_length
+
+        untruncated_ids = self.tokenizer(
+            text=full_texts,
+            images=None,
+            videos=None,
+            return_tensors="pt",
+            padding="longest",
+        )["input_ids"]
+
+        if untruncated_ids.shape[-1] > max_allowed_len:
+            for i, text in enumerate(full_texts):
+                tokens = untruncated_ids[i][self.prompt_template_encode_start_idx : -2]
+                removed_text = self.tokenizer.decode(tokens[max_sequence_length - 2 :])
+                if len(removed_text) > 0:
+                    full_texts[i] = text[: -len(removed_text)]
+                    logger.warning(
+                        "The following part of your input was truncated because `max_sequence_length` is set to "
+                        f" {max_sequence_length} tokens: {removed_text}"
+                    )
 
         inputs = self.tokenizer(
             text=full_texts,
             images=None,
             videos=None,
-            max_length=max_sequence_length + self.prompt_template_encode_start_idx,
+            max_length=max_allowed_len,
             truncation=True,
             return_tensors="pt",
             padding=True,
@@ -456,6 +523,7 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
         prompt_cu_seqlens=None,
         negative_prompt_cu_seqlens=None,
         callback_on_step_end_tensor_inputs=None,
+        max_sequence_length=None,
     ):
         """
         Validate input parameters for the pipeline.
@@ -476,6 +544,10 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
         Raises:
             ValueError: If inputs are invalid
         """
+
+        if max_sequence_length is not None and max_sequence_length > 1024:
+            raise ValueError("max_sequence_length must be less than 1024")
+
         if height % 16 != 0 or width % 16 != 0:
             raise ValueError(f"`height` and `width` have to be divisible by 16 but are {height} and {width}.")
 
@@ -598,11 +670,6 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
         return self._guidance_scale
 
     @property
-    def do_classifier_free_guidance(self):
-        """Check if classifier-free guidance is enabled."""
-        return self._guidance_scale > 1.0
-
-    @property
     def num_timesteps(self):
         """Get the number of denoising timesteps."""
         return self._num_timesteps
@@ -639,7 +706,6 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
         ] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
         max_sequence_length: int = 512,
-        **kwargs,
     ):
         r"""
         The call function to the pipeline for generation.
@@ -704,6 +770,7 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
             prompt_cu_seqlens=prompt_cu_seqlens,
             negative_prompt_cu_seqlens=negative_prompt_cu_seqlens,
             callback_on_step_end_tensor_inputs=callback_on_step_end_tensor_inputs,
+            max_sequence_length=max_sequence_length,
         )
 
         if num_frames % self.vae_scale_factor_temporal != 1:
@@ -737,7 +804,7 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
                 dtype=dtype,
             )
 
-        if self.do_classifier_free_guidance:
+        if self.guidance_scale > 1.0:
             if negative_prompt is None:
                 negative_prompt = "Static, 2D cartoon, cartoon, 2d animation, paintings, images, worst quality, low quality, ugly, deformed, walking backwards"
 
@@ -792,10 +859,13 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
             else None
         )
 
-        # 7. Sparse Params for efficient attention
+        # 7. Calculate dynamic scale factor based on resolution
+        scale_factor = self._get_scale_factor(height, width)
+
+        # 8. Sparse Params for efficient attention
         sparse_params = self.get_sparse_params(latents, device)
 
-        # 8. Denoising loop
+        # 9. Denoising loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
         self._num_timesteps = len(timesteps)
 
@@ -814,12 +884,12 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
                     timestep=timestep.to(dtype),
                     visual_rope_pos=visual_rope_pos,
                     text_rope_pos=text_rope_pos,
-                    scale_factor=(1, 2, 2),
+                    scale_factor=scale_factor,
                     sparse_params=sparse_params,
                     return_dict=True,
                 ).sample
 
-                if self.do_classifier_free_guidance and negative_prompt_embeds_qwen is not None:
+                if self.guidance_scale > 1.0 and negative_prompt_embeds_qwen is not None:
                     uncond_pred_velocity = self.transformer(
                         hidden_states=latents.to(dtype),
                         encoder_hidden_states=negative_prompt_embeds_qwen.to(dtype),
@@ -827,7 +897,7 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
                         timestep=timestep.to(dtype),
                         visual_rope_pos=visual_rope_pos,
                         text_rope_pos=negative_text_rope_pos,
-                        scale_factor=(1, 2, 2),
+                        scale_factor=scale_factor,
                         sparse_params=sparse_params,
                         return_dict=True,
                     ).sample
@@ -860,10 +930,10 @@ class Kandinsky5T2VPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
                 if XLA_AVAILABLE:
                     xm.mark_step()
 
-        # 8. Post-processing - extract main latents
+        # 10. Post-processing - extract main latents
         latents = latents[:, :, :, :, :num_channels_latents]
 
-        # 9. Decode latents to video
+        # 11. Decode latents to video
         if output_type != "latent":
             latents = latents.to(self.vae.dtype)
             # Reshape and normalize latents
