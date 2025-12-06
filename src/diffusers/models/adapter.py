@@ -115,103 +115,105 @@ class GatedMultiAdapter(ModelMixin):
             self.film_mlps.append(film_mlp_k)
             self.gate_mlps.append(gate_mlp_k)
 
-        self._mlp_inited = True
-
-    def forward(self, xs: torch.Tensor, timestep: torch.Tensor) -> List[torch.Tensor]:
-        r"""
-        Args:
-            xs (`torch.Tensor`):
-                A tensor of shape (batch, channel, height, width) representing input images for multiple adapter
-                models, concatenated along dimension 1(channel dimension). 
-                The `channel` dimension should be equal to `num_adapter` * number of channel per image.
-
-            timestep: diffusion timestep (batch or scalar)
-        """
-        assert isinstance(xs, (list, tuple)), "Adapter input must be a list of Tensors"
-        assert len(xs) == self.num_adapter, f"Expected {self.num_adapter} inputs, got {len(xs)}"
-
+                # NEW: ensure newly created mlps go to correct device/dtype
         
-        B = xs[0].shape[0]
-        # =====Collect adapter outputs first=====
-        adapter_outputs = []  # each element is a list of 4 feature maps
+        device = first_adapter_feats[0].device
+        dtype = first_adapter_feats[0].dtype
 
-        for i, adapter in enumerate(self.adapters):
-            x_i = xs[i]        # shape (B, C, H, W)
-            feats_i = adapter(x_i)   # list of 4 tensors (B, Ck, Hk, Wk)
-            adapter_outputs.append(feats_i)
-        # =====init mlps=====
-        if not self._mlp_inited:
-            self._init_mlps_from_features(adapter_outputs)
-        
-        device = xs[0].device
-        self.film_mlps.to(device)
-        self.gate_mlps.to(device)
-        self.adapters.to(device)
-        dtype = self.adapters[0].dtype
         for mlp in self.film_mlps:
             mlp.to(device=device, dtype=dtype)
 
         for mlp in self.gate_mlps:
             mlp.to(device=device, dtype=dtype)
 
-        # ======prepare timestep embedding=====
+        self._mlp_inited = True
+
+    def forward_static(self, xs: List[torch.Tensor]):
+        """
+        Only compute adapter backbone features (static across timesteps)
+        xs: list of Tensor [(B, C, H, W), ...] length = num_adapter
+        returns: List[num_adapter][num_scales], each scale is (B, Ck, Hk, Wk)
+        """
+        assert isinstance(xs, (list, tuple))
+        assert len(xs) == self.num_adapter
+
+        adapter_outputs = []
+        for i, adapter in enumerate(self.adapters):
+            feats_i = adapter(xs[i])    # list of 4 scales
+            adapter_outputs.append(feats_i)
+
+        if not self._mlp_inited:
+            self._init_mlps_from_features(adapter_outputs)
+
+        return adapter_outputs
+
+    def forward_timestep(self, adapter_outputs, timestep: torch.Tensor):
+        """
+        Compute FiLM + gating using precomputed adapter_outputs
+        adapter_outputs: List[num_adapter][num_scales]
+        timestep: scalar or (B,)
+        """
+        B = adapter_outputs[0][0].shape[0]
+
         if timestep.dim() == 0:
             t = timestep.view(1).expand(B)
         else:
             t = timestep
-        t = t.view(B, 1).to(dtype) 
+        t = t.view(B, 1).to(adapter_outputs[0][0].dtype)
 
-
-        # =====FiLM + gating========
         fused_outputs = []
-        num_channels = len(adapter_outputs[0]) # 4
+        num_scales = len(adapter_outputs[0])
 
-        for k in range(num_channels):
-            # 对每一个channel，独立做FiLM和gating；
-            # i: 不同adapter
-            # k: 不同大小
+        for k in range(num_scales):
             gamma_list = []
             beta_list = []
             gate_logit_list = []
 
             for i in range(self.num_adapter):
-                m_i_k = adapter_outputs[i][k] # (B, C_k, H_k, W_k)
-                C_k = m_i_k.shape[1] # channel size
+                m_i_k = adapter_outputs[i][k]  # (B,Ck,Hk,Wk)
+                C_k = m_i_k.shape[1]
 
-                pooled = m_i_k.mean(dim=(2,3)) # (B, Ck)
-                cond = torch.cat([pooled, t], dim = 1)
-                
-                # film
-                film_out = self.film_mlps[k](cond) # shape = (B, 2*C_k)
-                # split to let: gamma_k_i.shape = (B, C_k); beta_k_i.shape  = (B, C_k)
-                gamma_k_i, beta_k_i = torch.split(film_out, C_k, dim=-1) 
+                pooled = m_i_k.mean(dim=(2,3))
+                cond = torch.cat([pooled, t], dim=1)
+
+                film_out = self.film_mlps[k](cond)
+                gamma_k_i, beta_k_i = torch.split(film_out, C_k, dim=-1)
                 gamma_k_i = gamma_k_i.view(B, C_k, 1, 1)
                 beta_k_i = beta_k_i.view(B, C_k, 1, 1)
+
                 gamma_list.append(gamma_k_i)
                 beta_list.append(beta_k_i)
+                gate_logit_list.append(self.gate_mlps[k](cond))
 
-                # gate
-                logit_i = self.gate_mlps[k](cond)          # (B,1)
-                gate_logit_list.append(logit_i)
+            alpha_k = torch.softmax(torch.cat(gate_logit_list, dim=1), dim=1)
 
-            # softmax over modalities i: (B, num_adapter)
-            gate_logits_k = torch.cat(gate_logit_list, dim=1)
-            alpha_k = torch.softmax(gate_logits_k, dim=1)  # (B, num_adapter)
-
-            # >> fuse modalities at this channel
             fused_k = 0
             for i in range(self.num_adapter):
-                m_i_k = adapter_outputs[i][k]              # (B, C_k, H_k, W_k)
-                gamma_k_i = gamma_list[i]                  # (B, C_k, 1, 1)
-                beta_k_i = beta_list[i]                    # (B, C_k, 1, 1)
-                w_i = alpha_k[:, i].view(B, 1, 1, 1)       # (B,1,1,1)
-
-                modulated = gamma_k_i * m_i_k + beta_k_i   # (B, C_k, H_k, W_k)
-                fused_k = fused_k + w_i * modulated
+                modulated = gamma_list[i] * adapter_outputs[i][k] + beta_list[i]
+                fused_k = fused_k + alpha_k[:, i].view(B,1,1,1) * modulated
 
             fused_outputs.append(fused_k)
 
         return fused_outputs
+
+
+    def forward(self, xs: torch.Tensor, timestep: torch.Tensor) -> List[torch.Tensor]:
+        assert isinstance(xs, (list, tuple)), "Adapter input must be a list of Tensors"
+        assert len(xs) == self.num_adapter, f"Expected {self.num_adapter} inputs, got {len(xs)}"
+
+        device = xs[0].device
+        dtype = self.adapters[0].dtype
+        for a in self.adapters:
+            a.to(device=device, dtype=dtype)
+        for mlp in self.film_mlps:
+            mlp.to(device=device, dtype=dtype)
+        for mlp in self.gate_mlps:
+            mlp.to(device=device, dtype=dtype)
+
+
+        adapter_outputs = self.forward_static(xs)
+        return self.forward_timestep(adapter_outputs, timestep)
+
 
     def save_pretrained(
         self,

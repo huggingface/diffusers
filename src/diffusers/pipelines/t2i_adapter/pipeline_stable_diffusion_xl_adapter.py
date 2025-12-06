@@ -1161,6 +1161,7 @@ class StableDiffusionXLAdapterPipeline(
         # 7. Prepare added time ids & embeddings & adapter features
         if isinstance(self.adapter, GatedMultiAdapter):
             adapter_state = None # not pre-computed, calculated during diffusion
+            static_adapter_features = self.adapter.forward_static(adapter_input)
         elif isinstance(self.adapter, MultiAdapter):
             adapter_state = self.adapter(adapter_input, adapter_conditioning_scale)
             for k, v in enumerate(adapter_state):
@@ -1240,7 +1241,7 @@ class StableDiffusionXLAdapterPipeline(
                     if not isinstance(self.adapter, GatedMultiAdapter):
                         down_intrablock_additional_residuals = [state.clone() for state in adapter_state]
                     else:
-                        adapter_state = self.adapter(adapter_input, t)
+                        adapter_state = self.adapter.forward_timestep(static_adapter_features, t)
                         if num_images_per_prompt > 1:
                             for k, v in enumerate(adapter_state):
                                 adapter_state[k] = v.repeat(num_images_per_prompt, 1, 1, 1)
