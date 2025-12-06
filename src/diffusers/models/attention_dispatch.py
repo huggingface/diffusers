@@ -305,7 +305,6 @@ def dispatch_attention_fn(
     *,
     backend: Optional[AttentionBackendName] = None,
     parallel_config: Optional["ParallelConfig"] = None,
-    seq_lens: Optional[torch.Tensor] = None,
 ) -> torch.Tensor:
     attention_kwargs = attention_kwargs or {}
 
@@ -328,8 +327,6 @@ def dispatch_attention_fn(
         **attention_kwargs,
         "_parallel_config": parallel_config,
     }
-    if seq_lens is not None:
-        kwargs["seq_lens"] = seq_lens
     if is_torch_version(">=", "2.5.0"):
         kwargs["enable_gqa"] = enable_gqa
 
@@ -502,8 +499,10 @@ def _prepare_for_flash_attn_or_sage_varlen_with_mask(
     attn_mask: torch.Tensor,
     device: Optional[torch.device] = None,
 ):
-    seqlens_q = torch.full((batch_size,), seq_len_q, dtype=torch.int32, device=device)
+    # For self-attention (Q, K, V from same sequence), seqlens_q should equal seqlens_k
+    # Both are computed from the mask which indicates valid tokens
     seqlens_k = attn_mask.sum(dim=1, dtype=torch.int32)
+    seqlens_q = seqlens_k  # In self-attention, query and key lengths are the same
     cu_seqlens_q = torch.zeros(batch_size + 1, dtype=torch.int32, device=device)
     cu_seqlens_k = torch.zeros(batch_size + 1, dtype=torch.int32, device=device)
     cu_seqlens_q[1:] = torch.cumsum(seqlens_q, dim=0)
@@ -1403,29 +1402,18 @@ def _flash_varlen_attention(
     is_causal: bool = False,
     return_lse: bool = False,
     _parallel_config: Optional["ParallelConfig"] = None,
-    seq_lens: Optional[torch.Tensor] = None,
 ) -> torch.Tensor:
     batch_size, seq_len_q, _, _ = query.shape
     _, seq_len_kv, _, _ = key.shape
 
-    if seq_lens is not None:
-        seq_lens = seq_lens.to(query.device)
-        # use the same lengths for Q and KV
-        seqlens_k = seq_lens
-        cu_seqlens_q = torch.cat([seq_lens.new_zeros(1), seq_lens.cumsum(0)], dim=0).to(torch.int32)
-        cu_seqlens_k = cu_seqlens_q
-        max_seqlen_q = int(seq_lens.max().item())
-        max_seqlen_k = max_seqlen_q
-        attn_mask = None  # varlen uses lengths
-    else:
-        if attn_mask is not None:
-            attn_mask = _normalize_attn_mask(attn_mask, batch_size, seq_len_kv)
+    if attn_mask is not None:
+        attn_mask = _normalize_attn_mask(attn_mask, batch_size, seq_len_kv)
 
-        (_, seqlens_k), (cu_seqlens_q, cu_seqlens_k), (max_seqlen_q, max_seqlen_k) = (
-            _prepare_for_flash_attn_or_sage_varlen(
-                batch_size, seq_len_q, seq_len_kv, attn_mask=attn_mask, device=query.device
-            )
+    (_, seqlens_k), (cu_seqlens_q, cu_seqlens_k), (max_seqlen_q, max_seqlen_k) = (
+        _prepare_for_flash_attn_or_sage_varlen(
+            batch_size, seq_len_q, seq_len_kv, attn_mask=attn_mask, device=query.device
         )
+    )
 
     key_valid, value_valid = [], []
     for b in range(batch_size):
@@ -1450,9 +1438,10 @@ def _flash_varlen_attention(
         causal=is_causal,
         return_attn_probs=return_lse,
     )
+
     out = out.unflatten(0, (batch_size, -1))
 
-    return out
+    return (out, lse) if return_lse else out
 
 
 @_AttentionBackendRegistry.register(
@@ -1535,28 +1524,18 @@ def _flash_varlen_attention_3(
     is_causal: bool = False,
     return_lse: bool = False,
     _parallel_config: Optional["ParallelConfig"] = None,
-    seq_lens: Optional[torch.Tensor] = None,
 ) -> torch.Tensor:
     batch_size, seq_len_q, _, _ = query.shape
     _, seq_len_kv, _, _ = key.shape
 
-    if seq_lens is not None:
-        seq_lens = seq_lens.to(query.device)
-        seqlens_k = seq_lens
-        cu_seqlens_q = torch.cat([seq_lens.new_zeros(1), seq_lens.cumsum(0)], dim=0).to(torch.int32)
-        cu_seqlens_k = cu_seqlens_q
-        max_seqlen_q = int(seq_lens.max().item())
-        max_seqlen_k = max_seqlen_q
-        attn_mask = None  # varlen uses lengths
-    else:
-        if attn_mask is not None:
-            attn_mask = _normalize_attn_mask(attn_mask, batch_size, seq_len_kv)
+    if attn_mask is not None:
+        attn_mask = _normalize_attn_mask(attn_mask, batch_size, seq_len_kv)
 
-        (_, seqlens_k), (cu_seqlens_q, cu_seqlens_k), (max_seqlen_q, max_seqlen_k) = (
-            _prepare_for_flash_attn_or_sage_varlen(
-                batch_size, seq_len_q, seq_len_kv, attn_mask=attn_mask, device=query.device
-            )
+    (_, seqlens_k), (cu_seqlens_q, cu_seqlens_k), (max_seqlen_q, max_seqlen_k) = (
+        _prepare_for_flash_attn_or_sage_varlen(
+            batch_size, seq_len_q, seq_len_kv, attn_mask=attn_mask, device=query.device
         )
+    )
 
     key_valid, value_valid = [], []
     for b in range(batch_size):
@@ -1707,6 +1686,20 @@ def _native_attention(
 ) -> torch.Tensor:
     if return_lse:
         raise ValueError("Native attention backend does not support setting `return_lse=True`.")
+
+    # Convert 2D boolean mask to 4D additive mask for SDPA
+    if attn_mask is not None and attn_mask.ndim == 2:
+        # attn_mask is [batch_size, seq_len_k] boolean: True means attend, False means mask out
+        # SDPA expects [batch_size, 1, 1, seq_len_k] additive mask: 0.0 for attend, -inf for mask out
+        batch_size, seq_len_k = attn_mask.shape
+        # Ensure it's boolean for torch.where
+        if attn_mask.dtype != torch.bool:
+            attn_mask = attn_mask.bool()
+        # Convert boolean to additive: True -> 0.0, False -> -inf
+        attn_mask = torch.where(attn_mask, 0.0, float("-inf"))
+        # Convert to query dtype and reshape to [batch_size, 1, 1, seq_len_k] for broadcasting
+        attn_mask = attn_mask.to(dtype=query.dtype).view(batch_size, 1, 1, seq_len_k)
+
     if _parallel_config is None:
         query, key, value = (x.permute(0, 2, 1, 3) for x in (query, key, value))
         out = torch.nn.functional.scaled_dot_product_attention(
@@ -2018,68 +2011,57 @@ def _sage_attention_hub(
 ) -> torch.Tensor:
     lse = None
     func = _HUB_KERNELS_REGISTRY[AttentionBackendName.SAGE_HUB].kernel_fn
-    if _parallel_config is None:
-        out = func(
-            q=query,
-            k=key,
-            v=value,
-            tensor_layout="NHD",
-            is_causal=is_causal,
-            sm_scale=scale,
-            return_lse=return_lse,
-        )
-        if return_lse:
-            out, lse, *_ = out
+    out = func(
+        q=query,
+        k=key,
+        v=value,
+        tensor_layout="NHD",
+        is_causal=is_causal,
+        sm_scale=scale,
+        return_lse=return_lse,
+    )
+    if return_lse:
+        out, lse, *_ = out
 
     return (out, lse) if return_lse else out
 
 
 @_AttentionBackendRegistry.register(
     AttentionBackendName.SAGE_VARLEN,
-    constraints=[_check_device_cuda, _check_qkv_dtype_bf16_or_fp16, _check_shape],
+    constraints=[_check_device_cuda_atleast_smXY(8, 0), _check_qkv_dtype_bf16_or_fp16, _check_shape],
 )
 def _sage_varlen_attention(
     query: torch.Tensor,
     key: torch.Tensor,
     value: torch.Tensor,
     attn_mask: Optional[torch.Tensor] = None,
-    is_causal: bool = False,
     scale: Optional[float] = None,
+    is_causal: bool = False,
     return_lse: bool = False,
     _parallel_config: Optional["ParallelConfig"] = None,
-    seq_lens: Optional[torch.Tensor] = None,
 ) -> torch.Tensor:
-    if return_lse:
-        raise ValueError("Sage varlen backend does not support setting `return_lse=True`.")
-
     batch_size, seq_len_q, _, _ = query.shape
     _, seq_len_kv, _, _ = key.shape
 
-    if seq_lens is not None:
-        seq_lens = seq_lens.to(query.device)
-        seqlens_k = seq_lens
-        cu_seqlens_q = torch.cat([seq_lens.new_zeros(1), seq_lens.cumsum(0)], dim=0).to(torch.int32)
-        cu_seqlens_k = cu_seqlens_q
-        max_seqlen_q = int(seq_lens.max().item())
-        max_seqlen_k = max_seqlen_q
-        attn_mask = None  # varlen uses lengths
-    else:
-        if attn_mask is not None:
-            attn_mask = _normalize_attn_mask(attn_mask, batch_size, seq_len_kv)
+    if attn_mask is not None:
+        attn_mask = _normalize_attn_mask(attn_mask, batch_size, seq_len_kv)
 
-        (_, seqlens_k), (cu_seqlens_q, cu_seqlens_k), (max_seqlen_q, max_seqlen_k) = (
-            _prepare_for_flash_attn_or_sage_varlen(
-                batch_size, seq_len_q, seq_len_kv, attn_mask=attn_mask, device=query.device
-            )
+    (seqlens_q, seqlens_k), (cu_seqlens_q, cu_seqlens_k), (max_seqlen_q, max_seqlen_k) = (
+        _prepare_for_flash_attn_or_sage_varlen(
+            batch_size, seq_len_q, seq_len_kv, attn_mask=attn_mask, device=query.device
         )
+    )
 
-    key_valid, value_valid = [], []
+    # The SageAttention kernel needs the query, key, and values to be of shape
+    # `[num_tokens, num_heads, head_dim]`. The number of tokens is the total number of tokens in the
+    # batch.
+    query_valid, key_valid, value_valid = [], [], []
     for b in range(batch_size):
-        valid_len = seqlens_k[b]
-        key_valid.append(key[b, :valid_len])
-        value_valid.append(value[b, :valid_len])
+        query_valid.append(query[b, : seqlens_q[b]])
+        key_valid.append(key[b, : seqlens_k[b]])
+        value_valid.append(value[b, : seqlens_k[b]])
 
-    query_packed = query.flatten(0, 1)
+    query_packed = torch.cat(query_valid, dim=0)
     key_packed = torch.cat(key_valid, dim=0)
     value_packed = torch.cat(value_valid, dim=0)
 
@@ -2091,17 +2073,33 @@ def _sage_varlen_attention(
         cu_seqlens_k=cu_seqlens_k,
         max_seqlen_q=max_seqlen_q,
         max_seqlen_k=max_seqlen_k,
-        is_causal=is_causal,
         sm_scale=scale,
+        is_causal=is_causal,
+        return_lse=return_lse,
     )
-    out = out.unflatten(0, (batch_size, -1))
+    lse = None
+    if return_lse:
+        out, lse, *_ = out
 
-    return out
+    # The output of the SageAttention kernel is of shape `[num_tokens, num_heads, head_dim]`.
+    # We need to reshape it to `[batch_size, seq_len_q, num_heads, head_dim]`.
+    out_padded = torch.zeros(
+        (batch_size, seq_len_q, *out.shape[1:]),
+        dtype=out.dtype,
+        device=out.device,
+    )
+    for b in range(batch_size):
+        start, end = cu_seqlens_q[b], cu_seqlens_q[b + 1]
+        len_q = seqlens_q[b]
+        out_padded[b, :len_q] = out[start:end]
+    out = out_padded
+
+    return (out, lse) if return_lse else out
 
 
 @_AttentionBackendRegistry.register(
     AttentionBackendName._SAGE_QK_INT8_PV_FP8_CUDA,
-    constraints=[_check_device_cuda_atleast_smXY(9, 0), _check_shape],
+    constraints=[_check_device_cuda_atleast_smXY(8, 9), _check_shape],
 )
 def _sage_qk_int8_pv_fp8_cuda_attention(
     query: torch.Tensor,
@@ -2112,15 +2110,16 @@ def _sage_qk_int8_pv_fp8_cuda_attention(
     return_lse: bool = False,
     _parallel_config: Optional["ParallelConfig"] = None,
 ) -> torch.Tensor:
-    return sageattn_qk_int8_pv_fp8_cuda(
+    out = sageattn_qk_int8_pv_fp8_cuda(
         q=query,
         k=key,
         v=value,
         tensor_layout="NHD",
         is_causal=is_causal,
         sm_scale=scale,
-        return_lse=return_lse,
     )
+    # The LSE is not returned from this kernel so we cannot support cases where it is needed
+    return out
 
 
 @_AttentionBackendRegistry.register(
@@ -2136,15 +2135,16 @@ def _sage_qk_int8_pv_fp8_cuda_sm90_attention(
     return_lse: bool = False,
     _parallel_config: Optional["ParallelConfig"] = None,
 ) -> torch.Tensor:
-    return sageattn_qk_int8_pv_fp8_cuda_sm90(
+    out = sageattn_qk_int8_pv_fp8_cuda_sm90(
         q=query,
         k=key,
         v=value,
         tensor_layout="NHD",
         is_causal=is_causal,
         sm_scale=scale,
-        return_lse=return_lse,
     )
+    # The LSE is not returned from this kernel so we cannot support cases where it is needed
+    return out
 
 
 @_AttentionBackendRegistry.register(
@@ -2160,15 +2160,16 @@ def _sage_qk_int8_pv_fp16_cuda_attention(
     return_lse: bool = False,
     _parallel_config: Optional["ParallelConfig"] = None,
 ) -> torch.Tensor:
-    return sageattn_qk_int8_pv_fp16_cuda(
+    out = sageattn_qk_int8_pv_fp16_cuda(
         q=query,
         k=key,
         v=value,
         tensor_layout="NHD",
         is_causal=is_causal,
         sm_scale=scale,
-        return_lse=return_lse,
     )
+    # The LSE is not returned from this kernel so we cannot support cases where it is needed
+    return out
 
 
 @_AttentionBackendRegistry.register(
@@ -2184,59 +2185,52 @@ def _sage_qk_int8_pv_fp16_triton_attention(
     return_lse: bool = False,
     _parallel_config: Optional["ParallelConfig"] = None,
 ) -> torch.Tensor:
-    return sageattn_qk_int8_pv_fp16_triton(
+    out = sageattn_qk_int8_pv_fp16_triton(
         q=query,
         k=key,
         v=value,
         tensor_layout="NHD",
         is_causal=is_causal,
         sm_scale=scale,
-        return_lse=return_lse,
     )
+    # The LSE is not returned from this kernel so we cannot support cases where it is needed
+    return out
 
 
 @_AttentionBackendRegistry.register(
     AttentionBackendName.XFORMERS,
-    constraints=[_check_attn_mask_or_causal, _check_device, _check_shape],
+    constraints=[_check_device_cuda, _check_qkv_dtype_bf16_or_fp16, _check_shape],
 )
 def _xformers_attention(
     query: torch.Tensor,
     key: torch.Tensor,
     value: torch.Tensor,
-    attn_mask: Optional[torch.Tensor] = None,
     dropout_p: float = 0.0,
     is_causal: bool = False,
     scale: Optional[float] = None,
-    enable_gqa: bool = False,
     return_lse: bool = False,
     _parallel_config: Optional["ParallelConfig"] = None,
 ) -> torch.Tensor:
     if return_lse:
-        raise ValueError("xformers attention backend does not support setting `return_lse=True`.")
+        raise ValueError("Xformers attention backend does not support setting `return_lse=True`.")
 
-    batch_size, seq_len_q, num_heads_q, _ = query.shape
-    _, seq_len_kv, num_heads_kv, _ = key.shape
-
+    op = xops.MemoryEfficientAttentionCkOp
     if is_causal:
-        attn_mask = xops.LowerTriangularMask()
-    elif attn_mask is not None:
-        if attn_mask.ndim == 2:
-            attn_mask = attn_mask.view(attn_mask.size(0), 1, attn_mask.size(1), 1)
-        elif attn_mask.ndim != 4:
-            raise ValueError("Only 2D and 4D attention masks are supported for xformers attention.")
-        attn_mask = attn_mask.expand(batch_size, num_heads_q, seq_len_q, seq_len_kv).type_as(query)
+        op = op.WITH_AUTOMATIC_CAUSAL_MASK
+    # Removed the check for attn_mask: Optional[torch.Tensor] = None
+    # since it's removed from the function signature and is not supported.
 
-    if enable_gqa:
-        if num_heads_q % num_heads_kv != 0:
-            raise ValueError("Number of heads in query must be divisible by number of heads in key/value.")
-        num_heads_per_group = num_heads_q // num_heads_kv
-        query = query.unflatten(2, (num_heads_kv, -1))
-        key = key.unflatten(2, (num_heads_kv, -1)).expand(-1, -1, -1, num_heads_per_group, -1)
-        value = value.unflatten(2, (num_heads_kv, -1)).expand(-1, -1, -1, num_heads_per_group, -1)
-
-    out = xops.memory_efficient_attention(query, key, value, attn_mask, dropout_p, scale)
-
-    if enable_gqa:
-        out = out.flatten(2, 3)
-
+    out = xops.memory_efficient_attention(
+        q=query,
+        k=key,
+        v=value,
+        p=dropout_p,
+        scale=scale,
+        op=op,
+    )
     return out
+
+
+# ===== Default backend =====
+_check_attention_backend_requirements(_AttentionBackendRegistry._active_backend)
+_maybe_download_kernel_for_backend(_AttentionBackendRegistry._active_backend)

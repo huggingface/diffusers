@@ -308,7 +308,6 @@ class QwenDoubleStreamAttnProcessor2_0:
         encoder_hidden_states_mask: torch.FloatTensor = None,
         attention_mask: Optional[torch.FloatTensor] = None,
         image_rotary_emb: Optional[torch.Tensor] = None,
-        text_seq_lens: Optional[torch.Tensor] = None,
     ) -> torch.FloatTensor:
         if encoder_hidden_states is None:
             raise ValueError("QwenDoubleStreamAttnProcessor2_0 requires encoder_hidden_states (text stream)")
@@ -358,10 +357,9 @@ class QwenDoubleStreamAttnProcessor2_0:
         joint_key = torch.cat([txt_key, img_key], dim=1)
         joint_value = torch.cat([txt_value, img_value], dim=1)
 
-        # If an encoder_hidden_states_mask is provided, turn it into a broadcastable attention mask.
+        # If an encoder_hidden_states_mask is provided, create a joint attention mask.
         # The encoder_hidden_states_mask is expected to have 1.0 for valid tokens and 0.0 for padding.
         # We convert it to a boolean mask where True means "attend" and False means "mask out" (don't attend).
-        joint_seq_lens = None
         if encoder_hidden_states_mask is not None and attention_mask is None:
             batch_size, image_seq_len = hidden_states.shape[:2]
             text_seq_len = encoder_hidden_states.shape[1]
@@ -378,19 +376,13 @@ class QwenDoubleStreamAttnProcessor2_0:
                 )
 
             # Convert mask to boolean: 1/1.0 -> True (attend), 0/0.0 -> False (don't attend)
-            # This is the correct semantics for PyTorch's scaled_dot_product_attention with boolean masks.
             text_attention_mask = encoder_hidden_states_mask.bool()
             image_attention_mask = torch.ones(
                 (batch_size, image_seq_len), dtype=torch.bool, device=hidden_states.device
             )
-            joint_attention_mask = torch.cat([text_attention_mask, image_attention_mask], dim=1)
-            attention_mask = joint_attention_mask[:, None, None, :]
-
-            # For varlen flash attention, we need the JOINT sequence lengths (text + image), not just text
-            if text_seq_lens is not None:
-                # text_seq_lens contains per-sample text lengths
-                # Add the image sequence length to get total joint sequence length
-                joint_seq_lens = text_seq_lens + image_seq_len
+            # Create 2D joint mask [batch_size, text_seq_len + image_seq_len]
+            # The attention dispatch will normalize this and extract sequence lengths
+            attention_mask = torch.cat([text_attention_mask, image_attention_mask], dim=1)
 
         # Compute joint attention
         joint_hidden_states = dispatch_attention_fn(
@@ -402,7 +394,6 @@ class QwenDoubleStreamAttnProcessor2_0:
             is_causal=False,
             backend=self._attention_backend,
             parallel_config=self._parallel_config,
-            seq_lens=joint_seq_lens,
         )
 
         # Reshape back
@@ -696,9 +687,6 @@ class QwenImageTransformer2DModel(
         text_seq_len, text_seq_lens_per_sample, encoder_hidden_states_mask = compute_text_seq_len_from_mask(
             encoder_hidden_states, encoder_hidden_states_mask
         )
-
-        if text_seq_lens_per_sample is not None:
-            attention_kwargs.setdefault("text_seq_lens", text_seq_lens_per_sample)
 
         if guidance is not None:
             guidance = guidance.to(hidden_states.dtype) * 1000
