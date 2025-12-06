@@ -19,7 +19,7 @@ import torch
 from transformers import AutoTokenizer, PreTrainedModel
 
 from ...image_processor import VaeImageProcessor
-from ...loaders import FromSingleFileMixin
+from ...loaders import FromSingleFileMixin, ZImageLoraLoaderMixin
 from ...models.autoencoders import AutoencoderKL
 from ...models.transformers import ZImageTransformer2DModel
 from ...pipelines.pipeline_utils import DiffusionPipeline
@@ -134,7 +134,7 @@ def retrieve_timesteps(
     return timesteps, num_inference_steps
 
 
-class ZImagePipeline(DiffusionPipeline, FromSingleFileMixin):
+class ZImagePipeline(DiffusionPipeline, ZImageLoraLoaderMixin, FromSingleFileMixin):
     model_cpu_offload_seq = "text_encoder->transformer->vae"
     _optional_components = []
     _callback_tensor_inputs = ["latents", "prompt_embeds"]
@@ -525,9 +525,7 @@ class ZImagePipeline(DiffusionPipeline, FromSingleFileMixin):
                 latent_model_input_list = list(latent_model_input.unbind(dim=0))
 
                 model_out_list = self.transformer(
-                    latent_model_input_list,
-                    timestep_model_input,
-                    prompt_embeds_model_input,
+                    latent_model_input_list, timestep_model_input, prompt_embeds_model_input, return_dict=False
                 )[0]
 
                 if apply_cfg:
