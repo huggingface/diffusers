@@ -279,6 +279,8 @@ else:
             "WanTransformer3DModel",
             "WanVACETransformer3DModel",
             "ZImageTransformer2DModel",
+            "ZImageControlTransformer2DModel",
+            "ZImageControlNetModel",
             "attention_backend",
         ]
     )
@@ -663,6 +665,7 @@ else:
             "WuerstchenDecoderPipeline",
             "WuerstchenPriorPipeline",
             "ZImagePipeline",
+            "ZImageControlNetPipeline",
         ]
     )
 
@@ -1007,6 +1010,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             WanAnimateTransformer3DModel,
             WanTransformer3DModel,
             WanVACETransformer3DModel,
+            ZImageControlNetModel,
+            ZImageControlTransformer2DModel,
             ZImageTransformer2DModel,
             attention_backend,
         )
@@ -1360,6 +1365,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             WuerstchenCombinedPipeline,
             WuerstchenDecoderPipeline,
             WuerstchenPriorPipeline,
+            ZImageControlNetPipeline,
             ZImagePipeline,
         )
 
