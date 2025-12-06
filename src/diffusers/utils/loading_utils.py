@@ -155,10 +155,10 @@ def load_video(
                 # Generate sampling indices
                 sampled_indices = []
                 for i in range(n_frames):
-                    indice = start_frame + i * interval
-                    if indice >= total_frames:
+                    index = start_frame + i * interval
+                    if index >= total_frames:
                         break
-                    sampled_indices.append(int(indice))
+                    sampled_indices.append(int(index))
 
                 # Read specific frames
                 for idx in sampled_indices:
