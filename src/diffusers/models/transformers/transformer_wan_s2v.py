@@ -251,7 +251,7 @@ class WanS2VMotionEncoder(nn.Module):
         return x, x_local
 
 
-class WeightedAveragelayer(nn.Module):
+class WeightedAverageLayer(nn.Module):
     def __init__(self, num_layers):
         super().__init__()
         self.weights = torch.nn.Parameter(torch.ones((1, num_layers, 1, 1)) * 0.01)
@@ -269,7 +269,7 @@ class WeightedAveragelayer(nn.Module):
 class CausalAudioEncoder(nn.Module):
     def __init__(self, dim=5120, num_weighted_avg_layers=25, out_dim=2048, num_audio_token=4, need_global=False):
         super().__init__()
-        self.weighted_avg = WeightedAveragelayer(num_weighted_avg_layers)
+        self.weighted_avg = WeightedAverageLayer(num_weighted_avg_layers)
         self.encoder = WanS2VMotionEncoder(
             in_dim=dim, hidden_dim=out_dim, num_attention_heads=num_audio_token, need_global=need_global
         )
