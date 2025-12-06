@@ -867,6 +867,26 @@ def load_sub_model(
         )
         if model_quant_config is not None:
             loading_kwargs["quantization_config"] = model_quant_config
+            
+            # When using bitsandbytes quantization with device_map on transformers models,
+            # we must disable low_cpu_mem_usage to avoid meta tensors. Meta tensors cannot
+            # be materialized properly when bitsandbytes tries to move quantization state
+            # (which includes tensors like code and absmax) to the target device.
+            # This issue occurs because quantization state is created during model loading
+            # and needs actual tensors, not meta placeholders.
+            # See: https://github.com/huggingface/diffusers/issues/12719
+            if (
+                is_transformers_model
+                and device_map is not None
+                and hasattr(model_quant_config, "quant_method")
+            ):
+                quant_method = getattr(model_quant_config.quant_method, "value", model_quant_config.quant_method)
+                if quant_method in ["llm_int8", "fp4", "nf4"]:  # bitsandbytes quantization methods
+                    loading_kwargs["low_cpu_mem_usage"] = False
+                    logger.info(
+                        f"Disabling low_cpu_mem_usage for {name} because bitsandbytes quantization "
+                        f"with device_map requires materialized tensors, not meta tensors."
+                    )
 
     # check if the module is in a subdirectory
     if dduf_entries:
