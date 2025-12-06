@@ -46,6 +46,7 @@ class StableDiffusionSafetyChecker(PreTrainedModel):
 
         self.concept_embeds_weights = nn.Parameter(torch.ones(17), requires_grad=False)
         self.special_care_embeds_weights = nn.Parameter(torch.ones(3), requires_grad=False)
+        self.post_init()
 
     @torch.no_grad()
     def forward(self, clip_input, images):
