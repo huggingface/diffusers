@@ -27,7 +27,7 @@ logger = logging.get_logger(__name__)
 
 class NVIDIAModelOptQuantizer(DiffusersQuantizer):
     r"""
-    Diffusers Quantizer for TensorRT Model Optimizer
+    Diffusers Quantizer for Nvidia-Model Optimizer
     """
 
     use_keep_in_fp32_modules = True
