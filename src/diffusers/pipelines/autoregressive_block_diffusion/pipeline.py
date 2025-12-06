@@ -624,7 +624,6 @@ class BaseAutoregressiveDiffusionPipeline(DiffusionPipeline, WanLoraLoaderMixin)
             latents,
         )
 
-        mask = torch.ones(latents.shape, dtype=torch.float32, device=device)
         latent_h, latent_w = latents.shape[-2:]
 
         # 7. Denoising loop
@@ -661,12 +660,12 @@ class BaseAutoregressiveDiffusionPipeline(DiffusionPipeline, WanLoraLoaderMixin)
                 denoised_latents = self.denoise_single_block(
                     latents=current_latents,
                     timesteps=timesteps,
-                    mask=mask,
                     prompt_embeds=prompt_embeds,
                     negative_prompt_embeds=negative_prompt_embeds,
                     attention_kwargs=attention_kwargs,
                     guidance_scale=guidance_scale,
                     generator=generator,
+                    max_num_frames=num_frames,
                     callback_on_step_end=callback_on_step_end,
                     callback_on_step_end_tensor_inputs=callback_on_step_end_tensor_inputs,
                 )
@@ -674,14 +673,14 @@ class BaseAutoregressiveDiffusionPipeline(DiffusionPipeline, WanLoraLoaderMixin)
                 self.scheduler._init_step_index(timesteps[0])
                 output[:, :, cache_start_frame : cache_start_frame + block_size] = denoised_latents[:, :, -block_size:]
 
-                # TODO: update cache and recompute with clean latents
-                if self.using_cache():
+                if self.using_cache() and block != num_blocks - 1:
                     with self.transformer.cache_context("cond"):
                         _ = self.transformer(
                             hidden_states=denoised_latents,
                             encoder_hidden_states=prompt_embeds,
                             timestep=torch.tensor([0] * batch_size, device=timesteps.device),
                             attention_kwargs=attention_kwargs,
+                            max_num_frames=num_frames,
                             clean_latents=True,
                             return_dict=False,
                         )
@@ -692,6 +691,7 @@ class BaseAutoregressiveDiffusionPipeline(DiffusionPipeline, WanLoraLoaderMixin)
                                 encoder_hidden_states=negative_prompt_embeds,
                                 timestep=torch.tensor([0] * batch_size, device=timesteps.device),
                                 attention_kwargs=attention_kwargs,
+                                max_num_frames=num_frames,
                                 clean_latents=True,
                                 return_dict=False,
                             )
@@ -727,12 +727,12 @@ class BaseAutoregressiveDiffusionPipeline(DiffusionPipeline, WanLoraLoaderMixin)
         self,
         latents,
         timesteps,
-        mask,
         prompt_embeds,
         negative_prompt_embeds,
         attention_kwargs,
         guidance_scale,
         generator,
+        max_num_frames,
         callback_on_step_end,
         callback_on_step_end_tensor_inputs,
     ):
@@ -749,6 +749,7 @@ class BaseAutoregressiveDiffusionPipeline(DiffusionPipeline, WanLoraLoaderMixin)
                     timestep=timestep,
                     encoder_hidden_states=prompt_embeds,
                     attention_kwargs=attention_kwargs,
+                    max_num_frames=max_num_frames,
                     return_dict=False,
                 )[0]
             if self.do_classifier_free_guidance:
@@ -758,6 +759,7 @@ class BaseAutoregressiveDiffusionPipeline(DiffusionPipeline, WanLoraLoaderMixin)
                         timestep=timestep,
                         encoder_hidden_states=negative_prompt_embeds,
                         attention_kwargs=attention_kwargs,
+                        max_num_frames=max_num_frames,
                         return_dict=False,
                     )[0]
                 noise_pred = noise_uncond + guidance_scale * (noise_pred - noise_uncond)

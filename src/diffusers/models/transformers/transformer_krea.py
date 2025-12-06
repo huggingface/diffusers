@@ -102,6 +102,8 @@ class KreaAttnProcessor:
         attention_mask: Optional[torch.Tensor] = None,
         rotary_emb: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
         kv_cache: list[torch.Tensor] = None,
+        clean_latents: bool = None,
+        timestep = None,
     ) -> torch.Tensor:
         encoder_hidden_states_img = None
         if attn.add_k_proj is not None:
@@ -125,7 +127,12 @@ class KreaAttnProcessor:
                 hidden_states: torch.Tensor,
                 freqs_cos: torch.Tensor,
                 freqs_sin: torch.Tensor,
+                kv_cache: torch.Tensor,
             ):
+                block_length = hidden_states.shape[1]
+                start_index = kv_cache.local_start_index if kv_cache is not None else 0
+                freqs_cos = freqs_cos[:, start_index : start_index + block_length]
+                freqs_sin = freqs_sin[:, start_index : start_index + block_length]
                 x1, x2 = hidden_states.unflatten(-1, (-1, 2)).unbind(-1)
                 cos = freqs_cos[..., 0::2]
                 sin = freqs_sin[..., 1::2]
@@ -134,11 +141,16 @@ class KreaAttnProcessor:
                 out[..., 1::2] = x1 * sin + x2 * cos
                 return out.type_as(hidden_states)
 
-            query = apply_rotary_emb(query, *rotary_emb)
-            key = apply_rotary_emb(key, *rotary_emb)
+            # if clean_latents and kv_cache.local_start_index != 0 and kv_cache.layer_idx == 0:
+            #     keys_with_rope_correct = apply_rotary_emb(key, *rotary_emb, None)
+            #     print("What I need", keys_with_rope_correct.shape, keys_with_rope_correct[:, -3120:])
+
+            query = apply_rotary_emb(query, *rotary_emb, kv_cache)
+            key = apply_rotary_emb(key, *rotary_emb, kv_cache)
 
         if kv_cache is not None:
-            key, value = kv_cache.update(key, value)
+            roll = timestep.flatten() == 1000
+            key, value = kv_cache.update(key, value, rotary_emb, roll)
 
         # I2V task
         hidden_states_img = None
@@ -202,11 +214,9 @@ class KreaAttention(torch.nn.Module, AttentionModuleMixin):
         heads: int = 8,
         dim_head: int = 64,
         eps: float = 1e-5,
-        dropout: float = 0.0,
         added_kv_proj_dim: Optional[int] = None,
         cross_attention_dim_head: Optional[int] = None,
         processor=None,
-        is_cross_attention=None,
     ):
         super().__init__()
 
@@ -399,8 +409,9 @@ class KreaRotaryPosEmbed(nn.Module):
         self.register_buffer("freqs_cos", torch.cat(freqs_cos, dim=1), persistent=False)
         self.register_buffer("freqs_sin", torch.cat(freqs_sin, dim=1), persistent=False)
 
-    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
-        batch_size, num_channels, num_frames, height, width = hidden_states.shape
+    def forward(self, hidden_states: torch.Tensor, max_num_frames: int | None = None) -> torch.Tensor:
+        _, _, num_frames, height, width = hidden_states.shape
+        num_frames = max_num_frames if max_num_frames is not None else num_frames
         p_t, p_h, p_w = self.patch_size
         ppf, pph, ppw = num_frames // p_t, height // p_h, width // p_w
 
@@ -481,6 +492,7 @@ class KreaTransformerBlock(nn.Module):
         temb: torch.Tensor,
         rotary_emb: torch.Tensor,
         clean_latents: bool = False,
+        timestep = None,
         kv_cache: list[torch.Tensor] = None,
     ) -> torch.Tensor:
         # temb: batch_size, 6, inner_dim (wan2.1/wan2.2 14B)
@@ -488,9 +500,22 @@ class KreaTransformerBlock(nn.Module):
             self.scale_shift_table + temb  # .float()
         ).chunk(6, dim=1)
 
+        # NOTE: ideally if we can pass `position_ids` to the model's forward
+        # and use it to compute cos/sin. Similar to simply autoregressive
+        # LLMs For now let's initialize one big cos/sin array and slice it
+        # for current frame position
+        block_length = hidden_states.shape[1]
+        start_index = kv_cache.local_start_index if kv_cache is not None else 0
+        # rotary_emb = (
+        #     rotary_emb[0][:, start_index : start_index + block_length],
+        #     rotary_emb[1][:, start_index : start_index + block_length],
+        # )
+        # if kv_cache.layer_idx == 0:
+        #     print(clean_latents, start_index, kv_cache.key_cache[:, :4680])
+
         # 1. Self-attention
         norm_hidden_states = (self.norm1(hidden_states) * (1 + scale_msa) + shift_msa).type_as(hidden_states)
-        attn_output = self.attn1(norm_hidden_states, None, None, rotary_emb, kv_cache)
+        attn_output = self.attn1(norm_hidden_states, None, None, rotary_emb, kv_cache, clean_latents=clean_latents, timestep=timestep)
         hidden_states = (hidden_states + attn_output * gate_msa).type_as(hidden_states)
 
         # 2. Cross-attention
@@ -505,7 +530,7 @@ class KreaTransformerBlock(nn.Module):
 
         # Last: update the cache position once per denoising loop - when recomputing cache with clean latent
         if clean_latents:
-            kv_cache.local_start_index += hidden_states.shape[1]
+            kv_cache.recompute_indices(num_new_tokens=hidden_states.shape[1])
 
         return hidden_states
 
@@ -635,6 +660,7 @@ class KreaTransformerModel(
         timestep: torch.LongTensor,
         encoder_hidden_states: torch.Tensor,
         encoder_hidden_states_image: Optional[torch.Tensor] = None,
+        max_num_frames: Optional[int] = None,
         clean_latents: bool = False,
         return_dict: bool = True,
         attention_kwargs: Optional[Dict[str, Any]] = None,
@@ -660,7 +686,7 @@ class KreaTransformerModel(
         post_patch_height = height // p_h
         post_patch_width = width // p_w
 
-        rotary_emb = self.rope(hidden_states)
+        rotary_emb = self.rope(hidden_states, max_num_frames=max_num_frames)
 
         hidden_states = self.patch_embedding(hidden_states)
         hidden_states = hidden_states.flatten(2).transpose(1, 2)
@@ -684,6 +710,7 @@ class KreaTransformerModel(
                     timestep_proj,
                     rotary_emb,
                     clean_latents,
+                    timestep,
                 )
         else:
             for block in self.blocks:
@@ -693,6 +720,7 @@ class KreaTransformerModel(
                     timestep_proj,
                     rotary_emb,
                     clean_latents,
+                    timestep,
                 )
 
         # 5. Output norm, projection & unpatchify
