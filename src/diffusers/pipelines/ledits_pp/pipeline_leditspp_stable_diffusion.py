@@ -239,7 +239,7 @@ class LEDITSCrossAttnProcessor:
         return hidden_states
 
 
-# Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.rescale_noise_cfg
+# Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_utils.rescale_noise_cfg
 def rescale_noise_cfg(noise_cfg, noise_pred_text, guidance_rescale=0.0):
     r"""
     Rescales `noise_cfg` tensor based on `guidance_rescale` to improve image quality and fix overexposure. Based on
@@ -408,7 +408,7 @@ class LEditsPPPipelineStableDiffusion(
 
         self.inversion_steps = None
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.run_safety_checker
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_utils.SDMixin.run_safety_checker
     def run_safety_checker(self, image, device, dtype):
         if self.safety_checker is None:
             has_nsfw_concept = None
@@ -423,7 +423,7 @@ class LEditsPPPipelineStableDiffusion(
             )
         return image, has_nsfw_concept
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.decode_latents
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_utils.SDMixin.decode_latents
     def decode_latents(self, latents):
         deprecation_message = "The decode_latents method is deprecated and will be removed in 1.0.0. Please use VaeImageProcessor.postprocess(...) instead"
         deprecate("decode_latents", "1.0.0", deprecation_message, standard_warn=False)
@@ -435,7 +435,7 @@ class LEditsPPPipelineStableDiffusion(
         image = image.cpu().permute(0, 2, 3, 1).float().numpy()
         return image
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_extra_step_kwargs
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_utils.SDMixin.prepare_extra_step_kwargs
     def prepare_extra_step_kwargs(self, eta, generator=None):
         # prepare extra kwargs for the scheduler step, since not all schedulers have the same signature
         # eta (η) is only used with the DDIMScheduler, it will be ignored for other schedulers.

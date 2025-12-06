@@ -189,7 +189,7 @@ class VisualClozeGenerationPipeline(
         )
         self.default_sample_size = 128
 
-    # Copied from diffusers.pipelines.flux.pipeline_flux.FluxPipeline._get_t5_prompt_embeds
+    # Copied from diffusers.pipelines.flux.pipeline_flux_utils.FluxMixin._get_t5_prompt_embeds
     def _get_t5_prompt_embeds(
         self,
         prompt: Union[str, List[str]] = None,
@@ -239,7 +239,7 @@ class VisualClozeGenerationPipeline(
 
         return prompt_embeds
 
-    # Copied from diffusers.pipelines.flux.pipeline_flux.FluxPipeline._get_clip_prompt_embeds
+    # Copied from diffusers.pipelines.flux.pipeline_flux_utils.FluxMixin._get_clip_prompt_embeds
     def _get_clip_prompt_embeds(
         self,
         prompt: Union[str, List[str]],
@@ -284,7 +284,7 @@ class VisualClozeGenerationPipeline(
 
         return prompt_embeds
 
-    # Modified from diffusers.pipelines.flux.pipeline_flux.FluxPipeline.encode_prompt
+    # Modified from diffusers.pipelines.flux.pipeline_flux_utils.FluxMixin.encode_prompt
     def encode_prompt(
         self,
         layout_prompt: Union[str, List[str]],
@@ -488,7 +488,7 @@ class VisualClozeGenerationPipeline(
         return torch.cat(latent_image_ids, dim=0)
 
     @staticmethod
-    # Copied from diffusers.pipelines.flux.pipeline_flux.FluxPipeline._pack_latents
+    # Copied from diffusers.pipelines.flux.pipeline_flux_utils.FluxMixin._pack_latents
     def _pack_latents(latents, batch_size, num_channels_latents, height, width):
         latents = latents.view(batch_size, num_channels_latents, height // 2, 2, width // 2, 2)
         latents = latents.permute(0, 2, 4, 1, 3, 5)
