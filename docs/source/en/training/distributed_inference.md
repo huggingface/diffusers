@@ -253,7 +253,7 @@ try:
     device = torch.device("cuda", rank % torch.cuda.device_count())
     torch.cuda.set_device(device)
     
-    transformer = AutoModel.from_pretrained("Qwen/Qwen-Image", subfolder="transformer", torch_dtype=torch.bfloat16, parallel_config=ContextParallelConfig(ring_degree=2))
+    transformer = AutoModel.from_pretrained("Qwen/Qwen-Image", subfolder="transformer", torch_dtype=torch.bfloat16, parallel_config=ContextParallelConfig(ring_degree=2), device_map="cuda")
     pipeline = QwenImagePipeline.from_pretrained("Qwen/Qwen-Image", transformer=transformer, torch_dtype=torch.bfloat16, device_map="cuda")
     pipeline.transformer.set_attention_backend("flash")
 
