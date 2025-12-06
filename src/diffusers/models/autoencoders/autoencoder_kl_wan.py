@@ -162,20 +162,20 @@ class WanCausalConv3d(nn.Conv3d):
         )
 
         # Set up causal padding
-        self._padding = (self.padding[2], self.padding[2], self.padding[1], self.padding[1], 2 * self.padding[0], 0)
+        self.temporal_padding = 2 * self.padding[0]
         # Keep spatial padding, remove temporal padding from conv layer
         self.padding = (0, self.padding[1], self.padding[2])
 
     def forward(self, x, cache_x=None):
         b, c, _, h, w = x.size()
-        padding = list(self._padding)
-        if cache_x is not None and self._padding[4] > 0:
+        padding = self.temporal_padding
+        if cache_x is not None and self.temporal_padding > 0:
             cache_x = cache_x.to(x.device)
             x = torch.cat([cache_x, x], dim=2)
-            padding[4] -= cache_x.shape[2]
+            padding -= cache_x.shape[2]
         # Manually pad time dimension
-        if padding[4] > 0:
-            x = torch.cat([x.new_zeros(b, c, padding[4], h, w), x], dim=2)
+        if padding > 0:
+            x = torch.cat([x.new_zeros(b, c, padding, h, w), x], dim=2)
         return super().forward(x)
 
 
