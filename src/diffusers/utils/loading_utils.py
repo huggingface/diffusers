@@ -218,7 +218,6 @@ def load_audio(
                 f"Incorrect path or URL. URLs must start with `http://` or `https://`, and {audio} is not a valid path."
             )
     elif isinstance(audio, numpy.ndarray):
-        audio = audio
         sample_rate = 16000  # Default sample rate for numpy arrays
     else:
         raise ValueError(
