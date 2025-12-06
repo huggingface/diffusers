@@ -474,7 +474,7 @@ class VaeImageProcessor(ConfigMixin):
 
             resized = image.resize((src_w, src_h), resample=PIL_INTERPOLATION[self.config.resample])
         elif resize_type == "min_dimension":
-            # # Resize so smaller dimension becomes min(width, height)
+            # Resize so smaller dimension becomes min(width, height)
             from torchvision.transforms import Resize
 
             resized = Resize(min(height, width))(image)
