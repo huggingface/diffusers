@@ -172,7 +172,6 @@ class SanaLinearAttnProcessor3_0:
         return hidden_states
 
 
-# Copied from diffusers.models.transformers.transformer_wan.WanRotaryPosEmbed
 class WanRotaryPosEmbed(nn.Module):
     def __init__(
         self,
@@ -189,6 +188,11 @@ class WanRotaryPosEmbed(nn.Module):
 
         h_dim = w_dim = 2 * (attention_head_dim // 6)
         t_dim = attention_head_dim - h_dim - w_dim
+
+        self.t_dim = t_dim
+        self.h_dim = h_dim
+        self.w_dim = w_dim
+
         freqs_dtype = torch.float32 if torch.backends.mps.is_available() else torch.float64
 
         freqs_cos = []
@@ -214,11 +218,7 @@ class WanRotaryPosEmbed(nn.Module):
         p_t, p_h, p_w = self.patch_size
         ppf, pph, ppw = num_frames // p_t, height // p_h, width // p_w
 
-        split_sizes = [
-            self.attention_head_dim - 2 * (self.attention_head_dim // 3),
-            self.attention_head_dim // 3,
-            self.attention_head_dim // 3,
-        ]
+        split_sizes = [self.t_dim, self.h_dim, self.w_dim]
 
         freqs_cos = self.freqs_cos.split(split_sizes, dim=1)
         freqs_sin = self.freqs_sin.split(split_sizes, dim=1)
@@ -237,7 +237,6 @@ class WanRotaryPosEmbed(nn.Module):
         return freqs_cos, freqs_sin
 
 
-# Copied from diffusers.models.transformers.sana_transformer.SanaModulatedNorm
 class SanaModulatedNorm(nn.Module):
     def __init__(self, dim: int, elementwise_affine: bool = False, eps: float = 1e-6):
         super().__init__()
@@ -247,7 +246,7 @@ class SanaModulatedNorm(nn.Module):
         self, hidden_states: torch.Tensor, temb: torch.Tensor, scale_shift_table: torch.Tensor
     ) -> torch.Tensor:
         hidden_states = self.norm(hidden_states)
-        shift, scale = (scale_shift_table[None] + temb[:, None].to(scale_shift_table.device)).chunk(2, dim=1)
+        shift, scale = (scale_shift_table[None, None] + temb[:, :, None].to(scale_shift_table.device)).unbind(dim=2)
         hidden_states = hidden_states * (1 + scale) + shift
         return hidden_states
 
@@ -423,8 +422,8 @@ class SanaVideoTransformerBlock(nn.Module):
 
         # 1. Modulation
         shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = (
-            self.scale_shift_table[None] + timestep.reshape(batch_size, 6, -1)
-        ).chunk(6, dim=1)
+            self.scale_shift_table[None, None] + timestep.reshape(batch_size, timestep.shape[1], 6, -1)
+        ).unbind(dim=2)
 
         # 2. Self Attention
         norm_hidden_states = self.norm1(hidden_states)
@@ -635,12 +634,15 @@ class SanaVideoTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fro
 
         if guidance is not None:
             timestep, embedded_timestep = self.time_embed(
-                timestep, guidance=guidance, hidden_dtype=hidden_states.dtype
+                timestep.flatten(), guidance=guidance, hidden_dtype=hidden_states.dtype
             )
         else:
             timestep, embedded_timestep = self.time_embed(
-                timestep, batch_size=batch_size, hidden_dtype=hidden_states.dtype
+                timestep.flatten(), batch_size=batch_size, hidden_dtype=hidden_states.dtype
             )
+
+        timestep = timestep.view(batch_size, -1, timestep.size(-1))
+        embedded_timestep = embedded_timestep.view(batch_size, -1, embedded_timestep.size(-1))
 
         encoder_hidden_states = self.caption_projection(encoder_hidden_states)
         encoder_hidden_states = encoder_hidden_states.view(batch_size, -1, hidden_states.shape[-1])

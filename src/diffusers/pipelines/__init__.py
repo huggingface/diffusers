@@ -129,6 +129,7 @@ else:
     ]
     _import_structure["bria"] = ["BriaPipeline"]
     _import_structure["bria_fibo"] = ["BriaFiboPipeline"]
+    _import_structure["flux2"] = ["Flux2Pipeline"]
     _import_structure["flux"] = [
         "FluxControlPipeline",
         "FluxControlInpaintPipeline",
@@ -242,6 +243,7 @@ else:
         "HunyuanVideoImageToVideoPipeline",
         "HunyuanVideoFramepackPipeline",
     ]
+    _import_structure["hunyuan_video1_5"] = ["HunyuanVideo15Pipeline", "HunyuanVideo15ImageToVideoPipeline"]
     _import_structure["hunyuan_image"] = ["HunyuanImagePipeline", "HunyuanImageRefinerPipeline"]
     _import_structure["kandinsky"] = [
         "KandinskyCombinedPipeline",
@@ -299,6 +301,7 @@ else:
     _import_structure["mochi"] = ["MochiPipeline"]
     _import_structure["musicldm"] = ["MusicLDMPipeline"]
     _import_structure["omnigen"] = ["OmniGenPipeline"]
+    _import_structure["ovis_image"] = ["OvisImagePipeline"]
     _import_structure["visualcloze"] = ["VisualClozePipeline", "VisualClozeGenerationPipeline"]
     _import_structure["paint_by_example"] = ["PaintByExamplePipeline"]
     _import_structure["pia"] = ["PIAPipeline"]
@@ -308,7 +311,10 @@ else:
         "SanaSprintPipeline",
         "SanaControlNetPipeline",
         "SanaSprintImg2ImgPipeline",
+    ]
+    _import_structure["sana_video"] = [
         "SanaVideoPipeline",
+        "SanaImageToVideoPipeline",
     ]
     _import_structure["semantic_stable_diffusion"] = ["SemanticStableDiffusionPipeline"]
     _import_structure["shap_e"] = ["ShapEImg2ImgPipeline", "ShapEPipeline"]
@@ -385,8 +391,20 @@ else:
         "WuerstchenDecoderPipeline",
         "WuerstchenPriorPipeline",
     ]
-    _import_structure["wan"] = ["WanPipeline", "WanImageToVideoPipeline", "WanVideoToVideoPipeline", "WanVACEPipeline"]
-    _import_structure["kandinsky5"] = ["Kandinsky5T2VPipeline"]
+    _import_structure["wan"] = [
+        "WanPipeline",
+        "WanImageToVideoPipeline",
+        "WanVideoToVideoPipeline",
+        "WanVACEPipeline",
+        "WanAnimatePipeline",
+    ]
+    _import_structure["kandinsky5"] = [
+        "Kandinsky5T2VPipeline",
+        "Kandinsky5I2VPipeline",
+        "Kandinsky5T2IPipeline",
+        "Kandinsky5I2IPipeline",
+    ]
+    _import_structure["z_image"] = ["ZImagePipeline"]
     _import_structure["skyreels_v2"] = [
         "SkyReelsV2DiffusionForcingPipeline",
         "SkyReelsV2DiffusionForcingImageToVideoPipeline",
@@ -645,6 +663,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             FluxPriorReduxPipeline,
             ReduxImageEncoder,
         )
+        from .flux2 import Flux2Pipeline
         from .hidream_image import HiDreamImagePipeline
         from .hunyuan_image import HunyuanImagePipeline, HunyuanImageRefinerPipeline
         from .hunyuan_video import (
@@ -653,6 +672,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             HunyuanVideoImageToVideoPipeline,
             HunyuanVideoPipeline,
         )
+        from .hunyuan_video1_5 import HunyuanVideo15ImageToVideoPipeline, HunyuanVideo15Pipeline
         from .hunyuandit import HunyuanDiTPipeline
         from .i2vgen_xl import I2VGenXLPipeline
         from .kandinsky import (
@@ -680,7 +700,12 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             Kandinsky3Img2ImgPipeline,
             Kandinsky3Pipeline,
         )
-        from .kandinsky5 import Kandinsky5T2VPipeline
+        from .kandinsky5 import (
+            Kandinsky5I2IPipeline,
+            Kandinsky5I2VPipeline,
+            Kandinsky5T2IPipeline,
+            Kandinsky5T2VPipeline,
+        )
         from .latent_consistency_models import (
             LatentConsistencyModelImg2ImgPipeline,
             LatentConsistencyModelPipeline,
@@ -705,6 +730,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .mochi import MochiPipeline
         from .musicldm import MusicLDMPipeline
         from .omnigen import OmniGenPipeline
+        from .ovis_image import OvisImagePipeline
         from .pag import (
             AnimateDiffPAGPipeline,
             HunyuanDiTPAGPipeline,
@@ -743,8 +769,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             SanaPipeline,
             SanaSprintImg2ImgPipeline,
             SanaSprintPipeline,
-            SanaVideoPipeline,
         )
+        from .sana_video import SanaImageToVideoPipeline, SanaVideoPipeline
         from .semantic_stable_diffusion import SemanticStableDiffusionPipeline
         from .shap_e import ShapEImg2ImgPipeline, ShapEPipeline
         from .stable_audio import StableAudioPipeline, StableAudioProjectionModel
@@ -803,12 +829,19 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             UniDiffuserTextDecoder,
         )
         from .visualcloze import VisualClozeGenerationPipeline, VisualClozePipeline
-        from .wan import WanImageToVideoPipeline, WanPipeline, WanVACEPipeline, WanVideoToVideoPipeline
+        from .wan import (
+            WanAnimatePipeline,
+            WanImageToVideoPipeline,
+            WanPipeline,
+            WanVACEPipeline,
+            WanVideoToVideoPipeline,
+        )
         from .wuerstchen import (
             WuerstchenCombinedPipeline,
             WuerstchenDecoderPipeline,
             WuerstchenPriorPipeline,
         )
+        from .z_image import ZImagePipeline
 
         try:
             if not is_onnx_available():
