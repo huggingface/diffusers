@@ -556,7 +556,7 @@ def get_size_less_than_area(height,
 
         return target_height, target_width
 
-height, width = get_size_less_than_area(first_frame.height, first_frame.width, 480*832)
+height, width = get_size_less_than_area(image.height, image.width, 480*832)
 
 prompt = "Einstein singing a song."
 
