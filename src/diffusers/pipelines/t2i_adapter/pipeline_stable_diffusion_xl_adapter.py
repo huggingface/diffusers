@@ -33,7 +33,7 @@ from ...loaders import (
     StableDiffusionXLLoraLoaderMixin,
     TextualInversionLoaderMixin,
 )
-from ...models import AutoencoderKL, ImageProjection, MultiAdapter, T2IAdapter, UNet2DConditionModel
+from ...models import AutoencoderKL, ImageProjection, GatedMultiAdapter, MultiAdapter, T2IAdapter, UNet2DConditionModel
 from ...models.lora import adjust_lora_scale_text_encoder
 from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import (
@@ -278,7 +278,7 @@ class StableDiffusionXLAdapterPipeline(
         tokenizer: CLIPTokenizer,
         tokenizer_2: CLIPTokenizer,
         unet: UNet2DConditionModel,
-        adapter: Union[T2IAdapter, MultiAdapter, List[T2IAdapter]],
+        adapter: Union[T2IAdapter, MultiAdapter, GatedMultiAdapter, List[T2IAdapter]],
         scheduler: KarrasDiffusionSchedulers,
         force_zeros_for_empty_prompt: bool = True,
         feature_extractor: CLIPImageProcessor = None,
@@ -1056,7 +1056,7 @@ class StableDiffusionXLAdapterPipeline(
         height, width = self._default_height_width(height, width, image)
         device = self._execution_device
 
-        if isinstance(self.adapter, MultiAdapter):
+        if isinstance(self.adapter,(MultiAdapter, GatedMultiAdapter)):
             adapter_input = []
 
             for one_image in image:
@@ -1159,20 +1159,23 @@ class StableDiffusionXLAdapterPipeline(
             ).to(device=device, dtype=latents.dtype)
 
         # 7. Prepare added time ids & embeddings & adapter features
-        if isinstance(self.adapter, MultiAdapter):
+        if isinstance(self.adapter, GatedMultiAdapter):
+            adapter_state = None # not pre-computed, calculated during diffusion
+        elif isinstance(self.adapter, MultiAdapter):
             adapter_state = self.adapter(adapter_input, adapter_conditioning_scale)
             for k, v in enumerate(adapter_state):
                 adapter_state[k] = v
-        else:
+        elif isinstance(self.adapter, T2IAdapter):
             adapter_state = self.adapter(adapter_input)
             for k, v in enumerate(adapter_state):
                 adapter_state[k] = v * adapter_conditioning_scale
-        if num_images_per_prompt > 1:
-            for k, v in enumerate(adapter_state):
-                adapter_state[k] = v.repeat(num_images_per_prompt, 1, 1, 1)
-        if self.do_classifier_free_guidance:
-            for k, v in enumerate(adapter_state):
-                adapter_state[k] = torch.cat([v] * 2, dim=0)
+        if adapter_state is not None:
+            if num_images_per_prompt > 1:
+                for k, v in enumerate(adapter_state):
+                    adapter_state[k] = v.repeat(num_images_per_prompt, 1, 1, 1)
+            if self.do_classifier_free_guidance:
+                for k, v in enumerate(adapter_state):
+                    adapter_state[k] = torch.cat([v] * 2, dim=0)
 
         add_text_embeds = pooled_prompt_embeds
         if self.text_encoder_2 is None:
@@ -1234,7 +1237,17 @@ class StableDiffusionXLAdapterPipeline(
 
                 # predict the noise residual
                 if i < int(num_inference_steps * adapter_conditioning_factor):
-                    down_intrablock_additional_residuals = [state.clone() for state in adapter_state]
+                    if not isinstance(self.adapter, GatedMultiAdapter):
+                        down_intrablock_additional_residuals = [state.clone() for state in adapter_state]
+                    else:
+                        adapter_state = self.adapter(adapter_input, t)
+                        if num_images_per_prompt > 1:
+                            for k, v in enumerate(adapter_state):
+                                adapter_state[k] = v.repeat(num_images_per_prompt, 1, 1, 1)
+                        if self.do_classifier_free_guidance:
+                            for k, v in enumerate(adapter_state):
+                                adapter_state[k] = torch.cat([v] * 2, dim=0)
+                        down_intrablock_additional_residuals = [state.clone() for state in adapter_state]
                 else:
                     down_intrablock_additional_residuals = None
 
