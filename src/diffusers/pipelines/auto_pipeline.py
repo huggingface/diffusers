@@ -118,6 +118,8 @@ from .stable_diffusion_xl import (
     StableDiffusionXLPipeline,
 )
 from .wan import WanImageToVideoPipeline, WanPipeline, WanVideoToVideoPipeline
+from .hunyuan_video import HunyuanVideoPipeline
+from .cogvideo import CogVideoXPipeline
 from .wuerstchen import WuerstchenCombinedPipeline, WuerstchenDecoderPipeline
 
 
@@ -218,6 +220,8 @@ AUTO_INPAINT_PIPELINES_MAPPING = OrderedDict(
 AUTO_TEXT2VIDEO_PIPELINES_MAPPING = OrderedDict(
     [
         ("wan", WanPipeline),
+        ("hunyuan", HunyuanVideoPipeline),
+        ("cogvideox", CogVideoXPipeline),
     ]
 )
 
@@ -1203,3 +1207,39 @@ class AutoPipelineForInpainting(ConfigMixin):
         model.register_to_config(**unused_original_config)
 
         return model
+
+class AutoPipelineForText2Video(ConfigMixin):
+    
+    config_name = "model_index.json"
+
+    def __init__(self, *args, **kwargs):
+        raise EnvironmentError(
+            f"{self.__class__.__name__} is designed to be instantiated "
+            f"using the `{self.__class__.__name__}.from_pretrained(pretrained_model_name_or_path)` or "
+            f"`{self.__class__.__name__}.from_pipe(pipeline)` methods."
+        )
+
+    @classmethod
+    @validate_hf_hub_args
+    def from_pretrained(cls, pretrained_model_or_path, **kwargs):
+        cache_dir = kwargs.pop("cache_dir", None)
+        force_download = kwargs.pop("force_download", False)
+        proxies = kwargs.pop("proxies", None)
+        token = kwargs.pop("token", None)
+        local_files_only = kwargs.pop("local_files_only", False)
+        revision = kwargs.pop("revision", None)
+ 
+        load_config_kwargs = {
+            "cache_dir": cache_dir,
+            "force_download": force_download,
+            "proxies": proxies,
+            "token": token,
+            "local_files_only": local_files_only,
+            "revision": revision,
+        }
+
+        config = cls.load_config(pretrained_model_or_path, **load_config_kwargs)
+        orig_class_name = config["_class_name"]
+        text_to_video_cls = _get_task_class(AUTO_TEXT2VIDEO_PIPELINES_MAPPING, orig_class_name)
+        kwargs = {**load_config_kwargs, **kwargs}
+        return text_to_video_cls.from_pretrained(pretrained_model_or_path, **kwargs)
