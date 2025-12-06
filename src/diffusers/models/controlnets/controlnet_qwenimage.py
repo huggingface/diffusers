@@ -31,6 +31,7 @@ from ..transformers.transformer_qwenimage import (
     QwenImageTransformerBlock,
     QwenTimestepProjEmbeddings,
     RMSNorm,
+    compute_text_seq_len_from_mask,
 )
 
 
@@ -131,12 +132,11 @@ class QwenImageControlNetModel(
         encoder_hidden_states_mask: torch.Tensor = None,
         timestep: torch.LongTensor = None,
         img_shapes: Optional[List[Tuple[int, int, int]]] = None,
-        txt_seq_lens: Optional[List[int]] = None,
         joint_attention_kwargs: Optional[Dict[str, Any]] = None,
         return_dict: bool = True,
     ) -> Union[torch.FloatTensor, Transformer2DModelOutput]:
         """
-        The [`FluxTransformer2DModel`] forward method.
+        The [`QwenImageControlNetModel`] forward method.
 
         Args:
             hidden_states (`torch.FloatTensor` of shape `(batch size, channel, height, width)`):
@@ -147,28 +147,30 @@ class QwenImageControlNetModel(
                 The scale factor for ControlNet outputs.
             encoder_hidden_states (`torch.FloatTensor` of shape `(batch size, sequence_len, embed_dims)`):
                 Conditional embeddings (embeddings computed from the input conditions such as prompts) to use.
-            pooled_projections (`torch.FloatTensor` of shape `(batch_size, projection_dim)`): Embeddings projected
-                from the embeddings of input conditions.
+            encoder_hidden_states_mask (`torch.Tensor` of shape `(batch_size, text_sequence_length)`, *optional*):
+                Mask for the encoder hidden states. Expected to have 1.0 for valid tokens and 0.0 for padding tokens.
+                Used in the attention processor to prevent attending to padding tokens. The mask can have any pattern
+                (not just contiguous valid tokens followed by padding) since it's applied element-wise in attention.
             timestep ( `torch.LongTensor`):
                 Used to indicate denoising step.
-            block_controlnet_hidden_states: (`list` of `torch.Tensor`):
-                A list of tensors that if specified are added to the residuals of transformer blocks.
+            img_shapes (`List[Tuple[int, int, int]]`, *optional*):
+                Image shapes for RoPE computation.
             joint_attention_kwargs (`dict`, *optional*):
                 A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
                 `self.processor` in
                 [diffusers.models.attention_processor](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
             return_dict (`bool`, *optional*, defaults to `True`):
-                Whether or not to return a [`~models.transformer_2d.Transformer2DModelOutput`] instead of a plain
-                tuple.
+                Whether or not to return a [`~models.controlnet.ControlNetOutput`] instead of a plain tuple.
 
         Returns:
-            If `return_dict` is True, an [`~models.transformer_2d.Transformer2DModelOutput`] is returned, otherwise a
-            `tuple` where the first element is the sample tensor.
+            If `return_dict` is True, a [`~models.controlnet.ControlNetOutput`] is returned, otherwise a `tuple` where
+            the first element is the controlnet block samples.
         """
         if joint_attention_kwargs is not None:
             joint_attention_kwargs = joint_attention_kwargs.copy()
             lora_scale = joint_attention_kwargs.pop("scale", 1.0)
         else:
+            joint_attention_kwargs = {}
             lora_scale = 1.0
 
         if USE_PEFT_BACKEND:
@@ -186,14 +188,22 @@ class QwenImageControlNetModel(
 
         temb = self.time_text_embed(timestep, hidden_states)
 
-        image_rotary_emb = self.pos_embed(img_shapes, txt_seq_lens, device=hidden_states.device)
+        # Use the encoder_hidden_states sequence length for RoPE computation and normalize mask
+        text_seq_len, text_seq_lens_per_sample, encoder_hidden_states_mask = compute_text_seq_len_from_mask(
+            encoder_hidden_states, encoder_hidden_states_mask
+        )
+
+        if text_seq_lens_per_sample is not None:
+            joint_attention_kwargs.setdefault("text_seq_lens", text_seq_lens_per_sample)
+
+        image_rotary_emb = self.pos_embed(img_shapes, text_seq_len, device=hidden_states.device)
 
         timestep = timestep.to(hidden_states.dtype)
         encoder_hidden_states = self.txt_norm(encoder_hidden_states)
         encoder_hidden_states = self.txt_in(encoder_hidden_states)
 
         block_samples = ()
-        for index_block, block in enumerate(self.transformer_blocks):
+        for block in self.transformer_blocks:
             if torch.is_grad_enabled() and self.gradient_checkpointing:
                 encoder_hidden_states, hidden_states = self._gradient_checkpointing_func(
                     block,
@@ -263,7 +273,6 @@ class QwenImageMultiControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, F
         encoder_hidden_states_mask: torch.Tensor = None,
         timestep: torch.LongTensor = None,
         img_shapes: Optional[List[Tuple[int, int, int]]] = None,
-        txt_seq_lens: Optional[List[int]] = None,
         joint_attention_kwargs: Optional[Dict[str, Any]] = None,
         return_dict: bool = True,
     ) -> Union[QwenImageControlNetOutput, Tuple]:
@@ -281,7 +290,6 @@ class QwenImageMultiControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, F
                     encoder_hidden_states_mask=encoder_hidden_states_mask,
                     timestep=timestep,
                     img_shapes=img_shapes,
-                    txt_seq_lens=txt_seq_lens,
                     joint_attention_kwargs=joint_attention_kwargs,
                     return_dict=return_dict,
                 )
