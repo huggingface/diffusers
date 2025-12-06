@@ -68,7 +68,7 @@ def get_qwen_prompt_embeds(
     split_hidden_states = _extract_masked_hidden(hidden_states, txt_tokens.attention_mask)
     split_hidden_states = [e[drop_idx:] for e in split_hidden_states]
     attn_mask_list = [torch.ones(e.size(0), dtype=torch.long, device=e.device) for e in split_hidden_states]
-    max_seq_len = max([e.size(0) for e in split_hidden_states])
+    max_seq_len = tokenizer_max_length
     prompt_embeds = torch.stack(
         [torch.cat([u, u.new_zeros(max_seq_len - u.size(0), u.size(1))]) for u in split_hidden_states]
     )
@@ -88,6 +88,7 @@ def get_qwen_prompt_embeds_edit(
     image: Optional[torch.Tensor] = None,
     prompt_template_encode: str = "<|im_start|>system\nDescribe the key features of the input image (color, shape, size, texture, objects, background), then explain how the user's text instruction should alter or modify the image. Generate a new image that meets the user's requirements while maintaining consistency with the original input where appropriate.<|im_end|>\n<|im_start|>user\n<|vision_start|><|image_pad|><|vision_end|>{}<|im_end|>\n<|im_start|>assistant\n",
     prompt_template_encode_start_idx: int = 64,
+    tokenizer_max_length: int = 1024,
     device: Optional[torch.device] = None,
 ):
     prompt = [prompt] if isinstance(prompt, str) else prompt
@@ -115,7 +116,7 @@ def get_qwen_prompt_embeds_edit(
     split_hidden_states = _extract_masked_hidden(hidden_states, model_inputs.attention_mask)
     split_hidden_states = [e[drop_idx:] for e in split_hidden_states]
     attn_mask_list = [torch.ones(e.size(0), dtype=torch.long, device=e.device) for e in split_hidden_states]
-    max_seq_len = max([e.size(0) for e in split_hidden_states])
+    max_seq_len = tokenizer_max_length
     prompt_embeds = torch.stack(
         [torch.cat([u, u.new_zeros(max_seq_len - u.size(0), u.size(1))]) for u in split_hidden_states]
     )
@@ -136,6 +137,7 @@ def get_qwen_prompt_embeds_edit_plus(
     prompt_template_encode: str = "<|im_start|>system\nDescribe the key features of the input image (color, shape, size, texture, objects, background), then explain how the user's text instruction should alter or modify the image. Generate a new image that meets the user's requirements while maintaining consistency with the original input where appropriate.<|im_end|>\n<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n",
     img_template_encode: str = "Picture {}: <|vision_start|><|image_pad|><|vision_end|>",
     prompt_template_encode_start_idx: int = 64,
+    tokenizer_max_length: int = 1024,
     device: Optional[torch.device] = None,
 ):
     prompt = [prompt] if isinstance(prompt, str) else prompt
@@ -171,7 +173,7 @@ def get_qwen_prompt_embeds_edit_plus(
     split_hidden_states = _extract_masked_hidden(hidden_states, model_inputs.attention_mask)
     split_hidden_states = [e[drop_idx:] for e in split_hidden_states]
     attn_mask_list = [torch.ones(e.size(0), dtype=torch.long, device=e.device) for e in split_hidden_states]
-    max_seq_len = max([e.size(0) for e in split_hidden_states])
+    max_seq_len = tokenizer_max_length
     prompt_embeds = torch.stack(
         [torch.cat([u, u.new_zeros(max_seq_len - u.size(0), u.size(1))]) for u in split_hidden_states]
     )

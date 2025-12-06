@@ -254,6 +254,7 @@ class QwenImageControlNetPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
         prompt: Union[str, List[str]] = None,
         device: Optional[torch.device] = None,
         dtype: Optional[torch.dtype] = None,
+        max_sequence_length: int = 1024,
     ):
         device = device or self._execution_device
         dtype = dtype or self.text_encoder.dtype
@@ -264,7 +265,7 @@ class QwenImageControlNetPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
         drop_idx = self.prompt_template_encode_start_idx
         txt = [template.format(e) for e in prompt]
         txt_tokens = self.tokenizer(
-            txt, max_length=self.tokenizer_max_length + drop_idx, padding=True, truncation=True, return_tensors="pt"
+            txt, max_length=max_sequence_length + drop_idx, padding=True, truncation=True, return_tensors="pt"
         ).to(device)
         encoder_hidden_states = self.text_encoder(
             input_ids=txt_tokens.input_ids,
@@ -275,7 +276,7 @@ class QwenImageControlNetPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
         split_hidden_states = self._extract_masked_hidden(hidden_states, txt_tokens.attention_mask)
         split_hidden_states = [e[drop_idx:] for e in split_hidden_states]
         attn_mask_list = [torch.ones(e.size(0), dtype=torch.long, device=e.device) for e in split_hidden_states]
-        max_seq_len = max([e.size(0) for e in split_hidden_states])
+        max_seq_len = max_sequence_length
         prompt_embeds = torch.stack(
             [torch.cat([u, u.new_zeros(max_seq_len - u.size(0), u.size(1))]) for u in split_hidden_states]
         )
@@ -316,7 +317,9 @@ class QwenImageControlNetPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
         batch_size = len(prompt) if prompt_embeds is None else prompt_embeds.shape[0]
 
         if prompt_embeds is None:
-            prompt_embeds, prompt_embeds_mask = self._get_qwen_prompt_embeds(prompt, device)
+            prompt_embeds, prompt_embeds_mask = self._get_qwen_prompt_embeds(
+                prompt, device, max_sequence_length=max_sequence_length
+            )
 
         _, seq_len, _ = prompt_embeds.shape
         prompt_embeds = prompt_embeds.repeat(1, num_images_per_prompt, 1)
@@ -909,7 +912,7 @@ class QwenImageControlNetPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
                     encoder_hidden_states=prompt_embeds,
                     encoder_hidden_states_mask=prompt_embeds_mask,
                     img_shapes=img_shapes,
-                    txt_seq_lens=prompt_embeds_mask.sum(dim=1).tolist(),
+                    txt_seq_lens=[prompt_embeds.shape[1]] * prompt_embeds.shape[0],
                     return_dict=False,
                 )
 
@@ -920,7 +923,7 @@ class QwenImageControlNetPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
                         encoder_hidden_states=prompt_embeds,
                         encoder_hidden_states_mask=prompt_embeds_mask,
                         img_shapes=img_shapes,
-                        txt_seq_lens=prompt_embeds_mask.sum(dim=1).tolist(),
+                        txt_seq_lens=[prompt_embeds.shape[1]] * prompt_embeds.shape[0],
                         controlnet_block_samples=controlnet_block_samples,
                         attention_kwargs=self.attention_kwargs,
                         return_dict=False,
@@ -935,7 +938,7 @@ class QwenImageControlNetPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
                             encoder_hidden_states_mask=negative_prompt_embeds_mask,
                             encoder_hidden_states=negative_prompt_embeds,
                             img_shapes=img_shapes,
-                            txt_seq_lens=negative_prompt_embeds_mask.sum(dim=1).tolist(),
+                            txt_seq_lens=[negative_prompt_embeds.shape[1]] * negative_prompt_embeds.shape[0],
                             controlnet_block_samples=controlnet_block_samples,
                             attention_kwargs=self.attention_kwargs,
                             return_dict=False,
