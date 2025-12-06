@@ -2417,6 +2417,17 @@ def _convert_non_diffusers_z_image_lora_to_diffusers(state_dict):
 
         state_dict = {convert_key(k): v for k, v in state_dict.items()}
 
+    def normalize_out_key(k: str) -> str:
+        if ".to_out" in k:
+            return k
+        return re.sub(
+            r"\.out(?=\.(?:lora_down|lora_up)\.weight$|\.alpha$)",
+            ".to_out.0",
+            k,
+        )
+
+    state_dict = {normalize_out_key(k): v for k, v in state_dict.items()}
+
     has_default = any("default." in k for k in state_dict)
     if has_default:
         state_dict = {k.replace("default.", ""): v for k, v in state_dict.items()}

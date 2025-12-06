@@ -10,40 +10,21 @@ an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express o
 specific language governing permissions and limitations under the License.
 -->
 
-# ZImage
+# Z-Image
 
 <div class="flex flex-wrap space-x-1">
   <img alt="LoRA" src="https://img.shields.io/badge/LoRA-d8b4fe?style=flat"/>
 </div>
 
-[Z-Image](https://huggingface.co/Tongyi-MAI/Z-Image-Turbo) from Alibaba's Tongyi team is a text-to-image generation model based on diffusion transformers. Z-Image excels at complex text rendering and supports both English and Chinese prompts.
+[Z-Image](https://huggingface.co/papers/2511.22699) is a powerful and highly efficient image generation model with 6B parameters. Currently there's only one model with two more to be released:
 
-Z-Image comes in the following variants:
+|Model|Hugging Face|
+|---|---|
+|Z-Image-Turbo|https://huggingface.co/Tongyi-MAI/Z-Image-Turbo|
 
-| model type | model id |
-|:----------:|:--------:|
-| Z-Image-Turbo | [`Tongyi-MAI/Z-Image-Turbo`](https://huggingface.co/Tongyi-MAI/Z-Image-Turbo) |
+## Z-Image-Turbo
 
-## Text-to-image
-
-```python
-import torch
-from diffusers import ZImagePipeline
-
-pipe = ZImagePipeline.from_pretrained("Tongyi-MAI/Z-Image-Turbo", torch_dtype=torch.bfloat16)
-pipe.to("cuda")
-
-prompt = "A fantasy landscape with mountains and a river, detailed, vibrant colors"
-image = pipe(
-    prompt,
-    height=1024,
-    width=1024,
-    num_inference_steps=9,
-    guidance_scale=0.0,
-    generator=torch.Generator("cuda").manual_seed(42),
-).images[0]
-image.save("zimage.png")
-```
+Z-Image-Turbo is a distilled version of Z-Image that matches or exceeds leading competitors with only 8 NFEs (Number of Function Evaluations). It offers sub-second inference latency on enterprise-grade H800 GPUs and fits comfortably within 16G VRAM consumer devices. It excels in photorealistic image generation, bilingual text rendering (English & Chinese), and robust instruction adherence.
 
 ## Image-to-image
 
@@ -75,15 +56,11 @@ image.save("zimage_img2img.png")
 ## ZImagePipeline
 
 [[autodoc]] ZImagePipeline
-  - all
-  - __call__
+	- all
+	- __call__
 
 ## ZImageImg2ImgPipeline
 
 [[autodoc]] ZImageImg2ImgPipeline
-  - all
-  - __call__
-
-## ZImagePipelineOutput
-
-[[autodoc]] pipelines.z_image.pipeline_output.ZImagePipelineOutput
+	- all
+	- __call__
