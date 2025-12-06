@@ -646,6 +646,8 @@
         title: VisualCloze
       - local: api/pipelines/wuerstchen
         title: Wuerstchen
+      - local: api/pipelines/zimage
+        title: ZImage
       title: Image
     - sections:
       - local: api/pipelines/allegro
