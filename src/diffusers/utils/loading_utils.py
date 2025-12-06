@@ -183,7 +183,7 @@ def load_video(
 
 def load_audio(
     audio: Union[str, numpy.ndarray], convert_method: Optional[Callable[[numpy.ndarray], numpy.ndarray]] = None
-) -> numpy.ndarray:
+) -> Tuple[numpy.ndarray, int]:
     """
     Loads `audio` to a numpy array.
 
