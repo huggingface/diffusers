@@ -168,6 +168,7 @@ else:
             "HookRegistry",
             "LayerSkipConfig",
             "MagCacheConfig",
+            "FLUX_MAG_RATIOS",
             "PyramidAttentionBroadcastConfig",
             "SmoothedEnergyGuidanceConfig",
             "apply_faster_cache",
@@ -897,6 +898,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .hooks import (
             FasterCacheConfig,
             FirstBlockCacheConfig,
+            FLUX_MAG_RATIOS,
             HookRegistry,
             LayerSkipConfig,
             MagCacheConfig,
