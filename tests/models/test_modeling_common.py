@@ -1791,7 +1791,6 @@ class ModelTesterMixin:
             return model(**inputs_dict)[0]
 
         model = self.model_class(**init_dict)
-
         model.to(torch_device)
         output_without_group_offloading = run_forward(model)
         output_without_group_offloading = normalize_output(output_without_group_offloading)
@@ -1916,6 +1915,9 @@ class ModelTesterMixin:
                     offload_to_disk_path=tmpdir,
                     offload_type=offload_type,
                     num_blocks_per_group=num_blocks_per_group,
+                    block_modules=model._group_offload_block_modules
+                    if hasattr(model, "_group_offload_block_modules")
+                    else None,
                 )
                 if not is_correct:
                     if extra_files:
