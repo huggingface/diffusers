@@ -115,7 +115,7 @@ class MagCacheConfig:
     calibrate: bool = False
 
     def __post_init__(self):
-        # Strict validation: User MUST provide ratios OR enable calibration.
+        # User MUST provide ratios OR enable calibration.
         if self.mag_ratios is None and not self.calibrate:
             raise ValueError(
                 " `mag_ratios` must be provided for MagCache inference because these ratios are model-dependent.\n"
@@ -151,7 +151,7 @@ class MagCacheState(BaseState):
 
         # Current step counter (timestep index)
         self.step_index: int = 0
-        
+
         # Calibration storage
         self.calibration_ratios: List[float] = []
 
@@ -179,6 +179,9 @@ class MagCacheHeadHook(ModelHook):
         return module
 
     def new_forward(self, module: torch.nn.Module, *args, **kwargs):
+        if self.state_manager._current_context is None:
+            self.state_manager.set_context("inference")
+
         # Capture input hidden_states
         hidden_states = self._metadata._get_parameter_from_args_kwargs("hidden_states", args, kwargs)
 
@@ -224,6 +227,9 @@ class MagCacheHeadHook(ModelHook):
 
             output = hidden_states
             res = state.previous_residual
+
+            if res.device != output.device:
+                res = res.to(output.device)
 
             # Attempt to apply residual handling shape mismatches (e.g., text+image vs image only)
             if res.shape == output.shape:
@@ -320,7 +326,7 @@ class MagCacheBlockHook(ModelHook):
                 out_hidden = output
 
             in_hidden = state.head_block_input
-            
+
             # Determine residual
             if out_hidden.shape == in_hidden.shape:
                 residual = out_hidden - in_hidden
@@ -345,28 +351,28 @@ class MagCacheBlockHook(ModelHook):
     def _perform_calibration_step(self, state: MagCacheState, current_residual: torch.Tensor):
         if state.previous_residual is None:
             # First step has no previous residual to compare against.
-            # We log 1.0 as a neutral starting point.
+            # log 1.0 as a neutral starting point.
             ratio = 1.0
         else:
             # MagCache Calibration Formula: mean(norm(curr) / norm(prev))
             # norm(dim=-1) gives magnitude of each token vector
             curr_norm = torch.linalg.norm(current_residual.float(), dim=-1)
             prev_norm = torch.linalg.norm(state.previous_residual.float(), dim=-1)
-            
+
             # Avoid division by zero
             ratio = (curr_norm / (prev_norm + 1e-8)).mean().item()
-        
+
         state.calibration_ratios.append(ratio)
-    
+
     def _advance_step(self, state: MagCacheState):
         state.step_index += 1
         if state.step_index >= self.config.num_inference_steps:
             # End of inference loop
             if self.config.calibrate:
-                print(f"\n[MagCache] Calibration Complete. Copy these values to MagCacheConfig(mag_ratios=...):")
+                print("\n[MagCache] Calibration Complete. Copy these values to MagCacheConfig(mag_ratios=...):")
                 print(f"{state.calibration_ratios}\n")
                 logger.info(f"MagCache Calibration Results: {state.calibration_ratios}")
-            
+
             # Reset state
             state.step_index = 0
             state.accumulated_ratio = 1.0
@@ -386,6 +392,9 @@ def apply_mag_cache(module: torch.nn.Module, config: MagCacheConfig) -> None:
         config (`MagCacheConfig`):
             The configuration for MagCache.
     """
+    # Initialize registry on the root module so the Pipeline can set context.
+    HookRegistry.check_if_exists_or_initialize(module)
+
     state_manager = StateManager(MagCacheState, (), {})
     remaining_blocks = []
 
@@ -399,13 +408,11 @@ def apply_mag_cache(module: torch.nn.Module, config: MagCacheConfig) -> None:
         logger.warning("MagCache: No transformer blocks found to apply hooks.")
         return
 
+    # Handle single-block models
     if len(remaining_blocks) == 1:
-        # Single block case: It acts as both Head (Decision) and Tail (Residual Calc)
         name, block = remaining_blocks[0]
         logger.info(f"MagCache: Applying Head+Tail Hooks to single block '{name}'")
-        # Apply BlockHook (Tail) FIRST so it is the INNER wrapper
         _apply_mag_cache_block_hook(block, state_manager, config, is_tail=True)
-        # Apply HeadHook SECOND so it is the OUTER wrapper (controls flow)
         _apply_mag_cache_head_hook(block, state_manager, config)
         return
 
@@ -426,6 +433,11 @@ def _apply_mag_cache_head_hook(
     block: torch.nn.Module, state_manager: StateManager, config: MagCacheConfig
 ) -> None:
     registry = HookRegistry.check_if_exists_or_initialize(block)
+
+    # Automatically remove existing hook to allow re-application (e.g. switching modes)
+    if registry.get_hook(_MAG_CACHE_LEADER_BLOCK_HOOK) is not None:
+        registry.remove_hook(_MAG_CACHE_LEADER_BLOCK_HOOK)
+
     hook = MagCacheHeadHook(state_manager, config)
     registry.register_hook(hook, _MAG_CACHE_LEADER_BLOCK_HOOK)
 
@@ -437,5 +449,10 @@ def _apply_mag_cache_block_hook(
     is_tail: bool = False,
 ) -> None:
     registry = HookRegistry.check_if_exists_or_initialize(block)
+
+    # Automatically remove existing hook to allow re-application
+    if registry.get_hook(_MAG_CACHE_BLOCK_HOOK) is not None:
+        registry.remove_hook(_MAG_CACHE_BLOCK_HOOK)
+
     hook = MagCacheBlockHook(state_manager, is_tail, config)
     registry.register_hook(hook, _MAG_CACHE_BLOCK_HOOK)

@@ -169,7 +169,7 @@ def _register_attention_processors_metadata():
 
 
 def _register_transformer_blocks_metadata():
-    from ..models.attention import BasicTransformerBlock
+    from ..models.attention import BasicTransformerBlock, JointTransformerBlock
     from ..models.transformers.cogvideox_transformer_3d import CogVideoXBlock
     from ..models.transformers.transformer_bria import BriaTransformerBlock
     from ..models.transformers.transformer_cogview4 import CogView4TransformerBlock
@@ -189,6 +189,7 @@ def _register_transformer_blocks_metadata():
     from ..models.transformers.transformer_qwenimage import QwenImageTransformerBlock
     from ..models.transformers.transformer_wan import WanTransformerBlock
     from ..models.transformers.transformer_z_image import ZImageTransformerBlock
+    from ..models.transformers.transformer_kandinsky import Kandinsky5TransformerDecoderBlock
 
     # BasicTransformerBlock
     TransformerBlockRegistry.register(
@@ -325,6 +326,25 @@ def _register_transformer_blocks_metadata():
     # ZImage
     TransformerBlockRegistry.register(
         model_class=ZImageTransformerBlock,
+        metadata=TransformerBlockMetadata(
+            return_hidden_states_index=0,
+            return_encoder_hidden_states_index=None,
+        ),
+    )
+
+
+    TransformerBlockRegistry.register(
+        model_class=JointTransformerBlock,
+        metadata=TransformerBlockMetadata(
+            return_hidden_states_index=1,
+            return_encoder_hidden_states_index=0,
+        ),
+    )
+
+
+    # Kandinsky 5.0 (Kandinsky5TransformerDecoderBlock)
+    TransformerBlockRegistry.register(
+        model_class=Kandinsky5TransformerDecoderBlock,
         metadata=TransformerBlockMetadata(
             return_hidden_states_index=0,
             return_encoder_hidden_states_index=None,

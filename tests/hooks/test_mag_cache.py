@@ -13,8 +13,9 @@
 # limitations under the License.
 
 import unittest
-import torch
+
 import numpy as np
+import torch
 
 from diffusers import MagCacheConfig, apply_mag_cache
 from diffusers.hooks._helpers import TransformerBlockMetadata, TransformerBlockRegistry
@@ -46,7 +47,7 @@ class DummyTransformer(ModelMixin):
 class TupleOutputBlock(torch.nn.Module):
     def __init__(self):
         super().__init__()
-    
+
     def forward(self, hidden_states, encoder_hidden_states=None, **kwargs):
         # Returns a tuple
         return hidden_states * 2.0, encoder_hidden_states
@@ -88,7 +89,7 @@ class MagCacheTests(unittest.TestCase):
         for module in model.modules():
             if hasattr(module, "_diffusers_hook"):
                 module._diffusers_hook._set_context(context_name)
-    
+
     def _get_calibration_data(self, model):
         for module in model.modules():
             if hasattr(module, "_diffusers_hook"):
@@ -143,25 +144,25 @@ class MagCacheTests(unittest.TestCase):
         """Test that retention_ratio prevents skipping even if error is low."""
         model = DummyTransformer()
         # Ratios that imply 0 error, so it *would* skip if retention allowed it
-        ratios = np.array([1.0, 1.0]) 
-        
+        ratios = np.array([1.0, 1.0])
+
         config = MagCacheConfig(
             threshold=100.0,
             num_inference_steps=2,
             retention_ratio=1.0, # Force retention for ALL steps
             mag_ratios=ratios
         )
-        
+
         apply_mag_cache(model, config)
         self._set_context(model, "test_context")
-        
+
         # Step 0
         model(torch.tensor([[[10.0]]]))
-        
+
         # Step 1: Should COMPUTE (44.0) not SKIP (41.0) because of retention
         input_t1 = torch.tensor([[[11.0]]])
         output_t1 = model(input_t1)
-        
+
         self.assertTrue(
             torch.allclose(output_t1, torch.tensor([[[44.0]]])),
             f"Expected Compute (44.0) due to retention, got {output_t1.item()}"
@@ -171,29 +172,29 @@ class MagCacheTests(unittest.TestCase):
         """Test compatibility with models returning (hidden, encoder_hidden) like Flux."""
         model = TupleTransformer()
         ratios = np.array([1.0, 1.0])
-        
+
         config = MagCacheConfig(
             threshold=100.0,
             num_inference_steps=2,
             retention_ratio=0.0,
             mag_ratios=ratios
         )
-        
+
         apply_mag_cache(model, config)
         self._set_context(model, "test_context")
-        
+
         # Step 0: Compute. Input 10.0 -> Output 20.0 (1 block * 2x)
         # Residual = 10.0
         input_t0 = torch.tensor([[[10.0]]])
         enc_t0 = torch.tensor([[[1.0]]])
         out_0, _ = model(input_t0, encoder_hidden_states=enc_t0)
         self.assertTrue(torch.allclose(out_0, torch.tensor([[[20.0]]])))
-        
+
         # Step 1: Skip. Input 11.0.
         # Skipped Output = 11 + 10 = 21.0
         input_t1 = torch.tensor([[[11.0]]])
         out_1, _ = model(input_t1, encoder_hidden_states=enc_t0)
-        
+
         self.assertTrue(
             torch.allclose(out_1, torch.tensor([[[21.0]]])),
             f"Tuple skip failed. Expected 21.0, got {out_1.item()}"
@@ -203,8 +204,8 @@ class MagCacheTests(unittest.TestCase):
         """Test that state resets correctly after num_inference_steps."""
         model = DummyTransformer()
         config = MagCacheConfig(
-            threshold=100.0, 
-            num_inference_steps=2, 
+            threshold=100.0,
+            num_inference_steps=2,
             retention_ratio=0.0,
             mag_ratios=np.array([1.0, 1.0])
         )
@@ -237,7 +238,7 @@ class MagCacheTests(unittest.TestCase):
         # HeadInput = 10. Output = 40. Residual = 30.
         # Ratio 0 is placeholder 1.0
         model(torch.tensor([[[10.0]]]))
-        
+
         # Check intermediate state
         ratios = self._get_calibration_data(model)
         self.assertEqual(len(ratios), 1)
@@ -248,7 +249,7 @@ class MagCacheTests(unittest.TestCase):
         # PrevResidual = 30. CurrResidual = 30.
         # Ratio = 30/30 = 1.0
         model(torch.tensor([[[10.0]]]))
-        
+
         # Verify it computes fully (no skip)
         # If it skipped, output would be 41.0. It should be 40.0
         # Actually in test setup, input is same (10.0) so output 40.0.
