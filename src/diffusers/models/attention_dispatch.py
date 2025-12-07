@@ -1497,6 +1497,7 @@ def _flash_varlen_attention(
     key_packed = torch.cat(key_valid, dim=0)
     value_packed = torch.cat(value_valid, dim=0)
 
+    lse = None
     out = flash_attn_varlen_func(
         q=query_packed,
         k=key_packed,
@@ -1510,6 +1511,8 @@ def _flash_varlen_attention(
         causal=is_causal,
         return_attn_probs=return_lse,
     )
+    if return_lse:
+        out, _, lse = out
 
     out = out.unflatten(0, (batch_size, -1))
 
