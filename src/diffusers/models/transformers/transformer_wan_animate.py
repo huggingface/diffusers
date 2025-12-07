@@ -803,7 +803,7 @@ class WanTimeTextImageEmbedding(nn.Module):
             timestep = timestep.unflatten(0, (-1, timestep_seq_len))
 
         timestep = timestep.to(encoder_hidden_states.dtype)
-        
+
         temb = self.time_embedder(timestep)
         timestep_proj = self.time_proj(self.act_fn(temb))
 
