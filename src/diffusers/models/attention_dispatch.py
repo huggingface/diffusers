@@ -2327,10 +2327,36 @@ def _xformers_attention(
         attn_mask = xops.LowerTriangularMask()
     elif attn_mask is not None:
         if attn_mask.ndim == 2:
-            attn_mask = attn_mask.view(attn_mask.size(0), 1, attn_mask.size(1), 1)
+            # Convert 2D boolean mask to 4D for xformers
+            # attn_mask is [batch_size, seq_len_k] boolean: True means attend, False means mask
+            # xformers requires 4D masks [batch, heads, seq_q, seq_k]
+            # xformers expects additive bias: 0.0 for attend, -inf for mask
+            # Need memory alignment - create larger tensor and slice for alignment
+            original_seq_len = attn_mask.size(1)
+            aligned_seq_len = ((original_seq_len + 7) // 8) * 8  # Round up to multiple of 8
+
+            # Create aligned 4D tensor and slice to ensure proper memory layout
+            aligned_mask = torch.zeros(
+                (batch_size, num_heads_q, seq_len_q, aligned_seq_len),
+                dtype=query.dtype,
+                device=query.device,
+            )
+            # Fill in the actual mask values (converting boolean to additive)
+            # Expand 2D [batch, seq_k] -> 4D [batch, heads, seq_q, seq_k]
+            # Convert: True -> 0.0, False -> -inf
+            mask_2d = attn_mask  # [batch, seq_len_k]
+            mask_additive = torch.where(mask_2d, 0.0, float("-inf")).type_as(query)
+            # Broadcast to [batch, heads, seq_q, seq_len_k]
+            aligned_mask[:, :, :, :original_seq_len] = mask_additive.view(batch_size, 1, 1, original_seq_len)
+            # Mask out the padding (already -inf from zeros -> where with default)
+            aligned_mask[:, :, :, original_seq_len:] = float("-inf")
+
+            # Slice to actual size with proper alignment
+            attn_mask = aligned_mask[:, :, :, :seq_len_kv]
         elif attn_mask.ndim != 4:
             raise ValueError("Only 2D and 4D attention masks are supported for xformers attention.")
-        attn_mask = attn_mask.expand(batch_size, num_heads_q, seq_len_q, seq_len_kv).type_as(query)
+        elif attn_mask.ndim == 4:
+            attn_mask = attn_mask.expand(batch_size, num_heads_q, seq_len_q, seq_len_kv).type_as(query)
 
     if enable_gqa:
         if num_heads_q % num_heads_kv != 0:
