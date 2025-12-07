@@ -26,3 +26,4 @@ if is_torch_available():
     from .mag_cache import FLUX_MAG_RATIOS, MagCacheConfig, apply_mag_cache
     from .pyramid_attention_broadcast import PyramidAttentionBroadcastConfig, apply_pyramid_attention_broadcast
     from .smoothed_energy_guidance_utils import SmoothedEnergyGuidanceConfig
+    from .taylorseer_cache import TaylorSeerCacheConfig, apply_taylorseer_cache
