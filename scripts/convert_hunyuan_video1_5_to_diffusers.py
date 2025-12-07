@@ -154,15 +154,18 @@ def convert_hyvideo15_transformer_to_diffusers(original_state_dict, config=None)
     converted_state_dict["time_embed.timestep_embedder.linear_2.bias"] = original_state_dict.pop("time_in.mlp.2.bias")
 
     if config.use_meanflow:
-
         converted_state_dict["time_embed.timestep_embedder_r.linear_1.weight"] = original_state_dict.pop(
             "time_r_in.mlp.0.weight"
         )
-        converted_state_dict["time_embed.timestep_embedder_r.linear_1.bias"] = original_state_dict.pop("time_r_in.mlp.0.bias")
+        converted_state_dict["time_embed.timestep_embedder_r.linear_1.bias"] = original_state_dict.pop(
+            "time_r_in.mlp.0.bias"
+        )
         converted_state_dict["time_embed.timestep_embedder_r.linear_2.weight"] = original_state_dict.pop(
             "time_r_in.mlp.2.weight"
         )
-        converted_state_dict["time_embed.timestep_embedder_r.linear_2.bias"] = original_state_dict.pop("time_r_in.mlp.2.bias")
+        converted_state_dict["time_embed.timestep_embedder_r.linear_2.bias"] = original_state_dict.pop(
+            "time_r_in.mlp.2.bias"
+        )
 
     # 2. context_embedder.time_text_embed.timestep_embedder <- txt_in.t_embedder
     converted_state_dict["context_embedder.time_text_embed.timestep_embedder.linear_1.weight"] = (
