@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import math
-from typing import Any, Dict, Optional, Tuple, Union
+from typing import Any, Dict, Optional, Tuple, Union, List
 
 import torch
 import torch.nn.functional as F
@@ -21,17 +21,65 @@ from torch import nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
-from ...utils import USE_PEFT_BACKEND, logging, scale_lora_layers, unscale_lora_layers
+from ...utils import USE_PEFT_BACKEND, logging, scale_lora_layers, unscale_lora_layers, BaseOutput
 from ..attention import AttentionMixin
 from ..attention_dispatch import dispatch_attention_fn
 from ..attention_processor import Attention
 from ..embeddings import PixArtAlphaTextProjection, TimestepEmbedding, Timesteps, get_1d_rotary_pos_embed
-from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
 from ..normalization import AdaLayerNormSingle, RMSNorm
 
+from dataclasses import dataclass
+
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
+
+
+@dataclass
+class SanaBlockKvCache:
+    vk: Optional[torch.Tensor] = None
+    k_sum: Optional[torch.Tensor] = None
+    temporal_cache: Optional[torch.Tensor] = None
+    _enable_save: bool = False
+
+    def disable_save(self):
+        self._enable_save = False
+
+    def enable_save(self):
+        self._enable_save = True
+
+    def maybe_save(
+        self, 
+        vk: Optional[torch.Tensor]=None, 
+        k_sum: Optional[torch.Tensor]=None, 
+        temporal_cache: Optional[torch.Tensor]=None,
+    ):
+        if not self._enable_save:
+            return
+
+        if vk is not None:
+            self.vk = vk.detach().clone()
+        if k_sum is not None:
+            self.k_sum = k_sum.detach().clone()
+        if temporal_cache is not None:
+            self.temporal_cache = temporal_cache.detach().clone()
+
+
+@dataclass
+class SanaVideoCausalTransformer3DModelOutput(BaseOutput):
+    """
+    The output of [`SanaVideoCausalTransformer3DModel`].
+
+    Args:
+        sample (`torch.Tensor` of shape `(batch_size, num_frames, height, width, num_channels)`):
+            The hidden states output conditioned on the `encoder_hidden_states` input.
+        kv_cache (`SanaKvCache`, *optional*):
+            The KV cache for the transformer blocks.
+    """
+
+    sample: "torch.Tensor"  # noqa: F821
+    kv_caches: Optional[List[SanaBlockKvCache]] = None
 
 
 class CachedGLUMBConvTemp(nn.Module):
@@ -65,12 +113,11 @@ class CachedGLUMBConvTemp(nn.Module):
     def forward(
         self,
         hidden_states: torch.Tensor,
-        save_kv_cache: bool = False,
-        kv_cache: Optional[list] = None,
-    ) -> Union[torch.Tensor, Tuple[torch.Tensor, list]]:
+        kv_cache: Optional[SanaBlockKvCache] = None,
+    ) -> Tuple[torch.Tensor, Optional[SanaBlockKvCache]]:
         """
         hidden_states: shape [B, T, H, W, C]
-        kv_cache: list, with kv_cache[0/1/2] for optional cached states (only kv_cache[2] is used here for temporal)
+        kv_cache: SanaBlockKvCache, with optional cached states (only temporal_cache is used here for temporal)
         """
 
         if self.residual_connection:
@@ -99,17 +146,13 @@ class CachedGLUMBConvTemp(nn.Module):
 
         # If using cache, prepend cached frames from last chunk along time axis (dim 2)
         if kv_cache is not None:
-            if len(kv_cache) < 3:
-                kv_cache.extend([None] * (3 - len(kv_cache)))
-            if kv_cache[2] is not None:
-                hidden_states_temporal_in = torch.cat([kv_cache[2], hidden_states_temporal], dim=2)
-                padded_size = kv_cache[2].shape[2]
+            if kv_cache.temporal_cache is not None:
+                hidden_states_temporal_in = torch.cat([kv_cache.temporal_cache, hidden_states_temporal], dim=2)
+                padded_size = kv_cache.temporal_cache.shape[2]
             # Save last padding_size frames for next chunk
-            if save_kv_cache:
-                kv_cache[2] = hidden_states_temporal[:, :, -padding_size:, :].detach().clone()
-        else:
-            if save_kv_cache:
-                kv_cache = [None, None, hidden_states_temporal[:, :, -padding_size:, :].detach().clone()]
+            kv_cache.maybe_save(
+                temporal_cache=hidden_states_temporal[:, :, -padding_size:, :],
+            )
 
         t_conv_out = self.conv_temp(hidden_states_temporal_in)[:, :, padded_size:]
         hidden_states = hidden_states_temporal + t_conv_out
@@ -121,9 +164,7 @@ class CachedGLUMBConvTemp(nn.Module):
         if self.residual_connection:
             hidden_states = hidden_states + residual
 
-        if kv_cache is not None or save_kv_cache:
-            return hidden_states, kv_cache
-        return hidden_states
+        return hidden_states, kv_cache
 
 
 class SanaCausalLinearAttnProcessor1_0:
@@ -139,9 +180,8 @@ class SanaCausalLinearAttnProcessor1_0:
         encoder_hidden_states: Optional[torch.Tensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
         rotary_emb: Optional[torch.Tensor] = None,
-        save_kv_cache: bool = False,
-        kv_cache: Optional[list] = None,
-    ) -> torch.Tensor:
+        kv_cache: Optional[SanaBlockKvCache] = None,
+    ) -> Tuple[torch.Tensor, Optional[SanaBlockKvCache]]:
         original_dtype = hidden_states.dtype
 
         if encoder_hidden_states is None:
@@ -205,14 +245,8 @@ class SanaCausalLinearAttnProcessor1_0:
 
         # Handle KV cache for autoregressive generation
         if kv_cache is not None:
-            cached_vk, cached_k_sum = kv_cache[0], kv_cache[1]
-
-            # Save current step's KV to cache if requested
-            if save_kv_cache:
-                kv_cache[0] = scores.detach().clone()
-                kv_cache[1] = k_sum.detach().clone()
-
-            # Accumulate with previous cached values
+            cached_vk, cached_k_sum = kv_cache.vk, kv_cache.k_sum
+            kv_cache.maybe_save(vk=scores, k_sum=k_sum)
             if cached_vk is not None and cached_k_sum is not None:
                 scores = scores + cached_vk
                 k_sum = k_sum + cached_k_sum
@@ -234,11 +268,7 @@ class SanaCausalLinearAttnProcessor1_0:
         hidden_states = attn.to_out[0](hidden_states)
         hidden_states = attn.to_out[1](hidden_states)
 
-        # Return with cache if applicable
-        if kv_cache is not None:
-            return hidden_states, kv_cache
-
-        return hidden_states
+        return hidden_states, kv_cache
 
 
 # Copied from transformers.transformer_sana_video.WanRotaryPosEmbed
@@ -442,14 +472,10 @@ class SanaVideoCausalTransformerBlock(nn.Module):
         mlp_ratio: float = 3.0,
         qk_norm: Optional[str] = "rms_norm_across_heads",
         rope_max_seq_len: int = 1024,
-        self_attn_processor: Optional[nn.Module] = None,
-        ffn_processor: Optional[nn.Module] = None,
     ) -> None:
         super().__init__()
 
         # 1. Self Attention - must use causal linear attention
-        if self_attn_processor is None:
-            self_attn_processor = SanaCausalLinearAttnProcessor1_0()
         self.norm1 = nn.LayerNorm(dim, elementwise_affine=False, eps=norm_eps)
         self.attn1 = Attention(
             query_dim=dim,
@@ -460,7 +486,7 @@ class SanaVideoCausalTransformerBlock(nn.Module):
             dropout=dropout,
             bias=attention_bias,
             cross_attention_dim=None,
-            processor=self_attn_processor,
+            processor=SanaCausalLinearAttnProcessor1_0(),
         )
 
         # 2. Cross Attention
@@ -480,9 +506,7 @@ class SanaVideoCausalTransformerBlock(nn.Module):
             )
 
         # 3. Feed-forward - must use cached conv
-        if ffn_processor is None:
-            ffn_processor = CachedGLUMBConvTemp
-        self.ff = ffn_processor(dim, dim, mlp_ratio, norm_type=None, residual_connection=False)
+        self.ff = CachedGLUMBConvTemp(dim, dim, mlp_ratio, norm_type=None, residual_connection=False)
 
         self.scale_shift_table = nn.Parameter(torch.randn(6, dim) / dim**0.5)
 
@@ -497,9 +521,8 @@ class SanaVideoCausalTransformerBlock(nn.Module):
         height: int = None,
         width: int = None,
         rotary_emb: Optional[torch.Tensor] = None,
-        save_kv_cache: bool = False,
-        kv_cache: Optional[list] = None,
-    ) -> Union[torch.Tensor, Tuple[torch.Tensor, list]]:
+        kv_cache: Optional[SanaBlockKvCache] = None,
+    ) -> Tuple[torch.Tensor, Optional[SanaBlockKvCache]]:
         batch_size = hidden_states.shape[0]
 
         # 1. Modulation
@@ -513,17 +536,11 @@ class SanaVideoCausalTransformerBlock(nn.Module):
         norm_hidden_states = norm_hidden_states.to(hidden_states.dtype)
 
         # Causal linear attention always supports kv_cache
-        attn_result = self.attn1(
+        attn_output, kv_cache = self.attn1(
             norm_hidden_states,
             rotary_emb=rotary_emb,
-            save_kv_cache=save_kv_cache,
             kv_cache=kv_cache,
         )
-        if isinstance(attn_result, tuple):
-            attn_output, kv_cache = attn_result
-        else:
-            attn_output = attn_result
-
         hidden_states = hidden_states + gate_msa * attn_output
 
         # 3. Cross Attention (no cache)
@@ -542,22 +559,15 @@ class SanaVideoCausalTransformerBlock(nn.Module):
         norm_hidden_states = norm_hidden_states.unflatten(1, (frames, height, width))
 
         # Cached conv always supports kv_cache
-        ff_result = self.ff(
+        ff_output, kv_cache = self.ff(
             norm_hidden_states,
-            save_kv_cache=save_kv_cache,
             kv_cache=kv_cache,
         )
-        if isinstance(ff_result, tuple):
-            ff_output, kv_cache = ff_result
-        else:
-            ff_output = ff_result
 
         ff_output = ff_output.flatten(1, 3)
         hidden_states = hidden_states + gate_mlp * ff_output
 
-        if kv_cache is not None or save_kv_cache:
-            return hidden_states, kv_cache
-        return hidden_states
+        return hidden_states, kv_cache
 
 
 class SanaVideoCausalTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginalModelMixin, AttentionMixin):
@@ -667,8 +677,6 @@ class SanaVideoCausalTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixi
                     norm_eps=norm_eps,
                     mlp_ratio=mlp_ratio,
                     qk_norm=qk_norm,
-                    self_attn_processor=SanaCausalLinearAttnProcessor1_0(),
-                    ffn_processor=CachedGLUMBConvTemp,
                 )
                 for _ in range(num_layers)
             ]
@@ -690,11 +698,9 @@ class SanaVideoCausalTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixi
         encoder_attention_mask: Optional[torch.Tensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
         attention_kwargs: Optional[Dict[str, Any]] = None,
-        controlnet_block_samples: Optional[Tuple[torch.Tensor]] = None,
-        save_kv_cache: bool = False,
-        kv_cache: Optional[list] = None,
+        kv_caches: Optional[List[SanaBlockKvCache]] = None,
         return_dict: bool = True,
-    ) -> Union[Tuple[torch.Tensor, ...], Transformer2DModelOutput]:
+    ) -> Union[Tuple[torch.Tensor, ...], SanaVideoCausalTransformer3DModelOutput]:
         if attention_kwargs is not None:
             attention_kwargs = attention_kwargs.copy()
             lora_scale = attention_kwargs.pop("scale", 1.0)
@@ -752,12 +758,12 @@ class SanaVideoCausalTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixi
         # 2. Transformer blocks with KV cache
         if torch.is_grad_enabled() and self.gradient_checkpointing:
             # Note: gradient checkpointing doesn't support kv_cache (requires tuple return)
-            if kv_cache is not None:
+            if kv_caches is not None:
                 logger.warning("KV cache is not supported with gradient checkpointing. Disabling KV cache.")
-                kv_cache = None
+                kv_caches = None
 
             for index_block, block in enumerate(self.transformer_blocks):
-                hidden_states = self._gradient_checkpointing_func(
+                hidden_states, _ = self._gradient_checkpointing_func(
                     block,
                     hidden_states,
                     attention_mask,
@@ -768,16 +774,14 @@ class SanaVideoCausalTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixi
                     post_patch_height,
                     post_patch_width,
                     rotary_emb,
+                    kv_cache=None,
                 )
-                if controlnet_block_samples is not None and 0 < index_block <= len(controlnet_block_samples):
-                    hidden_states = hidden_states + controlnet_block_samples[index_block - 1]
-
         else:
             for index_block, block in enumerate(self.transformer_blocks):
                 # Get kv_cache for this block if available
-                block_kv_cache = kv_cache[index_block] if kv_cache is not None else None
+                block_kv_cache = kv_caches[index_block] if kv_caches is not None else None
 
-                block_result = block(
+                hidden_states, block_kv_cache = block(
                     hidden_states,
                     attention_mask,
                     encoder_hidden_states,
@@ -787,20 +791,12 @@ class SanaVideoCausalTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixi
                     post_patch_height,
                     post_patch_width,
                     rotary_emb,
-                    save_kv_cache=save_kv_cache,
                     kv_cache=block_kv_cache,
                 )
 
                 # Handle return value (could be tensor or tuple)
-                if isinstance(block_result, tuple):
-                    hidden_states, updated_kv_cache = block_result
-                    if kv_cache is not None:
-                        kv_cache[index_block] = updated_kv_cache
-                else:
-                    hidden_states = block_result
-
-                if controlnet_block_samples is not None and 0 < index_block <= len(controlnet_block_samples):
-                    hidden_states = hidden_states + controlnet_block_samples[index_block - 1]
+                if kv_caches is not None:
+                    kv_caches[index_block] = block_kv_cache
 
         # 3. Normalization
         hidden_states = self.norm_out(hidden_states, embedded_timestep, self.scale_shift_table)
@@ -819,10 +815,6 @@ class SanaVideoCausalTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixi
             unscale_lora_layers(self, lora_scale)
 
         if not return_dict:
-            if kv_cache is not None or save_kv_cache:
-                return (output, kv_cache)
-            return (output,)
+            return (output, kv_caches)
 
-        if kv_cache is not None or save_kv_cache:
-            return Transformer2DModelOutput(sample=output), kv_cache
-        return Transformer2DModelOutput(sample=output)
+        return SanaVideoCausalTransformer3DModelOutput(sample=output, kv_cache=kv_caches)

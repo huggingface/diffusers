@@ -26,7 +26,7 @@ from transformers import Gemma2PreTrainedModel, GemmaTokenizer, GemmaTokenizerFa
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...loaders import SanaLoraLoaderMixin
 from ...models import AutoencoderDC, AutoencoderKLWan
-from ...models.transformers.transformer_sana_video_causal import SanaVideoCausalTransformer3DModel
+from ...models.transformers.transformer_sana_video_causal import SanaVideoCausalTransformer3DModel, SanaBlockKvCache
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import (
     BACKENDS_MAPPING,
@@ -96,6 +96,77 @@ EXAMPLE_DOC_STRING = """
         ```
 """
 
+
+class LongSanaKvCache:
+    def __init__(self, num_chunks: int, num_blocks: int):
+        """
+        Initialize KV cache for all chunks.
+        
+        Args:
+            num_chunks: Number of chunks
+            num_blocks: Number of transformer blocks
+            
+        Returns:
+            List of KV cache for each chunk
+        """
+        kv_caches = []
+        for _ in range(num_chunks):
+            kv_caches.append([SanaBlockKvCache(vk=None, k_sum=None, temporal_cache=None) for _ in range(num_blocks)])
+        self.num_chunks = num_chunks
+        self.num_blocks = num_blocks
+        self.kv_caches = kv_caches
+    
+    def get_chunk_cache(self, chunk_idx: int) -> List[SanaBlockKvCache]:
+        return self.kv_caches[chunk_idx]
+    
+    def get_block_cache(self, chunk_idx: int, block_idx: int) -> SanaBlockKvCache:
+        return self.kv_caches[chunk_idx][block_idx]
+
+    def update_chunk_cache(self, chunk_idx: int, chunk_kv_cache: List[SanaBlockKvCache]):
+        self.kv_caches[chunk_idx] = chunk_kv_cache
+
+    def get_accumulated_chunk_cache(self, chunk_idx: int, num_cached_blocks: int = -1) -> List[SanaBlockKvCache]:
+        """
+        Accumulate KV cache from previous chunks.
+        
+        Args:
+            chunk_idx: Current chunk index
+            num_cached_blocks: Number of previous chunks to use for accumulation. -1 means use all previous chunks.
+            
+        Returns:
+            Accumulated KV cache for current chunk, a list of SanaBlockKvCache.
+        """
+        if chunk_idx == 0:
+            return self.kv_caches[0]
+
+        accumulated_kv_caches = [] # a list of SanaBlockKvCache
+        for block_id in range(self.num_blocks):
+
+            start_chunk_idx = chunk_idx - num_cached_blocks if num_cached_blocks > 0 else 0
+            # Initialize accumulated block cache, kv, k_sum, temporal cache are all None.
+            acc_block_cache = SanaBlockKvCache(vk=None, k_sum=None, temporal_cache=None)
+            # Accumulate spatial KV cache from previous chunks
+
+            for prev_chunk_idx in range(start_chunk_idx, chunk_idx):
+                prev_kv_cache = self.kv_caches[prev_chunk_idx][block_id]
+
+                if prev_kv_cache.vk is None or prev_kv_cache.k_sum is None:
+                    continue
+
+                if acc_block_cache.vk is not None and acc_block_cache.k_sum is not None:
+                    acc_block_cache.vk += prev_kv_cache.vk
+                    acc_block_cache.k_sum += prev_kv_cache.k_sum
+                else:
+                    # initialize the vk and k_sum using the first chunk's block cache.
+                    acc_block_cache.vk = prev_kv_cache.vk.clone()
+                    acc_block_cache.k_sum = prev_kv_cache.k_sum.clone()
+            # copy the temporal cache from the previous chunk.
+            acc_block_cache.temporal_cache = self.kv_caches[chunk_idx-1][block_id].temporal_cache
+
+            accumulated_kv_caches.append(acc_block_cache)
+
+        return accumulated_kv_caches
+    
 
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.retrieve_timesteps
 def retrieve_timesteps(
@@ -721,74 +792,6 @@ class LongSanaVideoPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
             chunk_indices.append(total_frames)
         return chunk_indices
 
-    def _initialize_kv_cache(self, num_chunks: int, num_blocks: int) -> List:
-        """
-        Initialize KV cache for all chunks.
-        
-        Args:
-            num_chunks: Number of chunks
-            num_blocks: Number of transformer blocks
-            
-        Returns:
-            List of KV cache for each chunk
-        """
-        kv_cache = []
-        for _ in range(num_chunks):
-            kv_cache.append([[None, None, None] for _ in range(num_blocks)])
-        return kv_cache
-
-    def _accumulate_kv_cache(self, kv_cache: List, chunk_idx: int, num_blocks: int):
-        """
-        Accumulate KV cache from previous chunks.
-        
-        Args:
-            kv_cache: List of KV cache for all chunks
-            chunk_idx: Current chunk index
-            num_blocks: Number of transformer blocks
-            
-        Returns:
-            Accumulated KV cache for current chunk
-        """
-        if chunk_idx == 0:
-            return kv_cache[0]
-
-        cur_kv_cache = kv_cache[chunk_idx]
-        for block_id in range(num_blocks):
-            # Copy temporal cache from previous chunk
-            cur_kv_cache[block_id][2] = kv_cache[chunk_idx - 1][block_id][2]
-
-            # Accumulate spatial KV cache from previous chunks
-            cum_vk, cum_k_sum = None, None
-            start_chunk_idx = chunk_idx - self.num_cached_blocks if self.num_cached_blocks > 0 else 0
-
-            for i in range(start_chunk_idx, chunk_idx):
-                prev = kv_cache[i][block_id]
-                if prev[0] is not None and prev[1] is not None:
-                    if cum_vk is None:
-                        cum_vk = prev[0].clone()
-                        cum_k_sum = prev[1].clone()
-                    else:
-                        cum_vk += prev[0]
-                        cum_k_sum += prev[1]
-
-            if chunk_idx > 0:
-                assert cum_vk is not None and cum_k_sum is not None, "KV cache accumulation failed"
-
-            cur_kv_cache[block_id][0] = cum_vk
-            cur_kv_cache[block_id][1] = cum_k_sum
-
-        return cur_kv_cache
-
-    def _get_num_transformer_blocks(self) -> int:
-        """Get the number of transformer blocks in the model."""
-        if hasattr(self.transformer, "blocks"):
-            return len(self.transformer.blocks)
-        elif hasattr(self.transformer, "transformer_blocks"):
-            return len(self.transformer.transformer_blocks)
-        elif hasattr(self.transformer, "layers"):
-            return len(self.transformer.layers)
-        else:
-            raise ValueError("Cannot determine number of transformer blocks")
 
     @property
     def guidance_scale(self):
@@ -1062,10 +1065,10 @@ class LongSanaVideoPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
         num_chunks = len(chunk_indices) - 1
 
         # Get number of transformer blocks
-        num_blocks = self._get_num_transformer_blocks()
+        num_blocks = self.transformer.config.num_layers
 
         # Initialize KV cache for all chunks
-        kv_cache = self._initialize_kv_cache(num_chunks, num_blocks)
+        kv_cache = LongSanaKvCache(num_chunks=num_chunks, num_blocks=num_blocks)
 
         # Output tensor to store denoised results
         output = torch.zeros_like(latents)
@@ -1081,7 +1084,9 @@ class LongSanaVideoPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
             local_latent = latents[:, :, start_f:end_f].clone()
 
             # Accumulate KV cache from previous chunks
-            chunk_kv_cache = self._accumulate_kv_cache(kv_cache, chunk_idx, num_blocks)
+            chunk_kv_cache = kv_cache.get_accumulated_chunk_cache(chunk_idx, num_cached_blocks=self.num_cached_blocks)
+            for block_cache in chunk_kv_cache:
+                block_cache.disable_save()
 
             # Multi-step denoising for this chunk
             with self.progress_bar(total=len(denoising_step_list)) as progress_bar:
@@ -1098,36 +1103,18 @@ class LongSanaVideoPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
                     t = torch.tensor([current_timestep], device=device, dtype=torch.long)
                     timestep = t.expand(latent_model_input.shape[0])
 
-                    # Forward pass through transformer with KV cache
-                    transformer_kwargs = {
-                        "encoder_hidden_states": prompt_embeds.to(dtype=transformer_dtype),
-                        "encoder_attention_mask": prompt_attention_mask,
-                        "timestep": timestep,
-                        "return_dict": False,
-                        "save_kv_cache": False,  # Don't save during denoising steps
-                        "kv_cache": chunk_kv_cache,  # Pass accumulated KV cache
-                    }
-
-                    if self.attention_kwargs is not None:
-                        transformer_kwargs["attention_kwargs"] = self.attention_kwargs
 
                     # Predict flow
-                    model_output = self.transformer(
+                    flow_pred, _ = self.transformer(
                         latent_model_input.to(dtype=transformer_dtype),
-                        **transformer_kwargs,
+                        encoder_hidden_states=prompt_embeds.to(dtype=transformer_dtype),
+                        encoder_attention_mask=prompt_attention_mask,
+                        timestep=timestep,
+                        return_dict=False,
+                        kv_caches=chunk_kv_cache,
+                        attention_kwargs=self.attention_kwargs,
                     )
 
-                    # Handle different output formats
-                    if isinstance(model_output, tuple):
-                        if len(model_output) == 2:
-                            flow_pred, updated_kv_cache = model_output
-                            # Update chunk_kv_cache with new values
-                            if updated_kv_cache is not None:
-                                chunk_kv_cache = updated_kv_cache
-                        else:
-                            flow_pred = model_output[0]
-                    else:
-                        flow_pred = model_output
 
                     flow_pred = flow_pred.float()
 
@@ -1191,29 +1178,21 @@ class LongSanaVideoPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
                 latent_for_cache = output[:, :, start_f:end_f]
                 timestep_zero = torch.zeros(latent_for_cache.shape[0], device=device, dtype=torch.long)
 
-                cache_kwargs = {
-                    "encoder_hidden_states": prompt_embeds.to(dtype=transformer_dtype),
-                    "encoder_attention_mask": prompt_attention_mask,
-                    "timestep": timestep_zero,
-                    "return_dict": False,
-                    "save_kv_cache": True,  # Enable saving during cache update
-                    "kv_cache": chunk_kv_cache,
-                }
-
-                if self.attention_kwargs is not None:
-                    cache_kwargs["attention_kwargs"] = self.attention_kwargs
+                for block_cache in chunk_kv_cache:
+                    block_cache.enable_save()
 
                 # Forward pass to update KV cache
-                cache_output = self.transformer(
+                _, chunk_kv_cache = self.transformer(
                     latent_for_cache.to(dtype=transformer_dtype),
-                    **cache_kwargs,
+                    encoder_hidden_states=prompt_embeds.to(dtype=transformer_dtype),
+                    encoder_attention_mask=prompt_attention_mask,
+                    timestep=timestep_zero,
+                    return_dict=False,
+                    kv_caches=chunk_kv_cache,
+                    attention_kwargs=self.attention_kwargs,
                 )
 
-                # Extract updated KV cache if returned
-                if isinstance(cache_output, tuple) and len(cache_output) == 2:
-                    _, updated_kv_cache = cache_output
-                    if updated_kv_cache is not None:
-                        kv_cache[chunk_idx] = updated_kv_cache
+                kv_cache.update_chunk_cache(chunk_idx, chunk_kv_cache)
 
                 if XLA_AVAILABLE:
                     xm.mark_step()
