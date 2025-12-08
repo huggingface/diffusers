@@ -29,6 +29,7 @@ _TEACACHE_HOOK = "teacache"
 # Model-specific polynomial coefficients from TeaCache paper/reference implementations
 _MODEL_COEFFICIENTS = {
     "Flux": [4.98651651e02, -2.83781631e02, 5.58554382e01, -3.82021401e00, 2.64230861e-01],
+    "FluxKontext": [-1.04655119e03, 3.12563399e02, -1.69500694e01, 4.10995971e-01, 3.74537863e-02],
     "Mochi": [-3.51241319e03, 8.11675948e02, -6.09400215e01, 2.42429681e00, 3.05291719e-03],
     "Lumina2": [393.76566581, -603.50993606, 209.10239044, -23.00726601, 0.86377344],
     "CogVideoX": [
@@ -70,23 +71,59 @@ def _cogvideox_modulated_input_extractor(module, hidden_states, timestep_emb):
     return timestep_emb
 
 
+# Extractor registry - maps model types to extraction functions
+# Multiple model variants can share the same extractor
+# Order matters: more specific variants first (e.g., CogVideoX1.5-5B-I2V before CogVideoX)
+_EXTRACTOR_REGISTRY = {
+    "FluxKontext": _flux_modulated_input_extractor,
+    "Flux": _flux_modulated_input_extractor,
+    "Mochi": _mochi_modulated_input_extractor,
+    "Lumina2": _lumina2_modulated_input_extractor,
+    "CogVideoX1.5-5B-I2V": _cogvideox_modulated_input_extractor,
+    "CogVideoX1.5-5B": _cogvideox_modulated_input_extractor,
+    "CogVideoX-2b": _cogvideox_modulated_input_extractor,
+    "CogVideoX-5b": _cogvideox_modulated_input_extractor,
+    "CogVideoX": _cogvideox_modulated_input_extractor,
+}
+
+
 def _auto_detect_extractor(module):
-    """Auto-detect and return appropriate extractor based on model type."""
-    module_class_name = module.__class__.__name__
-    if "Flux" in module_class_name:
-        return _flux_modulated_input_extractor
-    elif "Mochi" in module_class_name:
-        return _mochi_modulated_input_extractor
-    elif "Lumina2" in module_class_name:
-        return _lumina2_modulated_input_extractor
-    elif "CogVideoX" in module_class_name:
-        return _cogvideox_modulated_input_extractor
-    # Default to FLUX for backward compatibility
-    logger.warning(
-        f"TeaCache: Unknown model type {module_class_name}, defaulting to FLUX extractor. "
-        f"Results may be incorrect. Please provide extract_modulated_input_fn explicitly."
-    )
-    return _flux_modulated_input_extractor
+    """Auto-detect and return appropriate extractor."""
+    return _EXTRACTOR_REGISTRY[_auto_detect_model_type(module)]
+
+
+def _auto_detect_model_type(module):
+    """Auto-detect model type from class name and config path."""
+    class_name = module.__class__.__name__
+    config_path = getattr(getattr(module, "config", None), "_name_or_path", "").lower()
+    
+    # Check config path first (for variants), then class name (ordered most specific first)
+    for model_type in _EXTRACTOR_REGISTRY:
+        if model_type.lower() in config_path or model_type in class_name:
+            if model_type not in _MODEL_COEFFICIENTS:
+                raise ValueError(f"TeaCache: No coefficients for '{model_type}'")
+            return model_type
+    
+    raise ValueError(f"TeaCache: Unsupported model '{class_name}'. Supported: {', '.join(_EXTRACTOR_REGISTRY)}")
+
+
+def _get_model_coefficients(model_type):
+    """Get polynomial coefficients for a specific model type.
+    
+    Args:
+        model_type: Model type string (e.g., "Flux", "Mochi")
+        
+    Raises:
+        ValueError: If coefficients not found for model type.
+    """
+    if model_type not in _MODEL_COEFFICIENTS:
+        available_models = ", ".join(_MODEL_COEFFICIENTS.keys())
+        raise ValueError(
+            f"TeaCache: No coefficients found for model type '{model_type}'. "
+            f"Available models: {available_models}. "
+            f"Please provide coefficients explicitly in TeaCacheConfig."
+        )
+    return _MODEL_COEFFICIENTS[model_type]
 
 
 @dataclass
@@ -98,8 +135,8 @@ class TeaCacheConfig:
     by reusing transformer block computations when consecutive timestep embeddings are similar. It uses polynomial
     rescaling of L1 distances between modulated inputs to intelligently decide when to cache.
 
-    Currently supports: FLUX, Mochi, Lumina2, and CogVideoX models. Model type is auto-detected, and model-specific
-    polynomial coefficients are automatically applied.
+    Currently supports: FLUX, FLUX-Kontext, Mochi, Lumina2, and CogVideoX models. Model type is auto-detected, and 
+    model-specific polynomial coefficients are automatically applied.
 
     Args:
         rel_l1_thresh (`float`, defaults to `0.2`):
@@ -172,20 +209,14 @@ class TeaCacheConfig:
                 f"Try 0.25 for 1.5x speedup or 0.6 for 2x speedup."
             )
         if self.rel_l1_thresh < 0.05:
-            import warnings
-
-            warnings.warn(
+            logger.warning(
                 f"rel_l1_thresh={self.rel_l1_thresh} is very low and may result in minimal caching. "
-                f"Consider using values between 0.1 and 0.3 for optimal performance.",
-                UserWarning,
+                f"Consider using values between 0.1 and 0.3 for optimal performance."
             )
         if self.rel_l1_thresh > 1.0:
-            import warnings
-
-            warnings.warn(
+            logger.warning(
                 f"rel_l1_thresh={self.rel_l1_thresh} is very high and may cause quality degradation. "
-                f"Consider using values between 0.1 and 0.6 for better quality-speed tradeoff.",
-                UserWarning,
+                f"Consider using values between 0.1 and 0.6 for better quality-speed tradeoff."
             )
 
         # Set default coefficients if not provided (will be auto-detected in hook initialization)
@@ -326,47 +357,31 @@ class TeaCacheHook(ModelHook):
     def initialize_hook(self, module):
         self.state_manager.set_context("teacache")
 
-        # Auto-detect model type and extractor
-        module_class_name = module.__class__.__name__
+        # Strict auto-detection
         if self.config.extract_modulated_input_fn is None:
-            self.extractor_fn = _auto_detect_extractor(module)
-            # Detect model type for coefficient auto-detection
-            if "Flux" in module_class_name:
-                self.model_type = "Flux"
-            elif "Mochi" in module_class_name:
-                self.model_type = "Mochi"
-            elif "Lumina2" in module_class_name:
-                self.model_type = "Lumina2"
-            elif "CogVideoX" in module_class_name:
-                # Try to detect specific CogVideoX variant from config
-                if hasattr(module, "config") and hasattr(module.config, "_name_or_path"):
-                    name_or_path = module.config._name_or_path.lower()
-                    if "1.5" in name_or_path or "1-5" in name_or_path:
-                        if "i2v" in name_or_path:
-                            self.model_type = "CogVideoX1.5-5B-I2V"
-                        else:
-                            self.model_type = "CogVideoX1.5-5B"
-                    elif "2b" in name_or_path:
-                        self.model_type = "CogVideoX-2b"
-                    elif "5b" in name_or_path:
-                        self.model_type = "CogVideoX-5b"
-                    else:
-                        self.model_type = "CogVideoX"  # Default to generic 5b
-                else:
-                    self.model_type = "CogVideoX"  # Default to generic 5b
-            else:
-                self.model_type = "Flux"  # Default
+            self.extractor_fn = _auto_detect_extractor(module)  # Raises if unsupported
+            self.model_type = _auto_detect_model_type(module)   # Raises if unsupported
         else:
             self.extractor_fn = self.config.extract_modulated_input_fn
-            self.model_type = "Flux"  # Default if custom extractor provided
+            # Still try to detect model type for coefficients
+            try:
+                self.model_type = _auto_detect_model_type(module)
+            except ValueError:
+                self.model_type = None  # User provided custom extractor
+                logger.warning(
+                    f"TeaCache: Using custom extractor for {module.__class__.__name__}. "
+                    f"Coefficients must be provided explicitly."
+                )
 
-        # Auto-set coefficients from registry if not explicitly provided
-        if self.config.coefficients is None or (
-            self.model_type in _MODEL_COEFFICIENTS and self.config.coefficients == _MODEL_COEFFICIENTS.get("Flux")
-        ):
-            if self.model_type in _MODEL_COEFFICIENTS:
-                self.config.coefficients = _MODEL_COEFFICIENTS[self.model_type]
-                logger.info(f"TeaCache: Auto-detected {self.model_type} coefficients")
+        # Strict coefficient matching
+        if self.config.coefficients is None:
+            if self.model_type is None:
+                raise ValueError(
+                    "TeaCache: Cannot auto-detect coefficients when using custom extractor. "
+                    "Please provide coefficients explicitly in TeaCacheConfig."
+                )
+            self.config.coefficients = _get_model_coefficients(self.model_type)  # Raises if not found
+            logger.info(f"TeaCache: Using {self.model_type} coefficients")
 
         # Initialize rescale function with final coefficients
         self.rescale_func = np.poly1d(self.config.coefficients)
