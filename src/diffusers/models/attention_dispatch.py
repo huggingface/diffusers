@@ -1041,43 +1041,66 @@ def _all_to_all_single(x: torch.Tensor, group) -> torch.Tensor:
     return x
 
 def _all_to_all_dim_exchange(x: torch.Tensor, scatter_idx: int = 2, gather_idx: int = 1, group=None) -> torch.Tensor:
+    """
+    Perform dimension sharding / reassembly across processes using _all_to_all_single.
+
+    This utility reshapes and redistributes tensor `x` across the given process group,
+    across sequence dimension or head dimension flexibly by accepting scatter_idx and gather_idx.
+
+    Args:
+        x (torch.Tensor):
+            Input tensor. Expected shapes:
+            - When scatter_idx=2, gather_idx=1: (batch_size, seq_len_local, num_heads, head_dim)
+            - When scatter_idx=1, gather_idx=2: (batch_size, seq_len, num_heads_local, head_dim)
+        scatter_idx (int) :
+            Dimension along which the tensor is partitioned before all-to-all.
+        gather_idx (int):
+            Dimension along which the output is reassembled after all-to-all.
+        group :
+            Distributed process group for the Ulysses group.
+
+    Returns:
+        torch.Tensor: Tensor with globally exchanged dimensions.
+            - For (scatter_idx=2 → gather_idx=1): (batch_size, seq_len, num_heads_local, head_dim)
+            - For (scatter_idx=1 → gather_idx=2): (batch_size, seq_len_local, num_heads, head_dim)
+    """
     group_world_size = torch.distributed.get_world_size(group)
 
     if scatter_idx == 2 and gather_idx == 1:
-        B, S_LOCAL, H, D = x.shape
-        S = S_LOCAL * group_world_size
-        H_LOCAL = H // group_world_size
+        #Used before Ulysses sequence parallel (SP) attention. Scatters the gathers sequence
+        #dimension and scatters head dimension
+        batch_size, seq_len_local, num_heads, head_dim = x.shape
+        seq_len = seq_len_local * group_world_size
+        num_heads_local = num_heads // group_world_size
 
         # B, S_LOCAL, H, D -> group_world_size, S_LOCAL, B, H_LOCAL, D
-        x_temp = x.reshape(B, S_LOCAL, group_world_size, H_LOCAL, D).transpose(0, 2).contiguous()
+        x_temp = x.reshape(batch_size, seq_len_local, group_world_size, num_heads_local, head_dim).transpose(0, 2).contiguous()
         
 
         if group_world_size >1:
-            #maybe here need to use the _all_to_all_single helper to avoid contiguity issues
             out = _all_to_all_single(x_temp, group=group)
-            #out = _wait_tensor(out)
         else:
             out = x_temp
         # group_world_size, S_LOCAL, B, H_LOCAL, D -> B, S, H_LOCAL, D
-        out = out.reshape(S, B, H_LOCAL, D).permute(1, 0, 2, 3).contiguous()
-        out = out.reshape(B, S, H_LOCAL, D)
+        out = out.reshape(seq_len, batch_size, num_heads_local, head_dim).permute(1, 0, 2, 3).contiguous()
+        out = out.reshape(batch_size, seq_len, num_heads_local, head_dim)
         return out
     elif scatter_idx == 1 and gather_idx == 2:
-        B, S, H_LOCAL, D = x.shape
-        H = H_LOCAL * group_world_size
-        S_LOCAL = S // group_world_size
+        #Used after ulysses sequence parallel in unified SP. gathers the head dimension
+        #scatters back the sequence dimension.
+        batch_size, seq_len, num_heads_local, head_dim = x.shape
+        num_heads = num_heads_local * group_world_size
+        seq_len_local = seq_len // group_world_size
 
         #B, S, H_LOCAL, D -> group_world_size, H_LOCAL, S_LOCAL, B, D
-        x_temp = x.reshape(B, group_world_size, S_LOCAL, H_LOCAL, D).permute(1, 3, 2, 0, 4).reshape(group_world_size, H_LOCAL, S_LOCAL, B, D)
+        x_temp = x.reshape(batch_size, group_world_size, seq_len_local, num_heads_local, head_dim).permute(1, 3, 2, 0, 4).reshape(group_world_size, num_heads_local, seq_len_local, batch_size, head_dim)
         
         if group_world_size >1:
-            #maybe here need to use the _all_to_all_single helper to avoid contiguity issues
             output = _all_to_all_single(x_temp, group)
-            #output = _wait_tensor(output)
         else:
             output = x_temp
-        output = output.reshape(H, S_LOCAL, B, D).transpose(0, 2).contiguous()
-        output = output.reshape(B, S_LOCAL, H, D)
+        output = output.reshape(num_heads, seq_len_local, batch_size, head_dim).transpose(0, 2).contiguous()
+        output = output.reshape(batch_size, seq_len_local, num_heads, head_dim)
         return output
     else:
         raise ValueError("Invalid scatter/gather indices for _all_to_all_dim_exchange.")
@@ -1334,14 +1357,17 @@ def TemplatedUnifiedAttention(
     forward_op,
     backward_op,
     _parallel_config: Optional["ParallelConfig"] = None,
+    scatter_idx: int =2, 
+    gather_idx: int =1,
     ):
+    """
+    Unified Sequence Parallelism attention combining Ulysses and ring attention.
+    See: https://arxiv.org/abs/2405.07719
+    """
     ulysses_mesh = _parallel_config.context_parallel_config._ulysses_mesh
     ulysses_group = ulysses_mesh.get_group()
     ring_mesh = _parallel_config.context_parallel_config._ring_mesh
     ring_group = ring_mesh.get_group()
-    #hardcoded for now
-    scatter_idx = 2
-    gather_idx = 1
 
     query = SeqAllToAllDim.apply(ulysses_group, query, scatter_idx, gather_idx)
     key = SeqAllToAllDim.apply(ulysses_group, key, scatter_idx, gather_idx)
