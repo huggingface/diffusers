@@ -74,6 +74,7 @@ class AutoencoderKL(
 
     _supports_gradient_checkpointing = True
     _no_split_modules = ["BasicTransformerBlock", "ResnetBlock2D"]
+    _group_offload_block_modules = ["quant_conv", "post_quant_conv", "encoder", "decoder"]
 
     @register_to_config
     def __init__(

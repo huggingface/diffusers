@@ -11,7 +11,7 @@ specific language governing permissions and limitations under the License.
 
 [Kandinsky 5.0](https://arxiv.org/abs/2511.14993) is a family of diffusion models for Video & Image generation. 
 
-Kandinsky 5.0 Image Lite is a lightweight image generation model (6B parameters) 
+Kandinsky 5.0 Image Lite is a lightweight image generation model (6B parameters).
 
 The model introduces several key innovations:
 - **Latent diffusion pipeline** with **Flow Matching** for improved training stability
@@ -21,10 +21,14 @@ The model introduces several key innovations:
 
 The original codebase can be found at [kandinskylab/Kandinsky-5](https://github.com/kandinskylab/Kandinsky-5).
 
+> [!TIP]
+> Check out the [Kandinsky Lab](https://huggingface.co/kandinskylab) organization on the Hub for the official model checkpoints for text-to-video generation, including pretrained, SFT, no-CFG, and distilled variants.
+
 
 ## Available Models
 
 Kandinsky 5.0 Image Lite:
+
 | model_id | Description | Use Cases |
 |------------|-------------|-----------|
 | [**kandinskylab/Kandinsky-5.0-T2I-Lite-sft-Diffusers**](https://huggingface.co/kandinskylab/Kandinsky-5.0-T2I-Lite-sft-Diffusers) | 6B image Supervised Fine-Tuned model | Highest generation quality |

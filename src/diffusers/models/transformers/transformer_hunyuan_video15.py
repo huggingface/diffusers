@@ -184,18 +184,31 @@ class HunyuanVideo15TimeEmbedding(nn.Module):
             The dimension of the output embedding.
     """
 
-    def __init__(self, embedding_dim: int):
+    def __init__(self, embedding_dim: int, use_meanflow: bool = False):
         super().__init__()
 
         self.time_proj = Timesteps(num_channels=256, flip_sin_to_cos=True, downscale_freq_shift=0)
         self.timestep_embedder = TimestepEmbedding(in_channels=256, time_embed_dim=embedding_dim)
 
+        self.use_meanflow = use_meanflow
+        self.time_proj_r = None
+        self.timestep_embedder_r = None
+        if use_meanflow:
+            self.time_proj_r = Timesteps(num_channels=256, flip_sin_to_cos=True, downscale_freq_shift=0)
+            self.timestep_embedder_r = TimestepEmbedding(in_channels=256, time_embed_dim=embedding_dim)
+
     def forward(
         self,
         timestep: torch.Tensor,
+        timestep_r: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         timesteps_proj = self.time_proj(timestep)
         timesteps_emb = self.timestep_embedder(timesteps_proj.to(dtype=timestep.dtype))
+
+        if timestep_r is not None:
+            timesteps_proj_r = self.time_proj_r(timestep_r)
+            timesteps_emb_r = self.timestep_embedder_r(timesteps_proj_r.to(dtype=timestep.dtype))
+            timesteps_emb = timesteps_emb + timesteps_emb_r
 
         return timesteps_emb
 
@@ -567,6 +580,7 @@ class HunyuanVideo15Transformer3DModel(
         # YiYi Notes: config based on target_size_config https://github.com/yiyixuxu/hy15/blob/main/hyvideo/pipelines/hunyuan_video_pipeline.py#L205
         target_size: int = 640,  # did not name sample_size since it is in pixel spaces
         task_type: str = "i2v",
+        use_meanflow: bool = False,
     ) -> None:
         super().__init__()
 
@@ -582,7 +596,7 @@ class HunyuanVideo15Transformer3DModel(
         )
         self.context_embedder_2 = HunyuanVideo15ByT5TextProjection(text_embed_2_dim, 2048, inner_dim)
 
-        self.time_embed = HunyuanVideo15TimeEmbedding(inner_dim)
+        self.time_embed = HunyuanVideo15TimeEmbedding(inner_dim, use_meanflow=use_meanflow)
 
         self.cond_type_embed = nn.Embedding(3, inner_dim)
 
@@ -612,6 +626,7 @@ class HunyuanVideo15Transformer3DModel(
         timestep: torch.LongTensor,
         encoder_hidden_states: torch.Tensor,
         encoder_attention_mask: torch.Tensor,
+        timestep_r: Optional[torch.LongTensor] = None,
         encoder_hidden_states_2: Optional[torch.Tensor] = None,
         encoder_attention_mask_2: Optional[torch.Tensor] = None,
         image_embeds: Optional[torch.Tensor] = None,
@@ -643,7 +658,7 @@ class HunyuanVideo15Transformer3DModel(
         image_rotary_emb = self.rope(hidden_states)
 
         # 2. Conditional embeddings
-        temb = self.time_embed(timestep)
+        temb = self.time_embed(timestep, timestep_r=timestep_r)
 
         hidden_states = self.x_embedder(hidden_states)
 

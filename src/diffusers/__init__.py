@@ -169,10 +169,12 @@ else:
             "LayerSkipConfig",
             "PyramidAttentionBroadcastConfig",
             "SmoothedEnergyGuidanceConfig",
+            "TaylorSeerCacheConfig",
             "apply_faster_cache",
             "apply_first_block_cache",
             "apply_layer_skip",
             "apply_pyramid_attention_broadcast",
+            "apply_taylorseer_cache",
         ]
     )
     _import_structure["models"].extend(
@@ -660,6 +662,7 @@ else:
             "WuerstchenCombinedPipeline",
             "WuerstchenDecoderPipeline",
             "WuerstchenPriorPipeline",
+            "ZImageImg2ImgPipeline",
             "ZImagePipeline",
         ]
     )
@@ -899,10 +902,12 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             LayerSkipConfig,
             PyramidAttentionBroadcastConfig,
             SmoothedEnergyGuidanceConfig,
+            TaylorSeerCacheConfig,
             apply_faster_cache,
             apply_first_block_cache,
             apply_layer_skip,
             apply_pyramid_attention_broadcast,
+            apply_taylorseer_cache,
         )
         from .models import (
             AllegroTransformer3DModel,
@@ -1356,6 +1361,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             WuerstchenCombinedPipeline,
             WuerstchenDecoderPipeline,
             WuerstchenPriorPipeline,
+            ZImageImg2ImgPipeline,
             ZImagePipeline,
         )
 
