@@ -26,8 +26,41 @@ specific language governing permissions and limitations under the License.
 
 Z-Image-Turbo is a distilled version of Z-Image that matches or exceeds leading competitors with only 8 NFEs (Number of Function Evaluations). It offers sub-second inference latency on enterprise-grade H800 GPUs and fits comfortably within 16G VRAM consumer devices. It excels in photorealistic image generation, bilingual text rendering (English & Chinese), and robust instruction adherence.
 
+## Image-to-image
+
+Use [`ZImageImg2ImgPipeline`] to transform an existing image based on a text prompt.
+
+```python
+import torch
+from diffusers import ZImageImg2ImgPipeline
+from diffusers.utils import load_image
+
+pipe = ZImageImg2ImgPipeline.from_pretrained("Tongyi-MAI/Z-Image-Turbo", torch_dtype=torch.bfloat16)
+pipe.to("cuda")
+
+url = "https://raw.githubusercontent.com/CompVis/stable-diffusion/main/assets/stable-samples/img2img/sketch-mountains-input.jpg"
+init_image = load_image(url).resize((1024, 1024))
+
+prompt = "A fantasy landscape with mountains and a river, detailed, vibrant colors"
+image = pipe(
+    prompt,
+    image=init_image,
+    strength=0.6,
+    num_inference_steps=9,
+    guidance_scale=0.0,
+    generator=torch.Generator("cuda").manual_seed(42),
+).images[0]
+image.save("zimage_img2img.png")
+```
+
 ## ZImagePipeline
 
 [[autodoc]] ZImagePipeline
+	- all
+	- __call__
+
+## ZImageImg2ImgPipeline
+
+[[autodoc]] ZImageImg2ImgPipeline
 	- all
 	- __call__

@@ -69,6 +69,11 @@ TRANSFORMER_CONFIGS = {
         "target_size": 960,
         "task_type": "i2v",
     },
+    "480p_i2v_step_distilled": {
+        "target_size": 640,
+        "task_type": "i2v",
+        "use_meanflow": True,
+    },
 }
 
 SCHEDULER_CONFIGS = {
@@ -91,6 +96,9 @@ SCHEDULER_CONFIGS = {
         "shift": 5.0,
     },
     "720p_i2v_distilled": {
+        "shift": 7.0,
+    },
+    "480p_i2v_step_distilled": {
         "shift": 7.0,
     },
 }
@@ -117,6 +125,9 @@ GUIDANCE_CONFIGS = {
     "720p_i2v_distilled": {
         "guidance_scale": 1.0,
     },
+    "480p_i2v_step_distilled": {
+        "guidance_scale": 1.0,
+    },
 }
 
 
@@ -126,7 +137,7 @@ def swap_scale_shift(weight):
     return new_weight
 
 
-def convert_hyvideo15_transformer_to_diffusers(original_state_dict):
+def convert_hyvideo15_transformer_to_diffusers(original_state_dict, config=None):
     """
     Convert HunyuanVideo 1.5 original checkpoint to Diffusers format.
     """
@@ -141,6 +152,20 @@ def convert_hyvideo15_transformer_to_diffusers(original_state_dict):
         "time_in.mlp.2.weight"
     )
     converted_state_dict["time_embed.timestep_embedder.linear_2.bias"] = original_state_dict.pop("time_in.mlp.2.bias")
+
+    if config.use_meanflow:
+        converted_state_dict["time_embed.timestep_embedder_r.linear_1.weight"] = original_state_dict.pop(
+            "time_r_in.mlp.0.weight"
+        )
+        converted_state_dict["time_embed.timestep_embedder_r.linear_1.bias"] = original_state_dict.pop(
+            "time_r_in.mlp.0.bias"
+        )
+        converted_state_dict["time_embed.timestep_embedder_r.linear_2.weight"] = original_state_dict.pop(
+            "time_r_in.mlp.2.weight"
+        )
+        converted_state_dict["time_embed.timestep_embedder_r.linear_2.bias"] = original_state_dict.pop(
+            "time_r_in.mlp.2.bias"
+        )
 
     # 2. context_embedder.time_text_embed.timestep_embedder <- txt_in.t_embedder
     converted_state_dict["context_embedder.time_text_embed.timestep_embedder.linear_1.weight"] = (
@@ -627,7 +652,7 @@ def convert_transformer(args):
     config = TRANSFORMER_CONFIGS[args.transformer_type]
     with init_empty_weights():
         transformer = HunyuanVideo15Transformer3DModel(**config)
-    state_dict = convert_hyvideo15_transformer_to_diffusers(original_state_dict)
+    state_dict = convert_hyvideo15_transformer_to_diffusers(original_state_dict, config=transformer.config)
     transformer.load_state_dict(state_dict, strict=True, assign=True)
 
     return transformer

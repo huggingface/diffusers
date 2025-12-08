@@ -852,6 +852,15 @@ class HunyuanVideo15ImageToVideoPipeline(DiffusionPipeline):
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
                 timestep = t.expand(latent_model_input.shape[0]).to(latent_model_input.dtype)
 
+                if self.transformer.config.use_meanflow:
+                    if i == len(timesteps) - 1:
+                        timestep_r = torch.tensor([0.0], device=device)
+                    else:
+                        timestep_r = timesteps[i + 1]
+                    timestep_r = timestep_r.expand(latents.shape[0]).to(latents.dtype)
+                else:
+                    timestep_r = None
+
                 # Step 1: Collect model inputs needed for the guidance method
                 # conditional inputs should always be first element in the tuple
                 guider_inputs = {
@@ -893,6 +902,7 @@ class HunyuanVideo15ImageToVideoPipeline(DiffusionPipeline):
                             hidden_states=latent_model_input,
                             image_embeds=image_embeds,
                             timestep=timestep,
+                            timestep_r=timestep_r,
                             attention_kwargs=self.attention_kwargs,
                             return_dict=False,
                             **cond_kwargs,
