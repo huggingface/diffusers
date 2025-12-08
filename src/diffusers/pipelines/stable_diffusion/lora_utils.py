@@ -59,18 +59,18 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
 
         All kwargs are forwarded to `self.lora_state_dict`.
 
-        See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`] for more details on how the state dict is
-        loaded.
+        See [`~pipelines.stable_diffusion.lora_utils.StableDiffusionLoraLoaderMixin.lora_state_dict`] for more details
+        on how the state dict is loaded.
 
-        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_unet`] for more details on how the state dict is
-        loaded into `self.unet`.
+        See [`~pipelines.stable_diffusion.lora_utils.StableDiffusionLoraLoaderMixin.load_lora_into_unet`] for more
+        details on how the state dict is loaded into `self.unet`.
 
-        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_text_encoder`] for more details on how the state
-        dict is loaded into `self.text_encoder`.
+        See [`~pipelines.stable_diffusion.lora_utils.StableDiffusionLoraLoaderMixin.load_lora_into_text_encoder`] for
+        more details on how the state dict is loaded into `self.text_encoder`.
 
         Parameters:
             pretrained_model_name_or_path_or_dict (`str` or `os.PathLike` or `dict`):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`].
+                See [`~pipelines.stable_diffusion.lora_utils.StableDiffusionLoraLoaderMixin.lora_state_dict`].
             adapter_name (`str`, *optional*):
                 Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
                 `default_{i}` where i is the total number of adapters being loaded.
@@ -101,7 +101,7 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
                 limitations to this technique, which are documented here:
                 https://huggingface.co/docs/peft/main/en/package_reference/hotswap
             kwargs (`dict`, *optional*):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`].
+                See [`~pipelines.stable_diffusion.lora_utils.StableDiffusionLoraLoaderMixin.lora_state_dict`].
         """
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
@@ -292,7 +292,7 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
                 Speed up model loading only loading the pretrained LoRA weights and not initializing the random
                 weights.
             hotswap (`bool`, *optional*):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`].
+                See [`~pipelines.stable_diffusion.lora_utils.StableDiffusionLoraLoaderMixin.load_lora_weights`].
             metadata (`dict`):
                 Optional LoRA adapter metadata. When supplied, the `LoraConfig` arguments of `peft` won't be derived
                 from the state dict.
@@ -359,7 +359,7 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
                 Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
                 weights.
             hotswap (`bool`, *optional*):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`].
+                See [`~pipelines.stable_diffusion.lora_utils.StableDiffusionLoraLoaderMixin.load_lora_weights`].
             metadata (`dict`):
                 Optional LoRA adapter metadata. When supplied, the `LoraConfig` arguments of `peft` won't be derived
                 from the state dict.

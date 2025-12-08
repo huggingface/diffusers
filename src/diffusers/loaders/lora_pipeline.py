@@ -154,7 +154,8 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
         **kwargs,
     ):
         """
-        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`] for more details.
+        See [`~pipelines.stable_diffusion.lora_utils.StableDiffusionLoraLoaderMixin.load_lora_weights`] for more
+        details.
         """
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
@@ -366,7 +367,7 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
                 Speed up model loading only loading the pretrained LoRA weights and not initializing the random
                 weights.
             hotswap (`bool`, *optional*):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`].
+                See [`~pipelines.stable_diffusion.lora_utils.StableDiffusionLoraLoaderMixin.load_lora_weights`].
             metadata (`dict`):
                 Optional LoRA adapter metadata. When supplied, the `LoraConfig` arguments of `peft` won't be derived
                 from the state dict.
@@ -434,7 +435,7 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
                 Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
                 weights.
             hotswap (`bool`, *optional*):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`].
+                See [`~pipelines.stable_diffusion.lora_utils.StableDiffusionLoraLoaderMixin.load_lora_weights`].
             metadata (`dict`):
                 Optional LoRA adapter metadata. When supplied, the `LoraConfig` arguments of `peft` won't be derived
                 from the state dict.
@@ -469,7 +470,8 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
         text_encoder_2_lora_adapter_metadata=None,
     ):
         r"""
-        See [`~loaders.StableDiffusionLoraLoaderMixin.save_lora_weights`] for more information.
+        See [`~pipelines.stable_diffusion.lora_utils.StableDiffusionLoraLoaderMixin.save_lora_weights`] for more
+        information.
         """
         lora_layers = {}
         lora_metadata = {}
@@ -510,7 +512,7 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
         **kwargs,
     ):
         r"""
-        See [`~loaders.StableDiffusionLoraLoaderMixin.fuse_lora`] for more details.
+        See [`~pipelines.stable_diffusion.lora_utils.StableDiffusionLoraLoaderMixin.fuse_lora`] for more details.
         """
         super().fuse_lora(
             components=components,
@@ -522,7 +524,7 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
 
     def unfuse_lora(self, components: List[str] = ["unet", "text_encoder", "text_encoder_2"], **kwargs):
         r"""
-        See [`~loaders.StableDiffusionLoraLoaderMixin.unfuse_lora`] for more details.
+        See [`~pipelines.stable_diffusion.lora_utils.StableDiffusionLoraLoaderMixin.unfuse_lora`] for more details.
         """
         super().unfuse_lora(components=components, **kwargs)
 
@@ -548,7 +550,7 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
         **kwargs,
     ):
         r"""
-        See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`] for more details.
+        See [`~pipelines.stable_diffusion.lora_utils.StableDiffusionLoraLoaderMixin.lora_state_dict`] for more details.
         """
         # Load the main state dict first which has the LoRA layers for either of
         # transformer and text encoder or both.
@@ -602,7 +604,8 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
         **kwargs,
     ):
         """
-        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`] for more details.
+        See [`~pipelines.stable_diffusion.lora_utils.StableDiffusionLoraLoaderMixin.load_lora_weights`] for more
+        details.
         """
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
@@ -671,7 +674,8 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
         metadata=None,
     ):
         """
-        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_unet`] for more details.
+        See [`~pipelines.stable_diffusion.lora_utils.StableDiffusionLoraLoaderMixin.load_lora_into_unet`] for more
+        details.
         """
         if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
             raise ValueError(
@@ -730,7 +734,7 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
                 Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
                 weights.
             hotswap (`bool`, *optional*):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`].
+                See [`~pipelines.stable_diffusion.lora_utils.StableDiffusionLoraLoaderMixin.load_lora_weights`].
             metadata (`dict`):
                 Optional LoRA adapter metadata. When supplied, the `LoraConfig` arguments of `peft` won't be derived
                 from the state dict.
@@ -766,7 +770,8 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
         text_encoder_2_lora_adapter_metadata=None,
     ):
         r"""
-        See [`~loaders.StableDiffusionLoraLoaderMixin.save_lora_weights`] for more information.
+        See [`~pipelines.stable_diffusion.lora_utils.StableDiffusionLoraLoaderMixin.save_lora_weights`] for more
+        information.
         """
         lora_layers = {}
         lora_metadata = {}
@@ -808,7 +813,7 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
         **kwargs,
     ):
         r"""
-        See [`~loaders.StableDiffusionLoraLoaderMixin.fuse_lora`] for more details.
+        See [`~pipelines.stable_diffusion.lora_utils.StableDiffusionLoraLoaderMixin.fuse_lora`] for more details.
         """
         super().fuse_lora(
             components=components,
@@ -821,7 +826,7 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
     # Copied from diffusers.loaders.lora_pipeline.StableDiffusionXLLoraLoaderMixin.unfuse_lora with unet->transformer
     def unfuse_lora(self, components: List[str] = ["transformer", "text_encoder", "text_encoder_2"], **kwargs):
         r"""
-        See [`~loaders.StableDiffusionLoraLoaderMixin.unfuse_lora`] for more details.
+        See [`~pipelines.stable_diffusion.lora_utils.StableDiffusionLoraLoaderMixin.unfuse_lora`] for more details.
         """
         super().unfuse_lora(components=components, **kwargs)
 
@@ -843,7 +848,7 @@ class AuraFlowLoraLoaderMixin(LoraBaseMixin):
         **kwargs,
     ):
         r"""
-        See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`] for more details.
+        See [`~pipelines.stable_diffusion.lora_utils.StableDiffusionLoraLoaderMixin.lora_state_dict`] for more details.
         """
         # Load the main state dict first which has the LoRA layers for either of
         # transformer and text encoder or both.
@@ -898,7 +903,8 @@ class AuraFlowLoraLoaderMixin(LoraBaseMixin):
         **kwargs,
     ):
         """
-        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`] for more details.
+        See [`~pipelines.stable_diffusion.lora_utils.StableDiffusionLoraLoaderMixin.load_lora_weights`] for more
+        details.
         """
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
@@ -944,7 +950,8 @@ class AuraFlowLoraLoaderMixin(LoraBaseMixin):
         metadata=None,
     ):
         """
-        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_unet`] for more details.
+        See [`~pipelines.stable_diffusion.lora_utils.StableDiffusionLoraLoaderMixin.load_lora_into_unet`] for more
+        details.
         """
         if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
             raise ValueError(
@@ -976,7 +983,8 @@ class AuraFlowLoraLoaderMixin(LoraBaseMixin):
         transformer_lora_adapter_metadata: Optional[dict] = None,
     ):
         r"""
-        See [`~loaders.StableDiffusionLoraLoaderMixin.save_lora_weights`] for more information.
+        See [`~pipelines.stable_diffusion.lora_utils.StableDiffusionLoraLoaderMixin.save_lora_weights`] for more
+        information.
         """
         lora_layers = {}
         lora_metadata = {}
@@ -1008,7 +1016,7 @@ class AuraFlowLoraLoaderMixin(LoraBaseMixin):
         **kwargs,
     ):
         r"""
-        See [`~loaders.StableDiffusionLoraLoaderMixin.fuse_lora`] for more details.
+        See [`~pipelines.stable_diffusion.lora_utils.StableDiffusionLoraLoaderMixin.fuse_lora`] for more details.
         """
         super().fuse_lora(
             components=components,
@@ -1021,7 +1029,7 @@ class AuraFlowLoraLoaderMixin(LoraBaseMixin):
     # Copied from diffusers.loaders.lora_pipeline.SanaLoraLoaderMixin.unfuse_lora
     def unfuse_lora(self, components: List[str] = ["transformer", "text_encoder"], **kwargs):
         r"""
-        See [`~loaders.StableDiffusionLoraLoaderMixin.unfuse_lora`] for more details.
+        See [`~pipelines.stable_diffusion.lora_utils.StableDiffusionLoraLoaderMixin.unfuse_lora`] for more details.
         """
         super().unfuse_lora(components=components, **kwargs)
 
@@ -1048,7 +1056,7 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
         **kwargs,
     ):
         r"""
-        See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`] for more details.
+        See [`~pipelines.stable_diffusion.lora_utils.StableDiffusionLoraLoaderMixin.lora_state_dict`] for more details.
         """
         # Load the main state dict first which has the LoRA layers for either of
         # transformer and text encoder or both.
@@ -1177,15 +1185,15 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
 
         All kwargs are forwarded to `self.lora_state_dict`.
 
-        See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`] for more details on how the state dict is
-        loaded.
+        See [`~pipelines.stable_diffusion.lora_utils.StableDiffusionLoraLoaderMixin.lora_state_dict`] for more details
+        on how the state dict is loaded.
 
-        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_transformer`] for more details on how the state
-        dict is loaded into `self.transformer`.
+        See [`~pipelines.stable_diffusion.lora_utils.StableDiffusionLoraLoaderMixin.load_lora_into_transformer`] for
+        more details on how the state dict is loaded into `self.transformer`.
 
         Parameters:
             pretrained_model_name_or_path_or_dict (`str` or `os.PathLike` or `dict`):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`].
+                See [`~pipelines.stable_diffusion.lora_utils.StableDiffusionLoraLoaderMixin.lora_state_dict`].
             adapter_name (`str`, *optional*):
                 Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
                 `default_{i}` where i is the total number of adapters being loaded.
@@ -1193,9 +1201,9 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
                 `Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
                 weights.
             hotswap (`bool`, *optional*):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`].
+                See [`~pipelines.stable_diffusion.lora_utils.StableDiffusionLoraLoaderMixin.load_lora_weights`].
             kwargs (`dict`, *optional*):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`].
+                See [`~pipelines.stable_diffusion.lora_utils.StableDiffusionLoraLoaderMixin.lora_state_dict`].
         """
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
@@ -1302,7 +1310,8 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
         hotswap: bool = False,
     ):
         """
-        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_unet`] for more details.
+        See [`~pipelines.stable_diffusion.lora_utils.StableDiffusionLoraLoaderMixin.load_lora_into_unet`] for more
+        details.
         """
         if low_cpu_mem_usage and not is_peft_version(">=", "0.13.1"):
             raise ValueError(
@@ -1415,7 +1424,7 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
                 Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
                 weights.
             hotswap (`bool`, *optional*):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`].
+                See [`~pipelines.stable_diffusion.lora_utils.StableDiffusionLoraLoaderMixin.load_lora_weights`].
             metadata (`dict`):
                 Optional LoRA adapter metadata. When supplied, the `LoraConfig` arguments of `peft` won't be derived
                 from the state dict.
@@ -1507,7 +1516,7 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
         **kwargs,
     ):
         r"""
-        See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`] for more details.
+        See [`~pipelines.stable_diffusion.lora_utils.StableDiffusionLoraLoaderMixin.lora_state_dict`] for more details.
         """
 
         transformer = getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer
@@ -1846,7 +1855,8 @@ class AmusedLoraLoaderMixin(StableDiffusionLoraLoaderMixin):
         hotswap: bool = False,
     ):
         """
-        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_unet`] for more details.
+        See [`~pipelines.stable_diffusion.lora_utils.StableDiffusionLoraLoaderMixin.load_lora_into_unet`] for more
+        details.
         """
         if low_cpu_mem_usage and not is_peft_version(">=", "0.13.1"):
             raise ValueError(
@@ -1905,7 +1915,7 @@ class AmusedLoraLoaderMixin(StableDiffusionLoraLoaderMixin):
                 Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
                 weights.
             hotswap (`bool`, *optional*):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`].
+                See [`~pipelines.stable_diffusion.lora_utils.StableDiffusionLoraLoaderMixin.load_lora_weights`].
             metadata (`dict`):
                 Optional LoRA adapter metadata. When supplied, the `LoraConfig` arguments of `peft` won't be derived
                 from the state dict.
@@ -1996,7 +2006,7 @@ class CogVideoXLoraLoaderMixin(LoraBaseMixin):
         **kwargs,
     ):
         r"""
-        See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`] for more details.
+        See [`~pipelines.stable_diffusion.lora_utils.StableDiffusionLoraLoaderMixin.lora_state_dict`] for more details.
         """
         # Load the main state dict first which has the LoRA layers for either of
         # transformer and text encoder or both.
@@ -2050,7 +2060,8 @@ class CogVideoXLoraLoaderMixin(LoraBaseMixin):
         **kwargs,
     ):
         """
-        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`] for more details.
+        See [`~pipelines.stable_diffusion.lora_utils.StableDiffusionLoraLoaderMixin.load_lora_weights`] for more
+        details.
         """
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
@@ -2096,7 +2107,8 @@ class CogVideoXLoraLoaderMixin(LoraBaseMixin):
         metadata=None,
     ):
         """
-        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_unet`] for more details.
+        See [`~pipelines.stable_diffusion.lora_utils.StableDiffusionLoraLoaderMixin.load_lora_into_unet`] for more
+        details.
         """
         if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
             raise ValueError(
@@ -2127,7 +2139,8 @@ class CogVideoXLoraLoaderMixin(LoraBaseMixin):
         transformer_lora_adapter_metadata: Optional[dict] = None,
     ):
         r"""
-        See [`~loaders.StableDiffusionLoraLoaderMixin.save_lora_weights`] for more information.
+        See [`~pipelines.stable_diffusion.lora_utils.StableDiffusionLoraLoaderMixin.save_lora_weights`] for more
+        information.
         """
         lora_layers = {}
         lora_metadata = {}
@@ -2158,7 +2171,7 @@ class CogVideoXLoraLoaderMixin(LoraBaseMixin):
         **kwargs,
     ):
         r"""
-        See [`~loaders.StableDiffusionLoraLoaderMixin.fuse_lora`] for more details.
+        See [`~pipelines.stable_diffusion.lora_utils.StableDiffusionLoraLoaderMixin.fuse_lora`] for more details.
         """
         super().fuse_lora(
             components=components,
@@ -2170,7 +2183,7 @@ class CogVideoXLoraLoaderMixin(LoraBaseMixin):
 
     def unfuse_lora(self, components: List[str] = ["transformer"], **kwargs):
         r"""
-        See [`~loaders.StableDiffusionLoraLoaderMixin.unfuse_lora`] for more details.
+        See [`~pipelines.stable_diffusion.lora_utils.StableDiffusionLoraLoaderMixin.unfuse_lora`] for more details.
         """
         super().unfuse_lora(components=components, **kwargs)
 
@@ -2192,7 +2205,7 @@ class Mochi1LoraLoaderMixin(LoraBaseMixin):
         **kwargs,
     ):
         r"""
-        See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`] for more details.
+        See [`~pipelines.stable_diffusion.lora_utils.StableDiffusionLoraLoaderMixin.lora_state_dict`] for more details.
         """
         # Load the main state dict first which has the LoRA layers for either of
         # transformer and text encoder or both.
@@ -2247,7 +2260,8 @@ class Mochi1LoraLoaderMixin(LoraBaseMixin):
         **kwargs,
     ):
         """
-        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`] for more details.
+        See [`~pipelines.stable_diffusion.lora_utils.StableDiffusionLoraLoaderMixin.load_lora_weights`] for more
+        details.
         """
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
@@ -2293,7 +2307,8 @@ class Mochi1LoraLoaderMixin(LoraBaseMixin):
         metadata=None,
     ):
         """
-        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_unet`] for more details.
+        See [`~pipelines.stable_diffusion.lora_utils.StableDiffusionLoraLoaderMixin.load_lora_into_unet`] for more
+        details.
         """
         if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
             raise ValueError(
@@ -2325,7 +2340,8 @@ class Mochi1LoraLoaderMixin(LoraBaseMixin):
         transformer_lora_adapter_metadata: Optional[dict] = None,
     ):
         r"""
-        See [`~loaders.StableDiffusionLoraLoaderMixin.save_lora_weights`] for more information.
+        See [`~pipelines.stable_diffusion.lora_utils.StableDiffusionLoraLoaderMixin.save_lora_weights`] for more
+        information.
         """
         lora_layers = {}
         lora_metadata = {}
@@ -2357,7 +2373,7 @@ class Mochi1LoraLoaderMixin(LoraBaseMixin):
         **kwargs,
     ):
         r"""
-        See [`~loaders.StableDiffusionLoraLoaderMixin.fuse_lora`] for more details.
+        See [`~pipelines.stable_diffusion.lora_utils.StableDiffusionLoraLoaderMixin.fuse_lora`] for more details.
         """
         super().fuse_lora(
             components=components,
@@ -2370,7 +2386,7 @@ class Mochi1LoraLoaderMixin(LoraBaseMixin):
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.unfuse_lora
     def unfuse_lora(self, components: List[str] = ["transformer"], **kwargs):
         r"""
-        See [`~loaders.StableDiffusionLoraLoaderMixin.unfuse_lora`] for more details.
+        See [`~pipelines.stable_diffusion.lora_utils.StableDiffusionLoraLoaderMixin.unfuse_lora`] for more details.
         """
         super().unfuse_lora(components=components, **kwargs)
 
@@ -2391,7 +2407,7 @@ class LTXVideoLoraLoaderMixin(LoraBaseMixin):
         **kwargs,
     ):
         r"""
-        See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`] for more details.
+        See [`~pipelines.stable_diffusion.lora_utils.StableDiffusionLoraLoaderMixin.lora_state_dict`] for more details.
         """
         # Load the main state dict first which has the LoRA layers for either of
         # transformer and text encoder or both.
@@ -2450,7 +2466,8 @@ class LTXVideoLoraLoaderMixin(LoraBaseMixin):
         **kwargs,
     ):
         """
-        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`] for more details.
+        See [`~pipelines.stable_diffusion.lora_utils.StableDiffusionLoraLoaderMixin.load_lora_weights`] for more
+        details.
         """
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
@@ -2496,7 +2513,8 @@ class LTXVideoLoraLoaderMixin(LoraBaseMixin):
         metadata=None,
     ):
         """
-        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_unet`] for more details.
+        See [`~pipelines.stable_diffusion.lora_utils.StableDiffusionLoraLoaderMixin.load_lora_into_unet`] for more
+        details.
         """
         if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
             raise ValueError(
@@ -2528,7 +2546,8 @@ class LTXVideoLoraLoaderMixin(LoraBaseMixin):
         transformer_lora_adapter_metadata: Optional[dict] = None,
     ):
         r"""
-        See [`~loaders.StableDiffusionLoraLoaderMixin.save_lora_weights`] for more information.
+        See [`~pipelines.stable_diffusion.lora_utils.StableDiffusionLoraLoaderMixin.save_lora_weights`] for more
+        information.
         """
         lora_layers = {}
         lora_metadata = {}
@@ -2560,7 +2579,7 @@ class LTXVideoLoraLoaderMixin(LoraBaseMixin):
         **kwargs,
     ):
         r"""
-        See [`~loaders.StableDiffusionLoraLoaderMixin.fuse_lora`] for more details.
+        See [`~pipelines.stable_diffusion.lora_utils.StableDiffusionLoraLoaderMixin.fuse_lora`] for more details.
         """
         super().fuse_lora(
             components=components,
@@ -2573,7 +2592,7 @@ class LTXVideoLoraLoaderMixin(LoraBaseMixin):
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.unfuse_lora
     def unfuse_lora(self, components: List[str] = ["transformer"], **kwargs):
         r"""
-        See [`~loaders.StableDiffusionLoraLoaderMixin.unfuse_lora`] for more details.
+        See [`~pipelines.stable_diffusion.lora_utils.StableDiffusionLoraLoaderMixin.unfuse_lora`] for more details.
         """
         super().unfuse_lora(components=components, **kwargs)
 
@@ -2595,7 +2614,7 @@ class SanaLoraLoaderMixin(LoraBaseMixin):
         **kwargs,
     ):
         r"""
-        See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`] for more details.
+        See [`~pipelines.stable_diffusion.lora_utils.StableDiffusionLoraLoaderMixin.lora_state_dict`] for more details.
         """
         # Load the main state dict first which has the LoRA layers for either of
         # transformer and text encoder or both.
@@ -2650,7 +2669,8 @@ class SanaLoraLoaderMixin(LoraBaseMixin):
         **kwargs,
     ):
         """
-        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`] for more details.
+        See [`~pipelines.stable_diffusion.lora_utils.StableDiffusionLoraLoaderMixin.load_lora_weights`] for more
+        details.
         """
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
@@ -2696,7 +2716,8 @@ class SanaLoraLoaderMixin(LoraBaseMixin):
         metadata=None,
     ):
         """
-        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_unet`] for more details.
+        See [`~pipelines.stable_diffusion.lora_utils.StableDiffusionLoraLoaderMixin.load_lora_into_unet`] for more
+        details.
         """
         if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
             raise ValueError(
@@ -2728,7 +2749,8 @@ class SanaLoraLoaderMixin(LoraBaseMixin):
         transformer_lora_adapter_metadata: Optional[dict] = None,
     ):
         r"""
-        See [`~loaders.StableDiffusionLoraLoaderMixin.save_lora_weights`] for more information.
+        See [`~pipelines.stable_diffusion.lora_utils.StableDiffusionLoraLoaderMixin.save_lora_weights`] for more
+        information.
         """
         lora_layers = {}
         lora_metadata = {}
@@ -2760,7 +2782,7 @@ class SanaLoraLoaderMixin(LoraBaseMixin):
         **kwargs,
     ):
         r"""
-        See [`~loaders.StableDiffusionLoraLoaderMixin.fuse_lora`] for more details.
+        See [`~pipelines.stable_diffusion.lora_utils.StableDiffusionLoraLoaderMixin.fuse_lora`] for more details.
         """
         super().fuse_lora(
             components=components,
@@ -2773,7 +2795,7 @@ class SanaLoraLoaderMixin(LoraBaseMixin):
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.unfuse_lora
     def unfuse_lora(self, components: List[str] = ["transformer"], **kwargs):
         r"""
-        See [`~loaders.StableDiffusionLoraLoaderMixin.unfuse_lora`] for more details.
+        See [`~pipelines.stable_diffusion.lora_utils.StableDiffusionLoraLoaderMixin.unfuse_lora`] for more details.
         """
         super().unfuse_lora(components=components, **kwargs)
 
@@ -2794,7 +2816,7 @@ class HunyuanVideoLoraLoaderMixin(LoraBaseMixin):
         **kwargs,
     ):
         r"""
-        See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`] for more details.
+        See [`~pipelines.stable_diffusion.lora_utils.StableDiffusionLoraLoaderMixin.lora_state_dict`] for more details.
         """
         # Load the main state dict first which has the LoRA layers for either of
         # transformer and text encoder or both.
@@ -2853,7 +2875,8 @@ class HunyuanVideoLoraLoaderMixin(LoraBaseMixin):
         **kwargs,
     ):
         """
-        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`] for more details.
+        See [`~pipelines.stable_diffusion.lora_utils.StableDiffusionLoraLoaderMixin.load_lora_weights`] for more
+        details.
         """
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
@@ -2899,7 +2922,8 @@ class HunyuanVideoLoraLoaderMixin(LoraBaseMixin):
         metadata=None,
     ):
         """
-        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_unet`] for more details.
+        See [`~pipelines.stable_diffusion.lora_utils.StableDiffusionLoraLoaderMixin.load_lora_into_unet`] for more
+        details.
         """
         if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
             raise ValueError(
@@ -2931,7 +2955,8 @@ class HunyuanVideoLoraLoaderMixin(LoraBaseMixin):
         transformer_lora_adapter_metadata: Optional[dict] = None,
     ):
         r"""
-        See [`~loaders.StableDiffusionLoraLoaderMixin.save_lora_weights`] for more information.
+        See [`~pipelines.stable_diffusion.lora_utils.StableDiffusionLoraLoaderMixin.save_lora_weights`] for more
+        information.
         """
         lora_layers = {}
         lora_metadata = {}
@@ -2963,7 +2988,7 @@ class HunyuanVideoLoraLoaderMixin(LoraBaseMixin):
         **kwargs,
     ):
         r"""
-        See [`~loaders.StableDiffusionLoraLoaderMixin.fuse_lora`] for more details.
+        See [`~pipelines.stable_diffusion.lora_utils.StableDiffusionLoraLoaderMixin.fuse_lora`] for more details.
         """
         super().fuse_lora(
             components=components,
@@ -2976,7 +3001,7 @@ class HunyuanVideoLoraLoaderMixin(LoraBaseMixin):
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.unfuse_lora
     def unfuse_lora(self, components: List[str] = ["transformer"], **kwargs):
         r"""
-        See [`~loaders.StableDiffusionLoraLoaderMixin.unfuse_lora`] for more details.
+        See [`~pipelines.stable_diffusion.lora_utils.StableDiffusionLoraLoaderMixin.unfuse_lora`] for more details.
         """
         super().unfuse_lora(components=components, **kwargs)
 
@@ -2997,7 +3022,7 @@ class Lumina2LoraLoaderMixin(LoraBaseMixin):
         **kwargs,
     ):
         r"""
-        See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`] for more details.
+        See [`~pipelines.stable_diffusion.lora_utils.StableDiffusionLoraLoaderMixin.lora_state_dict`] for more details.
         """
         # Load the main state dict first which has the LoRA layers for either of
         # transformer and text encoder or both.
@@ -3057,7 +3082,8 @@ class Lumina2LoraLoaderMixin(LoraBaseMixin):
         **kwargs,
     ):
         """
-        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`] for more details.
+        See [`~pipelines.stable_diffusion.lora_utils.StableDiffusionLoraLoaderMixin.load_lora_weights`] for more
+        details.
         """
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
@@ -3103,7 +3129,8 @@ class Lumina2LoraLoaderMixin(LoraBaseMixin):
         metadata=None,
     ):
         """
-        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_unet`] for more details.
+        See [`~pipelines.stable_diffusion.lora_utils.StableDiffusionLoraLoaderMixin.load_lora_into_unet`] for more
+        details.
         """
         if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
             raise ValueError(
@@ -3135,7 +3162,8 @@ class Lumina2LoraLoaderMixin(LoraBaseMixin):
         transformer_lora_adapter_metadata: Optional[dict] = None,
     ):
         r"""
-        See [`~loaders.StableDiffusionLoraLoaderMixin.save_lora_weights`] for more information.
+        See [`~pipelines.stable_diffusion.lora_utils.StableDiffusionLoraLoaderMixin.save_lora_weights`] for more
+        information.
         """
         lora_layers = {}
         lora_metadata = {}
@@ -3167,7 +3195,7 @@ class Lumina2LoraLoaderMixin(LoraBaseMixin):
         **kwargs,
     ):
         r"""
-        See [`~loaders.StableDiffusionLoraLoaderMixin.fuse_lora`] for more details.
+        See [`~pipelines.stable_diffusion.lora_utils.StableDiffusionLoraLoaderMixin.fuse_lora`] for more details.
         """
         super().fuse_lora(
             components=components,
@@ -3180,7 +3208,7 @@ class Lumina2LoraLoaderMixin(LoraBaseMixin):
     # Copied from diffusers.loaders.lora_pipeline.SanaLoraLoaderMixin.unfuse_lora
     def unfuse_lora(self, components: List[str] = ["transformer"], **kwargs):
         r"""
-        See [`~loaders.StableDiffusionLoraLoaderMixin.unfuse_lora`] for more details.
+        See [`~pipelines.stable_diffusion.lora_utils.StableDiffusionLoraLoaderMixin.unfuse_lora`] for more details.
         """
         super().unfuse_lora(components=components, **kwargs)
 
@@ -3486,7 +3514,7 @@ class WanLoraLoaderMixin(LoraBaseMixin):
         **kwargs,
     ):
         r"""
-        See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`] for more details.
+        See [`~pipelines.stable_diffusion.lora_utils.StableDiffusionLoraLoaderMixin.lora_state_dict`] for more details.
         """
         # Load the main state dict first which has the LoRA layers for either of
         # transformer and text encoder or both.
@@ -3592,7 +3620,8 @@ class WanLoraLoaderMixin(LoraBaseMixin):
         **kwargs,
     ):
         """
-        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`] for more details.
+        See [`~pipelines.stable_diffusion.lora_utils.StableDiffusionLoraLoaderMixin.load_lora_weights`] for more
+        details.
         """
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
@@ -3662,7 +3691,8 @@ class WanLoraLoaderMixin(LoraBaseMixin):
         metadata=None,
     ):
         """
-        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_unet`] for more details.
+        See [`~pipelines.stable_diffusion.lora_utils.StableDiffusionLoraLoaderMixin.load_lora_into_unet`] for more
+        details.
         """
         if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
             raise ValueError(
@@ -3694,7 +3724,8 @@ class WanLoraLoaderMixin(LoraBaseMixin):
         transformer_lora_adapter_metadata: Optional[dict] = None,
     ):
         r"""
-        See [`~loaders.StableDiffusionLoraLoaderMixin.save_lora_weights`] for more information.
+        See [`~pipelines.stable_diffusion.lora_utils.StableDiffusionLoraLoaderMixin.save_lora_weights`] for more
+        information.
         """
         lora_layers = {}
         lora_metadata = {}
@@ -3726,7 +3757,7 @@ class WanLoraLoaderMixin(LoraBaseMixin):
         **kwargs,
     ):
         r"""
-        See [`~loaders.StableDiffusionLoraLoaderMixin.fuse_lora`] for more details.
+        See [`~pipelines.stable_diffusion.lora_utils.StableDiffusionLoraLoaderMixin.fuse_lora`] for more details.
         """
         super().fuse_lora(
             components=components,
@@ -3739,7 +3770,7 @@ class WanLoraLoaderMixin(LoraBaseMixin):
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.unfuse_lora
     def unfuse_lora(self, components: List[str] = ["transformer"], **kwargs):
         r"""
-        See [`~loaders.StableDiffusionLoraLoaderMixin.unfuse_lora`] for more details.
+        See [`~pipelines.stable_diffusion.lora_utils.StableDiffusionLoraLoaderMixin.unfuse_lora`] for more details.
         """
         super().unfuse_lora(components=components, **kwargs)
 
@@ -3761,7 +3792,7 @@ class SkyReelsV2LoraLoaderMixin(LoraBaseMixin):
         **kwargs,
     ):
         r"""
-        See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`] for more details.
+        See [`~pipelines.stable_diffusion.lora_utils.StableDiffusionLoraLoaderMixin.lora_state_dict`] for more details.
         """
         # Load the main state dict first which has the LoRA layers for either of
         # transformer and text encoder or both.
@@ -3869,7 +3900,8 @@ class SkyReelsV2LoraLoaderMixin(LoraBaseMixin):
         **kwargs,
     ):
         """
-        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`] for more details.
+        See [`~pipelines.stable_diffusion.lora_utils.StableDiffusionLoraLoaderMixin.load_lora_weights`] for more
+        details.
         """
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
@@ -3939,7 +3971,8 @@ class SkyReelsV2LoraLoaderMixin(LoraBaseMixin):
         metadata=None,
     ):
         """
-        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_unet`] for more details.
+        See [`~pipelines.stable_diffusion.lora_utils.StableDiffusionLoraLoaderMixin.load_lora_into_unet`] for more
+        details.
         """
         if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
             raise ValueError(
@@ -3971,7 +4004,8 @@ class SkyReelsV2LoraLoaderMixin(LoraBaseMixin):
         transformer_lora_adapter_metadata: Optional[dict] = None,
     ):
         r"""
-        See [`~loaders.StableDiffusionLoraLoaderMixin.save_lora_weights`] for more information.
+        See [`~pipelines.stable_diffusion.lora_utils.StableDiffusionLoraLoaderMixin.save_lora_weights`] for more
+        information.
         """
         lora_layers = {}
         lora_metadata = {}
@@ -4003,7 +4037,7 @@ class SkyReelsV2LoraLoaderMixin(LoraBaseMixin):
         **kwargs,
     ):
         r"""
-        See [`~loaders.StableDiffusionLoraLoaderMixin.fuse_lora`] for more details.
+        See [`~pipelines.stable_diffusion.lora_utils.StableDiffusionLoraLoaderMixin.fuse_lora`] for more details.
         """
         super().fuse_lora(
             components=components,
@@ -4016,7 +4050,7 @@ class SkyReelsV2LoraLoaderMixin(LoraBaseMixin):
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.unfuse_lora
     def unfuse_lora(self, components: List[str] = ["transformer"], **kwargs):
         r"""
-        See [`~loaders.StableDiffusionLoraLoaderMixin.unfuse_lora`] for more details.
+        See [`~pipelines.stable_diffusion.lora_utils.StableDiffusionLoraLoaderMixin.unfuse_lora`] for more details.
         """
         super().unfuse_lora(components=components, **kwargs)
 
@@ -4038,7 +4072,7 @@ class CogView4LoraLoaderMixin(LoraBaseMixin):
         **kwargs,
     ):
         r"""
-        See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`] for more details.
+        See [`~pipelines.stable_diffusion.lora_utils.StableDiffusionLoraLoaderMixin.lora_state_dict`] for more details.
         """
         # Load the main state dict first which has the LoRA layers for either of
         # transformer and text encoder or both.
@@ -4093,7 +4127,8 @@ class CogView4LoraLoaderMixin(LoraBaseMixin):
         **kwargs,
     ):
         """
-        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`] for more details.
+        See [`~pipelines.stable_diffusion.lora_utils.StableDiffusionLoraLoaderMixin.load_lora_weights`] for more
+        details.
         """
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
@@ -4139,7 +4174,8 @@ class CogView4LoraLoaderMixin(LoraBaseMixin):
         metadata=None,
     ):
         """
-        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_unet`] for more details.
+        See [`~pipelines.stable_diffusion.lora_utils.StableDiffusionLoraLoaderMixin.load_lora_into_unet`] for more
+        details.
         """
         if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
             raise ValueError(
@@ -4171,7 +4207,8 @@ class CogView4LoraLoaderMixin(LoraBaseMixin):
         transformer_lora_adapter_metadata: Optional[dict] = None,
     ):
         r"""
-        See [`~loaders.StableDiffusionLoraLoaderMixin.save_lora_weights`] for more information.
+        See [`~pipelines.stable_diffusion.lora_utils.StableDiffusionLoraLoaderMixin.save_lora_weights`] for more
+        information.
         """
         lora_layers = {}
         lora_metadata = {}
@@ -4203,7 +4240,7 @@ class CogView4LoraLoaderMixin(LoraBaseMixin):
         **kwargs,
     ):
         r"""
-        See [`~loaders.StableDiffusionLoraLoaderMixin.fuse_lora`] for more details.
+        See [`~pipelines.stable_diffusion.lora_utils.StableDiffusionLoraLoaderMixin.fuse_lora`] for more details.
         """
         super().fuse_lora(
             components=components,
@@ -4216,7 +4253,7 @@ class CogView4LoraLoaderMixin(LoraBaseMixin):
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.unfuse_lora
     def unfuse_lora(self, components: List[str] = ["transformer"], **kwargs):
         r"""
-        See [`~loaders.StableDiffusionLoraLoaderMixin.unfuse_lora`] for more details.
+        See [`~pipelines.stable_diffusion.lora_utils.StableDiffusionLoraLoaderMixin.unfuse_lora`] for more details.
         """
         super().unfuse_lora(components=components, **kwargs)
 
@@ -4237,7 +4274,7 @@ class HiDreamImageLoraLoaderMixin(LoraBaseMixin):
         **kwargs,
     ):
         r"""
-        See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`] for more details.
+        See [`~pipelines.stable_diffusion.lora_utils.StableDiffusionLoraLoaderMixin.lora_state_dict`] for more details.
         """
         # Load the main state dict first which has the LoRA layers for either of
         # transformer and text encoder or both.
@@ -4296,7 +4333,8 @@ class HiDreamImageLoraLoaderMixin(LoraBaseMixin):
         **kwargs,
     ):
         """
-        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`] for more details.
+        See [`~pipelines.stable_diffusion.lora_utils.StableDiffusionLoraLoaderMixin.load_lora_weights`] for more
+        details.
         """
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
@@ -4342,7 +4380,8 @@ class HiDreamImageLoraLoaderMixin(LoraBaseMixin):
         metadata=None,
     ):
         """
-        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_unet`] for more details.
+        See [`~pipelines.stable_diffusion.lora_utils.StableDiffusionLoraLoaderMixin.load_lora_into_unet`] for more
+        details.
         """
         if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
             raise ValueError(
@@ -4374,7 +4413,8 @@ class HiDreamImageLoraLoaderMixin(LoraBaseMixin):
         transformer_lora_adapter_metadata: Optional[dict] = None,
     ):
         r"""
-        See [`~loaders.StableDiffusionLoraLoaderMixin.save_lora_weights`] for more information.
+        See [`~pipelines.stable_diffusion.lora_utils.StableDiffusionLoraLoaderMixin.save_lora_weights`] for more
+        information.
         """
         lora_layers = {}
         lora_metadata = {}
@@ -4406,7 +4446,7 @@ class HiDreamImageLoraLoaderMixin(LoraBaseMixin):
         **kwargs,
     ):
         r"""
-        See [`~loaders.StableDiffusionLoraLoaderMixin.fuse_lora`] for more details.
+        See [`~pipelines.stable_diffusion.lora_utils.StableDiffusionLoraLoaderMixin.fuse_lora`] for more details.
         """
         super().fuse_lora(
             components=components,
@@ -4419,7 +4459,7 @@ class HiDreamImageLoraLoaderMixin(LoraBaseMixin):
     # Copied from diffusers.loaders.lora_pipeline.SanaLoraLoaderMixin.unfuse_lora
     def unfuse_lora(self, components: List[str] = ["transformer"], **kwargs):
         r"""
-        See [`~loaders.StableDiffusionLoraLoaderMixin.unfuse_lora`] for more details.
+        See [`~pipelines.stable_diffusion.lora_utils.StableDiffusionLoraLoaderMixin.unfuse_lora`] for more details.
         """
         super().unfuse_lora(components=components, **kwargs)
 
@@ -4440,7 +4480,7 @@ class QwenImageLoraLoaderMixin(LoraBaseMixin):
         **kwargs,
     ):
         r"""
-        See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`] for more details.
+        See [`~pipelines.stable_diffusion.lora_utils.StableDiffusionLoraLoaderMixin.lora_state_dict`] for more details.
         """
         # Load the main state dict first which has the LoRA layers for either of
         # transformer and text encoder or both.
@@ -4502,7 +4542,8 @@ class QwenImageLoraLoaderMixin(LoraBaseMixin):
         **kwargs,
     ):
         """
-        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`] for more details.
+        See [`~pipelines.stable_diffusion.lora_utils.StableDiffusionLoraLoaderMixin.load_lora_weights`] for more
+        details.
         """
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
@@ -4548,7 +4589,8 @@ class QwenImageLoraLoaderMixin(LoraBaseMixin):
         metadata=None,
     ):
         """
-        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_unet`] for more details.
+        See [`~pipelines.stable_diffusion.lora_utils.StableDiffusionLoraLoaderMixin.load_lora_into_unet`] for more
+        details.
         """
         if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
             raise ValueError(
@@ -4580,7 +4622,8 @@ class QwenImageLoraLoaderMixin(LoraBaseMixin):
         transformer_lora_adapter_metadata: Optional[dict] = None,
     ):
         r"""
-        See [`~loaders.StableDiffusionLoraLoaderMixin.save_lora_weights`] for more information.
+        See [`~pipelines.stable_diffusion.lora_utils.StableDiffusionLoraLoaderMixin.save_lora_weights`] for more
+        information.
         """
         lora_layers = {}
         lora_metadata = {}
@@ -4612,7 +4655,7 @@ class QwenImageLoraLoaderMixin(LoraBaseMixin):
         **kwargs,
     ):
         r"""
-        See [`~loaders.StableDiffusionLoraLoaderMixin.fuse_lora`] for more details.
+        See [`~pipelines.stable_diffusion.lora_utils.StableDiffusionLoraLoaderMixin.fuse_lora`] for more details.
         """
         super().fuse_lora(
             components=components,
@@ -4625,7 +4668,7 @@ class QwenImageLoraLoaderMixin(LoraBaseMixin):
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.unfuse_lora
     def unfuse_lora(self, components: List[str] = ["transformer"], **kwargs):
         r"""
-        See [`~loaders.StableDiffusionLoraLoaderMixin.unfuse_lora`] for more details.
+        See [`~pipelines.stable_diffusion.lora_utils.StableDiffusionLoraLoaderMixin.unfuse_lora`] for more details.
         """
         super().unfuse_lora(components=components, **kwargs)
 
@@ -4646,7 +4689,7 @@ class ZImageLoraLoaderMixin(LoraBaseMixin):
         **kwargs,
     ):
         r"""
-        See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`] for more details.
+        See [`~pipelines.stable_diffusion.lora_utils.StableDiffusionLoraLoaderMixin.lora_state_dict`] for more details.
         """
         # Load the main state dict first which has the LoRA layers for either of
         # transformer and text encoder or both.
@@ -4708,7 +4751,8 @@ class ZImageLoraLoaderMixin(LoraBaseMixin):
         **kwargs,
     ):
         """
-        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`] for more details.
+        See [`~pipelines.stable_diffusion.lora_utils.StableDiffusionLoraLoaderMixin.load_lora_weights`] for more
+        details.
         """
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
@@ -4754,7 +4798,8 @@ class ZImageLoraLoaderMixin(LoraBaseMixin):
         metadata=None,
     ):
         """
-        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_unet`] for more details.
+        See [`~pipelines.stable_diffusion.lora_utils.StableDiffusionLoraLoaderMixin.load_lora_into_unet`] for more
+        details.
         """
         if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
             raise ValueError(
@@ -4786,7 +4831,8 @@ class ZImageLoraLoaderMixin(LoraBaseMixin):
         transformer_lora_adapter_metadata: Optional[dict] = None,
     ):
         r"""
-        See [`~loaders.StableDiffusionLoraLoaderMixin.save_lora_weights`] for more information.
+        See [`~pipelines.stable_diffusion.lora_utils.StableDiffusionLoraLoaderMixin.save_lora_weights`] for more
+        information.
         """
         lora_layers = {}
         lora_metadata = {}
@@ -4818,7 +4864,7 @@ class ZImageLoraLoaderMixin(LoraBaseMixin):
         **kwargs,
     ):
         r"""
-        See [`~loaders.StableDiffusionLoraLoaderMixin.fuse_lora`] for more details.
+        See [`~pipelines.stable_diffusion.lora_utils.StableDiffusionLoraLoaderMixin.fuse_lora`] for more details.
         """
         super().fuse_lora(
             components=components,
@@ -4831,7 +4877,7 @@ class ZImageLoraLoaderMixin(LoraBaseMixin):
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.unfuse_lora
     def unfuse_lora(self, components: List[str] = ["transformer"], **kwargs):
         r"""
-        See [`~loaders.StableDiffusionLoraLoaderMixin.unfuse_lora`] for more details.
+        See [`~pipelines.stable_diffusion.lora_utils.StableDiffusionLoraLoaderMixin.unfuse_lora`] for more details.
         """
         super().unfuse_lora(components=components, **kwargs)
 
@@ -4852,7 +4898,7 @@ class Flux2LoraLoaderMixin(LoraBaseMixin):
         **kwargs,
     ):
         r"""
-        See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`] for more details.
+        See [`~pipelines.stable_diffusion.lora_utils.StableDiffusionLoraLoaderMixin.lora_state_dict`] for more details.
         """
         # Load the main state dict first which has the LoRA layers for either of
         # transformer and text encoder or both.
@@ -4911,7 +4957,8 @@ class Flux2LoraLoaderMixin(LoraBaseMixin):
         **kwargs,
     ):
         """
-        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`] for more details.
+        See [`~pipelines.stable_diffusion.lora_utils.StableDiffusionLoraLoaderMixin.load_lora_weights`] for more
+        details.
         """
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
@@ -4957,7 +5004,8 @@ class Flux2LoraLoaderMixin(LoraBaseMixin):
         metadata=None,
     ):
         """
-        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_unet`] for more details.
+        See [`~pipelines.stable_diffusion.lora_utils.StableDiffusionLoraLoaderMixin.load_lora_into_unet`] for more
+        details.
         """
         if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
             raise ValueError(
@@ -4989,7 +5037,8 @@ class Flux2LoraLoaderMixin(LoraBaseMixin):
         transformer_lora_adapter_metadata: Optional[dict] = None,
     ):
         r"""
-        See [`~loaders.StableDiffusionLoraLoaderMixin.save_lora_weights`] for more information.
+        See [`~pipelines.stable_diffusion.lora_utils.StableDiffusionLoraLoaderMixin.save_lora_weights`] for more
+        information.
         """
         lora_layers = {}
         lora_metadata = {}
@@ -5021,7 +5070,7 @@ class Flux2LoraLoaderMixin(LoraBaseMixin):
         **kwargs,
     ):
         r"""
-        See [`~loaders.StableDiffusionLoraLoaderMixin.fuse_lora`] for more details.
+        See [`~pipelines.stable_diffusion.lora_utils.StableDiffusionLoraLoaderMixin.fuse_lora`] for more details.
         """
         super().fuse_lora(
             components=components,
@@ -5034,7 +5083,7 @@ class Flux2LoraLoaderMixin(LoraBaseMixin):
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.unfuse_lora
     def unfuse_lora(self, components: List[str] = ["transformer"], **kwargs):
         r"""
-        See [`~loaders.StableDiffusionLoraLoaderMixin.unfuse_lora`] for more details.
+        See [`~pipelines.stable_diffusion.lora_utils.StableDiffusionLoraLoaderMixin.unfuse_lora`] for more details.
         """
         super().unfuse_lora(components=components, **kwargs)
 
