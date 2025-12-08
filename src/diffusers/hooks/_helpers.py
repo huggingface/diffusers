@@ -184,12 +184,12 @@ def _register_transformer_blocks_metadata():
         HunyuanImageSingleTransformerBlock,
         HunyuanImageTransformerBlock,
     )
+    from ..models.transformers.transformer_kandinsky import Kandinsky5TransformerDecoderBlock
     from ..models.transformers.transformer_ltx import LTXVideoTransformerBlock
     from ..models.transformers.transformer_mochi import MochiTransformerBlock
     from ..models.transformers.transformer_qwenimage import QwenImageTransformerBlock
     from ..models.transformers.transformer_wan import WanTransformerBlock
     from ..models.transformers.transformer_z_image import ZImageTransformerBlock
-    from ..models.transformers.transformer_kandinsky import Kandinsky5TransformerDecoderBlock
 
     # BasicTransformerBlock
     TransformerBlockRegistry.register(
@@ -332,7 +332,6 @@ def _register_transformer_blocks_metadata():
         ),
     )
 
-
     TransformerBlockRegistry.register(
         model_class=JointTransformerBlock,
         metadata=TransformerBlockMetadata(
@@ -340,7 +339,6 @@ def _register_transformer_blocks_metadata():
             return_encoder_hidden_states_index=0,
         ),
     )
-
 
     # Kandinsky 5.0 (Kandinsky5TransformerDecoderBlock)
     TransformerBlockRegistry.register(

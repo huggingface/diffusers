@@ -93,18 +93,18 @@ class MagCacheConfig:
         max_skip_steps (`int`, defaults to `5`):
             The maximum number of consecutive steps that can be skipped (K in the paper).
         retention_ratio (`float`, defaults to `0.1`):
-            The fraction of initial steps during which skipping is disabled to ensure stability.
-            For example, if `num_inference_steps` is 28 and `retention_ratio` is 0.1, the first 3 steps will never be skipped.
+            The fraction of initial steps during which skipping is disabled to ensure stability. For example, if
+            `num_inference_steps` is 28 and `retention_ratio` is 0.1, the first 3 steps will never be skipped.
         num_inference_steps (`int`, defaults to `28`):
             The number of inference steps used in the pipeline. This is required to interpolate `mag_ratios` correctly.
         mag_ratios (`np.ndarray`, *optional*):
-            The pre-computed magnitude ratios for the model. These are checkpoint-dependent.
-            If not provided, you must set `calibrate=True` to calculate them for your specific model.
-            For Flux models, you can use `diffusers.hooks.mag_cache.FLUX_MAG_RATIOS`.
+            The pre-computed magnitude ratios for the model. These are checkpoint-dependent. If not provided, you must
+            set `calibrate=True` to calculate them for your specific model. For Flux models, you can use
+            `diffusers.hooks.mag_cache.FLUX_MAG_RATIOS`.
         calibrate (`bool`, defaults to `False`):
-            If True, enables calibration mode. In this mode, no blocks are skipped. Instead, the hook calculates
-            the magnitude ratios for the current run and logs them at the end. Use this to obtain `mag_ratios`
-            for new models or schedulers.
+            If True, enables calibration mode. In this mode, no blocks are skipped. Instead, the hook calculates the
+            magnitude ratios for the current run and logs them at the end. Use this to obtain `mag_ratios` for new
+            models or schedulers.
     """
 
     threshold: float = 0.24
@@ -335,10 +335,10 @@ class MagCacheBlockHook(ModelHook):
                 if diff == 0:
                     residual = out_hidden - in_hidden
                 else:
-                    residual = out_hidden - in_hidden # Fallback to matching tail
+                    residual = out_hidden - in_hidden  # Fallback to matching tail
             else:
-                 # Fallback for completely mismatched shapes
-                 residual = out_hidden # Invalid but prevents crash
+                # Fallback for completely mismatched shapes
+                residual = out_hidden  # Invalid but prevents crash
 
             if self.config.calibrate:
                 self._perform_calibration_step(state, residual)
@@ -429,9 +429,7 @@ def apply_mag_cache(module: torch.nn.Module, config: MagCacheConfig) -> None:
     _apply_mag_cache_block_hook(tail_block, state_manager, config, is_tail=True)
 
 
-def _apply_mag_cache_head_hook(
-    block: torch.nn.Module, state_manager: StateManager, config: MagCacheConfig
-) -> None:
+def _apply_mag_cache_head_hook(block: torch.nn.Module, state_manager: StateManager, config: MagCacheConfig) -> None:
     registry = HookRegistry.check_if_exists_or_initialize(block)
 
     # Automatically remove existing hook to allow re-application (e.g. switching modes)

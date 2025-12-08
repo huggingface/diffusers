@@ -25,6 +25,7 @@ from diffusers.utils import logging
 
 logger = logging.get_logger(__name__)
 
+
 class DummyBlock(torch.nn.Module):
     def __init__(self):
         super().__init__()
@@ -33,6 +34,7 @@ class DummyBlock(torch.nn.Module):
         # Output is double input
         # This ensures Residual = 2*Input - Input = Input
         return hidden_states * 2.0
+
 
 class DummyTransformer(ModelMixin):
     def __init__(self):
@@ -44,6 +46,7 @@ class DummyTransformer(ModelMixin):
             hidden_states = block(hidden_states, encoder_hidden_states=encoder_hidden_states)
         return hidden_states
 
+
 class TupleOutputBlock(torch.nn.Module):
     def __init__(self):
         super().__init__()
@@ -51,6 +54,7 @@ class TupleOutputBlock(torch.nn.Module):
     def forward(self, hidden_states, encoder_hidden_states=None, **kwargs):
         # Returns a tuple
         return hidden_states * 2.0, encoder_hidden_states
+
 
 class TupleTransformer(ModelMixin):
     def __init__(self):
@@ -65,23 +69,18 @@ class TupleTransformer(ModelMixin):
             encoder_hidden_states = output[1]
         return hidden_states, encoder_hidden_states
 
+
 class MagCacheTests(unittest.TestCase):
     def setUp(self):
         # Register standard dummy block
         TransformerBlockRegistry.register(
             DummyBlock,
-            TransformerBlockMetadata(
-                return_hidden_states_index=None,
-                return_encoder_hidden_states_index=None
-            )
+            TransformerBlockMetadata(return_hidden_states_index=None, return_encoder_hidden_states_index=None),
         )
         # Register tuple block (Flux style)
         TransformerBlockRegistry.register(
             TupleOutputBlock,
-            TransformerBlockMetadata(
-                return_hidden_states_index=0,
-                return_encoder_hidden_states_index=1
-            )
+            TransformerBlockMetadata(return_hidden_states_index=0, return_encoder_hidden_states_index=1),
         )
 
     def _set_context(self, model, context_name):
@@ -115,9 +114,9 @@ class MagCacheTests(unittest.TestCase):
         config = MagCacheConfig(
             threshold=100.0,
             num_inference_steps=2,
-            retention_ratio=0.0, # Enable immediate skipping
+            retention_ratio=0.0,  # Enable immediate skipping
             max_skip_steps=5,
-            mag_ratios=ratios
+            mag_ratios=ratios,
         )
 
         apply_mag_cache(model, config)
@@ -136,8 +135,7 @@ class MagCacheTests(unittest.TestCase):
         output_t1 = model(input_t1)
 
         self.assertTrue(
-            torch.allclose(output_t1, torch.tensor([[[41.0]]])),
-            f"Expected Skip (41.0), got {output_t1.item()}"
+            torch.allclose(output_t1, torch.tensor([[[41.0]]])), f"Expected Skip (41.0), got {output_t1.item()}"
         )
 
     def test_mag_cache_retention(self):
@@ -149,8 +147,8 @@ class MagCacheTests(unittest.TestCase):
         config = MagCacheConfig(
             threshold=100.0,
             num_inference_steps=2,
-            retention_ratio=1.0, # Force retention for ALL steps
-            mag_ratios=ratios
+            retention_ratio=1.0,  # Force retention for ALL steps
+            mag_ratios=ratios,
         )
 
         apply_mag_cache(model, config)
@@ -165,7 +163,7 @@ class MagCacheTests(unittest.TestCase):
 
         self.assertTrue(
             torch.allclose(output_t1, torch.tensor([[[44.0]]])),
-            f"Expected Compute (44.0) due to retention, got {output_t1.item()}"
+            f"Expected Compute (44.0) due to retention, got {output_t1.item()}",
         )
 
     def test_mag_cache_tuple_outputs(self):
@@ -173,12 +171,7 @@ class MagCacheTests(unittest.TestCase):
         model = TupleTransformer()
         ratios = np.array([1.0, 1.0])
 
-        config = MagCacheConfig(
-            threshold=100.0,
-            num_inference_steps=2,
-            retention_ratio=0.0,
-            mag_ratios=ratios
-        )
+        config = MagCacheConfig(threshold=100.0, num_inference_steps=2, retention_ratio=0.0, mag_ratios=ratios)
 
         apply_mag_cache(model, config)
         self._set_context(model, "test_context")
@@ -196,36 +189,29 @@ class MagCacheTests(unittest.TestCase):
         out_1, _ = model(input_t1, encoder_hidden_states=enc_t0)
 
         self.assertTrue(
-            torch.allclose(out_1, torch.tensor([[[21.0]]])),
-            f"Tuple skip failed. Expected 21.0, got {out_1.item()}"
+            torch.allclose(out_1, torch.tensor([[[21.0]]])), f"Tuple skip failed. Expected 21.0, got {out_1.item()}"
         )
 
     def test_mag_cache_reset(self):
         """Test that state resets correctly after num_inference_steps."""
         model = DummyTransformer()
         config = MagCacheConfig(
-            threshold=100.0,
-            num_inference_steps=2,
-            retention_ratio=0.0,
-            mag_ratios=np.array([1.0, 1.0])
+            threshold=100.0, num_inference_steps=2, retention_ratio=0.0, mag_ratios=np.array([1.0, 1.0])
         )
         apply_mag_cache(model, config)
         self._set_context(model, "test_context")
 
         input_t = torch.ones(1, 1, 1)
 
-        model(input_t) # Step 0
-        model(input_t) # Step 1 (Skipped)
+        model(input_t)  # Step 0
+        model(input_t)  # Step 1 (Skipped)
 
         # Step 2 (Reset -> Step 0) -> Should Compute
         # Input 2.0 -> Output 8.0
         input_t2 = torch.tensor([[[2.0]]])
         output_t2 = model(input_t2)
 
-        self.assertTrue(
-            torch.allclose(output_t2, torch.tensor([[[8.0]]])),
-            "State did not reset correctly"
-        )
+        self.assertTrue(torch.allclose(output_t2, torch.tensor([[[8.0]]])), "State did not reset correctly")
 
     def test_mag_cache_calibration(self):
         """Test that calibration mode records ratios."""
