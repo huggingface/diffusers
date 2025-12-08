@@ -982,7 +982,11 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         # 7. Load each module in the pipeline
         current_device_map = None
         _maybe_warn_for_wrong_component_in_quant_config(init_dict, quantization_config)
-        for name, (library_name, class_name) in logging.tqdm(init_dict.items(), desc="Loading pipeline components..."):
+        logging_tqdm_kwargs = {"desc": "Loading pipeline components..."}
+        if cls._progress_bar_disabled_for_rank():
+            logging_tqdm_kwargs["disable"] = True
+
+        for name, (library_name, class_name) in logging.tqdm(init_dict.items(), **logging_tqdm_kwargs):
             # 7.1 device_map shenanigans
             if final_device_map is not None:
                 if isinstance(final_device_map, dict) and len(final_device_map) > 0:
@@ -1922,7 +1926,8 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
     def set_progress_bar_config(self, **kwargs):
         self._progress_bar_config = kwargs
 
-    def _progress_bar_disabled_for_rank(self):
+    @staticmethod
+    def _progress_bar_disabled_for_rank():
         if torch.distributed.is_available() and torch.distributed.is_initialized():
             try:
                 return torch.distributed.get_rank() != 0
