@@ -37,6 +37,7 @@ from ..utils import (
     is_accelerate_available,
     is_peft_available,
     is_peft_version,
+    is_torch_version,
     is_transformers_available,
     is_transformers_version,
     logging,
@@ -47,6 +48,17 @@ from ..utils import (
 )
 from ..utils.peft_utils import _create_lora_config
 from ..utils.state_dict_utils import _load_sft_state_dict_metadata
+
+
+_LOW_CPU_MEM_USAGE_DEFAULT_LORA = False
+if is_torch_version(">=", "1.9.0"):
+    if (
+        is_peft_available()
+        and is_peft_version(">=", "0.13.1")
+        and is_transformers_available()
+        and is_transformers_version(">", "4.45.2")
+    ):
+        _LOW_CPU_MEM_USAGE_DEFAULT_LORA = True
 
 
 if is_transformers_available():
@@ -63,6 +75,10 @@ logger = logging.get_logger(__name__)
 LORA_WEIGHT_NAME = "pytorch_lora_weights.bin"
 LORA_WEIGHT_NAME_SAFE = "pytorch_lora_weights.safetensors"
 LORA_ADAPTER_METADATA_KEY = "lora_adapter_metadata"
+
+TEXT_ENCODER_NAME = "text_encoder"
+UNET_NAME = "unet"
+TRANSFORMER_NAME = "transformer"
 
 
 def fuse_text_encoder_lora(text_encoder, lora_scale=1.0, safe_fusing=False, adapter_names=None):
