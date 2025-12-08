@@ -119,10 +119,7 @@ class CacheLayer:
         # self.cross_key_cache = torch.zeros(cross_attn_kv_shape, device=device, dtype=dtype)
         # self.cross_value_cache = torch.zeros(cross_attn_kv_shape, device=device, dtype=dtype)
         self.layer_idx = layer_idx
-        self.global_end_index = 0
-        self.global_start_index = 0
         self.local_start_index = 0
-        self.local_end_index = 0
         self.num_sink_tokens = num_sink_tokens
         self.max_seq_length = self_attn_kv_shape[1]
 
@@ -131,55 +128,33 @@ class CacheLayer:
         self.value_cache.zero_()
         # self.cross_key_cache.zero_()
         # self.cross_value_cache.zero_()
-        self.global_end_index = 0
-        self.global_start_index = 0
         self.local_start_index = 0
-        self.local_end_index = 0
 
     @torch.compiler.disable
-    def update(self, key_states: torch.Tensor, value_states: torch.Tensor, rotary_emb: tuple[torch.Tensor, torch.Tensor], roll=None) -> bool:
-        # Assign new keys/values directly up to current_end and update running cache positions
-        self.local_start_index = self.maybe_roll_back(key_states.shape[1], rotary_emb=rotary_emb, roll=roll)
-        self.local_end_index = self.local_start_index + key_states.shape[1]
-
-        self.key_cache[:, self.local_start_index : self.local_end_index].copy_(key_states)
-        self.value_cache[:, self.local_start_index : self.local_end_index].copy_(value_states)
-        return self.key_cache[:, : self.local_end_index], self.value_cache[:, : self.local_end_index]
-
-    @torch.compiler.disable
-    def maybe_roll_back(self, num_new_tokens: int, rotary_emb: tuple[torch.Tensor, torch.Tensor], roll=None):
+    def update(
+        self, key_states: torch.Tensor, value_states: torch.Tensor, rotary_emb: tuple[torch.Tensor, torch.Tensor]
+    ) -> bool:
+        num_new_tokens = key_states.shape[1]
         # Skip `sink_tokens` and `evicted_tokens`. Roll back cache by removing evicted tokens
-        if num_new_tokens + self.local_end_index > self.max_seq_length:
-            num_evicted_tokens = (num_new_tokens + self.local_end_index) - self.max_seq_length
-            num_evicted_tokens_global = (num_new_tokens + self.global_start_index) - self.max_seq_length
-            # num_tokens_to_skip = self.num_sink_tokens + num_evicted_tokens
+        if num_new_tokens + self.local_start_index > self.max_seq_length:
+            num_evicted_tokens = (num_new_tokens + self.local_start_index) - self.max_seq_length
 
-            if roll:
-                keys_to_keep = self.key_cache[:, self.num_sink_tokens + num_evicted_tokens :]
-                keys_to_keep = self.rerotate_key_rotary_pos_emb(keys_to_keep, *rotary_emb, num_evicted_tokens)
+            keys_to_keep = self.key_cache[:, self.num_sink_tokens + num_evicted_tokens :]
+            keys_to_keep = self.rerotate_key_rotary_pos_emb(keys_to_keep, *rotary_emb, num_evicted_tokens)
+            self.key_cache[:, self.num_sink_tokens : -num_evicted_tokens].copy_(keys_to_keep)
 
-                # tail_keys = self.key_cache[:, self.num_sink_tokens :].clone()
-                # tail_keys = tail_keys.roll(-num_evicted_tokens, dims=1)
-                self.key_cache[:, self.num_sink_tokens : -num_evicted_tokens].copy_(keys_to_keep)
+            values_to_keep = self.value_cache[:, self.num_sink_tokens + num_evicted_tokens :]
+            self.value_cache[:, self.num_sink_tokens : -num_evicted_tokens].copy_(values_to_keep)
+            self.local_start_index = self.local_start_index - num_evicted_tokens
 
-                tail_values = self.value_cache[:, self.num_sink_tokens :].clone()
-                tail_values = tail_values.roll(-num_evicted_tokens, dims=1)
-                self.value_cache[:, self.num_sink_tokens :].copy_(tail_values)
-        else:
-            num_evicted_tokens_global = num_evicted_tokens = 0
-
-        start_idx = self.global_start_index - num_evicted_tokens_global
-
-        if self.layer_idx == 0:
-            print(
-                num_evicted_tokens_global, num_evicted_tokens, self.global_start_index, self.global_end_index, self.local_start_index, self.local_end_index, start_idx
-            )
-        return start_idx
+        # Assign new keys/values directly up to current_end and update running cache positions
+        end_index = self.local_start_index + key_states.shape[1]
+        self.key_cache[:, self.local_start_index : end_index].copy_(key_states)
+        self.value_cache[:, self.local_start_index : end_index].copy_(value_states)
+        return self.key_cache[:, :end_index], self.value_cache[:, :end_index]
 
     def recompute_indices(self, num_new_tokens: int):
-        self.global_start_index = self.global_start_index + num_new_tokens
-        self.global_end_index = self.global_start_index + num_new_tokens
-        self.local_start_index = min(self.max_seq_length - num_new_tokens, self.local_start_index + num_new_tokens)
+        self.local_start_index = self.local_start_index + num_new_tokens
 
     @staticmethod
     def _apply_rope(hidden_states, freqs_cos, freqs_sin):
@@ -195,9 +170,19 @@ class CacheLayer:
         self, key_states: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor, num_evicted_tokens: int
     ) -> tuple[torch.Tensor, torch.Tensor]:
         # Compute the cos and sin required for back- and forward-rotating to `num_evicted_tokens` position earlier in the sequence
-        original_cos = cos[:, self.num_sink_tokens + num_evicted_tokens : self.num_sink_tokens + num_evicted_tokens + key_states.shape[1]]
+        original_cos = cos[
+            :,
+            self.num_sink_tokens + num_evicted_tokens : self.num_sink_tokens
+            + num_evicted_tokens
+            + key_states.shape[1],
+        ]
         shifted_cos = cos[:, self.num_sink_tokens : self.num_sink_tokens + key_states.shape[1]]
-        original_sin = sin[:, self.num_sink_tokens + num_evicted_tokens : self.num_sink_tokens + num_evicted_tokens + key_states.shape[1]]
+        original_sin = sin[
+            :,
+            self.num_sink_tokens + num_evicted_tokens : self.num_sink_tokens
+            + num_evicted_tokens
+            + key_states.shape[1],
+        ]
         shifted_sin = sin[:, self.num_sink_tokens : self.num_sink_tokens + key_states.shape[1]]
         rerotation_cos = original_cos * shifted_cos + original_sin * shifted_sin
         rerotation_sin = -original_sin * shifted_cos + original_cos * shifted_sin
@@ -205,18 +190,7 @@ class CacheLayer:
         # rerotation_cos = cos[:, num_evicted_tokens]
         # rerotation_sin = -sin[:, num_evicted_tokens]
         rotated_key_states = self._apply_rope(key_states, rerotation_cos, rerotation_sin)
-
-        # if self.layer_idx == 0:
-        #     print(key_states.shape, num_evicted_tokens, original_cos.shape, shifted_cos.shape)
         return rotated_key_states
-
-    def get_rerotated_num_positions(self):
-        if (4680 * 2) + self.global_start_index > self.max_seq_length:
-            num_evicted_tokens = ((4680 * 2) + self.global_start_index) - self.max_seq_length
-            num_tokens_to_rotate_back = num_evicted_tokens - self.num_sink_tokens
-        else:
-            num_tokens_to_rotate_back = 0
-        return num_tokens_to_rotate_back
 
 
 def apply_rolling_kv_cache(module: torch.nn.Module, config: RollingKVCacheConfig) -> None:

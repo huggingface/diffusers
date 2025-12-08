@@ -102,8 +102,6 @@ class KreaAttnProcessor:
         attention_mask: Optional[torch.Tensor] = None,
         rotary_emb: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
         kv_cache: list[torch.Tensor] = None,
-        clean_latents: bool = None,
-        timestep = None,
     ) -> torch.Tensor:
         encoder_hidden_states_img = None
         if attn.add_k_proj is not None:
@@ -129,6 +127,10 @@ class KreaAttnProcessor:
                 freqs_sin: torch.Tensor,
                 kv_cache: torch.Tensor,
             ):
+                # NOTE: ideally if we can pass `position_ids` to the model's forward
+                # and use it to compute cos/sin. Similar to common autoregressive
+                # LLMs For now let's initialize one big cos/sin array and slice it
+                # for current frame position
                 block_length = hidden_states.shape[1]
                 start_index = kv_cache.local_start_index if kv_cache is not None else 0
                 freqs_cos = freqs_cos[:, start_index : start_index + block_length]
@@ -141,16 +143,11 @@ class KreaAttnProcessor:
                 out[..., 1::2] = x1 * sin + x2 * cos
                 return out.type_as(hidden_states)
 
-            # if clean_latents and kv_cache.local_start_index != 0 and kv_cache.layer_idx == 0:
-            #     keys_with_rope_correct = apply_rotary_emb(key, *rotary_emb, None)
-            #     print("What I need", keys_with_rope_correct.shape, keys_with_rope_correct[:, -3120:])
-
             query = apply_rotary_emb(query, *rotary_emb, kv_cache)
             key = apply_rotary_emb(key, *rotary_emb, kv_cache)
 
         if kv_cache is not None:
-            roll = timestep.flatten() == 1000
-            key, value = kv_cache.update(key, value, rotary_emb, roll)
+            key, value = kv_cache.update(key, value, rotary_emb)
 
         # I2V task
         hidden_states_img = None
@@ -492,7 +489,6 @@ class KreaTransformerBlock(nn.Module):
         temb: torch.Tensor,
         rotary_emb: torch.Tensor,
         clean_latents: bool = False,
-        timestep = None,
         kv_cache: list[torch.Tensor] = None,
     ) -> torch.Tensor:
         # temb: batch_size, 6, inner_dim (wan2.1/wan2.2 14B)
@@ -500,22 +496,9 @@ class KreaTransformerBlock(nn.Module):
             self.scale_shift_table + temb  # .float()
         ).chunk(6, dim=1)
 
-        # NOTE: ideally if we can pass `position_ids` to the model's forward
-        # and use it to compute cos/sin. Similar to simply autoregressive
-        # LLMs For now let's initialize one big cos/sin array and slice it
-        # for current frame position
-        block_length = hidden_states.shape[1]
-        start_index = kv_cache.local_start_index if kv_cache is not None else 0
-        # rotary_emb = (
-        #     rotary_emb[0][:, start_index : start_index + block_length],
-        #     rotary_emb[1][:, start_index : start_index + block_length],
-        # )
-        # if kv_cache.layer_idx == 0:
-        #     print(clean_latents, start_index, kv_cache.key_cache[:, :4680])
-
         # 1. Self-attention
         norm_hidden_states = (self.norm1(hidden_states) * (1 + scale_msa) + shift_msa).type_as(hidden_states)
-        attn_output = self.attn1(norm_hidden_states, None, None, rotary_emb, kv_cache, clean_latents=clean_latents, timestep=timestep)
+        attn_output = self.attn1(norm_hidden_states, None, None, rotary_emb, kv_cache)
         hidden_states = (hidden_states + attn_output * gate_msa).type_as(hidden_states)
 
         # 2. Cross-attention
@@ -710,7 +693,6 @@ class KreaTransformerModel(
                     timestep_proj,
                     rotary_emb,
                     clean_latents,
-                    timestep,
                 )
         else:
             for block in self.blocks:
@@ -720,7 +702,6 @@ class KreaTransformerModel(
                     timestep_proj,
                     rotary_emb,
                     clean_latents,
-                    timestep,
                 )
 
         # 5. Output norm, projection & unpatchify
