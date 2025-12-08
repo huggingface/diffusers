@@ -48,3 +48,4 @@ if is_torch_available():
     from .transformer_wan_animate import WanAnimateTransformer3DModel
     from .transformer_wan_vace import WanVACETransformer3DModel
     from .transformer_z_image import ZImageTransformer2DModel
+    from .transformer_newbie import NextDiT_3B_GQA_patch2_Adaln_Refiner_WHIT_CLIP
