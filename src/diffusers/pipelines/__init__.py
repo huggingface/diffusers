@@ -243,6 +243,7 @@ else:
         "HunyuanVideoImageToVideoPipeline",
         "HunyuanVideoFramepackPipeline",
     ]
+    _import_structure["hunyuan_video1_5"] = ["HunyuanVideo15Pipeline", "HunyuanVideo15ImageToVideoPipeline"]
     _import_structure["hunyuan_image"] = ["HunyuanImagePipeline", "HunyuanImageRefinerPipeline"]
     _import_structure["kandinsky"] = [
         "KandinskyCombinedPipeline",
@@ -300,6 +301,7 @@ else:
     _import_structure["mochi"] = ["MochiPipeline"]
     _import_structure["musicldm"] = ["MusicLDMPipeline"]
     _import_structure["omnigen"] = ["OmniGenPipeline"]
+    _import_structure["ovis_image"] = ["OvisImagePipeline"]
     _import_structure["visualcloze"] = ["VisualClozePipeline", "VisualClozeGenerationPipeline"]
     _import_structure["paint_by_example"] = ["PaintByExamplePipeline"]
     _import_structure["pia"] = ["PIAPipeline"]
@@ -396,8 +398,13 @@ else:
         "WanVACEPipeline",
         "WanAnimatePipeline",
     ]
-    _import_structure["z_image"] = ["ZImagePipeline"]
-    _import_structure["kandinsky5"] = ["Kandinsky5T2VPipeline"]
+    _import_structure["kandinsky5"] = [
+        "Kandinsky5T2VPipeline",
+        "Kandinsky5I2VPipeline",
+        "Kandinsky5T2IPipeline",
+        "Kandinsky5I2IPipeline",
+    ]
+    _import_structure["z_image"] = ["ZImageImg2ImgPipeline", "ZImagePipeline"]
     _import_structure["skyreels_v2"] = [
         "SkyReelsV2DiffusionForcingPipeline",
         "SkyReelsV2DiffusionForcingImageToVideoPipeline",
@@ -665,6 +672,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             HunyuanVideoImageToVideoPipeline,
             HunyuanVideoPipeline,
         )
+        from .hunyuan_video1_5 import HunyuanVideo15ImageToVideoPipeline, HunyuanVideo15Pipeline
         from .hunyuandit import HunyuanDiTPipeline
         from .i2vgen_xl import I2VGenXLPipeline
         from .kandinsky import (
@@ -692,7 +700,12 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             Kandinsky3Img2ImgPipeline,
             Kandinsky3Pipeline,
         )
-        from .kandinsky5 import Kandinsky5T2VPipeline
+        from .kandinsky5 import (
+            Kandinsky5I2IPipeline,
+            Kandinsky5I2VPipeline,
+            Kandinsky5T2IPipeline,
+            Kandinsky5T2VPipeline,
+        )
         from .latent_consistency_models import (
             LatentConsistencyModelImg2ImgPipeline,
             LatentConsistencyModelPipeline,
@@ -717,6 +730,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .mochi import MochiPipeline
         from .musicldm import MusicLDMPipeline
         from .omnigen import OmniGenPipeline
+        from .ovis_image import OvisImagePipeline
         from .pag import (
             AnimateDiffPAGPipeline,
             HunyuanDiTPAGPipeline,
@@ -827,7 +841,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             WuerstchenDecoderPipeline,
             WuerstchenPriorPipeline,
         )
-        from .z_image import ZImagePipeline
+        from .z_image import ZImageImg2ImgPipeline, ZImagePipeline
 
         try:
             if not is_onnx_available():

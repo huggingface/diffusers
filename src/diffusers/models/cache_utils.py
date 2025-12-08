@@ -73,6 +73,11 @@ class CacheMixin:
             apply_first_block_cache,
             apply_pyramid_attention_broadcast,
             apply_teacache,
+            TaylorSeerCacheConfig,
+            apply_faster_cache,
+            apply_first_block_cache,
+            apply_pyramid_attention_broadcast,
+            apply_taylorseer_cache,
         )
 
         if self.is_cache_enabled:
@@ -88,6 +93,8 @@ class CacheMixin:
             apply_pyramid_attention_broadcast(self, config)
         elif isinstance(config, TeaCacheConfig):
             apply_teacache(self, config)
+        elif isinstance(config, TaylorSeerCacheConfig):
+            apply_taylorseer_cache(self, config)
         else:
             raise ValueError(f"Cache config {type(config)} is not supported.")
 
@@ -100,11 +107,13 @@ class CacheMixin:
             HookRegistry,
             PyramidAttentionBroadcastConfig,
             TeaCacheConfig,
+            TaylorSeerCacheConfig,
         )
         from ..hooks.faster_cache import _FASTER_CACHE_BLOCK_HOOK, _FASTER_CACHE_DENOISER_HOOK
         from ..hooks.first_block_cache import _FBC_BLOCK_HOOK, _FBC_LEADER_BLOCK_HOOK
         from ..hooks.pyramid_attention_broadcast import _PYRAMID_ATTENTION_BROADCAST_HOOK
         from ..hooks.teacache import _TEACACHE_HOOK
+        from ..hooks.taylorseer_cache import _TAYLORSEER_CACHE_HOOK
 
         if self._cache_config is None:
             logger.warning("Caching techniques have not been enabled, so there's nothing to disable.")
@@ -121,6 +130,8 @@ class CacheMixin:
             registry.remove_hook(_PYRAMID_ATTENTION_BROADCAST_HOOK, recurse=True)
         elif isinstance(self._cache_config, TeaCacheConfig):
             registry.remove_hook(_TEACACHE_HOOK, recurse=True)
+        elif isinstance(self._cache_config, TaylorSeerCacheConfig):
+            registry.remove_hook(_TAYLORSEER_CACHE_HOOK, recurse=True)
         else:
             raise ValueError(f"Cache config {type(self._cache_config)} is not supported.")
 
