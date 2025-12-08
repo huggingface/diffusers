@@ -651,7 +651,7 @@
       - local: api/pipelines/wuerstchen
         title: Wuerstchen
       - local: api/pipelines/z_image
-        title: Z-Image        
+        title: Z-Image
       title: Image
     - sections:
       - local: api/pipelines/allegro
