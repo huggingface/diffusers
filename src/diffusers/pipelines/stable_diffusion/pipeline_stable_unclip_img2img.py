@@ -19,14 +19,13 @@ import torch
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer, CLIPVisionModelWithProjection
 
 from ...image_processor import VaeImageProcessor
-from ...loaders import TextualInversionLoaderMixin
+from ...loaders import StableDiffusionLoraLoaderMixin, TextualInversionLoaderMixin
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...models.embeddings import get_timestep_embedding
 from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import is_torch_xla_available, logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput, StableDiffusionMixin
-from .lora_utils import StableDiffusionLoraLoaderMixin
 from .pipeline_stable_diffusion_utils import SDMixin
 from .stable_unclip_image_normalizer import StableUnCLIPImageNormalizer
 

@@ -23,7 +23,7 @@ from transformers import CLIPTextModel, CLIPTokenizer, DPTForDepthEstimation, DP
 
 from ...configuration_utils import FrozenDict
 from ...image_processor import PipelineImageInput, VaeImageProcessor
-from ...loaders import TextualInversionLoaderMixin
+from ...loaders import StableDiffusionLoraLoaderMixin, TextualInversionLoaderMixin
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import (
@@ -34,7 +34,6 @@ from ...utils import (
 )
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
-from .lora_utils import StableDiffusionLoraLoaderMixin
 from .pipeline_stable_diffusion_utils import SDMixin, retrieve_latents
 
 
