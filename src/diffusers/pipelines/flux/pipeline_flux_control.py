@@ -30,7 +30,7 @@ from ...utils import (
 )
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
-from .pipeline_flux_utils import FluxControlMixin, calculate_shift, retrieve_timesteps
+from .pipeline_flux_utils import FluxMixin, calculate_shift, retrieve_timesteps
 from .pipeline_output import FluxPipelineOutput
 
 
@@ -81,7 +81,7 @@ EXAMPLE_DOC_STRING = """
 
 class FluxControlPipeline(
     DiffusionPipeline,
-    FluxControlMixin,
+    FluxMixin,
     FluxLoraLoaderMixin,
     FromSingleFileMixin,
     TextualInversionLoaderMixin,
@@ -234,6 +234,41 @@ class FluxControlPipeline(
         latent_image_ids = self._prepare_latent_image_ids(batch_size, height // 2, width // 2, device, dtype)
 
         return latents, latent_image_ids
+
+    # Copied from diffusers.pipelines.controlnet_sd3.pipeline_stable_diffusion_3_controlnet.StableDiffusion3ControlNetPipeline.prepare_image
+    def prepare_image(
+        self,
+        image,
+        width,
+        height,
+        batch_size,
+        num_images_per_prompt,
+        device,
+        dtype,
+        do_classifier_free_guidance=False,
+        guess_mode=False,
+    ):
+        if isinstance(image, torch.Tensor):
+            pass
+        else:
+            image = self.image_processor.preprocess(image, height=height, width=width)
+
+        image_batch_size = image.shape[0]
+
+        if image_batch_size == 1:
+            repeat_by = batch_size
+        else:
+            # image batch size is the same as prompt batch size
+            repeat_by = num_images_per_prompt
+
+        image = image.repeat_interleave(repeat_by, dim=0)
+
+        image = image.to(device=device, dtype=dtype)
+
+        if do_classifier_free_guidance and not guess_mode:
+            image = torch.cat([image] * 2)
+
+        return image
 
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
