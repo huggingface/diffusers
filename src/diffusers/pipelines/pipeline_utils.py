@@ -1908,15 +1908,27 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 f"`self._progress_bar_config` should be of type `dict`, but is {type(self._progress_bar_config)}."
             )
 
+        progress_bar_config = dict(self._progress_bar_config)
+        if "disable" not in progress_bar_config:
+            progress_bar_config["disable"] = self._progress_bar_disabled_for_rank()
+
         if iterable is not None:
-            return tqdm(iterable, **self._progress_bar_config)
+            return tqdm(iterable, **progress_bar_config)
         elif total is not None:
-            return tqdm(total=total, **self._progress_bar_config)
+            return tqdm(total=total, **progress_bar_config)
         else:
             raise ValueError("Either `total` or `iterable` has to be defined.")
 
     def set_progress_bar_config(self, **kwargs):
         self._progress_bar_config = kwargs
+
+    def _progress_bar_disabled_for_rank(self):
+        if torch.distributed.is_available() and torch.distributed.is_initialized():
+            try:
+                return torch.distributed.get_rank() != 0
+            except (RuntimeError, ValueError):
+                return False
+        return False
 
     def enable_xformers_memory_efficient_attention(self, attention_op: Optional[Callable] = None):
         r"""
