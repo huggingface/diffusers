@@ -169,10 +169,12 @@ else:
             "LayerSkipConfig",
             "PyramidAttentionBroadcastConfig",
             "SmoothedEnergyGuidanceConfig",
+            "TaylorSeerCacheConfig",
             "apply_faster_cache",
             "apply_first_block_cache",
             "apply_layer_skip",
             "apply_pyramid_attention_broadcast",
+            "apply_taylorseer_cache",
         ]
     )
     _import_structure["models"].extend(
@@ -242,6 +244,7 @@ else:
             "MultiAdapter",
             "MultiControlNetModel",
             "OmniGenTransformer2DModel",
+            "OvisImageTransformer2DModel",
             "ParallelConfig",
             "PixArtTransformer2DModel",
             "PriorTransformer",
@@ -498,6 +501,9 @@ else:
             "ImageTextPipelineOutput",
             "Kandinsky3Img2ImgPipeline",
             "Kandinsky3Pipeline",
+            "Kandinsky5I2IPipeline",
+            "Kandinsky5I2VPipeline",
+            "Kandinsky5T2IPipeline",
             "Kandinsky5T2VPipeline",
             "KandinskyCombinedPipeline",
             "KandinskyImg2ImgCombinedPipeline",
@@ -537,6 +543,7 @@ else:
             "MochiPipeline",
             "MusicLDMPipeline",
             "OmniGenPipeline",
+            "OvisImagePipeline",
             "PaintByExamplePipeline",
             "PIAPipeline",
             "PixArtAlphaPipeline",
@@ -655,6 +662,7 @@ else:
             "WuerstchenCombinedPipeline",
             "WuerstchenDecoderPipeline",
             "WuerstchenPriorPipeline",
+            "ZImageImg2ImgPipeline",
             "ZImagePipeline",
         ]
     )
@@ -894,10 +902,12 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             LayerSkipConfig,
             PyramidAttentionBroadcastConfig,
             SmoothedEnergyGuidanceConfig,
+            TaylorSeerCacheConfig,
             apply_faster_cache,
             apply_first_block_cache,
             apply_layer_skip,
             apply_pyramid_attention_broadcast,
+            apply_taylorseer_cache,
         )
         from .models import (
             AllegroTransformer3DModel,
@@ -965,6 +975,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             MultiAdapter,
             MultiControlNetModel,
             OmniGenTransformer2DModel,
+            OvisImageTransformer2DModel,
             ParallelConfig,
             PixArtTransformer2DModel,
             PriorTransformer,
@@ -1191,6 +1202,9 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             ImageTextPipelineOutput,
             Kandinsky3Img2ImgPipeline,
             Kandinsky3Pipeline,
+            Kandinsky5I2IPipeline,
+            Kandinsky5I2VPipeline,
+            Kandinsky5T2IPipeline,
             Kandinsky5T2VPipeline,
             KandinskyCombinedPipeline,
             KandinskyImg2ImgCombinedPipeline,
@@ -1230,6 +1244,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             MochiPipeline,
             MusicLDMPipeline,
             OmniGenPipeline,
+            OvisImagePipeline,
             PaintByExamplePipeline,
             PIAPipeline,
             PixArtAlphaPipeline,
@@ -1346,6 +1361,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             WuerstchenCombinedPipeline,
             WuerstchenDecoderPipeline,
             WuerstchenPriorPipeline,
+            ZImageImg2ImgPipeline,
             ZImagePipeline,
         )
 

@@ -23,9 +23,9 @@ from diffusers.loaders import FromOriginalModelMixin
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import PeftAdapterMixin
 from ...utils import USE_PEFT_BACKEND, logging, scale_lora_layers, unscale_lora_layers
-from ..attention import FeedForward
+from ..attention import AttentionMixin, FeedForward
 from ..attention_dispatch import dispatch_attention_fn
-from ..attention_processor import Attention, AttentionProcessor
+from ..attention_processor import Attention
 from ..cache_utils import CacheMixin
 from ..embeddings import (
     CombinedTimestepTextProjEmbeddings,
@@ -184,18 +184,31 @@ class HunyuanVideo15TimeEmbedding(nn.Module):
             The dimension of the output embedding.
     """
 
-    def __init__(self, embedding_dim: int):
+    def __init__(self, embedding_dim: int, use_meanflow: bool = False):
         super().__init__()
 
         self.time_proj = Timesteps(num_channels=256, flip_sin_to_cos=True, downscale_freq_shift=0)
         self.timestep_embedder = TimestepEmbedding(in_channels=256, time_embed_dim=embedding_dim)
 
+        self.use_meanflow = use_meanflow
+        self.time_proj_r = None
+        self.timestep_embedder_r = None
+        if use_meanflow:
+            self.time_proj_r = Timesteps(num_channels=256, flip_sin_to_cos=True, downscale_freq_shift=0)
+            self.timestep_embedder_r = TimestepEmbedding(in_channels=256, time_embed_dim=embedding_dim)
+
     def forward(
         self,
         timestep: torch.Tensor,
+        timestep_r: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         timesteps_proj = self.time_proj(timestep)
         timesteps_emb = self.timestep_embedder(timesteps_proj.to(dtype=timestep.dtype))
+
+        if timestep_r is not None:
+            timesteps_proj_r = self.time_proj_r(timestep_r)
+            timesteps_emb_r = self.timestep_embedder_r(timesteps_proj_r.to(dtype=timestep.dtype))
+            timesteps_emb = timesteps_emb + timesteps_emb_r
 
         return timesteps_emb
 
@@ -494,7 +507,9 @@ class HunyuanVideo15TransformerBlock(nn.Module):
         return hidden_states, encoder_hidden_states
 
 
-class HunyuanVideo15Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginalModelMixin, CacheMixin):
+class HunyuanVideo15Transformer3DModel(
+    ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginalModelMixin, CacheMixin, AttentionMixin
+):
     r"""
     A Transformer model for video-like data used in [HunyuanVideo1.5](https://huggingface.co/tencent/HunyuanVideo1.5).
 
@@ -565,6 +580,7 @@ class HunyuanVideo15Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin
         # YiYi Notes: config based on target_size_config https://github.com/yiyixuxu/hy15/blob/main/hyvideo/pipelines/hunyuan_video_pipeline.py#L205
         target_size: int = 640,  # did not name sample_size since it is in pixel spaces
         task_type: str = "i2v",
+        use_meanflow: bool = False,
     ) -> None:
         super().__init__()
 
@@ -580,7 +596,7 @@ class HunyuanVideo15Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin
         )
         self.context_embedder_2 = HunyuanVideo15ByT5TextProjection(text_embed_2_dim, 2048, inner_dim)
 
-        self.time_embed = HunyuanVideo15TimeEmbedding(inner_dim)
+        self.time_embed = HunyuanVideo15TimeEmbedding(inner_dim, use_meanflow=use_meanflow)
 
         self.cond_type_embed = nn.Embedding(3, inner_dim)
 
@@ -604,72 +620,13 @@ class HunyuanVideo15Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin
 
         self.gradient_checkpointing = False
 
-    @property
-    # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.attn_processors
-    def attn_processors(self) -> Dict[str, AttentionProcessor]:
-        r"""
-        Returns:
-            `dict` of attention processors: A dictionary containing all attention processors used in the model with
-            indexed by its weight name.
-        """
-        # set recursively
-        processors = {}
-
-        def fn_recursive_add_processors(name: str, module: torch.nn.Module, processors: Dict[str, AttentionProcessor]):
-            if hasattr(module, "get_processor"):
-                processors[f"{name}.processor"] = module.get_processor()
-
-            for sub_name, child in module.named_children():
-                fn_recursive_add_processors(f"{name}.{sub_name}", child, processors)
-
-            return processors
-
-        for name, module in self.named_children():
-            fn_recursive_add_processors(name, module, processors)
-
-        return processors
-
-    # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.set_attn_processor
-    def set_attn_processor(self, processor: Union[AttentionProcessor, Dict[str, AttentionProcessor]]):
-        r"""
-        Sets the attention processor to use to compute attention.
-
-        Parameters:
-            processor (`dict` of `AttentionProcessor` or only `AttentionProcessor`):
-                The instantiated processor class or a dictionary of processor classes that will be set as the processor
-                for **all** `Attention` layers.
-
-                If `processor` is a dict, the key needs to define the path to the corresponding cross attention
-                processor. This is strongly recommended when setting trainable attention processors.
-
-        """
-        count = len(self.attn_processors.keys())
-
-        if isinstance(processor, dict) and len(processor) != count:
-            raise ValueError(
-                f"A dict of processors was passed, but the number of processors {len(processor)} does not match the"
-                f" number of attention layers: {count}. Please make sure to pass {count} processor classes."
-            )
-
-        def fn_recursive_attn_processor(name: str, module: torch.nn.Module, processor):
-            if hasattr(module, "set_processor"):
-                if not isinstance(processor, dict):
-                    module.set_processor(processor)
-                else:
-                    module.set_processor(processor.pop(f"{name}.processor"))
-
-            for sub_name, child in module.named_children():
-                fn_recursive_attn_processor(f"{name}.{sub_name}", child, processor)
-
-        for name, module in self.named_children():
-            fn_recursive_attn_processor(name, module, processor)
-
     def forward(
         self,
         hidden_states: torch.Tensor,
         timestep: torch.LongTensor,
         encoder_hidden_states: torch.Tensor,
         encoder_attention_mask: torch.Tensor,
+        timestep_r: Optional[torch.LongTensor] = None,
         encoder_hidden_states_2: Optional[torch.Tensor] = None,
         encoder_attention_mask_2: Optional[torch.Tensor] = None,
         image_embeds: Optional[torch.Tensor] = None,
@@ -701,7 +658,7 @@ class HunyuanVideo15Transformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin
         image_rotary_emb = self.rope(hidden_states)
 
         # 2. Conditional embeddings
-        temb = self.time_embed(timestep)
+        temb = self.time_embed(timestep, timestep_r=timestep_r)
 
         hidden_states = self.x_embedder(hidden_states)
 

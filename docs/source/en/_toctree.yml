@@ -375,6 +375,8 @@
         title: MochiTransformer3DModel
       - local: api/models/omnigen_transformer
         title: OmniGenTransformer2DModel
+      - local: api/models/ovisimage_transformer2d
+        title: OvisImageTransformer2DModel
       - local: api/models/pixart_transformer2d
         title: PixArtTransformer2DModel
       - local: api/models/prior_transformer
@@ -399,6 +401,8 @@
         title: WanAnimateTransformer3DModel
       - local: api/models/wan_transformer_3d
         title: WanTransformer3DModel
+      - local: api/models/z_image_transformer2d
+        title: ZImageTransformer2DModel        
       title: Transformers
     - sections:
       - local: api/models/stable_cascade_unet
@@ -549,6 +553,8 @@
         title: Kandinsky 2.2
       - local: api/pipelines/kandinsky3
         title: Kandinsky 3
+      - local: api/pipelines/kandinsky5_image
+        title: Kandinsky 5.0 Image
       - local: api/pipelines/kolors
         title: Kolors
       - local: api/pipelines/latent_consistency_models
@@ -567,6 +573,8 @@
         title: MultiDiffusion
       - local: api/pipelines/omnigen
         title: OmniGen
+      - local: api/pipelines/ovis_image
+        title: Ovis-Image
       - local: api/pipelines/pag
         title: PAG
       - local: api/pipelines/paint_by_example
@@ -642,6 +650,8 @@
         title: VisualCloze
       - local: api/pipelines/wuerstchen
         title: Wuerstchen
+      - local: api/pipelines/z_image
+        title: Z-Image
       title: Image
     - sections:
       - local: api/pipelines/allegro

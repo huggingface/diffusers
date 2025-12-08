@@ -22,6 +22,7 @@ from typing import Dict, List, Literal, Optional, Union
 import safetensors
 import torch
 
+from ..hooks.group_offloading import _maybe_remove_and_reapply_group_offloading
 from ..utils import (
     MIN_PEFT_VERSION,
     USE_PEFT_BACKEND,
@@ -793,6 +794,8 @@ class PeftAdapterMixin:
             # Pop also the corresponding adapter from the config
             if hasattr(self, "peft_config"):
                 self.peft_config.pop(adapter_name, None)
+
+        _maybe_remove_and_reapply_group_offloading(self)
 
     def enable_lora_hotswap(
         self, target_rank: int = 128, check_compiled: Literal["error", "warn", "ignore"] = "error"
