@@ -11,14 +11,14 @@ from diffusers import (
     LuminaNextDiT2DModel,
     LuminaPipeline,
 )
-from diffusers.utils.testing_utils import (
+
+from ...testing_utils import (
     backend_empty_cache,
     numpy_cosine_similarity_distance,
     require_torch_accelerator,
     slow,
     torch_device,
 )
-
 from ..test_pipelines_common import PipelineTesterMixin
 
 

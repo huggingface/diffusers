@@ -32,7 +32,8 @@ from diffusers import (
 )
 from diffusers.quantizers import PipelineQuantizationConfig
 from diffusers.utils import is_accelerate_version, logging
-from diffusers.utils.testing_utils import (
+
+from ...testing_utils import (
     CaptureLogger,
     backend_empty_cache,
     is_bitsandbytes_available,
@@ -50,7 +51,6 @@ from diffusers.utils.testing_utils import (
     slow,
     torch_device,
 )
-
 from ..test_torch_compile_utils import QuantCompileTests
 
 
@@ -886,6 +886,7 @@ class Bnb4BitCompileTests(QuantCompileTests, unittest.TestCase):
             components_to_quantize=["transformer", "text_encoder_2"],
         )
 
+    @require_bitsandbytes_version_greater("0.46.1")
     def test_torch_compile(self):
         torch._dynamo.config.capture_dynamic_output_shape_ops = True
         super().test_torch_compile()

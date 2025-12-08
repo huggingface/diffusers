@@ -146,16 +146,13 @@ class StableDiffusionControlNetInpaintPipeline(
         - [`~loaders.FromSingleFileMixin.from_single_file`] for loading `.ckpt` files
         - [`~loaders.IPAdapterMixin.load_ip_adapter`] for loading IP Adapters
 
-    <Tip>
-
-    This pipeline can be used with checkpoints that have been specifically fine-tuned for inpainting
+    > [!TIP] > This pipeline can be used with checkpoints that have been specifically fine-tuned for inpainting >
     ([stable-diffusion-v1-5/stable-diffusion-inpainting](https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-inpainting))
-    as well as default text-to-image Stable Diffusion checkpoints
+    > as well as default text-to-image Stable Diffusion checkpoints >
     ([stable-diffusion-v1-5/stable-diffusion-v1-5](https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5)).
-    Default text-to-image Stable Diffusion checkpoints might be preferable for ControlNets that have been fine-tuned on
-    those, such as [lllyasviel/control_v11p_sd15_inpaint](https://huggingface.co/lllyasviel/control_v11p_sd15_inpaint).
-
-    </Tip>
+    > Default text-to-image Stable Diffusion checkpoints might be preferable for ControlNets that have been fine-tuned
+    on > those, such as
+    [lllyasviel/control_v11p_sd15_inpaint](https://huggingface.co/lllyasviel/control_v11p_sd15_inpaint).
 
     Args:
         vae ([`AutoencoderKL`]):

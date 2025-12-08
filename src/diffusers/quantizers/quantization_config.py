@@ -21,18 +21,20 @@ https://github.com/huggingface/transformers/blob/52cb4034ada381fe1ffe8d428a1076e
 """
 
 import copy
+import dataclasses
 import importlib.metadata
 import inspect
 import json
 import os
-from dataclasses import dataclass
+import warnings
+from dataclasses import dataclass, is_dataclass
 from enum import Enum
 from functools import partial
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Union
 
 from packaging import version
 
-from ..utils import is_torch_available, is_torchao_available, logging
+from ..utils import is_torch_available, is_torchao_available, is_torchao_version, logging
 
 
 if is_torch_available():
@@ -46,6 +48,7 @@ class QuantizationMethod(str, Enum):
     GGUF = "gguf"
     TORCHAO = "torchao"
     QUANTO = "quanto"
+    MODELOPT = "modelopt"
 
 
 if is_torchao_available():
@@ -268,7 +271,14 @@ class BitsAndBytesConfig(QuantizationConfigMixin):
         if bnb_4bit_quant_storage is None:
             self.bnb_4bit_quant_storage = torch.uint8
         elif isinstance(bnb_4bit_quant_storage, str):
-            if bnb_4bit_quant_storage not in ["float16", "float32", "int8", "uint8", "float64", "bfloat16"]:
+            if bnb_4bit_quant_storage not in [
+                "float16",
+                "float32",
+                "int8",
+                "uint8",
+                "float64",
+                "bfloat16",
+            ]:
                 raise ValueError(
                     "`bnb_4bit_quant_storage` must be a valid string (one of 'float16', 'float32', 'int8', 'uint8', 'float64', 'bfloat16') "
                 )
@@ -434,7 +444,7 @@ class TorchAoConfig(QuantizationConfigMixin):
     """This is a config class for torchao quantization/sparsity techniques.
 
     Args:
-        quant_type (`str`):
+        quant_type (Union[`str`, AOBaseConfig]):
             The type of quantization we want to use, currently supporting:
                 - **Integer quantization:**
                     - Full function names: `int4_weight_only`, `int8_dynamic_activation_int4_weight`,
@@ -456,6 +466,7 @@ class TorchAoConfig(QuantizationConfigMixin):
                 - **Unsigned Integer quantization:**
                     - Full function names: `uintx_weight_only`
                     - Shorthands: `uint1wo`, `uint2wo`, `uint3wo`, `uint4wo`, `uint5wo`, `uint6wo`, `uint7wo`
+                - An AOBaseConfig instance: for more advanced configuration options.
         modules_to_not_convert (`List[str]`, *optional*, default to `None`):
             The list of modules to not quantize, useful for quantizing models that explicitly require to have some
             modules left in their original precision.
@@ -469,6 +480,12 @@ class TorchAoConfig(QuantizationConfigMixin):
         ```python
         from diffusers import FluxTransformer2DModel, TorchAoConfig
 
+        # AOBaseConfig-based configuration
+        from torchao.quantization import Int8WeightOnlyConfig
+
+        quantization_config = TorchAoConfig(Int8WeightOnlyConfig())
+
+        # String-based config
         quantization_config = TorchAoConfig("int8wo")
         transformer = FluxTransformer2DModel.from_pretrained(
             "black-forest-labs/Flux.1-Dev",
@@ -479,7 +496,12 @@ class TorchAoConfig(QuantizationConfigMixin):
         ```
     """
 
-    def __init__(self, quant_type: str, modules_to_not_convert: Optional[List[str]] = None, **kwargs) -> None:
+    def __init__(
+        self,
+        quant_type: Union[str, "AOBaseConfig"],  # noqa: F821
+        modules_to_not_convert: Optional[List[str]] = None,
+        **kwargs,
+    ) -> None:
         self.quant_method = QuantizationMethod.TORCHAO
         self.quant_type = quant_type
         self.modules_to_not_convert = modules_to_not_convert
@@ -490,34 +512,103 @@ class TorchAoConfig(QuantizationConfigMixin):
         else:
             self.quant_type_kwargs = kwargs
 
-        TORCHAO_QUANT_TYPE_METHODS = self._get_torchao_quant_type_to_method()
-        if self.quant_type not in TORCHAO_QUANT_TYPE_METHODS.keys():
-            is_floating_quant_type = self.quant_type.startswith("float") or self.quant_type.startswith("fp")
-            if is_floating_quant_type and not self._is_xpu_or_cuda_capability_atleast_8_9():
+        self.post_init()
+
+    def post_init(self):
+        if not isinstance(self.quant_type, str):
+            if is_torchao_version("<=", "0.9.0"):
                 raise ValueError(
-                    f"Requested quantization type: {self.quant_type} is not supported on GPUs with CUDA capability <= 8.9. You "
-                    f"can check the CUDA capability of your GPU using `torch.cuda.get_device_capability()`."
+                    f"torchao <= 0.9.0 only supports string quant_type, got {type(self.quant_type).__name__}. "
+                    f"Upgrade to torchao > 0.9.0 to use AOBaseConfig."
                 )
 
-            raise ValueError(
-                f"Requested quantization type: {self.quant_type} is not supported or is an incorrect `quant_type` name. If you think the "
-                f"provided quantization type should be supported, please open an issue at https://github.com/huggingface/diffusers/issues."
-            )
+            from torchao.quantization.quant_api import AOBaseConfig
 
-        method = TORCHAO_QUANT_TYPE_METHODS[self.quant_type]
-        signature = inspect.signature(method)
-        all_kwargs = {
-            param.name
-            for param in signature.parameters.values()
-            if param.kind in [inspect.Parameter.KEYWORD_ONLY, inspect.Parameter.POSITIONAL_OR_KEYWORD]
-        }
-        unsupported_kwargs = list(self.quant_type_kwargs.keys() - all_kwargs)
+            if not isinstance(self.quant_type, AOBaseConfig):
+                raise TypeError(f"quant_type must be a AOBaseConfig instance, got {type(self.quant_type).__name__}")
 
-        if len(unsupported_kwargs) > 0:
-            raise ValueError(
-                f'The quantization method "{quant_type}" does not support the following keyword arguments: '
-                f"{unsupported_kwargs}. The following keywords arguments are supported: {all_kwargs}."
-            )
+        elif isinstance(self.quant_type, str):
+            TORCHAO_QUANT_TYPE_METHODS = self._get_torchao_quant_type_to_method()
+
+            if self.quant_type not in TORCHAO_QUANT_TYPE_METHODS.keys():
+                is_floating_quant_type = self.quant_type.startswith("float") or self.quant_type.startswith("fp")
+                if is_floating_quant_type and not self._is_xpu_or_cuda_capability_atleast_8_9():
+                    raise ValueError(
+                        f"Requested quantization type: {self.quant_type} is not supported on GPUs with CUDA capability <= 8.9. You "
+                        f"can check the CUDA capability of your GPU using `torch.cuda.get_device_capability()`."
+                    )
+
+                raise ValueError(
+                    f"Requested quantization type: {self.quant_type} is not supported or is an incorrect `quant_type` name. If you think the "
+                    f"provided quantization type should be supported, please open an issue at https://github.com/huggingface/diffusers/issues."
+                )
+
+            method = TORCHAO_QUANT_TYPE_METHODS[self.quant_type]
+            signature = inspect.signature(method)
+            all_kwargs = {
+                param.name
+                for param in signature.parameters.values()
+                if param.kind in [inspect.Parameter.KEYWORD_ONLY, inspect.Parameter.POSITIONAL_OR_KEYWORD]
+            }
+            unsupported_kwargs = list(self.quant_type_kwargs.keys() - all_kwargs)
+
+            if len(unsupported_kwargs) > 0:
+                raise ValueError(
+                    f'The quantization method "{self.quant_type}" does not support the following keyword arguments: '
+                    f"{unsupported_kwargs}. The following keywords arguments are supported: {all_kwargs}."
+                )
+
+    def to_dict(self):
+        """Convert configuration to a dictionary."""
+        d = super().to_dict()
+
+        if isinstance(self.quant_type, str):
+            # Handle layout serialization if present
+            if "quant_type_kwargs" in d and "layout" in d["quant_type_kwargs"]:
+                if is_dataclass(d["quant_type_kwargs"]["layout"]):
+                    d["quant_type_kwargs"]["layout"] = [
+                        d["quant_type_kwargs"]["layout"].__class__.__name__,
+                        dataclasses.asdict(d["quant_type_kwargs"]["layout"]),
+                    ]
+                if isinstance(d["quant_type_kwargs"]["layout"], list):
+                    assert len(d["quant_type_kwargs"]["layout"]) == 2, "layout saves layout name and layout kwargs"
+                    assert isinstance(d["quant_type_kwargs"]["layout"][0], str), "layout name must be a string"
+                    assert isinstance(d["quant_type_kwargs"]["layout"][1], dict), "layout kwargs must be a dict"
+                else:
+                    raise ValueError("layout must be a list")
+        else:
+            # Handle AOBaseConfig serialization
+            from torchao.core.config import config_to_dict
+
+            # For now we assume there is 1 config per Transformer, however in the future
+            # We may want to support a config per fqn.
+            d["quant_type"] = {"default": config_to_dict(self.quant_type)}
+
+        return d
+
+    @classmethod
+    def from_dict(cls, config_dict, return_unused_kwargs=False, **kwargs):
+        """Create configuration from a dictionary."""
+        if not is_torchao_version(">", "0.9.0"):
+            raise NotImplementedError("TorchAoConfig requires torchao > 0.9.0 for construction from dict")
+        config_dict = config_dict.copy()
+        quant_type = config_dict.pop("quant_type")
+
+        if isinstance(quant_type, str):
+            return cls(quant_type=quant_type, **config_dict)
+        # Check if we only have one key which is "default"
+        # In the future we may update this
+        assert len(quant_type) == 1 and "default" in quant_type, (
+            "Expected only one key 'default' in quant_type dictionary"
+        )
+        quant_type = quant_type["default"]
+
+        # Deserialize quant_type if needed
+        from torchao.core.config import config_from_dict
+
+        quant_type = config_from_dict(quant_type)
+
+        return cls(quant_type=quant_type, **config_dict)
 
     @classmethod
     def _get_torchao_quant_type_to_method(cls):
@@ -667,8 +758,38 @@ class TorchAoConfig(QuantizationConfigMixin):
             raise RuntimeError("TorchAO requires a CUDA compatible GPU or Intel XPU and installation of PyTorch.")
 
     def get_apply_tensor_subclass(self):
-        TORCHAO_QUANT_TYPE_METHODS = self._get_torchao_quant_type_to_method()
-        return TORCHAO_QUANT_TYPE_METHODS[self.quant_type](**self.quant_type_kwargs)
+        """Create the appropriate quantization method based on configuration."""
+        if not isinstance(self.quant_type, str):
+            return self.quant_type
+        else:
+            methods = self._get_torchao_quant_type_to_method()
+            quant_type_kwargs = self.quant_type_kwargs.copy()
+            if (
+                not torch.cuda.is_available()
+                and is_torchao_available()
+                and self.quant_type == "int4_weight_only"
+                and version.parse(importlib.metadata.version("torchao")) >= version.parse("0.8.0")
+                and quant_type_kwargs.get("layout", None) is None
+            ):
+                if torch.xpu.is_available():
+                    if version.parse(importlib.metadata.version("torchao")) >= version.parse(
+                        "0.11.0"
+                    ) and version.parse(importlib.metadata.version("torch")) > version.parse("2.7.9"):
+                        from torchao.dtypes import Int4XPULayout
+                        from torchao.quantization.quant_primitives import ZeroPointDomain
+
+                        quant_type_kwargs["layout"] = Int4XPULayout()
+                        quant_type_kwargs["zero_point_domain"] = ZeroPointDomain.INT
+                    else:
+                        raise ValueError(
+                            "TorchAoConfig requires torchao >= 0.11.0 and torch >= 2.8.0 for XPU support. Please upgrade the version or use run on CPU with the cpu version pytorch."
+                        )
+                else:
+                    from torchao.dtypes import Int4CPULayout
+
+                    quant_type_kwargs["layout"] = Int4CPULayout()
+
+            return methods[self.quant_type](**quant_type_kwargs)
 
     def __repr__(self):
         r"""
@@ -724,3 +845,194 @@ class QuantoConfig(QuantizationConfigMixin):
         accepted_weights = ["float8", "int8", "int4", "int2"]
         if self.weights_dtype not in accepted_weights:
             raise ValueError(f"Only support weights in {accepted_weights} but found {self.weights_dtype}")
+
+
+@dataclass
+class NVIDIAModelOptConfig(QuantizationConfigMixin):
+    """This is a config class to use nvidia modelopt for quantization.
+
+    Args:
+        quant_type (`str`):
+            The type of quantization we want to use, following is how to use:
+                **weightquant_activationquant ==> FP8_FP8** In the above example we have use FP8 for both weight and
+                activation quantization. Following are the all the options:
+                    - FP8
+                    - INT8
+                    - INT4
+                    - NF4
+                    - NVFP4
+        modules_to_not_convert (`List[str]`, *optional*, default to `None`):
+            The list of modules to not quantize, useful for quantizing models that explicitly require to have some
+        weight_only (`bool`, *optional*, default to `False`):
+            If set to `True`, the quantization will be applied only to the weights of the model.
+        channel_quantize (`int`, *optional*, default to `None`):
+            The channel quantization axis, useful for quantizing models across different axes.
+        block_quantize (`int`, *optional*, default to `None`):
+            The block size, useful to further quantize each channel/axes into blocks.
+        scale_channel_quantize (`int`, *optional*, default to `None`):
+            The scale channel quantization axis, useful for quantizing calculated scale across different axes.
+        scale_block_quantize (`int`, *optional*, default to `None`):
+            The scale block size, useful for quantizing each scale channel/axes into blocks.
+        algorithm (`str`, *optional*, default to `"max"`):
+            The algorithm to use for quantization, currently only supports `"max"`.
+        forward_loop (`Callable`, *optional*, default to `None`):
+            The forward loop function to use for calibration during quantization.
+        modelopt_config (`dict`, *optional*, default to `None`):
+            The modelopt config, useful for passing custom configs to modelopt.
+        disable_conv_quantization (`bool`, *optional*, default to `False`):
+            If set to `True`, the quantization will be disabled for convolutional layers.
+        kwargs (`Dict[str, Any]`, *optional*):
+            Additional parameters which are to be used for calibration.
+    """
+
+    quanttype_to_numbits = {
+        "FP8": (4, 3),
+        "INT8": 8,
+        "INT4": 4,
+        "NF4": 4,
+        "NVFP4": (2, 1),
+    }
+    quanttype_to_scalingbits = {
+        "NF4": 8,
+        "NVFP4": (4, 3),
+    }
+
+    def __init__(
+        self,
+        quant_type: str,
+        modules_to_not_convert: Optional[List[str]] = None,
+        weight_only: bool = True,
+        channel_quantize: Optional[int] = None,
+        block_quantize: Optional[int] = None,
+        scale_channel_quantize: Optional[int] = None,
+        scale_block_quantize: Optional[int] = None,
+        algorithm: str = "max",
+        forward_loop: Optional[Callable] = None,
+        modelopt_config: Optional[dict] = None,
+        disable_conv_quantization: bool = False,
+        **kwargs,
+    ) -> None:
+        self.quant_method = QuantizationMethod.MODELOPT
+        self._normalize_quant_type(quant_type)
+        self.modules_to_not_convert = modules_to_not_convert
+        self.weight_only = weight_only
+        self.channel_quantize = channel_quantize
+        self.block_quantize = block_quantize
+        self.calib_cfg = {
+            "method": algorithm,
+            # add more options here if needed
+        }
+        self.forward_loop = forward_loop
+        self.scale_channel_quantize = scale_channel_quantize
+        self.scale_block_quantize = scale_block_quantize
+        self.modelopt_config = self.get_config_from_quant_type() if not modelopt_config else modelopt_config
+        self.disable_conv_quantization = disable_conv_quantization
+
+    def check_model_patching(self, operation: str = "loading"):
+        # ModelOpt imports diffusers internally. This is here to prevent circular imports
+        from modelopt.torch.opt.plugins.huggingface import _PATCHED_CLASSES
+
+        if len(_PATCHED_CLASSES) == 0:
+            warning_msg = (
+                f"Not {operation} weights in modelopt format. This might cause unreliable behavior."
+                "Please make sure to run the following code before loading/saving model weights:\n\n"
+                "    from modelopt.torch.opt import enable_huggingface_checkpointing\n"
+                "    enable_huggingface_checkpointing()\n"
+            )
+            warnings.warn(warning_msg)
+
+    def _normalize_quant_type(self, quant_type: str) -> str:
+        """
+        Validates and normalizes the quantization type string.
+
+        Splits the quant_type into weight and activation components, verifies them against supported types, and
+        replaces unsupported values with safe defaults.
+
+        Args:
+            quant_type (str): The input quantization type string (e.g., 'FP8_INT8').
+
+        Returns:
+            str: A valid quantization type string (e.g., 'FP8_INT8' or 'FP8').
+        """
+        parts = quant_type.split("_")
+        w_type = parts[0]
+        act_type = parts[1] if len(parts) > 1 else None
+        if len(parts) > 2:
+            logger.warning(f"Quantization type {quant_type} is not supported. Picking FP8_INT8 as default")
+            w_type = "FP8"
+            act_type = None
+        else:
+            if w_type not in NVIDIAModelOptConfig.quanttype_to_numbits:
+                logger.warning(f"Weight Quantization type {w_type} is not supported. Picking FP8 as default")
+                w_type = "FP8"
+            if act_type is not None and act_type not in NVIDIAModelOptConfig.quanttype_to_numbits:
+                logger.warning(f"Activation Quantization type {act_type} is not supported. Picking INT8 as default")
+                act_type = None
+        self.quant_type = w_type + ("_" + act_type if act_type is not None else "")
+
+    def get_config_from_quant_type(self) -> Dict[str, Any]:
+        """
+        Get the config from the quantization type.
+        """
+        import modelopt.torch.quantization as mtq
+
+        BASE_CONFIG = {
+            "quant_cfg": {
+                "*weight_quantizer": {"fake_quant": False},
+                "*input_quantizer": {},
+                "*output_quantizer": {"enable": False},
+                "*q_bmm_quantizer": {},
+                "*k_bmm_quantizer": {},
+                "*v_bmm_quantizer": {},
+                "*softmax_quantizer": {},
+                **mtq.config._default_disabled_quantizer_cfg,
+            },
+            "algorithm": self.calib_cfg,
+        }
+
+        quant_cfg = BASE_CONFIG["quant_cfg"]
+        if self.weight_only:
+            for k in quant_cfg:
+                if "*weight_quantizer" not in k and not quant_cfg[k]:
+                    quant_cfg[k]["enable"] = False
+
+        parts = self.quant_type.split("_")
+        w_type = parts[0]
+        act_type = parts[1].replace("A", "") if len(parts) > 1 else None
+        for k in quant_cfg:
+            if k not in mtq.config._default_disabled_quantizer_cfg and "enable" not in quant_cfg[k]:
+                if k == "*input_quantizer":
+                    if act_type is not None:
+                        quant_cfg[k]["num_bits"] = NVIDIAModelOptConfig.quanttype_to_numbits[act_type]
+                    continue
+                quant_cfg[k]["num_bits"] = NVIDIAModelOptConfig.quanttype_to_numbits[w_type]
+
+        if self.block_quantize is not None and self.channel_quantize is not None:
+            quant_cfg["*weight_quantizer"]["block_sizes"] = {self.channel_quantize: self.block_quantize}
+            quant_cfg["*input_quantizer"]["block_sizes"] = {
+                self.channel_quantize: self.block_quantize,
+                "type": "dynamic",
+            }
+        elif self.channel_quantize is not None:
+            quant_cfg["*weight_quantizer"]["axis"] = self.channel_quantize
+            quant_cfg["*input_quantizer"]["axis"] = self.channel_quantize
+            quant_cfg["*input_quantizer"]["type"] = "dynamic"
+
+        # Only fixed scaling sizes are supported for now in modelopt
+        if self.scale_channel_quantize is not None and self.scale_block_quantize is not None:
+            if w_type in NVIDIAModelOptConfig.quanttype_to_scalingbits:
+                quant_cfg["*weight_quantizer"]["block_sizes"].update(
+                    {
+                        "scale_bits": NVIDIAModelOptConfig.quanttype_to_scalingbits[w_type],
+                        "scale_block_sizes": {self.scale_channel_quantize: self.scale_block_quantize},
+                    }
+                )
+            if act_type and act_type in NVIDIAModelOptConfig.quanttype_to_scalingbits:
+                quant_cfg["*input_quantizer"]["block_sizes"].update(
+                    {
+                        "scale_bits": NVIDIAModelOptConfig.quanttype_to_scalingbits[act_type],
+                        "scale_block_sizes": {self.scale_channel_quantize: self.scale_block_quantize},
+                    }
+                )
+
+        return BASE_CONFIG

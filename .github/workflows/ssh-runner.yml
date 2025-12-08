@@ -31,7 +31,7 @@ jobs:
       group: "${{ github.event.inputs.runner_type }}"
     container:
       image: ${{ github.event.inputs.docker_image }}
-      options: --shm-size "16gb" --ipc host -v /mnt/cache/.cache/huggingface/diffusers:/mnt/cache/ --gpus 0 --privileged
+      options: --shm-size "16gb" --ipc host -v /mnt/cache/.cache/huggingface/diffusers:/mnt/cache/ --gpus all --privileged
 
     steps:
       - name: Checkout diffusers

@@ -32,7 +32,8 @@ from diffusers import (
 )
 from diffusers.quantizers import PipelineQuantizationConfig
 from diffusers.utils import is_accelerate_version
-from diffusers.utils.testing_utils import (
+
+from ...testing_utils import (
     CaptureLogger,
     backend_empty_cache,
     is_bitsandbytes_available,
@@ -51,7 +52,6 @@ from diffusers.utils.testing_utils import (
     slow,
     torch_device,
 )
-
 from ..test_torch_compile_utils import QuantCompileTests
 
 
@@ -847,6 +847,10 @@ class Bnb8BitCompileTests(QuantCompileTests, unittest.TestCase):
             components_to_quantize=["transformer", "text_encoder_2"],
         )
 
+    @pytest.mark.xfail(
+        reason="Test fails because of an offloading problem from Accelerate with confusion in hooks."
+        " Test passes without recompilation context manager. Refer to https://github.com/huggingface/diffusers/pull/12002/files#r2240462757 for details."
+    )
     def test_torch_compile(self):
         torch._dynamo.config.capture_dynamic_output_shape_ops = True
         super()._test_torch_compile(torch_dtype=torch.float16)

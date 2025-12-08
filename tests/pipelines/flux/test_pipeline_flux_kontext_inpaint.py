@@ -12,8 +12,8 @@ from diffusers import (
     FluxKontextInpaintPipeline,
     FluxTransformer2DModel,
 )
-from diffusers.utils.testing_utils import floats_tensor, torch_device
 
+from ...testing_utils import floats_tensor, torch_device
 from ..test_pipelines_common import (
     FasterCacheTesterMixin,
     FluxIPAdapterTesterMixin,

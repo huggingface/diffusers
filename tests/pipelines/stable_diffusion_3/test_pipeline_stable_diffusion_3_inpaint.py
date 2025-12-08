@@ -11,12 +11,12 @@ from diffusers import (
     SD3Transformer2DModel,
     StableDiffusion3InpaintPipeline,
 )
-from diffusers.utils.testing_utils import (
+
+from ...testing_utils import (
     enable_full_determinism,
     floats_tensor,
     torch_device,
 )
-
 from ..pipeline_params import (
     TEXT_GUIDED_IMAGE_INPAINTING_BATCH_PARAMS,
     TEXT_GUIDED_IMAGE_INPAINTING_PARAMS,
@@ -132,37 +132,23 @@ class StableDiffusion3InpaintPipelineFastTests(PipelineLatentTesterMixin, unitte
         }
         return inputs
 
-    def test_stable_diffusion_3_inpaint_different_prompts(self):
-        pipe = self.pipeline_class(**self.get_dummy_components()).to(torch_device)
+    def test_inference(self):
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
 
         inputs = self.get_dummy_inputs(torch_device)
-        output_same_prompt = pipe(**inputs).images[0]
+        image = pipe(**inputs).images[0]
+        generated_slice = image.flatten()
+        generated_slice = np.concatenate([generated_slice[:8], generated_slice[-8:]])
 
-        inputs = self.get_dummy_inputs(torch_device)
-        inputs["prompt_2"] = "a different prompt"
-        inputs["prompt_3"] = "another different prompt"
-        output_different_prompts = pipe(**inputs).images[0]
+        # fmt: off
+        expected_slice = np.array([0.5035, 0.6661, 0.5859, 0.413, 0.4224, 0.4234, 0.7181, 0.5062, 0.5183, 0.6877, 0.5074, 0.585, 0.6111, 0.5422, 0.5306, 0.5891])
+        # fmt: on
 
-        max_diff = np.abs(output_same_prompt - output_different_prompts).max()
+        self.assertTrue(
+            np.allclose(generated_slice, expected_slice, atol=1e-3), "Output does not match expected slice."
+        )
 
-        # Outputs should be different here
-        assert max_diff > 1e-2
-
-    def test_stable_diffusion_3_inpaint_different_negative_prompts(self):
-        pipe = self.pipeline_class(**self.get_dummy_components()).to(torch_device)
-
-        inputs = self.get_dummy_inputs(torch_device)
-        output_same_prompt = pipe(**inputs).images[0]
-
-        inputs = self.get_dummy_inputs(torch_device)
-        inputs["negative_prompt_2"] = "deformed"
-        inputs["negative_prompt_3"] = "blurry"
-        output_different_prompts = pipe(**inputs).images[0]
-
-        max_diff = np.abs(output_same_prompt - output_different_prompts).max()
-
-        # Outputs should be different here
-        assert max_diff > 1e-2
-
+    @unittest.skip("Skip for now.")
     def test_multi_vae(self):
         pass

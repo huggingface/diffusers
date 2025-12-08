@@ -14,11 +14,13 @@
 # limitations under the License.
 
 import gc
+import importlib.metadata
 import tempfile
 import unittest
 from typing import List
 
 import numpy as np
+from packaging import version
 from parameterized import parameterized
 from transformers import AutoTokenizer, CLIPTextModel, CLIPTokenizer, T5EncoderModel
 
@@ -31,7 +33,8 @@ from diffusers import (
 )
 from diffusers.models.attention_processor import Attention
 from diffusers.quantizers import PipelineQuantizationConfig
-from diffusers.utils.testing_utils import (
+
+from ...testing_utils import (
     backend_empty_cache,
     backend_synchronize,
     enable_full_determinism,
@@ -45,7 +48,6 @@ from diffusers.utils.testing_utils import (
     slow,
     torch_device,
 )
-
 from ..test_torch_compile_utils import QuantCompileTests
 
 
@@ -64,6 +66,9 @@ if is_torchao_available():
     from torchao.quantization.linear_activation_quantized_tensor import LinearActivationQuantizedTensor
     from torchao.quantization.quant_primitives import MappingType
     from torchao.utils import get_model_size_in_bytes
+
+    if version.parse(importlib.metadata.version("torchao")) >= version.Version("0.9.0"):
+        from torchao.quantization import Int8WeightOnlyConfig
 
 
 @require_torch
@@ -236,7 +241,7 @@ class TorchAoTest(unittest.TestCase):
                 ("uint7wo", np.array([0.4648, 0.5195, 0.5547, 0.4219, 0.4414, 0.6445, 0.4316, 0.4531, 0.5625])),
             ]
 
-            if TorchAoConfig._is_cuda_capability_atleast_8_9():
+            if TorchAoConfig._is_xpu_or_cuda_capability_atleast_8_9():
                 QUANTIZATION_TYPES_TO_TEST.extend([
                     ("float8wo_e5m2", np.array([0.4590, 0.5273, 0.5547, 0.4219, 0.4375, 0.6406, 0.4316, 0.4512, 0.5625])),
                     ("float8wo_e4m3", np.array([0.4648, 0.5234, 0.5547, 0.4219, 0.4414, 0.6406, 0.4316, 0.4531, 0.5625])),
@@ -522,6 +527,15 @@ class TorchAoTest(unittest.TestCase):
         inputs = self.get_dummy_inputs(torch_device)
         _ = pipe(**inputs)
 
+    @require_torchao_version_greater_or_equal("0.9.0")
+    def test_aobase_config(self):
+        quantization_config = TorchAoConfig(Int8WeightOnlyConfig())
+        components = self.get_dummy_components(quantization_config)
+        pipe = FluxPipeline(**components).to(torch_device)
+
+        inputs = self.get_dummy_inputs(torch_device)
+        _ = pipe(**inputs)
+
 
 # Slices for these tests have been obtained on our aws-g6e-xlarge-plus runners
 @require_torch
@@ -625,6 +639,14 @@ class TorchAoSerializationTest(unittest.TestCase):
         quant_method, quant_method_kwargs = "int8_weight_only", {}
         expected_slice = np.array([0.3613, -0.127, -0.0223, -0.2539, -0.459, 0.4961, -0.1357, -0.6992, 0.4551])
         device = "cpu"
+        self._test_original_model_expected_slice(quant_method, quant_method_kwargs, expected_slice)
+        self._check_serialization_expected_slice(quant_method, quant_method_kwargs, expected_slice, device)
+
+    @require_torchao_version_greater_or_equal("0.9.0")
+    def test_aobase_config(self):
+        quant_method, quant_method_kwargs = Int8WeightOnlyConfig(), {}
+        expected_slice = np.array([0.3613, -0.127, -0.0223, -0.2539, -0.459, 0.4961, -0.1357, -0.6992, 0.4551])
+        device = torch_device
         self._test_original_model_expected_slice(quant_method, quant_method_kwargs, expected_slice)
         self._check_serialization_expected_slice(quant_method, quant_method_kwargs, expected_slice, device)
 
@@ -753,7 +775,7 @@ class SlowTorchAoTests(unittest.TestCase):
             ("int8dq", np.array([0.0546, 0.0761, 0.1386, 0.0488, 0.0644, 0.1425, 0.0605, 0.0742, 0.1406, 0.0625, 0.0722, 0.1523, 0.0625, 0.0742, 0.1503, 0.0605, 0.3886, 0.7968, 0.5507, 0.4492, 0.7890, 0.5351, 0.4316, 0.8007, 0.5390, 0.4179, 0.8281, 0.5820, 0.4531, 0.7812, 0.5703, 0.4921])),
         ]
 
-        if TorchAoConfig._is_cuda_capability_atleast_8_9():
+        if TorchAoConfig._is_xpu_or_cuda_capability_atleast_8_9():
             QUANTIZATION_TYPES_TO_TEST.extend([
                 ("float8wo_e4m3", np.array([0.0546, 0.0722, 0.1328, 0.0468, 0.0585, 0.1367, 0.0605, 0.0703, 0.1328, 0.0625, 0.0703, 0.1445, 0.0585, 0.0703, 0.1406, 0.0605, 0.3496, 0.7109, 0.4843, 0.4042, 0.7226, 0.5000, 0.4160, 0.7031, 0.4824, 0.3886, 0.6757, 0.4667, 0.3710, 0.6679, 0.4902, 0.4238])),
                 ("fp5_e3m1", np.array([0.0527, 0.0762, 0.1309, 0.0449, 0.0645, 0.1328, 0.0566, 0.0723, 0.125, 0.0566, 0.0703, 0.1328, 0.0566, 0.0742, 0.1348, 0.0566, 0.3633, 0.7617, 0.5273, 0.4277, 0.7891, 0.5469, 0.4375, 0.8008, 0.5586, 0.4336, 0.7383, 0.5156, 0.3906, 0.6992, 0.5156, 0.4375])),

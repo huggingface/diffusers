@@ -22,6 +22,7 @@ from typing import Dict, List, Literal, Optional, Union
 import safetensors
 import torch
 
+from ..hooks.group_offloading import _maybe_remove_and_reapply_group_offloading
 from ..utils import (
     MIN_PEFT_VERSION,
     USE_PEFT_BACKEND,
@@ -61,6 +62,9 @@ _SET_ADAPTER_SCALE_FN_MAPPING = {
     "HunyuanVideoFramepackTransformer3DModel": lambda model_cls, weights: weights,
     "WanVACETransformer3DModel": lambda model_cls, weights: weights,
     "ChromaTransformer2DModel": lambda model_cls, weights: weights,
+    "QwenImageTransformer2DModel": lambda model_cls, weights: weights,
+    "Flux2Transformer2DModel": lambda model_cls, weights: weights,
+    "ZImageTransformer2DModel": lambda model_cls, weights: weights,
 }
 
 
@@ -292,7 +296,7 @@ class PeftAdapterMixin:
                     # For hotswapping, we need the adapter name to be present in the state dict keys
                     new_sd = {}
                     for k, v in sd.items():
-                        if k.endswith("lora_A.weight") or key.endswith("lora_B.weight"):
+                        if k.endswith("lora_A.weight") or k.endswith("lora_B.weight"):
                             k = k[: -len(".weight")] + f".{adapter_name}.weight"
                         elif k.endswith("lora_B.bias"):  # lora_bias=True option
                             k = k[: -len(".bias")] + f".{adapter_name}.bias"
@@ -319,7 +323,9 @@ class PeftAdapterMixin:
                     # it to None
                     incompatible_keys = None
                 else:
-                    inject_adapter_in_model(lora_config, self, adapter_name=adapter_name, **peft_kwargs)
+                    inject_adapter_in_model(
+                        lora_config, self, adapter_name=adapter_name, state_dict=state_dict, **peft_kwargs
+                    )
                     incompatible_keys = set_peft_model_state_dict(self, state_dict, adapter_name, **peft_kwargs)
 
                     if self._prepare_lora_hotswap_kwargs is not None:
@@ -788,6 +794,8 @@ class PeftAdapterMixin:
             # Pop also the corresponding adapter from the config
             if hasattr(self, "peft_config"):
                 self.peft_config.pop(adapter_name, None)
+
+        _maybe_remove_and_reapply_group_offloading(self)
 
     def enable_lora_hotswap(
         self, target_rank: int = 128, check_compiled: Literal["error", "warn", "ignore"] = "error"
