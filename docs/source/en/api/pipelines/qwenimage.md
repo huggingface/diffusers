@@ -95,7 +95,7 @@ image.save("qwen_fewsteps.png")
 
 With [`QwenImageEditPlusPipeline`], one can provide multiple images as input reference.
 
-```
+```py
 import torch
 from PIL import Image
 from diffusers import QwenImageEditPlusPipeline
