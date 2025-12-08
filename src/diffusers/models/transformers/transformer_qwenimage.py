@@ -149,7 +149,7 @@ def compute_text_seq_len_from_mask(
     """
     batch_size, text_seq_len = encoder_hidden_states.shape[:2]
     if encoder_hidden_states_mask is None:
-        return text_seq_len, None
+        return text_seq_len, None, None
 
     if encoder_hidden_states_mask.shape[:2] != (batch_size, text_seq_len):
         raise ValueError(
@@ -164,7 +164,11 @@ def compute_text_seq_len_from_mask(
     active_positions = torch.where(encoder_hidden_states_mask, position_ids, position_ids.new_zeros(()))
     has_active = encoder_hidden_states_mask.any(dim=1)
     per_sample_len = torch.where(has_active, active_positions.max(dim=1).values + 1, torch.as_tensor(text_seq_len))
-    rope_text_seq_len = max(text_seq_len, int(per_sample_len.max().item()))
+
+    # Keep as tensor to avoid graph breaks in torch.compile
+    # torch.maximum works with mixed tensor/scalar and keeps result as tensor
+    text_seq_len_tensor = torch.tensor(text_seq_len, device=encoder_hidden_states.device, dtype=torch.long)
+    rope_text_seq_len = torch.maximum(text_seq_len_tensor, per_sample_len.max())
 
     return rope_text_seq_len, per_sample_len, encoder_hidden_states_mask
 
@@ -237,9 +241,9 @@ class QwenEmbedRope(nn.Module):
             device: (`torch.device`):
                 The device on which to perform the RoPE computation.
         """
-        if self.pos_freqs.device != device:
-            self.pos_freqs = self.pos_freqs.to(device)
-            self.neg_freqs = self.neg_freqs.to(device)
+        # Move to device unconditionally to avoid graph breaks in torch.compile
+        self.pos_freqs = self.pos_freqs.to(device)
+        self.neg_freqs = self.neg_freqs.to(device)
 
         if isinstance(video_fhw, list):
             video_fhw = video_fhw[0]
