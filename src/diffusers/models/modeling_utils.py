@@ -64,7 +64,7 @@ from ..utils.hub_utils import (
     load_or_create_model_card,
     populate_model_card,
 )
-from ..utils.torch_utils import empty_device_cache
+from ..utils.torch_utils import empty_device_cache, is_torch_dist_rank_zero
 from ._modeling_parallel import ContextParallelConfig, ContextParallelModelPlan, ParallelConfig
 from .model_loading_utils import (
     _caching_allocator_warmup,
@@ -1672,7 +1672,10 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         else:
             shard_files = resolved_model_file
             if len(resolved_model_file) > 1:
-                shard_files = logging.tqdm(resolved_model_file, desc="Loading checkpoint shards")
+                shard_tqdm_kwargs = {"desc": "Loading checkpoint shards"}
+                if not is_torch_dist_rank_zero():
+                    shard_tqdm_kwargs["disable"] = True
+                shard_files = logging.tqdm(resolved_model_file, **shard_tqdm_kwargs)
 
             for shard_file in shard_files:
                 offload_index, state_dict_index, _mismatched_keys, _error_msgs = load_fn(shard_file)

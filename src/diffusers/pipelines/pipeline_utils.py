@@ -68,7 +68,7 @@ from ..utils import (
     numpy_to_pil,
 )
 from ..utils.hub_utils import _check_legacy_sharding_variant_format, load_or_create_model_card, populate_model_card
-from ..utils.torch_utils import empty_device_cache, get_device, is_compiled_module
+from ..utils.torch_utils import empty_device_cache, get_device, is_compiled_module, is_torch_dist_rank_zero
 
 
 if is_torch_npu_available():
@@ -983,7 +983,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         current_device_map = None
         _maybe_warn_for_wrong_component_in_quant_config(init_dict, quantization_config)
         logging_tqdm_kwargs = {"desc": "Loading pipeline components..."}
-        if cls._progress_bar_disabled_for_rank():
+        if not is_torch_dist_rank_zero():
             logging_tqdm_kwargs["disable"] = True
 
         for name, (library_name, class_name) in logging.tqdm(init_dict.items(), **logging_tqdm_kwargs):
@@ -1914,7 +1914,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
         progress_bar_config = dict(self._progress_bar_config)
         if "disable" not in progress_bar_config:
-            progress_bar_config["disable"] = self._progress_bar_disabled_for_rank()
+            progress_bar_config["disable"] = not is_torch_dist_rank_zero()
 
         if iterable is not None:
             return tqdm(iterable, **progress_bar_config)
@@ -1925,15 +1925,6 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
     def set_progress_bar_config(self, **kwargs):
         self._progress_bar_config = kwargs
-
-    @staticmethod
-    def _progress_bar_disabled_for_rank():
-        if torch.distributed.is_available() and torch.distributed.is_initialized():
-            try:
-                return torch.distributed.get_rank() != 0
-            except (RuntimeError, ValueError):
-                return False
-        return False
 
     def enable_xformers_memory_efficient_attention(self, attention_op: Optional[Callable] = None):
         r"""

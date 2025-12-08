@@ -143,6 +143,23 @@ def backend_supports_training(device: str):
     return BACKEND_SUPPORTS_TRAINING[device]
 
 
+def is_torch_dist_rank_zero() -> bool:
+    if not is_torch_available():
+        return True
+
+    dist_module = getattr(torch, "distributed", None)
+    if dist_module is None or not dist_module.is_available():
+        return True
+
+    if not dist_module.is_initialized():
+        return True
+
+    try:
+        return dist_module.get_rank() == 0
+    except (RuntimeError, ValueError):
+        return True
+
+
 def randn_tensor(
     shape: Union[Tuple, List],
     generator: Optional[Union[List["torch.Generator"], "torch.Generator"]] = None,
