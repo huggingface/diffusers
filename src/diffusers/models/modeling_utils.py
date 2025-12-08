@@ -59,12 +59,9 @@ from ..utils import (
     is_torch_version,
     logging,
 )
-from ..utils.hub_utils import (
-    PushToHubMixin,
-    load_or_create_model_card,
-    populate_model_card,
-)
-from ..utils.torch_utils import empty_device_cache, is_torch_dist_rank_zero
+from ..utils.distributed_utils import is_torch_dist_rank_zero
+from ..utils.hub_utils import PushToHubMixin, load_or_create_model_card, populate_model_card
+from ..utils.torch_utils import empty_device_cache
 from ._modeling_parallel import ContextParallelConfig, ContextParallelModelPlan, ParallelConfig
 from .model_loading_utils import (
     _caching_allocator_warmup,

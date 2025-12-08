@@ -67,8 +67,9 @@ from ..utils import (
     logging,
     numpy_to_pil,
 )
+from ..utils.distributed_utils import is_torch_dist_rank_zero
 from ..utils.hub_utils import _check_legacy_sharding_variant_format, load_or_create_model_card, populate_model_card
-from ..utils.torch_utils import empty_device_cache, get_device, is_compiled_module, is_torch_dist_rank_zero
+from ..utils.torch_utils import empty_device_cache, get_device, is_compiled_module
 
 
 if is_torch_npu_available():
