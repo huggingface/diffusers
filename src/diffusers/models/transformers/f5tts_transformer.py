@@ -318,7 +318,7 @@ class InputEmbedding(nn.Module):
 # Transformer backbone using DiT blocks
 
 # Adding this to decouple the conditoning encoding from the DiT backbone
-class ConditioningEncoder(nn.Module):
+class F5ConditioningEncoder(nn.Module):
     def __init__(
         self,
         dim,
@@ -374,7 +374,7 @@ class AdaLayerNorm_Final(nn.Module):
         return x
 
 
-class DiT(nn.Module):
+class F5DiTModel(nn.Module):
     def __init__(
         self,
         *,

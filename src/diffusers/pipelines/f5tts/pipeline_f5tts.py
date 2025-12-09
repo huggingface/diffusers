@@ -27,7 +27,7 @@ import torch
 from torch.nn.utils.rnn import pad_sequence
 from diffusers.pipelines.pipeline_utils import AudioPipelineOutput, DiffusionPipeline
 from vocos import Vocos
-from diffusers.models.transformers.f5tts_transformer import   DiT, MelSpec, ConditioningEncoder
+from diffusers.models.transformers.f5tts_transformer import   F5DiTModel, MelSpec, F5ConditioningEncoder
 from diffusers.schedulers import FlowMatchEulerDiscreteScheduler
 # helpers
 import jieba
@@ -42,8 +42,8 @@ from typing import Optional, Union, List
 class F5FlowPipeline(DiffusionPipeline):
     def __init__(
         self,
-        transformer: DiT,
-        conditioning_encoder: ConditioningEncoder,
+        transformer: F5DiTModel,
+        conditioning_encoder: F5ConditioningEncoder,
         scheduler: FlowMatchEulerDiscreteScheduler,
         odeint_kwargs: dict = dict(
             method="euler" 
@@ -308,7 +308,7 @@ if __name__ == "__main__":
     vocab_size = len(vocab_char_map)
 
 
-    dit = DiT(**dit_config)
+    dit = F5DiTModel(**dit_config)
     print("DiT model initialized with config:", dit_config)
     
     conditioning_encoder_config = {
@@ -319,7 +319,7 @@ if __name__ == "__main__":
         'conv_layers': 4,
         'mel_dim': mel_spec_config['n_mel_channels'],
     }
-    conditioning_encoder = ConditioningEncoder(**conditioning_encoder_config)
+    conditioning_encoder = F5ConditioningEncoder(**conditioning_encoder_config)
     print("Conditioning Encoder initialized with config:", conditioning_encoder_config)
     
     scheduler = FlowMatchEulerDiscreteScheduler()
