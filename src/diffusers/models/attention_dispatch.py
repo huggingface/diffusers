@@ -44,6 +44,7 @@ from ..utils import (
     is_xformers_version,
 )
 from ..utils.constants import DIFFUSERS_ATTN_BACKEND, DIFFUSERS_ATTN_CHECKS
+from ..utils import is_torch_version
 
 
 if TYPE_CHECKING:
@@ -1107,6 +1108,10 @@ def _all_to_all_dim_exchange(x: torch.Tensor, scatter_idx: int = 2, gather_idx: 
 
 
 class SeqAllToAllDim(torch.autograd.Function):
+    """
+    all_to_all operation for unified sequence parallelism.
+    uses _all_to_all_dim_exchange, see _all_to_all_dim_exchange for more info.
+    """
     @staticmethod
     def forward(ctx, group, input, scatter_id=2, gather_id=1):
         ctx.group = group
@@ -1186,7 +1191,10 @@ class TemplatedRingAttention(torch.autograd.Function):
                 out = out.to(torch.float32)
                 lse = lse.to(torch.float32)
 
-            lse = lse.unsqueeze(-1)
+            # Refer to:
+            # https://github.com/huggingface/diffusers/pull/12693#issuecomment-3627519544
+            if is_torch_version("<", "2.9.0"):
+                lse = lse.unsqueeze(-1)
             if prev_out is not None:
                 out = prev_out - torch.nn.functional.sigmoid(lse - prev_lse) * (prev_out - out)
                 lse = prev_lse - torch.nn.functional.logsigmoid(prev_lse - lse)
@@ -1342,7 +1350,7 @@ class TemplatedUlyssesAttention(torch.autograd.Function):
             x.flatten(0, 1).permute(1, 2, 0, 3).contiguous() for x in (grad_query, grad_key, grad_value)
         )
 
-        return grad_query, grad_key, grad_value, None, None, None, None, None, None, None, None
+        return grad_query, grad_key, grad_value, None, None, None, None, None, None, None, None, None
 
 def TemplatedUnifiedAttention(
     query: torch.Tensor,
@@ -1366,8 +1374,6 @@ def TemplatedUnifiedAttention(
     """
     ulysses_mesh = _parallel_config.context_parallel_config._ulysses_mesh
     ulysses_group = ulysses_mesh.get_group()
-    ring_mesh = _parallel_config.context_parallel_config._ring_mesh
-    ring_group = ring_mesh.get_group()
 
     query = SeqAllToAllDim.apply(ulysses_group, query, scatter_idx, gather_idx)
     key = SeqAllToAllDim.apply(ulysses_group, key, scatter_idx, gather_idx)
@@ -1390,7 +1396,7 @@ def TemplatedUnifiedAttention(
         context_layer, lse, *_ = out
     else:
         context_layer = out
-    # Assuming (based on forward ops implementations) context_layer is of shape (B, S, H_LOCAL, D)
+    #context_layer is of shape (B, S, H_LOCAL, D)
     output = SeqAllToAllDim.apply(
         ulysses_group,
         context_layer,
@@ -1398,10 +1404,12 @@ def TemplatedUnifiedAttention(
         scatter_idx,
     )
     if return_lse:
-        # not sure if this is correct: Assuming (based on forward ops in ringAttention) 
-        # the lse is of shape (B, S, H_LOCAL)
-        lse = lse.unsqueeze(-1)  # (B, S, H_LOCAL, 1)
-        lse = SeqAllToAllDim.apply(ulysses_group, lse, scatter_idx=2, gather_idx=1)
+        #lse is of shape (B, S, H_LOCAL, 1)
+        # Refer to:
+        # https://github.com/huggingface/diffusers/pull/12693#issuecomment-3627519544
+        if is_torch_version("<", "2.9.0"):
+            lse = lse.unsqueeze(-1)  # (B, S, H_LOCAL, 1)
+        lse = SeqAllToAllDim.apply(ulysses_group, lse, gather_idx, scatter_idx)
         lse = lse.squeeze(-1)
         return (output, lse)
     return output
