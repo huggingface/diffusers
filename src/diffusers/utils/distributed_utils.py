@@ -13,15 +13,14 @@
 # limitations under the License.
 
 
-try:
-    import torch
-except ImportError:
-    torch = None
+from .import_utils import is_torch_available
 
 
 def is_torch_dist_rank_zero() -> bool:
-    if torch is None:
+    if not is_torch_available():
         return True
+
+    import torch
 
     dist_module = getattr(torch, "distributed", None)
     if dist_module is None or not dist_module.is_available():
