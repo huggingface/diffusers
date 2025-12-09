@@ -399,22 +399,22 @@ class Flux2VaeEncoderStep(ModularPipelineBlocks):
         condition_images = block_state.condition_images
 
         if condition_images is None:
-            block_state.image_latents = None
-        else:
-            device = components._execution_device
-            dtype = components.vae.dtype
+            return components, state
 
-            image_latents = []
-            for image in condition_images:
-                image = image.to(device=device, dtype=dtype)
-                latent = self._encode_vae_image(
-                    vae=components.vae,
-                    image=image,
-                    generator=block_state.generator,
-                )
-                image_latents.append(latent)
+        device = components._execution_device
+        dtype = components.vae.dtype
 
-            block_state.image_latents = image_latents
+        image_latents = []
+        for image in condition_images:
+            image = image.to(device=device, dtype=dtype)
+            latent = self._encode_vae_image(
+                vae=components.vae,
+                image=image,
+                generator=block_state.generator,
+            )
+            image_latents.append(latent)
+
+        block_state.image_latents = image_latents
 
         self.set_block_state(state, block_state)
         return components, state

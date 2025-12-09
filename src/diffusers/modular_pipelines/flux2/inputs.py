@@ -31,7 +31,6 @@ class Flux2TextInputStep(ModularPipelineBlocks):
     @property
     def description(self) -> str:
         return (
-            "Text input processing step that standardizes text embeddings for Flux2 pipeline.\n"
             "This step:\n"
             "  1. Determines `batch_size` and `dtype` based on `prompt_embeds`\n"
             "  2. Ensures all text embeddings have consistent batch sizes (batch_size * num_images_per_prompt)"
@@ -83,58 +82,6 @@ class Flux2TextInputStep(ModularPipelineBlocks):
         block_state.prompt_embeds = block_state.prompt_embeds.view(
             block_state.batch_size * block_state.num_images_per_prompt, seq_len, -1
         )
-
-        self.set_block_state(state, block_state)
-        return components, state
-
-
-class Flux2ImageInputStep(ModularPipelineBlocks):
-    model_name = "flux2"
-
-    @property
-    def description(self) -> str:
-        return (
-            "Image input processing step that prepares image latents for Flux2 conditioning.\n"
-            "This step expands image latents to match the batch size."
-        )
-
-    @property
-    def inputs(self) -> List[InputParam]:
-        return [
-            InputParam("num_images_per_prompt", default=1),
-            InputParam("batch_size", required=True, type_hint=int),
-            InputParam("image_latents", type_hint=torch.Tensor),
-            InputParam("image_latent_ids", type_hint=torch.Tensor),
-        ]
-
-    @property
-    def intermediate_outputs(self) -> List[OutputParam]:
-        return [
-            OutputParam(
-                "image_latents",
-                type_hint=torch.Tensor,
-                description="Packed image latents expanded to batch size",
-            ),
-            OutputParam(
-                "image_latent_ids",
-                type_hint=torch.Tensor,
-                description="Image latent position IDs expanded to batch size",
-            ),
-        ]
-
-    @torch.no_grad()
-    def __call__(self, components: Flux2ModularPipeline, state: PipelineState) -> PipelineState:
-        block_state = self.get_block_state(state)
-
-        image_latents = block_state.image_latents
-        image_latent_ids = block_state.image_latent_ids
-        target_batch_size = block_state.batch_size * block_state.num_images_per_prompt
-
-        if image_latents is not None:
-            block_state.image_latents = image_latents.repeat(target_batch_size, 1, 1)
-
-        if image_latent_ids is not None:
-            block_state.image_latent_ids = image_latent_ids.repeat(target_batch_size, 1, 1)
 
         self.set_block_state(state, block_state)
         return components, state

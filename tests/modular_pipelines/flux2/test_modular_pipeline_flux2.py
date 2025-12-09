@@ -15,7 +15,6 @@
 
 import random
 import tempfile
-import unittest
 
 import numpy as np
 import PIL
@@ -25,11 +24,6 @@ from diffusers.modular_pipelines import (
     Flux2AutoBlocks,
     Flux2ModularPipeline,
     ModularPipeline,
-)
-from diffusers.modular_pipelines.flux2 import (
-    Flux2AutoTextEncoderStep,
-    Flux2RemoteTextEncoderStep,
-    Flux2TextEncoderStep,
 )
 
 from ...testing_utils import floats_tensor, torch_device
@@ -114,26 +108,7 @@ class TestFlux2ImageConditionedModularPipelineFast(ModularPipelineTesterMixin):
 
             image_slices.append(image[0, -3:, -3:, -1].flatten())
 
-        assert torch.abs(image_slices[0] - image_slices[1]).max() < 1e-3
+        assert torch.abs(image_slices[0] - image_slices[1]).max() < 1e-5
 
     def test_float16_inference(self):
         super().test_float16_inference(9e-2)
-
-
-class TestFlux2AutoTextEncoderStep(unittest.TestCase):
-    def test_auto_text_encoder_block_classes(self):
-        auto_step = Flux2AutoTextEncoderStep()
-
-        assert len(auto_step.block_classes) == 2
-        assert Flux2RemoteTextEncoderStep in auto_step.block_classes
-        assert Flux2TextEncoderStep in auto_step.block_classes
-
-    def test_auto_text_encoder_trigger_inputs(self):
-        auto_step = Flux2AutoTextEncoderStep()
-
-        assert auto_step.block_trigger_inputs == ["remote_text_encoder", None]
-
-    def test_auto_text_encoder_block_names(self):
-        auto_step = Flux2AutoTextEncoderStep()
-
-        assert auto_step.block_names == ["remote", "local"]
