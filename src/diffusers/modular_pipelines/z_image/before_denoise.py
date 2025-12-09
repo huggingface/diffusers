@@ -43,32 +43,32 @@ def repeat_tensor_to_batch_size(
 ) -> torch.Tensor:
     """Repeat tensor elements to match the final batch size.
 
-    This function expands a tensor's batch dimension to match the final batch size (batch_size * num_videos_per_prompt)
+    This function expands a tensor's batch dimension to match the final batch size (batch_size * num_images_per_prompt)
     by repeating each element along dimension 0.
 
     The input tensor must have batch size 1 or batch_size. The function will:
-    - If batch size is 1: repeat each element (batch_size * num_videos_per_prompt) times
-    - If batch size equals batch_size: repeat each element num_videos_per_prompt times
+    - If batch size is 1: repeat each element (batch_size * num_images_per_prompt) times
+    - If batch size equals batch_size: repeat each element num_images_per_prompt times
 
     Args:
         input_name (str): Name of the input tensor (used for error messages)
         input_tensor (torch.Tensor): The tensor to repeat. Must have batch size 1 or batch_size.
         batch_size (int): The base batch size (number of prompts)
-        num_videos_per_prompt (int, optional): Number of videos to generate per prompt. Defaults to 1.
+        num_images_per_prompt (int, optional): Number of images to generate per prompt. Defaults to 1.
 
     Returns:
-        torch.Tensor: The repeated tensor with final batch size (batch_size * num_videos_per_prompt)
+        torch.Tensor: The repeated tensor with final batch size (batch_size * num_images_per_prompt)
 
     Raises:
         ValueError: If input_tensor is not a torch.Tensor or has invalid batch size
 
     Examples:
         tensor = torch.tensor([[1, 2, 3]]) # shape: [1, 3] repeated = repeat_tensor_to_batch_size("image", tensor,
-        batch_size=2, num_videos_per_prompt=2) repeated # tensor([[1, 2, 3], [1, 2, 3], [1, 2, 3], [1, 2, 3]]) - shape:
+        batch_size=2, num_images_per_prompt=2) repeated # tensor([[1, 2, 3], [1, 2, 3], [1, 2, 3], [1, 2, 3]]) - shape:
         [4, 3]
 
         tensor = torch.tensor([[1, 2, 3], [4, 5, 6]]) # shape: [2, 3] repeated = repeat_tensor_to_batch_size("image",
-        tensor, batch_size=2, num_videos_per_prompt=2) repeated # tensor([[1, 2, 3], [1, 2, 3], [4, 5, 6], [4, 5, 6]])
+        tensor, batch_size=2, num_images_per_prompt=2) repeated # tensor([[1, 2, 3], [1, 2, 3], [4, 5, 6], [4, 5, 6]])
         - shape: [4, 3]
     """
     # make sure input is a tensor
@@ -229,7 +229,7 @@ class ZImageTextInputStep(ModularPipelineBlocks):
             OutputParam(
                 "batch_size",
                 type_hint=int,
-                description="Number of prompts, the final batch size of model inputs should be batch_size * num_videos_per_prompt",
+                description="Number of prompts, the final batch size of model inputs should be batch_size * num_images_per_prompt",
             ),
             OutputParam(
                 "dtype",
@@ -417,7 +417,7 @@ class ZImagePrepareLatentsStep(ModularPipelineBlocks):
                 "batch_size",
                 required=True,
                 type_hint=int,
-                description="Number of prompts, the final batch size of model inputs should be `batch_size * num_videos_per_prompt`. Can be generated in input step.",
+                description="Number of prompts, the final batch size of model inputs should be `batch_size * num_images_per_prompt`. Can be generated in input step.",
             ),
             InputParam("dtype", type_hint=torch.dtype, description="The dtype of the model inputs"),
         ]
@@ -470,7 +470,7 @@ class ZImagePrepareLatentsStep(ModularPipelineBlocks):
         self.check_inputs(components, block_state)
 
         device = components._execution_device
-        dtype = torch.float32  # Wan latents should be torch.float32 for best quality
+        dtype = torch.float32
 
         block_state.height = block_state.height or components.default_height
         block_state.width = block_state.width or components.default_width

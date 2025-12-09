@@ -42,7 +42,7 @@ class ZImageLoopBeforeDenoiser(ModularPipelineBlocks):
         return (
             "step within the denoising loop that prepares the latent input for the denoiser. "
             "This block should be used to compose the `sub_blocks` attribute of a `LoopSequentialPipelineBlocks` "
-            "object (e.g. `WanDenoiseLoopWrapper`)"
+            "object (e.g. `ZImageDenoiseLoopWrapper`)"
         )
 
     @property
@@ -301,10 +301,10 @@ class ZImageDenoiseStep(ZImageDenoiseLoopWrapper):
     def description(self) -> str:
         return (
             "Denoise step that iteratively denoise the latents. \n"
-            "Its loop logic is defined in `WanDenoiseLoopWrapper.__call__` method \n"
+            "Its loop logic is defined in `ZImageDenoiseLoopWrapper.__call__` method \n"
             "At each iteration, it runs blocks defined in `sub_blocks` sequentially:\n"
             " - `ZImageLoopBeforeDenoiser`\n"
             " - `ZImageLoopDenoiser`\n"
-            " - `WanLoopAfterDenoiser`\n"
+            " - `ZImageLoopAfterDenoiser`\n"
             "This block supports text-to-image and image-to-image tasks for Z-Image."
         )
