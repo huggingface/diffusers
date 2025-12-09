@@ -45,7 +45,7 @@ class ZImageModularPipeline(
     def vae_scale_factor_spatial(self):
         vae_scale_factor_spatial = 16
         if hasattr(self, "image_processor") and self.image_processor is not None:
-            vae_scale_factor_spatial = self.image_processor.vae_scale_factor
+            vae_scale_factor_spatial = self.image_processor.config.vae_scale_factor
         return vae_scale_factor_spatial
 
     @property
