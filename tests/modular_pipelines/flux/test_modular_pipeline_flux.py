@@ -36,7 +36,7 @@ from ..test_modular_pipelines_common import ModularPipelineTesterMixin
 class TestFluxModularPipelineFast(ModularPipelineTesterMixin):
     pipeline_class = FluxModularPipeline
     pipeline_blocks_class = FluxAutoBlocks
-    repo = "hf-internal-testing/tiny-flux-modular"
+    pretrained_model_name_or_path = "hf-internal-testing/tiny-flux-modular"
 
     params = frozenset(["prompt", "height", "width", "guidance_scale"])
     batch_params = frozenset(["prompt"])
@@ -55,11 +55,14 @@ class TestFluxModularPipelineFast(ModularPipelineTesterMixin):
         }
         return inputs
 
+    def test_float16_inference(self):
+        super().test_float16_inference(9e-2)
+
 
 class TestFluxImg2ImgModularPipelineFast(ModularPipelineTesterMixin):
     pipeline_class = FluxModularPipeline
     pipeline_blocks_class = FluxAutoBlocks
-    repo = "hf-internal-testing/tiny-flux-modular"
+    pretrained_model_name_or_path = "hf-internal-testing/tiny-flux-modular"
 
     params = frozenset(["prompt", "height", "width", "guidance_scale", "image"])
     batch_params = frozenset(["prompt", "image"])
@@ -118,11 +121,14 @@ class TestFluxImg2ImgModularPipelineFast(ModularPipelineTesterMixin):
 
         assert torch.abs(image_slices[0] - image_slices[1]).max() < 1e-3
 
+    def test_float16_inference(self):
+        super().test_float16_inference(8e-2)
+
 
 class TestFluxKontextModularPipelineFast(ModularPipelineTesterMixin):
     pipeline_class = FluxKontextModularPipeline
     pipeline_blocks_class = FluxKontextAutoBlocks
-    repo = "hf-internal-testing/tiny-flux-kontext-pipe"
+    pretrained_model_name_or_path = "hf-internal-testing/tiny-flux-kontext-pipe"
 
     params = frozenset(["prompt", "height", "width", "guidance_scale", "image"])
     batch_params = frozenset(["prompt", "image"])
@@ -170,3 +176,6 @@ class TestFluxKontextModularPipelineFast(ModularPipelineTesterMixin):
             image_slices.append(image[0, -3:, -3:, -1].flatten())
 
         assert torch.abs(image_slices[0] - image_slices[1]).max() < 1e-3
+
+    def test_float16_inference(self):
+        super().test_float16_inference(9e-2)
