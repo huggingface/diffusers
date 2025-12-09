@@ -109,7 +109,7 @@ class SCMScheduler(SchedulerMixin, ConfigMixin):
         Sets the begin index for the scheduler. This function should be run from pipeline before the inference.
 
         Args:
-            begin_index (`int`):
+            begin_index (`int`, defaults to `0`):
                 The begin index for the scheduler.
         """
         self._begin_index = begin_index
@@ -173,7 +173,14 @@ class SCMScheduler(SchedulerMixin, ConfigMixin):
         self._begin_index = None
 
     # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler._init_step_index
-    def _init_step_index(self, timestep):
+    def _init_step_index(self, timestep: Union[float, torch.Tensor]) -> None:
+        """
+        Initialize the step index for the scheduler based on the given timestep.
+
+        Args:
+            timestep (`float` or `torch.Tensor`):
+                The current timestep to initialize the step index from.
+        """
         if self.begin_index is None:
             if isinstance(timestep, torch.Tensor):
                 timestep = timestep.to(self.timesteps.device)
@@ -182,7 +189,23 @@ class SCMScheduler(SchedulerMixin, ConfigMixin):
             self._step_index = self._begin_index
 
     # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler.index_for_timestep
-    def index_for_timestep(self, timestep, schedule_timesteps=None):
+    def index_for_timestep(
+        self, timestep: Union[float, torch.Tensor], schedule_timesteps: Optional[torch.Tensor] = None
+    ) -> int:
+        """
+        Find the index of a given timestep in the timestep schedule.
+
+        Args:
+            timestep (`float` or `torch.Tensor`):
+                The timestep value to find in the schedule.
+            schedule_timesteps (`torch.Tensor`, *optional*):
+                The timestep schedule to search in. If `None`, uses `self.timesteps`.
+
+        Returns:
+            `int`:
+                The index of the timestep in the schedule. For the very first step, returns the second index if
+                multiple matches exist to avoid skipping a sigma when starting mid-schedule (e.g., for image-to-image).
+        """
         if schedule_timesteps is None:
             schedule_timesteps = self.timesteps
 

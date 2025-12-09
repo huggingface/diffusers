@@ -14,7 +14,7 @@
 import math
 import warnings
 from dataclasses import dataclass
-from typing import List, Optional, Tuple, Union
+from typing import List, Literal, Optional, Tuple, Union
 
 import numpy as np
 import scipy.stats
@@ -47,10 +47,10 @@ class LMSDiscreteSchedulerOutput(BaseOutput):
 
 # Copied from diffusers.schedulers.scheduling_ddpm.betas_for_alpha_bar
 def betas_for_alpha_bar(
-    num_diffusion_timesteps,
-    max_beta=0.999,
-    alpha_transform_type="cosine",
-):
+    num_diffusion_timesteps: int,
+    max_beta: float = 0.999,
+    alpha_transform_type: Literal["cosine", "exp"] = "cosine",
+) -> torch.Tensor:
     """
     Create a beta schedule that discretizes the given alpha_t_bar function, which defines the cumulative product of
     (1-beta) over time from t = [0,1].
@@ -58,16 +58,17 @@ def betas_for_alpha_bar(
     Contains a function alpha_bar that takes an argument t and transforms it to the cumulative product of (1-beta) up
     to that part of the diffusion process.
 
-
     Args:
-        num_diffusion_timesteps (`int`): the number of betas to produce.
-        max_beta (`float`): the maximum beta to use; use values lower than 1 to
-                     prevent singularities.
-        alpha_transform_type (`str`, *optional*, default to `cosine`): the type of noise schedule for alpha_bar.
-                     Choose from `cosine` or `exp`
+        num_diffusion_timesteps (`int`):
+            The number of betas to produce.
+        max_beta (`float`, defaults to `0.999`):
+            The maximum beta to use; use values lower than 1 to avoid numerical instability.
+        alpha_transform_type (`"cosine"` or `"exp"`, defaults to `"cosine"`):
+            The type of noise schedule for `alpha_bar`. Choose from `cosine` or `exp`.
 
     Returns:
-        betas (`np.ndarray`): the betas used by the scheduler to step the model outputs
+        `torch.Tensor`:
+            The betas used by the scheduler to step the model outputs.
     """
     if alpha_transform_type == "cosine":
 
@@ -98,15 +99,14 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
     methods the library implements for all schedulers such as loading and saving.
 
     Args:
-        num_train_timesteps (`int`, defaults to 1000):
+        num_train_timesteps (`int`, defaults to `1000`):
             The number of diffusion steps to train the model.
-        beta_start (`float`, defaults to 0.0001):
+        beta_start (`float`, defaults to `0.0001`):
             The starting `beta` value of inference.
-        beta_end (`float`, defaults to 0.02):
+        beta_end (`float`, defaults to `0.02`):
             The final `beta` value.
-        beta_schedule (`str`, defaults to `"linear"`):
-            The beta schedule, a mapping from a beta range to a sequence of betas for stepping the model. Choose from
-            `linear` or `scaled_linear`.
+        beta_schedule (`"linear"`, `"scaled_linear"`, or `"squaredcos_cap_v2"`, defaults to `"linear"`):
+            The beta schedule, a mapping from a beta range to a sequence of betas for stepping the model.
         trained_betas (`np.ndarray`, *optional*):
             Pass an array of betas directly to the constructor to bypass `beta_start` and `beta_end`.
         use_karras_sigmas (`bool`, *optional*, defaults to `False`):
@@ -117,14 +117,14 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
         use_beta_sigmas (`bool`, *optional*, defaults to `False`):
             Whether to use beta sigmas for step sizes in the noise schedule during the sampling process. Refer to [Beta
             Sampling is All You Need](https://huggingface.co/papers/2407.12173) for more information.
-        prediction_type (`str`, defaults to `epsilon`, *optional*):
+        prediction_type (`"epsilon"`, `"sample"`, or `"v_prediction"`, defaults to `"epsilon"`):
             Prediction type of the scheduler function; can be `epsilon` (predicts the noise of the diffusion process),
             `sample` (directly predicts the noisy sample`) or `v_prediction` (see section 2.4 of [Imagen
-            Video](https://imagen.research.google/video/paper.pdf) paper).
-        timestep_spacing (`str`, defaults to `"linspace"`):
+            Video](https://huggingface.co/papers/2210.02303) paper).
+        timestep_spacing (`"linspace"`, `"leading"`, or `"trailing"`, defaults to `"linspace"`):
             The way the timesteps should be scaled. Refer to Table 2 of the [Common Diffusion Noise Schedules and
             Sample Steps are Flawed](https://huggingface.co/papers/2305.08891) for more information.
-        steps_offset (`int`, defaults to 0):
+        steps_offset (`int`, defaults to `0`):
             An offset added to the inference steps, as required by some model families.
     """
 
@@ -137,13 +137,13 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
         num_train_timesteps: int = 1000,
         beta_start: float = 0.0001,
         beta_end: float = 0.02,
-        beta_schedule: str = "linear",
+        beta_schedule: Literal["linear", "scaled_linear", "squaredcos_cap_v2"] = "linear",
         trained_betas: Optional[Union[np.ndarray, List[float]]] = None,
         use_karras_sigmas: Optional[bool] = False,
         use_exponential_sigmas: Optional[bool] = False,
         use_beta_sigmas: Optional[bool] = False,
-        prediction_type: str = "epsilon",
-        timestep_spacing: str = "linspace",
+        prediction_type: Literal["epsilon", "sample", "v_prediction"] = "epsilon",
+        timestep_spacing: Literal["linspace", "leading", "trailing"] = "linspace",
         steps_offset: int = 0,
     ):
         if sum([self.config.use_beta_sigmas, self.config.use_exponential_sigmas, self.config.use_karras_sigmas]) > 1:
@@ -182,7 +182,15 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
         self.sigmas = self.sigmas.to("cpu")  # to avoid too much CPU/GPU communication
 
     @property
-    def init_noise_sigma(self):
+    def init_noise_sigma(self) -> Union[float, torch.Tensor]:
+        """
+        The standard deviation of the initial noise distribution.
+
+        Returns:
+            `float` or `torch.Tensor`:
+                The standard deviation of the initial noise distribution, computed based on the maximum sigma value and
+                the timestep spacing configuration.
+        """
         # standard deviation of the initial noise distribution
         if self.config.timestep_spacing in ["linspace", "trailing"]:
             return self.sigmas.max()
@@ -190,26 +198,34 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
         return (self.sigmas.max() ** 2 + 1) ** 0.5
 
     @property
-    def step_index(self):
+    def step_index(self) -> Optional[int]:
         """
-        The index counter for current timestep. It will increase 1 after each scheduler step.
+        The index counter for current timestep. It will increase by 1 after each scheduler step.
+
+        Returns:
+            `int` or `None`:
+                The current step index, or `None` if not initialized.
         """
         return self._step_index
 
     @property
-    def begin_index(self):
+    def begin_index(self) -> Optional[int]:
         """
         The index for the first timestep. It should be set from pipeline with `set_begin_index` method.
+
+        Returns:
+            `int` or `None`:
+                The begin index for the scheduler, or `None` if not set.
         """
         return self._begin_index
 
     # Copied from diffusers.schedulers.scheduling_dpmsolver_multistep.DPMSolverMultistepScheduler.set_begin_index
-    def set_begin_index(self, begin_index: int = 0):
+    def set_begin_index(self, begin_index: int = 0) -> None:
         """
         Sets the begin index for the scheduler. This function should be run from pipeline before the inference.
 
         Args:
-            begin_index (`int`):
+            begin_index (`int`, defaults to `0`):
                 The begin index for the scheduler.
         """
         self._begin_index = begin_index
@@ -238,14 +254,21 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
         self.is_scale_input_called = True
         return sample
 
-    def get_lms_coefficient(self, order, t, current_order):
+    def get_lms_coefficient(self, order: int, t: int, current_order: int) -> float:
         """
         Compute the linear multistep coefficient.
 
         Args:
-            order ():
-            t ():
-            current_order ():
+            order (`int`):
+                The order of the linear multistep method.
+            t (`int`):
+                The current timestep index.
+            current_order (`int`):
+                The current order for which to compute the coefficient.
+
+        Returns:
+            `float`:
+                The computed linear multistep coefficient.
         """
 
         def lms_derivative(tau):
@@ -260,7 +283,7 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
 
         return integrated_coeff
 
-    def set_timesteps(self, num_inference_steps: int, device: Union[str, torch.device] = None):
+    def set_timesteps(self, num_inference_steps: int, device: Optional[Union[str, torch.device]] = None) -> None:
         """
         Sets the discrete timesteps used for the diffusion chain (to be run before inference).
 
@@ -319,7 +342,23 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
         self.derivatives = []
 
     # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler.index_for_timestep
-    def index_for_timestep(self, timestep, schedule_timesteps=None):
+    def index_for_timestep(
+        self, timestep: Union[float, torch.Tensor], schedule_timesteps: Optional[torch.Tensor] = None
+    ) -> int:
+        """
+        Find the index of a given timestep in the timestep schedule.
+
+        Args:
+            timestep (`float` or `torch.Tensor`):
+                The timestep value to find in the schedule.
+            schedule_timesteps (`torch.Tensor`, *optional*):
+                The timestep schedule to search in. If `None`, uses `self.timesteps`.
+
+        Returns:
+            `int`:
+                The index of the timestep in the schedule. For the very first step, returns the second index if
+                multiple matches exist to avoid skipping a sigma when starting mid-schedule (e.g., for image-to-image).
+        """
         if schedule_timesteps is None:
             schedule_timesteps = self.timesteps
 
@@ -334,7 +373,14 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
         return indices[pos].item()
 
     # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler._init_step_index
-    def _init_step_index(self, timestep):
+    def _init_step_index(self, timestep: Union[float, torch.Tensor]) -> None:
+        """
+        Initialize the step index for the scheduler based on the given timestep.
+
+        Args:
+            timestep (`float` or `torch.Tensor`):
+                The current timestep to initialize the step index from.
+        """
         if self.begin_index is None:
             if isinstance(timestep, torch.Tensor):
                 timestep = timestep.to(self.timesteps.device)
@@ -343,7 +389,20 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
             self._step_index = self._begin_index
 
     # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler._sigma_to_t
-    def _sigma_to_t(self, sigma, log_sigmas):
+    def _sigma_to_t(self, sigma: np.ndarray, log_sigmas: np.ndarray) -> np.ndarray:
+        """
+        Convert sigma values to corresponding timestep values through interpolation.
+
+        Args:
+            sigma (`np.ndarray`):
+                The sigma value(s) to convert to timestep(s).
+            log_sigmas (`np.ndarray`):
+                The logarithm of the sigma schedule used for interpolation.
+
+        Returns:
+            `np.ndarray`:
+                The interpolated timestep value(s) corresponding to the input sigma(s).
+        """
         # get log sigma
         log_sigma = np.log(np.maximum(sigma, 1e-10))
 
@@ -366,9 +425,19 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
         t = t.reshape(sigma.shape)
         return t
 
-    # copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler._convert_to_karras
     def _convert_to_karras(self, in_sigmas: torch.Tensor) -> torch.Tensor:
-        """Constructs the noise schedule of Karras et al. (2022)."""
+        """
+        Construct the noise schedule as proposed in [Elucidating the Design Space of Diffusion-Based Generative
+        Models](https://huggingface.co/papers/2206.00364).
+
+        Args:
+            in_sigmas (`torch.Tensor`):
+                The input sigma values to be converted.
+
+        Returns:
+            `torch.Tensor`:
+                The converted sigma values following the Karras noise schedule.
+        """
 
         sigma_min: float = in_sigmas[-1].item()
         sigma_max: float = in_sigmas[0].item()
@@ -382,7 +451,19 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
 
     # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler._convert_to_exponential
     def _convert_to_exponential(self, in_sigmas: torch.Tensor, num_inference_steps: int) -> torch.Tensor:
-        """Constructs an exponential noise schedule."""
+        """
+        Construct an exponential noise schedule.
+
+        Args:
+            in_sigmas (`torch.Tensor`):
+                The input sigma values to be converted.
+            num_inference_steps (`int`):
+                The number of inference steps to generate the noise schedule for.
+
+        Returns:
+            `torch.Tensor`:
+                The converted sigma values following an exponential schedule.
+        """
 
         # Hack to make sure that other schedulers which copy this function don't break
         # TODO: Add this logic to the other schedulers
@@ -406,7 +487,24 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
     def _convert_to_beta(
         self, in_sigmas: torch.Tensor, num_inference_steps: int, alpha: float = 0.6, beta: float = 0.6
     ) -> torch.Tensor:
-        """From "Beta Sampling is All You Need" [arXiv:2407.12173] (Lee et. al, 2024)"""
+        """
+        Construct a beta noise schedule as proposed in [Beta Sampling is All You
+        Need](https://huggingface.co/papers/2407.12173).
+
+        Args:
+            in_sigmas (`torch.Tensor`):
+                The input sigma values to be converted.
+            num_inference_steps (`int`):
+                The number of inference steps to generate the noise schedule for.
+            alpha (`float`, *optional*, defaults to `0.6`):
+                The alpha parameter for the beta distribution.
+            beta (`float`, *optional*, defaults to `0.6`):
+                The beta parameter for the beta distribution.
+
+        Returns:
+            `torch.Tensor`:
+                The converted sigma values following a beta distribution schedule.
+        """
 
         # Hack to make sure that other schedulers which copy this function don't break
         # TODO: Add this logic to the other schedulers
@@ -521,6 +619,21 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
         noise: torch.Tensor,
         timesteps: torch.Tensor,
     ) -> torch.Tensor:
+        """
+        Add noise to the original samples according to the noise schedule at the specified timesteps.
+
+        Args:
+            original_samples (`torch.Tensor`):
+                The original samples to which noise will be added.
+            noise (`torch.Tensor`):
+                The noise tensor to add to the original samples.
+            timesteps (`torch.Tensor`):
+                The timesteps at which to add noise, determining the noise level from the schedule.
+
+        Returns:
+            `torch.Tensor`:
+                The noisy samples with added noise scaled according to the timestep schedule.
+        """
         # Make sure sigmas and timesteps have the same device and dtype as original_samples
         sigmas = self.sigmas.to(device=original_samples.device, dtype=original_samples.dtype)
         if original_samples.device.type == "mps" and torch.is_floating_point(timesteps):
@@ -548,5 +661,5 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
         noisy_samples = original_samples + noise * sigma
         return noisy_samples
 
-    def __len__(self):
+    def __len__(self) -> int:
         return self.config.num_train_timesteps

@@ -34,6 +34,7 @@ from .single_file_utils import (
     convert_chroma_transformer_checkpoint_to_diffusers,
     convert_controlnet_checkpoint,
     convert_cosmos_transformer_checkpoint_to_diffusers,
+    convert_flux2_transformer_checkpoint_to_diffusers,
     convert_flux_transformer_checkpoint_to_diffusers,
     convert_hidream_transformer_to_diffusers,
     convert_hunyuan_video_transformer_to_diffusers,
@@ -48,6 +49,7 @@ from .single_file_utils import (
     convert_stable_cascade_unet_single_file_to_diffusers,
     convert_wan_transformer_to_diffusers,
     convert_wan_vae_to_diffusers,
+    convert_z_image_transformer_checkpoint_to_diffusers,
     create_controlnet_diffusers_config_from_ldm,
     create_unet_diffusers_config_from_ldm,
     create_vae_diffusers_config_from_ldm,
@@ -160,6 +162,14 @@ SINGLE_FILE_LOADABLE_CLASSES = {
     },
     "QwenImageTransformer2DModel": {
         "checkpoint_mapping_fn": lambda x: x,
+        "default_subfolder": "transformer",
+    },
+    "Flux2Transformer2DModel": {
+        "checkpoint_mapping_fn": convert_flux2_transformer_checkpoint_to_diffusers,
+        "default_subfolder": "transformer",
+    },
+    "ZImageTransformer2DModel": {
+        "checkpoint_mapping_fn": convert_z_image_transformer_checkpoint_to_diffusers,
         "default_subfolder": "transformer",
     },
 }
