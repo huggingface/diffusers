@@ -188,7 +188,7 @@ def retrieve_timesteps(
 
 
 class ZImageTextInputStep(ModularPipelineBlocks):
-    model_name = "z_image"
+    model_name = "z-image"
 
     @property
     def description(self) -> str:
@@ -278,7 +278,7 @@ class ZImageTextInputStep(ModularPipelineBlocks):
 
 
 class ZImageAdditionalInputsStep(ModularPipelineBlocks):
-    model_name = "z_image"
+    model_name = "z-image"
 
     def __init__(
         self,
@@ -401,7 +401,7 @@ class ZImageAdditionalInputsStep(ModularPipelineBlocks):
 
 
 class ZImagePrepareLatentsStep(ModularPipelineBlocks):
-    model_name = "z_image"
+    model_name = "z-image"
 
     @property
     def description(self) -> str:
@@ -495,7 +495,7 @@ class ZImagePrepareLatentsStep(ModularPipelineBlocks):
 
 
 class ZImageSetTimestepsStep(ModularPipelineBlocks):
-    model_name = "z_image"
+    model_name = "z-image"
 
     @property
     def expected_components(self) -> List[ComponentSpec]:
@@ -551,7 +551,7 @@ class ZImageSetTimestepsStep(ModularPipelineBlocks):
 
 
 class ZImageSetTimestepsWithStrengthStep(ModularPipelineBlocks):
-    model_name = "z_image"
+    model_name = "z-image"
 
     @property
     def expected_components(self) -> List[ComponentSpec]:
@@ -598,7 +598,7 @@ class ZImageSetTimestepsWithStrengthStep(ModularPipelineBlocks):
 
 
 class ZImagePrepareLatentswithImageStep(ModularPipelineBlocks):
-    model_name = "z_image"
+    model_name = "z-image"
 
     @property
     def description(self) -> str:

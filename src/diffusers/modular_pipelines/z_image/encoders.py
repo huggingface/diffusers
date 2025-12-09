@@ -131,7 +131,7 @@ def encode_vae_image(
 
 
 class ZImageTextEncoderStep(ModularPipelineBlocks):
-    model_name = "z_image"
+    model_name = "z-image"
 
     @property
     def description(self) -> str:
@@ -275,7 +275,7 @@ class ZImageTextEncoderStep(ModularPipelineBlocks):
 
 
 class ZImageVaeImageEncoderStep(ModularPipelineBlocks):
-    model_name = "z_image"
+    model_name = "z-image"
 
     @property
     def description(self) -> str:

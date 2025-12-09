@@ -61,7 +61,7 @@ MODULAR_PIPELINE_MAPPING = OrderedDict(
         ("qwenimage", "QwenImageModularPipeline"),
         ("qwenimage-edit", "QwenImageEditModularPipeline"),
         ("qwenimage-edit-plus", "QwenImageEditPlusModularPipeline"),
-        ("z_image", "ZImageModularPipeline"),
+        ("z-image", "ZImageModularPipeline"),
     ]
 )
 

@@ -35,7 +35,7 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
 class ZImageLoopBeforeDenoiser(ModularPipelineBlocks):
-    model_name = "z_image"
+    model_name = "z-image"
 
     @property
     def description(self) -> str:
@@ -75,7 +75,7 @@ class ZImageLoopBeforeDenoiser(ModularPipelineBlocks):
 
 
 class ZImageLoopDenoiser(ModularPipelineBlocks):
-    model_name = "z_image"
+    model_name = "z-image"
 
     def __init__(
         self,
@@ -196,7 +196,7 @@ class ZImageLoopDenoiser(ModularPipelineBlocks):
 
 
 class ZImageLoopAfterDenoiser(ModularPipelineBlocks):
-    model_name = "z_image"
+    model_name = "z-image"
 
     @property
     def expected_components(self) -> List[ComponentSpec]:
@@ -230,7 +230,7 @@ class ZImageLoopAfterDenoiser(ModularPipelineBlocks):
 
 
 class ZImageDenoiseLoopWrapper(LoopSequentialPipelineBlocks):
-    model_name = "z_image"
+    model_name = "z-image"
 
     @property
     def description(self) -> str:

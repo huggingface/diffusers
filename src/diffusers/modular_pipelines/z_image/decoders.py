@@ -30,7 +30,7 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
 class ZImageVaeDecoderStep(ModularPipelineBlocks):
-    model_name = "z_image"
+    model_name = "z-image"
 
     @property
     def expected_components(self) -> List[ComponentSpec]:
