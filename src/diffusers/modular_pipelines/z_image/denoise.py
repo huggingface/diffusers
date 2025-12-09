@@ -79,7 +79,7 @@ class ZImageLoopDenoiser(ModularPipelineBlocks):
 
     def __init__(
         self,
-        guider_input_fields: Dict[str, Any] = {"encoder_hidden_states": ("prompt_embeds", "negative_prompt_embeds")},
+        guider_input_fields: Dict[str, Any] = {"cap_feats": ("prompt_embeds", "negative_prompt_embeds")},
     ):
         """Initialize a denoiser block that calls the denoiser model. This block is used in Z-Image.
 
@@ -105,7 +105,7 @@ class ZImageLoopDenoiser(ModularPipelineBlocks):
             ComponentSpec(
                 "guider",
                 ClassifierFreeGuidance,
-                config=FrozenDict({"guidance_scale": 5.0}),
+                config=FrozenDict({"guidance_scale": 5.0, "enabled": False}),
                 default_creation_method="from_config",
             ),
             ComponentSpec("transformer", ZImageTransformer2DModel),
@@ -122,7 +122,6 @@ class ZImageLoopDenoiser(ModularPipelineBlocks):
     @property
     def inputs(self) -> List[Tuple[str, Any]]:
         inputs = [
-            InputParam("attention_kwargs"),
             InputParam(
                 "num_inference_steps",
                 required=True,
@@ -131,14 +130,18 @@ class ZImageLoopDenoiser(ModularPipelineBlocks):
             ),
         ]
         guider_input_names = []
+        uncond_guider_input_names =  []
         for value in self._guider_input_fields.values():
             if isinstance(value, tuple):
-                guider_input_names.extend(value)
+                guider_input_names.append(value[0])
+                uncond_guider_input_names.append(value[1])
             else:
                 guider_input_names.append(value)
 
         for name in guider_input_names:
-            inputs.append(InputParam(name=name, required=True, type_hint=torch.Tensor))
+            inputs.append(InputParam(name=name, required=True))
+        for name in uncond_guider_input_names:
+            inputs.append(InputParam(name=name))
         return inputs
 
     @torch.no_grad()
@@ -177,9 +180,8 @@ class ZImageLoopDenoiser(ModularPipelineBlocks):
             # Predict the noise residual
             # store the noise_pred in guider_state_batch so that we can apply guidance across all batches
             model_out_list = components.transformer(
-                hidden_states=block_state.latent_model_input,
-                timestep=block_state.timestep,
-                attention_kwargs=block_state.attention_kwargs,
+                x=block_state.latent_model_input,
+                t=block_state.timestep,
                 return_dict=False,
                 **cond_kwargs,
             )[0]
@@ -286,7 +288,7 @@ class ZImageDenoiseStep(ZImageDenoiseLoopWrapper):
         ZImageLoopBeforeDenoiser,
         ZImageLoopDenoiser(
             guider_input_fields={
-                "encoder_hidden_states": ("prompt_embeds", "negative_prompt_embeds"),
+                "cap_feats": ("prompt_embeds", "negative_prompt_embeds"),
             }
         ),
         ZImageLoopAfterDenoiser,

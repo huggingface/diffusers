@@ -108,8 +108,8 @@ def calculate_dimension_from_latents(
         Tuple[int, int]: The calculated image dimensions as (height, width)
     """
     latent_height, latent_width = latents.shape[2:]
-    height = latent_height * vae_scale_factor_spatial
-    width = latent_width * vae_scale_factor_spatial
+    height = latent_height * vae_scale_factor_spatial // 2
+    width = latent_width * vae_scale_factor_spatial // 2
 
     return height, width
 
@@ -511,8 +511,14 @@ class ZImageSetTimestepsStep(ModularPipelineBlocks):
     def inputs(self) -> List[InputParam]:
         return [
             InputParam("latents", required=True),
-            InputParam("num_inference_steps", default=50),
+            InputParam("num_inference_steps", default=9),
             InputParam("sigmas"),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> List[OutputParam]:
+        return [
+            OutputParam("timesteps", type_hint=torch.Tensor, description="The timesteps to use for the denoising process"),
         ]
 
     @torch.no_grad()

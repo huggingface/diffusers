@@ -28,7 +28,7 @@ from ...utils import is_ftfy_available, logging
 from ...image_processor import VaeImageProcessor
 from ..modular_pipeline import ModularPipelineBlocks, PipelineState
 from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
-from .modular_pipeline import WanModularPipeline
+from .modular_pipeline import ZImageModularPipeline
 
 
 if is_ftfy_available():
@@ -76,12 +76,12 @@ def get_qwen_prompt_embeds(
         output_hidden_states=True,
     ).hidden_states[-2]
 
-    prompt_embeds = []
+    prompt_embeds_list = []
 
     for i in range(len(prompt_embeds)):
-        prompt_embeds.append(prompt_embeds[i][prompt_masks[i]])
+        prompt_embeds_list.append(prompt_embeds[i][prompt_masks[i]])
 
-    return prompt_embeds
+    return prompt_embeds_list
 
 
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.retrieve_latents
@@ -145,7 +145,7 @@ class ZImageTextEncoderStep(ModularPipelineBlocks):
             ComponentSpec(
                 "guider",
                 ClassifierFreeGuidance,
-                config=FrozenDict({"guidance_scale": 5.0}),
+                config=FrozenDict({"guidance_scale": 5.0, "enabled": False}),
                 default_creation_method="from_config",
             ),
         ]
@@ -221,6 +221,7 @@ class ZImageTextEncoderStep(ModularPipelineBlocks):
             device=device,
         )
 
+        negative_prompt_embeds = None
         if prepare_unconditional_embeds:
             negative_prompt = negative_prompt or ""
             negative_prompt = batch_size * [negative_prompt] if isinstance(negative_prompt, str) else negative_prompt
@@ -248,7 +249,7 @@ class ZImageTextEncoderStep(ModularPipelineBlocks):
         return prompt_embeds, negative_prompt_embeds
 
     @torch.no_grad()
-    def __call__(self, components: WanModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(self, components: ZImageModularPipeline, state: PipelineState) -> PipelineState:
         # Get inputs and intermediates
         block_state = self.get_block_state(state)
         self.check_inputs(block_state)
@@ -320,7 +321,7 @@ class ZImageVaeImageEncoderStep(ModularPipelineBlocks):
                 f"`height` and `width` have to be divisible by {components.vae_scale_factor_spatial} but are {block_state.height} and {block_state.width}."
             )
 
-    def __call__(self, components: WanModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(self, components: ZImageModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
         self.check_inputs(components, block_state)
 
@@ -328,6 +329,7 @@ class ZImageVaeImageEncoderStep(ModularPipelineBlocks):
 
         device = components._execution_device
         dtype = torch.float32
+        vae_dtype = components.vae.dtype
 
         image_tensor = components.image_processor.preprocess(image, height=block_state.height, width=block_state.width).to(
             device=device, dtype=dtype
@@ -338,7 +340,7 @@ class ZImageVaeImageEncoderStep(ModularPipelineBlocks):
             vae=components.vae,
             generator=block_state.generator,
             device=device,
-            dtype=dtype,
+            dtype=vae_dtype,
             latent_channels=components.num_channels_latents,
         )
 
