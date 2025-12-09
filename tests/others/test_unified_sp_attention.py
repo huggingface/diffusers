@@ -1,13 +1,19 @@
 import math
+import os
+
 import torch
 import torch.distributed as dist
 import torch.multiprocessing as mp
+
 from diffusers.models.attention_dispatch import TemplatedUnifiedAttention
-import os
+from diffusers.models._modeling_parallel import (
+        ParallelConfig,
+        ContextParallelConfig
+    )
 
 def run(rank, world_size):
     dist.init_process_group(
-        backend="gloo", 
+        backend="gloo",
         rank=rank,
         world_size=world_size
     )
@@ -21,10 +27,7 @@ def run(rank, world_size):
 
     q.requires_grad_(True)
 
-    from diffusers.models._modeling_parallel import (
-        ParallelConfig, 
-        ContextParallelConfig
-    )
+    
 
     pc = ParallelConfig(
         context_parallel_config=ContextParallelConfig(

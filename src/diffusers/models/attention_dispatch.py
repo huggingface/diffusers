@@ -44,7 +44,6 @@ from ..utils import (
     is_xformers_version,
 )
 from ..utils.constants import DIFFUSERS_ATTN_BACKEND, DIFFUSERS_ATTN_CHECKS
-from ..utils import is_torch_version
 
 
 if TYPE_CHECKING:
@@ -1076,7 +1075,7 @@ def _all_to_all_dim_exchange(x: torch.Tensor, scatter_idx: int = 2, gather_idx: 
 
         # B, S_LOCAL, H, D -> group_world_size, S_LOCAL, B, H_LOCAL, D
         x_temp = x.reshape(batch_size, seq_len_local, group_world_size, num_heads_local, head_dim).transpose(0, 2).contiguous()
-        
+
 
         if group_world_size >1:
             out = _all_to_all_single(x_temp, group=group)
@@ -1365,7 +1364,7 @@ def TemplatedUnifiedAttention(
     forward_op,
     backward_op,
     _parallel_config: Optional["ParallelConfig"] = None,
-    scatter_idx: int =2, 
+    scatter_idx: int =2,
     gather_idx: int =1,
     ):
     """
