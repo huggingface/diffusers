@@ -91,13 +91,11 @@ def repeat_tensor_to_batch_size(
     return input_tensor
 
 
-def calculate_dimension_from_latents(
-    latents: torch.Tensor, vae_scale_factor_spatial: int
-) -> Tuple[int, int]:
+def calculate_dimension_from_latents(latents: torch.Tensor, vae_scale_factor_spatial: int) -> Tuple[int, int]:
     """Calculate image dimensions from latent tensor dimensions.
 
-    This function converts latent spatial dimensions to image spatial dimensions by
-    multiplying the latent height/width by the VAE scale factor.
+    This function converts latent spatial dimensions to image spatial dimensions by multiplying the latent height/width
+    by the VAE scale factor.
 
     Args:
         latents (torch.Tensor): The latent tensor. Must have 4 dimensions.
@@ -112,6 +110,7 @@ def calculate_dimension_from_latents(
     width = latent_width * vae_scale_factor_spatial // 2
 
     return height, width
+
 
 # Copied from diffusers.pipelines.flux.pipeline_flux.calculate_shift
 def calculate_shift(
@@ -261,7 +260,7 @@ class ZImageTextInputStep(ModularPipelineBlocks):
         block_state = self.get_block_state(state)
         self.check_inputs(components, block_state)
 
-        block_state.batch_size =len(block_state.prompt_embeds)
+        block_state.batch_size = len(block_state.prompt_embeds)
         block_state.dtype = block_state.prompt_embeds[0].dtype
 
         if block_state.num_images_per_prompt > 1:
@@ -269,7 +268,9 @@ class ZImageTextInputStep(ModularPipelineBlocks):
             block_state.prompt_embeds = prompt_embeds
 
             if block_state.negative_prompt_embeds is not None:
-                negative_prompt_embeds = [npe for npe in block_state.negative_prompt_embeds for _ in range(block_state.num_images_per_prompt)]
+                negative_prompt_embeds = [
+                    npe for npe in block_state.negative_prompt_embeds for _ in range(block_state.num_images_per_prompt)
+                ]
                 block_state.negative_prompt_embeds = negative_prompt_embeds
 
         self.set_block_state(state, block_state)
@@ -373,12 +374,9 @@ class ZImageAdditionalInputsStep(ModularPipelineBlocks):
                 continue
 
             # 1. Calculate num_frames, height/width from latents
-            height, width = calculate_dimension_from_latents(
-                image_latent_tensor, components.vae_scale_factor_spatial
-            )
+            height, width = calculate_dimension_from_latents(image_latent_tensor, components.vae_scale_factor_spatial)
             block_state.height = block_state.height or height
             block_state.width = block_state.width or width
-            
 
         # Process additional batch inputs (only batch expansion)
         for input_name in self._additional_batch_inputs:
@@ -518,7 +516,9 @@ class ZImageSetTimestepsStep(ModularPipelineBlocks):
     @property
     def intermediate_outputs(self) -> List[OutputParam]:
         return [
-            OutputParam("timesteps", type_hint=torch.Tensor, description="The timesteps to use for the denoising process"),
+            OutputParam(
+                "timesteps", type_hint=torch.Tensor, description="The timesteps to use for the denoising process"
+            ),
         ]
 
     @torch.no_grad()
@@ -527,7 +527,7 @@ class ZImageSetTimestepsStep(ModularPipelineBlocks):
         device = components._execution_device
 
         latent_height, latent_width = block_state.latents.shape[2], block_state.latents.shape[3]
-        image_seq_len = (latent_height //2)  * (latent_width //2) # sequence length  after patchify 
+        image_seq_len = (latent_height // 2) * (latent_width // 2)  # sequence length  after patchify
 
         mu = calculate_shift(
             image_seq_len,
@@ -567,22 +567,19 @@ class ZImageSetTimestepsWithStrengthStep(ModularPipelineBlocks):
     def inputs(self) -> List[InputParam]:
         return [
             InputParam("timesteps", required=True),
-            InputParam("num_inference_steps",required=True),
+            InputParam("num_inference_steps", required=True),
             InputParam("strength", default=0.6),
         ]
 
-    
     def check_inputs(self, components, block_state):
         if block_state.strength < 0.0 or block_state.strength > 1.0:
             raise ValueError(f"Strength must be between 0.0 and 1.0, but got {block_state.strength}")
-
 
     @torch.no_grad()
     def __call__(self, components: ZImageModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
         self.check_inputs(components, block_state)
 
-        device = components._execution_device
         init_timestep = min(block_state.num_inference_steps * block_state.strength, block_state.num_inference_steps)
 
         t_start = int(max(block_state.num_inference_steps - init_timestep, 0))
@@ -616,7 +613,9 @@ class ZImagePrepareLatentswithImageStep(ModularPipelineBlocks):
         block_state = self.get_block_state(state)
 
         latent_timestep = block_state.timesteps[:1].repeat(block_state.latents.shape[0])
-        block_state.latents = components.scheduler.scale_noise(block_state.image_latents, latent_timestep, block_state.latents)
+        block_state.latents = components.scheduler.scale_noise(
+            block_state.image_latents, latent_timestep, block_state.latents
+        )
 
         self.set_block_state(state, block_state)
         return components, state

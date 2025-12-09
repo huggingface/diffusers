@@ -12,27 +12,24 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import html
 from typing import List, Optional, Union
 
-import numpy as np
 import PIL
-import regex as re
 import torch
-from transformers import  Qwen3Model, Qwen2Tokenizer
+from transformers import Qwen2Tokenizer, Qwen3Model
 
 from ...configuration_utils import FrozenDict
 from ...guiders import ClassifierFreeGuidance
+from ...image_processor import VaeImageProcessor
 from ...models import AutoencoderKL
 from ...utils import is_ftfy_available, logging
-from ...image_processor import VaeImageProcessor
 from ..modular_pipeline import ModularPipelineBlocks, PipelineState
 from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
 from .modular_pipeline import ZImageModularPipeline
 
 
 if is_ftfy_available():
-    import ftfy
+    pass
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
@@ -44,9 +41,8 @@ def get_qwen_prompt_embeds(
     device: torch.device,
     max_sequence_length: int = 512,
 ) -> List[torch.Tensor]:
-
     prompt = [prompt] if isinstance(prompt, str) else prompt
-    
+
     for i, prompt_item in enumerate(prompt):
         messages = [
             {"role": "user", "content": prompt_item},
@@ -331,9 +327,9 @@ class ZImageVaeImageEncoderStep(ModularPipelineBlocks):
         dtype = torch.float32
         vae_dtype = components.vae.dtype
 
-        image_tensor = components.image_processor.preprocess(image, height=block_state.height, width=block_state.width).to(
-            device=device, dtype=dtype
-        )
+        image_tensor = components.image_processor.preprocess(
+            image, height=block_state.height, width=block_state.width
+        ).to(device=device, dtype=dtype)
 
         block_state.image_latents = encode_vae_image(
             image_tensor=image_tensor,
@@ -346,4 +342,3 @@ class ZImageVaeImageEncoderStep(ModularPipelineBlocks):
 
         self.set_block_state(state, block_state)
         return components, state
-

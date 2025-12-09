@@ -19,9 +19,9 @@ import PIL
 import torch
 
 from ...configuration_utils import FrozenDict
+from ...image_processor import VaeImageProcessor
 from ...models import AutoencoderKL
 from ...utils import logging
-from ...image_processor import VaeImageProcessor
 from ..modular_pipeline import ModularPipelineBlocks, PipelineState
 from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
 
@@ -82,7 +82,9 @@ class ZImageVaeDecoderStep(ModularPipelineBlocks):
         latents = latents / components.vae.config.scaling_factor + components.vae.config.shift_factor
 
         block_state.images = components.vae.decode(latents, return_dict=False)[0]
-        block_state.images = components.image_processor.postprocess(block_state.images, output_type=block_state.output_type)
+        block_state.images = components.image_processor.postprocess(
+            block_state.images, output_type=block_state.output_type
+        )
 
         self.set_block_state(state, block_state)
 

@@ -16,12 +16,12 @@ from ...utils import logging
 from ..modular_pipeline import AutoPipelineBlocks, SequentialPipelineBlocks
 from ..modular_pipeline_utils import InsertableDict
 from .before_denoise import (
-    ZImageTextInputStep,
-    ZImageSetTimestepsWithStrengthStep,
-    ZImagePrepareLatentsStep,
     ZImageAdditionalInputsStep,
+    ZImagePrepareLatentsStep,
     ZImagePrepareLatentswithImageStep,
     ZImageSetTimestepsStep,
+    ZImageSetTimestepsWithStrengthStep,
+    ZImageTextInputStep,
 )
 from .decoders import ZImageVaeDecoderStep
 from .denoise import (
@@ -125,9 +125,9 @@ class ZImageAutoVaeImageEncoderStep(AutoPipelineBlocks):
     @property
     def description(self) -> str:
         return "Vae Image Encoder step that encode the image to generate the image latents"
-        + "This is an auto pipeline block that works for image2image tasks."
-        + " - `ZImageVaeImageEncoderStep` is used when `image` is provided."
-        + " - if `image` is not provided, step will be skipped."
+        +"This is an auto pipeline block that works for image2image tasks."
+        +" - `ZImageVaeImageEncoderStep` is used when `image` is provided."
+        +" - if `image` is not provided, step will be skipped."
 
 
 class ZImageAutoBlocks(SequentialPipelineBlocks):
@@ -139,16 +139,15 @@ class ZImageAutoBlocks(SequentialPipelineBlocks):
     ]
     block_names = ["text_encoder", "vae_image_encoder", "denoise", "decode"]
 
-
     @property
     def description(self) -> str:
         return "Auto Modular pipeline for text-to-image and image-to-image using ZImage.\n"
-        + " - for text-to-image generation, all you need to provide is `prompt`\n"
-        + " - for image-to-image generation, you need to provide `image`\n"
-        + " - if `image` is not provided, step will be skipped."
+        +" - for text-to-image generation, all you need to provide is `prompt`\n"
+        +" - for image-to-image generation, you need to provide `image`\n"
+        +" - if `image` is not provided, step will be skipped."
 
 
-# presets 
+# presets
 TEXT2IMAGE_BLOCKS = InsertableDict(
     [
         ("text_encoder", ZImageTextEncoderStep),

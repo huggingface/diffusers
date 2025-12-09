@@ -27,7 +27,7 @@ from ..modular_pipeline import (
     ModularPipelineBlocks,
     PipelineState,
 )
-from ..modular_pipeline_utils import ComponentSpec, ConfigSpec, InputParam
+from ..modular_pipeline_utils import ComponentSpec, InputParam
 from .modular_pipeline import ZImageModularPipeline
 
 
@@ -64,9 +64,10 @@ class ZImageLoopBeforeDenoiser(ModularPipelineBlocks):
 
     @torch.no_grad()
     def __call__(self, components: ZImageModularPipeline, block_state: BlockState, i: int, t: torch.Tensor):
-
-        latents = block_state.latents.unsqueeze(2).to(block_state.dtype) # [batch_size, num_channels, 1, height, width]
-        block_state.latent_model_input = list(latents.unbind(dim=0)) # list of [num_channels, 1, height, width]
+        latents = block_state.latents.unsqueeze(2).to(
+            block_state.dtype
+        )  # [batch_size, num_channels, 1, height, width]
+        block_state.latent_model_input = list(latents.unbind(dim=0))  # list of [num_channels, 1, height, width]
 
         timestep = t.expand(latents.shape[0]).to(block_state.dtype)
         timestep = (1000 - timestep) / 1000
@@ -130,7 +131,7 @@ class ZImageLoopDenoiser(ModularPipelineBlocks):
             ),
         ]
         guider_input_names = []
-        uncond_guider_input_names =  []
+        uncond_guider_input_names = []
         for value in self._guider_input_fields.values():
             if isinstance(value, tuple):
                 guider_input_names.append(value[0])
@@ -164,6 +165,7 @@ class ZImageLoopDenoiser(ModularPipelineBlocks):
         for guider_state_batch in guider_state:
             components.guider.prepare_models(components.transformer)
             cond_kwargs = guider_state_batch.as_dict()
+
             def _convert_dtype(v, dtype):
                 if isinstance(v, torch.Tensor):
                     return v.to(dtype)
