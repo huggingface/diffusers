@@ -20,7 +20,7 @@ import torch.nn as nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
-from ...utils import USE_PEFT_BACKEND, BaseOutput, logging, scale_lora_layers, unscale_lora_layers
+from ...utils import USE_PEFT_BACKEND, BaseOutput, deprecate, logging, scale_lora_layers, unscale_lora_layers
 from ..attention import AttentionMixin
 from ..cache_utils import CacheMixin
 from ..controlnets.controlnet import zero_module
@@ -132,6 +132,7 @@ class QwenImageControlNetModel(
         encoder_hidden_states_mask: torch.Tensor = None,
         timestep: torch.LongTensor = None,
         img_shapes: Optional[List[Tuple[int, int, int]]] = None,
+        txt_seq_lens: Optional[List[int]] = None,
         joint_attention_kwargs: Optional[Dict[str, Any]] = None,
         return_dict: bool = True,
     ) -> Union[torch.FloatTensor, Transformer2DModelOutput]:
@@ -155,6 +156,9 @@ class QwenImageControlNetModel(
                 Used to indicate denoising step.
             img_shapes (`List[Tuple[int, int, int]]`, *optional*):
                 Image shapes for RoPE computation.
+            txt_seq_lens (`List[int]`, *optional*):
+                **Deprecated**. Not needed anymore, we use `encoder_hidden_states` instead to infer text sequence
+                length.
             joint_attention_kwargs (`dict`, *optional*):
                 A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
                 `self.processor` in
@@ -166,6 +170,17 @@ class QwenImageControlNetModel(
             If `return_dict` is True, a [`~models.controlnet.ControlNetOutput`] is returned, otherwise a `tuple` where
             the first element is the controlnet block samples.
         """
+        # Handle deprecated txt_seq_lens parameter
+        if txt_seq_lens is not None:
+            deprecate(
+                "txt_seq_lens",
+                "0.37.0",
+                "Passing `txt_seq_lens` to `QwenImageControlNetModel.forward()` is deprecated and will be removed in "
+                "version 0.37.0. The text sequence length is now automatically inferred from `encoder_hidden_states` "
+                "and `encoder_hidden_states_mask`.",
+                standard_warn=False,
+            )
+
         if joint_attention_kwargs is not None:
             joint_attention_kwargs = joint_attention_kwargs.copy()
             lora_scale = joint_attention_kwargs.pop("scale", 1.0)
@@ -193,10 +208,7 @@ class QwenImageControlNetModel(
             encoder_hidden_states, encoder_hidden_states_mask
         )
 
-        if text_seq_lens_per_sample is not None:
-            joint_attention_kwargs.setdefault("text_seq_lens", text_seq_lens_per_sample)
-
-        image_rotary_emb = self.pos_embed(img_shapes, text_seq_len, device=hidden_states.device)
+        image_rotary_emb = self.pos_embed(img_shapes, text_seq_len=text_seq_len, device=hidden_states.device)
 
         timestep = timestep.to(hidden_states.dtype)
         encoder_hidden_states = self.txt_norm(encoder_hidden_states)

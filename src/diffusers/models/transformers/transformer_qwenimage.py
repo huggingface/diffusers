@@ -23,7 +23,7 @@ import torch.nn.functional as F
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
-from ...utils import USE_PEFT_BACKEND, logging, scale_lora_layers, unscale_lora_layers
+from ...utils import USE_PEFT_BACKEND, deprecate, logging, scale_lora_layers, unscale_lora_layers
 from ...utils.torch_utils import maybe_allow_in_graph
 from .._modeling_parallel import ContextParallelInput, ContextParallelOutput
 from ..attention import AttentionMixin, FeedForward
@@ -229,18 +229,39 @@ class QwenEmbedRope(nn.Module):
     def forward(
         self,
         video_fhw: Union[Tuple[int, int, int], List[Tuple[int, int, int]]],
-        txt_seq_len: int,
-        device: torch.device,
+        txt_seq_len: Optional[Union[int, torch.Tensor]] = None,
+        device: torch.device = None,
+        txt_seq_lens: Optional[List[int]] = None,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """
         Args:
             video_fhw (`Tuple[int, int, int]` or `List[Tuple[int, int, int]]`):
                 A list of 3 integers [frame, height, width] representing the shape of the video.
-            txt_seq_len (`int`):
-                The length of the text sequence. This should match the encoder hidden states length.
-            device: (`torch.device`):
+            txt_seq_len (`int` or `torch.Tensor`, *optional*):
+                The length of the text sequence. This should match the encoder hidden states length. Can be either an
+                int or a scalar tensor (for torch.compile compatibility).
+            device: (`torch.device`, *optional*):
                 The device on which to perform the RoPE computation.
+            txt_seq_lens (`List[int]`, *optional*, **Deprecated**):
+                Deprecated parameter. Use `txt_seq_len` instead. If provided, the maximum value will be used.
         """
+        # Handle deprecated txt_seq_lens parameter
+        if txt_seq_lens is not None:
+            deprecate(
+                "txt_seq_lens",
+                "0.37.0",
+                "Passing `txt_seq_lens` is deprecated and will be removed in version 0.37.0. "
+                "Please use `txt_seq_len` instead (singular, not plural). "
+                "The new parameter accepts a single int or tensor value instead of a list.",
+                standard_warn=False,
+            )
+            if txt_seq_len is None:
+                # Use max of txt_seq_lens for backward compatibility
+                txt_seq_len = max(txt_seq_lens) if isinstance(txt_seq_lens, list) else txt_seq_lens
+
+        if txt_seq_len is None:
+            raise ValueError("Either `txt_seq_len` or `txt_seq_lens` (deprecated) must be provided.")
+
         # Move to device unconditionally to avoid graph breaks in torch.compile
         self.pos_freqs = self.pos_freqs.to(device)
         self.neg_freqs = self.neg_freqs.to(device)
