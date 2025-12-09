@@ -419,6 +419,8 @@ else:
             "Wan22AutoBlocks",
             "WanAutoBlocks",
             "WanModularPipeline",
+            "ZImageAutoBlocks",
+            "ZImageModularPipeline",
         ]
     )
     _import_structure["pipelines"].extend(
@@ -1124,6 +1126,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             Wan22AutoBlocks,
             WanAutoBlocks,
             WanModularPipeline,
+            ZImageAutoBlocks,
+            ZImageModularPipeline,
         )
         from .pipelines import (
             AllegroPipeline,
