@@ -16,9 +16,11 @@ from typing import List
 
 import torch
 
+from ...configuration_utils import FrozenDict
+from ...pipelines.flux2.image_processor import Flux2ImageProcessor
 from ...utils import logging
 from ..modular_pipeline import ModularPipelineBlocks, PipelineState
-from ..modular_pipeline_utils import InputParam, OutputParam
+from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
 from .modular_pipeline import Flux2ModularPipeline
 
 
@@ -82,6 +84,75 @@ class Flux2TextInputStep(ModularPipelineBlocks):
         block_state.prompt_embeds = block_state.prompt_embeds.view(
             block_state.batch_size * block_state.num_images_per_prompt, seq_len, -1
         )
+
+        self.set_block_state(state, block_state)
+        return components, state
+
+
+class Flux2ProcessImagesInputStep(ModularPipelineBlocks):
+    model_name = "flux2"
+
+    @property
+    def description(self) -> str:
+        return "Image preprocess step for Flux2. Validates and preprocesses reference images."
+
+    @property
+    def expected_components(self) -> List[ComponentSpec]:
+        return [
+            ComponentSpec(
+                "image_processor",
+                Flux2ImageProcessor,
+                config=FrozenDict({"vae_scale_factor": 16, "vae_latent_channels": 32}),
+                default_creation_method="from_config",
+            ),
+        ]
+
+    @property
+    def inputs(self) -> List[InputParam]:
+        return [
+            InputParam("image"),
+            InputParam("height"),
+            InputParam("width"),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> List[OutputParam]:
+        return [OutputParam(name="condition_images", type_hint=List[torch.Tensor])]
+
+    @torch.no_grad()
+    def __call__(self, components: Flux2ModularPipeline, state: PipelineState):
+        block_state = self.get_block_state(state)
+        images = block_state.image
+
+        if images is None:
+            block_state.condition_images = None
+        else:
+            if not isinstance(images, list):
+                images = [images]
+
+            condition_images = []
+            for img in images:
+                components.image_processor.check_image_input(img)
+
+                image_width, image_height = img.size
+                if image_width * image_height > 1024 * 1024:
+                    img = components.image_processor._resize_to_target_area(img, 1024 * 1024)
+                    image_width, image_height = img.size
+
+                multiple_of = components.vae_scale_factor * 2
+                image_width = (image_width // multiple_of) * multiple_of
+                image_height = (image_height // multiple_of) * multiple_of
+                condition_img = components.image_processor.preprocess(
+                    img, height=image_height, width=image_width, resize_mode="crop"
+                )
+                condition_images.append(condition_img)
+
+                if block_state.height is None:
+                    block_state.height = image_height
+                if block_state.width is None:
+                    block_state.width = image_width
+
+            block_state.condition_images = condition_images
 
         self.set_block_state(state, block_state)
         return components, state

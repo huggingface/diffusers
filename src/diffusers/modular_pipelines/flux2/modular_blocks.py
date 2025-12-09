@@ -24,12 +24,12 @@ from .before_denoise import (
 from .decoders import Flux2DecodeStep
 from .denoise import Flux2DenoiseStep
 from .encoders import (
-    Flux2ProcessImagesInputStep,
     Flux2RemoteTextEncoderStep,
     Flux2TextEncoderStep,
     Flux2VaeEncoderStep,
 )
 from .inputs import (
+    Flux2ProcessImagesInputStep,
     Flux2TextInputStep,
 )
 
