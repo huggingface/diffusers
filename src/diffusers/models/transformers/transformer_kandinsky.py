@@ -165,13 +165,15 @@ class Kandinsky5TimeEmbeddings(nn.Module):
         self.activation = nn.SiLU()
         self.out_layer = nn.Linear(time_dim, time_dim, bias=True)
 
-    @torch.autocast(device_type="cuda", dtype=torch.float32)
     def forward(self, time):
-        args = torch.outer(time, self.freqs.to(device=time.device))
+        time = time.to(dtype=torch.float32)
+        freqs = self.freqs.to(device=time.device, dtype=torch.float32)
+        args = torch.outer(time, freqs)
         time_embed = torch.cat([torch.cos(args), torch.sin(args)], dim=-1)
+        time_embed = time_embed.to(dtype=self.in_layer.weight.dtype)
         time_embed = self.out_layer(self.activation(self.in_layer(time_embed)))
         return time_embed
-
+    
 
 class Kandinsky5TextEmbeddings(nn.Module):
     def __init__(self, text_dim, model_dim):
@@ -269,8 +271,8 @@ class Kandinsky5Modulation(nn.Module):
         self.out_layer.weight.data.zero_()
         self.out_layer.bias.data.zero_()
 
-    @torch.autocast(device_type="cuda", dtype=torch.float32)
     def forward(self, x):
+        x = x.to(dtype=self.out_layer.weight.dtype)
         return self.out_layer(self.activation(x))
 
 
