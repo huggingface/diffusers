@@ -71,7 +71,7 @@ class F5TTSPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     def get_dummy_components(self):
         torch.manual_seed(0)
         
-        dit = F5DiTModel(
+        transformer = F5DiTModel(
             dim=1024,
             depth=2,
             heads=16,
@@ -100,11 +100,14 @@ class F5TTSPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         
         scheduler = FlowMatchEulerDiscreteScheduler()
         torch.manual_seed(0)
+        
+        vocab_char_map = {chr(i + 97): i for i in range(26)}
 
         components = {
-            "dit": dit,
+            "transformer": transformer,
             "scheduler": scheduler,
             "conditioning_encoder": conditioning_encoder,
+            "vocab_char_map": vocab_char_map,
         }
         return components
 

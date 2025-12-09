@@ -45,23 +45,27 @@ class F5FlowPipeline(DiffusionPipeline):
         transformer: F5DiTModel,
         conditioning_encoder: F5ConditioningEncoder,
         scheduler: FlowMatchEulerDiscreteScheduler,
-        odeint_kwargs: dict = dict(
-            method="euler" 
-        ),
-        mel_spec_kwargs: dict = dict(),
-        vocab_char_map: dict[str:int] | None = None,
+        vocab_char_map: dict[str:int],
     ):
         super().__init__()
         self.transformer = transformer
         self.conditioning_encoder = conditioning_encoder
-        self.mel_spec = MelSpec(**mel_spec_kwargs)
+        self.mel_spec = MelSpec()
         num_channels = self.mel_spec.n_mel_channels
         self.num_channels = num_channels
         # sampling related
-        self.odeint_kwargs = odeint_kwargs
         # vocab map for tokenization
         self.vocab_char_map = vocab_char_map
         self.scheduler = scheduler
+
+        self.register_modules(
+            transformer=transformer,
+            conditioning_encoder=conditioning_encoder,
+            scheduler=scheduler,
+        )
+        self.register_to_config(
+            vocab_char_map=vocab_char_map,
+        )
 
 
 
@@ -327,8 +331,6 @@ if __name__ == "__main__":
     f5_pipeline = F5FlowPipeline(
         transformer=dit,
         conditioning_encoder=conditioning_encoder,
-        odeint_kwargs={"method": "euler"},
-        mel_spec_kwargs=mel_spec_config,
         vocab_char_map=vocab_char_map,
         scheduler=scheduler
     )
