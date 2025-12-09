@@ -17,18 +17,15 @@ import unittest
 
 from diffusers import AutoencoderKLMochi
 
-from ...testing_utils import (
-    enable_full_determinism,
-    floats_tensor,
-    torch_device,
-)
-from ..test_modeling_common import ModelTesterMixin, UNetTesterMixin
+from ...testing_utils import enable_full_determinism, floats_tensor, torch_device
+from ..test_modeling_common import ModelTesterMixin
+from .testing_utils import AutoencoderTesterMixin
 
 
 enable_full_determinism()
 
 
-class AutoencoderKLMochiTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
+class AutoencoderKLMochiTests(ModelTesterMixin, AutoencoderTesterMixin, unittest.TestCase):
     model_class = AutoencoderKLMochi
     main_input_name = "sample"
     base_precision = 1e-2
@@ -78,14 +75,6 @@ class AutoencoderKLMochiTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCa
             "MochiUpBlock3D",
         }
         super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
-
-    @unittest.skip("Unsupported test.")
-    def test_forward_with_norm_groups(self):
-        """
-        tests/models/autoencoders/test_models_autoencoder_mochi.py::AutoencoderKLMochiTests::test_forward_with_norm_groups -
-        TypeError: AutoencoderKLMochi.__init__() got an unexpected keyword argument 'norm_num_groups'
-        """
-        pass
 
     @unittest.skip("Unsupported test.")
     def test_model_parallelism(self):

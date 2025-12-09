@@ -24,6 +24,7 @@ from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
 from ...utils import USE_PEFT_BACKEND, deprecate, is_torch_version, logging, scale_lora_layers, unscale_lora_layers
 from ...utils.torch_utils import maybe_allow_in_graph
+from .._modeling_parallel import ContextParallelInput, ContextParallelOutput
 from ..attention import AttentionMixin, AttentionModuleMixin, FeedForward
 from ..attention_dispatch import dispatch_attention_fn
 from ..cache_utils import CacheMixin
@@ -51,6 +52,7 @@ class LTXVideoAttnProcessor:
     """
 
     _attention_backend = None
+    _parallel_config = None
 
     def __init__(self):
         if is_torch_version("<", "2.0"):
@@ -100,6 +102,7 @@ class LTXVideoAttnProcessor:
             dropout_p=0.0,
             is_causal=False,
             backend=self._attention_backend,
+            parallel_config=self._parallel_config,
         )
         hidden_states = hidden_states.flatten(2, 3)
         hidden_states = hidden_states.to(query.dtype)
@@ -350,7 +353,9 @@ class LTXVideoTransformerBlock(nn.Module):
         norm_hidden_states = self.norm1(hidden_states)
 
         num_ada_params = self.scale_shift_table.shape[0]
-        ada_values = self.scale_shift_table[None, None] + temb.reshape(batch_size, temb.size(1), num_ada_params, -1)
+        ada_values = self.scale_shift_table[None, None].to(temb.device) + temb.reshape(
+            batch_size, temb.size(1), num_ada_params, -1
+        )
         shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = ada_values.unbind(dim=2)
         norm_hidden_states = norm_hidden_states * (1 + scale_msa) + shift_msa
 
@@ -409,6 +414,18 @@ class LTXVideoTransformer3DModel(
     _supports_gradient_checkpointing = True
     _skip_layerwise_casting_patterns = ["norm"]
     _repeated_blocks = ["LTXVideoTransformerBlock"]
+    _cp_plan = {
+        "": {
+            "hidden_states": ContextParallelInput(split_dim=1, expected_dims=3, split_output=False),
+            "encoder_hidden_states": ContextParallelInput(split_dim=1, expected_dims=3, split_output=False),
+            "encoder_attention_mask": ContextParallelInput(split_dim=1, expected_dims=2, split_output=False),
+        },
+        "rope": {
+            0: ContextParallelInput(split_dim=1, expected_dims=3, split_output=True),
+            1: ContextParallelInput(split_dim=1, expected_dims=3, split_output=True),
+        },
+        "proj_out": ContextParallelOutput(gather_dim=1, expected_dims=3),
+    }
 
     @register_to_config
     def __init__(

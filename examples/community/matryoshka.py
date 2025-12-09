@@ -1475,11 +1475,8 @@ class MatryoshkaFusedAttnProcessor2_0:
     fused projection layers. For self-attention modules, all projection matrices (i.e., query, key, value) are fused.
     For cross-attention modules, key and value projection matrices are fused.
 
-    <Tip warning={true}>
-
-    This API is currently 🧪 experimental in nature and can change in future.
-
-    </Tip>
+    > [!WARNING]
+    > This API is currently 🧪 experimental in nature and can change in future.
     """
 
     def __init__(self):
@@ -1969,16 +1966,21 @@ class MatryoshkaUNet2DConditionModel(
         center_input_sample: bool = False,
         flip_sin_to_cos: bool = True,
         freq_shift: int = 0,
-        down_block_types: Tuple[str] = (
+        down_block_types: Tuple[str, ...] = (
             "CrossAttnDownBlock2D",
             "CrossAttnDownBlock2D",
             "CrossAttnDownBlock2D",
             "DownBlock2D",
         ),
         mid_block_type: Optional[str] = "UNetMidBlock2DCrossAttn",
-        up_block_types: Tuple[str] = ("UpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D"),
+        up_block_types: Tuple[str, ...] = (
+            "UpBlock2D",
+            "CrossAttnUpBlock2D",
+            "CrossAttnUpBlock2D",
+            "CrossAttnUpBlock2D",
+        ),
         only_cross_attention: Union[bool, Tuple[bool]] = False,
-        block_out_channels: Tuple[int] = (320, 640, 1280, 1280),
+        block_out_channels: Tuple[int, ...] = (320, 640, 1280, 1280),
         layers_per_block: Union[int, Tuple[int]] = 2,
         downsample_padding: int = 1,
         mid_block_scale_factor: float = 1,
@@ -2297,10 +2299,10 @@ class MatryoshkaUNet2DConditionModel(
 
     def _check_config(
         self,
-        down_block_types: Tuple[str],
-        up_block_types: Tuple[str],
+        down_block_types: Tuple[str, ...],
+        up_block_types: Tuple[str, ...],
         only_cross_attention: Union[bool, Tuple[bool]],
-        block_out_channels: Tuple[int],
+        block_out_channels: Tuple[int, ...],
         layers_per_block: Union[int, Tuple[int]],
         cross_attention_dim: Union[int, Tuple[int]],
         transformer_layers_per_block: Union[int, Tuple[int], Tuple[Tuple[int]]],
@@ -2696,11 +2698,8 @@ class MatryoshkaUNet2DConditionModel(
         Enables fused QKV projections. For self-attention modules, all projection matrices (i.e., query, key, value)
         are fused. For cross-attention modules, key and value projection matrices are fused.
 
-        <Tip warning={true}>
-
-        This API is 🧪 experimental.
-
-        </Tip>
+        > [!WARNING]
+        > This API is 🧪 experimental.
         """
         self.original_attn_processors = None
 
@@ -2719,11 +2718,8 @@ class MatryoshkaUNet2DConditionModel(
     def unfuse_qkv_projections(self):
         """Disables the fused QKV projection if enabled.
 
-        <Tip warning={true}>
-
-        This API is 🧪 experimental.
-
-        </Tip>
+        > [!WARNING]
+        > This API is 🧪 experimental.
 
         """
         if self.original_attn_processors is not None:
@@ -3738,8 +3734,8 @@ class MatryoshkaPipeline(
                 "The configuration file of the unet has set the default `sample_size` to smaller than"
                 " 64 which seems highly unlikely. If your checkpoint is a fine-tuned version of any of the"
                 " following: \n- CompVis/stable-diffusion-v1-4 \n- CompVis/stable-diffusion-v1-3 \n-"
-                " CompVis/stable-diffusion-v1-2 \n- CompVis/stable-diffusion-v1-1 \n- runwayml/stable-diffusion-v1-5"
-                " \n- runwayml/stable-diffusion-inpainting \n you should change 'sample_size' to 64 in the"
+                " CompVis/stable-diffusion-v1-2 \n- CompVis/stable-diffusion-v1-1 \n- stable-diffusion-v1-5/stable-diffusion-v1-5"
+                " \n- stable-diffusion-v1-5/stable-diffusion-inpainting \n you should change 'sample_size' to 64 in the"
                 " configuration file. Please make sure to update the config accordingly as leaving `sample_size=32`"
                 " in the config might lead to incorrect results in future versions. If you have downloaded this"
                 " checkpoint from the Hugging Face Hub, it would be very nice if you could open a Pull request for"

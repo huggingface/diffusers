@@ -95,6 +95,7 @@ from .qwenimage import (
     QwenImageControlNetPipeline,
     QwenImageEditInpaintPipeline,
     QwenImageEditPipeline,
+    QwenImageEditPlusPipeline,
     QwenImageImg2ImgPipeline,
     QwenImageInpaintPipeline,
     QwenImagePipeline,
@@ -116,7 +117,9 @@ from .stable_diffusion_xl import (
     StableDiffusionXLInpaintPipeline,
     StableDiffusionXLPipeline,
 )
+from .wan import WanImageToVideoPipeline, WanPipeline, WanVideoToVideoPipeline
 from .wuerstchen import WuerstchenCombinedPipeline, WuerstchenDecoderPipeline
+from .z_image import ZImageImg2ImgPipeline, ZImagePipeline
 
 
 AUTO_TEXT2IMAGE_PIPELINES_MAPPING = OrderedDict(
@@ -160,6 +163,7 @@ AUTO_TEXT2IMAGE_PIPELINES_MAPPING = OrderedDict(
         ("cogview4-control", CogView4ControlPipeline),
         ("qwenimage", QwenImagePipeline),
         ("qwenimage-controlnet", QwenImageControlNetPipeline),
+        ("z-image", ZImagePipeline),
     ]
 )
 
@@ -186,6 +190,8 @@ AUTO_IMAGE2IMAGE_PIPELINES_MAPPING = OrderedDict(
         ("flux-kontext", FluxKontextPipeline),
         ("qwenimage", QwenImageImg2ImgPipeline),
         ("qwenimage-edit", QwenImageEditPipeline),
+        ("qwenimage-edit-plus", QwenImageEditPlusPipeline),
+        ("z-image", ZImageImg2ImgPipeline),
     ]
 )
 
@@ -209,6 +215,24 @@ AUTO_INPAINT_PIPELINES_MAPPING = OrderedDict(
         ("stable-diffusion-pag", StableDiffusionPAGInpaintPipeline),
         ("qwenimage", QwenImageInpaintPipeline),
         ("qwenimage-edit", QwenImageEditInpaintPipeline),
+    ]
+)
+
+AUTO_TEXT2VIDEO_PIPELINES_MAPPING = OrderedDict(
+    [
+        ("wan", WanPipeline),
+    ]
+)
+
+AUTO_IMAGE2VIDEO_PIPELINES_MAPPING = OrderedDict(
+    [
+        ("wan", WanImageToVideoPipeline),
+    ]
+)
+
+AUTO_VIDEO2VIDEO_PIPELINES_MAPPING = OrderedDict(
+    [
+        ("wan", WanVideoToVideoPipeline),
     ]
 )
 
@@ -245,6 +269,9 @@ SUPPORTED_TASKS_MAPPINGS = [
     AUTO_TEXT2IMAGE_PIPELINES_MAPPING,
     AUTO_IMAGE2IMAGE_PIPELINES_MAPPING,
     AUTO_INPAINT_PIPELINES_MAPPING,
+    AUTO_TEXT2VIDEO_PIPELINES_MAPPING,
+    AUTO_IMAGE2VIDEO_PIPELINES_MAPPING,
+    AUTO_VIDEO2VIDEO_PIPELINES_MAPPING,
     _AUTO_TEXT2IMAGE_DECODER_PIPELINES_MAPPING,
     _AUTO_IMAGE2IMAGE_DECODER_PIPELINES_MAPPING,
     _AUTO_INPAINT_DECODER_PIPELINES_MAPPING,
@@ -407,12 +434,8 @@ class AutoPipelineForText2Image(ConfigMixin):
                 Load weights from a specified variant filename such as `"fp16"` or `"ema"`. This is ignored when
                 loading `from_flax`.
 
-        <Tip>
-
-        To use private or [gated](https://huggingface.co/docs/hub/models-gated#gated-models) models, log-in with `hf
-        auth login`.
-
-        </Tip>
+        > [!TIP] > To use private or [gated](https://huggingface.co/docs/hub/models-gated#gated-models) models, log-in
+        with `hf > auth login`.
 
         Examples:
 
@@ -702,12 +725,8 @@ class AutoPipelineForImage2Image(ConfigMixin):
                 Load weights from a specified variant filename such as `"fp16"` or `"ema"`. This is ignored when
                 loading `from_flax`.
 
-        <Tip>
-
-        To use private or [gated](https://huggingface.co/docs/hub/models-gated#gated-models) models, log-in with `hf
-        auth login`.
-
-        </Tip>
+        > [!TIP] > To use private or [gated](https://huggingface.co/docs/hub/models-gated#gated-models) models, log-in
+        with `hf > auth login`.
 
         Examples:
 
@@ -1012,12 +1031,8 @@ class AutoPipelineForInpainting(ConfigMixin):
                 Load weights from a specified variant filename such as `"fp16"` or `"ema"`. This is ignored when
                 loading `from_flax`.
 
-        <Tip>
-
-        To use private or [gated](https://huggingface.co/docs/hub/models-gated#gated-models) models, log-in with `hf
-        auth login`.
-
-        </Tip>
+        > [!TIP] > To use private or [gated](https://huggingface.co/docs/hub/models-gated#gated-models) models, log-in
+        with `hf > auth login`.
 
         Examples:
 
