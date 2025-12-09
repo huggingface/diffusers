@@ -285,9 +285,19 @@ class QwenImageMultiControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, F
         encoder_hidden_states_mask: torch.Tensor = None,
         timestep: torch.LongTensor = None,
         img_shapes: Optional[List[Tuple[int, int, int]]] = None,
+        txt_seq_lens: Optional[List[int]] = None,
         joint_attention_kwargs: Optional[Dict[str, Any]] = None,
         return_dict: bool = True,
     ) -> Union[QwenImageControlNetOutput, Tuple]:
+        if txt_seq_lens is not None:
+            deprecate(
+                "txt_seq_lens",
+                "0.37.0",
+                "Passing `txt_seq_lens` to `QwenImageMultiControlNetModel.forward()` is deprecated and will be "
+                "removed in version 0.37.0. The text sequence length is now automatically inferred from "
+                "`encoder_hidden_states` and `encoder_hidden_states_mask`.",
+                standard_warn=False,
+            )
         # ControlNet-Union with multiple conditions
         # only load one ControlNet for saving memories
         if len(self.nets) == 1:
