@@ -1,79 +1,79 @@
-# Copyright 2025 The HuggingFace Team. All rights reserved.
+# copyright 2025 the huggingface team. all rights reserved.
 #
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
+# licensed under the apache license, version 2.0 (the "license");
+# you may not use this file except in compliance with the license.
+# you may obtain a copy of the license at
 #
-#     http://www.apache.org/licenses/LICENSE-2.0
+#     http://www.apache.org/licenses/license-2.0
 #
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
+# unless required by applicable law or agreed to in writing, software
+# distributed under the license is distributed on an "as is" basis,
+# without warranties or conditions of any kind, either express or implied.
+# see the license for the specific language governing permissions and
+# limitations under the license.
 
-from typing import List
+from typing import list
 
 import torch
 
-from ...configuration_utils import FrozenDict
-from ...pipelines.flux2.image_processor import Flux2ImageProcessor
+from ...configuration_utils import frozendict
+from ...pipelines.flux2.image_processor import flux2imageprocessor
 from ...utils import logging
-from ..modular_pipeline import ModularPipelineBlocks, PipelineState
-from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
-from .modular_pipeline import Flux2ModularPipeline
+from ..modular_pipeline import modularpipelineblocks, pipelinestate
+from ..modular_pipeline_utils import componentspec, inputparam, outputparam
+from .modular_pipeline import flux2modularpipeline
 
 
 logger = logging.get_logger(__name__)
 
 
-class Flux2TextInputStep(ModularPipelineBlocks):
+class flux2textinputstep(modularpipelineblocks):
     model_name = "flux2"
 
     @property
     def description(self) -> str:
         return (
-            "This step:\n"
-            "  1. Determines `batch_size` and `dtype` based on `prompt_embeds`\n"
-            "  2. Ensures all text embeddings have consistent batch sizes (batch_size * num_images_per_prompt)"
+            "this step:\n"
+            "  1. determines `batch_size` and `dtype` based on `prompt_embeds`\n"
+            "  2. ensures all text embeddings have consistent batch sizes (batch_size * num_images_per_prompt)"
         )
 
     @property
-    def inputs(self) -> List[InputParam]:
+    def inputs(self) -> list[inputparam]:
         return [
-            InputParam("num_images_per_prompt", default=1),
-            InputParam(
+            inputparam("num_images_per_prompt", default=1),
+            inputparam(
                 "prompt_embeds",
-                required=True,
+                required=true,
                 kwargs_type="denoiser_input_fields",
-                type_hint=torch.Tensor,
-                description="Pre-generated text embeddings from Mistral3. Can be generated from text_encoder step.",
+                type_hint=torch.tensor,
+                description="pre-generated text embeddings from mistral3. can be generated from text_encoder step.",
             ),
         ]
 
     @property
-    def intermediate_outputs(self) -> List[str]:
+    def intermediate_outputs(self) -> list[str]:
         return [
-            OutputParam(
+            outputparam(
                 "batch_size",
                 type_hint=int,
-                description="Number of prompts, the final batch size of model inputs should be batch_size * num_images_per_prompt",
+                description="number of prompts, the final batch size of model inputs should be batch_size * num_images_per_prompt",
             ),
-            OutputParam(
+            outputparam(
                 "dtype",
                 type_hint=torch.dtype,
-                description="Data type of model tensor inputs (determined by `prompt_embeds`)",
+                description="data type of model tensor inputs (determined by `prompt_embeds`)",
             ),
-            OutputParam(
+            outputparam(
                 "prompt_embeds",
-                type_hint=torch.Tensor,
+                type_hint=torch.tensor,
                 kwargs_type="denoiser_input_fields",
-                description="Text embeddings used to guide the image generation",
+                description="text embeddings used to guide the image generation",
             ),
         ]
 
     @torch.no_grad()
-    def __call__(self, components: Flux2ModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(self, components: flux2modularpipeline, state: pipelinestate) -> pipelinestate:
         block_state = self.get_block_state(state)
 
         block_state.batch_size = block_state.prompt_embeds.shape[0]
@@ -89,43 +89,43 @@ class Flux2TextInputStep(ModularPipelineBlocks):
         return components, state
 
 
-class Flux2ProcessImagesInputStep(ModularPipelineBlocks):
+class flux2processimagesinputstep(modularpipelineblocks):
     model_name = "flux2"
 
     @property
     def description(self) -> str:
-        return "Image preprocess step for Flux2. Validates and preprocesses reference images."
+        return "image preprocess step for flux2. validates and preprocesses reference images."
 
     @property
-    def expected_components(self) -> List[ComponentSpec]:
+    def expected_components(self) -> list[componentspec]:
         return [
-            ComponentSpec(
+            componentspec(
                 "image_processor",
-                Flux2ImageProcessor,
-                config=FrozenDict({"vae_scale_factor": 16, "vae_latent_channels": 32}),
+                flux2imageprocessor,
+                config=frozendict({"vae_scale_factor": 16, "vae_latent_channels": 32}),
                 default_creation_method="from_config",
             ),
         ]
 
     @property
-    def inputs(self) -> List[InputParam]:
+    def inputs(self) -> list[inputparam]:
         return [
-            InputParam("image"),
-            InputParam("height"),
-            InputParam("width"),
+            inputparam("image"),
+            inputparam("height"),
+            inputparam("width"),
         ]
 
     @property
-    def intermediate_outputs(self) -> List[OutputParam]:
-        return [OutputParam(name="condition_images", type_hint=List[torch.Tensor])]
+    def intermediate_outputs(self) -> list[outputparam]:
+        return [outputparam(name="condition_images", type_hint=list[torch.tensor])]
 
     @torch.no_grad()
-    def __call__(self, components: Flux2ModularPipeline, state: PipelineState):
+    def __call__(self, components: flux2modularpipeline, state: pipelinestate):
         block_state = self.get_block_state(state)
         images = block_state.image
 
-        if images is None:
-            block_state.condition_images = None
+        if images is none:
+            block_state.condition_images = none
         else:
             if not isinstance(images, list):
                 images = [images]
@@ -147,9 +147,9 @@ class Flux2ProcessImagesInputStep(ModularPipelineBlocks):
                 )
                 condition_images.append(condition_img)
 
-                if block_state.height is None:
+                if block_state.height is none:
                     block_state.height = image_height
-                if block_state.width is None:
+                if block_state.width is none:
                     block_state.width = image_width
 
             block_state.condition_images = condition_images
