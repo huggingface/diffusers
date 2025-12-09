@@ -117,8 +117,8 @@ class F5TTSPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         else:
             generator = torch.Generator(device=device).manual_seed(seed)
         torch.manual_seed(0)
-        ref_audio = torch.randn(2, 16000).to(device)
-        duration = 250
+        ref_audio = torch.randn(1, 16000).to(device)
+        duration = torch.tensor([150], device=device)
         inputs = {
             "ref_text": "This is a test sentence",
             "gen_text": "This is another test sentence",
@@ -146,12 +146,12 @@ class F5TTSPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         f5tts_pipe = f5tts_pipe.to(torch_device)
         f5tts_pipe.set_progress_bar_config(disable=None)
 
-        inputs = self.get_dummy_inputs(device)
+        inputs = self.get_dummy_inputs(torch_device)
         output = f5tts_pipe(**inputs)
         audio = output.audios[0]
 
         assert audio.ndim == 2
-        assert audio.shape == (2, 7)
+        assert audio.shape == (100, 150)
 
 
 

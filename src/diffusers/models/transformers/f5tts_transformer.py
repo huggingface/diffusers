@@ -356,7 +356,13 @@ class F5ConditioningEncoder(nn.Module):
 
         return x
 
+    @property
+    def dtype(self):
+        return self.text_embed.text_embed.weight.dtype
 
+    @property
+    def device(self):
+        return self.text_embed.text_embed.weight.device
 class AdaLayerNorm_Final(nn.Module):
     def __init__(self, dim):
         super().__init__()
@@ -448,6 +454,12 @@ class F5DiTModel(nn.Module):
         output = self.proj_out(x)
 
         return output
+    @property
+    def dtype(self):
+        return self.proj_out.weight.dtype
+    @property
+    def device(self):
+        return self.proj_out.weight.device
 
 
 

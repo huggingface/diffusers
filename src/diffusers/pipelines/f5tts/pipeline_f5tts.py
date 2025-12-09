@@ -144,7 +144,9 @@ class F5FlowPipeline(DiffusionPipeline):
         cond = ref_audio
 
         if cond.ndim == 2:
+            cond = cond.to('cpu') # mel spec needs cpu
             cond = self.mel_spec(cond)
+            cond = cond.to(self.device)
             cond = cond.permute(0, 2, 1)
             assert cond.shape[-1] == self.num_channels
 
@@ -200,12 +202,13 @@ class F5FlowPipeline(DiffusionPipeline):
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         duration: Optional[torch.Tensor] = None,
         seed=None,
-        device="cuda"
+        return_dict: bool = True,
     ):
 
 
         # Check inputs
         self.check_inputs(ref_audio, ref_text, gen_text, duration)
+        device = self._execution_device
 
         y0, step_cond_input, text, cond, cond_mask, mask = self.prepare_latents(
             ref_audio=ref_audio,
@@ -221,7 +224,7 @@ class F5FlowPipeline(DiffusionPipeline):
             sigmas = sigmas + sway_sampling_coef * (torch.cos(torch.pi / 2 * sigmas) - 1 + sigmas)
         timesteps = sigmas * (self.scheduler.num_train_timesteps - 1)
         timesteps = timesteps.round().long()
-        self.scheduler.set_timesteps(num_inference_steps+1, device=device, sigmas=sigmas, timesteps=timesteps)
+        self.scheduler.set_timesteps(num_inference_steps+1, device=device, sigmas=sigmas.cpu(), timesteps=timesteps.cpu())
         timesteps = self.scheduler.timesteps.to(device)
         
         with self.progress_bar(total=num_inference_steps) as progress_bar:
@@ -267,13 +270,11 @@ class F5FlowPipeline(DiffusionPipeline):
         out = torch.where(cond_mask, cond, out)
 
         out = out.to(torch.float32)  # generated mel spectrogram
-        out = out.permute(0, 2, 1)
-        generated_cpu = out[0]
+        audio = out.permute(0, 2, 1)
 
-
-        # This need to be in HF Output format
-        return generated_cpu
-
+        if not return_dict:
+            return (audio,)
+        return AudioPipelineOutput(audios=audio)
 
 
 if __name__ == "__main__":
