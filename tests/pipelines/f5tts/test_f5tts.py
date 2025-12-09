@@ -53,7 +53,7 @@ class F5TTSPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "guidance_scale",
         ]
     )
-    batch_params = TEXT_TO_AUDIO_BATCH_PARAMS
+    batch_params = frozenset(["ref_text", "gen_text", "duration"])
     required_optional_params = frozenset(
         [
             "num_inference_steps",

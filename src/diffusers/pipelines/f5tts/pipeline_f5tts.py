@@ -25,6 +25,7 @@ from importlib.resources import files
 
 import torch
 from torch.nn.utils.rnn import pad_sequence
+from diffusers.utils.torch_utils import randn_tensor
 from diffusers.pipelines.pipeline_utils import AudioPipelineOutput, DiffusionPipeline
 from vocos import Vocos
 from diffusers.models.transformers.f5tts_transformer import   F5DiTModel, MelSpec, F5ConditioningEncoder
@@ -91,7 +92,7 @@ class F5FlowPipeline(DiffusionPipeline):
         return seq[None, :] < t[:, None]
     
     
-    def check_inputs(self, ref_audio: torch.Tensor | None, ref_text: Union[str, List[str]], gen_text: Union[str, List[str]], duration: Optional[torch.Tensor] = None): 
+    def check_inputs(self, ref_audio: torch.Tensor | None, ref_text: Union[str, List[str]], gen_text: Union[str, List[str]], duration: Optional[Union[torch.Tensor, List[torch.Tensor]]] = None): 
         if ref_audio is None:
             raise ValueError("`ref_audio` must be provided.")
         if not isinstance(ref_text, (str, list)):
@@ -110,8 +111,11 @@ class F5FlowPipeline(DiffusionPipeline):
 
         # check if duration is non negative
         if duration is not None:
-            if not isinstance(duration, torch.Tensor):
-                raise ValueError("`duration` must be a torch.Tensor.")
+            if not isinstance(duration, torch.Tensor) and not isinstance(duration, List):
+                raise ValueError("`duration` must be a torch.Tensor or a list of torch.Tensors.")
+            if isinstance(duration, List):
+                duration = torch.stack(duration)
+                duration = duration.squeeze(-1)
             if (duration < 0).any():
                 raise ValueError("`duration` must be non-negative.")
             if duration.ndim != 1:
@@ -119,7 +123,7 @@ class F5FlowPipeline(DiffusionPipeline):
             if duration.shape[0] != len(ref_text):
                 raise ValueError("`duration` must have the same length as `ref_text` and `gen_text`.")
             
-    def prepare_latents(self, ref_audio: torch.Tensor, ref_text: Union[str, List[str]], gen_text: Union[str, List[str]], duration: Optional[torch.Tensor] = None, guidance_scale=2.0, generator: Optional[torch.Generator] = None):
+    def prepare_latents(self, ref_audio:torch.Tensor, ref_text: Union[str, List[str]], gen_text: Union[str, List[str]], duration: Optional[torch.Tensor] = None, guidance_scale=2.0, generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None):
         # each text in text_list is a combination of ref_text and gen_text
         if isinstance(ref_text, str):
             ref_text = [ref_text]
@@ -127,11 +131,13 @@ class F5FlowPipeline(DiffusionPipeline):
             gen_text = [gen_text]
         text_list = [f"{r} {g}" for r, g in zip(ref_text, gen_text)]
         ref_audio_len = ref_audio.shape[-1] // self.mel_spec.hop_length
+        
+        if isinstance(duration, List):
+            duration = torch.stack(duration)
+            duration = duration.squeeze(-1)
 
         if duration is None:
             # Calculate duration
-
-            
             duration_list = []
             
             for i in range(len(ref_text)):
@@ -148,13 +154,15 @@ class F5FlowPipeline(DiffusionPipeline):
             cond = self.mel_spec(cond)
             cond = cond.to(self.device)
             cond = cond.permute(0, 2, 1)
+            if len(ref_text) > 1:
+                # repeat cond for batch inference, TODO allow different conds in batch
+                cond = cond.repeat(len(ref_text), 1, 1)
             assert cond.shape[-1] == self.num_channels
 
         batch, cond_seq_len, device = *cond.shape[:2], cond.device
         lens = torch.full((batch,), cond_seq_len, device=device, dtype=torch.long)
 
         text = self.list_str_to_idx(text_list, self.vocab_char_map).to(device)
-        assert text.shape[0] == batch
 
         # duration
         cond_mask = self.lens_to_mask(lens)
@@ -183,8 +191,8 @@ class F5FlowPipeline(DiffusionPipeline):
         # to make sure batch inference result is same with different batch size, and for sure single inference
         # still some difference maybe due to convolutional layers
         y0 = []
-        for dur in duration:
-            y0.append(torch.randn(dur, self.num_channels, device=device, dtype=step_cond_input.dtype, generator=generator))
+        for i, dur in enumerate(duration):
+            y0.append(randn_tensor((dur, self.num_channels), device=device, generator=generator[i] if isinstance(generator, list) else generator))
         y0 = pad_sequence(y0, padding_value=0, batch_first=True)
 
         return y0, step_cond_input, text, cond, cond_mask, mask
@@ -215,7 +223,8 @@ class F5FlowPipeline(DiffusionPipeline):
             ref_text=ref_text,
             gen_text=gen_text,
             duration=duration,
-            guidance_scale=guidance_scale
+            guidance_scale=guidance_scale,
+            generator=generator,
         )
             
             
@@ -350,6 +359,6 @@ if __name__ == "__main__":
     x = f5_pipeline(ref_audio=ref_audio,
                     ref_text=ref_text,
                      gen_text=gen_text,
-                     device='cpu', num_inference_steps=2)
-    print("Generated output shape:", x.shape)
+                     num_inference_steps=2, return_dict=False)
+    print("Generated output shape:", x[0].shape)
                             
