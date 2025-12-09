@@ -441,7 +441,7 @@ class ZImagePrepareLatentsStep(ModularPipelineBlocks):
     @staticmethod
     # Copied from diffusers.pipelines.z_image.pipeline_z_image.ZImagePipeline.prepare_latents with self->comp
     def prepare_latents(
-        components,
+        comp,
         batch_size,
         num_channels_latents,
         height,
@@ -451,8 +451,8 @@ class ZImagePrepareLatentsStep(ModularPipelineBlocks):
         generator,
         latents=None,
     ):
-        height = 2 * (int(height) // (components.vae_scale_factor * 2))
-        width = 2 * (int(width) // (components.vae_scale_factor * 2))
+        height = 2 * (int(height) // (comp.vae_scale_factor * 2))
+        width = 2 * (int(width) // (comp.vae_scale_factor * 2))
 
         shape = (batch_size, num_channels_latents, height, width)
 
