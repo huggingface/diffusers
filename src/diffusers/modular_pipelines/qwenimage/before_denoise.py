@@ -359,7 +359,7 @@ class QwenImageSetTimestepsStep(ModularPipelineBlocks):
 
     @property
     def description(self) -> str:
-        return "Step that sets the the scheduler's timesteps for text-to-image generation. Should be run after prepare latents step."
+        return "Step that sets the scheduler's timesteps for text-to-image generation. Should be run after prepare latents step."
 
     @property
     def expected_components(self) -> List[ComponentSpec]:
@@ -425,7 +425,7 @@ class QwenImageSetTimestepsWithStrengthStep(ModularPipelineBlocks):
 
     @property
     def description(self) -> str:
-        return "Step that sets the the scheduler's timesteps for image-to-image generation, and inpainting. Should be run after prepare latents step."
+        return "Step that sets the scheduler's timesteps for image-to-image generation, and inpainting. Should be run after prepare latents step."
 
     @property
     def expected_components(self) -> List[ComponentSpec]:

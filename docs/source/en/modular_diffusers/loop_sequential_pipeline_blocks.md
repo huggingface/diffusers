@@ -53,7 +53,7 @@ The loop wrapper can pass additional arguments, like current iteration index, to
 
 A loop block is a [`~modular_pipelines.ModularPipelineBlocks`], but the `__call__` method behaves differently.
 
-- It recieves the iteration variable from the loop wrapper.
+- It receives the iteration variable from the loop wrapper.
 - It works directly with the [`~modular_pipelines.BlockState`] instead of the [`~modular_pipelines.PipelineState`].
 - It doesn't require retrieving or updating the [`~modular_pipelines.BlockState`].
 

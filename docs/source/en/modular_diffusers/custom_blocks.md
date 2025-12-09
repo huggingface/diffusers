@@ -140,7 +140,7 @@ class Florence2ImageAnnotatorBlock(ModularPipelineBlocks):
                 type_hint=str,
                 required=True,
                 default="mask_image",
-                description="""Output type from annotation predictions. Availabe options are
+                description="""Output type from annotation predictions. Available options are
                 mask_image:
                     -black and white mask image for the given image based on the task type
                 mask_overlay:
@@ -256,7 +256,7 @@ class Florence2ImageAnnotatorBlock(ModularPipelineBlocks):
                 type_hint=str,
                 required=True,
                 default="mask_image",
-                description="""Output type from annotation predictions. Availabe options are
+                description="""Output type from annotation predictions. Available options are
                 mask_image:
                     -black and white mask image for the given image based on the task type
                 mask_overlay:
