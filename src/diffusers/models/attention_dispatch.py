@@ -1790,6 +1790,39 @@ def _native_flex_attention(
     return out
 
 
+def _prepare_attn_mask_native(
+    attn_mask: torch.Tensor, target_dtype: torch.dtype, reshape_4d: bool = True
+) -> torch.Tensor:
+    """
+    Convert a 2D boolean attention mask to an additive mask, optionally reshaping to 4D for SDPA.
+
+    Args:
+        attn_mask: 2D boolean tensor [batch_size, seq_len_k] where True means attend, False means mask out
+        target_dtype: The dtype to convert the mask to (usually query.dtype)
+        reshape_4d: If True, reshape from [batch_size, seq_len_k] to [batch_size, 1, 1, seq_len_k] for broadcasting
+
+    Returns:
+        Additive mask tensor where 0.0 means attend and -inf means mask out. Shape is [batch_size, seq_len_k] if
+        reshape_4d=False, or [batch_size, 1, 1, seq_len_k] if reshape_4d=True.
+    """
+    # Ensure it's boolean
+    if attn_mask.dtype != torch.bool:
+        attn_mask = attn_mask.bool()
+
+    # Convert boolean to additive: True -> 0.0, False -> -inf
+    attn_mask = torch.where(attn_mask, 0.0, float("-inf"))
+
+    # Convert to target dtype
+    attn_mask = attn_mask.to(dtype=target_dtype)
+
+    # Optionally reshape to 4D for broadcasting in attention mechanisms
+    if reshape_4d:
+        batch_size, seq_len_k = attn_mask.shape
+        attn_mask = attn_mask.view(batch_size, 1, 1, seq_len_k)
+
+    return attn_mask
+
+
 @_AttentionBackendRegistry.register(
     AttentionBackendName.NATIVE,
     constraints=[_check_device, _check_shape],
@@ -1814,14 +1847,8 @@ def _native_attention(
     if attn_mask is not None and attn_mask.ndim == 2:
         # attn_mask is [batch_size, seq_len_k] boolean: True means attend, False means mask out
         # SDPA expects [batch_size, 1, 1, seq_len_k] additive mask: 0.0 for attend, -inf for mask out
-        batch_size, seq_len_k = attn_mask.shape
-        # Ensure it's boolean for torch.where
-        if attn_mask.dtype != torch.bool:
-            attn_mask = attn_mask.bool()
-        # Convert boolean to additive: True -> 0.0, False -> -inf
-        attn_mask = torch.where(attn_mask, 0.0, float("-inf"))
-        # Convert to query dtype and reshape to [batch_size, 1, 1, seq_len_k] for broadcasting
-        attn_mask = attn_mask.to(dtype=query.dtype).view(batch_size, 1, 1, seq_len_k)
+        # Use helper to convert boolean to additive mask and reshape to 4D
+        attn_mask = _prepare_attn_mask_native(attn_mask, target_dtype=query.dtype)
 
     if _parallel_config is None:
         query, key, value = (x.permute(0, 2, 1, 3) for x in (query, key, value))
@@ -2342,12 +2369,10 @@ def _xformers_attention(
                 device=query.device,
             )
             # Fill in the actual mask values (converting boolean to additive)
-            # Expand 2D [batch, seq_k] -> 4D [batch, heads, seq_q, seq_k]
-            # Convert: True -> 0.0, False -> -inf
-            mask_2d = attn_mask  # [batch, seq_len_k]
-            mask_additive = torch.where(mask_2d, 0.0, float("-inf")).type_as(query)
+            # Use helper to convert 2D boolean -> 4D additive mask
+            mask_additive = _prepare_attn_mask_native(attn_mask, target_dtype=query.dtype)  # [batch, 1, 1, seq_len_k]
             # Broadcast to [batch, heads, seq_q, seq_len_k]
-            aligned_mask[:, :, :, :original_seq_len] = mask_additive.view(batch_size, 1, 1, original_seq_len)
+            aligned_mask[:, :, :, :original_seq_len] = mask_additive
             # Mask out the padding (already -inf from zeros -> where with default)
             aligned_mask[:, :, :, original_seq_len:] = float("-inf")
 
@@ -2374,5 +2399,4 @@ def _xformers_attention(
     return out
 
 
-# Initialize: download kernel for the initial backend set via DIFFUSERS_ATTN_BACKEND
 _maybe_download_kernel_for_backend(_AttentionBackendRegistry._active_backend)
