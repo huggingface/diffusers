@@ -198,7 +198,7 @@ class F5FlowPipeline(DiffusionPipeline):
         return y0, step_cond_input, text, cond, cond_mask, mask
 
 
-
+    @torch.no_grad()
     def __call__(
         self,
         ref_audio: torch.Tensor | None = None,

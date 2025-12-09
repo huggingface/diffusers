@@ -58,10 +58,7 @@ class F5TTSPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         [
             "num_inference_steps",
             "generator",
-            "output_type",
             "return_dict",
-            "callback",
-            "callback_steps",
         ]
     )
     # There is not xformers version of the F5FlowPipeline custom attention processor
@@ -117,8 +114,8 @@ class F5TTSPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         else:
             generator = torch.Generator(device=device).manual_seed(seed)
         torch.manual_seed(0)
-        ref_audio = torch.randn(1, 16000).to(device)
-        duration = torch.tensor([150], device=device)
+        ref_audio = torch.randn(1, 16000).to(torch_device)
+        duration = torch.tensor([150], device=torch_device)
         inputs = {
             "ref_text": "This is a test sentence",
             "gen_text": "This is another test sentence",
@@ -139,7 +136,6 @@ class F5TTSPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         super().test_save_load_optional_components(expected_max_difference=7e-3)
 
     def test_f5tts_forward_pass(self):
-        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
 
         components = self.get_dummy_components()
         f5tts_pipe = F5FlowPipeline(**components)
