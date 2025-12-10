@@ -358,7 +358,8 @@ class QwenDoubleStreamAttnProcessor2_0:
             )
 
             joint_attention_mask_1d = torch.cat([text_attention_mask, image_attention_mask], dim=1)
-            attention_mask = joint_attention_mask_1d[:, None, None, :] * joint_attention_mask_1d[:, None, :, None]
+            # broadcastable shape for SDPA
+            attention_mask = joint_attention_mask_1d[:, None, None, :]
 
         # Compute joint attention
         joint_hidden_states = dispatch_attention_fn(
