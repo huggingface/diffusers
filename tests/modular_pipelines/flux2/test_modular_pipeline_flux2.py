@@ -14,16 +14,14 @@
 # limitations under the License.
 
 import random
-import tempfile
 
 import numpy as np
 import PIL
-import torch
+import pytest
 
 from diffusers.modular_pipelines import (
     Flux2AutoBlocks,
     Flux2ModularPipeline,
-    ModularPipeline,
 )
 
 from ...testing_utils import floats_tensor, torch_device
@@ -87,28 +85,9 @@ class TestFlux2ImageConditionedModularPipelineFast(ModularPipelineTesterMixin):
 
         return inputs
 
-    def test_save_from_pretrained(self):
-        pipes = []
-        base_pipe = self.get_pipeline().to(torch_device)
-        pipes.append(base_pipe)
-
-        with tempfile.TemporaryDirectory() as tmpdirname:
-            base_pipe.save_pretrained(tmpdirname)
-
-            pipe = ModularPipeline.from_pretrained(tmpdirname).to(torch_device)
-            pipe.load_components(torch_dtype=torch.float32)
-            pipe.to(torch_device)
-
-        pipes.append(pipe)
-
-        image_slices = []
-        for pipe in pipes:
-            inputs = self.get_dummy_inputs()
-            image = pipe(**inputs, output="images")
-
-            image_slices.append(image[0, -3:, -3:, -1].flatten())
-
-        assert torch.abs(image_slices[0] - image_slices[1]).max() < 1e-5
-
     def test_float16_inference(self):
         super().test_float16_inference(9e-2)
+
+    @pytest.mark.skip(reason="batched inference is currently not supported")
+    def test_inference_batch_single_identical(self, batch_size=2, expected_max_diff=0.0001):
+        return

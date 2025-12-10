@@ -1,79 +1,79 @@
-# copyright 2025 the huggingface team. all rights reserved.
+# Copyright 2025 The HuggingFace Team. All rights reserved.
 #
-# licensed under the apache license, version 2.0 (the "license");
-# you may not use this file except in compliance with the license.
-# you may obtain a copy of the license at
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
 #
-#     http://www.apache.org/licenses/license-2.0
+#     http://www.apache.org/licenses/LICENSE-2.0
 #
-# unless required by applicable law or agreed to in writing, software
-# distributed under the license is distributed on an "as is" basis,
-# without warranties or conditions of any kind, either express or implied.
-# see the license for the specific language governing permissions and
-# limitations under the license.
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
-from typing import list
+from typing import List
 
 import torch
 
-from ...configuration_utils import frozendict
-from ...pipelines.flux2.image_processor import flux2imageprocessor
+from ...configuration_utils import FrozenDict
+from ...pipelines.flux2.image_processor import Flux2ImageProcessor
 from ...utils import logging
-from ..modular_pipeline import modularpipelineblocks, pipelinestate
-from ..modular_pipeline_utils import componentspec, inputparam, outputparam
-from .modular_pipeline import flux2modularpipeline
+from ..modular_pipeline import ModularPipelineBlocks, PipelineState
+from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
+from .modular_pipeline import Flux2ModularPipeline
 
 
 logger = logging.get_logger(__name__)
 
 
-class flux2textinputstep(modularpipelineblocks):
+class Flux2TextInputStep(ModularPipelineBlocks):
     model_name = "flux2"
 
     @property
     def description(self) -> str:
         return (
-            "this step:\n"
-            "  1. determines `batch_size` and `dtype` based on `prompt_embeds`\n"
-            "  2. ensures all text embeddings have consistent batch sizes (batch_size * num_images_per_prompt)"
+            "This step:\n"
+            "  1. Determines `batch_size` and `dtype` based on `prompt_embeds`\n"
+            "  2. Ensures all text embeddings have consistent batch sizes (batch_size * num_images_per_prompt)"
         )
 
     @property
-    def inputs(self) -> list[inputparam]:
+    def inputs(self) -> List[InputParam]:
         return [
-            inputparam("num_images_per_prompt", default=1),
-            inputparam(
+            InputParam("num_images_per_prompt", default=1),
+            InputParam(
                 "prompt_embeds",
-                required=true,
+                required=True,
                 kwargs_type="denoiser_input_fields",
-                type_hint=torch.tensor,
-                description="pre-generated text embeddings from mistral3. can be generated from text_encoder step.",
+                type_hint=torch.Tensor,
+                description="Pre-generated text embeddings from Mistral3. Can be generated from text_encoder step.",
             ),
         ]
 
     @property
-    def intermediate_outputs(self) -> list[str]:
+    def intermediate_outputs(self) -> List[str]:
         return [
-            outputparam(
+            OutputParam(
                 "batch_size",
                 type_hint=int,
-                description="number of prompts, the final batch size of model inputs should be batch_size * num_images_per_prompt",
+                description="Number of prompts, the final batch size of model inputs should be batch_size * num_images_per_prompt",
             ),
-            outputparam(
+            OutputParam(
                 "dtype",
                 type_hint=torch.dtype,
-                description="data type of model tensor inputs (determined by `prompt_embeds`)",
+                description="Data type of model tensor inputs (determined by `prompt_embeds`)",
             ),
-            outputparam(
+            OutputParam(
                 "prompt_embeds",
-                type_hint=torch.tensor,
+                type_hint=torch.Tensor,
                 kwargs_type="denoiser_input_fields",
-                description="text embeddings used to guide the image generation",
+                description="Text embeddings used to guide the image generation",
             ),
         ]
 
     @torch.no_grad()
-    def __call__(self, components: flux2modularpipeline, state: pipelinestate) -> pipelinestate:
+    def __call__(self, components: Flux2ModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
 
         block_state.batch_size = block_state.prompt_embeds.shape[0]
@@ -89,70 +89,72 @@ class flux2textinputstep(modularpipelineblocks):
         return components, state
 
 
-class flux2processimagesinputstep(modularpipelineblocks):
+class Flux2ProcessImagesInputStep(ModularPipelineBlocks):
     model_name = "flux2"
 
     @property
     def description(self) -> str:
-        return "image preprocess step for flux2. validates and preprocesses reference images."
+        return "Image preprocess step for Flux2. Validates and preprocesses reference images."
 
     @property
-    def expected_components(self) -> list[componentspec]:
+    def expected_components(self) -> List[ComponentSpec]:
         return [
-            componentspec(
+            ComponentSpec(
                 "image_processor",
-                flux2imageprocessor,
-                config=frozendict({"vae_scale_factor": 16, "vae_latent_channels": 32}),
+                Flux2ImageProcessor,
+                config=FrozenDict({"vae_scale_factor": 16, "vae_latent_channels": 32}),
                 default_creation_method="from_config",
             ),
         ]
 
     @property
-    def inputs(self) -> list[inputparam]:
+    def inputs(self) -> List[InputParam]:
         return [
-            inputparam("image"),
-            inputparam("height"),
-            inputparam("width"),
+            InputParam("image"),
+            InputParam("height"),
+            InputParam("width"),
         ]
 
     @property
-    def intermediate_outputs(self) -> list[outputparam]:
-        return [outputparam(name="condition_images", type_hint=list[torch.tensor])]
+    def intermediate_outputs(self) -> List[OutputParam]:
+        return [OutputParam(name="condition_images", type_hint=List[torch.Tensor])]
 
     @torch.no_grad()
-    def __call__(self, components: flux2modularpipeline, state: pipelinestate):
+    def __call__(self, components: Flux2ModularPipeline, state: PipelineState):
         block_state = self.get_block_state(state)
         images = block_state.image
 
-        if images is none:
-            block_state.condition_images = none
-        else:
-            if not isinstance(images, list):
-                images = [images]
+        if images is None:
+            block_state.condition_images = None
+            self.set_block_state(state, block_state)
+            return components, state
 
-            condition_images = []
-            for img in images:
-                components.image_processor.check_image_input(img)
+        if not isinstance(images, list):
+            images = [images]
 
+        condition_images = []
+        for img in images:
+            components.image_processor.check_image_input(img)
+
+            image_width, image_height = img.size
+            if image_width * image_height > 1024 * 1024:
+                img = components.image_processor._resize_to_target_area(img, 1024 * 1024)
                 image_width, image_height = img.size
-                if image_width * image_height > 1024 * 1024:
-                    img = components.image_processor._resize_to_target_area(img, 1024 * 1024)
-                    image_width, image_height = img.size
 
-                multiple_of = components.vae_scale_factor * 2
-                image_width = (image_width // multiple_of) * multiple_of
-                image_height = (image_height // multiple_of) * multiple_of
-                condition_img = components.image_processor.preprocess(
-                    img, height=image_height, width=image_width, resize_mode="crop"
-                )
-                condition_images.append(condition_img)
+            multiple_of = components.vae_scale_factor * 2
+            image_width = (image_width // multiple_of) * multiple_of
+            image_height = (image_height // multiple_of) * multiple_of
+            condition_img = components.image_processor.preprocess(
+                img, height=image_height, width=image_width, resize_mode="crop"
+            )
+            condition_images.append(condition_img)
 
-                if block_state.height is none:
-                    block_state.height = image_height
-                if block_state.width is none:
-                    block_state.width = image_width
+            if block_state.height is None:
+                block_state.height = image_height
+            if block_state.width is None:
+                block_state.width = image_width
 
-            block_state.condition_images = condition_images
+        block_state.condition_images = condition_images
 
         self.set_block_state(state, block_state)
         return components, state
