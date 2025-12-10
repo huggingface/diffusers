@@ -154,11 +154,22 @@ class CacheMixin:
 
         registry._set_context(None)
 
-    def enable_teacache(self, rel_l1_thresh: float = 0.2, **kwargs):
+    def enable_teacache(self, rel_l1_thresh: float = 0.2, num_inference_steps: int = None, **kwargs):
         r"""
         Enable TeaCache on the model.
+        
+        Args:
+            rel_l1_thresh (`float`, defaults to `0.2`):
+                Threshold for caching decision. Higher = more aggressive caching.
+            num_inference_steps (`int`, *optional*):
+                Total number of inference steps. Required for proper state management.
+            **kwargs: Additional arguments passed to TeaCacheConfig.
         """
         from ..hooks import TeaCacheConfig
 
-        config = TeaCacheConfig(rel_l1_thresh=rel_l1_thresh, **kwargs)
+        config = TeaCacheConfig(
+            rel_l1_thresh=rel_l1_thresh, 
+            num_inference_steps=num_inference_steps,
+            **kwargs
+        )
         self.enable_cache(config)

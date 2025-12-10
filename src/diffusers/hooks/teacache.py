@@ -159,10 +159,13 @@ class TeaCacheConfig:
         current_timestep_callback (`Callable[[], int]`, *optional*, defaults to `None`):
             Callback function that returns the current timestep during inference. This is used internally for debugging
             and statistics tracking. If not provided, TeaCache will still function correctly.
+        num_inference_steps (`int`, *optional*, defaults to `None`):
+            Total number of inference steps. Required for proper state management - ensures first and last timesteps
+            are always computed (never cached) and that state resets between inference runs. If not provided,
+            TeaCache will attempt to detect via callback or module attribute.
         num_inference_steps_callback (`Callable[[], int]`, *optional*, defaults to `None`):
-            Callback function that returns the total number of inference steps. This is used to ensure the first and
-            last timesteps are always computed (never cached) for maximum quality. If not provided, TeaCache will
-            attempt to detect the number of steps automatically from the pipeline.
+            Callback function that returns the total number of inference steps. Alternative to `num_inference_steps`
+            for dynamic step counts.
 
     Examples:
         ```python
@@ -192,6 +195,7 @@ class TeaCacheConfig:
     coefficients: Optional[List[float]] = None
     extract_modulated_input_fn: Optional[Callable] = None
     current_timestep_callback: Optional[Callable[[], int]] = None
+    num_inference_steps: Optional[int] = None
     num_inference_steps_callback: Optional[Callable[[], int]] = None
 
     def __post_init__(self):
@@ -380,11 +384,16 @@ class TeaCacheHook(ModelHook):
 
         # Set num_steps on first timestep if not already set
         if state.cnt == 0 and state.num_steps == 0:
-            if self.config.num_inference_steps_callback is not None:
+            # Priority: config value > callback > module attribute
+            if self.config.num_inference_steps is not None:
+                state.num_steps = self.config.num_inference_steps
+            elif self.config.num_inference_steps_callback is not None:
                 state.num_steps = self.config.num_inference_steps_callback()
-            # If still not set, try to get from module attribute (set by pipeline)
-            if state.num_steps == 0 and hasattr(module, "num_steps"):
+            elif hasattr(module, "num_steps"):
                 state.num_steps = module.num_steps
+            
+            if state.num_steps > 0:
+                logger.info(f"TeaCache: Using {state.num_steps} inference steps")
 
     def initialize_hook(self, module):
         self.state_manager.set_context("teacache")
@@ -974,6 +983,9 @@ class TeaCacheHook(ModelHook):
         # Apply polynomial rescaling
         rescaled_distance = self.rescale_func(rel_distance)
         state.accumulated_rel_l1_distance += rescaled_distance
+
+        # Debug logging (uncomment to debug)
+        # logger.warning(f"Step {state.cnt}: rel_l1={rel_distance:.6f}, rescaled={rescaled_distance:.6f}, accumulated={state.accumulated_rel_l1_distance:.6f}, thresh={self.config.rel_l1_thresh}")
 
         # Make decision based on accumulated threshold
         if state.accumulated_rel_l1_distance < self.config.rel_l1_thresh:
