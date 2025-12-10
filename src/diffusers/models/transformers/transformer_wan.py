@@ -31,6 +31,7 @@ from ..embeddings import PixArtAlphaTextProjection, TimestepEmbedding, Timesteps
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
 from ..normalization import FP32LayerNorm
+from .wan_mako_kernels import triton_adaptive_norm, triton_matmul, fused_matmul_residual, fused_matmul_residual_gate
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -461,6 +462,9 @@ class WanTransformerBlock(nn.Module):
         temb: torch.Tensor,
         rotary_emb: torch.Tensor,
     ) -> torch.Tensor:
+        # Instead of performing the output projections on the attention outputs in the attention block
+        # we perform them here to take advantage of fusion.
+        B, S, D = hidden_states.shape
         if temb.ndim == 4:
             # temb: batch_size, seq_len, 6, inner_dim (wan2.2 ti2v)
             shift_msa, scale_msa, gate_msa, c_shift_msa, c_scale_msa, c_gate_msa = (
@@ -480,21 +484,49 @@ class WanTransformerBlock(nn.Module):
             ).chunk(6, dim=1)
 
         # 1. Self-attention
-        norm_hidden_states = (self.norm1(hidden_states.float()) * (1 + scale_msa) + shift_msa).type_as(hidden_states)
+        # norm_hidden_states = (self.norm1(hidden_states.float()) * (1 + scale_msa) + shift_msa).type_as(hidden_states)
+        # Fused Adaptive LayerNorm
+        norm_hidden_states = triton_adaptive_norm(hidden_states, scale_msa, shift_msa, self.norm1.eps)
         attn_output = self.attn1(norm_hidden_states, None, None, rotary_emb)
-        hidden_states = (hidden_states.float() + attn_output * gate_msa).type_as(hidden_states)
+        # hidden_states = (hidden_states.float() + attn_output * gate_msa).type_as(hidden_states)
+        # Fused Output Projection + Gated Residual
+        hidden_states = fused_matmul_residual_gate(
+            attn_output, self.attn1.to_out[0].weight, self.attn1.to_out[0].bias,
+            hidden_states, gate_msa, S_rows=S
+        )
 
         # 2. Cross-attention
         norm_hidden_states = self.norm2(hidden_states.float()).type_as(hidden_states)
         attn_output = self.attn2(norm_hidden_states, encoder_hidden_states, None, None)
-        hidden_states = hidden_states + attn_output
+        # hidden_states = hidden_states + attn_output
+        # Fused Cross-Attn Output Proj + Residual (no gate)
+        print(f"{hidden_states.shape=}, {attn_output.shape=}, {self.attn2.to_out[0].weight.shape=}, {self.attn2.to_out[0].bias.shape=}")
+        hidden_states = fused_matmul_residual(
+            attn_output, self.attn2.to_out[0].weight, self.attn2.to_out[0].bias, hidden_states
+        )
 
         # 3. Feed-forward
-        norm_hidden_states = (self.norm3(hidden_states.float()) * (1 + c_scale_msa) + c_shift_msa).type_as(
-            hidden_states
+        # norm_hidden_states = (self.norm3(hidden_states.float()) * (1 + c_scale_msa) + c_shift_msa).type_as(
+        #     hidden_states
+        # )
+        norm_hidden_states = triton_adaptive_norm(hidden_states, c_scale_msa, c_shift_msa, self.norm3.eps)
+        print(f"{norm_hidden_states.shape=}")
+        # ff_output = self.ffn(norm_hidden_states)
+        # hidden_states = (hidden_states.float() + ff_output.float() * c_gate_msa).type_as(hidden_states)
+
+        # Fused Linear + GELU
+        ff_in = triton_matmul(
+            norm_hidden_states, 
+            self.ffn.net[0].proj.weight, 
+            self.ffn.net[0].proj.bias, 
+            activation="gelu"
         )
-        ff_output = self.ffn(norm_hidden_states)
-        hidden_states = (hidden_states.float() + ff_output.float() * c_gate_msa).type_as(hidden_states)
+        
+        # Fused Second Linear + Gated Residual
+        hidden_states = fused_matmul_residual_gate(
+            ff_in, self.ffn.net[2].weight, self.ffn.net[2].bias,
+            hidden_states, c_gate_msa, S_rows=S
+        )
 
         return hidden_states
 
