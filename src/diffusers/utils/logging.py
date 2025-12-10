@@ -54,7 +54,8 @@ _rank_zero_filter = None
 
 class _RankZeroFilter(logging.Filter):
     def filter(self, record):
-        return is_torch_dist_rank_zero()
+        # Always allow rank-zero logs, but keep debug-level messages from all ranks for troubleshooting.
+        return is_torch_dist_rank_zero() or record.levelno <= logging.DEBUG
 
 
 def _ensure_rank_zero_filter(logger: logging.Logger) -> None:
