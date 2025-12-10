@@ -24,7 +24,6 @@ else:
     _import_structure["encoders"] = [
         "Flux2TextEncoderStep",
         "Flux2RemoteTextEncoderStep",
-        "Flux2ProcessImagesInputStep",
         "Flux2VaeEncoderStep",
     ]
     _import_structure["before_denoise"] = [
@@ -41,12 +40,13 @@ else:
     ]
     _import_structure["decoders"] = ["Flux2DecodeStep"]
     _import_structure["inputs"] = [
+        "Flux2ProcessImagesInputStep",
         "Flux2TextInputStep",
-        "Flux2ImageInputStep",
     ]
     _import_structure["modular_blocks"] = [
         "ALL_BLOCKS",
         "AUTO_BLOCKS",
+        "REMOTE_AUTO_BLOCKS",
         "TEXT2IMAGE_BLOCKS",
         "IMAGE_CONDITIONED_BLOCKS",
         "Flux2AutoBeforeDenoiseStep",
@@ -83,19 +83,19 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             Flux2LoopDenoiser,
         )
         from .encoders import (
-            Flux2ProcessImagesInputStep,
             Flux2RemoteTextEncoderStep,
             Flux2TextEncoderStep,
             Flux2VaeEncoderStep,
         )
         from .inputs import (
-            Flux2ImageInputStep,
+            Flux2ProcessImagesInputStep,
             Flux2TextInputStep,
         )
         from .modular_blocks import (
             ALL_BLOCKS,
             AUTO_BLOCKS,
             IMAGE_CONDITIONED_BLOCKS,
+            REMOTE_AUTO_BLOCKS,
             TEXT2IMAGE_BLOCKS,
             Flux2AutoBeforeDenoiseStep,
             Flux2AutoBlocks,
