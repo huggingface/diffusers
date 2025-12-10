@@ -60,6 +60,8 @@ class GroupOffloadingConfig:
     offload_to_disk_path: Optional[str] = None
     stream: Optional[Union[torch.cuda.Stream, torch.Stream]] = None
     block_modules: Optional[List[str]] = None
+    exclude_kwargs: Optional[List[str]] = None
+    module_prefix: Optional[str] = ""
     pin_groups: Optional[Union[str, Callable]] = None
 
 
@@ -156,27 +158,27 @@ class ModuleGroup:
         finally:
             pinned_dict = None
 
-    def _transfer_tensor_to_device(self, tensor, source_tensor):
+    def _transfer_tensor_to_device(self, tensor, source_tensor, default_stream=None):
         tensor.data = source_tensor.to(self.onload_device, non_blocking=self.non_blocking)
         if self.record_stream:
-            tensor.data.record_stream(self._torch_accelerator_module.current_stream())
+            tensor.data.record_stream(default_stream)
 
-    def _process_tensors_from_modules(self, pinned_memory=None):
+    def _process_tensors_from_modules(self, pinned_memory=None, default_stream=None):
         for group_module in self.modules:
             for param in group_module.parameters():
                 source = pinned_memory[param] if pinned_memory else param.data
-                self._transfer_tensor_to_device(param, source)
+                self._transfer_tensor_to_device(param, source, default_stream)
             for buffer in group_module.buffers():
                 source = pinned_memory[buffer] if pinned_memory else buffer.data
-                self._transfer_tensor_to_device(buffer, source)
+                self._transfer_tensor_to_device(buffer, source, default_stream)
 
         for param in self.parameters:
             source = pinned_memory[param] if pinned_memory else param.data
-            self._transfer_tensor_to_device(param, source)
+            self._transfer_tensor_to_device(param, source, default_stream)
 
         for buffer in self.buffers:
             source = pinned_memory[buffer] if pinned_memory else buffer.data
-            self._transfer_tensor_to_device(buffer, source)
+            self._transfer_tensor_to_device(buffer, source, default_stream)
 
     def _onload_from_disk(self):
         if self.stream is not None:
@@ -211,10 +213,11 @@ class ModuleGroup:
             self.stream.synchronize()
 
         context = nullcontext() if self.stream is None else self._torch_accelerator_module.stream(self.stream)
+        default_stream = self._torch_accelerator_module.current_stream() if self.stream is not None else None
         with context:
             if self.stream is not None:
                 with self._pinned_memory_tensors() as pinned_memory:
-                    self._process_tensors_from_modules(pinned_memory)
+                    self._process_tensors_from_modules(pinned_memory, default_stream=default_stream)
             else:
                 self._process_tensors_from_modules(None)
 
@@ -308,13 +311,16 @@ class GroupOffloadingHook(ModelHook):
                 self.next_group.onload_()
 
             should_synchronize = (
-                not self.group.onload_self and self.group.stream is not None and not should_onload_next_group
+                not self.group.onload_self
+                and self.group.stream is not None
+                and not should_onload_next_group
+                and not self.group.record_stream
             )
             if should_synchronize:
                 self.group.stream.synchronize()
 
             args = send_to_device(args, self.group.onload_device, non_blocking=self.group.non_blocking)
-            kwargs = send_to_device(kwargs, self.group.onload_device, non_blocking=self.group.non_blocking)
+            kwargs = self._send_kwargs_to_device(kwargs)
             return args, kwargs
 
         # If the current module is the onload_leader of the group, we onload the group if it is supposed
@@ -329,7 +335,10 @@ class GroupOffloadingHook(ModelHook):
                 self.next_group.onload_()
 
             should_synchronize = (
-                not self.group.onload_self and self.group.stream is not None and not should_onload_next_group
+                not self.group.onload_self
+                and self.group.stream is not None
+                and not should_onload_next_group
+                and not self.group.record_stream
             )
             if should_synchronize:
                 # If this group didn't onload itself, it means it was asynchronously onloaded by the
@@ -341,7 +350,7 @@ class GroupOffloadingHook(ModelHook):
                 self.group.stream.synchronize()
 
         args = send_to_device(args, self.group.onload_device, non_blocking=self.group.non_blocking)
-        kwargs = send_to_device(kwargs, self.group.onload_device, non_blocking=self.group.non_blocking)
+        kwargs = self._send_kwargs_to_device(kwargs)
         return args, kwargs
 
     def post_forward(self, module: torch.nn.Module, output):
@@ -360,10 +369,19 @@ class GroupOffloadingHook(ModelHook):
         tensors.extend(self.group.parameters)
         tensors.extend(self.group.buffers)
 
-        if len(tensors) == 0:
-            return True
+        return len(tensors) > 0 and all(t.device == self.group.onload_device for t in tensors)
 
-        return all(t.device == self.group.onload_device for t in tensors)
+    def _send_kwargs_to_device(self, kwargs):
+        exclude_kwargs = self.config.exclude_kwargs or []
+        if exclude_kwargs:
+            moved_kwargs = send_to_device(
+                {k: v for k, v in kwargs.items() if k not in exclude_kwargs},
+                self.group.onload_device,
+                non_blocking=self.group.non_blocking,
+            )
+            kwargs.update(moved_kwargs)
+            return kwargs
+        return send_to_device(kwargs, self.group.onload_device, non_blocking=self.group.non_blocking)
 
 
 class LazyPrefetchGroupOffloadingHook(ModelHook):
@@ -524,6 +542,17 @@ class LayerExecutionTrackerHook(ModelHook):
         return args, kwargs
 
 
+def _normalize_pin_groups(pin_groups: Optional[Union[str, Callable]]) -> Optional[Union[str, Callable]]:
+    if isinstance(pin_groups, str):
+        normalized_pin_groups = pin_groups.lower()
+        if normalized_pin_groups not in {"first_last", "all"}:
+            raise ValueError("`pin_groups` must be one of `None`, 'first_last', 'all', or a callable.")
+        return normalized_pin_groups
+    if pin_groups is not None and not callable(pin_groups):
+        raise ValueError("`pin_groups` must be one of `None`, 'first_last', 'all', or a callable.")
+    return pin_groups
+
+
 def apply_group_offloading(
     module: torch.nn.Module,
     onload_device: Union[str, torch.device],
@@ -536,6 +565,7 @@ def apply_group_offloading(
     low_cpu_mem_usage: bool = False,
     offload_to_disk_path: Optional[str] = None,
     block_modules: Optional[List[str]] = None,
+    exclude_kwargs: Optional[List[str]] = None,
     pin_groups: Optional[Union[str, Callable]] = None,
 ) -> None:
     r"""
@@ -597,6 +627,10 @@ def apply_group_offloading(
         block_modules (`List[str]`, *optional*):
             List of module names that should be treated as blocks for offloading. If provided, only these modules
             will be considered for block-level offloading. If not provided, the default block detection logic will be used.
+        exclude_kwargs (`List[str]`, *optional*):
+            List of kwarg keys that should not be processed by `send_to_device`. This is useful for mutable state like
+            caching lists that need to maintain their object identity across forward passes. If not provided, will be
+            inferred from the module's `_skip_keys` attribute if it exists.
         pin_groups (`"first_last"` or `"all"` or `Callable`, *optional*, defaults to `None`):
             Optionally keeps selected groups on the onload device permanently. Use `"first_last"` to pin the first
             and last parameter-bearing groups, `"all"` to pin every parameter-bearing group, or pass a callable that
@@ -640,17 +674,14 @@ def apply_group_offloading(
     if offload_type == GroupOffloadingType.BLOCK_LEVEL and num_blocks_per_group is None:
         raise ValueError("`num_blocks_per_group` must be provided when using `offload_type='block_level'.")
 
-    normalized_pin_groups = pin_groups
-    if isinstance(pin_groups, str):
-        normalized_pin_groups = pin_groups.lower()
-        if normalized_pin_groups not in {"first_last", "all"}:
-            raise ValueError("`pin_groups` must be one of `None`, 'first_last', 'all', or a callable.")
-    elif pin_groups is not None and not callable(pin_groups):
-        raise ValueError("`pin_groups` must be one of `None`, 'first_last', 'all', or a callable.")
-
-    pin_groups = normalized_pin_groups
-
+    pin_groups = _normalize_pin_groups(pin_groups)
     _raise_error_if_accelerate_model_or_sequential_hook_present(module)
+
+    if block_modules is None:
+        block_modules = getattr(module, "_group_offload_block_modules", None)
+
+    if exclude_kwargs is None:
+        exclude_kwargs = getattr(module, "_skip_keys", None)
 
     config = GroupOffloadingConfig(
         onload_device=onload_device,
@@ -663,6 +694,8 @@ def apply_group_offloading(
         low_cpu_mem_usage=low_cpu_mem_usage,
         offload_to_disk_path=offload_to_disk_path,
         block_modules=block_modules,
+        exclude_kwargs=exclude_kwargs,
+        module_prefix="",
         pin_groups=pin_groups,
     )
     _apply_group_offloading(module, config)
@@ -701,7 +734,7 @@ def _apply_group_offloading_block_level(module: torch.nn.Module, config: GroupOf
 
     for name, submodule in module.named_children():
         # Check if this is an explicitly defined block module
-        if name in block_modules:
+        if block_modules and name in block_modules:
             # Apply block offloading to the specified submodule
             _apply_block_offloading_to_submodule(
                 submodule, name, config, modules_with_group_offloading, matched_module_groups
@@ -713,7 +746,7 @@ def _apply_group_offloading_block_level(module: torch.nn.Module, config: GroupOf
                 if len(current_modules) == 0:
                     continue
 
-                group_id = f"{name}_{i}_{i + len(current_modules) - 1}"
+                group_id = f"{config.module_prefix}{name}_{i}_{i + len(current_modules) - 1}"
                 group = ModuleGroup(
                     modules=current_modules,
                     offload_device=config.offload_device,
@@ -766,7 +799,7 @@ def _apply_group_offloading_block_level(module: torch.nn.Module, config: GroupOf
             stream=None,
             record_stream=False,
             onload_self=True,
-            group_id=f"{module.__class__.__name__}_unmatched_group",
+            group_id=f"{config.module_prefix}{module.__class__.__name__}_unmatched_group",
         )
         if config.stream is None:
             _apply_group_offloading_hook(module, unmatched_group, config=config)
@@ -797,7 +830,7 @@ def _apply_block_offloading_to_submodule(
             if len(current_modules) == 0:
                 continue
 
-            group_id = f"{name}_{i}_{i + len(current_modules) - 1}"
+            group_id = f"{config.module_prefix}{name}_{i}_{i + len(current_modules) - 1}"
             group = ModuleGroup(
                 modules=current_modules,
                 offload_device=config.offload_device,
@@ -829,7 +862,7 @@ def _apply_block_offloading_to_submodule(
             record_stream=config.record_stream,
             low_cpu_mem_usage=config.low_cpu_mem_usage,
             onload_self=True,
-            group_id=name,
+            group_id=f"{config.module_prefix}{name}",
         )
         matched_module_groups.append(group)
         modules_with_group_offloading.add(name)
@@ -859,7 +892,7 @@ def _apply_group_offloading_leaf_level(module: torch.nn.Module, config: GroupOff
             record_stream=config.record_stream,
             low_cpu_mem_usage=config.low_cpu_mem_usage,
             onload_self=True,
-            group_id=name,
+            group_id=f"{config.module_prefix}{name}",
         )
         _apply_group_offloading_hook(submodule, group, config=config)
         modules_with_group_offloading.add(name)
@@ -906,7 +939,7 @@ def _apply_group_offloading_leaf_level(module: torch.nn.Module, config: GroupOff
             record_stream=config.record_stream,
             low_cpu_mem_usage=config.low_cpu_mem_usage,
             onload_self=True,
-            group_id=name,
+            group_id=f"{config.module_prefix}{name}",
         )
         _apply_group_offloading_hook(parent_module, group, config=config)
 
@@ -962,7 +995,7 @@ def _apply_lazy_group_offloading_hook(
         hook = GroupOffloadingHook(group, config=config)
         registry.register_hook(hook, _GROUP_OFFLOADING)
         
-    lazy_prefetch_hook = LazyPrefetchGroupOffloadingHook(pin_groups = config.pin_groups)
+    lazy_prefetch_hook = LazyPrefetchGroupOffloadingHook(pin_groups=config.pin_groups)
     registry.register_hook(lazy_prefetch_hook, _LAZY_PREFETCH_GROUP_OFFLOADING)
 
 
