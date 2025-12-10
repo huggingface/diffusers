@@ -722,7 +722,7 @@ class QwenImageTransformer2DModel(
             else self.time_text_embed(timestep, guidance, hidden_states)
         )
 
-        image_rotary_emb = self.pos_embed(img_shapes, text_seq_len, device=hidden_states.device)
+        image_rotary_emb = self.pos_embed(img_shapes, text_seq_len=text_seq_len, device=hidden_states.device)
 
         for index_block, block in enumerate(self.transformer_blocks):
             if torch.is_grad_enabled() and self.gradient_checkpointing:
