@@ -182,8 +182,9 @@ class MagCacheHeadHook(ModelHook):
         if self.state_manager._current_context is None:
             self.state_manager.set_context("inference")
 
-        # Capture input hidden_states
-        hidden_states = self._metadata._get_parameter_from_args_kwargs("hidden_states", args, kwargs)
+        arg_name = self._metadata.hidden_states_argument_name
+        hidden_states = self._metadata._get_parameter_from_args_kwargs(arg_name, args, kwargs)
+
 
         state: MagCacheState = self.state_manager.get_state()
         state.head_block_input = hidden_states
@@ -297,7 +298,9 @@ class MagCacheBlockHook(ModelHook):
         state: MagCacheState = self.state_manager.get_state()
 
         if not state.should_compute:
-            hidden_states = self._metadata._get_parameter_from_args_kwargs("hidden_states", args, kwargs)
+            arg_name = self._metadata.hidden_states_argument_name
+            hidden_states = self._metadata._get_parameter_from_args_kwargs(arg_name, args, kwargs)
+
             if self.is_tail:
                 # Still need to advance step index even if we skip
                 self._advance_step(state)

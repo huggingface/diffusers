@@ -26,6 +26,7 @@ class AttentionProcessorMetadata:
 class TransformerBlockMetadata:
     return_hidden_states_index: int = None
     return_encoder_hidden_states_index: int = None
+    hidden_states_argument_name: str = "hidden_states"
 
     _cls: Type = None
     _cached_parameter_indices: Dict[str, int] = None
@@ -346,6 +347,7 @@ def _register_transformer_blocks_metadata():
         metadata=TransformerBlockMetadata(
             return_hidden_states_index=0,
             return_encoder_hidden_states_index=None,
+            hidden_states_argument_name="visual_embed",
         ),
     )
 
