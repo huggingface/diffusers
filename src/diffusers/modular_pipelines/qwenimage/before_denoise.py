@@ -132,6 +132,7 @@ class QwenImagePrepareLatentsStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> List[InputParam]:
         return [
+            InputParam("latents"),
             InputParam(name="height"),
             InputParam(name="width"),
             InputParam(name="num_images_per_prompt", default=1),
@@ -196,11 +197,11 @@ class QwenImagePrepareLatentsStep(ModularPipelineBlocks):
                 f"You have passed a list of generators of length {len(block_state.generator)}, but requested an effective batch"
                 f" size of {batch_size}. Make sure the batch size matches the length of the generators."
             )
-
-        block_state.latents = randn_tensor(
-            shape, generator=block_state.generator, device=device, dtype=block_state.dtype
-        )
-        block_state.latents = components.pachifier.pack_latents(block_state.latents)
+        if block_state.latents is None:
+            block_state.latents = randn_tensor(
+                shape, generator=block_state.generator, device=device, dtype=block_state.dtype
+            )
+            block_state.latents = components.pachifier.pack_latents(block_state.latents)
 
         self.set_block_state(state, block_state)
         return components, state
@@ -549,8 +550,7 @@ class QwenImageRoPEInputsStep(ModularPipelineBlocks):
                     block_state.width // components.vae_scale_factor // 2,
                 )
             ]
-            * block_state.batch_size
-        ]
+        ] * block_state.batch_size
         block_state.txt_seq_lens = (
             block_state.prompt_embeds_mask.sum(dim=1).tolist() if block_state.prompt_embeds_mask is not None else None
         )
@@ -610,7 +610,6 @@ class QwenImageEditRoPEInputsStep(ModularPipelineBlocks):
         block_state = self.get_block_state(state)
 
         # for edit, image size can be different from the target size (height/width)
-
         block_state.img_shapes = [
             [
                 (
@@ -623,6 +622,37 @@ class QwenImageEditRoPEInputsStep(ModularPipelineBlocks):
                     block_state.image_height // components.vae_scale_factor // 2,
                     block_state.image_width // components.vae_scale_factor // 2,
                 ),
+            ]
+        ] * block_state.batch_size
+
+        block_state.txt_seq_lens = (
+            block_state.prompt_embeds_mask.sum(dim=1).tolist() if block_state.prompt_embeds_mask is not None else None
+        )
+        block_state.negative_txt_seq_lens = (
+            block_state.negative_prompt_embeds_mask.sum(dim=1).tolist()
+            if block_state.negative_prompt_embeds_mask is not None
+            else None
+        )
+
+        self.set_block_state(state, block_state)
+
+        return components, state
+
+
+class QwenImageEditPlusRoPEInputsStep(QwenImageEditRoPEInputsStep):
+    model_name = "qwenimage-edit-plus"
+
+    def __call__(self, components: QwenImageModularPipeline, state: PipelineState) -> PipelineState:
+        block_state = self.get_block_state(state)
+
+        vae_scale_factor = components.vae_scale_factor
+        block_state.img_shapes = [
+            [
+                (1, block_state.height // vae_scale_factor // 2, block_state.width // vae_scale_factor // 2),
+                *[
+                    (1, vae_height // vae_scale_factor // 2, vae_width // vae_scale_factor // 2)
+                    for vae_height, vae_width in zip(block_state.image_height, block_state.image_width)
+                ],
             ]
         ] * block_state.batch_size
 

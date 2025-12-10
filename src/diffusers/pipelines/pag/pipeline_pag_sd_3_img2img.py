@@ -253,7 +253,7 @@ class StableDiffusion3PAGImg2ImgPipeline(DiffusionPipeline, SD3LoraLoaderMixin, 
             return torch.zeros(
                 (
                     batch_size * num_images_per_prompt,
-                    self.tokenizer_max_length,
+                    max_sequence_length,
                     self.transformer.config.joint_attention_dim,
                 ),
                 device=device,
@@ -342,7 +342,7 @@ class StableDiffusion3PAGImg2ImgPipeline(DiffusionPipeline, SD3LoraLoaderMixin, 
         prompt_embeds = prompt_embeds.repeat(1, num_images_per_prompt, 1)
         prompt_embeds = prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
 
-        pooled_prompt_embeds = pooled_prompt_embeds.repeat(1, num_images_per_prompt, 1)
+        pooled_prompt_embeds = pooled_prompt_embeds.repeat(1, num_images_per_prompt)
         pooled_prompt_embeds = pooled_prompt_embeds.view(batch_size * num_images_per_prompt, -1)
 
         return prompt_embeds, pooled_prompt_embeds

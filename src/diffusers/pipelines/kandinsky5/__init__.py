@@ -23,6 +23,9 @@ except OptionalDependencyNotAvailable:
     _dummy_objects.update(get_objects_from_module(dummy_torch_and_transformers_objects))
 else:
     _import_structure["pipeline_kandinsky"] = ["Kandinsky5T2VPipeline"]
+    _import_structure["pipeline_kandinsky_i2i"] = ["Kandinsky5I2IPipeline"]
+    _import_structure["pipeline_kandinsky_i2v"] = ["Kandinsky5I2VPipeline"]
+    _import_structure["pipeline_kandinsky_t2i"] = ["Kandinsky5T2IPipeline"]
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     try:
@@ -33,6 +36,9 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from ...utils.dummy_torch_and_transformers_objects import *
     else:
         from .pipeline_kandinsky import Kandinsky5T2VPipeline
+        from .pipeline_kandinsky_i2i import Kandinsky5I2IPipeline
+        from .pipeline_kandinsky_i2v import Kandinsky5I2VPipeline
+        from .pipeline_kandinsky_t2i import Kandinsky5T2IPipeline
 
 else:
     import sys
