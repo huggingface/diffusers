@@ -479,27 +479,30 @@ class Flux2PrepareImageLatentsStep(ModularPipelineBlocks):
         if image_latents is None:
             block_state.image_latents = None
             block_state.image_latent_ids = None
-        else:
-            device = components._execution_device
-            batch_size = block_state.batch_size * block_state.num_images_per_prompt
+            self.set_block_state(state, block_state)
 
-            image_latent_ids = self._prepare_image_ids(image_latents)
+            return components, state
 
-            packed_latents = []
-            for latent in image_latents:
-                packed = self._pack_latents(latent)
-                packed = packed.squeeze(0)
-                packed_latents.append(packed)
+        device = components._execution_device
+        batch_size = block_state.batch_size * block_state.num_images_per_prompt
 
-            image_latents = torch.cat(packed_latents, dim=0)
-            image_latents = image_latents.unsqueeze(0)
+        image_latent_ids = self._prepare_image_ids(image_latents)
 
-            image_latents = image_latents.repeat(batch_size, 1, 1)
-            image_latent_ids = image_latent_ids.repeat(batch_size, 1, 1)
-            image_latent_ids = image_latent_ids.to(device)
+        packed_latents = []
+        for latent in image_latents:
+            packed = self._pack_latents(latent)
+            packed = packed.squeeze(0)
+            packed_latents.append(packed)
 
-            block_state.image_latents = image_latents
-            block_state.image_latent_ids = image_latent_ids
+        image_latents = torch.cat(packed_latents, dim=0)
+        image_latents = image_latents.unsqueeze(0)
+
+        image_latents = image_latents.repeat(batch_size, 1, 1)
+        image_latent_ids = image_latent_ids.repeat(batch_size, 1, 1)
+        image_latent_ids = image_latent_ids.to(device)
+
+        block_state.image_latents = image_latents
+        block_state.image_latent_ids = image_latent_ids
 
         self.set_block_state(state, block_state)
         return components, state
