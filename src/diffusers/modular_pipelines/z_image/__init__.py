@@ -17,27 +17,32 @@ try:
     if not (is_transformers_available() and is_torch_available()):
         raise OptionalDependencyNotAvailable()
 except OptionalDependencyNotAvailable:
-    from ...utils import dummy_torch_and_transformers_objects  # noqa: F403
+    from ...utils import dummy_torch_and_transformers_objects  # noqa F403
 
     _dummy_objects.update(get_objects_from_module(dummy_torch_and_transformers_objects))
 else:
-    _import_structure["pipeline_output"] = ["ZImagePipelineOutput"]
-    _import_structure["pipeline_z_image"] = ["ZImagePipeline"]
-    _import_structure["pipeline_z_image_img2img"] = ["ZImageImg2ImgPipeline"]
-
+    _import_structure["decoders"] = ["ZImageVaeDecoderStep"]
+    _import_structure["encoders"] = ["ZImageTextEncoderStep", "ZImageVaeImageEncoderStep"]
+    _import_structure["modular_blocks"] = [
+        "ALL_BLOCKS",
+        "ZImageAutoBlocks",
+    ]
+    _import_structure["modular_pipeline"] = ["ZImageModularPipeline"]
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     try:
         if not (is_transformers_available() and is_torch_available()):
             raise OptionalDependencyNotAvailable()
-
     except OptionalDependencyNotAvailable:
-        from ...utils.dummy_torch_and_transformers_objects import *
+        from ...utils.dummy_torch_and_transformers_objects import *  # noqa F403
     else:
-        from .pipeline_output import ZImagePipelineOutput
-        from .pipeline_z_image import ZImagePipeline
-        from .pipeline_z_image_img2img import ZImageImg2ImgPipeline
-
+        from .decoders import ZImageVaeDecoderStep
+        from .encoders import ZImageTextEncoderStep
+        from .modular_blocks import (
+            ALL_BLOCKS,
+            ZImageAutoBlocks,
+        )
+        from .modular_pipeline import ZImageModularPipeline
 else:
     import sys
 

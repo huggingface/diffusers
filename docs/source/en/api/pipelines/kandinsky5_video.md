@@ -30,6 +30,7 @@ The original codebase can be found at [kandinskylab/Kandinsky-5](https://github.
 ## Available Models
 
 Kandinsky 5.0 T2V Pro:
+
 | model_id | Description | Use Cases |
 |------------|-------------|-----------|
 | **kandinskylab/Kandinsky-5.0-T2V-Pro-sft-5s-Diffusers** | 5 second Text-to-Video Pro model | High-quality text-to-video generation |
