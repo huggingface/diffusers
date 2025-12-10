@@ -289,6 +289,9 @@ class TeaCacheState(BaseState):
         self.previous_residual = None
         # For models that cache both encoder and hidden_states residuals (e.g., CogVideoX)
         self.previous_residual_encoder = None
+        # For models with variable sequence lengths (e.g., Lumina2)
+        self.cache_dict = {}
+        self.uncond_seq_len = None
 
     def reset(self):
         """Reset all state variables to initial values for a new inference run."""
@@ -298,6 +301,8 @@ class TeaCacheState(BaseState):
         self.previous_modulated_input = None
         self.previous_residual = None
         self.previous_residual_encoder = None
+        self.cache_dict = {}
+        self.uncond_seq_len = None
 
     def __repr__(self) -> str:
         return (
@@ -634,7 +639,7 @@ class TeaCacheHook(ModelHook):
         should_calc = self._should_compute_full_transformer(state, modulated_inp)
 
         if not should_calc:
-            # Fast path: apply cached residual
+            # Fast path: apply cached residual (already includes norm_out)
             hidden_states = hidden_states + state.previous_residual
         else:
             # Slow path: full computation
@@ -660,14 +665,16 @@ class TeaCacheHook(ModelHook):
                         image_rotary_emb=image_rotary_emb,
                     )
 
-            # Cache the residual
+            # Apply norm_out before caching residual (matches reference implementation)
+            hidden_states = module.norm_out(hidden_states, temb)
+            
+            # Cache the residual (includes norm_out transformation)
             state.previous_residual = hidden_states - ori_hidden_states
 
         state.previous_modulated_input = modulated_inp
         state.cnt += 1
 
-        # Apply final norm and projection
-        hidden_states = module.norm_out(hidden_states, temb)
+        # Apply projection
         hidden_states = module.proj_out(hidden_states)
 
         # Reshape output
@@ -765,12 +772,57 @@ class TeaCacheHook(ModelHook):
         # Extract modulated input (after preprocessing)
         modulated_inp = self.extractor_fn(module, input_to_main_loop, temb)
 
-        # Make caching decision
-        should_calc = self._should_compute_full_transformer(state, modulated_inp)
+        # Per-sequence-length cache for Lumina2 (handles variable sequence lengths)
+        cache_key = max_seq_len
+        if cache_key not in state.cache_dict:
+            state.cache_dict[cache_key] = {
+                "previous_modulated_input": None,
+                "previous_residual": None,
+                "accumulated_rel_l1_distance": 0.0,
+            }
+        current_cache = state.cache_dict[cache_key]
 
-        if not should_calc:
+        # Make caching decision using per-cache values
+        if state.cnt == 0 or state.cnt == state.num_steps - 1:
+            should_calc = True
+            current_cache["accumulated_rel_l1_distance"] = 0.0
+        else:
+            if current_cache["previous_modulated_input"] is not None:
+                prev_mod_input = current_cache["previous_modulated_input"]
+                prev_mean = prev_mod_input.abs().mean()
+                
+                if prev_mean.item() > 1e-9:
+                    rel_l1_change = ((modulated_inp - prev_mod_input).abs().mean() / prev_mean).cpu().item()
+                else:
+                    rel_l1_change = 0.0 if modulated_inp.abs().mean().item() < 1e-9 else float('inf')
+                
+                rescaled_distance = self.rescale_func(rel_l1_change)
+                current_cache["accumulated_rel_l1_distance"] += rescaled_distance
+                
+                if current_cache["accumulated_rel_l1_distance"] < self.config.rel_l1_thresh:
+                    should_calc = False
+                else:
+                    should_calc = True
+                    current_cache["accumulated_rel_l1_distance"] = 0.0
+            else:
+                should_calc = True
+                current_cache["accumulated_rel_l1_distance"] = 0.0
+
+        current_cache["previous_modulated_input"] = modulated_inp.clone()
+
+        # Track unconditional sequence length for counter management
+        if state.uncond_seq_len is None:
+            state.uncond_seq_len = cache_key
+        # Only increment counter when not processing unconditional (different seq len)
+        if cache_key != state.uncond_seq_len:
+            state.cnt += 1
+            if state.cnt >= state.num_steps:
+                state.cnt = 0
+
+        # Fast or slow path with per-cache residual
+        if not should_calc and current_cache["previous_residual"] is not None:
             # Fast path: apply cached residual
-            processed_hidden_states = input_to_main_loop + state.previous_residual
+            processed_hidden_states = input_to_main_loop + current_cache["previous_residual"]
         else:
             # Slow path: full computation
             current_processing_states = input_to_main_loop
@@ -779,11 +831,8 @@ class TeaCacheHook(ModelHook):
                     current_processing_states, attention_mask_for_main_loop_arg, joint_rotary_emb, temb
                 )
             processed_hidden_states = current_processing_states
-            # Cache the residual
-            state.previous_residual = processed_hidden_states - input_to_main_loop
-
-        state.previous_modulated_input = modulated_inp
-        state.cnt += 1
+            # Cache the residual in per-cache storage
+            current_cache["previous_residual"] = processed_hidden_states - input_to_main_loop
 
         # Apply final norm and reshape
         output_after_norm = module.norm_out(processed_hidden_states, temb)
@@ -881,13 +930,13 @@ class TeaCacheHook(ModelHook):
         # Make caching decision
         should_calc = self._should_compute_full_transformer(state, modulated_inp)
 
-        # Fast path: apply cached residuals (both encoder and hidden_states)
-        # Must have both residuals cached to use fast path
-        if not should_calc and state.previous_residual_encoder is not None:
+        # Fast or slow path based on caching decision
+        if not should_calc:
+            # Fast path: apply cached residuals (both encoder and hidden_states)
             hidden_states = hidden_states + state.previous_residual
             encoder_hidden_states = encoder_hidden_states + state.previous_residual_encoder
         else:
-            # Slow path: full computation (also runs when encoder residual not yet cached)
+            # Slow path: full computation
             ori_hidden_states = hidden_states.clone()
             ori_encoder_hidden_states = encoder_hidden_states.clone()
 
@@ -928,7 +977,22 @@ class TeaCacheHook(ModelHook):
             hidden_states = module.norm_final(hidden_states)
             hidden_states = hidden_states[:, text_seq_length:]
 
-        output = module.proj_out(hidden_states)
+        # Final block
+        hidden_states = module.norm_out(hidden_states, temb=emb)
+        hidden_states = module.proj_out(hidden_states)
+
+        # Unpatchify
+        p = module.config.patch_size
+        p_t = module.config.patch_size_t
+
+        if p_t is None:
+            output = hidden_states.reshape(batch_size, num_frames, height // p, width // p, -1, p, p)
+            output = output.permute(0, 1, 4, 2, 5, 3, 6).flatten(5, 6).flatten(3, 4)
+        else:
+            output = hidden_states.reshape(
+                batch_size, (num_frames + p_t - 1) // p_t, height // p, width // p, -1, p_t, p, p
+            )
+            output = output.permute(0, 1, 5, 4, 2, 6, 3, 7).flatten(6, 7).flatten(4, 5).flatten(1, 2)
 
         if USE_PEFT_BACKEND:
             unscale_lora_layers(module, lora_scale)
