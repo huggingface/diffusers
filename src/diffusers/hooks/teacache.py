@@ -15,7 +15,6 @@
 from dataclasses import dataclass
 from typing import Callable, List, Optional
 
-import numpy as np
 import torch
 
 from ..utils import logging
@@ -219,29 +218,23 @@ class TeaCacheConfig:
                 f"Consider using values between 0.1 and 0.6 for better quality-speed tradeoff."
             )
 
-        # Set default coefficients if not provided (will be auto-detected in hook initialization)
-        if self.coefficients is None:
-            # Default to FLUX coefficients (will be overridden by auto-detection if model is recognized)
-            self.coefficients = _MODEL_COEFFICIENTS.get(
-                "Flux", [4.98651651e02, -2.83781631e02, 5.58554382e01, -3.82021401e00, 2.64230861e-01]
-            )
-
-        # Validate coefficients
-        if not isinstance(self.coefficients, (list, tuple)):
-            raise TypeError(
-                f"coefficients must be a list or tuple, got {type(self.coefficients).__name__}. "
-                f"Please provide a list of 5 polynomial coefficients."
-            )
-        if len(self.coefficients) != 5:
-            raise ValueError(
-                f"coefficients must contain exactly 5 elements for 4th-degree polynomial, "
-                f"got {len(self.coefficients)}. The polynomial is evaluated as: "
-                f"c[0]*x^4 + c[1]*x^3 + c[2]*x^2 + c[3]*x + c[4]"
-            )
-        if not all(isinstance(c, (int, float)) for c in self.coefficients):
-            raise TypeError(
-                f"All coefficients must be numbers. Got types: {[type(c).__name__ for c in self.coefficients]}"
-            )
+        # Validate coefficients only if explicitly provided (None = auto-detect later)
+        if self.coefficients is not None:
+            if not isinstance(self.coefficients, (list, tuple)):
+                raise TypeError(
+                    f"coefficients must be a list or tuple, got {type(self.coefficients).__name__}. "
+                    f"Please provide a list of 5 polynomial coefficients."
+                )
+            if len(self.coefficients) != 5:
+                raise ValueError(
+                    f"coefficients must contain exactly 5 elements for 4th-degree polynomial, "
+                    f"got {len(self.coefficients)}. The polynomial is evaluated as: "
+                    f"c[0]*x^4 + c[1]*x^3 + c[2]*x^2 + c[3]*x + c[4]"
+                )
+            if not all(isinstance(c, (int, float)) for c in self.coefficients):
+                raise TypeError(
+                    f"All coefficients must be numbers. Got types: {[type(c).__name__ for c in self.coefficients]}"
+                )
 
     def __repr__(self) -> str:
         return (
@@ -349,10 +342,49 @@ class TeaCacheHook(ModelHook):
         # Set default rescale_func with config coefficients (will be updated in initialize_hook if needed)
         # This ensures rescale_func is always valid, even if initialize_hook isn't called (e.g., in tests)
         default_coeffs = config.coefficients if config.coefficients else _MODEL_COEFFICIENTS["Flux"]
-        self.rescale_func = np.poly1d(default_coeffs)
+        self.coefficients = default_coeffs
+        self.rescale_func = self._create_rescale_func(default_coeffs)
         self.state_manager = StateManager(TeaCacheState, (), {})
         self.extractor_fn = None
         self.model_type = None
+
+    @staticmethod
+    def _create_rescale_func(coefficients):
+        """Create polynomial rescale function from coefficients.
+        
+        Evaluates: c[0]*x^4 + c[1]*x^3 + c[2]*x^2 + c[3]*x + c[4]
+        """
+        def rescale(x):
+            return coefficients[0] * x**4 + coefficients[1] * x**3 + coefficients[2] * x**2 + coefficients[3] * x + coefficients[4]
+        return rescale
+
+    def _maybe_reset_state_for_new_inference(self, state, module, reset_encoder_residual=False):
+        """Reset state if we've completed all steps (start of new inference run).
+        
+        Also initializes num_steps on first timestep if not set.
+        
+        Args:
+            state: TeaCacheState instance.
+            module: The transformer module.
+            reset_encoder_residual: If True, also reset previous_residual_encoder (for CogVideoX).
+        """
+        # Reset counter if we've completed all steps (new inference run)
+        if state.cnt == state.num_steps and state.num_steps > 0:
+            logger.info("TeaCache inference completed")
+            state.cnt = 0
+            state.accumulated_rel_l1_distance = 0.0
+            state.previous_modulated_input = None
+            state.previous_residual = None
+            if reset_encoder_residual:
+                state.previous_residual_encoder = None
+
+        # Set num_steps on first timestep if not already set
+        if state.cnt == 0 and state.num_steps == 0:
+            if self.config.num_inference_steps_callback is not None:
+                state.num_steps = self.config.num_inference_steps_callback()
+            # If still not set, try to get from module attribute (set by pipeline)
+            if state.num_steps == 0 and hasattr(module, "num_steps"):
+                state.num_steps = module.num_steps
 
     def initialize_hook(self, module):
         self.state_manager.set_context("teacache")
@@ -373,18 +405,21 @@ class TeaCacheHook(ModelHook):
                     f"Coefficients must be provided explicitly."
                 )
 
-        # Strict coefficient matching
+        # Auto-detect coefficients if not provided by user
         if self.config.coefficients is None:
             if self.model_type is None:
                 raise ValueError(
                     "TeaCache: Cannot auto-detect coefficients when using custom extractor. "
                     "Please provide coefficients explicitly in TeaCacheConfig."
                 )
-            self.config.coefficients = _get_model_coefficients(self.model_type)  # Raises if not found
+            self.coefficients = _get_model_coefficients(self.model_type)  # Raises if not found
             logger.info(f"TeaCache: Using {self.model_type} coefficients")
+        else:
+            self.coefficients = self.config.coefficients
+            logger.info(f"TeaCache: Using user-provided coefficients")
 
         # Initialize rescale function with final coefficients
-        self.rescale_func = np.poly1d(self.config.coefficients)
+        self.rescale_func = self._create_rescale_func(self.coefficients)
 
         return module
 
@@ -410,7 +445,16 @@ class TeaCacheHook(ModelHook):
             return self._handle_flux_forward(module, *args, **kwargs)
 
     def _handle_flux_forward(
-        self, module, hidden_states, timestep, pooled_projections, encoder_hidden_states, txt_ids, img_ids, **kwargs
+        self,
+        module,
+        hidden_states,
+        timestep,
+        pooled_projections,
+        encoder_hidden_states,
+        txt_ids,
+        img_ids,
+        return_dict=True,
+        **kwargs,
     ):
         """
         Handle FLUX transformer forward pass with TeaCache.
@@ -423,28 +467,16 @@ class TeaCacheHook(ModelHook):
             encoder_hidden_states (`torch.Tensor`): Text encoder outputs.
             txt_ids (`torch.Tensor`): Position IDs for text tokens.
             img_ids (`torch.Tensor`): Position IDs for image tokens.
+            return_dict (`bool`): Whether to return a dict.
             **kwargs: Additional arguments.
 
         Returns:
-            `torch.Tensor`: Denoised output tensor.
+            `torch.Tensor` or `Transformer2DModelOutput`: Denoised output.
         """
+        from diffusers.models.modeling_outputs import Transformer2DModelOutput
+
         state = self.state_manager.get_state()
-
-        # Reset counter if we've completed all steps (new inference run)
-        if state.cnt == state.num_steps and state.num_steps > 0:
-            logger.info("TeaCache inference completed")
-            state.cnt = 0
-            state.accumulated_rel_l1_distance = 0.0
-            state.previous_modulated_input = None
-            state.previous_residual = None
-
-        # Set num_steps on first timestep if not already set
-        if state.cnt == 0 and state.num_steps == 0:
-            if self.config.num_inference_steps_callback is not None:
-                state.num_steps = self.config.num_inference_steps_callback()
-            # If still not set, try to get from module attribute (set by pipeline)
-            if state.num_steps == 0 and hasattr(module, "num_steps"):
-                state.num_steps = module.num_steps
+        self._maybe_reset_state_for_new_inference(state, module)
 
         # Process inputs like original TeaCache
         # Must process hidden_states through x_embedder first
@@ -458,10 +490,8 @@ class TeaCacheHook(ModelHook):
         else:
             temb = module.time_text_embed(timestep_scaled, pooled_projections)
 
-        # Extract modulated input using configured extractor
-        inp = hidden_states.clone()
-        temb_clone = temb.clone()
-        modulated_inp = self.extractor_fn(module, inp, temb_clone)
+        # Extract modulated input using configured extractor (extractors don't modify inputs)
+        modulated_inp = self.extractor_fn(module, hidden_states, temb)
 
         # Make caching decision
         should_calc = self._should_compute_full_transformer(state, modulated_inp)
@@ -516,7 +546,9 @@ class TeaCacheHook(ModelHook):
         hidden_states = module.norm_out(hidden_states, temb)
         output = module.proj_out(hidden_states)
 
-        return output
+        if not return_dict:
+            return (output,)
+        return Transformer2DModelOutput(sample=output)
 
     def _handle_mochi_forward(
         self,
@@ -556,21 +588,7 @@ class TeaCacheHook(ModelHook):
             scale_lora_layers(module, lora_scale)
 
         state = self.state_manager.get_state()
-
-        # Reset counter if we've completed all steps
-        if state.cnt == state.num_steps and state.num_steps > 0:
-            logger.info("TeaCache inference completed")
-            state.cnt = 0
-            state.accumulated_rel_l1_distance = 0.0
-            state.previous_modulated_input = None
-            state.previous_residual = None
-
-        # Set num_steps on first timestep if not already set
-        if state.cnt == 0 and state.num_steps == 0:
-            if self.config.num_inference_steps_callback is not None:
-                state.num_steps = self.config.num_inference_steps_callback()
-            elif hasattr(module, "num_steps"):
-                state.num_steps = module.num_steps
+        self._maybe_reset_state_for_new_inference(state, module)
 
         batch_size, num_channels, num_frames, height, width = hidden_states.shape
         p = module.config.patch_size
@@ -600,10 +618,8 @@ class TeaCacheHook(ModelHook):
             dtype=torch.float32,
         )
 
-        # Extract modulated input
-        inp = hidden_states.clone()
-        temb_clone = temb.clone()
-        modulated_inp = self.extractor_fn(module, inp, temb_clone)
+        # Extract modulated input (extractors don't modify inputs)
+        modulated_inp = self.extractor_fn(module, hidden_states, temb)
 
         # Make caching decision
         should_calc = self._should_compute_full_transformer(state, modulated_inp)
@@ -698,21 +714,7 @@ class TeaCacheHook(ModelHook):
             scale_lora_layers(module, lora_scale)
 
         state = self.state_manager.get_state()
-
-        # Reset counter if we've completed all steps
-        if state.cnt == state.num_steps and state.num_steps > 0:
-            logger.info("TeaCache inference completed")
-            state.cnt = 0
-            state.accumulated_rel_l1_distance = 0.0
-            state.previous_modulated_input = None
-            state.previous_residual = None
-
-        # Set num_steps on first timestep if not already set
-        if state.cnt == 0 and state.num_steps == 0:
-            if self.config.num_inference_steps_callback is not None:
-                state.num_steps = self.config.num_inference_steps_callback()
-            elif hasattr(module, "num_steps"):
-                state.num_steps = module.num_steps
+        self._maybe_reset_state_for_new_inference(state, module)
 
         batch_size, _, height, width = hidden_states.shape
 
@@ -840,22 +842,7 @@ class TeaCacheHook(ModelHook):
             scale_lora_layers(module, lora_scale)
 
         state = self.state_manager.get_state()
-
-        # Reset counter if we've completed all steps
-        if state.cnt == state.num_steps and state.num_steps > 0:
-            logger.info("TeaCache inference completed")
-            state.cnt = 0
-            state.accumulated_rel_l1_distance = 0.0
-            state.previous_modulated_input = None
-            state.previous_residual = None
-            state.previous_residual_encoder = None
-
-        # Set num_steps on first timestep if not already set
-        if state.cnt == 0 and state.num_steps == 0:
-            if self.config.num_inference_steps_callback is not None:
-                state.num_steps = self.config.num_inference_steps_callback()
-            elif hasattr(module, "num_steps"):
-                state.num_steps = module.num_steps
+        self._maybe_reset_state_for_new_inference(state, module, reset_encoder_residual=True)
 
         batch_size, num_frames, channels, height, width = hidden_states.shape
 
@@ -885,16 +872,13 @@ class TeaCacheHook(ModelHook):
         # Make caching decision
         should_calc = self._should_compute_full_transformer(state, modulated_inp)
 
-        if not should_calc:
-            # Fast path: apply cached residuals (both encoder and hidden_states)
-            if state.previous_residual_encoder is not None:
-                hidden_states = hidden_states + state.previous_residual
-                encoder_hidden_states = encoder_hidden_states + state.previous_residual_encoder
-            else:
-                # Fallback: compute if encoder residual not cached
-                should_calc = True
+        # Fast path: apply cached residuals (both encoder and hidden_states)
+        # Must have both residuals cached to use fast path
+        if not should_calc and state.previous_residual_encoder is not None:
+            hidden_states = hidden_states + state.previous_residual
+            encoder_hidden_states = encoder_hidden_states + state.previous_residual_encoder
         else:
-            # Slow path: full computation
+            # Slow path: full computation (also runs when encoder residual not yet cached)
             ori_hidden_states = hidden_states.clone()
             ori_encoder_hidden_states = encoder_hidden_states.clone()
 
@@ -944,6 +928,7 @@ class TeaCacheHook(ModelHook):
             return (output,)
         return Transformer2DModelOutput(sample=output)
 
+    @torch.compiler.disable
     def _should_compute_full_transformer(self, state, modulated_inp):
         """
         Determine whether to compute full transformer blocks or reuse cached residual.

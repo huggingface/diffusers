@@ -13,7 +13,6 @@
 # limitations under the License.
 
 import unittest
-import warnings
 
 import torch
 
@@ -27,8 +26,8 @@ class TeaCacheConfigTests(unittest.TestCase):
         """Test valid configuration is accepted."""
         config = TeaCacheConfig(rel_l1_thresh=0.2)
         self.assertEqual(config.rel_l1_thresh, 0.2)
-        self.assertIsNotNone(config.coefficients)
-        self.assertEqual(len(config.coefficients), 5)
+        # coefficients is None by default (auto-detected during hook initialization)
+        self.assertIsNone(config.coefficients)
 
     def test_invalid_type(self):
         """Test invalid type for rel_l1_thresh raises TypeError."""
@@ -54,21 +53,17 @@ class TeaCacheConfigTests(unittest.TestCase):
             TeaCacheConfig(rel_l1_thresh=0.2, coefficients=[1.0, 2.0, "invalid", 4.0, 5.0])
         self.assertIn("must be numbers", str(context.exception))
 
-    def test_warning_very_low_threshold(self):
-        """Test warning is issued for very low threshold."""
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            TeaCacheConfig(rel_l1_thresh=0.01)
-            self.assertEqual(len(w), 1)
-            self.assertIn("very low", str(w[0].message))
+    def test_very_low_threshold_accepted(self):
+        """Test very low threshold is accepted (with logging warning)."""
+        # Very low threshold should be accepted but logged as warning
+        config = TeaCacheConfig(rel_l1_thresh=0.01)
+        self.assertEqual(config.rel_l1_thresh, 0.01)
 
-    def test_warning_very_high_threshold(self):
-        """Test warning is issued for very high threshold."""
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            TeaCacheConfig(rel_l1_thresh=1.5)
-            self.assertEqual(len(w), 1)
-            self.assertIn("very high", str(w[0].message))
+    def test_very_high_threshold_accepted(self):
+        """Test very high threshold is accepted (with logging warning)."""
+        # Very high threshold should be accepted but logged as warning
+        config = TeaCacheConfig(rel_l1_thresh=1.5)
+        self.assertEqual(config.rel_l1_thresh, 1.5)
 
     def test_config_repr(self):
         """Test __repr__ method works correctly."""
@@ -188,9 +183,13 @@ class TeaCacheHookTests(unittest.TestCase):
         def custom_extractor(mod, hidden_states, temb):
             return hidden_states
 
-        config = TeaCacheConfig(rel_l1_thresh=0.2, extract_modulated_input_fn=custom_extractor)
+        # Must provide coefficients when using custom extractor (no auto-detection)
+        custom_coeffs = [1.0, 2.0, 3.0, 4.0, 5.0]
+        config = TeaCacheConfig(
+            rel_l1_thresh=0.2, extract_modulated_input_fn=custom_extractor, coefficients=custom_coeffs
+        )
 
-        # Should not raise - TeaCache is now model-agnostic
+        # Should not raise - TeaCache works with custom extractor when coefficients provided
         apply_teacache(module, config)
 
         # Verify registry and disable path work
@@ -341,7 +340,7 @@ class TeaCacheMultiModelTests(unittest.TestCase):
         hook = registry.get_hook("teacache")
         self.assertIsNotNone(hook)
         # Verify coefficients were auto-set
-        self.assertEqual(hook.config.coefficients, _MODEL_COEFFICIENTS["Mochi"])
+        self.assertEqual(hook.coefficients, _MODEL_COEFFICIENTS["Mochi"])
 
         model.disable_cache()
 
@@ -369,7 +368,7 @@ class TeaCacheMultiModelTests(unittest.TestCase):
         hook = registry.get_hook("teacache")
         self.assertIsNotNone(hook)
         # Verify coefficients were auto-set
-        self.assertEqual(hook.config.coefficients, _MODEL_COEFFICIENTS["Lumina2"])
+        self.assertEqual(hook.coefficients, _MODEL_COEFFICIENTS["Lumina2"])
 
         # Lumina2 doesn't have CacheMixin, manually remove hook instead
         registry.remove_hook("teacache")
@@ -396,7 +395,7 @@ class TeaCacheMultiModelTests(unittest.TestCase):
         hook = registry.get_hook("teacache")
         self.assertIsNotNone(hook)
         # Verify coefficients were auto-set
-        self.assertEqual(hook.config.coefficients, _MODEL_COEFFICIENTS["CogVideoX"])
+        self.assertEqual(hook.coefficients, _MODEL_COEFFICIENTS["CogVideoX"])
 
         model.disable_cache()
 
