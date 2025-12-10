@@ -407,6 +407,8 @@ except OptionalDependencyNotAvailable:
 else:
     _import_structure["modular_pipelines"].extend(
         [
+            "Flux2AutoBlocks",
+            "Flux2ModularPipeline",
             "FluxAutoBlocks",
             "FluxKontextAutoBlocks",
             "FluxKontextModularPipeline",
@@ -422,6 +424,8 @@ else:
             "Wan22AutoBlocks",
             "WanAutoBlocks",
             "WanModularPipeline",
+            "ZImageAutoBlocks",
+            "ZImageModularPipeline",
         ]
     )
     _import_structure["pipelines"].extend(
@@ -665,6 +669,7 @@ else:
             "WuerstchenCombinedPipeline",
             "WuerstchenDecoderPipeline",
             "WuerstchenPriorPipeline",
+            "ZImageImg2ImgPipeline",
             "ZImagePipeline",
         ]
     )
@@ -1114,6 +1119,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .utils.dummy_torch_and_transformers_objects import *  # noqa F403
     else:
         from .modular_pipelines import (
+            Flux2AutoBlocks,
+            Flux2ModularPipeline,
             FluxAutoBlocks,
             FluxKontextAutoBlocks,
             FluxKontextModularPipeline,
@@ -1129,6 +1136,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             Wan22AutoBlocks,
             WanAutoBlocks,
             WanModularPipeline,
+            ZImageAutoBlocks,
+            ZImageModularPipeline,
         )
         from .pipelines import (
             AllegroPipeline,
@@ -1366,6 +1375,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             WuerstchenCombinedPipeline,
             WuerstchenDecoderPipeline,
             WuerstchenPriorPipeline,
+            ZImageImg2ImgPipeline,
             ZImagePipeline,
         )
 
