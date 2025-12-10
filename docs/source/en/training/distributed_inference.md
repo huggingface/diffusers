@@ -237,8 +237,7 @@ By selectively loading and unloading the models you need at a given stage and sh
 
 Use [`~ModelMixin.set_attention_backend`] to switch to a more optimized attention backend. Refer to this [table](../optimization/attention_backends#available-backends) for a complete list of available backends.
 
-> [!NOTE] 
-> Most attention backends are compatible with context parallelism. If one is not compatibel with context parallelism, please [file a feature request](https://github.com/huggingface/diffusers/issues/new).
+Most attention backends are compatible with context parallelism. Open an [issue](https://github.com/huggingface/diffusers/issues/new) if a backend is not compatible.
 
 ### Ring Attention
 
@@ -296,7 +295,11 @@ if __name__ == "__main__":
     main()
 ```
 
-The script above needs to be run with a distributed launcher that is compatible with PyTorch. You can use `torchrun` for this: `torchrun --nproc-per-node 2 above_script.py`. `--nproc-per-node` depends on the number of GPUs available.
+The script above needs to be run with a distributed launcher, such as [torchrun](https://docs.pytorch.org/docs/stable/elastic/run.html), that is compatible with PyTorch. `--nproc-per-node` is set to the number of GPUs available.
+
+/```shell
+`torchrun --nproc-per-node 2 above_script.py`. 
+/```
 
 ### Ulysses Attention
 
@@ -313,7 +316,7 @@ pipeline.transformer.enable_parallelism(config=ContextParallelConfig(ulysses_deg
 
 ### parallel_config
 
-It's possible to pass a `ContextParallelConfig` to `parallel_config` during initializing a model and a pipeline:
+Pass `parallel_config` during model initialization to enable context parallelism.
 
 ```py
 CKPT_ID = "black-forest-labs/FLUX.1-dev"
