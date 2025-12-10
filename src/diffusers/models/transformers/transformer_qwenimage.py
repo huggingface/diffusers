@@ -237,13 +237,13 @@ class QwenEmbedRope(nn.Module):
         Args:
             video_fhw (`Tuple[int, int, int]` or `List[Tuple[int, int, int]]`):
                 A list of 3 integers [frame, height, width] representing the shape of the video.
+            txt_seq_lens (`List[int]`, *optional*, **Deprecated**):
+                Deprecated parameter. Use `txt_seq_len` instead. If provided, the maximum value will be used.
+            device: (`torch.device`, *optional*):
+                The device on which to perform the RoPE computation.
             txt_seq_len (`int` or `torch.Tensor`, *optional*):
                 The length of the text sequence. This should match the encoder hidden states length. Can be either an
                 int or a scalar tensor (for torch.compile compatibility).
-            device: (`torch.device`, *optional*):
-                The device on which to perform the RoPE computation.
-            txt_seq_lens (`List[int]`, *optional*, **Deprecated**):
-                Deprecated parameter. Use `txt_seq_len` instead. If provided, the maximum value will be used.
         """
         # Handle deprecated txt_seq_lens parameter
         if txt_seq_lens is not None:
