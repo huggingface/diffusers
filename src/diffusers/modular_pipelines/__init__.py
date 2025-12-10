@@ -52,6 +52,10 @@ else:
         "FluxKontextAutoBlocks",
         "FluxKontextModularPipeline",
     ]
+    _import_structure["flux2"] = [
+        "Flux2AutoBlocks",
+        "Flux2ModularPipeline",
+    ]
     _import_structure["qwenimage"] = [
         "QwenImageAutoBlocks",
         "QwenImageModularPipeline",
@@ -75,6 +79,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     else:
         from .components_manager import ComponentsManager
         from .flux import FluxAutoBlocks, FluxKontextAutoBlocks, FluxKontextModularPipeline, FluxModularPipeline
+        from .flux2 import Flux2AutoBlocks, Flux2ModularPipeline
         from .modular_pipeline import (
             AutoPipelineBlocks,
             BlockState,
