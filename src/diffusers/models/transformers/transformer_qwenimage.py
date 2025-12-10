@@ -229,9 +229,9 @@ class QwenEmbedRope(nn.Module):
     def forward(
         self,
         video_fhw: Union[Tuple[int, int, int], List[Tuple[int, int, int]]],
-        txt_seq_len: Optional[Union[int, torch.Tensor]] = None,
-        device: torch.device = None,
         txt_seq_lens: Optional[List[int]] = None,
+        device: torch.device = None,
+        txt_seq_len: Optional[Union[int, torch.Tensor]] = None,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """
         Args:
