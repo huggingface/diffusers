@@ -262,6 +262,11 @@ class QwenDoubleStreamAttnProcessor2_0:
     """
     Attention processor for Qwen double-stream architecture, matching DoubleStreamLayerMegatron logic. This processor
     implements joint attention computation where text and image streams are processed together.
+
+    Args:
+        encoder_hidden_states_mask (`torch.BoolTensor`, *optional*):
+            Boolean mask for text padding tokens. Shape: `[batch_size, text_seq_len]`. `True` indicates tokens that
+            should be attended to, `False` masks out padding tokens. Only boolean masks are supported.
     """
 
     _attention_backend = None
@@ -278,7 +283,7 @@ class QwenDoubleStreamAttnProcessor2_0:
         attn: Attention,
         hidden_states: torch.FloatTensor,  # Image stream
         encoder_hidden_states: torch.FloatTensor = None,  # Text stream
-        encoder_hidden_states_mask: torch.FloatTensor = None,
+        encoder_hidden_states_mask: Optional[torch.BoolTensor] = None,
         attention_mask: Optional[torch.FloatTensor] = None,
         image_rotary_emb: Optional[torch.Tensor] = None,
     ) -> torch.FloatTensor:
