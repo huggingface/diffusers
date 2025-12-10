@@ -21,11 +21,14 @@ Load the DreamBooth checkpoint with [`~DiffusionPipeline.from_pretrained`] and i
 ```py
 import torch
 from diffusers import AutoPipelineForText2Image
+from diffusers.utils.torch_utils import get_device
+
+device = get_device()
 
 pipeline = AutoPipelineForText2Image.from_pretrained(
     "sd-dreambooth-library/herge-style",
     torch_dtype=torch.float16
-).to("cuda")
+).to(device)
 prompt = "A cute sks herge_style brown bear eating a slice of pizza, stunning color scheme, masterpiece, illustration"
 pipeline(prompt).images[0]
 ```
