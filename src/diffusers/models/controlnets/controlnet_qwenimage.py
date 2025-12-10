@@ -204,11 +204,11 @@ class QwenImageControlNetModel(
         temb = self.time_text_embed(timestep, hidden_states)
 
         # Use the encoder_hidden_states sequence length for RoPE computation and normalize mask
-        text_seq_len, text_seq_lens_per_sample, encoder_hidden_states_mask = compute_text_seq_len_from_mask(
+        text_seq_len, _, encoder_hidden_states_mask = compute_text_seq_len_from_mask(
             encoder_hidden_states, encoder_hidden_states_mask
         )
 
-        image_rotary_emb = self.pos_embed(img_shapes, text_seq_len=text_seq_len, device=hidden_states.device)
+        image_rotary_emb = self.pos_embed(img_shapes, txt_seq_len=text_seq_len, device=hidden_states.device)
 
         timestep = timestep.to(hidden_states.dtype)
         encoder_hidden_states = self.txt_norm(encoder_hidden_states)
