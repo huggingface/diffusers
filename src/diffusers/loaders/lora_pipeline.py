@@ -1628,30 +1628,7 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
         **kwargs,
     ):
         """
-        Load LoRA weights specified in `pretrained_model_name_or_path_or_dict` into `self.transformer` and
-        `self.text_encoder`.
-
-        All kwargs are forwarded to `self.lora_state_dict`.
-
-        See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`] for more details on how the state dict is
-        loaded.
-
-        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_transformer`] for more details on how the state
-        dict is loaded into `self.transformer`.
-
-        Parameters:
-            pretrained_model_name_or_path_or_dict (`str` or `os.PathLike` or `dict`):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`].
-            adapter_name (`str`, *optional*):
-                Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
-                `default_{i}` where i is the total number of adapters being loaded.
-            low_cpu_mem_usage (`bool`, *optional*):
-                `Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
-                weights.
-            hotswap (`bool`, *optional*):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`].
-            kwargs (`dict`, *optional*):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`].
+        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`] for more details.
         """
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
@@ -3739,20 +3716,7 @@ class KandinskyLoraLoaderMixin(LoraBaseMixin):
         **kwargs,
     ):
         """
-        Load LoRA weights specified in `pretrained_model_name_or_path_or_dict` into `self.transformer`
-
-        Parameters:
-            pretrained_model_name_or_path_or_dict (`str` or `os.PathLike` or `dict`):
-                See [`~loaders.KandinskyLoraLoaderMixin.lora_state_dict`].
-            adapter_name (`str`, *optional*):
-                Adapter name to be used for referencing the loaded adapter model.
-            hotswap (`bool`, *optional*):
-                Whether to substitute an existing (LoRA) adapter with the newly loaded adapter in-place.
-            low_cpu_mem_usage (`bool`, *optional*):
-                Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
-                weights.
-            kwargs (`dict`, *optional*):
-                See [`~loaders.KandinskyLoraLoaderMixin.lora_state_dict`].
+        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`] for more details.
         """
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
