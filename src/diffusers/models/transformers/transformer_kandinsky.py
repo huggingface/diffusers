@@ -173,7 +173,7 @@ class Kandinsky5TimeEmbeddings(nn.Module):
         time_embed = time_embed.to(dtype=self.in_layer.weight.dtype)
         time_embed = self.out_layer(self.activation(self.in_layer(time_embed)))
         return time_embed
-    
+
 
 class Kandinsky5TextEmbeddings(nn.Module):
     def __init__(self, text_dim, model_dim):
