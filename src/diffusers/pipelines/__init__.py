@@ -291,6 +291,7 @@ else:
     _import_structure["lumina"] = ["LuminaPipeline", "LuminaText2ImgPipeline"]
     _import_structure["lumina2"] = ["Lumina2Pipeline", "Lumina2Text2ImgPipeline"]
     _import_structure["lucy"] = ["LucyEditPipeline"]
+    _import_structure["longcat_image"] = ["LongCatImagePipeline","LongCatImageEditPipeline"]
     _import_structure["marigold"].extend(
         [
             "MarigoldDepthPipeline",
@@ -722,6 +723,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .lucy import LucyEditPipeline
         from .lumina import LuminaPipeline, LuminaText2ImgPipeline
         from .lumina2 import Lumina2Pipeline, Lumina2Text2ImgPipeline
+        from .longcat_image import LongCatImagePipeline,LongCatImageEditPipeline
         from .marigold import (
             MarigoldDepthPipeline,
             MarigoldIntrinsicsPipeline,
