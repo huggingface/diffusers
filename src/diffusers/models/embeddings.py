@@ -1336,7 +1336,8 @@ class GaussianFourierProjection(nn.Module):
         self.weight = nn.Parameter(torch.randn(embedding_size) * scale, requires_grad=False)
         self.log = log
         self.flip_sin_to_cos = flip_sin_to_cos
-
+        self.embedding_size = embedding_size
+        
         if set_W_to_weight:
             # to delete later
             del self.weight

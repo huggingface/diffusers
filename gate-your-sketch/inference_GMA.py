@@ -1,17 +1,26 @@
+import torch
+from diffusers import (
+    StableDiffusionXLAdapterPipeline,
+    AutoencoderKL,
+    EulerAncestralDiscreteScheduler,
+    GatedMultiAdapter
+)
+from diffusers.utils import load_image
 from diffusers import StableDiffusionXLAdapterPipeline, T2IAdapter, EulerAncestralDiscreteScheduler, AutoencoderKL,MultiAdapter,GatedMultiAdapter
 from diffusers.utils import load_image, make_image_grid
 from controlnet_aux.midas import MidasDetector
 import torch
 from controlnet_aux.canny import CannyDetector
 
-device='cuda:0'
+device = "cuda"
 
-# load adapter
-depth_midas_adapter = T2IAdapter.from_pretrained(
-"TencentARC/t2i-adapter-depth-midas-sdxl-1.0", torch_dtype=torch.float16, varient="fp16"
-).to(device)
-canny_adapter = T2IAdapter.from_pretrained("TencentARC/t2i-adapter-sketch-sdxl-1.0", torch_dtype=torch.float16, varient="fp16").to(device)
-adapters = GatedMultiAdapter([depth_midas_adapter,canny_adapter])
+# -----------------------------
+# 1. Load trained GatedMultiAdapter
+# -----------------------------
+adapters = GatedMultiAdapter.from_pretrained(
+    "/home/ubuntu/gate-your-sketch-training_output/sdxl_GMA_withFiLM_t1.0_res512_lr1e-7_bs1x4_seed42_step2000/t2iadapter",
+    torch_dtype=torch.float16,
+)
 
 # load euler_a scheduler
 model_id = 'stabilityai/stable-diffusion-xl-base-1.0'
@@ -39,9 +48,9 @@ control_weights=[0.6,0.6]
 gen_images = pipe(
 prompt=prompt,
 negative_prompt=negative_prompt,
-image=[depth_midas_control_image,canny_control_image],
+image=[canny_control_image, depth_midas_control_image],
 num_inference_steps=30,
 adapter_conditioning_scale=control_weights,
 guidance_scale=7.5,
 ).images[0]
-gen_images.save('out_mid_GMA_precomputed.png')
+gen_images.save('out_GMA_ckpt_1000_nonsep_timeemb_film.png')
