@@ -36,7 +36,6 @@ from ...testing_utils import (
     is_modelopt,
     is_quanto,
     is_torchao,
-    nightly,
     require_accelerate,
     require_accelerator,
     require_bitsandbytes_version_greater,
@@ -325,7 +324,6 @@ class QuantizationTesterMixin:
 
 
 @is_bitsandbytes
-@nightly
 @require_accelerator
 @require_bitsandbytes_version_greater("0.43.2")
 @require_accelerate
@@ -480,7 +478,6 @@ class BitsAndBytesTesterMixin(QuantizationTesterMixin):
 
 
 @is_quanto
-@nightly
 @require_quanto
 @require_accelerate
 @require_accelerator
@@ -654,7 +651,6 @@ class TorchAoTesterMixin(QuantizationTesterMixin):
 
 
 @is_gguf
-@nightly
 @require_accelerate
 @require_accelerator
 @require_gguf_version_greater_or_equal("0.10.0")
@@ -744,7 +740,6 @@ class GGUFTesterMixin(QuantizationTesterMixin):
 
 
 @is_modelopt
-@nightly
 @require_accelerator
 @require_accelerate
 @require_modelopt_version_greater_or_equal("0.33.1")
