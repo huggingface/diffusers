@@ -58,6 +58,7 @@ MODULAR_PIPELINE_MAPPING = OrderedDict(
         ("wan", "WanModularPipeline"),
         ("flux", "FluxModularPipeline"),
         ("flux-kontext", "FluxKontextModularPipeline"),
+        ("flux2", "Flux2ModularPipeline"),
         ("qwenimage", "QwenImageModularPipeline"),
         ("qwenimage-edit", "QwenImageEditModularPipeline"),
         ("qwenimage-edit-plus", "QwenImageEditPlusModularPipeline"),
@@ -1586,7 +1587,6 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
         for name, config_spec in self._config_specs.items():
             default_configs[name] = config_spec.default
         self.register_to_config(**default_configs)
-
         self.register_to_config(_blocks_class_name=self.blocks.__class__.__name__ if self.blocks is not None else None)
 
     @property
