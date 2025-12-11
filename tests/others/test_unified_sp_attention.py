@@ -21,6 +21,8 @@ def run(rank, world_size):
 
     q.requires_grad_(True)
 
+
+
     pc = ParallelConfig(
         context_parallel_config=ContextParallelConfig(
             ring_degree=2,
