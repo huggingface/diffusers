@@ -1040,12 +1040,13 @@ def _all_to_all_single(x: torch.Tensor, group) -> torch.Tensor:
     x = _wait_tensor(x)
     return x
 
+
 def _all_to_all_dim_exchange(x: torch.Tensor, scatter_idx: int = 2, gather_idx: int = 1, group=None) -> torch.Tensor:
     """
     Perform dimension sharding / reassembly across processes using _all_to_all_single.
 
-    This utility reshapes and redistributes tensor `x` across the given process group,
-    across sequence dimension or head dimension flexibly by accepting scatter_idx and gather_idx.
+    This utility reshapes and redistributes tensor `x` across the given process group, across sequence dimension or
+    head dimension flexibly by accepting scatter_idx and gather_idx.
 
     Args:
         x (torch.Tensor):
@@ -1067,17 +1068,20 @@ def _all_to_all_dim_exchange(x: torch.Tensor, scatter_idx: int = 2, gather_idx: 
     group_world_size = torch.distributed.get_world_size(group)
 
     if scatter_idx == 2 and gather_idx == 1:
-        #Used before Ulysses sequence parallel (SP) attention. Scatters the gathers sequence
-        #dimension and scatters head dimension
+        # Used before Ulysses sequence parallel (SP) attention. Scatters the gathers sequence
+        # dimension and scatters head dimension
         batch_size, seq_len_local, num_heads, head_dim = x.shape
         seq_len = seq_len_local * group_world_size
         num_heads_local = num_heads // group_world_size
 
         # B, S_LOCAL, H, D -> group_world_size, S_LOCAL, B, H_LOCAL, D
-        x_temp = x.reshape(batch_size, seq_len_local, group_world_size, num_heads_local, head_dim).transpose(0, 2).contiguous()
+        x_temp = (
+            x.reshape(batch_size, seq_len_local, group_world_size, num_heads_local, head_dim)
+            .transpose(0, 2)
+            .contiguous()
+        )
 
-
-        if group_world_size >1:
+        if group_world_size > 1:
             out = _all_to_all_single(x_temp, group=group)
         else:
             out = x_temp
@@ -1086,16 +1090,20 @@ def _all_to_all_dim_exchange(x: torch.Tensor, scatter_idx: int = 2, gather_idx: 
         out = out.reshape(batch_size, seq_len, num_heads_local, head_dim)
         return out
     elif scatter_idx == 1 and gather_idx == 2:
-        #Used after ulysses sequence parallel in unified SP. gathers the head dimension
-        #scatters back the sequence dimension.
+        # Used after ulysses sequence parallel in unified SP. gathers the head dimension
+        # scatters back the sequence dimension.
         batch_size, seq_len, num_heads_local, head_dim = x.shape
         num_heads = num_heads_local * group_world_size
         seq_len_local = seq_len // group_world_size
 
-        #B, S, H_LOCAL, D -> group_world_size, H_LOCAL, S_LOCAL, B, D
-        x_temp = x.reshape(batch_size, group_world_size, seq_len_local, num_heads_local, head_dim).permute(1, 3, 2, 0, 4).reshape(group_world_size, num_heads_local, seq_len_local, batch_size, head_dim)
-        
-        if group_world_size >1:
+        # B, S, H_LOCAL, D -> group_world_size, H_LOCAL, S_LOCAL, B, D
+        x_temp = (
+            x.reshape(batch_size, group_world_size, seq_len_local, num_heads_local, head_dim)
+            .permute(1, 3, 2, 0, 4)
+            .reshape(group_world_size, num_heads_local, seq_len_local, batch_size, head_dim)
+        )
+
+        if group_world_size > 1:
             output = _all_to_all_single(x_temp, group)
         else:
             output = x_temp
@@ -1108,9 +1116,10 @@ def _all_to_all_dim_exchange(x: torch.Tensor, scatter_idx: int = 2, gather_idx: 
 
 class SeqAllToAllDim(torch.autograd.Function):
     """
-    all_to_all operation for unified sequence parallelism.
-    uses _all_to_all_dim_exchange, see _all_to_all_dim_exchange for more info.
+    all_to_all operation for unified sequence parallelism. uses _all_to_all_dim_exchange, see _all_to_all_dim_exchange
+    for more info.
     """
+
     @staticmethod
     def forward(ctx, group, input, scatter_id=2, gather_id=1):
         ctx.group = group
@@ -1123,11 +1132,10 @@ class SeqAllToAllDim(torch.autograd.Function):
         grad_input = SeqAllToAllDim.apply(
             ctx.group,
             grad_outputs,
-            ctx.gather_id,   # reversed
+            ctx.gather_id,  # reversed
             ctx.scatter_id,  # reversed
         )
         return (None, grad_input, None, None)
-
 
 
 class TemplatedRingAttention(torch.autograd.Function):
@@ -1351,6 +1359,7 @@ class TemplatedUlyssesAttention(torch.autograd.Function):
 
         return grad_query, grad_key, grad_value, None, None, None, None, None, None, None, None, None
 
+
 def TemplatedUnifiedAttention(
     query: torch.Tensor,
     key: torch.Tensor,
@@ -1364,12 +1373,11 @@ def TemplatedUnifiedAttention(
     forward_op,
     backward_op,
     _parallel_config: Optional["ParallelConfig"] = None,
-    scatter_idx: int =2,
-    gather_idx: int =1,
-    ):
+    scatter_idx: int = 2,
+    gather_idx: int = 1,
+):
     """
-    Unified Sequence Parallelism attention combining Ulysses and ring attention.
-    See: https://arxiv.org/abs/2405.07719
+    Unified Sequence Parallelism attention combining Ulysses and ring attention. See: https://arxiv.org/abs/2405.07719
     """
     ulysses_mesh = _parallel_config.context_parallel_config._ulysses_mesh
     ulysses_group = ulysses_mesh.get_group()
@@ -1395,7 +1403,7 @@ def TemplatedUnifiedAttention(
         context_layer, lse, *_ = out
     else:
         context_layer = out
-    #context_layer is of shape (B, S, H_LOCAL, D)
+    # context_layer is of shape (B, S, H_LOCAL, D)
     output = SeqAllToAllDim.apply(
         ulysses_group,
         context_layer,
@@ -1403,7 +1411,7 @@ def TemplatedUnifiedAttention(
         scatter_idx,
     )
     if return_lse:
-        #lse is of shape (B, S, H_LOCAL, 1)
+        # lse is of shape (B, S, H_LOCAL, 1)
         # Refer to:
         # https://github.com/huggingface/diffusers/pull/12693#issuecomment-3627519544
         if is_torch_version("<", "2.9.0"):
@@ -1412,6 +1420,7 @@ def TemplatedUnifiedAttention(
         lse = lse.squeeze(-1)
         return (output, lse)
     return output
+
 
 def _templated_context_parallel_attention(
     query: torch.Tensor,
@@ -1436,7 +1445,10 @@ def _templated_context_parallel_attention(
         raise ValueError("GQA is not yet supported for templated attention.")
 
     # TODO: add support for unified attention with ring/ulysses degree both being > 1
-    if _parallel_config.context_parallel_config.ring_degree > 1 and _parallel_config.context_parallel_config.ulysses_degree > 1:
+    if (
+        _parallel_config.context_parallel_config.ring_degree > 1
+        and _parallel_config.context_parallel_config.ulysses_degree > 1
+    ):
         return TemplatedUnifiedAttention(
             query,
             key,

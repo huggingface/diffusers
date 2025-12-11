@@ -5,18 +5,12 @@ import torch
 import torch.distributed as dist
 import torch.multiprocessing as mp
 
+from diffusers.models._modeling_parallel import ContextParallelConfig, ParallelConfig
 from diffusers.models.attention_dispatch import TemplatedUnifiedAttention
-from diffusers.models._modeling_parallel import (
-        ParallelConfig,
-        ContextParallelConfig
-    )
+
 
 def run(rank, world_size):
-    dist.init_process_group(
-        backend="gloo",
-        rank=rank,
-        world_size=world_size
-    )
+    dist.init_process_group(backend="gloo", rank=rank, world_size=world_size)
 
     torch.manual_seed(0)
 
@@ -26,8 +20,6 @@ def run(rank, world_size):
     v = torch.randn(B, S, H, D)
 
     q.requires_grad_(True)
-
-    
 
     pc = ParallelConfig(
         context_parallel_config=ContextParallelConfig(
@@ -40,10 +32,11 @@ def run(rank, world_size):
         rank=rank,
         world_size=world_size,
         device=torch.device("cpu"),
-        mesh=dist.device_mesh.init_device_mesh("cpu",
-            (2,2),
+        mesh=dist.device_mesh.init_device_mesh(
+            "cpu",
+            (2, 2),
             mesh_dim_names=["ring", "ulysses"],
-        )
+        ),
     )
 
     def dummy_forward_op(
@@ -105,9 +98,11 @@ def run(rank, world_size):
             grad_v,
         )
 
-
     out = TemplatedUnifiedAttention(
-        q, k, v, None,
+        q,
+        k,
+        v,
+        None,
         dropout_p=0.0,
         is_causal=False,
         scale=None,
@@ -124,6 +119,7 @@ def run(rank, world_size):
     print(f"[RANK {rank}] grad:", q.grad.shape)
 
     dist.destroy_process_group()
+
 
 if __name__ == "__main__":
     world_size = 4
