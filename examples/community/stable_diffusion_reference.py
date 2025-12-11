@@ -358,7 +358,7 @@ class StableDiffusionReferencePipeline(
                 "Provide either `ip_adapter_image` or `ip_adapter_image_embeds`. Cannot leave both `ip_adapter_image` and `ip_adapter_image_embeds` defined."
             )
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline._encode_prompt
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_utils.SDMixin._encode_prompt
     def _encode_prompt(
         self,
         prompt: Union[str, List[str]],
@@ -408,7 +408,7 @@ class StableDiffusionReferencePipeline(
 
         return prompt_embeds
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.encode_prompt
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_utils.SDMixin.encode_prompt
     def encode_prompt(
         self,
         prompt: Optional[str],
@@ -639,7 +639,7 @@ class StableDiffusionReferencePipeline(
         latents = latents * self.scheduler.init_noise_sigma
         return latents
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_extra_step_kwargs
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_utils.SDMixin.prepare_extra_step_kwargs
     def prepare_extra_step_kwargs(
         self, generator: Union[torch.Generator, List[torch.Generator]], eta: float
     ) -> Dict[str, Any]:
@@ -789,7 +789,7 @@ class StableDiffusionReferencePipeline(
         ref_image_latents = ref_image_latents.to(device=device, dtype=dtype)
         return ref_image_latents
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.run_safety_checker
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_utils.SDMixin.run_safety_checker
     def run_safety_checker(
         self, image: Union[torch.Tensor, PIL.Image.Image], device: torch.device, dtype: torch.dtype
     ) -> Tuple[Union[torch.Tensor, PIL.Image.Image], Optional[bool]]:
