@@ -117,7 +117,6 @@ if is_torch_available():
     _import_structure["transformers.transformer_wan_animate"] = ["WanAnimateTransformer3DModel"]
     _import_structure["transformers.transformer_wan_vace"] = ["WanVACETransformer3DModel"]
     _import_structure["transformers.transformer_z_image"] = ["ZImageTransformer2DModel"]
-    _import_structure["transformers.transformer_z_image_control"] = ["ZImageControlTransformer2DModel"]
     _import_structure["unets.unet_1d"] = ["UNet1DModel"]
     _import_structure["unets.unet_2d"] = ["UNet2DModel"]
     _import_structure["unets.unet_2d_condition"] = ["UNet2DConditionModel"]
@@ -232,7 +231,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             WanAnimateTransformer3DModel,
             WanTransformer3DModel,
             WanVACETransformer3DModel,
-            ZImageControlTransformer2DModel,
             ZImageTransformer2DModel,
         )
         from .unets import (
