@@ -1411,7 +1411,7 @@ class AuraFlowLoraLoaderMixin(LoraBaseMixin):
 
 
 class FluxLoraLoaderMixin(LoraBaseMixin):
-    def __new__(cls, *args, **kwargs):
+    def __mro_entries__(cls, bases):
         deprecation_message = (
             "Importing `FluxLoraLoaderMixin` class like `from diffusers.loaders import FluxLoraLoaderMixin` is deprecated and will be removed in a future version. "
             "Please use `from diffusers.pipelines.flux.lora_utils import FluxLoraLoaderMixin` instead. "
@@ -1419,7 +1419,7 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
         deprecate("FluxLoraLoaderMixin", "1.0.0", deprecation_message, standard_warn=False)
         from ..pipelines.flux.lora_utils import FluxLoraLoaderMixin
 
-        return FluxLoraLoaderMixin(*args, **kwargs)
+        return (FluxLoraLoaderMixin,)
 
 
 # The reason why we subclass from `StableDiffusionLoraLoaderMixin` here is because Amused initially
