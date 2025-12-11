@@ -15,7 +15,7 @@
 import hashlib
 import os
 from contextlib import contextmanager, nullcontext
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import Enum
 from typing import Callable, Dict, List, Optional, Set, Tuple, Union
 
@@ -751,10 +751,14 @@ def _apply_group_offloading_block_level(module: torch.nn.Module, config: GroupOf
     for name, submodule in module.named_children():
         # Check if this is an explicitly defined block module
         if block_modules and name in block_modules:
-            # Apply block offloading to the specified submodule
-            _apply_block_offloading_to_submodule(
-                submodule, name, config, modules_with_group_offloading, matched_module_groups
-            )
+            # Track submodule using a prefix to avoid filename collisions during disk offload.
+            # Without this, submodules sharing the same model class would be assigned identical
+            # filenames (derived from the class name).
+            prefix = f"{config.module_prefix}{name}." if config.module_prefix else f"{name}."
+            submodule_config = replace(config, module_prefix=prefix)
+
+            _apply_group_offloading_block_level(submodule, submodule_config)
+            modules_with_group_offloading.add(name)
         elif isinstance(submodule, (torch.nn.ModuleList, torch.nn.Sequential)):
             # Handle ModuleList and Sequential blocks as before
             for i in range(0, len(submodule), config.num_blocks_per_group):
