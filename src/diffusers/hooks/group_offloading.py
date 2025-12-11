@@ -625,15 +625,15 @@ def apply_group_offloading(
             option only matters when using streamed CPU offloading (i.e. `use_stream=True`). This can be useful when
             the CPU memory is a bottleneck but may counteract the benefits of using streams.
         block_modules (`List[str]`, *optional*):
-            List of module names that should be treated as blocks for offloading. If provided, only these modules
-            will be considered for block-level offloading. If not provided, the default block detection logic will be used.
+            List of module names that should be treated as blocks for offloading. If provided, only these modules will
+            be considered for block-level offloading. If not provided, the default block detection logic will be used.
         exclude_kwargs (`List[str]`, *optional*):
             List of kwarg keys that should not be processed by `send_to_device`. This is useful for mutable state like
             caching lists that need to maintain their object identity across forward passes. If not provided, will be
             inferred from the module's `_skip_keys` attribute if it exists.
         pin_groups (`"first_last"` or `"all"` or `Callable`, *optional*, defaults to `None`):
-            Optionally keeps selected groups on the onload device permanently. Use `"first_last"` to pin the first
-            and last parameter-bearing groups, `"all"` to pin every parameter-bearing group, or pass a callable that
+            Optionally keeps selected groups on the onload device permanently. Use `"first_last"` to pin the first and
+            last parameter-bearing groups, `"all"` to pin every parameter-bearing group, or pass a callable that
             receives a module (and optionally the module name and index) and returns `True` to pin that group.
 
     Example:
@@ -713,8 +713,8 @@ def _apply_group_offloading(module: torch.nn.Module, config: GroupOffloadingConf
 def _apply_group_offloading_block_level(module: torch.nn.Module, config: GroupOffloadingConfig) -> None:
     r"""
     This function applies offloading to groups of torch.nn.ModuleList or torch.nn.Sequential blocks, and explicitly
-    defined block modules. In comparison to the "leaf_level" offloading, which is more fine-grained, this offloading
-    is done at the top-level blocks and modules specified in block_modules.
+    defined block modules. In comparison to the "leaf_level" offloading, which is more fine-grained, this offloading is
+    done at the top-level blocks and modules specified in block_modules.
 
     When block_modules is provided, only those modules will be treated as blocks for offloading. For each specified
     module, we either offload the entire submodule or recursively apply block offloading to it.
@@ -994,7 +994,7 @@ def _apply_lazy_group_offloading_hook(
     if registry.get_hook(_GROUP_OFFLOADING) is None:
         hook = GroupOffloadingHook(group, config=config)
         registry.register_hook(hook, _GROUP_OFFLOADING)
-        
+
     lazy_prefetch_hook = LazyPrefetchGroupOffloadingHook(pin_groups=config.pin_groups)
     registry.register_hook(lazy_prefetch_hook, _LAZY_PREFETCH_GROUP_OFFLOADING)
 
