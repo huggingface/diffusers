@@ -3628,6 +3628,7 @@ class KandinskyLoraLoaderMixin(LoraBaseMixin):
 
     @classmethod
     @validate_hf_hub_args
+    # Copied from diffusers.loaders.lora_pipeline.SD3LoraLoaderMixin.lora_state_dict
     def lora_state_dict(
         cls,
         pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]],
@@ -3679,6 +3680,7 @@ class KandinskyLoraLoaderMixin(LoraBaseMixin):
         out = (state_dict, metadata) if return_lora_metadata else state_dict
         return out
 
+    # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.load_lora_weights
     def load_lora_weights(
         self,
         pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]],
@@ -3722,6 +3724,7 @@ class KandinskyLoraLoaderMixin(LoraBaseMixin):
         )
 
     @classmethod
+    # Copied from diffusers.loaders.lora_pipeline.SD3LoraLoaderMixin.load_lora_into_transformer
     def load_lora_into_transformer(
         cls,
         state_dict,
@@ -3733,21 +3736,7 @@ class KandinskyLoraLoaderMixin(LoraBaseMixin):
         metadata=None,
     ):
         """
-        Load the LoRA layers specified in `state_dict` into `transformer`.
-
-        Parameters:
-            state_dict (`dict`):
-                A standard state dict containing the lora layer parameters.
-            transformer (`Kandinsky5Transformer3DModel`):
-                The transformer model to load the LoRA layers into.
-            adapter_name (`str`, *optional*):
-                Adapter name to be used for referencing the loaded adapter model.
-            low_cpu_mem_usage (`bool`, *optional*):
-                Speed up model loading by only loading the pretrained LoRA weights.
-            hotswap (`bool`, *optional*):
-                See [`~loaders.KandinskyLoraLoaderMixin.load_lora_weights`].
-            metadata (`dict`):
-                Optional LoRA adapter metadata.
+        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_unet`] for more details.
         """
         if low_cpu_mem_usage and not is_peft_version(">=", "0.13.1"):
             raise ValueError(
@@ -3767,6 +3756,7 @@ class KandinskyLoraLoaderMixin(LoraBaseMixin):
         )
 
     @classmethod
+    # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.save_lora_weights
     def save_lora_weights(
         cls,
         save_directory: Union[str, os.PathLike],
@@ -3778,21 +3768,7 @@ class KandinskyLoraLoaderMixin(LoraBaseMixin):
         transformer_lora_adapter_metadata=None,
     ):
         r"""
-        Save the LoRA parameters corresponding to the transformer and text encoders.
-
-        Arguments:
-            save_directory (`str` or `os.PathLike`):
-                Directory to save LoRA parameters to.
-            transformer_lora_layers (`Dict[str, torch.nn.Module]` or `Dict[str, torch.Tensor]`):
-                State dict of the LoRA layers corresponding to the `transformer`.
-            is_main_process (`bool`, *optional*, defaults to `True`):
-                Whether the process calling this is the main process.
-            save_function (`Callable`):
-                The function to use to save the state dictionary.
-            safe_serialization (`bool`, *optional*, defaults to `True`):
-                Whether to save the model using `safetensors` or the traditional PyTorch way.
-            transformer_lora_adapter_metadata:
-                LoRA adapter metadata associated with the transformer.
+        See [`~loaders.StableDiffusionLoraLoaderMixin.save_lora_weights`] for more information.
         """
         lora_layers = {}
         lora_metadata = {}
@@ -3814,6 +3790,7 @@ class KandinskyLoraLoaderMixin(LoraBaseMixin):
             safe_serialization=safe_serialization,
         )
 
+    # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.fuse_lora
     def fuse_lora(
         self,
         components: List[str] = ["transformer"],
@@ -3823,25 +3800,7 @@ class KandinskyLoraLoaderMixin(LoraBaseMixin):
         **kwargs,
     ):
         r"""
-        Fuses the LoRA parameters into the original parameters of the corresponding blocks.
-
-        Args:
-            components: (`List[str]`): List of LoRA-injectable components to fuse the LoRAs into.
-            lora_scale (`float`, defaults to 1.0):
-                Controls how much to influence the outputs with the LoRA parameters.
-            safe_fusing (`bool`, defaults to `False`):
-                Whether to check fused weights for NaN values before fusing.
-            adapter_names (`List[str]`, *optional*):
-                Adapter names to be used for fusing.
-
-        Example:
-        ```py
-        from diffusers import Kandinsky5T2VPipeline
-
-        pipeline = Kandinsky5T2VPipeline.from_pretrained("ai-forever/Kandinsky-5.0-T2V")
-        pipeline.load_lora_weights("path/to/lora.safetensors")
-        pipeline.fuse_lora(lora_scale=0.7)
-        ```
+        See [`~loaders.StableDiffusionLoraLoaderMixin.fuse_lora`] for more details.
         """
         super().fuse_lora(
             components=components,
@@ -3851,12 +3810,10 @@ class KandinskyLoraLoaderMixin(LoraBaseMixin):
             **kwargs,
         )
 
+    # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.unfuse_lora
     def unfuse_lora(self, components: List[str] = ["transformer"], **kwargs):
         r"""
-        Reverses the effect of [`pipe.fuse_lora()`].
-
-        Args:
-            components (`List[str]`): List of LoRA-injectable components to unfuse LoRA from.
+        See [`~loaders.StableDiffusionLoraLoaderMixin.unfuse_lora`] for more details.
         """
         super().unfuse_lora(components=components, **kwargs)
 
