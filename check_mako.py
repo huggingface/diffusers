@@ -119,13 +119,15 @@ def get_prompts():
     return prompt, negative_prompt
 
 
+# Fixing batch size of 2 and `max_sequence_length` of 256 because of the kernels.
 def run_inference(pipeline, prompt, negative_prompt, num_inference_steps=50):
     output = pipeline(
-        prompt=prompt,
+        prompt=[prompt] * 2,
         negative_prompt=negative_prompt,
         num_frames=81,
         guidance_scale=5.0,
         num_inference_steps=num_inference_steps,
+        max_sequence_length=256,
         generator=torch.manual_seed(0)
     ).frames[0]
     return output

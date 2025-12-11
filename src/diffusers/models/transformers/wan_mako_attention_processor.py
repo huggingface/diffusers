@@ -2,7 +2,7 @@ import torch
 import torch.nn.functional as F
 from typing import Optional, Tuple
 from .transformer_wan import WanAttention
-from .wan_mako_kernels import triton_matmul, triton_rms_norm2, fused_matmul_residual
+from .wan_mako_kernels import triton_matmul, triton_rms_norm2
 
 
 # TODO: incorporate I2V support
@@ -78,4 +78,4 @@ class WanMakoAttnProcessor:
         # (B, H, S, head_dim) -> (B, S, D)
         attn_out = attn_out.transpose(1, 2).reshape(B, S, D)
 
-        return attn_out
+        return attn_out.contiguous() if not attn_out.is_contiguous() else attn_out

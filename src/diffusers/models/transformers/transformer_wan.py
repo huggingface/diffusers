@@ -462,8 +462,10 @@ class WanTransformerBlock(nn.Module):
         temb: torch.Tensor,
         rotary_emb: torch.Tensor,
     ) -> torch.Tensor:
-        # Instead of performing the output projections on the attention outputs in the attention block
+        # Notes: Instead of performing the output projections on the attention outputs in the attention block
         # we perform them here to take advantage of fusion.
+        if not hidden_states.is_contiguous():
+            hidden_states = hidden_states.contiguous()
         B, S, D = hidden_states.shape
         if temb.ndim == 4:
             # temb: batch_size, seq_len, 6, inner_dim (wan2.2 ti2v)
@@ -500,7 +502,6 @@ class WanTransformerBlock(nn.Module):
         attn_output = self.attn2(norm_hidden_states, encoder_hidden_states, None, None)
         # hidden_states = hidden_states + attn_output
         # Fused Cross-Attn Output Proj + Residual (no gate)
-        print(f"{hidden_states.shape=}, {attn_output.shape=}, {self.attn2.to_out[0].weight.shape=}, {self.attn2.to_out[0].bias.shape=}")
         hidden_states = fused_matmul_residual(
             attn_output, self.attn2.to_out[0].weight, self.attn2.to_out[0].bias, hidden_states
         )
@@ -510,7 +511,6 @@ class WanTransformerBlock(nn.Module):
         #     hidden_states
         # )
         norm_hidden_states = triton_adaptive_norm(hidden_states, c_scale_msa, c_shift_msa, self.norm3.eps)
-        print(f"{norm_hidden_states.shape=}")
         # ff_output = self.ffn(norm_hidden_states)
         # hidden_states = (hidden_states.float() + ff_output.float() * c_gate_msa).type_as(hidden_states)
 

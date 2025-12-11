@@ -587,7 +587,6 @@ class ModelNew(nn.Module):
         attn_out2 = attn_out2.transpose(1, 2).contiguous().view(B, S, D)
         
         # Fused Cross-Attn Output Proj + Residual (no gate)
-        print(f"{hidden_states.shape=}, {attn_out2.shape=}, {block.attn2.to_out[0].weight.shape=}, {block.attn2.to_out[0].bias.shape=}")
         hidden_states = fused_matmul_residual(
             attn_out2, block.attn2.to_out[0].weight, block.attn2.to_out[0].bias, hidden_states
         )
