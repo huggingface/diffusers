@@ -20,6 +20,7 @@ from torch.nn.utils.rnn import pad_sequence
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import PeftAdapterMixin
+from ...loaders.single_file_model import FromOriginalModelMixin
 from ...models.attention_processor import Attention
 from ...models.normalization import RMSNorm
 from ...utils.torch_utils import maybe_allow_in_graph
@@ -132,7 +133,7 @@ class ZImageControlTransformerBlock(nn.Module):
         return c
 
 
-class ZImageControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
+class ZImageControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginalModelMixin):
     _supports_gradient_checkpointing = True
 
     @register_to_config

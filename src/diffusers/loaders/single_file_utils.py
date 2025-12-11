@@ -121,6 +121,7 @@ CHECKPOINT_KEY_NAMES = {
     "instruct-pix2pix": "model.diffusion_model.input_blocks.0.0.weight",
     "lumina2": ["model.diffusion_model.cap_embedder.0.weight", "cap_embedder.0.weight"],
     "z-image-turbo": "cap_embedder.0.weight",
+    "z-image-turbo-controlnet": "control_all_x_embedder.2-1.weight",
     "sana": [
         "blocks.0.cross_attn.q_linear.weight",
         "blocks.0.cross_attn.q_linear.bias",
@@ -778,6 +779,9 @@ def infer_diffusers_model_type(checkpoint):
             model_type = "cosmos-2.0-v2w-2B" if x_embedder_shape[0] == 2048 else "cosmos-2.0-v2w-14B"
         else:
             raise ValueError(f"Unexpected x_embedder shape: {x_embedder_shape} when loading Cosmos 2.0 model.")
+
+    elif CHECKPOINT_KEY_NAMES["z-image-turbo-controlnet"] in checkpoint:
+        model_type = "z-image-turbo-controlnet"
 
     else:
         model_type = "v1"
@@ -3885,3 +3889,18 @@ def convert_z_image_transformer_checkpoint_to_diffusers(checkpoint, **kwargs):
             handler_fn_inplace(key, converted_state_dict)
 
     return converted_state_dict
+
+
+def create_z_image_controlnet_config():
+    return {
+        "all_f_patch_size": [1],
+        "all_patch_size": [2],
+        "control_in_dim": 16,
+        "control_layers_places": [0, 5, 10, 15, 20, 25],
+        "dim": 3840,
+        "n_heads": 30,
+        "n_kv_heads": 30,
+        "n_refiner_layers": 2,
+        "norm_eps": 1e-05,
+        "qk_norm": True,
+    }

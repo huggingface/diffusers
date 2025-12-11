@@ -53,6 +53,7 @@ from .single_file_utils import (
     create_controlnet_diffusers_config_from_ldm,
     create_unet_diffusers_config_from_ldm,
     create_vae_diffusers_config_from_ldm,
+    create_z_image_controlnet_config,
     fetch_diffusers_config,
     fetch_original_config,
     load_single_file_checkpoint,
@@ -171,6 +172,10 @@ SINGLE_FILE_LOADABLE_CLASSES = {
     "ZImageTransformer2DModel": {
         "checkpoint_mapping_fn": convert_z_image_transformer_checkpoint_to_diffusers,
         "default_subfolder": "transformer",
+    },
+    "ZImageControlNetModel": {
+        "checkpoint_mapping_fn": lambda x: x,
+        "config_create_fn": create_z_image_controlnet_config,
     },
 }
 
@@ -369,6 +374,9 @@ class FromOriginalModelMixin:
             diffusers_model_config = config_mapping_fn(
                 original_config=original_config, checkpoint=checkpoint, **config_mapping_kwargs
             )
+        elif "config_create_fn" in mapping_functions:
+            config_create_fn = mapping_functions["config_create_fn"]
+            diffusers_model_config = config_create_fn()
         else:
             if config is not None:
                 if isinstance(config, str):
