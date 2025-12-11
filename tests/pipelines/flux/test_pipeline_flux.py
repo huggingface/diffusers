@@ -29,6 +29,7 @@ from ..test_pipelines_common import (
     FluxIPAdapterTesterMixin,
     PipelineTesterMixin,
     PyramidAttentionBroadcastTesterMixin,
+    TaylorSeerCacheTesterMixin,
     check_qkv_fused_layers_exist,
 )
 
@@ -39,6 +40,7 @@ class FluxPipelineFastTests(
     PyramidAttentionBroadcastTesterMixin,
     FasterCacheTesterMixin,
     FirstBlockCacheTesterMixin,
+    TaylorSeerCacheTesterMixin,
     unittest.TestCase,
 ):
     pipeline_class = FluxPipeline

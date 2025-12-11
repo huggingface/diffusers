@@ -169,10 +169,12 @@ else:
             "LayerSkipConfig",
             "PyramidAttentionBroadcastConfig",
             "SmoothedEnergyGuidanceConfig",
+            "TaylorSeerCacheConfig",
             "apply_faster_cache",
             "apply_first_block_cache",
             "apply_layer_skip",
             "apply_pyramid_attention_broadcast",
+            "apply_taylorseer_cache",
         ]
     )
     _import_structure["models"].extend(
@@ -190,6 +192,7 @@ else:
             "AutoencoderKLHunyuanImage",
             "AutoencoderKLHunyuanImageRefiner",
             "AutoencoderKLHunyuanVideo",
+            "AutoencoderKLHunyuanVideo15",
             "AutoencoderKLLTXVideo",
             "AutoencoderKLMagvit",
             "AutoencoderKLMochi",
@@ -225,6 +228,7 @@ else:
             "HunyuanDiT2DModel",
             "HunyuanDiT2DMultiControlNetModel",
             "HunyuanImageTransformer2DModel",
+            "HunyuanVideo15Transformer3DModel",
             "HunyuanVideoFramepackTransformer3DModel",
             "HunyuanVideoTransformer3DModel",
             "I2VGenXLUNet",
@@ -240,6 +244,7 @@ else:
             "MultiAdapter",
             "MultiControlNetModel",
             "OmniGenTransformer2DModel",
+            "OvisImageTransformer2DModel",
             "ParallelConfig",
             "PixArtTransformer2DModel",
             "PriorTransformer",
@@ -414,6 +419,8 @@ else:
             "Wan22AutoBlocks",
             "WanAutoBlocks",
             "WanModularPipeline",
+            "ZImageAutoBlocks",
+            "ZImageModularPipeline",
         ]
     )
     _import_structure["pipelines"].extend(
@@ -481,6 +488,8 @@ else:
             "HunyuanImagePipeline",
             "HunyuanImageRefinerPipeline",
             "HunyuanSkyreelsImageToVideoPipeline",
+            "HunyuanVideo15ImageToVideoPipeline",
+            "HunyuanVideo15Pipeline",
             "HunyuanVideoFramepackPipeline",
             "HunyuanVideoImageToVideoPipeline",
             "HunyuanVideoPipeline",
@@ -494,6 +503,9 @@ else:
             "ImageTextPipelineOutput",
             "Kandinsky3Img2ImgPipeline",
             "Kandinsky3Pipeline",
+            "Kandinsky5I2IPipeline",
+            "Kandinsky5I2VPipeline",
+            "Kandinsky5T2IPipeline",
             "Kandinsky5T2VPipeline",
             "KandinskyCombinedPipeline",
             "KandinskyImg2ImgCombinedPipeline",
@@ -533,6 +545,7 @@ else:
             "MochiPipeline",
             "MusicLDMPipeline",
             "OmniGenPipeline",
+            "OvisImagePipeline",
             "PaintByExamplePipeline",
             "PIAPipeline",
             "PixArtAlphaPipeline",
@@ -651,6 +664,7 @@ else:
             "WuerstchenCombinedPipeline",
             "WuerstchenDecoderPipeline",
             "WuerstchenPriorPipeline",
+            "ZImageImg2ImgPipeline",
             "ZImagePipeline",
         ]
     )
@@ -890,10 +904,12 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             LayerSkipConfig,
             PyramidAttentionBroadcastConfig,
             SmoothedEnergyGuidanceConfig,
+            TaylorSeerCacheConfig,
             apply_faster_cache,
             apply_first_block_cache,
             apply_layer_skip,
             apply_pyramid_attention_broadcast,
+            apply_taylorseer_cache,
         )
         from .models import (
             AllegroTransformer3DModel,
@@ -909,6 +925,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AutoencoderKLHunyuanImage,
             AutoencoderKLHunyuanImageRefiner,
             AutoencoderKLHunyuanVideo,
+            AutoencoderKLHunyuanVideo15,
             AutoencoderKLLTXVideo,
             AutoencoderKLMagvit,
             AutoencoderKLMochi,
@@ -944,6 +961,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             HunyuanDiT2DModel,
             HunyuanDiT2DMultiControlNetModel,
             HunyuanImageTransformer2DModel,
+            HunyuanVideo15Transformer3DModel,
             HunyuanVideoFramepackTransformer3DModel,
             HunyuanVideoTransformer3DModel,
             I2VGenXLUNet,
@@ -959,6 +977,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             MultiAdapter,
             MultiControlNetModel,
             OmniGenTransformer2DModel,
+            OvisImageTransformer2DModel,
             ParallelConfig,
             PixArtTransformer2DModel,
             PriorTransformer,
@@ -991,6 +1010,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             WanAnimateTransformer3DModel,
             WanTransformer3DModel,
             WanVACETransformer3DModel,
+            ZImageTransformer2DModel,
             attention_backend,
         )
         from .modular_pipelines import ComponentsManager, ComponentSpec, ModularPipeline, ModularPipelineBlocks
@@ -1106,6 +1126,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             Wan22AutoBlocks,
             WanAutoBlocks,
             WanModularPipeline,
+            ZImageAutoBlocks,
+            ZImageModularPipeline,
         )
         from .pipelines import (
             AllegroPipeline,
@@ -1169,6 +1191,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             HunyuanImagePipeline,
             HunyuanImageRefinerPipeline,
             HunyuanSkyreelsImageToVideoPipeline,
+            HunyuanVideo15ImageToVideoPipeline,
+            HunyuanVideo15Pipeline,
             HunyuanVideoFramepackPipeline,
             HunyuanVideoImageToVideoPipeline,
             HunyuanVideoPipeline,
@@ -1182,6 +1206,9 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             ImageTextPipelineOutput,
             Kandinsky3Img2ImgPipeline,
             Kandinsky3Pipeline,
+            Kandinsky5I2IPipeline,
+            Kandinsky5I2VPipeline,
+            Kandinsky5T2IPipeline,
             Kandinsky5T2VPipeline,
             KandinskyCombinedPipeline,
             KandinskyImg2ImgCombinedPipeline,
@@ -1221,6 +1248,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             MochiPipeline,
             MusicLDMPipeline,
             OmniGenPipeline,
+            OvisImagePipeline,
             PaintByExamplePipeline,
             PIAPipeline,
             PixArtAlphaPipeline,
@@ -1337,6 +1365,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             WuerstchenCombinedPipeline,
             WuerstchenDecoderPipeline,
             WuerstchenPriorPipeline,
+            ZImageImg2ImgPipeline,
             ZImagePipeline,
         )
 
