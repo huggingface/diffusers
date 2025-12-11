@@ -17,8 +17,9 @@ from typing import List, Optional, Union
 
 import torch
 
-from ...loaders import FluxLoraLoaderMixin, TextualInversionLoaderMixin
+from ...loaders import TextualInversionLoaderMixin
 from ...utils import USE_PEFT_BACKEND, deprecate, logging, scale_lora_layers, unscale_lora_layers
+from .lora_utils import FluxLoraLoaderMixin
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
