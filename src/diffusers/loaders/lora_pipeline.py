@@ -3637,7 +3637,8 @@ class KandinskyLoraLoaderMixin(LoraBaseMixin):
         r"""
         See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`] for more details.
         """
-        # Load the main state dict first which has the LoRA layers
+        # Load the main state dict first which has the LoRA layers for either of
+        # transformer and text encoder or both.
         cache_dir = kwargs.pop("cache_dir", None)
         force_download = kwargs.pop("force_download", False)
         proxies = kwargs.pop("proxies", None)
@@ -3695,7 +3696,7 @@ class KandinskyLoraLoaderMixin(LoraBaseMixin):
             raise ValueError("PEFT backend is required for this method.")
 
         low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT_LORA)
-        if low_cpu_mem_usage and not is_peft_version(">=", "0.13.1"):
+        if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
             raise ValueError(
                 "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
             )
@@ -3712,7 +3713,6 @@ class KandinskyLoraLoaderMixin(LoraBaseMixin):
         if not is_correct_format:
             raise ValueError("Invalid LoRA checkpoint.")
 
-        # Load LoRA into transformer
         self.load_lora_into_transformer(
             state_dict,
             transformer=getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer,
@@ -3738,7 +3738,7 @@ class KandinskyLoraLoaderMixin(LoraBaseMixin):
         """
         See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_unet`] for more details.
         """
-        if low_cpu_mem_usage and not is_peft_version(">=", "0.13.1"):
+        if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
             raise ValueError(
                 "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
             )
@@ -3765,7 +3765,7 @@ class KandinskyLoraLoaderMixin(LoraBaseMixin):
         weight_name: str = None,
         save_function: Callable = None,
         safe_serialization: bool = True,
-        transformer_lora_adapter_metadata=None,
+        transformer_lora_adapter_metadata: Optional[dict] = None,
     ):
         r"""
         See [`~loaders.StableDiffusionLoraLoaderMixin.save_lora_weights`] for more information.
@@ -3778,7 +3778,7 @@ class KandinskyLoraLoaderMixin(LoraBaseMixin):
             lora_metadata[cls.transformer_name] = transformer_lora_adapter_metadata
 
         if not lora_layers:
-            raise ValueError("You must pass at least one of `transformer_lora_layers`")
+            raise ValueError("You must pass at least one of `transformer_lora_layers` or `text_encoder_lora_layers`.")
 
         cls._save_lora_weights(
             save_directory=save_directory,
