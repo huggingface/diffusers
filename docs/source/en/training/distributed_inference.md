@@ -333,3 +333,20 @@ pipeline = DiffusionPipeline.from_pretrained(
     CKPT_ID, transformer=transformer, torch_dtype=torch.bfloat16,
 ).to(device)
 ```
+### Unified Attention
+
+[Unified Sequence Parallelism](https://huggingface.co/papers/2405.07719) combines Ring Attention and Ulysses Attention into a single approach for efficient long-sequence processing. It applies Ulysses's *all-to-all* communication first to redistribute heads and sequence tokens, then uses Ring Attention to process the redistributed data, and finally reverses the *all-to-all* to restore the original layout.
+
+This hybrid approach leverages the strengths of both methods:
+- **Ulysses Attention** efficiently parallelizes across attention heads
+- **Ring Attention** handles very long sequences with minimal memory overhead
+- Together, they enable 2D parallelization across both heads and sequence dimensions
+
+[`ContextParallelConfig`] supports Unified Attention by specifying both `ulysses_degree` and `ring_degree`. The total number of devices used is `ulysses_degree * ring_degree`, arranged in a 2D grid where Ulysses and Ring groups are orthogonal (non-overlapping).
+Pass the [`ContextParallelConfig`] with both `ulysses_degree` and `ring_degree` set to bigger than 1 to [`~ModelMixin.enable_parallelism`].
+
+```py
+pipeline.transformer.enable_parallelism(config=ContextParallelConfig(ulysses_degree=2, ring_degree=2))
+```
+
+Unified Attention is to be used when there are enough devices to arrange in a 2D grid (at least 4 devices).
