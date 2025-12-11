@@ -12,10 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import math
 from typing import List, Optional
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from torch.nn.utils.rnn import pad_sequence
 
 from ...configuration_utils import ConfigMixin, register_to_config
@@ -24,17 +26,271 @@ from ...loaders.single_file_model import FromOriginalModelMixin
 from ...models.attention_processor import Attention
 from ...models.normalization import RMSNorm
 from ...utils.torch_utils import maybe_allow_in_graph
+from ..attention_dispatch import dispatch_attention_fn
 from ..controlnets.controlnet import zero_module
 from ..modeling_utils import ModelMixin
-from ..transformers.transformer_z_image import (
-    ADALN_EMBED_DIM,
-    SEQ_MULTI_OF,
-    FeedForward,
-    RopeEmbedder,
-    TimestepEmbedder,
-    ZImageTransformerBlock,
-    ZSingleStreamAttnProcessor,
-)
+
+
+ADALN_EMBED_DIM = 256
+SEQ_MULTI_OF = 32
+
+
+# Copied from diffusers.models.transformers.transformer_z_image.TimestepEmbedder
+class TimestepEmbedder(nn.Module):
+    def __init__(self, out_size, mid_size=None, frequency_embedding_size=256):
+        super().__init__()
+        if mid_size is None:
+            mid_size = out_size
+        self.mlp = nn.Sequential(
+            nn.Linear(frequency_embedding_size, mid_size, bias=True),
+            nn.SiLU(),
+            nn.Linear(mid_size, out_size, bias=True),
+        )
+
+        self.frequency_embedding_size = frequency_embedding_size
+
+    @staticmethod
+    def timestep_embedding(t, dim, max_period=10000):
+        with torch.amp.autocast("cuda", enabled=False):
+            half = dim // 2
+            freqs = torch.exp(
+                -math.log(max_period) * torch.arange(start=0, end=half, dtype=torch.float32, device=t.device) / half
+            )
+            args = t[:, None].float() * freqs[None]
+            embedding = torch.cat([torch.cos(args), torch.sin(args)], dim=-1)
+            if dim % 2:
+                embedding = torch.cat([embedding, torch.zeros_like(embedding[:, :1])], dim=-1)
+            return embedding
+
+    def forward(self, t):
+        t_freq = self.timestep_embedding(t, self.frequency_embedding_size)
+        weight_dtype = self.mlp[0].weight.dtype
+        compute_dtype = getattr(self.mlp[0], "compute_dtype", None)
+        if weight_dtype.is_floating_point:
+            t_freq = t_freq.to(weight_dtype)
+        elif compute_dtype is not None:
+            t_freq = t_freq.to(compute_dtype)
+        t_emb = self.mlp(t_freq)
+        return t_emb
+
+
+# Copied from diffusers.models.transformers.transformer_z_image.ZSingleStreamAttnProcessor
+class ZSingleStreamAttnProcessor:
+    """
+    Processor for Z-Image single stream attention that adapts the existing Attention class to match the behavior of the
+    original Z-ImageAttention module.
+    """
+
+    _attention_backend = None
+    _parallel_config = None
+
+    def __init__(self):
+        if not hasattr(F, "scaled_dot_product_attention"):
+            raise ImportError(
+                "ZSingleStreamAttnProcessor requires PyTorch 2.0. To use it, please upgrade PyTorch to version 2.0 or higher."
+            )
+
+    def __call__(
+        self,
+        attn: Attention,
+        hidden_states: torch.Tensor,
+        encoder_hidden_states: Optional[torch.Tensor] = None,
+        attention_mask: Optional[torch.Tensor] = None,
+        freqs_cis: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        query = attn.to_q(hidden_states)
+        key = attn.to_k(hidden_states)
+        value = attn.to_v(hidden_states)
+
+        query = query.unflatten(-1, (attn.heads, -1))
+        key = key.unflatten(-1, (attn.heads, -1))
+        value = value.unflatten(-1, (attn.heads, -1))
+
+        # Apply Norms
+        if attn.norm_q is not None:
+            query = attn.norm_q(query)
+        if attn.norm_k is not None:
+            key = attn.norm_k(key)
+
+        # Apply RoPE
+        def apply_rotary_emb(x_in: torch.Tensor, freqs_cis: torch.Tensor) -> torch.Tensor:
+            with torch.amp.autocast("cuda", enabled=False):
+                x = torch.view_as_complex(x_in.float().reshape(*x_in.shape[:-1], -1, 2))
+                freqs_cis = freqs_cis.unsqueeze(2)
+                x_out = torch.view_as_real(x * freqs_cis).flatten(3)
+                return x_out.type_as(x_in)  # todo
+
+        if freqs_cis is not None:
+            query = apply_rotary_emb(query, freqs_cis)
+            key = apply_rotary_emb(key, freqs_cis)
+
+        # Cast to correct dtype
+        dtype = query.dtype
+        query, key = query.to(dtype), key.to(dtype)
+
+        # From [batch, seq_len] to [batch, 1, 1, seq_len] -> broadcast to [batch, heads, seq_len, seq_len]
+        if attention_mask is not None and attention_mask.ndim == 2:
+            attention_mask = attention_mask[:, None, None, :]
+
+        # Compute joint attention
+        hidden_states = dispatch_attention_fn(
+            query,
+            key,
+            value,
+            attn_mask=attention_mask,
+            dropout_p=0.0,
+            is_causal=False,
+            backend=self._attention_backend,
+            parallel_config=self._parallel_config,
+        )
+
+        # Reshape back
+        hidden_states = hidden_states.flatten(2, 3)
+        hidden_states = hidden_states.to(dtype)
+
+        output = attn.to_out[0](hidden_states)
+        if len(attn.to_out) > 1:  # dropout
+            output = attn.to_out[1](output)
+
+        return output
+
+
+# Copied from diffusers.models.transformers.transformer_z_image.FeedForward
+class FeedForward(nn.Module):
+    def __init__(self, dim: int, hidden_dim: int):
+        super().__init__()
+        self.w1 = nn.Linear(dim, hidden_dim, bias=False)
+        self.w2 = nn.Linear(hidden_dim, dim, bias=False)
+        self.w3 = nn.Linear(dim, hidden_dim, bias=False)
+
+    def _forward_silu_gating(self, x1, x3):
+        return F.silu(x1) * x3
+
+    def forward(self, x):
+        return self.w2(self._forward_silu_gating(self.w1(x), self.w3(x)))
+
+
+@maybe_allow_in_graph
+# Copied from diffusers.models.transformers.transformer_z_image.ZImageTransformerBlock
+class ZImageTransformerBlock(nn.Module):
+    def __init__(
+        self,
+        layer_id: int,
+        dim: int,
+        n_heads: int,
+        n_kv_heads: int,
+        norm_eps: float,
+        qk_norm: bool,
+        modulation=True,
+    ):
+        super().__init__()
+        self.dim = dim
+        self.head_dim = dim // n_heads
+
+        # Refactored to use diffusers Attention with custom processor
+        # Original Z-Image params: dim, n_heads, n_kv_heads, qk_norm
+        self.attention = Attention(
+            query_dim=dim,
+            cross_attention_dim=None,
+            dim_head=dim // n_heads,
+            heads=n_heads,
+            qk_norm="rms_norm" if qk_norm else None,
+            eps=1e-5,
+            bias=False,
+            out_bias=False,
+            processor=ZSingleStreamAttnProcessor(),
+        )
+
+        self.feed_forward = FeedForward(dim=dim, hidden_dim=int(dim / 3 * 8))
+        self.layer_id = layer_id
+
+        self.attention_norm1 = RMSNorm(dim, eps=norm_eps)
+        self.ffn_norm1 = RMSNorm(dim, eps=norm_eps)
+
+        self.attention_norm2 = RMSNorm(dim, eps=norm_eps)
+        self.ffn_norm2 = RMSNorm(dim, eps=norm_eps)
+
+        self.modulation = modulation
+        if modulation:
+            self.adaLN_modulation = nn.Sequential(nn.Linear(min(dim, ADALN_EMBED_DIM), 4 * dim, bias=True))
+
+    def forward(
+        self,
+        x: torch.Tensor,
+        attn_mask: torch.Tensor,
+        freqs_cis: torch.Tensor,
+        adaln_input: Optional[torch.Tensor] = None,
+    ):
+        if self.modulation:
+            assert adaln_input is not None
+            scale_msa, gate_msa, scale_mlp, gate_mlp = self.adaLN_modulation(adaln_input).unsqueeze(1).chunk(4, dim=2)
+            gate_msa, gate_mlp = gate_msa.tanh(), gate_mlp.tanh()
+            scale_msa, scale_mlp = 1.0 + scale_msa, 1.0 + scale_mlp
+
+            # Attention block
+            attn_out = self.attention(
+                self.attention_norm1(x) * scale_msa, attention_mask=attn_mask, freqs_cis=freqs_cis
+            )
+            x = x + gate_msa * self.attention_norm2(attn_out)
+
+            # FFN block
+            x = x + gate_mlp * self.ffn_norm2(self.feed_forward(self.ffn_norm1(x) * scale_mlp))
+        else:
+            # Attention block
+            attn_out = self.attention(self.attention_norm1(x), attention_mask=attn_mask, freqs_cis=freqs_cis)
+            x = x + self.attention_norm2(attn_out)
+
+            # FFN block
+            x = x + self.ffn_norm2(self.feed_forward(self.ffn_norm1(x)))
+
+        return x
+
+
+# Copied from diffusers.models.transformers.transformer_z_image.RopeEmbedder
+class RopeEmbedder:
+    def __init__(
+        self,
+        theta: float = 256.0,
+        axes_dims: List[int] = (16, 56, 56),
+        axes_lens: List[int] = (64, 128, 128),
+    ):
+        self.theta = theta
+        self.axes_dims = axes_dims
+        self.axes_lens = axes_lens
+        assert len(axes_dims) == len(axes_lens), "axes_dims and axes_lens must have the same length"
+        self.freqs_cis = None
+
+    @staticmethod
+    def precompute_freqs_cis(dim: List[int], end: List[int], theta: float = 256.0):
+        with torch.device("cpu"):
+            freqs_cis = []
+            for i, (d, e) in enumerate(zip(dim, end)):
+                freqs = 1.0 / (theta ** (torch.arange(0, d, 2, dtype=torch.float64, device="cpu") / d))
+                timestep = torch.arange(e, device=freqs.device, dtype=torch.float64)
+                freqs = torch.outer(timestep, freqs).float()
+                freqs_cis_i = torch.polar(torch.ones_like(freqs), freqs).to(torch.complex64)  # complex64
+                freqs_cis.append(freqs_cis_i)
+
+            return freqs_cis
+
+    def __call__(self, ids: torch.Tensor):
+        assert ids.ndim == 2
+        assert ids.shape[-1] == len(self.axes_dims)
+        device = ids.device
+
+        if self.freqs_cis is None:
+            self.freqs_cis = self.precompute_freqs_cis(self.axes_dims, self.axes_lens, theta=self.theta)
+            self.freqs_cis = [freqs_cis.to(device) for freqs_cis in self.freqs_cis]
+        else:
+            # Ensure freqs_cis are on the same device as ids
+            if self.freqs_cis[0].device != device:
+                self.freqs_cis = [freqs_cis.to(device) for freqs_cis in self.freqs_cis]
+
+        result = []
+        for i in range(len(self.axes_dims)):
+            index = ids[:, i]
+            result.append(self.freqs_cis[i][index])
+        return torch.cat(result, dim=-1)
 
 
 @maybe_allow_in_graph
@@ -208,6 +464,7 @@ class ZImageControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigi
         return controlnet
 
     @staticmethod
+    # Copied from diffusers.models.transformers.transformer_z_image.ZImageTransformer2DModel.create_coordinate_grid
     def create_coordinate_grid(size, start=None, device=None):
         if start is None:
             start = (0 for _ in size)
@@ -216,6 +473,7 @@ class ZImageControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigi
         grids = torch.meshgrid(axes, indexing="ij")
         return torch.stack(grids, dim=-1)
 
+    # Copied from diffusers.models.transformers.transformer_z_image.ZImageTransformer2DModel.patchify_and_embed
     def patchify_and_embed(
         self,
         all_image: List[torch.Tensor],
