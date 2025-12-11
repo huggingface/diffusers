@@ -157,6 +157,7 @@ class FlowUniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
         sigmas: Optional[List[float]] = None,
         mu: Optional[Union[float, None]] = None,
         shift: Optional[Union[float, None]] = None,
+        scale: float = 0.001,
     ):
         """
         Sets the discrete timesteps used for the diffusion chain (to be run before inference).
@@ -191,10 +192,7 @@ class FlowUniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
                     shift = self.config.shift
                 sigmas = shift * sigmas / (1 + (shift - 1) * sigmas)  # pyright: ignore
 
-        if self.config.final_sigmas_type == "sigma_min":
-            # TODO(migmartin): this raises an error, rewrite this class
-            sigma_last = ((1 - self.alphas_cumprod[0]) / self.alphas_cumprod[0]) ** 0.5
-        elif self.config.final_sigmas_type == "zero":
+        if self.config.final_sigmas_type == "zero":
             sigma_last = 0
         else:
             raise ValueError(
@@ -205,7 +203,8 @@ class FlowUniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
         sigmas = np.concatenate([sigmas, [sigma_last]]).astype(np.float32)  # pyright: ignore
 
         self.sigmas = torch.from_numpy(sigmas)
-        self.timesteps = torch.from_numpy(timesteps).to(device=device, dtype=torch.int64)
+        self.timesteps = torch.from_numpy(timesteps).to(device=device, dtype=torch.float32)
+        self.timesteps *= scale
 
         self.num_inference_steps = len(timesteps)
 

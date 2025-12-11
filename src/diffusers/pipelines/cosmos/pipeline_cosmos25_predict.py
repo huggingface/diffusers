@@ -506,6 +506,7 @@ class Cosmos25PredictBase(DiffusionPipeline):
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
         max_sequence_length: int = 512,
         shift: float = 5.0,
+        timestep_scale: float = 0.001,
         conditional_frame_timestep: float = 0.1,
     ):
         r"""
@@ -635,13 +636,12 @@ class Cosmos25PredictBase(DiffusionPipeline):
             max_sequence_length=max_sequence_length,
         )
 
-        # 4. Prepare timesteps
-        self.scheduler.set_timesteps(num_inference_steps, shift=shift, device=device)
-        timesteps = self.scheduler.timesteps
-
-        # 5. Prepare latent variables
         vae_dtype = self.vae.dtype
         transformer_dtype = self.transformer.dtype
+
+        # 4. Prepare timesteps
+        self.scheduler.set_timesteps(num_inference_steps, shift=shift, device=device, scale=timestep_scale)
+        timesteps = torch.tensor(self.scheduler.timesteps).to(transformer_dtype)
 
         num_frames_in = None
         if image is not None:
@@ -700,12 +700,8 @@ class Cosmos25PredictBase(DiffusionPipeline):
                 if self.interrupt:
                     continue
 
-                self._current_timestep = t
-
-                timestep = torch.stack([t]).to(torch.float32)
-                # TODO: make scheduler scale this instead
-                timestep *= 0.001  # NOTE: timestep scale
-                timestep = timestep.to(transformer_dtype)
+                self._current_timestep = t.cpu().item()
+                timestep = t.unsqueeze(0)
 
                 in_latents = cond_mask * cond_latent + (1 - cond_mask) * latents  # TODO: could use cond_indicator
                 in_latents = in_latents.to(transformer_dtype)
