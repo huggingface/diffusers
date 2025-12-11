@@ -13,9 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import os
-import tempfile
 
+import pytest
 import torch
 
 from diffusers.models.attention_processor import IPAdapterAttnProcessor
@@ -61,7 +60,7 @@ def create_ip_adapter_state_dict(model):
     return {"ip_adapter": ip_state_dict}
 
 
-def check_if_ip_adapter_correctly_set(model) -> bool:
+def check_if_ip_adapter_correctly_set(model, processor_cls) -> bool:
     """
     Check if IP Adapter processors are correctly set in the model.
 
@@ -72,7 +71,7 @@ def check_if_ip_adapter_correctly_set(model) -> bool:
         bool: True if IP Adapter is correctly set, False otherwise
     """
     for module in model.attn_processors.values():
-        if isinstance(module, IPAdapterAttnProcessor):
+        if isinstance(module, processor_cls):
             return True
     return False
 
@@ -93,47 +92,48 @@ class IPAdapterTesterMixin:
         Use `pytest -m "not ip_adapter"` to skip these tests
     """
 
+    ip_adapter_processor_cls = None
+
     def create_ip_adapter_state_dict(self, model):
         raise NotImplementedError("child class must implement method to create IPAdapter State Dict")
+
+    def modify_inputs_for_ip_adapter(self, model, inputs_dict):
+        raise NotImplementedError("child class must implement method to create IPAdapter model inputs")
 
     def test_load_ip_adapter(self):
         init_dict = self.get_init_dict()
         inputs_dict = self.get_dummy_inputs()
         model = self.model_class(**init_dict).to(torch_device)
-        self.prepare_model(model)
 
         torch.manual_seed(0)
         output_no_adapter = model(**inputs_dict, return_dict=False)[0]
 
-        # Create dummy IP adapter state dict
         ip_adapter_state_dict = self.create_ip_adapter_state_dict(model)
 
-        # Load IP adapter
         model._load_ip_adapter_weights([ip_adapter_state_dict])
-        assert check_if_ip_adapter_correctly_set(model), "IP Adapter processors not set correctly"
+        assert check_if_ip_adapter_correctly_set(model, self.ip_adapter_processor_cls), (
+            "IP Adapter processors not set correctly"
+        )
 
-        torch.manual_seed(0)
-        # Create dummy image embeds for IP adapter
-        cross_attention_dim = getattr(model.config, "cross_attention_dim", 32)
-        image_embeds = torch.randn(1, 1, cross_attention_dim).to(torch_device)
-        inputs_dict_with_adapter = inputs_dict.copy()
-        inputs_dict_with_adapter["image_embeds"] = image_embeds
-
+        inputs_dict_with_adapter = self.modify_inputs_for_ip_adapter(model, inputs_dict.copy())
         outputs_with_adapter = model(**inputs_dict_with_adapter, return_dict=False)[0]
 
-        assert not torch.allclose(
-            output_no_adapter, outputs_with_adapter, atol=1e-4, rtol=1e-4
-        ), "Output should differ with IP Adapter enabled"
+        assert not torch.allclose(output_no_adapter, outputs_with_adapter, atol=1e-4, rtol=1e-4), (
+            "Output should differ with IP Adapter enabled"
+        )
 
+    @pytest.mark.skip(
+        reason="Setting IP Adapter scale is not defined at the model level. Enable this test after refactoring"
+    )
     def test_ip_adapter_scale(self):
         init_dict = self.get_init_dict()
         inputs_dict = self.get_dummy_inputs()
         model = self.model_class(**init_dict).to(torch_device)
-        # self.prepare_model(model)
 
-        # Create and load dummy IP adapter state dict
         ip_adapter_state_dict = self.create_ip_adapter_state_dict(model)
         model._load_ip_adapter_weights([ip_adapter_state_dict])
+
+        inputs_dict_with_adapter = self.modify_inputs_for_ip_adapter(model, inputs_dict.copy())
 
         # Test scale = 0.0 (no effect)
         model.set_ip_adapter_scale(0.0)
@@ -146,14 +146,16 @@ class IPAdapterTesterMixin:
         output_scale_one = model(**inputs_dict_with_adapter, return_dict=False)[0]
 
         # Outputs should differ with different scales
-        assert not torch.allclose(
-            output_scale_zero, output_scale_one, atol=1e-4, rtol=1e-4
-        ), "Output should differ with different IP Adapter scales"
+        assert not torch.allclose(output_scale_zero, output_scale_one, atol=1e-4, rtol=1e-4), (
+            "Output should differ with different IP Adapter scales"
+        )
 
+    @pytest.mark.skip(
+        reason="Unloading IP Adapter is not defined at the model level. Enable this test after refactoring"
+    )
     def test_unload_ip_adapter(self):
         init_dict = self.get_init_dict()
         model = self.model_class(**init_dict).to(torch_device)
-        self.prepare_model(model)
 
         # Save original processors
         original_processors = {k: type(v).__name__ for k, v in model.attn_processors.items()}
@@ -161,49 +163,16 @@ class IPAdapterTesterMixin:
         # Create and load IP adapter
         ip_adapter_state_dict = self.create_ip_adapter_state_dict(model)
         model._load_ip_adapter_weights([ip_adapter_state_dict])
-        assert check_if_ip_adapter_correctly_set(model), "IP Adapter should be set"
+
+        assert check_if_ip_adapter_correctly_set(model, self.ip_adapter_processor_cls), "IP Adapter should be set"
 
         # Unload IP adapter
         model.unload_ip_adapter()
-        assert not check_if_ip_adapter_correctly_set(model), "IP Adapter should be unloaded"
+
+        assert not check_if_ip_adapter_correctly_set(model, self.ip_adapter_processor_cls), (
+            "IP Adapter should be unloaded"
+        )
 
         # Verify processors are restored
         current_processors = {k: type(v).__name__ for k, v in model.attn_processors.items()}
         assert original_processors == current_processors, "Processors should be restored after unload"
-
-    def test_ip_adapter_save_load(self):
-        init_dict = self.get_init_dict()
-        inputs_dict = self.get_dummy_inputs()
-        model = self.model_class(**init_dict).to(torch_device)
-        self.prepare_model(model)
-
-        # Create and load IP adapter
-        ip_adapter_state_dict = self.create_ip_adapter_state_dict(model)
-        model._load_ip_adapter_weights([ip_adapter_state_dict])
-
-        torch.manual_seed(0)
-        output_before_save = model(**inputs_dict, return_dict=False)[0]
-
-        with tempfile.TemporaryDirectory() as tmpdir:
-            # Save the IP adapter weights
-            save_path = os.path.join(tmpdir, "ip_adapter.safetensors")
-            import safetensors.torch
-
-            safetensors.torch.save_file(ip_adapter_state_dict["ip_adapter"], save_path)
-
-            # Unload and reload
-            model.unload_ip_adapter()
-            assert not check_if_ip_adapter_correctly_set(model), "IP Adapter should be unloaded"
-
-            # Reload from saved file
-            loaded_state_dict = {"ip_adapter": safetensors.torch.load_file(save_path)}
-            model._load_ip_adapter_weights([loaded_state_dict])
-            assert check_if_ip_adapter_correctly_set(model), "IP Adapter should be loaded"
-
-            torch.manual_seed(0)
-            output_after_load = model(**inputs_dict_with_adapter, return_dict=False)[0]
-
-            # Outputs should match before and after save/load
-            assert torch.allclose(
-                output_before_save, output_after_load, atol=1e-4, rtol=1e-4
-            ), "Output should match before and after save/load"

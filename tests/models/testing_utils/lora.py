@@ -91,15 +91,15 @@ class LoraTesterMixin:
         torch.manual_seed(0)
         outputs_with_lora = model(**inputs_dict, return_dict=False)[0]
 
-        assert not torch.allclose(
-            output_no_lora, outputs_with_lora, atol=1e-4, rtol=1e-4
-        ), "Output should differ with LoRA enabled"
+        assert not torch.allclose(output_no_lora, outputs_with_lora, atol=1e-4, rtol=1e-4), (
+            "Output should differ with LoRA enabled"
+        )
 
         with tempfile.TemporaryDirectory() as tmpdir:
             model.save_lora_adapter(tmpdir)
-            assert os.path.isfile(
-                os.path.join(tmpdir, "pytorch_lora_weights.safetensors")
-            ), "LoRA weights file not created"
+            assert os.path.isfile(os.path.join(tmpdir, "pytorch_lora_weights.safetensors")), (
+                "LoRA weights file not created"
+            )
 
             state_dict_loaded = safetensors.torch.load_file(os.path.join(tmpdir, "pytorch_lora_weights.safetensors"))
 
@@ -119,12 +119,12 @@ class LoraTesterMixin:
         torch.manual_seed(0)
         outputs_with_lora_2 = model(**inputs_dict, return_dict=False)[0]
 
-        assert not torch.allclose(
-            output_no_lora, outputs_with_lora_2, atol=1e-4, rtol=1e-4
-        ), "Output should differ with LoRA enabled"
-        assert torch.allclose(
-            outputs_with_lora, outputs_with_lora_2, atol=1e-4, rtol=1e-4
-        ), "Outputs should match before and after save/load"
+        assert not torch.allclose(output_no_lora, outputs_with_lora_2, atol=1e-4, rtol=1e-4), (
+            "Output should differ with LoRA enabled"
+        )
+        assert torch.allclose(outputs_with_lora, outputs_with_lora_2, atol=1e-4, rtol=1e-4), (
+            "Outputs should match before and after save/load"
+        )
 
     def test_lora_wrong_adapter_name_raises_error(self):
         from peft import LoraConfig

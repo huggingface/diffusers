@@ -122,9 +122,9 @@ class CPUOffloadTesterMixin:
                 torch.manual_seed(0)
                 new_output = new_model(**inputs_dict)
 
-                assert torch.allclose(
-                    base_output[0], new_output[0], atol=1e-5
-                ), "Output should match with CPU offloading"
+                assert torch.allclose(base_output[0], new_output[0], atol=1e-5), (
+                    "Output should match with CPU offloading"
+                )
 
     @require_offload_support
     def test_disk_offload_without_safetensors(self):
@@ -183,9 +183,9 @@ class CPUOffloadTesterMixin:
             torch.manual_seed(0)
             new_output = new_model(**inputs_dict)
 
-            assert torch.allclose(
-                base_output[0], new_output[0], atol=1e-5
-            ), "Output should match with disk offloading (safetensors)"
+            assert torch.allclose(base_output[0], new_output[0], atol=1e-5), (
+                "Output should match with disk offloading (safetensors)"
+            )
 
 
 @is_group_offload
@@ -247,18 +247,18 @@ class GroupOffloadTesterMixin:
         )
         output_with_group_offloading4 = run_forward(model)
 
-        assert torch.allclose(
-            output_without_group_offloading, output_with_group_offloading1, atol=1e-5
-        ), "Output should match with block-level offloading"
-        assert torch.allclose(
-            output_without_group_offloading, output_with_group_offloading2, atol=1e-5
-        ), "Output should match with non-blocking block-level offloading"
-        assert torch.allclose(
-            output_without_group_offloading, output_with_group_offloading3, atol=1e-5
-        ), "Output should match with leaf-level offloading"
-        assert torch.allclose(
-            output_without_group_offloading, output_with_group_offloading4, atol=1e-5
-        ), "Output should match with leaf-level offloading with stream"
+        assert torch.allclose(output_without_group_offloading, output_with_group_offloading1, atol=1e-5), (
+            "Output should match with block-level offloading"
+        )
+        assert torch.allclose(output_without_group_offloading, output_with_group_offloading2, atol=1e-5), (
+            "Output should match with non-blocking block-level offloading"
+        )
+        assert torch.allclose(output_without_group_offloading, output_with_group_offloading3, atol=1e-5), (
+            "Output should match with leaf-level offloading"
+        )
+        assert torch.allclose(output_without_group_offloading, output_with_group_offloading4, atol=1e-5), (
+            "Output should match with leaf-level offloading with stream"
+        )
 
     @require_group_offload_support
     @torch.no_grad()
@@ -345,9 +345,9 @@ class GroupOffloadTesterMixin:
                         raise ValueError(f"Following files are missing: {', '.join(missing_files)}")
 
             output_with_group_offloading = _run_forward(model, inputs_dict)
-            assert torch.allclose(
-                output_without_group_offloading, output_with_group_offloading, atol=atol
-            ), "Output should match with disk-based group offloading"
+            assert torch.allclose(output_without_group_offloading, output_with_group_offloading, atol=atol), (
+                "Output should match with disk-based group offloading"
+            )
 
 
 class LayerwiseCastingTesterMixin:
@@ -396,16 +396,16 @@ class LayerwiseCastingTesterMixin:
         )
 
         compute_capability = get_torch_cuda_device_capability() if torch_device == "cuda" else None
-        assert (
-            fp8_e4m3_bf16_memory_footprint < fp8_e4m3_fp32_memory_footprint < fp32_memory_footprint
-        ), "Memory footprint should decrease with lower precision storage"
+        assert fp8_e4m3_bf16_memory_footprint < fp8_e4m3_fp32_memory_footprint < fp32_memory_footprint, (
+            "Memory footprint should decrease with lower precision storage"
+        )
 
         # NOTE: the following assertion would fail on our CI (running Tesla T4) due to bf16 using more memory than fp32.
         # On other devices, such as DGX (Ampere) and Audace (Ada), the test passes. So, we conditionally check it.
         if compute_capability and compute_capability >= LEAST_COMPUTE_CAPABILITY:
-            assert (
-                fp8_e4m3_bf16_max_memory < fp8_e4m3_fp32_max_memory
-            ), "Peak memory should be lower with bf16 compute on newer GPUs"
+            assert fp8_e4m3_bf16_max_memory < fp8_e4m3_fp32_max_memory, (
+                "Peak memory should be lower with bf16 compute on newer GPUs"
+            )
 
         # On this dummy test case with a small model, sometimes fp8_e4m3_fp32 max memory usage is higher than fp32 by a few
         # bytes. This only happens for some models, so we allow a small tolerance.
@@ -414,6 +414,36 @@ class LayerwiseCastingTesterMixin:
             fp8_e4m3_fp32_max_memory < fp32_max_memory
             or abs(fp8_e4m3_fp32_max_memory - fp32_max_memory) < MB_TOLERANCE
         ), "Peak memory should be lower or within tolerance with fp8 storage"
+
+    def test_layerwise_casting_training(self):
+        def test_fn(storage_dtype, compute_dtype):
+            if torch.device(torch_device).type == "cpu" and compute_dtype == torch.bfloat16:
+                pytest.skip("Skipping test because CPU doesn't go well with bfloat16.")
+
+            model = self.model_class(**self.get_init_dict())
+            model = model.to(torch_device, dtype=compute_dtype)
+            model.enable_layerwise_casting(storage_dtype=storage_dtype, compute_dtype=compute_dtype)
+            model.train()
+
+            inputs_dict = self.get_inputs_dict()
+            inputs_dict = cast_maybe_tensor_dtype(inputs_dict, torch.float32, compute_dtype)
+            with torch.amp.autocast(device_type=torch.device(torch_device).type):
+                output = model(**inputs_dict)
+
+                if isinstance(output, dict):
+                    output = output.to_tuple()[0]
+
+                input_tensor = inputs_dict[self.main_input_name]
+                noise = torch.randn((input_tensor.shape[0],) + self.output_shape).to(torch_device)
+                noise = cast_maybe_tensor_dtype(noise, torch.float32, compute_dtype)
+                loss = torch.nn.functional.mse_loss(output, noise)
+
+            loss.backward()
+
+        test_fn(torch.float16, torch.float32)
+        test_fn(torch.float8_e4m3fn, torch.float32)
+        test_fn(torch.float8_e5m2, torch.float32)
+        test_fn(torch.float8_e4m3fn, torch.bfloat16)
 
 
 @is_memory

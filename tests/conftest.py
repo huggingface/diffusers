@@ -46,6 +46,7 @@ def pytest_configure(config):
     config.addinivalue_line("markers", "torchao: marks tests for TorchAO quantization functionality")
     config.addinivalue_line("markers", "gguf: marks tests for GGUF quantization functionality")
     config.addinivalue_line("markers", "modelopt: marks tests for NVIDIA ModelOpt quantization functionality")
+    config.addinivalue_line("markers", "context_parallel: marks tests for context parallel inference functionality")
 
 
 def pytest_addoption(parser):

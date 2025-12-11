@@ -26,6 +26,7 @@ from diffusers.utils.import_utils import (
     is_nvidia_modelopt_available,
     is_optimum_quanto_available,
     is_torchao_available,
+    is_torchao_version,
 )
 
 from ...testing_utils import (
@@ -128,9 +129,9 @@ class QuantizationTesterMixin:
         model_quantized = self._create_quantized_model(config_kwargs)
         num_params_quantized = model_quantized.num_parameters()
 
-        assert (
-            num_params == num_params_quantized
-        ), f"Parameter count mismatch: unquantized={num_params}, quantized={num_params_quantized}"
+        assert num_params == num_params_quantized, (
+            f"Parameter count mismatch: unquantized={num_params}, quantized={num_params_quantized}"
+        )
 
     def _test_quantization_memory_footprint(self, config_kwargs, expected_memory_reduction=1.2):
         model = self._load_unquantized_model()
@@ -140,9 +141,9 @@ class QuantizationTesterMixin:
         mem_quantized = model_quantized.get_memory_footprint()
 
         ratio = mem / mem_quantized
-        assert (
-            ratio >= expected_memory_reduction
-        ), f"Memory ratio {ratio:.2f} is less than expected ({expected_memory_reduction}x). unquantized={mem}, quantized={mem_quantized}"
+        assert ratio >= expected_memory_reduction, (
+            f"Memory ratio {ratio:.2f} is less than expected ({expected_memory_reduction}x). unquantized={mem}, quantized={mem_quantized}"
+        )
 
     def _test_quantization_inference(self, config_kwargs):
         model_quantized = self._create_quantized_model(config_kwargs)
@@ -243,12 +244,12 @@ class QuantizationTesterMixin:
                 self._verify_if_layer_quantized(name, module, config_kwargs)
                 num_quantized_layers += 1
 
-        assert (
-            num_quantized_layers > 0
-        ), f"No quantized layers found in model (expected {expected_quantized_layers} linear layers, {num_fp32_modules} kept in FP32)"
-        assert (
-            num_quantized_layers == expected_quantized_layers
-        ), f"Quantized layer count mismatch: expected {expected_quantized_layers}, got {num_quantized_layers} (total linear layers: {num_linear_layers}, FP32 modules: {num_fp32_modules})"
+        assert num_quantized_layers > 0, (
+            f"No quantized layers found in model (expected {expected_quantized_layers} linear layers, {num_fp32_modules} kept in FP32)"
+        )
+        assert num_quantized_layers == expected_quantized_layers, (
+            f"Quantized layer count mismatch: expected {expected_quantized_layers}, got {num_quantized_layers} (total linear layers: {num_linear_layers}, FP32 modules: {num_fp32_modules})"
+        )
 
     def _test_quantization_modules_to_not_convert(self, config_kwargs, modules_to_not_convert):
         """
@@ -272,9 +273,9 @@ class QuantizationTesterMixin:
                 if any(excluded in name for excluded in modules_to_not_convert):
                     found_excluded = True
                     # This module should NOT be quantized
-                    assert not self._is_module_quantized(
-                        module
-                    ), f"Module {name} should not be quantized but was found to be quantized"
+                    assert not self._is_module_quantized(module), (
+                        f"Module {name} should not be quantized but was found to be quantized"
+                    )
 
         assert found_excluded, f"No linear layers found in excluded modules: {modules_to_not_convert}"
 
@@ -296,9 +297,9 @@ class QuantizationTesterMixin:
         mem_with_exclusion = model_with_exclusion.get_memory_footprint()
         mem_fully_quantized = model_fully_quantized.get_memory_footprint()
 
-        assert (
-            mem_with_exclusion > mem_fully_quantized
-        ), f"Model with exclusions should be larger. With exclusion: {mem_with_exclusion}, fully quantized: {mem_fully_quantized}"
+        assert mem_with_exclusion > mem_fully_quantized, (
+            f"Model with exclusions should be larger. With exclusion: {mem_with_exclusion}, fully quantized: {mem_fully_quantized}"
+        )
 
     def _test_quantization_device_map(self, config_kwargs):
         """
@@ -380,9 +381,9 @@ class BitsAndBytesTesterMixin(QuantizationTesterMixin):
 
     def _verify_if_layer_quantized(self, name, module, config_kwargs):
         expected_weight_class = bnb.nn.Params4bit if config_kwargs.get("load_in_4bit") else bnb.nn.Int8Params
-        assert (
-            module.weight.__class__ == expected_weight_class
-        ), f"Layer {name} has weight type {module.weight.__class__}, expected {expected_weight_class}"
+        assert module.weight.__class__ == expected_weight_class, (
+            f"Layer {name} has weight type {module.weight.__class__}, expected {expected_weight_class}"
+        )
 
     @pytest.mark.parametrize("config_name", list(BNB_CONFIGS.keys()))
     def test_bnb_quantization_num_parameters(self, config_name):
@@ -450,13 +451,13 @@ class BitsAndBytesTesterMixin(QuantizationTesterMixin):
             for name, module in model.named_modules():
                 if isinstance(module, torch.nn.Linear):
                     if any(fp32_name in name for fp32_name in model._keep_in_fp32_modules):
-                        assert (
-                            module.weight.dtype == torch.float32
-                        ), f"Module {name} should be FP32 but is {module.weight.dtype}"
+                        assert module.weight.dtype == torch.float32, (
+                            f"Module {name} should be FP32 but is {module.weight.dtype}"
+                        )
                     else:
-                        assert (
-                            module.weight.dtype == torch.uint8
-                        ), f"Module {name} should be uint8 but is {module.weight.dtype}"
+                        assert module.weight.dtype == torch.uint8, (
+                            f"Module {name} should be uint8 but is {module.weight.dtype}"
+                        )
 
             with torch.no_grad():
                 inputs = self.get_dummy_inputs()

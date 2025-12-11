@@ -116,8 +116,7 @@ class TrainingTesterMixin:
                 modules_with_gc_enabled[submodule.__class__.__name__] = True
 
         assert set(modules_with_gc_enabled.keys()) == expected_set, (
-            f"Modules with GC enabled {set(modules_with_gc_enabled.keys())} "
-            f"do not match expected set {expected_set}"
+            f"Modules with GC enabled {set(modules_with_gc_enabled.keys())} do not match expected set {expected_set}"
         )
         assert all(modules_with_gc_enabled.values()), "All modules should have GC enabled"
 
@@ -169,9 +168,9 @@ class TrainingTesterMixin:
         loss_2.backward()
 
         # compare the output and parameters gradients
-        assert (
-            loss - loss_2
-        ).abs() < loss_tolerance, f"Loss difference {(loss - loss_2).abs()} exceeds tolerance {loss_tolerance}"
+        assert (loss - loss_2).abs() < loss_tolerance, (
+            f"Loss difference {(loss - loss_2).abs()} exceeds tolerance {loss_tolerance}"
+        )
 
         named_params = dict(model.named_parameters())
         named_params_2 = dict(model_2.named_parameters())
@@ -184,9 +183,9 @@ class TrainingTesterMixin:
             if param.grad is None:
                 continue
 
-            assert torch_all_close(
-                param.grad.data, named_params_2[name].grad.data, atol=param_grad_tol
-            ), f"Gradient mismatch for {name}"
+            assert torch_all_close(param.grad.data, named_params_2[name].grad.data, atol=param_grad_tol), (
+                f"Gradient mismatch for {name}"
+            )
 
     def test_mixed_precision_training(self):
         init_dict = self.get_init_dict()

@@ -18,7 +18,7 @@ import uuid
 
 import pytest
 import torch
-from huggingface_hub.utils import is_jinja_available
+from huggingface_hub.utils import ModelCard, delete_repo, is_jinja_available
 
 from ...others.test_utils import TOKEN, USER, is_staging_test
 
@@ -58,9 +58,9 @@ class ModelPushToHubTesterMixin:
 
         new_model = self.model_class.from_pretrained(f"{USER}/{self.repo_id}")
         for p1, p2 in zip(model.parameters(), new_model.parameters()):
-            assert torch.equal(
-                p1, p2
-            ), "Parameters don't match after save_pretrained with push_to_hub and from_pretrained"
+            assert torch.equal(p1, p2), (
+                "Parameters don't match after save_pretrained with push_to_hub and from_pretrained"
+            )
 
         # Reset repo
         delete_repo(self.repo_id, token=TOKEN)
@@ -84,9 +84,9 @@ class ModelPushToHubTesterMixin:
 
         new_model = self.model_class.from_pretrained(self.org_repo_id)
         for p1, p2 in zip(model.parameters(), new_model.parameters()):
-            assert torch.equal(
-                p1, p2
-            ), "Parameters don't match after save_pretrained with push_to_hub to org and from_pretrained"
+            assert torch.equal(p1, p2), (
+                "Parameters don't match after save_pretrained with push_to_hub to org and from_pretrained"
+            )
 
         # Reset repo
         delete_repo(self.org_repo_id, token=TOKEN)
@@ -101,9 +101,9 @@ class ModelPushToHubTesterMixin:
         model.push_to_hub(self.repo_id, token=TOKEN)
 
         model_card = ModelCard.load(f"{USER}/{self.repo_id}", token=TOKEN).data
-        assert (
-            model_card.library_name == "diffusers"
-        ), f"Expected library_name 'diffusers', got {model_card.library_name}"
+        assert model_card.library_name == "diffusers", (
+            f"Expected library_name 'diffusers', got {model_card.library_name}"
+        )
 
         # Reset repo
         delete_repo(self.repo_id, token=TOKEN)

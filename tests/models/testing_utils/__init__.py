@@ -1,4 +1,4 @@
-from .attention import AttentionTesterMixin
+from .attention import AttentionTesterMixin, ContextParallelTesterMixin
 from .common import ModelTesterMixin
 from .compile import TorchCompileTesterMixin
 from .ip_adapter import IPAdapterTesterMixin
@@ -17,6 +17,7 @@ from .training import TrainingTesterMixin
 
 
 __all__ = [
+    "ContextParallelTesterMixin",
     "AttentionTesterMixin",
     "BitsAndBytesTesterMixin",
     "CPUOffloadTesterMixin",

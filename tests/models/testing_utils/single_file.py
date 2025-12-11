@@ -192,9 +192,9 @@ class SingleFileTesterMixin:
         for param_name, param_value in model_single_file.config.items():
             if param_name in PARAMS_TO_IGNORE:
                 continue
-            assert (
-                model.config[param_name] == param_value
-            ), f"{param_name} differs: pretrained={model.config[param_name]}, single_file={param_value}"
+            assert model.config[param_name] == param_value, (
+                f"{param_name} differs: pretrained={model.config[param_name]}, single_file={param_value}"
+            )
 
     def test_single_file_loading_with_diffusers_config_local_files_only(self):
         single_file_kwargs = {}

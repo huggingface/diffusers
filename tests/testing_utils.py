@@ -406,6 +406,15 @@ def is_modelopt(test_case):
     return pytest.mark.modelopt(test_case)
 
 
+def is_context_parallel(test_case):
+    """
+    Decorator marking a test as a context parallel inference test. These tests can be filtered using:
+        pytest -m "not context_parallel" to skip
+        pytest -m context_parallel to run only these tests
+    """
+    return pytest.mark.context_parallel(test_case)
+
+
 def require_torch(test_case):
     """
     Decorator marking a test that requires PyTorch. These tests are skipped when PyTorch isn't installed.
