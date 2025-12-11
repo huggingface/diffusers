@@ -1487,7 +1487,7 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
     Load LoRA layers into [`FluxTransformer2DModel`],
     [`CLIPTextModel`](https://huggingface.co/docs/transformers/model_doc/clip#transformers.CLIPTextModel).
 
-    Specific to [`StableDiffusion3Pipeline`].
+    Specific to [`FluxPipeline`].
     """
 
     _lora_loadable_modules = ["transformer", "text_encoder"]
