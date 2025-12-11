@@ -11,7 +11,7 @@ from transformers import (
 )
 
 from ...image_processor import PipelineImageInput, VaeImageProcessor
-from ...loaders import FluxLoraLoaderMixin, FromSingleFileMixin
+from ...loaders import FromSingleFileMixin
 from ...models.autoencoders import AutoencoderKL
 from ...models.controlnets.controlnet_flux import FluxControlNetModel, FluxMultiControlNetModel
 from ...models.transformers import FluxTransformer2DModel
@@ -19,6 +19,7 @@ from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import is_torch_xla_available, logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
+from .lora_utils import FluxLoraLoaderMixin
 from .pipeline_flux_utils import FluxMixin, calculate_shift, retrieve_latents, retrieve_timesteps
 from .pipeline_output import FluxPipelineOutput
 
