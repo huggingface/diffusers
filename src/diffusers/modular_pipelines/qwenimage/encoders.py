@@ -330,7 +330,7 @@ class QwenImageEditPlusResizeDynamicStep(QwenImageEditResizeDynamicStep):
         output_name: str = "resized_image",
         vae_image_output_name: str = "vae_image",
     ):
-        """Create a configurable step for resizing images to the target area (1024 * 1024) while maintaining the aspect ratio.
+        """Create a configurable step for resizing images to the target area (384 * 384) while maintaining the aspect ratio.
 
         This block resizes an input image or a list input images and exposes the resized result under configurable
         input and output names. Use this when you need to wire the resize step to different image fields (e.g.,
@@ -809,9 +809,7 @@ class QwenImageProcessImagesInputStep(ModularPipelineBlocks):
 
     @property
     def intermediate_outputs(self) -> List[OutputParam]:
-        return [
-            OutputParam(name="processed_image"),
-        ]
+        return [OutputParam(name="processed_image")]
 
     @staticmethod
     def check_inputs(height, width, vae_scale_factor):
@@ -851,7 +849,10 @@ class QwenImageProcessImagesInputStep(ModularPipelineBlocks):
 
 class QwenImageEditPlusProcessImagesInputStep(QwenImageProcessImagesInputStep):
     model_name = "qwenimage-edit-plus"
-    vae_image_size = 1024 * 1024
+
+    def __init__(self):
+        self.vae_image_size = 1024 * 1024
+        super().__init__()
 
     @property
     def description(self) -> str:
@@ -868,6 +869,7 @@ class QwenImageEditPlusProcessImagesInputStep(QwenImageProcessImagesInputStep):
         if block_state.vae_image is None and block_state.image is None:
             raise ValueError("`vae_image` and `image` cannot be None at the same time")
 
+        vae_image_sizes = None
         if block_state.vae_image is None:
             image = block_state.image
             self.check_inputs(
@@ -879,12 +881,19 @@ class QwenImageEditPlusProcessImagesInputStep(QwenImageProcessImagesInputStep):
                 image=image, height=height, width=width
             )
         else:
-            width, height = block_state.vae_image[0].size
-            image = block_state.vae_image
+            # QwenImage Edit Plus can allow multiple input images with varied resolutions
+            processed_images = []
+            vae_image_sizes = []
+            for img in block_state.vae_image:
+                width, height = img.size
+                vae_width, vae_height, _ = calculate_dimensions(self.vae_image_size, width / height)
+                vae_image_sizes.append((vae_width, vae_height))
+                processed_images.append(
+                    components.image_processor.preprocess(image=img, height=vae_height, width=vae_width)
+                )
+            block_state.processed_image = processed_images
 
-            block_state.processed_image = components.image_processor.preprocess(
-                image=image, height=height, width=width
-            )
+        block_state.vae_image_sizes = vae_image_sizes
 
         self.set_block_state(state, block_state)
         return components, state
@@ -926,17 +935,12 @@ class QwenImageVaeEncoderDynamicStep(ModularPipelineBlocks):
 
     @property
     def expected_components(self) -> List[ComponentSpec]:
-        components = [
-            ComponentSpec("vae", AutoencoderKLQwenImage),
-        ]
+        components = [ComponentSpec("vae", AutoencoderKLQwenImage)]
         return components
 
     @property
     def inputs(self) -> List[InputParam]:
-        inputs = [
-            InputParam(self._image_input_name, required=True),
-            InputParam("generator"),
-        ]
+        inputs = [InputParam(self._image_input_name, required=True), InputParam("generator")]
         return inputs
 
     @property
@@ -967,6 +971,50 @@ class QwenImageVaeEncoderDynamicStep(ModularPipelineBlocks):
             dtype=dtype,
             latent_channels=components.num_channels_latents,
         )
+        setattr(block_state, self._image_latents_output_name, image_latents)
+
+        self.set_block_state(state, block_state)
+
+        return components, state
+
+
+class QwenImageEditPlusVaeEncoderDynamicStep(QwenImageVaeEncoderDynamicStep):
+    model_name = "qwenimage-edit-plus"
+
+    @property
+    def intermediate_outputs(self) -> List[OutputParam]:
+        # Each reference image latent can have varied resolutions hence we return this as a list.
+        return [
+            OutputParam(
+                self._image_latents_output_name,
+                type_hint=List[torch.Tensor],
+                description="The latents representing the reference image(s).",
+            )
+        ]
+
+    @torch.no_grad()
+    def __call__(self, components: QwenImageModularPipeline, state: PipelineState) -> PipelineState:
+        block_state = self.get_block_state(state)
+
+        device = components._execution_device
+        dtype = components.vae.dtype
+
+        image = getattr(block_state, self._image_input_name)
+
+        # Encode image into latents
+        image_latents = []
+        for img in image:
+            image_latents.append(
+                encode_vae_image(
+                    image=img,
+                    vae=components.vae,
+                    generator=block_state.generator,
+                    device=device,
+                    dtype=dtype,
+                    latent_channels=components.num_channels_latents,
+                )
+            )
+
         setattr(block_state, self._image_latents_output_name, image_latents)
 
         self.set_block_state(state, block_state)
