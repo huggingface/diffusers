@@ -297,9 +297,9 @@ if __name__ == "__main__":
 
 The script above needs to be run with a distributed launcher, such as [torchrun](https://docs.pytorch.org/docs/stable/elastic/run.html), that is compatible with PyTorch. `--nproc-per-node` is set to the number of GPUs available.
 
-/```shell
-`torchrun --nproc-per-node 2 above_script.py`. 
-/```
+```shell
+torchrun --nproc-per-node 2 above_script.py
+```
 
 ### Ulysses Attention
 
