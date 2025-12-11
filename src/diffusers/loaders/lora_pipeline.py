@@ -3634,36 +3634,7 @@ class KandinskyLoraLoaderMixin(LoraBaseMixin):
         **kwargs,
     ):
         r"""
-        Return state dict for lora weights and the network alphas.
-
-        Parameters:
-            pretrained_model_name_or_path_or_dict (`str` or `os.PathLike` or `dict`):
-                Can be either:
-                    - A string, the *model id* of a pretrained model hosted on the Hub.
-                    - A path to a *directory* containing the model weights.
-                    - A [torch state
-                      dict](https://pytorch.org/tutorials/beginner/saving_loading_models.html#what-is-a-state-dict).
-
-            cache_dir (`Union[str, os.PathLike]`, *optional*):
-                Path to a directory where a downloaded pretrained model configuration is cached.
-            force_download (`bool`, *optional*, defaults to `False`):
-                Whether or not to force the (re-)download of the model weights.
-            proxies (`Dict[str, str]`, *optional*):
-                A dictionary of proxy servers to use by protocol or endpoint.
-            local_files_only (`bool`, *optional*, defaults to `False`):
-                Whether to only load local model weights and configuration files.
-            token (`str` or *bool*, *optional*):
-                The token to use as HTTP bearer authorization for remote files.
-            revision (`str`, *optional*, defaults to `"main"`):
-                The specific model version to use.
-            subfolder (`str`, *optional*, defaults to `""`):
-                The subfolder location of a model file within a larger model repository.
-            weight_name (`str`, *optional*, defaults to None):
-                Name of the serialized state dict file.
-            use_safetensors (`bool`, *optional*):
-                Whether to use safetensors for loading.
-            return_lora_metadata (`bool`, *optional*, defaults to False):
-                When enabled, additionally return the LoRA adapter metadata.
+        See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`] for more details.
         """
         # Load the main state dict first which has the LoRA layers
         cache_dir = kwargs.pop("cache_dir", None)
