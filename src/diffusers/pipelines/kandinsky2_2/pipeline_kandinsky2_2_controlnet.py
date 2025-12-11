@@ -71,8 +71,7 @@ EXAMPLE_DOC_STRING = """
 
 
         >>> img = load_image(
-        ...     "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
-        ...     "/kandinsky/cat.png"
+        ...     "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/kandinsky/cat.png"
         ... ).resize((768, 768))
 
         >>> hint = make_hint(img, depth_estimator).unsqueeze(0).half().to("cuda")
