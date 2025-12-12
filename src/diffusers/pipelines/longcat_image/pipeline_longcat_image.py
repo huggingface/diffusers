@@ -254,8 +254,6 @@ class LongCatImagePipeline(
         
         self.prompt_template_encode_prefix = '<|im_start|>system\nAs an image captioning expert, generate a descriptive text prompt based on an image content, suitable for input to a text-to-image model.<|im_end|>\n<|im_start|>user\n'
         self.prompt_template_encode_suffix = '<|im_end|>\n<|im_start|>assistant\n'
-        self.prompt_template_encode_start_idx = 36
-        self.prompt_template_encode_end_idx = 5
         self.default_sample_size = 128
         self.tokenizer_max_length = 512
 
