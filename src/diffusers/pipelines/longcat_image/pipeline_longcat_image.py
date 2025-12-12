@@ -350,7 +350,6 @@ class LongCatImagePipeline(
 
         return prompt_embeds
 
-    @torch.inference_mode()
     def encode_prompt(self, 
                     prompt : List[str] = None,
                     num_images_per_prompt: Optional[int] = 1,
