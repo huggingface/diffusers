@@ -290,7 +290,7 @@ class LongCatImagePipeline(
         rewrite_prompt= output_text
         return rewrite_prompt
     
-    def _encode_prompt( self, prompt, num_images_per_prompt ):
+    def _encode_prompt( self, prompt ):
         prompt = [prompt] if isinstance(prompt, str) else prompt
         batch_size = len(prompt)
         all_tokens = []
