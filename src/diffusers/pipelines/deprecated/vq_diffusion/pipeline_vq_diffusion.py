@@ -266,7 +266,10 @@ class VQDiffusionPipeline(DiffusionPipeline):
 
             # predict the un-noised image
             # model_output == `log_p_x_0`
-            model_output = self.transformer(latent_model_input, encoder_hidden_states=prompt_embeds, timestep=t).sample
+            with self.transformer.cache_context("cond"):
+                model_output = self.transformer(
+                    latent_model_input, encoder_hidden_states=prompt_embeds, timestep=t
+                ).sample
 
             if do_classifier_free_guidance:
                 model_output_uncond, model_output_text = model_output.chunk(2)

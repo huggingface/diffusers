@@ -771,30 +771,32 @@ class Kandinsky5I2IPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
                 timestep = t.unsqueeze(0).repeat(batch_size * num_images_per_prompt)
 
                 # Predict noise residual
-                pred_velocity = self.transformer(
-                    hidden_states=latents.to(dtype),
-                    encoder_hidden_states=prompt_embeds_qwen.to(dtype),
-                    pooled_projections=prompt_embeds_clip.to(dtype),
-                    timestep=timestep.to(dtype),
-                    visual_rope_pos=visual_rope_pos,
-                    text_rope_pos=text_rope_pos,
-                    scale_factor=scale_factor,
-                    sparse_params=sparse_params,
-                    return_dict=True,
-                ).sample
-
-                if self.guidance_scale > 1.0 and negative_prompt_embeds_qwen is not None:
-                    uncond_pred_velocity = self.transformer(
+                with self.transformer.cache_context("cond"):
+                    pred_velocity = self.transformer(
                         hidden_states=latents.to(dtype),
-                        encoder_hidden_states=negative_prompt_embeds_qwen.to(dtype),
-                        pooled_projections=negative_prompt_embeds_clip.to(dtype),
+                        encoder_hidden_states=prompt_embeds_qwen.to(dtype),
+                        pooled_projections=prompt_embeds_clip.to(dtype),
                         timestep=timestep.to(dtype),
                         visual_rope_pos=visual_rope_pos,
-                        text_rope_pos=negative_text_rope_pos,
+                        text_rope_pos=text_rope_pos,
                         scale_factor=scale_factor,
                         sparse_params=sparse_params,
                         return_dict=True,
                     ).sample
+
+                if self.guidance_scale > 1.0 and negative_prompt_embeds_qwen is not None:
+                    with self.transformer.cache_context("uncond"):
+                        uncond_pred_velocity = self.transformer(
+                            hidden_states=latents.to(dtype),
+                            encoder_hidden_states=negative_prompt_embeds_qwen.to(dtype),
+                            pooled_projections=negative_prompt_embeds_clip.to(dtype),
+                            timestep=timestep.to(dtype),
+                            visual_rope_pos=visual_rope_pos,
+                            text_rope_pos=negative_text_rope_pos,
+                            scale_factor=scale_factor,
+                            sparse_params=sparse_params,
+                            return_dict=True,
+                        ).sample
 
                     pred_velocity = uncond_pred_velocity + guidance_scale * (pred_velocity - uncond_pred_velocity)
 

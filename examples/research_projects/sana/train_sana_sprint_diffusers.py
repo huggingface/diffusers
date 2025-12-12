@@ -813,13 +813,14 @@ class SanaMSCMDiscriminator(nn.Module):
             if i in self.block_hooks:
                 hooks.append(block.register_forward_hook(get_features))
 
-        self.transformer(
-            hidden_states=hidden_states,
-            timestep=timestep,
-            encoder_hidden_states=encoder_hidden_states,
-            return_logvar=False,
-            **kwargs,
-        )
+        with self.transformer.cache_context("cond"):
+            self.transformer(
+                hidden_states=hidden_states,
+                timestep=timestep,
+                encoder_hidden_states=encoder_hidden_states,
+                return_logvar=False,
+                **kwargs,
+            )
 
         for hook in hooks:
             hook.remove()

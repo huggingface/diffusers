@@ -899,13 +899,14 @@ class SanaPAGPipeline(DiffusionPipeline, PAGMixin):
                 timestep = t.expand(latent_model_input.shape[0]).to(latents.dtype)
 
                 # predict noise model_output
-                noise_pred = self.transformer(
-                    latent_model_input,
-                    encoder_hidden_states=prompt_embeds,
-                    encoder_attention_mask=prompt_attention_mask,
-                    timestep=timestep,
-                    return_dict=False,
-                )[0]
+                with self.transformer.cache_context("cond"):
+                    noise_pred = self.transformer(
+                        latent_model_input,
+                        encoder_hidden_states=prompt_embeds,
+                        encoder_attention_mask=prompt_attention_mask,
+                        timestep=timestep,
+                        return_dict=False,
+                    )[0]
                 noise_pred = noise_pred.float()
 
                 # perform guidance
