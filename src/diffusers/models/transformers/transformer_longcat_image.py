@@ -428,7 +428,7 @@ class LongCatImageTransformer2DModel(
 
         self.pos_embed = LongCatImagePosEmbed(theta=10000, axes_dim=axes_dims_rope)
 
-        self.time_embed = TimestepEmbeddings(embedding_dim=self.inner_dim)
+        self.time_embed = LongCatImageTimestepEmbeddings(embedding_dim=self.inner_dim)
 
         self.context_embedder = nn.Linear(joint_attention_dim, self.inner_dim)
         self.x_embedder = torch.nn.Linear(in_channels, self.inner_dim)
