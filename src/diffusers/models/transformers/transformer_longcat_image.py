@@ -497,10 +497,6 @@ class LongCatImageTransformer2DModel(
         hidden_states = self.x_embedder(hidden_states)
 
         timestep = timestep.to(hidden_states.dtype) * 1000
-        if guidance is not None:
-            guidance = guidance.to(hidden_states.dtype) * 1000
-        else:
-            guidance = None
 
         temb = self.time_embed( timestep, hidden_states.dtype )
         encoder_hidden_states = self.context_embedder(encoder_hidden_states)
