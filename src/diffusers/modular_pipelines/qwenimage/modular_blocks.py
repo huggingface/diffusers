@@ -26,7 +26,7 @@ from .before_denoise import (
     QwenImageSetTimestepsStep,
     QwenImageSetTimestepsWithStrengthStep,
 )
-from .decoders import QwenImageDecoderStep, QwenImageInpaintProcessImagesOutputStep, QwenImageProcessImagesOutputStep
+from .decoders import QwenImageAfterDenoiseStep, QwenImageDecoderStep, QwenImageInpaintProcessImagesOutputStep, QwenImageProcessImagesOutputStep
 from .denoise import (
     QwenImageControlNetDenoiseStep,
     QwenImageDenoiseStep,
@@ -92,6 +92,7 @@ TEXT2IMAGE_BLOCKS = InsertableDict(
         ("set_timesteps", QwenImageSetTimestepsStep()),
         ("prepare_rope_inputs", QwenImageRoPEInputsStep()),
         ("denoise", QwenImageDenoiseStep()),
+        ("after_denoise", QwenImageAfterDenoiseStep()),
         ("decode", QwenImageDecodeStep()),
     ]
 )
@@ -205,6 +206,7 @@ INPAINT_BLOCKS = InsertableDict(
         ("prepare_inpaint_latents", QwenImageInpaintPrepareLatentsStep()),
         ("prepare_rope_inputs", QwenImageRoPEInputsStep()),
         ("denoise", QwenImageInpaintDenoiseStep()),
+        ("after_denoise", QwenImageAfterDenoiseStep()),
         ("decode", QwenImageInpaintDecodeStep()),
     ]
 )
@@ -264,6 +266,7 @@ IMAGE2IMAGE_BLOCKS = InsertableDict(
         ("prepare_img2img_latents", QwenImagePrepareLatentsWithStrengthStep()),
         ("prepare_rope_inputs", QwenImageRoPEInputsStep()),
         ("denoise", QwenImageDenoiseStep()),
+        ("after_denoise", QwenImageAfterDenoiseStep()),
         ("decode", QwenImageDecodeStep()),
     ]
 )
@@ -529,8 +532,9 @@ class QwenImageCoreDenoiseStep(SequentialPipelineBlocks):
         QwenImageAutoBeforeDenoiseStep,
         QwenImageOptionalControlNetBeforeDenoiseStep,
         QwenImageAutoDenoiseStep,
+        QwenImageAfterDenoiseStep,
     ]
-    block_names = ["input", "controlnet_input", "before_denoise", "controlnet_before_denoise", "denoise"]
+    block_names = ["input", "controlnet_input", "before_denoise", "controlnet_before_denoise", "denoise", "after_denoise"]
 
     @property
     def description(self):
@@ -653,6 +657,7 @@ EDIT_BLOCKS = InsertableDict(
         ("set_timesteps", QwenImageSetTimestepsStep()),
         ("prepare_rope_inputs", QwenImageEditRoPEInputsStep()),
         ("denoise", QwenImageEditDenoiseStep()),
+        ("after_denoise", QwenImageAfterDenoiseStep()),
         ("decode", QwenImageDecodeStep()),
     ]
 )
@@ -702,6 +707,7 @@ EDIT_INPAINT_BLOCKS = InsertableDict(
         ("prepare_inpaint_latents", QwenImageInpaintPrepareLatentsStep()),
         ("prepare_rope_inputs", QwenImageEditRoPEInputsStep()),
         ("denoise", QwenImageEditInpaintDenoiseStep()),
+        ("after_denoise", QwenImageAfterDenoiseStep()),
         ("decode", QwenImageInpaintDecodeStep()),
     ]
 )
@@ -841,8 +847,9 @@ class QwenImageEditCoreDenoiseStep(SequentialPipelineBlocks):
         QwenImageEditAutoInputStep,
         QwenImageEditAutoBeforeDenoiseStep,
         QwenImageEditAutoDenoiseStep,
+        QwenImageAfterDenoiseStep,
     ]
-    block_names = ["input", "before_denoise", "denoise"]
+    block_names = ["input", "before_denoise", "denoise", "after_denoise"]
 
     @property
     def description(self):
@@ -954,6 +961,7 @@ EDIT_PLUS_BLOCKS = InsertableDict(
         ("set_timesteps", QwenImageSetTimestepsStep()),
         ("prepare_rope_inputs", QwenImageEditPlusRoPEInputsStep()),
         ("denoise", QwenImageEditDenoiseStep()),
+        ("after_denoise", QwenImageAfterDenoiseStep()),
         ("decode", QwenImageDecodeStep()),
     ]
 )
@@ -1037,8 +1045,9 @@ class QwenImageEditPlusCoreDenoiseStep(SequentialPipelineBlocks):
         QwenImageEditPlusAutoInputStep,
         QwenImageEditPlusAutoBeforeDenoiseStep,
         QwenImageEditAutoDenoiseStep,
+        QwenImageAfterDenoiseStep,
     ]
-    block_names = ["input", "before_denoise", "denoise"]
+    block_names = ["input", "before_denoise", "denoise", "after_denoise"]
 
     @property
     def description(self):
