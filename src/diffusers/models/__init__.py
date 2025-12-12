@@ -41,6 +41,7 @@ if is_torch_available():
     _import_structure["autoencoders.autoencoder_kl_hunyuanimage_refiner"] = ["AutoencoderKLHunyuanImageRefiner"]
     _import_structure["autoencoders.autoencoder_kl_hunyuanvideo15"] = ["AutoencoderKLHunyuanVideo15"]
     _import_structure["autoencoders.autoencoder_kl_ltx"] = ["AutoencoderKLLTXVideo"]
+    _import_structure["autoencoders.autoencoder_kl_magi1"] = ["AutoencoderKLMagi1"]
     _import_structure["autoencoders.autoencoder_kl_magvit"] = ["AutoencoderKLMagvit"]
     _import_structure["autoencoders.autoencoder_kl_mochi"] = ["AutoencoderKLMochi"]
     _import_structure["autoencoders.autoencoder_kl_qwenimage"] = ["AutoencoderKLQwenImage"]
@@ -103,6 +104,7 @@ if is_torch_available():
     _import_structure["transformers.transformer_kandinsky"] = ["Kandinsky5Transformer3DModel"]
     _import_structure["transformers.transformer_ltx"] = ["LTXVideoTransformer3DModel"]
     _import_structure["transformers.transformer_lumina2"] = ["Lumina2Transformer2DModel"]
+    _import_structure["transformers.transformer_magi1"] = ["Magi1Transformer3DModel"]
     _import_structure["transformers.transformer_mochi"] = ["MochiTransformer3DModel"]
     _import_structure["transformers.transformer_omnigen"] = ["OmniGenTransformer2DModel"]
     _import_structure["transformers.transformer_ovis_image"] = ["OvisImageTransformer2DModel"]
@@ -152,6 +154,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AutoencoderKLHunyuanVideo,
             AutoencoderKLHunyuanVideo15,
             AutoencoderKLLTXVideo,
+            AutoencoderKLMagi1,
             AutoencoderKLMagvit,
             AutoencoderKLMochi,
             AutoencoderKLQwenImage,
@@ -211,6 +214,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             LTXVideoTransformer3DModel,
             Lumina2Transformer2DModel,
             LuminaNextDiT2DModel,
+            Magi1Transformer3DModel,
             MochiTransformer3DModel,
             OmniGenTransformer2DModel,
             OvisImageTransformer2DModel,
