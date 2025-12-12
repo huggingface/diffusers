@@ -251,6 +251,7 @@ class UniDiffuserTextDecoder(ModelMixin, ConfigMixin, ModuleUtilsMixin):
             generated = self.transformer.transformer.wte(input_ids)
 
         for i in range(entry_length):
+            # TODO-context
             outputs = self.transformer(inputs_embeds=generated)
             logits = outputs.logits
             logits = logits[:, -1, :] / (temperature if temperature > 0 else 1.0)

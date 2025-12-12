@@ -1084,6 +1084,8 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
                     if skip_guidance_layers is not None and should_skip_layers:
                         timestep = t.expand(latents.shape[0])
                         latent_model_input = latents
+
+                        # TODO-context
                         noise_pred_skip_layers = self.transformer(
                             hidden_states=latent_model_input,
                             timestep=timestep,

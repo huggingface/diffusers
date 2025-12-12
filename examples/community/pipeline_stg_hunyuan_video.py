@@ -751,17 +751,17 @@ class HunyuanVideoSTGPipeline(DiffusionPipeline, HunyuanVideoLoraLoaderMixin):
                         self.transformer.transformer_blocks[i].forward = types.MethodType(
                             forward_without_stg, self.transformer.transformer_blocks[i]
                         )
-
-                noise_pred = self.transformer(
-                    hidden_states=latent_model_input,
-                    timestep=timestep,
-                    encoder_hidden_states=prompt_embeds,
-                    encoder_attention_mask=prompt_attention_mask,
-                    pooled_projections=pooled_prompt_embeds,
-                    guidance=guidance,
-                    attention_kwargs=attention_kwargs,
-                    return_dict=False,
-                )[0]
+                with self.transformer.cache_context("cond"):
+                    noise_pred = self.transformer(
+                        hidden_states=latent_model_input,
+                        timestep=timestep,
+                        encoder_hidden_states=prompt_embeds,
+                        encoder_attention_mask=prompt_attention_mask,
+                        pooled_projections=pooled_prompt_embeds,
+                        guidance=guidance,
+                        attention_kwargs=attention_kwargs,
+                        return_dict=False,
+                    )[0]
 
                 if self.do_spatio_temporal_guidance:
                     for i in stg_applied_layers_idx:
@@ -769,6 +769,7 @@ class HunyuanVideoSTGPipeline(DiffusionPipeline, HunyuanVideoLoraLoaderMixin):
                             forward_with_stg, self.transformer.transformer_blocks[i]
                         )
 
+                    # TODO-context
                     noise_pred_perturb = self.transformer(
                         hidden_states=latent_model_input,
                         timestep=timestep,
