@@ -982,6 +982,28 @@ def _apply_group_offloading_leaf_level(module: torch.nn.Module, config: GroupOff
         )
         _apply_group_offloading_hook(parent_module, group, config=config)
 
+    # Ensure the top-level module also has a group_offloading hook so hook presence checks pass,
+    # even when it holds no parameters/buffers itself.
+    if config.stream is None:
+        root_registry = HookRegistry.check_if_exists_or_initialize(module)
+        if root_registry.get_hook(_GROUP_OFFLOADING) is None:
+            empty_group = ModuleGroup(
+                modules=[],
+                offload_device=config.offload_device,
+                onload_device=config.onload_device,
+                offload_to_disk_path=None,
+                offload_leader=module,
+                onload_leader=module,
+                parameters=[],
+                buffers=[],
+                non_blocking=False,
+                stream=None,
+                record_stream=False,
+                onload_self=True,
+                group_id=f"{config.module_prefix}{module.__class__.__name__}_empty_group",
+            )
+            root_registry.register_hook(GroupOffloadingHook(empty_group, config=config), _GROUP_OFFLOADING)
+
     if config.stream is not None:
         # When using streams, we need to know the layer execution order for applying prefetching (to overlap data transfer
         # and computation). Since we don't know the order beforehand, we apply a lazy prefetching hook that will find the
