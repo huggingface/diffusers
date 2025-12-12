@@ -25,7 +25,7 @@ You'll also need access to SDXL by accepting the model license at [diffusers/sdx
 
 ### Basic Training Example
 
-bash
+```bash
 export MODEL_NAME="diffusers/sdxl-instructpix2pix-768"
 export DATASET_ID="fusing/instructpix2pix-1000-samples"
 
@@ -51,7 +51,7 @@ python train_instruct_pix2pix_lora_sdxl.py \
 --report_to=wandb \
 -- push_to_hub \
 -- enable_xformers_memory_efficient_attention
-
+```
 
 
 ## LoRA Configuration
@@ -72,7 +72,7 @@ The script includes LoRA-specific hyperparameters:
 
 ### Multi-GPU Training
 
-bash
+```bash
 accelerate launch --mixed_precision="fp16" --multi_gpu train_instruct_pix2pix_lora_sdxl.py \
 --pretrained_model_name_or_path=$MODEL_NAME \
 --dataset_name=$DATASET_ID \
@@ -95,23 +95,23 @@ accelerate launch --mixed_precision="fp16" --multi_gpu train_instruct_pix2pix_lo
 --report_to=wandb \
 -- push_to_hub \
 -- enable_xformers_memory_efficient_attention
-
+```
 ### Resume from Checkpoint
 
-bash
+```bash
 python train_instruct_pix2pix_lora_sdxl.py \
 --pretrained_model_name_or_path=$MODEL_NAME \
 --dataset_name=$DATASET_ID \
 --resume_from_checkpoint="./output/checkpoint-5000" \
 --output_dir="./output" \
 -- enable_xformers_memory_efficient_attention
-
+```
 
 ### Using a Custom VAE
 
 For improved quality and stability, use madebyollin's fp16-fix VAE:
 
-bash
+```bash
 python train_instruct_pix2pix_lora_sdxl.py \
 --pretrained_model_name_or_path=$MODEL_NAME \
 --pretrained_vae_model_name_or_path="madebyollin/sdxl-vae-fp16-fix" \
@@ -135,7 +135,7 @@ python train_instruct_pix2pix_lora_sdxl.py \
 --report_to=wandb \
 -- push_to_hub \
 -- enable_xformers_memory_efficient_attention
-
+```
 ## Key Arguments
 
 ### Model & Data
@@ -171,7 +171,7 @@ python train_instruct_pix2pix_lora_sdxl.py \
 
 After training, load and use your LoRA model:
 
-python
+```bash
 import torch
 from diffusers import StableDiffusionXLInstructPix2PixPipeline
 from PIL import Image
@@ -207,7 +207,7 @@ guidance_scale=4.0,
 ).images[0]
 
 edited_image.save("edited_image.png")
-
+```
 
 ### Inference Parameters
 
