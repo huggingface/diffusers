@@ -278,8 +278,8 @@ else:
             "WanAnimateTransformer3DModel",
             "WanTransformer3DModel",
             "WanVACETransformer3DModel",
-            "ZImageTransformer2DModel",
             "ZImageControlNetModel",
+            "ZImageTransformer2DModel",
             "attention_backend",
         ]
     )
@@ -667,9 +667,9 @@ else:
             "WuerstchenCombinedPipeline",
             "WuerstchenDecoderPipeline",
             "WuerstchenPriorPipeline",
+            "ZImageControlNetPipeline",
             "ZImageImg2ImgPipeline",
             "ZImagePipeline",
-            "ZImageControlNetPipeline",
         ]
     )
 
