@@ -15,10 +15,10 @@
 
 import unittest
 
-import pytest
 import torch
 
 from diffusers import QwenImageTransformer2DModel
+from diffusers.models.transformers.transformer_qwenimage import compute_text_seq_len_from_mask
 
 from ...testing_utils import enable_full_determinism, torch_device
 from ..test_modeling_common import ModelTesterMixin, TorchCompileTesterMixin
@@ -68,7 +68,6 @@ class QwenImageTransformerTests(ModelTesterMixin, unittest.TestCase):
             "encoder_hidden_states_mask": encoder_hidden_states_mask,
             "timestep": timestep,
             "img_shapes": img_shapes,
-            "txt_seq_lens": encoder_hidden_states_mask.sum(dim=1).tolist(),
         }
 
     def prepare_init_args_and_inputs_for_common(self):
@@ -91,6 +90,87 @@ class QwenImageTransformerTests(ModelTesterMixin, unittest.TestCase):
         expected_set = {"QwenImageTransformer2DModel"}
         super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
 
+    def test_infers_text_seq_len_from_mask(self):
+        """Test that compute_text_seq_len_from_mask correctly infers sequence lengths and returns tensors."""
+        init_dict, inputs = self.prepare_init_args_and_inputs_for_common()
+        model = self.model_class(**init_dict).to(torch_device)
+
+        # Test 1: Contiguous mask with padding at the end (only first 2 tokens valid)
+        encoder_hidden_states_mask = inputs["encoder_hidden_states_mask"].clone()
+        encoder_hidden_states_mask[:, 2:] = 0  # Only first 2 tokens are valid
+
+        rope_text_seq_len, per_sample_len, normalized_mask = compute_text_seq_len_from_mask(
+            inputs["encoder_hidden_states"], encoder_hidden_states_mask
+        )
+
+        # Verify rope_text_seq_len is returned as a tensor (for torch.compile compatibility)
+        self.assertIsInstance(rope_text_seq_len, torch.Tensor)
+        self.assertEqual(rope_text_seq_len.ndim, 0)  # Should be scalar tensor
+
+        # Verify per_sample_len is computed correctly (max valid position + 1 = 2)
+        self.assertIsInstance(per_sample_len, torch.Tensor)
+        self.assertEqual(int(per_sample_len.max().item()), 2)
+
+        # Verify mask is normalized to bool dtype
+        self.assertTrue(normalized_mask.dtype == torch.bool)
+        self.assertEqual(normalized_mask.sum().item(), 2)  # Only 2 True values
+
+        # Verify rope_text_seq_len is at least the sequence length
+        self.assertGreaterEqual(int(rope_text_seq_len.item()), inputs["encoder_hidden_states"].shape[1])
+
+        # Test 2: Verify model runs successfully with inferred values
+        inputs["encoder_hidden_states_mask"] = normalized_mask
+        with torch.no_grad():
+            output = model(**inputs)
+        self.assertEqual(output.sample.shape[1], inputs["hidden_states"].shape[1])
+
+        # Test 3: Different mask pattern (padding at beginning)
+        encoder_hidden_states_mask2 = inputs["encoder_hidden_states_mask"].clone()
+        encoder_hidden_states_mask2[:, :3] = 0  # First 3 tokens are padding
+        encoder_hidden_states_mask2[:, 3:] = 1  # Last 4 tokens are valid
+
+        rope_text_seq_len2, per_sample_len2, normalized_mask2 = compute_text_seq_len_from_mask(
+            inputs["encoder_hidden_states"], encoder_hidden_states_mask2
+        )
+
+        # Max valid position is 6 (last token), so per_sample_len should be 7
+        self.assertEqual(int(per_sample_len2.max().item()), 7)
+        self.assertEqual(normalized_mask2.sum().item(), 4)  # 4 True values
+
+        # Test 4: No mask provided (None case)
+        rope_text_seq_len_none, per_sample_len_none, normalized_mask_none = compute_text_seq_len_from_mask(
+            inputs["encoder_hidden_states"], None
+        )
+        self.assertEqual(rope_text_seq_len_none, inputs["encoder_hidden_states"].shape[1])
+        self.assertIsNone(per_sample_len_none)
+        self.assertIsNone(normalized_mask_none)
+
+    def test_non_contiguous_attention_mask(self):
+        """Test that non-contiguous masks work correctly (e.g., [1, 0, 1, 0, 1, 0, 0])"""
+        init_dict, inputs = self.prepare_init_args_and_inputs_for_common()
+        model = self.model_class(**init_dict).to(torch_device)
+
+        # Create a non-contiguous mask pattern: valid, padding, valid, padding, etc.
+        encoder_hidden_states_mask = inputs["encoder_hidden_states_mask"].clone()
+        # Pattern: [True, False, True, False, True, False, False]
+        encoder_hidden_states_mask[:, 1] = 0
+        encoder_hidden_states_mask[:, 3] = 0
+        encoder_hidden_states_mask[:, 5:] = 0
+
+        inferred_rope_len, per_sample_len, normalized_mask = compute_text_seq_len_from_mask(
+            inputs["encoder_hidden_states"], encoder_hidden_states_mask
+        )
+        self.assertEqual(int(per_sample_len.max().item()), 5)
+        self.assertEqual(inferred_rope_len, inputs["encoder_hidden_states"].shape[1])
+        self.assertTrue(normalized_mask.dtype == torch.bool)
+
+        inputs["encoder_hidden_states_mask"] = normalized_mask
+
+        with torch.no_grad():
+            output = model(**inputs)
+
+        self.assertEqual(output.sample.shape[1], inputs["hidden_states"].shape[1])
+
 
 class QwenImageTransformerCompileTests(TorchCompileTesterMixin, unittest.TestCase):
     model_class = QwenImageTransformer2DModel
@@ -101,6 +181,5 @@ class QwenImageTransformerCompileTests(TorchCompileTesterMixin, unittest.TestCas
     def prepare_dummy_input(self, height, width):
         return QwenImageTransformerTests().prepare_dummy_input(height=height, width=width)
 
-    @pytest.mark.xfail(condition=True, reason="RoPE needs to be revisited.", strict=True)
     def test_torch_compile_recompilation_and_graph_break(self):
         super().test_torch_compile_recompilation_and_graph_break()

@@ -108,11 +108,67 @@ pipe = QwenImageEditPlusPipeline.from_pretrained(
 image_1 = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/grumpy.jpg")
 image_2 = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/peng.png")
 image = pipe(
-    image=[image_1, image_2], 
-    prompt='''put the penguin and the cat at a game show called "Qwen Edit Plus Games"''', 
+    image=[image_1, image_2],
+    prompt='''put the penguin and the cat at a game show called "Qwen Edit Plus Games"''',
     num_inference_steps=50
 ).images[0]
 ```
+
+## Performance
+
+### Attention Backends
+
+QwenImage supports multiple attention backends. Benchmarks on A100 80GB:
+
+**Single Image (30 steps, 512x512):**
+
+| Backend | Time (s) |
+|---------|----------|
+| flash_hub | 2.34 |
+| native | 2.38 |
+| xformers | 2.58 |
+| flash_varlen | 2.78 |
+
+**Batch (2 images, 25 steps, 512x512):**
+
+| Backend | Time (s) |
+|---------|----------|
+| flash_hub | 2.85 |
+| native | 3.16 |
+| flash_varlen | 3.29 |
+| xformers | 3.52 |
+
+### torch.compile
+
+Using `torch.compile` provides significant speedups with a one-time compilation overhead:
+
+```python
+import torch
+from diffusers import QwenImagePipeline
+
+pipe = QwenImagePipeline.from_pretrained("Qwen/Qwen-Image", torch_dtype=torch.bfloat16).to("cuda")
+pipe.transformer = torch.compile(pipe.transformer)
+
+# First call triggers compilation (~7s overhead on A100)
+# Subsequent calls see ~2.4x speedup
+image = pipe("a cat", num_inference_steps=50).images[0]
+```
+
+### Batched Inference with Variable-Length Prompts
+
+When using classifier-free guidance (CFG) with prompts of different lengths, the pipeline properly handles padding through attention masking. This ensures padding tokens do not influence the generated output.
+
+```python
+# CFG with different prompt lengths works correctly
+image = pipe(
+    prompt="A cat",
+    negative_prompt="blurry, low quality, distorted",
+    true_cfg_scale=3.5,
+    num_inference_steps=50,
+).images[0]
+```
+
+For detailed benchmark scripts and results, see [this gist](https://gist.github.com/cdutr/bea337e4680268168550292d7819dc2f).
 
 ## QwenImagePipeline
 
