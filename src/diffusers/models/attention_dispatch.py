@@ -236,6 +236,10 @@ class _AttentionBackendRegistry:
         return cls._active_backend, cls._backends[cls._active_backend]
 
     @classmethod
+    def set_active_backend(cls, backend: str):
+        cls._active_backend = backend
+
+    @classmethod
     def list_backends(cls):
         return list(cls._backends.keys())
 
@@ -294,12 +298,12 @@ def attention_backend(backend: Union[str, AttentionBackendName] = AttentionBacke
     _maybe_download_kernel_for_backend(backend)
 
     old_backend = _AttentionBackendRegistry._active_backend
-    _AttentionBackendRegistry._active_backend = backend
+    _AttentionBackendRegistry.set_active_backend(backend)
 
     try:
         yield
     finally:
-        _AttentionBackendRegistry._active_backend = old_backend
+        _AttentionBackendRegistry.set_active_backend(old_backend)
 
 
 def dispatch_attention_fn(
@@ -325,7 +329,7 @@ def dispatch_attention_fn(
     else:
         backend_name = AttentionBackendName(backend)
         backend_fn = _AttentionBackendRegistry._backends.get(backend_name)
-
+    
     kwargs = {
         "query": query,
         "key": key,
@@ -348,6 +352,18 @@ def dispatch_attention_fn(
             check(**kwargs)
 
     kwargs = {k: v for k, v in kwargs.items() if k in _AttentionBackendRegistry._supported_arg_names[backend_name]}
+    
+    if "_parallel_config" in kwargs and kwargs["_parallel_config"] is not None:
+        attention_backend = AttentionBackendName(backend_name)
+        if not _AttentionBackendRegistry._is_context_parallel_available(attention_backend):
+            compatible_backends = sorted(_AttentionBackendRegistry._supports_context_parallel)
+            raise ValueError(
+                f"Context parallelism is enabled but backend '{attention_backend.value}' "
+                f"which does not support context parallelism. "
+                f"Please set a compatible attention backend: {compatible_backends} using `model.set_attention_backend()` before "
+                f"calling `model.enable_parallelism()`."
+            )
+    
     return backend_fn(**kwargs)
 
 

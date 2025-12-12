@@ -601,6 +601,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         """
         from .attention import AttentionModuleMixin
         from .attention_dispatch import (
+            _AttentionBackendRegistry,
             AttentionBackendName,
             _check_attention_backend_requirements,
             _maybe_download_kernel_for_backend,
@@ -628,6 +629,9 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             if processor is None or not hasattr(processor, "_attention_backend"):
                 continue
             processor._attention_backend = backend
+        
+        # Important to set the active backend so that it propagates gracefully throughout.
+        _AttentionBackendRegistry.set_active_backend(backend)
 
     def reset_attention_backend(self) -> None:
         """
@@ -1541,7 +1545,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                         f"Context parallelism is enabled but the attention processor '{processor.__class__.__name__}' "
                         f"is using backend '{attention_backend.value}' which does not support context parallelism. "
                         f"Please set a compatible attention backend: {compatible_backends} using `model.set_attention_backend()` before "
-                        f"calling `enable_parallelism()`."
+                        f"calling `model.enable_parallelism()`."
                     )
 
                 # All modules use the same attention processor and backend. We don't need to
