@@ -302,7 +302,7 @@ class LongCatImagePipeline(
         if len(all_tokens) > self.tokenizer_max_length:
             logger.warning(
                 "Your input was truncated because `max_sequence_length` is set to "
-                f" {self.tokenizer_max_length} input token nums : {len(len(all_tokens))}"
+                f" {self.tokenizer_max_length} input token nums : {len(all_tokens)}"
             )
             all_tokens = all_tokens[:self.tokenizer_max_length]
         
