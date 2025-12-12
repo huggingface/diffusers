@@ -230,19 +230,19 @@ class QwenEmbedRope(nn.Module):
         video_fhw: Union[Tuple[int, int, int], List[Tuple[int, int, int]]],
         txt_seq_lens: Optional[List[int]] = None,
         device: torch.device = None,
-        txt_seq_len: Optional[Union[int, torch.Tensor]] = None,
+        max_txt_seq_len: Optional[Union[int, torch.Tensor]] = None,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """
         Args:
             video_fhw (`Tuple[int, int, int]` or `List[Tuple[int, int, int]]`):
                 A list of 3 integers [frame, height, width] representing the shape of the video.
             txt_seq_lens (`List[int]`, *optional*, **Deprecated**):
-                Deprecated parameter. Use `txt_seq_len` instead. If provided, the maximum value will be used.
+                Deprecated parameter. Use `max_txt_seq_len` instead. If provided, the maximum value will be used.
             device: (`torch.device`, *optional*):
                 The device on which to perform the RoPE computation.
-            txt_seq_len (`int` or `torch.Tensor`, *optional*):
-                The length of the text sequence. This should match the encoder hidden states length. Can be either an
-                int or a scalar tensor (for torch.compile compatibility).
+            max_txt_seq_len (`int` or `torch.Tensor`, *optional*):
+                The maximum text sequence length for RoPE computation. This should match the encoder hidden states
+                sequence length. Can be either an int or a scalar tensor (for torch.compile compatibility).
         """
         # Handle deprecated txt_seq_lens parameter
         if txt_seq_lens is not None:
@@ -250,16 +250,16 @@ class QwenEmbedRope(nn.Module):
                 "txt_seq_lens",
                 "0.37.0",
                 "Passing `txt_seq_lens` is deprecated and will be removed in version 0.37.0. "
-                "Please use `txt_seq_len` instead (singular, not plural). "
-                "The new parameter accepts a single int or tensor value instead of a list.",
+                "Please use `max_txt_seq_len` instead. "
+                "The new parameter accepts a single int or tensor value representing the maximum text sequence length.",
                 standard_warn=False,
             )
-            if txt_seq_len is None:
+            if max_txt_seq_len is None:
                 # Use max of txt_seq_lens for backward compatibility
-                txt_seq_len = max(txt_seq_lens) if isinstance(txt_seq_lens, list) else txt_seq_lens
+                max_txt_seq_len = max(txt_seq_lens) if isinstance(txt_seq_lens, list) else txt_seq_lens
 
-        if txt_seq_len is None:
-            raise ValueError("Either `txt_seq_len` or `txt_seq_lens` (deprecated) must be provided.")
+        if max_txt_seq_len is None:
+            raise ValueError("Either `max_txt_seq_len` or `txt_seq_lens` (deprecated) must be provided.")
 
         # Move to device unconditionally to avoid graph breaks in torch.compile
         self.pos_freqs = self.pos_freqs.to(device)
@@ -296,7 +296,7 @@ class QwenEmbedRope(nn.Module):
             else:
                 max_vid_index = max(height, width, max_vid_index)
 
-        txt_freqs = self.pos_freqs[max_vid_index : max_vid_index + txt_seq_len, ...]
+        txt_freqs = self.pos_freqs[max_vid_index : max_vid_index + max_txt_seq_len, ...]
         vid_freqs = torch.cat(vid_freqs, dim=0)
 
         return vid_freqs, txt_freqs
@@ -749,7 +749,7 @@ class QwenImageTransformer2DModel(
             else self.time_text_embed(timestep, guidance, hidden_states)
         )
 
-        image_rotary_emb = self.pos_embed(img_shapes, txt_seq_len=text_seq_len, device=hidden_states.device)
+        image_rotary_emb = self.pos_embed(img_shapes, max_txt_seq_len=text_seq_len, device=hidden_states.device)
 
         for index_block, block in enumerate(self.transformer_blocks):
             if torch.is_grad_enabled() and self.gradient_checkpointing:
