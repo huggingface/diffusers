@@ -37,8 +37,8 @@ MELLON_INPUT_PARAMS = {
         "label": "Scale",
         "type": "float",
         "default": 0.5,
-        "min": 0,
-        "max": 1,
+        "min": 0.0,
+        "max": 1.0,
     },
     "control_guidance_end": {
         "label": "End",
