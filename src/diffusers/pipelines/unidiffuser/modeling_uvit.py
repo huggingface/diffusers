@@ -1151,16 +1151,17 @@ class UniDiffuserModel(ModelMixin, ConfigMixin):
         hidden_states = self.pos_embed_drop(hidden_states)
 
         # 2. Blocks
-        hidden_states = self.transformer(
-            hidden_states,
-            encoder_hidden_states=encoder_hidden_states,
-            timestep=None,
-            class_labels=None,
-            cross_attention_kwargs=cross_attention_kwargs,
-            return_dict=False,
-            hidden_states_is_embedding=True,
-            unpatchify=False,
-        )[0]
+        with self.transformer.cache_context("cond"):
+            hidden_states = self.transformer(
+                hidden_states,
+                encoder_hidden_states=encoder_hidden_states,
+                timestep=None,
+                class_labels=None,
+                cross_attention_kwargs=cross_attention_kwargs,
+                return_dict=False,
+                hidden_states_is_embedding=True,
+                unpatchify=False,
+            )[0]
 
         # 3. Output
         # Split out the predicted noise representation.

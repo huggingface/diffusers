@@ -490,16 +490,17 @@ class OmniGenPipeline(
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
                 timestep = t.expand(latent_model_input.shape[0])
 
-                noise_pred = self.transformer(
-                    hidden_states=latent_model_input,
-                    timestep=timestep,
-                    input_ids=processed_data["input_ids"],
-                    input_img_latents=input_img_latents,
-                    input_image_sizes=processed_data["input_image_sizes"],
-                    attention_mask=processed_data["attention_mask"],
-                    position_ids=processed_data["position_ids"],
-                    return_dict=False,
-                )[0]
+                with self.transformer.cache_context("cond"):
+                    noise_pred = self.transformer(
+                        hidden_states=latent_model_input,
+                        timestep=timestep,
+                        input_ids=processed_data["input_ids"],
+                        input_img_latents=input_img_latents,
+                        input_image_sizes=processed_data["input_image_sizes"],
+                        attention_mask=processed_data["attention_mask"],
+                        position_ids=processed_data["position_ids"],
+                        return_dict=False,
+                    )[0]
 
                 if num_cfg == 2:
                     cond, uncond, img_cond = torch.split(noise_pred, len(noise_pred) // 3, dim=0)

@@ -705,16 +705,17 @@ class BriaFiboPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
                 )
 
                 # This is predicts "v" from flow-matching or eps from diffusion
-                noise_pred = self.transformer(
-                    hidden_states=latent_model_input,
-                    timestep=timestep,
-                    encoder_hidden_states=prompt_embeds,
-                    text_encoder_layers=prompt_layers,
-                    joint_attention_kwargs=self.joint_attention_kwargs,
-                    return_dict=False,
-                    txt_ids=text_ids,
-                    img_ids=latent_image_ids,
-                )[0]
+                with self.transformer.cache_context("cond"):
+                    noise_pred = self.transformer(
+                        hidden_states=latent_model_input,
+                        timestep=timestep,
+                        encoder_hidden_states=prompt_embeds,
+                        text_encoder_layers=prompt_layers,
+                        joint_attention_kwargs=self.joint_attention_kwargs,
+                        return_dict=False,
+                        txt_ids=text_ids,
+                        img_ids=latent_image_ids,
+                    )[0]
 
                 # perform guidance
                 if guidance_scale > 1:
