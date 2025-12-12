@@ -15,7 +15,6 @@
 import inspect
 from typing import Any, Dict, List, Optional, Tuple, Union
 
-import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -24,14 +23,14 @@ from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
 from ...utils import is_torch_npu_available, logging
 from ...utils.torch_utils import maybe_allow_in_graph
-from .._modeling_parallel import ContextParallelInput, ContextParallelOutput
-from ..attention import AttentionMixin, AttentionModuleMixin, FeedForward
+from ..attention import AttentionModuleMixin, FeedForward
 from ..attention_dispatch import dispatch_attention_fn
 from ..cache_utils import CacheMixin
+from ..embeddings import TimestepEmbedding, Timesteps, apply_rotary_emb, get_1d_rotary_pos_embed
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
 from ..normalization import AdaLayerNormContinuous, AdaLayerNormZero, AdaLayerNormZeroSingle
-from ..embeddings import TimestepEmbedding, Timesteps, apply_rotary_emb, get_1d_rotary_pos_embed
+
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
@@ -381,7 +380,6 @@ class LongCatImagePosEmbed(nn.Module):
         return freqs_cos, freqs_sin
 
 
-
 class LongCatImageTimestepEmbeddings(nn.Module):
     def __init__(self, embedding_dim):
         super().__init__()
@@ -394,14 +392,15 @@ class LongCatImageTimestepEmbeddings(nn.Module):
         timesteps_emb = self.timestep_embedder(timesteps_proj.to(dtype=hidden_dtype))  # (N, D)
 
         return timesteps_emb
-    
+
 
 class LongCatImageTransformer2DModel(
     ModelMixin,
     ConfigMixin,
     PeftAdapterMixin,
     FromOriginalModelMixin,
-    CacheMixin, ):
+    CacheMixin,
+):
     """
     The Transformer model introduced in Longcat-Image.
     """
@@ -455,10 +454,8 @@ class LongCatImageTransformer2DModel(
             ]
         )
 
-        self.norm_out = AdaLayerNormContinuous(
-            self.inner_dim, self.inner_dim, elementwise_affine=False, eps=1e-6)
-        self.proj_out = nn.Linear(
-            self.inner_dim, patch_size * patch_size * self.out_channels, bias=True)
+        self.norm_out = AdaLayerNormContinuous(self.inner_dim, self.inner_dim, elementwise_affine=False, eps=1e-6)
+        self.proj_out = nn.Linear(self.inner_dim, patch_size * patch_size * self.out_channels, bias=True)
 
         self.gradient_checkpointing = False
         self.use_checkpoint = [True] * num_layers
@@ -498,9 +495,8 @@ class LongCatImageTransformer2DModel(
 
         timestep = timestep.to(hidden_states.dtype) * 1000
 
-        temb = self.time_embed( timestep, hidden_states.dtype )
+        temb = self.time_embed(timestep, hidden_states.dtype)
         encoder_hidden_states = self.context_embedder(encoder_hidden_states)
-
 
         ids = torch.cat((txt_ids, img_ids), dim=0)
         if is_torch_npu_available():
@@ -528,7 +524,7 @@ class LongCatImageTransformer2DModel(
 
         for index_block, block in enumerate(self.single_transformer_blocks):
             if torch.is_grad_enabled() and self.gradient_checkpointing and self.use_single_checkpoint[index_block]:
-                encoder_hidden_states,hidden_states = self._gradient_checkpointing_func(
+                encoder_hidden_states, hidden_states = self._gradient_checkpointing_func(
                     block,
                     hidden_states,
                     encoder_hidden_states,

@@ -13,28 +13,28 @@
 # limitations under the License.
 import inspect
 import math
-from typing import Any, Callable, Dict, List, Optional, Union
-import json
+import re
+from typing import Any, Dict, List, Optional, Union
+
 import numpy as np
 import PIL
 import torch
-import re
-
 from transformers import Qwen2_5_VLForConditionalGeneration, Qwen2Tokenizer, Qwen2VLProcessor
 
 from ...image_processor import VaeImageProcessor
 from ...loaders import FromSingleFileMixin
 from ...models.autoencoders import AutoencoderKL
+from ...models.transformers import LongCatImageTransformer2DModel
+from ...pipelines.pipeline_utils import DiffusionPipeline
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import is_torch_xla_available, logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
-from ...pipelines.pipeline_utils import DiffusionPipeline
-
-from ...models.transformers import LongCatImageTransformer2DModel
 from .pipeline_output import LongCatImagePipelineOutput
+
 
 if is_torch_xla_available():
     import torch_xla.core.xla_model as xm
+
     XLA_AVAILABLE = True
 else:
     XLA_AVAILABLE = False
@@ -65,10 +65,11 @@ EXAMPLE_DOC_STRING = """
         ```
 """
 
+
+# Copied from diffusers.pipelines.longcat_image.pipeline_longcat_image.split_quotation
 def split_quotation(prompt, quote_pairs=None):
     """
-    Implement a regex-based string splitting algorithm that identifies delimiters defined by single or double quote pairs. 
-
+    Implement a regex-based string splitting algorithm that identifies delimiters defined by single or double quote pairs.
     Examples::
         >>> prompt_en = "Please write 'Hello' on the blackboard for me."
         >>> print(split_quotation(prompt_en))
@@ -79,17 +80,14 @@ def split_quotation(prompt, quote_pairs=None):
     mapping_word_internal_quote = []
 
     for i, word_src in enumerate(set(matches_word_internal_quote_pattern)):
-        word_tgt = 'longcat_$##$_longcat' * (i+1)
+        word_tgt = "longcat_$##$_longcat" * (i + 1)
         prompt = prompt.replace(word_src, word_tgt)
         mapping_word_internal_quote.append([word_src, word_tgt])
 
     if quote_pairs is None:
-        quote_pairs = [("'", "'"), ('"', '"'), ('‘', '’'), ('“', '”')]
-
-    pattern = '|'.join([re.escape(q1) + r'[^' + re.escape(q1+q2) +
-                       r']*?' + re.escape(q2) for q1, q2 in quote_pairs])
-
-    parts = re.split(f'({pattern})', prompt)
+        quote_pairs = [("'", "'"), ('"', '"'), ("‘", "’"), ("“", "”")]
+    pattern = "|".join([re.escape(q1) + r"[^" + re.escape(q1 + q2) + r"]*?" + re.escape(q2) for q1, q2 in quote_pairs])
+    parts = re.split(f"({pattern})", prompt)
 
     result = []
     for part in parts:
@@ -104,41 +102,31 @@ def split_quotation(prompt, quote_pairs=None):
     return result
 
 
-def prepare_pos_ids(
-        modality_id=0,
-        type='text',
-        start=(0, 0),
-        num_token=None,
-        height=None,
-        width=None):
-    if type == 'text':
+# Copied from diffusers.pipelines.longcat_image.pipeline_longcat_image.prepare_pos_ids
+def prepare_pos_ids(modality_id=0, type="text", start=(0, 0), num_token=None, height=None, width=None):
+    if type == "text":
         assert num_token
         if height or width:
-            print(
-                'Warning: The parameters of height and width will be ignored in "text" type.')
+            print('Warning: The parameters of height and width will be ignored in "text" type.')
         pos_ids = torch.zeros(num_token, 3)
         pos_ids[..., 0] = modality_id
         pos_ids[..., 1] = torch.arange(num_token) + start[0]
         pos_ids[..., 2] = torch.arange(num_token) + start[1]
-    elif type == 'image':
+    elif type == "image":
         assert height and width
         if num_token:
             print('Warning: The parameter of num_token will be ignored in "image" type.')
         pos_ids = torch.zeros(height, width, 3)
         pos_ids[..., 0] = modality_id
-        pos_ids[..., 1] = (
-            pos_ids[..., 1] + torch.arange(height)[:, None] + start[0]
-        )
-        pos_ids[..., 2] = (
-            pos_ids[..., 2] + torch.arange(width)[None, :] + start[1]
-        )
-        pos_ids = pos_ids.reshape(height*width, 3)
+        pos_ids[..., 1] = pos_ids[..., 1] + torch.arange(height)[:, None] + start[0]
+        pos_ids[..., 2] = pos_ids[..., 2] + torch.arange(width)[None, :] + start[1]
+        pos_ids = pos_ids.reshape(height * width, 3)
     else:
         raise KeyError(f'Unknow type {type}, only support "text" or "image".')
     return pos_ids
 
 
-
+# Copied from diffusers.pipelines.longcat_image.pipeline_longcat_image.calculate_shift
 def calculate_shift(
     image_seq_len,
     base_seq_len: int = 256,
@@ -211,6 +199,7 @@ def retrieve_timesteps(
         timesteps = scheduler.timesteps
     return timesteps, num_inference_steps
 
+
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.retrieve_latents
 def retrieve_latents(
     encoder_output: torch.Tensor, generator: Optional[torch.Generator] = None, sample_mode: str = "sample"
@@ -224,6 +213,7 @@ def retrieve_latents(
     else:
         raise AttributeError("Could not access latents of provided encoder_output")
 
+
 def calculate_dimensions(target_area, ratio):
     width = math.sqrt(target_area * ratio)
     height = width / ratio
@@ -236,15 +226,14 @@ def calculate_dimensions(target_area, ratio):
 
     return width, height
 
-class LongCatImageEditPipeline(
-    DiffusionPipeline,FromSingleFileMixin
-):
+
+class LongCatImageEditPipeline(DiffusionPipeline, FromSingleFileMixin):
     r"""
     The LongCat-Image-Edit pipeline for image editing.
     """
 
     model_cpu_offload_seq = "text_encoder->image_encoder->transformer->vae"
-    _optional_components = [ ]
+    _optional_components = []
     _callback_tensor_inputs = ["latents", "prompt_embeds"]
 
     def __init__(
@@ -264,67 +253,71 @@ class LongCatImageEditPipeline(
             tokenizer=tokenizer,
             transformer=transformer,
             scheduler=scheduler,
-            text_processor=text_processor
+            text_processor=text_processor,
         )
 
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1) if getattr(self, "vae", None) else 8
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor * 2)
         self.image_processor_vl = text_processor.image_processor
-        
+
         self.image_token = "<|image_pad|>"
         self.prompt_template_encode_prefix = "<|im_start|>system\nAs an image editing expert, first analyze the content and attributes of the input image(s). Then, based on the user's editing instructions, clearly and precisely determine how to modify the given image(s), ensuring that only the specified parts are altered and all other aspects remain consistent with the original(s).<|im_end|>\n<|im_start|>user\n<|vision_start|><|image_pad|><|vision_end|>"
-        self.prompt_template_encode_suffix = '<|im_end|>\n<|im_start|>assistant\n'
-        self.prompt_template_encode_start_idx = 67
-        self.prompt_template_encode_end_idx = 5
+        self.prompt_template_encode_suffix = "<|im_end|>\n<|im_start|>assistant\n"
         self.default_sample_size = 128
         self.tokenizer_max_length = 512
 
-    def _encode_prompt( self, prompt, image ):
-        raw_vl_input = self.image_processor_vl(images=image,return_tensors="pt")
-        pixel_values = raw_vl_input['pixel_values']
-        image_grid_thw = raw_vl_input['image_grid_thw']
+    def _encode_prompt(self, prompt, image):
+        raw_vl_input = self.image_processor_vl(images=image, return_tensors="pt")
+        pixel_values = raw_vl_input["pixel_values"]
+        image_grid_thw = raw_vl_input["image_grid_thw"]
         all_tokens = []
         for clean_prompt_sub, matched in split_quotation(prompt[0]):
             if matched:
                 for sub_word in clean_prompt_sub:
-                    tokens = self.tokenizer(sub_word, add_special_tokens=False)['input_ids']
+                    tokens = self.tokenizer(sub_word, add_special_tokens=False)["input_ids"]
                     all_tokens.extend(tokens)
             else:
-                tokens = self.tokenizer(clean_prompt_sub, add_special_tokens=False)['input_ids']
+                tokens = self.tokenizer(clean_prompt_sub, add_special_tokens=False)["input_ids"]
                 all_tokens.extend(tokens)
-        
+
         if len(all_tokens) > self.tokenizer_max_length:
             logger.warning(
                 "Your input was truncated because `max_sequence_length` is set to "
                 f" {self.tokenizer_max_length} input token nums : {len(len(all_tokens))}"
             )
-            all_tokens = all_tokens[:self.tokenizer_max_length]
-        
+            all_tokens = all_tokens[: self.tokenizer_max_length]
+
         text_tokens_and_mask = self.tokenizer.pad(
-            {'input_ids': [all_tokens]},
+            {"input_ids": [all_tokens]},
             max_length=self.tokenizer_max_length,
-            padding='max_length',
+            padding="max_length",
             return_attention_mask=True,
-            return_tensors='pt')
-        
+            return_tensors="pt",
+        )
+
         text = self.prompt_template_encode_prefix
-        
+
         merge_length = self.image_processor_vl.merge_size**2
         while self.image_token in text:
             num_image_tokens = image_grid_thw.prod() // merge_length
             text = text.replace(self.image_token, "<|placeholder|>" * num_image_tokens, 1)
         text = text.replace("<|placeholder|>", self.image_token)
 
-        prefix_tokens = self.tokenizer(text, add_special_tokens=False)['input_ids']
-        suffix_tokens = self.tokenizer(self.prompt_template_encode_suffix, add_special_tokens=False)['input_ids']
-        prefix_tokens_mask = torch.tensor( [1]*len(prefix_tokens), dtype = text_tokens_and_mask.attention_mask[0].dtype )
-        suffix_tokens_mask = torch.tensor( [1]*len(suffix_tokens), dtype = text_tokens_and_mask.attention_mask[0].dtype )
+        prefix_tokens = self.tokenizer(text, add_special_tokens=False)["input_ids"]
+        suffix_tokens = self.tokenizer(self.prompt_template_encode_suffix, add_special_tokens=False)["input_ids"]
+        prefix_len = len(prefix_tokens)
+        suffix_len = len(suffix_tokens)
 
-        prefix_tokens = torch.tensor(prefix_tokens,dtype=text_tokens_and_mask.input_ids.dtype)
-        suffix_tokens = torch.tensor(suffix_tokens,dtype=text_tokens_and_mask.input_ids.dtype)
-                
-        input_ids = torch.cat( (prefix_tokens, text_tokens_and_mask.input_ids[0], suffix_tokens), dim=-1 )
-        attention_mask = torch.cat( (prefix_tokens_mask, text_tokens_and_mask.attention_mask[0], suffix_tokens_mask), dim=-1 )
+        prefix_tokens_mask = torch.tensor([1] * len(prefix_tokens), dtype=text_tokens_and_mask.attention_mask[0].dtype)
+        suffix_tokens_mask = torch.tensor([1] * len(suffix_tokens), dtype=text_tokens_and_mask.attention_mask[0].dtype)
+
+        prefix_tokens = torch.tensor(prefix_tokens, dtype=text_tokens_and_mask.input_ids.dtype)
+        suffix_tokens = torch.tensor(suffix_tokens, dtype=text_tokens_and_mask.input_ids.dtype)
+
+        input_ids = torch.cat((prefix_tokens, text_tokens_and_mask.input_ids[0], suffix_tokens), dim=-1)
+        attention_mask = torch.cat(
+            (prefix_tokens_mask, text_tokens_and_mask.attention_mask[0], suffix_tokens_mask), dim=-1
+        )
 
         input_ids = input_ids.unsqueeze(0).to(self.device)
         attention_mask = attention_mask.unsqueeze(0).to(self.device)
@@ -336,37 +329,37 @@ class LongCatImageEditPipeline(
             input_ids=input_ids,
             attention_mask=attention_mask,
             pixel_values=pixel_values,
-            image_grid_thw =image_grid_thw,
-            output_hidden_states=True
+            image_grid_thw=image_grid_thw,
+            output_hidden_states=True,
         )
         # [max_sequence_length, batch, hidden_size] -> [batch, max_sequence_length, hidden_size]
         # clone to have a contiguous tensor
         prompt_embeds = text_output.hidden_states[-1].detach()
-        prompt_embeds = prompt_embeds[:,self.prompt_template_encode_start_idx: -self.prompt_template_encode_end_idx ,:]
-
+        prompt_embeds = prompt_embeds[:, prefix_len:-suffix_len, :]
         return prompt_embeds
 
-    def encode_prompt(self, 
-                    prompt : List[str] = None,
-                    image: Optional[torch.Tensor] = None,
-                    num_images_per_prompt: Optional[int] = 1,
-                    prompt_embeds: Optional[torch.Tensor] = None):
+    def encode_prompt(
+        self,
+        prompt: List[str] = None,
+        image: Optional[torch.Tensor] = None,
+        num_images_per_prompt: Optional[int] = 1,
+        prompt_embeds: Optional[torch.Tensor] = None,
+    ):
         prompt = [prompt] if isinstance(prompt, str) else prompt
         batch_size = len(prompt)
         # If prompt_embeds is provided and prompt is None, skip encoding
         if prompt_embeds is None:
-            prompt_embeds = self._encode_prompt( prompt, image )
-        
+            prompt_embeds = self._encode_prompt(prompt, image)
+
         _, seq_len, _ = prompt_embeds.shape
         # duplicate text embeddings and attention mask for each generation per prompt, using mps friendly method
         prompt_embeds = prompt_embeds.repeat(1, num_images_per_prompt, 1)
         prompt_embeds = prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
 
-        text_ids = prepare_pos_ids(modality_id=0,
-                                   type='text',
-                                   start=(0, 0),
-                                   num_token=prompt_embeds.shape[1]).to(self.device)
-        return prompt_embeds,  text_ids
+        text_ids = prepare_pos_ids(modality_id=0, type="text", start=(0, 0), num_token=prompt_embeds.shape[1]).to(
+            self.device
+        )
+        return prompt_embeds, text_ids
 
     @staticmethod
     def _pack_latents(latents, batch_size, num_channels_latents, height, width):
@@ -391,7 +384,7 @@ class LongCatImageEditPipeline(
         latents = latents.reshape(batch_size, channels // (2 * 2), height, width)
 
         return latents
-    
+
     def _encode_vae_image(self, image: torch.Tensor, generator: torch.Generator):
         if isinstance(generator, list):
             image_latents = [
@@ -404,11 +397,6 @@ class LongCatImageEditPipeline(
         image_latents = (image_latents - self.vae.config.shift_factor) * self.vae.config.scaling_factor
 
         return image_latents
-
-
-    @property
-    def guidance_scale(self):
-        return self._guidance_scale
 
     @property
     def do_classifier_free_guidance(self):
@@ -451,25 +439,24 @@ class LongCatImageEditPipeline(
             else:
                 image_latents = torch.cat([image_latents], dim=0)
 
-            image_latents = self._pack_latents(
-                image_latents, batch_size, num_channels_latents, height, width
-            )
+            image_latents = self._pack_latents(image_latents, batch_size, num_channels_latents, height, width)
 
-            image_latents_ids = prepare_pos_ids(modality_id=2,
-                                        type='image',
-                                        start=(prompt_embeds_length,
-                                                prompt_embeds_length),
-                                        height=height//2,
-                                        width=width//2).to(device, dtype=torch.float64)
+            image_latents_ids = prepare_pos_ids(
+                modality_id=2,
+                type="image",
+                start=(prompt_embeds_length, prompt_embeds_length),
+                height=height // 2,
+                width=width // 2,
+            ).to(device, dtype=torch.float64)
 
         shape = (batch_size, num_channels_latents, height, width)
-        latents_ids = prepare_pos_ids(modality_id=1,
-                                            type='image',
-                                            start=(prompt_embeds_length,
-                                                    prompt_embeds_length),
-                                            height=height//2,
-                                            width=width//2).to(device)
-        
+        latents_ids = prepare_pos_ids(
+            modality_id=1,
+            type="image",
+            start=(prompt_embeds_length, prompt_embeds_length),
+            height=height // 2,
+            width=width // 2,
+        ).to(device)
 
         if isinstance(generator, list) and len(generator) != batch_size:
             raise ValueError(
@@ -505,6 +492,39 @@ class LongCatImageEditPipeline(
     def interrupt(self):
         return self._interrupt
 
+    def check_inputs(
+        self, prompt, height, width, negative_prompt=None, prompt_embeds=None, negative_prompt_embeds=None
+    ):
+        if height % (self.vae_scale_factor * 2) != 0 or width % (self.vae_scale_factor * 2) != 0:
+            logger.warning(
+                f"`height` and `width` have to be divisible by {self.vae_scale_factor * 2} but are {height} and {width}. Dimensions will be resized accordingly"
+            )
+
+        if prompt is not None and prompt_embeds is not None:
+            raise ValueError(
+                f"Cannot forward both `prompt`: {prompt} and `prompt_embeds`: {prompt_embeds}. Please make sure to"
+                " only forward one of the two."
+            )
+        elif prompt is None and prompt_embeds is None:
+            raise ValueError(
+                "Provide either `prompt` or `prompt_embeds`. Cannot leave both `prompt` and `prompt_embeds` undefined."
+            )
+        elif prompt is not None:
+            if isinstance(prompt, str):
+                pass
+            elif isinstance(prompt, list) and len(prompt) == 1:
+                pass
+            else:
+                raise ValueError(
+                    f"`prompt` must be a `str` or a `list` of length 1, but is {prompt} (type: {type(prompt)})"
+                )
+            
+        if negative_prompt is not None and negative_prompt_embeds is not None:
+            raise ValueError(
+                f"Cannot forward both `negative_prompt`: {negative_prompt} and `negative_prompt_embeds`:"
+                f" {negative_prompt_embeds}. Please make sure to only forward one of the two."
+            )
+
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     @torch.no_grad()
     def __call__(
@@ -516,8 +536,7 @@ class LongCatImageEditPipeline(
         sigmas: Optional[List[float]] = None,
         guidance_scale: float = 4.5,
         num_images_per_prompt: Optional[int] = 1,
-        generator: Optional[Union[torch.Generator,
-                                  List[torch.Generator]]] = None,
+        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.FloatTensor] = None,
         prompt_embeds: Optional[torch.FloatTensor] = None,
         negative_prompt_embeds: Optional[torch.FloatTensor] = None,
@@ -536,9 +555,19 @@ class LongCatImageEditPipeline(
             images.
         """
 
-        image_size = image.size
-        calculated_width, calculated_height = calculate_dimensions(1024 * 1024, image_size[0]*1.0/image_size[1])
-        
+        image_size = image[0].size if isinstance(image, list) else image.size
+        calculated_width, calculated_height = calculate_dimensions(1024 * 1024, image_size[0] * 1.0 / image_size[1])
+
+        # 1. Check inputs. Raise error if not correct
+        self.check_inputs(
+            prompt,
+            calculated_height,
+            calculated_width,
+            negative_prompt=negative_prompt,
+            prompt_embeds=prompt_embeds,
+            negative_prompt_embeds=negative_prompt_embeds,
+        )
+
         self._guidance_scale = guidance_scale
         self._joint_attention_kwargs = joint_attention_kwargs
         self._current_timestep = None
@@ -551,30 +580,25 @@ class LongCatImageEditPipeline(
             batch_size = len(prompt)
         else:
             batch_size = prompt_embeds.shape[0]
-        
+
         device = self._execution_device
-
-        image = self.image_processor.resize(image, calculated_height, calculated_width)
-        prompt_image = self.image_processor.resize(image, calculated_height//2, calculated_width//2)
-        image = self.image_processor.preprocess(image, calculated_height, calculated_width)
-
-        negative_prompt = '' if negative_prompt is None else negative_prompt
-        (
-                prompt_embeds, 
-                text_ids
-        ) = self.encode_prompt( prompt=prompt, 
-                                image=prompt_image,
-                                prompt_embeds=prompt_embeds, 
-                                num_images_per_prompt= num_images_per_prompt 
+        
+        # 3. Preprocess image
+        if image is not None and not (isinstance(image, torch.Tensor) and image.size(1) == self.latent_channels):
+            image = self.image_processor.resize(image, calculated_height, calculated_width)
+            prompt_image = self.image_processor.resize(image, calculated_height // 2, calculated_width // 2)
+            image = self.image_processor.preprocess(image, calculated_height, calculated_width)
+            
+        negative_prompt = "" if negative_prompt is None else negative_prompt
+        (prompt_embeds, text_ids) = self.encode_prompt(
+            prompt=prompt, image=prompt_image, prompt_embeds=prompt_embeds, num_images_per_prompt=num_images_per_prompt
         )
         if self.do_classifier_free_guidance:
-            (
-                negative_prompt_embeds, 
-                negative_text_ids
-            ) = self.encode_prompt( prompt=negative_prompt, 
-                                    image=prompt_image,
-                                    prompt_embeds=negative_prompt_embeds, 
-                                    num_images_per_prompt=num_images_per_prompt 
+            (negative_prompt_embeds, negative_text_ids) = self.encode_prompt(
+                prompt=negative_prompt,
+                image=prompt_image,
+                prompt_embeds=negative_prompt_embeds,
+                num_images_per_prompt=num_images_per_prompt,
             )
 
         # 4. Prepare latent variables
@@ -593,7 +617,7 @@ class LongCatImageEditPipeline(
         )
 
         # 5. Prepare timesteps
-        sigmas = np.linspace(1.0, 1.0 / num_inference_steps,num_inference_steps) if sigmas is None else sigmas
+        sigmas = np.linspace(1.0, 1.0 / num_inference_steps, num_inference_steps) if sigmas is None else sigmas
         image_seq_len = latents.shape[1]
         mu = calculate_shift(
             image_seq_len,
@@ -635,7 +659,7 @@ class LongCatImageEditPipeline(
                 if image_latents is not None:
                     latent_model_input = torch.cat([latents, image_latents], dim=1)
 
-                #latent_model_input = torch.cat([latent_model_input] * 2) if self.do_classifier_free_guidance else latent_model_input
+                # latent_model_input = torch.cat([latent_model_input] * 2) if self.do_classifier_free_guidance else latent_model_input
                 timestep = t.expand(latent_model_input.shape[0]).to(latents.dtype)
                 with self.transformer.cache_context("cond"):
                     noise_pred_text = self.transformer(
@@ -692,7 +716,7 @@ class LongCatImageEditPipeline(
             image = self.vae.decode(latents, return_dict=False)[0]
             image = self.image_processor.postprocess(image, output_type=output_type)
 
-        #Offload all models
+        # Offload all models
         self.maybe_free_model_hooks()
 
         if not return_dict:

@@ -33,9 +33,9 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     except OptionalDependencyNotAvailable:
         from ...utils.dummy_torch_and_transformers_objects import *
     else:
-        from .pipeline_output import LongCatImagePipelineOutput
         from .pipeline_longcat_image import LongCatImagePipeline
         from .pipeline_longcat_image_edit import LongCatImageEditPipeline
+        from .pipeline_output import LongCatImagePipelineOutput
 
 else:
     import sys
