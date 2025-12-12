@@ -382,7 +382,7 @@ class LongCatImagePosEmbed(nn.Module):
 
 
 
-class TimestepEmbeddings(nn.Module):
+class LongCatImageTimestepEmbeddings(nn.Module):
     def __init__(self, embedding_dim):
         super().__init__()
 
