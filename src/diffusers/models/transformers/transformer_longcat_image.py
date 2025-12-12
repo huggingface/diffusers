@@ -501,18 +501,6 @@ class LongCatImageTransformer2DModel(
         temb = self.time_embed( timestep, hidden_states.dtype )
         encoder_hidden_states = self.context_embedder(encoder_hidden_states)
 
-        if txt_ids.ndim == 3:
-            logger.warning(
-                "Passing `txt_ids` 3d torch.Tensor is deprecated."
-                "Please remove the batch dimension and pass it as a 2d torch Tensor"
-            )
-            txt_ids = txt_ids[0]
-        if img_ids.ndim == 3:
-            logger.warning(
-                "Passing `img_ids` 3d torch.Tensor is deprecated."
-                "Please remove the batch dimension and pass it as a 2d torch Tensor"
-            )
-            img_ids = img_ids[0]
 
         ids = torch.cat((txt_ids, img_ids), dim=0)
         if is_torch_npu_available():
