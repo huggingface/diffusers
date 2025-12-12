@@ -11,7 +11,8 @@ export RUN_ATTENTION_BACKEND_TESTS=yes
 pytest tests/others/test_attention_backends.py
 ```
 
-Tests were conducted on an H100 with PyTorch 2.9.1 (CUDA 12.9).
+Tests were conducted on an H100 with PyTorch 2.8.0 (CUDA 12.9). Slices for the compilation tests in
+"native" variants were obtained with a torch nightly version (2.10.0.dev20250924+cu128).
 
 Tests for aiter backend were conducted and slices for the aiter backend tests collected on a MI355X
 with torch 2025-09-25 nightly version (ad2f7315ca66b42497047bb7951f696b50f1e81b) and
@@ -22,8 +23,6 @@ import os
 
 import pytest
 import torch
-
-from ..testing_utils import numpy_cosine_similarity_distance
 
 
 pytestmark = pytest.mark.skipif(
@@ -37,28 +36,23 @@ from diffusers.utils import is_torch_version  # noqa: E402
 FORWARD_CASES = [
     (
         "flash_hub",
-        torch.tensor([0.0820, 0.0859, 0.0918, 0.1016, 0.0957, 0.0996, 0.0996, 0.1016, 0.2188, 0.2266, 0.2363, 0.2500, 0.2539, 0.2461, 0.2422, 0.2695], dtype=torch.bfloat16),
-        1e-4
+        torch.tensor([0.0820, 0.0859, 0.0918, 0.1016, 0.0957, 0.0996, 0.0996, 0.1016, 0.2188, 0.2266, 0.2363, 0.2500, 0.2539, 0.2461, 0.2422, 0.2695], dtype=torch.bfloat16)
     ),
     (
         "_flash_3_hub",
         torch.tensor([0.0820, 0.0859, 0.0938, 0.1016, 0.0977, 0.0996, 0.1016, 0.1016, 0.2188, 0.2246, 0.2344, 0.2480, 0.2539, 0.2480, 0.2441, 0.2715], dtype=torch.bfloat16),
-        1e-4
     ),
     (
         "native",
-        torch.tensor([0.0820, 0.0859, 0.0938, 0.1016, 0.0957, 0.0996, 0.0996, 0.1016, 0.2188, 0.2266, 0.2363, 0.2500, 0.2539, 0.2480, 0.2461, 0.2734], dtype=torch.bfloat16),
-        1e-4
-    ),
+        torch.tensor([0.0820, 0.0859, 0.0938, 0.1016, 0.0957, 0.0996, 0.0996, 0.1016, 0.2188, 0.2266, 0.2363, 0.2500, 0.2539, 0.2480, 0.2461, 0.2734], dtype=torch.bfloat16)
+        ),
     (
         "_native_cudnn",
         torch.tensor([0.0781, 0.0840, 0.0879, 0.0957, 0.0898, 0.0957, 0.0957, 0.0977, 0.2168, 0.2246, 0.2324, 0.2500, 0.2539, 0.2480, 0.2441, 0.2695], dtype=torch.bfloat16),
-        5e-4
     ),
     (
         "aiter",
         torch.tensor([0.0781, 0.0820, 0.0879, 0.0957, 0.0898, 0.0938, 0.0957, 0.0957, 0.2285, 0.2363, 0.2461, 0.2637, 0.2695, 0.2617, 0.2617, 0.2891], dtype=torch.bfloat16),
-        1e-4
     )
 ]
 
@@ -66,32 +60,27 @@ COMPILE_CASES = [
     (
         "flash_hub",
         torch.tensor([0.0410, 0.0410, 0.0449, 0.0508, 0.0488, 0.0586, 0.0605, 0.0586, 0.2324, 0.2422, 0.2539, 0.2734, 0.2832, 0.2812, 0.2773, 0.3047], dtype=torch.bfloat16),
-        True,
-        1e-4
+        True
     ),
     (
         "_flash_3_hub",
         torch.tensor([0.0410, 0.0410, 0.0449, 0.0508, 0.0508, 0.0605, 0.0625, 0.0605, 0.2344, 0.2461, 0.2578, 0.2734, 0.2852, 0.2812, 0.2773, 0.3047], dtype=torch.bfloat16),
         True,
-        1e-4
     ),
     (
         "native",
         torch.tensor([0.0410, 0.0410, 0.0449, 0.0508, 0.0508, 0.0605, 0.0605, 0.0605, 0.2344, 0.2461, 0.2578, 0.2773, 0.2871, 0.2832, 0.2773, 0.3066], dtype=torch.bfloat16),
         True,
-        1e-4
     ),
     (
         "_native_cudnn",
         torch.tensor([0.0410, 0.0410, 0.0430, 0.0508, 0.0488, 0.0586, 0.0605, 0.0586, 0.2344, 0.2461, 0.2578, 0.2773, 0.2871, 0.2832, 0.2793, 0.3086], dtype=torch.bfloat16),
         True,
-        5e-4,
     ),
     (
         "aiter",
         torch.tensor([0.0391, 0.0391, 0.0430, 0.0488, 0.0469, 0.0566, 0.0586, 0.0566, 0.2402, 0.2539, 0.2637, 0.2812, 0.2930, 0.2910, 0.2891, 0.3164], dtype=torch.bfloat16),
         True,
-        1e-4
     )
 ]
 # fmt: on
@@ -115,11 +104,11 @@ def _backend_is_probably_supported(pipe, name: str):
         return False
 
 
-def _check_if_slices_match(output, expected_slice, expected_diff=1e-4):
+def _check_if_slices_match(output, expected_slice):
     img = output.images.detach().cpu()
     generated_slice = img.flatten()
     generated_slice = torch.cat([generated_slice[:8], generated_slice[-8:]])
-    assert numpy_cosine_similarity_distance(generated_slice, expected_slice) < expected_diff
+    assert torch.allclose(generated_slice, expected_slice, atol=1e-4)
 
 
 @pytest.fixture(scope="session")
@@ -137,23 +126,23 @@ def pipe(device):
     return pipe
 
 
-@pytest.mark.parametrize("backend_name,expected_slice,expected_diff", FORWARD_CASES, ids=[c[0] for c in FORWARD_CASES])
-def test_forward(pipe, backend_name, expected_slice, expected_diff):
+@pytest.mark.parametrize("backend_name,expected_slice", FORWARD_CASES, ids=[c[0] for c in FORWARD_CASES])
+def test_forward(pipe, backend_name, expected_slice):
     out = _backend_is_probably_supported(pipe, backend_name)
     if isinstance(out, bool):
         pytest.xfail(f"Backend '{backend_name}' not supported in this environment.")
 
     modified_pipe = out[0]
     out = modified_pipe(**INFER_KW, generator=torch.manual_seed(0))
-    _check_if_slices_match(out, expected_slice, expected_diff)
+    _check_if_slices_match(out, expected_slice)
 
 
 @pytest.mark.parametrize(
-    "backend_name,expected_slice,error_on_recompile,expected_diff",
+    "backend_name,expected_slice,error_on_recompile",
     COMPILE_CASES,
     ids=[c[0] for c in COMPILE_CASES],
 )
-def test_forward_with_compile(pipe, backend_name, expected_slice, error_on_recompile, expected_diff):
+def test_forward_with_compile(pipe, backend_name, expected_slice, error_on_recompile):
     if "native" in backend_name and error_on_recompile and not is_torch_version(">=", "2.9.0"):
         pytest.xfail(f"Test with {backend_name=} is compatible with a higher version of torch.")
 
@@ -171,4 +160,4 @@ def test_forward_with_compile(pipe, backend_name, expected_slice, error_on_recom
     ):
         out = modified_pipe(**INFER_KW, generator=torch.manual_seed(0))
 
-    _check_if_slices_match(out, expected_slice, expected_diff)
+    _check_if_slices_match(out, expected_slice)
