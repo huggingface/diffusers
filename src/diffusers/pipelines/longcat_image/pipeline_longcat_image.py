@@ -260,7 +260,6 @@ class LongCatImagePipeline(
         self.tokenizer_max_length = 512
 
 
-    @torch.inference_mode()
     def rewire_prompt(self, prompt, device):
         language = get_prompt_language(prompt)
         if language == 'zh':
