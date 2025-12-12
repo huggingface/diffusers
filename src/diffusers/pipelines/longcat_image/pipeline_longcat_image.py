@@ -291,8 +291,6 @@ class LongCatImagePipeline(
         return rewrite_prompt
     
     def _encode_prompt( self, prompt ):
-        prompt = [prompt] if isinstance(prompt, str) else prompt
-        batch_size = len(prompt)
         all_tokens = []
         for clean_prompt_sub, matched in split_quotation(prompt[0]):
             if matched:
@@ -341,23 +339,23 @@ class LongCatImagePipeline(
         prompt_embeds = text_output.hidden_states[-1].detach()
         prompt_embeds = prompt_embeds[:,self.prompt_template_encode_start_idx: -self.prompt_template_encode_end_idx ,:]
 
-        _, seq_len, _ = prompt_embeds.shape
-
-        # duplicate text embeddings and attention mask for each generation per prompt, using mps friendly method
-        prompt_embeds = prompt_embeds.repeat(1, num_images_per_prompt, 1)
-        prompt_embeds = prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
-
         return prompt_embeds
 
     def encode_prompt(self, 
                     prompt : List[str] = None,
                     num_images_per_prompt: Optional[int] = 1,
                     prompt_embeds: Optional[torch.Tensor] = None ):
-
+        prompt = [prompt] if isinstance(prompt, str) else prompt
+        batch_size = len(prompt)
         # If prompt_embeds is provided and prompt is None, skip encoding
         if prompt_embeds is None:
-            prompt_embeds = self._encode_prompt( prompt, num_images_per_prompt )
-        
+            prompt_embeds = self._encode_prompt( prompt )
+
+        _, seq_len, _ = prompt_embeds.shape
+        # duplicate text embeddings and attention mask for each generation per prompt, using mps friendly method
+        prompt_embeds = prompt_embeds.repeat(1, num_images_per_prompt, 1)
+        prompt_embeds = prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
+
         text_ids = prepare_pos_ids(modality_id=0,
                                    type='text',
                                    start=(0, 0),
