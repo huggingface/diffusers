@@ -165,10 +165,9 @@ def compute_text_seq_len_from_mask(
     has_active = encoder_hidden_states_mask.any(dim=1)
     per_sample_len = torch.where(has_active, active_positions.max(dim=1).values + 1, torch.as_tensor(text_seq_len))
 
+    # For RoPE, we use the full text_seq_len (since per_sample_len.max() <= text_seq_len always)
     # Keep as tensor to avoid graph breaks in torch.compile
-    # torch.maximum works with mixed tensor/scalar and keeps result as tensor
-    text_seq_len_tensor = torch.tensor(text_seq_len, device=encoder_hidden_states.device, dtype=torch.long)
-    rope_text_seq_len = torch.maximum(text_seq_len_tensor, per_sample_len.max())
+    rope_text_seq_len = torch.tensor(text_seq_len, device=encoder_hidden_states.device, dtype=torch.long)
 
     return rope_text_seq_len, per_sample_len, encoder_hidden_states_mask
 
@@ -265,6 +264,18 @@ class QwenEmbedRope(nn.Module):
         # Move to device unconditionally to avoid graph breaks in torch.compile
         self.pos_freqs = self.pos_freqs.to(device)
         self.neg_freqs = self.neg_freqs.to(device)
+
+        # Validate batch inference with variable-sized images
+        if isinstance(video_fhw, list) and len(video_fhw) > 1:
+            # Check if all instances have the same size
+            first_fhw = video_fhw[0]
+            if not all(fhw == first_fhw for fhw in video_fhw):
+                logger.warning(
+                    "Batch inference with variable-sized images is not currently supported in QwenEmbedRope. "
+                    "All images in the batch should have the same dimensions (frame, height, width). "
+                    f"Detected sizes: {video_fhw}. Using the first image's dimensions {first_fhw} "
+                    "for RoPE computation, which may lead to incorrect results for other images in the batch."
+                )
 
         if isinstance(video_fhw, list):
             video_fhw = video_fhw[0]
