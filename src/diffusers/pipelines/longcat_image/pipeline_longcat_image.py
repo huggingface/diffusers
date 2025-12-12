@@ -334,6 +334,8 @@ class LongCatImagePipeline(
         )
         # [max_sequence_length, batch, hidden_size] -> [batch, max_sequence_length, hidden_size]
         # clone to have a contiguous tensor
+        self.prompt_template_encode_start_idx = len(prefix_tokens)
+        self.prompt_template_encode_end_idx = len(suffix_tokens)
         prompt_embeds = text_output.hidden_states[-1].detach()
         prompt_embeds = prompt_embeds[:,self.prompt_template_encode_start_idx: -self.prompt_template_encode_end_idx ,:]
 
