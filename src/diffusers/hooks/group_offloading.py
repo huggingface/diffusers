@@ -766,7 +766,7 @@ def _apply_group_offloading_block_level(module: torch.nn.Module, config: GroupOf
                 if len(current_modules) == 0:
                     continue
 
-                group_id = f"{name}_{i}_{i + len(current_modules) - 1}"
+                group_id = f"{config.module_prefix}{name}_{i}_{i + len(current_modules) - 1}"
                 group = ModuleGroup(
                     modules=current_modules,
                     offload_device=config.offload_device,
@@ -819,7 +819,7 @@ def _apply_group_offloading_block_level(module: torch.nn.Module, config: GroupOf
             stream=None,
             record_stream=False,
             onload_self=True,
-            group_id=f"{module.__class__.__name__}_unmatched_group",
+            group_id=f"{config.module_prefix}{module.__class__.__name__}_unmatched_group",
         )
         if config.stream is None:
             _apply_group_offloading_hook(module, unmatched_group, config=config)
