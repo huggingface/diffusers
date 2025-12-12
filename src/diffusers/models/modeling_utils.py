@@ -601,8 +601,8 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         """
         from .attention import AttentionModuleMixin
         from .attention_dispatch import (
-            _AttentionBackendRegistry,
             AttentionBackendName,
+            _AttentionBackendRegistry,
             _check_attention_backend_requirements,
             _maybe_download_kernel_for_backend,
         )
@@ -629,7 +629,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             if processor is None or not hasattr(processor, "_attention_backend"):
                 continue
             processor._attention_backend = backend
-        
+
         # Important to set the active backend so that it propagates gracefully throughout.
         _AttentionBackendRegistry.set_active_backend(backend)
 

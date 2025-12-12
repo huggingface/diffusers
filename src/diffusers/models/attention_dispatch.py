@@ -329,7 +329,7 @@ def dispatch_attention_fn(
     else:
         backend_name = AttentionBackendName(backend)
         backend_fn = _AttentionBackendRegistry._backends.get(backend_name)
-    
+
     kwargs = {
         "query": query,
         "key": key,
@@ -352,7 +352,7 @@ def dispatch_attention_fn(
             check(**kwargs)
 
     kwargs = {k: v for k, v in kwargs.items() if k in _AttentionBackendRegistry._supported_arg_names[backend_name]}
-    
+
     if "_parallel_config" in kwargs and kwargs["_parallel_config"] is not None:
         attention_backend = AttentionBackendName(backend_name)
         if not _AttentionBackendRegistry._is_context_parallel_available(attention_backend):
@@ -363,7 +363,7 @@ def dispatch_attention_fn(
                 f"Please set a compatible attention backend: {compatible_backends} using `model.set_attention_backend()` before "
                 f"calling `model.enable_parallelism()`."
             )
-    
+
     return backend_fn(**kwargs)
 
 
