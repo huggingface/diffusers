@@ -1,15 +1,16 @@
 import cv2
 import numpy as np
-from PIL import Image
 import torch
+from PIL import Image
 
 from diffusers import (
-    StableDiffusionXLControlNetPipeline,
+    AutoencoderKL,
     ControlNetModel,
+    StableDiffusionXLControlNetPipeline,
     UNet2DConditionModel,
 )
-from diffusers import AutoencoderKL
 from diffusers.utils import load_image, make_image_grid
+
 
 pipe_id = "stabilityai/stable-diffusion-xl-base-1.0"
 lora_id = "stabilityai/control-lora"
@@ -22,7 +23,9 @@ controlnet.load_lora_adapter(lora_id, weight_name=lora_filename, prefix=None, co
 prompt = "aerial view, a futuristic research complex in a bright foggy jungle, hard lighting"
 negative_prompt = "low quality, bad quality, sketches"
 
-image = load_image("https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/hf-logo.png")
+image = load_image(
+    "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/hf-logo.png"
+)
 
 controlnet_conditioning_scale = 1.0  # recommended for good generalization
 
@@ -43,9 +46,11 @@ image = np.concatenate([image, image, image], axis=2)
 image = Image.fromarray(image)
 
 images = pipe(
-    prompt, negative_prompt=negative_prompt, image=image,
+    prompt,
+    negative_prompt=negative_prompt,
+    image=image,
     controlnet_conditioning_scale=controlnet_conditioning_scale,
-    num_images_per_prompt=4
+    num_images_per_prompt=4,
 ).images
 
 final_image = [image] + images
