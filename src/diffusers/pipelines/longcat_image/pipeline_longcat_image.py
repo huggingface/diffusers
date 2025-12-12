@@ -519,7 +519,6 @@ class LongCatImagePipeline(
             batch_size = prompt_embeds.shape[0]
         
         device = self._execution_device
-        # from IPython import embed; embed();
         if enable_prompt_rewrite:
             prompt = self.rewire_prompt(prompt, device )
             logger.info(f'Rewrite prompt {prompt}!')
