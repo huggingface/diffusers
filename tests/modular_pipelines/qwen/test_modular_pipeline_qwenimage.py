@@ -26,6 +26,7 @@ from diffusers.modular_pipelines import (
     QwenImageModularPipeline,
 )
 
+from ...testing_utils import torch_device
 from ..test_modular_pipelines_common import ModularGuiderTesterMixin, ModularPipelineTesterMixin
 
 
@@ -104,6 +105,16 @@ class TestQwenImageEditPlusModularPipelineFast(ModularPipelineTesterMixin, Modul
         inputs["image"] = PIL.Image.new("RGB", (32, 32), 0)
         return inputs
 
+    def test_multi_images_as_input(self):
+        inputs = self.get_dummy_inputs()
+        image = inputs.pop("image")
+        inputs["image"] = [image, image]
+
+        pipe = self.get_pipeline().to(torch_device)
+        _ = pipe(
+            **inputs,
+        )
+
     @pytest.mark.xfail(condition=True, reason="Batch of multiple images needs to be revisited", strict=True)
     def test_num_images_per_prompt(self):
         super().test_num_images_per_prompt()
@@ -117,4 +128,4 @@ class TestQwenImageEditPlusModularPipelineFast(ModularPipelineTesterMixin, Modul
         super().test_inference_batch_single_identical()
 
     def test_guider_cfg(self):
-        super().test_guider_cfg(1e-3)
+        super().test_guider_cfg(1e-6)
