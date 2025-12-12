@@ -346,7 +346,6 @@ class LongCatImageEditPipeline(
 
         return prompt_embeds
 
-    @torch.inference_mode()
     def encode_prompt(self, 
                     prompt : List[str] = None,
                     image: Optional[torch.Tensor] = None,
