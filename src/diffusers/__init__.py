@@ -163,7 +163,6 @@ else:
     )
     _import_structure["hooks"].extend(
         [
-            "FLUX_MAG_RATIOS",
             "FasterCacheConfig",
             "FirstBlockCacheConfig",
             "HookRegistry",
@@ -903,7 +902,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             TangentialClassifierFreeGuidance,
         )
         from .hooks import (
-            FLUX_MAG_RATIOS,
             FasterCacheConfig,
             FirstBlockCacheConfig,
             HookRegistry,

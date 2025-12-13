@@ -15,7 +15,6 @@
 from dataclasses import dataclass
 from typing import List, Optional, Tuple, Union
 
-import numpy as np
 import torch
 
 from ..utils import get_logger
@@ -33,7 +32,7 @@ _MAG_CACHE_BLOCK_HOOK = "mag_cache_block_hook"
 # Default Mag Ratios for Flux models (Dev/Schnell) are provided for convenience.
 # Users must explicitly pass these to the config if using Flux.
 # Reference: https://github.com/Zehong-Ma/MagCache
-FLUX_MAG_RATIOS = np.array(
+FLUX_MAG_RATIOS = torch.tensor(
     [1.0]
     + [
         1.21094,
@@ -67,16 +66,17 @@ FLUX_MAG_RATIOS = np.array(
 )
 
 
-def nearest_interp(src_array: np.ndarray, target_length: int) -> np.ndarray:
+def nearest_interp(src_array: torch.Tensor, target_length: int) -> torch.Tensor:
     """
     Interpolate the source array to the target length using nearest neighbor interpolation.
     """
     src_length = len(src_array)
     if target_length == 1:
-        return np.array([src_array[-1]])
+        return src_array[-1:]
 
     scale = (src_length - 1) / (target_length - 1)
-    mapped_indices = np.round(np.arange(target_length) * scale).astype(int)
+    grid = torch.arange(target_length, device=src_array.device, dtype=torch.float32)
+    mapped_indices = torch.round(grid * scale).long()
     return src_array[mapped_indices]
 
 
@@ -86,18 +86,18 @@ class MagCacheConfig:
     Configuration for [MagCache](https://github.com/Zehong-Ma/MagCache).
 
     Args:
-        threshold (`float`, defaults to `0.24`):
+        threshold (`float`, defaults to `0.06`):
             The threshold for the accumulated error. If the accumulated error is below this threshold, the block
             computation is skipped. A higher threshold allows for more aggressive skipping (faster) but may degrade
             quality.
-        max_skip_steps (`int`, defaults to `5`):
+        max_skip_steps (`int`, defaults to `3`):
             The maximum number of consecutive steps that can be skipped (K in the paper).
-        retention_ratio (`float`, defaults to `0.1`):
+        retention_ratio (`float`, defaults to `0.2`):
             The fraction of initial steps during which skipping is disabled to ensure stability. For example, if
-            `num_inference_steps` is 28 and `retention_ratio` is 0.1, the first 3 steps will never be skipped.
+            `num_inference_steps` is 28 and `retention_ratio` is 0.2, the first 6 steps will never be skipped.
         num_inference_steps (`int`, defaults to `28`):
             The number of inference steps used in the pipeline. This is required to interpolate `mag_ratios` correctly.
-        mag_ratios (`np.ndarray`, *optional*):
+        mag_ratios (`torch.Tensor`, *optional*):
             The pre-computed magnitude ratios for the model. These are checkpoint-dependent. If not provided, you must
             set `calibrate=True` to calculate them for your specific model. For Flux models, you can use
             `diffusers.hooks.mag_cache.FLUX_MAG_RATIOS`.
@@ -107,11 +107,11 @@ class MagCacheConfig:
             models or schedulers.
     """
 
-    threshold: float = 0.24
-    max_skip_steps: int = 5
-    retention_ratio: float = 0.1
+    threshold: float = 0.06
+    max_skip_steps: int = 3
+    retention_ratio: float = 0.2
     num_inference_steps: int = 28
-    mag_ratios: Optional[np.ndarray] = None
+    mag_ratios: Optional[Union[torch.Tensor, List[float]]] = None
     calibrate: bool = False
 
     def __post_init__(self):
@@ -127,6 +127,11 @@ class MagCacheConfig:
             )
 
         if not self.calibrate and self.mag_ratios is not None:
+
+            if not torch.is_tensor(self.mag_ratios):
+                self.mag_ratios = torch.tensor(self.mag_ratios)
+
+
             if len(self.mag_ratios) != self.num_inference_steps:
                 logger.debug(
                     f"Interpolating mag_ratios from length {len(self.mag_ratios)} to {self.num_inference_steps}"
@@ -178,6 +183,7 @@ class MagCacheHeadHook(ModelHook):
         self._metadata = TransformerBlockRegistry.get(unwrapped_module.__class__)
         return module
 
+    @torch.compiler.disable
     def new_forward(self, module: torch.nn.Module, *args, **kwargs):
         if self.state_manager._current_context is None:
             self.state_manager.set_context("inference")
@@ -294,7 +300,10 @@ class MagCacheBlockHook(ModelHook):
         self._metadata = TransformerBlockRegistry.get(unwrapped_module.__class__)
         return module
 
+    @torch.compiler.disable
     def new_forward(self, module: torch.nn.Module, *args, **kwargs):
+        if self.state_manager._current_context is None:
+            self.state_manager.set_context("inference")
         state: MagCacheState = self.state_manager.get_state()
 
         if not state.should_compute:
@@ -330,6 +339,9 @@ class MagCacheBlockHook(ModelHook):
 
             in_hidden = state.head_block_input
 
+            if in_hidden is None:
+                return output
+
             # Determine residual
             if out_hidden.shape == in_hidden.shape:
                 residual = out_hidden - in_hidden
@@ -341,7 +353,7 @@ class MagCacheBlockHook(ModelHook):
                     residual = out_hidden - in_hidden  # Fallback to matching tail
             else:
                 # Fallback for completely mismatched shapes
-                residual = out_hidden  # Invalid but prevents crash
+                residual = out_hidden
 
             if self.config.calibrate:
                 self._perform_calibration_step(state, residual)
