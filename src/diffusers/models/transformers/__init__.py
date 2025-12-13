@@ -14,6 +14,7 @@ if is_torch_available():
     from .prior_transformer import PriorTransformer
     from .sana_transformer import SanaTransformer2DModel
     from .stable_audio_transformer import StableAudioDiTModel
+    from .f5tts_transformer import F5DiTModel, F5ConditioningEncoder
     from .t5_film_transformer import T5FilmDecoder
     from .transformer_2d import Transformer2DModel
     from .transformer_allegro import AllegroTransformer3DModel
