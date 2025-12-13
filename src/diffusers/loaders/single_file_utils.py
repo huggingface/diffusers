@@ -3925,3 +3925,16 @@ def create_z_image_controlnet_config(checkpoint, **kwargs):
         return v2_config
     else:
         raise ValueError("Unknown Z-Image Turbo ControlNet type.")
+
+
+def convert_z_image_controlnet_checkpoint_to_diffusers(checkpoint, **kwargs):
+    control_x_embedder_weight_shape = checkpoint["control_all_x_embedder.2-1.weight"].shape[1]
+    if control_x_embedder_weight_shape == 64:
+        return checkpoint
+    elif control_x_embedder_weight_shape == 132:
+        converted_state_dict = {
+            key: checkpoint.pop(key) for key in list(checkpoint.keys()) if not key.startswith("control_noise_refiner.")
+        }
+        return converted_state_dict
+    else:
+        raise ValueError("Unknown Z-Image Turbo ControlNet type.")

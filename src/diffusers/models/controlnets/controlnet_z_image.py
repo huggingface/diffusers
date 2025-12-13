@@ -432,21 +432,7 @@ class ZImageControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigi
 
         self.control_all_x_embedder = nn.ModuleDict(all_x_embedder)
         if self.add_control_noise_refiner:
-            self.control_noise_refiner = nn.ModuleList(
-                [
-                    ZImageControlTransformerBlock(
-                        1000 + layer_id,
-                        dim,
-                        n_heads,
-                        n_kv_heads,
-                        norm_eps,
-                        qk_norm,
-                        modulation=True,
-                        block_id=layer_id,
-                    )
-                    for layer_id in range(n_refiner_layers)
-                ]
-            )
+            self.control_noise_refiner = None
         else:
             self.control_noise_refiner = nn.ModuleList(
                 [
