@@ -24,6 +24,7 @@ else:
     _import_structure["pipeline_output"] = ["ZImagePipelineOutput"]
     _import_structure["pipeline_z_image"] = ["ZImagePipeline"]
     _import_structure["pipeline_z_image_controlnet"] = ["ZImageControlNetPipeline"]
+    _import_structure["pipeline_z_image_controlnet_inpaint"] = ["ZImageControlNetInpaintPipeline"]
     _import_structure["pipeline_z_image_img2img"] = ["ZImageImg2ImgPipeline"]
 
 
@@ -38,6 +39,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .pipeline_output import ZImagePipelineOutput
         from .pipeline_z_image import ZImagePipeline
         from .pipeline_z_image_controlnet import ZImageControlNetPipeline
+        from .pipeline_z_image_controlnet_inpaint import ZImageControlNetInpaintPipeline
         from .pipeline_z_image_img2img import ZImageImg2ImgPipeline
 
 else:

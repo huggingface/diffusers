@@ -404,7 +404,12 @@ else:
         "Kandinsky5T2IPipeline",
         "Kandinsky5I2IPipeline",
     ]
-    _import_structure["z_image"] = ["ZImageImg2ImgPipeline", "ZImagePipeline", "ZImageControlNetPipeline"]
+    _import_structure["z_image"] = [
+        "ZImageImg2ImgPipeline",
+        "ZImagePipeline",
+        "ZImageControlNetPipeline",
+        "ZImageControlNetInpaintPipeline",
+    ]
     _import_structure["skyreels_v2"] = [
         "SkyReelsV2DiffusionForcingPipeline",
         "SkyReelsV2DiffusionForcingImageToVideoPipeline",
@@ -841,7 +846,12 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             WuerstchenDecoderPipeline,
             WuerstchenPriorPipeline,
         )
-        from .z_image import ZImageControlNetPipeline, ZImageImg2ImgPipeline, ZImagePipeline
+        from .z_image import (
+            ZImageControlNetInpaintPipeline,
+            ZImageControlNetPipeline,
+            ZImageImg2ImgPipeline,
+            ZImagePipeline,
+        )
 
         try:
             if not is_onnx_available():
