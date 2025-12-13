@@ -108,7 +108,7 @@ class LTX2TransformerTests(ModelTesterMixin, unittest.TestCase):
         super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
 
 
-class LTXTransformerCompileTests(TorchCompileTesterMixin, unittest.TestCase):
+class LTX2TransformerCompileTests(TorchCompileTesterMixin, unittest.TestCase):
     model_class = LTX2VideoTransformer3DModel
 
     def prepare_init_args_and_inputs_for_common(self):
