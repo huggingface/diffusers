@@ -566,6 +566,7 @@ class ZImageControlNetInpaintPipeline(DiffusionPipeline, FromSingleFileMixin):
             dtype=self.vae.dtype,
         )
         height, width = init_image.shape[-2:]
+        init_image = init_image * (mask_condition < 0.5)
         init_image = retrieve_latents(self.vae.encode(init_image), generator=generator, sample_mode="argmax")
         init_image = (init_image - self.vae.config.shift_factor) * self.vae.config.scaling_factor
         init_image = init_image.unsqueeze(2)
