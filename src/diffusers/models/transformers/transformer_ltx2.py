@@ -1087,13 +1087,9 @@ class LTX2VideoTransformer3DModel(
 
         video_rotary_emb = self.rope(video_coords, fps=fps, device=hidden_states.device)
         audio_rotary_emb = self.audio_rope(audio_coords, device=audio_hidden_states.device)
-        print(f"Video RoPE cos shape: {video_rotary_emb[0].shape} | sin shape: {video_rotary_emb[1].shape}")
-        print(f"Audio RoPE cos shape: {audio_rotary_emb[0].shape} | sin shape: {audio_rotary_emb[1].shape}")
 
         video_cross_attn_rotary_emb = self.cross_attn_rope(video_coords[:, 0:1, :], device=hidden_states.device)
         audio_cross_attn_rotary_emb = self.cross_attn_audio_rope(audio_coords[:, 0:1, :], device=audio_hidden_states.device)
-        print(f"Video CA RoPE cos shape: {video_cross_attn_rotary_emb[0].shape} | sin shape: {video_cross_attn_rotary_emb[1].shape}")
-        print(f"Audio CA RoPE cos shape: {audio_cross_attn_rotary_emb[0].shape} | sin shape: {audio_cross_attn_rotary_emb[1].shape}")
 
         # 2. Patchify input projections
         hidden_states = self.proj_in(hidden_states)
