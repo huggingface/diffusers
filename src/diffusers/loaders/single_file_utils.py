@@ -663,9 +663,7 @@ def infer_diffusers_model_type(checkpoint):
         model_type = "flux-2-dev"
 
     elif any(key in checkpoint for key in CHECKPOINT_KEY_NAMES["flux"]):
-        if any(
-            c in checkpoint for c in ["distilled_guidance_layer.in_proj.bias"]
-        ):
+        if any(c in checkpoint for c in ["distilled_guidance_layer.in_proj.bias"]):
             # Should be updated once a repo exists
             # if any(h in checkpoint for h in ["nerf_blocks.0.param_generator.bias"]):
             #     model_type = "chroma-radiance"
@@ -3556,6 +3554,7 @@ def convert_chroma_transformer_checkpoint_to_diffusers(checkpoint, **kwargs):
 
     return converted_state_dict
 
+
 def convert_chroma_radiance_transformer_checkpoint_to_diffusers(checkpoint, **kwargs):
     converted_state_dict = {}
     keys = list(checkpoint.keys())
@@ -3715,30 +3714,20 @@ def convert_chroma_radiance_transformer_checkpoint_to_diffusers(checkpoint, **kw
         # output projections.
         converted_state_dict[f"{block_prefix}proj_out.weight"] = checkpoint.pop(f"single_blocks.{i}.linear2.weight")
         converted_state_dict[f"{block_prefix}proj_out.bias"] = checkpoint.pop(f"single_blocks.{i}.linear2.bias")
-    
+
     # nerf
-    
-    converted_state_dict["nerf.nerf_embedder.embedder.0.bias"] = checkpoint.pop(
-        "nerf_image_embedder.embedder.0.bias"
-    )
+
+    converted_state_dict["nerf.nerf_embedder.embedder.0.bias"] = checkpoint.pop("nerf_image_embedder.embedder.0.bias")
     converted_state_dict["nerf.nerf_embedder.embedder.0.weight"] = checkpoint.pop(
         "nerf_image_embedder.embedder.0.weight"
     )
-    converted_state_dict["nerf.final_layer.conv.bias"] = checkpoint.pop(
-        "nerf_final_layer_conv.conv.bias"
-    )
-    converted_state_dict["nerf.final_layer.conv.weight"] = checkpoint.pop(
-        "nerf_final_layer_conv.conv.weight"
-    )
-    converted_state_dict["nerf.final_layer.norm.weight"] = checkpoint.pop(
-        "nerf_final_layer_conv.norm.scale"
-    )
+    converted_state_dict["nerf.final_layer.conv.bias"] = checkpoint.pop("nerf_final_layer_conv.conv.bias")
+    converted_state_dict["nerf.final_layer.conv.weight"] = checkpoint.pop("nerf_final_layer_conv.conv.weight")
+    converted_state_dict["nerf.final_layer.norm.weight"] = checkpoint.pop("nerf_final_layer_conv.norm.scale")
 
     for i in range(num_nerf_layers):
         block_prefix = f"nerf.blocks.{i}."
-        converted_state_dict[f"{block_prefix}norm.weight"] = checkpoint.pop(
-            f"nerf_blocks.{i}.norm.scale"
-        )
+        converted_state_dict[f"{block_prefix}norm.weight"] = checkpoint.pop(f"nerf_blocks.{i}.norm.scale")
         converted_state_dict[f"{block_prefix}param_generator.bias"] = checkpoint.pop(
             f"nerf_blocks.{i}.param_generator.bias"
         )
@@ -3747,15 +3736,12 @@ def convert_chroma_radiance_transformer_checkpoint_to_diffusers(checkpoint, **kw
         )
 
     # patch
-    
-    converted_state_dict["x_embedder_patch.bias"] = checkpoint.pop(
-        "img_in_patch.bias"
-    )
-    converted_state_dict["x_embedder_patch.weight"] = checkpoint.pop(
-        "img_in_patch.weight"
-    )
+
+    converted_state_dict["x_embedder_patch.bias"] = checkpoint.pop("img_in_patch.bias")
+    converted_state_dict["x_embedder_patch.weight"] = checkpoint.pop("img_in_patch.weight")
 
     return converted_state_dict
+
 
 def convert_cosmos_transformer_checkpoint_to_diffusers(checkpoint, **kwargs):
     converted_state_dict = {key: checkpoint.pop(key) for key in list(checkpoint.keys())}

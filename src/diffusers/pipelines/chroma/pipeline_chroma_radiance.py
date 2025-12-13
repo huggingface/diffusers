@@ -21,11 +21,10 @@ from transformers import CLIPImageProcessor, CLIPVisionModelWithProjection, T5En
 
 from ...image_processor import PipelineImageInput, VaeImageProcessor
 from ...loaders import FluxIPAdapterMixin, FluxLoraLoaderMixin, FromSingleFileMixin, TextualInversionLoaderMixin
-from ...models import AutoencoderKL, ChromaTransformer2DModel, ChromaRadianceTransformer2DModel
+from ...models import ChromaRadianceTransformer2DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import (
     USE_PEFT_BACKEND,
-    deprecate,
     is_torch_xla_available,
     logging,
     replace_example_docstring,
@@ -146,6 +145,7 @@ def retrieve_timesteps(
         scheduler.set_timesteps(num_inference_steps, device=device, **kwargs)
         timesteps = scheduler.timesteps
     return timesteps, num_inference_steps
+
 
 class ChromaRadiancePipeline(
     DiffusionPipeline,
@@ -420,7 +420,6 @@ class ChromaRadiancePipeline(
         callback_on_step_end_tensor_inputs=None,
         max_sequence_length=None,
     ):
-
         if callback_on_step_end_tensor_inputs is not None and not all(
             k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
         ):
@@ -503,9 +502,7 @@ class ChromaRadiancePipeline(
         latents=None,
         patch_size=2,
     ):
-
         shape = (batch_size, num_channels_latents, height, width)
-        print(shape)
 
         if latents is not None:
             latent_image_ids = self._prepare_latent_image_ids(batch_size, height // 2, width // 2, device, dtype)
@@ -518,9 +515,11 @@ class ChromaRadiancePipeline(
             )
 
         latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
-        #latents = self._pack_latents(latents, batch_size, num_channels_latents, height, width)
+        # latents = self._pack_latents(latents, batch_size, num_channels_latents, height, width)
 
-        latent_image_ids = self._prepare_latent_image_ids(batch_size, height // patch_size, width // patch_size, device, dtype)
+        latent_image_ids = self._prepare_latent_image_ids(
+            batch_size, height // patch_size, width // patch_size, device, dtype
+        )
 
         return latents, latent_image_ids
 
@@ -822,7 +821,6 @@ class ChromaRadiancePipeline(
                 batch_size * num_images_per_prompt,
             )
 
-
         # 6. Denoising loop
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
@@ -887,12 +885,12 @@ class ChromaRadiancePipeline(
 
         self._current_timestep = None
 
-        # 7. 
+        # 7.
 
         if output_type == "latent":
             image = latents
         else:
-            #image = self._unpack_latents(image, height, width)
+            # image = self._unpack_latents(image, height, width)
             image = self.image_processor.postprocess(latents, output_type=output_type)
 
         # Offload all models

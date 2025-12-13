@@ -662,6 +662,7 @@ class ChromaTransformer2DModel(metaclass=DummyObject):
     def from_pretrained(cls, *args, **kwargs):
         requires_backends(cls, ["torch"])
 
+
 class ChromaRadianceTransformer2DModel(metaclass=DummyObject):
     _backends = ["torch"]
 
@@ -675,6 +676,7 @@ class ChromaRadianceTransformer2DModel(metaclass=DummyObject):
     @classmethod
     def from_pretrained(cls, *args, **kwargs):
         requires_backends(cls, ["torch"])
+
 
 class ChronoEditTransformer3DModel(metaclass=DummyObject):
     _backends = ["torch"]

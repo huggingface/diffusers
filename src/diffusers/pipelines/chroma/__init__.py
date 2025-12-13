@@ -33,8 +33,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from ...utils.dummy_torch_and_transformers_objects import *  # noqa F403
     else:
         from .pipeline_chroma import ChromaPipeline
-        from .pipeline_chroma_radiance import ChromaRadiancePipeline
         from .pipeline_chroma_img2img import ChromaImg2ImgPipeline
+        from .pipeline_chroma_radiance import ChromaRadiancePipeline
 else:
     import sys
 

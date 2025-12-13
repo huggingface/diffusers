@@ -556,6 +556,7 @@ class ChromaPipeline(metaclass=DummyObject):
     def from_pretrained(cls, *args, **kwargs):
         requires_backends(cls, ["torch", "transformers"])
 
+
 class ChromaRadiancePipeline(metaclass=DummyObject):
     _backends = ["torch", "transformers"]
 
@@ -569,6 +570,7 @@ class ChromaRadiancePipeline(metaclass=DummyObject):
     @classmethod
     def from_pretrained(cls, *args, **kwargs):
         requires_backends(cls, ["torch", "transformers"])
+
 
 class ChronoEditPipeline(metaclass=DummyObject):
     _backends = ["torch", "transformers"]

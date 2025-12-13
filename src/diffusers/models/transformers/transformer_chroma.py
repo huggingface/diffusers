@@ -35,6 +35,7 @@ from .transformer_flux import FluxAttention, FluxAttnProcessor
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
+
 class Nerf(nn.Module):
     def __init__(
         self,
@@ -44,7 +45,7 @@ class Nerf(nn.Module):
         transformer_hidden_size: int,
         max_freqs: int,
         mlp_ratio: int,
-        eps = 1e-6,
+        eps=1e-6,
     ):
         super().__init__()
         self.nerf_embedder = NerfEmbedder(
@@ -69,6 +70,7 @@ class Nerf(nn.Module):
             eps=eps,
         )
         self.transformer_hidden_size = transformer_hidden_size
+
     def __call__(
         self,
         pixels,
@@ -77,20 +79,20 @@ class Nerf(nn.Module):
         num_patches,
     ):
         batch_size, channels, height, width = pixels.shape
-        
+
         pixels = nn.functional.unfold(pixels, kernel_size=patch_size, stride=patch_size)
         pixels = pixels.transpose(1, 2)
-        
+
         hidden = latents.reshape(batch_size * num_patches, self.transformer_hidden_size)
         pixels = pixels.reshape(batch_size * num_patches, channels, patch_size**2).transpose(1, 2)
-        
+
         # Get pixel embeddings
         latents_dct = self.nerf_embedder(pixels)
-        
+
         # Pass through blocks
         for block in self.blocks:
             latents_dct = block(latents_dct, hidden)
-        
+
         latents_dct = latents_dct.transpose(1, 2).reshape(batch_size, num_patches, -1).transpose(1, 2)
         latents_dct = nn.functional.fold(
             latents_dct,
@@ -99,6 +101,7 @@ class Nerf(nn.Module):
             stride=patch_size,
         )
         return self.final_layer(latents_dct)
+
 
 class NerfEmbedder(nn.Module):
     def __init__(
@@ -111,6 +114,7 @@ class NerfEmbedder(nn.Module):
         self.max_freqs = max_freqs
         self.hidden_size = hidden_size
         self.embedder = nn.Sequential(nn.Linear(in_channels + max_freqs**2, hidden_size))
+
     def fetch_pos(self, patch_size) -> torch.Tensor:
         pos_x = torch.linspace(0, 1, patch_size)
         pos_y = torch.linspace(0, 1, patch_size)
@@ -123,8 +127,9 @@ class NerfEmbedder(nn.Module):
         coeffs = (1 + freqs_x * freqs_y) ** -1
         dct_x = torch.cos(pos_x * freqs_x * torch.pi)
         dct_y = torch.cos(pos_y * freqs_y * torch.pi)
-        dct = (dct_x * dct_y * coeffs).view(1, -1, self.max_freqs ** 2)
+        dct = (dct_x * dct_y * coeffs).view(1, -1, self.max_freqs**2)
         return dct
+
     def __call__(self, inputs: torch.Tensor) -> torch.Tensor:
         batch, pixels, channels = inputs.shape
         patch_size = int(pixels**0.5)
@@ -134,6 +139,7 @@ class NerfEmbedder(nn.Module):
         inputs = torch.cat((inputs, dct), dim=-1)
         return self.embedder(inputs)
 
+
 class NerfGLUBlock(nn.Module):
     def __init__(self, transformer_hidden_size: int, nerf_hidden_size: int, mlp_ratio, eps):
         super().__init__()
@@ -141,6 +147,7 @@ class NerfGLUBlock(nn.Module):
         self.param_generator = nn.Linear(transformer_hidden_size, total_params)
         self.norm = RMSNorm(nerf_hidden_size, eps=eps)
         self.mlp_ratio = mlp_ratio
+
     def forward(self, x: torch.Tensor, s: torch.Tensor) -> torch.Tensor:
         batch_size, num_x, hidden_size_x = x.shape
         mlp_params = self.param_generator(s)
@@ -156,6 +163,7 @@ class NerfGLUBlock(nn.Module):
         x = torch.bmm(torch.nn.functional.silu(torch.bmm(x, fc1_gate)) * torch.bmm(x, fc1_value), fc2)
         return x + res_x
 
+
 class NerfFinalLayer(nn.Module):
     def __init__(self, hidden_size: int, out_channels: int, eps):
         super().__init__()
@@ -166,8 +174,10 @@ class NerfFinalLayer(nn.Module):
             kernel_size=3,
             padding=1,
         )
+
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.conv(self.norm(x.movedim(1, -1)).movedim(-1, 1))
+
 
 class ChromaAdaLayerNormZeroPruned(nn.Module):
     r"""
@@ -658,7 +668,7 @@ class ChromaTransformer2DModel(
                 logger.warning(
                     "Passing `scale` via `joint_attention_kwargs` when not using the PEFT backend is ineffective."
                 )
-        
+
         hidden_states = self.x_embedder(hidden_states)
 
         timestep = timestep.to(hidden_states.dtype) * 1000
@@ -773,6 +783,7 @@ class ChromaTransformer2DModel(
 
         return Transformer2DModelOutput(sample=output)
 
+
 class ChromaRadianceTransformer2DModel(
     ModelMixin,
     ConfigMixin,
@@ -850,7 +861,7 @@ class ChromaRadianceTransformer2DModel(
             hidden_dim=approximator_hidden_dim,
             n_layers=approximator_layers,
         )
-        
+
         self.nerf = Nerf(
             in_channels,
             nerf_layers,
@@ -859,7 +870,7 @@ class ChromaRadianceTransformer2DModel(
             nerf_max_freqs,
             nerf_mlp_ratio,
         )
-        
+
         self.x_embedder_patch = nn.Conv2d(
             in_channels,
             self.inner_dim,
@@ -932,7 +943,6 @@ class ChromaRadianceTransformer2DModel(
             If `return_dict` is True, an [`~models.transformer_2d.Transformer2DModelOutput`] is returned, otherwise a
             `tuple` where the first element is the sample tensor.
         """
-        print(self.device)
         pixels = hidden_states.to(self.device)
         if joint_attention_kwargs is not None:
             joint_attention_kwargs = joint_attention_kwargs.copy()
