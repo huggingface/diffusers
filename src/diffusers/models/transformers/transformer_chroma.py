@@ -979,10 +979,8 @@ class ChromaRadianceTransformer2DModel(
             )
             img_ids = img_ids[0]
 
-        print("txt", txt_ids.shape, "img", img_ids.shape)
         ids = torch.cat((txt_ids, img_ids), dim=0)
         image_rotary_emb = self.pos_embed(ids)
-        print("ids:", ids.shape, "emb:", image_rotary_emb[0].shape, image_rotary_emb[1].shape)
 
         if joint_attention_kwargs is not None and "ip_adapter_image_embeds" in joint_attention_kwargs:
             ip_adapter_image_embeds = joint_attention_kwargs.pop("ip_adapter_image_embeds")

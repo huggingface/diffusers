@@ -351,6 +351,7 @@ class FluxAttention(torch.nn.Module, AttentionModuleMixin):
                 f"joint_attention_kwargs {unused_kwargs} are not expected by {self.processor.__class__.__name__} and will be ignored."
             )
         kwargs = {k: w for k, w in kwargs.items() if k in attn_parameters}
+        print("processor", attention_mask.shape)
         return self.processor(self, hidden_states, encoder_hidden_states, attention_mask, image_rotary_emb, **kwargs)
 
 

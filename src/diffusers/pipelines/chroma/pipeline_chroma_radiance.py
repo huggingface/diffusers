@@ -757,7 +757,7 @@ class ChromaRadiancePipeline(
 
         # 5. Prepare timesteps
         sigmas = np.linspace(1.0, 1 / num_inference_steps, num_inference_steps) if sigmas is None else sigmas
-        image_seq_len = latents.shape[1]
+        image_seq_len = latent_image_ids.shape[0]
         mu = calculate_shift(
             image_seq_len,
             self.scheduler.config.get("base_image_seq_len", 256),
@@ -831,6 +831,8 @@ class ChromaRadiancePipeline(
                 self._current_timestep = t
                 if image_embeds is not None:
                     self._joint_attention_kwargs["ip_adapter_image_embeds"] = image_embeds
+                if attention_mask is not None:
+                    self._joint_attention_kwargs["attention_mask"] = attention_mask.to(self.transformer.dtype)
 
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
                 timestep = t.expand(latents.shape[0]).to(latents.dtype)
@@ -841,7 +843,6 @@ class ChromaRadiancePipeline(
                     encoder_hidden_states=prompt_embeds,
                     txt_ids=text_ids,
                     img_ids=latent_image_ids,
-                    attention_mask=attention_mask,
                     joint_attention_kwargs=self.joint_attention_kwargs,
                     return_dict=False,
                 )[0]
@@ -849,13 +850,14 @@ class ChromaRadiancePipeline(
                 if self.do_classifier_free_guidance:
                     if negative_image_embeds is not None:
                         self._joint_attention_kwargs["ip_adapter_image_embeds"] = negative_image_embeds
+                    if attention_mask is not None:
+                        self._joint_attention_kwargs["attention_mask"] = negative_attention_mask.to(self.transformer.dtype)
                     neg_noise_pred = self.transformer(
                         hidden_states=latents,
                         timestep=timestep / 1000,
                         encoder_hidden_states=negative_prompt_embeds,
                         txt_ids=negative_text_ids,
                         img_ids=latent_image_ids,
-                        attention_mask=negative_attention_mask,
                         joint_attention_kwargs=self.joint_attention_kwargs,
                         return_dict=False,
                     )[0]
