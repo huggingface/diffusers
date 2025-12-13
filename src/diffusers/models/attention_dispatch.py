@@ -1187,10 +1187,14 @@ def _all_to_all_dim_exchange(x: torch.Tensor, scatter_idx: int = 2, gather_idx: 
         num_heads = num_heads_local * group_world_size
         seq_len_local = seq_len // group_world_size
 
-        #B, S, H_LOCAL, D -> group_world_size, H_LOCAL, S_LOCAL, B, D
-        x_temp = x.reshape(batch_size, group_world_size, seq_len_local, num_heads_local, head_dim).permute(1, 3, 2, 0, 4).reshape(group_world_size, num_heads_local, seq_len_local, batch_size, head_dim)
+        # B, S, H_LOCAL, D -> group_world_size, H_LOCAL, S_LOCAL, B, D
+        x_temp = (
+            x.reshape(batch_size, group_world_size, seq_len_local, num_heads_local, head_dim)
+            .permute(1, 3, 2, 0, 4)
+            .reshape(group_world_size, num_heads_local, seq_len_local, batch_size, head_dim)
+        )
 
-        if group_world_size >1:
+        if group_world_size > 1:
             output = _all_to_all_single(x_temp, group)
         else:
             output = x_temp
