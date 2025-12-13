@@ -291,8 +291,6 @@ class GroupOffloadingHook(ModelHook):
         self.config = config
 
     def initialize_hook(self, module: torch.nn.Module) -> torch.nn.Module:
-        if self.group.offload_leader == module:
-            self.group.offload_()
         return module
 
     def pre_forward(self, module: torch.nn.Module, *args, **kwargs):
