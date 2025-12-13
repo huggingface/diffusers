@@ -349,4 +349,5 @@ Pass the [`ContextParallelConfig`] with both `ulysses_degree` and `ring_degree` 
 pipeline.transformer.enable_parallelism(config=ContextParallelConfig(ulysses_degree=2, ring_degree=2))
 ```
 
-Unified Attention is to be used when there are enough devices to arrange in a 2D grid (at least 4 devices).
+> [!TIP]
+> Unified Attention is to be used when there are enough devices to arrange in a 2D grid (at least 4 devices).
