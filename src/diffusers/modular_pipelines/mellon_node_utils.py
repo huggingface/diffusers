@@ -3,7 +3,7 @@ import logging
 import os
 
 # Simple typed wrapper for parameter overrides
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 from huggingface_hub import create_repo, hf_hub_download
@@ -244,7 +244,7 @@ NODE_TYPE_PARAMS_MAP = {
         "outputs": [
             "controlnet",
         ],
-        "block_names": ["controlnet_vae_encoder"],
+        "block_name": "controlnet_vae_encoder",
     },
     "denoise": {
         "inputs": [
@@ -270,7 +270,7 @@ NODE_TYPE_PARAMS_MAP = {
             "latents",
             "latents_preview",
         ],
-        "block_names": ["denoise"],
+        "block_name": "denoise",
     },
     "vae_encoder": {
         "inputs": [
@@ -284,7 +284,7 @@ NODE_TYPE_PARAMS_MAP = {
         "outputs": [
             "image_latents",
         ],
-        "block_names": ["vae_encoder"],
+        "block_name": "vae_encoder",
     },
     "text_encoder": {
         "inputs": [
@@ -299,7 +299,7 @@ NODE_TYPE_PARAMS_MAP = {
         "outputs": [
             "embeddings",
         ],
-        "block_names": ["text_encoder"],
+        "block_name": "text_encoder",
     },
     "decoder": {
         "inputs": [
@@ -311,7 +311,7 @@ NODE_TYPE_PARAMS_MAP = {
         "outputs": [
             "images",
         ],
-        "block_names": ["decode"],
+        "block_name": "decode",
     },
 }
 
@@ -353,21 +353,24 @@ class MellonNodeConfig(PushToHubMixin):
     inputs: List[Union[str, MellonParam]]
     model_inputs: List[Union[str, MellonParam]]
     outputs: List[Union[str, MellonParam]]
-    blocks_names: list[str]
+    block_name: str
     node_type: str
+    required_inputs: List[str] = field(default_factory=list)
+    required_model_inputs: List[str] = field(default_factory=list)
     config_name = "mellon_config.json"
 
     def __post_init__(self):
+
         if isinstance(self.inputs, list):
-            self.inputs = self._resolve_params_list(self.inputs, MELLON_INPUT_PARAMS)
+            self.inputs = self._resolve_params_list(self.inputs, MELLON_INPUT_PARAMS, required=self.required_inputs)
         if isinstance(self.model_inputs, list):
-            self.model_inputs = self._resolve_params_list(self.model_inputs, MELLON_MODEL_PARAMS)
+            self.model_inputs = self._resolve_params_list(self.model_inputs, MELLON_MODEL_PARAMS, required=self.required_model_inputs)
         if isinstance(self.outputs, list):
             self.outputs = self._resolve_params_list(self.outputs, MELLON_OUTPUT_PARAMS)
 
     @staticmethod
     def _resolve_params_list(
-        params: List[Union[str, MellonParam]], default_map: Dict[str, Dict[str, Any]]
+        params: List[Union[str, MellonParam]], default_map: Dict[str, Dict[str, Any]], required: Optional[List[str]] = None
     ) -> Dict[str, Dict[str, Any]]:
         def _resolve_param(
             param: Union[str, MellonParam], default_params_map: Dict[str, Dict[str, Any]]
@@ -392,6 +395,10 @@ class MellonNodeConfig(PushToHubMixin):
             if name in resolved:
                 raise ValueError(f"Duplicate param '{name}'")
             resolved[name] = cfg
+        if required is not None:
+            for name in required:
+                if name in resolved and not resolved[name]["label"].endswith(" *"):
+                    resolved[name]["label"] = f"{resolved[name]['label']} *"
         return resolved
 
     @classmethod
@@ -625,7 +632,7 @@ class MellonNodeConfig(PushToHubMixin):
 
         return {
             "node_type": self.node_type,
-            "blocks_names": self.blocks_names,
+            "block_name": self.block_name,
             "params": merged_params,
         }
 
@@ -655,50 +662,6 @@ class MellonNodeConfig(PushToHubMixin):
             inputs=inputs,
             model_inputs=model_inputs,
             outputs=outputs,
-            blocks_names=mellon_dict.get("blocks_names", []),
+            block_name=mellon_dict.get("block_name", None),
             node_type=mellon_dict.get("node_type"),
-        )
-
-    # YiYi Notes: not used yet
-    @classmethod
-    def from_blocks(cls, blocks: ModularPipelineBlocks, node_type: str) -> "MellonNodeConfig":
-        """
-        Create an instance from a ModularPipeline object. If a preset exists in NODE_TYPE_PARAMS_MAP for the node_type,
-        use it; otherwise fall back to deriving lists from the pipeline's expected inputs/components/outputs.
-        """
-        if node_type not in NODE_TYPE_PARAMS_MAP:
-            raise ValueError(f"Node type {node_type} not supported")
-
-        blocks_names = list(blocks.sub_blocks.keys())
-
-        default_node_config = NODE_TYPE_PARAMS_MAP[node_type]
-        inputs_list: List[Union[str, MellonParam]] = default_node_config.get("inputs", [])
-        model_inputs_list: List[Union[str, MellonParam]] = default_node_config.get("model_inputs", [])
-        outputs_list: List[Union[str, MellonParam]] = default_node_config.get("outputs", [])
-
-        for required_input_name in blocks.required_inputs:
-            if required_input_name not in inputs_list:
-                inputs_list.append(
-                    MellonParam(
-                        name=required_input_name, label=required_input_name, type=required_input_name, display="input"
-                    )
-                )
-
-        for component_spec in blocks.expected_components:
-            if component_spec.name not in model_inputs_list:
-                model_inputs_list.append(
-                    MellonParam(
-                        name=component_spec.name,
-                        label=component_spec.name,
-                        type="diffusers_auto_model",
-                        display="input",
-                    )
-                )
-
-        return cls(
-            inputs=inputs_list,
-            model_inputs=model_inputs_list,
-            outputs=outputs_list,
-            blocks_names=blocks_names,
-            node_type=node_type,
         )
