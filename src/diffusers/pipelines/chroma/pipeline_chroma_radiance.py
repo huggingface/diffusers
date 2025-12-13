@@ -195,6 +195,7 @@ class ChromaRadiancePipeline(
             image_encoder=image_encoder,
             feature_extractor=feature_extractor,
         )
+        self.image_processor = VaeImageProcessor()
         self.default_sample_size = 1024
 
     def _get_t5_prompt_embeds(
@@ -891,12 +892,6 @@ class ChromaRadiancePipeline(
         if output_type == "latent":
             image = latents
         else:
-            #image = self.transformer.nerf(
-            #    pixels,
-            #    latents,
-            #    self.transformer.config.patch_size,
-            #    num_patches,
-            #)
             #image = self._unpack_latents(image, height, width)
             image = self.image_processor.postprocess(latents, output_type=output_type)
 
