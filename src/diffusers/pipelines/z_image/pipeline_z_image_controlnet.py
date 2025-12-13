@@ -533,6 +533,20 @@ class ZImageControlNetPipeline(DiffusionPipeline, FromSingleFileMixin):
         control_image = (control_image - self.vae.config.shift_factor) * self.vae.config.scaling_factor
         control_image = control_image.unsqueeze(2)
 
+        if num_channels_latents != self.controlnet.config.control_in_dim:
+            # For model version 2.0
+            control_image = torch.cat(
+                [
+                    control_image,
+                    torch.zeros(
+                        control_image.shape[0],
+                        self.controlnet.config.control_in_dim - num_channels_latents,
+                        *control_image.shape[2:],
+                    ).to(device=control_image.device, dtype=control_image.dtype),
+                ],
+                dim=1,
+            )
+
         latents = self.prepare_latents(
             batch_size * num_images_per_prompt,
             num_channels_latents,
