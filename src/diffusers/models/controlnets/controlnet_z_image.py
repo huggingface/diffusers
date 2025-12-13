@@ -779,14 +779,15 @@ class ZImageControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigi
             unified_attn_mask[i, :seq_len] = 1
 
         ## ControlNet start
-        if torch.is_grad_enabled() and self.gradient_checkpointing:
-            for layer in self.control_noise_refiner:
-                control_context = self._gradient_checkpointing_func(
-                    layer, control_context, x_attn_mask, x_freqs_cis, adaln_input
-                )
-        else:
-            for layer in self.control_noise_refiner:
-                control_context = layer(control_context, x_attn_mask, x_freqs_cis, adaln_input)
+        if not self.add_control_noise_refiner:
+            if torch.is_grad_enabled() and self.gradient_checkpointing:
+                for layer in self.control_noise_refiner:
+                    control_context = self._gradient_checkpointing_func(
+                        layer, control_context, x_attn_mask, x_freqs_cis, adaln_input
+                    )
+            else:
+                for layer in self.control_noise_refiner:
+                    control_context = layer(control_context, x_attn_mask, x_freqs_cis, adaln_input)
 
         # unified
         control_context_unified = []
