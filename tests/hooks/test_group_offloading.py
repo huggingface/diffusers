@@ -26,8 +26,6 @@ from diffusers.pipelines.pipeline_utils import DiffusionPipeline
 from diffusers.utils import get_logger
 from diffusers.utils.import_utils import compare_versions
 
-from typing import Any, Iterable, List, Optional, Sequence, Union
-
 from ..testing_utils import (
     backend_empty_cache,
     backend_max_memory_allocated,
@@ -150,7 +148,7 @@ class LayerOutputTrackerHook(ModelHook):
     def post_forward(self, module, output):
         self.outputs.append(output)
         return output
-    
+
 
 # Test for https://github.com/huggingface/diffusers/pull/12747
 class DummyCallableBySubmodule:

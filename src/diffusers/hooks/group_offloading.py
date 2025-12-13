@@ -213,7 +213,6 @@ class ModuleGroup:
             self.stream.synchronize()
 
         context = nullcontext() if self.stream is None else self._torch_accelerator_module.stream(self.stream)
-        default_stream = self._torch_accelerator_module.current_stream() if self.stream is not None else None
         with context:
             if self.stream is not None:
                 with self._pinned_memory_tensors() as pinned_memory:
@@ -729,8 +728,8 @@ def _apply_group_offloading(module: torch.nn.Module, config: GroupOffloadingConf
 def _apply_group_offloading_block_level(module: torch.nn.Module, config: GroupOffloadingConfig) -> None:
     r"""
     This function applies offloading to groups of torch.nn.ModuleList or torch.nn.Sequential blocks, and explicitly
-    defined block modules. In comparison to the "leaf_level" offloading, which is more fine-grained, this offloading
-    is done at the top-level blocks and modules specified in block_modules.
+    defined block modules. In comparison to the "leaf_level" offloading, which is more fine-grained, this offloading is
+    done at the top-level blocks and modules specified in block_modules.
 
     When block_modules is provided, only those modules will be treated as blocks for offloading. For each specified
     module, we either offload the entire submodule or recursively apply block offloading to it.
