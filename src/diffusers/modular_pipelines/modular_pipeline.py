@@ -1623,7 +1623,10 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
             return None, config_dict
 
         except EnvironmentError as e:
-            logger.debug(f" model_index.json not found in the repo: {e}")
+            raise EnvironmentError(
+                f"Failed to load config from '{pretrained_model_name_or_path}'. "
+                f"Could not find or load 'modular_model_index.json' or 'model_index.json'."
+            ) from e
 
         return None, None
 
