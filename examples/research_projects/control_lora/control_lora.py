@@ -1,14 +1,14 @@
 import cv2
 import numpy as np
-from PIL import Image
 import torch
+from PIL import Image
 
 from diffusers import (
-    StableDiffusionXLControlNetPipeline,
+    AutoencoderKL,
     ControlNetModel,
+    StableDiffusionXLControlNetPipeline,
     UNet2DConditionModel,
 )
-from diffusers import AutoencoderKL
 from diffusers.utils import load_image, make_image_grid
 
 pipe_id = "stabilityai/stable-diffusion-xl-base-1.0"

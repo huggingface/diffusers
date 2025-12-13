@@ -293,7 +293,7 @@ def convert_sai_sd_control_lora_state_dict_to_peft(state_dict):
     def _convert_controlnet_to_diffusers(state_dict):
         is_sdxl = "input_blocks.11.0.in_layers.0.weight" not in state_dict
         logger.info(f"Using ControlNet lora ({'SDXL' if is_sdxl else 'SD15'})")
-        
+
         # Retrieves the keys for the input blocks only
         num_input_blocks = len(
             {".".join(layer.split(".")[:2]) for layer in state_dict if "input_blocks" in layer}
@@ -312,7 +312,7 @@ def convert_sai_sd_control_lora_state_dict_to_peft(state_dict):
         for key in input_blocks[0]:
             diffusers_key = key.replace("input_blocks.0.0", "conv_in")
             converted_state_dict[diffusers_key] = state_dict.get(key)
-        
+
         # controlnet time embedding blocks
         time_embedding_blocks = [key for key in state_dict if "time_embed" in key]
         for key in time_embedding_blocks:
@@ -362,7 +362,7 @@ def convert_sai_sd_control_lora_state_dict_to_peft(state_dict):
                         f"input_blocks.{i}.1", f"down_blocks.{block_id}.attentions.{layer_in_block_id}"
                     )
                     converted_state_dict[diffusers_key] = state_dict.get(key)
-        
+
         # controlnet down blocks
         for i in range(num_input_blocks):
             converted_state_dict[f"controlnet_down_blocks.{i}.weight"] = state_dict.get(f"zero_convs.{i}.0.weight")
@@ -399,7 +399,7 @@ def convert_sai_sd_control_lora_state_dict_to_peft(state_dict):
                         f"middle_block.{key}", f"mid_block.attentions.{diffusers_key}"
                     )
                     converted_state_dict[diffusers_key_hf] = state_dict.get(k)
-        
+
         # mid block
         converted_state_dict["controlnet_mid_block.weight"] = state_dict.get("middle_block_out.0.weight")
         converted_state_dict["controlnet_mid_block.bias"] = state_dict.get("middle_block_out.0.bias")
@@ -422,13 +422,13 @@ def convert_sai_sd_control_lora_state_dict_to_peft(state_dict):
             converted_state_dict[f"controlnet_cond_embedding.blocks.{diffusers_idx}.bias"] = state_dict.get(
                 f"input_hint_block.{cond_block_id}.bias"
             )
-        
+
         for key in [key for key in state_dict if "input_hint_block.0" in key]:
             diffusers_key = key.replace("input_hint_block.0", "controlnet_cond_embedding.conv_in")
             converted_state_dict[diffusers_key] = state_dict.get(key)
-        
+
         for key in [key for key in state_dict if "input_hint_block.14" in key]:
-            diffusers_key = key.replace(f"input_hint_block.14", "controlnet_cond_embedding.conv_out")
+            diffusers_key = key.replace("input_hint_block.14", "controlnet_cond_embedding.conv_out")
             converted_state_dict[diffusers_key] = state_dict.get(key)
 
         return converted_state_dict
