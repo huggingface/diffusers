@@ -474,6 +474,7 @@ class ZImageControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigi
 
     @classmethod
     def from_transformer(cls, controlnet, transformer):
+        controlnet.t_scale = transformer.t_scale
         controlnet.t_embedder = transformer.t_embedder
         controlnet.all_x_embedder = transformer.all_x_embedder
         controlnet.cap_embedder = transformer.cap_embedder
