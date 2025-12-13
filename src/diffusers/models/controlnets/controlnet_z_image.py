@@ -651,8 +651,8 @@ class ZImageControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigi
                 "Required modules are `None`, use `from_transformer` to share required modules from `transformer`."
             )
 
-        assert patch_size in self.all_patch_size
-        assert f_patch_size in self.all_f_patch_size
+        assert patch_size in self.config.all_patch_size
+        assert f_patch_size in self.config.all_f_patch_size
 
         bsz = len(x)
         device = x[0].device
