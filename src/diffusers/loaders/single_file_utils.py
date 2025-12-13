@@ -3891,10 +3891,8 @@ def convert_z_image_transformer_checkpoint_to_diffusers(checkpoint, **kwargs):
     return converted_state_dict
 
 
-def create_z_image_controlnet_config():
-    return {
-        "all_f_patch_size": [1],
-        "all_patch_size": [2],
+def create_z_image_controlnet_config(checkpoint, **kwargs):
+    v1_config = {
         "control_in_dim": 16,
         "control_layers_places": [0, 5, 10, 15, 20, 25],
         "dim": 3840,
@@ -3903,4 +3901,25 @@ def create_z_image_controlnet_config():
         "n_refiner_layers": 2,
         "norm_eps": 1e-05,
         "qk_norm": True,
+        "all_f_patch_size": [1],
+        "all_patch_size": [2],
     }
+    v2_config = {
+        "control_in_dim": 33,
+        "control_layers_places": [0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28],
+        "control_refiner_layers_places": [0, 1],
+        "add_control_noise_refiner": True,
+        "dim": 3840,
+        "n_heads": 30,
+        "n_kv_heads": 30,
+        "n_refiner_layers": 2,
+        "norm_eps": 1e-05,
+        "qk_norm": True,
+        "all_f_patch_size": [1],
+        "all_patch_size": [2],
+    }
+    control_x_embedder_weight_shape = checkpoint["control_all_x_embedder.2-1.weight"].shape[1]
+    if control_x_embedder_weight_shape == 64:
+        return v1_config
+    elif control_x_embedder_weight_shape == 132:
+        return v2_config

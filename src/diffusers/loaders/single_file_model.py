@@ -376,7 +376,8 @@ class FromOriginalModelMixin:
             )
         elif "config_create_fn" in mapping_functions:
             config_create_fn = mapping_functions["config_create_fn"]
-            diffusers_model_config = config_create_fn()
+            config_create_kwargs = _get_mapping_function_kwargs(config_create_fn, **kwargs)
+            diffusers_model_config = config_create_fn(checkpoint=checkpoint, **config_create_kwargs)
         else:
             if config is not None:
                 if isinstance(config, str):
