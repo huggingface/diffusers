@@ -506,7 +506,6 @@ class Cosmos25PredictBase(DiffusionPipeline):
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
         max_sequence_length: int = 512,
         shift: float = 5.0,
-        timestep_scale: float = 0.001,
         conditional_frame_timestep: float = 0.1,
     ):
         r"""
@@ -592,7 +591,7 @@ class Cosmos25PredictBase(DiffusionPipeline):
         if isinstance(callback_on_step_end, (PipelineCallback, MultiPipelineCallbacks)):
             callback_on_step_end_tensor_inputs = callback_on_step_end.tensor_inputs
 
-        # 1. Check inputs. Raise error if not correct
+        # Check inputs. Raise error if not correct
         self.check_inputs(prompt, height, width, prompt_embeds, callback_on_step_end_tensor_inputs)
 
         self._guidance_scale = guidance_scale
@@ -613,7 +612,7 @@ class Cosmos25PredictBase(DiffusionPipeline):
                         )
             self.safety_checker.to("cpu")
 
-        # 2. Define call parameters
+        # Define call parameters
         if prompt is not None and isinstance(prompt, str):
             batch_size = 1
         elif prompt is not None and isinstance(prompt, list):
@@ -621,7 +620,7 @@ class Cosmos25PredictBase(DiffusionPipeline):
         else:
             batch_size = prompt_embeds.shape[0]
 
-        # 3. Encode input prompt
+        # Encode input prompt
         (
             prompt_embeds,
             negative_prompt_embeds,
@@ -638,10 +637,6 @@ class Cosmos25PredictBase(DiffusionPipeline):
 
         vae_dtype = self.vae.dtype
         transformer_dtype = self.transformer.dtype
-
-        # 4. Prepare timesteps
-        self.scheduler.set_timesteps(num_inference_steps, shift=shift, device=device, scale=timestep_scale)
-        timesteps = torch.tensor(self.scheduler.timesteps).to(transformer_dtype)
 
         num_frames_in = None
         if image is not None:
@@ -690,22 +685,26 @@ class Cosmos25PredictBase(DiffusionPipeline):
 
         padding_mask = latents.new_zeros(1, 1, height, width, dtype=transformer_dtype)
 
-        # 6. Denoising loop
-        num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
+        # Denoising loop
+        self.scheduler.set_timesteps(num_inference_steps, shift=shift, device=device)
+        timesteps = self.scheduler.timesteps
         self._num_timesteps = len(timesteps)
+        num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
 
-        gt_velocity = latents - cond_latent
+        gt_velocity = (latents - cond_latent) * cond_mask
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
                 if self.interrupt:
                     continue
 
                 self._current_timestep = t.cpu().item()
-                timestep = t.unsqueeze(0)
+
+                # NOTE: equivalent to t / 1000 for FlowUniPCMultistepScheduler (sigmas are in [0, 1], num_train_timesteps=1000)
+                sigma_t = torch.tensor(self.scheduler.sigmas[i]).unsqueeze(0).to(device=device, dtype=transformer_dtype)
 
                 in_latents = cond_mask * cond_latent + (1 - cond_mask) * latents  # TODO: could use cond_indicator
                 in_latents = in_latents.to(transformer_dtype)
-                in_timestep = cond_indicator * cond_timestep + (1 - cond_indicator) * timestep
+                in_timestep = cond_indicator * cond_timestep + (1 - cond_indicator) * sigma_t
                 noise_pred = self.transformer(
                     hidden_states=in_latents,
                     condition_mask=cond_mask,
@@ -714,8 +713,8 @@ class Cosmos25PredictBase(DiffusionPipeline):
                     padding_mask=padding_mask,
                     return_dict=False,
                 )[0]
-                # NOTE: force input video latents for noise_pred by correcting velocity
-                noise_pred = gt_velocity * cond_mask + noise_pred * (1 - cond_mask)
+                # NOTE: replace velocity (noise_pred) with gt_velocity for conditioning inputs only
+                noise_pred = gt_velocity + noise_pred * (1 - cond_mask)
 
                 if self.do_classifier_free_guidance:
                     noise_pred_neg = self.transformer(
@@ -726,8 +725,8 @@ class Cosmos25PredictBase(DiffusionPipeline):
                         padding_mask=padding_mask,
                         return_dict=False,
                     )[0]
-                    # NOTE: force input video latents for noise_pred by correcting velocity
-                    noise_pred_neg = gt_velocity * cond_mask + noise_pred_neg * (1 - cond_mask)
+                    # NOTE: replace velocity (noise_pred) with gt_velocity for conditioning inputs only
+                    noise_pred_neg = gt_velocity + noise_pred_neg * (1 - cond_mask)
                     noise_pred = noise_pred + self.guidance_scale * (noise_pred - noise_pred_neg)
 
                 latents = self.scheduler.step(noise_pred, t, latents, return_dict=False)[0]

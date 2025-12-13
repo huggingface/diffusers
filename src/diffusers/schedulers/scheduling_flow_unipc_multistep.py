@@ -157,7 +157,6 @@ class FlowUniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
         sigmas: Optional[List[float]] = None,
         mu: Optional[Union[float, None]] = None,
         shift: Optional[Union[float, None]] = None,
-        scale: float = 0.001,
     ):
         """
         Sets the discrete timesteps used for the diffusion chain (to be run before inference).
@@ -192,7 +191,10 @@ class FlowUniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
                     shift = self.config.shift
                 sigmas = shift * sigmas / (1 + (shift - 1) * sigmas)  # pyright: ignore
 
-        if self.config.final_sigmas_type == "zero":
+        if self.config.final_sigmas_type == "sigma_min":
+            # TODO(migmartin): this raises an error, rewrite this class
+            sigma_last = ((1 - self.alphas_cumprod[0]) / self.alphas_cumprod[0]) ** 0.5
+        elif self.config.final_sigmas_type == "zero":
             sigma_last = 0
         else:
             raise ValueError(
@@ -203,8 +205,7 @@ class FlowUniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
         sigmas = np.concatenate([sigmas, [sigma_last]]).astype(np.float32)  # pyright: ignore
 
         self.sigmas = torch.from_numpy(sigmas)
-        self.timesteps = torch.from_numpy(timesteps).to(device=device, dtype=torch.float32)
-        self.timesteps *= scale
+        self.timesteps = torch.from_numpy(timesteps).to(device=device, dtype=torch.int64)
 
         self.num_inference_steps = len(timesteps)
 
@@ -304,7 +305,6 @@ class FlowUniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
         sigma = self.sigmas[self.step_index]
         alpha_t, sigma_t = self._sigma_to_alpha_sigma_t(sigma)
 
-        # print("sigma_t ==>", self.step_index, sigma, sigma_t, alpha_t, sample.shape, model_output.shape)
         if self.predict_x0:
             if self.config.prediction_type == "flow_prediction":
                 sigma_t = self.sigmas[self.step_index]
@@ -317,7 +317,6 @@ class FlowUniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
 
             if self.config.thresholding:
                 x0_pred = self._threshold_sample(x0_pred)
-            # print("self.config.thresholding", self.config.thresholding)
             return x0_pred
         else:
             if self.config.prediction_type == "flow_prediction":
