@@ -3923,3 +3923,5 @@ def create_z_image_controlnet_config(checkpoint, **kwargs):
         return v1_config
     elif control_x_embedder_weight_shape == 132:
         return v2_config
+    else:
+        raise ValueError("Unknown Z-Image Turbo ControlNet type.")
