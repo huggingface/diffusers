@@ -191,7 +191,7 @@ class ZImageControlNetInpaintPipeline(DiffusionPipeline, FromSingleFileMixin):
         controlnet: ZImageControlNetModel,
     ):
         super().__init__()
-        if self.transformer.in_channels == self.controlnet.config.control_in_dim:
+        if transformer.in_channels == controlnet.config.control_in_dim:
             raise ValueError(
                 "ZImageControlNetInpaintPipeline is not compatible with `alibaba-pai/Z-Image-Turbo-Fun-Controlnet-Union`, use `alibaba-pai/Z-Image-Turbo-Fun-Controlnet-Union-2.0`."
             )
