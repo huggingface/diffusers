@@ -512,6 +512,10 @@ class ModularPipelineBlocks(ConfigMixin, PushToHubMixin):
         return [output_param.name for output_param in self.outputs if output_param.name is not None]
 
     @property
+    def component_names(self) -> List[str]:
+        return [component.name for component in self.expected_components]
+
+    @property
     def doc(self):
         return make_doc_string(
             self.inputs,
