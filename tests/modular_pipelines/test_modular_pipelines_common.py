@@ -43,9 +43,9 @@ class ModularPipelineTesterMixin:
         )
 
     @property
-    def repo(self) -> str:
+    def pretrained_model_name_or_path(self) -> str:
         raise NotImplementedError(
-            "You need to set the attribute `repo` in the child test class. See existing pipeline tests for reference."
+            "You need to set the attribute `pretrained_model_name_or_path` in the child test class. See existing pipeline tests for reference."
         )
 
     @property
@@ -103,7 +103,9 @@ class ModularPipelineTesterMixin:
         backend_empty_cache(torch_device)
 
     def get_pipeline(self, components_manager=None, torch_dtype=torch.float32):
-        pipeline = self.pipeline_blocks_class().init_pipeline(self.repo, components_manager=components_manager)
+        pipeline = self.pipeline_blocks_class().init_pipeline(
+            self.pretrained_model_name_or_path, components_manager=components_manager
+        )
         pipeline.load_components(torch_dtype=torch_dtype)
         pipeline.set_progress_bar_config(disable=None)
         return pipeline
@@ -163,7 +165,6 @@ class ModularPipelineTesterMixin:
         expected_max_diff=1e-4,
     ):
         pipe = self.get_pipeline().to(torch_device)
-
         inputs = self.get_dummy_inputs()
 
         # Reset generator in case it is has been used in self.get_dummy_inputs
