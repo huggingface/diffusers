@@ -472,7 +472,7 @@ class LongCatImageTransformer2DModel(
         return_dict: bool = True,
     ) -> Union[torch.FloatTensor, Transformer2DModelOutput]:
         """
-        The  forward method.
+        The forward method.
 
         Args:
             hidden_states (`torch.FloatTensor` of shape `(batch size, channel, height, width)`):

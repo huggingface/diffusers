@@ -21,9 +21,9 @@ except OptionalDependencyNotAvailable:
 
     _dummy_objects.update(get_objects_from_module(dummy_torch_and_transformers_objects))
 else:
-    _import_structure["pipeline_output"] = ["LongCatImagePipelineOutput"]
     _import_structure["pipeline_longcat_image"] = ["LongCatImagePipeline"]
     _import_structure["pipeline_longcat_image_edit"] = ["LongCatImageEditPipeline"]
+    _import_structure["pipeline_output"] = ["LongCatImagePipelineOutput"]
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     try:

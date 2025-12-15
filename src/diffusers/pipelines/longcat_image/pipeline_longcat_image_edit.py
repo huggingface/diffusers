@@ -49,11 +49,13 @@ EXAMPLE_DOC_STRING = """
         >>> import torch
         >>> from diffusers import LongCatImageEditPipeline
 
-        >>> pipe = LongCatImageEditPipeline.from_pretrained("meituan-longcat/LongCat-Image-Edit", torch_dtype=torch.bfloat16)
+        >>> pipe = LongCatImageEditPipeline.from_pretrained(
+        ...     "meituan-longcat/LongCat-Image-Edit", torch_dtype=torch.bfloat16
+        ... )
         >>> pipe.to("cuda")
 
-        >>> prompt = 'change the cat to dog.'
-        >>> input_image = Image.open('test.jpg').convert("RGB")
+        >>> prompt = "change the cat to dog."
+        >>> input_image = Image.open("test.jpg").convert("RGB")
         >>> image = pipe(
         ...     input_image,
         ...     prompt,
@@ -69,11 +71,10 @@ EXAMPLE_DOC_STRING = """
 # Copied from diffusers.pipelines.longcat_image.pipeline_longcat_image.split_quotation
 def split_quotation(prompt, quote_pairs=None):
     """
-    Implement a regex-based string splitting algorithm that identifies delimiters defined by single or double quote pairs.
-    Examples::
-        >>> prompt_en = "Please write 'Hello' on the blackboard for me."
-        >>> print(split_quotation(prompt_en))
-        >>> # output: [('Please write ', False), ("'Hello'", True), (' on the blackboard for me.', False)]
+    Implement a regex-based string splitting algorithm that identifies delimiters defined by single or double quote
+    pairs. Examples::
+        >>> prompt_en = "Please write 'Hello' on the blackboard for me." >>> print(split_quotation(prompt_en)) >>> #
+        output: [('Please write ', False), ("'Hello'", True), (' on the blackboard for me.', False)]
     """
     word_internal_quote_pattern = re.compile(r"[a-zA-Z]+'[a-zA-Z]+")
     matches_word_internal_quote_pattern = word_internal_quote_pattern.findall(prompt)
@@ -518,7 +519,7 @@ class LongCatImageEditPipeline(DiffusionPipeline, FromSingleFileMixin):
                 raise ValueError(
                     f"`prompt` must be a `str` or a `list` of length 1, but is {prompt} (type: {type(prompt)})"
                 )
-            
+
         if negative_prompt is not None and negative_prompt_embeds is not None:
             raise ValueError(
                 f"Cannot forward both `negative_prompt`: {negative_prompt} and `negative_prompt_embeds`:"
@@ -550,9 +551,9 @@ class LongCatImageEditPipeline(DiffusionPipeline, FromSingleFileMixin):
         Examples:
 
         Returns:
-            [`~pipelines.LongCatImagePipelineOutput`] or `tuple`: [`~pipelines.LongCatImagePipelineOutput`] if `return_dict`
-            is True, otherwise a `tuple`. When returning a tuple, the first element is a list with the generated
-            images.
+            [`~pipelines.LongCatImagePipelineOutput`] or `tuple`: [`~pipelines.LongCatImagePipelineOutput`] if
+            `return_dict` is True, otherwise a `tuple`. When returning a tuple, the first element is a list with the
+            generated images.
         """
 
         image_size = image[0].size if isinstance(image, list) else image.size
@@ -582,13 +583,13 @@ class LongCatImageEditPipeline(DiffusionPipeline, FromSingleFileMixin):
             batch_size = prompt_embeds.shape[0]
 
         device = self._execution_device
-        
+
         # 3. Preprocess image
         if image is not None and not (isinstance(image, torch.Tensor) and image.size(1) == self.latent_channels):
             image = self.image_processor.resize(image, calculated_height, calculated_width)
             prompt_image = self.image_processor.resize(image, calculated_height // 2, calculated_width // 2)
             image = self.image_processor.preprocess(image, calculated_height, calculated_width)
-            
+
         negative_prompt = "" if negative_prompt is None else negative_prompt
         (prompt_embeds, text_ids) = self.encode_prompt(
             prompt=prompt, image=prompt_image, prompt_embeds=prompt_embeds, num_images_per_prompt=num_images_per_prompt

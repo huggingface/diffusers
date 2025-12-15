@@ -50,7 +50,7 @@ EXAMPLE_DOC_STRING = """
         >>> pipe = LongCatImagePipeline.from_pretrained("meituan-longcat/LongCat-Image", torch_dtype=torch.bfloat16)
         >>> pipe.to("cuda")
 
-        >>> prompt = '一个年轻的亚裔女性，身穿黄色针织衫，搭配白色项链。她的双手放在膝盖上，表情恬静。背景是一堵粗糙的砖墙，午后的阳光温暖地洒在她身上，营造出一种宁静而温馨的氛围。镜头采用中距离视角，突出她的神态和服饰的细节。光线柔和地打在她的脸上，强调她的五官和饰品的质感，增加画面的层次感与亲和力。整个画面构图简洁，砖墙的纹理与阳光的光影效果相得益彰，突显出人物的优雅与从容。'
+        >>> prompt = "一个年轻的亚裔女性，身穿黄色针织衫，搭配白色项链。她的双手放在膝盖上，表情恬静。背景是一堵粗糙的砖墙，午后的阳光温暖地洒在她身上，营造出一种宁静而温馨的氛围。镜头采用中距离视角，突出她的神态和服饰的细节。光线柔和地打在她的脸上，强调她的五官和饰品的质感，增加画面的层次感与亲和力。整个画面构图简洁，砖墙的纹理与阳光的光影效果相得益彰，突显出人物的优雅与从容。"
         >>> image = pipe(
         ...     prompt,
         ...     height=768,
@@ -58,7 +58,7 @@ EXAMPLE_DOC_STRING = """
         ...     num_inference_steps=50,
         ...     guidance_scale=4.5,
         ...     generator=torch.Generator("cpu").manual_seed(43),
-        ...     enable_cfg_renorm=True
+        ...     enable_cfg_renorm=True,
         ... ).images[0]
         >>> image.save("longcat_image.png")
         ```
@@ -74,11 +74,10 @@ def get_prompt_language(prompt):
 
 def split_quotation(prompt, quote_pairs=None):
     """
-    Implement a regex-based string splitting algorithm that identifies delimiters defined by single or double quote pairs.
-    Examples::
-        >>> prompt_en = "Please write 'Hello' on the blackboard for me."
-        >>> print(split_quotation(prompt_en))
-        >>> # output: [('Please write ', False), ("'Hello'", True), (' on the blackboard for me.', False)]
+    Implement a regex-based string splitting algorithm that identifies delimiters defined by single or double quote
+    pairs. Examples::
+        >>> prompt_en = "Please write 'Hello' on the blackboard for me." >>> print(split_quotation(prompt_en)) >>> #
+        output: [('Please write ', False), ("'Hello'", True), (' on the blackboard for me.', False)]
     """
     word_internal_quote_pattern = re.compile(r"[a-zA-Z]+'[a-zA-Z]+")
     matches_word_internal_quote_pattern = word_internal_quote_pattern.findall(prompt)
@@ -503,9 +502,9 @@ class LongCatImagePipeline(DiffusionPipeline, FromSingleFileMixin):
         Examples:
 
         Returns:
-            [`~pipelines.LongCatImagePipelineOutput`] or `tuple`: [`~pipelines.LongCatImagePipelineOutput`] if `return_dict`
-            is True, otherwise a `tuple`. When returning a tuple, the first element is a list with the generated
-            images.
+            [`~pipelines.LongCatImagePipelineOutput`] or `tuple`: [`~pipelines.LongCatImagePipelineOutput`] if
+            `return_dict` is True, otherwise a `tuple`. When returning a tuple, the first element is a list with the
+            generated images.
         """
 
         height = height or self.default_sample_size * self.vae_scale_factor
