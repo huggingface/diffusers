@@ -22,6 +22,7 @@ from huggingface_hub import hf_hub_download, snapshot_download
 from diffusers.loaders.single_file_utils import _extract_repo_id_and_weights_name
 
 from ...testing_utils import (
+    assert_tensors_close,
     backend_empty_cache,
     is_single_file,
     nightly,
@@ -146,9 +147,8 @@ class SingleFileTesterMixin:
                 f"pretrained {param.shape} vs single file {param_single_file.shape}"
             )
 
-            assert torch.allclose(param, param_single_file, rtol=1e-5, atol=1e-5), (
-                f"Parameter values differ for {key}: "
-                f"max difference {torch.max(torch.abs(param - param_single_file)).item()}"
+            assert_tensors_close(
+                param, param_single_file, atol=1e-5, rtol=1e-5, msg=f"Parameter values differ for {key}"
             )
 
     def test_single_file_loading_local_files_only(self):

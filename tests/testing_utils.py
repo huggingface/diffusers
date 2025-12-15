@@ -131,6 +131,59 @@ def torch_all_close(a, b, *args, **kwargs):
     return True
 
 
+def assert_tensors_close(
+    actual: "torch.Tensor",
+    expected: "torch.Tensor",
+    atol: float = 1e-5,
+    rtol: float = 1e-5,
+    msg: str = "",
+) -> None:
+    """
+    Assert that two tensors are close within tolerance.
+
+    Uses the same formula as torch.allclose: |actual - expected| <= atol + rtol * |expected|
+    Provides concise, actionable error messages without dumping full tensors.
+
+    Args:
+        actual: The actual tensor from the computation.
+        expected: The expected tensor to compare against.
+        atol: Absolute tolerance.
+        rtol: Relative tolerance.
+        msg: Optional message prefix for the assertion error.
+
+    Raises:
+        AssertionError: If tensors have different shapes or values exceed tolerance.
+
+    Example:
+        >>> assert_tensors_close(output, expected_output, atol=1e-5, rtol=1e-5, msg="Forward pass")
+    """
+    if not is_torch_available():
+        raise ValueError("PyTorch needs to be installed to use this function.")
+
+    if actual.shape != expected.shape:
+        raise AssertionError(f"{msg} Shape mismatch: actual {actual.shape} vs expected {expected.shape}")
+
+    if not torch.allclose(actual, expected, atol=atol, rtol=rtol):
+        abs_diff = (actual - expected).abs()
+        max_diff = abs_diff.max().item()
+
+        flat_idx = abs_diff.argmax().item()
+        max_idx = tuple(torch.unravel_index(torch.tensor(flat_idx), actual.shape).tolist())
+
+        threshold = atol + rtol * expected.abs()
+        mismatched = (abs_diff > threshold).sum().item()
+        total = actual.numel()
+
+        raise AssertionError(
+            f"{msg}\n"
+            f"Tensors not close! Mismatched elements: {mismatched}/{total} ({100 * mismatched / total:.1f}%)\n"
+            f"  Max diff: {max_diff:.6e} at index {max_idx}\n"
+            f"  Actual:   {actual.flatten()[flat_idx].item():.6e}\n"
+            f"  Expected: {expected.flatten()[flat_idx].item():.6e}\n"
+            f"  atol: {atol:.6e}, rtol: {rtol:.6e}"
+        )
+
+
 def numpy_cosine_similarity_distance(a, b):
     similarity = np.dot(a, b) / (norm(a) * norm(b))
     distance = 1.0 - similarity.mean()

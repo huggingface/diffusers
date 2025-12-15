@@ -23,13 +23,14 @@ from diffusers.models.transformers.transformer_flux import FluxIPAdapterAttnProc
 from diffusers.utils.torch_utils import randn_tensor
 
 from ...testing_utils import enable_full_determinism, torch_device
-from ..test_modeling_common import LoraHotSwappingForModelTesterMixin
 from ..testing_utils import (
     AttentionTesterMixin,
+    BaseModelTesterConfig,
     BitsAndBytesTesterMixin,
     ContextParallelTesterMixin,
     GGUFTesterMixin,
     IPAdapterTesterMixin,
+    LoraHotSwappingForModelTesterMixin,
     LoraTesterMixin,
     MemoryTesterMixin,
     ModelOptTesterMixin,
@@ -94,10 +95,26 @@ def create_flux_ip_adapter_state_dict(model) -> dict[str, dict[str, Any]]:
     return {"image_proj": ip_image_projection_state_dict, "ip_adapter": ip_cross_attn_state_dict}
 
 
-class FluxTransformerTesterConfig:
-    model_class = FluxTransformer2DModel
-    pretrained_model_name_or_path = "hf-internal-testing/tiny-flux-pipe"
-    pretrained_model_kwargs = {"subfolder": "transformer"}
+class FluxTransformerTesterConfig(BaseModelTesterConfig):
+    @property
+    def model_class(self):
+        return FluxTransformer2DModel
+
+    @property
+    def pretrained_model_name_or_path(self):
+        return "hf-internal-testing/tiny-flux-pipe"
+
+    @property
+    def pretrained_model_kwargs(self):
+        return {"subfolder": "transformer"}
+
+    @property
+    def output_shape(self) -> tuple[int, int]:
+        return (16, 4)
+
+    @property
+    def input_shape(self) -> tuple[int, int]:
+        return (16, 4)
 
     @property
     def generator(self):
@@ -135,14 +152,6 @@ class FluxTransformerTesterConfig:
             "txt_ids": randn_tensor((sequence_length, num_image_channels), generator=self.generator),
             "timestep": torch.tensor([1.0]).to(torch_device).expand(batch_size),
         }
-
-    @property
-    def input_shape(self) -> tuple[int, int]:
-        return (16, 4)
-
-    @property
-    def output_shape(self) -> tuple[int, int]:
-        return (16, 4)
 
 
 class TestFluxTransformer(FluxTransformerTesterConfig, ModelTesterMixin):

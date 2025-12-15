@@ -1,8 +1,8 @@
 from .attention import AttentionTesterMixin, ContextParallelTesterMixin
-from .common import ModelTesterMixin
+from .common import BaseModelTesterConfig, ModelTesterMixin
 from .compile import TorchCompileTesterMixin
 from .ip_adapter import IPAdapterTesterMixin
-from .lora import LoraTesterMixin
+from .lora import LoraHotSwappingForModelTesterMixin, LoraTesterMixin
 from .memory import CPUOffloadTesterMixin, GroupOffloadTesterMixin, LayerwiseCastingTesterMixin, MemoryTesterMixin
 from .quantization import (
     BitsAndBytesTesterMixin,
@@ -17,14 +17,16 @@ from .training import TrainingTesterMixin
 
 
 __all__ = [
-    "ContextParallelTesterMixin",
     "AttentionTesterMixin",
+    "BaseModelTesterConfig",
     "BitsAndBytesTesterMixin",
+    "ContextParallelTesterMixin",
     "CPUOffloadTesterMixin",
     "GGUFTesterMixin",
     "GroupOffloadTesterMixin",
     "IPAdapterTesterMixin",
     "LayerwiseCastingTesterMixin",
+    "LoraHotSwappingForModelTesterMixin",
     "LoraTesterMixin",
     "MemoryTesterMixin",
     "ModelOptTesterMixin",

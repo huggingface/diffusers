@@ -15,8 +15,8 @@
 
 import json
 import os
-import tempfile
 from collections import defaultdict
+from typing import Any, Dict, Optional, Type
 
 import pytest
 import torch
@@ -26,7 +26,7 @@ from accelerate.utils.modeling import _get_proper_dtype, compute_module_sizes, d
 from diffusers.utils import SAFE_WEIGHTS_INDEX_NAME, _add_variant, logging
 from diffusers.utils.testing_utils import require_accelerator, require_torch_multi_accelerator
 
-from ...testing_utils import CaptureLogger, torch_device
+from ...testing_utils import assert_tensors_close, torch_device
 
 
 def named_persistent_module_tensors(
@@ -130,40 +130,144 @@ def check_device_map_is_respected(model, device_map):
             )
 
 
+class BaseModelTesterConfig:
+    """
+    Base class defining the configuration interface for model testing.
+
+    This class defines the contract that all model test classes must implement.
+    It provides a consistent interface for accessing model configuration, initialization
+    parameters, and test inputs across all testing mixins.
+
+    Required properties (must be implemented by subclasses):
+        - model_class: The model class to test
+
+    Optional properties (can be overridden, have sensible defaults):
+        - pretrained_model_name_or_path: Hub repository ID for pretrained model (default: None)
+        - pretrained_model_kwargs: Additional kwargs for from_pretrained (default: {})
+        - output_shape: Expected output shape for output validation tests (default: None)
+        - base_precision: Default tolerance for floating point comparisons (default: 1e-3)
+        - model_split_percents: Percentages for model parallelism tests (default: [0.5, 0.7])
+
+    Required methods (must be implemented by subclasses):
+        - get_init_dict(): Returns dict of arguments to initialize the model
+        - get_dummy_inputs(): Returns dict of inputs to pass to the model forward pass
+
+    Example usage:
+        class MyModelTestConfig(BaseModelTesterConfig):
+            @property
+            def model_class(self):
+                return MyModel
+
+            @property
+            def pretrained_model_name_or_path(self):
+                return "org/my-model"
+
+            @property
+            def output_shape(self):
+                return (1, 3, 32, 32)
+
+            def get_init_dict(self):
+                return {"in_channels": 3, "out_channels": 3}
+
+            def get_dummy_inputs(self):
+                return {"sample": torch.randn(1, 3, 32, 32, device=torch_device)}
+
+        class TestMyModel(MyModelTestConfig, ModelTesterMixin, QuantizationTesterMixin):
+            pass
+    """
+
+    # ==================== Required Properties ====================
+
+    @property
+    def model_class(self) -> Type[nn.Module]:
+        """The model class to test. Must be implemented by subclasses."""
+        raise NotImplementedError("Subclasses must implement the `model_class` property.")
+
+    # ==================== Optional Properties ====================
+
+    @property
+    def pretrained_model_name_or_path(self) -> Optional[str]:
+        """Hub repository ID for the pretrained model (used for quantization and hub tests)."""
+        return None
+
+    @property
+    def pretrained_model_kwargs(self) -> Dict[str, Any]:
+        """Additional kwargs to pass to from_pretrained (e.g., subfolder, variant)."""
+        return {}
+
+    @property
+    def output_shape(self) -> Optional[tuple]:
+        """Expected output shape for output validation tests."""
+        return None
+
+    @property
+    def model_split_percents(self) -> list:
+        """Percentages for model parallelism tests."""
+        return [0.5, 0.7]
+
+    # ==================== Required Methods ====================
+
+    def get_init_dict(self) -> Dict[str, Any]:
+        """
+        Returns dict of arguments to initialize the model.
+
+        Returns:
+            Dict[str, Any]: Initialization arguments for the model constructor.
+
+        Example:
+            return {
+                "in_channels": 3,
+                "out_channels": 3,
+                "sample_size": 32,
+            }
+        """
+        raise NotImplementedError("Subclasses must implement `get_init_dict()`.")
+
+    def get_dummy_inputs(self) -> Dict[str, Any]:
+        """
+        Returns dict of inputs to pass to the model forward pass.
+
+        Returns:
+            Dict[str, Any]: Input tensors/values for model.forward().
+
+        Example:
+            return {
+                "sample": torch.randn(1, 3, 32, 32, device=torch_device),
+                "timestep": torch.tensor([1], device=torch_device),
+            }
+        """
+        raise NotImplementedError("Subclasses must implement `get_dummy_inputs()`.")
+
+
 class ModelTesterMixin:
     """
     Base mixin class for model testing with common test methods.
 
-    Expected class attributes to be set by subclasses:
+    This mixin expects the test class to also inherit from BaseModelTesterConfig
+    (or implement its interface) which provides:
         - model_class: The model class to test
-        - main_input_name: Name of the main input tensor (e.g., "sample", "hidden_states")
-        - base_precision: Default tolerance for floating point comparisons (default: 1e-3)
-
-    Expected methods to be implemented by subclasses:
         - get_init_dict(): Returns dict of arguments to initialize the model
         - get_dummy_inputs(): Returns dict of inputs to pass to the model forward pass
+
+    Example:
+        class MyModelTestConfig(BaseModelTesterConfig):
+            model_class = MyModel
+            def get_init_dict(self): ...
+            def get_dummy_inputs(self): ...
+
+        class TestMyModel(MyModelTestConfig, ModelTesterMixin):
+            pass
     """
 
-    model_class = None
-    base_precision = 1e-3
-    model_split_percents = [0.5, 0.7]
-
-    def get_init_dict(self):
-        raise NotImplementedError("get_init_dict must be implemented by subclasses. ")
-
-    def get_dummy_inputs(self):
-        raise NotImplementedError("get_dummy_inputs must be implemented by subclasses. It should return inputs_dict.")
-
-    def test_from_save_pretrained(self, expected_max_diff=5e-5):
+    def test_from_save_pretrained(self, tmp_path, atol=5e-5, rtol=0):
         torch.manual_seed(0)
         model = self.model_class(**self.get_init_dict())
         model.to(torch_device)
         model.eval()
 
-        with tempfile.TemporaryDirectory() as tmpdirname:
-            model.save_pretrained(tmpdirname)
-            new_model = self.model_class.from_pretrained(tmpdirname)
-            new_model.to(torch_device)
+        model.save_pretrained(tmp_path)
+        new_model = self.model_class.from_pretrained(tmp_path)
+        new_model.to(torch_device)
 
         # check if all parameters shape are the same
         for param_name in model.state_dict().keys():
@@ -184,28 +288,24 @@ class ModelTesterMixin:
             if isinstance(new_image, dict):
                 new_image = new_image.to_tuple()[0]
 
-        max_diff = (image - new_image).abs().max().item()
-        assert max_diff <= expected_max_diff, (
-            f"Models give different forward passes. Max diff: {max_diff}, expected: {expected_max_diff}"
-        )
+        assert_tensors_close(image, new_image, atol=atol, rtol=rtol, msg="Models give different forward passes.")
 
-    def test_from_save_pretrained_variant(self, expected_max_diff=5e-5):
+    def test_from_save_pretrained_variant(self, tmp_path, atol=5e-5, rtol=0):
         model = self.model_class(**self.get_init_dict())
         model.to(torch_device)
         model.eval()
 
-        with tempfile.TemporaryDirectory() as tmpdirname:
-            model.save_pretrained(tmpdirname, variant="fp16")
-            new_model = self.model_class.from_pretrained(tmpdirname, variant="fp16")
+        model.save_pretrained(tmp_path, variant="fp16")
+        new_model = self.model_class.from_pretrained(tmp_path, variant="fp16")
 
-            # non-variant cannot be loaded
-            with pytest.raises(OSError) as exc_info:
-                self.model_class.from_pretrained(tmpdirname)
+        # non-variant cannot be loaded
+        with pytest.raises(OSError) as exc_info:
+            self.model_class.from_pretrained(tmp_path)
 
-            # make sure that error message states what keys are missing
-            assert "Error no file named diffusion_pytorch_model.bin found in directory" in str(exc_info.value)
+        # make sure that error message states what keys are missing
+        assert "Error no file named diffusion_pytorch_model.bin found in directory" in str(exc_info.value)
 
-            new_model.to(torch_device)
+        new_model.to(torch_device)
 
         with torch.no_grad():
             image = model(**self.get_dummy_inputs())
@@ -217,35 +317,27 @@ class ModelTesterMixin:
             if isinstance(new_image, dict):
                 new_image = new_image.to_tuple()[0]
 
-        max_diff = (image - new_image).abs().max().item()
-        assert max_diff <= expected_max_diff, (
-            f"Models give different forward passes. Max diff: {max_diff}, expected: {expected_max_diff}"
-        )
+        assert_tensors_close(image, new_image, atol=atol, rtol=rtol, msg="Models give different forward passes.")
 
-    def test_from_save_pretrained_dtype(self):
+    @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16], ids=["fp32", "fp16", "bf16"])
+    def test_from_save_pretrained_dtype(self, tmp_path, dtype):
         model = self.model_class(**self.get_init_dict())
         model.to(torch_device)
         model.eval()
 
-        for dtype in [torch.float32, torch.float16, torch.bfloat16]:
-            if torch_device == "mps" and dtype == torch.bfloat16:
-                continue
-            with tempfile.TemporaryDirectory() as tmpdirname:
-                model.to(dtype)
-                model.save_pretrained(tmpdirname)
-                new_model = self.model_class.from_pretrained(tmpdirname, low_cpu_mem_usage=True, torch_dtype=dtype)
-                assert new_model.dtype == dtype
-                if (
-                    hasattr(self.model_class, "_keep_in_fp32_modules")
-                    and self.model_class._keep_in_fp32_modules is None
-                ):
-                    # When loading without accelerate dtype == torch.float32 if _keep_in_fp32_modules is not None
-                    new_model = self.model_class.from_pretrained(
-                        tmpdirname, low_cpu_mem_usage=False, torch_dtype=dtype
-                    )
-                    assert new_model.dtype == dtype
+        if torch_device == "mps" and dtype == torch.bfloat16:
+            pytest.skip(reason=f"{dtype} is not supported on {torch_device}")
 
-    def test_determinism(self, expected_max_diff=1e-5):
+        model.to(dtype)
+        model.save_pretrained(tmp_path)
+        new_model = self.model_class.from_pretrained(tmp_path, low_cpu_mem_usage=True, torch_dtype=dtype)
+        assert new_model.dtype == dtype
+        if hasattr(self.model_class, "_keep_in_fp32_modules") and self.model_class._keep_in_fp32_modules is None:
+            # When loading without accelerate dtype == torch.float32 if _keep_in_fp32_modules is not None
+            new_model = self.model_class.from_pretrained(tmp_path, low_cpu_mem_usage=False, torch_dtype=dtype)
+            assert new_model.dtype == dtype
+
+    def test_determinism(self, atol=1e-5, rtol=0):
         model = self.model_class(**self.get_init_dict())
         model.to(torch_device)
         model.eval()
@@ -259,18 +351,15 @@ class ModelTesterMixin:
             if isinstance(second, dict):
                 second = second.to_tuple()[0]
 
-        # Remove NaN values and compute max difference
+        # Filter out NaN values before comparison
         first_flat = first.flatten()
         second_flat = second.flatten()
-
-        # Filter out NaN values
         mask = ~(torch.isnan(first_flat) | torch.isnan(second_flat))
         first_filtered = first_flat[mask]
         second_filtered = second_flat[mask]
 
-        max_diff = torch.abs(first_filtered - second_filtered).max().item()
-        assert max_diff <= expected_max_diff, (
-            f"Model outputs are not deterministic. Max diff: {max_diff}, expected: {expected_max_diff}"
+        assert_tensors_close(
+            first_filtered, second_filtered, atol=atol, rtol=rtol, msg="Model outputs are not deterministic"
         )
 
     def test_output(self, expected_output_shape=None):
@@ -310,13 +399,12 @@ class ModelTesterMixin:
             elif tuple_object is None:
                 return
             else:
-                assert torch.allclose(
-                    set_nan_tensor_to_zero(tuple_object), set_nan_tensor_to_zero(dict_object), atol=1e-5
-                ), (
-                    "Tuple and dict output are not equal. Difference:"
-                    f" {torch.max(torch.abs(tuple_object - dict_object))}. Tuple has `nan`:"
-                    f" {torch.isnan(tuple_object).any()} and `inf`: {torch.isinf(tuple_object)}. Dict has"
-                    f" `nan`: {torch.isnan(dict_object).any()} and `inf`: {torch.isinf(dict_object)}."
+                assert_tensors_close(
+                    set_nan_tensor_to_zero(tuple_object),
+                    set_nan_tensor_to_zero(dict_object),
+                    atol=1e-5,
+                    rtol=0,
+                    msg="Tuple and dict output are not equal",
                 )
 
         model = self.model_class(**self.get_init_dict())
@@ -329,7 +417,7 @@ class ModelTesterMixin:
 
         recursive_check(outputs_tuple, outputs_dict)
 
-    def test_getattr_is_correct(self):
+    def test_getattr_is_correct(self, caplog):
         init_dict = self.get_init_dict()
         model = self.model_class(**init_dict)
 
@@ -337,28 +425,26 @@ class ModelTesterMixin:
         model.dummy_attribute = 5
         model.register_to_config(test_attribute=5)
 
-        logger = logging.get_logger("diffusers.models.modeling_utils")
-        # 30 for warning
-        logger.setLevel(30)
-        with CaptureLogger(logger) as cap_logger:
+        logger_name = "diffusers.models.modeling_utils"
+        with caplog.at_level(logging.WARNING, logger=logger_name):
+            caplog.clear()
             assert hasattr(model, "dummy_attribute")
             assert getattr(model, "dummy_attribute") == 5
             assert model.dummy_attribute == 5
 
         # no warning should be thrown
-        assert cap_logger.out == ""
+        assert caplog.text == ""
 
-        logger = logging.get_logger("diffusers.models.modeling_utils")
-        # 30 for warning
-        logger.setLevel(30)
-        with CaptureLogger(logger) as cap_logger:
+        with caplog.at_level(logging.WARNING, logger=logger_name):
+            caplog.clear()
             assert hasattr(model, "save_pretrained")
             fn = model.save_pretrained
             fn_1 = getattr(model, "save_pretrained")
 
             assert fn == fn_1
+
         # no warning should be thrown
-        assert cap_logger.out == ""
+        assert caplog.text == ""
 
         # warning should be thrown for config attributes accessed directly
         with pytest.warns(FutureWarning):
@@ -399,32 +485,34 @@ class ModelTesterMixin:
         torch_device not in ["cuda", "xpu"],
         reason="float16 and bfloat16 can only be use for inference with an accelerator",
     )
-    def test_from_save_pretrained_float16_bfloat16(self):
+    @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16], ids=["fp16", "bf16"])
+    def test_from_save_pretrained_dtype_inference(self, tmp_path, dtype):
         model = self.model_class(**self.get_init_dict())
         model.to(torch_device)
         fp32_modules = model._keep_in_fp32_modules
 
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            for torch_dtype in [torch.bfloat16, torch.float16]:
-                model.to(torch_dtype).save_pretrained(tmp_dir)
-                model_loaded = self.model_class.from_pretrained(tmp_dir, torch_dtype=torch_dtype).to(torch_device)
+        model.to(dtype).save_pretrained(tmp_path)
+        model_loaded = self.model_class.from_pretrained(tmp_path, torch_dtype=dtype).to(torch_device)
 
-                for name, param in model_loaded.named_parameters():
-                    if any(module_to_keep_in_fp32 in name.split(".") for module_to_keep_in_fp32 in fp32_modules):
-                        assert param.data.dtype == torch.float32
-                    else:
-                        assert param.data.dtype == torch_dtype
+        for name, param in model_loaded.named_parameters():
+            if any(module_to_keep_in_fp32 in name.split(".") for module_to_keep_in_fp32 in fp32_modules):
+                assert param.data.dtype == torch.float32
+            else:
+                assert param.data.dtype == dtype
 
-                with torch.no_grad():
-                    output = model(**self.get_dummy_inputs())
-                    output_loaded = model_loaded(**self.get_dummy_inputs())
+        with torch.no_grad():
+            output = model(**self.get_dummy_inputs())
+            if isinstance(output, dict):
+                output = output.to_tuple()[0]
 
-                assert torch.allclose(output, output_loaded, atol=1e-4), (
-                    f"Loaded model output differs for {torch_dtype}"
-                )
+            output_loaded = model_loaded(**self.get_dummy_inputs())
+            if isinstance(output_loaded, dict):
+                output_loaded = output_loaded.to_tuple()[0]
+
+        assert_tensors_close(output, output_loaded, atol=1e-4, rtol=0, msg=f"Loaded model output differs for {dtype}")
 
     @require_accelerator
-    def test_sharded_checkpoints(self):
+    def test_sharded_checkpoints(self, tmp_path):
         torch.manual_seed(0)
         config = self.get_init_dict()
         inputs_dict = self.get_dummy_inputs()
@@ -435,30 +523,30 @@ class ModelTesterMixin:
 
         model_size = compute_module_persistent_sizes(model)[""]
         max_shard_size = int((model_size * 0.75) / (2**10))  # Convert to KB as these test models are small
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            model.cpu().save_pretrained(tmp_dir, max_shard_size=f"{max_shard_size}KB")
-            assert os.path.exists(os.path.join(tmp_dir, SAFE_WEIGHTS_INDEX_NAME)), "Index file should exist"
 
-            # Check if the right number of shards exists
-            expected_num_shards = calculate_expected_num_shards(os.path.join(tmp_dir, SAFE_WEIGHTS_INDEX_NAME))
-            actual_num_shards = len([file for file in os.listdir(tmp_dir) if file.endswith(".safetensors")])
-            assert actual_num_shards == expected_num_shards, (
-                f"Expected {expected_num_shards} shards, got {actual_num_shards}"
-            )
+        model.cpu().save_pretrained(tmp_path, max_shard_size=f"{max_shard_size}KB")
+        assert os.path.exists(os.path.join(tmp_path, SAFE_WEIGHTS_INDEX_NAME)), "Index file should exist"
 
-            new_model = self.model_class.from_pretrained(tmp_dir).eval()
-            new_model = new_model.to(torch_device)
+        # Check if the right number of shards exists
+        expected_num_shards = calculate_expected_num_shards(os.path.join(tmp_path, SAFE_WEIGHTS_INDEX_NAME))
+        actual_num_shards = len([file for file in os.listdir(tmp_path) if file.endswith(".safetensors")])
+        assert actual_num_shards == expected_num_shards, (
+            f"Expected {expected_num_shards} shards, got {actual_num_shards}"
+        )
 
-            torch.manual_seed(0)
-            inputs_dict_new = self.get_dummy_inputs()
-            new_output = new_model(**inputs_dict_new)
+        new_model = self.model_class.from_pretrained(tmp_path).eval()
+        new_model = new_model.to(torch_device)
 
-            assert torch.allclose(base_output[0], new_output[0], atol=1e-5), (
-                "Output should match after sharded save/load"
-            )
+        torch.manual_seed(0)
+        inputs_dict_new = self.get_dummy_inputs()
+        new_output = new_model(**inputs_dict_new)
+
+        assert_tensors_close(
+            base_output[0], new_output[0], atol=1e-5, rtol=0, msg="Output should match after sharded save/load"
+        )
 
     @require_accelerator
-    def test_sharded_checkpoints_with_variant(self):
+    def test_sharded_checkpoints_with_variant(self, tmp_path):
         torch.manual_seed(0)
         config = self.get_init_dict()
         inputs_dict = self.get_dummy_inputs()
@@ -470,35 +558,33 @@ class ModelTesterMixin:
         model_size = compute_module_persistent_sizes(model)[""]
         max_shard_size = int((model_size * 0.75) / (2**10))  # Convert to KB as these test models are small
         variant = "fp16"
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            model.cpu().save_pretrained(tmp_dir, max_shard_size=f"{max_shard_size}KB", variant=variant)
 
-            index_filename = _add_variant(SAFE_WEIGHTS_INDEX_NAME, variant)
-            assert os.path.exists(os.path.join(tmp_dir, index_filename)), (
-                f"Variant index file {index_filename} should exist"
-            )
+        model.cpu().save_pretrained(tmp_path, max_shard_size=f"{max_shard_size}KB", variant=variant)
 
-            # Check if the right number of shards exists
-            expected_num_shards = calculate_expected_num_shards(os.path.join(tmp_dir, index_filename))
-            actual_num_shards = len([file for file in os.listdir(tmp_dir) if file.endswith(".safetensors")])
-            assert actual_num_shards == expected_num_shards, (
-                f"Expected {expected_num_shards} shards, got {actual_num_shards}"
-            )
+        index_filename = _add_variant(SAFE_WEIGHTS_INDEX_NAME, variant)
+        assert os.path.exists(os.path.join(tmp_path, index_filename)), (
+            f"Variant index file {index_filename} should exist"
+        )
 
-            new_model = self.model_class.from_pretrained(tmp_dir, variant=variant).eval()
-            new_model = new_model.to(torch_device)
+        # Check if the right number of shards exists
+        expected_num_shards = calculate_expected_num_shards(os.path.join(tmp_path, index_filename))
+        actual_num_shards = len([file for file in os.listdir(tmp_path) if file.endswith(".safetensors")])
+        assert actual_num_shards == expected_num_shards, (
+            f"Expected {expected_num_shards} shards, got {actual_num_shards}"
+        )
 
-            torch.manual_seed(0)
-            inputs_dict_new = self.get_dummy_inputs()
-            new_output = new_model(**inputs_dict_new)
+        new_model = self.model_class.from_pretrained(tmp_path, variant=variant).eval()
+        new_model = new_model.to(torch_device)
 
-            assert torch.allclose(base_output[0], new_output[0], atol=1e-5), (
-                "Output should match after variant sharded save/load"
-            )
+        torch.manual_seed(0)
+        inputs_dict_new = self.get_dummy_inputs()
+        new_output = new_model(**inputs_dict_new)
 
-    def test_sharded_checkpoints_with_parallel_loading(self):
-        import time
+        assert_tensors_close(
+            base_output[0], new_output[0], atol=1e-5, rtol=0, msg="Output should match after variant sharded save/load"
+        )
 
+    def test_sharded_checkpoints_with_parallel_loading(self, tmp_path):
         from diffusers.utils import constants
 
         torch.manual_seed(0)
@@ -517,47 +603,37 @@ class ModelTesterMixin:
         original_parallel_workers = getattr(constants, "HF_PARALLEL_WORKERS", None)
 
         try:
-            with tempfile.TemporaryDirectory() as tmp_dir:
-                model.cpu().save_pretrained(tmp_dir, max_shard_size=f"{max_shard_size}KB")
-                assert os.path.exists(os.path.join(tmp_dir, SAFE_WEIGHTS_INDEX_NAME)), "Index file should exist"
+            model.cpu().save_pretrained(tmp_path, max_shard_size=f"{max_shard_size}KB")
+            assert os.path.exists(os.path.join(tmp_path, SAFE_WEIGHTS_INDEX_NAME)), "Index file should exist"
 
-                # Check if the right number of shards exists
-                expected_num_shards = calculate_expected_num_shards(os.path.join(tmp_dir, SAFE_WEIGHTS_INDEX_NAME))
-                actual_num_shards = len([file for file in os.listdir(tmp_dir) if file.endswith(".safetensors")])
-                assert actual_num_shards == expected_num_shards, (
-                    f"Expected {expected_num_shards} shards, got {actual_num_shards}"
-                )
+            # Check if the right number of shards exists
+            expected_num_shards = calculate_expected_num_shards(os.path.join(tmp_path, SAFE_WEIGHTS_INDEX_NAME))
+            actual_num_shards = len([file for file in os.listdir(tmp_path) if file.endswith(".safetensors")])
+            assert actual_num_shards == expected_num_shards, (
+                f"Expected {expected_num_shards} shards, got {actual_num_shards}"
+            )
 
-                # Load without parallel loading
-                constants.HF_ENABLE_PARALLEL_LOADING = False
-                start_time = time.time()
-                model_sequential = self.model_class.from_pretrained(tmp_dir).eval()
-                sequential_load_time = time.time() - start_time
-                model_sequential = model_sequential.to(torch_device)
+            # Load without parallel loading
+            constants.HF_ENABLE_PARALLEL_LOADING = False
+            model_sequential = self.model_class.from_pretrained(tmp_path).eval()
+            model_sequential = model_sequential.to(torch_device)
 
-                torch.manual_seed(0)
+            # Load with parallel loading
+            constants.HF_ENABLE_PARALLEL_LOADING = True
+            constants.DEFAULT_HF_PARALLEL_LOADING_WORKERS = 2
 
-                # Load with parallel loading
-                constants.HF_ENABLE_PARALLEL_LOADING = True
-                constants.DEFAULT_HF_PARALLEL_LOADING_WORKERS = 2
+            torch.manual_seed(0)
+            model_parallel = self.model_class.from_pretrained(tmp_path).eval()
+            model_parallel = model_parallel.to(torch_device)
 
-                start_time = time.time()
-                model_parallel = self.model_class.from_pretrained(tmp_dir).eval()
-                parallel_load_time = time.time() - start_time
-                model_parallel = model_parallel.to(torch_device)
+            torch.manual_seed(0)
+            inputs_dict_parallel = self.get_dummy_inputs()
+            output_parallel = model_parallel(**inputs_dict_parallel)
 
-                torch.manual_seed(0)
-                inputs_dict_parallel = self.get_dummy_inputs()
-                output_parallel = model_parallel(**inputs_dict_parallel)
+            assert_tensors_close(
+                base_output[0], output_parallel[0], atol=1e-5, rtol=0, msg="Output should match with parallel loading"
+            )
 
-                assert torch.allclose(base_output[0], output_parallel[0], atol=1e-5), (
-                    "Output should match with parallel loading"
-                )
-
-                # Verify parallel loading is faster or at least not significantly slower
-                assert parallel_load_time < sequential_load_time, (
-                    f"Parallel loading took {parallel_load_time:.4f}s, sequential took {sequential_load_time:.4f}s"
-                )
         finally:
             # Restore original values
             constants.HF_ENABLE_PARALLEL_LOADING = original_parallel_loading
@@ -565,7 +641,7 @@ class ModelTesterMixin:
                 constants.HF_PARALLEL_WORKERS = original_parallel_workers
 
     @require_torch_multi_accelerator
-    def test_model_parallelism(self):
+    def test_model_parallelism(self, tmp_path):
         if self.model_class._no_split_modules is None:
             pytest.skip("Test not supported for this model as `_no_split_modules` is not set.")
 
@@ -581,20 +657,19 @@ class ModelTesterMixin:
         model_size = compute_module_sizes(model)[""]
         max_gpu_sizes = [int(p * model_size) for p in self.model_split_percents]
 
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            model.cpu().save_pretrained(tmp_dir)
+        model.cpu().save_pretrained(tmp_path)
 
-            for max_size in max_gpu_sizes:
-                max_memory = {0: max_size, 1: model_size * 2, "cpu": model_size * 2}
-                new_model = self.model_class.from_pretrained(tmp_dir, device_map="auto", max_memory=max_memory)
-                # Making sure part of the model will be on GPU 0 and GPU 1
-                assert set(new_model.hf_device_map.values()) == {0, 1}, "Model should be split across GPUs"
+        for max_size in max_gpu_sizes:
+            max_memory = {0: max_size, 1: model_size * 2, "cpu": model_size * 2}
+            new_model = self.model_class.from_pretrained(tmp_path, device_map="auto", max_memory=max_memory)
+            # Making sure part of the model will be on GPU 0 and GPU 1
+            assert set(new_model.hf_device_map.values()) == {0, 1}, "Model should be split across GPUs"
 
-                check_device_map_is_respected(new_model, new_model.hf_device_map)
+            check_device_map_is_respected(new_model, new_model.hf_device_map)
 
-                torch.manual_seed(0)
-                new_output = new_model(**inputs_dict)
+            torch.manual_seed(0)
+            new_output = new_model(**inputs_dict)
 
-                assert torch.allclose(base_output[0], new_output[0], atol=1e-5), (
-                    "Output should match with model parallelism"
-                )
+            assert_tensors_close(
+                base_output[0], new_output[0], atol=1e-5, rtol=0, msg="Output should match with model parallelism"
+            )

@@ -27,6 +27,7 @@ from diffusers.utils.testing_utils import _check_safetensors_serialization
 from diffusers.utils.torch_utils import get_torch_cuda_device_capability
 
 from ...testing_utils import (
+    assert_tensors_close,
     backend_empty_cache,
     backend_max_memory_allocated,
     backend_reset_peak_memory_stats,
@@ -122,8 +123,8 @@ class CPUOffloadTesterMixin:
                 torch.manual_seed(0)
                 new_output = new_model(**inputs_dict)
 
-                assert torch.allclose(base_output[0], new_output[0], atol=1e-5), (
-                    "Output should match with CPU offloading"
+                assert_tensors_close(
+                    base_output[0], new_output[0], atol=1e-5, rtol=0, msg="Output should match with CPU offloading"
                 )
 
     @require_offload_support
@@ -156,7 +157,9 @@ class CPUOffloadTesterMixin:
             torch.manual_seed(0)
             new_output = new_model(**inputs_dict)
 
-            assert torch.allclose(base_output[0], new_output[0], atol=1e-5), "Output should match with disk offloading"
+            assert_tensors_close(
+                base_output[0], new_output[0], atol=1e-5, rtol=0, msg="Output should match with disk offloading"
+            )
 
     @require_offload_support
     def test_disk_offload_with_safetensors(self):
@@ -183,8 +186,12 @@ class CPUOffloadTesterMixin:
             torch.manual_seed(0)
             new_output = new_model(**inputs_dict)
 
-            assert torch.allclose(base_output[0], new_output[0], atol=1e-5), (
-                "Output should match with disk offloading (safetensors)"
+            assert_tensors_close(
+                base_output[0],
+                new_output[0],
+                atol=1e-5,
+                rtol=0,
+                msg="Output should match with disk offloading (safetensors)",
             )
 
 
@@ -247,17 +254,33 @@ class GroupOffloadTesterMixin:
         )
         output_with_group_offloading4 = run_forward(model)
 
-        assert torch.allclose(output_without_group_offloading, output_with_group_offloading1, atol=1e-5), (
-            "Output should match with block-level offloading"
+        assert_tensors_close(
+            output_without_group_offloading,
+            output_with_group_offloading1,
+            atol=1e-5,
+            rtol=0,
+            msg="Output should match with block-level offloading",
         )
-        assert torch.allclose(output_without_group_offloading, output_with_group_offloading2, atol=1e-5), (
-            "Output should match with non-blocking block-level offloading"
+        assert_tensors_close(
+            output_without_group_offloading,
+            output_with_group_offloading2,
+            atol=1e-5,
+            rtol=0,
+            msg="Output should match with non-blocking block-level offloading",
         )
-        assert torch.allclose(output_without_group_offloading, output_with_group_offloading3, atol=1e-5), (
-            "Output should match with leaf-level offloading"
+        assert_tensors_close(
+            output_without_group_offloading,
+            output_with_group_offloading3,
+            atol=1e-5,
+            rtol=0,
+            msg="Output should match with leaf-level offloading",
         )
-        assert torch.allclose(output_without_group_offloading, output_with_group_offloading4, atol=1e-5), (
-            "Output should match with leaf-level offloading with stream"
+        assert_tensors_close(
+            output_without_group_offloading,
+            output_with_group_offloading4,
+            atol=1e-5,
+            rtol=0,
+            msg="Output should match with leaf-level offloading with stream",
         )
 
     @require_group_offload_support
@@ -345,8 +368,12 @@ class GroupOffloadTesterMixin:
                         raise ValueError(f"Following files are missing: {', '.join(missing_files)}")
 
             output_with_group_offloading = _run_forward(model, inputs_dict)
-            assert torch.allclose(output_without_group_offloading, output_with_group_offloading, atol=atol), (
-                "Output should match with disk-based group offloading"
+            assert_tensors_close(
+                output_without_group_offloading,
+                output_with_group_offloading,
+                atol=atol,
+                rtol=0,
+                msg="Output should match with disk-based group offloading",
             )
 
 

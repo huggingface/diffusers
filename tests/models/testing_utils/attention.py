@@ -25,7 +25,13 @@ from diffusers.models.attention_processor import (
     AttnProcessor,
 )
 
-from ...testing_utils import is_attention, is_context_parallel, require_torch_multi_accelerator, torch_device
+from ...testing_utils import (
+    assert_tensors_close,
+    is_attention,
+    is_context_parallel,
+    require_torch_multi_accelerator,
+    torch_device,
+)
 
 
 @is_attention
@@ -89,8 +95,12 @@ class AttentionTesterMixin:
                     output_after_fusion = output_after_fusion.to_tuple()[0]
 
             # Verify outputs match
-            assert torch.allclose(output_before_fusion, output_after_fusion, atol=self.base_precision), (
-                "Output should not change after fusing projections"
+            assert_tensors_close(
+                output_before_fusion,
+                output_after_fusion,
+                atol=self.base_precision,
+                rtol=0,
+                msg="Output should not change after fusing projections",
             )
 
             # Unfuse projections
@@ -110,8 +120,12 @@ class AttentionTesterMixin:
                     output_after_unfusion = output_after_unfusion.to_tuple()[0]
 
             # Verify outputs still match
-            assert torch.allclose(output_before_fusion, output_after_unfusion, atol=self.base_precision), (
-                "Output should match original after unfusing projections"
+            assert_tensors_close(
+                output_before_fusion,
+                output_after_unfusion,
+                atol=self.base_precision,
+                rtol=0,
+                msg="Output should match original after unfusing projections",
             )
 
     def test_get_set_processor(self):
@@ -237,9 +251,6 @@ class ContextParallelTesterMixin:
     def test_context_parallel_inference(self, cp_type):
         if not torch.distributed.is_available():
             pytest.skip("torch.distributed is not available.")
-
-        if not torch.cuda.is_available() or torch.cuda.device_count() < 2:
-            pytest.skip("Context parallel requires at least 2 CUDA devices.")
 
         if not hasattr(self.model_class, "_cp_plan") or self.model_class._cp_plan is None:
             pytest.skip("Model does not have a _cp_plan defined for context parallel inference.")
