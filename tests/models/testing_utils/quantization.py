@@ -128,9 +128,9 @@ class QuantizationTesterMixin:
         model_quantized = self._create_quantized_model(config_kwargs)
         num_params_quantized = model_quantized.num_parameters()
 
-        assert (
-            num_params == num_params_quantized
-        ), f"Parameter count mismatch: unquantized={num_params}, quantized={num_params_quantized}"
+        assert num_params == num_params_quantized, (
+            f"Parameter count mismatch: unquantized={num_params}, quantized={num_params_quantized}"
+        )
 
     def _test_quantization_memory_footprint(self, config_kwargs, expected_memory_reduction=1.2):
         model = self._load_unquantized_model()
@@ -140,9 +140,9 @@ class QuantizationTesterMixin:
         mem_quantized = model_quantized.get_memory_footprint()
 
         ratio = mem / mem_quantized
-        assert (
-            ratio >= expected_memory_reduction
-        ), f"Memory ratio {ratio:.2f} is less than expected ({expected_memory_reduction}x). unquantized={mem}, quantized={mem_quantized}"
+        assert ratio >= expected_memory_reduction, (
+            f"Memory ratio {ratio:.2f} is less than expected ({expected_memory_reduction}x). unquantized={mem}, quantized={mem_quantized}"
+        )
 
     def _test_quantization_inference(self, config_kwargs):
         model_quantized = self._create_quantized_model(config_kwargs)
@@ -237,12 +237,12 @@ class QuantizationTesterMixin:
                 self._verify_if_layer_quantized(name, module, config_kwargs)
                 num_quantized_layers += 1
 
-        assert (
-            num_quantized_layers > 0
-        ), f"No quantized layers found in model (expected {expected_quantized_layers} linear layers, {num_fp32_modules} kept in FP32)"
-        assert (
-            num_quantized_layers == expected_quantized_layers
-        ), f"Quantized layer count mismatch: expected {expected_quantized_layers}, got {num_quantized_layers} (total linear layers: {num_linear_layers}, FP32 modules: {num_fp32_modules})"
+        assert num_quantized_layers > 0, (
+            f"No quantized layers found in model (expected {expected_quantized_layers} linear layers, {num_fp32_modules} kept in FP32)"
+        )
+        assert num_quantized_layers == expected_quantized_layers, (
+            f"Quantized layer count mismatch: expected {expected_quantized_layers}, got {num_quantized_layers} (total linear layers: {num_linear_layers}, FP32 modules: {num_fp32_modules})"
+        )
 
     def _test_quantization_modules_to_not_convert(self, config_kwargs, modules_to_not_convert):
         """
@@ -266,9 +266,9 @@ class QuantizationTesterMixin:
                 if any(excluded in name for excluded in modules_to_not_convert):
                     found_excluded = True
                     # This module should NOT be quantized
-                    assert not self._is_module_quantized(
-                        module
-                    ), f"Module {name} should not be quantized but was found to be quantized"
+                    assert not self._is_module_quantized(module), (
+                        f"Module {name} should not be quantized but was found to be quantized"
+                    )
 
         assert found_excluded, f"No linear layers found in excluded modules: {modules_to_not_convert}"
 
@@ -290,9 +290,9 @@ class QuantizationTesterMixin:
         mem_with_exclusion = model_with_exclusion.get_memory_footprint()
         mem_fully_quantized = model_fully_quantized.get_memory_footprint()
 
-        assert (
-            mem_with_exclusion > mem_fully_quantized
-        ), f"Model with exclusions should be larger. With exclusion: {mem_with_exclusion}, fully quantized: {mem_fully_quantized}"
+        assert mem_with_exclusion > mem_fully_quantized, (
+            f"Model with exclusions should be larger. With exclusion: {mem_with_exclusion}, fully quantized: {mem_fully_quantized}"
+        )
 
     def _test_quantization_device_map(self, config_kwargs):
         """
@@ -399,40 +399,40 @@ class BitsAndBytesTesterMixin(QuantizationTesterMixin):
 
     def _verify_if_layer_quantized(self, name, module, config_kwargs):
         expected_weight_class = bnb.nn.Params4bit if config_kwargs.get("load_in_4bit") else bnb.nn.Int8Params
-        assert (
-            module.weight.__class__ == expected_weight_class
-        ), f"Layer {name} has weight type {module.weight.__class__}, expected {expected_weight_class}"
+        assert module.weight.__class__ == expected_weight_class, (
+            f"Layer {name} has weight type {module.weight.__class__}, expected {expected_weight_class}"
+        )
 
-    @pytest.mark.parametrize("config_name", list(BNB_CONFIGS.keys()))
+    @pytest.mark.parametrize("config_name", list(BNB_CONFIGS.keys()), ids=list(BNB_CONFIGS.keys()))
     def test_bnb_quantization_num_parameters(self, config_name):
         self._test_quantization_num_parameters(self.BNB_CONFIGS[config_name])
 
-    @pytest.mark.parametrize("config_name", list(BNB_CONFIGS.keys()))
+    @pytest.mark.parametrize("config_name", list(BNB_CONFIGS.keys()), ids=list(BNB_CONFIGS.keys()))
     def test_bnb_quantization_memory_footprint(self, config_name):
         expected = self.BNB_EXPECTED_MEMORY_REDUCTIONS.get(config_name, 1.2)
         self._test_quantization_memory_footprint(self.BNB_CONFIGS[config_name], expected_memory_reduction=expected)
 
-    @pytest.mark.parametrize("config_name", list(BNB_CONFIGS.keys()))
+    @pytest.mark.parametrize("config_name", list(BNB_CONFIGS.keys()), ids=list(BNB_CONFIGS.keys()))
     def test_bnb_quantization_inference(self, config_name):
         self._test_quantization_inference(self.BNB_CONFIGS[config_name])
 
-    @pytest.mark.parametrize("config_name", ["4bit_nf4"])
+    @pytest.mark.parametrize("config_name", ["4bit_nf4"], ids=["4bit_nf4"])
     def test_bnb_quantization_dtype_assignment(self, config_name):
         self._test_quantization_dtype_assignment(self.BNB_CONFIGS[config_name])
 
-    @pytest.mark.parametrize("config_name", ["4bit_nf4"])
+    @pytest.mark.parametrize("config_name", ["4bit_nf4"], ids=["4bit_nf4"])
     def test_bnb_quantization_lora_inference(self, config_name):
         self._test_quantization_lora_inference(self.BNB_CONFIGS[config_name])
 
-    @pytest.mark.parametrize("config_name", ["4bit_nf4"])
+    @pytest.mark.parametrize("config_name", ["4bit_nf4"], ids=["4bit_nf4"])
     def test_bnb_quantization_serialization(self, config_name):
         self._test_quantization_serialization(self.BNB_CONFIGS[config_name])
 
-    @pytest.mark.parametrize("config_name", list(BNB_CONFIGS.keys()))
+    @pytest.mark.parametrize("config_name", list(BNB_CONFIGS.keys()), ids=list(BNB_CONFIGS.keys()))
     def test_bnb_quantized_layers(self, config_name):
         self._test_quantized_layers(self.BNB_CONFIGS[config_name])
 
-    @pytest.mark.parametrize("config_name", list(BNB_CONFIGS.keys()))
+    @pytest.mark.parametrize("config_name", list(BNB_CONFIGS.keys()), ids=list(BNB_CONFIGS.keys()))
     def test_bnb_quantization_config_serialization(self, config_name):
         model = self._create_quantized_model(self.BNB_CONFIGS[config_name])
 
@@ -469,13 +469,13 @@ class BitsAndBytesTesterMixin(QuantizationTesterMixin):
             for name, module in model.named_modules():
                 if isinstance(module, torch.nn.Linear):
                     if any(fp32_name in name for fp32_name in model._keep_in_fp32_modules):
-                        assert (
-                            module.weight.dtype == torch.float32
-                        ), f"Module {name} should be FP32 but is {module.weight.dtype}"
+                        assert module.weight.dtype == torch.float32, (
+                            f"Module {name} should be FP32 but is {module.weight.dtype}"
+                        )
                     else:
-                        assert (
-                            module.weight.dtype == torch.uint8
-                        ), f"Module {name} should be uint8 but is {module.weight.dtype}"
+                        assert module.weight.dtype == torch.uint8, (
+                            f"Module {name} should be uint8 but is {module.weight.dtype}"
+                        )
 
             with torch.no_grad():
                 inputs = self.get_dummy_inputs()
@@ -492,9 +492,10 @@ class BitsAndBytesTesterMixin(QuantizationTesterMixin):
 
         self._test_quantization_modules_to_not_convert(self.BNB_CONFIGS["4bit_nf4"], modules_to_exclude)
 
-    def test_bnb_device_map(self):
+    @pytest.mark.parametrize("config_name", ["4bit_nf4", "8bit"], ids=["4bit_nf4", "8bit"])
+    def test_bnb_device_map(self, config_name):
         """Test that device_map='auto' works correctly with quantization."""
-        self._test_quantization_device_map(self.BNB_CONFIGS["4bit_nf4"])
+        self._test_quantization_device_map(self.BNB_CONFIGS[config_name])
 
     def test_bnb_dequantize(self):
         """Test that dequantize() works correctly."""
@@ -548,30 +549,36 @@ class QuantoTesterMixin(QuantizationTesterMixin):
     def _verify_if_layer_quantized(self, name, module, config_kwargs):
         assert isinstance(module, QLinear), f"Layer {name} is not QLinear, got {type(module)}"
 
-    @pytest.mark.parametrize("weight_type_name", list(QUANTO_WEIGHT_TYPES.keys()))
+    @pytest.mark.parametrize(
+        "weight_type_name", list(QUANTO_WEIGHT_TYPES.keys()), ids=list(QUANTO_WEIGHT_TYPES.keys())
+    )
     def test_quanto_quantization_num_parameters(self, weight_type_name):
         self._test_quantization_num_parameters(self.QUANTO_WEIGHT_TYPES[weight_type_name])
 
-    @pytest.mark.parametrize("weight_type_name", list(QUANTO_WEIGHT_TYPES.keys()))
+    @pytest.mark.parametrize(
+        "weight_type_name", list(QUANTO_WEIGHT_TYPES.keys()), ids=list(QUANTO_WEIGHT_TYPES.keys())
+    )
     def test_quanto_quantization_memory_footprint(self, weight_type_name):
         expected = self.QUANTO_EXPECTED_MEMORY_REDUCTIONS.get(weight_type_name, 1.2)
         self._test_quantization_memory_footprint(
             self.QUANTO_WEIGHT_TYPES[weight_type_name], expected_memory_reduction=expected
         )
 
-    @pytest.mark.parametrize("weight_type_name", list(QUANTO_WEIGHT_TYPES.keys()))
+    @pytest.mark.parametrize(
+        "weight_type_name", list(QUANTO_WEIGHT_TYPES.keys()), ids=list(QUANTO_WEIGHT_TYPES.keys())
+    )
     def test_quanto_quantization_inference(self, weight_type_name):
         self._test_quantization_inference(self.QUANTO_WEIGHT_TYPES[weight_type_name])
 
-    @pytest.mark.parametrize("weight_type_name", ["int8"])
+    @pytest.mark.parametrize("weight_type_name", ["int8"], ids=["int8"])
     def test_quanto_quantized_layers(self, weight_type_name):
         self._test_quantized_layers(self.QUANTO_WEIGHT_TYPES[weight_type_name])
 
-    @pytest.mark.parametrize("weight_type_name", ["int8"])
+    @pytest.mark.parametrize("weight_type_name", ["int8"], ids=["int8"])
     def test_quanto_quantization_lora_inference(self, weight_type_name):
         self._test_quantization_lora_inference(self.QUANTO_WEIGHT_TYPES[weight_type_name])
 
-    @pytest.mark.parametrize("weight_type_name", ["int8"])
+    @pytest.mark.parametrize("weight_type_name", ["int8"], ids=["int8"])
     def test_quanto_quantization_serialization(self, weight_type_name):
         self._test_quantization_serialization(self.QUANTO_WEIGHT_TYPES[weight_type_name])
 
@@ -636,30 +643,30 @@ class TorchAoTesterMixin(QuantizationTesterMixin):
     def _verify_if_layer_quantized(self, name, module, config_kwargs):
         assert isinstance(module, torch.nn.Linear), f"Layer {name} is not Linear, got {type(module)}"
 
-    @pytest.mark.parametrize("quant_type", list(TORCHAO_QUANT_TYPES.keys()))
+    @pytest.mark.parametrize("quant_type", list(TORCHAO_QUANT_TYPES.keys()), ids=list(TORCHAO_QUANT_TYPES.keys()))
     def test_torchao_quantization_num_parameters(self, quant_type):
         self._test_quantization_num_parameters(self.TORCHAO_QUANT_TYPES[quant_type])
 
-    @pytest.mark.parametrize("quant_type", list(TORCHAO_QUANT_TYPES.keys()))
+    @pytest.mark.parametrize("quant_type", list(TORCHAO_QUANT_TYPES.keys()), ids=list(TORCHAO_QUANT_TYPES.keys()))
     def test_torchao_quantization_memory_footprint(self, quant_type):
         expected = self.TORCHAO_EXPECTED_MEMORY_REDUCTIONS.get(quant_type, 1.2)
         self._test_quantization_memory_footprint(
             self.TORCHAO_QUANT_TYPES[quant_type], expected_memory_reduction=expected
         )
 
-    @pytest.mark.parametrize("quant_type", list(TORCHAO_QUANT_TYPES.keys()))
+    @pytest.mark.parametrize("quant_type", list(TORCHAO_QUANT_TYPES.keys()), ids=list(TORCHAO_QUANT_TYPES.keys()))
     def test_torchao_quantization_inference(self, quant_type):
         self._test_quantization_inference(self.TORCHAO_QUANT_TYPES[quant_type])
 
-    @pytest.mark.parametrize("quant_type", ["int8wo"])
+    @pytest.mark.parametrize("quant_type", ["int8wo"], ids=["int8wo"])
     def test_torchao_quantized_layers(self, quant_type):
         self._test_quantized_layers(self.TORCHAO_QUANT_TYPES[quant_type])
 
-    @pytest.mark.parametrize("quant_type", ["int8wo"])
+    @pytest.mark.parametrize("quant_type", ["int8wo"], ids=["int8wo"])
     def test_torchao_quantization_lora_inference(self, quant_type):
         self._test_quantization_lora_inference(self.TORCHAO_QUANT_TYPES[quant_type])
 
-    @pytest.mark.parametrize("quant_type", ["int8wo"])
+    @pytest.mark.parametrize("quant_type", ["int8wo"], ids=["int8wo"])
     def test_torchao_quantization_serialization(self, quant_type):
         self._test_quantization_serialization(self.TORCHAO_QUANT_TYPES[quant_type])
 
@@ -801,34 +808,34 @@ class ModelOptTesterMixin(QuantizationTesterMixin):
     def _verify_if_layer_quantized(self, name, module, config_kwargs):
         assert mtq.utils.is_quantized(module), f"Layer {name} does not have weight_quantizer attribute (not quantized)"
 
-    @pytest.mark.parametrize("config_name", ["fp8"])
+    @pytest.mark.parametrize("config_name", ["fp8"], ids=["fp8"])
     def test_modelopt_quantization_num_parameters(self, config_name):
         self._test_quantization_num_parameters(self.MODELOPT_CONFIGS[config_name])
 
-    @pytest.mark.parametrize("config_name", list(MODELOPT_CONFIGS.keys()))
+    @pytest.mark.parametrize("config_name", list(MODELOPT_CONFIGS.keys()), ids=list(MODELOPT_CONFIGS.keys()))
     def test_modelopt_quantization_memory_footprint(self, config_name):
         expected = self.MODELOPT_EXPECTED_MEMORY_REDUCTIONS.get(config_name, 1.2)
         self._test_quantization_memory_footprint(
             self.MODELOPT_CONFIGS[config_name], expected_memory_reduction=expected
         )
 
-    @pytest.mark.parametrize("config_name", list(MODELOPT_CONFIGS.keys()))
+    @pytest.mark.parametrize("config_name", list(MODELOPT_CONFIGS.keys()), ids=list(MODELOPT_CONFIGS.keys()))
     def test_modelopt_quantization_inference(self, config_name):
         self._test_quantization_inference(self.MODELOPT_CONFIGS[config_name])
 
-    @pytest.mark.parametrize("config_name", ["fp8"])
+    @pytest.mark.parametrize("config_name", ["fp8"], ids=["fp8"])
     def test_modelopt_quantization_dtype_assignment(self, config_name):
         self._test_quantization_dtype_assignment(self.MODELOPT_CONFIGS[config_name])
 
-    @pytest.mark.parametrize("config_name", ["fp8"])
+    @pytest.mark.parametrize("config_name", ["fp8"], ids=["fp8"])
     def test_modelopt_quantization_lora_inference(self, config_name):
         self._test_quantization_lora_inference(self.MODELOPT_CONFIGS[config_name])
 
-    @pytest.mark.parametrize("config_name", ["fp8"])
+    @pytest.mark.parametrize("config_name", ["fp8"], ids=["fp8"])
     def test_modelopt_quantization_serialization(self, config_name):
         self._test_quantization_serialization(self.MODELOPT_CONFIGS[config_name])
 
-    @pytest.mark.parametrize("config_name", ["fp8"])
+    @pytest.mark.parametrize("config_name", ["fp8"], ids=["fp8"])
     def test_modelopt_quantized_layers(self, config_name):
         self._test_quantized_layers(self.MODELOPT_CONFIGS[config_name])
 
