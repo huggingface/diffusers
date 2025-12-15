@@ -292,6 +292,9 @@ class GroupOffloadingHook(ModelHook):
         self.config = config
 
     def initialize_hook(self, module: torch.nn.Module) -> torch.nn.Module:
+        # For disk offload we materialize the safetensor files upfront so callers can inspect them immediately.
+        if self.group.offload_to_disk_path is not None and self.group.offload_leader == module:
+            self.group.offload_()
         return module
 
     def pre_forward(self, module: torch.nn.Module, *args, **kwargs):
@@ -545,12 +548,15 @@ class LayerExecutionTrackerHook(ModelHook):
 
 VALID_PIN_GROUPS = {"all", "first_last"}
 
+
 def _validate_pin_groups(pin_groups: Optional[Union[str, Callable]]) -> Optional[Union[str, Callable]]:
     if pin_groups is None or callable(pin_groups):
         return pin_groups
     if isinstance(pin_groups, str) and pin_groups in VALID_PIN_GROUPS:
         return pin_groups
-    raise ValueError(f"`pin_groups` must be None, {', '.join(repr(v) for v in sorted(VALID_PIN_GROUPS))}, or a callable.")
+    raise ValueError(
+        f"`pin_groups` must be None, {', '.join(repr(v) for v in sorted(VALID_PIN_GROUPS))}, or a callable."
+    )
 
 
 def apply_group_offloading(
