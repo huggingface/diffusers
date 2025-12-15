@@ -54,7 +54,7 @@ MELLON_INPUT_PARAMS = {
         "min": 0,
         "max": 1,
     },
-    "controlnet": {
+    "controlnet_bundle": {
         "label": "Controlnet",
         "type": "custom_controlnet",
         "display": "input",
@@ -183,6 +183,11 @@ MELLON_MODEL_PARAMS = {
         "type": "diffusers_auto_model",
         "display": "input",
     },
+    "controlnet_bundle": {
+        "label": "Controlnet",
+        "type": "custom_controlnet",
+        "display": "input",
+    },
 }
 
 # Mellon Output Parameters (display = "output")
@@ -212,10 +217,10 @@ MELLON_OUTPUT_PARAMS = {
         "display": "output",
         "type": "latent",
     },
-    "controlnet_out": {
+    "controlnet_bundle": {
         "label": "Controlnet",
         "display": "output",
-        "type": "controlnet",
+        "type": "custom_controlnet",
     },
     "doc": {
         "label": "Doc",
@@ -227,6 +232,7 @@ MELLON_OUTPUT_PARAMS = {
 
 # Default param selections per supported node_type
 # from MELLON_INPUT_PARAMS / MELLON_MODEL_PARAMS / MELLON_OUTPUT_PARAMS.
+# YiYi notes: not used for now
 NODE_TYPE_PARAMS_MAP = {
     "controlnet": {
         "inputs": [
@@ -242,7 +248,7 @@ NODE_TYPE_PARAMS_MAP = {
             "vae",
         ],
         "outputs": [
-            "controlnet",
+            "controlnet_bundle",
         ],
         "block_name": "controlnet_vae_encoder",
     },
@@ -257,7 +263,7 @@ NODE_TYPE_PARAMS_MAP = {
             "image_latents",
             "strength",
             # custom adapters coming in as inputs
-            "controlnet",
+            "controlnet_bundle",
             # ip_adapter is optional and custom; include if available
             "ip_adapter",
         ],
@@ -265,6 +271,7 @@ NODE_TYPE_PARAMS_MAP = {
             "unet",
             "guider",
             "scheduler",
+            "controlnet_bundle",
         ],
         "outputs": [
             "latents",
