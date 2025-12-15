@@ -843,67 +843,6 @@ def _apply_group_offloading_block_level(module: torch.nn.Module, config: GroupOf
         _apply_group_offloading_hook(module, empty_group, config=config)
 
 
-def _apply_block_offloading_to_submodule(
-    submodule: torch.nn.Module,
-    name: str,
-    config: GroupOffloadingConfig,
-    modules_with_group_offloading: Set[str],
-    matched_module_groups: List[ModuleGroup],
-) -> None:
-    r"""
-    Apply block offloading to a explicitly defined submodule. This function either:
-    1. Offloads the entire submodule as a single group ( SIMPLE APPROACH)
-    2. Recursively applies block offloading to the submodule
-
-    For now, we use the simple approach - offload the entire submodule as a single group.
-    """
-    # Simple approach: offload the entire submodule as a single group
-    # Since AEs are typically small, this is usually okay
-    if isinstance(submodule, (torch.nn.ModuleList, torch.nn.Sequential)):
-        # If it's a ModuleList or Sequential, apply the normal block-level logic
-        for i in range(0, len(submodule), config.num_blocks_per_group):
-            current_modules = list(submodule[i : i + config.num_blocks_per_group])
-            if len(current_modules) == 0:
-                continue
-
-            group_id = f"{config.module_prefix}{name}_{i}_{i + len(current_modules) - 1}"
-            group = ModuleGroup(
-                modules=current_modules,
-                offload_device=config.offload_device,
-                onload_device=config.onload_device,
-                offload_to_disk_path=config.offload_to_disk_path,
-                offload_leader=current_modules[-1],
-                onload_leader=current_modules[0],
-                non_blocking=config.non_blocking,
-                stream=config.stream,
-                record_stream=config.record_stream,
-                low_cpu_mem_usage=config.low_cpu_mem_usage,
-                onload_self=True,
-                group_id=group_id,
-            )
-            matched_module_groups.append(group)
-            for j in range(i, i + len(current_modules)):
-                modules_with_group_offloading.add(f"{name}.{j}")
-    else:
-        # For other modules, treat the entire submodule as a single group
-        group = ModuleGroup(
-            modules=[submodule],
-            offload_device=config.offload_device,
-            onload_device=config.onload_device,
-            offload_to_disk_path=config.offload_to_disk_path,
-            offload_leader=submodule,
-            onload_leader=submodule,
-            non_blocking=config.non_blocking,
-            stream=config.stream,
-            record_stream=config.record_stream,
-            low_cpu_mem_usage=config.low_cpu_mem_usage,
-            onload_self=True,
-            group_id=f"{config.module_prefix}{name}",
-        )
-        matched_module_groups.append(group)
-        modules_with_group_offloading.add(name)
-
-
 def _apply_group_offloading_leaf_level(module: torch.nn.Module, config: GroupOffloadingConfig) -> None:
     r"""
     This function applies offloading to groups of leaf modules in a torch.nn.Module. This method has minimal memory
