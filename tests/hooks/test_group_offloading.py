@@ -570,7 +570,7 @@ class GroupOffloadTests(unittest.TestCase):
         }
         model = self.get_model()
         with self.assertRaisesRegex(
-            ValueError, "`pin_groups` must be one of `None`, 'first_last', 'all', or a callable."
+            ValueError, "`pin_groups` must be None, 'all', 'first_last', or a callable."
         ):
             model.enable_group_offload(
                 **default_parameters,

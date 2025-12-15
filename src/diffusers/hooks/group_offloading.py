@@ -358,16 +358,6 @@ class GroupOffloadingHook(ModelHook):
             self.group.offload_()
         return output
 
-    def _is_group_on_device(self) -> bool:
-        tensors = []
-        for group_module in self.group.modules:
-            tensors.extend(list(group_module.parameters()))
-            tensors.extend(list(group_module.buffers()))
-        tensors.extend(self.group.parameters)
-        tensors.extend(self.group.buffers)
-
-        return len(tensors) > 0 and all(t.device == self.group.onload_device for t in tensors)
-
     def _send_kwargs_to_device(self, kwargs):
         exclude_kwargs = self.config.exclude_kwargs or []
         if exclude_kwargs:
@@ -552,15 +542,14 @@ class LayerExecutionTrackerHook(ModelHook):
         return args, kwargs
 
 
-def _normalize_pin_groups(pin_groups: Optional[Union[str, Callable]]) -> Optional[Union[str, Callable]]:
-    if isinstance(pin_groups, str):
-        normalized_pin_groups = pin_groups.lower()
-        if normalized_pin_groups not in {"first_last", "all"}:
-            raise ValueError("`pin_groups` must be one of `None`, 'first_last', 'all', or a callable.")
-        return normalized_pin_groups
-    if pin_groups is not None and not callable(pin_groups):
-        raise ValueError("`pin_groups` must be one of `None`, 'first_last', 'all', or a callable.")
-    return pin_groups
+VALID_PIN_GROUPS = {"all", "first_last"}
+
+def _validate_pin_groups(pin_groups: Optional[Union[str, Callable]]) -> Optional[Union[str, Callable]]:
+    if pin_groups is None or callable(pin_groups):
+        return pin_groups
+    if isinstance(pin_groups, str) and pin_groups in VALID_PIN_GROUPS:
+        return pin_groups
+    raise ValueError(f"`pin_groups` must be None, {', '.join(repr(v) for v in sorted(VALID_PIN_GROUPS))}, or a callable.")
 
 
 def apply_group_offloading(
@@ -684,7 +673,7 @@ def apply_group_offloading(
     if offload_type == GroupOffloadingType.BLOCK_LEVEL and num_blocks_per_group is None:
         raise ValueError("`num_blocks_per_group` must be provided when using `offload_type='block_level'.")
 
-    pin_groups = _normalize_pin_groups(pin_groups)
+    pin_groups = _validate_pin_groups(pin_groups)
     _raise_error_if_accelerate_model_or_sequential_hook_present(module)
 
     if block_modules is None:
