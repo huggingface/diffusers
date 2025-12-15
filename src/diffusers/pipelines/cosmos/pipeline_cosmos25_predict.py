@@ -699,7 +699,7 @@ class Cosmos25PredictBase(DiffusionPipeline):
 
                 self._current_timestep = t.cpu().item()
 
-                # NOTE: equivalent to t / 1000 for FlowUniPCMultistepScheduler (sigmas are in [0, 1], num_train_timesteps=1000)
+                # NOTE: sigmas are in [0, 1] in FlowUniPCMultistepScheduler
                 sigma_t = torch.tensor(self.scheduler.sigmas[i]).unsqueeze(0).to(device=device, dtype=transformer_dtype)
 
                 in_latents = cond_mask * cond_latent + (1 - cond_mask) * latents  # TODO: could use cond_indicator
