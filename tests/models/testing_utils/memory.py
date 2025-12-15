@@ -455,10 +455,7 @@ class LayerwiseCastingTesterMixin:
             inputs_dict = self.get_inputs_dict()
             inputs_dict = cast_maybe_tensor_dtype(inputs_dict, torch.float32, compute_dtype)
             with torch.amp.autocast(device_type=torch.device(torch_device).type):
-                output = model(**inputs_dict)
-
-                if isinstance(output, dict):
-                    output = output.to_tuple()[0]
+                output = model(**inputs_dict, return_dict=False)[0]
 
                 input_tensor = inputs_dict[self.main_input_name]
                 noise = torch.randn((input_tensor.shape[0],) + self.output_shape).to(torch_device)

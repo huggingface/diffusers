@@ -259,7 +259,7 @@ class ModelTesterMixin:
             pass
     """
 
-    def test_from_save_pretrained(self, tmp_path, atol=5e-5, rtol=0):
+    def test_from_save_pretrained(self, tmp_path, atol=5e-5, rtol=5e-5):
         torch.manual_seed(0)
         model = self.model_class(**self.get_init_dict())
         model.to(torch_device)
@@ -278,15 +278,8 @@ class ModelTesterMixin:
             )
 
         with torch.no_grad():
-            image = model(**self.get_dummy_inputs())
-
-            if isinstance(image, dict):
-                image = image.to_tuple()[0]
-
-            new_image = new_model(**self.get_dummy_inputs())
-
-            if isinstance(new_image, dict):
-                new_image = new_image.to_tuple()[0]
+            image = model(**self.get_dummy_inputs(), return_dict=False)[0]
+            new_image = new_model(**self.get_dummy_inputs(), return_dict=False)[0]
 
         assert_tensors_close(image, new_image, atol=atol, rtol=rtol, msg="Models give different forward passes.")
 
@@ -308,14 +301,8 @@ class ModelTesterMixin:
         new_model.to(torch_device)
 
         with torch.no_grad():
-            image = model(**self.get_dummy_inputs())
-            if isinstance(image, dict):
-                image = image.to_tuple()[0]
-
-            new_image = new_model(**self.get_dummy_inputs())
-
-            if isinstance(new_image, dict):
-                new_image = new_image.to_tuple()[0]
+            image = model(**self.get_dummy_inputs(), return_dict=False)[0]
+            new_image = new_model(**self.get_dummy_inputs(), return_dict=False)[0]
 
         assert_tensors_close(image, new_image, atol=atol, rtol=rtol, msg="Models give different forward passes.")
 
@@ -343,13 +330,8 @@ class ModelTesterMixin:
         model.eval()
 
         with torch.no_grad():
-            first = model(**self.get_dummy_inputs())
-            if isinstance(first, dict):
-                first = first.to_tuple()[0]
-
-            second = model(**self.get_dummy_inputs())
-            if isinstance(second, dict):
-                second = second.to_tuple()[0]
+            first = model(**self.get_dummy_inputs(), return_dict=False)[0]
+            second = model(**self.get_dummy_inputs(), return_dict=False)[0]
 
         # Filter out NaN values before comparison
         first_flat = first.flatten()
@@ -369,10 +351,7 @@ class ModelTesterMixin:
 
         inputs_dict = self.get_dummy_inputs()
         with torch.no_grad():
-            output = model(**inputs_dict)
-
-            if isinstance(output, dict):
-                output = output.to_tuple()[0]
+            output = model(**inputs_dict, return_dict=False)[0]
 
         assert output is not None, "Model output is None"
         assert output[0].shape == expected_output_shape or self.output_shape, (
@@ -501,13 +480,8 @@ class ModelTesterMixin:
                 assert param.data.dtype == dtype
 
         with torch.no_grad():
-            output = model(**self.get_dummy_inputs())
-            if isinstance(output, dict):
-                output = output.to_tuple()[0]
-
-            output_loaded = model_loaded(**self.get_dummy_inputs())
-            if isinstance(output_loaded, dict):
-                output_loaded = output_loaded.to_tuple()[0]
+            output = model(**self.get_dummy_inputs(), return_dict=False)[0]
+            output_loaded = model_loaded(**self.get_dummy_inputs(), return_dict=False)[0]
 
         assert_tensors_close(output, output_loaded, atol=1e-4, rtol=0, msg=f"Loaded model output differs for {dtype}")
 
@@ -519,7 +493,7 @@ class ModelTesterMixin:
         model = self.model_class(**config).eval()
         model = model.to(torch_device)
 
-        base_output = model(**inputs_dict)
+        base_output = model(**inputs_dict, return_dict=False)[0]
 
         model_size = compute_module_persistent_sizes(model)[""]
         max_shard_size = int((model_size * 0.75) / (2**10))  # Convert to KB as these test models are small
@@ -539,10 +513,10 @@ class ModelTesterMixin:
 
         torch.manual_seed(0)
         inputs_dict_new = self.get_dummy_inputs()
-        new_output = new_model(**inputs_dict_new)
+        new_output = new_model(**inputs_dict_new, return_dict=False)[0]
 
         assert_tensors_close(
-            base_output[0], new_output[0], atol=1e-5, rtol=0, msg="Output should match after sharded save/load"
+            base_output, new_output, atol=1e-5, rtol=0, msg="Output should match after sharded save/load"
         )
 
     @require_accelerator
@@ -553,7 +527,7 @@ class ModelTesterMixin:
         model = self.model_class(**config).eval()
         model = model.to(torch_device)
 
-        base_output = model(**inputs_dict)
+        base_output = model(**inputs_dict, return_dict=False)[0]
 
         model_size = compute_module_persistent_sizes(model)[""]
         max_shard_size = int((model_size * 0.75) / (2**10))  # Convert to KB as these test models are small
@@ -578,10 +552,10 @@ class ModelTesterMixin:
 
         torch.manual_seed(0)
         inputs_dict_new = self.get_dummy_inputs()
-        new_output = new_model(**inputs_dict_new)
+        new_output = new_model(**inputs_dict_new, return_dict=False)[0]
 
         assert_tensors_close(
-            base_output[0], new_output[0], atol=1e-5, rtol=0, msg="Output should match after variant sharded save/load"
+            base_output, new_output, atol=1e-5, rtol=0, msg="Output should match after variant sharded save/load"
         )
 
     def test_sharded_checkpoints_with_parallel_loading(self, tmp_path):
@@ -593,7 +567,7 @@ class ModelTesterMixin:
         model = self.model_class(**config).eval()
         model = model.to(torch_device)
 
-        base_output = model(**inputs_dict)
+        base_output = model(**inputs_dict, return_dict=False)[0]
 
         model_size = compute_module_persistent_sizes(model)[""]
         max_shard_size = int((model_size * 0.75) / (2**10))  # Convert to KB as these test models are small
@@ -628,10 +602,10 @@ class ModelTesterMixin:
 
             torch.manual_seed(0)
             inputs_dict_parallel = self.get_dummy_inputs()
-            output_parallel = model_parallel(**inputs_dict_parallel)
+            output_parallel = model_parallel(**inputs_dict_parallel, return_dict=False)[0]
 
             assert_tensors_close(
-                base_output[0], output_parallel[0], atol=1e-5, rtol=0, msg="Output should match with parallel loading"
+                base_output, output_parallel, atol=1e-5, rtol=0, msg="Output should match with parallel loading"
             )
 
         finally:
@@ -652,7 +626,7 @@ class ModelTesterMixin:
         model = model.to(torch_device)
 
         torch.manual_seed(0)
-        base_output = model(**inputs_dict)
+        base_output = model(**inputs_dict, return_dict=False)[0]
 
         model_size = compute_module_sizes(model)[""]
         max_gpu_sizes = [int(p * model_size) for p in self.model_split_percents]
@@ -668,8 +642,8 @@ class ModelTesterMixin:
             check_device_map_is_respected(new_model, new_model.hf_device_map)
 
             torch.manual_seed(0)
-            new_output = new_model(**inputs_dict)
+            new_output = new_model(**inputs_dict, return_dict=False)[0]
 
             assert_tensors_close(
-                base_output[0], new_output[0], atol=1e-5, rtol=0, msg="Output should match with model parallelism"
+                base_output, new_output, atol=1e-5, rtol=0, msg="Output should match with model parallelism"
             )

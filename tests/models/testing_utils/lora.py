@@ -79,8 +79,6 @@ class LoraTesterMixin:
     """
 
     def setup_method(self):
-        from diffusers.loaders.peft import PeftAdapterMixin
-
         if not issubclass(self.model_class, PeftAdapterMixin):
             pytest.skip(f"PEFT is not supported for this model ({self.model_class.__name__}).")
 

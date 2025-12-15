@@ -1,9 +1,10 @@
-from .attention import AttentionTesterMixin, ContextParallelTesterMixin
+from .attention import AttentionTesterMixin
 from .common import BaseModelTesterConfig, ModelTesterMixin
 from .compile import TorchCompileTesterMixin
 from .ip_adapter import IPAdapterTesterMixin
 from .lora import LoraHotSwappingForModelTesterMixin, LoraTesterMixin
 from .memory import CPUOffloadTesterMixin, GroupOffloadTesterMixin, LayerwiseCastingTesterMixin, MemoryTesterMixin
+from .parallelism import ContextParallelTesterMixin
 from .quantization import (
     BitsAndBytesTesterMixin,
     GGUFTesterMixin,

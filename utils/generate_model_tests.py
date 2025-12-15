@@ -43,9 +43,14 @@ ATTRIBUTE_TO_TESTER = {
 ALWAYS_INCLUDE_TESTERS = [
     "ModelTesterMixin",
     "MemoryTesterMixin",
-    "AttentionTesterMixin",
     "TorchCompileTesterMixin",
 ]
+
+# Attention-related class names that indicate the model uses attention
+ATTENTION_INDICATORS = {
+    "AttentionMixin",
+    "AttentionModuleMixin",
+}
 
 OPTIONAL_TESTERS = [
     ("BitsAndBytesTesterMixin", "bnb"),
@@ -62,6 +67,17 @@ class ModelAnalyzer(ast.NodeVisitor):
     def __init__(self):
         self.model_classes = []
         self.current_class = None
+        self.imports = set()
+
+    def visit_Import(self, node: ast.Import):
+        for alias in node.names:
+            self.imports.add(alias.name.split(".")[-1])
+        self.generic_visit(node)
+
+    def visit_ImportFrom(self, node: ast.ImportFrom):
+        for alias in node.names:
+            self.imports.add(alias.name)
+        self.generic_visit(node)
 
     def visit_ClassDef(self, node: ast.ClassDef):
         base_names = []
@@ -164,7 +180,7 @@ class ModelAnalyzer(ast.NodeVisitor):
         return "<complex>"
 
 
-def analyze_model_file(filepath: str) -> list[dict]:
+def analyze_model_file(filepath: str) -> tuple[list[dict], set[str]]:
     with open(filepath) as f:
         source = f.read()
 
@@ -172,10 +188,10 @@ def analyze_model_file(filepath: str) -> list[dict]:
     analyzer = ModelAnalyzer()
     analyzer.visit(tree)
 
-    return analyzer.model_classes
+    return analyzer.model_classes, analyzer.imports
 
 
-def determine_testers(model_info: dict, include_optional: list[str]) -> list[str]:
+def determine_testers(model_info: dict, include_optional: list[str], imports: set[str]) -> list[str]:
     testers = list(ALWAYS_INCLUDE_TESTERS)
 
     for base in model_info["bases"]:
@@ -194,6 +210,10 @@ def determine_testers(model_info: dict, include_optional: list[str]) -> list[str
     if "_cp_plan" in model_info["attributes"] and model_info["attributes"]["_cp_plan"] is not None:
         if "ContextParallelTesterMixin" not in testers:
             testers.append("ContextParallelTesterMixin")
+
+    # Include AttentionTesterMixin if the model imports attention-related classes
+    if imports & ATTENTION_INDICATORS:
+        testers.append("AttentionTesterMixin")
 
     for tester, flag in OPTIONAL_TESTERS:
         if flag in include_optional:
@@ -335,9 +355,9 @@ def generate_test_class(model_name: str, config_class: str, tester: str) -> str:
     return "\n".join(lines)
 
 
-def generate_test_file(model_info: dict, model_filepath: str, include_optional: list[str]) -> str:
+def generate_test_file(model_info: dict, model_filepath: str, include_optional: list[str], imports: set[str]) -> str:
     model_name = model_info["name"].replace("2DModel", "").replace("3DModel", "").replace("Model", "")
-    testers = determine_testers(model_info, include_optional)
+    testers = determine_testers(model_info, include_optional, imports)
     tester_imports = sorted(set(testers) - {"LoraHotSwappingForModelTesterMixin"})
 
     lines = [
@@ -446,7 +466,7 @@ def main():
         print(f"Error: File not found: {args.model_filepath}", file=sys.stderr)
         sys.exit(1)
 
-    model_classes = analyze_model_file(args.model_filepath)
+    model_classes, imports = analyze_model_file(args.model_filepath)
 
     if not model_classes:
         print(f"Error: No model classes found in {args.model_filepath}", file=sys.stderr)
@@ -468,7 +488,7 @@ def main():
     if "all" in include_optional:
         include_optional = [flag for _, flag in OPTIONAL_TESTERS]
 
-    generated_code = generate_test_file(model_info, args.model_filepath, include_optional)
+    generated_code = generate_test_file(model_info, args.model_filepath, include_optional, imports)
 
     if args.dry_run:
         print(generated_code)

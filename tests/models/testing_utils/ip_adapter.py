@@ -17,47 +17,7 @@
 import pytest
 import torch
 
-from diffusers.models.attention_processor import IPAdapterAttnProcessor
-
 from ...testing_utils import is_ip_adapter, torch_device
-
-
-def create_ip_adapter_state_dict(model):
-    """
-    Create a dummy IP Adapter state dict for testing.
-
-    Args:
-        model: The model to create IP adapter weights for
-
-    Returns:
-        dict: IP adapter state dict with to_k_ip and to_v_ip weights
-    """
-    ip_state_dict = {}
-    key_id = 1
-
-    for name in model.attn_processors.keys():
-        # Skip self-attention processors
-        cross_attention_dim = getattr(model.config, "cross_attention_dim", None)
-        if cross_attention_dim is None:
-            continue
-
-        # Get hidden size based on model architecture
-        hidden_size = getattr(model.config, "hidden_size", cross_attention_dim)
-
-        # Create IP adapter processor to get state dict structure
-        sd = IPAdapterAttnProcessor(
-            hidden_size=hidden_size, cross_attention_dim=cross_attention_dim, scale=1.0
-        ).state_dict()
-
-        ip_state_dict.update(
-            {
-                f"{key_id}.to_k_ip.weight": sd["to_k_ip.0.weight"],
-                f"{key_id}.to_v_ip.weight": sd["to_v_ip.0.weight"],
-            }
-        )
-        key_id += 2
-
-    return {"ip_adapter": ip_state_dict}
 
 
 def check_if_ip_adapter_correctly_set(model, processor_cls) -> bool:

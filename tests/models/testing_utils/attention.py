@@ -13,13 +13,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import os
-
 import pytest
 import torch
-import torch.multiprocessing as mp
 
-from diffusers.models._modeling_parallel import ContextParallelConfig
 from diffusers.models.attention import AttentionModuleMixin
 from diffusers.models.attention_processor import (
     AttnProcessor,
@@ -28,8 +24,6 @@ from diffusers.models.attention_processor import (
 from ...testing_utils import (
     assert_tensors_close,
     is_attention,
-    is_context_parallel,
-    require_torch_multi_accelerator,
     torch_device,
 )
 
@@ -71,9 +65,7 @@ class AttentionTesterMixin:
 
         # Get output before fusion
         with torch.no_grad():
-            output_before_fusion = model(**inputs_dict)
-            if isinstance(output_before_fusion, dict):
-                output_before_fusion = output_before_fusion.to_tuple()[0]
+            output_before_fusion = model(**inputs_dict, return_dict=False)[0]
 
         # Fuse projections
         model.fuse_qkv_projections()
@@ -90,9 +82,7 @@ class AttentionTesterMixin:
         if has_fused_projections:
             # Get output after fusion
             with torch.no_grad():
-                output_after_fusion = model(**inputs_dict)
-                if isinstance(output_after_fusion, dict):
-                    output_after_fusion = output_after_fusion.to_tuple()[0]
+                output_after_fusion = model(**inputs_dict, return_dict=False)[0]
 
             # Verify outputs match
             assert_tensors_close(
@@ -115,9 +105,7 @@ class AttentionTesterMixin:
 
             # Get output after unfusion
             with torch.no_grad():
-                output_after_unfusion = model(**inputs_dict)
-                if isinstance(output_after_unfusion, dict):
-                    output_after_unfusion = output_after_unfusion.to_tuple()[0]
+                output_after_unfusion = model(**inputs_dict, return_dict=False)[0]
 
             # Verify outputs still match
             assert_tensors_close(
@@ -195,80 +183,3 @@ class AttentionTesterMixin:
             model.set_attn_processor(wrong_processors)
 
         assert "number of processors" in str(exc_info.value).lower(), "Error should mention processor count mismatch"
-
-
-def _context_parallel_worker(rank, world_size, model_class, init_dict, cp_dict, inputs_dict, result_queue):
-    try:
-        # Setup distributed environment
-        os.environ["MASTER_ADDR"] = "localhost"
-        os.environ["MASTER_PORT"] = "12355"
-
-        torch.distributed.init_process_group(
-            backend="nccl",
-            init_method="env://",
-            world_size=world_size,
-            rank=rank,
-        )
-        torch.cuda.set_device(rank)
-        device = torch.device(f"cuda:{rank}")
-
-        model = model_class(**init_dict)
-        model.to(device)
-        model.eval()
-
-        inputs_on_device = {}
-        for key, value in inputs_dict.items():
-            if isinstance(value, torch.Tensor):
-                inputs_on_device[key] = value.to(device)
-            else:
-                inputs_on_device[key] = value
-
-        cp_config = ContextParallelConfig(**cp_dict)
-        model.enable_parallelism(config=cp_config)
-
-        with torch.no_grad():
-            output = model(**inputs_on_device)
-            if isinstance(output, dict):
-                output = output.to_tuple()[0]
-
-        if rank == 0:
-            result_queue.put(("success", output.shape))
-
-    except Exception as e:
-        if rank == 0:
-            result_queue.put(("error", str(e)))
-    finally:
-        if torch.distributed.is_initialized():
-            torch.distributed.destroy_process_group()
-
-
-@is_context_parallel
-@require_torch_multi_accelerator
-class ContextParallelTesterMixin:
-    base_precision = 1e-3
-
-    @pytest.mark.parametrize("cp_type", ["ulysses_degree", "ring_degree"], ids=["ulysses", "ring"])
-    def test_context_parallel_inference(self, cp_type):
-        if not torch.distributed.is_available():
-            pytest.skip("torch.distributed is not available.")
-
-        if not hasattr(self.model_class, "_cp_plan") or self.model_class._cp_plan is None:
-            pytest.skip("Model does not have a _cp_plan defined for context parallel inference.")
-
-        world_size = 2
-        init_dict = self.get_init_dict()
-        inputs_dict = self.get_dummy_inputs()
-        cp_dict = {cp_type: world_size}
-
-        ctx = mp.get_context("spawn")
-        result_queue = ctx.Queue()
-
-        mp.spawn(
-            _context_parallel_worker,
-            args=(world_size, self.model_class, init_dict, cp_dict, inputs_dict, result_queue),
-            nprocs=world_size,
-            join=True,
-        )
-
-        status, result = result_queue.get(timeout=60)
-        assert status == "success", f"Context parallel inference failed: {result}"

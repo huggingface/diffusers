@@ -50,10 +50,7 @@ class TrainingTesterMixin:
         model = self.model_class(**init_dict)
         model.to(torch_device)
         model.train()
-        output = model(**inputs_dict)
-
-        if isinstance(output, dict):
-            output = output.to_tuple()[0]
+        output = model(**inputs_dict, return_dict=False)[0]
 
         noise = torch.randn((output.shape[0],) + self.output_shape).to(torch_device)
         loss = torch.nn.functional.mse_loss(output, noise)
@@ -68,10 +65,7 @@ class TrainingTesterMixin:
         model.train()
         ema_model = EMAModel(model.parameters())
 
-        output = model(**inputs_dict)
-
-        if isinstance(output, dict):
-            output = output.to_tuple()[0]
+        output = model(**inputs_dict, return_dict=False)[0]
 
         noise = torch.randn((output.shape[0],) + self.output_shape).to(torch_device)
         loss = torch.nn.functional.mse_loss(output, noise)
@@ -137,9 +131,7 @@ class TrainingTesterMixin:
 
         assert not model.is_gradient_checkpointing and model.training
 
-        out = model(**inputs_dict)
-        if isinstance(out, dict):
-            out = out.sample if hasattr(out, "sample") else out.to_tuple()[0]
+        out = model(**inputs_dict, return_dict=False)[0]
 
         # run the backwards pass on the model
         model.zero_grad()
@@ -158,9 +150,7 @@ class TrainingTesterMixin:
 
         assert model_2.is_gradient_checkpointing and model_2.training
 
-        out_2 = model_2(**inputs_dict_copy)
-        if isinstance(out_2, dict):
-            out_2 = out_2.sample if hasattr(out_2, "sample") else out_2.to_tuple()[0]
+        out_2 = model_2(**inputs_dict_copy, return_dict=False)[0]
 
         # run the backwards pass on the model
         model_2.zero_grad()
@@ -198,10 +188,7 @@ class TrainingTesterMixin:
         # Test with float16
         if torch.device(torch_device).type != "cpu":
             with torch.amp.autocast(device_type=torch.device(torch_device).type, dtype=torch.float16):
-                output = model(**inputs_dict)
-
-                if isinstance(output, dict):
-                    output = output.to_tuple()[0]
+                output = model(**inputs_dict, return_dict=False)[0]
 
                 noise = torch.randn((output.shape[0],) + self.output_shape).to(torch_device)
                 loss = torch.nn.functional.mse_loss(output, noise)
@@ -212,10 +199,7 @@ class TrainingTesterMixin:
         if torch.device(torch_device).type != "cpu":
             model.zero_grad()
             with torch.amp.autocast(device_type=torch.device(torch_device).type, dtype=torch.bfloat16):
-                output = model(**inputs_dict)
-
-                if isinstance(output, dict):
-                    output = output.to_tuple()[0]
+                output = model(**inputs_dict, return_dict=False)[0]
 
                 noise = torch.randn((output.shape[0],) + self.output_shape).to(torch_device)
                 loss = torch.nn.functional.mse_loss(output, noise)
