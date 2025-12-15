@@ -6,7 +6,7 @@ import os
 from dataclasses import asdict, dataclass, field
 from typing import Any, Dict, List, Optional, Tuple, Union
 
-from huggingface_hub import create_repo, hf_hub_download
+from huggingface_hub import create_repo, hf_hub_download, upload_folder
 from huggingface_hub.utils import (
     EntryNotFoundError,
     HfHubHTTPError,
@@ -20,308 +20,6 @@ from .modular_pipeline import ModularPipelineBlocks
 
 
 logger = logging.getLogger(__name__)
-
-
-SUPPORTED_NODE_TYPES = {"controlnet", "vae_encoder", "denoise", "text_encoder", "decoder"}
-
-
-# Mellon Input Parameters (runtime parameters, not models)
-MELLON_INPUT_PARAMS = {
-    # controlnet
-    "control_image": {
-        "label": "Control Image",
-        "type": "image",
-        "display": "input",
-    },
-    "controlnet_conditioning_scale": {
-        "label": "Scale",
-        "type": "float",
-        "default": 0.5,
-        "min": 0.0,
-        "max": 1.0,
-    },
-    "control_guidance_end": {
-        "label": "End",
-        "type": "float",
-        "default": 1.0,
-        "min": 0,
-        "max": 1,
-    },
-    "control_guidance_start": {
-        "label": "Start",
-        "type": "float",
-        "default": 0.0,
-        "min": 0,
-        "max": 1,
-    },
-    "controlnet_bundle": {
-        "label": "Controlnet",
-        "type": "custom_controlnet",
-        "display": "input",
-    },
-    "embeddings": {
-        "label": "Text Embeddings",
-        "display": "input",
-        "type": "embeddings",
-    },
-    "image": {
-        "label": "Image",
-        "type": "image",
-        "display": "input",
-    },
-    "negative_prompt": {
-        "label": "Negative Prompt",
-        "type": "string",
-        "default": "",
-        "display": "textarea",
-    },
-    "prompt": {
-        "label": "Prompt",
-        "type": "string",
-        "default": "",
-        "display": "textarea",
-    },
-    "guidance_scale": {
-        "label": "Guidance Scale",
-        "type": "float",
-        "display": "slider",
-        "default": 5,
-        "min": 1.0,
-        "max": 30.0,
-        "step": 0.1,
-    },
-    "height": {
-        "label": "Height",
-        "type": "int",
-        "default": 1024,
-        "min": 64,
-        "step": 8,
-    },
-    "image_latents": {
-        "label": "Image Latents",
-        "type": "latents",
-        "display": "input",
-        "onChange": {False: ["height", "width"], True: ["strength"]},
-    },
-    "latents": {
-        "label": "Latents",
-        "type": "latents",
-        "display": "input",
-    },
-    "num_inference_steps": {
-        "label": "Steps",
-        "type": "int",
-        "display": "slider",
-        "default": 25,
-        "min": 1,
-        "max": 100,
-    },
-    "seed": {
-        "label": "Seed",
-        "type": "int",
-        "display": "random",
-        "default": 0,
-        "min": 0,
-        "max": 4294967295,
-    },
-    "strength": {
-        "label": "Strength",
-        "type": "float",
-        "default": 0.5,
-        "min": 0.0,
-        "max": 1.0,
-        "step": 0.01,
-    },
-    "width": {
-        "label": "Width",
-        "type": "int",
-        "default": 1024,
-        "min": 64,
-        "step": 8,
-    },
-    "ip_adapter": {
-        "label": "IP Adapter",
-        "type": "custom_ip_adapter",
-        "display": "input",
-    },
-}
-
-# Mellon Model Parameters (diffusers_auto_model types)
-MELLON_MODEL_PARAMS = {
-    "scheduler": {
-        "label": "Scheduler",
-        "display": "input",
-        "type": "diffusers_auto_model",
-    },
-    "text_encoders": {
-        "label": "Text Encoders",
-        "type": "diffusers_auto_models",
-        "display": "input",
-    },
-    "unet": {
-        "label": "Unet",
-        "display": "input",
-        "type": "diffusers_auto_model",
-        "onSignal": {
-            "action": "signal",
-            "target": "guider",
-        },
-    },
-    "guider": {
-        "label": "Guider",
-        "display": "input",
-        "type": "custom_guider",
-        "onChange": {False: ["guidance_scale"], True: []},
-    },
-    "vae": {
-        "label": "VAE",
-        "display": "input",
-        "type": "diffusers_auto_model",
-    },
-    "controlnet": {
-        "label": "Controlnet Model",
-        "type": "diffusers_auto_model",
-        "display": "input",
-    },
-    "controlnet_bundle": {
-        "label": "Controlnet",
-        "type": "custom_controlnet",
-        "display": "input",
-    },
-}
-
-# Mellon Output Parameters (display = "output")
-MELLON_OUTPUT_PARAMS = {
-    "embeddings": {
-        "label": "Text Embeddings",
-        "display": "output",
-        "type": "embeddings",
-    },
-    "images": {
-        "label": "Images",
-        "type": "image",
-        "display": "output",
-    },
-    "image_latents": {
-        "label": "Image Latents",
-        "type": "latents",
-        "display": "output",
-    },
-    "latents": {
-        "label": "Latents",
-        "type": "latents",
-        "display": "output",
-    },
-    "latents_preview": {
-        "label": "Latents Preview",
-        "display": "output",
-        "type": "latent",
-    },
-    "controlnet_bundle": {
-        "label": "Controlnet",
-        "display": "output",
-        "type": "custom_controlnet",
-    },
-    "doc": {
-        "label": "Doc",
-        "display": "output",
-        "type": "string",
-    },
-}
-
-
-# Default param selections per supported node_type
-# from MELLON_INPUT_PARAMS / MELLON_MODEL_PARAMS / MELLON_OUTPUT_PARAMS.
-# YiYi notes: not used for now
-NODE_TYPE_PARAMS_MAP = {
-    "controlnet": {
-        "inputs": [
-            "control_image",
-            "controlnet_conditioning_scale",
-            "control_guidance_start",
-            "control_guidance_end",
-            "height",
-            "width",
-        ],
-        "model_inputs": [
-            "controlnet",
-            "vae",
-        ],
-        "outputs": [
-            "controlnet_bundle",
-        ],
-        "block_name": "controlnet_vae_encoder",
-    },
-    "denoise": {
-        "inputs": [
-            "embeddings",
-            "width",
-            "height",
-            "seed",
-            "num_inference_steps",
-            "guidance_scale",
-            "image_latents",
-            "strength",
-            # custom adapters coming in as inputs
-            "controlnet_bundle",
-            # ip_adapter is optional and custom; include if available
-            "ip_adapter",
-        ],
-        "model_inputs": [
-            "unet",
-            "guider",
-            "scheduler",
-            "controlnet_bundle",
-        ],
-        "outputs": [
-            "latents",
-            "latents_preview",
-        ],
-        "block_name": "denoise",
-    },
-    "vae_encoder": {
-        "inputs": [
-            "image",
-            "width",
-            "height",
-        ],
-        "model_inputs": [
-            "vae",
-        ],
-        "outputs": [
-            "image_latents",
-        ],
-        "block_name": "vae_encoder",
-    },
-    "text_encoder": {
-        "inputs": [
-            "prompt",
-            "negative_prompt",
-            # optional image prompt input supported in embeddings node
-            "image",
-        ],
-        "model_inputs": [
-            "text_encoders",
-        ],
-        "outputs": [
-            "embeddings",
-        ],
-        "block_name": "text_encoder",
-    },
-    "decoder": {
-        "inputs": [
-            "latents",
-        ],
-        "model_inputs": [
-            "vae",
-        ],
-        "outputs": [
-            "images",
-        ],
-        "block_name": "decode",
-    },
-}
-
 
 @dataclass(frozen=True)
 class MellonParam:
@@ -344,11 +42,177 @@ class MellonParam:
         data = asdict(self)
         return {k: v for k, v in data.items() if not k.startswith("_") and v is not None}
 
+    @classmethod
+    def image(cls) -> "MellonParam":
+        return cls(name="image", label="Image", type="image", display="input")
+
+    @classmethod
+    def images(cls) -> "MellonParam":
+        return cls(name="images", label="Images", type="image", display="output")
+
+    @classmethod
+    def control_image(cls, display: str = "input") -> "MellonParam":
+        return cls(name="control_image", label="Control Image", type="image", display=display)
+
+    @classmethod
+    def latents(cls, display: str = "input") -> "MellonParam":
+        return cls(name="latents", label="Latents", type="latents", display=display)
+
+    @classmethod
+    def image_latents(cls, display: str = "input", use_strength: bool = False) -> "MellonParam":
+        """
+        `image_latents_input` is used to accept the image latents from vae encoder node.
+        When the node receives the `image_latents_input`, the height and width input widget will be hidden, and height and width will be determined by the image latents.
+        if `use_strength` is True, the strength slider will be shown.
+        """
+        if display == "input":
+            onChange = {False: ["height", "width"], True: ["strength"]} if use_strength else {False: ["height", "width"], True: []}
+        else:
+            onChange = None
+        return cls(name="image_latents", label="Image Latents", type="latents", display=display, onChange=onChange)
+
+    @classmethod
+    def latents_preview(cls) -> "MellonParam":
+        """
+        `Latents Preview` is a special output parameter that is used to preview the latents in the UI.
+        """
+        return cls(name="latents_preview", label="Latents Preview", type="latent", display="output")
+
+    @classmethod
+    def embeddings(cls, display: str = "output") -> "MellonParam":
+        return cls(name="embeddings", label="Text Embeddings", type="embeddings", display=display)
+
+    @classmethod
+    def controlnet_conditioning_scale(cls, default: float = 0.5) -> "MellonParam":
+        return cls(name="controlnet_conditioning_scale", label="Controlnet Conditioning Scale", type="float", default=default, min=0.0, max=1.0, step=0.01)
+
+    @classmethod
+    def control_guidance_start(cls, default: float = 0.0) -> "MellonParam":
+        return cls(name="control_guidance_start", label="Control Guidance Start", type="float", default=default, min=0.0, max=1.0, step=0.01)
+
+    @classmethod
+    def control_guidance_end(cls, default: float = 1.0) -> "MellonParam":
+        return cls(name="control_guidance_end", label="Control Guidance End", type="float", default=default, min=0.0, max=1.0, step=0.01)
+    
+    @classmethod
+    def prompt(cls, default: str = "") -> "MellonParam":
+        return cls(name="prompt", label="Prompt", type="string", default=default, display="textarea")
+
+    @classmethod
+    def negative_prompt(cls, default: str = "") -> "MellonParam":
+        return cls(name="negative_prompt", label="Negative Prompt", type="string", default=default, display="textarea")
+
+    @classmethod
+    def strength(cls, default: float = 0.5) -> "MellonParam":
+        return cls(name="strength", label="Strength", type="float", default=default, min=0.0, max=1.0, step=0.01)
+
+    @classmethod
+    def guidance_scale(cls, default: float = 5.0) -> "MellonParam":
+        return cls(name="guidance_scale", label="Guidance Scale", type="float", display="slider", default=default, min=1.0, max=30.0, step=0.1)
+
+    @classmethod
+    def height(cls, default: int = 1024) -> "MellonParam":
+        return cls(name="height", label="Height", type="int", default=default, min=64,step=8)
+
+    @classmethod
+    def width(cls, default: int = 1024) -> "MellonParam":
+        return cls(name="width", label="Width", type="int", default=default, min=64, step=8)
+    
+    @classmethod
+    def seed(cls, default: int = 0) -> "MellonParam":
+        return cls(name="seed", label="Seed", type="int", default=default, min=0, max=4294967295, display="random")
+
+    @classmethod
+    def num_inference_steps(cls, default: int = 25) -> "MellonParam":
+        return cls(name="num_inference_steps", label="Steps", type="int", default=default, min=1, max=100, display="slider")
+
+    @classmethod
+    def vae(cls) -> "MellonParam":
+        """
+        VAE model info dict.
+        
+        Contains keys like 'model_id', 'repo_id', 'execution_device' etc.
+        Use components.get_one(model_id) to retrieve the actual model.
+        """
+        return cls(name="vae", label="VAE", type="diffusers_auto_model", display="input")
+
+    @classmethod
+    def unet(cls) -> "MellonParam":
+        """
+        Denoising model (UNet/Transformer) info dict.
+        
+        Contains keys like 'model_id', 'repo_id', 'execution_device' etc.
+        Use components.get_one(model_id) to retrieve the actual model.
+        """
+        return cls(name="unet", label="Denoise Model", type="diffusers_auto_model", display="input")
+
+    @classmethod
+    def scheduler(cls) -> "MellonParam":
+        """
+        Scheduler model info dict.
+        
+        Contains keys like 'model_id', 'repo_id' etc.
+        Use components.get_one(model_id) to retrieve the actual scheduler.
+        """
+        return cls(name="scheduler", label="Scheduler", type="diffusers_auto_model", display="input")
+
+    @classmethod
+    def controlnet(cls) -> "MellonParam":
+        """
+        ControlNet model info dict.
+        
+        Contains keys like 'model_id', 'repo_id', 'execution_device' etc.
+        Use components.get_one(model_id) to retrieve the actual model.
+        """
+        return cls(name="controlnet", label="ControlNet Model", type="diffusers_auto_model", display="input")
+
+    @classmethod
+    def text_encoders(cls) -> "MellonParam":
+        """
+        Dict of text encoder model info dicts.
+        
+        Structure: {
+            'text_encoder': {'model_id': ..., 'execution_device': ..., ...},
+            'tokenizer': {'model_id': ..., ...},
+            'repo_id': '...'
+        }
+        Use components.get_one(model_id) to retrieve each model.
+        """
+        return cls(name="text_encoders", label="Text Encoders", type="diffusers_auto_models", display="input")
+
+    @classmethod
+    def controlnet_bundle(cls, display: str = "input") -> "MellonParam":
+        """
+        ControlNet bundle containing model info and processed control inputs.
+        
+        Structure: {
+            'controlnet': {'model_id': ..., ...},  # controlnet model info dict
+            'control_image': ...,                   # processed control image/embeddings
+            'controlnet_conditioning_scale': ...,
+            ...  # other inputs expected by denoise blocks
+        }
+        
+        Output from Controlnet node, input to Denoise node.
+        """
+        return cls(name="controlnet_bundle", label="ControlNet", type="custom_controlnet", display=display)
+
+    @classmethod
+    def ip_adapter(cls) -> "MellonParam":
+        return cls(name="ip_adapter", label="IP Adapter", type="custom_ip_adapter", display="input")
+
+    @classmethod
+    def guider(cls) -> "MellonParam":
+        return cls(name="guider", label="Guider", type="custom_guider", display="input", onChange={False: ["guidance_scale"], True: []})
+
+    @classmethod
+    def doc(cls) -> "MellonParam":
+        return cls(name="doc", label="Doc", type="string", display="output")
 
 @dataclass
-class MellonNodeConfig(PushToHubMixin):
+class MellonNodeConfig:
     """
     A MellonNodeConfig is a base class to build Mellon nodes UI with modular diffusers.
+    It is used to configure a single Mellon node.
 
     <Tip warning={true}>
 
@@ -357,9 +221,9 @@ class MellonNodeConfig(PushToHubMixin):
     </Tip>
     """
 
-    inputs: List[Union[str, MellonParam]]
-    model_inputs: List[Union[str, MellonParam]]
-    outputs: List[Union[str, MellonParam]]
+    inputs: List[MellonParam]
+    model_inputs: List[MellonParam]
+    outputs: List[MellonParam]
     block_name: str
     node_type: str
     required_inputs: List[str] = field(default_factory=list)
@@ -368,98 +232,244 @@ class MellonNodeConfig(PushToHubMixin):
 
     def __post_init__(self):
 
-        if isinstance(self.inputs, list):
-            self.inputs = self._resolve_params_list(self.inputs, MELLON_INPUT_PARAMS, required=self.required_inputs)
-        if isinstance(self.model_inputs, list):
-            self.model_inputs = self._resolve_params_list(self.model_inputs, MELLON_MODEL_PARAMS, required=self.required_model_inputs)
-        if isinstance(self.outputs, list):
-            self.outputs = self._resolve_params_list(self.outputs, MELLON_OUTPUT_PARAMS)
+        self.inputs = self._params_list_to_dict(self.inputs, required=self.required_inputs)
+        self.model_inputs = self._params_list_to_dict(self.model_inputs, required=self.required_model_inputs)
+        self.outputs = self._params_list_to_dict(self.outputs)
 
     @staticmethod
-    def _resolve_params_list(
-        params: List[Union[str, MellonParam]], default_map: Dict[str, Dict[str, Any]], required: Optional[List[str]] = None
-    ) -> Dict[str, Dict[str, Any]]:
-        def _resolve_param(
-            param: Union[str, MellonParam], default_params_map: Dict[str, Dict[str, Any]]
-        ) -> Tuple[str, Dict[str, Any]]:
-            if isinstance(param, str):
-                if param not in default_params_map:
-                    raise ValueError(f"Unknown param '{param}', please define a `MellonParam` object instead")
-                return param, default_params_map[param].copy()
-            elif isinstance(param, MellonParam):
-                param_dict = param.to_dict()
-                param_name = param_dict.pop("name")
-                return param_name, param_dict
-            else:
-                raise ValueError(
-                    f"Unknown param type '{type(param)}', please use a string or a  `MellonParam` object instead"
-                )
-
+    def _params_list_to_dict(params: List[MellonParam], required: Optional[List[str]] = None) -> Dict[str, Dict[str, Any]]:
+        """Convert a list of MellonParam to the `Param` definition for Mellon nodes."""
+        required = required or []
         resolved = {}
-        for p in params:
-            logger.info(f" Resolving param: {p}")
-            name, cfg = _resolve_param(p, default_map)
-            if name in resolved:
-                raise ValueError(f"Duplicate param '{name}'")
-            resolved[name] = cfg
-        if required is not None:
-            for name in required:
-                if name in resolved and not resolved[name]["label"].endswith(" *"):
-                    resolved[name]["label"] = f"{resolved[name]['label']} *"
+        
+        for param in params:
+            param_dict = param.to_dict()
+            param_name = param_dict.pop("name")
+            
+            if param_name in resolved:
+                raise ValueError(f"Duplicate param '{param_name}'")
+            
+            # Mark required params with asterisk in label
+            if param_name in required and not param_dict["label"].endswith(" *"):
+                param_dict["label"] = f"{param_dict['label']} *"
+            
+            resolved[param_name] = param_dict
+            logger.info(f"Resolved param: {param_name}")
+        
         return resolved
 
+    def to_mellon_dict(self) -> Dict[str, Any]:
+        """Return a Json-serializable dict for Mellon Schema. Include:
+
+        - `node_type`: The type of the node. Currently we support the following node types: "controlnet", "denoise", "vae_encoder", "text_encoder", "decode".
+        - `block_name`: The name of the sub-block in the modular pipeline blocks this node corresponds to.
+        - `params`:  The `Param` definitions for Mellon nodes. It is a single flat dict composed as: {**inputs, **model_inputs, **outputs}.
+                     The keys are the parameter names, and the values are the parameter definitions.
+        """
+        # inputs/model_inputs/outputs are already normalized dicts
+        merged_params = {}
+        merged_params.update(self.inputs or {})
+        merged_params.update(self.model_inputs or {})
+        merged_params.update(self.outputs or {})
+
+        return {
+            "node_type": self.node_type,
+            "block_name": self.block_name,
+            "params": merged_params,
+        }
+
+    def from_mellon_dict(cls, mellon_dict: Dict[str, Any]) -> "MellonNodeConfig":
+        """
+        Create a MellonNodeConfig from a Mellon schema dict.
+        
+        Splits the flat params dict back into inputs/model_inputs/outputs
+        based on the 'display' and 'type' fields.
+        """
+        flat_params = mellon_dict.get("params", {})
+
+        inputs: List[MellonParam] = []
+        model_inputs: List[MellonParam] = []
+        outputs: List[MellonParam] = []
+
+        for param_name, param_dict in flat_params.items():
+            # Reconstruct MellonParam
+            param = MellonParam(
+                name=param_name,
+                label=param_dict.get("label", param_name),
+                type=param_dict.get("type", ""),
+                display=param_dict.get("display", "input"),
+                default=param_dict.get("default"),
+                min=param_dict.get("min"),
+                max=param_dict.get("max"),
+                step=param_dict.get("step"),
+                onChange=param_dict.get("onChange"),
+            )
+            
+            # Categorize based on display/type
+            if param_dict.get("display") == "output":
+                outputs.append(param)
+            elif param_dict.get("type") in ("diffusers_auto_model", "diffusers_auto_models"):
+                model_inputs.append(param)
+            else:
+                inputs.append(param)
+
+        return cls(
+            inputs=inputs,
+            model_inputs=model_inputs,
+            outputs=outputs,
+            block_name=mellon_dict.get("block_name", ""),
+            node_type=mellon_dict.get("node_type", ""),
+        )
+
+    def to_json_string(self) -> str:
+        """Serialize to JSON string."""
+        return json.dumps(self.to_mellon_dict(), indent=2, sort_keys=True) + "\n"
+
+    def to_json_file(self, json_file_path: Union[str, os.PathLike]):
+        """Save to a JSON file."""
+        with open(json_file_path, "w", encoding="utf-8") as writer:
+            writer.write(self.to_json_string())
+
+
+
+class MellonPipelineConfig:
+    """
+    Configuration for an entire pipeline in Mellon that contains multiple nodes.
+    
+    This allows saving/loading all node configurations for a modularpipeline
+    (e.g., Flux, SDXL, etc.) in a single JSON file.
+    """
+    
+    config_name = "mellon_pipeline_config.json"
+
+    def __init__(
+        self,
+        node_configs: Dict[str, Optional[MellonNodeConfig]],
+        label: str = "",
+        default_repo: str = "",
+        default_dtype: str = "",
+    ):
+        """
+        Args:
+            node_configs: Dict mapping node_type -> MellonNodeConfig (or None if not supported).
+            label: Display label for the pipeline.
+            default_repo: Default HuggingFace repo for models.
+            default_dtype: Default dtype (e.g., "torch.bfloat16").
+        """
+        self.node_configs = node_configs
+        self.label = label
+        self.default_repo = default_repo
+        self.default_dtype = default_dtype
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to a JSON-serializable dictionary."""
+        nodes = {}
+        for node_type, node_config in self.node_configs.items():
+            if node_config is None:
+                nodes[node_type] = None
+            else:
+                nodes[node_type] = node_config.to_mellon_dict()
+        
+        return {
+            "label": self.label,
+            "default_repo": self.default_repo,
+            "default_dtype": self.default_dtype,
+            "nodes": nodes,
+        }
+
     @classmethod
-    @validate_hf_hub_args
-    def load_mellon_config(
+    def from_dict(cls, data: Dict[str, Any]) -> "MellonPipelineConfig":
+        """Create from a dictionary (inverse of to_dict)."""
+        node_configs = {}
+        for node_type, node_data in data.get("nodes", {}).items():
+            if node_data is None:
+                node_configs[node_type] = None
+            else:
+                node_configs[node_type] = MellonNodeConfig.from_mellon_dict(node_data)
+        
+        return cls(
+            node_configs=node_configs,
+            label=data.get("label", ""),
+            default_repo=data.get("default_repo", ""),
+            default_dtype=data.get("default_dtype", ""),
+        )
+
+    def to_json_string(self) -> str:
+        """Serialize to JSON string."""
+        return json.dumps(self.to_dict(), indent=2, sort_keys=True) + "\n"
+
+    def to_json_file(self, json_file_path: Union[str, os.PathLike]):
+        """Save to a JSON file."""
+        with open(json_file_path, "w", encoding="utf-8") as writer:
+            writer.write(self.to_json_string())
+
+    @classmethod
+    def from_json_file(cls, json_file_path: Union[str, os.PathLike]) -> "MellonPipelineConfig":
+        """Load from a JSON file."""
+        with open(json_file_path, "r", encoding="utf-8") as reader:
+            data = json.load(reader)
+        return cls.from_dict(data)
+
+    def save(self, save_directory: Union[str, os.PathLike], push_to_hub: bool = False, **kwargs):
+        """
+        Save the pipeline config to a directory.
+        
+        Args:
+            save_directory: Directory where the config JSON file is saved.
+            push_to_hub: Whether to push to Hugging Face Hub after saving.
+            **kwargs: Additional arguments for hub upload (repo_id, token, private, etc.).
+        """
+        if os.path.isfile(save_directory):
+            raise AssertionError(f"Provided path ({save_directory}) should be a directory, not a file")
+
+        os.makedirs(save_directory, exist_ok=True)
+        output_path = os.path.join(save_directory, self.config_name)
+        self.to_json_file(output_path)
+        logger.info(f"Pipeline config saved to {output_path}")
+
+        if push_to_hub:
+            commit_message = kwargs.pop("commit_message", None)
+            private = kwargs.pop("private", None)
+            create_pr = kwargs.pop("create_pr", False)
+            token = kwargs.pop("token", None)
+            repo_id = kwargs.pop("repo_id", save_directory.split(os.path.sep)[-1])
+            repo_id = create_repo(repo_id, exist_ok=True, private=private, token=token).repo_id
+            subfolder = kwargs.pop("subfolder", None)
+
+            upload_folder(
+                repo_id=repo_id,
+                folder_path=save_directory,
+                token=token,
+                commit_message=commit_message or "Upload MellonPipelineConfig",
+                create_pr=create_pr,
+                path_in_repo=subfolder,
+            )
+            logger.info(f"Pipeline config pushed to hub: {repo_id}")
+
+    @classmethod
+    def load(
         cls,
         pretrained_model_name_or_path: Union[str, os.PathLike],
-        return_unused_kwargs=False,
-        return_commit_hash=False,
         **kwargs,
-    ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
-        r"""
-        Load a model or scheduler configuration.
-
-        Parameters:
-            pretrained_model_name_or_path (`str` or `os.PathLike`, *optional*):
-                Can be either:
-
-                    - A string, the *model id* (for example `google/ddpm-celebahq-256`) of a pretrained model hosted on
-                      the Hub.
-                    - A path to a *directory* (for example `./my_model_directory`) containing model weights saved with
-                      [`~ConfigMixin.save_config`].
-
-            cache_dir (`Union[str, os.PathLike]`, *optional*):
-                Path to a directory where a downloaded pretrained model configuration is cached if the standard cache
-                is not used.
-            force_download (`bool`, *optional*, defaults to `False`):
-                Whether or not to force the (re-)download of the model weights and configuration files, overriding the
-                cached versions if they exist.
-            proxies (`Dict[str, str]`, *optional*):
-                A dictionary of proxy servers to use by protocol or endpoint, for example, `{'http': 'foo.bar:3128',
-                'http://hostname': 'foo.bar:4012'}`. The proxies are used on each request.
-            output_loading_info(`bool`, *optional*, defaults to `False`):
-                Whether or not to also return a dictionary containing missing keys, unexpected keys and error messages.
-            local_files_only (`bool`, *optional*, defaults to `False`):
-                Whether to only load local model weights and configuration files or not. If set to `True`, the model
-                won't be downloaded from the Hub.
-            token (`str` or *bool*, *optional*):
-                The token to use as HTTP bearer authorization for remote files. If `True`, the token generated from
-                `diffusers-cli login` (stored in `~/.huggingface`) is used.
-            revision (`str`, *optional*, defaults to `"main"`):
-                The specific model version to use. It can be a branch name, a tag name, a commit id, or any identifier
-                allowed by Git.
-            subfolder (`str`, *optional*, defaults to `""`):
-                The subfolder location of a model file within a larger model repository on the Hub or locally.
-            return_unused_kwargs (`bool`, *optional*, defaults to `False):
-                Whether unused keyword arguments of the config are returned.
-            return_commit_hash (`bool`, *optional*, defaults to `False):
-                Whether the `commit_hash` of the loaded configuration are returned.
-
+    ) -> "MellonPipelineConfig":
+        """
+        Load a pipeline config from a local path or Hugging Face Hub.
+        
+        Args:
+            pretrained_model_name_or_path: Either:
+                - A model id on the Hub (e.g., "username/my-pipeline-config")
+                - A local directory path containing the config file
+                - A direct path to the JSON config file
+            cache_dir: Path to cache directory for downloaded files.
+            force_download: Whether to force re-download even if cached.
+            proxies: Dict of proxy servers to use.
+            token: HF token for private repos.
+            local_files_only: Whether to only look for local files.
+            revision: Git revision (branch, tag, commit) to use.
+            subfolder: Subfolder within the repo.
+        
         Returns:
-            `dict`:
-                A dictionary of all the parameters stored in a JSON configuration file.
-
+            MellonPipelineConfig instance.
         """
         cache_dir = kwargs.pop("cache_dir", None)
         local_dir = kwargs.pop("local_dir", None)
@@ -469,27 +479,25 @@ class MellonNodeConfig(PushToHubMixin):
         token = kwargs.pop("token", None)
         local_files_only = kwargs.pop("local_files_only", False)
         revision = kwargs.pop("revision", None)
+        subfolder = kwargs.pop("subfolder", None)
 
         pretrained_model_name_or_path = str(pretrained_model_name_or_path)
-
-        if cls.config_name is None:
-            raise ValueError(
-                "`self.config_name` is not defined. Note that one should not load a config from "
-                "`ConfigMixin`. Please make sure to define `config_name` in a class inheriting from `ConfigMixin`"
-            )
+        
+        # Case 1: Direct path to JSON file
         if os.path.isfile(pretrained_model_name_or_path):
             config_file = pretrained_model_name_or_path
+        
+        # Case 2: Local directory
         elif os.path.isdir(pretrained_model_name_or_path):
-            if os.path.isfile(os.path.join(pretrained_model_name_or_path, cls.config_name)):
-                # Load from a PyTorch checkpoint
-                config_file = os.path.join(pretrained_model_name_or_path, cls.config_name)
-            else:
+            config_file = os.path.join(pretrained_model_name_or_path, cls.config_name)
+            if not os.path.isfile(config_file):
                 raise EnvironmentError(
-                    f"Error no file named {cls.config_name} found in directory {pretrained_model_name_or_path}."
+                    f"No file named {cls.config_name} found in {pretrained_model_name_or_path}"
                 )
+        
+        # Case 3: Download from Hugging Face Hub
         else:
             try:
-                # Load from URL or cache if already cached
                 config_file = hf_hub_download(
                     pretrained_model_name_or_path,
                     filename=cls.config_name,
@@ -499,6 +507,7 @@ class MellonNodeConfig(PushToHubMixin):
                     local_files_only=local_files_only,
                     token=token,
                     revision=revision,
+                    subfolder=subfolder,
                     local_dir=local_dir,
                     local_dir_use_symlinks=local_dir_use_symlinks,
                 )
@@ -539,136 +548,27 @@ class MellonNodeConfig(PushToHubMixin):
                     f"containing a {cls.config_name} file"
                 )
         try:
-            with open(config_file, "r", encoding="utf-8") as reader:
-                text = reader.read()
-            config_dict = json.loads(text)
-
-            commit_hash = extract_commit_hash(config_file)
+            config_dict = cls.from_json_file(config_file)
         except (json.JSONDecodeError, UnicodeDecodeError):
             raise EnvironmentError(f"It looks like the config file at '{config_file}' is not a valid JSON file.")
+        return config_dict
 
-        if not (return_unused_kwargs or return_commit_hash):
-            return config_dict
+    def get_node_config(self, node_type: str) -> Optional[MellonNodeConfig]:
+        """Get the config for a specific node type."""
+        return self.node_configs.get(node_type)
 
-        outputs = (config_dict,)
+    def __getitem__(self, node_type: str) -> Optional[MellonNodeConfig]:
+        """Allow dict-like access: pipeline_config['denoise']"""
+        return self.get_node_config(node_type)
 
-        if return_unused_kwargs:
-            outputs += (kwargs,)
+    def __iter__(self):
+        """Iterate over node types."""
+        return iter(self.node_configs)
 
-        if return_commit_hash:
-            outputs += (commit_hash,)
-
-        return outputs
-
-    def save_mellon_config(self, save_directory: Union[str, os.PathLike], push_to_hub: bool = False, **kwargs):
-        """
-        Save the Mellon node definition to a JSON file.
-
-        Args:
-            save_directory (`str` or `os.PathLike`):
-                Directory where the configuration JSON file is saved (will be created if it does not exist).
-            push_to_hub (`bool`, *optional*, defaults to `False`):
-                Whether or not to push your model to the Hugging Face Hub after saving it. You can specify the
-                repository you want to push to with `repo_id` (will default to the name of `save_directory` in your
-                namespace).
-            kwargs (`Dict[str, Any]`, *optional*):
-                Additional keyword arguments passed along to the [`~utils.PushToHubMixin.push_to_hub`] method.
-        """
-        if os.path.isfile(save_directory):
-            raise AssertionError(f"Provided path ({save_directory}) should be a directory, not a file")
-
-        os.makedirs(save_directory, exist_ok=True)
-
-        # If we save using the predefined names, we can load using `from_config`
-        output_config_file = os.path.join(save_directory, self.config_name)
-
-        self.to_json_file(output_config_file)
-        logger.info(f"Mellon node definition saved in {output_config_file}")
-
-        if push_to_hub:
-            commit_message = kwargs.pop("commit_message", None)
-            private = kwargs.pop("private", None)
-            create_pr = kwargs.pop("create_pr", False)
-            token = kwargs.pop("token", None)
-            repo_id = kwargs.pop("repo_id", save_directory.split(os.path.sep)[-1])
-            repo_id = create_repo(repo_id, exist_ok=True, private=private, token=token).repo_id
-            subfolder = kwargs.pop("subfolder", None)
-
-            self._upload_folder(
-                save_directory,
-                repo_id,
-                token=token,
-                commit_message=commit_message,
-                create_pr=create_pr,
-                subfolder=subfolder,
-            )
-
-    def to_json_file(self, json_file_path: Union[str, os.PathLike]):
-        """
-        Save the Mellon schema dictionary to a JSON file.
-
-        Args:
-            json_file_path (`str` or `os.PathLike`):
-                Path to the JSON file to save a configuration instance's parameters.
-        """
-        with open(json_file_path, "w", encoding="utf-8") as writer:
-            writer.write(self.to_json_string())
-
-    def to_json_string(self) -> str:
-        """
-        Serializes this instance to a JSON string of the Mellon schema dict.
-
-        Args:
-        Returns:
-            `str`: String containing all the attributes that make up this configuration instance in JSON format.
-        """
-
-        mellon_dict = self.to_mellon_dict()
-        return json.dumps(mellon_dict, indent=2, sort_keys=True) + "\n"
-
-    def to_mellon_dict(self) -> Dict[str, Any]:
-        """Return a JSON-serializable dict focusing on the Mellon schema fields only.
-
-        params is a single flat dict composed as: {**inputs, **model_inputs, **outputs}.
-        """
-        # inputs/model_inputs/outputs are already normalized dicts
-        merged_params = {}
-        merged_params.update(self.inputs or {})
-        merged_params.update(self.model_inputs or {})
-        merged_params.update(self.outputs or {})
-
-        return {
-            "node_type": self.node_type,
-            "block_name": self.block_name,
-            "params": merged_params,
-        }
-
-    @classmethod
-    def from_mellon_dict(cls, mellon_dict: Dict[str, Any]) -> "MellonNodeConfig":
-        """Create a config from a Mellon schema dict produced by to_mellon_dict().
-
-        Splits the flat params dict back into inputs/model_inputs/outputs using the known key spaces from
-        MELLON_INPUT_PARAMS / MELLON_MODEL_PARAMS / MELLON_OUTPUT_PARAMS. Unknown keys are treated as inputs by
-        default.
-        """
-        flat_params = mellon_dict.get("params", {})
-
-        inputs: Dict[str, Any] = {}
-        model_inputs: Dict[str, Any] = {}
-        outputs: Dict[str, Any] = {}
-
-        for param_name, param_dict in flat_params.items():
-            if param_dict.get("display", "") == "output":
-                outputs[param_name] = param_dict
-            elif param_dict.get("type", "") in ("diffusers_auto_model", "diffusers_auto_models"):
-                model_inputs[param_name] = param_dict
-            else:
-                inputs[param_name] = param_dict
-
-        return cls(
-            inputs=inputs,
-            model_inputs=model_inputs,
-            outputs=outputs,
-            block_name=mellon_dict.get("block_name", None),
-            node_type=mellon_dict.get("node_type"),
-        )
+    def items(self):
+        """Iterate over (node_type, config) pairs."""
+        return self.node_configs.items()
+    
+    def __repr__(self) -> str:
+        node_types = list(self.node_configs.keys())
+        return f"MellonPipelineConfig(label={self.label!r}, nodes={node_types})"
