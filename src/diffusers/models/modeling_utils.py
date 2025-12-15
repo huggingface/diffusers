@@ -435,6 +435,73 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         """
         self.set_use_memory_efficient_attention_xformers(False)
 
+    def enable_selective_attention(
+        self,
+        selection_head_idx: int = 0,
+        bidirectional: bool = True,
+        enable_pruning: bool = False,
+        pruning_threshold: float = 1.0,
+        masking_strength: float = 0.1,
+    ) -> None:
+        r"""
+        Enable selective attention for memory-efficient inference.
+
+        Based on "Selective Attention Improves Transformer" (https://arxiv.org/abs/2410.02703).
+
+        Parameters:
+            selection_head_idx (`int`, defaults to 0):
+                Index of the attention head to use for computing selection scores.
+            bidirectional (`bool`, defaults to `True`):
+                Whether to use bidirectional masking (for diffusion) or causal masking (for LLMs).
+            enable_pruning (`bool`, defaults to `False`):
+                Whether to remove heavily masked tokens from computation.
+            pruning_threshold (`float`, defaults to 1.0):
+                Tokens with masking scores above this threshold are pruned.
+            masking_strength (`float`, defaults to 0.1):
+                Scaling factor for masking values. Lower = gentler masking. Start with 0.1 and increase.
+        """
+        from .attention_processor import AttnProcessor2_0, MemoryEfficientSelectiveAttnProcessor2_0
+
+        def fn_recursive_set_selective_attention(module: torch.nn.Module):
+            if hasattr(module, "set_processor"):
+                current_processor = module.get_processor() if hasattr(module, "get_processor") else None
+                if current_processor is None or isinstance(current_processor, AttnProcessor2_0):
+                    module.set_processor(
+                        MemoryEfficientSelectiveAttnProcessor2_0(
+                            selection_head_idx=selection_head_idx,
+                            bidirectional=bidirectional,
+                            enable_pruning=enable_pruning,
+                            pruning_threshold=pruning_threshold,
+                            masking_strength=masking_strength,
+                        )
+                    )
+
+            for child in module.children():
+                fn_recursive_set_selective_attention(child)
+
+        for module in self.children():
+            if isinstance(module, torch.nn.Module):
+                fn_recursive_set_selective_attention(module)
+
+    def disable_selective_attention(self) -> None:
+        r"""
+        Disable selective attention and revert to standard attention.
+        """
+        from .attention_processor import AttnProcessor2_0, MemoryEfficientSelectiveAttnProcessor2_0
+
+        def fn_recursive_disable_selective_attention(module: torch.nn.Module):
+            if hasattr(module, "set_processor"):
+                current_processor = module.get_processor() if hasattr(module, "get_processor") else None
+                if isinstance(current_processor, MemoryEfficientSelectiveAttnProcessor2_0):
+                    module.set_processor(AttnProcessor2_0())
+
+            for child in module.children():
+                fn_recursive_disable_selective_attention(child)
+
+        for module in self.children():
+            if isinstance(module, torch.nn.Module):
+                fn_recursive_disable_selective_attention(module)
+
     def enable_layerwise_casting(
         self,
         storage_dtype: torch.dtype = torch.float8_e4m3fn,
