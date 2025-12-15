@@ -240,6 +240,7 @@ class LongCatImagePipeline(DiffusionPipeline, FromSingleFileMixin):
         self.tokenizer_max_length = 512
 
     def rewire_prompt(self, prompt, device):
+        prompt = [prompt] if isinstance(prompt, str) else prompt
         all_text = []
         for each_prompt in prompt:
             language = get_prompt_language(each_prompt)
