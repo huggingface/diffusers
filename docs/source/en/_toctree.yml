@@ -365,6 +365,8 @@
         title: HunyuanVideoTransformer3DModel
       - local: api/models/latte_transformer3d
         title: LatteTransformer3DModel
+      - local: api/models/longcat_image_transformer2d
+        title: LongCatImageTransformer2DModel
       - local: api/models/ltx_video_transformer3d
         title: LTXVideoTransformer3DModel
       - local: api/models/lumina2_transformer2d
@@ -402,7 +404,7 @@
       - local: api/models/wan_transformer_3d
         title: WanTransformer3DModel
       - local: api/models/z_image_transformer2d
-        title: ZImageTransformer2DModel        
+        title: ZImageTransformer2DModel
       title: Transformers
     - sections:
       - local: api/models/stable_cascade_unet
@@ -563,6 +565,8 @@
         title: Latent Diffusion
       - local: api/pipelines/ledits_pp
         title: LEDITS++
+      - local: api/pipelines/longcat_image
+        title: LongCat-Image
       - local: api/pipelines/lumina2
         title: Lumina 2.0
       - local: api/pipelines/lumina

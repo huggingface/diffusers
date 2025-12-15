@@ -165,7 +165,6 @@ class ModularPipelineTesterMixin:
         expected_max_diff=1e-4,
     ):
         pipe = self.get_pipeline().to(torch_device)
-
         inputs = self.get_dummy_inputs()
 
         # Reset generator in case it is has been used in self.get_dummy_inputs

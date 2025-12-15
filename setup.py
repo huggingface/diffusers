@@ -74,7 +74,7 @@ To create the package for PyPI.
    twine upload dist/* -r pypi
 
 10. Prepare the release notes and publish them on GitHub once everything is looking hunky-dory. You can use the following
-    Space to fetch all the commits applicable for the release: https://huggingface.co/spaces/sayakpaul/auto-release-notes-diffusers.
+    Space to fetch all the commits applicable for the release: https://huggingface.co/spacmes/sayakpaul/auto-release-notes-diffusers.
     It automatically fetches the correct tag and branch but also provides the option to configure them.
     `tag` should be the previous release tag (v0.26.1, for example), and `branch` should be
     the latest release branch (v0.27.0-release, for example). It denotes all commits that have happened on branch

@@ -530,6 +530,7 @@ class WanVaeImageEncoderStep(ModularPipelineBlocks):
 
         device = components._execution_device
         dtype = torch.float32
+        vae_dtype = components.vae.dtype
 
         height = block_state.height or components.default_height
         width = block_state.width or components.default_width
@@ -555,7 +556,7 @@ class WanVaeImageEncoderStep(ModularPipelineBlocks):
             vae=components.vae,
             generator=block_state.generator,
             device=device,
-            dtype=dtype,
+            dtype=vae_dtype,
             latent_channels=components.num_channels_latents,
         )
 
@@ -627,6 +628,7 @@ class WanFirstLastFrameVaeImageEncoderStep(ModularPipelineBlocks):
 
         device = components._execution_device
         dtype = torch.float32
+        vae_dtype = components.vae.dtype
 
         height = block_state.height or components.default_height
         width = block_state.width or components.default_width
@@ -659,7 +661,7 @@ class WanFirstLastFrameVaeImageEncoderStep(ModularPipelineBlocks):
             vae=components.vae,
             generator=block_state.generator,
             device=device,
-            dtype=dtype,
+            dtype=vae_dtype,
             latent_channels=components.num_channels_latents,
         )
 
