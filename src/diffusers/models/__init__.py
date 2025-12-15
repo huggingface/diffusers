@@ -109,6 +109,7 @@ if is_torch_available():
     _import_structure["transformers.transformer_prx"] = ["PRXTransformer2DModel"]
     _import_structure["transformers.transformer_qwenimage"] = ["QwenImageTransformer2DModel"]
     _import_structure["transformers.transformer_sana_video"] = ["SanaVideoTransformer3DModel"]
+    _import_structure["transformers.transformer_sana_video_causal"] = ["SanaVideoCausalTransformer3DModel"]
     _import_structure["transformers.transformer_sd3"] = ["SD3Transformer2DModel"]
     _import_structure["transformers.transformer_skyreels_v2"] = ["SkyReelsV2Transformer3DModel"]
     _import_structure["transformers.transformer_temporal"] = ["TransformerTemporalModel"]
@@ -219,6 +220,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             PRXTransformer2DModel,
             QwenImageTransformer2DModel,
             SanaTransformer2DModel,
+            SanaVideoCausalTransformer3DModel,
             SanaVideoTransformer3DModel,
             SD3Transformer2DModel,
             SkyReelsV2Transformer3DModel,
