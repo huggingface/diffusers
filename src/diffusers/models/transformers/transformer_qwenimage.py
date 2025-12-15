@@ -364,7 +364,13 @@ class QwenDoubleStreamAttnProcessor2_0:
 @maybe_allow_in_graph
 class QwenImageTransformerBlock(nn.Module):
     def __init__(
-        self, dim: int, num_attention_heads: int, attention_head_dim: int, qk_norm: str = "rms_norm", eps: float = 1e-6, zero_cond_t: bool = False
+        self,
+        dim: int,
+        num_attention_heads: int,
+        attention_head_dim: int,
+        qk_norm: str = "rms_norm",
+        eps: float = 1e-6,
+        zero_cond_t: bool = False,
     ):
         super().__init__()
 
@@ -571,7 +577,7 @@ class QwenImageTransformer2DModel(
         joint_attention_dim: int = 3584,
         guidance_embeds: bool = False,  # TODO: this should probably be removed
         axes_dims_rope: Tuple[int, int, int] = (16, 56, 56),
-        zero_cond_t: bool=False
+        zero_cond_t: bool = False,
     ):
         super().__init__()
         self.out_channels = out_channels or in_channels
@@ -592,7 +598,7 @@ class QwenImageTransformer2DModel(
                     dim=self.inner_dim,
                     num_attention_heads=num_attention_heads,
                     attention_head_dim=attention_head_dim,
-                    zero_cond_t=zero_cond_t
+                    zero_cond_t=zero_cond_t,
                 )
                 for _ in range(num_layers)
             ]
@@ -662,7 +668,11 @@ class QwenImageTransformer2DModel(
 
         if self.zero_cond_t:
             timestep = torch.cat([timestep, timestep * 0], dim=0)
-            modulate_index = torch.tensor([[0]* prod(sample[0]) + [1]* sum([prod(s) for s in sample[1:]]) for sample in img_shapes], device=timestep.device, dtype=torch.int)
+            modulate_index = torch.tensor(
+                [[0] * prod(sample[0]) + [1] * sum([prod(s) for s in sample[1:]]) for sample in img_shapes],
+                device=timestep.device,
+                dtype=torch.int,
+            )
         else:
             modulate_index = None
 
