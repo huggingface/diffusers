@@ -47,6 +47,7 @@ from ..utils import (
     is_torch_version,
     logging,
 )
+from ..utils.distributed_utils import is_torch_dist_rank_zero
 
 
 logger = logging.get_logger(__name__)
@@ -429,8 +430,12 @@ def _load_shard_files_with_threadpool(
         low_cpu_mem_usage=low_cpu_mem_usage,
     )
 
+    tqdm_kwargs = {"total": len(shard_files), "desc": "Loading checkpoint shards"}
+    if not is_torch_dist_rank_zero():
+        tqdm_kwargs["disable"] = True
+
     with ThreadPoolExecutor(max_workers=num_workers) as executor:
-        with logging.tqdm(total=len(shard_files), desc="Loading checkpoint shards") as pbar:
+        with logging.tqdm(**tqdm_kwargs) as pbar:
             futures = [executor.submit(load_one, shard_file) for shard_file in shard_files]
             for future in as_completed(futures):
                 result = future.result()
