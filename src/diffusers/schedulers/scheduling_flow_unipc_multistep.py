@@ -1,7 +1,4 @@
-# Copied from https://github.com/huggingface/diffusers/blob/v0.31.0/src/diffusers/schedulers/scheduling_unipc_multistep.py
-
-import math
-from typing import List, Optional, Tuple, Union
+from typing import List, Literal, Optional, Tuple, Union
 
 import numpy as np
 import torch
@@ -11,35 +8,38 @@ from diffusers.schedulers.scheduling_utils import KarrasDiffusionSchedulers, Sch
 from diffusers.utils import deprecate
 
 
-def _get_karras_sigmas(self, num_steps: int, sigma_max: float, sigma_min: float, rho: int, final_sigmas_type: str):
+def _get_karras_sigmas(num_train_steps: int, num_steps: int, sigma_max: float, sigma_min: float, rho: int, final_sigmas_type: str):
     sigmas = np.arange(num_steps + 1, dtype=np.float32) / num_steps
     min_inv_rho = sigma_min ** (1 / rho)
     max_inv_rho = sigma_max ** (1 / rho)
     sigmas = (max_inv_rho + sigmas * (min_inv_rho - max_inv_rho)) ** rho
     sigmas = sigmas / (1 + sigmas)
 
-    if self.config.final_sigmas_type == "zero":
+    if final_sigmas_type == "zero":
         sigma_last = 0
+    elif final_sigmas_type == "sigma_min":
+        sigma_last = sigmas[-1]
     else:
         raise ValueError(
-            f"`final_sigmas_type` must be 'zero' but got {self.config.final_sigmas_type}"
+            f"`final_sigmas_type` must be 'zero' or 'sigma_min' but got {final_sigmas_type}"
         )
 
-    timesteps = torch.from_numpy(sigmas * self.config.num_train_timesteps).to(torch.int64)
-    sigmas = np.concatenate([sigmas, [sigma_last]]).astype(np.float32)  # pyright: ignore
+    timesteps = torch.from_numpy(sigmas * num_train_steps).to(torch.int64)
+    sigmas = np.concatenate([sigmas, [sigma_last]]).astype(np.float32)
     sigmas = torch.from_numpy(sigmas).to(dtype=torch.float32)
     return sigmas, timesteps
 
 
 class FlowUniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
     """
-    `FlowUniPCMultistepScheduler` is the UniPC algorithm [1] for flow matching [2], but strictly uses the Karras sigmas [3].
+    `FlowUniPCMultistepScheduler` is the UniPC algorithm[1] for flow
+    matching[2], but strictly uses the Karras sigmas [3] (i.e. it follows the EDMEulerScheduler).
 
-    Note this a simplified version of `UniPCMultistepScheduler`, as:
-    1. it does not have variance preserving sigmas
-    2. it does not store betas and other variables used by `UniPCMultistepScheduler`
-    3. it assumes prediction_type == "flow_prediction" (this variable is removed from `FlowUniPCMultistepScheduler`)
-    
+    Note this a simplified version of `UniPCMultistepScheduler`, as it:
+    1. Does not have variance preserving sigmas
+    2. Does not store betas and other variables used by `UniPCMultistepScheduler`
+    3. Assumes prediction_type == "flow_prediction" (this parameter is removed)
+
     References:
         [1] Wang, Chong, et al. "UniPC: A Unified Predictor-Corrector Framework for Fast Sampling of Diffusion Models" https://arxiv.org/abs/2302.04867
         [2] Lipman, Chen, et al. "Flow matching for generative modeling." https://arxiv.org/abs/2210.02747
@@ -97,7 +97,7 @@ class FlowUniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
         lower_order_final: bool = True,
         disable_corrector: List[int] = [],
         solver_p: SchedulerMixin = None,
-        final_sigmas_type: Optional[str] = "zero",  # "zero", "sigma_min"
+        final_sigmas_type: Literal["zero", "sigma_min"] = "zero",
         rho: int = 7,
         sigma_max: float = 200.0,
         sigma_min: float = 0.01,
@@ -109,21 +109,15 @@ class FlowUniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
                 raise NotImplementedError(f"{solver_type} is not implemented for {self.__class__}")
 
         self.predict_x0 = predict_x0
-        self.num_inference_steps = None
         self.disable_corrector = disable_corrector
+        self.solver_p = solver_p
+        self.num_inference_steps = None
 
-        self.sigmas, self.timesteps = _get_karras_sigmas(self, num_train_timesteps, sigma_max, sigma_min, rho, final_sigmas_type)
+        self.sigmas, self.timesteps = _get_karras_sigmas(num_train_timesteps, num_train_timesteps, sigma_max, sigma_min, rho, final_sigmas_type)
         self.sigma_min = self.sigmas[-1].item()
         self.sigma_max = self.sigmas[0].item()
 
-        self.last_sample = None
-        self._step_index = None
-        self._begin_index = None
-        self.model_outputs = [None] * self.config.solver_order
-        self.timestep_list = [None] * self.config.solver_order
-        self.lower_order_nums = 0
-        self.solver_p = self.config.solver_p
-
+        self._reset_state(solver_order)
 
     @property
     def step_index(self):
@@ -169,22 +163,29 @@ class FlowUniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
         """
         assert sigmas is None, "sigmas are not supported for FlowUniPCMultistepScheduler"
 
-        self.sigmas, self.timesteps = _get_karras_sigmas(self, num_inference_steps, self.config.sigma_max, self.config.sigma_min, self.config.rho, self.config.final_sigmas_type)
+        self.sigmas, self.timesteps = _get_karras_sigmas(self.config.num_train_timesteps, num_inference_steps, self.config.sigma_max, self.config.sigma_min, self.config.rho, self.config.final_sigmas_type)
         self.num_inference_steps = len(self.timesteps)
 
         self.sigma_min = self.sigmas[-1].item()
         self.sigma_max = self.sigmas[0].item()
 
+        self.sigmas = self.sigmas.to(device)
+        self.timesteps = self.timesteps.to(device)
+        self._reset_state()
+
+    def _reset_state(self, solver_order: Optional[int] = None):
+        """
+        Resets the noise schedule & solver state variables
+        """
+        solver_order = solver_order or self.config.solver_order
+        self.model_outputs = [None] * solver_order
+        self.timestep_list = [None] * solver_order
+        self.lower_order_nums = 0
         self.last_sample = None
         self._step_index = None
         self._begin_index = None
-        self.model_outputs = [None] * self.config.solver_order
-        self.timestep_list = [None] * self.config.solver_order
-        self.lower_order_nums = 0
-        self.solver_p = self.config.solver_p
-
-        self.sigmas = self.sigmas.to(device)
-        self.timesteps = self.timesteps.to(device)
+        if self.solver_p:
+            self.solver_p.set_timesteps(self.num_inference_steps, device=device)
 
     # Copied from diffusers.schedulers.scheduling_ddpm.DDPMScheduler._threshold_sample
     def _threshold_sample(self, sample: torch.Tensor) -> torch.Tensor:
@@ -575,6 +576,7 @@ class FlowUniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
         else:
             self._step_index = self._begin_index
 
+    # Modified from diffusers.schedulers.scheduling_unipc_multistep.UniPCMultistepScheduler.step
     def step(
         self,
         model_output: torch.Tensor,
@@ -638,7 +640,7 @@ class FlowUniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
             this_order = self.config.solver_order
 
         self.this_order = min(this_order, self.lower_order_nums + 1)  # warmup for multistep
-        assert self.this_order > 0
+        assert self.this_order > 0, "expected this_order > 0, this could be due to duplicate timesteps"
 
         self.last_sample = sample
         prev_sample = self.multistep_uni_p_bh_update(

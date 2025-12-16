@@ -118,7 +118,7 @@ EXAMPLE_DOC_STRING = """
         ... ).frames[0]
         >>> export_to_video(video, "video2world.mp4", fps=16)
 
-        >>> # To produce a single-frame image instead of a world clip, set num_frames=1 and
+        >>> # To produce a single-frame image instead of a world (video) clip, set num_frames=1 and
         >>> # save the first frame: pipe(..., num_frames=1).frames[0][0].
         ```
 """
@@ -201,7 +201,6 @@ class Cosmos25PredictBase(DiffusionPipeline):
         dtype = dtype or self.text_encoder.dtype
         prompt = [prompt] if isinstance(prompt, str) else prompt
 
-        # Tokenize prompts
         input_ids_batch = []
 
         for sample_idx in range(len(prompt)):
@@ -257,7 +256,7 @@ class Cosmos25PredictBase(DiffusionPipeline):
 
         return prompt_embeds
 
-    # Copied from diffusers.pipelines.cosmos.pipeline_cosmos_text2world.CosmosTextToWorldPipeline.encode_prompt with num_videos_per_prompt->num_videos_per_prompt
+    # Modified from diffusers.pipelines.cosmos.pipeline_cosmos_text2world.CosmosTextToWorldPipeline.encode_prompt
     def encode_prompt(
         self,
         prompt: Union[str, List[str]],
@@ -505,7 +504,6 @@ class Cosmos25PredictBase(DiffusionPipeline):
         ] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
         max_sequence_length: int = 512,
-        shift: float = 5.0,
         conditional_frame_timestep: float = 0.1,
     ):
         r"""
@@ -656,12 +654,15 @@ class Cosmos25PredictBase(DiffusionPipeline):
         video = self.video_processor.preprocess_video(video, height, width)
 
         # pad with last frame (for video2world)
-        if video.shape[2] < num_frames:
+        num_frames_out = num_frames
+        if video.shape[2] < num_frames_out:
             assert batch_size == 1, "batch_size must be 1 for padding frames"
-            n_pad_frames = num_frames - num_frames_in
+            n_pad_frames = num_frames_out - num_frames_in
             last_frame = video[0, :, -1:, :, :]  # [C, T==1, H, W]
             pad_frames = last_frame.repeat(1, 1, n_pad_frames, 1, 1)  # [B, C, T, H, W]
             video = torch.cat((video, pad_frames), dim=2)
+
+        assert num_frames_in <= num_frames_out, f"expected ({num_frames_in=}) <= ({num_frames_out=})"
 
         video = video.to(device=device, dtype=vae_dtype)
 
@@ -686,7 +687,7 @@ class Cosmos25PredictBase(DiffusionPipeline):
         padding_mask = latents.new_zeros(1, 1, height, width, dtype=transformer_dtype)
 
         # Denoising loop
-        self.scheduler.set_timesteps(num_inference_steps, shift=shift, device=device)
+        self.scheduler.set_timesteps(num_inference_steps, device=device)
         timesteps = self.scheduler.timesteps
         self._num_timesteps = len(timesteps)
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
@@ -699,10 +700,10 @@ class Cosmos25PredictBase(DiffusionPipeline):
 
                 self._current_timestep = t.cpu().item()
 
-                # NOTE: sigmas are in [0, 1] in FlowUniPCMultistepScheduler
-                sigma_t = torch.tensor(self.scheduler.sigmas[i]).unsqueeze(0).to(device=device, dtype=transformer_dtype)
+                # NOTE: assumes sigma(t) \in [0, 1]
+                sigma_t = torch.tensor(self.scheduler.sigmas[i].item()).unsqueeze(0).to(device=device, dtype=transformer_dtype)
 
-                in_latents = cond_mask * cond_latent + (1 - cond_mask) * latents  # TODO: could use cond_indicator
+                in_latents = cond_mask * cond_latent + (1 - cond_mask) * latents
                 in_latents = in_latents.to(transformer_dtype)
                 in_timestep = cond_indicator * cond_timestep + (1 - cond_indicator) * sigma_t
                 noise_pred = self.transformer(
@@ -725,7 +726,7 @@ class Cosmos25PredictBase(DiffusionPipeline):
                         padding_mask=padding_mask,
                         return_dict=False,
                     )[0]
-                    # NOTE: replace velocity (noise_pred) with gt_velocity for conditioning inputs only
+                    # NOTE: replace velocity (noise_pred_neg) with gt_velocity for conditioning inputs only
                     noise_pred_neg = gt_velocity + noise_pred_neg * (1 - cond_mask)
                     noise_pred = noise_pred + self.guidance_scale * (noise_pred - noise_pred_neg)
 
