@@ -156,6 +156,12 @@ image = pipe(
   - all
   - __call__
 
+## QwenImageEditPlusInpaintPipeline
+
+[[autodoc]] QwenImageEditPlusInpaintPipeline
+  - all
+  - __call__
+
 ## QwenImagePipelineOutput
 
 [[autodoc]] pipelines.qwenimage.pipeline_output.QwenImagePipelineOutput
