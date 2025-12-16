@@ -62,7 +62,10 @@ class TrainConfig:
 
     max_length: int
     num_train_timesteps: int
+    alpha_schedule: str
     eps: float
+    sigma_min: float
+    sigma_max: float
     min_timestep: int
 
 
@@ -92,7 +95,15 @@ def parse_args() -> TrainConfig:
     parser.add_argument("--max_length", type=int, default=256)
 
     parser.add_argument("--num_train_timesteps", type=int, default=1000)
+    parser.add_argument(
+        "--alpha_schedule",
+        type=str,
+        default="log_linear",
+        choices=["log_linear", "linear", "cosine", "geometric"],
+    )
     parser.add_argument("--eps", type=float, default=1e-3)
+    parser.add_argument("--sigma_min", type=float, default=1e-4)
+    parser.add_argument("--sigma_max", type=float, default=20.0)
     parser.add_argument("--min_timestep", type=int, default=1, help="Avoid t=0 to prevent 1/t weighting blow-ups.")
 
     args = parser.parse_args()
@@ -141,7 +152,10 @@ def main():
         vocab_size=len(tokenizer),
         mask_token_id=int(tokenizer.mask_token_id),
         num_train_timesteps=cfg.num_train_timesteps,
+        alpha_schedule=cfg.alpha_schedule,
         eps=cfg.eps,
+        sigma_min=cfg.sigma_min,
+        sigma_max=cfg.sigma_max,
     )
 
     raw_datasets = load_dataset(cfg.dataset_name, cfg.dataset_config_name)
@@ -208,10 +222,7 @@ def main():
                 per_token_ce = F.cross_entropy(logits.view(-1, logits.shape[-1]), input_ids.view(-1), reduction="none")
                 per_token_ce = per_token_ce.view_as(input_ids)
 
-                # Log-linear schedule gives weight proportional to 1 / t_cont, where t_cont in (0, 1].
-                t_cont = timesteps.to(dtype=torch.float32) / float(scheduler.num_train_timesteps - 1)
-                t_cont = t_cont.clamp_min(1e-6)
-                weights = (1.0 / t_cont).view(-1, 1)
+                weights = scheduler.get_mdlm_loss_weights(timesteps)
 
                 loss = (per_token_ce * mask_positions.to(per_token_ce.dtype) * weights).sum()
                 denom = mask_positions.sum().clamp_min(1)

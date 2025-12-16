@@ -62,7 +62,10 @@ class TrainConfig:
 
     max_length: int
     num_train_timesteps: int
+    alpha_schedule: str
     eps: float
+    sigma_min: float
+    sigma_max: float
     min_timestep: int
     exclude_mask_from_uniform: bool
 
@@ -92,7 +95,16 @@ def parse_args() -> TrainConfig:
 
     parser.add_argument("--max_length", type=int, default=256)
     parser.add_argument("--num_train_timesteps", type=int, default=1000)
+    parser.add_argument(
+        "--alpha_schedule",
+        type=str,
+        default="log_linear",
+        choices=["log_linear", "linear", "cosine", "geometric"],
+        help="UDLM loss in this example is only implemented for log_linear; other choices will error.",
+    )
     parser.add_argument("--eps", type=float, default=1e-3)
+    parser.add_argument("--sigma_min", type=float, default=1e-4)
+    parser.add_argument("--sigma_max", type=float, default=20.0)
     parser.add_argument("--min_timestep", type=int, default=1)
     parser.add_argument(
         "--exclude_mask_from_uniform", action="store_true", help="Exclude mask token from uniform draws."
@@ -163,6 +175,11 @@ def udlm_diffusion_loss(
 
 def main():
     cfg = parse_args()
+    if cfg.alpha_schedule != "log_linear":
+        raise ValueError(
+            "This training script implements the UDLM diffusion loss only for `--alpha_schedule=log_linear`. "
+            "Use that setting or extend the loss derivation for other schedules."
+        )
 
     project_config = ProjectConfiguration(project_dir=cfg.output_dir, logging_dir=os.path.join(cfg.output_dir, "logs"))
     accelerator = Accelerator(
@@ -189,7 +206,10 @@ def main():
         vocab_size=len(tokenizer),
         mask_token_id=int(tokenizer.mask_token_id),
         num_train_timesteps=cfg.num_train_timesteps,
+        alpha_schedule=cfg.alpha_schedule,
         eps=cfg.eps,
+        sigma_min=cfg.sigma_min,
+        sigma_max=cfg.sigma_max,
         forward_process="uniform",
         exclude_mask_from_uniform=cfg.exclude_mask_from_uniform,
     )

@@ -22,6 +22,26 @@ class TokenDiffusionSchedulerTest(unittest.TestCase):
         self.assertEqual(len(scheduler.timesteps), 10)
         self.assertTrue((scheduler.timesteps[:-1] >= scheduler.timesteps[1:]).all().item())
 
+    def test_alpha_schedule_monotone_and_bounded(self):
+        # alpha(t) should be in (0, 1] and non-increasing in t for supported schedules.
+        schedules = ["log_linear", "linear", "cosine", "geometric"]
+        t = torch.linspace(0, 1, 33, dtype=torch.float32)
+
+        for name in schedules:
+            scheduler = self.get_scheduler(alpha_schedule=name)
+            alpha = scheduler._alpha_t(t)
+            self.assertTrue(((alpha > 0) & (alpha <= 1)).all().item())
+            # monotone non-increasing: alpha[i] >= alpha[i+1]
+            self.assertTrue((alpha[:-1] >= alpha[1:]).all().item())
+
+    def test_mdlm_weights_match_log_linear_1_over_t(self):
+        scheduler = self.get_scheduler(alpha_schedule="log_linear", eps=1e-3, num_train_timesteps=1000)
+        timesteps = torch.tensor([1, 10, 100, 999], dtype=torch.long)
+        w = scheduler.get_mdlm_loss_weights(timesteps).squeeze(-1)
+        t_cont = timesteps.to(dtype=torch.float32) / float(scheduler.num_train_timesteps - 1)
+        expected = 1.0 / t_cont
+        self.assertTrue(torch.allclose(w, expected, rtol=5e-5, atol=1e-5))
+
     def test_add_noise_absorbing_keeps_shape_dtype(self):
         scheduler = self.get_scheduler()
         batch_size, seq_len = 4, 16

@@ -105,7 +105,9 @@ class TokenDiffusionScheduler(SchedulerMixin, ConfigMixin):
                 f" {alpha_schedule!r}."
             )
         if sigma_min <= 0 or sigma_max <= 0:
-            raise ValueError(f"`sigma_min` and `sigma_max` must be > 0, got sigma_min={sigma_min}, sigma_max={sigma_max}.")
+            raise ValueError(
+                f"`sigma_min` and `sigma_max` must be > 0, got sigma_min={sigma_min}, sigma_max={sigma_max}."
+            )
         if sigma_max <= sigma_min:
             raise ValueError(f"`sigma_max` must be > `sigma_min`, got sigma_min={sigma_min}, sigma_max={sigma_max}.")
         if forward_process not in {"absorbing", "uniform"}:
@@ -205,6 +207,55 @@ class TokenDiffusionScheduler(SchedulerMixin, ConfigMixin):
             return (-total_noise).exp()
 
         raise ValueError(f"Unsupported alpha schedule: {self.alpha_schedule!r}")
+
+    def _alpha_prime_t(self, t: torch.Tensor) -> torch.Tensor:
+        """
+        Compute d/dt alpha(t) for the configured schedule.
+        """
+        if self.alpha_schedule == "log_linear":
+            return -(1.0 - self.eps) * torch.ones_like(t)
+
+        if self.alpha_schedule == "linear":
+            return -(1.0 - 2.0 * self.eps) * torch.ones_like(t)
+
+        if self.alpha_schedule == "cosine":
+            base_prime = -(torch.pi / 2.0) * torch.sin(torch.pi / 2.0 * (1.0 - t))
+            return (1.0 - 2.0 * self.eps) * base_prime
+
+        if self.alpha_schedule == "geometric":
+            sigma_min = torch.as_tensor(self.sigma_min, device=t.device, dtype=t.dtype)
+            sigma_max = torch.as_tensor(self.sigma_max, device=t.device, dtype=t.dtype)
+            total_noise = (sigma_min ** (1.0 - t)) * (sigma_max**t)
+            alpha = (-total_noise).exp()
+            rate = total_noise * (sigma_max.log() - sigma_min.log())
+            return -alpha * rate
+
+        raise ValueError(f"Unsupported alpha schedule: {self.alpha_schedule!r}")
+
+    def get_mdlm_loss_weights(self, timesteps: torch.LongTensor) -> torch.Tensor:
+        """
+        Return per-example positive loss weights for masked-token reconstruction objectives.
+
+        The weight corresponds to `-alpha'(t) / (1 - alpha(t))`, which is positive for monotone decreasing alpha(t).
+
+        Args:
+            timesteps (`torch.LongTensor` of shape `(batch_size,)`):
+                Training timestep indices in `[0, num_train_timesteps-1]`.
+
+        Returns:
+            `torch.FloatTensor` of shape `(batch_size, 1)`:
+                Positive weights to multiply token-level cross-entropy by.
+        """
+        if timesteps.dtype not in (torch.int32, torch.int64):
+            raise ValueError(f"`timesteps` must be an integer tensor, got dtype={timesteps.dtype}.")
+        device = timesteps.device
+        t = self._t_from_timestep(timesteps.to(device), device=device)
+        t = t.to(dtype=torch.float32)
+        alpha = self._alpha_t(t).to(dtype=torch.float32)
+        dalpha = self._alpha_prime_t(t).to(dtype=torch.float32)
+        denom = (1.0 - alpha).clamp_min(torch.finfo(torch.float32).eps)
+        w = (-dalpha / denom).clamp_min(torch.finfo(torch.float32).tiny)
+        return w.view(-1, 1)
 
     def add_noise(
         self,
