@@ -365,6 +365,8 @@ else:
             "UniPCMultistepScheduler",
             "VQDiffusionScheduler",
             "BlockTokenDiffusionScheduler",
+            "HybridTokenDiffusionScheduler",
+            "HybridTokenDiffusionSchedulerOutput",
         ]
     )
     _import_structure["training_utils"] = ["EMAModel"]
@@ -372,6 +374,7 @@ else:
         [
             "BlockTokenDiffusionPipeline",
             "BlockTokenDiffusionPipelineOutput",
+            "HybridTokenDiffusionPipeline",
             "TokenDiffusionPipeline",
             "TokenDiffusionPipelineOutput",
         ]
@@ -1061,6 +1064,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             DDPMPipeline,
             DiffusionPipeline,
             DiTPipeline,
+            HybridTokenDiffusionPipeline,
             ImagePipelineOutput,
             KarrasVePipeline,
             LDMPipeline,
@@ -1097,6 +1101,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             FlowMatchHeunDiscreteScheduler,
             FlowMatchLCMScheduler,
             HeunDiscreteScheduler,
+            HybridTokenDiffusionScheduler,
+            HybridTokenDiffusionSchedulerOutput,
             IPNDMScheduler,
             KarrasVeScheduler,
             KDPM2AncestralDiscreteScheduler,

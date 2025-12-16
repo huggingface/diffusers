@@ -53,6 +53,7 @@ else:
     _import_structure["ddim"] = ["DDIMPipeline"]
     _import_structure["ddpm"] = ["DDPMPipeline"]
     _import_structure["dit"] = ["DiTPipeline"]
+    _import_structure["hybrid_token_diffusion"] = ["HybridTokenDiffusionPipeline"]
     _import_structure["token_diffusion"] = ["TokenDiffusionPipeline", "TokenDiffusionPipelineOutput"]
     _import_structure["latent_diffusion"].extend(["LDMSuperResolutionPipeline"])
     _import_structure["pipeline_utils"] = [
@@ -553,6 +554,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .ddpm import DDPMPipeline
         from .deprecated import KarrasVePipeline, LDMPipeline, PNDMPipeline, RePaintPipeline, ScoreSdeVePipeline
         from .dit import DiTPipeline
+        from .hybrid_token_diffusion import HybridTokenDiffusionPipeline
         from .latent_diffusion import LDMSuperResolutionPipeline
         from .pipeline_utils import (
             AudioPipelineOutput,
