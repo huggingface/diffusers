@@ -72,6 +72,7 @@ else:
     _import_structure["scheduling_scm"] = ["SCMScheduler"]
     _import_structure["scheduling_sde_ve"] = ["ScoreSdeVeScheduler"]
     _import_structure["scheduling_tcd"] = ["TCDScheduler"]
+    _import_structure["scheduling_token_diffusion"] = ["TokenDiffusionScheduler"]
     _import_structure["scheduling_unclip"] = ["UnCLIPScheduler"]
     _import_structure["scheduling_unipc_multistep"] = ["UniPCMultistepScheduler"]
     _import_structure["scheduling_utils"] = ["AysSchedules", "KarrasDiffusionSchedulers", "SchedulerMixin"]

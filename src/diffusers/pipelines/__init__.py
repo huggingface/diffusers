@@ -52,6 +52,7 @@ else:
     _import_structure["ddim"] = ["DDIMPipeline"]
     _import_structure["ddpm"] = ["DDPMPipeline"]
     _import_structure["dit"] = ["DiTPipeline"]
+    _import_structure["token_diffusion"] = ["TokenDiffusionPipeline", "TokenDiffusionPipelineOutput"]
     _import_structure["latent_diffusion"].extend(["LDMSuperResolutionPipeline"])
     _import_structure["pipeline_utils"] = [
         "AudioPipelineOutput",
@@ -557,6 +558,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             ImagePipelineOutput,
             StableDiffusionMixin,
         )
+        from .token_diffusion import TokenDiffusionPipeline, TokenDiffusionPipelineOutput
 
     try:
         if not (is_torch_available() and is_librosa_available()):

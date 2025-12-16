@@ -360,12 +360,14 @@ else:
             "SCMScheduler",
             "ScoreSdeVeScheduler",
             "TCDScheduler",
+            "TokenDiffusionScheduler",
             "UnCLIPScheduler",
             "UniPCMultistepScheduler",
             "VQDiffusionScheduler",
         ]
     )
     _import_structure["training_utils"] = ["EMAModel"]
+    _import_structure["pipelines"].extend(["TokenDiffusionPipeline", "TokenDiffusionPipelineOutput"])
 
 try:
     if not (is_torch_available() and is_scipy_available()):
@@ -1057,6 +1059,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             RePaintPipeline,
             ScoreSdeVePipeline,
             StableDiffusionMixin,
+            TokenDiffusionPipeline,
+            TokenDiffusionPipelineOutput,
         )
         from .quantizers import DiffusersQuantizer
         from .schedulers import (
@@ -1094,6 +1098,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             SCMScheduler,
             ScoreSdeVeScheduler,
             TCDScheduler,
+            TokenDiffusionScheduler,
             UnCLIPScheduler,
             UniPCMultistepScheduler,
             VQDiffusionScheduler,
