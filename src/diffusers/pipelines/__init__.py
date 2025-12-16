@@ -623,9 +623,9 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             StableDiffusionXLControlNetXSPipeline,
         )
         from .cosmos import (
-            Cosmos_2_5_PredictBase,
             Cosmos2TextToImagePipeline,
             Cosmos2VideoToWorldPipeline,
+            Cosmos_2_5_PredictBase,
             CosmosTextToWorldPipeline,
             CosmosVideoToWorldPipeline,
         )

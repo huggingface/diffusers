@@ -17,11 +17,10 @@ import json
 import os
 import tempfile
 import unittest
-from types import SimpleNamespace
-from typing import List
 
 import numpy as np
 import torch
+from transformers import AutoTokenizer, Qwen2VLForConditionalGeneration
 
 from diffusers import AutoencoderKLWan, Cosmos_2_5_PredictBase, CosmosTransformer3DModel, FlowUniPCMultistepScheduler
 
@@ -32,68 +31,6 @@ from .cosmos_guardrail import DummyCosmosSafetyChecker
 
 
 enable_full_determinism()
-
-
-class DummyPredictTokenizer:
-    model_input_names = ["input_ids"]
-
-    def __init__(self, vocab_size: int = 128):
-        self.vocab_size = vocab_size
-
-    @classmethod
-    def from_pretrained(cls, *args, **kwargs):
-        return cls()
-
-    def apply_chat_template(
-        self,
-        conversations: List[dict],
-        tokenize: bool = True,
-        add_generation_prompt: bool = False,
-        add_vision_id: bool = False,
-        max_length: int = 16,
-        truncation: bool = True,
-        padding: str = "max_length",
-    ):
-        return list(range(max_length))
-
-    def save_pretrained(self, save_directory: str):
-        os.makedirs(save_directory, exist_ok=True)
-        with open(os.path.join(save_directory, "tokenizer_config.json"), "w") as f:
-            json.dump({"vocab_size": self.vocab_size}, f)
-
-
-class DummyPredictTextEncoder(torch.nn.Module):
-    config_name = "config.json"
-
-    def __init__(self, vocab_size: int = 128, hidden_size: int = 16):
-        super().__init__()
-        self.emb = torch.nn.Embedding(vocab_size, hidden_size)
-        self.proj = torch.nn.Linear(hidden_size, hidden_size)
-        self.config = SimpleNamespace(hidden_size=hidden_size)
-
-    @property
-    def dtype(self):
-        return next(self.parameters()).dtype
-
-    @classmethod
-    def from_pretrained(cls, save_directory: str, **kwargs):
-        return cls()
-
-    def save_pretrained(self, save_directory: str, safe_serialization: bool = False):
-        os.makedirs(save_directory, exist_ok=True)
-        torch.save(self.state_dict(), os.path.join(save_directory, "pytorch_model.bin"))
-        with open(os.path.join(save_directory, self.config_name), "w") as f:
-            json.dump({"vocab_size": self.emb.num_embeddings, "hidden_size": self.emb.embedding_dim}, f)
-
-    def forward(self, input_ids: torch.LongTensor, output_hidden_states: bool = False, **kwargs):
-        hidden = self.emb(input_ids)
-        hidden = self.proj(hidden)
-        hidden_states = (
-            hidden,
-            hidden * 0.5,
-            hidden * 0.25,
-        )
-        return SimpleNamespace(hidden_states=hidden_states)
 
 
 class Cosmos_2_5_PredictBaseWrapper(Cosmos_2_5_PredictBase):
@@ -154,8 +91,11 @@ class Cosmos_2_5_PredictPipelineFastTests(PipelineTesterMixin, unittest.TestCase
         torch.manual_seed(0)
         scheduler = FlowUniPCMultistepScheduler()
 
-        text_encoder = DummyPredictTextEncoder(hidden_size=16)
-        tokenizer = DummyPredictTokenizer()
+        # NOTE: using Qwen2 VL instead for tests (reason1 is based on 2.5)
+        text_encoder = Qwen2VLForConditionalGeneration.from_pretrained(
+            "hf-internal-testing/tiny-random-Qwen2VLForConditionalGeneration",
+        )
+        tokenizer = AutoTokenizer.from_pretrained("hf-internal-testing/tiny-random-Qwen2VLForConditionalGeneration")
 
         components = {
             "transformer": transformer,
