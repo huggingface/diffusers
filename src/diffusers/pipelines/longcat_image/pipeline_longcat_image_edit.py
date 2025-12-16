@@ -306,7 +306,9 @@ class LongCatImageEditPipeline(DiffusionPipeline, FromSingleFileMixin):
 
         prefix_tokens = self.tokenizer(text, add_special_tokens=False)["input_ids"]
         suffix_tokens = self.tokenizer(self.prompt_template_encode_suffix, add_special_tokens=False)["input_ids"]
-        prefix_len = len(prefix_tokens)
+
+        vision_start_token_id = self.tokenizer.convert_tokens_to_ids("<|vision_start|>")
+        prefix_len = prefix_tokens.index(vision_start_token_id)
         suffix_len = len(suffix_tokens)
 
         prefix_tokens_mask = torch.tensor([1] * len(prefix_tokens), dtype=text_tokens_and_mask.attention_mask[0].dtype)
@@ -660,7 +662,6 @@ class LongCatImageEditPipeline(DiffusionPipeline, FromSingleFileMixin):
                 if image_latents is not None:
                     latent_model_input = torch.cat([latents, image_latents], dim=1)
 
-                # latent_model_input = torch.cat([latent_model_input] * 2) if self.do_classifier_free_guidance else latent_model_input
                 timestep = t.expand(latent_model_input.shape[0]).to(latents.dtype)
                 with self.transformer.cache_context("cond"):
                     noise_pred_text = self.transformer(
