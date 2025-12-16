@@ -192,6 +192,26 @@ def load_original_checkpoint(args, filename: Optional[str]) -> Dict[str, Any]:
     return original_state_dict
 
 
+def load_hub_or_local_checkpoint(repo_id: Optional[str] = None, filename: Optional[str] = None) -> Dict[str, Any]:
+    if repo_id is None and filename is None:
+        raise ValueError("Please supply at least one of `repo_id` or `filename`")
+
+    if repo_id is not None:
+        if filename is None:
+            raise ValueError("If repo_id is specified, filename must also be specified.")
+        ckpt_path = hf_hub_download(repo_id=repo_id, filename=filename)
+    else:
+        ckpt_path = filename
+
+    _, ext = os.path.splitext(ckpt_path)
+    if ext in [".safetensors", ".sft"]:
+        state_dict = safetensors.torch.load_file(ckpt_path)
+    else:
+        state_dict = torch.load(ckpt_path, map_location="cpu")
+
+    return state_dict
+
+
 def get_model_state_dict_from_combined_ckpt(combined_ckpt: Dict[str, Any], prefix: str) -> Dict[str, Any]:
     # Ensure that the key prefix ends with a dot (.)
     if not prefix.endswith("."):
@@ -299,7 +319,7 @@ def main(args):
 
     if args.dit or args.full_pipeline:
         if args.dit_filename is not None:
-            original_dit_ckpt = load_original_checkpoint(args, filename=args.dit_filename)
+            original_dit_ckpt = load_hub_or_local_checkpoint(filename=args.dit_filename)
         elif combined_ckpt is not None:
             original_dit_ckpt = get_model_state_dict_from_combined_ckpt(combined_ckpt, args.dit_prefix)
         transformer = convert_ltx2_transformer(original_dit_ckpt, version=args.version)
