@@ -207,14 +207,10 @@ class LTX2TransformerTests(ModelTesterMixin, unittest.TestCase):
 
         video_output_flat = video_output.cpu().flatten().float()
         video_generated_slice = torch.cat([video_output_flat[:8], video_output_flat[-8:]])
-        print(f"Video Expected Slice: {video_expected_slice}")
-        print(f"Video Generated Slice: {video_generated_slice}")
         self.assertTrue(torch.allclose(video_generated_slice, video_expected_slice, atol=1e-4))
 
         audio_output_flat = audio_output.cpu().flatten().float()
         audio_generated_slice = torch.cat([audio_output_flat[:8], audio_output_flat[-8:]])
-        print(f"Audio Expected Slice: {audio_expected_slice}")
-        print(f"Audio Generated Slice: {audio_generated_slice}")
         self.assertTrue(torch.allclose(audio_generated_slice, audio_expected_slice, atol=1e-4))
 
 
