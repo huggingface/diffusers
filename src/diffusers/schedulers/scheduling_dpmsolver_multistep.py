@@ -24,7 +24,8 @@ from ..configuration_utils import ConfigMixin, register_to_config
 from ..utils import deprecate, is_scipy_available
 from ..utils.torch_utils import randn_tensor
 from .scheduling_utils import KarrasDiffusionSchedulers, SchedulerMixin, SchedulerOutput
-
+from ..utils import logging
+logger = logging.get_logger(__name__)
 
 if is_scipy_available():
     import scipy.stats
@@ -411,29 +412,34 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         if self.config.use_karras_sigmas:
             sigmas = np.flip(sigmas).copy()
             sigmas = self._convert_to_karras(in_sigmas=sigmas, num_inference_steps=num_inference_steps)
-            timesteps = np.array([self._sigma_to_t(sigma, log_sigmas) for sigma in sigmas])
-            if self.config.beta_schedule != "squaredcos_cap_v2":
-                timesteps = timesteps.round()
+            timesteps = np.array([self._sigma_to_t(sigma, log_sigmas) for sigma in sigmas]).round()
+            timesteps, sigmas = self._ensure_unique_timesteps(timesteps, sigmas, num_inference_steps)
+            
         elif self.config.use_lu_lambdas:
             lambdas = np.flip(log_sigmas.copy())
             lambdas = self._convert_to_lu(in_lambdas=lambdas, num_inference_steps=num_inference_steps)
             sigmas = np.exp(lambdas)
-            timesteps = np.array([self._sigma_to_t(sigma, log_sigmas) for sigma in sigmas])
-            if self.config.beta_schedule != "squaredcos_cap_v2":
-                timesteps = timesteps.round()
+            timesteps = np.array([self._sigma_to_t(sigma, log_sigmas) for sigma in sigmas]).round()
+            timesteps, sigmas = self._ensure_unique_timesteps(timesteps, sigmas, num_inference_steps)
+            
         elif self.config.use_exponential_sigmas:
             sigmas = np.flip(sigmas).copy()
             sigmas = self._convert_to_exponential(in_sigmas=sigmas, num_inference_steps=num_inference_steps)
-            timesteps = np.array([self._sigma_to_t(sigma, log_sigmas) for sigma in sigmas])
+            timesteps = np.array([self._sigma_to_t(sigma, log_sigmas) for sigma in sigmas]).round()
+            timesteps, sigmas = self._ensure_unique_timesteps(timesteps, sigmas, num_inference_steps)
+            
         elif self.config.use_beta_sigmas:
             sigmas = np.flip(sigmas).copy()
             sigmas = self._convert_to_beta(in_sigmas=sigmas, num_inference_steps=num_inference_steps)
-            timesteps = np.array([self._sigma_to_t(sigma, log_sigmas) for sigma in sigmas])
+            timesteps = np.array([self._sigma_to_t(sigma, log_sigmas) for sigma in sigmas]).round()
+            timesteps, sigmas = self._ensure_unique_timesteps(timesteps, sigmas, num_inference_steps)
+            
         elif self.config.use_flow_sigmas:
             alphas = np.linspace(1, 1 / self.config.num_train_timesteps, num_inference_steps + 1)
             sigmas = 1.0 - alphas
             sigmas = np.flip(self.config.flow_shift * sigmas / (1 + (self.config.flow_shift - 1) * sigmas))[:-1].copy()
             timesteps = (sigmas * self.config.num_train_timesteps).copy()
+            
         else:
             sigmas = np.interp(timesteps, np.arange(0, len(sigmas)), sigmas)
 
@@ -543,6 +549,38 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         t = (1 - w) * low_idx + w * high_idx
         t = t.reshape(sigma.shape)
         return t
+
+    def _ensure_unique_timesteps(self, timesteps, sigmas, num_inference_steps):
+        """
+        Ensure timesteps are unique and handle duplicates while preserving the correspondence with sigmas.
+
+        Args:
+            timesteps (`np.ndarray`):
+                The timestep values that may contain duplicates.
+            sigmas (`np.ndarray`):
+                The sigma values corresponding to the timesteps.
+            num_inference_steps (`int`):
+                The number of inference steps originally requested.
+
+        Returns:
+            `Tuple[np.ndarray, np.ndarray]`:
+                A tuple of (timesteps, sigmas) where timesteps are unique and sigmas are filtered accordingly.
+        """
+        unique_timesteps, unique_indices = np.unique(timesteps, return_index=True)
+        
+        if len(unique_timesteps) < len(timesteps):
+            # Sort by original indices to maintain order
+            unique_indices_sorted = np.sort(unique_indices)
+            timesteps = timesteps[unique_indices_sorted]
+            sigmas = sigmas[unique_indices_sorted]
+            
+            if len(timesteps) < num_inference_steps:
+                logger.warning(
+                    f"Due to the current scheduler configuration, only {len(timesteps)} unique timesteps "
+                    f"could be generated instead of the requested {num_inference_steps}."
+                )
+    
+        return timesteps, sigmas
 
     def _sigma_to_alpha_sigma_t(self, sigma: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         """
