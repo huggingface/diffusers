@@ -48,6 +48,7 @@ else:
     _import_structure["scheduling_ddim_parallel"] = ["DDIMParallelScheduler"]
     _import_structure["scheduling_ddpm"] = ["DDPMScheduler"]
     _import_structure["scheduling_ddpm_parallel"] = ["DDPMParallelScheduler"]
+    _import_structure["scheduling_block_token_diffusion"] = ["BlockTokenDiffusionScheduler"]
     _import_structure["scheduling_ddpm_wuerstchen"] = ["DDPMWuerstchenScheduler"]
     _import_structure["scheduling_deis_multistep"] = ["DEISMultistepScheduler"]
     _import_structure["scheduling_dpm_cogvideox"] = ["CogVideoXDPMScheduler"]

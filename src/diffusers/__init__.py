@@ -364,10 +364,18 @@ else:
             "UnCLIPScheduler",
             "UniPCMultistepScheduler",
             "VQDiffusionScheduler",
+            "BlockTokenDiffusionScheduler",
         ]
     )
     _import_structure["training_utils"] = ["EMAModel"]
-    _import_structure["pipelines"].extend(["TokenDiffusionPipeline", "TokenDiffusionPipelineOutput"])
+    _import_structure["pipelines"].extend(
+        [
+            "BlockTokenDiffusionPipeline",
+            "BlockTokenDiffusionPipelineOutput",
+            "TokenDiffusionPipeline",
+            "TokenDiffusionPipelineOutput",
+        ]
+    )
 
 try:
     if not (is_torch_available() and is_scipy_available()):
@@ -1044,6 +1052,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AutoPipelineForText2Image,
             BlipDiffusionControlNetPipeline,
             BlipDiffusionPipeline,
+            BlockTokenDiffusionPipeline,
+            BlockTokenDiffusionPipelineOutput,
             CLIPImageProjection,
             ConsistencyModelPipeline,
             DanceDiffusionPipeline,
@@ -1065,6 +1075,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .quantizers import DiffusersQuantizer
         from .schedulers import (
             AmusedScheduler,
+            BlockTokenDiffusionScheduler,
             CMStochasticIterativeScheduler,
             CogVideoXDDIMScheduler,
             CogVideoXDPMScheduler,

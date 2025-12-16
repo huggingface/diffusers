@@ -36,6 +36,20 @@ python examples/discrete_diffusion/sample_mdlm.py \
   --num_inference_steps 128
 ```
 
+## Block-wise sampling
+
+Block-wise sampling updates the sequence in chunks, refining only the active block at a time.
+
+```bash
+python examples/discrete_diffusion/sample_block_token_diffusion.py \
+  --checkpoint_path mdlm-output/final \
+  --num_samples 4 \
+  --seq_len 256 \
+  --block_size 32 \
+  --num_inference_steps 64 \
+  --top_p 0.9
+```
+
 ## UDLM-style uniform diffusion
 
 `train_udlm.py` trains a uniform token diffusion model:
