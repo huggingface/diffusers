@@ -23,6 +23,12 @@ logger = logging.getLogger(__name__)
 
 @dataclass(frozen=True)
 class MellonParam:
+    """
+    Parameter definition for Mellon nodes.
+    
+    Use factory methods for common params (e.g., MellonParam.seed()) 
+    or create custom ones with MellonParam(name="...", label="...", type="...").
+    """
     name: str
     label: str
     type: str
@@ -36,11 +42,11 @@ class MellonParam:
     fieldOptions: Optional[Dict[str, Any]] = None
     onChange: Any = None
     onSignal: Any = None
-    _map_to_input: Any = None  # the block input name this parameter maps to
 
     def to_dict(self) -> Dict[str, Any]:
+        """Convert to dict for Mellon schema, excluding None values and name."""
         data = asdict(self)
-        return {k: v for k, v in data.items() if not k.startswith("_") and v is not None}
+        return {k: v for k, v in data.items() if v is not None and k != "name"}
 
     @classmethod
     def image(cls) -> "MellonParam":
@@ -59,17 +65,12 @@ class MellonParam:
         return cls(name="latents", label="Latents", type="latents", display=display)
 
     @classmethod
-    def image_latents(cls, display: str = "input", use_strength: bool = False) -> "MellonParam":
-        """
-        `image_latents_input` is used to accept the image latents from vae encoder node.
-        When the node receives the `image_latents_input`, the height and width input widget will be hidden, and height and width will be determined by the image latents.
-        if `use_strength` is True, the strength slider will be shown.
-        """
-        if display == "input":
-            onChange = {False: ["height", "width"], True: ["strength"]} if use_strength else {False: ["height", "width"], True: []}
-        else:
-            onChange = None
-        return cls(name="image_latents", label="Image Latents", type="latents", display=display, onChange=onChange)
+    def image_latents(cls, display: str = "input") -> "MellonParam":
+        return cls(name="image_latents", label="Image Latents", type="latents", display=display)
+
+    @classmethod
+    def image_latents_with_strength(cls) -> "MellonParam":
+        return cls(name="image_latents", label="Image Latents", type="latents", display="input", onChange={False: ["height", "width"], True: ["strength"]})
 
     @classmethod
     def latents_preview(cls) -> "MellonParam":
@@ -208,191 +209,212 @@ class MellonParam:
     def doc(cls) -> "MellonParam":
         return cls(name="doc", label="Doc", type="string", display="output")
 
-@dataclass
-class MellonNodeConfig:
+def mark_required(label: str, marker: str = " *") -> str:
+    """Add required marker to label if not already present."""
+    if label.endswith(marker):
+        return label
+    return f"{label}{marker}"
+
+
+def node_spec_to_mellon_dict(node_spec: Dict[str, Any], node_type: str) -> Dict[str, Any]:
     """
-    A MellonNodeConfig is a base class to build Mellon nodes UI with modular diffusers.
-    It is used to configure a single Mellon node.
-
-    <Tip warning={true}>
-
-        This is an experimental feature and is likely to change in the future.
-
-    </Tip>
-    """
-
-    inputs: List[MellonParam]
-    model_inputs: List[MellonParam]
-    outputs: List[MellonParam]
-    block_name: str
-    node_type: str
-    required_inputs: List[str] = field(default_factory=list)
-    required_model_inputs: List[str] = field(default_factory=list)
-    config_name = "mellon_config.json"
-
-    def __post_init__(self):
-
-        self.inputs = self._params_list_to_dict(self.inputs, required=self.required_inputs)
-        self.model_inputs = self._params_list_to_dict(self.model_inputs, required=self.required_model_inputs)
-        self.outputs = self._params_list_to_dict(self.outputs)
-
-    @staticmethod
-    def _params_list_to_dict(params: List[MellonParam], required: Optional[List[str]] = None) -> Dict[str, Dict[str, Any]]:
-        """Convert a list of MellonParam to the `Param` definition for Mellon nodes."""
-        required = required or []
-        resolved = {}
-        
-        for param in params:
-            param_dict = param.to_dict()
-            param_name = param_dict.pop("name")
-            
-            if param_name in resolved:
-                raise ValueError(f"Duplicate param '{param_name}'")
-            
-            # Mark required params with asterisk in label
-            if param_name in required and not param_dict["label"].endswith(" *"):
-                param_dict["label"] = f"{param_dict['label']} *"
-            
-            resolved[param_name] = param_dict
-            logger.info(f"Resolved param: {param_name}")
-        
-        return resolved
-
-    def to_mellon_dict(self) -> Dict[str, Any]:
-        """Return a Json-serializable dict for Mellon Schema. Include:
-
-        - `node_type`: The type of the node. Currently we support the following node types: "controlnet", "denoise", "vae_encoder", "text_encoder", "decode".
-        - `block_name`: The name of the sub-block in the modular pipeline blocks this node corresponds to.
-        - `params`:  The `Param` definitions for Mellon nodes. It is a single flat dict composed as: {**inputs, **model_inputs, **outputs}.
-                     The keys are the parameter names, and the values are the parameter definitions.
-        """
-        # inputs/model_inputs/outputs are already normalized dicts
-        merged_params = {}
-        merged_params.update(self.inputs or {})
-        merged_params.update(self.model_inputs or {})
-        merged_params.update(self.outputs or {})
-
-        return {
-            "node_type": self.node_type,
-            "block_name": self.block_name,
-            "params": merged_params,
+    Convert a node spec dict into Mellon format.
+    
+    A node spec is how we define a Mellon diffusers node in code. This function converts it 
+    into the `params` map format that Mellon UI expects.
+    
+    The `params` map is a dict where keys are parameter names and values are UI configuration:
+        ```python
+        "seed": {"label": "Seed", "type": "int", "default": 0, ...}
+        ```
+    
+    For Modular Mellon nodes, we need to distinguish:
+        - `inputs`: Pipeline inputs (e.g., seed, prompt, image)
+        - `model_inputs`: Model components (e.g., unet, vae, scheduler)  
+        - `outputs`: Node outputs (e.g., latents, images)
+    
+    The node spec also includes:
+        - `required_inputs` / `required_model_inputs`: Which params are required (marked with *)
+        - `block_name`: The modular pipeline block this node corresponds to on backend
+    
+    We provide factory methods for common parameters (e.g., `MellonParam.seed()`, `MellonParam.unet()`)
+    so you don't have to manually specify all the UI configuration.
+    
+    Args:
+        node_spec: Dict with `inputs`, `model_inputs`, `outputs` (lists of MellonParam),
+                   plus `required_inputs`, `required_model_inputs`, `block_name`.
+        node_type: The node type string (e.g., "denoise", "controlnet")
+    
+    Returns:
+        Dict with:
+            - `params`: Flat dict of all params in Mellon UI format
+            - `input_names`: List of input parameter names
+            - `model_input_names`: List of model input parameter names
+            - `output_names`: List of output parameter names
+            - `block_name`: The backend block name
+            - `node_type`: The node type
+    
+    Example:
+        ```python
+        node_spec = {
+            "inputs": [MellonParam.seed(), MellonParam.prompt()],
+            "model_inputs": [MellonParam.unet()],
+            "outputs": [MellonParam.latents(display="output")],
+            "required_inputs": ["prompt"],
+            "required_model_inputs": ["unet"],
+            "block_name": "denoise",
         }
-
-    def from_mellon_dict(cls, mellon_dict: Dict[str, Any]) -> "MellonNodeConfig":
-        """
-        Create a MellonNodeConfig from a Mellon schema dict.
         
-        Splits the flat params dict back into inputs/model_inputs/outputs
-        based on the 'display' and 'type' fields.
-        """
-        flat_params = mellon_dict.get("params", {})
-
-        inputs: List[MellonParam] = []
-        model_inputs: List[MellonParam] = []
-        outputs: List[MellonParam] = []
-
-        for param_name, param_dict in flat_params.items():
-            # Reconstruct MellonParam
-            param = MellonParam(
-                name=param_name,
-                label=param_dict.get("label", param_name),
-                type=param_dict.get("type", ""),
-                display=param_dict.get("display", "input"),
-                default=param_dict.get("default"),
-                min=param_dict.get("min"),
-                max=param_dict.get("max"),
-                step=param_dict.get("step"),
-                onChange=param_dict.get("onChange"),
-            )
-            
-            # Categorize based on display/type
-            if param_dict.get("display") == "output":
-                outputs.append(param)
-            elif param_dict.get("type") in ("diffusers_auto_model", "diffusers_auto_models"):
-                model_inputs.append(param)
-            else:
-                inputs.append(param)
-
-        return cls(
-            inputs=inputs,
-            model_inputs=model_inputs,
-            outputs=outputs,
-            block_name=mellon_dict.get("block_name", ""),
-            node_type=mellon_dict.get("node_type", ""),
-        )
-
-    def to_json_string(self) -> str:
-        """Serialize to JSON string."""
-        return json.dumps(self.to_mellon_dict(), indent=2, sort_keys=True) + "\n"
-
-    def to_json_file(self, json_file_path: Union[str, os.PathLike]):
-        """Save to a JSON file."""
-        with open(json_file_path, "w", encoding="utf-8") as writer:
-            writer.write(self.to_json_string())
-
-
+        result = node_spec_to_mellon_dict(node_spec, "denoise")
+        # Returns:
+        # {
+        #     "params": {
+        #         "seed": {"label": "Seed", "type": "int", ...},
+        #         "prompt": {"label": "Prompt *", "type": "string", ...},  # * marks required
+        #         "unet": {"label": "Denoise Model *", "type": "diffusers_auto_model", ...},
+        #         "latents": {"label": "Latents", "type": "latents", "display": "output"},
+        #     },
+        #     "input_names": ["seed", "prompt"],
+        #     "model_input_names": ["unet"],
+        #     "output_names": ["latents"],
+        #     "block_name": "denoise",
+        #     "node_type": "denoise",
+        # }
+        ```
+    """
+    params = {}
+    input_names = []
+    model_input_names = []
+    output_names = []
+    
+    required_inputs = node_spec.get("required_inputs", [])
+    required_model_inputs = node_spec.get("required_model_inputs", [])
+    
+    # Process inputs
+    for p in node_spec.get("inputs", []):
+        param_dict = p.to_dict()
+        if p.name in required_inputs:
+            param_dict["label"] = mark_required(param_dict["label"])
+        params[p.name] = param_dict
+        input_names.append(p.name)
+    
+    # Process model_inputs
+    for p in node_spec.get("model_inputs", []):
+        param_dict = p.to_dict()
+        if p.name in required_model_inputs:
+            param_dict["label"] = mark_required(param_dict["label"])
+        params[p.name] = param_dict
+        model_input_names.append(p.name)
+    
+    # Process outputs
+    for p in node_spec.get("outputs", []):
+        params[p.name] = p.to_dict()
+        output_names.append(p.name)
+    
+    return {
+        "params": params,
+        "input_names": input_names,
+        "model_input_names": model_input_names,
+        "output_names": output_names,
+        "block_name": node_spec.get("block_name"),
+        "node_type": node_type,
+    }
 
 class MellonPipelineConfig:
     """
-    Configuration for an entire pipeline in Mellon that contains multiple nodes.
+    Configuration for an entire Mellon pipeline containing multiple nodes.
     
-    This allows saving/loading all node configurations for a modularpipeline
-    (e.g., Flux, SDXL, etc.) in a single JSON file.
+    Accepts node specs as dicts with inputs/model_inputs/outputs lists of MellonParam,
+    converts them to Mellon-ready format, and handles save/load to Hub.
+    
+    Example:
+        ```python
+        config = MellonPipelineConfig(
+            node_specs={
+                "denoise": {
+                    "inputs": [MellonParam.seed(), MellonParam.prompt()],
+                    "model_inputs": [MellonParam.unet()],
+                    "outputs": [MellonParam.latents(display="output")],
+                    "required_inputs": ["prompt"],
+                    "required_model_inputs": ["unet"],
+                    "block_name": "denoise",
+                },
+                "decoder": {...},
+            },
+            label="My Pipeline",
+            default_repo="user/my-pipeline",
+            default_dtype="float16",
+        )
+        
+        # Access Mellon format dict
+        denoise = config.node_params["denoise"]
+        input_names = denoise["input_names"]
+        params = denoise["params"]
+        
+        # Save to Hub
+        config.save("./my_config", push_to_hub=True, repo_id="user/my-pipeline")
+        
+        # Load from Hub
+        loaded = MellonPipelineConfig.load("user/my-pipeline")
+        ```
     """
     
     config_name = "mellon_pipeline_config.json"
 
     def __init__(
         self,
-        node_configs: Dict[str, Optional[MellonNodeConfig]],
+        node_specs: Dict[str, Optional[Dict[str, Any]]],
         label: str = "",
         default_repo: str = "",
         default_dtype: str = "",
     ):
         """
         Args:
-            node_configs: Dict mapping node_type -> MellonNodeConfig (or None if not supported).
-            label: Display label for the pipeline.
-            default_repo: Default HuggingFace repo for models.
-            default_dtype: Default dtype (e.g., "torch.bfloat16").
+            node_specs: Dict mapping node_type to node spec or None.
+                        Node spec has: inputs, model_inputs, outputs, required_inputs, 
+                        required_model_inputs, block_name (all optional)
+            label: Human-readable label for the pipeline
+            default_repo: Default HuggingFace repo for this pipeline
+            default_dtype: Default dtype (e.g., "float16", "bfloat16")
         """
-        self.node_configs = node_configs
+        # Convert all node specs to Mellon format immediately
+        self.node_params = {}
+        for node_type, spec in node_specs.items():
+            if spec is None:
+                self.node_params[node_type] = None
+            else:
+                self.node_params[node_type] = node_spec_to_mellon_dict(spec, node_type)
+        
         self.label = label
         self.default_repo = default_repo
         self.default_dtype = default_dtype
 
+    def __repr__(self) -> str:
+        node_types = list(self.node_params.keys())
+        return f"MellonPipelineConfig(label={self.label!r}, nodes={node_types})"
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert to a JSON-serializable dictionary."""
-        nodes = {}
-        for node_type, node_config in self.node_configs.items():
-            if node_config is None:
-                nodes[node_type] = None
-            else:
-                nodes[node_type] = node_config.to_mellon_dict()
-        
         return {
             "label": self.label,
             "default_repo": self.default_repo,
             "default_dtype": self.default_dtype,
-            "nodes": nodes,
+            "node_params": self.node_params,
         }
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "MellonPipelineConfig":
-        """Create from a dictionary (inverse of to_dict)."""
-        node_configs = {}
-        for node_type, node_data in data.get("nodes", {}).items():
-            if node_data is None:
-                node_configs[node_type] = None
-            else:
-                node_configs[node_type] = MellonNodeConfig.from_mellon_dict(node_data)
+        """
+        Create from a dictionary (loaded from JSON).
         
-        return cls(
-            node_configs=node_configs,
-            label=data.get("label", ""),
-            default_repo=data.get("default_repo", ""),
-            default_dtype=data.get("default_dtype", ""),
-        )
+        Note: The mellon_params are already in Mellon format when loading from JSON.
+        """
+        instance = cls.__new__(cls)
+        instance.node_params = data.get("node_params", {})
+        instance.label = data.get("label", "")
+        instance.default_repo = data.get("default_repo", "")
+        instance.default_dtype = data.get("default_dtype", "")
+        return instance
 
     def to_json_string(self) -> str:
         """Serialize to JSON string."""
@@ -411,14 +433,7 @@ class MellonPipelineConfig:
         return cls.from_dict(data)
 
     def save(self, save_directory: Union[str, os.PathLike], push_to_hub: bool = False, **kwargs):
-        """
-        Save the pipeline config to a directory.
-        
-        Args:
-            save_directory: Directory where the config JSON file is saved.
-            push_to_hub: Whether to push to Hugging Face Hub after saving.
-            **kwargs: Additional arguments for hub upload (repo_id, token, private, etc.).
-        """
+        """Save the pipeline config to a directory."""
         if os.path.isfile(save_directory):
             raise AssertionError(f"Provided path ({save_directory}) should be a directory, not a file")
 
@@ -452,25 +467,7 @@ class MellonPipelineConfig:
         pretrained_model_name_or_path: Union[str, os.PathLike],
         **kwargs,
     ) -> "MellonPipelineConfig":
-        """
-        Load a pipeline config from a local path or Hugging Face Hub.
-        
-        Args:
-            pretrained_model_name_or_path: Either:
-                - A model id on the Hub (e.g., "username/my-pipeline-config")
-                - A local directory path containing the config file
-                - A direct path to the JSON config file
-            cache_dir: Path to cache directory for downloaded files.
-            force_download: Whether to force re-download even if cached.
-            proxies: Dict of proxy servers to use.
-            token: HF token for private repos.
-            local_files_only: Whether to only look for local files.
-            revision: Git revision (branch, tag, commit) to use.
-            subfolder: Subfolder within the repo.
-        
-        Returns:
-            MellonPipelineConfig instance.
-        """
+        """Load a pipeline config from a local path or Hugging Face Hub."""
         cache_dir = kwargs.pop("cache_dir", None)
         local_dir = kwargs.pop("local_dir", None)
         local_dir_use_symlinks = kwargs.pop("local_dir_use_symlinks", "auto")
@@ -483,19 +480,14 @@ class MellonPipelineConfig:
 
         pretrained_model_name_or_path = str(pretrained_model_name_or_path)
         
-        # Case 1: Direct path to JSON file
         if os.path.isfile(pretrained_model_name_or_path):
             config_file = pretrained_model_name_or_path
-        
-        # Case 2: Local directory
         elif os.path.isdir(pretrained_model_name_or_path):
             config_file = os.path.join(pretrained_model_name_or_path, cls.config_name)
             if not os.path.isfile(config_file):
                 raise EnvironmentError(
                     f"No file named {cls.config_name} found in {pretrained_model_name_or_path}"
                 )
-        
-        # Case 3: Download from Hugging Face Hub
         else:
             try:
                 config_file = hf_hub_download(
@@ -547,28 +539,8 @@ class MellonPipelineConfig:
                     f"Otherwise, make sure '{pretrained_model_name_or_path}' is the correct path to a directory "
                     f"containing a {cls.config_name} file"
                 )
+        
         try:
-            config_dict = cls.from_json_file(config_file)
+            return cls.from_json_file(config_file)
         except (json.JSONDecodeError, UnicodeDecodeError):
-            raise EnvironmentError(f"It looks like the config file at '{config_file}' is not a valid JSON file.")
-        return config_dict
-
-    def get_node_config(self, node_type: str) -> Optional[MellonNodeConfig]:
-        """Get the config for a specific node type."""
-        return self.node_configs.get(node_type)
-
-    def __getitem__(self, node_type: str) -> Optional[MellonNodeConfig]:
-        """Allow dict-like access: pipeline_config['denoise']"""
-        return self.get_node_config(node_type)
-
-    def __iter__(self):
-        """Iterate over node types."""
-        return iter(self.node_configs)
-
-    def items(self):
-        """Iterate over (node_type, config) pairs."""
-        return self.node_configs.items()
-    
-    def __repr__(self) -> str:
-        node_types = list(self.node_configs.keys())
-        return f"MellonPipelineConfig(label={self.label!r}, nodes={node_types})"
+            raise EnvironmentError(f"The config file at '{config_file}' is not a valid JSON file.")
