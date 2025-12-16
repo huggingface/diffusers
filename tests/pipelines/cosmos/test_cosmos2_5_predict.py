@@ -23,7 +23,7 @@ from typing import List
 import numpy as np
 import torch
 
-from diffusers import AutoencoderKLWan, Cosmos25PredictBase, CosmosTransformer3DModel, FlowUniPCMultistepScheduler
+from diffusers import AutoencoderKLWan, Cosmos_2_5_PredictBase, CosmosTransformer3DModel, FlowUniPCMultistepScheduler
 
 from ...testing_utils import enable_full_determinism, torch_device
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
@@ -96,15 +96,15 @@ class DummyPredictTextEncoder(torch.nn.Module):
         return SimpleNamespace(hidden_states=hidden_states)
 
 
-class Cosmos25PredictBaseWrapper(Cosmos25PredictBase):
+class Cosmos_2_5_PredictBaseWrapper(Cosmos_2_5_PredictBase):
     @staticmethod
     def from_pretrained(*args, **kwargs):
         kwargs["safety_checker"] = DummyCosmosSafetyChecker()
-        return Cosmos25PredictBase.from_pretrained(*args, **kwargs)
+        return Cosmos_2_5_PredictBase.from_pretrained(*args, **kwargs)
 
 
-class Cosmos25PredictPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
-    pipeline_class = Cosmos25PredictBaseWrapper
+class Cosmos_2_5_PredictPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+    pipeline_class = Cosmos_2_5_PredictBaseWrapper
     params = TEXT_TO_IMAGE_PARAMS - {"cross_attention_kwargs"}
     batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
     image_params = TEXT_TO_IMAGE_IMAGE_PARAMS

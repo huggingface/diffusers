@@ -22,6 +22,7 @@ except OptionalDependencyNotAvailable:
 
     _dummy_objects.update(get_objects_from_module(dummy_torch_and_transformers_objects))
 else:
+    _import_structure["pipeline_cosmos2_5_predict"] = ["Cosmos_2_5_PredictBase", "retrieve_latents"]
     _import_structure["pipeline_cosmos2_text2image"] = ["Cosmos2TextToImagePipeline"]
     _import_structure["pipeline_cosmos2_video2world"] = ["Cosmos2VideoToWorldPipeline"]
     _import_structure["pipeline_cosmos_text2world"] = ["CosmosTextToWorldPipeline"]
@@ -35,6 +36,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     except OptionalDependencyNotAvailable:
         from ...utils.dummy_torch_and_transformers_objects import *
     else:
+        from .pipeline_cosmos2_5_predict import Cosmos_2_5_PredictBase, retrieve_latents
         from .pipeline_cosmos2_text2image import Cosmos2TextToImagePipeline
         from .pipeline_cosmos2_video2world import Cosmos2VideoToWorldPipeline
         from .pipeline_cosmos_text2world import CosmosTextToWorldPipeline

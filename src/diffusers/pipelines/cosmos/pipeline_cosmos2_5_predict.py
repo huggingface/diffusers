@@ -71,11 +71,11 @@ EXAMPLE_DOC_STRING = """
     Examples:
         ```python
         >>> import torch
-        >>> from diffusers import Cosmos25PredictBase
+        >>> from diffusers import Cosmos_2_5_PredictBase
         >>> from diffusers.utils import export_to_video, load_image, load_video
 
         >>> model_id = "nvidia/Cosmos-Predict2.5-Base-2B"
-        >>> pipe = Cosmos25PredictBase.from_pretrained(model_id, torch_dtype=torch.bfloat16)
+        >>> pipe = Cosmos_2_5_PredictBase.from_pretrained(model_id, torch_dtype=torch.bfloat16)
         >>> pipe.to("cuda")
 
         >>> prompt = "A close-up shot captures a vibrant yellow scrubber vigorously working on a grimy plate, its bristles moving in circular motions to lift stubborn grease and food residue. The dish, once covered in remnants of a hearty meal, gradually reveals its original glossy surface. Suds form and bubble around the scrubber, creating a satisfying visual of cleanliness in progress. The sound of scrubbing fills the air, accompanied by the gentle clinking of the dish against the sink. As the scrubber continues its task, the dish transforms, gleaming under the bright kitchen lights, symbolizing the triumph of cleanliness over mess."
@@ -124,7 +124,7 @@ EXAMPLE_DOC_STRING = """
 """
 
 
-class Cosmos25PredictBase(DiffusionPipeline):
+class Cosmos_2_5_PredictBase(DiffusionPipeline):
     r"""
     Pipeline for [Cosmos Predict2.5](https://github.com/nvidia-cosmos/cosmos-predict2.5) base model.
 
