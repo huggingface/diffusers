@@ -27,6 +27,7 @@ from diffusers import (
     AutoPipelineForImage2Image,
     AutoPipelineForInpainting,
     AutoPipelineForText2Image,
+    AutoPipelineForText2Video,
     ControlNetModel,
     DiffusionPipeline,
 )
@@ -454,6 +455,15 @@ class AutoPipelineFastTest(unittest.TestCase):
 
         pipe = AutoPipelineForText2Image.from_pipe(pipe, image_encoder=None)
         assert pipe.image_encoder is None
+
+    def test_from_pretrained_text_to_video(self):
+        repo = "hf-internal-testing/tiny-stable-diffusion-pipe"
+
+        pipe = AutoPipelineForText2Video.from_pretrained(repo)
+        assert pipe.__class__.__name__ == "TextToVideoSDPipeline"
+
+        pipe = AutoPipelineForText2Video.from_pipe(pipe)
+        assert pipe.__class__.__name__ == "TextToVideoSDPipeline"
 
 
 @slow
