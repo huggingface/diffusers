@@ -608,7 +608,6 @@ class Cosmos25PredictBase(DiffusionPipeline):
                             f"Cosmos Guardrail detected unsafe text in the prompt: {p}. Please ensure that the "
                             f"prompt abides by the NVIDIA Open Model License Agreement."
                         )
-            self.safety_checker.to("cpu")
 
         # Define call parameters
         if prompt is not None and isinstance(prompt, str):
@@ -771,7 +770,6 @@ class Cosmos25PredictBase(DiffusionPipeline):
             video = np.stack(video_batch).astype(np.float32) / 255.0 * 2 - 1
             video = torch.from_numpy(video).permute(0, 4, 1, 2, 3)
             video = self.video_processor.postprocess_video(video, output_type=output_type)
-            self.safety_checker.to("cpu")
         else:
             video = latents
 
