@@ -50,6 +50,30 @@ python examples/discrete_diffusion/sample_block_token_diffusion.py \
   --top_p 0.9
 ```
 
+## Hybrid sampling
+
+Hybrid sampling uses a different transition kernel than absorbing/uniform diffusion and requires a compatible scheduler
+configuration saved in the checkpoint directory.
+
+```bash
+python examples/discrete_diffusion/sample_hybrid_token_diffusion.py \
+  --checkpoint_path hybrid-output/final \
+  --num_samples 4 \
+  --seq_len 256 \
+  --num_inference_steps 64
+```
+
+### Train
+
+```bash
+accelerate launch examples/discrete_diffusion/train_hybrid_token_diffusion.py \
+  --model_name_or_path bert-base-uncased \
+  --dataset_name wikitext \
+  --dataset_config_name wikitext-2-raw-v1 \
+  --output_dir hybrid-output \
+  --max_train_steps 1000
+```
+
 ## UDLM-style uniform diffusion
 
 `train_udlm.py` trains a uniform token diffusion model:
