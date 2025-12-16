@@ -154,7 +154,7 @@ else:
         "AudioLDM2UNet2DConditionModel",
     ]
     _import_structure["blip_diffusion"] = ["BlipDiffusionPipeline"]
-    _import_structure["chroma"] = ["ChromaPipeline", "ChromaImg2ImgPipeline"]
+    _import_structure["chroma"] = ["ChromaPipeline", "ChromaImg2ImgPipeline", "ChromaInpaintPipeline"]
     _import_structure["cogvideo"] = [
         "CogVideoXPipeline",
         "CogVideoXImageToVideoPipeline",
@@ -595,7 +595,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .blip_diffusion import BlipDiffusionPipeline
         from .bria import BriaPipeline
         from .bria_fibo import BriaFiboPipeline
-        from .chroma import ChromaImg2ImgPipeline, ChromaPipeline
+        from .chroma import ChromaImg2ImgPipeline, ChromaInpaintPipeline, ChromaPipeline
         from .chronoedit import ChronoEditPipeline
         from .cogvideo import (
             CogVideoXFunControlPipeline,

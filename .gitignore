@@ -179,3 +179,8 @@ tags
 
 # wandb
 wandb
+
+# pixi environments
+.pixi/*
+!.pixi/config.toml
+pixi.toml
