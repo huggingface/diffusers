@@ -93,6 +93,8 @@ class Nerf(nn.Module):
         for block in self.blocks:
             latents_dct = block(latents_dct, hidden)
 
+        latents_dct = self.final_layer.norm(latents_dct)
+
         latents_dct = latents_dct.transpose(1, 2).reshape(batch_size, num_patches, -1).transpose(1, 2)
         latents_dct = nn.functional.fold(
             latents_dct,
@@ -100,7 +102,7 @@ class Nerf(nn.Module):
             kernel_size=patch_size,
             stride=patch_size,
         )
-        return self.final_layer(latents_dct)
+        return self.final_layer.conv(latents_dct)
 
 
 class NerfEmbedder(nn.Module):
@@ -134,10 +136,11 @@ class NerfEmbedder(nn.Module):
         batch, pixels, channels = inputs.shape
         patch_size = int(pixels**0.5)
         input_dtype = inputs.dtype
+        inputs = inputs.float()
         dct = self.fetch_pos(patch_size)
-        dct = dct.repeat(batch, 1, 1).to(dtype=input_dtype, device=inputs.device)
+        dct = dct.repeat(batch, 1, 1).to(dtype=torch.float32, device=inputs.device)
         inputs = torch.cat((inputs, dct), dim=-1)
-        return self.embedder(inputs)
+        return self.embedder.float()(inputs).to(dtype=input_dtype)
 
 
 class NerfGLUBlock(nn.Module):
@@ -818,6 +821,8 @@ class ChromaRadianceTransformer2DModel(
             `encoder_hidden_states`).
         axes_dims_rope (`Tuple[int]`, defaults to `(16, 56, 56)`):
             The dimensions to use for the rotary positional embeddings.
+        x0 (`bool`, defaults to `True`):
+            Whether or not to use x0 prediction
     """
 
     _supports_gradient_checkpointing = True
@@ -844,6 +849,7 @@ class ChromaRadianceTransformer2DModel(
         nerf_hidden_dim: int = 64,
         nerf_max_freqs: int = 8,
         nerf_mlp_ratio: int = 4,
+        x0: bool = True,
     ):
         super().__init__()
         self.out_channels = out_channels or in_channels
@@ -904,6 +910,7 @@ class ChromaRadianceTransformer2DModel(
         )
 
         self.gradient_checkpointing = False
+        self.x0 = x0
 
     def forward(
         self,
@@ -958,6 +965,10 @@ class ChromaRadianceTransformer2DModel(
                 logger.warning(
                     "Passing `scale` via `joint_attention_kwargs` when not using the PEFT backend is ineffective."
                 )
+
+        if self.config.patch_size == 32:
+            _, _, height, width = hidden_states.shape
+            hidden_states = nn.functional.interpolate(hidden_states, size=(height//2, width//2), mode="nearest")
         hidden_states = self.x_embedder_patch(hidden_states)
         num_patches = hidden_states.shape[2] * hidden_states.shape[3]
         hidden_states = hidden_states.flatten(2).transpose(1, 2)
@@ -1062,6 +1073,11 @@ class ChromaRadianceTransformer2DModel(
         hidden_states = hidden_states[:, encoder_hidden_states.shape[1] :, ...]
 
         output = self.nerf(pixels, hidden_states, self.config.patch_size, num_patches)
+
+        # using x0 prediction
+
+        if self.x0:
+            output = (pixels - output) / (timestep / 1000).view(-1,1,1,1)
 
         if USE_PEFT_BACKEND:
             # remove `lora_scale` from each PEFT layer
