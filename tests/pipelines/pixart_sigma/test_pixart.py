@@ -29,6 +29,7 @@ from diffusers import (
 )
 
 from ...testing_utils import (
+    Expectations,
     backend_empty_cache,
     enable_full_determinism,
     numpy_cosine_similarity_distance,
@@ -335,7 +336,14 @@ class PixArtSigmaPipelineIntegrationTests(unittest.TestCase):
         image = pipe(prompt, generator=generator, num_inference_steps=2, output_type="np").images
 
         image_slice = image[0, -3:, -3:, -1]
-        expected_slice = np.array([0.0479, 0.0378, 0.0217, 0.0942, 0.064, 0.0791, 0.2073, 0.1975, 0.2017])
+
+        expected_slices = Expectations(
+            {
+                ("xpu", 3): np.array([0.0417, 0.0388, 0.0061, 0.0618, 0.0517, 0.0420, 0.1038, 0.1055, 0.1257]),
+                ("cuda", None): np.array([0.0479, 0.0378, 0.0217, 0.0942, 0.064, 0.0791, 0.2073, 0.1975, 0.2017]),
+            }
+        )
+        expected_slice = expected_slices.get_expectation()
 
         max_diff = numpy_cosine_similarity_distance(image_slice.flatten(), expected_slice)
         self.assertLessEqual(max_diff, 1e-4)
