@@ -129,6 +129,7 @@ def prepare_pos_ids(modality_id=0, type="text", start=(0, 0), num_token=None, he
     return pos_ids
 
 
+# Copied from diffusers.pipelines.flux.pipeline_flux_utils.calculate_shift
 def calculate_shift(
     image_seq_len,
     base_seq_len: int = 256,
@@ -142,7 +143,7 @@ def calculate_shift(
     return mu
 
 
-# Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.retrieve_timesteps
+# Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_utils.retrieve_timesteps
 def retrieve_timesteps(
     scheduler,
     num_inference_steps: Optional[int] = None,
