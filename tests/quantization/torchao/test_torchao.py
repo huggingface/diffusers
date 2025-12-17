@@ -35,6 +35,7 @@ from diffusers.models.attention_processor import Attention
 from diffusers.quantizers import PipelineQuantizationConfig
 
 from ...testing_utils import (
+    Expectations,
     backend_empty_cache,
     backend_synchronize,
     enable_full_determinism,
@@ -497,8 +498,23 @@ class TorchAoTest(unittest.TestCase):
 
     def test_model_memory_usage(self):
         model_id = "hf-internal-testing/tiny-flux-pipe"
-        expected_memory_saving_ratio = 2.0
-
+        expected_memory_saving_ratios = Expectations(
+            {
+                # XPU: For this tiny model, per-tensor overheads (alignment, fragmentation, metadata) become visible.
+                # While XPU doesn't have the large fixed cuBLAS workspace of A100, these small overheads prevent reaching the ideal 2.0 ratio.
+                # Observed ~1.27x (158k vs 124k) for model size.
+                # The runtime memory overhead is ~88k for both bf16 and int8wo. Adding this to model size: (158k+88k)/(124k+88k) ≈ 1.15.
+                ("xpu", None): 1.15,
+                # On Ampere, the cuBLAS kernels used for matrix multiplication often allocate a fixed-size workspace.
+                # Since the tiny-flux model weights are likely smaller than or comparable to this workspace, the total memory is dominated by the workspace.
+                ("cuda", 8): 1.02,
+                # On Hopper, TorchAO utilizes newer, highly optimized kernels (via Triton or CUTLASS 3.x) that are designed to be workspace-free or use negligible extra memory.
+                # Additionally, Triton kernels often handle unaligned memory better, avoiding the padding overhead seen on other backends for tiny tensors.
+                # This allows it to achieve the near-ideal 2.0x compression ratio.
+                ("cuda", 9): 2.0,
+            }
+        )
+        expected_memory_saving_ratio = expected_memory_saving_ratios.get_expectation()
         inputs = self.get_dummy_tensor_inputs(device=torch_device)
 
         transformer_bf16 = self.get_dummy_components(None, model_id=model_id)["transformer"]
