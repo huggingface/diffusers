@@ -143,23 +143,23 @@ def apply_rotary_emb_qwen(
 
 
 class QwenTimestepProjEmbeddings(nn.Module):
-    def __init__(self, embedding_dim, additional_t_cond=False):
+    def __init__(self, embedding_dim, use_additional_t_cond=False):
         super().__init__()
 
         self.time_proj = Timesteps(num_channels=256, flip_sin_to_cos=True, downscale_freq_shift=0, scale=1000)
         self.timestep_embedder = TimestepEmbedding(in_channels=256, time_embed_dim=embedding_dim)
-        self.additional_t_cond = additional_t_cond
-        if additional_t_cond:
+        self.use_additional_t_cond = use_additional_t_cond
+        if use_additional_t_cond:
             self.addition_t_embedding = nn.Embedding(2, embedding_dim)
-            self.addition_t_embedding.weight.data.zero_()
 
     def forward(self, timestep, hidden_states, addition_t_cond=None):
         timesteps_proj = self.time_proj(timestep)
         timesteps_emb = self.timestep_embedder(timesteps_proj.to(dtype=hidden_states.dtype))  # (N, D)
 
         conditioning = timesteps_emb
-        if self.additional_t_cond:
-            assert addition_t_cond is not None, "When additional_t_cond is True, addition_t_cond must be provided."
+        if self.use_additional_t_cond:
+            if addition_t_cond is None:
+                raise ValueError("When additional_t_cond is True, addition_t_cond must be provided.")
             addition_t_emb = self.addition_t_embedding(addition_t_cond)
             addition_t_emb = addition_t_emb.to(dtype=hidden_states.dtype)
             conditioning = conditioning + addition_t_emb
@@ -291,9 +291,7 @@ class QwenEmbedLayer3DRope(nn.Module):
             ],
             dim=1,
         )
-        self.rope_cache = {}
 
-        # DO NOT USING REGISTER BUFFER HERE, IT WILL CAUSE COMPLEX NUMBERS LOSE ITS IMAGINARY PART
         self.scale_rope = scale_rope
 
     def rope_params(self, index, dim, theta=10000):
@@ -703,7 +701,7 @@ class QwenImageTransformer2DModel(
         guidance_embeds: bool = False,  # TODO: this should probably be removed
         axes_dims_rope: Tuple[int, int, int] = (16, 56, 56),
         zero_cond_t: bool = False,
-        additional_t_cond: bool = False,
+        use_additional_t_cond: bool = False,
         use_layer3d_rope: bool = False,
     ):
         super().__init__()
@@ -716,7 +714,7 @@ class QwenImageTransformer2DModel(
             self.pos_embed = QwenEmbedLayer3DRope(theta=10000, axes_dim=list(axes_dims_rope), scale_rope=True)
 
         self.time_text_embed = QwenTimestepProjEmbeddings(
-            embedding_dim=self.inner_dim, additional_t_cond=additional_t_cond
+            embedding_dim=self.inner_dim, use_additional_t_cond=use_additional_t_cond
         )
 
         self.txt_norm = RMSNorm(joint_attention_dim, eps=1e-6)
