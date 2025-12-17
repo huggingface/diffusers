@@ -304,7 +304,9 @@ class QwenEmbedRope(nn.Module):
         return vid_freqs, txt_freqs
 
     @functools.lru_cache(maxsize=128)
-    def _compute_video_freqs(self, frame: int, height: int, width: int, idx: int = 0, device: torch.device = None) -> torch.Tensor:
+    def _compute_video_freqs(
+        self, frame: int, height: int, width: int, idx: int = 0, device: torch.device = None
+    ) -> torch.Tensor:
         seq_lens = frame * height * width
         pos_freqs = self.pos_freqs.to(device) if device is not None else self.pos_freqs
         neg_freqs = self.neg_freqs.to(device) if device is not None else self.neg_freqs
