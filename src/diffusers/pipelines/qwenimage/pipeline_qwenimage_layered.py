@@ -393,7 +393,6 @@ the image\n<|vision_start|><|image_pad|><|vision_end|><|im_end|>\n<|im_start|>as
             raise ValueError(f"`max_sequence_length` cannot be greater than 1024 but is {max_sequence_length}")
 
     @staticmethod
-    # Copied from diffusers.pipelines.qwenimage.pipeline_qwenimage.QwenImagePipeline._pack_latents
     def _pack_latents(latents, batch_size, num_channels_latents, height, width, layers):
         latents = latents.view(batch_size, layers, num_channels_latents, height // 2, 2, width // 2, 2)
         latents = latents.permute(0, 1, 3, 5, 2, 4, 6)
@@ -402,7 +401,6 @@ the image\n<|vision_start|><|image_pad|><|vision_end|><|im_end|>\n<|im_start|>as
         return latents
 
     @staticmethod
-    # Copied from diffusers.pipelines.qwenimage.pipeline_qwenimage.QwenImagePipeline._unpack_latents
     def _unpack_latents(latents, height, width, layers, vae_scale_factor):
         batch_size, num_patches, channels = latents.shape
 
