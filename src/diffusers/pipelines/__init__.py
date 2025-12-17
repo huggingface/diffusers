@@ -422,6 +422,7 @@ else:
         "QwenImageEditInpaintPipeline",
         "QwenImageControlNetInpaintPipeline",
         "QwenImageControlNetPipeline",
+        "QwenImageLayeredPipeline",
     ]
     _import_structure["chronoedit"] = ["ChronoEditPipeline"]
 try:
@@ -764,6 +765,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             QwenImageEditPlusPipeline,
             QwenImageImg2ImgPipeline,
             QwenImageInpaintPipeline,
+            QwenImageLayeredPipeline,
             QwenImagePipeline,
         )
         from .sana import (
