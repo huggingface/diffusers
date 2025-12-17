@@ -1,4 +1,4 @@
-__version__ = "0.36.0.dev0"
+__version__ = "0.37.0.dev0"
 
 from typing import TYPE_CHECKING
 
@@ -235,6 +235,7 @@ else:
             "Kandinsky3UNet",
             "Kandinsky5Transformer3DModel",
             "LatteTransformer3DModel",
+            "LongCatImageTransformer2DModel",
             "LTXVideoTransformer3DModel",
             "Lumina2Transformer2DModel",
             "LuminaNextDiT2DModel",
@@ -404,6 +405,8 @@ except OptionalDependencyNotAvailable:
 else:
     _import_structure["modular_pipelines"].extend(
         [
+            "Flux2AutoBlocks",
+            "Flux2ModularPipeline",
             "FluxAutoBlocks",
             "FluxKontextAutoBlocks",
             "FluxKontextModularPipeline",
@@ -530,6 +533,8 @@ else:
             "LDMTextToImagePipeline",
             "LEditsPPPipelineStableDiffusion",
             "LEditsPPPipelineStableDiffusionXL",
+            "LongCatImageEditPipeline",
+            "LongCatImagePipeline",
             "LTXConditionPipeline",
             "LTXImageToVideoPipeline",
             "LTXLatentUpsamplePipeline",
@@ -968,6 +973,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             Kandinsky3UNet,
             Kandinsky5Transformer3DModel,
             LatteTransformer3DModel,
+            LongCatImageTransformer2DModel,
             LTXVideoTransformer3DModel,
             Lumina2Transformer2DModel,
             LuminaNextDiT2DModel,
@@ -1111,6 +1117,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .utils.dummy_torch_and_transformers_objects import *  # noqa F403
     else:
         from .modular_pipelines import (
+            Flux2AutoBlocks,
+            Flux2ModularPipeline,
             FluxAutoBlocks,
             FluxKontextAutoBlocks,
             FluxKontextModularPipeline,
@@ -1233,6 +1241,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             LDMTextToImagePipeline,
             LEditsPPPipelineStableDiffusion,
             LEditsPPPipelineStableDiffusionXL,
+            LongCatImageEditPipeline,
+            LongCatImagePipeline,
             LTXConditionPipeline,
             LTXImageToVideoPipeline,
             LTXLatentUpsamplePipeline,
