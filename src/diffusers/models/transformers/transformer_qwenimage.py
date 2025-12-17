@@ -165,12 +165,7 @@ def compute_text_seq_len_from_mask(
     active_positions = torch.where(encoder_hidden_states_mask, position_ids, position_ids.new_zeros(()))
     has_active = encoder_hidden_states_mask.any(dim=1)
     per_sample_len = torch.where(has_active, active_positions.max(dim=1).values + 1, torch.as_tensor(text_seq_len))
-
-    # For RoPE, we use the full text_seq_len (since per_sample_len.max() <= text_seq_len always)
-    # Keep as tensor to avoid graph breaks in torch.compile
-    rope_text_seq_len = torch.tensor(text_seq_len, device=encoder_hidden_states.device, dtype=torch.long)
-
-    return rope_text_seq_len, per_sample_len, encoder_hidden_states_mask
+    return text_seq_len, per_sample_len, encoder_hidden_states_mask
 
 
 class QwenTimestepProjEmbeddings(nn.Module):
@@ -271,10 +266,6 @@ class QwenEmbedRope(nn.Module):
         if max_txt_seq_len is None:
             raise ValueError("Either `max_txt_seq_len` or `txt_seq_lens` (deprecated) must be provided.")
 
-        # Move to device unconditionally to avoid graph breaks in torch.compile
-        self.pos_freqs = self.pos_freqs.to(device)
-        self.neg_freqs = self.neg_freqs.to(device)
-
         # Validate batch inference with variable-sized images
         if isinstance(video_fhw, list) and len(video_fhw) > 1:
             # Check if all instances have the same size
@@ -297,8 +288,7 @@ class QwenEmbedRope(nn.Module):
         for idx, fhw in enumerate(video_fhw):
             frame, height, width = fhw
             # RoPE frequencies are cached via a lru_cache decorator on _compute_video_freqs
-            video_freq = self._compute_video_freqs(frame, height, width, idx)
-            video_freq = video_freq.to(device)
+            video_freq = self._compute_video_freqs(frame, height, width, idx, device)
             vid_freqs.append(video_freq)
 
             if self.scale_rope:
@@ -306,16 +296,21 @@ class QwenEmbedRope(nn.Module):
             else:
                 max_vid_index = max(height, width, max_vid_index)
 
-        txt_freqs = self.pos_freqs[max_vid_index : max_vid_index + max_txt_seq_len, ...]
+        max_txt_seq_len_int = int(max_txt_seq_len)
+        # Create device-specific copy for text freqs without modifying self.pos_freqs
+        txt_freqs = self.pos_freqs.to(device)[max_vid_index : max_vid_index + max_txt_seq_len_int, ...]
         vid_freqs = torch.cat(vid_freqs, dim=0)
 
         return vid_freqs, txt_freqs
 
     @functools.lru_cache(maxsize=128)
-    def _compute_video_freqs(self, frame: int, height: int, width: int, idx: int = 0) -> torch.Tensor:
+    def _compute_video_freqs(self, frame: int, height: int, width: int, idx: int = 0, device: torch.device = None) -> torch.Tensor:
         seq_lens = frame * height * width
-        freqs_pos = self.pos_freqs.split([x // 2 for x in self.axes_dim], dim=1)
-        freqs_neg = self.neg_freqs.split([x // 2 for x in self.axes_dim], dim=1)
+        pos_freqs = self.pos_freqs.to(device) if device is not None else self.pos_freqs
+        neg_freqs = self.neg_freqs.to(device) if device is not None else self.neg_freqs
+
+        freqs_pos = pos_freqs.split([x // 2 for x in self.axes_dim], dim=1)
+        freqs_neg = neg_freqs.split([x // 2 for x in self.axes_dim], dim=1)
 
         freqs_frame = freqs_pos[0][idx : idx + frame].view(frame, 1, 1, -1).expand(frame, height, width, -1)
         if self.scale_rope:
@@ -384,10 +379,6 @@ class QwenEmbedLayer3DRope(nn.Module):
             device: (`torch.device`, *optional*):
                 The device on which to perform the RoPE computation.
         """
-        # Move to device unconditionally to avoid graph breaks in torch.compile
-        self.pos_freqs = self.pos_freqs.to(device)
-        self.neg_freqs = self.neg_freqs.to(device)
-
         # Validate batch inference with variable-sized images
         # In Layer3DRope, the outer list represents batch, inner list/tuple represents layers
         if isinstance(video_fhw, list) and len(video_fhw) > 1:
@@ -412,11 +403,10 @@ class QwenEmbedLayer3DRope(nn.Module):
         for idx, fhw in enumerate(video_fhw):
             frame, height, width = fhw
             if idx != layer_num:
-                video_freq = self._compute_video_freqs(frame, height, width, idx)
+                video_freq = self._compute_video_freqs(frame, height, width, idx, device)
             else:
                 ### For the condition image, we set the layer index to -1
-                video_freq = self._compute_condition_freqs(frame, height, width)
-            video_freq = video_freq.to(device)
+                video_freq = self._compute_condition_freqs(frame, height, width, device)
             vid_freqs.append(video_freq)
 
             if self.scale_rope:
@@ -425,16 +415,21 @@ class QwenEmbedLayer3DRope(nn.Module):
                 max_vid_index = max(height, width, max_vid_index)
 
         max_vid_index = max(max_vid_index, layer_num)
-        txt_freqs = self.pos_freqs[max_vid_index : max_vid_index + max_txt_seq_len, ...]
+        max_txt_seq_len_int = int(max_txt_seq_len)
+        # Create device-specific copy for text freqs without modifying self.pos_freqs
+        txt_freqs = self.pos_freqs.to(device)[max_vid_index : max_vid_index + max_txt_seq_len_int, ...]
         vid_freqs = torch.cat(vid_freqs, dim=0)
 
         return vid_freqs, txt_freqs
 
     @functools.lru_cache(maxsize=None)
-    def _compute_video_freqs(self, frame, height, width, idx=0):
+    def _compute_video_freqs(self, frame, height, width, idx=0, device: torch.device = None):
         seq_lens = frame * height * width
-        freqs_pos = self.pos_freqs.split([x // 2 for x in self.axes_dim], dim=1)
-        freqs_neg = self.neg_freqs.split([x // 2 for x in self.axes_dim], dim=1)
+        pos_freqs = self.pos_freqs.to(device) if device is not None else self.pos_freqs
+        neg_freqs = self.neg_freqs.to(device) if device is not None else self.neg_freqs
+
+        freqs_pos = pos_freqs.split([x // 2 for x in self.axes_dim], dim=1)
+        freqs_neg = neg_freqs.split([x // 2 for x in self.axes_dim], dim=1)
 
         freqs_frame = freqs_pos[0][idx : idx + frame].view(frame, 1, 1, -1).expand(frame, height, width, -1)
         if self.scale_rope:
@@ -450,10 +445,13 @@ class QwenEmbedLayer3DRope(nn.Module):
         return freqs.clone().contiguous()
 
     @functools.lru_cache(maxsize=None)
-    def _compute_condition_freqs(self, frame, height, width):
+    def _compute_condition_freqs(self, frame, height, width, device: torch.device = None):
         seq_lens = frame * height * width
-        freqs_pos = self.pos_freqs.split([x // 2 for x in self.axes_dim], dim=1)
-        freqs_neg = self.neg_freqs.split([x // 2 for x in self.axes_dim], dim=1)
+        pos_freqs = self.pos_freqs.to(device) if device is not None else self.pos_freqs
+        neg_freqs = self.neg_freqs.to(device) if device is not None else self.neg_freqs
+
+        freqs_pos = pos_freqs.split([x // 2 for x in self.axes_dim], dim=1)
+        freqs_neg = neg_freqs.split([x // 2 for x in self.axes_dim], dim=1)
 
         freqs_frame = freqs_neg[0][-1:].view(frame, 1, 1, -1).expand(frame, height, width, -1)
         if self.scale_rope:
@@ -911,8 +909,8 @@ class QwenImageTransformer2DModel(
                 "txt_seq_lens",
                 "0.37.0",
                 "Passing `txt_seq_lens` is deprecated and will be removed in version 0.37.0. "
-                "Please use `txt_seq_len` instead (singular, not plural). "
-                "The new parameter accepts a single int or tensor value instead of a list.",
+                "Please use `encoder_hidden_states_mask` instead. "
+                "The mask-based approach is more flexible and supports variable-length sequences.",
                 standard_warn=False,
             )
         if attention_kwargs is not None:

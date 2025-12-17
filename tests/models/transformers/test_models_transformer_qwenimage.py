@@ -103,9 +103,8 @@ class QwenImageTransformerTests(ModelTesterMixin, unittest.TestCase):
             inputs["encoder_hidden_states"], encoder_hidden_states_mask
         )
 
-        # Verify rope_text_seq_len is returned as a tensor (for torch.compile compatibility)
-        self.assertIsInstance(rope_text_seq_len, torch.Tensor)
-        self.assertEqual(rope_text_seq_len.ndim, 0)  # Should be scalar tensor
+        # Verify rope_text_seq_len is returned as an int (for torch.compile compatibility)
+        self.assertIsInstance(rope_text_seq_len, int)
 
         # Verify per_sample_len is computed correctly (max valid position + 1 = 2)
         self.assertIsInstance(per_sample_len, torch.Tensor)
@@ -116,7 +115,7 @@ class QwenImageTransformerTests(ModelTesterMixin, unittest.TestCase):
         self.assertEqual(normalized_mask.sum().item(), 2)  # Only 2 True values
 
         # Verify rope_text_seq_len is at least the sequence length
-        self.assertGreaterEqual(int(rope_text_seq_len.item()), inputs["encoder_hidden_states"].shape[1])
+        self.assertGreaterEqual(rope_text_seq_len, inputs["encoder_hidden_states"].shape[1])
 
         # Test 2: Verify model runs successfully with inferred values
         inputs["encoder_hidden_states_mask"] = normalized_mask
@@ -142,6 +141,7 @@ class QwenImageTransformerTests(ModelTesterMixin, unittest.TestCase):
             inputs["encoder_hidden_states"], None
         )
         self.assertEqual(rope_text_seq_len_none, inputs["encoder_hidden_states"].shape[1])
+        self.assertIsInstance(rope_text_seq_len_none, int)
         self.assertIsNone(per_sample_len_none)
         self.assertIsNone(normalized_mask_none)
 
@@ -162,6 +162,7 @@ class QwenImageTransformerTests(ModelTesterMixin, unittest.TestCase):
         )
         self.assertEqual(int(per_sample_len.max().item()), 5)
         self.assertEqual(inferred_rope_len, inputs["encoder_hidden_states"].shape[1])
+        self.assertIsInstance(inferred_rope_len, int)
         self.assertTrue(normalized_mask.dtype == torch.bool)
 
         inputs["encoder_hidden_states_mask"] = normalized_mask
@@ -170,6 +171,92 @@ class QwenImageTransformerTests(ModelTesterMixin, unittest.TestCase):
             output = model(**inputs)
 
         self.assertEqual(output.sample.shape[1], inputs["hidden_states"].shape[1])
+
+    def test_txt_seq_lens_deprecation(self):
+        """Test that passing txt_seq_lens raises a deprecation warning."""
+        init_dict, inputs = self.prepare_init_args_and_inputs_for_common()
+        model = self.model_class(**init_dict).to(torch_device)
+
+        # Prepare inputs with txt_seq_lens (deprecated parameter)
+        txt_seq_lens = [inputs["encoder_hidden_states"].shape[1]]
+
+        # Remove encoder_hidden_states_mask to use the deprecated path
+        inputs_with_deprecated = inputs.copy()
+        inputs_with_deprecated.pop("encoder_hidden_states_mask")
+        inputs_with_deprecated["txt_seq_lens"] = txt_seq_lens
+
+        # Test that deprecation warning is raised
+        with self.assertWarns(FutureWarning) as warning_context:
+            with torch.no_grad():
+                output = model(**inputs_with_deprecated)
+
+        # Verify the warning message mentions the deprecation
+        warning_message = str(warning_context.warning)
+        self.assertIn("txt_seq_lens", warning_message)
+        self.assertIn("deprecated", warning_message)
+        self.assertIn("encoder_hidden_states_mask", warning_message)
+
+        # Verify the model still works correctly despite the deprecation
+        self.assertEqual(output.sample.shape[1], inputs["hidden_states"].shape[1])
+
+    def test_layered_model_with_mask(self):
+        """Test QwenImageTransformer2DModel with use_layer3d_rope=True (layered model)."""
+        # Create layered model config
+        init_dict = {
+            "patch_size": 2,
+            "in_channels": 16,
+            "out_channels": 16,
+            "num_layers": 2,
+            "attention_head_dim": 128,
+            "num_attention_heads": 4,
+            "joint_attention_dim": 16,
+            "use_layer3d_rope": True,  # Enable layered RoPE
+        }
+
+        model = self.model_class(**init_dict).to(torch_device)
+
+        # Verify the model uses QwenEmbedLayer3DRope
+        from diffusers.models.transformers.transformer_qwenimage import QwenEmbedLayer3DRope
+
+        self.assertIsInstance(model.pos_embed, QwenEmbedLayer3DRope)
+
+        # Test single generation with layered structure
+        batch_size = 1
+        text_seq_len = 7
+        img_h, img_w = 4, 4
+        layers = 4
+
+        # For layered model: (layers + 1) because we have N layers + 1 combined image
+        hidden_states = torch.randn(batch_size, (layers + 1) * img_h * img_w, 16).to(torch_device)
+        encoder_hidden_states = torch.randn(batch_size, text_seq_len, 16).to(torch_device)
+
+        # Create mask with some padding
+        encoder_hidden_states_mask = torch.ones(batch_size, text_seq_len).to(torch_device)
+        encoder_hidden_states_mask[0, 5:] = 0  # Only 5 valid tokens
+
+        timestep = torch.tensor([1.0]).to(torch_device)
+
+        # Layer structure: 4 layers + 1 condition image
+        img_shapes = [
+            [
+                (1, img_h, img_w),  # layer 0
+                (1, img_h, img_w),  # layer 1
+                (1, img_h, img_w),  # layer 2
+                (1, img_h, img_w),  # layer 3
+                (1, img_h, img_w),  # condition image (last one gets special treatment)
+            ]
+        ]
+
+        with torch.no_grad():
+            output = model(
+                hidden_states=hidden_states,
+                encoder_hidden_states=encoder_hidden_states,
+                encoder_hidden_states_mask=encoder_hidden_states_mask,
+                timestep=timestep,
+                img_shapes=img_shapes,
+            )
+
+        self.assertEqual(output.sample.shape[1], hidden_states.shape[1])
 
 
 class QwenImageTransformerCompileTests(TorchCompileTesterMixin, unittest.TestCase):
