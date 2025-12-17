@@ -116,31 +116,9 @@ image = pipe(
 
 ## Performance
 
-### Attention Backends
-
-QwenImage supports multiple attention backends. Benchmarks on A100 80GB:
-
-**Single Image (30 steps, 512x512):**
-
-| Backend | Time (s) |
-|---------|----------|
-| flash_hub | 2.34 |
-| native | 2.38 |
-| xformers | 2.58 |
-| flash_varlen | 2.78 |
-
-**Batch (2 images, 25 steps, 512x512):**
-
-| Backend | Time (s) |
-|---------|----------|
-| flash_hub | 2.85 |
-| native | 3.16 |
-| flash_varlen | 3.29 |
-| xformers | 3.52 |
-
 ### torch.compile
 
-Using `torch.compile` provides significant speedups with a one-time compilation overhead:
+Using `torch.compile` on the transformer provides ~2.4x speedup (A100 80GB: 4.70s → 1.93s):
 
 ```python
 import torch
@@ -149,8 +127,8 @@ from diffusers import QwenImagePipeline
 pipe = QwenImagePipeline.from_pretrained("Qwen/Qwen-Image", torch_dtype=torch.bfloat16).to("cuda")
 pipe.transformer = torch.compile(pipe.transformer)
 
-# First call triggers compilation (~7s overhead on A100)
-# Subsequent calls see ~2.4x speedup
+# First call triggers compilation (~7s overhead)
+# Subsequent calls run at ~2.4x faster
 image = pipe("a cat", num_inference_steps=50).images[0]
 ```
 
