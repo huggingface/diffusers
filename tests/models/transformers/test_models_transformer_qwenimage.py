@@ -145,6 +145,23 @@ class QwenImageTransformerTests(ModelTesterMixin, unittest.TestCase):
         self.assertIsNone(per_sample_len_none)
         self.assertIsNone(normalized_mask_none)
 
+    def test_deprecated_txt_seq_lens_warning(self):
+        """Test that passing the deprecated txt_seq_lens parameter raises a FutureWarning."""
+        init_dict, inputs = self.prepare_init_args_and_inputs_for_common()
+        model = self.model_class(**init_dict).to(torch_device)
+        model.eval()
+
+        # Add the deprecated txt_seq_lens parameter
+        inputs["txt_seq_lens"] = [inputs["encoder_hidden_states"].shape[1]]
+
+        with self.assertWarns(FutureWarning) as warning:
+            with torch.no_grad():
+                _ = model(**inputs)
+
+        # Verify the warning message mentions the deprecated parameter
+        self.assertIn("txt_seq_lens", str(warning.warning))
+        self.assertIn("deprecated", str(warning.warning).lower())
+
     def test_non_contiguous_attention_mask(self):
         """Test that non-contiguous masks work correctly (e.g., [1, 0, 1, 0, 1, 0, 0])"""
         init_dict, inputs = self.prepare_init_args_and_inputs_for_common()
