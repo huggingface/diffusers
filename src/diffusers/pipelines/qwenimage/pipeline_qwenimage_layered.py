@@ -56,9 +56,18 @@ EXAMPLE_DOC_STRING = """
         >>> prompt = ""
         >>> # Depending on the variant being used, the pipeline call will slightly vary.
         >>> # Refer to the pipeline documentation for more details.
-        >>> images = pipe(image, prompt, num_inference_steps=50, true_cfg_scale=4.0, layers=4, resolution=640, cfg_normalize=False, use_en_prompt=True).images[0]
+        >>> images = pipe(
+        ...     image,
+        ...     prompt,
+        ...     num_inference_steps=50,
+        ...     true_cfg_scale=4.0,
+        ...     layers=4,
+        ...     resolution=640,
+        ...     cfg_normalize=False,
+        ...     use_en_prompt=True,
+        ... ).images[0]
         >>> for i, image in enumerate(images):
-        >>>     image.save(f"{i}.out.png")
+        ...     image.save(f"{i}.out.png")
         ```
 """
 
@@ -213,8 +222,21 @@ class QwenImageLayeredPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
 
         self.prompt_template_encode = "<|im_start|>system\nDescribe the image by detailing the color, shape, size, texture, quantity, text, spatial relationships of the objects and background:<|im_end|>\n<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n"
         self.prompt_template_encode_start_idx = 34
-        self.image_caption_prompt_cn = """<|im_start|>system\nYou are a helpful assistant.<|im_end|>\n<|im_start|>user\n# 图像标注器\n你是一个专业的图像标注器。请基于输入图像，撰写图注:\n1. 使用自然、描述性的语言撰写图注，不要使用结构化形式或富文本形式。\n2. 通过加入以下内容，丰富图注细节：\n   - 对象的属性：如数量、颜色、形状、大小、位置、材质、状态、动作等\n   - 对象间的视觉关系：如空间关系、功能关系、动作关系、从属关系、比较关系、因果关系等\n   - 环境细节：例如天气、光照、颜色、纹理、气氛等\n   - 文字内容：识别图像中清晰可见的文字，不做翻译和解释，用引号在图注中强调\n3. 保持真实性与准确性：\n   - 不要使用笼统的描述\n   - 描述图像中所有可见的信息，但不要加入没有在图像中出现的内容\n<|vision_start|><|image_pad|><|vision_end|><|im_end|>\n<|im_start|>assistant\n"""
-        self.image_caption_prompt_en = """<|im_start|>system\nYou are a helpful assistant.<|im_end|>\n<|im_start|>user\n# Image Annotator\nYou are a professional image annotator. Please write an image caption based on the input image:\n1. Write the caption using natural, descriptive language without structured formats or rich text.\n2. Enrich caption details by including: \n   - Object attributes, such as quantity, color, shape, size, material, state, position, actions, and so on\n   - Vision Relations between objects, such as spatial relations, functional relations, possessive relations, attachment relations, action relations, comparative relations, causal relations, and so on\n   - Environmental details, such as weather, lighting, colors, textures, atmosphere, and so on\n   - Identify the text clearly visible in the image, without translation or explanation, and highlight it in the caption with quotation marks\n3. Maintain authenticity and accuracy:\n   - Avoid generalizations\n   - Describe all visible information in the image, while do not add information not explicitly shown in the image\n<|vision_start|><|image_pad|><|vision_end|><|im_end|>\n<|im_start|>assistant\n"""
+        self.image_caption_prompt_cn = """<|im_start|>system\nYou are a helpful assistant.<|im_end|>\n<|im_start|>user\n# 图像标注器\n你是一个专业的图像标注器。请基于输入图像，撰写图注:\n1.
+使用自然、描述性的语言撰写图注，不要使用结构化形式或富文本形式。\n2. 通过加入以下内容，丰富图注细节：\n - 对象的属性：如数量、颜色、形状、大小、位置、材质、状态、动作等\n -
+对象间的视觉关系：如空间关系、功能关系、动作关系、从属关系、比较关系、因果关系等\n - 环境细节：例如天气、光照、颜色、纹理、气氛等\n - 文字内容：识别图像中清晰可见的文字，不做翻译和解释，用引号在图注中强调\n3.
+保持真实性与准确性：\n - 不要使用笼统的描述\n -
+描述图像中所有可见的信息，但不要加入没有在图像中出现的内容\n<|vision_start|><|image_pad|><|vision_end|><|im_end|>\n<|im_start|>assistant\n"""
+        self.image_caption_prompt_en = """<|im_start|>system\nYou are a helpful assistant.<|im_end|>\n<|im_start|>user\n# Image Annotator\nYou are a professional
+image annotator. Please write an image caption based on the input image:\n1. Write the caption using natural,
+descriptive language without structured formats or rich text.\n2. Enrich caption details by including: \n - Object
+attributes, such as quantity, color, shape, size, material, state, position, actions, and so on\n - Vision Relations
+between objects, such as spatial relations, functional relations, possessive relations, attachment relations, action
+relations, comparative relations, causal relations, and so on\n - Environmental details, such as weather, lighting,
+colors, textures, atmosphere, and so on\n - Identify the text clearly visible in the image, without translation or
+explanation, and highlight it in the caption with quotation marks\n3. Maintain authenticity and accuracy:\n - Avoid
+generalizations\n - Describe all visible information in the image, while do not add information not explicitly shown in
+the image\n<|vision_start|><|image_pad|><|vision_end|><|im_end|>\n<|im_start|>assistant\n"""
         self.default_sample_size = 128
 
     # Copied from diffusers.pipelines.qwenimage.pipeline_qwenimage.QwenImagePipeline._extract_masked_hidden
