@@ -667,8 +667,8 @@ else:
             "WuerstchenCombinedPipeline",
             "WuerstchenDecoderPipeline",
             "WuerstchenPriorPipeline",
-            "ZImageControlNetPipeline",
             "ZImageControlNetInpaintPipeline",
+            "ZImageControlNetPipeline",
             "ZImageImg2ImgPipeline",
             "ZImagePipeline",
         ]
