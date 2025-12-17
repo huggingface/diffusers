@@ -367,14 +367,39 @@ class QwenEmbedLayer3DRope(nn.Module):
         freqs = torch.polar(torch.ones_like(freqs), freqs)
         return freqs
 
-    def forward(self, video_fhw, txt_seq_lens, device):
+    def forward(
+        self,
+        video_fhw: Union[Tuple[int, int, int], List[Tuple[int, int, int]]],
+        max_txt_seq_len: Union[int, torch.Tensor],
+        device: torch.device = None,
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
         """
-        Args: video_fhw: [frame, height, width] a list of 3 integers representing the shape of the video Args:
-        txt_length: [bs] a list of 1 integers representing the length of the text
+        Args:
+            video_fhw (`Tuple[int, int, int]` or `List[Tuple[int, int, int]]`):
+                A list of 3 integers [frame, height, width] representing the shape of the video, or a list of layer
+                structures.
+            max_txt_seq_len (`int` or `torch.Tensor`):
+                The maximum text sequence length for RoPE computation. This should match the encoder hidden states
+                sequence length. Can be either an int or a scalar tensor (for torch.compile compatibility).
+            device: (`torch.device`, *optional*):
+                The device on which to perform the RoPE computation.
         """
-        if self.pos_freqs.device != device:
-            self.pos_freqs = self.pos_freqs.to(device)
-            self.neg_freqs = self.neg_freqs.to(device)
+        # Move to device unconditionally to avoid graph breaks in torch.compile
+        self.pos_freqs = self.pos_freqs.to(device)
+        self.neg_freqs = self.neg_freqs.to(device)
+
+        # Validate batch inference with variable-sized images
+        # In Layer3DRope, the outer list represents batch, inner list/tuple represents layers
+        if isinstance(video_fhw, list) and len(video_fhw) > 1:
+            # Check if this is batch inference (list of layer lists/tuples)
+            first_entry = video_fhw[0]
+            if not all(entry == first_entry for entry in video_fhw):
+                logger.warning(
+                    "Batch inference with variable-sized images is not currently supported in QwenEmbedLayer3DRope. "
+                    "All images in the batch should have the same layer structure. "
+                    f"Detected sizes: {video_fhw}. Using the first image's layer structure {first_entry} "
+                    "for RoPE computation, which may lead to incorrect results for other images in the batch."
+                )
 
         if isinstance(video_fhw, list):
             video_fhw = video_fhw[0]
@@ -400,8 +425,7 @@ class QwenEmbedLayer3DRope(nn.Module):
                 max_vid_index = max(height, width, max_vid_index)
 
         max_vid_index = max(max_vid_index, layer_num)
-        max_len = max(txt_seq_lens)
-        txt_freqs = self.pos_freqs[max_vid_index : max_vid_index + max_len, ...]
+        txt_freqs = self.pos_freqs[max_vid_index : max_vid_index + max_txt_seq_len, ...]
         vid_freqs = torch.cat(vid_freqs, dim=0)
 
         return vid_freqs, txt_freqs

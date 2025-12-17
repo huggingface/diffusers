@@ -781,10 +781,6 @@ the image\n<|vision_start|><|image_pad|><|vision_end|><|im_end|>\n<|im_start|>as
         if self.attention_kwargs is None:
             self._attention_kwargs = {}
 
-        txt_seq_lens = prompt_embeds_mask.sum(dim=1).tolist() if prompt_embeds_mask is not None else None
-        negative_txt_seq_lens = (
-            negative_prompt_embeds_mask.sum(dim=1).tolist() if negative_prompt_embeds_mask is not None else None
-        )
         is_rgb = torch.tensor([0] * batch_size).to(device=device, dtype=torch.long)
         # 6. Denoising loop
         self.scheduler.set_begin_index(0)
@@ -809,7 +805,6 @@ the image\n<|vision_start|><|image_pad|><|vision_end|><|im_end|>\n<|im_start|>as
                         encoder_hidden_states_mask=prompt_embeds_mask,
                         encoder_hidden_states=prompt_embeds,
                         img_shapes=img_shapes,
-                        txt_seq_lens=txt_seq_lens,
                         attention_kwargs=self.attention_kwargs,
                         additional_t_cond=is_rgb,
                         return_dict=False,
@@ -825,7 +820,6 @@ the image\n<|vision_start|><|image_pad|><|vision_end|><|im_end|>\n<|im_start|>as
                             encoder_hidden_states_mask=negative_prompt_embeds_mask,
                             encoder_hidden_states=negative_prompt_embeds,
                             img_shapes=img_shapes,
-                            txt_seq_lens=negative_txt_seq_lens,
                             attention_kwargs=self.attention_kwargs,
                             additional_t_cond=is_rgb,
                             return_dict=False,
