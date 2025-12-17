@@ -919,7 +919,6 @@ class QwenImageTransformer2DModel(
             attention_kwargs = attention_kwargs.copy()
             lora_scale = attention_kwargs.pop("scale", 1.0)
         else:
-            attention_kwargs = {}
             lora_scale = 1.0
 
         if USE_PEFT_BACKEND:
