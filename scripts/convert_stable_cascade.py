@@ -20,7 +20,7 @@ from diffusers import (
 )
 from diffusers.loaders.single_file_utils import convert_stable_cascade_unet_single_file_to_diffusers
 from diffusers.models import StableCascadeUNet
-from diffusers.models.modeling_utils import load_model_dict_into_meta
+from diffusers.models.model_loading_utils import load_model_dict_into_meta
 from diffusers.pipelines.wuerstchen import PaellaVQModel
 from diffusers.utils import is_accelerate_available
 

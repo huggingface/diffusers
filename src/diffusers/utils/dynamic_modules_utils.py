@@ -358,6 +358,7 @@ def get_cached_module_file(
                 proxies=proxies,
                 local_files_only=local_files_only,
                 local_dir=local_dir,
+                revision=revision,
                 token=token,
             )
             submodule = os.path.join("local", "--".join(pretrained_model_name_or_path.split("/")))
