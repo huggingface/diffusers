@@ -2976,8 +2976,8 @@ class TaylorSeerCacheTesterMixin:
             "Outputs from normal inference and after disabling cache should not differ."
         )
 
-class MagCacheTesterMixin:
 
+class MagCacheTesterMixin:
     mag_cache_config = MagCacheConfig(
         threshold=0.06,
         max_skip_steps=3,
@@ -3024,7 +3024,6 @@ class MagCacheTesterMixin:
         assert np.allclose(original_image_slice, image_slice_enabled, atol=expected_atol), (
             "MagCache outputs should not differ too much from baseline."
         )
-
 
         assert np.allclose(original_image_slice, image_slice_disabled, atol=1e-4), (
             "Outputs after disabling cache should match original inference exactly."

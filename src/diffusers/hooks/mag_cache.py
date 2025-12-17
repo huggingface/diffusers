@@ -127,10 +127,8 @@ class MagCacheConfig:
             )
 
         if not self.calibrate and self.mag_ratios is not None:
-
             if not torch.is_tensor(self.mag_ratios):
                 self.mag_ratios = torch.tensor(self.mag_ratios)
-
 
             if len(self.mag_ratios) != self.num_inference_steps:
                 logger.debug(
@@ -190,7 +188,6 @@ class MagCacheHeadHook(ModelHook):
 
         arg_name = self._metadata.hidden_states_argument_name
         hidden_states = self._metadata._get_parameter_from_args_kwargs(arg_name, args, kwargs)
-
 
         state: MagCacheState = self.state_manager.get_state()
         state.head_block_input = hidden_states
