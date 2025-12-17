@@ -72,7 +72,7 @@ EXAMPLE_DOC_STRING = """
 """
 
 
-# Copied from diffusers.pipelines.qwenimage.pipeline_qwenimage_utils.calculate_shift
+# Copied from diffusers.pipelines.flux.pipeline_flux_utils.calculate_shift
 def calculate_shift(
     image_seq_len,
     base_seq_len: int = 256,
