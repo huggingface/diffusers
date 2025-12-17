@@ -8,7 +8,7 @@ import torch
 from accelerate import init_empty_weights
 from huggingface_hub import hf_hub_download
 
-from diffusers import LTX2VideoTransformer3DModel
+from diffusers import AutoencoderKLLTX2Video, LTX2VideoTransformer3DModel
 from diffusers.utils.import_utils import is_accelerate_available
 
 
@@ -33,6 +33,32 @@ LTX_2_0_TRANSFORMER_KEYS_RENAME_DICT = {
     # Attention QK Norms
     "q_norm": "norm_q",
     "k_norm": "norm_k",
+}
+
+LTX_2_0_VIDEO_VAE_RENAME_DICT = {
+    # Encoder
+    "down_blocks.0": "down_blocks.0",
+    "down_blocks.1": "down_blocks.0.downsamplers.0",
+    "down_blocks.2": "down_blocks.1",
+    "down_blocks.3": "down_blocks.1.downsamplers.0",
+    "down_blocks.4": "down_blocks.2",
+    "down_blocks.5": "down_blocks.2.downsamplers.0",
+    "down_blocks.6": "down_blocks.3",
+    "down_blocks.7": "down_blocks.3.downsamplers.0",
+    "down_blocks.8": "mid_block",
+    # Decoder
+    "up_blocks.0": "mid_block",
+    "up_blocks.1": "up_blocks.0.upsamplers.0",
+    "up_blocks.2": "up_blocks.0",
+    "up_blocks.3": "up_blocks.1.upsamplers.0",
+    "up_blocks.4": "up_blocks.1",
+    "up_blocks.5": "up_blocks.2.upsamplers.0",
+    "up_blocks.6": "up_blocks.2",
+    # Common
+    # For all 3D ResNets
+    "res_blocks": "resnets",
+    "per_channel_statistics.mean-of-means": "latents_mean",
+    "per_channel_statistics.std-of-means": "latents_std",
 }
 
 
@@ -66,6 +92,11 @@ LTX_2_0_TRANSFORMER_SPECIAL_KEYS_REMAP = {
     "video_embeddings_connector": remove_keys_inplace,
     "audio_embeddings_connector": remove_keys_inplace,
     "adaln_single": convert_ltx2_transformer_adaln_single,
+}
+
+LTX_2_0_VAE_SPECIAL_KEYS_REMAP = {
+    "per_channel_statistics.channel": remove_keys_inplace,
+    "per_channel_statistics.mean-of-stds": remove_keys_inplace,
 }
 
 
@@ -178,6 +209,102 @@ def convert_ltx2_transformer(original_state_dict: Dict[str, Any], version: str) 
 
     transformer.load_state_dict(original_state_dict, strict=True, assign=True)
     return transformer
+
+
+def get_ltx2_video_vae_config(version: str) -> Tuple[Dict[str, Any], Dict[str, Any], Dict[str, Any]]:
+    if version == "test":
+        config = {
+            "model_id": "diffusers-internal-dev/dummy-ltx2",
+            "diffusers_config": {
+                "in_channels": 3,
+                "out_channels": 3,
+                "latent_channels": 128,
+                "block_out_channels": (256, 512, 1024, 2048),
+                "down_block_types": (
+                    "LTX2VideoDownBlock3D",
+                    "LTX2VideoDownBlock3D",
+                    "LTX2VideoDownBlock3D",
+                    "LTX2VideoDownBlock3D",
+                ),
+                "decoder_block_out_channels": (256, 512, 1024),
+                "layers_per_block": (4, 6, 6, 2, 2),
+                "decoder_layers_per_block": (5, 5, 5, 5),
+                "spatio_temporal_scaling": (True, True, True, True),
+                "decoder_spatio_temporal_scaling": (True, True, True),
+                "decoder_inject_noise": (False, False, False, False),
+                "downsample_type": ("spatial", "temporal", "spatiotemporal", "spatiotemporal"),
+                "upsample_residual": (True, True, True),
+                "upsample_factor": (2, 2, 2),
+                "timestep_conditioning": False,
+                "patch_size": 4,
+                "patch_size_t": 1,
+                "resnet_norm_eps": 1e-6,
+                "encoder_causal": True,
+                "decoder_causal": True,
+            },
+        }
+        rename_dict = LTX_2_0_VIDEO_VAE_RENAME_DICT
+        special_keys_remap = LTX_2_0_VAE_SPECIAL_KEYS_REMAP
+    elif version == "2.0":
+        config = {
+            "model_id": "diffusers-internal-dev/dummy-ltx2",
+            "diffusers_config": {
+                "in_channels": 3,
+                "out_channels": 3,
+                "latent_channels": 128,
+                "block_out_channels": (256, 512, 1024, 2048),
+                "down_block_types": (
+                    "LTX2VideoDownBlock3D",
+                    "LTX2VideoDownBlock3D",
+                    "LTX2VideoDownBlock3D",
+                    "LTX2VideoDownBlock3D",
+                ),
+                "decoder_block_out_channels": (256, 512, 1024),
+                "layers_per_block": (4, 6, 6, 2, 2),
+                "decoder_layers_per_block": (5, 5, 5, 5),
+                "spatio_temporal_scaling": (True, True, True, True),
+                "decoder_spatio_temporal_scaling": (True, True, True),
+                "decoder_inject_noise": (False, False, False, False),
+                "downsample_type": ("spatial", "temporal", "spatiotemporal", "spatiotemporal"),
+                "upsample_residual": (True, True, True),
+                "upsample_factor": (2, 2, 2),
+                "timestep_conditioning": False,
+                "patch_size": 4,
+                "patch_size_t": 1,
+                "resnet_norm_eps": 1e-6,
+                "encoder_causal": True,
+                "decoder_causal": True,
+            },
+        }
+        rename_dict = LTX_2_0_VIDEO_VAE_RENAME_DICT
+        special_keys_remap = LTX_2_0_VAE_SPECIAL_KEYS_REMAP
+    return config, rename_dict, special_keys_remap
+
+
+def convert_ltx2_video_vae(original_state_dict: Dict[str, Any], version: str) -> Dict[str, Any]:
+    config, rename_dict, special_keys_remap = get_ltx2_video_vae_config(version)
+    diffusers_config = config["diffusers_config"]
+
+    with init_empty_weights():
+        vae = AutoencoderKLLTX2Video.from_config(diffusers_config)
+
+    # Handle official code --> diffusers key remapping via the remap dict
+    for key in list(original_state_dict.keys()):
+        new_key = key[:]
+        for replace_key, rename_key in rename_dict.items():
+            new_key = new_key.replace(replace_key, rename_key)
+        update_state_dict_inplace(original_state_dict, key, new_key)
+
+    # Handle any special logic which can't be expressed by a simple 1:1 remapping with the handlers in
+    # special_keys_remap
+    for key in list(original_state_dict.keys()):
+        for special_key, handler_fn_inplace in special_keys_remap.items():
+            if special_key not in key:
+                continue
+            handler_fn_inplace(key, original_state_dict)
+
+    vae.load_state_dict(original_state_dict, strict=True, assign=True)
+    return vae
 
 
 def load_original_checkpoint(args, filename: Optional[str]) -> Dict[str, Any]:
@@ -312,7 +439,13 @@ def main(args):
         combined_ckpt = load_original_checkpoint(args, filename=args.combined_filename)
 
     if args.vae or args.full_pipeline:
-        pass
+        if args.vae_filename is not None:
+            original_vae_ckpt = load_hub_or_local_checkpoint(filename=args.vae_filename)
+        elif combined_ckpt is not None:
+            original_vae_ckpt = get_model_state_dict_from_combined_ckpt(combined_ckpt, args.vae_prefix)
+        vae = convert_ltx2_video_vae(original_vae_ckpt, version=args.version)
+        if not args.full_pipeline:
+            vae.to(vae_dtype).save_pretrained(os.path.join(args.output_path, "vae"))
 
     if args.audio_vae or args.full_pipeline:
         pass
