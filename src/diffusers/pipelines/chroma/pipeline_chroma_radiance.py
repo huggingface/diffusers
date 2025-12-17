@@ -50,12 +50,12 @@ EXAMPLE_DOC_STRING = """
     Examples:
         ```py
         >>> import torch
-        >>> from diffusers import ChromaPipeline
+        >>> from diffusers import ChromaRadiancePipeline
 
-        >>> model_id = "lodestones/Chroma1-HD"
-        >>> ckpt_path = "https://huggingface.co/lodestones/Chroma1-HD/blob/main/Chroma1-HD.safetensors"
+        >>> model_id = "lodestones/Chroma1-Radiance"
+        >>> ckpt_path = "https://huggingface.co/lodestones/Chroma1-HD/blob/main/latest_x0.safetensors"
         >>> transformer = ChromaTransformer2DModel.from_single_file(ckpt_path, torch_dtype=torch.bfloat16)
-        >>> pipe = ChromaPipeline.from_pretrained(
+        >>> pipe = ChromaRadiancePipeline.from_pretrained(
         ...     model_id,
         ...     transformer=transformer,
         ...     torch_dtype=torch.bfloat16,
@@ -470,25 +470,6 @@ class ChromaRadiancePipeline(
 
         return latent_image_ids.to(device=device, dtype=dtype)
 
-    @staticmethod
-    def _pack_latents(latents, batch_size, num_channels_latents, height, width):
-        latents = latents.view(batch_size, num_channels_latents, height // 2, 2, width // 2, 2)
-        latents = latents.permute(0, 2, 4, 1, 3, 5)
-        latents = latents.reshape(batch_size, (height // 2) * (width // 2), num_channels_latents * 4)
-
-        return latents
-
-    @staticmethod
-    def _unpack_latents(latents, height, width):
-        batch_size, num_patches, channels = latents.shape
-
-        latents = latents.view(batch_size, height // 2, width // 2, channels // 4, 2, 2)
-        latents = latents.permute(0, 3, 1, 4, 2, 5)
-
-        latents = latents.reshape(batch_size, channels // (2 * 2), height, width)
-
-        return latents
-
     def prepare_latents(
         self,
         batch_size,
@@ -891,7 +872,6 @@ class ChromaRadiancePipeline(
         if output_type == "latent":
             image = latents
         else:
-            # image = self._unpack_latents(image, height, width)
             image = self.image_processor.postprocess(latents, output_type=output_type)
 
         # Offload all models
