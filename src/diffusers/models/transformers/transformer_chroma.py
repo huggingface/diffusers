@@ -968,7 +968,7 @@ class ChromaRadianceTransformer2DModel(
 
         if self.config.patch_size == 32:
             _, _, height, width = hidden_states.shape
-            hidden_states = nn.functional.interpolate(hidden_states, size=(height//2, width//2), mode="nearest")
+            hidden_states = nn.functional.interpolate(hidden_states, size=(height // 2, width // 2), mode="nearest")
         hidden_states = self.x_embedder_patch(hidden_states)
         num_patches = hidden_states.shape[2] * hidden_states.shape[3]
         hidden_states = hidden_states.flatten(2).transpose(1, 2)
@@ -1077,7 +1077,7 @@ class ChromaRadianceTransformer2DModel(
         # using x0 prediction
 
         if self.x0:
-            output = (pixels - output) / (timestep / 1000).view(-1,1,1,1)
+            output = (pixels - output) / (timestep / 1000).view(-1, 1, 1, 1)
 
         if USE_PEFT_BACKEND:
             # remove `lora_scale` from each PEFT layer
