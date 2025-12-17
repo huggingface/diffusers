@@ -560,16 +560,15 @@ class QwenDoubleStreamAttnProcessor2_0:
                     f"must match encoder_hidden_states sequence length ({text_seq_len})."
                 )
 
-            # Only create mask if there's actual padding (i.e., some False/0 values)
-            # When all values are True/1.0, passing attention_mask=None is more efficient for SDPA
+            # Create joint attention mask
+            # torch.compile compatible: always create mask when encoder_hidden_states_mask is provided
             text_attention_mask = encoder_hidden_states_mask.bool()
-            if not text_attention_mask.all():
-                image_attention_mask = torch.ones(
-                    (batch_size, image_seq_len), dtype=torch.bool, device=hidden_states.device
-                )
-                # Create 2D joint mask [batch_size, text_seq_len + image_seq_len]
-                # The attention dispatch will normalize this and extract sequence lengths
-                attention_mask = torch.cat([text_attention_mask, image_attention_mask], dim=1)
+            image_attention_mask = torch.ones(
+                (batch_size, image_seq_len), dtype=torch.bool, device=hidden_states.device
+            )
+            # Create 2D joint mask [batch_size, text_seq_len + image_seq_len]
+            # The attention dispatch will normalize this and extract sequence lengths
+            attention_mask = torch.cat([text_attention_mask, image_attention_mask], dim=1)
 
         # Compute joint attention
         joint_hidden_states = dispatch_attention_fn(
