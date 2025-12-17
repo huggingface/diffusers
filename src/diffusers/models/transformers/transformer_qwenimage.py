@@ -253,8 +253,8 @@ class QwenEmbedRope(nn.Module):
         if txt_seq_lens is not None:
             deprecate(
                 "txt_seq_lens",
-                "0.37.0",
-                "Passing `txt_seq_lens` is deprecated and will be removed in version 0.37.0. "
+                "0.39.0",
+                "Passing `txt_seq_lens` is deprecated and will be removed in version 0.39.0. "
                 "Please use `max_txt_seq_len` instead. "
                 "The new parameter accepts a single int or tensor value representing the maximum text sequence length.",
                 standard_warn=False,
@@ -907,8 +907,8 @@ class QwenImageTransformer2DModel(
         if txt_seq_lens is not None:
             deprecate(
                 "txt_seq_lens",
-                "0.37.0",
-                "Passing `txt_seq_lens` is deprecated and will be removed in version 0.37.0. "
+                "0.39.0",
+                "Passing `txt_seq_lens` is deprecated and will be removed in version 0.39.0. "
                 "Please use `encoder_hidden_states_mask` instead. "
                 "The mask-based approach is more flexible and supports variable-length sequences.",
                 standard_warn=False,

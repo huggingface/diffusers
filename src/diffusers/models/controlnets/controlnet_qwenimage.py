@@ -174,9 +174,9 @@ class QwenImageControlNetModel(
         if txt_seq_lens is not None:
             deprecate(
                 "txt_seq_lens",
-                "0.37.0",
+                "0.39.0",
                 "Passing `txt_seq_lens` to `QwenImageControlNetModel.forward()` is deprecated and will be removed in "
-                "version 0.37.0. The text sequence length is now automatically inferred from `encoder_hidden_states` "
+                "version 0.39.0. The text sequence length is now automatically inferred from `encoder_hidden_states` "
                 "and `encoder_hidden_states_mask`.",
                 standard_warn=False,
             )
@@ -291,9 +291,9 @@ class QwenImageMultiControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, F
         if txt_seq_lens is not None:
             deprecate(
                 "txt_seq_lens",
-                "0.37.0",
+                "0.39.0",
                 "Passing `txt_seq_lens` to `QwenImageMultiControlNetModel.forward()` is deprecated and will be "
-                "removed in version 0.37.0. The text sequence length is now automatically inferred from "
+                "removed in version 0.39.0. The text sequence length is now automatically inferred from "
                 "`encoder_hidden_states` and `encoder_hidden_states_mask`.",
                 standard_warn=False,
             )
