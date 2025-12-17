@@ -8,7 +8,9 @@ from diffusers.schedulers.scheduling_utils import KarrasDiffusionSchedulers, Sch
 from diffusers.utils import deprecate
 
 
-def _get_karras_sigmas(num_train_steps: int, num_steps: int, sigma_max: float, sigma_min: float, rho: int, final_sigmas_type: str):
+def _get_karras_sigmas(
+    num_train_steps: int, num_steps: int, sigma_max: float, sigma_min: float, rho: int, final_sigmas_type: str
+):
     sigmas = np.arange(num_steps + 1, dtype=np.float32) / num_steps
     min_inv_rho = sigma_min ** (1 / rho)
     max_inv_rho = sigma_max ** (1 / rho)
@@ -20,9 +22,7 @@ def _get_karras_sigmas(num_train_steps: int, num_steps: int, sigma_max: float, s
     elif final_sigmas_type == "sigma_min":
         sigma_last = sigmas[-1]
     else:
-        raise ValueError(
-            f"`final_sigmas_type` must be 'zero' or 'sigma_min' but got {final_sigmas_type}"
-        )
+        raise ValueError(f"`final_sigmas_type` must be 'zero' or 'sigma_min' but got {final_sigmas_type}")
 
     timesteps = torch.from_numpy(sigmas * num_train_steps).to(torch.int64)
     sigmas = np.concatenate([sigmas, [sigma_last]]).astype(np.float32)
@@ -32,8 +32,8 @@ def _get_karras_sigmas(num_train_steps: int, num_steps: int, sigma_max: float, s
 
 class FlowUniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
     """
-    `FlowUniPCMultistepScheduler` is the UniPC algorithm[1] for flow
-    matching[2], but strictly uses the Karras sigmas [3] (i.e. it follows the EDMEulerScheduler).
+    `FlowUniPCMultistepScheduler` is the UniPC algorithm[1] for flow matching[2], but strictly uses the Karras sigmas
+    [3] (i.e. it follows the EDMEulerScheduler).
 
     Note this a simplified version of `UniPCMultistepScheduler`, as it:
     1. Does not have variance preserving sigmas
@@ -41,9 +41,10 @@ class FlowUniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
     3. Assumes prediction_type == "flow_prediction" (this parameter is removed)
 
     References:
-        [1] Wang, Chong, et al. "UniPC: A Unified Predictor-Corrector Framework for Fast Sampling of Diffusion Models" https://arxiv.org/abs/2302.04867
-        [2] Lipman, Chen, et al. "Flow matching for generative modeling." https://arxiv.org/abs/2210.02747
-        [3] Karras, Tero, et al. "Elucidating the Design Space of Diffusion-Based Generative Models." https://huggingface.co/papers/2206.00364
+        [1] Wang, Chong, et al. "UniPC: A Unified Predictor-Corrector Framework for Fast Sampling of Diffusion Models"
+        https://arxiv.org/abs/2302.04867 [2] Lipman, Chen, et al. "Flow matching for generative modeling."
+        https://arxiv.org/abs/2210.02747 [3] Karras, Tero, et al. "Elucidating the Design Space of Diffusion-Based
+        Generative Models." https://huggingface.co/papers/2206.00364
 
     This model inherits from [`SchedulerMixin`] and [`ConfigMixin`]. Check the superclass documentation for the generic
     methods the library implements for all schedulers such as loading and saving.
@@ -113,7 +114,9 @@ class FlowUniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
         self.solver_p = solver_p
         self.num_inference_steps = None
 
-        self.sigmas, self.timesteps = _get_karras_sigmas(num_train_timesteps, num_train_timesteps, sigma_max, sigma_min, rho, final_sigmas_type)
+        self.sigmas, self.timesteps = _get_karras_sigmas(
+            num_train_timesteps, num_train_timesteps, sigma_max, sigma_min, rho, final_sigmas_type
+        )
         self.sigma_min = self.sigmas[-1].item()
         self.sigma_max = self.sigmas[0].item()
 
@@ -144,7 +147,6 @@ class FlowUniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
         """
         self._begin_index = begin_index
 
-
     # Modified from diffusers.schedulers.scheduling_flow_match_euler_discrete.FlowMatchEulerDiscreteScheduler.set_timesteps
     def set_timesteps(
         self,
@@ -163,7 +165,14 @@ class FlowUniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
         """
         assert sigmas is None, "sigmas are not supported for FlowUniPCMultistepScheduler"
 
-        self.sigmas, self.timesteps = _get_karras_sigmas(self.config.num_train_timesteps, num_inference_steps, self.config.sigma_max, self.config.sigma_min, self.config.rho, self.config.final_sigmas_type)
+        self.sigmas, self.timesteps = _get_karras_sigmas(
+            self.config.num_train_timesteps,
+            num_inference_steps,
+            self.config.sigma_max,
+            self.config.sigma_min,
+            self.config.rho,
+            self.config.final_sigmas_type,
+        )
         self.num_inference_steps = len(self.timesteps)
 
         self.sigma_min = self.sigmas[-1].item()
@@ -171,9 +180,9 @@ class FlowUniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
 
         self.sigmas = self.sigmas.to(device)
         self.timesteps = self.timesteps.to(device)
-        self._reset_state()
+        self._reset_state(device=device)
 
-    def _reset_state(self, solver_order: Optional[int] = None):
+    def _reset_state(self, solver_order: Optional[int] = None, device=None):
         """
         Resets the noise schedule & solver state variables
         """

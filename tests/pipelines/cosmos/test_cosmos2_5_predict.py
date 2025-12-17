@@ -22,7 +22,7 @@ import numpy as np
 import torch
 from transformers import AutoTokenizer, Qwen2VLForConditionalGeneration
 
-from diffusers import AutoencoderKLWan, Cosmos_2_5_PredictBase, CosmosTransformer3DModel, FlowUniPCMultistepScheduler
+from diffusers import AutoencoderKLWan, Cosmos2_5_PredictBase, CosmosTransformer3DModel, FlowUniPCMultistepScheduler
 
 from ...testing_utils import enable_full_determinism, torch_device
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
@@ -33,15 +33,15 @@ from .cosmos_guardrail import DummyCosmosSafetyChecker
 enable_full_determinism()
 
 
-class Cosmos_2_5_PredictBaseWrapper(Cosmos_2_5_PredictBase):
+class Cosmos2_5_PredictBaseWrapper(Cosmos2_5_PredictBase):
     @staticmethod
     def from_pretrained(*args, **kwargs):
         kwargs["safety_checker"] = DummyCosmosSafetyChecker()
-        return Cosmos_2_5_PredictBase.from_pretrained(*args, **kwargs)
+        return Cosmos2_5_PredictBase.from_pretrained(*args, **kwargs)
 
 
-class Cosmos_2_5_PredictPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
-    pipeline_class = Cosmos_2_5_PredictBaseWrapper
+class Cosmos2_5_PredictPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+    pipeline_class = Cosmos2_5_PredictBaseWrapper
     params = TEXT_TO_IMAGE_PARAMS - {"cross_attention_kwargs"}
     batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
     image_params = TEXT_TO_IMAGE_IMAGE_PARAMS

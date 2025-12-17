@@ -71,11 +71,11 @@ EXAMPLE_DOC_STRING = """
     Examples:
         ```python
         >>> import torch
-        >>> from diffusers import Cosmos_2_5_PredictBase
+        >>> from diffusers import Cosmos2_5_PredictBase
         >>> from diffusers.utils import export_to_video, load_image, load_video
 
         >>> model_id = "nvidia/Cosmos-Predict2.5-Base-2B"
-        >>> pipe = Cosmos_2_5_PredictBase.from_pretrained(model_id, torch_dtype=torch.bfloat16)
+        >>> pipe = Cosmos2_5_PredictBase.from_pretrained(model_id, torch_dtype=torch.bfloat16)
         >>> pipe = pipe.to("cuda")
 
         >>> # Common negative prompt reused across modes.
@@ -163,7 +163,7 @@ EXAMPLE_DOC_STRING = """
 """
 
 
-class Cosmos_2_5_PredictBase(DiffusionPipeline):
+class Cosmos2_5_PredictBase(DiffusionPipeline):
     r"""
     Pipeline for [Cosmos Predict2.5](https://github.com/nvidia-cosmos/cosmos-predict2.5) base model.
 
@@ -552,7 +552,9 @@ class Cosmos_2_5_PredictBase(DiffusionPipeline):
         - **Image2World**: `image` provided, `video=None`, `prompt` provided. Conditions on a single frame.
         - **Video2World**: `video` provided, `image=None`, `prompt` provided. Conditions on an input clip.
 
-        Set `num_frames=93` (default) to produce a world video, or `num_frames=1` to produce a single image frame.
+        Set `num_frames=93` (default) to produce a world video, or `num_frames=1` to produce a single image frame (the
+        above in "*2Image mode").
+
         Outputs follow `output_type` (e.g., `"pil"` returns a list of `num_frames` PIL images per prompt).
 
         Args:
@@ -739,7 +741,11 @@ class Cosmos_2_5_PredictBase(DiffusionPipeline):
                 self._current_timestep = t.cpu().item()
 
                 # NOTE: assumes sigma(t) \in [0, 1]
-                sigma_t = torch.tensor(self.scheduler.sigmas[i].item()).unsqueeze(0).to(device=device, dtype=transformer_dtype)
+                sigma_t = (
+                    torch.tensor(self.scheduler.sigmas[i].item())
+                    .unsqueeze(0)
+                    .to(device=device, dtype=transformer_dtype)
+                )
 
                 in_latents = cond_mask * cond_latent + (1 - cond_mask) * latents
                 in_latents = in_latents.to(transformer_dtype)
@@ -819,3 +825,471 @@ class Cosmos_2_5_PredictBase(DiffusionPipeline):
             return (video,)
 
         return CosmosPipelineOutput(frames=video)
+
+
+class Cosmos2_5_PredictText2World(Cosmos2_5_PredictBase):
+    r"""
+    Pipeline for [Cosmos Predict2.5](https://github.com/nvidia-cosmos/cosmos-predict2.5) Text2World.
+
+    This pipeline is a specialized version of [`Cosmos2_5_PredictBase`], please refer to the superclass for advanced
+    options.
+
+    Args:
+        text_encoder ([`Qwen2_5_VLForConditionalGeneration`]):
+            Frozen text-encoder. Cosmos Predict2.5 uses the [Qwen2.5
+            VL](https://huggingface.co/Qwen/Qwen2.5-VL-7B-Instruct) encoder.
+        tokenizer (`AutoTokenizer`):
+            Tokenizer associated with the Qwen2.5 VL encoder.
+        transformer ([`CosmosTransformer3DModel`]):
+            Conditional Transformer to denoise the encoded image latents.
+        scheduler ([`FlowUniPCMultistepScheduler`]):
+            A scheduler to be used in combination with `transformer` to denoise the encoded image latents.
+        vae ([`AutoencoderKLWan`]):
+            Variational Auto-Encoder (VAE) Model to encode and decode videos to and from latent representations.
+    """
+
+    @torch.no_grad()
+    def __call__(
+        self,
+        prompt: Union[str, List[str]] | None = None,
+        negative_prompt: Optional[Union[str, List[str]]] = None,
+        height: int = 704,
+        width: int = 1280,
+        num_inference_steps: int = 35,
+        guidance_scale: float = 7.0,
+        fps: int = 16,
+        num_videos_per_prompt: Optional[int] = 1,
+        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
+        latents: Optional[torch.Tensor] = None,
+        prompt_embeds: Optional[torch.Tensor] = None,
+        negative_prompt_embeds: Optional[torch.Tensor] = None,
+        output_type: Optional[str] = "pil",
+        return_dict: bool = True,
+        callback_on_step_end: Optional[
+            Union[Callable[[int, int, Dict], None], PipelineCallback, MultiPipelineCallbacks]
+        ] = None,
+        callback_on_step_end_tensor_inputs: List[str] = ["latents"],
+        max_sequence_length: int = 512,
+        conditional_frame_timestep: float = 0.1,
+    ):
+        r"""
+        Text2World: text-conditioned world generation. This is a wrapper around the base pipeline.
+
+        Args:
+            image (`PIL.Image.Image`, `np.ndarray`, `torch.Tensor`, *optional*):
+                Optional single image for Image2World conditioning. Must be `None` when `video` is provided.
+            video (`List[PIL.Image.Image]`, `np.ndarray`, `torch.Tensor`, *optional*):
+                Optional input video for Video2World conditioning. Must be `None` when `image` is provided.
+            prompt (`str` or `List[str]`, *optional*):
+                The prompt or prompts to guide generation. Required unless `prompt_embeds` is supplied.
+            height (`int`, defaults to `704`):
+                The height in pixels of the generated image.
+            width (`int`, defaults to `1280`):
+                The width in pixels of the generated image.
+            num_frames (`int`, defaults to `93`):
+                Number of output frames. Use `93` for world (video) generation; set to `1` to return a single frame.
+            num_inference_steps (`int`, defaults to `35`):
+                The number of denoising steps. More denoising steps usually lead to a higher quality image at the
+                expense of slower inference.
+            guidance_scale (`float`, defaults to `7.0`):
+                Guidance scale as defined in [Classifier-Free Diffusion
+                Guidance](https://huggingface.co/papers/2207.12598). `guidance_scale` is defined as `w` of equation 2.
+                of [Imagen Paper](https://huggingface.co/papers/2205.11487). Guidance scale is enabled by setting
+                `guidance_scale > 1`.
+            fps (`int`, defaults to `16`):
+                The frames per second of the generated video.
+            num_videos_per_prompt (`int`, *optional*, defaults to 1):
+                The number of images to generate per prompt.
+            generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
+                A [`torch.Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make
+                generation deterministic.
+            latents (`torch.Tensor`, *optional*):
+                Pre-generated noisy latents sampled from a Gaussian distribution, to be used as inputs for image
+                generation. Can be used to tweak the same generation with different prompts. If not provided, a latents
+                tensor is generated by sampling using the supplied random `generator`.
+            prompt_embeds (`torch.Tensor`, *optional*):
+                Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
+                provided, text embeddings will be generated from `prompt` input argument.
+            negative_prompt_embeds (`torch.FloatTensor`, *optional*):
+                Pre-generated negative text embeddings. For PixArt-Sigma this negative prompt should be "". If not
+                provided, negative_prompt_embeds will be generated from `negative_prompt` input argument.
+            output_type (`str`, *optional*, defaults to `"pil"`):
+                The output format of the generated image. Choose between `PIL.Image` or `np.array`.
+            return_dict (`bool`, *optional*, defaults to `True`):
+                Whether or not to return a [`CosmosPipelineOutput`] instead of a plain tuple.
+            callback_on_step_end (`Callable`, `PipelineCallback`, `MultiPipelineCallbacks`, *optional*):
+                A function or a subclass of `PipelineCallback` or `MultiPipelineCallbacks` that is called at the end of
+                each denoising step during the inference. with the following arguments: `callback_on_step_end(self:
+                DiffusionPipeline, step: int, timestep: int, callback_kwargs: Dict)`. `callback_kwargs` will include a
+                list of all tensors as specified by `callback_on_step_end_tensor_inputs`.
+            callback_on_step_end_tensor_inputs (`List`, *optional*):
+                The list of tensor inputs for the `callback_on_step_end` function. The tensors specified in the list
+                will be passed as `callback_kwargs` argument. You will only be able to include variables listed in the
+                `._callback_tensor_inputs` attribute of your pipeline class.
+            max_sequence_length (`int`, defaults to `512`):
+                The maximum number of tokens in the prompt. If the prompt exceeds this length, it will be truncated. If
+                the prompt is shorter than this length, it will be padded.
+
+        Returns:
+            [`~CosmosPipelineOutput`] or `tuple`:
+                If `return_dict` is `True`, [`CosmosPipelineOutput`] is returned, otherwise a `tuple` is returned where
+                the first element is a list with the generated images and the second element is a list of `bool`s
+                indicating whether the corresponding generated image contains "not-safe-for-work" (nsfw) content.
+
+        Examples:
+            ```python
+            >>> import torch
+            >>> from diffusers import Cosmos2_5_PredictText2World
+            >>> from diffusers.utils import export_to_video
+
+            >>> pipe = Cosmos2_5_PredictText2World.from_pretrained(
+            ...     "nvidia/Cosmos-Predict2.5-Base-2B", torch_dtype=torch.bfloat16
+            ... )
+            >>> pipe = pipe.to("cuda")
+            >>> video = pipe(
+            ...     prompt="A snow scene with cars moving through an intersection.",
+            ...     negative_prompt="low quality, blurry",
+            ...     generator=torch.Generator(device="cuda").manual_seed(1),
+            ... ).frames[0]
+            >>> export_to_video(video, "text2world_wrapper.mp4", fps=16)
+            ```
+        """
+        return super().__call__(
+            image=None,
+            video=None,
+            prompt=prompt,
+            negative_prompt=negative_prompt,
+            height=height,
+            width=width,
+            num_frames=93,
+            num_inference_steps=num_inference_steps,
+            guidance_scale=guidance_scale,
+            fps=fps,
+            num_videos_per_prompt=num_videos_per_prompt,
+            generator=generator,
+            latents=latents,
+            prompt_embeds=prompt_embeds,
+            negative_prompt_embeds=negative_prompt_embeds,
+            output_type=output_type,
+            return_dict=return_dict,
+            callback_on_step_end=callback_on_step_end,
+            callback_on_step_end_tensor_inputs=callback_on_step_end_tensor_inputs,
+            max_sequence_length=max_sequence_length,
+            conditional_frame_timestep=conditional_frame_timestep,
+        )
+
+
+class Cosmos2_5_PredictImage2World(Cosmos2_5_PredictBase):
+    r"""
+    Pipeline for [Cosmos Predict2.5](https://github.com/nvidia-cosmos/cosmos-predict2.5) Image2World.
+
+    This pipeline is a specialized version of [`Cosmos2_5_PredictBase`], please refer to the superclass for advanced
+    options.
+
+    Args:
+        text_encoder ([`Qwen2_5_VLForConditionalGeneration`]):
+            Frozen text-encoder. Cosmos Predict2.5 uses the [Qwen2.5
+            VL](https://huggingface.co/Qwen/Qwen2.5-VL-7B-Instruct) encoder.
+        tokenizer (`AutoTokenizer`):
+            Tokenizer associated with the Qwen2.5 VL encoder.
+        transformer ([`CosmosTransformer3DModel`]):
+            Conditional Transformer to denoise the encoded image latents.
+        scheduler ([`FlowUniPCMultistepScheduler`]):
+            A scheduler to be used in combination with `transformer` to denoise the encoded image latents.
+        vae ([`AutoencoderKLWan`]):
+            Variational Auto-Encoder (VAE) Model to encode and decode videos to and from latent representations.
+    """
+
+    @torch.no_grad()
+    def __call__(
+        self,
+        prompt: Union[str, List[str]] | None = None,
+        image: PipelineImageInput | None = None,
+        negative_prompt: Optional[Union[str, List[str]]] = None,
+        height: int = 704,
+        width: int = 1280,
+        num_inference_steps: int = 35,
+        guidance_scale: float = 7.0,
+        fps: int = 16,
+        num_videos_per_prompt: Optional[int] = 1,
+        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
+        latents: Optional[torch.Tensor] = None,
+        prompt_embeds: Optional[torch.Tensor] = None,
+        negative_prompt_embeds: Optional[torch.Tensor] = None,
+        output_type: Optional[str] = "pil",
+        return_dict: bool = True,
+        callback_on_step_end: Optional[
+            Union[Callable[[int, int, Dict], None], PipelineCallback, MultiPipelineCallbacks]
+        ] = None,
+        callback_on_step_end_tensor_inputs: List[str] = ["latents"],
+        max_sequence_length: int = 512,
+        conditional_frame_timestep: float = 0.1,
+    ):
+        r"""
+        Image2World: image-conditioned world generation. This is a wrapper around the base pipeline.
+
+        Args:
+            image (`PIL.Image.Image`, `np.ndarray`, `torch.Tensor`, *optional*):
+                Optional single image for Image2World conditioning. Must be `None` when `video` is provided.
+            prompt (`str` or `List[str]`, *optional*):
+                The prompt or prompts to guide generation. Required unless `prompt_embeds` is supplied.
+            height (`int`, defaults to `704`):
+                The height in pixels of the generated image.
+            width (`int`, defaults to `1280`):
+                The width in pixels of the generated image.
+            num_frames (`int`, defaults to `93`):
+                Number of output frames. Use `93` for world (video) generation; set to `1` to return a single frame.
+            num_inference_steps (`int`, defaults to `35`):
+                The number of denoising steps. More denoising steps usually lead to a higher quality image at the
+                expense of slower inference.
+            guidance_scale (`float`, defaults to `7.0`):
+                Guidance scale as defined in [Classifier-Free Diffusion
+                Guidance](https://huggingface.co/papers/2207.12598). `guidance_scale` is defined as `w` of equation 2.
+                of [Imagen Paper](https://huggingface.co/papers/2205.11487). Guidance scale is enabled by setting
+                `guidance_scale > 1`.
+            fps (`int`, defaults to `16`):
+                The frames per second of the generated video.
+            num_videos_per_prompt (`int`, *optional*, defaults to 1):
+                The number of images to generate per prompt.
+            generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
+                A [`torch.Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make
+                generation deterministic.
+            latents (`torch.Tensor`, *optional*):
+                Pre-generated noisy latents sampled from a Gaussian distribution, to be used as inputs for image
+                generation. Can be used to tweak the same generation with different prompts. If not provided, a latents
+                tensor is generated by sampling using the supplied random `generator`.
+            prompt_embeds (`torch.Tensor`, *optional*):
+                Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
+                provided, text embeddings will be generated from `prompt` input argument.
+            negative_prompt_embeds (`torch.FloatTensor`, *optional*):
+                Pre-generated negative text embeddings. For PixArt-Sigma this negative prompt should be "". If not
+                provided, negative_prompt_embeds will be generated from `negative_prompt` input argument.
+            output_type (`str`, *optional*, defaults to `"pil"`):
+                The output format of the generated image. Choose between `PIL.Image` or `np.array`.
+            return_dict (`bool`, *optional*, defaults to `True`):
+                Whether or not to return a [`CosmosPipelineOutput`] instead of a plain tuple.
+            callback_on_step_end (`Callable`, `PipelineCallback`, `MultiPipelineCallbacks`, *optional*):
+                A function or a subclass of `PipelineCallback` or `MultiPipelineCallbacks` that is called at the end of
+                each denoising step during the inference. with the following arguments: `callback_on_step_end(self:
+                DiffusionPipeline, step: int, timestep: int, callback_kwargs: Dict)`. `callback_kwargs` will include a
+                list of all tensors as specified by `callback_on_step_end_tensor_inputs`.
+            callback_on_step_end_tensor_inputs (`List`, *optional*):
+                The list of tensor inputs for the `callback_on_step_end` function. The tensors specified in the list
+                will be passed as `callback_kwargs` argument. You will only be able to include variables listed in the
+                `._callback_tensor_inputs` attribute of your pipeline class.
+            max_sequence_length (`int`, defaults to `512`):
+                The maximum number of tokens in the prompt. If the prompt exceeds this length, it will be truncated. If
+                the prompt is shorter than this length, it will be padded.
+
+        Returns:
+            [`~CosmosPipelineOutput`] or `tuple`:
+                If `return_dict` is `True`, [`CosmosPipelineOutput`] is returned, otherwise a `tuple` is returned where
+                the first element is a list with the generated images and the second element is a list of `bool`s
+                indicating whether the corresponding generated image contains "not-safe-for-work" (nsfw) content.
+
+        Examples:
+            ```python
+            >>> import torch
+            >>> from diffusers import Cosmos2_5_PredictImage2World
+            >>> from diffusers.utils import export_to_video, load_image
+
+            >>> pipe = Cosmos2_5_PredictImage2World.from_pretrained(
+            ...     "nvidia/Cosmos-Predict2.5-Base-2B", torch_dtype=torch.bfloat16
+            ... )
+            >>> pipe = pipe.to("cuda")
+            >>> image = load_image(
+            ...     "https://media.githubusercontent.com/media/nvidia-cosmos/cosmos-predict2.5/refs/heads/main/assets/base/robot_welding.jpg"
+            ... )
+            >>> video = pipe(
+            ...     prompt="A robotic welding arm continues its work.",
+            ...     image=image,
+            ...     negative_prompt="low quality, blurry",
+            ...     generator=torch.Generator(device="cuda").manual_seed(2),
+            ... ).frames[0]
+            >>> export_to_video(video, "image2world_wrapper.mp4", fps=16)
+            ```
+        """
+        if image is None:
+            raise ValueError("`image` must be provided for Image2World generation.")
+
+        return super().__call__(
+            image=image,
+            video=None,
+            prompt=prompt,
+            negative_prompt=negative_prompt,
+            height=height,
+            width=width,
+            num_frames=93,
+            num_inference_steps=num_inference_steps,
+            guidance_scale=guidance_scale,
+            fps=fps,
+            num_videos_per_prompt=num_videos_per_prompt,
+            generator=generator,
+            latents=latents,
+            prompt_embeds=prompt_embeds,
+            negative_prompt_embeds=negative_prompt_embeds,
+            output_type=output_type,
+            return_dict=return_dict,
+            callback_on_step_end=callback_on_step_end,
+            callback_on_step_end_tensor_inputs=callback_on_step_end_tensor_inputs,
+            max_sequence_length=max_sequence_length,
+            conditional_frame_timestep=conditional_frame_timestep,
+        )
+
+
+class Cosmos2_5_PredictVideo2World(Cosmos2_5_PredictBase):
+    r"""
+    Pipeline for [Cosmos Predict2.5](https://github.com/nvidia-cosmos/cosmos-predict2.5) Video2World.
+
+    This pipeline is a specialized version of [`Cosmos2_5_PredictBase`], please refer to the superclass for advanced
+    options.
+
+    Args:
+        text_encoder ([`Qwen2_5_VLForConditionalGeneration`]):
+            Frozen text-encoder. Cosmos Predict2.5 uses the [Qwen2.5
+            VL](https://huggingface.co/Qwen/Qwen2.5-VL-7B-Instruct) encoder.
+        tokenizer (`AutoTokenizer`):
+            Tokenizer associated with the Qwen2.5 VL encoder.
+        transformer ([`CosmosTransformer3DModel`]):
+            Conditional Transformer to denoise the encoded image latents.
+        scheduler ([`FlowUniPCMultistepScheduler`]):
+            A scheduler to be used in combination with `transformer` to denoise the encoded image latents.
+        vae ([`AutoencoderKLWan`]):
+            Variational Auto-Encoder (VAE) Model to encode and decode videos to and from latent representations.
+    """
+
+    @torch.no_grad()
+    def __call__(
+        self,
+        prompt: Union[str, List[str]] | None = None,
+        video: List[PipelineImageInput] | None = None,
+        negative_prompt: Optional[Union[str, List[str]]] = None,
+        height: int = 704,
+        width: int = 1280,
+        num_inference_steps: int = 35,
+        guidance_scale: float = 7.0,
+        fps: int = 16,
+        num_videos_per_prompt: Optional[int] = 1,
+        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
+        latents: Optional[torch.Tensor] = None,
+        prompt_embeds: Optional[torch.Tensor] = None,
+        negative_prompt_embeds: Optional[torch.Tensor] = None,
+        output_type: Optional[str] = "pil",
+        return_dict: bool = True,
+        callback_on_step_end: Optional[
+            Union[Callable[[int, int, Dict], None], PipelineCallback, MultiPipelineCallbacks]
+        ] = None,
+        callback_on_step_end_tensor_inputs: List[str] = ["latents"],
+        max_sequence_length: int = 512,
+        conditional_frame_timestep: float = 0.1,
+    ):
+        r"""
+        Video2World: video-conditioned world generation. This is a wrapper around the base pipeline.
+
+        Args:
+            video (`List[PIL.Image.Image]`, `np.ndarray`, `torch.Tensor`, *optional*):
+                Optional input video for Video2World conditioning. Must be `None` when `image` is provided.
+            prompt (`str` or `List[str]`, *optional*):
+                The prompt or prompts to guide generation. Required unless `prompt_embeds` is supplied.
+            height (`int`, defaults to `704`):
+                The height in pixels of the generated image.
+            width (`int`, defaults to `1280`):
+                The width in pixels of the generated image.
+            num_frames (`int`, defaults to `93`):
+                Number of output frames. Use `93` for world (video) generation; set to `1` to return a single frame.
+            num_inference_steps (`int`, defaults to `35`):
+                The number of denoising steps. More denoising steps usually lead to a higher quality image at the
+                expense of slower inference.
+            guidance_scale (`float`, defaults to `7.0`):
+                Guidance scale as defined in [Classifier-Free Diffusion
+                Guidance](https://huggingface.co/papers/2207.12598). `guidance_scale` is defined as `w` of equation 2.
+                of [Imagen Paper](https://huggingface.co/papers/2205.11487). Guidance scale is enabled by setting
+                `guidance_scale > 1`.
+            fps (`int`, defaults to `16`):
+                The frames per second of the generated video.
+            num_videos_per_prompt (`int`, *optional*, defaults to 1):
+                The number of images to generate per prompt.
+            generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
+                A [`torch.Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make
+                generation deterministic.
+            latents (`torch.Tensor`, *optional*):
+                Pre-generated noisy latents sampled from a Gaussian distribution, to be used as inputs for image
+                generation. Can be used to tweak the same generation with different prompts. If not provided, a latents
+                tensor is generated by sampling using the supplied random `generator`.
+            prompt_embeds (`torch.Tensor`, *optional*):
+                Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
+                provided, text embeddings will be generated from `prompt` input argument.
+            negative_prompt_embeds (`torch.FloatTensor`, *optional*):
+                Pre-generated negative text embeddings. For PixArt-Sigma this negative prompt should be "". If not
+                provided, negative_prompt_embeds will be generated from `negative_prompt` input argument.
+            output_type (`str`, *optional*, defaults to `"pil"`):
+                The output format of the generated image. Choose between `PIL.Image` or `np.array`.
+            return_dict (`bool`, *optional*, defaults to `True`):
+                Whether or not to return a [`CosmosPipelineOutput`] instead of a plain tuple.
+            callback_on_step_end (`Callable`, `PipelineCallback`, `MultiPipelineCallbacks`, *optional*):
+                A function or a subclass of `PipelineCallback` or `MultiPipelineCallbacks` that is called at the end of
+                each denoising step during the inference. with the following arguments: `callback_on_step_end(self:
+                DiffusionPipeline, step: int, timestep: int, callback_kwargs: Dict)`. `callback_kwargs` will include a
+                list of all tensors as specified by `callback_on_step_end_tensor_inputs`.
+            callback_on_step_end_tensor_inputs (`List`, *optional*):
+                The list of tensor inputs for the `callback_on_step_end` function. The tensors specified in the list
+                will be passed as `callback_kwargs` argument. You will only be able to include variables listed in the
+                `._callback_tensor_inputs` attribute of your pipeline class.
+            max_sequence_length (`int`, defaults to `512`):
+                The maximum number of tokens in the prompt. If the prompt exceeds this length, it will be truncated. If
+                the prompt is shorter than this length, it will be padded.
+
+        Returns:
+            [`~CosmosPipelineOutput`] or `tuple`:
+                If `return_dict` is `True`, [`CosmosPipelineOutput`] is returned, otherwise a `tuple` is returned where
+                the first element is a list with the generated images and the second element is a list of `bool`s
+                indicating whether the corresponding generated image contains "not-safe-for-work" (nsfw) content.
+
+        Examples:
+            ```python
+            >>> import torch
+            >>> from diffusers import Cosmos2_5_PredictVideo2World
+            >>> from diffusers.utils import export_to_video, load_video
+
+            >>> pipe = Cosmos2_5_PredictVideo2World.from_pretrained(
+            ...     "nvidia/Cosmos-Predict2.5-Base-2B", torch_dtype=torch.bfloat16
+            ... )
+            >>> pipe = pipe.to("cuda")
+            >>> input_video = load_video(
+            ...     "https://github.com/nvidia-cosmos/cosmos-predict2.5/raw/refs/heads/main/assets/base/sand_mining.mp4"
+            ... )
+            >>> video = pipe(
+            ...     prompt="Aerial view of sand mining continues.",
+            ...     video=input_video,
+            ...     negative_prompt="low quality, blurry",
+            ...     generator=torch.Generator(device="cuda").manual_seed(3),
+            ... ).frames[0]
+            >>> export_to_video(video, "video2world_wrapper.mp4", fps=16)
+            ```
+        """
+        if video is None:
+            raise ValueError("`video` must be provided for Video2World generation.")
+
+        return super().__call__(
+            image=None,
+            video=video,
+            prompt=prompt,
+            negative_prompt=negative_prompt,
+            height=height,
+            width=width,
+            num_frames=93,
+            num_inference_steps=num_inference_steps,
+            guidance_scale=guidance_scale,
+            fps=fps,
+            num_videos_per_prompt=num_videos_per_prompt,
+            generator=generator,
+            latents=latents,
+            prompt_embeds=prompt_embeds,
+            negative_prompt_embeds=negative_prompt_embeds,
+            output_type=output_type,
+            return_dict=return_dict,
+            callback_on_step_end=callback_on_step_end,
+            callback_on_step_end_tensor_inputs=callback_on_step_end_tensor_inputs,
+            max_sequence_length=max_sequence_length,
+            conditional_frame_timestep=conditional_frame_timestep,
+        )

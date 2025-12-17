@@ -62,7 +62,7 @@ from diffusers import (
     EDMEulerScheduler,
     FlowMatchEulerDiscreteScheduler,
 )
-from diffusers.pipelines.cosmos.pipeline_cosmos2_5_predict import Cosmos_2_5_PredictBase
+from diffusers.pipelines.cosmos.pipeline_cosmos2_5_predict import Cosmos2_5_PredictBase
 
 
 def remove_keys_(key: str, state_dict: Dict[str, Any]):
@@ -527,7 +527,7 @@ def save_pipeline_cosmos_2_0(args, transformer, vae):
     pipe.save_pretrained(args.output_path, safe_serialization=True, max_shard_size="5GB")
 
 
-def save_pipeline_cosmos_2_5(args, transformer, vae):
+def save_pipeline_cosmos2_5(args, transformer, vae):
     text_encoder_path = args.text_encoder_path or "nvidia/Cosmos-Reason1-7B"
     tokenizer_path = args.tokenizer_path or "Qwen/Qwen2.5-VL-7B-Instruct"
 
@@ -538,7 +538,7 @@ def save_pipeline_cosmos_2_5(args, transformer, vae):
 
     scheduler = FlowMatchEulerDiscreteScheduler(use_karras_sigmas=True)
 
-    pipe = Cosmos_2_5_PredictBase(
+    pipe = Cosmos2_5_PredictBase(
         text_encoder=text_encoder,
         tokenizer=tokenizer,
         transformer=transformer,
@@ -613,6 +613,6 @@ if __name__ == "__main__":
             assert args.tokenizer_path is not None
             save_pipeline_cosmos_2_0(args, transformer, vae)
         elif "Cosmos-2.5" in args.transformer_type:
-            save_pipeline_cosmos_2_5(args, transformer, vae)
+            save_pipeline_cosmos2_5(args, transformer, vae)
         else:
             raise AssertionError(f"{args.transformer_type} not supported")

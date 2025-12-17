@@ -17,13 +17,19 @@ class FlowUniPCMultistepSchedulerKarrasTest(unittest.TestCase):
         scheduler.set_timesteps(num_inference_steps=num_inference_steps)
 
         # 0 appended to end for sigmas
-        expected_sigmas = [0.9950248599052429, 0.9787454605102539, 0.8774884343147278, 0.3604971766471863, 0.009900986216962337, 0.0]
+        expected_sigmas = [
+            0.9950248599052429,
+            0.9787454605102539,
+            0.8774884343147278,
+            0.3604971766471863,
+            0.009900986216962337,
+            0.0,
+        ]
         expected_sigmas = torch.tensor(expected_sigmas)
         expected_timesteps = (expected_sigmas * num_train_timesteps).to(torch.int64)
         expected_timesteps = expected_timesteps[0:-1]
         self.assertTrue(torch.allclose(scheduler.sigmas, expected_sigmas))
         self.assertTrue(torch.all(expected_timesteps == scheduler.timesteps))
-
 
     def test_inference_train_same_schedule(self):
         num_inference_steps = 4
@@ -48,12 +54,16 @@ class FlowUniPCMultistepSchedulerKarrasTest(unittest.TestCase):
         )
 
         scheduler.set_timesteps(num_inference_steps=num_inference_steps)
-        expected_sigmas = torch.tensor([0.9803921580314636,
-                                        0.9388325214385986,
-                                        0.7652841210365295,
-                                        0.2545345723628998,
-                                        0.004975131247192621,
-                                        0.004975131247192621])
+        expected_sigmas = torch.tensor(
+            [
+                0.9803921580314636,
+                0.9388325214385986,
+                0.7652841210365295,
+                0.2545345723628998,
+                0.004975131247192621,
+                0.004975131247192621,
+            ]
+        )
         self.assertTrue(torch.allclose(scheduler.sigmas, expected_sigmas))
 
     def test_step(self):
