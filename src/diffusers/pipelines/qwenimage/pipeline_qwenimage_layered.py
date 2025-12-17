@@ -46,21 +46,20 @@ EXAMPLE_DOC_STRING = """
         ```py
         >>> import torch
         >>> from PIL import Image
-        >>> from diffusers import QwenImageEditPipeline
+        >>> from diffusers import QwenImageLayeredPipeline
         >>> from diffusers.utils import load_image
 
-        >>> pipe = QwenImageEditPipeline.from_pretrained("Qwen/Qwen-Image-Edit", torch_dtype=torch.bfloat16)
+        >>> pipe = QwenImageLayeredPipeline.from_pretrained("Qwen/Qwen-Image-Layered", torch_dtype=torch.bfloat16)
         >>> pipe.to("cuda")
         >>> image = load_image(
         ...     "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/yarn-art-pikachu.png"
-        ... ).convert("RGB")
-        >>> prompt = (
-        ...     "Make Pikachu hold a sign that says 'Qwen Edit is awesome', yarn art style, detailed, vibrant colors"
-        ... )
+        ... ).convert("RGBA")
+        >>> prompt = ""
         >>> # Depending on the variant being used, the pipeline call will slightly vary.
         >>> # Refer to the pipeline documentation for more details.
-        >>> image = pipe(image, prompt, num_inference_steps=50).images[0]
-        >>> image.save("qwenimage_edit.png")
+        >>> images = pipe(image, prompt, num_inference_steps=50, true_cfg_scale=4.0, layers=4, resolution=640, cfg_normalize=False, use_en_prompt=True).images[0]
+        >>> for i, image in enumerate(images):
+        >>>     image.save(f"{i}.out.png")
         ```
 """
 
@@ -165,7 +164,7 @@ def calculate_dimensions(target_area, ratio):
 
 class QwenImageLayeredPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
     r"""
-    The Qwen-Image-Edit pipeline for image editing.
+    The Qwen-Image-Layered pipeline for image decomposing.
 
     Args:
         transformer ([`QwenImageTransformer2DModel`]):
@@ -664,6 +663,12 @@ class QwenImageLayeredPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
                 will be passed as `callback_kwargs` argument. You will only be able to include variables listed in the
                 `._callback_tensor_inputs` attribute of your pipeline class.
             max_sequence_length (`int` defaults to 512): Maximum sequence length to use with the `prompt`.
+            resolution (`int`, *optional*, defaults to 640) 
+                using different bucket in (640, 1024) to determin the condition and output resolution
+            cfg_normalize (`bool`, *optional*, defaults to `False`)
+                whether enable cfg normalization.
+            use_en_prompt (`bool`, *optional*, defaults to `False`)
+                automatic caption language if user does not provide caption
 
         Examples:
 
