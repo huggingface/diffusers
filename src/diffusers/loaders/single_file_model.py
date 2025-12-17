@@ -54,7 +54,6 @@ from .single_file_utils import (
     create_controlnet_diffusers_config_from_ldm,
     create_unet_diffusers_config_from_ldm,
     create_vae_diffusers_config_from_ldm,
-    create_z_image_controlnet_config,
     fetch_diffusers_config,
     fetch_original_config,
     load_single_file_checkpoint,
@@ -176,7 +175,6 @@ SINGLE_FILE_LOADABLE_CLASSES = {
     },
     "ZImageControlNetModel": {
         "checkpoint_mapping_fn": convert_z_image_controlnet_checkpoint_to_diffusers,
-        "config_create_fn": create_z_image_controlnet_config,
     },
 }
 
@@ -379,10 +377,6 @@ class FromOriginalModelMixin:
             diffusers_model_config = config_mapping_fn(
                 original_config=original_config, checkpoint=checkpoint, **config_mapping_kwargs
             )
-        elif "config_create_fn" in mapping_functions:
-            config_create_fn = mapping_functions["config_create_fn"]
-            config_create_kwargs = _get_mapping_function_kwargs(config_create_fn, **kwargs)
-            diffusers_model_config = config_create_fn(checkpoint=checkpoint, **config_create_kwargs)
         else:
             if config is not None:
                 if isinstance(config, str):

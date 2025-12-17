@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import math
-from typing import List, Optional
+from typing import List, Literal, Optional
 
 import torch
 import torch.nn as nn
@@ -398,7 +398,7 @@ class ZImageControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigi
         control_layers_places: List[int] = None,
         control_refiner_layers_places: List[int] = None,
         control_in_dim=None,
-        add_control_noise_refiner=False,
+        add_control_noise_refiner: Optional[Literal["control_layers", "control_noise_refiner"]] = None,
         all_patch_size=(2,),
         all_f_patch_size=(1,),
         dim=3840,
@@ -431,8 +431,24 @@ class ZImageControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigi
             all_x_embedder[f"{patch_size}-{f_patch_size}"] = x_embedder
 
         self.control_all_x_embedder = nn.ModuleDict(all_x_embedder)
-        if self.add_control_noise_refiner:
+        if self.add_control_noise_refiner == "control_layers":
             self.control_noise_refiner = None
+        elif self.add_control_noise_refiner == "control_noise_refiner":
+            self.control_noise_refiner = nn.ModuleList(
+                [
+                    ZImageControlTransformerBlock(
+                        1000 + layer_id,
+                        dim,
+                        n_heads,
+                        n_kv_heads,
+                        norm_eps,
+                        qk_norm,
+                        modulation=True,
+                        block_id=layer_id,
+                    )
+                    for layer_id in range(n_refiner_layers)
+                ]
+            )
         else:
             self.control_noise_refiner = nn.ModuleList(
                 [
@@ -449,6 +465,7 @@ class ZImageControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigi
                 ]
             )
 
+        self.t_scale: Optional[float] = None
         self.t_embedder: Optional[TimestepEmbedder] = None
         self.all_x_embedder: Optional[nn.ModuleDict] = None
         self.cap_embedder: Optional[nn.Sequential] = None
@@ -624,7 +641,8 @@ class ZImageControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigi
         f_patch_size=1,
     ):
         if (
-            self.t_embedder is None
+            self.t_scale is None
+            or self.t_embedder is None
             or self.all_x_embedder is None
             or self.cap_embedder is None
             or self.rope_embedder is None
@@ -687,8 +705,14 @@ class ZImageControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigi
         for i, seq_len in enumerate(x_item_seqlens):
             x_attn_mask[i, :seq_len] = 1
 
-        if self.add_control_noise_refiner:
-            for layer in self.control_layers:
+        if self.add_control_noise_refiner is not None:
+            if self.add_control_noise_refiner == "control_layers":
+                layers = self.control_layers
+            elif self.add_control_noise_refiner == "control_noise_refiner":
+                layers = self.control_noise_refiner
+            else:
+                raise ValueError(f"Unsupported `add_control_noise_refiner` type: {self.add_control_noise_refiner}.")
+            for layer in layers:
                 if torch.is_grad_enabled() and self.gradient_checkpointing:
                     control_context = self._gradient_checkpointing_func(
                         layer, control_context, x, x_attn_mask, x_freqs_cis, adaln_input

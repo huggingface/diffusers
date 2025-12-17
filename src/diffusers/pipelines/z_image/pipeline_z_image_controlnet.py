@@ -49,6 +49,25 @@ EXAMPLE_DOC_STRING = """
         ...     torch_dtype=torch.bfloat16,
         ... )
 
+        >>> # 2.1
+        >>> # controlnet = ZImageControlNetModel.from_single_file(
+        ... #     hf_hub_download(
+        ... #         "alibaba-pai/Z-Image-Turbo-Fun-Controlnet-Union-2.0",
+        ... #         filename="Z-Image-Turbo-Fun-Controlnet-Union-2.1.safetensors",
+        ... #     ),
+        ... #     torch_dtype=torch.bfloat16,
+        ... # )
+
+        >>> # 2.0 - `config` is required
+        >>> # controlnet = ZImageControlNetModel.from_single_file(
+        ... #     hf_hub_download(
+        ... #         "alibaba-pai/Z-Image-Turbo-Fun-Controlnet-Union-2.0",
+        ... #         filename="Z-Image-Turbo-Fun-Controlnet-Union-2.0.safetensors",
+        ... #     ),
+        ... #     torch_dtype=torch.bfloat16,
+        ... #     config="hlky/Z-Image-Turbo-Fun-Controlnet-Union-2.0",
+        ... # )
+
         >>> pipe = ZImageControlNetPipeline.from_pretrained(
         ...     "Tongyi-MAI/Z-Image-Turbo", controlnet=controlnet, torch_dtype=torch.bfloat16
         ... )
