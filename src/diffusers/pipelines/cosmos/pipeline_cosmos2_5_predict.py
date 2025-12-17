@@ -76,12 +76,27 @@ EXAMPLE_DOC_STRING = """
 
         >>> model_id = "nvidia/Cosmos-Predict2.5-Base-2B"
         >>> pipe = Cosmos_2_5_PredictBase.from_pretrained(model_id, torch_dtype=torch.bfloat16)
-        >>> pipe.to("cuda")
+        >>> pipe = pipe.to("cuda")
 
-        >>> prompt = "A close-up shot captures a vibrant yellow scrubber vigorously working on a grimy plate, its bristles moving in circular motions to lift stubborn grease and food residue. The dish, once covered in remnants of a hearty meal, gradually reveals its original glossy surface. Suds form and bubble around the scrubber, creating a satisfying visual of cleanliness in progress. The sound of scrubbing fills the air, accompanied by the gentle clinking of the dish against the sink. As the scrubber continues its task, the dish transforms, gleaming under the bright kitchen lights, symbolizing the triumph of cleanliness over mess."
-        >>> negative_prompt = "The video captures a series of frames showing ugly scenes, static with no motion, motion blur, over-saturation, shaky footage, low resolution, grainy texture, pixelated images, poorly lit areas, underexposed and overexposed scenes, poor color balance, washed out colors, choppy sequences, jerky movements, low frame rate, artifacting, color banding, unnatural transitions, outdated special effects, fake elements, unconvincing visuals, poorly edited content, jump cuts, visual noise, and flickering. Overall, the video is of poor quality."
+        >>> # Common negative prompt reused across modes.
+        >>> negative_prompt = (
+        ...     "The video captures a series of frames showing ugly scenes, static with no motion, motion blur, "
+        ...     "over-saturation, shaky footage, low resolution, grainy texture, pixelated images, poorly lit areas, "
+        ...     "underexposed and overexposed scenes, poor color balance, washed out colors, choppy sequences, jerky "
+        ...     "movements, low frame rate, artifacting, color banding, unnatural transitions, outdated special effects, "
+        ...     "fake elements, unconvincing visuals, poorly edited content, jump cuts, visual noise, and flickering. "
+        ...     "Overall, the video is of poor quality."
+        ... )
 
         >>> # Text2World: generate a 93-frame world video from text only.
+        >>> prompt = (
+        ...     "As the red light shifts to green, the red bus at the intersection begins to move forward, its headlights "
+        ...     "cutting through the falling snow. The snowy tire tracks deepen as the vehicle inches ahead, casting fresh "
+        ...     "lines onto the slushy road. Around it, streetlights glow warmer, illuminating the drifting flakes and wet "
+        ...     "reflections on the asphalt. Other cars behind start to edge forward, their beams joining the scene. "
+        ...     "The stillness of the urban street transitions into motion as the quiet snowfall is punctuated by the slow "
+        ...     "advance of traffic through the frosty city corridor."
+        ... )
         >>> video = pipe(
         ...     image=None,
         ...     video=None,
@@ -93,8 +108,20 @@ EXAMPLE_DOC_STRING = """
         >>> export_to_video(video, "text2world.mp4", fps=16)
 
         >>> # Image2World: condition on a single image and generate a 93-frame world video.
+        >>> prompt = (
+        ...     "A high-definition video captures the precision of robotic welding in an industrial setting. "
+        ...     "The first frame showcases a robotic arm, equipped with a welding torch, positioned over a large metal structure. "
+        ...     "The welding process is in full swing, with bright sparks and intense light illuminating the scene, creating a vivid "
+        ...     "display of blue and white hues. A significant amount of smoke billows around the welding area, partially obscuring "
+        ...     "the view but emphasizing the heat and activity. The background reveals parts of the workshop environment, including a "
+        ...     "ventilation system and various pieces of machinery, indicating a busy and functional industrial workspace. As the video "
+        ...     "progresses, the robotic arm maintains its steady position, continuing the welding process and moving to its left. "
+        ...     "The welding torch consistently emits sparks and light, and the smoke continues to rise, diffusing slightly as it moves upward. "
+        ...     "The metal surface beneath the torch shows ongoing signs of heating and melting. The scene retains its industrial ambiance, with "
+        ...     "the welding sparks and smoke dominating the visual field, underscoring the ongoing nature of the welding operation."
+        ... )
         >>> image = load_image(
-        ...     "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/yellow-scrubber.png"
+        ...     "https://media.githubusercontent.com/media/nvidia-cosmos/cosmos-predict2.5/refs/heads/main/assets/base/robot_welding.jpg"
         ... )
         >>> video = pipe(
         ...     image=image,
@@ -104,10 +131,22 @@ EXAMPLE_DOC_STRING = """
         ...     num_frames=93,
         ...     generator=torch.Generator().manual_seed(1),
         ... ).frames[0]
-        >>> export_to_video(video, "image2world.mp4", fps=16)
+        >>> # export_to_video(video, "image2world.mp4", fps=16)
 
         >>> # Video2World: condition on an input clip and predict a 93-frame world video.
-        >>> input_video = load_video("path/to/input.mp4")
+        >>> prompt = (
+        ...     "The video opens with an aerial view of a large-scale sand mining construction operation, showcasing extensive piles "
+        ...     "of brown sand meticulously arranged in parallel rows. A central water channel, fed by a water pipe, flows through the "
+        ...     "middle of these sand heaps, creating ripples and movement as it cascades down. The surrounding area features dense green "
+        ...     "vegetation on the left, contrasting with the sandy terrain, while a body of water is visible in the background on the right. "
+        ...     "As the video progresses, a piece of heavy machinery, likely a bulldozer, enters the frame from the right, moving slowly along "
+        ...     "the edge of the sand piles. This machinery's presence indicates ongoing construction work in the operation. The final frame "
+        ...     "captures the same scene, with the water continuing its flow and the bulldozer still in motion, maintaining the dynamic yet "
+        ...     "steady pace of the construction activity."
+        ... )
+        >>> input_video = load_video(
+        ...     "https://github.com/nvidia-cosmos/cosmos-predict2.5/raw/refs/heads/main/assets/base/sand_mining.mp4"
+        ... )
         >>> video = pipe(
         ...     image=None,
         ...     video=input_video,
