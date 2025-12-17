@@ -657,6 +657,7 @@ def _wrapped_flash_attn_3(
         pack_gqa=pack_gqa,
         deterministic=deterministic,
         sm_margin=sm_margin,
+        return_attn_probs=True,
     )
     lse = lse.permute(0, 2, 1)
     return out, lse
