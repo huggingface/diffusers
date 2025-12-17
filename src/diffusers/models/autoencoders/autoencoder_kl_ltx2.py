@@ -633,7 +633,7 @@ class LTX2VideoUpBlock3d(nn.Module):
 
 # Like LTX 1.0 LTXVideoEncoder3d but with different default args - the spatiotemporal downsampling pattern is
 # different, as is the layers_per_block (the 2.0 VAE is bigger)
-class LTXVideoEncoder3d(nn.Module):
+class LTX2VideoEncoder3d(nn.Module):
     r"""
     The `LTXVideoEncoder3d` layer of a variational autoencoder that encodes input video samples to its latent
     representation.
@@ -779,7 +779,7 @@ class LTXVideoEncoder3d(nn.Module):
 
 
 # Like LTX 1.0 LTXVideoDecoder3d, but has only 3 symmetric up blocks which are causal and residual with upsample_factor 2
-class LTXVideoDecoder3d(nn.Module):
+class LTX2VideoDecoder3d(nn.Module):
     r"""
     The `LTXVideoDecoder3d` layer of a variational autoencoder that decodes its latent representation into an output
     sample.
@@ -1011,7 +1011,7 @@ class AutoencoderKLLTX2Video(ModelMixin, AutoencoderMixin, ConfigMixin, FromOrig
     ) -> None:
         super().__init__()
 
-        self.encoder = LTXVideoEncoder3d(
+        self.encoder = LTX2VideoEncoder3d(
             in_channels=in_channels,
             out_channels=latent_channels,
             block_out_channels=block_out_channels,
@@ -1024,7 +1024,7 @@ class AutoencoderKLLTX2Video(ModelMixin, AutoencoderMixin, ConfigMixin, FromOrig
             resnet_norm_eps=resnet_norm_eps,
             is_causal=encoder_causal,
         )
-        self.decoder = LTXVideoDecoder3d(
+        self.decoder = LTX2VideoDecoder3d(
             in_channels=latent_channels,
             out_channels=out_channels,
             block_out_channels=decoder_block_out_channels,
