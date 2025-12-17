@@ -241,6 +241,8 @@ def get_ltx2_video_vae_config(version: str) -> Tuple[Dict[str, Any], Dict[str, A
                 "resnet_norm_eps": 1e-6,
                 "encoder_causal": True,
                 "decoder_causal": True,
+                "spatial_compression_ratio": 32,
+                "temporal_compression_ratio": 8,
             },
         }
         rename_dict = LTX_2_0_VIDEO_VAE_RENAME_DICT
@@ -274,6 +276,8 @@ def get_ltx2_video_vae_config(version: str) -> Tuple[Dict[str, Any], Dict[str, A
                 "resnet_norm_eps": 1e-6,
                 "encoder_causal": True,
                 "decoder_causal": True,
+                "spatial_compression_ratio": 32,
+                "temporal_compression_ratio": 8,
             },
         }
         rename_dict = LTX_2_0_VIDEO_VAE_RENAME_DICT
