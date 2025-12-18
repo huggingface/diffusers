@@ -70,7 +70,7 @@ class MellonParam:
 
     @classmethod
     def image_latents_with_strength(cls) -> "MellonParam":
-        return cls(name="image_latents", label="Image Latents", type="latents", display="input", onChange={False: ["height", "width"], True: ["strength"]})
+        return cls(name="image_latents", label="Image Latents", type="latents", display="input", onChange={"false": ["height", "width"], "true": ["strength"]})
 
     @classmethod
     def latents_preview(cls) -> "MellonParam":
@@ -391,7 +391,7 @@ class MellonPipelineConfig:
 
     def __repr__(self) -> str:
         node_types = list(self.node_params.keys())
-        return f"MellonPipelineConfig(label={self.label!r}, nodes={node_types})"
+        return f"MellonPipelineConfig(label={self.label!r}, default_repo={self.default_repo!r}, default_dtype={self.default_dtype!r}, node_params={node_types})"
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to a JSON-serializable dictionary."""
@@ -418,7 +418,7 @@ class MellonPipelineConfig:
 
     def to_json_string(self) -> str:
         """Serialize to JSON string."""
-        return json.dumps(self.to_dict(), indent=2, sort_keys=True) + "\n"
+        return json.dumps(self.to_dict(), indent=2, sort_keys=False) + "\n"
 
     def to_json_file(self, json_file_path: Union[str, os.PathLike]):
         """Save to a JSON file."""
