@@ -661,9 +661,6 @@ class Cosmos2_5_PredictBasePipeline(DiffusionPipeline):
         else:
             batch_size = prompt_embeds.shape[0]
 
-        if batch_size != 1:
-            raise ValueError("batch_size must be 1")
-
         # Encode input prompt
         (
             prompt_embeds,
@@ -684,6 +681,9 @@ class Cosmos2_5_PredictBasePipeline(DiffusionPipeline):
 
         num_frames_in = None
         if image is not None:
+            if batch_size != 1:
+                raise ValueError(f"batch_size must be 1 for image input (given {batch_size})")
+
             image = torchvision.transforms.functional.to_tensor(image).unsqueeze(0)
             video = torch.cat([image, torch.zeros_like(image).repeat(num_frames - 1, 1, 1, 1)], dim=0)
             video = video.unsqueeze(0)
@@ -693,6 +693,9 @@ class Cosmos2_5_PredictBasePipeline(DiffusionPipeline):
             num_frames_in = 0
         else:
             num_frames_in = len(video)
+
+            if batch_size != 1:
+                raise ValueError(f"batch_size must be 1 for video input (given {batch_size})")
 
         assert video is not None
         video = self.video_processor.preprocess_video(video, height, width)
