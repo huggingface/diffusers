@@ -36,7 +36,12 @@ enable_full_determinism()
 class Cosmos2_5_PredictBaseWrapper(Cosmos2_5_PredictBase):
     @staticmethod
     def from_pretrained(*args, **kwargs):
-        kwargs["safety_checker"] = DummyCosmosSafetyChecker()
+        if "safety_checker" not in kwargs or kwargs["safety_checker"] is None:
+            safety_checker = DummyCosmosSafetyChecker()
+            torch_dtype = kwargs.get("torch_dtype")
+            if isinstance(torch_dtype, torch.dtype):
+                safety_checker = safety_checker.to(dtype=torch_dtype)
+            kwargs["safety_checker"] = safety_checker
         return Cosmos2_5_PredictBase.from_pretrained(*args, **kwargs)
 
 

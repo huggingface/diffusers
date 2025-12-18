@@ -61,6 +61,7 @@ from diffusers import (
     CosmosVideoToWorldPipeline,
     EDMEulerScheduler,
     FlowMatchEulerDiscreteScheduler,
+    UniPCMultistepScheduler,
 )
 from diffusers.pipelines.cosmos.pipeline_cosmos2_5_predict import Cosmos2_5_PredictBase
 
@@ -536,7 +537,13 @@ def save_pipeline_cosmos2_5(args, transformer, vae):
     )
     tokenizer = AutoTokenizer.from_pretrained(tokenizer_path)
 
-    scheduler = FlowMatchEulerDiscreteScheduler(use_karras_sigmas=True)
+    scheduler = UniPCMultistepScheduler(
+        use_karras_sigmas=True,
+        use_flow_sigmas=True,
+        prediction_type="flow_prediction",
+        sigma_max=200.0,
+        sigma_min=0.01,
+    )
 
     pipe = Cosmos2_5_PredictBase(
         text_encoder=text_encoder,
