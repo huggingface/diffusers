@@ -75,7 +75,9 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers.utils import export_to_video, load_image, load_video
 
         >>> model_id = "nvidia/Cosmos-Predict2.5-2B"
-        >>> pipe = Cosmos2_5_PredictBasePipeline.from_pretrained(model_id, revision="base/pre-trained/diffusers", torch_dtype=torch.bfloat16)
+        >>> pipe = Cosmos2_5_PredictBasePipeline.from_pretrained(
+        ...     model_id, revision="diffusers/base/pre-trianed", torch_dtype=torch.bfloat16
+        ... )
         >>> pipe = pipe.to("cuda")
 
         >>> # Common negative prompt reused across modes.
