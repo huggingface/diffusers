@@ -488,8 +488,7 @@ class CosmosTransformer3DModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
             hidden_size, patch_size[0] * patch_size[1] * patch_size[2] * out_channels, bias=False
         )
 
-        self.use_crossattn_projection = use_crossattn_projection
-        if self.use_crossattn_projection:
+        if self.config.use_crossattn_projection:
             self.crossattn_proj = nn.Sequential(
                 nn.Linear(crossattn_proj_in_channels, encoder_hidden_states_channels, bias=True),
                 nn.GELU(),
@@ -557,7 +556,7 @@ class CosmosTransformer3DModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         else:
             assert False
 
-        if self.use_crossattn_projection:
+        if self.config.use_crossattn_projection:
             encoder_hidden_states = self.crossattn_proj(encoder_hidden_states)
 
         # 5. Transformer blocks

@@ -23,7 +23,7 @@ except OptionalDependencyNotAvailable:
     _dummy_objects.update(get_objects_from_module(dummy_torch_and_transformers_objects))
 else:
     _import_structure["pipeline_cosmos2_5_predict"] = [
-        "Cosmos2_5_PredictBase",
+        "Cosmos2_5_PredictBasePipeline",
         "Cosmos2_5_PredictImage2World",
         "Cosmos2_5_PredictText2World",
         "Cosmos2_5_PredictVideo2World",
@@ -42,7 +42,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from ...utils.dummy_torch_and_transformers_objects import *
     else:
         from .pipeline_cosmos2_5_predict import (
-            Cosmos2_5_PredictBase,
+            Cosmos2_5_PredictBasePipeline,
             Cosmos2_5_PredictImage2World,
             Cosmos2_5_PredictText2World,
             Cosmos2_5_PredictVideo2World,

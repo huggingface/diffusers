@@ -165,7 +165,7 @@ else:
     _import_structure["cogview4"] = ["CogView4Pipeline", "CogView4ControlPipeline"]
     _import_structure["consisid"] = ["ConsisIDPipeline"]
     _import_structure["cosmos"] = [
-        "Cosmos2_5_PredictBase",
+        "Cosmos2_5_PredictBasePipeline",
         "Cosmos2_5_PredictImage2World",
         "Cosmos2_5_PredictText2World",
         "Cosmos2_5_PredictVideo2World",
@@ -626,7 +626,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             StableDiffusionXLControlNetXSPipeline,
         )
         from .cosmos import (
-            Cosmos2_5_PredictBase,
+            Cosmos2_5_PredictBasePipeline,
             Cosmos2_5_PredictImage2World,
             Cosmos2_5_PredictText2World,
             Cosmos2_5_PredictVideo2World,

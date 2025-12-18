@@ -71,11 +71,11 @@ EXAMPLE_DOC_STRING = """
     Examples:
         ```python
         >>> import torch
-        >>> from diffusers import Cosmos2_5_PredictBase
+        >>> from diffusers import Cosmos2_5_PredictBasePipeline
         >>> from diffusers.utils import export_to_video, load_image, load_video
 
         >>> model_id = "nvidia/Cosmos-Predict2.5-Base-2B"
-        >>> pipe = Cosmos2_5_PredictBase.from_pretrained(model_id, torch_dtype=torch.bfloat16)
+        >>> pipe = Cosmos2_5_PredictBasePipeline.from_pretrained(model_id, torch_dtype=torch.bfloat16)
         >>> pipe = pipe.to("cuda")
 
         >>> # Common negative prompt reused across modes.
@@ -163,7 +163,7 @@ EXAMPLE_DOC_STRING = """
 """
 
 
-class Cosmos2_5_PredictBase(DiffusionPipeline):
+class Cosmos2_5_PredictBasePipeline(DiffusionPipeline):
     r"""
     Pipeline for [Cosmos Predict2.5](https://github.com/nvidia-cosmos/cosmos-predict2.5) base model.
 
@@ -232,20 +232,6 @@ class Cosmos2_5_PredictBase(DiffusionPipeline):
 
         if self.latents_mean is None or self.latents_std is None:
             raise ValueError("VAE configuration must define both `latents_mean` and `latents_std`.")
-
-    
-    @property
-    def _execution_device(self):
-        device = super()._execution_device
-        if isinstance(device, torch.device) and device.type == "cpu":
-            for module_name in ("transformer", "text_encoder", "vae"):
-                module = getattr(self, module_name, None)
-                if module is None or not isinstance(module, torch.nn.Module):
-                    continue
-                module_device = getattr(module, "device", None)
-                if isinstance(module_device, torch.device) and module_device.type != "cpu":
-                    return module_device
-        return device
 
     # Copied from diffusers.pipelines.cosmos.pipeline_cosmos_text2world.CosmosTextToWorldPipeline._get_prompt_embeds
     def _get_prompt_embeds(
@@ -398,6 +384,8 @@ class Cosmos2_5_PredictBase(DiffusionPipeline):
 
         return prompt_embeds, negative_prompt_embeds
 
+    # Modified from diffusers.pipelines.cosmos.pipeline_cosmos2_video2world.Cosmos2VideoToWorldPipeline.prepare_latents and 
+    # diffusers.pipelines.cosmos.pipeline_cosmos2_video2world.Cosmos2TextToImagePipeline.prepare_latents
     def prepare_latents(
         self,
         video: Optional[torch.Tensor],
@@ -458,8 +446,6 @@ class Cosmos2_5_PredictBase(DiffusionPipeline):
 
             cond_latents = torch.cat(cond_latents, dim=0).to(dtype)
 
-            if self.latents_mean is None or self.latents_std is None:
-                raise ValueError("VAE configuration must define `latents_mean` and `latents_std`.")
             latents_mean = self.latents_mean.to(device=device, dtype=dtype)
             latents_std = self.latents_std.to(device=device, dtype=dtype)
             cond_latents = (cond_latents - latents_mean) / latents_std

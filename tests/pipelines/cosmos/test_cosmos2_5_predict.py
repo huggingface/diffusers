@@ -22,7 +22,12 @@ import numpy as np
 import torch
 from transformers import AutoTokenizer, Qwen2VLForConditionalGeneration
 
-from diffusers import AutoencoderKLWan, Cosmos2_5_PredictBase, CosmosTransformer3DModel, UniPCMultistepScheduler
+from diffusers import (
+    AutoencoderKLWan,
+    Cosmos2_5_PredictBasePipeline,
+    CosmosTransformer3DModel,
+    UniPCMultistepScheduler,
+)
 
 from ...testing_utils import enable_full_determinism, torch_device
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
@@ -33,7 +38,7 @@ from .cosmos_guardrail import DummyCosmosSafetyChecker
 enable_full_determinism()
 
 
-class Cosmos2_5_PredictBaseWrapper(Cosmos2_5_PredictBase):
+class Cosmos2_5_PredictBaseWrapper(Cosmos2_5_PredictBasePipeline):
     @staticmethod
     def from_pretrained(*args, **kwargs):
         if "safety_checker" not in kwargs or kwargs["safety_checker"] is None:
@@ -42,7 +47,7 @@ class Cosmos2_5_PredictBaseWrapper(Cosmos2_5_PredictBase):
             if isinstance(torch_dtype, torch.dtype):
                 safety_checker = safety_checker.to(dtype=torch_dtype)
             kwargs["safety_checker"] = safety_checker
-        return Cosmos2_5_PredictBase.from_pretrained(*args, **kwargs)
+        return Cosmos2_5_PredictBasePipeline.from_pretrained(*args, **kwargs)
 
 
 class Cosmos2_5_PredictPipelineFastTests(PipelineTesterMixin, unittest.TestCase):

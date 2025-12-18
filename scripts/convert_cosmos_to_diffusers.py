@@ -63,7 +63,7 @@ from diffusers import (
     FlowMatchEulerDiscreteScheduler,
     UniPCMultistepScheduler,
 )
-from diffusers.pipelines.cosmos.pipeline_cosmos2_5_predict import Cosmos2_5_PredictBase
+from diffusers.pipelines.cosmos.pipeline_cosmos2_5_predict import Cosmos2_5_PredictBasePipeline
 
 
 def remove_keys_(key: str, state_dict: Dict[str, Any]):
@@ -545,7 +545,7 @@ def save_pipeline_cosmos2_5(args, transformer, vae):
         sigma_min=0.01,
     )
 
-    pipe = Cosmos2_5_PredictBase(
+    pipe = Cosmos2_5_PredictBasePipeline(
         text_encoder=text_encoder,
         tokenizer=tokenizer,
         transformer=transformer,
