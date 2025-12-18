@@ -1670,8 +1670,8 @@ def main(args):
                     img_ids=model_input_ids,  # B, image_seq_len, 4
                     return_dict=False,
                 )[0]
-                model_pred = model_pred[:, : noisy_len :]
-                model_input_ids = model_input_ids[:, : noisy_len :]
+                model_pred = model_pred[:, :noisy_len:]
+                model_input_ids = model_input_ids[:, :noisy_len:]
 
                 model_pred = Flux2Pipeline._unpack_latents_with_ids(model_pred, model_input_ids)
 
