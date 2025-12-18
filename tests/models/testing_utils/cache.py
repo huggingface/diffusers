@@ -24,7 +24,7 @@ from diffusers.hooks.first_block_cache import _FBC_BLOCK_HOOK, _FBC_LEADER_BLOCK
 from diffusers.hooks.pyramid_attention_broadcast import _PYRAMID_ATTENTION_BROADCAST_HOOK
 from diffusers.models.cache_utils import CacheMixin
 
-from ...testing_utils import assert_tensors_close, backend_empty_cache, is_cache, torch_device
+from ...testing_utils import backend_empty_cache, is_cache, torch_device
 
 
 def require_cache_mixin(func):
@@ -177,9 +177,9 @@ class CacheTesterMixin:
         output_without_cache = model(**inputs_dict_step2, return_dict=False)[0]
 
         # Cached output should be different from non-cached output (due to approximation)
-        assert not torch.allclose(
-            output_without_cache, output_with_cache, atol=1e-5
-        ), "Cached output should be different from non-cached output due to cache approximation."
+        assert not torch.allclose(output_without_cache, output_with_cache, atol=1e-5), (
+            "Cached output should be different from non-cached output due to cache approximation."
+        )
 
     def _test_cache_context_manager(self):
         """Test the cache_context context manager."""
@@ -354,9 +354,9 @@ class FirstBlockCacheTesterMixin(FirstBlockCacheConfigMixin, CacheTesterMixin):
         output_without_cache = model(**inputs_dict_step2, return_dict=False)[0]
 
         # Cached output should be different from non-cached output (due to approximation)
-        assert not torch.allclose(
-            output_without_cache, output_with_cache, atol=1e-5
-        ), "Cached output should be different from non-cached output due to cache approximation."
+        assert not torch.allclose(output_without_cache, output_with_cache, atol=1e-5), (
+            "Cached output should be different from non-cached output due to cache approximation."
+        )
 
     def _test_reset_stateful_cache(self):
         """Test that _reset_stateful_cache resets the FBC cache state (requires cache_context)."""
@@ -487,9 +487,9 @@ class FasterCacheTesterMixin(FasterCacheConfigMixin, CacheTesterMixin):
         output_without_cache = model(**inputs_dict_step2, return_dict=False)[0]
 
         # Cached output should be different from non-cached output (due to approximation)
-        assert not torch.allclose(
-            output_without_cache, output_with_cache, atol=1e-5
-        ), "Cached output should be different from non-cached output due to cache approximation."
+        assert not torch.allclose(output_without_cache, output_with_cache, atol=1e-5), (
+            "Cached output should be different from non-cached output due to cache approximation."
+        )
 
     def _test_reset_stateful_cache(self):
         """Test that _reset_stateful_cache resets the FasterCache state."""
