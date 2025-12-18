@@ -49,6 +49,7 @@ from .single_file_utils import (
     convert_stable_cascade_unet_single_file_to_diffusers,
     convert_wan_transformer_to_diffusers,
     convert_wan_vae_to_diffusers,
+    convert_z_image_controlnet_checkpoint_to_diffusers,
     convert_z_image_transformer_checkpoint_to_diffusers,
     create_controlnet_diffusers_config_from_ldm,
     create_unet_diffusers_config_from_ldm,
@@ -172,11 +173,18 @@ SINGLE_FILE_LOADABLE_CLASSES = {
         "checkpoint_mapping_fn": convert_z_image_transformer_checkpoint_to_diffusers,
         "default_subfolder": "transformer",
     },
+    "ZImageControlNetModel": {
+        "checkpoint_mapping_fn": convert_z_image_controlnet_checkpoint_to_diffusers,
+    },
 }
 
 
 def _should_convert_state_dict_to_diffusers(model_state_dict, checkpoint_state_dict):
-    return not set(model_state_dict.keys()).issubset(set(checkpoint_state_dict.keys()))
+    model_state_dict_keys = set(model_state_dict.keys())
+    checkpoint_state_dict_keys = set(checkpoint_state_dict.keys())
+    is_subset = model_state_dict_keys.issubset(checkpoint_state_dict_keys)
+    is_match = model_state_dict_keys == checkpoint_state_dict_keys
+    return not (is_subset and is_match)
 
 
 def _get_single_file_loadable_mapping_class(cls):
