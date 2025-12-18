@@ -884,8 +884,9 @@ the image\n<|vision_start|><|image_pad|><|vision_end|><|im_end|>\n<|im_start|>as
             b, c, f, h, w = latents.shape
 
             latents = latents[:, :, 1:]  # remove the first frame as it is the orgin input
+            frames = latents.shape[2]
 
-            latents = latents.permute(0, 2, 1, 3, 4).view(-1, c, 1, h, w)
+            latents = latents.permute(0, 2, 1, 3, 4).reshape(-1, c, 1, h, w)
 
             image = self.vae.decode(latents, return_dict=False)[0]  # (b f) c 1 h w
 
@@ -894,7 +895,9 @@ the image\n<|vision_start|><|image_pad|><|vision_end|><|im_end|>\n<|im_start|>as
             image = self.image_processor.postprocess(image, output_type=output_type)
             images = []
             for bidx in range(b):
-                images.append(image[bidx * f : (bidx + 1) * f])
+                start = bidx * frames
+                end = (bidx + 1) * frames
+                images.append(image[start:end])
 
         # Offload all models
         self.maybe_free_model_hooks()
