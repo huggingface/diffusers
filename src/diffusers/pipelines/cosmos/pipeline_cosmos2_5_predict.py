@@ -233,7 +233,6 @@ class Cosmos2_5_PredictBasePipeline(DiffusionPipeline):
         if self.latents_mean is None or self.latents_std is None:
             raise ValueError("VAE configuration must define both `latents_mean` and `latents_std`.")
 
-    # Copied from diffusers.pipelines.cosmos.pipeline_cosmos_text2world.CosmosTextToWorldPipeline._get_prompt_embeds
     def _get_prompt_embeds(
         self,
         prompt: Union[str, List[str]] = None,
@@ -384,7 +383,7 @@ class Cosmos2_5_PredictBasePipeline(DiffusionPipeline):
 
         return prompt_embeds, negative_prompt_embeds
 
-    # Modified from diffusers.pipelines.cosmos.pipeline_cosmos2_video2world.Cosmos2VideoToWorldPipeline.prepare_latents and 
+    # Modified from diffusers.pipelines.cosmos.pipeline_cosmos2_video2world.Cosmos2VideoToWorldPipeline.prepare_latents and
     # diffusers.pipelines.cosmos.pipeline_cosmos2_video2world.Cosmos2TextToImagePipeline.prepare_latents
     def prepare_latents(
         self,

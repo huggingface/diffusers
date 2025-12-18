@@ -414,7 +414,7 @@ class UniPCMultistepScheduler1DTest(UniPCMultistepSchedulerTest):
             num_train_timesteps=num_train_timesteps,
         )
         scheduler.set_timesteps(num_inference_steps=num_inference_steps)
- 
+
         expected_sigmas = [
             0.9950248599052429,
             0.9787454605102539,
