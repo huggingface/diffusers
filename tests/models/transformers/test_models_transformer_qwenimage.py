@@ -205,12 +205,14 @@ class QwenImageTransformerTests(ModelTesterMixin, unittest.TestCase):
         init_dict = {
             "patch_size": 2,
             "in_channels": 16,
-            "out_channels": 16,
+            "out_channels": 4,
             "num_layers": 2,
-            "attention_head_dim": 128,
-            "num_attention_heads": 4,
+            "attention_head_dim": 16,
+            "num_attention_heads": 3,
             "joint_attention_dim": 16,
+            "axes_dims_rope": (8, 4, 4),  # Must match attention_head_dim (8+4+4=16)
             "use_layer3d_rope": True,  # Enable layered RoPE
+            "use_additional_t_cond": True,  # Enable additional time conditioning
         }
 
         model = self.model_class(**init_dict).to(torch_device)
@@ -236,6 +238,9 @@ class QwenImageTransformerTests(ModelTesterMixin, unittest.TestCase):
 
         timestep = torch.tensor([1.0]).to(torch_device)
 
+        # additional_t_cond for use_additional_t_cond=True (0 or 1 index for embedding)
+        addition_t_cond = torch.tensor([0], dtype=torch.long).to(torch_device)
+
         # Layer structure: 4 layers + 1 condition image
         img_shapes = [
             [
@@ -254,6 +259,7 @@ class QwenImageTransformerTests(ModelTesterMixin, unittest.TestCase):
                 encoder_hidden_states_mask=encoder_hidden_states_mask,
                 timestep=timestep,
                 img_shapes=img_shapes,
+                additional_t_cond=addition_t_cond,
             )
 
         self.assertEqual(output.sample.shape[1], hidden_states.shape[1])
