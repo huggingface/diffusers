@@ -74,8 +74,8 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers import Cosmos2_5_PredictBasePipeline
         >>> from diffusers.utils import export_to_video, load_image, load_video
 
-        >>> model_id = "nvidia/Cosmos-Predict2.5-Base-2B"
-        >>> pipe = Cosmos2_5_PredictBasePipeline.from_pretrained(model_id, torch_dtype=torch.bfloat16)
+        >>> model_id = "nvidia/Cosmos-Predict2.5-2B"
+        >>> pipe = Cosmos2_5_PredictBasePipeline.from_pretrained(model_id, revision="base/pre-trained/diffusers", torch_dtype=torch.bfloat16)
         >>> pipe = pipe.to("cuda")
 
         >>> # Common negative prompt reused across modes.
@@ -157,7 +157,7 @@ EXAMPLE_DOC_STRING = """
         ... ).frames[0]
         >>> export_to_video(video, "video2world.mp4", fps=16)
 
-        >>> # To produce a single-frame image instead of a world (video) clip, set num_frames=1 and
+        >>> # To produce an image instead of a world (video) clip, set num_frames=1 and
         >>> # save the first frame: pipe(..., num_frames=1).frames[0][0].
         ```
 """
@@ -534,7 +534,6 @@ class Cosmos2_5_PredictBasePipeline(DiffusionPipeline):
         num_frames: int = 93,
         num_inference_steps: int = 36,
         guidance_scale: float = 7.0,
-        fps: int = 16,
         num_videos_per_prompt: Optional[int] = 1,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.Tensor] = None,
@@ -582,8 +581,6 @@ class Cosmos2_5_PredictBasePipeline(DiffusionPipeline):
                 Guidance](https://huggingface.co/papers/2207.12598). `guidance_scale` is defined as `w` of equation 2.
                 of [Imagen Paper](https://huggingface.co/papers/2205.11487). Guidance scale is enabled by setting
                 `guidance_scale > 1`.
-            fps (`int`, defaults to `16`):
-                The frames per second of the generated video.
             num_videos_per_prompt (`int`, *optional*, defaults to 1):
                 The number of images to generate per prompt.
             generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
@@ -662,6 +659,9 @@ class Cosmos2_5_PredictBasePipeline(DiffusionPipeline):
         else:
             batch_size = prompt_embeds.shape[0]
 
+        if batch_size != 1:
+            raise ValueError("batch_size must be 1")
+
         # Encode input prompt
         (
             prompt_embeds,
@@ -682,8 +682,6 @@ class Cosmos2_5_PredictBasePipeline(DiffusionPipeline):
 
         num_frames_in = None
         if image is not None:
-            # TODO: handle batch_size > 1
-            assert batch_size == 1, "batch_size must be 1 for image input"
             image = torchvision.transforms.functional.to_tensor(image).unsqueeze(0)
             video = torch.cat([image, torch.zeros_like(image).repeat(num_frames - 1, 1, 1, 1)], dim=0)
             video = video.unsqueeze(0)
@@ -700,7 +698,6 @@ class Cosmos2_5_PredictBasePipeline(DiffusionPipeline):
         # pad with last frame (for video2world)
         num_frames_out = num_frames
         if video.shape[2] < num_frames_out:
-            assert batch_size == 1, "batch_size must be 1 for padding frames"
             n_pad_frames = num_frames_out - num_frames_in
             last_frame = video[0, :, -1:, :, :]  # [C, T==1, H, W]
             pad_frames = last_frame.repeat(1, 1, n_pad_frames, 1, 1)  # [B, C, T, H, W]
