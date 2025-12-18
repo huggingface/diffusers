@@ -21,12 +21,9 @@ except OptionalDependencyNotAvailable:
 
     _dummy_objects.update(get_objects_from_module(dummy_torch_and_transformers_objects))
 else:
-    _import_structure["pipeline_output"] = ["ZImagePipelineOutput"]
-    _import_structure["pipeline_z_image"] = ["ZImagePipeline"]
-    _import_structure["pipeline_z_image_controlnet"] = ["ZImageControlNetPipeline"]
-    _import_structure["pipeline_z_image_controlnet_inpaint"] = ["ZImageControlNetInpaintPipeline"]
-    _import_structure["pipeline_z_image_img2img"] = ["ZImageImg2ImgPipeline"]
-
+    _import_structure["pipeline_longcat_image"] = ["LongCatImagePipeline"]
+    _import_structure["pipeline_longcat_image_edit"] = ["LongCatImageEditPipeline"]
+    _import_structure["pipeline_output"] = ["LongCatImagePipelineOutput"]
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     try:
@@ -36,11 +33,9 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     except OptionalDependencyNotAvailable:
         from ...utils.dummy_torch_and_transformers_objects import *
     else:
-        from .pipeline_output import ZImagePipelineOutput
-        from .pipeline_z_image import ZImagePipeline
-        from .pipeline_z_image_controlnet import ZImageControlNetPipeline
-        from .pipeline_z_image_controlnet_inpaint import ZImageControlNetInpaintPipeline
-        from .pipeline_z_image_img2img import ZImageImg2ImgPipeline
+        from .pipeline_longcat_image import LongCatImagePipeline
+        from .pipeline_longcat_image_edit import LongCatImageEditPipeline
+        from .pipeline_output import LongCatImagePipelineOutput
 
 else:
     import sys
