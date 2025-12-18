@@ -279,6 +279,7 @@ else:
             "WanAnimateTransformer3DModel",
             "WanTransformer3DModel",
             "WanVACETransformer3DModel",
+            "ZImageControlNetModel",
             "ZImageTransformer2DModel",
             "attention_backend",
         ]
@@ -564,6 +565,7 @@ else:
             "QwenImageEditPlusPipeline",
             "QwenImageImg2ImgPipeline",
             "QwenImageInpaintPipeline",
+            "QwenImageLayeredPipeline",
             "QwenImagePipeline",
             "ReduxImageEncoder",
             "SanaControlNetPipeline",
@@ -669,6 +671,8 @@ else:
             "WuerstchenCombinedPipeline",
             "WuerstchenDecoderPipeline",
             "WuerstchenPriorPipeline",
+            "ZImageControlNetInpaintPipeline",
+            "ZImageControlNetPipeline",
             "ZImageImg2ImgPipeline",
             "ZImagePipeline",
         ]
@@ -1016,6 +1020,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             WanAnimateTransformer3DModel,
             WanTransformer3DModel,
             WanVACETransformer3DModel,
+            ZImageControlNetModel,
             ZImageTransformer2DModel,
             attention_backend,
         )
@@ -1272,6 +1277,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             QwenImageEditPlusPipeline,
             QwenImageImg2ImgPipeline,
             QwenImageInpaintPipeline,
+            QwenImageLayeredPipeline,
             QwenImagePipeline,
             ReduxImageEncoder,
             SanaControlNetPipeline,
@@ -1375,6 +1381,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             WuerstchenCombinedPipeline,
             WuerstchenDecoderPipeline,
             WuerstchenPriorPipeline,
+            ZImageControlNetInpaintPipeline,
+            ZImageControlNetPipeline,
             ZImageImg2ImgPipeline,
             ZImagePipeline,
         )
