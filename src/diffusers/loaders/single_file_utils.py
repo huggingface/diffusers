@@ -785,7 +785,10 @@ def infer_diffusers_model_type(checkpoint):
             raise ValueError(f"Unexpected x_embedder shape: {x_embedder_shape} when loading Cosmos 2.0 model.")
 
     elif CHECKPOINT_KEY_NAMES["z-image-turbo-controlnet-2.x"] in checkpoint:
-        if torch.all(checkpoint["control_noise_refiner.0.before_proj.weight"] == 0.0):
+        before_proj_weight = checkpoint.get("control_noise_refiner.0.before_proj.weight", None)
+        if before_proj_weight is None:
+            model_type = "z-image-turbo-controlnet-2.0"
+        elif before_proj_weight is not None and torch.all(before_proj_weight == 0.0):
             model_type = "z-image-turbo-controlnet-2.0"
         else:
             model_type = "z-image-turbo-controlnet-2.1"
