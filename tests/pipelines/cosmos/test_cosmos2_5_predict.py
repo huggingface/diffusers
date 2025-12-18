@@ -22,7 +22,7 @@ import numpy as np
 import torch
 from transformers import AutoTokenizer, Qwen2VLForConditionalGeneration
 
-from diffusers import AutoencoderKLWan, Cosmos2_5_PredictBase, CosmosTransformer3DModel, FlowUniPCMultistepScheduler
+from diffusers import AutoencoderKLWan, Cosmos2_5_PredictBase, CosmosTransformer3DModel, UniPCMultistepScheduler
 
 from ...testing_utils import enable_full_determinism, torch_device
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
@@ -94,7 +94,7 @@ class Cosmos2_5_PredictPipelineFastTests(PipelineTesterMixin, unittest.TestCase)
         )
 
         torch.manual_seed(0)
-        scheduler = FlowUniPCMultistepScheduler()
+        scheduler = UniPCMultistepScheduler()
 
         # NOTE: using Qwen2 VL instead for tests (reason1 is based on 2.5)
         text_encoder = Qwen2VLForConditionalGeneration.from_pretrained(
