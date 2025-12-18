@@ -414,6 +414,15 @@ def is_group_offload(test_case):
     return pytest.mark.group_offload(test_case)
 
 
+def is_quantization(test_case):
+    """
+    Decorator marking a test as a quantization test. These tests can be filtered using:
+        pytest -m "not quantization" to skip
+        pytest -m quantization to run only these tests
+    """
+    return pytest.mark.quantization(test_case)
+
+
 def is_bitsandbytes(test_case):
     """
     Decorator marking a test as a BitsAndBytes quantization test. These tests can be filtered using:
@@ -466,6 +475,15 @@ def is_context_parallel(test_case):
         pytest -m context_parallel to run only these tests
     """
     return pytest.mark.context_parallel(test_case)
+
+
+def is_cache(test_case):
+    """
+    Decorator marking a test as a cache test. These tests can be filtered using:
+        pytest -m "not cache" to skip
+        pytest -m cache to run only these tests
+    """
+    return pytest.mark.cache(test_case)
 
 
 def require_torch(test_case):
@@ -835,7 +853,7 @@ def require_modelopt_version_greater_or_equal(modelopt_version):
         ) >= version.parse(modelopt_version)
         return pytest.mark.skipif(
             not correct_nvidia_modelopt_version,
-            f"Test requires modelopt with version greater than {modelopt_version}.",
+            reason=f"Test requires modelopt with version greater than {modelopt_version}.",
         )(test_case)
 
     return decorator

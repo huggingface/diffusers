@@ -14,7 +14,6 @@
 # limitations under the License.
 
 import gc
-import tempfile
 
 import torch
 from huggingface_hub import hf_hub_download, snapshot_download
@@ -151,21 +150,20 @@ class SingleFileTesterMixin:
                 param, param_single_file, atol=1e-5, rtol=1e-5, msg=f"Parameter values differ for {key}"
             )
 
-    def test_single_file_loading_local_files_only(self):
+    def test_single_file_loading_local_files_only(self, tmp_path):
         single_file_kwargs = {}
 
         if hasattr(self, "torch_dtype") and self.torch_dtype:
             single_file_kwargs["torch_dtype"] = self.torch_dtype
 
-        with tempfile.TemporaryDirectory() as tmpdir:
-            pretrained_model_name_or_path, weight_name = _extract_repo_id_and_weights_name(self.ckpt_path)
-            local_ckpt_path = download_single_file_checkpoint(pretrained_model_name_or_path, weight_name, tmpdir)
+        pretrained_model_name_or_path, weight_name = _extract_repo_id_and_weights_name(self.ckpt_path)
+        local_ckpt_path = download_single_file_checkpoint(pretrained_model_name_or_path, weight_name, str(tmp_path))
 
-            model_single_file = self.model_class.from_single_file(
-                local_ckpt_path, local_files_only=True, **single_file_kwargs
-            )
+        model_single_file = self.model_class.from_single_file(
+            local_ckpt_path, local_files_only=True, **single_file_kwargs
+        )
 
-            assert model_single_file is not None, "Failed to load model with local_files_only=True"
+        assert model_single_file is not None, "Failed to load model with local_files_only=True"
 
     def test_single_file_loading_with_diffusers_config(self):
         single_file_kwargs = {}
@@ -196,22 +194,21 @@ class SingleFileTesterMixin:
                 f"{param_name} differs: pretrained={model.config[param_name]}, single_file={param_value}"
             )
 
-    def test_single_file_loading_with_diffusers_config_local_files_only(self):
+    def test_single_file_loading_with_diffusers_config_local_files_only(self, tmp_path):
         single_file_kwargs = {}
 
         if hasattr(self, "torch_dtype") and self.torch_dtype:
             single_file_kwargs["torch_dtype"] = self.torch_dtype
 
-        with tempfile.TemporaryDirectory() as tmpdir:
-            pretrained_model_name_or_path, weight_name = _extract_repo_id_and_weights_name(self.ckpt_path)
-            local_ckpt_path = download_single_file_checkpoint(pretrained_model_name_or_path, weight_name, tmpdir)
-            local_diffusers_config = download_diffusers_config(self.pretrained_model_name_or_path, tmpdir)
+        pretrained_model_name_or_path, weight_name = _extract_repo_id_and_weights_name(self.ckpt_path)
+        local_ckpt_path = download_single_file_checkpoint(pretrained_model_name_or_path, weight_name, str(tmp_path))
+        local_diffusers_config = download_diffusers_config(self.pretrained_model_name_or_path, str(tmp_path))
 
-            model_single_file = self.model_class.from_single_file(
-                local_ckpt_path, config=local_diffusers_config, local_files_only=True, **single_file_kwargs
-            )
+        model_single_file = self.model_class.from_single_file(
+            local_ckpt_path, config=local_diffusers_config, local_files_only=True, **single_file_kwargs
+        )
 
-            assert model_single_file is not None, "Failed to load model with config and local_files_only=True"
+        assert model_single_file is not None, "Failed to load model with config and local_files_only=True"
 
     def test_single_file_loading_dtype(self):
         for dtype in [torch.float32, torch.float16]:

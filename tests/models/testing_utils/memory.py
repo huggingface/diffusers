@@ -16,7 +16,6 @@
 import gc
 import glob
 import inspect
-import tempfile
 from functools import wraps
 
 import pytest
@@ -97,7 +96,7 @@ class CPUOffloadTesterMixin:
     model_split_percents = [0.5, 0.7]
 
     @require_offload_support
-    def test_cpu_offload(self):
+    def test_cpu_offload(self, tmp_path):
         config = self.get_init_dict()
         inputs_dict = self.get_dummy_inputs()
         model = self.model_class(**config).eval()
@@ -110,25 +109,24 @@ class CPUOffloadTesterMixin:
         model_size = compute_module_sizes(model)[""]
         # We test several splits of sizes to make sure it works
         max_gpu_sizes = [int(p * model_size) for p in self.model_split_percents]
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            model.cpu().save_pretrained(tmp_dir)
+        model.cpu().save_pretrained(str(tmp_path))
 
-            for max_size in max_gpu_sizes:
-                max_memory = {0: max_size, "cpu": model_size * 2}
-                new_model = self.model_class.from_pretrained(tmp_dir, device_map="auto", max_memory=max_memory)
-                # Making sure part of the model will actually end up offloaded
-                assert set(new_model.hf_device_map.values()) == {0, "cpu"}, "Model should be split between GPU and CPU"
+        for max_size in max_gpu_sizes:
+            max_memory = {0: max_size, "cpu": model_size * 2}
+            new_model = self.model_class.from_pretrained(str(tmp_path), device_map="auto", max_memory=max_memory)
+            # Making sure part of the model will actually end up offloaded
+            assert set(new_model.hf_device_map.values()) == {0, "cpu"}, "Model should be split between GPU and CPU"
 
-                check_device_map_is_respected(new_model, new_model.hf_device_map)
-                torch.manual_seed(0)
-                new_output = new_model(**inputs_dict)
+            check_device_map_is_respected(new_model, new_model.hf_device_map)
+            torch.manual_seed(0)
+            new_output = new_model(**inputs_dict)
 
-                assert_tensors_close(
-                    base_output[0], new_output[0], atol=1e-5, rtol=0, msg="Output should match with CPU offloading"
-                )
+            assert_tensors_close(
+                base_output[0], new_output[0], atol=1e-5, rtol=0, msg="Output should match with CPU offloading"
+            )
 
     @require_offload_support
-    def test_disk_offload_without_safetensors(self):
+    def test_disk_offload_without_safetensors(self, tmp_path):
         config = self.get_init_dict()
         inputs_dict = self.get_dummy_inputs()
         model = self.model_class(**config).eval()
@@ -143,26 +141,25 @@ class CPUOffloadTesterMixin:
         # Force disk offload by setting very small CPU memory
         max_memory = {0: max_size, "cpu": int(0.1 * max_size)}
 
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            model.cpu().save_pretrained(tmp_dir, safe_serialization=False)
-            # This errors out because it's missing an offload folder
-            with pytest.raises(ValueError):
-                new_model = self.model_class.from_pretrained(tmp_dir, device_map="auto", max_memory=max_memory)
+        model.cpu().save_pretrained(str(tmp_path), safe_serialization=False)
+        # This errors out because it's missing an offload folder
+        with pytest.raises(ValueError):
+            new_model = self.model_class.from_pretrained(str(tmp_path), device_map="auto", max_memory=max_memory)
 
-            new_model = self.model_class.from_pretrained(
-                tmp_dir, device_map="auto", max_memory=max_memory, offload_folder=tmp_dir
-            )
+        new_model = self.model_class.from_pretrained(
+            str(tmp_path), device_map="auto", max_memory=max_memory, offload_folder=str(tmp_path)
+        )
 
-            check_device_map_is_respected(new_model, new_model.hf_device_map)
-            torch.manual_seed(0)
-            new_output = new_model(**inputs_dict)
+        check_device_map_is_respected(new_model, new_model.hf_device_map)
+        torch.manual_seed(0)
+        new_output = new_model(**inputs_dict)
 
-            assert_tensors_close(
-                base_output[0], new_output[0], atol=1e-5, rtol=0, msg="Output should match with disk offloading"
-            )
+        assert_tensors_close(
+            base_output[0], new_output[0], atol=1e-5, rtol=0, msg="Output should match with disk offloading"
+        )
 
     @require_offload_support
-    def test_disk_offload_with_safetensors(self):
+    def test_disk_offload_with_safetensors(self, tmp_path):
         config = self.get_init_dict()
         inputs_dict = self.get_dummy_inputs()
         model = self.model_class(**config).eval()
@@ -173,26 +170,25 @@ class CPUOffloadTesterMixin:
         base_output = model(**inputs_dict)
 
         model_size = compute_module_sizes(model)[""]
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            model.cpu().save_pretrained(tmp_dir)
+        model.cpu().save_pretrained(str(tmp_path))
 
-            max_size = int(self.model_split_percents[0] * model_size)
-            max_memory = {0: max_size, "cpu": max_size}
-            new_model = self.model_class.from_pretrained(
-                tmp_dir, device_map="auto", offload_folder=tmp_dir, max_memory=max_memory
-            )
+        max_size = int(self.model_split_percents[0] * model_size)
+        max_memory = {0: max_size, "cpu": max_size}
+        new_model = self.model_class.from_pretrained(
+            str(tmp_path), device_map="auto", offload_folder=str(tmp_path), max_memory=max_memory
+        )
 
-            check_device_map_is_respected(new_model, new_model.hf_device_map)
-            torch.manual_seed(0)
-            new_output = new_model(**inputs_dict)
+        check_device_map_is_respected(new_model, new_model.hf_device_map)
+        torch.manual_seed(0)
+        new_output = new_model(**inputs_dict)
 
-            assert_tensors_close(
-                base_output[0],
-                new_output[0],
-                atol=1e-5,
-                rtol=0,
-                msg="Output should match with disk offloading (safetensors)",
-            )
+        assert_tensors_close(
+            base_output[0],
+            new_output[0],
+            atol=1e-5,
+            rtol=0,
+            msg="Output should match with disk offloading (safetensors)",
+        )
 
 
 @is_group_offload
@@ -312,7 +308,7 @@ class GroupOffloadTesterMixin:
     @require_group_offload_support
     @torch.no_grad()
     @torch.inference_mode()
-    def test_group_offloading_with_disk(self, offload_type="block_level", record_stream=False, atol=1e-5):
+    def test_group_offloading_with_disk(self, tmp_path, offload_type="block_level", record_stream=False, atol=1e-5):
         def _has_generator_arg(model):
             sig = inspect.signature(model.forward)
             params = sig.parameters
@@ -340,41 +336,41 @@ class GroupOffloadTesterMixin:
 
         num_blocks_per_group = None if offload_type == "leaf_level" else 1
         additional_kwargs = {} if offload_type == "leaf_level" else {"num_blocks_per_group": num_blocks_per_group}
-        with tempfile.TemporaryDirectory() as tmpdir:
-            model.enable_group_offload(
-                torch_device,
-                offload_type=offload_type,
+        tmpdir = str(tmp_path)
+        model.enable_group_offload(
+            torch_device,
+            offload_type=offload_type,
+            offload_to_disk_path=tmpdir,
+            use_stream=True,
+            record_stream=record_stream,
+            **additional_kwargs,
+        )
+        has_safetensors = glob.glob(f"{tmpdir}/*.safetensors")
+        assert has_safetensors, "No safetensors found in the directory."
+
+        # For "leaf-level", there is a prefetching hook which makes this check a bit non-deterministic
+        # in nature. So, skip it.
+        if offload_type != "leaf_level":
+            is_correct, extra_files, missing_files = _check_safetensors_serialization(
+                module=model,
                 offload_to_disk_path=tmpdir,
-                use_stream=True,
-                record_stream=record_stream,
-                **additional_kwargs,
+                offload_type=offload_type,
+                num_blocks_per_group=num_blocks_per_group,
             )
-            has_safetensors = glob.glob(f"{tmpdir}/*.safetensors")
-            assert has_safetensors, "No safetensors found in the directory."
+            if not is_correct:
+                if extra_files:
+                    raise ValueError(f"Found extra files: {', '.join(extra_files)}")
+                elif missing_files:
+                    raise ValueError(f"Following files are missing: {', '.join(missing_files)}")
 
-            # For "leaf-level", there is a prefetching hook which makes this check a bit non-deterministic
-            # in nature. So, skip it.
-            if offload_type != "leaf_level":
-                is_correct, extra_files, missing_files = _check_safetensors_serialization(
-                    module=model,
-                    offload_to_disk_path=tmpdir,
-                    offload_type=offload_type,
-                    num_blocks_per_group=num_blocks_per_group,
-                )
-                if not is_correct:
-                    if extra_files:
-                        raise ValueError(f"Found extra files: {', '.join(extra_files)}")
-                    elif missing_files:
-                        raise ValueError(f"Following files are missing: {', '.join(missing_files)}")
-
-            output_with_group_offloading = _run_forward(model, inputs_dict)
-            assert_tensors_close(
-                output_without_group_offloading,
-                output_with_group_offloading,
-                atol=atol,
-                rtol=0,
-                msg="Output should match with disk-based group offloading",
-            )
+        output_with_group_offloading = _run_forward(model, inputs_dict)
+        assert_tensors_close(
+            output_without_group_offloading,
+            output_with_group_offloading,
+            atol=atol,
+            rtol=0,
+            msg="Output should match with disk-based group offloading",
+        )
 
 
 class LayerwiseCastingTesterMixin:

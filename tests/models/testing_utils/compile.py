@@ -15,7 +15,6 @@
 
 import gc
 import os
-import tempfile
 
 import pytest
 import torch
@@ -140,7 +139,7 @@ class TorchCompileTesterMixin:
                 inputs_dict = self.get_dummy_inputs(height=height, width=width)
                 _ = model(**inputs_dict)
 
-    def test_compile_works_with_aot(self):
+    def test_compile_works_with_aot(self, tmp_path):
         from torch._inductor.package import load_package
 
         init_dict = self.get_init_dict()
@@ -149,11 +148,10 @@ class TorchCompileTesterMixin:
         model = self.model_class(**init_dict).to(torch_device)
         exported_model = torch.export.export(model, args=(), kwargs=inputs_dict)
 
-        with tempfile.TemporaryDirectory() as tmpdir:
-            package_path = os.path.join(tmpdir, f"{self.model_class.__name__}.pt2")
-            _ = torch._inductor.aoti_compile_and_package(exported_model, package_path=package_path)
-            assert os.path.exists(package_path), f"Package file not created at {package_path}"
-            loaded_binary = load_package(package_path, run_single_threaded=True)
+        package_path = os.path.join(str(tmp_path), f"{self.model_class.__name__}.pt2")
+        _ = torch._inductor.aoti_compile_and_package(exported_model, package_path=package_path)
+        assert os.path.exists(package_path), f"Package file not created at {package_path}"
+        loaded_binary = load_package(package_path, run_single_threaded=True)
 
         model.forward = loaded_binary
 

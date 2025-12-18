@@ -26,17 +26,25 @@ from ...testing_utils import enable_full_determinism, torch_device
 from ..testing_utils import (
     AttentionTesterMixin,
     BaseModelTesterConfig,
+    BitsAndBytesCompileTesterMixin,
     BitsAndBytesTesterMixin,
     ContextParallelTesterMixin,
+    FasterCacheTesterMixin,
+    FirstBlockCacheTesterMixin,
+    GGUFCompileTesterMixin,
     GGUFTesterMixin,
     IPAdapterTesterMixin,
     LoraHotSwappingForModelTesterMixin,
     LoraTesterMixin,
     MemoryTesterMixin,
+    ModelOptCompileTesterMixin,
     ModelOptTesterMixin,
     ModelTesterMixin,
+    PyramidAttentionBroadcastTesterMixin,
+    QuantoCompileTesterMixin,
     QuantoTesterMixin,
     SingleFileTesterMixin,
+    TorchAoCompileTesterMixin,
     TorchAoTesterMixin,
     TorchCompileTesterMixin,
     TrainingTesterMixin,
@@ -353,3 +361,94 @@ class TestFluxTransformerModelOpt(FluxTransformerTesterConfig, ModelOptTesterMix
             "txt_ids": randn_tensor((512, 3)),
             "guidance": torch.tensor([3.5]).to(torch_device),
         }
+
+
+class TestFluxTransformerBitsAndBytesCompile(FluxTransformerTesterConfig, BitsAndBytesCompileTesterMixin):
+    def get_dummy_inputs(self) -> dict[str, torch.Tensor]:
+        return {
+            "hidden_states": randn_tensor((1, 4096, 64)),
+            "encoder_hidden_states": randn_tensor((1, 512, 4096)),
+            "pooled_projections": randn_tensor((1, 768)),
+            "timestep": torch.tensor([1.0]).to(torch_device),
+            "img_ids": randn_tensor((4096, 3)),
+            "txt_ids": randn_tensor((512, 3)),
+            "guidance": torch.tensor([3.5]).to(torch_device),
+        }
+
+
+class TestFluxTransformerQuantoCompile(FluxTransformerTesterConfig, QuantoCompileTesterMixin):
+    def get_dummy_inputs(self) -> dict[str, torch.Tensor]:
+        return {
+            "hidden_states": randn_tensor((1, 4096, 64)),
+            "encoder_hidden_states": randn_tensor((1, 512, 4096)),
+            "pooled_projections": randn_tensor((1, 768)),
+            "timestep": torch.tensor([1.0]).to(torch_device),
+            "img_ids": randn_tensor((4096, 3)),
+            "txt_ids": randn_tensor((512, 3)),
+            "guidance": torch.tensor([3.5]).to(torch_device),
+        }
+
+
+class TestFluxTransformerTorchAoCompile(FluxTransformerTesterConfig, TorchAoCompileTesterMixin):
+    def get_dummy_inputs(self) -> dict[str, torch.Tensor]:
+        return {
+            "hidden_states": randn_tensor((1, 4096, 64)),
+            "encoder_hidden_states": randn_tensor((1, 512, 4096)),
+            "pooled_projections": randn_tensor((1, 768)),
+            "timestep": torch.tensor([1.0]).to(torch_device),
+            "img_ids": randn_tensor((4096, 3)),
+            "txt_ids": randn_tensor((512, 3)),
+            "guidance": torch.tensor([3.5]).to(torch_device),
+        }
+
+
+class TestFluxTransformerGGUFCompile(FluxTransformerTesterConfig, GGUFCompileTesterMixin):
+    gguf_filename = "https://huggingface.co/city96/FLUX.1-dev-gguf/blob/main/flux1-dev-Q8_0.gguf"
+
+    def get_dummy_inputs(self) -> dict[str, torch.Tensor]:
+        return {
+            "hidden_states": randn_tensor((1, 4096, 64)),
+            "encoder_hidden_states": randn_tensor((1, 512, 4096)),
+            "pooled_projections": randn_tensor((1, 768)),
+            "timestep": torch.tensor([1.0]).to(torch_device),
+            "img_ids": randn_tensor((4096, 3)),
+            "txt_ids": randn_tensor((512, 3)),
+            "guidance": torch.tensor([3.5]).to(torch_device),
+        }
+
+
+class TestFluxTransformerModelOptCompile(FluxTransformerTesterConfig, ModelOptCompileTesterMixin):
+    def get_dummy_inputs(self) -> dict[str, torch.Tensor]:
+        return {
+            "hidden_states": randn_tensor((1, 4096, 64)),
+            "encoder_hidden_states": randn_tensor((1, 512, 4096)),
+            "pooled_projections": randn_tensor((1, 768)),
+            "timestep": torch.tensor([1.0]).to(torch_device),
+            "img_ids": randn_tensor((4096, 3)),
+            "txt_ids": randn_tensor((512, 3)),
+            "guidance": torch.tensor([3.5]).to(torch_device),
+        }
+
+
+class TestFluxTransformerPABCache(FluxTransformerTesterConfig, PyramidAttentionBroadcastTesterMixin):
+    """PyramidAttentionBroadcast cache tests for Flux Transformer."""
+
+    pass
+
+
+class TestFluxTransformerFBCCache(FluxTransformerTesterConfig, FirstBlockCacheTesterMixin):
+    """FirstBlockCache tests for Flux Transformer."""
+
+    pass
+
+
+class TestFluxTransformerFasterCache(FluxTransformerTesterConfig, FasterCacheTesterMixin):
+    """FasterCache tests for Flux Transformer."""
+
+    # Flux is guidance distilled, so we can test at model level without CFG batch handling
+    FASTER_CACHE_CONFIG = {
+        "spatial_attention_block_skip_range": 2,
+        "spatial_attention_timestep_skip_range": (-1, 901),
+        "tensor_format": "BCHW",
+        "is_guidance_distilled": True,
+    }
