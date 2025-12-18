@@ -29,6 +29,7 @@ from .modular_pipeline import QwenImageModularPipeline, QwenImagePachifier
 
 logger = logging.get_logger(__name__)
 
+
 class QwenImageAfterDenoiseStep(ModularPipelineBlocks):
     model_name = "qwenimage"
 
@@ -68,6 +69,7 @@ class QwenImageAfterDenoiseStep(ModularPipelineBlocks):
 
         self.set_block_state(state, block_state)
         return components, state
+
 
 class QwenImageDecoderStep(ModularPipelineBlocks):
     model_name = "qwenimage"
@@ -113,7 +115,9 @@ class QwenImageDecoderStep(ModularPipelineBlocks):
         if block_state.latents.ndim == 4:
             block_state.latents = block_state.latents.unsqueeze(dim=1)
         elif block_state.latents.ndim != 5:
-            raise ValueError(f"expect latents to be a 4D or 5D tensor but got: {block_state.latents.shape}. Please make sure the latents are unpacked before decode step.")
+            raise ValueError(
+                f"expect latents to be a 4D or 5D tensor but got: {block_state.latents.shape}. Please make sure the latents are unpacked before decode step."
+            )
         block_state.latents = block_state.latents.to(components.vae.dtype)
 
         latents_mean = (

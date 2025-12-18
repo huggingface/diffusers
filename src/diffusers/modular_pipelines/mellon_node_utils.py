@@ -3,8 +3,8 @@ import logging
 import os
 
 # Simple typed wrapper for parameter overrides
-from dataclasses import asdict, dataclass, field
-from typing import Any, Dict, List, Optional, Tuple, Union
+from dataclasses import asdict, dataclass
+from typing import Any, Dict, Optional, Union
 
 from huggingface_hub import create_repo, hf_hub_download, upload_folder
 from huggingface_hub.utils import (
@@ -12,23 +12,23 @@ from huggingface_hub.utils import (
     HfHubHTTPError,
     RepositoryNotFoundError,
     RevisionNotFoundError,
-    validate_hf_hub_args,
 )
 
-from ..utils import HUGGINGFACE_CO_RESOLVE_ENDPOINT, PushToHubMixin, extract_commit_hash
-from .modular_pipeline import ModularPipelineBlocks
+from ..utils import HUGGINGFACE_CO_RESOLVE_ENDPOINT
 
 
 logger = logging.getLogger(__name__)
+
 
 @dataclass(frozen=True)
 class MellonParam:
     """
     Parameter definition for Mellon nodes.
-    
-    Use factory methods for common params (e.g., MellonParam.seed()) 
-    or create custom ones with MellonParam(name="...", label="...", type="...").
+
+    Use factory methods for common params (e.g., MellonParam.seed()) or create custom ones with MellonParam(name="...",
+    label="...", type="...").
     """
+
     name: str
     label: str
     type: str
@@ -70,7 +70,13 @@ class MellonParam:
 
     @classmethod
     def image_latents_with_strength(cls) -> "MellonParam":
-        return cls(name="image_latents", label="Image Latents", type="latents", display="input", onChange={"false": ["height", "width"], "true": ["strength"]})
+        return cls(
+            name="image_latents",
+            label="Image Latents",
+            type="latents",
+            display="input",
+            onChange={"false": ["height", "width"], "true": ["strength"]},
+        )
 
     @classmethod
     def latents_preview(cls) -> "MellonParam":
@@ -85,16 +91,40 @@ class MellonParam:
 
     @classmethod
     def controlnet_conditioning_scale(cls, default: float = 0.5) -> "MellonParam":
-        return cls(name="controlnet_conditioning_scale", label="Controlnet Conditioning Scale", type="float", default=default, min=0.0, max=1.0, step=0.01)
+        return cls(
+            name="controlnet_conditioning_scale",
+            label="Controlnet Conditioning Scale",
+            type="float",
+            default=default,
+            min=0.0,
+            max=1.0,
+            step=0.01,
+        )
 
     @classmethod
     def control_guidance_start(cls, default: float = 0.0) -> "MellonParam":
-        return cls(name="control_guidance_start", label="Control Guidance Start", type="float", default=default, min=0.0, max=1.0, step=0.01)
+        return cls(
+            name="control_guidance_start",
+            label="Control Guidance Start",
+            type="float",
+            default=default,
+            min=0.0,
+            max=1.0,
+            step=0.01,
+        )
 
     @classmethod
     def control_guidance_end(cls, default: float = 1.0) -> "MellonParam":
-        return cls(name="control_guidance_end", label="Control Guidance End", type="float", default=default, min=0.0, max=1.0, step=0.01)
-    
+        return cls(
+            name="control_guidance_end",
+            label="Control Guidance End",
+            type="float",
+            default=default,
+            min=0.0,
+            max=1.0,
+            step=0.01,
+        )
+
     @classmethod
     def prompt(cls, default: str = "") -> "MellonParam":
         return cls(name="prompt", label="Prompt", type="string", default=default, display="textarea")
@@ -109,31 +139,42 @@ class MellonParam:
 
     @classmethod
     def guidance_scale(cls, default: float = 5.0) -> "MellonParam":
-        return cls(name="guidance_scale", label="Guidance Scale", type="float", display="slider", default=default, min=1.0, max=30.0, step=0.1)
+        return cls(
+            name="guidance_scale",
+            label="Guidance Scale",
+            type="float",
+            display="slider",
+            default=default,
+            min=1.0,
+            max=30.0,
+            step=0.1,
+        )
 
     @classmethod
     def height(cls, default: int = 1024) -> "MellonParam":
-        return cls(name="height", label="Height", type="int", default=default, min=64,step=8)
+        return cls(name="height", label="Height", type="int", default=default, min=64, step=8)
 
     @classmethod
     def width(cls, default: int = 1024) -> "MellonParam":
         return cls(name="width", label="Width", type="int", default=default, min=64, step=8)
-    
+
     @classmethod
     def seed(cls, default: int = 0) -> "MellonParam":
         return cls(name="seed", label="Seed", type="int", default=default, min=0, max=4294967295, display="random")
 
     @classmethod
     def num_inference_steps(cls, default: int = 25) -> "MellonParam":
-        return cls(name="num_inference_steps", label="Steps", type="int", default=default, min=1, max=100, display="slider")
+        return cls(
+            name="num_inference_steps", label="Steps", type="int", default=default, min=1, max=100, display="slider"
+        )
 
     @classmethod
     def vae(cls) -> "MellonParam":
         """
         VAE model info dict.
-        
-        Contains keys like 'model_id', 'repo_id', 'execution_device' etc.
-        Use components.get_one(model_id) to retrieve the actual model.
+
+        Contains keys like 'model_id', 'repo_id', 'execution_device' etc. Use components.get_one(model_id) to retrieve
+        the actual model.
         """
         return cls(name="vae", label="VAE", type="diffusers_auto_model", display="input")
 
@@ -141,9 +182,9 @@ class MellonParam:
     def unet(cls) -> "MellonParam":
         """
         Denoising model (UNet/Transformer) info dict.
-        
-        Contains keys like 'model_id', 'repo_id', 'execution_device' etc.
-        Use components.get_one(model_id) to retrieve the actual model.
+
+        Contains keys like 'model_id', 'repo_id', 'execution_device' etc. Use components.get_one(model_id) to retrieve
+        the actual model.
         """
         return cls(name="unet", label="Denoise Model", type="diffusers_auto_model", display="input")
 
@@ -151,9 +192,9 @@ class MellonParam:
     def scheduler(cls) -> "MellonParam":
         """
         Scheduler model info dict.
-        
-        Contains keys like 'model_id', 'repo_id' etc.
-        Use components.get_one(model_id) to retrieve the actual scheduler.
+
+        Contains keys like 'model_id', 'repo_id' etc. Use components.get_one(model_id) to retrieve the actual
+        scheduler.
         """
         return cls(name="scheduler", label="Scheduler", type="diffusers_auto_model", display="input")
 
@@ -161,9 +202,9 @@ class MellonParam:
     def controlnet(cls) -> "MellonParam":
         """
         ControlNet model info dict.
-        
-        Contains keys like 'model_id', 'repo_id', 'execution_device' etc.
-        Use components.get_one(model_id) to retrieve the actual model.
+
+        Contains keys like 'model_id', 'repo_id', 'execution_device' etc. Use components.get_one(model_id) to retrieve
+        the actual model.
         """
         return cls(name="controlnet", label="ControlNet Model", type="diffusers_auto_model", display="input")
 
@@ -171,13 +212,11 @@ class MellonParam:
     def text_encoders(cls) -> "MellonParam":
         """
         Dict of text encoder model info dicts.
-        
+
         Structure: {
-            'text_encoder': {'model_id': ..., 'execution_device': ..., ...},
-            'tokenizer': {'model_id': ..., ...},
+            'text_encoder': {'model_id': ..., 'execution_device': ..., ...}, 'tokenizer': {'model_id': ..., ...},
             'repo_id': '...'
-        }
-        Use components.get_one(model_id) to retrieve each model.
+        } Use components.get_one(model_id) to retrieve each model.
         """
         return cls(name="text_encoders", label="Text Encoders", type="diffusers_auto_models", display="input")
 
@@ -185,14 +224,13 @@ class MellonParam:
     def controlnet_bundle(cls, display: str = "input") -> "MellonParam":
         """
         ControlNet bundle containing model info and processed control inputs.
-        
+
         Structure: {
-            'controlnet': {'model_id': ..., ...},  # controlnet model info dict
-            'control_image': ...,                   # processed control image/embeddings
-            'controlnet_conditioning_scale': ...,
-            ...  # other inputs expected by denoise blocks
+            'controlnet': {'model_id': ..., ...}, # controlnet model info dict 'control_image': ..., # processed
+            control image/embeddings 'controlnet_conditioning_scale': ..., ... # other inputs expected by denoise
+            blocks
         }
-        
+
         Output from Controlnet node, input to Denoise node.
         """
         return cls(name="controlnet_bundle", label="ControlNet", type="custom_controlnet", display=display)
@@ -203,11 +241,18 @@ class MellonParam:
 
     @classmethod
     def guider(cls) -> "MellonParam":
-        return cls(name="guider", label="Guider", type="custom_guider", display="input", onChange={False: ["guidance_scale"], True: []})
+        return cls(
+            name="guider",
+            label="Guider",
+            type="custom_guider",
+            display="input",
+            onChange={False: ["guidance_scale"], True: []},
+        )
 
     @classmethod
     def doc(cls) -> "MellonParam":
         return cls(name="doc", label="Doc", type="string", display="output")
+
 
 def mark_required(label: str, marker: str = " *") -> str:
     """Add required marker to label if not already present."""
@@ -219,32 +264,32 @@ def mark_required(label: str, marker: str = " *") -> str:
 def node_spec_to_mellon_dict(node_spec: Dict[str, Any], node_type: str) -> Dict[str, Any]:
     """
     Convert a node spec dict into Mellon format.
-    
-    A node spec is how we define a Mellon diffusers node in code. This function converts it 
-    into the `params` map format that Mellon UI expects.
-    
+
+    A node spec is how we define a Mellon diffusers node in code. This function converts it into the `params` map
+    format that Mellon UI expects.
+
     The `params` map is a dict where keys are parameter names and values are UI configuration:
         ```python
-        "seed": {"label": "Seed", "type": "int", "default": 0, ...}
+        {"seed": {"label": "Seed", "type": "int", "default": 0}}
         ```
-    
+
     For Modular Mellon nodes, we need to distinguish:
         - `inputs`: Pipeline inputs (e.g., seed, prompt, image)
-        - `model_inputs`: Model components (e.g., unet, vae, scheduler)  
+        - `model_inputs`: Model components (e.g., unet, vae, scheduler)
         - `outputs`: Node outputs (e.g., latents, images)
-    
+
     The node spec also includes:
         - `required_inputs` / `required_model_inputs`: Which params are required (marked with *)
         - `block_name`: The modular pipeline block this node corresponds to on backend
-    
-    We provide factory methods for common parameters (e.g., `MellonParam.seed()`, `MellonParam.unet()`)
-    so you don't have to manually specify all the UI configuration.
-    
+
+    We provide factory methods for common parameters (e.g., `MellonParam.seed()`, `MellonParam.unet()`) so you don't
+    have to manually specify all the UI configuration.
+
     Args:
         node_spec: Dict with `inputs`, `model_inputs`, `outputs` (lists of MellonParam),
                    plus `required_inputs`, `required_model_inputs`, `block_name`.
         node_type: The node type string (e.g., "denoise", "controlnet")
-    
+
     Returns:
         Dict with:
             - `params`: Flat dict of all params in Mellon UI format
@@ -253,7 +298,7 @@ def node_spec_to_mellon_dict(node_spec: Dict[str, Any], node_type: str) -> Dict[
             - `output_names`: List of output parameter names
             - `block_name`: The backend block name
             - `node_type`: The node type
-    
+
     Example:
         ```python
         node_spec = {
@@ -264,14 +309,14 @@ def node_spec_to_mellon_dict(node_spec: Dict[str, Any], node_type: str) -> Dict[
             "required_model_inputs": ["unet"],
             "block_name": "denoise",
         }
-        
+
         result = node_spec_to_mellon_dict(node_spec, "denoise")
         # Returns:
         # {
         #     "params": {
-        #         "seed": {"label": "Seed", "type": "int", ...},
-        #         "prompt": {"label": "Prompt *", "type": "string", ...},  # * marks required
-        #         "unet": {"label": "Denoise Model *", "type": "diffusers_auto_model", ...},
+        #         "seed": {"label": "Seed", "type": "int", "default": 0},
+        #         "prompt": {"label": "Prompt *", "type": "string", "default": ""},  # * marks required
+        #         "unet": {"label": "Denoise Model *", "type": "diffusers_auto_model", "display": "input"},
         #         "latents": {"label": "Latents", "type": "latents", "display": "output"},
         #     },
         #     "input_names": ["seed", "prompt"],
@@ -286,10 +331,10 @@ def node_spec_to_mellon_dict(node_spec: Dict[str, Any], node_type: str) -> Dict[
     input_names = []
     model_input_names = []
     output_names = []
-    
+
     required_inputs = node_spec.get("required_inputs", [])
     required_model_inputs = node_spec.get("required_model_inputs", [])
-    
+
     # Process inputs
     for p in node_spec.get("inputs", []):
         param_dict = p.to_dict()
@@ -297,7 +342,7 @@ def node_spec_to_mellon_dict(node_spec: Dict[str, Any], node_type: str) -> Dict[
             param_dict["label"] = mark_required(param_dict["label"])
         params[p.name] = param_dict
         input_names.append(p.name)
-    
+
     # Process model_inputs
     for p in node_spec.get("model_inputs", []):
         param_dict = p.to_dict()
@@ -305,12 +350,12 @@ def node_spec_to_mellon_dict(node_spec: Dict[str, Any], node_type: str) -> Dict[
             param_dict["label"] = mark_required(param_dict["label"])
         params[p.name] = param_dict
         model_input_names.append(p.name)
-    
+
     # Process outputs
     for p in node_spec.get("outputs", []):
         params[p.name] = p.to_dict()
         output_names.append(p.name)
-    
+
     return {
         "params": params,
         "input_names": input_names,
@@ -320,13 +365,14 @@ def node_spec_to_mellon_dict(node_spec: Dict[str, Any], node_type: str) -> Dict[
         "node_type": node_type,
     }
 
+
 class MellonPipelineConfig:
     """
     Configuration for an entire Mellon pipeline containing multiple nodes.
-    
-    Accepts node specs as dicts with inputs/model_inputs/outputs lists of MellonParam,
-    converts them to Mellon-ready format, and handles save/load to Hub.
-    
+
+    Accepts node specs as dicts with inputs/model_inputs/outputs lists of MellonParam, converts them to Mellon-ready
+    format, and handles save/load to Hub.
+
     Example:
         ```python
         config = MellonPipelineConfig(
@@ -339,26 +385,30 @@ class MellonPipelineConfig:
                     "required_model_inputs": ["unet"],
                     "block_name": "denoise",
                 },
-                "decoder": {...},
+                "decoder": {
+                    "inputs": [MellonParam.latents(display="input")],
+                    "outputs": [MellonParam.images()],
+                    "block_name": "decoder",
+                },
             },
             label="My Pipeline",
             default_repo="user/my-pipeline",
             default_dtype="float16",
         )
-        
+
         # Access Mellon format dict
         denoise = config.node_params["denoise"]
         input_names = denoise["input_names"]
         params = denoise["params"]
-        
+
         # Save to Hub
         config.save("./my_config", push_to_hub=True, repo_id="user/my-pipeline")
-        
+
         # Load from Hub
         loaded = MellonPipelineConfig.load("user/my-pipeline")
         ```
     """
-    
+
     config_name = "mellon_pipeline_config.json"
 
     def __init__(
@@ -371,8 +421,8 @@ class MellonPipelineConfig:
         """
         Args:
             node_specs: Dict mapping node_type to node spec or None.
-                        Node spec has: inputs, model_inputs, outputs, required_inputs, 
-                        required_model_inputs, block_name (all optional)
+                        Node spec has: inputs, model_inputs, outputs, required_inputs, required_model_inputs,
+                        block_name (all optional)
             label: Human-readable label for the pipeline
             default_repo: Default HuggingFace repo for this pipeline
             default_dtype: Default dtype (e.g., "float16", "bfloat16")
@@ -384,7 +434,7 @@ class MellonPipelineConfig:
                 self.node_params[node_type] = None
             else:
                 self.node_params[node_type] = node_spec_to_mellon_dict(spec, node_type)
-        
+
         self.label = label
         self.default_repo = default_repo
         self.default_dtype = default_dtype
@@ -406,7 +456,7 @@ class MellonPipelineConfig:
     def from_dict(cls, data: Dict[str, Any]) -> "MellonPipelineConfig":
         """
         Create from a dictionary (loaded from JSON).
-        
+
         Note: The mellon_params are already in Mellon format when loading from JSON.
         """
         instance = cls.__new__(cls)
@@ -479,15 +529,13 @@ class MellonPipelineConfig:
         subfolder = kwargs.pop("subfolder", None)
 
         pretrained_model_name_or_path = str(pretrained_model_name_or_path)
-        
+
         if os.path.isfile(pretrained_model_name_or_path):
             config_file = pretrained_model_name_or_path
         elif os.path.isdir(pretrained_model_name_or_path):
             config_file = os.path.join(pretrained_model_name_or_path, cls.config_name)
             if not os.path.isfile(config_file):
-                raise EnvironmentError(
-                    f"No file named {cls.config_name} found in {pretrained_model_name_or_path}"
-                )
+                raise EnvironmentError(f"No file named {cls.config_name} found in {pretrained_model_name_or_path}")
         else:
             try:
                 config_file = hf_hub_download(
@@ -539,7 +587,7 @@ class MellonPipelineConfig:
                     f"Otherwise, make sure '{pretrained_model_name_or_path}' is the correct path to a directory "
                     f"containing a {cls.config_name} file"
                 )
-        
+
         try:
             return cls.from_json_file(config_file)
         except (json.JSONDecodeError, UnicodeDecodeError):

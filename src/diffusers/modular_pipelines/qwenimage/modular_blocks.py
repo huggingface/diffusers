@@ -26,7 +26,12 @@ from .before_denoise import (
     QwenImageSetTimestepsStep,
     QwenImageSetTimestepsWithStrengthStep,
 )
-from .decoders import QwenImageAfterDenoiseStep, QwenImageDecoderStep, QwenImageInpaintProcessImagesOutputStep, QwenImageProcessImagesOutputStep
+from .decoders import (
+    QwenImageAfterDenoiseStep,
+    QwenImageDecoderStep,
+    QwenImageInpaintProcessImagesOutputStep,
+    QwenImageProcessImagesOutputStep,
+)
 from .denoise import (
     QwenImageControlNetDenoiseStep,
     QwenImageDenoiseStep,
@@ -534,7 +539,14 @@ class QwenImageCoreDenoiseStep(SequentialPipelineBlocks):
         QwenImageAutoDenoiseStep,
         QwenImageAfterDenoiseStep,
     ]
-    block_names = ["input", "controlnet_input", "before_denoise", "controlnet_before_denoise", "denoise", "after_denoise"]
+    block_names = [
+        "input",
+        "controlnet_input",
+        "before_denoise",
+        "controlnet_before_denoise",
+        "denoise",
+        "after_denoise",
+    ]
 
     @property
     def description(self):
