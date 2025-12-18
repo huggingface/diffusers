@@ -20,7 +20,7 @@ import unittest
 
 import numpy as np
 import torch
-from transformers import AutoTokenizer, Qwen2VLForConditionalGeneration
+from transformers import Qwen2_5_VLConfig, Qwen2_5_VLForConditionalGeneration, Qwen2Tokenizer
 
 from diffusers import (
     AutoencoderKLWan,
@@ -43,9 +43,10 @@ class Cosmos2_5_PredictBaseWrapper(Cosmos2_5_PredictBasePipeline):
     def from_pretrained(*args, **kwargs):
         if "safety_checker" not in kwargs or kwargs["safety_checker"] is None:
             safety_checker = DummyCosmosSafetyChecker()
+            device_map = kwargs.get("device_map", "cpu")
             torch_dtype = kwargs.get("torch_dtype")
-            if isinstance(torch_dtype, torch.dtype):
-                safety_checker = safety_checker.to(dtype=torch_dtype)
+            if device_map is not None or torch_dtype is not None:
+                safety_checker = safety_checker.to(device_map, dtype=torch_dtype)
             kwargs["safety_checker"] = safety_checker
         return Cosmos2_5_PredictBasePipeline.from_pretrained(*args, **kwargs)
 
@@ -101,11 +102,36 @@ class Cosmos2_5_PredictPipelineFastTests(PipelineTesterMixin, unittest.TestCase)
         torch.manual_seed(0)
         scheduler = UniPCMultistepScheduler()
 
-        # NOTE: using Qwen2 VL instead for tests (reason1 is based on 2.5)
-        text_encoder = Qwen2VLForConditionalGeneration.from_pretrained(
-            "hf-internal-testing/tiny-random-Qwen2VLForConditionalGeneration",
+        torch.manual_seed(0)
+        config = Qwen2_5_VLConfig(
+            text_config={
+                "hidden_size": 16,
+                "intermediate_size": 16,
+                "num_hidden_layers": 2,
+                "num_attention_heads": 2,
+                "num_key_value_heads": 2,
+                "rope_scaling": {
+                    "mrope_section": [1, 1, 2],
+                    "rope_type": "default",
+                    "type": "default",
+                },
+                "rope_theta": 1000000.0,
+            },
+            vision_config={
+                "depth": 2,
+                "hidden_size": 16,
+                "intermediate_size": 16,
+                "num_heads": 2,
+                "out_hidden_size": 16,
+            },
+            hidden_size=16,
+            vocab_size=152064,
+            vision_end_token_id=151653,
+            vision_start_token_id=151652,
+            vision_token_id=151654,
         )
-        tokenizer = AutoTokenizer.from_pretrained("hf-internal-testing/tiny-random-Qwen2VLForConditionalGeneration")
+        text_encoder = Qwen2_5_VLForConditionalGeneration(config)
+        tokenizer = Qwen2Tokenizer.from_pretrained("hf-internal-testing/tiny-random-Qwen2VLForConditionalGeneration")
 
         components = {
             "transformer": transformer,

@@ -24,9 +24,6 @@ except OptionalDependencyNotAvailable:
 else:
     _import_structure["pipeline_cosmos2_5_predict"] = [
         "Cosmos2_5_PredictBasePipeline",
-        "Cosmos2_5_PredictImage2World",
-        "Cosmos2_5_PredictText2World",
-        "Cosmos2_5_PredictVideo2World",
     ]
     _import_structure["pipeline_cosmos2_text2image"] = ["Cosmos2TextToImagePipeline"]
     _import_structure["pipeline_cosmos2_video2world"] = ["Cosmos2VideoToWorldPipeline"]
@@ -43,9 +40,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     else:
         from .pipeline_cosmos2_5_predict import (
             Cosmos2_5_PredictBasePipeline,
-            Cosmos2_5_PredictImage2World,
-            Cosmos2_5_PredictText2World,
-            Cosmos2_5_PredictVideo2World,
         )
         from .pipeline_cosmos2_text2image import Cosmos2TextToImagePipeline
         from .pipeline_cosmos2_video2world import Cosmos2VideoToWorldPipeline
