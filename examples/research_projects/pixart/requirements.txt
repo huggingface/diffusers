@@ -1,6 +1,0 @@
-transformers
-SentencePiece
-torchvision
-controlnet-aux
-datasets
-# wandb
