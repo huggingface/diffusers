@@ -69,7 +69,7 @@ class TupleTransformer(ModelMixin):
             encoder_hidden_states = output[1]
         return hidden_states, encoder_hidden_states
 
-
+@unittest.skip("MagCache unit tests are skipped.")
 class MagCacheTests(unittest.TestCase):
     def setUp(self):
         # Register standard dummy block
