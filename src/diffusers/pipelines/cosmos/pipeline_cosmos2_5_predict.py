@@ -547,7 +547,7 @@ class Cosmos2_5_PredictBase(DiffusionPipeline):
         height: int = 704,
         width: int = 1280,
         num_frames: int = 93,
-        num_inference_steps: int = 35,
+        num_inference_steps: int = 36,
         guidance_scale: float = 7.0,
         fps: int = 16,
         num_videos_per_prompt: Optional[int] = 1,
