@@ -31,7 +31,7 @@ from .pipeline_output import ZImagePipelineOutput
 
 from ..flux2.image_processor import Flux2ImageProcessor
 
-from ...models.transformers.transformer_z_image_omni import ZImageOmniTransformer2DModel
+from ...models.transformers import ZImageTransformer2DModel
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
@@ -149,7 +149,7 @@ class ZImageOmniPipeline(DiffusionPipeline, ZImageLoraLoaderMixin, FromSingleFil
         vae: AutoencoderKL,
         text_encoder: PreTrainedModel,
         tokenizer: AutoTokenizer,
-        transformer: ZImageOmniTransformer2DModel,
+        transformer: ZImageTransformer2DModel,
         siglip: Siglip2VisionModel,
         siglip_processor: Siglip2ImageProcessorFast,
     ):

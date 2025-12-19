@@ -279,7 +279,6 @@ else:
             "WanTransformer3DModel",
             "WanVACETransformer3DModel",
             "ZImageTransformer2DModel",
-            "ZImageOmniTransformer2DModel",
             "attention_backend",
         ]
     )
@@ -1015,7 +1014,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             WanTransformer3DModel,
             WanVACETransformer3DModel,
             ZImageTransformer2DModel,
-            ZImageOmniTransformer2DModel,
             attention_backend,
         )
         from .modular_pipelines import ComponentsManager, ComponentSpec, ModularPipeline, ModularPipelineBlocks
