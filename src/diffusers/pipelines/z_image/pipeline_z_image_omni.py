@@ -657,12 +657,24 @@ class ZImageOmniPipeline(DiffusionPipeline, ZImageLoraLoaderMixin, FromSingleFil
                 latent_model_input = latent_model_input.unsqueeze(2)
                 latent_model_input_list = list(latent_model_input.unbind(dim=0))
 
+                # Combine condition latents with target latent
+                current_batch_size = len(latent_model_input_list)
+                x_combined = [
+                    condition_latents_model_input[i] + [latent_model_input_list[i]]
+                    for i in range(current_batch_size)
+                ]
+                # Create noise mask: 0 for condition images (clean), 1 for target image (noisy)
+                image_noise_mask = [
+                    [0] * len(condition_latents_model_input[i]) + [1]
+                    for i in range(current_batch_size)
+                ]
+
                 model_out_list = self.transformer(
-                    x=latent_model_input_list,
+                    x=x_combined,
                     t=timestep_model_input,
                     cap_feats=prompt_embeds_model_input,
-                    cond_latents=condition_latents_model_input,
                     siglip_feats=condition_siglip_embeds_model_input,
+                    image_noise_mask=image_noise_mask,
                     return_dict=False,
                 )[0]
 

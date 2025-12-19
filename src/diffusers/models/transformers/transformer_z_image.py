@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import math
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
@@ -152,6 +152,20 @@ class ZSingleStreamAttnProcessor:
         return output
 
 
+def select_per_token(
+    value_noisy: torch.Tensor,
+    value_clean: torch.Tensor,
+    noise_mask: torch.Tensor,
+    seq_len: int,
+) -> torch.Tensor:
+    noise_mask_expanded = noise_mask.unsqueeze(-1)  # (batch, seq_len, 1)
+    return torch.where(
+        noise_mask_expanded == 1,
+        value_noisy.unsqueeze(1).expand(-1, seq_len, -1),
+        value_clean.unsqueeze(1).expand(-1, seq_len, -1),
+    )
+
+
 class FeedForward(nn.Module):
     def __init__(self, dim: int, hidden_dim: int):
         super().__init__()
@@ -220,10 +234,10 @@ class ZImageTransformerBlock(nn.Module):
         adaln_clean: Optional[torch.Tensor] = None,
     ):
         if self.modulation:
-            if noise_mask is not None and adaln_noisy is not None and adaln_clean is not None:
-                # Per-token modulation based on noise_mask, (batch, seq_len), 1 for noisy tokens, 0 for clean tokens
-                _, seq_len = x.shape[0], x.shape[1]
+            seq_len = x.shape[1]
 
+            if noise_mask is not None:
+                # Per-token modulation: different modulation for noisy/clean tokens
                 mod_noisy = self.adaLN_modulation(adaln_noisy)
                 mod_clean = self.adaLN_modulation(adaln_clean)
 
@@ -236,33 +250,14 @@ class ZImageTransformerBlock(nn.Module):
                 scale_msa_noisy, scale_mlp_noisy = 1.0 + scale_msa_noisy, 1.0 + scale_mlp_noisy
                 scale_msa_clean, scale_mlp_clean = 1.0 + scale_msa_clean, 1.0 + scale_mlp_clean
 
-                noise_mask_expanded = noise_mask.unsqueeze(-1)  # (batch, seq_len, 1)
-                scale_msa = torch.where(
-                    noise_mask_expanded == 1,
-                    scale_msa_noisy.unsqueeze(1).expand(-1, seq_len, -1),
-                    scale_msa_clean.unsqueeze(1).expand(-1, seq_len, -1),
-                )
-                scale_mlp = torch.where(
-                    noise_mask_expanded == 1,
-                    scale_mlp_noisy.unsqueeze(1).expand(-1, seq_len, -1),
-                    scale_mlp_clean.unsqueeze(1).expand(-1, seq_len, -1),
-                )
-                gate_msa = torch.where(
-                    noise_mask_expanded == 1,
-                    gate_msa_noisy.unsqueeze(1).expand(-1, seq_len, -1),
-                    gate_msa_clean.unsqueeze(1).expand(-1, seq_len, -1),
-                )
-                gate_mlp = torch.where(
-                    noise_mask_expanded == 1,
-                    gate_mlp_noisy.unsqueeze(1).expand(-1, seq_len, -1),
-                    gate_mlp_clean.unsqueeze(1).expand(-1, seq_len, -1),
-                )
+                scale_msa = select_per_token(scale_msa_noisy, scale_msa_clean, noise_mask, seq_len)
+                scale_mlp = select_per_token(scale_mlp_noisy, scale_mlp_clean, noise_mask, seq_len)
+                gate_msa = select_per_token(gate_msa_noisy, gate_msa_clean, noise_mask, seq_len)
+                gate_mlp = select_per_token(gate_mlp_noisy, gate_mlp_clean, noise_mask, seq_len)
             else:
-                # Original global modulation
-                assert adaln_input is not None
-                scale_msa, gate_msa, scale_mlp, gate_mlp = (
-                    self.adaLN_modulation(adaln_input).unsqueeze(1).chunk(4, dim=2)
-                )
+                # Global modulation: same modulation for all tokens (avoid double select)
+                mod = self.adaLN_modulation(adaln_input)
+                scale_msa, gate_msa, scale_mlp, gate_mlp = mod.unsqueeze(1).chunk(4, dim=2)
                 gate_msa, gate_mlp = gate_msa.tanh(), gate_mlp.tanh()
                 scale_msa, scale_mlp = 1.0 + scale_msa, 1.0 + scale_mlp
 
@@ -297,18 +292,13 @@ class FinalLayer(nn.Module):
         )
 
     def forward(self, x, c=None, noise_mask=None, c_noisy=None, c_clean=None):
-        if noise_mask is not None and c_noisy is not None and c_clean is not None:
-            # Per-token modulation based on noise_mask
-            _, seq_len = x.shape[0], x.shape[1]
+        seq_len = x.shape[1]
+
+        if noise_mask is not None:
+            # Per-token modulation
             scale_noisy = 1.0 + self.adaLN_modulation(c_noisy)
             scale_clean = 1.0 + self.adaLN_modulation(c_clean)
-
-            noise_mask_expanded = noise_mask.unsqueeze(-1)
-            scale = torch.where(
-                noise_mask_expanded == 1,
-                scale_noisy.unsqueeze(1).expand(-1, seq_len, -1),
-                scale_clean.unsqueeze(1).expand(-1, seq_len, -1),
-            )
+            scale = select_per_token(scale_noisy, scale_clean, noise_mask, seq_len)
         else:
             # Original global modulation
             assert c is not None, "Either c or (c_noisy, c_clean) must be provided"
@@ -900,29 +890,29 @@ class ZImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
 
     def forward(
         self,
-        x: List[torch.Tensor],
+        x: Union[List[torch.Tensor], List[List[torch.Tensor]]],
         t,
-        cap_feats: List[torch.Tensor],
+        cap_feats: Union[List[torch.Tensor], List[List[torch.Tensor]]],
         controlnet_block_samples: Optional[Dict[int, torch.Tensor]] = None,
-        cond_latents: Optional[List[List[torch.Tensor]]] = None,
         siglip_feats: Optional[List[List[torch.Tensor]]] = None,
-        patch_size=2,
-        f_patch_size=1,
+        image_noise_mask: Optional[List[List[int]]] = None,
+        patch_size: int = 2,
+        f_patch_size: int = 1,
         return_dict: bool = True,
     ):
         assert patch_size in self.all_patch_size
         assert f_patch_size in self.all_f_patch_size
 
-        # Determine mode based on cond_latents
-        omni_mode = cond_latents is not None
+        # Omni mode: x contains lists (multi-image input)
+        omni_mode = isinstance(x[0], list)
 
         if omni_mode:
             return self._forward_omni(
                 x,
                 t,
                 cap_feats,
-                cond_latents,
                 siglip_feats,
+                image_noise_mask,
                 controlnet_block_samples,
                 patch_size,
                 f_patch_size,
@@ -1061,11 +1051,11 @@ class ZImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
 
     def _forward_omni(
         self,
-        x: List[torch.Tensor],
+        x: List[List[torch.Tensor]],
         t,
         cap_feats: List[List[torch.Tensor]],
-        cond_latents: List[List[torch.Tensor]],
         siglip_feats: List[List[torch.Tensor]],
+        image_noise_mask: List[List[int]],
         controlnet_block_samples: Optional[Dict[int, torch.Tensor]],
         patch_size: int,
         f_patch_size: int,
@@ -1073,18 +1063,11 @@ class ZImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
     ):
         """Omni mode forward pass with image conditioning."""
         bsz = len(x)
-        device = x[0].device
+        device = x[0][-1].device  # From target latent
 
         # Create dual timestep embeddings: one for noisy tokens (t), one for clean tokens (t=1)
-        t_combined = torch.cat([t, torch.ones_like(t, dtype=t.dtype, device=device)], dim=0)
-        t_combined = t_combined * self.t_scale
-        t_combined = self.t_embedder(t_combined)
-        t_noisy = t_combined[:bsz]  # Original timestep for noisy tokens
-        t_clean = t_combined[bsz:]  # t=1 for clean (condition) tokens
-
-        # Combine condition latents with target latent
-        x = [cond_latents[i] + [x[i]] for i in range(bsz)]
-        image_noise_mask = [[0] * (len(x[i]) - 1) + [1] for i in range(bsz)]
+        t_noisy = self.t_embedder(t * self.t_scale)
+        t_clean = self.t_embedder(torch.ones_like(t) * self.t_scale)
 
         # Patchify and embed for Omni mode
         (
