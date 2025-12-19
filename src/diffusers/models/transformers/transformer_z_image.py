@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import math
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import torch
 import torch.nn as nn
@@ -901,6 +901,7 @@ class ZImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
         x: List[torch.Tensor],
         t,
         cap_feats: List[torch.Tensor],
+        controlnet_block_samples: Optional[Dict[int, torch.Tensor]] = None,
         cond_latents: Optional[List[List[torch.Tensor]]] = None,
         siglip_feats: Optional[List[List[torch.Tensor]]] = None,
         patch_size=2,
@@ -1022,13 +1023,19 @@ class ZImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
             unified_attn_mask[i, :seq_len] = 1
 
         if torch.is_grad_enabled() and self.gradient_checkpointing:
-            for layer in self.layers:
+            for layer_idx, layer in enumerate(self.layers):
                 unified = self._gradient_checkpointing_func(
                     layer, unified, unified_attn_mask, unified_freqs_cis, adaln_input
                 )
+                if controlnet_block_samples is not None:
+                    if layer_idx in controlnet_block_samples:
+                        unified = unified + controlnet_block_samples[layer_idx]
         else:
-            for layer in self.layers:
+            for layer_idx, layer in enumerate(self.layers):
                 unified = layer(unified, unified_attn_mask, unified_freqs_cis, adaln_input)
+                if controlnet_block_samples is not None:
+                    if layer_idx in controlnet_block_samples:
+                        unified = unified + controlnet_block_samples[layer_idx]
 
         unified = self.all_final_layer[f"{patch_size}-{f_patch_size}"](unified, adaln_input)
         unified = list(unified.unbind(dim=0))
