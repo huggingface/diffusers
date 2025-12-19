@@ -69,7 +69,6 @@ class MagnitudeAwareGuidance(BaseGuidance):
         self.alpha = alpha
         self.guidance_rescale = guidance_rescale
         self.use_original_formulation = use_original_formulation
-        self.momentum_buffer = None
 
     def prepare_inputs(self, data: Dict[str, Tuple[torch.Tensor, torch.Tensor]]) -> List["BlockState"]:
         tuple_indices = [0] if self.num_conditions == 1 else [0, 1]
