@@ -144,7 +144,7 @@ def mambo_guidance(
     alpha: float = 8.0,
     use_original_formulation: bool = False,
 ):
-    dim = [i for i in range(1, len(pred_cond.shape))]
+    dim = list(range(1, len(pred_cond.shape)))
     diff = pred_cond - pred_uncond
     ratio = torch.norm(diff, dim=dim, keepdim=True) / torch.norm(pred_uncond, dim=dim, keepdim=True)
     guidance_scale_final = guidance_scale * torch.exp(- alpha * ratio) if use_original_formulation else 1.0 + (guidance_scale - 1.0) * torch.exp(- alpha * ratio)
