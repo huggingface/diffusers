@@ -55,7 +55,10 @@ class AutoencoderKLLTX2VideoTests(ModelTesterMixin, AutoencoderTesterMixin, unit
             "patch_size": 1,
             "patch_size_t": 1,
             "encoder_causal": True,
-            "decoder_causal": True,
+            "decoder_causal": False,
+            "encoder_spatial_padding_mode": "zeros",
+            # Full model uses `reflect` but this does not have deterministic backward implementation, so use `zeros`
+            "decoder_spatial_padding_mode": "zeros",
         }
 
     @property
