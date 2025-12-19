@@ -10,6 +10,7 @@ from huggingface_hub import hf_hub_download
 
 from diffusers import AutoencoderKLLTX2Video, LTX2VideoTransformer3DModel
 from diffusers.utils.import_utils import is_accelerate_available
+from diffusers.pipelines.ltx2.vocoder import LTX2Vocoder
 
 
 CTX = init_empty_weights if is_accelerate_available() else nullcontext
@@ -61,6 +62,13 @@ LTX_2_0_VIDEO_VAE_RENAME_DICT = {
     "per_channel_statistics.std-of-means": "latents_std",
 }
 
+LTX_2_0_VOCODER_RENAME_DICT = {
+    "ups": "upsamplers",
+    "resblocks": "resnets",
+    "conv_pre": "conv_in",
+    "conv_post": "conv_out",
+}
+
 
 def update_state_dict_inplace(state_dict: Dict[str, Any], old_key: str, new_key: str) -> None:
     state_dict[new_key] = state_dict.pop(old_key)
@@ -98,6 +106,8 @@ LTX_2_0_VAE_SPECIAL_KEYS_REMAP = {
     "per_channel_statistics.channel": remove_keys_inplace,
     "per_channel_statistics.mean-of-stds": remove_keys_inplace,
 }
+
+LTX_2_0_VOCODER_SPECIAL_KEYS_REMAP = {}
 
 
 def get_ltx2_transformer_config(version: str) -> Tuple[Dict[str, Any], Dict[str, Any], Dict[str, Any]]:
@@ -315,6 +325,53 @@ def convert_ltx2_video_vae(original_state_dict: Dict[str, Any], version: str) ->
     return vae
 
 
+def get_ltx2_vocoder_config(version: str) -> Tuple[Dict[str, Any], Dict[str, Any], Dict[str, Any]]:
+    if version == "2.0":
+        config = {
+            "model_id": "diffusers-internal-dev/new-ltx-model",
+            "diffusers_config": {
+                "in_channels": 128,
+                "hidden_channels": 1024,
+                "out_channels": 2,
+                "upsample_kernel_sizes": [16, 15, 8, 4, 4],
+                "upsample_factors": [6, 5, 2, 2, 2],
+                "resnet_kernel_sizes": [3, 7, 11],
+                "resnet_dilations": [[1, 3, 5], [1, 3, 5], [1, 3, 5]],
+                "leaky_relu_negative_slope": 0.1,
+                "output_sampling_rate": 24000,
+            }
+        }
+        rename_dict = LTX_2_0_VOCODER_RENAME_DICT
+        special_keys_remap = LTX_2_0_VOCODER_SPECIAL_KEYS_REMAP
+    return config, rename_dict, special_keys_remap
+
+
+def convert_ltx2_vocoder(original_state_dict: Dict[str, Any], version: str) -> Dict[str, Any]:
+    config, rename_dict, special_keys_remap = get_ltx2_vocoder_config(version)
+    diffusers_config = config["diffusers_config"]
+
+    with init_empty_weights():
+        vocoder = LTX2Vocoder.from_config(diffusers_config)
+
+    # Handle official code --> diffusers key remapping via the remap dict
+    for key in list(original_state_dict.keys()):
+        new_key = key[:]
+        for replace_key, rename_key in rename_dict.items():
+            new_key = new_key.replace(replace_key, rename_key)
+        update_state_dict_inplace(original_state_dict, key, new_key)
+
+    # Handle any special logic which can't be expressed by a simple 1:1 remapping with the handlers in
+    # special_keys_remap
+    for key in list(original_state_dict.keys()):
+        for special_key, handler_fn_inplace in special_keys_remap.items():
+            if special_key not in key:
+                continue
+            handler_fn_inplace(key, original_state_dict)
+
+    vocoder.load_state_dict(original_state_dict, strict=True, assign=True)
+    return vocoder
+
+
 def load_original_checkpoint(args, filename: Optional[str]) -> Dict[str, Any]:
     if args.original_state_dict_repo_id is not None:
         ckpt_path = hf_hub_download(repo_id=args.original_state_dict_repo_id, filename=filename)
@@ -468,7 +525,13 @@ def main(args):
             transformer.to(dit_dtype).save_pretrained(os.path.join(args.output_path, "transformer"))
 
     if args.vocoder or args.full_pipeline:
-        pass
+        if args.vocoder_filename is not None:
+            original_vocoder_ckpt = load_hub_or_local_checkpoint(filename=args.vocoder_filename)
+        elif combined_ckpt is not None:
+            original_vocoder_ckpt = get_model_state_dict_from_combined_ckpt(combined_ckpt, args.vocoder_prefix)
+        vocoder = convert_ltx2_vocoder(original_vocoder_ckpt, version=args.version)
+        if not args.full_pipeline:
+            vocoder.to(vocoder_dtype).save_pretrained(os.path.join(args.output_path, "vocoder"))
 
     if args.full_pipeline:
         pass
