@@ -659,12 +659,12 @@ class ZImageOmniPipeline(DiffusionPipeline, ZImageLoraLoaderMixin, FromSingleFil
                 latent_model_input_list = list(latent_model_input.unbind(dim=0))
 
                 model_out_list = self.transformer(
-                    latent_model_input_list, 
-                    timestep_model_input, 
-                    prompt_embeds_model_input, 
-                    condition_latents_model_input, 
-                    condition_siglip_embeds_model_input,
-                    return_dict=False
+                    x=latent_model_input_list,
+                    t=timestep_model_input,
+                    cap_feats=prompt_embeds_model_input,
+                    cond_latents=condition_latents_model_input,
+                    siglip_feats=condition_siglip_embeds_model_input,
+                    return_dict=False,
                 )[0]
 
                 if apply_cfg:

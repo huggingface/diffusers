@@ -916,16 +916,20 @@ class ZImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
 
         if omni_mode:
             return self._forward_omni(
-                x, t, cap_feats, cond_latents, siglip_feats, patch_size, f_patch_size, return_dict
+                x, t, cap_feats, cond_latents, siglip_feats,
+                controlnet_block_samples, patch_size, f_patch_size, return_dict
             )
         else:
-            return self._forward_basic(x, t, cap_feats, patch_size, f_patch_size, return_dict)
+            return self._forward_basic(
+                x, t, cap_feats, controlnet_block_samples, patch_size, f_patch_size, return_dict
+            )
 
     def _forward_basic(
         self,
         x: List[torch.Tensor],
         t,
         cap_feats: List[torch.Tensor],
+        controlnet_block_samples: Optional[Dict[int, torch.Tensor]],
         patch_size: int,
         f_patch_size: int,
         return_dict: bool,
@@ -1053,6 +1057,7 @@ class ZImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
         cap_feats: List[List[torch.Tensor]],
         cond_latents: List[List[torch.Tensor]],
         siglip_feats: List[List[torch.Tensor]],
+        controlnet_block_samples: Optional[Dict[int, torch.Tensor]],
         patch_size: int,
         f_patch_size: int,
         return_dict: bool,
@@ -1241,17 +1246,23 @@ class ZImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
         unified_noise_mask_tensor = unified_noise_mask_tensor[:, : unified.shape[1]]
 
         if torch.is_grad_enabled() and self.gradient_checkpointing:
-            for layer in self.layers:
+            for layer_idx, layer in enumerate(self.layers):
                 unified = self._gradient_checkpointing_func(
                     layer, unified, unified_attn_mask, unified_freqs_cis,
                     noise_mask=unified_noise_mask_tensor, adaln_noisy=t_noisy_x, adaln_clean=t_clean_x
                 )
+                if controlnet_block_samples is not None:
+                    if layer_idx in controlnet_block_samples:
+                        unified = unified + controlnet_block_samples[layer_idx]
         else:
-            for layer in self.layers:
+            for layer_idx, layer in enumerate(self.layers):
                 unified = layer(
                     unified, unified_attn_mask, unified_freqs_cis,
                     noise_mask=unified_noise_mask_tensor, adaln_noisy=t_noisy_x, adaln_clean=t_clean_x
                 )
+                if controlnet_block_samples is not None:
+                    if layer_idx in controlnet_block_samples:
+                        unified = unified + controlnet_block_samples[layer_idx]
 
         unified = self.all_final_layer[f"{patch_size}-{f_patch_size}"](
             unified, noise_mask=unified_noise_mask_tensor, c_noisy=t_noisy_x, c_clean=t_clean_x
