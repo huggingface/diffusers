@@ -222,7 +222,7 @@ class ZImageTransformerBlock(nn.Module):
         if self.modulation:
             if noise_mask is not None and adaln_noisy is not None and adaln_clean is not None:
                 # Per-token modulation based on noise_mask, (batch, seq_len), 1 for noisy tokens, 0 for clean tokens
-                batch_size, seq_len = x.shape[0], x.shape[1]
+                _, seq_len = x.shape[0], x.shape[1]
 
                 mod_noisy = self.adaLN_modulation(adaln_noisy)
                 mod_clean = self.adaLN_modulation(adaln_clean)
@@ -260,7 +260,9 @@ class ZImageTransformerBlock(nn.Module):
             else:
                 # Original global modulation
                 assert adaln_input is not None
-                scale_msa, gate_msa, scale_mlp, gate_mlp = self.adaLN_modulation(adaln_input).unsqueeze(1).chunk(4, dim=2)
+                scale_msa, gate_msa, scale_mlp, gate_mlp = (
+                    self.adaLN_modulation(adaln_input).unsqueeze(1).chunk(4, dim=2)
+                )
                 gate_msa, gate_mlp = gate_msa.tanh(), gate_mlp.tanh()
                 scale_msa, scale_mlp = 1.0 + scale_msa, 1.0 + scale_mlp
 
@@ -297,7 +299,7 @@ class FinalLayer(nn.Module):
     def forward(self, x, c=None, noise_mask=None, c_noisy=None, c_clean=None):
         if noise_mask is not None and c_noisy is not None and c_clean is not None:
             # Per-token modulation based on noise_mask
-            batch_size, seq_len = x.shape[0], x.shape[1]
+            _, seq_len = x.shape[0], x.shape[1]
             scale_noisy = 1.0 + self.adaLN_modulation(c_noisy)
             scale_clean = 1.0 + self.adaLN_modulation(c_clean)
 
@@ -916,8 +918,15 @@ class ZImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
 
         if omni_mode:
             return self._forward_omni(
-                x, t, cap_feats, cond_latents, siglip_feats,
-                controlnet_block_samples, patch_size, f_patch_size, return_dict
+                x,
+                t,
+                cap_feats,
+                cond_latents,
+                siglip_feats,
+                controlnet_block_samples,
+                patch_size,
+                f_patch_size,
+                return_dict,
             )
         else:
             return self._forward_basic(
@@ -1130,14 +1139,23 @@ class ZImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
         if torch.is_grad_enabled() and self.gradient_checkpointing:
             for layer in self.noise_refiner:
                 x = self._gradient_checkpointing_func(
-                    layer, x, x_attn_mask, x_freqs_cis,
-                    noise_mask=x_noise_mask_tensor, adaln_noisy=t_noisy_x, adaln_clean=t_clean_x
+                    layer,
+                    x,
+                    x_attn_mask,
+                    x_freqs_cis,
+                    noise_mask=x_noise_mask_tensor,
+                    adaln_noisy=t_noisy_x,
+                    adaln_clean=t_clean_x,
                 )
         else:
             for layer in self.noise_refiner:
                 x = layer(
-                    x, x_attn_mask, x_freqs_cis,
-                    noise_mask=x_noise_mask_tensor, adaln_noisy=t_noisy_x, adaln_clean=t_clean_x
+                    x,
+                    x_attn_mask,
+                    x_freqs_cis,
+                    noise_mask=x_noise_mask_tensor,
+                    adaln_noisy=t_noisy_x,
+                    adaln_clean=t_clean_x,
                 )
 
         # cap embed & refine (no modulation)
@@ -1208,9 +1226,7 @@ class ZImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
                 x_len = x_item_seqlens[i]
                 cap_len = cap_item_seqlens[i]
                 siglip_len = siglip_item_seqlens[i]
-                unified.append(
-                    torch.cat([cap_feats[i][:cap_len], x[i][:x_len], siglip_feats[i][:siglip_len]])
-                )
+                unified.append(torch.cat([cap_feats[i][:cap_len], x[i][:x_len], siglip_feats[i][:siglip_len]]))
                 unified_freqs_cis.append(
                     torch.cat([cap_freqs_cis[i][:cap_len], x_freqs_cis[i][:x_len], siglip_freqs_cis[i][:siglip_len]])
                 )
@@ -1221,7 +1237,9 @@ class ZImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
                         device=device,
                     )
                 )
-            unified_item_seqlens = [a + b + c for a, b, c in zip(cap_item_seqlens, x_item_seqlens, siglip_item_seqlens)]
+            unified_item_seqlens = [
+                a + b + c for a, b, c in zip(cap_item_seqlens, x_item_seqlens, siglip_item_seqlens)
+            ]
         else:
             for i in range(bsz):
                 x_len = x_item_seqlens[i]
@@ -1248,8 +1266,13 @@ class ZImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
         if torch.is_grad_enabled() and self.gradient_checkpointing:
             for layer_idx, layer in enumerate(self.layers):
                 unified = self._gradient_checkpointing_func(
-                    layer, unified, unified_attn_mask, unified_freqs_cis,
-                    noise_mask=unified_noise_mask_tensor, adaln_noisy=t_noisy_x, adaln_clean=t_clean_x
+                    layer,
+                    unified,
+                    unified_attn_mask,
+                    unified_freqs_cis,
+                    noise_mask=unified_noise_mask_tensor,
+                    adaln_noisy=t_noisy_x,
+                    adaln_clean=t_clean_x,
                 )
                 if controlnet_block_samples is not None:
                     if layer_idx in controlnet_block_samples:
@@ -1257,8 +1280,12 @@ class ZImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
         else:
             for layer_idx, layer in enumerate(self.layers):
                 unified = layer(
-                    unified, unified_attn_mask, unified_freqs_cis,
-                    noise_mask=unified_noise_mask_tensor, adaln_noisy=t_noisy_x, adaln_clean=t_clean_x
+                    unified,
+                    unified_attn_mask,
+                    unified_freqs_cis,
+                    noise_mask=unified_noise_mask_tensor,
+                    adaln_noisy=t_noisy_x,
+                    adaln_clean=t_clean_x,
                 )
                 if controlnet_block_samples is not None:
                     if layer_idx in controlnet_block_samples:

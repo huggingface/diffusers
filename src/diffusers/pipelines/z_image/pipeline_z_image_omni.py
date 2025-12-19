@@ -16,22 +16,19 @@ import inspect
 from typing import Any, Callable, Dict, List, Optional, Union
 
 import PIL
-
 import torch
 from transformers import AutoTokenizer, PreTrainedModel, Siglip2ImageProcessorFast, Siglip2VisionModel
 
-from ...image_processor import VaeImageProcessor
 from ...loaders import FromSingleFileMixin, ZImageLoraLoaderMixin
 from ...models.autoencoders import AutoencoderKL
+from ...models.transformers import ZImageTransformer2DModel
 from ...pipelines.pipeline_utils import DiffusionPipeline
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
+from ..flux2.image_processor import Flux2ImageProcessor
 from .pipeline_output import ZImagePipelineOutput
 
-from ..flux2.image_processor import Flux2ImageProcessor
-
-from ...models.transformers import ZImageTransformer2DModel
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
@@ -224,7 +221,6 @@ class ZImageOmniPipeline(DiffusionPipeline, ZImageLoraLoaderMixin, FromSingleFil
             prompt = [prompt]
 
         for i, prompt_item in enumerate(prompt):
-
             if num_condition_images == 0:
                 prompt[i] = ["<|im_start|>user\n" + prompt_item + "<|im_end|>\n<|im_start|>assistant\n"]
             elif num_condition_images > 0:
@@ -236,7 +232,7 @@ class ZImageOmniPipeline(DiffusionPipeline, ZImageLoraLoaderMixin, FromSingleFil
 
         flattened_prompt = []
         prompt_list_lengths = []
-        
+
         for i in range(len(prompt)):
             prompt_list_lengths.append(len(prompt[i]))
             flattened_prompt.extend(prompt[i])
@@ -304,13 +300,14 @@ class ZImageOmniPipeline(DiffusionPipeline, ZImageLoraLoaderMixin, FromSingleFil
         image_latents = []
         for image in images:
             image = image.to(device=device, dtype=dtype)
-            image_latent = (self.vae.encode(image.bfloat16()).latent_dist.mode()[0] - self.vae.config.shift_factor) * self.vae.config.scaling_factor
+            image_latent = (
+                self.vae.encode(image.bfloat16()).latent_dist.mode()[0] - self.vae.config.shift_factor
+            ) * self.vae.config.scaling_factor
             image_latent = image_latent.unsqueeze(1).to(dtype)
             image_latents.append(image_latent)  # (16, 128, 128)
 
         # image_latents = [image_latents] * batch_size
         image_latents = [image_latents.copy() for _ in range(batch_size)]
-
 
         return image_latents
 
@@ -327,7 +324,7 @@ class ZImageOmniPipeline(DiffusionPipeline, ZImageLoraLoaderMixin, FromSingleFil
             shape = siglip_inputs.spatial_shapes[0]
             hidden_state = self.siglip(**siglip_inputs).last_hidden_state
             B, N, C = hidden_state.shape
-            hidden_state = hidden_state[:, :shape[0] * shape[1]]
+            hidden_state = hidden_state[:, : shape[0] * shape[1]]
             hidden_state = hidden_state.view(shape[0], shape[1], C)
             siglip_embeds.append(hidden_state.to(dtype))
 
@@ -529,7 +526,7 @@ class ZImageOmniPipeline(DiffusionPipeline, ZImageLoraLoaderMixin, FromSingleFil
                 image_height = (image_height // multiple_of) * multiple_of
                 img = self.image_processor.preprocess(img, height=image_height, width=image_width, resize_mode="crop")
                 condition_images.append(img)
-            
+
             if len(condition_images) > 0:
                 height = height or image_height
                 width = width or image_width
@@ -591,7 +588,9 @@ class ZImageOmniPipeline(DiffusionPipeline, ZImageLoraLoaderMixin, FromSingleFil
                 negative_prompt_embeds = [npe for npe in negative_prompt_embeds for _ in range(num_images_per_prompt)]
 
         condition_siglip_embeds = [None if sels == [] else sels + [None] for sels in condition_siglip_embeds]
-        negative_condition_siglip_embeds = [None if sels == [] else sels + [None] for sels in negative_condition_siglip_embeds]
+        negative_condition_siglip_embeds = [
+            None if sels == [] else sels + [None] for sels in negative_condition_siglip_embeds
+        ]
 
         actual_batch_size = batch_size * num_images_per_prompt
         image_seq_len = (latents.shape[2] // 2) * (latents.shape[3] // 2)
