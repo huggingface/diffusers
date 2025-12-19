@@ -569,8 +569,6 @@ class QwenImageEditPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
         callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
         max_sequence_length: int = 512,
-        cfg_type: Optional[str] = "original",
-        cfg_kwargs: Optional[Dict[str, Any]] = {},
     ):
         r"""
         Function invoked when calling the pipeline for generation.
@@ -652,15 +650,6 @@ class QwenImageEditPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
                 will be passed as `callback_kwargs` argument. You will only be able to include variables listed in the
                 `._callback_tensor_inputs` attribute of your pipeline class.
             max_sequence_length (`int` defaults to 512): Maximum sequence length to use with the `prompt`.
-            cfg_type (`str`, *optional*, defaults to `"original"`):
-                The specified classifier-free-guidance (CFG) type for inference.
-                `"original"` for the original cfg method in Classifier-Free Diffusion Guidance.
-                `"mambo_g"` for the optional cfg method in MAMBO-G: Magnitude-Aware Mitigation for Boosted Guidance.
-            cfg_kwargs (`dict`, *optional*):
-                A kwargs dictionary for additional cfg hyperparameters.
-                For `"mambo_g"`
-                - alpha : float, Decaying weight for MAMBO-G, defaults to `8.0`
-                - cfg_rescale : bool, Whether to use cfg rescaling, defaults to `True`.
 
         Examples:
 
@@ -745,11 +734,6 @@ class QwenImageEditPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
                 device=device,
                 num_images_per_prompt=num_images_per_prompt,
                 max_sequence_length=max_sequence_length,
-            )
-
-        if cfg_type != "original" and not do_true_cfg:
-            logger.warning(
-                f"cfg_type is passed as {cfg_type}, but classifier-free guidance is not enabled since do_true_cfg is passed as False."
             )
 
         # 4. Prepare latent variables
@@ -857,26 +841,11 @@ class QwenImageEditPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
                             return_dict=False,
                         )[0]
                     neg_noise_pred = neg_noise_pred[:, : latents.size(1)]
-                    
-                    if cfg_type == "original":
-                        comb_pred = neg_noise_pred + true_cfg_scale * (noise_pred - neg_noise_pred)
-                        cond_norm = torch.norm(noise_pred, dim=-1, keepdim=True)
-                        noise_norm = torch.norm(comb_pred, dim=-1, keepdim=True)
-                        noise_pred = comb_pred * (cond_norm / noise_norm)
-                    elif cfg_type == "mambo_g":
-                        mambo_g_alpha = cfg_kwargs.get("alpha", 8.0)
-                        ratio = torch.norm(noise_pred - neg_noise_pred) / torch.norm(neg_noise_pred)
-                        guidance_scale = 1 + (true_cfg_scale - 1.0) * torch.exp(- mambo_g_alpha * ratio)
-                        comb_pred = neg_noise_pred + guidance_scale * (noise_pred - neg_noise_pred)
-                        apply_cfg_rescale = cfg_kwargs.get("cfg_rescale", True)
-                        if apply_cfg_rescale:
-                            cond_norm = torch.norm(noise_pred, dim=-1, keepdim=True)
-                            noise_norm = torch.norm(comb_pred, dim=-1, keepdim=True)
-                            noise_pred = comb_pred * (cond_norm / noise_norm)
-                    else:
-                        raise ValueError(
-                            f"cfg_type given as {cfg_type} must be one of `original` or `mambo_g`  for the QwenImagePipeline."
-                        )
+                    comb_pred = neg_noise_pred + true_cfg_scale * (noise_pred - neg_noise_pred)
+
+                    cond_norm = torch.norm(noise_pred, dim=-1, keepdim=True)
+                    noise_norm = torch.norm(comb_pred, dim=-1, keepdim=True)
+                    noise_pred = comb_pred * (cond_norm / noise_norm)
 
                 # compute the previous noisy sample x_t -> x_t-1
                 latents_dtype = latents.dtype

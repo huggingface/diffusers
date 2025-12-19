@@ -29,3 +29,4 @@ if is_torch_available():
     from .skip_layer_guidance import SkipLayerGuidance
     from .smoothed_energy_guidance import SmoothedEnergyGuidance
     from .tangential_classifier_free_guidance import TangentialClassifierFreeGuidance
+    from .magnitude_aware_guidance import MagnitudeAwareGuidance
