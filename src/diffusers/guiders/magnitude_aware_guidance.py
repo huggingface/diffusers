@@ -35,7 +35,8 @@ class MagnitudeAwareGuidance(BaseGuidance):
             prompt, while lower values allow for more freedom in generation. Higher values may lead to saturation and
             deterioration of image quality.
         alpha (`float`, defaults to `8.0`):
-            The alpha parameter for the magnitude-aware guidance. Higher values cause more aggressive supression of guidance scale when the magnitude of the guidance update is large.
+            The alpha parameter for the magnitude-aware guidance. Higher values cause more aggressive supression of
+            guidance scale when the magnitude of the guidance update is large.
         guidance_rescale (`float`, defaults to `0.0`):
             The rescale factor applied to the noise predictions. This is used to improve image quality and fix
             overexposure. Based on Section 3.4 from [Common Diffusion Noise Schedules and Sample Steps are
@@ -147,7 +148,11 @@ def mambo_guidance(
     dim = list(range(1, len(pred_cond.shape)))
     diff = pred_cond - pred_uncond
     ratio = torch.norm(diff, dim=dim, keepdim=True) / torch.norm(pred_uncond, dim=dim, keepdim=True)
-    guidance_scale_final = guidance_scale * torch.exp(- alpha * ratio) if use_original_formulation else 1.0 + (guidance_scale - 1.0) * torch.exp(- alpha * ratio)
+    guidance_scale_final = (
+        guidance_scale * torch.exp(-alpha * ratio)
+        if use_original_formulation
+        else 1.0 + (guidance_scale - 1.0) * torch.exp(-alpha * ratio)
+    )
     pred = pred_cond if use_original_formulation else pred_uncond
     pred = pred + guidance_scale_final * diff
 
