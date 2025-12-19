@@ -19,6 +19,7 @@ if is_torch_available():
     )
     from .controlnet_union import ControlNetUnionModel
     from .controlnet_xs import ControlNetXSAdapter, ControlNetXSOutput, UNetControlNetXSModel
+    from .controlnet_z_image import ZImageControlNetModel
     from .multicontrolnet import MultiControlNetModel
     from .multicontrolnet_union import MultiControlNetUnionModel
 
