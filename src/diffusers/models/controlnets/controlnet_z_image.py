@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import math
-from typing import Dict, List, Optional, Tuple
+from typing import List, Literal, Optional
 
 import torch
 import torch.nn as nn
@@ -21,19 +21,21 @@ import torch.nn.functional as F
 from torch.nn.utils.rnn import pad_sequence
 
 from ...configuration_utils import ConfigMixin, register_to_config
-from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
+from ...loaders import PeftAdapterMixin
+from ...loaders.single_file_model import FromOriginalModelMixin
 from ...models.attention_processor import Attention
-from ...models.modeling_utils import ModelMixin
 from ...models.normalization import RMSNorm
 from ...utils.torch_utils import maybe_allow_in_graph
 from ..attention_dispatch import dispatch_attention_fn
-from ..modeling_outputs import Transformer2DModelOutput
+from ..controlnets.controlnet import zero_module
+from ..modeling_utils import ModelMixin
 
 
 ADALN_EMBED_DIM = 256
 SEQ_MULTI_OF = 32
 
 
+# Copied from diffusers.models.transformers.transformer_z_image.TimestepEmbedder
 class TimestepEmbedder(nn.Module):
     def __init__(self, out_size, mid_size=None, frequency_embedding_size=256):
         super().__init__()
@@ -72,6 +74,7 @@ class TimestepEmbedder(nn.Module):
         return t_emb
 
 
+# Copied from diffusers.models.transformers.transformer_z_image.ZSingleStreamAttnProcessor
 class ZSingleStreamAttnProcessor:
     """
     Processor for Z-Image single stream attention that adapts the existing Attention class to match the behavior of the
@@ -152,6 +155,7 @@ class ZSingleStreamAttnProcessor:
         return output
 
 
+# Copied from diffusers.models.transformers.transformer_z_image.FeedForward
 class FeedForward(nn.Module):
     def __init__(self, dim: int, hidden_dim: int):
         super().__init__()
@@ -167,6 +171,7 @@ class FeedForward(nn.Module):
 
 
 @maybe_allow_in_graph
+# Copied from diffusers.models.transformers.transformer_z_image.ZImageTransformerBlock
 class ZImageTransformerBlock(nn.Module):
     def __init__(
         self,
@@ -241,24 +246,7 @@ class ZImageTransformerBlock(nn.Module):
         return x
 
 
-class FinalLayer(nn.Module):
-    def __init__(self, hidden_size, out_channels):
-        super().__init__()
-        self.norm_final = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
-        self.linear = nn.Linear(hidden_size, out_channels, bias=True)
-
-        self.adaLN_modulation = nn.Sequential(
-            nn.SiLU(),
-            nn.Linear(min(hidden_size, ADALN_EMBED_DIM), hidden_size, bias=True),
-        )
-
-    def forward(self, x, c):
-        scale = 1.0 + self.adaLN_modulation(c)
-        x = self.norm_final(x) * scale.unsqueeze(1)
-        x = self.linear(x)
-        return x
-
-
+# Copied from diffusers.models.transformers.transformer_z_image.RopeEmbedder
 class RopeEmbedder:
     def __init__(
         self,
@@ -305,121 +293,203 @@ class RopeEmbedder:
         return torch.cat(result, dim=-1)
 
 
-class ZImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginalModelMixin):
+@maybe_allow_in_graph
+class ZImageControlTransformerBlock(nn.Module):
+    def __init__(
+        self,
+        layer_id: int,
+        dim: int,
+        n_heads: int,
+        n_kv_heads: int,
+        norm_eps: float,
+        qk_norm: bool,
+        modulation=True,
+        block_id=0,
+    ):
+        super().__init__()
+        self.dim = dim
+        self.head_dim = dim // n_heads
+
+        # Refactored to use diffusers Attention with custom processor
+        # Original Z-Image params: dim, n_heads, n_kv_heads, qk_norm
+        self.attention = Attention(
+            query_dim=dim,
+            cross_attention_dim=None,
+            dim_head=dim // n_heads,
+            heads=n_heads,
+            qk_norm="rms_norm" if qk_norm else None,
+            eps=1e-5,
+            bias=False,
+            out_bias=False,
+            processor=ZSingleStreamAttnProcessor(),
+        )
+
+        self.feed_forward = FeedForward(dim=dim, hidden_dim=int(dim / 3 * 8))
+        self.layer_id = layer_id
+
+        self.attention_norm1 = RMSNorm(dim, eps=norm_eps)
+        self.ffn_norm1 = RMSNorm(dim, eps=norm_eps)
+
+        self.attention_norm2 = RMSNorm(dim, eps=norm_eps)
+        self.ffn_norm2 = RMSNorm(dim, eps=norm_eps)
+
+        self.modulation = modulation
+        if modulation:
+            self.adaLN_modulation = nn.Sequential(nn.Linear(min(dim, ADALN_EMBED_DIM), 4 * dim, bias=True))
+
+        # Control variant start
+        self.block_id = block_id
+        if block_id == 0:
+            self.before_proj = zero_module(nn.Linear(self.dim, self.dim))
+        self.after_proj = zero_module(nn.Linear(self.dim, self.dim))
+
+    def forward(
+        self,
+        c: torch.Tensor,
+        x: torch.Tensor,
+        attn_mask: torch.Tensor,
+        freqs_cis: torch.Tensor,
+        adaln_input: Optional[torch.Tensor] = None,
+    ):
+        # Control
+        if self.block_id == 0:
+            c = self.before_proj(c) + x
+            all_c = []
+        else:
+            all_c = list(torch.unbind(c))
+            c = all_c.pop(-1)
+
+        # Compared to `ZImageTransformerBlock` x -> c
+        if self.modulation:
+            assert adaln_input is not None
+            scale_msa, gate_msa, scale_mlp, gate_mlp = self.adaLN_modulation(adaln_input).unsqueeze(1).chunk(4, dim=2)
+            gate_msa, gate_mlp = gate_msa.tanh(), gate_mlp.tanh()
+            scale_msa, scale_mlp = 1.0 + scale_msa, 1.0 + scale_mlp
+
+            # Attention block
+            attn_out = self.attention(
+                self.attention_norm1(c) * scale_msa, attention_mask=attn_mask, freqs_cis=freqs_cis
+            )
+            c = c + gate_msa * self.attention_norm2(attn_out)
+
+            # FFN block
+            c = c + gate_mlp * self.ffn_norm2(self.feed_forward(self.ffn_norm1(c) * scale_mlp))
+        else:
+            # Attention block
+            attn_out = self.attention(self.attention_norm1(c), attention_mask=attn_mask, freqs_cis=freqs_cis)
+            c = c + self.attention_norm2(attn_out)
+
+            # FFN block
+            c = c + self.ffn_norm2(self.feed_forward(self.ffn_norm1(c)))
+
+        # Control
+        c_skip = self.after_proj(c)
+        all_c += [c_skip, c]
+        c = torch.stack(all_c)
+        return c
+
+
+class ZImageControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginalModelMixin):
     _supports_gradient_checkpointing = True
-    _no_split_modules = ["ZImageTransformerBlock"]
-    _repeated_blocks = ["ZImageTransformerBlock"]
-    _skip_layerwise_casting_patterns = ["t_embedder", "cap_embedder"]  # precision sensitive layers
 
     @register_to_config
     def __init__(
         self,
+        control_layers_places: List[int] = None,
+        control_refiner_layers_places: List[int] = None,
+        control_in_dim=None,
+        add_control_noise_refiner: Optional[Literal["control_layers", "control_noise_refiner"]] = None,
         all_patch_size=(2,),
         all_f_patch_size=(1,),
-        in_channels=16,
         dim=3840,
-        n_layers=30,
         n_refiner_layers=2,
         n_heads=30,
         n_kv_heads=30,
         norm_eps=1e-5,
         qk_norm=True,
-        cap_feat_dim=2560,
-        rope_theta=256.0,
-        t_scale=1000.0,
-        axes_dims=[32, 48, 48],
-        axes_lens=[1024, 512, 512],
-    ) -> None:
+    ):
         super().__init__()
-        self.in_channels = in_channels
-        self.out_channels = in_channels
-        self.all_patch_size = all_patch_size
-        self.all_f_patch_size = all_f_patch_size
-        self.dim = dim
-        self.n_heads = n_heads
+        self.control_layers_places = control_layers_places
+        self.control_in_dim = control_in_dim
+        self.control_refiner_layers_places = control_refiner_layers_places
+        self.add_control_noise_refiner = add_control_noise_refiner
 
-        self.rope_theta = rope_theta
-        self.t_scale = t_scale
-        self.gradient_checkpointing = False
+        assert 0 in self.control_layers_places
 
-        assert len(all_patch_size) == len(all_f_patch_size)
+        # control blocks
+        self.control_layers = nn.ModuleList(
+            [
+                ZImageControlTransformerBlock(i, dim, n_heads, n_kv_heads, norm_eps, qk_norm, block_id=i)
+                for i in self.control_layers_places
+            ]
+        )
 
+        # control patch embeddings
         all_x_embedder = {}
-        all_final_layer = {}
         for patch_idx, (patch_size, f_patch_size) in enumerate(zip(all_patch_size, all_f_patch_size)):
-            x_embedder = nn.Linear(f_patch_size * patch_size * patch_size * in_channels, dim, bias=True)
+            x_embedder = nn.Linear(f_patch_size * patch_size * patch_size * self.control_in_dim, dim, bias=True)
             all_x_embedder[f"{patch_size}-{f_patch_size}"] = x_embedder
 
-            final_layer = FinalLayer(dim, patch_size * patch_size * f_patch_size * self.out_channels)
-            all_final_layer[f"{patch_size}-{f_patch_size}"] = final_layer
-
-        self.all_x_embedder = nn.ModuleDict(all_x_embedder)
-        self.all_final_layer = nn.ModuleDict(all_final_layer)
-        self.noise_refiner = nn.ModuleList(
-            [
-                ZImageTransformerBlock(
-                    1000 + layer_id,
-                    dim,
-                    n_heads,
-                    n_kv_heads,
-                    norm_eps,
-                    qk_norm,
-                    modulation=True,
-                )
-                for layer_id in range(n_refiner_layers)
-            ]
-        )
-        self.context_refiner = nn.ModuleList(
-            [
-                ZImageTransformerBlock(
-                    layer_id,
-                    dim,
-                    n_heads,
-                    n_kv_heads,
-                    norm_eps,
-                    qk_norm,
-                    modulation=False,
-                )
-                for layer_id in range(n_refiner_layers)
-            ]
-        )
-        self.t_embedder = TimestepEmbedder(min(dim, ADALN_EMBED_DIM), mid_size=1024)
-        self.cap_embedder = nn.Sequential(RMSNorm(cap_feat_dim, eps=norm_eps), nn.Linear(cap_feat_dim, dim, bias=True))
-
-        self.x_pad_token = nn.Parameter(torch.empty((1, dim)))
-        self.cap_pad_token = nn.Parameter(torch.empty((1, dim)))
-
-        self.layers = nn.ModuleList(
-            [
-                ZImageTransformerBlock(layer_id, dim, n_heads, n_kv_heads, norm_eps, qk_norm)
-                for layer_id in range(n_layers)
-            ]
-        )
-        head_dim = dim // n_heads
-        assert head_dim == sum(axes_dims)
-        self.axes_dims = axes_dims
-        self.axes_lens = axes_lens
-
-        self.rope_embedder = RopeEmbedder(theta=rope_theta, axes_dims=axes_dims, axes_lens=axes_lens)
-
-    def unpatchify(self, x: List[torch.Tensor], size: List[Tuple], patch_size, f_patch_size) -> List[torch.Tensor]:
-        pH = pW = patch_size
-        pF = f_patch_size
-        bsz = len(x)
-        assert len(size) == bsz
-        for i in range(bsz):
-            F, H, W = size[i]
-            ori_len = (F // pF) * (H // pH) * (W // pW)
-            # "f h w pf ph pw c -> c (f pf) (h ph) (w pw)"
-            x[i] = (
-                x[i][:ori_len]
-                .view(F // pF, H // pH, W // pW, pF, pH, pW, self.out_channels)
-                .permute(6, 0, 3, 1, 4, 2, 5)
-                .reshape(self.out_channels, F, H, W)
+        self.control_all_x_embedder = nn.ModuleDict(all_x_embedder)
+        if self.add_control_noise_refiner == "control_layers":
+            self.control_noise_refiner = None
+        elif self.add_control_noise_refiner == "control_noise_refiner":
+            self.control_noise_refiner = nn.ModuleList(
+                [
+                    ZImageControlTransformerBlock(
+                        1000 + layer_id,
+                        dim,
+                        n_heads,
+                        n_kv_heads,
+                        norm_eps,
+                        qk_norm,
+                        modulation=True,
+                        block_id=layer_id,
+                    )
+                    for layer_id in range(n_refiner_layers)
+                ]
             )
-        return x
+        else:
+            self.control_noise_refiner = nn.ModuleList(
+                [
+                    ZImageTransformerBlock(
+                        1000 + layer_id,
+                        dim,
+                        n_heads,
+                        n_kv_heads,
+                        norm_eps,
+                        qk_norm,
+                        modulation=True,
+                    )
+                    for layer_id in range(n_refiner_layers)
+                ]
+            )
+
+        self.t_scale: Optional[float] = None
+        self.t_embedder: Optional[TimestepEmbedder] = None
+        self.all_x_embedder: Optional[nn.ModuleDict] = None
+        self.cap_embedder: Optional[nn.Sequential] = None
+        self.rope_embedder: Optional[RopeEmbedder] = None
+        self.noise_refiner: Optional[nn.ModuleList] = None
+        self.context_refiner: Optional[nn.ModuleList] = None
+        self.x_pad_token: Optional[nn.Parameter] = None
+        self.cap_pad_token: Optional[nn.Parameter] = None
+
+    @classmethod
+    def from_transformer(cls, controlnet, transformer):
+        controlnet.t_scale = transformer.t_scale
+        controlnet.t_embedder = transformer.t_embedder
+        controlnet.all_x_embedder = transformer.all_x_embedder
+        controlnet.cap_embedder = transformer.cap_embedder
+        controlnet.rope_embedder = transformer.rope_embedder
+        controlnet.noise_refiner = transformer.noise_refiner
+        controlnet.context_refiner = transformer.context_refiner
+        controlnet.x_pad_token = transformer.x_pad_token
+        controlnet.cap_pad_token = transformer.cap_pad_token
+        return controlnet
 
     @staticmethod
+    # Copied from diffusers.models.transformers.transformer_z_image.ZImageTransformer2DModel.create_coordinate_grid
     def create_coordinate_grid(size, start=None, device=None):
         if start is None:
             start = (0 for _ in size)
@@ -428,6 +498,7 @@ class ZImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
         grids = torch.meshgrid(axes, indexing="ij")
         return torch.stack(grids, dim=-1)
 
+    # Copied from diffusers.models.transformers.transformer_z_image.ZImageTransformer2DModel.patchify_and_embed
     def patchify_and_embed(
         self,
         all_image: List[torch.Tensor],
@@ -531,18 +602,61 @@ class ZImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
             all_cap_pad_mask,
         )
 
+    def patchify(
+        self,
+        all_image: List[torch.Tensor],
+        patch_size: int,
+        f_patch_size: int,
+    ):
+        pH = pW = patch_size
+        pF = f_patch_size
+        all_image_out = []
+
+        for i, image in enumerate(all_image):
+            ### Process Image
+            C, F, H, W = image.size()
+            F_tokens, H_tokens, W_tokens = F // pF, H // pH, W // pW
+
+            image = image.view(C, F_tokens, pF, H_tokens, pH, W_tokens, pW)
+            # "c f pf h ph w pw -> (f h w) (pf ph pw c)"
+            image = image.permute(1, 3, 5, 2, 4, 6, 0).reshape(F_tokens * H_tokens * W_tokens, pF * pH * pW * C)
+
+            image_ori_len = len(image)
+            image_padding_len = (-image_ori_len) % SEQ_MULTI_OF
+
+            # padded feature
+            image_padded_feat = torch.cat([image, image[-1:].repeat(image_padding_len, 1)], dim=0)
+            all_image_out.append(image_padded_feat)
+
+        return all_image_out
+
     def forward(
         self,
         x: List[torch.Tensor],
         t,
         cap_feats: List[torch.Tensor],
-        controlnet_block_samples: Optional[Dict[int, torch.Tensor]] = None,
+        control_context: List[torch.Tensor],
+        conditioning_scale: float = 1.0,
         patch_size=2,
         f_patch_size=1,
-        return_dict: bool = True,
     ):
-        assert patch_size in self.all_patch_size
-        assert f_patch_size in self.all_f_patch_size
+        if (
+            self.t_scale is None
+            or self.t_embedder is None
+            or self.all_x_embedder is None
+            or self.cap_embedder is None
+            or self.rope_embedder is None
+            or self.noise_refiner is None
+            or self.context_refiner is None
+            or self.x_pad_token is None
+            or self.cap_pad_token is None
+        ):
+            raise ValueError(
+                "Required modules are `None`, use `from_transformer` to share required modules from `transformer`."
+            )
+
+        assert patch_size in self.config.all_patch_size
+        assert f_patch_size in self.config.all_f_patch_size
 
         bsz = len(x)
         device = x[0].device
@@ -559,11 +673,20 @@ class ZImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
             cap_inner_pad_mask,
         ) = self.patchify_and_embed(x, cap_feats, patch_size, f_patch_size)
 
-        # x embed & refine
         x_item_seqlens = [len(_) for _ in x]
         assert all(_ % SEQ_MULTI_OF == 0 for _ in x_item_seqlens)
         x_max_item_seqlen = max(x_item_seqlens)
 
+        control_context = self.patchify(control_context, patch_size, f_patch_size)
+        control_context = torch.cat(control_context, dim=0)
+        control_context = self.control_all_x_embedder[f"{patch_size}-{f_patch_size}"](control_context)
+
+        control_context[torch.cat(x_inner_pad_mask)] = self.x_pad_token
+        control_context = list(control_context.split(x_item_seqlens, dim=0))
+
+        control_context = pad_sequence(control_context, batch_first=True, padding_value=0.0)
+
+        # x embed & refine
         x = torch.cat(x, dim=0)
         x = self.all_x_embedder[f"{patch_size}-{f_patch_size}"](x)
 
@@ -582,12 +705,42 @@ class ZImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
         for i, seq_len in enumerate(x_item_seqlens):
             x_attn_mask[i, :seq_len] = 1
 
-        if torch.is_grad_enabled() and self.gradient_checkpointing:
-            for layer in self.noise_refiner:
-                x = self._gradient_checkpointing_func(layer, x, x_attn_mask, x_freqs_cis, adaln_input)
+        if self.add_control_noise_refiner is not None:
+            if self.add_control_noise_refiner == "control_layers":
+                layers = self.control_layers
+            elif self.add_control_noise_refiner == "control_noise_refiner":
+                layers = self.control_noise_refiner
+            else:
+                raise ValueError(f"Unsupported `add_control_noise_refiner` type: {self.add_control_noise_refiner}.")
+            for layer in layers:
+                if torch.is_grad_enabled() and self.gradient_checkpointing:
+                    control_context = self._gradient_checkpointing_func(
+                        layer, control_context, x, x_attn_mask, x_freqs_cis, adaln_input
+                    )
+                else:
+                    control_context = layer(control_context, x, x_attn_mask, x_freqs_cis, adaln_input)
+
+            hints = torch.unbind(control_context)[:-1]
+            control_context = torch.unbind(control_context)[-1]
+            noise_refiner_block_samples = {
+                layer_idx: hints[idx] * conditioning_scale
+                for idx, layer_idx in enumerate(self.control_refiner_layers_places)
+            }
         else:
-            for layer in self.noise_refiner:
+            noise_refiner_block_samples = None
+
+        if torch.is_grad_enabled() and self.gradient_checkpointing:
+            for layer_idx, layer in enumerate(self.noise_refiner):
+                x = self._gradient_checkpointing_func(layer, x, x_attn_mask, x_freqs_cis, adaln_input)
+                if noise_refiner_block_samples is not None:
+                    if layer_idx in noise_refiner_block_samples:
+                        x = x + noise_refiner_block_samples[layer_idx]
+        else:
+            for layer_idx, layer in enumerate(self.noise_refiner):
                 x = layer(x, x_attn_mask, x_freqs_cis, adaln_input)
+                if noise_refiner_block_samples is not None:
+                    if layer_idx in noise_refiner_block_samples:
+                        x = x + noise_refiner_block_samples[layer_idx]
 
         # cap embed & refine
         cap_item_seqlens = [len(_) for _ in cap_feats]
@@ -635,26 +788,37 @@ class ZImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
         for i, seq_len in enumerate(unified_item_seqlens):
             unified_attn_mask[i, :seq_len] = 1
 
-        if torch.is_grad_enabled() and self.gradient_checkpointing:
-            for layer_idx, layer in enumerate(self.layers):
-                unified = self._gradient_checkpointing_func(
-                    layer, unified, unified_attn_mask, unified_freqs_cis, adaln_input
+        ## ControlNet start
+        if not self.add_control_noise_refiner:
+            if torch.is_grad_enabled() and self.gradient_checkpointing:
+                for layer in self.control_noise_refiner:
+                    control_context = self._gradient_checkpointing_func(
+                        layer, control_context, x_attn_mask, x_freqs_cis, adaln_input
+                    )
+            else:
+                for layer in self.control_noise_refiner:
+                    control_context = layer(control_context, x_attn_mask, x_freqs_cis, adaln_input)
+
+        # unified
+        control_context_unified = []
+        for i in range(bsz):
+            x_len = x_item_seqlens[i]
+            cap_len = cap_item_seqlens[i]
+            control_context_unified.append(torch.cat([control_context[i][:x_len], cap_feats[i][:cap_len]]))
+        control_context_unified = pad_sequence(control_context_unified, batch_first=True, padding_value=0.0)
+
+        for layer in self.control_layers:
+            if torch.is_grad_enabled() and self.gradient_checkpointing:
+                control_context_unified = self._gradient_checkpointing_func(
+                    layer, control_context_unified, unified, unified_attn_mask, unified_freqs_cis, adaln_input
                 )
-                if controlnet_block_samples is not None:
-                    if layer_idx in controlnet_block_samples:
-                        unified = unified + controlnet_block_samples[layer_idx]
-        else:
-            for layer_idx, layer in enumerate(self.layers):
-                unified = layer(unified, unified_attn_mask, unified_freqs_cis, adaln_input)
-                if controlnet_block_samples is not None:
-                    if layer_idx in controlnet_block_samples:
-                        unified = unified + controlnet_block_samples[layer_idx]
+            else:
+                control_context_unified = layer(
+                    control_context_unified, unified, unified_attn_mask, unified_freqs_cis, adaln_input
+                )
 
-        unified = self.all_final_layer[f"{patch_size}-{f_patch_size}"](unified, adaln_input)
-        unified = list(unified.unbind(dim=0))
-        x = self.unpatchify(unified, x_size, patch_size, f_patch_size)
-
-        if not return_dict:
-            return (x,)
-
-        return Transformer2DModelOutput(sample=x)
+        hints = torch.unbind(control_context_unified)[:-1]
+        controlnet_block_samples = {
+            layer_idx: hints[idx] * conditioning_scale for idx, layer_idx in enumerate(self.control_layers_places)
+        }
+        return controlnet_block_samples
