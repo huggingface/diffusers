@@ -20,7 +20,6 @@ from dataclasses import asdict, dataclass
 from typing import Dict, Optional
 
 import torch
-import torch.nn.functional as F
 from accelerate import Accelerator
 from accelerate.logging import get_logger
 from accelerate.utils import ProjectConfiguration, set_seed
@@ -35,6 +34,7 @@ from transformers import (
 )
 
 from diffusers import TokenDiffusionScheduler
+from diffusers.training_utils import compute_confidence_aware_loss
 
 
 logger = get_logger(__name__)
@@ -67,6 +67,8 @@ class TrainConfig:
     sigma_min: float
     sigma_max: float
     min_timestep: int
+    lambda_conf: float
+    conf_temperature: float
 
 
 def parse_args() -> TrainConfig:
@@ -105,6 +107,18 @@ def parse_args() -> TrainConfig:
     parser.add_argument("--sigma_min", type=float, default=1e-4)
     parser.add_argument("--sigma_max", type=float, default=20.0)
     parser.add_argument("--min_timestep", type=int, default=1, help="Avoid t=0 to prevent 1/t weighting blow-ups.")
+    parser.add_argument(
+        "--lambda_conf",
+        type=float,
+        default=0.0,
+        help="Optional confidence-aware penalty weight (entropy on correctly predicted tokens).",
+    )
+    parser.add_argument(
+        "--conf_temperature",
+        type=float,
+        default=1.0,
+        help="Temperature for the confidence term only; lower values sharpen the entropy penalty.",
+    )
 
     args = parser.parse_args()
     return TrainConfig(**vars(args))
@@ -219,14 +233,20 @@ def main():
 
                 # Only compute loss on tokens that were masked by the forward process.
                 mask_positions = x_t.eq(scheduler.mask_token_id) & attention_mask.to(dtype=torch.bool)
-                per_token_ce = F.cross_entropy(logits.view(-1, logits.shape[-1]), input_ids.view(-1), reduction="none")
-                per_token_ce = per_token_ce.view_as(input_ids)
 
                 weights = scheduler.get_mdlm_loss_weights(timesteps)
 
-                loss = (per_token_ce * mask_positions.to(per_token_ce.dtype) * weights).sum()
-                denom = mask_positions.sum().clamp_min(1)
-                loss = loss / denom
+                labels = input_ids.clone()
+                labels[~mask_positions] = -100
+
+                per_token_weights = weights.to(dtype=logits.dtype).expand_as(labels)
+                loss, loss_sft, loss_conf = compute_confidence_aware_loss(
+                    logits,
+                    labels,
+                    lambda_conf=cfg.lambda_conf,
+                    temperature=cfg.conf_temperature,
+                    per_token_weights=per_token_weights,
+                )
 
                 accelerator.backward(loss)
                 optimizer.step()
@@ -237,7 +257,14 @@ def main():
                 global_step += 1
 
                 if global_step % cfg.logging_steps == 0 and accelerator.is_main_process:
-                    logger.info("step=%d loss=%.4f lr=%.6g", global_step, loss.item(), lr_scheduler.get_last_lr()[0])
+                    logger.info(
+                        "step=%d loss=%.4f loss_sft=%.4f loss_conf=%.4f lr=%.6g",
+                        global_step,
+                        loss.item(),
+                        loss_sft.item(),
+                        loss_conf.item(),
+                        lr_scheduler.get_last_lr()[0],
+                    )
 
                 if cfg.checkpointing_steps > 0 and global_step % cfg.checkpointing_steps == 0:
                     accelerator.wait_for_everyone()

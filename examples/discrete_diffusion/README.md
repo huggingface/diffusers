@@ -2,6 +2,24 @@
 
 This folder contains **training examples** for *discrete diffusion over token IDs* (language-model style), built to follow the `diffusers` + `accelerate` training conventions.
 
+## Quickstart: block refinement with Qwen (causal LM)
+
+If you want a causal-LM example, start here. This trains block refinement with a CAP-style confidence loss.
+
+```bash
+accelerate launch examples/discrete_diffusion/train_block_refinement_qwen_cap.py \
+  --model_name_or_path Qwen/Qwen2.5-0.5B \
+  --dataset_name wikitext \
+  --dataset_config_name wikitext-2-raw-v1 \
+  --text_column text \
+  --output_dir qwen-block-refinement-output \
+  --max_train_steps 1000 \
+  --prompt_length 32 \
+  --block_length 32 \
+  --lambda_conf 2.0 \
+  --conf_temperature 0.5
+```
+
 ## MDLM-style absorbing diffusion
 
 `train_mdlm.py` trains a masked/absorbing discrete diffusion model:
@@ -17,7 +35,9 @@ accelerate launch examples/discrete_diffusion/train_mdlm.py \
   --dataset_name wikitext \
   --dataset_config_name wikitext-2-raw-v1 \
   --output_dir mdlm-output \
-  --max_train_steps 1000
+  --max_train_steps 1000 \
+  --lambda_conf 0.0 \
+  --conf_temperature 1.0
 ```
 
 The script saves:
@@ -50,6 +70,47 @@ python examples/discrete_diffusion/sample_block_token_diffusion.py \
   --top_p 0.9
 ```
 
+## Block refinement (commit-by-confidence) with Qwen
+
+For causal LMs that only support a 2D `attention_mask`, run `BlockRefinementPipeline` with `--attention_mask_mode 2d`.
+
+### Train
+
+```bash
+accelerate launch examples/discrete_diffusion/train_block_refinement_qwen_cap.py \
+  --model_name_or_path Qwen/Qwen2.5-0.5B \
+  --dataset_name wikitext \
+  --dataset_config_name wikitext-2-raw-v1 \
+  --text_column text \
+  --output_dir qwen-block-refinement-output \
+  --max_train_steps 1000 \
+  --prompt_length 32 \
+  --block_length 32 \
+  --lambda_conf 2.0 \
+  --conf_temperature 0.5
+```
+
+If you don't want to download a dataset, you can use random-token data:
+
+```bash
+accelerate launch examples/discrete_diffusion/train_block_refinement_qwen_cap.py \
+  --model_name_or_path Qwen/Qwen2.5-0.5B \
+  --output_dir qwen-block-refinement-output \
+  --use_dummy_data \
+  --num_dummy_samples 2048
+```
+
+### Sample
+
+```bash
+python examples/discrete_diffusion/sample_block_refinement.py \
+  --checkpoint_path qwen-block-refinement-output/final \
+  --device cuda \
+  --attention_mask_mode 2d \
+  --prompt "Write a short paragraph about diffusion models." \
+  --gen_length 128
+```
+
 ## Hybrid sampling
 
 Hybrid sampling uses a different transition kernel than absorbing/uniform diffusion and requires a compatible scheduler
@@ -71,14 +132,16 @@ accelerate launch examples/discrete_diffusion/train_hybrid_token_diffusion.py \
   --dataset_name wikitext \
   --dataset_config_name wikitext-2-raw-v1 \
   --output_dir hybrid-output \
-  --max_train_steps 1000
+  --max_train_steps 1000 \
+  --lambda_conf 0.0 \
+  --conf_temperature 1.0
 ```
 
 ## UDLM-style uniform diffusion
 
 `train_udlm.py` trains a uniform token diffusion model:
 - Forward process: with probability `1 - alpha(t)`, replace tokens with a uniform random token
-- Noise schedule: log-linear `alpha(t) = 1 - (1 - eps) * t`
+- Noise schedule: configurable via `--alpha_schedule` (`log_linear`, `linear`, `cosine`, `geometric`)
 - Loss: diffusion loss for uniform token diffusion
 
 ### Run

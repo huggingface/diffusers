@@ -115,6 +115,16 @@ class TokenDiffusionSchedulerTest(unittest.TestCase):
         # With exclusion, mask token should not appear.
         self.assertFalse((x_prev == scheduler.mask_token_id).any().item())
 
+    def test_alpha_helpers_shapes(self):
+        scheduler = self.get_scheduler(num_train_timesteps=10)
+        timesteps = torch.tensor([0, 1, 9], dtype=torch.long)
+
+        alpha = scheduler.get_alpha(timesteps)
+        dalpha = scheduler.get_alpha_prime(timesteps)
+
+        self.assertEqual(alpha.shape, (3, 1))
+        self.assertEqual(dalpha.shape, (3, 1))
+
 
 if __name__ == "__main__":
     unittest.main()

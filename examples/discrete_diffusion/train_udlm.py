@@ -100,7 +100,7 @@ def parse_args() -> TrainConfig:
         type=str,
         default="log_linear",
         choices=["log_linear", "linear", "cosine", "geometric"],
-        help="UDLM loss in this example is only implemented for log_linear; other choices will error.",
+        help="Alpha schedule used for the uniform forward process and the continuous-time UDLM objective.",
     )
     parser.add_argument("--eps", type=float, default=1e-3)
     parser.add_argument("--sigma_min", type=float, default=1e-4)
@@ -127,7 +127,12 @@ def tokenize_fn(examples: Dict, tokenizer, text_column: str, max_length: int):
 
 
 def udlm_diffusion_loss(
-    logits: torch.Tensor, x0: torch.LongTensor, x_t: torch.LongTensor, *, eps: float, t_cont: torch.Tensor
+    logits: torch.Tensor,
+    x0: torch.LongTensor,
+    x_t: torch.LongTensor,
+    *,
+    alpha_t: torch.Tensor,
+    dalpha_t: torch.Tensor,
 ):
     """
     UDLM diffusion loss (continuous-time form).
@@ -136,20 +141,16 @@ def udlm_diffusion_loss(
         logits: [B, L, V]
         x0: [B, L]
         x_t: [B, L]
-        eps: log-linear eps
-        t_cont: [B] in (0, 1]
+        alpha_t: [B, 1] alpha(t) for the uniform forward process.
+        dalpha_t: [B, 1] time derivative alpha'(t) with respect to continuous time t in [0, 1].
     Returns:
         loss_per_token: [B, L]
     """
     log_x_theta = torch.log_softmax(logits, dim=-1)
     B, L, V = log_x_theta.shape
 
-    # Treat alpha(t) as (1 - t) for the loss derivation, recovering t from the scheduler alpha.
-    alpha_sched = 1.0 - (1.0 - eps) * t_cont  # scheduler alpha(t)
-    t = (1.0 - alpha_sched) / (1.0 - eps)
-    alpha = 1.0 - t  # theoretical alpha used in loss
-
-    alpha = alpha.to(dtype=log_x_theta.dtype).view(B, 1, 1)
+    alpha = alpha_t.to(dtype=log_x_theta.dtype).view(B, 1, 1)
+    alpha_prime = dalpha_t.to(dtype=log_x_theta.dtype).view(B, 1, 1)
 
     x0_one_hot = F.one_hot(x0, V).to(dtype=log_x_theta.dtype)
     xt_one_hot = F.one_hot(x_t, V).to(dtype=log_x_theta.dtype)
@@ -157,8 +158,7 @@ def udlm_diffusion_loss(
     x_bar = V * alpha * x0_one_hot + 1.0 - alpha
     x_bar_theta = V * alpha * log_x_theta.exp() + 1.0 - alpha
 
-    alpha_prime = -1.0
-    coeff = alpha_prime / (V * alpha)
+    coeff = alpha_prime / (V * alpha.clamp_min(torch.finfo(alpha.dtype).eps))
 
     x_bar_zt = (x_bar * xt_one_hot).sum(dim=-1, keepdim=True)  # (B, L, 1)
     x_bar_theta_zt = (x_bar_theta * xt_one_hot).sum(dim=-1, keepdim=True)  # (B, L, 1)
@@ -175,11 +175,6 @@ def udlm_diffusion_loss(
 
 def main():
     cfg = parse_args()
-    if cfg.alpha_schedule != "log_linear":
-        raise ValueError(
-            "This training script implements the UDLM diffusion loss only for `--alpha_schedule=log_linear`. "
-            "Use that setting or extend the loss derivation for other schedules."
-        )
 
     project_config = ProjectConfiguration(project_dir=cfg.output_dir, logging_dir=os.path.join(cfg.output_dir, "logs"))
     accelerator = Accelerator(
@@ -267,11 +262,11 @@ def main():
                     logits = logits.clone()
                     logits[..., scheduler.mask_token_id] = torch.finfo(logits.dtype).min
 
-                t_cont = timesteps.to(dtype=torch.float32) / float(scheduler.num_train_timesteps - 1)
-                t_cont = t_cont.clamp_min(1e-6)
-
-                loss_per_token = udlm_diffusion_loss(logits, input_ids, x_t, eps=scheduler.eps, t_cont=t_cont)
-                loss = (loss_per_token * attention_mask.to(loss_per_token.dtype)).mean()
+                alpha_t = scheduler.get_alpha(timesteps)
+                dalpha_t = scheduler.get_alpha_prime(timesteps)
+                loss_per_token = udlm_diffusion_loss(logits, input_ids, x_t, alpha_t=alpha_t, dalpha_t=dalpha_t)
+                loss = (loss_per_token * attention_mask.to(loss_per_token.dtype)).sum()
+                loss = loss / attention_mask.sum().clamp_min(1)
 
                 accelerator.backward(loss)
                 optimizer.step()

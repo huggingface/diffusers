@@ -257,6 +257,44 @@ class TokenDiffusionScheduler(SchedulerMixin, ConfigMixin):
         w = (-dalpha / denom).clamp_min(torch.finfo(torch.float32).tiny)
         return w.view(-1, 1)
 
+    def get_alpha(self, timesteps: torch.LongTensor) -> torch.Tensor:
+        """
+        Return per-example alpha(t) values for the configured schedule.
+
+        Args:
+            timesteps (`torch.LongTensor` of shape `(batch_size,)`):
+                Training timestep indices in `[0, num_train_timesteps-1]`.
+
+        Returns:
+            `torch.FloatTensor` of shape `(batch_size, 1)`:
+                Alpha values in `(0, 1]` for each example.
+        """
+        if timesteps.dtype not in (torch.int32, torch.int64):
+            raise ValueError(f"`timesteps` must be an integer tensor, got dtype={timesteps.dtype}.")
+        device = timesteps.device
+        t = self._t_from_timestep(timesteps.to(device), device=device).to(dtype=torch.float32)
+        alpha = self._alpha_t(t).to(dtype=torch.float32)
+        return alpha.view(-1, 1)
+
+    def get_alpha_prime(self, timesteps: torch.LongTensor) -> torch.Tensor:
+        """
+        Return per-example time derivative alpha'(t) for the configured schedule.
+
+        Args:
+            timesteps (`torch.LongTensor` of shape `(batch_size,)`):
+                Training timestep indices in `[0, num_train_timesteps-1]`.
+
+        Returns:
+            `torch.FloatTensor` of shape `(batch_size, 1)`:
+                Alpha derivatives with respect to continuous time `t in [0, 1]`.
+        """
+        if timesteps.dtype not in (torch.int32, torch.int64):
+            raise ValueError(f"`timesteps` must be an integer tensor, got dtype={timesteps.dtype}.")
+        device = timesteps.device
+        t = self._t_from_timestep(timesteps.to(device), device=device).to(dtype=torch.float32)
+        dalpha = self._alpha_prime_t(t).to(dtype=torch.float32)
+        return dalpha.view(-1, 1)
+
     def add_noise(
         self,
         original_samples: torch.LongTensor,

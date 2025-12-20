@@ -372,6 +372,8 @@ else:
     _import_structure["training_utils"] = ["EMAModel"]
     _import_structure["pipelines"].extend(
         [
+            "BlockRefinementPipeline",
+            "BlockRefinementPipelineOutput",
             "BlockTokenDiffusionPipeline",
             "BlockTokenDiffusionPipelineOutput",
             "HybridTokenDiffusionPipeline",
@@ -1055,6 +1057,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AutoPipelineForText2Image,
             BlipDiffusionControlNetPipeline,
             BlipDiffusionPipeline,
+            BlockRefinementPipeline,
+            BlockRefinementPipelineOutput,
             BlockTokenDiffusionPipeline,
             BlockTokenDiffusionPipelineOutput,
             CLIPImageProjection,
