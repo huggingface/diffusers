@@ -2512,6 +2512,3 @@ def _xformers_attention(
         out = out.flatten(2, 3)
 
     return out
-
-
-_maybe_download_kernel_for_backend(_AttentionBackendRegistry._active_backend)
