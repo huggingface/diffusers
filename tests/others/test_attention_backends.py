@@ -7,7 +7,6 @@ To run this test suite:
 
 ```bash
 export RUN_ATTENTION_BACKEND_TESTS=yes
-export DIFFUSERS_ENABLE_HUB_KERNELS=yes
 
 pytest tests/others/test_attention_backends.py
 ```
@@ -35,7 +34,10 @@ from diffusers.utils import is_torch_version  # noqa: E402
 
 # fmt: off
 FORWARD_CASES = [
-    ("flash_hub", None),
+    (
+        "flash_hub",
+        torch.tensor([0.0820, 0.0859, 0.0918, 0.1016, 0.0957, 0.0996, 0.0996, 0.1016, 0.2188, 0.2266, 0.2363, 0.2500, 0.2539, 0.2461, 0.2422, 0.2695], dtype=torch.bfloat16)
+    ),
     (
         "_flash_3_hub",
         torch.tensor([0.0820, 0.0859, 0.0938, 0.1016, 0.0977, 0.0996, 0.1016, 0.1016, 0.2188, 0.2246, 0.2344, 0.2480, 0.2539, 0.2480, 0.2441, 0.2715], dtype=torch.bfloat16),
@@ -55,7 +57,11 @@ FORWARD_CASES = [
 ]
 
 COMPILE_CASES = [
-    ("flash_hub", None, True),
+    (
+        "flash_hub",
+        torch.tensor([0.0410, 0.0410, 0.0449, 0.0508, 0.0488, 0.0586, 0.0605, 0.0586, 0.2324, 0.2422, 0.2539, 0.2734, 0.2832, 0.2812, 0.2773, 0.3047], dtype=torch.bfloat16),
+        True
+    ),
     (
         "_flash_3_hub",
         torch.tensor([0.0410, 0.0410, 0.0449, 0.0508, 0.0508, 0.0605, 0.0625, 0.0605, 0.2344, 0.2461, 0.2578, 0.2734, 0.2852, 0.2812, 0.2773, 0.3047], dtype=torch.bfloat16),
