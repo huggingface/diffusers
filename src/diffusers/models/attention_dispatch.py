@@ -1885,13 +1885,14 @@ def _prepare_additive_attn_mask(
     attn_mask: torch.Tensor, target_dtype: torch.dtype, reshape_4d: bool = True
 ) -> torch.Tensor:
     """
-    Convert a 2D boolean attention mask to an additive mask, optionally reshaping to 4D for SDPA.
+    Convert a 2D attention mask to an additive mask, optionally reshaping to 4D for SDPA.
 
-    This helper is used by both native SDPA and xformers backends to convert boolean masks to the additive format they
-    require.
+    This helper is used by both native SDPA and xformers backends to handle both boolean and additive masks.
 
     Args:
-        attn_mask: 2D boolean tensor [batch_size, seq_len_k] where True means attend, False means mask out
+        attn_mask: 2D tensor [batch_size, seq_len_k]
+                   - Boolean: True means attend, False means mask out
+                   - Additive: 0.0 means attend, -inf means mask out
         target_dtype: The dtype to convert the mask to (usually query.dtype)
         reshape_4d: If True, reshape from [batch_size, seq_len_k] to [batch_size, 1, 1, seq_len_k] for broadcasting
 
@@ -1899,15 +1900,15 @@ def _prepare_additive_attn_mask(
         Additive mask tensor where 0.0 means attend and -inf means mask out. Shape is [batch_size, seq_len_k] if
         reshape_4d=False, or [batch_size, 1, 1, seq_len_k] if reshape_4d=True.
     """
-    # Ensure it's boolean
-    if attn_mask.dtype != torch.bool:
-        attn_mask = attn_mask.bool()
-
-    # Convert boolean to additive: True -> 0.0, False -> -inf
-    attn_mask = torch.where(attn_mask, 0.0, float("-inf"))
-
-    # Convert to target dtype
-    attn_mask = attn_mask.to(dtype=target_dtype)
+    # Check if the mask is boolean or already additive
+    if attn_mask.dtype == torch.bool:
+        # Convert boolean to additive: True -> 0.0, False -> -inf
+        attn_mask = torch.where(attn_mask, 0.0, float("-inf"))
+        # Convert to target dtype
+        attn_mask = attn_mask.to(dtype=target_dtype)
+    else:
+        # Already additive mask - just ensure correct dtype
+        attn_mask = attn_mask.to(dtype=target_dtype)
 
     # Optionally reshape to 4D for broadcasting in attention mechanisms
     if reshape_4d:
@@ -1937,12 +1938,12 @@ def _native_attention(
     if return_lse:
         raise ValueError("Native attention backend does not support setting `return_lse=True`.")
 
-    # Convert 2D boolean mask to 4D additive mask for SDPA
+    # Reshape 2D mask to 4D for SDPA
+    # SDPA accepts both boolean masks (torch.bool) and additive masks (float)
     if attn_mask is not None and attn_mask.ndim == 2:
-        # attn_mask is [batch_size, seq_len_k] boolean: True means attend, False means mask out
-        # SDPA expects [batch_size, 1, 1, seq_len_k] additive mask: 0.0 for attend, -inf for mask out
-        # Use helper to convert boolean to additive mask and reshape to 4D
-        attn_mask = _prepare_additive_attn_mask(attn_mask, target_dtype=query.dtype)
+        # Just reshape [batch_size, seq_len_k] -> [batch_size, 1, 1, seq_len_k]
+        # SDPA handles both boolean and additive masks correctly
+        attn_mask = attn_mask.unsqueeze(1).unsqueeze(1)
 
     if _parallel_config is None:
         query, key, value = (x.permute(0, 2, 1, 3) for x in (query, key, value))
@@ -2467,10 +2468,9 @@ def _xformers_attention(
         attn_mask = xops.LowerTriangularMask()
     elif attn_mask is not None:
         if attn_mask.ndim == 2:
-            # Convert 2D boolean mask to 4D for xformers
-            # attn_mask is [batch_size, seq_len_k] boolean: True means attend, False means mask
-            # xformers requires 4D masks [batch, heads, seq_q, seq_k]
-            # xformers expects additive bias: 0.0 for attend, -inf for mask
+            # Convert 2D mask to 4D for xformers
+            # Mask can be boolean (True=attend, False=mask) or additive (0.0=attend, -inf=mask)
+            # xformers requires 4D additive masks [batch, heads, seq_q, seq_k]
             # Need memory alignment - create larger tensor and slice for alignment
             original_seq_len = attn_mask.size(1)
             aligned_seq_len = ((original_seq_len + 7) // 8) * 8  # Round up to multiple of 8
@@ -2481,8 +2481,7 @@ def _xformers_attention(
                 dtype=query.dtype,
                 device=query.device,
             )
-            # Fill in the actual mask values (converting boolean to additive)
-            # Use helper to convert 2D boolean -> 4D additive mask
+            # Convert to 4D additive mask (handles both boolean and additive inputs)
             mask_additive = _prepare_additive_attn_mask(
                 attn_mask, target_dtype=query.dtype
             )  # [batch, 1, 1, seq_len_k]
