@@ -186,6 +186,7 @@ class AttentionBackendName(str, Enum):
     _NATIVE_MATH = "_native_math"
     _NATIVE_NPU = "_native_npu"
     _NATIVE_XLA = "_native_xla"
+    SPLIT = "split"
 
     # `sageattention`
     SAGE = "sage"
@@ -503,7 +504,7 @@ def _prepare_for_flash_attn_or_sage_varlen_without_mask(
     cu_seqlens_k = torch.zeros(batch_size + 1, dtype=torch.int32, device=device)
     cu_seqlens_q[1:] = torch.cumsum(seqlens_q, dim=0)
     cu_seqlens_k[1:] = torch.cumsum(seqlens_k, dim=0)
-    max_seqlen_q = seqlens_q.max().item()
+    max_seqlen_q = seqlens_q.max().item() #TODO item() is inefficient and breaks torch.compile graphs. Use 'seq_len' parameter instead (see split attention backend)
     max_seqlen_k = seqlens_k.max().item()
     return (seqlens_q, seqlens_k), (cu_seqlens_q, cu_seqlens_k), (max_seqlen_q, max_seqlen_k)
 
@@ -1974,6 +1975,45 @@ def _native_attention(
         )
 
     return out
+
+@_AttentionBackendRegistry.register(
+    AttentionBackendName.SPLIT,
+    constraints=[_check_device, _check_shape],
+    supports_context_parallel=True,
+)
+def _split_attention(
+    query: torch.Tensor,
+    key: torch.Tensor,
+    value: torch.Tensor,
+    attn_mask: Optional[torch.Tensor] = None,
+    seq_len: Optional[torch.Tensor] = None, #attn_mask is ignored if seq_len is passed
+    dropout_p: float = 0.0,
+    is_causal: bool = False,
+    scale: Optional[float] = None,
+    enable_gqa: bool = False,
+    return_lse: bool = False,
+    _parallel_config: Optional["ParallelConfig"] = None,
+) -> torch.Tensor:
+    if seq_len is None:
+        return _native_attention(query, key, value, attn_mask, dropout_p, is_causal, scale, enable_gqa, return_lse, _parallel_config)
+
+    batch_size, batch_seq_len = query.shape[:2]
+    if any(sample_seq_len > batch_seq_len for sample_seq_len in seq_len):
+        raise ValueError("Attention sequence lengths cannot be longer than maximum sequence length")
+    if len(seq_len) != batch_size:
+        raise ValueError("Attention sequence lengths must match the batch size")
+
+    result = []
+    for index, sample_seq_len in enumerate(seq_len):
+        sliced_query = query[index, :sample_seq_len, :, :].unsqueeze(0)
+        sliced_key =   key  [index, :sample_seq_len, :, :].unsqueeze(0)
+        sliced_value = value[index, :sample_seq_len, :, :].unsqueeze(0)
+        sliced_result = _native_attention(sliced_query, sliced_key, sliced_value, None, dropout_p, is_causal, scale, enable_gqa, return_lse, _parallel_config)
+
+        padding = torch.zeros((1, batch_seq_len - sample_seq_len) + sliced_result.shape[2:], device=sliced_result.device, dtype=sliced_result.dtype)
+        padded_result = torch.cat([sliced_result, padding], dim=1)
+        result.append(padded_result)
+    return torch.cat(result, dim=0)
 
 
 @_AttentionBackendRegistry.register(
