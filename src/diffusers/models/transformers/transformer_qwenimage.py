@@ -541,46 +541,48 @@ class QwenDoubleStreamAttnProcessor2_0:
         joint_key = torch.cat([txt_key, img_key], dim=1)
         joint_value = torch.cat([txt_value, img_value], dim=1)
 
-        # If an encoder_hidden_states_mask is provided, create a joint attention mask.
-        # The encoder_hidden_states_mask is expected to have 1.0 for valid tokens and 0.0 for padding.
-        # We convert it to a boolean mask where True means "attend" and False means "mask out" (don't attend).
-        # Only create the mask if there's actual padding, otherwise keep attention_mask=None for better SDPA performance.
         if encoder_hidden_states_mask is not None and attention_mask is None:
-            batch_size, image_seq_len = hidden_states.shape[:2]
-            text_seq_len = encoder_hidden_states.shape[1]
+            text_mask = encoder_hidden_states_mask.bool()
 
-            if encoder_hidden_states_mask.shape[0] != batch_size:
-                raise ValueError(
-                    f"`encoder_hidden_states_mask` batch size ({encoder_hidden_states_mask.shape[0]}) "
-                    f"must match hidden_states batch size ({batch_size})."
-                )
-            if encoder_hidden_states_mask.shape[1] != text_seq_len:
-                raise ValueError(
-                    f"`encoder_hidden_states_mask` sequence length ({encoder_hidden_states_mask.shape[1]}) "
-                    f"must match encoder_hidden_states sequence length ({text_seq_len})."
+            def with_padding():
+                batch_size, image_seq_len = hidden_states.shape[:2]
+                image_mask = torch.ones((batch_size, image_seq_len), dtype=torch.bool, device=hidden_states.device)
+                mask = torch.cat([text_mask, image_mask], dim=1)
+                return dispatch_attention_fn(
+                    joint_query,
+                    joint_key,
+                    joint_value,
+                    attn_mask=mask,
+                    dropout_p=0.0,
+                    is_causal=False,
+                    backend=self._attention_backend,
+                    parallel_config=self._parallel_config,
                 )
 
-            # Create joint attention mask
-            # torch.compile compatible: always create mask when encoder_hidden_states_mask is provided
-            text_attention_mask = encoder_hidden_states_mask.bool()
-            image_attention_mask = torch.ones(
-                (batch_size, image_seq_len), dtype=torch.bool, device=hidden_states.device
+            def without_padding():
+                return dispatch_attention_fn(
+                    joint_query,
+                    joint_key,
+                    joint_value,
+                    attn_mask=None,
+                    dropout_p=0.0,
+                    is_causal=False,
+                    backend=self._attention_backend,
+                    parallel_config=self._parallel_config,
+                )
+
+            joint_hidden_states = torch.cond(~text_mask.all(), with_padding, without_padding)
+        else:
+            joint_hidden_states = dispatch_attention_fn(
+                joint_query,
+                joint_key,
+                joint_value,
+                attn_mask=attention_mask,
+                dropout_p=0.0,
+                is_causal=False,
+                backend=self._attention_backend,
+                parallel_config=self._parallel_config,
             )
-            # Create 2D joint mask [batch_size, text_seq_len + image_seq_len]
-            # The attention dispatch will normalize this and extract sequence lengths
-            attention_mask = torch.cat([text_attention_mask, image_attention_mask], dim=1)
-
-        # Compute joint attention
-        joint_hidden_states = dispatch_attention_fn(
-            joint_query,
-            joint_key,
-            joint_value,
-            attn_mask=attention_mask,
-            dropout_p=0.0,
-            is_causal=False,
-            backend=self._attention_backend,
-            parallel_config=self._parallel_config,
-        )
 
         # Reshape back
         joint_hidden_states = joint_hidden_states.flatten(2, 3)
