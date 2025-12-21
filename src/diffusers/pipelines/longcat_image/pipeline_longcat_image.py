@@ -20,7 +20,7 @@ import torch
 from transformers import Qwen2_5_VLForConditionalGeneration, Qwen2Tokenizer, Qwen2VLProcessor
 
 from ...image_processor import VaeImageProcessor
-from ...loaders import FromSingleFileMixin
+from ...loaders import FluxLoraLoaderMixin, FromSingleFileMixin
 from ...models.autoencoders import AutoencoderKL
 from ...models.transformers import LongCatImageTransformer2DModel
 from ...pipelines.pipeline_utils import DiffusionPipeline
@@ -202,7 +202,7 @@ def retrieve_timesteps(
     return timesteps, num_inference_steps
 
 
-class LongCatImagePipeline(DiffusionPipeline, FromSingleFileMixin):
+class LongCatImagePipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleFileMixin):
     r"""
     The pipeline for text-to-image generation.
     """
