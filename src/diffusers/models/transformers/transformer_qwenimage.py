@@ -492,7 +492,7 @@ class QwenDoubleStreamAttnProcessor2_0:
         encoder_hidden_states_mask: torch.FloatTensor = None,
         attention_mask: Optional[torch.FloatTensor] = None,
         image_rotary_emb: Optional[torch.Tensor] = None,
-        encoder_hidden_states_len: Optional[torch.Tensor] = None,
+        encoder_hidden_states_len: Optional[List[int]] = None,
     ) -> torch.FloatTensor:
         if encoder_hidden_states is None:
             raise ValueError("QwenDoubleStreamAttnProcessor2_0 requires encoder_hidden_states (text stream)")
@@ -698,7 +698,7 @@ class QwenImageTransformerBlock(nn.Module):
         encoder_hidden_states_mask: torch.Tensor,
         temb: torch.Tensor,
         image_rotary_emb: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
-        encoder_hidden_states_len: Optional[torch.Tensor] = None,
+        encoder_hidden_states_len: Optional[List[int]] = None,
         joint_attention_kwargs: Optional[Dict[str, Any]] = None,
         modulate_index: Optional[List[int]] = None,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
