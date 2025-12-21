@@ -541,48 +541,16 @@ class QwenDoubleStreamAttnProcessor2_0:
         joint_key = torch.cat([txt_key, img_key], dim=1)
         joint_value = torch.cat([txt_value, img_value], dim=1)
 
-        if encoder_hidden_states_mask is not None and attention_mask is None:
-            text_mask = encoder_hidden_states_mask.bool()
-
-            def with_padding():
-                batch_size, image_seq_len = hidden_states.shape[:2]
-                image_mask = torch.ones((batch_size, image_seq_len), dtype=torch.bool, device=hidden_states.device)
-                mask = torch.cat([text_mask, image_mask], dim=1)
-                return dispatch_attention_fn(
-                    joint_query,
-                    joint_key,
-                    joint_value,
-                    attn_mask=mask,
-                    dropout_p=0.0,
-                    is_causal=False,
-                    backend=self._attention_backend,
-                    parallel_config=self._parallel_config,
-                )
-
-            def without_padding():
-                return dispatch_attention_fn(
-                    joint_query,
-                    joint_key,
-                    joint_value,
-                    attn_mask=None,
-                    dropout_p=0.0,
-                    is_causal=False,
-                    backend=self._attention_backend,
-                    parallel_config=self._parallel_config,
-                )
-
-            joint_hidden_states = torch.cond(~text_mask.all(), with_padding, without_padding)
-        else:
-            joint_hidden_states = dispatch_attention_fn(
-                joint_query,
-                joint_key,
-                joint_value,
-                attn_mask=attention_mask,
-                dropout_p=0.0,
-                is_causal=False,
-                backend=self._attention_backend,
-                parallel_config=self._parallel_config,
-            )
+        joint_hidden_states = dispatch_attention_fn(
+            joint_query,
+            joint_key,
+            joint_value,
+            attn_mask=attention_mask,
+            dropout_p=0.0,
+            is_causal=False,
+            backend=self._attention_backend,
+            parallel_config=self._parallel_config,
+        )
 
         # Reshape back
         joint_hidden_states = joint_hidden_states.flatten(2, 3)
@@ -964,16 +932,26 @@ class QwenImageTransformer2DModel(
 
         image_rotary_emb = self.pos_embed(img_shapes, max_txt_seq_len=text_seq_len, device=hidden_states.device)
 
+        # Construct joint attention mask once to avoid reconstructing in every block
+        # This eliminates 60 GPU syncs during training while maintaining torch.compile compatibility
+        block_attention_kwargs = attention_kwargs.copy() if attention_kwargs is not None else {}
+        if encoder_hidden_states_mask is not None:
+            # Build joint mask: [text_mask, all_ones_for_image]
+            batch_size, image_seq_len = hidden_states.shape[:2]
+            image_mask = torch.ones((batch_size, image_seq_len), dtype=torch.bool, device=hidden_states.device)
+            joint_attention_mask = torch.cat([encoder_hidden_states_mask, image_mask], dim=1)
+            block_attention_kwargs["attention_mask"] = joint_attention_mask
+
         for index_block, block in enumerate(self.transformer_blocks):
             if torch.is_grad_enabled() and self.gradient_checkpointing:
                 encoder_hidden_states, hidden_states = self._gradient_checkpointing_func(
                     block,
                     hidden_states,
                     encoder_hidden_states,
-                    encoder_hidden_states_mask,
+                    None,  # Don't pass encoder_hidden_states_mask (using attention_mask instead)
                     temb,
                     image_rotary_emb,
-                    attention_kwargs,
+                    block_attention_kwargs,
                     modulate_index,
                 )
 
@@ -981,10 +959,10 @@ class QwenImageTransformer2DModel(
                 encoder_hidden_states, hidden_states = block(
                     hidden_states=hidden_states,
                     encoder_hidden_states=encoder_hidden_states,
-                    encoder_hidden_states_mask=encoder_hidden_states_mask,
+                    encoder_hidden_states_mask=None,  # Don't pass (using attention_mask instead)
                     temb=temb,
                     image_rotary_emb=image_rotary_emb,
-                    joint_attention_kwargs=attention_kwargs,
+                    joint_attention_kwargs=block_attention_kwargs,
                     modulate_index=modulate_index,
                 )
 
