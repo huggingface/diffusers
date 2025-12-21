@@ -953,7 +953,7 @@ class QwenImageTransformer2DModel(
         encoder_hidden_states = self.txt_in(encoder_hidden_states)
 
         # Use the encoder_hidden_states sequence length for RoPE computation and normalize mask
-        if torch.all(encoder_hidden_states_mask):
+        if encoder_hidden_states_mask is not None and torch.all(encoder_hidden_states_mask):
             encoder_hidden_states_mask = None
         text_seq_len, text_seq_len_per_sample, encoder_hidden_states_mask = compute_text_seq_len_from_mask(
             encoder_hidden_states, encoder_hidden_states_mask
