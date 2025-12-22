@@ -91,7 +91,9 @@ def main() -> None:
 
     levels = len(diffusers_model.decoder.channel_multipliers)
     latent_size = diffusers_model.decoder.resolution // (2 ** (levels - 1))
-    dummy = torch.randn(args.batch, diffusers_model.decoder.latent_channels, latent_size, latent_size, device=device, dtype=dtype)
+    dummy = torch.randn(
+        args.batch, diffusers_model.decoder.latent_channels, latent_size, latent_size, device=device, dtype=dtype
+    )
 
     with torch.no_grad():
         original_out = original_decoder(dummy)
