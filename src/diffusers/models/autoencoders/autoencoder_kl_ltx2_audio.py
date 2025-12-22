@@ -99,8 +99,9 @@ class LTX2AudioCausalConv2d(nn.Module):
         super().__init__()
 
         self.causality_axis = causality_axis
-        kernel_size = nn.modules.utils._pair(kernel_size)
-        dilation = nn.modules.utils._pair(dilation)
+        kernel_size = (kernel_size, kernel_size) if isinstance(kernel_size, int) else kernel_size
+        dilation = (dilation, dilation) if isinstance(dilation, int) else dilation
+
 
         pad_h = (kernel_size[0] - 1) * dilation[0]
         pad_w = (kernel_size[1] - 1) * dilation[1]
@@ -232,7 +233,7 @@ class LTX2AudioResnetBlock(nn.Module):
     def forward(
         self,
         x: torch.Tensor,
-        temb: Optional[torch.Tensor] = None,
+        temb: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
         h = self.norm1(x)
         h = self.non_linearity(h)
@@ -257,7 +258,7 @@ class LTX2AudioUpsample(nn.Module):
         self,
         in_channels: int,
         with_conv: bool,
-        causality_axis: Optional[str] = "height",
+        causality_axis: Optional[str] = "height"
     ) -> None:
         super().__init__()
         self.with_conv = with_conv
@@ -291,10 +292,11 @@ class LTX2AudioPerChannelStatistics(nn.Module):
 
     def __init__(self, latent_channels: int = 128) -> None:
         super().__init__()
+        # Sayak notes: `empty` always causes problems in CI. Should we consider using `torch.ones`?
         self.register_buffer("std-of-means", torch.empty(latent_channels))
         self.register_buffer("mean-of-means", torch.empty(latent_channels))
 
-    def un_normalize(self, x: torch.Tensor) -> torch.Tensor:
+    def denormalize(self, x: torch.Tensor) -> torch.Tensor:
         return (x * self.get_buffer("std-of-means").to(x)) + self.get_buffer("mean-of-means").to(x)
 
     def normalize(self, x: torch.Tensor) -> torch.Tensor:
@@ -327,7 +329,7 @@ class LTX2AudioAudioPatchifier:
     def unpatchify(
         self,
         audio_latents: torch.Tensor,
-        output_shape: AudioLatentShape,
+        output_shape: AudioLatentShape
     ) -> torch.Tensor:
         batch, time, _ = audio_latents.shape
         channels = output_shape.channels
@@ -421,7 +423,7 @@ class LTX2AudioDecoder(nn.Module):
     def _adjust_output_shape(
         self,
         decoded_output: torch.Tensor,
-        target_shape: AudioLatentShape,
+        target_shape: AudioLatentShape
     ) -> torch.Tensor:
         _, _, current_time, current_freq = decoded_output.shape
         target_channels = target_shape.channels
@@ -460,7 +462,7 @@ class LTX2AudioDecoder(nn.Module):
         )
 
         sample_patched = self.patchifier.patchify(sample)
-        sample_denormalized = self.per_channel_statistics.un_normalize(sample_patched)
+        sample_denormalized = self.per_channel_statistics.denormalize(sample_patched)
         sample = self.patchifier.unpatchify(sample_denormalized, latent_shape)
 
         target_frames = latent_shape.frames * LATENT_DOWNSAMPLE_FACTOR
@@ -509,7 +511,7 @@ class LTX2AudioDecoder(nn.Module):
         self,
         initial_block_channels: int,
         dropout: float,
-        resamp_with_conv: bool,
+        resamp_with_conv: bool
     ) -> tuple[nn.ModuleList, int]:
         up_modules = nn.ModuleList()
         block_in = initial_block_channels
@@ -630,7 +632,7 @@ class AutoencoderKLLTX2Audio(ModelMixin, AutoencoderMixin, ConfigMixin):
     def encode(
         self,
         x: torch.Tensor,
-        return_dict: bool = True,
+        return_dict: bool = True
     ):
         raise NotImplementedError("AutoencoderKLLTX2Audio does not implement encoding.")
 
