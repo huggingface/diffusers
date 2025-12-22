@@ -7,9 +7,11 @@ import safetensors.torch
 import torch
 from accelerate import init_empty_weights
 from huggingface_hub import hf_hub_download
+from transformers import AutoModel, AutoProcessor
 
 from diffusers import AutoencoderKLLTX2Video, LTX2VideoTransformer3DModel
 from diffusers.utils.import_utils import is_accelerate_available
+from diffusers.pipelines.ltx2.text_encoder import LTX2AudioVisualTextEncoder
 from diffusers.pipelines.ltx2.vocoder import LTX2Vocoder
 
 
@@ -69,6 +71,15 @@ LTX_2_0_VOCODER_RENAME_DICT = {
     "conv_post": "conv_out",
 }
 
+LTX_2_0_TEXT_ENCODER_RENAME_DICT = {
+    "video_embeddings_connector": "video_connector",
+    "audio_embeddings_connector": "audio_connector",
+    "transformer_1d_blocks": "transformer_blocks",
+    # Attention QK Norms
+    "q_norm": "norm_q",
+    "k_norm": "norm_k",
+}
+
 
 def update_state_dict_inplace(state_dict: Dict[str, Any], old_key: str, new_key: str) -> None:
     state_dict[new_key] = state_dict.pop(old_key)
@@ -108,6 +119,8 @@ LTX_2_0_VAE_SPECIAL_KEYS_REMAP = {
 }
 
 LTX_2_0_VOCODER_SPECIAL_KEYS_REMAP = {}
+
+LTX_2_0_TEXT_ENCODER_SPECIAL_KEYS_REMAP = {}
 
 
 def get_ltx2_transformer_config(version: str) -> Tuple[Dict[str, Any], Dict[str, Any], Dict[str, Any]]:
@@ -372,6 +385,82 @@ def convert_ltx2_vocoder(original_state_dict: Dict[str, Any], version: str) -> D
     return vocoder
 
 
+def get_ltx2_text_encoder_config(version: str) -> Tuple[Dict[str, Any], Dict[str, Any], Dict[str, Any]]:
+    if version == "2.0":
+        config = {
+            "model_id": "diffusers-internal-dev/new-ltx-model",
+            "diffusers_config": {
+                "text_encoder_hidden_dim": 3840,
+                "text_proj_in_factor": 49,
+                "video_connector_num_attention_heads": 30,
+                "video_connector_attention_head_dim": 128,
+                "video_connector_num_layers": 2,
+                "video_connector_num_learnable_registers": 128,
+                "audio_connector_num_attention_heads": 30,
+                "audio_connector_attention_head_dim": 128,
+                "audio_connector_num_layers": 2,
+                "audio_connector_num_learnable_registers": 128,
+                "rope_base_seq_len": 4096,
+                "rope_theta": 10000.0,
+                "rope_double_precision": True,
+                "causal_temporal_positioning": False,
+            },
+        }
+        rename_dict = LTX_2_0_TEXT_ENCODER_RENAME_DICT
+        special_keys_remap = LTX_2_0_TEXT_ENCODER_SPECIAL_KEYS_REMAP
+    return config, rename_dict, special_keys_remap
+
+
+def get_text_encoder_keys_from_combined_ckpt(combined_ckpt: Dict[str, Any], prefix: str = "model.diffusion_model."):
+    model_state_dict = {}
+
+    model_state_dict["text_proj_in.weight"] = combined_ckpt["text_embedding_projection.aggregate_embed.weight"]
+
+    text_encoder_submodules = ["video_embeddings_connector", "audio_embeddings_connector"]
+    for param_name, param in combined_ckpt.items():
+        if param_name.startswith(prefix):
+            new_param_name = param_name.replace(prefix, "")
+            for submodule_name in text_encoder_submodules:
+                if new_param_name.startswith(submodule_name):
+                    model_state_dict[new_param_name] = param
+                    break
+
+    return model_state_dict
+
+
+def convert_ltx2_text_encoder(original_state_dict: Dict[str, Any], version: str, text_model_id: str) -> Dict[str, Any]:
+    config, rename_dict, special_keys_remap = get_ltx2_text_encoder_config(version)
+    diffusers_config = config["diffusers_config"]
+    diffusers_config["text_model_id"] = text_model_id
+    diffusers_config["config_only"] = True
+
+    with init_empty_weights():
+        text_encoder = LTX2AudioVisualTextEncoder.from_config(diffusers_config)
+
+    # Handle official code --> diffusers key remapping via the remap dict
+    for key in list(original_state_dict.keys()):
+        new_key = key[:]
+        for replace_key, rename_key in rename_dict.items():
+            new_key = new_key.replace(replace_key, rename_key)
+        update_state_dict_inplace(original_state_dict, key, new_key)
+
+    # Handle any special logic which can't be expressed by a simple 1:1 remapping with the handlers in
+    # special_keys_remap
+    for key in list(original_state_dict.keys()):
+        for special_key, handler_fn_inplace in special_keys_remap.items():
+            if special_key not in key:
+                continue
+            handler_fn_inplace(key, original_state_dict)
+
+    base_text_model = AutoModel.from_pretrained(text_model_id)
+    base_text_model_state_dict= base_text_model.state_dict()
+    base_text_model_state_dict = {"base_text_encoder." + k: v for k, v in base_text_model_state_dict.items()}
+    combined_state_dict = {**original_state_dict, **base_text_model_state_dict}
+
+    text_encoder.load_state_dict(combined_state_dict, strict=True, assign=True)
+    return text_encoder
+
+
 def load_original_checkpoint(args, filename: Optional[str]) -> Dict[str, Any]:
     if args.original_state_dict_repo_id is not None:
         ckpt_path = hf_hub_download(repo_id=args.original_state_dict_repo_id, filename=filename)
@@ -458,11 +547,24 @@ def get_args():
     parser.add_argument(
         "--vocoder_filename", default=None, type=str, help="Vocoder filename; overrides combined ckpt if set"
     )
+    parser.add_argument(
+        "--text_encoder_model_id",
+        default="google/gemma-3-12b-it-qat-q4_0-unquantized",
+        type=str,
+        help="HF Hub id for the LTX 2.0 base text encoder model",
+    )
+    parser.add_argument(
+        "--tokenizer_id",
+        default="google/gemma-3-12b-it-qat-q4_0-unquantized",
+        type=str,
+        help="HF Hub id for the LTX 2.0 text tokenizer",
+    )
 
     parser.add_argument("--vae", action="store_true", help="Whether to convert the video VAE model")
     parser.add_argument("--audio_vae", action="store_true", help="Whether to convert the audio VAE model")
     parser.add_argument("--dit", action="store_true", help="Whether to convert the DiT model")
     parser.add_argument("--vocoder", action="store_true", help="Whether to convert the vocoder model")
+    parser.add_argument("--text_encoder", action="store_true", help="Whether to conver the text encoder")
     parser.add_argument(
         "--full_pipeline",
         action="store_true",
@@ -473,6 +575,7 @@ def get_args():
     parser.add_argument("--audio_vae_dtype", type=str, default="bf16", choices=["fp32", "fp16", "bf16"])
     parser.add_argument("--dit_dtype", type=str, default="bf16", choices=["fp32", "fp16", "bf16"])
     parser.add_argument("--vocoder_dtype", type=str, default="bf16", choices=["fp32", "fp16", "bf16"])
+    parser.add_argument("--text_encoder_dtype", type=str, default="bf16", choices=["fp32", "fp16", "bf16"])
 
     parser.add_argument("--output_path", type=str, required=True, help="Path where converted model should be saved")
 
@@ -497,9 +600,12 @@ def main(args):
     audio_vae_dtype = DTYPE_MAPPING[args.audio_vae_dtype]
     dit_dtype = DTYPE_MAPPING[args.dit_dtype]
     vocoder_dtype = DTYPE_MAPPING[args.vocoder_dtype]
+    text_encoder_dtype = DTYPE_MAPPING[args.text_encoder_dtype]
 
     combined_ckpt = None
-    load_combined_models = any([args.vae, args.audio_vae, args.dit, args.vocoder, args.full_pipeline])
+    load_combined_models = any(
+        [args.vae, args.audio_vae, args.dit, args.vocoder, args.text_encoder, args.full_pipeline]
+    )
     if args.combined_filename is not None and load_combined_models:
         combined_ckpt = load_original_checkpoint(args, filename=args.combined_filename)
 
@@ -532,6 +638,16 @@ def main(args):
         vocoder = convert_ltx2_vocoder(original_vocoder_ckpt, version=args.version)
         if not args.full_pipeline:
             vocoder.to(vocoder_dtype).save_pretrained(os.path.join(args.output_path, "vocoder"))
+
+    if args.text_encoder or args.full_pipeline:
+        text_encoder_ckpt = get_text_encoder_keys_from_combined_ckpt(combined_ckpt)
+        text_encoder = convert_ltx2_text_encoder(text_encoder_ckpt, args.version, args.text_encoder_model_id)
+        if not args.full_pipeline:
+            text_encoder.to(text_encoder_dtype).save_pretrained(os.path.join(args.output_path, "text_encoder"))
+
+        tokenizer = AutoProcessor.from_pretrained(args.tokenizer_id)
+        if not args.full_pipeline:
+            tokenizer.save_pretrained(os.path.join(args.output_path, "tokenizer"))
 
     if args.full_pipeline:
         pass
