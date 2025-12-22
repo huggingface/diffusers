@@ -11,6 +11,7 @@ from .autoencoder_kl_hunyuanimage_refiner import AutoencoderKLHunyuanImageRefine
 from .autoencoder_kl_hunyuanvideo15 import AutoencoderKLHunyuanVideo15
 from .autoencoder_kl_ltx import AutoencoderKLLTXVideo
 from .autoencoder_kl_ltx2_audio import AutoencoderKLLTX2Audio
+from .autoencoder_kl_ltx2 import AutoencoderKLLTX2Video
 from .autoencoder_kl_magvit import AutoencoderKLMagvit
 from .autoencoder_kl_mochi import AutoencoderKLMochi
 from .autoencoder_kl_qwenimage import AutoencoderKLQwenImage

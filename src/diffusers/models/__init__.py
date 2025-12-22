@@ -41,6 +41,7 @@ if is_torch_available():
     _import_structure["autoencoders.autoencoder_kl_hunyuanimage_refiner"] = ["AutoencoderKLHunyuanImageRefiner"]
     _import_structure["autoencoders.autoencoder_kl_hunyuanvideo15"] = ["AutoencoderKLHunyuanVideo15"]
     _import_structure["autoencoders.autoencoder_kl_ltx"] = ["AutoencoderKLLTXVideo"]
+    _import_structure["autoencoders.autoencoder_kl_ltx2"] = ["AutoencoderKLLTX2Video"]
     _import_structure["autoencoders.autoencoder_kl_magvit"] = ["AutoencoderKLMagvit"]
     _import_structure["autoencoders.autoencoder_kl_mochi"] = ["AutoencoderKLMochi"]
     _import_structure["autoencoders.autoencoder_kl_qwenimage"] = ["AutoencoderKLQwenImage"]
@@ -102,6 +103,7 @@ if is_torch_available():
     _import_structure["transformers.transformer_hunyuanimage"] = ["HunyuanImageTransformer2DModel"]
     _import_structure["transformers.transformer_kandinsky"] = ["Kandinsky5Transformer3DModel"]
     _import_structure["transformers.transformer_ltx"] = ["LTXVideoTransformer3DModel"]
+    _import_structure["transformers.transformer_ltx2"] = ["LTX2VideoTransformer3DModel"]
     _import_structure["transformers.transformer_lumina2"] = ["Lumina2Transformer2DModel"]
     _import_structure["transformers.transformer_mochi"] = ["MochiTransformer3DModel"]
     _import_structure["transformers.transformer_omnigen"] = ["OmniGenTransformer2DModel"]
@@ -152,6 +154,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AutoencoderKLHunyuanVideo,
             AutoencoderKLHunyuanVideo15,
             AutoencoderKLLTXVideo,
+            AutoencoderKLLTX2Video,
             AutoencoderKLMagvit,
             AutoencoderKLMochi,
             AutoencoderKLQwenImage,
@@ -209,6 +212,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             Kandinsky5Transformer3DModel,
             LatteTransformer3DModel,
             LTXVideoTransformer3DModel,
+            LTX2VideoTransformer3DModel,
             Lumina2Transformer2DModel,
             LuminaNextDiT2DModel,
             MochiTransformer3DModel,
