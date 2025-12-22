@@ -580,13 +580,6 @@ class AutoencoderKLLTX2Audio(ModelMixin, AutoencoderMixin, ConfigMixin):
 
     _supports_gradient_checkpointing = False
 
-    # {
-    # 'double_z': True, 'mel_bins': 64, 'z_channels': 8, 'resolution': 256, 'downsample_time': False,
-    # 'in_channels': 2, 'out_ch': 2, 'ch': 128, 'ch_mult': [1, 2, 4], 'num_res_blocks': 2,
-    # 'attn_resolutions': [], 'dropout': 0.0, 'mid_block_add_attention': False, 
-    # 'norm_type': 'pixel', 'causality_axis': 'height'
-    # }
-    # sample_rate=16000, mel_hop_length=160, is_causal=True, mel_bins=64
     @register_to_config
     def __init__(
         self,
