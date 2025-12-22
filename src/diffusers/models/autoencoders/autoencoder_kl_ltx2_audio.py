@@ -533,8 +533,9 @@ class LTX2AudioDecoder(nn.Module):
                     )
                 )
                 block_in = block_out
-                if curr_res in self.attn_resolutions:
-                    stage.attn.append(LTX2AudioAttnBlock(block_in, norm_type=self.norm_type))
+                if self.attn_resolutions:
+                    if curr_res in self.attn_resolutions:
+                        stage.attn.append(LTX2AudioAttnBlock(block_in, norm_type=self.norm_type))
 
             if level != 0:
                 stage.upsample = LTX2AudioUpsample(block_in, resamp_with_conv, causality_axis=self.causality_axis)
@@ -579,6 +580,13 @@ class AutoencoderKLLTX2Audio(ModelMixin, AutoencoderMixin, ConfigMixin):
 
     _supports_gradient_checkpointing = False
 
+    # {
+    # 'double_z': True, 'mel_bins': 64, 'z_channels': 8, 'resolution': 256, 'downsample_time': False,
+    # 'in_channels': 2, 'out_ch': 2, 'ch': 128, 'ch_mult': [1, 2, 4], 'num_res_blocks': 2,
+    # 'attn_resolutions': [], 'dropout': 0.0, 'mid_block_add_attention': False, 
+    # 'norm_type': 'pixel', 'causality_axis': 'height'
+    # }
+    # sample_rate=16000, mel_hop_length=160, is_causal=True, mel_bins=64
     @register_to_config
     def __init__(
         self,
@@ -586,23 +594,23 @@ class AutoencoderKLLTX2Audio(ModelMixin, AutoencoderMixin, ConfigMixin):
         output_channels: int = 2,
         ch_mult: Tuple[int] = (1, 2, 4),
         num_res_blocks: int = 2,
-        attn_resolutions: Tuple[int] = (8, 16, 32),
+        attn_resolutions: Optional[Tuple[int]] = None,
         in_channels: int = 2,
         resolution: int = 256,
         latent_channels: int = 8,
         norm_type: str = "pixel",
         causality_axis: Optional[str] = "height",
         dropout: float = 0.0,
-        mid_block_add_attention: bool = True,
+        mid_block_add_attention: bool = False,
         sample_rate: int = 16000,
         mel_hop_length: int = 160,
         is_causal: bool = True,
-        mel_bins: Optional[int] = None,
+        mel_bins: Optional[int] = 64,
     ) -> None:
         super().__init__()
 
         resolved_causality_axis = _resolve_causality_axis(causality_axis)
-        attn_resolution_set = set(attn_resolutions)
+        attn_resolution_set = set(attn_resolutions) if attn_resolutions else attn_resolutions
 
         self.decoder = LTX2AudioDecoder(
             base_channels=base_channels,
