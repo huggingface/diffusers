@@ -445,6 +445,10 @@ class SkyReelsV2RotaryPosEmbed(nn.Module):
         t_dim = attention_head_dim - h_dim - w_dim
         freqs_dtype = torch.float32 if torch.backends.mps.is_available() else torch.float64
 
+        self.t_dim = t_dim
+        self.h_dim = h_dim
+        self.w_dim = w_dim
+
         freqs_cos = []
         freqs_sin = []
 
@@ -468,11 +472,7 @@ class SkyReelsV2RotaryPosEmbed(nn.Module):
         p_t, p_h, p_w = self.patch_size
         ppf, pph, ppw = num_frames // p_t, height // p_h, width // p_w
 
-        split_sizes = [
-            self.attention_head_dim - 2 * (self.attention_head_dim // 3),
-            self.attention_head_dim // 3,
-            self.attention_head_dim // 3,
-        ]
+        split_sizes = [self.t_dim, self.h_dim, self.w_dim]
 
         freqs_cos = self.freqs_cos.split(split_sizes, dim=1)
         freqs_sin = self.freqs_sin.split(split_sizes, dim=1)
@@ -627,7 +627,7 @@ class SkyReelsV2Transformer3DModel(
     @register_to_config
     def __init__(
         self,
-        patch_size: Tuple[int] = (1, 2, 2),
+        patch_size: Tuple[int, ...] = (1, 2, 2),
         num_attention_heads: int = 16,
         attention_head_dim: int = 128,
         in_channels: int = 16,

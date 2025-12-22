@@ -13,6 +13,8 @@
 # limitations under the License.
 
 
+from typing import Any, Dict, Optional
+
 from ...loaders import WanLoraLoaderMixin
 from ...pipelines.pipeline_utils import StableDiffusionMixin
 from ...utils import logging
@@ -34,6 +36,13 @@ class WanModularPipeline(
     """
 
     default_blocks_name = "WanAutoBlocks"
+
+    # override the default_blocks_name in base class, which is just return self.default_blocks_name
+    def get_default_blocks_name(self, config_dict: Optional[Dict[str, Any]]) -> Optional[str]:
+        if config_dict is not None and "boundary_ratio" in config_dict and config_dict["boundary_ratio"] is not None:
+            return "Wan22AutoBlocks"
+        else:
+            return "WanAutoBlocks"
 
     @property
     def default_height(self):
@@ -58,6 +67,13 @@ class WanModularPipeline(
     @property
     def default_sample_num_frames(self):
         return 21
+
+    @property
+    def patch_size_spatial(self):
+        patch_size_spatial = 2
+        if hasattr(self, "transformer") and self.transformer is not None:
+            patch_size_spatial = self.transformer.config.patch_size[1]
+        return patch_size_spatial
 
     @property
     def vae_scale_factor_spatial(self):
@@ -86,3 +102,19 @@ class WanModularPipeline(
         if hasattr(self, "vae") and self.vae is not None:
             num_channels_latents = self.vae.config.z_dim
         return num_channels_latents
+
+    @property
+    def requires_unconditional_embeds(self):
+        requires_unconditional_embeds = False
+
+        if hasattr(self, "guider") and self.guider is not None:
+            requires_unconditional_embeds = self.guider._enabled and self.guider.num_conditions > 1
+
+        return requires_unconditional_embeds
+
+    @property
+    def num_train_timesteps(self):
+        num_train_timesteps = 1000
+        if hasattr(self, "scheduler") and self.scheduler is not None:
+            num_train_timesteps = self.scheduler.config.num_train_timesteps
+        return num_train_timesteps
