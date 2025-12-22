@@ -671,44 +671,46 @@ class TorchAoSerializationTest(unittest.TestCase):
 class TorchAoCompileTest(QuantCompileTests, unittest.TestCase):
     @property
     def quantization_config(self):
+        from torchao.quantization import Int8WeightOnlyConfig
+
         return PipelineQuantizationConfig(
             quant_mapping={
-                "transformer": TorchAoConfig(quant_type="int8_weight_only"),
+                "transformer": TorchAoConfig(Int8WeightOnlyConfig()),
             },
         )
 
-    @unittest.skip(
-        "Changing the device of AQT tensor with module._apply (called from doing module.to() in accelerate) does not work "
-        "when compiling."
-    )
-    def test_torch_compile_with_cpu_offload(self):
-        # RuntimeError: _apply(): Couldn't swap Linear.weight
-        super().test_torch_compile_with_cpu_offload()
+    # @unittest.skip(
+    #     "Changing the device of AQT tensor with module._apply (called from doing module.to() in accelerate) does not work "
+    #     "when compiling."
+    # )
+    # def test_torch_compile_with_cpu_offload(self):
+    #     # RuntimeError: _apply(): Couldn't swap Linear.weight
+    #     super().test_torch_compile_with_cpu_offload()
 
-    @parameterized.expand([False, True])
-    @unittest.skip(
-        """
-        For `use_stream=False`:
-            - Changing the device of AQT tensor, with `param.data = param.data.to(device)` as done in group offloading implementation
-            is unsupported in TorchAO. When compiling, FakeTensor device mismatch causes failure.
-        For `use_stream=True`:
-            Using non-default stream requires ability to pin tensors. AQT does not seem to support this yet in TorchAO.
-        """
-    )
-    def test_torch_compile_with_group_offload_leaf(self, use_stream):
-        # For use_stream=False:
-        # If we run group offloading without compilation, we will see:
-        #   RuntimeError: Attempted to set the storage of a tensor on device "cpu" to a storage on different device "cuda:0".  This is no longer allowed; the devices must match.
-        # When running with compilation, the error ends up being different:
-        #   Dynamo failed to run FX node with fake tensors: call_function <built-in function linear>(*(FakeTensor(..., device='cuda:0', size=(s0, 256), dtype=torch.bfloat16), AffineQuantizedTensor(tensor_impl=PlainAQTTensorImpl(data=FakeTensor(..., size=(1536, 256), dtype=torch.int8)... , scale=FakeTensor(..., size=(1536,), dtype=torch.bfloat16)... , zero_point=FakeTensor(..., size=(1536,), dtype=torch.int64)... , _layout=PlainLayout()), block_size=(1, 256), shape=torch.Size([1536, 256]), device=cpu, dtype=torch.bfloat16, requires_grad=False), Parameter(FakeTensor(..., device='cuda:0', size=(1536,), dtype=torch.bfloat16,
-        #   requires_grad=True))), **{}): got RuntimeError('Unhandled FakeTensor Device Propagation for aten.mm.default, found two different devices cuda:0, cpu')
-        # Looks like something that will have to be looked into upstream.
-        # for linear layers, weight.tensor_impl shows cuda... but:
-        # weight.tensor_impl.{data,scale,zero_point}.device will be cpu
+    # @parameterized.expand([False, True])
+    # @unittest.skip(
+    #     """
+    #     For `use_stream=False`:
+    #         - Changing the device of AQT tensor, with `param.data = param.data.to(device)` as done in group offloading implementation
+    #         is unsupported in TorchAO. When compiling, FakeTensor device mismatch causes failure.
+    #     For `use_stream=True`:
+    #         Using non-default stream requires ability to pin tensors. AQT does not seem to support this yet in TorchAO.
+    #     """
+    # )
+    # def test_torch_compile_with_group_offload_leaf(self, use_stream):
+    #     # For use_stream=False:
+    #     # If we run group offloading without compilation, we will see:
+    #     #   RuntimeError: Attempted to set the storage of a tensor on device "cpu" to a storage on different device "cuda:0".  This is no longer allowed; the devices must match.
+    #     # When running with compilation, the error ends up being different:
+    #     #   Dynamo failed to run FX node with fake tensors: call_function <built-in function linear>(*(FakeTensor(..., device='cuda:0', size=(s0, 256), dtype=torch.bfloat16), AffineQuantizedTensor(tensor_impl=PlainAQTTensorImpl(data=FakeTensor(..., size=(1536, 256), dtype=torch.int8)... , scale=FakeTensor(..., size=(1536,), dtype=torch.bfloat16)... , zero_point=FakeTensor(..., size=(1536,), dtype=torch.int64)... , _layout=PlainLayout()), block_size=(1, 256), shape=torch.Size([1536, 256]), device=cpu, dtype=torch.bfloat16, requires_grad=False), Parameter(FakeTensor(..., device='cuda:0', size=(1536,), dtype=torch.bfloat16,
+    #     #   requires_grad=True))), **{}): got RuntimeError('Unhandled FakeTensor Device Propagation for aten.mm.default, found two different devices cuda:0, cpu')
+    #     # Looks like something that will have to be looked into upstream.
+    #     # for linear layers, weight.tensor_impl shows cuda... but:
+    #     # weight.tensor_impl.{data,scale,zero_point}.device will be cpu
 
-        # For use_stream=True:
-        # NotImplementedError: AffineQuantizedTensor dispatch: attempting to run unimplemented operator/function: func=<OpOverload(op='aten.is_pinned', overload='default')>, types=(<class 'torchao.dtypes.affine_quantized_tensor.AffineQuantizedTensor'>,), arg_types=(<class 'torchao.dtypes.affine_quantized_tensor.AffineQuantizedTensor'>,), kwarg_types={}
-        super()._test_torch_compile_with_group_offload_leaf(use_stream=use_stream)
+    #     # For use_stream=True:
+    #     # NotImplementedError: AffineQuantizedTensor dispatch: attempting to run unimplemented operator/function: func=<OpOverload(op='aten.is_pinned', overload='default')>, types=(<class 'torchao.dtypes.affine_quantized_tensor.AffineQuantizedTensor'>,), arg_types=(<class 'torchao.dtypes.affine_quantized_tensor.AffineQuantizedTensor'>,), kwarg_types={}
+    #     super()._test_torch_compile_with_group_offload_leaf(use_stream=use_stream)
 
 
 # Slices for these tests have been obtained on our aws-g6e-xlarge-plus runners
