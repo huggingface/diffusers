@@ -102,7 +102,6 @@ class LTX2AudioCausalConv2d(nn.Module):
         kernel_size = (kernel_size, kernel_size) if isinstance(kernel_size, int) else kernel_size
         dilation = (dilation, dilation) if isinstance(dilation, int) else dilation
 
-
         pad_h = (kernel_size[0] - 1) * dilation[0]
         pad_w = (kernel_size[1] - 1) * dilation[1]
 
@@ -230,11 +229,7 @@ class LTX2AudioResnetBlock(nn.Module):
                     in_channels, out_channels, kernel_size=1, stride=1, causality_axis=causality_axis
                 )
 
-    def forward(
-        self,
-        x: torch.Tensor,
-        temb: Optional[torch.Tensor] = None
-    ) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, temb: Optional[torch.Tensor] = None) -> torch.Tensor:
         h = self.norm1(x)
         h = self.non_linearity(h)
         h = self.conv1(h)
@@ -254,12 +249,7 @@ class LTX2AudioResnetBlock(nn.Module):
 
 
 class LTX2AudioUpsample(nn.Module):
-    def __init__(
-        self,
-        in_channels: int,
-        with_conv: bool,
-        causality_axis: Optional[str] = "height"
-    ) -> None:
+    def __init__(self, in_channels: int, with_conv: bool, causality_axis: Optional[str] = "height") -> None:
         super().__init__()
         self.with_conv = with_conv
         self.causality_axis = causality_axis
@@ -326,11 +316,7 @@ class LTX2AudioAudioPatchifier:
         batch, channels, time, freq = audio_latents.shape
         return audio_latents.permute(0, 2, 1, 3).reshape(batch, time, channels * freq)
 
-    def unpatchify(
-        self,
-        audio_latents: torch.Tensor,
-        output_shape: AudioLatentShape
-    ) -> torch.Tensor:
+    def unpatchify(self, audio_latents: torch.Tensor, output_shape: AudioLatentShape) -> torch.Tensor:
         batch, time, _ = audio_latents.shape
         channels = output_shape.channels
         freq = output_shape.mel_bins
@@ -420,11 +406,7 @@ class LTX2AudioDecoder(nn.Module):
             final_block_channels, output_channels, kernel_size=3, stride=1, causality_axis=self.causality_axis
         )
 
-    def _adjust_output_shape(
-        self,
-        decoded_output: torch.Tensor,
-        target_shape: AudioLatentShape
-    ) -> torch.Tensor:
+    def _adjust_output_shape(self, decoded_output: torch.Tensor, target_shape: AudioLatentShape) -> torch.Tensor:
         _, _, current_time, current_freq = decoded_output.shape
         target_channels = target_shape.channels
         target_time = target_shape.frames
@@ -508,10 +490,7 @@ class LTX2AudioDecoder(nn.Module):
         return mid
 
     def _build_up_path(
-        self,
-        initial_block_channels: int,
-        dropout: float,
-        resamp_with_conv: bool
+        self, initial_block_channels: int, dropout: float, resamp_with_conv: bool
     ) -> tuple[nn.ModuleList, int]:
         up_modules = nn.ModuleList()
         block_in = initial_block_channels
@@ -629,11 +608,7 @@ class AutoencoderKLLTX2Audio(ModelMixin, AutoencoderMixin, ConfigMixin):
         self.use_slicing = False
 
     @apply_forward_hook
-    def encode(
-        self,
-        x: torch.Tensor,
-        return_dict: bool = True
-    ):
+    def encode(self, x: torch.Tensor, return_dict: bool = True):
         raise NotImplementedError("AutoencoderKLLTX2Audio does not implement encoding.")
 
     def _decode(self, z: torch.Tensor) -> torch.Tensor:
