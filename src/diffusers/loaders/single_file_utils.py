@@ -121,6 +121,8 @@ CHECKPOINT_KEY_NAMES = {
     "instruct-pix2pix": "model.diffusion_model.input_blocks.0.0.weight",
     "lumina2": ["model.diffusion_model.cap_embedder.0.weight", "cap_embedder.0.weight"],
     "z-image-turbo": "cap_embedder.0.weight",
+    "z-image-turbo-controlnet": "control_all_x_embedder.2-1.weight",
+    "z-image-turbo-controlnet-2.x": "control_layers.14.adaLN_modulation.0.weight",
     "sana": [
         "blocks.0.cross_attn.q_linear.weight",
         "blocks.0.cross_attn.q_linear.bias",
@@ -220,6 +222,8 @@ DIFFUSERS_DEFAULT_PIPELINE_PATHS = {
     "cosmos-2.0-v2w-2B": {"pretrained_model_name_or_path": "nvidia/Cosmos-Predict2-2B-Video2World"},
     "cosmos-2.0-v2w-14B": {"pretrained_model_name_or_path": "nvidia/Cosmos-Predict2-14B-Video2World"},
     "z-image-turbo": {"pretrained_model_name_or_path": "Tongyi-MAI/Z-Image-Turbo"},
+    "z-image-turbo-controlnet": {"pretrained_model_name_or_path": "hlky/Z-Image-Turbo-Fun-Controlnet-Union"},
+    "z-image-turbo-controlnet-2.x": {"pretrained_model_name_or_path": "hlky/Z-Image-Turbo-Fun-Controlnet-Union-2.1"},
 }
 
 # Use to configure model sample size when original config is provided
@@ -778,6 +782,12 @@ def infer_diffusers_model_type(checkpoint):
             model_type = "cosmos-2.0-v2w-2B" if x_embedder_shape[0] == 2048 else "cosmos-2.0-v2w-14B"
         else:
             raise ValueError(f"Unexpected x_embedder shape: {x_embedder_shape} when loading Cosmos 2.0 model.")
+
+    elif CHECKPOINT_KEY_NAMES["z-image-turbo-controlnet-2.x"] in checkpoint:
+        model_type = "z-image-turbo-controlnet-2.x"
+
+    elif CHECKPOINT_KEY_NAMES["z-image-turbo-controlnet"] in checkpoint:
+        model_type = "z-image-turbo-controlnet"
 
     else:
         model_type = "v1"
@@ -3885,3 +3895,17 @@ def convert_z_image_transformer_checkpoint_to_diffusers(checkpoint, **kwargs):
             handler_fn_inplace(key, converted_state_dict)
 
     return converted_state_dict
+
+
+def convert_z_image_controlnet_checkpoint_to_diffusers(checkpoint, config, **kwargs):
+    if config["add_control_noise_refiner"] is None:
+        return checkpoint
+    elif config["add_control_noise_refiner"] == "control_noise_refiner":
+        return checkpoint
+    elif config["add_control_noise_refiner"] == "control_layers":
+        converted_state_dict = {
+            key: checkpoint.pop(key) for key in list(checkpoint.keys()) if not key.startswith("control_noise_refiner.")
+        }
+        return converted_state_dict
+    else:
+        raise ValueError("Unknown Z-Image Turbo ControlNet type.")
