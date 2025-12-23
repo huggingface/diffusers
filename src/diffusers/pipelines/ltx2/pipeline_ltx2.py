@@ -888,16 +888,6 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLoraLoaderMix
             self.scheduler.config.get("base_shift", 0.95),
             self.scheduler.config.get("max_shift", 2.05),
         )
-        timesteps, num_inference_steps = retrieve_timesteps(
-            self.scheduler,
-            num_inference_steps,
-            device,
-            timesteps,
-            sigmas=sigmas,
-            mu=mu,
-        )
-        num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
-        self._num_timesteps = len(timesteps)
         # For now, duplicate the scheduler for use with the audio latents
         audio_scheduler = copy.deepcopy(self.scheduler)
         _, _ = retrieve_timesteps(
@@ -908,6 +898,16 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLoraLoaderMix
             sigmas=sigmas,
             mu=mu,
         )
+        timesteps, num_inference_steps = retrieve_timesteps(
+            self.scheduler,
+            num_inference_steps,
+            device,
+            timesteps,
+            sigmas=sigmas,
+            mu=mu,
+        )
+        num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
+        self._num_timesteps = len(timesteps)
 
         # 6. Prepare micro-conditions
         rope_interpolation_scale = (
@@ -937,7 +937,7 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLoraLoaderMix
                         hidden_states=latent_model_input,
                         audio_hidden_states=audio_latent_model_input,
                         encoder_hidden_states=prompt_embeds,
-                        audio_encoder_hidden_states=audio_latent_model_input,
+                        audio_encoder_hidden_states=audio_prompt_embeds,
                         timestep=timestep,
                         encoder_attention_mask=prompt_attention_mask,
                         audio_encoder_attention_mask=prompt_attention_mask,
