@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import copy
 import inspect
 from typing import Any, Callable, Dict, List, Optional, Union
 
@@ -865,6 +866,16 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLoraLoaderMix
         )
         num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
         self._num_timesteps = len(timesteps)
+        # For now, duplicate the scheduler for use with the audio latents
+        audio_scheduler = copy.deepcopy(self.scheduler)
+        _, _ = retrieve_timesteps(
+            audio_scheduler,
+            num_inference_steps,
+            device,
+            timesteps,
+            sigmas=sigmas,
+            mu=mu,
+        )
 
         # 6. Prepare micro-conditions
         rope_interpolation_scale = (
@@ -928,9 +939,9 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLoraLoaderMix
 
                 # compute the previous noisy sample x_t -> x_t-1
                 latents = self.scheduler.step(noise_pred_video, t, latents, return_dict=False)[0]
-                # TODO: we probably can't call step on the same scheduler because it will mess with its internal
-                # state, how can we get around this?
-                audio_latents = self.scheduler.step(noise_pred_audio, t, audio_latents, return_dict=False)[0]
+                # NOTE: for now duplicate scheduler for audio latents in case self.scheduler sets internal state in
+                # the step method (such as _step_index)
+                audio_latents = audio_scheduler.step(noise_pred_audio, t, audio_latents, return_dict=False)[0]
 
                 if callback_on_step_end is not None:
                     callback_kwargs = {}
