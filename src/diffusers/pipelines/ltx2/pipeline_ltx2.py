@@ -1030,6 +1030,7 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLoraLoaderMix
             video = self.video_processor.postprocess_video(video, output_type=output_type)
 
             audio_latents = self._unpack_audio_latents(audio_latents, audio_num_frames, num_mel_bins=latent_mel_bins)
+            audio_latents = audio_latents.to(self.audio_vae.dtype)
             # NOTE: currently, unlike the video VAE, we denormalize the audio latents inside the audio VAE decoder's
             # decode method
             generated_mel_spectrograms = self.audio_vae.decode(audio_latents, return_dict=False)[0]
