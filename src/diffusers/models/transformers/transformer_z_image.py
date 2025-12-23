@@ -549,8 +549,14 @@ class ZImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
         image = image.permute(1, 3, 5, 2, 4, 6, 0).reshape(F_tokens * H_tokens * W_tokens, pF * pH * pW * C)
         return image, (F, H, W), (F_tokens, H_tokens, W_tokens)
 
-    def _pad_with_ids(self, feat: torch.Tensor, pos_grid_size: Tuple, pos_start: Tuple, device: torch.device,
-                      noise_mask_val: Optional[int] = None):
+    def _pad_with_ids(
+        self,
+        feat: torch.Tensor,
+        pos_grid_size: Tuple,
+        pos_start: Tuple,
+        device: torch.device,
+        noise_mask_val: Optional[int] = None,
+    ):
         """Pad feature to SEQ_MULTI_OF, create position IDs and pad mask."""
         ori_len = len(feat)
         pad_len = (-ori_len) % SEQ_MULTI_OF
@@ -559,21 +565,30 @@ class ZImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
         # Pos IDs
         ori_pos_ids = self.create_coordinate_grid(size=pos_grid_size, start=pos_start, device=device).flatten(0, 2)
         if pad_len > 0:
-            pad_pos_ids = self.create_coordinate_grid(size=(1, 1, 1), start=(0, 0, 0), device=device).flatten(0, 2).repeat(pad_len, 1)
+            pad_pos_ids = (
+                self.create_coordinate_grid(size=(1, 1, 1), start=(0, 0, 0), device=device)
+                .flatten(0, 2)
+                .repeat(pad_len, 1)
+            )
             pos_ids = torch.cat([ori_pos_ids, pad_pos_ids], dim=0)
             padded_feat = torch.cat([feat, feat[-1:].repeat(pad_len, 1)], dim=0)
-            pad_mask = torch.cat([torch.zeros(ori_len, dtype=torch.bool, device=device),
-                                  torch.ones(pad_len, dtype=torch.bool, device=device)])
+            pad_mask = torch.cat(
+                [
+                    torch.zeros(ori_len, dtype=torch.bool, device=device),
+                    torch.ones(pad_len, dtype=torch.bool, device=device),
+                ]
+            )
         else:
             pos_ids = ori_pos_ids
             padded_feat = feat
             pad_mask = torch.zeros(ori_len, dtype=torch.bool, device=device)
 
-        noise_mask = [noise_mask_val] * total_len if noise_mask_val is not None else None # token level
+        noise_mask = [noise_mask_val] * total_len if noise_mask_val is not None else None  # token level
         return padded_feat, pos_ids, pad_mask, total_len, noise_mask
 
-    def patchify_and_embed(self, all_image: List[torch.Tensor], all_cap_feats: List[torch.Tensor],
-                           patch_size: int, f_patch_size: int):
+    def patchify_and_embed(
+        self, all_image: List[torch.Tensor], all_cap_feats: List[torch.Tensor], patch_size: int, f_patch_size: int
+    ):
         """Patchify for basic mode: single image per batch item."""
         device = all_image[0].device
         all_img_out, all_img_size, all_img_pos_ids, all_img_pad_mask = [], [], [], []
@@ -582,7 +597,8 @@ class ZImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
         for image, cap_feat in zip(all_image, all_cap_feats):
             # Caption
             cap_out, cap_pos_ids, cap_pad_mask, cap_len, _ = self._pad_with_ids(
-                cap_feat, (len(cap_feat) + (-len(cap_feat)) % SEQ_MULTI_OF, 1, 1), (1, 0, 0), device)
+                cap_feat, (len(cap_feat) + (-len(cap_feat)) % SEQ_MULTI_OF, 1, 1), (1, 0, 0), device
+            )
             all_cap_out.append(cap_out)
             all_cap_pos_ids.append(cap_pos_ids)
             all_cap_pad_mask.append(cap_pad_mask)
@@ -590,17 +606,32 @@ class ZImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
             # Image
             img_patches, size, (F_t, H_t, W_t) = self._patchify_image(image, patch_size, f_patch_size)
             img_out, img_pos_ids, img_pad_mask, _, _ = self._pad_with_ids(
-                img_patches, (F_t, H_t, W_t), (cap_len + 1, 0, 0), device)
+                img_patches, (F_t, H_t, W_t), (cap_len + 1, 0, 0), device
+            )
             all_img_out.append(img_out)
             all_img_size.append(size)
             all_img_pos_ids.append(img_pos_ids)
             all_img_pad_mask.append(img_pad_mask)
 
-        return all_img_out, all_cap_out, all_img_size, all_img_pos_ids, all_cap_pos_ids, all_img_pad_mask, all_cap_pad_mask
+        return (
+            all_img_out,
+            all_cap_out,
+            all_img_size,
+            all_img_pos_ids,
+            all_cap_pos_ids,
+            all_img_pad_mask,
+            all_cap_pad_mask,
+        )
 
-    def patchify_and_embed_omni(self, all_x: List[List[torch.Tensor]], all_cap_feats: List[List[torch.Tensor]],
-                                all_siglip_feats: List[List[torch.Tensor]], patch_size: int, f_patch_size: int,
-                                images_noise_mask: List[List[int]]):
+    def patchify_and_embed_omni(
+        self,
+        all_x: List[List[torch.Tensor]],
+        all_cap_feats: List[List[torch.Tensor]],
+        all_siglip_feats: List[List[torch.Tensor]],
+        patch_size: int,
+        f_patch_size: int,
+        images_noise_mask: List[List[int]],
+    ):
         """Patchify for omni mode: multiple images per batch item with noise masks."""
         bsz = len(all_x)
         device = all_x[0][-1].device
@@ -620,7 +651,12 @@ class ZImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
             for j, cap_item in enumerate(all_cap_feats[i]):
                 noise_val = images_noise_mask[i][j] if j < len(images_noise_mask[i]) else 1
                 cap_out, cap_pos, cap_mask, cap_len, cap_nm = self._pad_with_ids(
-                    cap_item, (len(cap_item) + (-len(cap_item)) % SEQ_MULTI_OF, 1, 1), (cap_cu_len, 0, 0), device, noise_val)
+                    cap_item,
+                    (len(cap_item) + (-len(cap_item)) % SEQ_MULTI_OF, 1, 1),
+                    (cap_cu_len, 0, 0),
+                    device,
+                    noise_val,
+                )
                 cap_feats_list.append(cap_out)
                 cap_pos_list.append(cap_pos)
                 cap_mask_list.append(cap_mask)
@@ -643,7 +679,8 @@ class ZImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
                 if x_item is not None:
                     x_patches, size, (F_t, H_t, W_t) = self._patchify_image(x_item, patch_size, f_patch_size)
                     x_out, x_pos, x_mask, x_len, x_nm = self._pad_with_ids(
-                        x_patches, (F_t, H_t, W_t), (cap_end_pos[j], 0, 0), device, noise_val)
+                        x_patches, (F_t, H_t, W_t), (cap_end_pos[j], 0, 0), device, noise_val
+                    )
                     x_size.append(size)
                 else:
                     x_len = SEQ_MULTI_OF
@@ -677,7 +714,8 @@ class ZImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
                         sig_H, sig_W, sig_C = sig_item.size()
                         sig_flat = sig_item.permute(2, 0, 1).reshape(sig_H * sig_W, sig_C)
                         sig_out, sig_pos, sig_mask, sig_len, sig_nm = self._pad_with_ids(
-                            sig_flat, (1, sig_H, sig_W), (cap_end_pos[j] + 1, 0, 0), device, noise_val)
+                            sig_flat, (1, sig_H, sig_W), (cap_end_pos[j] + 1, 0, 0), device, noise_val
+                        )
                         # Scale position IDs to match x resolution
                         if x_size[j] is not None:
                             sig_pos = sig_pos.float()
@@ -687,7 +725,9 @@ class ZImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
                     else:
                         sig_len = SEQ_MULTI_OF
                         sig_out = torch.zeros((sig_len, self.config.siglip_feat_dim), dtype=dtype, device=device)
-                        sig_pos = self.create_coordinate_grid((1, 1, 1), (0, 0, 0), device).flatten(0, 2).repeat(sig_len, 1)
+                        sig_pos = (
+                            self.create_coordinate_grid((1, 1, 1), (0, 0, 0), device).flatten(0, 2).repeat(sig_len, 1)
+                        )
                         sig_mask = torch.ones(sig_len, dtype=torch.bool, device=device)
                         sig_nm = [noise_val] * sig_len
                     sig_feats_list.append(sig_out)
@@ -705,9 +745,22 @@ class ZImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
         # Compute x position offsets
         all_x_pos_offsets = [(sum(all_cap_len[i]), sum(all_cap_len[i]) + sum(all_x_len[i])) for i in range(bsz)]
 
-        return (all_x_out, all_cap_out, all_sig_out, all_x_size, all_x_pos_ids, all_cap_pos_ids, all_sig_pos_ids,
-                all_x_pad_mask, all_cap_pad_mask, all_sig_pad_mask, all_x_pos_offsets,
-                all_x_noise_mask, all_cap_noise_mask, all_sig_noise_mask)
+        return (
+            all_x_out,
+            all_cap_out,
+            all_sig_out,
+            all_x_size,
+            all_x_pos_ids,
+            all_cap_pos_ids,
+            all_sig_pos_ids,
+            all_x_pad_mask,
+            all_cap_pad_mask,
+            all_sig_pad_mask,
+            all_x_pos_offsets,
+            all_x_noise_mask,
+            all_cap_noise_mask,
+            all_sig_noise_mask,
+        )
 
     def _prepare_sequence(
         self,
@@ -733,7 +786,7 @@ class ZImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
 
         # Pad to batch
         feats = pad_sequence(feats, batch_first=True, padding_value=0.0)
-        freqs_cis = pad_sequence(freqs_cis, batch_first=True, padding_value=0.0)[:, :feats.shape[1]]
+        freqs_cis = pad_sequence(freqs_cis, batch_first=True, padding_value=0.0)[:, : feats.shape[1]]
 
         # Attention mask
         attn_mask = torch.zeros((bsz, max_seqlen), dtype=torch.bool, device=device)
@@ -745,23 +798,31 @@ class ZImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
         if noise_mask is not None:
             noise_mask_tensor = pad_sequence(
                 [torch.tensor(m, dtype=torch.long, device=device) for m in noise_mask],
-                batch_first=True, padding_value=0
-            )[:, :feats.shape[1]]
+                batch_first=True,
+                padding_value=0,
+            )[:, : feats.shape[1]]
 
         return feats, freqs_cis, attn_mask, item_seqlens, noise_mask_tensor
 
     def _build_unified_sequence(
         self,
-        x: torch.Tensor, x_freqs: torch.Tensor, x_seqlens: List[int], x_noise_mask: Optional[List[List[int]]],
-        cap: torch.Tensor, cap_freqs: torch.Tensor, cap_seqlens: List[int], cap_noise_mask: Optional[List[List[int]]],
-        siglip: Optional[torch.Tensor], siglip_freqs: Optional[torch.Tensor], siglip_seqlens: Optional[List[int]], siglip_noise_mask: Optional[List[List[int]]],
+        x: torch.Tensor,
+        x_freqs: torch.Tensor,
+        x_seqlens: List[int],
+        x_noise_mask: Optional[List[List[int]]],
+        cap: torch.Tensor,
+        cap_freqs: torch.Tensor,
+        cap_seqlens: List[int],
+        cap_noise_mask: Optional[List[List[int]]],
+        siglip: Optional[torch.Tensor],
+        siglip_freqs: Optional[torch.Tensor],
+        siglip_seqlens: Optional[List[int]],
+        siglip_noise_mask: Optional[List[List[int]]],
         omni_mode: bool,
         device: torch.device,
     ):
         """Build unified sequence: x, cap, and optionally siglip.
-        
-        Basic mode order: [x, cap]
-        Omni mode order: [cap, x, siglip]
+        Basic mode order: [x, cap]; Omni mode order: [cap, x, siglip]
         """
         bsz = len(x_seqlens)
         unified = []
@@ -770,22 +831,26 @@ class ZImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
 
         for i in range(bsz):
             x_len, cap_len = x_seqlens[i], cap_seqlens[i]
-            
+
             if omni_mode:
                 # Omni: [cap, x, siglip]
                 if siglip is not None and siglip_seqlens is not None:
                     sig_len = siglip_seqlens[i]
                     unified.append(torch.cat([cap[i][:cap_len], x[i][:x_len], siglip[i][:sig_len]]))
-                    unified_freqs.append(torch.cat([cap_freqs[i][:cap_len], x_freqs[i][:x_len], siglip_freqs[i][:sig_len]]))
-                    unified_noise_mask.append(torch.tensor(
-                        cap_noise_mask[i] + x_noise_mask[i] + siglip_noise_mask[i], dtype=torch.long, device=device
-                    ))
+                    unified_freqs.append(
+                        torch.cat([cap_freqs[i][:cap_len], x_freqs[i][:x_len], siglip_freqs[i][:sig_len]])
+                    )
+                    unified_noise_mask.append(
+                        torch.tensor(
+                            cap_noise_mask[i] + x_noise_mask[i] + siglip_noise_mask[i], dtype=torch.long, device=device
+                        )
+                    )
                 else:
                     unified.append(torch.cat([cap[i][:cap_len], x[i][:x_len]]))
                     unified_freqs.append(torch.cat([cap_freqs[i][:cap_len], x_freqs[i][:x_len]]))
-                    unified_noise_mask.append(torch.tensor(
-                        cap_noise_mask[i] + x_noise_mask[i], dtype=torch.long, device=device
-                    ))
+                    unified_noise_mask.append(
+                        torch.tensor(cap_noise_mask[i] + x_noise_mask[i], dtype=torch.long, device=device)
+                    )
             else:
                 # Basic: [x, cap]
                 unified.append(torch.cat([x[i][:x_len], cap[i][:cap_len]]))
@@ -814,7 +879,9 @@ class ZImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
         # Noise mask
         noise_mask_tensor = None
         if omni_mode:
-            noise_mask_tensor = pad_sequence(unified_noise_mask, batch_first=True, padding_value=0)[:, :unified.shape[1]]
+            noise_mask_tensor = pad_sequence(unified_noise_mask, batch_first=True, padding_value=0)[
+                :, : unified.shape[1]
+            ]
 
         return unified, unified_freqs, attn_mask, noise_mask_tensor
 
@@ -831,14 +898,11 @@ class ZImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
         f_patch_size: int = 1,
     ):
         """
-        Forward pass with all layer operations visible inline.
-        
         Flow: patchify -> t_embed -> x_embed -> x_refine -> cap_embed -> cap_refine
               -> [siglip_embed -> siglip_refine] -> build_unified -> main_layers -> final_layer -> unpatchify
         """
         assert patch_size in self.all_patch_size and f_patch_size in self.all_f_patch_size
         omni_mode = isinstance(x[0], list)
-        bsz = len(x)
         device = x[0][-1].device if omni_mode else x[0].device
 
         if omni_mode:
@@ -853,12 +917,31 @@ class ZImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
 
         # Patchify
         if omni_mode:
-            (x, cap_feats, siglip_feats, x_size, x_pos_ids, cap_pos_ids, siglip_pos_ids,
-             x_pad_mask, cap_pad_mask, siglip_pad_mask, x_pos_offsets, 
-             x_noise_mask, cap_noise_mask, siglip_noise_mask,
+            (
+                x,
+                cap_feats,
+                siglip_feats,
+                x_size,
+                x_pos_ids,
+                cap_pos_ids,
+                siglip_pos_ids,
+                x_pad_mask,
+                cap_pad_mask,
+                siglip_pad_mask,
+                x_pos_offsets,
+                x_noise_mask,
+                cap_noise_mask,
+                siglip_noise_mask,
             ) = self.patchify_and_embed_omni(x, cap_feats, siglip_feats, patch_size, f_patch_size, image_noise_mask)
         else:
-            (x, cap_feats, x_size, x_pos_ids, cap_pos_ids, x_pad_mask, cap_pad_mask,
+            (
+                x,
+                cap_feats,
+                x_size,
+                x_pos_ids,
+                cap_pos_ids,
+                x_pad_mask,
+                cap_pad_mask,
             ) = self.patchify_and_embed(x, cap_feats, patch_size, f_patch_size)
             x_pos_offsets = x_noise_mask = cap_noise_mask = siglip_noise_mask = None
 
@@ -866,23 +949,31 @@ class ZImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
         x_seqlens = [len(xi) for xi in x]
         x = self.all_x_embedder[f"{patch_size}-{f_patch_size}"](torch.cat(x, dim=0))  # embed
         x, x_freqs, x_mask, _, x_noise_tensor = self._prepare_sequence(
-            list(x.split(x_seqlens, dim=0)), x_pos_ids, x_pad_mask, self.x_pad_token, x_noise_mask, device)
-        
+            list(x.split(x_seqlens, dim=0)), x_pos_ids, x_pad_mask, self.x_pad_token, x_noise_mask, device
+        )
+
         for layer in self.noise_refiner:
-            x = self._gradient_checkpointing_func(layer, x, x_mask, x_freqs, adaln_input, x_noise_tensor, t_noisy, t_clean) \
-                if torch.is_grad_enabled() and self.gradient_checkpointing else \
-                layer(x, x_mask, x_freqs, adaln_input, x_noise_tensor, t_noisy, t_clean)
+            x = (
+                self._gradient_checkpointing_func(
+                    layer, x, x_mask, x_freqs, adaln_input, x_noise_tensor, t_noisy, t_clean
+                )
+                if torch.is_grad_enabled() and self.gradient_checkpointing
+                else layer(x, x_mask, x_freqs, adaln_input, x_noise_tensor, t_noisy, t_clean)
+            )
 
         # Cap embed & refine
         cap_seqlens = [len(ci) for ci in cap_feats]
         cap_feats = self.cap_embedder(torch.cat(cap_feats, dim=0))  # embed
         cap_feats, cap_freqs, cap_mask, _, _ = self._prepare_sequence(
-            list(cap_feats.split(cap_seqlens, dim=0)), cap_pos_ids, cap_pad_mask, self.cap_pad_token, None, device)
-        
+            list(cap_feats.split(cap_seqlens, dim=0)), cap_pos_ids, cap_pad_mask, self.cap_pad_token, None, device
+        )
+
         for layer in self.context_refiner:
-            cap_feats = self._gradient_checkpointing_func(layer, cap_feats, cap_mask, cap_freqs) \
-                if torch.is_grad_enabled() and self.gradient_checkpointing else \
-                layer(cap_feats, cap_mask, cap_freqs)
+            cap_feats = (
+                self._gradient_checkpointing_func(layer, cap_feats, cap_mask, cap_freqs)
+                if torch.is_grad_enabled() and self.gradient_checkpointing
+                else layer(cap_feats, cap_mask, cap_freqs)
+            )
 
         # Siglip embed & refine
         siglip_seqlens = siglip_freqs = None
@@ -890,32 +981,58 @@ class ZImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
             siglip_seqlens = [len(si) for si in siglip_feats]
             siglip_feats = self.siglip_embedder(torch.cat(siglip_feats, dim=0))  # embed
             siglip_feats, siglip_freqs, siglip_mask, _, _ = self._prepare_sequence(
-                list(siglip_feats.split(siglip_seqlens, dim=0)), siglip_pos_ids, siglip_pad_mask, self.siglip_pad_token, None, device)
-            
+                list(siglip_feats.split(siglip_seqlens, dim=0)),
+                siglip_pos_ids,
+                siglip_pad_mask,
+                self.siglip_pad_token,
+                None,
+                device,
+            )
+
             for layer in self.siglip_refiner:
-                siglip_feats = self._gradient_checkpointing_func(layer, siglip_feats, siglip_mask, siglip_freqs) \
-                    if torch.is_grad_enabled() and self.gradient_checkpointing else \
-                    layer(siglip_feats, siglip_mask, siglip_freqs)
+                siglip_feats = (
+                    self._gradient_checkpointing_func(layer, siglip_feats, siglip_mask, siglip_freqs)
+                    if torch.is_grad_enabled() and self.gradient_checkpointing
+                    else layer(siglip_feats, siglip_mask, siglip_freqs)
+                )
 
         # Unified sequence
         unified, unified_freqs, unified_mask, unified_noise_tensor = self._build_unified_sequence(
-            x, x_freqs, x_seqlens, x_noise_mask,
-            cap_feats, cap_freqs, cap_seqlens, cap_noise_mask,
-            siglip_feats, siglip_freqs, siglip_seqlens, siglip_noise_mask,
-            omni_mode, device,
+            x,
+            x_freqs,
+            x_seqlens,
+            x_noise_mask,
+            cap_feats,
+            cap_freqs,
+            cap_seqlens,
+            cap_noise_mask,
+            siglip_feats,
+            siglip_freqs,
+            siglip_seqlens,
+            siglip_noise_mask,
+            omni_mode,
+            device,
         )
 
         # Main transformer layers
         for layer_idx, layer in enumerate(self.layers):
-            unified = self._gradient_checkpointing_func(layer, unified, unified_mask, unified_freqs, adaln_input, unified_noise_tensor, t_noisy, t_clean) \
-                if torch.is_grad_enabled() and self.gradient_checkpointing else \
-                layer(unified, unified_mask, unified_freqs, adaln_input, unified_noise_tensor, t_noisy, t_clean)
+            unified = (
+                self._gradient_checkpointing_func(
+                    layer, unified, unified_mask, unified_freqs, adaln_input, unified_noise_tensor, t_noisy, t_clean
+                )
+                if torch.is_grad_enabled() and self.gradient_checkpointing
+                else layer(unified, unified_mask, unified_freqs, adaln_input, unified_noise_tensor, t_noisy, t_clean)
+            )
             if controlnet_block_samples is not None and layer_idx in controlnet_block_samples:
                 unified = unified + controlnet_block_samples[layer_idx]
 
-        unified = self.all_final_layer[f"{patch_size}-{f_patch_size}"](
-            unified, noise_mask=unified_noise_tensor, c_noisy=t_noisy, c_clean=t_clean
-        ) if omni_mode else self.all_final_layer[f"{patch_size}-{f_patch_size}"](unified, c=adaln_input)
+        unified = (
+            self.all_final_layer[f"{patch_size}-{f_patch_size}"](
+                unified, noise_mask=unified_noise_tensor, c_noisy=t_noisy, c_clean=t_clean
+            )
+            if omni_mode
+            else self.all_final_layer[f"{patch_size}-{f_patch_size}"](unified, c=adaln_input)
+        )
 
         # Unpatchify
         x = self.unpatchify(list(unified.unbind(dim=0)), x_size, patch_size, f_patch_size, x_pos_offsets)
