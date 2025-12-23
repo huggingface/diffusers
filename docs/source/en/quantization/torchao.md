@@ -33,7 +33,7 @@ pipeline_quant_config = PipelineQuantizationConfig(
 )
 pipeline = DiffusionPipeline.from_pretrained(
     "black-forest-labs/FLUX.1-dev",
-    quantzation_config=pipeline_quant_config,
+    quantization_config=pipeline_quant_config,
     torch_dtype=torch.bfloat16,
     device_map="cuda"
 )
@@ -50,7 +50,7 @@ pipeline_quant_config = PipelineQuantizationConfig(
 )
 pipeline = DiffusionPipeline.from_pretrained(
     "black-forest-labs/FLUX.1-dev",
-    quantzation_config=pipeline_quant_config,
+    quantization_config=pipeline_quant_config,
     torch_dtype=torch.bfloat16,
     device_map="cuda"
 )
@@ -70,7 +70,7 @@ pipeline_quant_config = PipelineQuantizationConfig(
 )
 pipeline = DiffusionPipeline.from_pretrained(
     "black-forest-labs/FLUX.1-dev",
-    quantzation_config=pipeline_quant_config,
+    quantization_config=pipeline_quant_config,
     torch_dtype=torch.bfloat16,
     device_map="cuda"
 )
