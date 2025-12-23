@@ -23,6 +23,8 @@ except OptionalDependencyNotAvailable:
     _dummy_objects.update(get_objects_from_module(dummy_torch_and_transformers_objects))
 else:
     _import_structure["pipeline_ltx2"] = ["LTX2Pipeline"]
+    _import_structure["text_encoder"] = ["LTX2AudioVisualTextEncoder"]
+    _import_structure["vocoder"] = ["LTX2Vocoder"]
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     try:
@@ -33,6 +35,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from ...utils.dummy_torch_and_transformers_objects import *
     else:
         from .pipeline_ltx2 import LTX2Pipeline
+        from .text_encoder import LTX2AudioVisualTextEncoder
+        from .vocoder import LTX2Vocoder
 
 else:
     import sys
