@@ -1217,7 +1217,8 @@ def main(args):
 
                     if accelerator.is_main_process:
                         transformer_lora_layers_to_save = get_peft_model_state_dict(
-                            unwrap_model(model), state_dict=state_dict,
+                            unwrap_model(model),
+                            state_dict=state_dict,
                         )
                         transformer_lora_layers_to_save = {
                             k: v.detach().cpu().contiguous() if isinstance(v, torch.Tensor) else v
@@ -1262,7 +1263,8 @@ def main(args):
                     raise ValueError(f"unexpected save model: {model.__class__}")
         else:
             transformer_ = Flux2Transformer2DModel.from_pretrained(
-                args.pretrained_model_name_or_path, subfolder="transformer",
+                args.pretrained_model_name_or_path,
+                subfolder="transformer",
             )
             transformer_.add_adapter(transformer_lora_config)
 

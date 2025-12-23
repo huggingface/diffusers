@@ -5,13 +5,15 @@ import math
 import random
 import re
 import warnings
-from accelerate.logging import get_logger
 from contextlib import contextmanager
 from functools import partial
 from typing import Any, Dict, Iterable, List, Optional, Set, Tuple, Type, Union
 
 import numpy as np
 import torch
+from accelerate.logging import get_logger
+
+
 if getattr(torch, "distributed", None) is not None:
     from torch.distributed.fsdp import CPUOffload, ShardingStrategy
     from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
