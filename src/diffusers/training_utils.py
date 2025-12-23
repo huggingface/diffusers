@@ -5,16 +5,17 @@ import math
 import random
 import re
 import warnings
+from accelerate.logging import get_logger
 from contextlib import contextmanager
 from functools import partial
 from typing import Any, Dict, Iterable, List, Optional, Set, Tuple, Type, Union
 
 import numpy as np
 import torch
-import torch.distributed as dist
-from torch.distributed.fsdp import CPUOffload, ShardingStrategy
-from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
-from torch.distributed.fsdp.wrap import transformer_auto_wrap_policy
+if getattr(torch, "distributed", None) is not None:
+    from torch.distributed.fsdp import CPUOffload, ShardingStrategy
+    from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
+    from torch.distributed.fsdp.wrap import transformer_auto_wrap_policy
 
 from .models import UNet2DConditionModel
 from .pipelines import DiffusionPipeline
@@ -405,6 +406,11 @@ def get_fsdp_kwargs_from_accelerator(accelerator) -> dict:
     """
 
     kwargs = {}
+    fsdp_state = getattr(accelerator.state, "fsdp_plugin", None)
+
+    if fsdp_state is None:
+        raise ValueError("Accelerate isn't configured to handle FSDP. Please update your installation.")
+
     fsdp_plugin = accelerator.state.fsdp_plugin
 
     if fsdp_plugin is None:
@@ -442,9 +448,12 @@ def wrap_with_fsdp(
         FSDP-wrapped model
     """
 
+    logger = get_logger(__name__)
+
     if transformer_layer_cls is None:
         # Set the default layers if transformer_layer_cls is not provided
         transformer_layer_cls = type(model.model.language_model.layers[0])
+        logger.info(f"transformer_layer_cls is not provided, auto-inferred as {transformer_layer_cls.__name__}")
 
     # Add auto-wrap policy if transformer layers specified
     auto_wrap_policy = partial(
@@ -464,8 +473,6 @@ def wrap_with_fsdp(
         config.update(fsdp_kwargs)
 
     fsdp_model = FSDP(model, **config)
-    if dist.is_initialized():
-        dist.barrier()
     return fsdp_model
 
 

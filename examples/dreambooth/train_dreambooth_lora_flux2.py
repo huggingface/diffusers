@@ -1271,19 +1271,42 @@ def main(args):
 
     # create custom saving & loading hooks so that `accelerator.save_state(...)` serializes in a nice format
     def save_model_hook(models, weights, output_dir):
-        if accelerator.is_main_process:
-            transformer_lora_layers_to_save = None
-            modules_to_save = {}
+        transformer_lora_layers_to_save = None
+        modules_to_save = {}
+
+        if is_fsdp:
             for model in models:
-                if isinstance(model, type(unwrap_model(transformer))):
-                    transformer_lora_layers_to_save = get_peft_model_state_dict(model)
-                    modules_to_save["transformer"] = model
-                else:
-                    raise ValueError(f"unexpected save model: {model.__class__}")
+                if isinstance(unwrap_model(model), type(unwrap_model(transformer))):
+                    state_dict = accelerator.get_state_dict(models)
 
-                # make sure to pop weight so that corresponding model is not saved again
-                weights.pop()
+                    if accelerator.is_main_process:
+                        transformer_lora_layers_to_save = get_peft_model_state_dict(
+                            unwrap_model(model), state_dict=state_dict,
+                        )
+                        transformer_lora_layers_to_save = {
+                            k: v.detach().cpu().contiguous() if isinstance(v, torch.Tensor) else v
+                            for k, v in transformer_lora_layers_to_save.items()
+                        }
+                        modules_to_save["transformer"] = model
 
+                        # make sure to pop weight so that corresponding model is not saved again
+                        if weights:
+                            weights.pop()
+        else:
+            if accelerator.is_main_process:
+                transformer_lora_layers_to_save = None
+                modules_to_save = {}
+                for model in models:
+                    if isinstance(model, type(unwrap_model(transformer))):
+                        transformer_lora_layers_to_save = get_peft_model_state_dict(model)
+                        modules_to_save["transformer"] = model
+                    else:
+                        raise ValueError(f"unexpected save model: {model.__class__}")
+
+                    # make sure to pop weight so that corresponding model is not saved again
+                    weights.pop()
+
+        if accelerator.is_main_process:
             Flux2Pipeline.save_lora_weights(
                 output_dir,
                 transformer_lora_layers=transformer_lora_layers_to_save,
@@ -1293,13 +1316,19 @@ def main(args):
     def load_model_hook(models, input_dir):
         transformer_ = None
 
-        while len(models) > 0:
-            model = models.pop()
+        if not is_fsdp:
+            while len(models) > 0:
+                model = models.pop()
 
-            if isinstance(model, type(unwrap_model(transformer))):
-                transformer_ = model
-            else:
-                raise ValueError(f"unexpected save model: {model.__class__}")
+                if isinstance(unwrap_model(model), type(unwrap_model(transformer))):
+                    transformer_ = unwrap_model(model)
+                else:
+                    raise ValueError(f"unexpected save model: {model.__class__}")
+        else:
+            transformer_ = Flux2Transformer2DModel.from_pretrained(
+                args.pretrained_model_name_or_path, subfolder="transformer",
+            )
+            transformer_.add_adapter(transformer_lora_config)
 
         lora_state_dict = Flux2Pipeline.lora_state_dict(input_dir)
 
@@ -1802,7 +1831,7 @@ def main(args):
                 progress_bar.update(1)
                 global_step += 1
 
-                if accelerator.is_main_process:
+                if accelerator.is_main_process or is_fsdp:
                     if global_step % args.checkpointing_steps == 0:
                         # _before_ saving state, check if this save would set us over the `checkpoints_total_limit`
                         if args.checkpoints_total_limit is not None:
@@ -1861,7 +1890,6 @@ def main(args):
 
     # Save the lora layers
     accelerator.wait_for_everyone()
-    is_fsdp = accelerator.state.fsdp_plugin is not None
 
     if is_fsdp:
         transformer = unwrap_model(transformer)
