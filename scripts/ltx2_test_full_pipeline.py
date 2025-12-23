@@ -191,6 +191,7 @@ def main(args):
         guidance_scale=args.guidance_scale,
         generator=torch.Generator(device=args.device).manual_seed(args.seed),
         output_type="np",
+        return_dict=False,
     )
 
     # Convert video to uint8 (but keep as NumPy array)

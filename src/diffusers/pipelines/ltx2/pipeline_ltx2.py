@@ -1033,7 +1033,7 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLoraLoaderMix
             # NOTE: currently, unlike the video VAE, we denormalize the audio latents inside the audio VAE decoder's
             # decode method
             generated_mel_spectrograms = self.audio_vae.decode(audio_latents, return_dict=False)[0]
-            waveforms = self.vocoder(generated_mel_spectrograms)
+            audio = self.vocoder(generated_mel_spectrograms)
 
         # Offload all models
         self.maybe_free_model_hooks()
@@ -1041,4 +1041,4 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLoraLoaderMix
         if not return_dict:
             return (video, audio)
 
-        return LTX2PipelineOutput(frames=video, audio=waveforms)
+        return LTX2PipelineOutput(frames=video, audio=audio)
