@@ -200,8 +200,6 @@ def main(args):
     # Convert video to uint8 (but keep as NumPy array)
     video = (video * 255).round().astype("uint8")
     video = torch.from_numpy(video)
-    # video should already be frames first, reshape to channels-last (we want shape to be (*, F, H , W, C))
-    video = video.permute(0, 1, 3, 4, 2)
 
     encode_video(
         video[0],
