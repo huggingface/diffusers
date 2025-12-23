@@ -153,6 +153,7 @@ def parse_args():
 
     parser.add_argument("--device", type=str, default="cuda:0")
     parser.add_argument("--dtype", type=str, default="bf16")
+    parser.add_argument("--cpu_offload", action="store_true")
 
     parser.add_argument(
         "--output_dir",
@@ -179,6 +180,8 @@ def main(args):
         torch_dtype=args.dtype,
     )
     pipeline.to(device=args.device)
+    if args.cpu_offload:
+        pipeline.enable_model_cpu_offload()
 
     video, audio = pipeline(
         prompt=args.prompt,

@@ -194,7 +194,7 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLoraLoaderMix
             [T5TokenizerFast](https://huggingface.co/docs/transformers/en/model_doc/t5#transformers.T5TokenizerFast).
     """
 
-    model_cpu_offload_seq = "text_encoder->transformer->vae"
+    model_cpu_offload_seq = "text_encoder->transformer->vae->audio_vae->vocoder"
     _optional_components = []
     _callback_tensor_inputs = ["latents", "prompt_embeds", "negative_prompt_embeds"]
 
