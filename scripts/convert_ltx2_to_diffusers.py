@@ -7,9 +7,15 @@ import safetensors.torch
 import torch
 from accelerate import init_empty_weights
 from huggingface_hub import hf_hub_download
-from transformers import AutoModel, AutoProcessor
+from transformers import AutoModel, AutoTokenizer
 
-from diffusers import AutoencoderKLLTX2Audio, AutoencoderKLLTX2Video, LTX2VideoTransformer3DModel
+from diffusers import (
+    AutoencoderKLLTX2Audio,
+    AutoencoderKLLTX2Video,
+    FlowMatchEulerDiscreteScheduler,
+    LTX2Pipeline,
+    LTX2VideoTransformer3DModel,
+)
 from diffusers.utils.import_utils import is_accelerate_available
 from diffusers.pipelines.ltx2.text_encoder import LTX2AudioVisualTextEncoder
 from diffusers.pipelines.ltx2.vocoder import LTX2Vocoder
@@ -721,12 +727,31 @@ def main(args):
         if not args.full_pipeline:
             text_encoder.to(text_encoder_dtype).save_pretrained(os.path.join(args.output_path, "text_encoder"))
 
-        tokenizer = AutoProcessor.from_pretrained(args.tokenizer_id)
+        tokenizer = AutoTokenizer.from_pretrained(args.tokenizer_id)
         if not args.full_pipeline:
             tokenizer.save_pretrained(os.path.join(args.output_path, "tokenizer"))
 
     if args.full_pipeline:
-        pass
+        scheduler = FlowMatchEulerDiscreteScheduler(
+            use_dynamic_shifting=True,
+            base_shift=0.95,
+            max_shift=2.05,
+            base_image_seq_len=1024,
+            max_image_seq_len=4096,
+            shift_terminal=0.1,
+        )
+
+        pipe = LTX2Pipeline(
+            scheduler=scheduler,
+            vae=vae,
+            audio_vae=audio_vae,
+            text_encoder=text_encoder,
+            tokenizer=tokenizer,
+            transformer=transformer,
+            vocoder=vocoder,
+        )
+
+        pipe.save_pretrained(args.output_path, safe_serialization=True, max_shard_size="5GB")
 
 
 if __name__ == '__main__':

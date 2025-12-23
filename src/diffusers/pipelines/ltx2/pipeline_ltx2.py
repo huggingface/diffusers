@@ -883,10 +883,10 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLoraLoaderMix
         sigmas = np.linspace(1.0, 1 / num_inference_steps, num_inference_steps)
         mu = calculate_shift(
             video_sequence_length,
-            self.scheduler.config.get("base_image_seq_len", 256),
+            self.scheduler.config.get("base_image_seq_len", 1024),
             self.scheduler.config.get("max_image_seq_len", 4096),
-            self.scheduler.config.get("base_shift", 0.5),
-            self.scheduler.config.get("max_shift", 1.15),
+            self.scheduler.config.get("base_shift", 0.95),
+            self.scheduler.config.get("max_shift", 2.05),
         )
         timesteps, num_inference_steps = retrieve_timesteps(
             self.scheduler,
