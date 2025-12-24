@@ -419,6 +419,8 @@ export_to_video(video, "output.mp4", fps=24)
 
   ```py
   import torch
+  from diffusers.schedulers import LTXEulerAncestralRFScheduler
+
   from diffusers import LTXI2VLongMultiPromptPipeline, LTXLatentUpsamplePipeline
   from diffusers.pipelines.ltx.modeling_latent_upsampler import LTXLatentUpsamplerModel
   from diffusers.utils import export_to_video
@@ -427,9 +429,11 @@ export_to_video(video, "output.mp4", fps=24)
 
   # Stage A: long I2V with sliding windows and multi-prompt scheduling
   pipe = LTXI2VLongMultiPromptPipeline.from_pretrained(
-      "LTX-Video-0.9.8-13B-distilled",
+      "Lightricks/LTX-Video-0.9.8-13B-distilled",
       torch_dtype=torch.bfloat16
   ).to("cuda")
+  # For ComfyUI parity, swap in the RF scheduler (keeps the original config).
+  pipe.scheduler = LTXEulerAncestralRFScheduler.from_config(pipe.scheduler.config)
 
   schedule = "a chimpanzee walks in the jungle |a chimpanzee stops and eats a snack |a chimpanzee lays on the ground"
   cond_image = Image.open("chimpanzee_l.jpg").convert("RGB")
@@ -560,6 +564,9 @@ export_to_video(video, "output.mp4", fps=24)
   </details>
 
 ## LTXI2VLongMultiPromptPipeline
+
+For ComfyUI parity, this pipeline is typically used with `LTXEulerAncestralRFScheduler`.
+You can replace the default scheduler after construction, as shown in the example above.
 
 [[autodoc]] LTXI2VLongMultiPromptPipeline
   - all
