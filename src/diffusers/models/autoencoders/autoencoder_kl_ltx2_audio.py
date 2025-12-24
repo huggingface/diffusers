@@ -605,6 +605,10 @@ class AutoencoderKLLTX2Audio(ModelMixin, AutoencoderMixin, ConfigMixin):
             mel_bins=mel_bins,
         )
 
+        # TODO: calculate programmatically instead of hardcoding
+        self.temporal_compression_ratio = LATENT_DOWNSAMPLE_FACTOR  # 4
+        # TODO: confirm whether the mel compression ratio below is correct
+        self.mel_compression_ratio = LATENT_DOWNSAMPLE_FACTOR
         self.use_slicing = False
 
     @apply_forward_hook

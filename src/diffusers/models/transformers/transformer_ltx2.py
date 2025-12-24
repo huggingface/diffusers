@@ -18,6 +18,7 @@ import math
 from dataclasses import dataclass
 from typing import Any, Dict, Optional, Tuple, Union
 
+import numpy as np
 import torch
 import torch.nn as nn
 
@@ -561,6 +562,7 @@ class LTX2AudioVideoRotaryPosEmbed(nn.Module):
         theta: float = 10000.0,
         causal_offset: int = 1,
         modality: str = "video",
+        double_precision: bool = True,
     ) -> None:
         super().__init__()
 
@@ -586,6 +588,7 @@ class LTX2AudioVideoRotaryPosEmbed(nn.Module):
         self.modality = modality
         if self.modality not in ["video", "audio"]:
             raise ValueError(f"Modality {modality} is not supported. Supported modalities are `video` and `audio`.")
+        self.double_precision = double_precision
 
     def prepare_video_coords(
         self,
@@ -779,14 +782,26 @@ class LTX2AudioVideoRotaryPosEmbed(nn.Module):
         # 4. Create a 1D grid of frequencies for RoPE
         start = 1.0
         end = self.theta
-        freqs = self.theta ** torch.linspace(
-            start=math.log(start, self.theta),
-            end=math.log(end, self.theta),
-            steps=self.dim // num_rope_elems,
-            device=device,
-            dtype=torch.float32,
-        )
-        freqs = freqs * math.pi / 2.0
+        if self.double_precision:
+            pow_indices = np.power(
+                self.theta,
+                np.linspace(
+                    np.log(start) / np.log(self.theta),
+                    np.log(end) / np.log(self.theta),
+                    self.dim // num_rope_elems,
+                    dtype=np.float64,
+                ),
+            )
+            freqs = torch.tensor(pow_indices * math.pi / 2, dtype=torch.float32, device=device)
+        else:
+            freqs = self.theta ** torch.linspace(
+                start=math.log(start, self.theta),
+                end=math.log(end, self.theta),
+                steps=self.dim // num_rope_elems,
+                device=device,
+                dtype=torch.float32,
+            )
+            freqs = freqs * math.pi / 2.0
 
         # 5. Tensor-vector outer product between pos ids tensor of shape (B, 3, num_patches) and freqs vector of shape
         # (self.dim // num_elems,)
@@ -885,7 +900,10 @@ class LTX2VideoTransformer3DModel(
         attention_bias: bool = True,
         attention_out_bias: bool = True,
         rope_theta: float = 10000.0,
+        rope_double_precision: bool = True,
         causal_offset: int = 1,
+        timestep_scale_multiplier: int = 1000,
+        cross_attn_timestep_scale_multiplier: int = 1,
     ) -> None:
         super().__init__()
 
@@ -951,6 +969,7 @@ class LTX2VideoTransformer3DModel(
             theta=rope_theta,
             causal_offset=causal_offset,
             modality="video",
+            double_precision=rope_double_precision,
         )
         self.audio_rope = LTX2AudioVideoRotaryPosEmbed(
             dim=audio_inner_dim,
@@ -963,6 +982,7 @@ class LTX2VideoTransformer3DModel(
             theta=rope_theta,
             causal_offset=causal_offset,
             modality="audio",
+            double_precision=rope_double_precision,
         )
 
         # Audio-to-Video, Video-to-Audio Cross-Attention
@@ -977,6 +997,7 @@ class LTX2VideoTransformer3DModel(
             theta=rope_theta,
             causal_offset=causal_offset,
             modality="video",
+            double_precision=rope_double_precision,
         )
         self.cross_attn_audio_rope = LTX2AudioVideoRotaryPosEmbed(
             dim=audio_cross_attention_dim,
@@ -988,6 +1009,7 @@ class LTX2VideoTransformer3DModel(
             theta=rope_theta,
             causal_offset=causal_offset,
             modality="audio",
+            double_precision=rope_double_precision,
         )
 
         # 5. Transformer Blocks
@@ -1038,8 +1060,6 @@ class LTX2VideoTransformer3DModel(
         audio_num_frames: Optional[int] = None,
         video_coords: Optional[torch.Tensor] = None,
         audio_coords: Optional[torch.Tensor] = None,
-        timestep_scale_multiplier: int = 1000,
-        cross_attn_timestep_scale_multiplier: int = 1,
         attention_kwargs: Optional[Dict[str, Any]] = None,
         return_dict: bool = True,
     ) -> torch.Tensor:
@@ -1109,9 +1129,7 @@ class LTX2VideoTransformer3DModel(
         audio_hidden_states = self.audio_proj_in(audio_hidden_states)
 
         # 3. Prepare timestep embeddings and modulation parameters
-        # Scale timestep
-        timestep = timestep * timestep_scale_multiplier
-        timestep_cross_attn_gate_scale_factor = cross_attn_timestep_scale_multiplier / timestep_scale_multiplier
+        timestep_cross_attn_gate_scale_factor = self.config.cross_attn_timestep_scale_multiplier / self.config.timestep_scale_multiplier
 
         # 3.1. Prepare global modality (video and audio) timestep embedding and modulation parameters
         # temb is used in the transformer blocks (as expected), while embedded_timestep is used for the output layer

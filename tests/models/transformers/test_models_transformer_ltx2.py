@@ -58,7 +58,7 @@ class LTX2TransformerTests(ModelTesterMixin, unittest.TestCase):
         encoder_hidden_states = torch.randn((batch_size, sequence_length, embedding_dim)).to(torch_device)
         audio_encoder_hidden_states = torch.randn((batch_size, sequence_length, embedding_dim)).to(torch_device)
         encoder_attention_mask = torch.ones((batch_size, sequence_length)).bool().to(torch_device)
-        timestep = torch.rand((batch_size,)).to(torch_device)
+        timestep = torch.rand((batch_size,)).to(torch_device) * 1000
 
         return {
             "hidden_states": hidden_states,
@@ -121,7 +121,7 @@ class LTX2TransformerTests(ModelTesterMixin, unittest.TestCase):
         sampling_rate = 16000.0
         hop_length = 160.0
 
-        sigma = torch.rand((1,), generator=torch.manual_seed(seed), dtype=dtype, device="cpu")
+        sigma = torch.rand((1,), generator=torch.manual_seed(seed), dtype=dtype, device="cpu") * 1000
         timestep = (sigma * torch.ones((batch_size,), dtype=dtype, device="cpu")).to(device=torch_device)
 
         num_channels = 4
