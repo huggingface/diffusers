@@ -43,6 +43,7 @@ import random
 import shutil
 from contextlib import nullcontext
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import torch
@@ -61,7 +62,6 @@ from torchvision import transforms
 from torchvision.transforms import functional as TF
 from tqdm.auto import tqdm
 from transformers import Mistral3ForConditionalGeneration, PixtralProcessor
-from typing import Any
 
 import diffusers
 from diffusers import (
@@ -75,7 +75,7 @@ from diffusers.optimization import get_scheduler
 from diffusers.pipelines.flux2.image_processor import Flux2ImageProcessor
 from diffusers.training_utils import (
     _collate_lora_metadata,
-    _to_cpu_contiguous
+    _to_cpu_contiguous,
     cast_training_params,
     compute_density_for_timestep_sampling,
     compute_loss_weighting_for_sd3,
@@ -1229,7 +1229,7 @@ def main(args):
             raise ValueError("No transformer model found in 'models'")
 
         # 2) Optionally gather FSDP state dict once
-        state_dict = accelerator.get_state_dict(models) if is_fsdp else None
+        state_dict = accelerator.get_state_dict(model) if is_fsdp else None
 
         # 3) Only main process materializes the LoRA state dict
         transformer_lora_layers_to_save = None
@@ -1239,7 +1239,7 @@ def main(args):
                 peft_kwargs["state_dict"] = state_dict
 
             transformer_lora_layers_to_save = get_peft_model_state_dict(
-                unwrap_model(transformer_model) if is_fsdp else transformer_model
+                unwrap_model(transformer_model) if is_fsdp else transformer_model,
                 **peft_kwargs,
             )
 

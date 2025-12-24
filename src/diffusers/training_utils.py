@@ -403,10 +403,7 @@ def find_nearest_bucket(h, w, bucket_options):
 
 
 def _to_cpu_contiguous(state_dicts) -> dict:
-    return {
-        k: v.detach().cpu().contiguous() if isinstance(v, torch.Tensor) else v
-        for k, v in state_dicts.items()
-    }
+    return {k: v.detach().cpu().contiguous() if isinstance(v, torch.Tensor) else v for k, v in state_dicts.items()}
 
 
 def get_fsdp_kwargs_from_accelerator(accelerator) -> dict:
