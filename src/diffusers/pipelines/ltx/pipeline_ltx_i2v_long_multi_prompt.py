@@ -11,41 +11,14 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
-"""
-LTXI2VLongMultiPromptPipeline
-
-Overview:
-- Long-duration Image-to-Video (I2V) pipeline with multi-prompt segmentation and temporal sliding windows.
-- ComfyUI parity: window stride (tile_size - overlap), first-frame hard conditioning via per-token mask,
-  optional AdaIN cross-window normalization, "negative index" and guidance latent injection,
-  and VAE tiled decoding to control VRAM without spatial sharding during denoising.
-
-Key components:
-- scheduler: FlowMatchEulerDiscreteScheduler
-- vae: AutoencoderKLLTXVideo (supports optional timestep_conditioning)
-- text_encoder: T5EncoderModel
-- tokenizer: T5TokenizerFast
-- transformer: LTXVideoTransformer3DModel
-
-Seeding:
-- Per-window hard-condition initialization noise uses a window-local seed when `seed` is provided:
-  local_seed = seed + w_start  (w_start is the latent-frame start index of the window).
-- When `seed` is None, the passed-in `generator` (if any) drives stochasticity.
-- Global initial latents are sampled with randn_tensor using the (normalized) `generator`.
-
-I/O and shapes:
-- Decoded output has `num_frames` frames at `height x width`.
-- Latent sizes for internal sampling:
-  F_lat = (num_frames - 1) // vae_temporal_compression_ratio + 1
-  H_lat = height // vae_spatial_compression_ratio
-  W_lat = width  // vae_spatial_compression_ratio
-- Height and width must be divisible by 32.
-
-Usage:
-    >>> from diffusers import LTXI2VLongMultiPromptPipeline
+EXAMPLE_DOC_STRING="""
+Examples:
+```py
     >>> import torch
+    >>> from diffusers import LTXEulerAncestralRFScheduler, LTXI2VLongMultiPromptPipeline
     >>> pipe = LTXI2VLongMultiPromptPipeline.from_pretrained("LTX-Video-0.9.8-13B-distilled")
+    >>> # For ComfyUI parity, swap in the RF scheduler (keeps the original config).
+    >>> pipe.scheduler = LTXEulerAncestralRFScheduler.from_config(pipe.scheduler.config)
     >>> pipe = pipe.to("cuda").to(dtype=torch.bfloat16)
     >>> # Example A: get decoded frames (PIL)
     >>> out = pipe(prompt="a chimpanzee walks | a chimpanzee eats", num_frames=161, height=512, width=704,
@@ -54,10 +27,7 @@ Usage:
     >>> # Example B: get latent video and decode later (saves VRAM during sampling)
     >>> out_latent = pipe(prompt="a chimpanzee walking", output_type="latent", return_dict=True).frames
     >>> frames = pipe.vae_decode_tiled(out_latent, output_type="pil")[0]
-
-See also:
-- LTXPipeline.encode_prompt, LTXPipeline._pack_latents, LTXPipeline._unpack_latents,
-  rescale_noise_cfg, FlowMatchEulerDiscreteScheduler.set_timesteps/step.
+```
 """
 import inspect
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
@@ -67,19 +37,17 @@ import numpy as np
 import copy
 import torch
 from transformers import T5EncoderModel, T5TokenizerFast
-from einops import rearrange
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...loaders import FromSingleFileMixin, LTXVideoLoraLoaderMixin
 from ...models.autoencoders import AutoencoderKLLTXVideo
 from ...models.transformers import LTXVideoTransformer3DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler, LTXEulerAncestralRFScheduler
-from ...utils import is_torch_xla_available, logging
+from ...utils import is_torch_xla_available, replace_example_docstring, logging
 from ...utils.torch_utils import randn_tensor
 from ...video_processor import VideoProcessor
 from ..pipeline_utils import DiffusionPipeline
 from .pipeline_output import LTXPipelineOutput
-from .pipeline_ltx import rescale_noise_cfg
 
 if is_torch_xla_available():
     import torch_xla.core.xla_model as xm
@@ -120,7 +88,7 @@ def get_latent_coords(
     )
     latent_sample_coords = torch.stack(latent_sample_coords, dim=0)
     latent_coords = latent_sample_coords.unsqueeze(0).repeat(batch_size, 1, 1, 1, 1)
-    latent_coords = rearrange(latent_coords, "b c f h w -> b c (f h w)", b=batch_size)
+    latent_coords = latent_coords.flatten(2)
     pixel_coords = latent_coords * torch.tensor(rope_interpolation_scale, device=latent_coords.device)[None, :, None]
     if latent_idx is not None:
         if latent_idx <= 0:
@@ -131,6 +99,33 @@ def get_latent_coords(
             pixel_coords[:, 0] = (pixel_coords[:, 0] + 1 - rope_interpolation_scale[0]).clamp(min=0)
         pixel_coords[:, 0] += frame_idx
     return pixel_coords
+
+
+# Copied from diffusers.pipelines.ltx.pipeline_ltx.rescale_noise_cfg
+def rescale_noise_cfg(noise_cfg, noise_pred_text, guidance_rescale=0.0):
+    r"""
+    Rescales `noise_cfg` tensor based on `guidance_rescale` to improve image quality and fix overexposure. Based on
+    Section 3.4 from [Common Diffusion Noise Schedules and Sample Steps are
+    Flawed](https://huggingface.co/papers/2305.08891).
+
+    Args:
+        noise_cfg (`torch.Tensor`):
+            The predicted noise tensor for the guided diffusion process.
+        noise_pred_text (`torch.Tensor`):
+            The predicted noise tensor for the text-guided diffusion process.
+        guidance_rescale (`float`, *optional*, defaults to 0.0):
+            A rescale factor applied to the noise predictions.
+
+    Returns:
+        noise_cfg (`torch.Tensor`): The rescaled noise prediction tensor.
+    """
+    std_text = noise_pred_text.std(dim=list(range(1, noise_pred_text.ndim)), keepdim=True)
+    std_cfg = noise_cfg.std(dim=list(range(1, noise_cfg.ndim)), keepdim=True)
+    # rescale the results from guidance (fixes overexposure)
+    noise_pred_rescaled = noise_cfg * (std_text / std_cfg)
+    # mix with the original results from guidance by factor guidance_rescale to avoid "plain looking" images
+    noise_cfg = guidance_rescale * noise_pred_rescaled + (1 - guidance_rescale) * noise_cfg
+    return noise_cfg
 
 
 def adain_normalize_latents(
@@ -387,26 +382,6 @@ class LTXI2VLongMultiPromptPipeline(DiffusionPipeline, FromSingleFileMixin, LTXV
     - text_encoder: T5EncoderModel
     - tokenizer: T5TokenizerFast
     - transformer: LTXVideoTransformer3DModel
-
-    Reused Diffusers components:
-    - LTXPipeline.encode_prompt() (diffusers/src/diffusers/pipelines/ltx/pipeline_ltx.py:283)
-    - LTXPipeline._pack_latents() (diffusers/src/diffusers/pipelines/ltx/pipeline_ltx.py:419)
-    - LTXPipeline._unpack_latents() (diffusers/src/diffusers/pipelines/ltx/pipeline_ltx.py:443)
-    - LTXImageToVideoPipeline.prepare_latents() cond_mask semantics (diffusers/src/diffusers/pipelines/ltx/pipeline_ltx_image2video.py:502)
-    - FlowMatchEulerDiscreteScheduler.set_timesteps() (diffusers/src/diffusers/schedulers/scheduling_flow_match_euler_discrete.py:249)
-    - FlowMatchEulerDiscreteScheduler.step() (diffusers/src/diffusers/schedulers/scheduling_flow_match_euler_discrete.py:374)
-    - LTXEulerAncestralRFScheduler.set_timesteps()/step() (diffusers/src/diffusers/schedulers/scheduling_ltx_euler_ancestral_rf.py)
-    - rescale_noise_cfg() (diffusers/src/diffusers/pipelines/ltx/pipeline_ltx.py:144)
-
-    Defaults:
-    - default_height=512, default_width=704, default_frames=121
-
-    Example:
-        >>> from diffusers import LTXI2VLongMultiPromptPipeline
-        >>> pipe = LTXI2VLongMultiPromptPipeline.from_pretrained("LTX-Video-0.9.8-13B-distilled")
-        >>> pipe = pipe.to("cuda").to(dtype=torch.bfloat16)
-        >>> out = pipe(prompt="a chimpanzee walking", num_frames=161, height=512, width=704, output_type="pil")
-        >>> frames = out.frames[0]  # list of PIL frames
     """
 
     model_cpu_offload_seq = "text_encoder->transformer->vae"
@@ -430,6 +405,12 @@ class LTXI2VLongMultiPromptPipeline(DiffusionPipeline, FromSingleFileMixin, LTXV
             transformer=transformer,
             scheduler=scheduler,
         )
+        if not isinstance(scheduler, LTXEulerAncestralRFScheduler):
+            logger.warning(
+                "For ComfyUI parity, `LTXI2VLongMultiPromptPipeline` is typically run with "
+                "`LTXEulerAncestralRFScheduler`. Got %s.",
+                scheduler.__class__.__name__,
+            )
 
         self.vae_spatial_compression_ratio = (
             self.vae.spatial_compression_ratio if getattr(self, "vae", None) is not None else 32
@@ -453,24 +434,6 @@ class LTXI2VLongMultiPromptPipeline(DiffusionPipeline, FromSingleFileMixin, LTXV
         self.default_width = 704
         self.default_frames = 121
         self._current_tile_T = None
-
-    @classmethod
-    def from_pretrained(cls, pretrained_model_name_or_path, **kwargs):
-        """
-        Instantiate the pipeline and swap the scheduler to `LTXEulerAncestralRFScheduler`
-        by default for closer parity with the ComfyUI LTXV workflow, while keeping the
-        original scheduler config (e.g. `num_train_timesteps`) intact.
-
-        Users that want to keep using the default `FlowMatchEulerDiscreteScheduler`
-        can manually override `pipe.scheduler` after construction.
-        """
-        pipe = super().from_pretrained(pretrained_model_name_or_path, **kwargs)
-
-        # For ComfyUI parity, map the FlowMatch scheduler config onto the RF scheduler.
-        # Other custom schedulers are left untouched.
-        if isinstance(pipe.scheduler, FlowMatchEulerDiscreteScheduler):
-            pipe.scheduler = LTXEulerAncestralRFScheduler.from_config(pipe.scheduler.config)
-        return pipe
 
     @property
     # Copied from diffusers.pipelines.ltx.pipeline_ltx.LTXPipeline.guidance_scale
@@ -946,6 +909,7 @@ class LTXI2VLongMultiPromptPipeline(DiffusionPipeline, FromSingleFileMixin, LTXV
             return self.video_processor.postprocess_video(output, output_type=output_type)
         return output
     @torch.no_grad()
+    @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
         prompt: Union[str, List[str]] = None,
