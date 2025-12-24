@@ -73,6 +73,7 @@ from .kandinsky3 import Kandinsky3Img2ImgPipeline, Kandinsky3Pipeline
 from .latent_consistency_models import LatentConsistencyModelImg2ImgPipeline, LatentConsistencyModelPipeline
 from .lumina import LuminaPipeline
 from .lumina2 import Lumina2Pipeline
+from .ovis_image import OvisImagePipeline
 from .pag import (
     HunyuanDiTPAGPipeline,
     PixArtSigmaPAGPipeline,
@@ -119,7 +120,13 @@ from .stable_diffusion_xl import (
 )
 from .wan import WanImageToVideoPipeline, WanPipeline, WanVideoToVideoPipeline
 from .wuerstchen import WuerstchenCombinedPipeline, WuerstchenDecoderPipeline
-from .z_image import ZImageImg2ImgPipeline, ZImagePipeline
+from .z_image import (
+    ZImageControlNetInpaintPipeline,
+    ZImageControlNetPipeline,
+    ZImageImg2ImgPipeline,
+    ZImageOmniPipeline,
+    ZImagePipeline,
+)
 
 
 AUTO_TEXT2IMAGE_PIPELINES_MAPPING = OrderedDict(
@@ -164,6 +171,10 @@ AUTO_TEXT2IMAGE_PIPELINES_MAPPING = OrderedDict(
         ("qwenimage", QwenImagePipeline),
         ("qwenimage-controlnet", QwenImageControlNetPipeline),
         ("z-image", ZImagePipeline),
+        ("z-image-controlnet", ZImageControlNetPipeline),
+        ("z-image-controlnet-inpaint", ZImageControlNetInpaintPipeline),
+        ("z-image-omni", ZImageOmniPipeline),
+        ("ovis", OvisImagePipeline),
     ]
 )
 

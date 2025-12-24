@@ -29,13 +29,52 @@ hf download nvidia/Cosmos-Predict2.5-2B
 
 Convert checkpoint
 ```bash
+# pre-trained
 transformer_ckpt_path=~/.cache/huggingface/hub/models--nvidia--Cosmos-Predict2.5-2B/snapshots/865baf084d4c9e850eac59a021277d5a9b9e8b63/base/pre-trained/d20b7120-df3e-4911-919d-db6e08bad31c_ema_bf16.pt
 
 python scripts/convert_cosmos_to_diffusers.py \
     --transformer_type Cosmos-2.5-Predict-Base-2B \
     --transformer_ckpt_path $transformer_ckpt_path \
     --vae_type wan2.1 \
-    --output_path converted/cosmos-p2.5-base-2b \
+    --output_path converted/2b/d20b7120-df3e-4911-919d-db6e08bad31c \
+    --save_pipeline
+
+# post-trained
+transformer_ckpt_path=~/.cache/huggingface/hub/models--nvidia--Cosmos-Predict2.5-2B/snapshots/865baf084d4c9e850eac59a021277d5a9b9e8b63/base/post-trained/81edfebe-bd6a-4039-8c1d-737df1a790bf_ema_bf16.pt
+
+python scripts/convert_cosmos_to_diffusers.py \
+    --transformer_type Cosmos-2.5-Predict-Base-2B \
+    --transformer_ckpt_path $transformer_ckpt_path \
+    --vae_type wan2.1 \
+    --output_path converted/2b/81edfebe-bd6a-4039-8c1d-737df1a790bf \
+    --save_pipeline
+```
+
+## 14B
+
+```bash
+hf download nvidia/Cosmos-Predict2.5-14B
+```
+
+```bash
+# pre-trained
+transformer_ckpt_path=~/.cache/huggingface/hub/models--nvidia--Cosmos-Predict2.5-14B/snapshots/71ebf3e8af30ecfe440bf0481115975fcc052b46/base/pre-trained/54937b8c-29de-4f04-862c-e67b04ec41e8_ema_bf16.pt
+
+python scripts/convert_cosmos_to_diffusers.py \
+    --transformer_type Cosmos-2.5-Predict-Base-14B \
+    --transformer_ckpt_path $transformer_ckpt_path \
+    --vae_type wan2.1 \
+    --output_path converted/14b/54937b8c-29de-4f04-862c-e67b04ec41e8/ \
+    --save_pipeline
+
+# post-trained
+transformer_ckpt_path=~/.cache/huggingface/hub/models--nvidia--Cosmos-Predict2.5-14B/snapshots/71ebf3e8af30ecfe440bf0481115975fcc052b46/base/post-trained/e21d2a49-4747-44c8-ba44-9f6f9243715f_ema_bf16.pt
+
+python scripts/convert_cosmos_to_diffusers.py \
+    --transformer_type Cosmos-2.5-Predict-Base-14B \
+    --transformer_ckpt_path $transformer_ckpt_path \
+    --vae_type wan2.1 \
+    --output_path converted/14b/e21d2a49-4747-44c8-ba44-9f6f9243715f/ \
     --save_pipeline
 ```
 
@@ -285,6 +324,25 @@ TRANSFORMER_CONFIGS = {
         "num_attention_heads": 16,
         "attention_head_dim": 128,
         "num_layers": 28,
+        "mlp_ratio": 4.0,
+        "text_embed_dim": 1024,
+        "adaln_lora_dim": 256,
+        "max_size": (128, 240, 240),
+        "patch_size": (1, 2, 2),
+        "rope_scale": (1.0, 3.0, 3.0),
+        "concat_padding_mask": True,
+        # NOTE: source config has pos_emb_learnable: 'True' - but params are missing
+        "extra_pos_embed_type": None,
+        "use_crossattn_projection": True,
+        "crossattn_proj_in_channels": 100352,
+        "encoder_hidden_states_channels": 1024,
+    },
+    "Cosmos-2.5-Predict-Base-14B": {
+        "in_channels": 16 + 1,
+        "out_channels": 16,
+        "num_attention_heads": 40,
+        "attention_head_dim": 128,
+        "num_layers": 36,
         "mlp_ratio": 4.0,
         "text_embed_dim": 1024,
         "adaln_lora_dim": 256,
