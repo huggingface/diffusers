@@ -21,40 +21,6 @@ flow / CONST parameterization, closely mirroring ComfyUI's
 
 Reference implementation (ComfyUI):
     comfy.k_diffusion.sampling.sample_euler_ancestral_RF
-
-Design notes:
-- The scheduler treats `model_output` as the *raw network prediction* and
-  reconstructs an approximate denoised sample `x0` via the CONST parametrization:
-
-      denoised = x_t - sigma_t * model_output
-
-  which matches `CONST.calculate_denoised` in `comfy.model_sampling`.
-  This follows the behavior of the Comfy LTXV pipeline, where the UNet is
-  wrapped by a `model_sampling` object that exposes CONST semantics.
-- The update rule follows Comfy's RF variant:
-
-      downstep_ratio = 1 + (sigma_next / sigma - 1) * eta
-      sigma_down = sigma_next * downstep_ratio
-      alpha_ip1  = 1 - sigma_next
-      alpha_down = 1 - sigma_down
-
-      # deterministic part (Euler in (x, x0)-space)
-      sigma_ratio = sigma_down / sigma
-      x = sigma_ratio * x + (1.0 - sigma_ratio) * denoised
-
-      # stochastic ancestral noise
-      renoise_coeff = sqrt(
-          sigma_next^2 - sigma_down^2 * alpha_ip1^2 / alpha_down^2
-      )
-      x = (alpha_ip1 / alpha_down) * x + noise * renoise_coeff
-
-  with an optional `eta` and `s_noise` controlling the amount of stochasticity.
-
-Limitations:
-- We do not implement Brownian-tree noise (`BrownianTreeNoiseSampler`) and
-  instead use standard Gaussian noise. This may lead to small differences
-  compared to ComfyUI, but keeps the implementation self-contained and free
-  from `torchsde` dependency.
 """
 
 from dataclasses import dataclass
