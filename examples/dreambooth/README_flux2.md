@@ -98,6 +98,9 @@ Flux.2 uses  Mistral Small 3.1 as text encoder which is quite large and can take
 This way, the text encoder model is not loaded into memory during training.
 > [!NOTE] 
 > to enable remote text encoding you must either be logged in to your HuggingFace account (`hf auth login`) OR pass a token with `--hub_token`.
+### FSDP Text Encoder 
+Flux.2 uses  Mistral Small 3.1 as text encoder which is quite large and can take up a lot of memory. To mitigate this, we can use the `--fsdp_text_encoder` flag to enable distributed computation of the prompt embeddings. 
+This way, the memory cost can be distributed in multiple nodes.
 ### CPU Offloading 
 To offload parts of the model to CPU memory, you can use `--offload` flag. This will offload the vae and text encoder to CPU memory and only move them to GPU when needed.
 ### Latent Caching 

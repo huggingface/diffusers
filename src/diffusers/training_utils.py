@@ -402,6 +402,13 @@ def find_nearest_bucket(h, w, bucket_options):
     return best_bucket_idx
 
 
+def _to_cpu_contiguous(state_dicts) -> dict:
+    return {
+        k: v.detach().cpu().contiguous() if isinstance(v, torch.Tensor) else v
+        for k, v in state_dicts.items()
+    }
+
+
 def get_fsdp_kwargs_from_accelerator(accelerator) -> dict:
     """
     Extract and convert FSDP config from Accelerator into PyTorch FSDP kwargs.

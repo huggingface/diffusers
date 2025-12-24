@@ -46,7 +46,6 @@ from pathlib import Path
 
 import numpy as np
 import torch
-import torch.distributed as dist
 import transformers
 from accelerate import Accelerator
 from accelerate.logging import get_logger
@@ -62,6 +61,7 @@ from torchvision import transforms
 from torchvision.transforms import functional as TF
 from tqdm.auto import tqdm
 from transformers import Mistral3ForConditionalGeneration, PixtralProcessor
+from typing import Any
 
 import diffusers
 from diffusers import (
@@ -75,6 +75,7 @@ from diffusers.optimization import get_scheduler
 from diffusers.pipelines.flux2.image_processor import Flux2ImageProcessor
 from diffusers.training_utils import (
     _collate_lora_metadata,
+    _to_cpu_contiguous
     cast_training_params,
     compute_density_for_timestep_sampling,
     compute_loss_weighting_for_sd3,
@@ -95,6 +96,9 @@ from diffusers.utils.hub_utils import load_or_create_model_card, populate_model_
 from diffusers.utils.import_utils import is_torch_npu_available
 from diffusers.utils.torch_utils import is_compiled_module
 
+
+if getattr(torch, "distributed", None) is not None:
+    import torch.distributed as dist
 
 if is_wandb_available():
     import wandb
@@ -1208,42 +1212,44 @@ def main(args):
 
     # create custom saving & loading hooks so that `accelerator.save_state(...)` serializes in a nice format
     def save_model_hook(models, weights, output_dir):
+        transformer_cls = type(unwrap_model(transformer))
+
+        # 1) Validate and pick the transformer model
+        modules_to_save: dict[str, Any] = {}
+        transformer_model = None
+
+        for model in models:
+            if isinstance(unwrap_model(model), transformer_cls):
+                transformer_model = model
+                modules_to_save["transformer"] = model
+            else:
+                raise ValueError(f"unexpected save model: {model.__class__}")
+
+        if transformer_model is None:
+            raise ValueError("No transformer model found in 'models'")
+
+        # 2) Optionally gather FSDP state dict once
+        state_dict = accelerator.get_state_dict(models) if is_fsdp else None
+
+        # 3) Only main process materializes the LoRA state dict
         transformer_lora_layers_to_save = None
-        modules_to_save = {}
-        if is_fsdp:
-            for model in models:
-                if isinstance(unwrap_model(model), type(unwrap_model(transformer))):
-                    state_dict = accelerator.get_state_dict(models)
-
-                    if accelerator.is_main_process:
-                        transformer_lora_layers_to_save = get_peft_model_state_dict(
-                            unwrap_model(model),
-                            state_dict=state_dict,
-                        )
-                        transformer_lora_layers_to_save = {
-                            k: v.detach().cpu().contiguous() if isinstance(v, torch.Tensor) else v
-                            for k, v in transformer_lora_layers_to_save.items()
-                        }
-                        modules_to_save["transformer"] = model
-
-                        # make sure to pop weight so that corresponding model is not saved again
-                        if weights:
-                            weights.pop()
-        else:
-            if accelerator.is_main_process:
-                transformer_lora_layers_to_save = None
-                modules_to_save = {}
-                for model in models:
-                    if isinstance(model, type(unwrap_model(transformer))):
-                        transformer_lora_layers_to_save = get_peft_model_state_dict(model)
-                        modules_to_save["transformer"] = model
-                    else:
-                        raise ValueError(f"unexpected save model: {model.__class__}")
-
-                    # make sure to pop weight so that corresponding model is not saved again
-                    weights.pop()
-
         if accelerator.is_main_process:
+            peft_kwargs = {}
+            if is_fsdp:
+                peft_kwargs["state_dict"] = state_dict
+
+            transformer_lora_layers_to_save = get_peft_model_state_dict(
+                unwrap_model(transformer_model) if is_fsdp else transformer_model
+                **peft_kwargs,
+            )
+
+            if is_fsdp:
+                transformer_lora_layers_to_save = _to_cpu_contiguous(transformer_lora_layers_to_save)
+
+            # make sure to pop weight so that corresponding model is not saved again
+            if weights:
+                weights.pop()
+
             Flux2Pipeline.save_lora_weights(
                 output_dir,
                 transformer_lora_layers=transformer_lora_layers_to_save,
