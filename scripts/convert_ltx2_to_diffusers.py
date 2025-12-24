@@ -182,7 +182,10 @@ def get_ltx2_transformer_config(version: str) -> Tuple[Dict[str, Any], Dict[str,
                 "attention_bias": True,
                 "attention_out_bias": True,
                 "rope_theta": 10000.0,
+                "rope_double_precision": False,
                 "causal_offset": 1,
+                "timestep_scale_multiplier": 1000,
+                "cross_attn_timestep_scale_multiplier": 1,
             },
         }
         rename_dict = LTX_2_0_TRANSFORMER_KEYS_RENAME_DICT
@@ -222,7 +225,10 @@ def get_ltx2_transformer_config(version: str) -> Tuple[Dict[str, Any], Dict[str,
                 "attention_bias": True,
                 "attention_out_bias": True,
                 "rope_theta": 10000.0,
+                "rope_double_precision": True,
                 "causal_offset": 1,
+                "timestep_scale_multiplier": 1000,
+                "cross_attn_timestep_scale_multiplier": 1,
             },
         }
         rename_dict = LTX_2_0_TRANSFORMER_KEYS_RENAME_DICT

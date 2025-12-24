@@ -603,12 +603,12 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLoraLoaderMix
         generator: Optional[torch.Generator] = None,
         latents: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        if latents is not None:
-            return latents.to(device=device, dtype=dtype)
-        
         duration_s = num_frames / frame_rate
         latents_per_second = float(sampling_rate) / float(hop_length) / float(self.audio_vae_temporal_compression_ratio)
         latent_length = int(duration_s * latents_per_second)
+
+        if latents is not None:
+            return latents.to(device=device, dtype=dtype), latent_length
 
         # TODO: confirm whether this logic is correct
         latent_mel_bins = num_mel_bins // self.audio_vae_mel_compression_ratio
@@ -915,6 +915,13 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLoraLoaderMix
             self.vae_spatial_compression_ratio,
             self.vae_spatial_compression_ratio,
         )
+        # Pre-compute video and audio positional ids as they will be the same at each step of the denoising loop
+        video_coords = self.transformer.rope.prepare_video_coords(
+            latents.shape[0], latent_num_frames, latent_height, latent_width, latents.device, fps=frame_rate
+        )
+        audio_coords = self.transformer.audio_rope.prepare_audio_coords(
+            audio_latents.shape[0], audio_num_frames, audio_latents.device, fps=frame_rate
+        )
 
         # 7. Denoising loop
         with self.progress_bar(total=num_inference_steps) as progress_bar:
@@ -946,6 +953,8 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLoraLoaderMix
                         width=latent_width,
                         fps=frame_rate,
                         audio_num_frames=audio_num_frames,
+                        video_coords=video_coords,
+                        audio_coords=audio_coords,
                         # rope_interpolation_scale=rope_interpolation_scale,
                         attention_kwargs=attention_kwargs,
                         return_dict=False,
