@@ -119,13 +119,13 @@ class NerfEmbedder(nn.Module):
         self.embedder = nn.Sequential(nn.Linear(in_channels + max_freqs**2, hidden_size))
 
     @lru_cache(maxsize=4)
-    def fetch_pos(self, patch_size) -> torch.Tensor:
-        pos_x = torch.linspace(0, 1, patch_size)
-        pos_y = torch.linspace(0, 1, patch_size)
+    def fetch_pos(self, patch_size, device, dtype) -> torch.Tensor:
+        pos_x = torch.linspace(0, 1, patch_size, device=device, dtype=dtype)
+        pos_y = torch.linspace(0, 1, patch_size, device=device, dtype=dtype)
         pos_y, pos_x = torch.meshgrid(pos_y, pos_x, indexing="ij")
         pos_x = pos_x.reshape(-1, 1, 1)
         pos_y = pos_y.reshape(-1, 1, 1)
-        freqs = torch.linspace(0, self.max_freqs - 1, self.max_freqs)
+        freqs = torch.linspace(0, self.max_freqs - 1, self.max_freqs, device=device, dtype=dtype)
         freqs_x = freqs[None, :, None]
         freqs_y = freqs[None, None, :]
         coeffs = (1 + freqs_x * freqs_y) ** -1
@@ -138,11 +138,13 @@ class NerfEmbedder(nn.Module):
         batch, pixels, channels = inputs.shape
         patch_size = int(pixels**0.5)
         input_dtype = inputs.dtype
-        inputs = inputs.float()
-        dct = self.fetch_pos(patch_size)
-        dct = dct.repeat(batch, 1, 1).to(dtype=torch.float32, device=inputs.device)
-        inputs = torch.cat((inputs, dct), dim=-1)
-        return self.embedder.float()(inputs).to(dtype=input_dtype)
+        with torch.autocast(str(inputs.device), enabled=False):
+            inputs = inputs.float()
+            dct = self.fetch_pos(patch_size, inputs.device, torch.float32)
+            dct = dct.repeat(batch, 1, 1)
+            inputs = torch.cat((inputs, dct), dim=-1)
+            inputs = self.embedder.float()(inputs)
+        return inputs.to(dtype=input_dtype)
 
 
 class NerfGLUBlock(nn.Module):
