@@ -1135,23 +1135,25 @@ class FluxSemanticGuidancePipeline(
                 else:
                     guidance = None
 
-                noise_pred = self.transformer(
-                    hidden_states=latents,
-                    timestep=timestep / 1000,
-                    guidance=guidance,
-                    pooled_projections=pooled_prompt_embeds,
-                    encoder_hidden_states=prompt_embeds,
-                    txt_ids=text_ids,
-                    img_ids=latent_image_ids,
-                    joint_attention_kwargs=self.joint_attention_kwargs,
-                    return_dict=False,
-                )[0]
+                with self.transformer.cache_context("cond"):
+                    noise_pred = self.transformer(
+                        hidden_states=latents,
+                        timestep=timestep / 1000,
+                        guidance=guidance,
+                        pooled_projections=pooled_prompt_embeds,
+                        encoder_hidden_states=prompt_embeds,
+                        txt_ids=text_ids,
+                        img_ids=latent_image_ids,
+                        joint_attention_kwargs=self.joint_attention_kwargs,
+                        return_dict=False,
+                    )[0]
 
                 if enable_edit_guidance and max_edit_cooldown_steps >= i >= min_edit_warmup_steps:
                     noise_pred_edit_concepts = []
                     for e_embed, pooled_e_embed, e_text_id in zip(
                         editing_prompts_embeds, pooled_editing_prompt_embeds, edit_text_ids
                     ):
+                        # TODO-context
                         noise_pred_edit = self.transformer(
                             hidden_states=latents,
                             timestep=timestep / 1000,
@@ -1168,17 +1170,18 @@ class FluxSemanticGuidancePipeline(
                 if do_true_cfg:
                     if negative_image_embeds is not None:
                         self._joint_attention_kwargs["ip_adapter_image_embeds"] = negative_image_embeds
-                    noise_pred_uncond = self.transformer(
-                        hidden_states=latents,
-                        timestep=timestep / 1000,
-                        guidance=guidance,
-                        pooled_projections=negative_pooled_prompt_embeds,
-                        encoder_hidden_states=negative_prompt_embeds,
-                        txt_ids=text_ids,
-                        img_ids=latent_image_ids,
-                        joint_attention_kwargs=self.joint_attention_kwargs,
-                        return_dict=False,
-                    )[0]
+                    with self.transformer.cache_context("uncond"):
+                        noise_pred_uncond = self.transformer(
+                            hidden_states=latents,
+                            timestep=timestep / 1000,
+                            guidance=guidance,
+                            pooled_projections=negative_pooled_prompt_embeds,
+                            encoder_hidden_states=negative_prompt_embeds,
+                            txt_ids=text_ids,
+                            img_ids=latent_image_ids,
+                            joint_attention_kwargs=self.joint_attention_kwargs,
+                            return_dict=False,
+                        )[0]
                     noise_guidance = true_cfg_scale * (noise_pred - noise_pred_uncond)
                 else:
                     noise_pred_uncond = noise_pred

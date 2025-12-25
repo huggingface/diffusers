@@ -579,26 +579,30 @@ class WanSTGPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                     for idx, block in enumerate(self.transformer.blocks):
                         block.forward = types.MethodType(forward_without_stg, block)
 
-                noise_pred = self.transformer(
-                    hidden_states=latent_model_input,
-                    timestep=timestep,
-                    encoder_hidden_states=prompt_embeds,
-                    attention_kwargs=attention_kwargs,
-                    return_dict=False,
-                )[0]
-
-                if self.do_classifier_free_guidance:
-                    noise_uncond = self.transformer(
+                with self.transformer.cache_context("cond"):
+                    noise_pred = self.transformer(
                         hidden_states=latent_model_input,
                         timestep=timestep,
-                        encoder_hidden_states=negative_prompt_embeds,
+                        encoder_hidden_states=prompt_embeds,
                         attention_kwargs=attention_kwargs,
                         return_dict=False,
                     )[0]
+
+                if self.do_classifier_free_guidance:
+                    with self.transformer.cache_context("uncond"):
+                        noise_uncond = self.transformer(
+                            hidden_states=latent_model_input,
+                            timestep=timestep,
+                            encoder_hidden_states=negative_prompt_embeds,
+                            attention_kwargs=attention_kwargs,
+                            return_dict=False,
+                        )[0]
                     if self.do_spatio_temporal_guidance:
                         for idx, block in enumerate(self.transformer.blocks):
                             if idx in stg_applied_layers_idx:
                                 block.forward = types.MethodType(forward_with_stg, block)
+
+                        # TODO-context
                         noise_perturb = self.transformer(
                             hidden_states=latent_model_input,
                             timestep=timestep,

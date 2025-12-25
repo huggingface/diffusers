@@ -616,15 +616,16 @@ class CogView3PlusPipeline(DiffusionPipeline):
                 timestep = t.expand(latent_model_input.shape[0])
 
                 # predict noise model_output
-                noise_pred = self.transformer(
-                    hidden_states=latent_model_input,
-                    encoder_hidden_states=prompt_embeds,
-                    timestep=timestep,
-                    original_size=original_size,
-                    target_size=target_size,
-                    crop_coords=crops_coords_top_left,
-                    return_dict=False,
-                )[0]
+                with self.transformer.cache_context("cond"):
+                    noise_pred = self.transformer(
+                        hidden_states=latent_model_input,
+                        encoder_hidden_states=prompt_embeds,
+                        timestep=timestep,
+                        original_size=original_size,
+                        target_size=target_size,
+                        crop_coords=crops_coords_top_left,
+                        return_dict=False,
+                    )[0]
                 noise_pred = noise_pred.float()
 
                 # perform guidance

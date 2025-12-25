@@ -1042,17 +1042,18 @@ class PixArtAlphaControlnetPipeline(DiffusionPipeline):
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
                 current_timestep = current_timestep.expand(latent_model_input.shape[0])
 
-                # predict noise model_output
-                noise_pred = self.transformer(
-                    latent_model_input,
-                    encoder_hidden_states=prompt_embeds,
-                    encoder_attention_mask=prompt_attention_mask,
-                    timestep=current_timestep,
-                    controlnet_cond=image_latents,
-                    # rc todo: controlnet_conditioning_scale=1.0,
-                    added_cond_kwargs=added_cond_kwargs,
-                    return_dict=False,
-                )[0]
+                context = "uncond,cond" if do_classifier_free_guidance else "cond"
+                with self.transformer.cache_context(context):
+                    noise_pred = self.transformer(
+                        latent_model_input,
+                        encoder_hidden_states=prompt_embeds,
+                        encoder_attention_mask=prompt_attention_mask,
+                        timestep=current_timestep,
+                        controlnet_cond=image_latents,
+                        # rc todo: controlnet_conditioning_scale=1.0,
+                        added_cond_kwargs=added_cond_kwargs,
+                        return_dict=False,
+                    )[0]
 
                 # perform guidance
                 if do_classifier_free_guidance:

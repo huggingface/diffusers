@@ -1165,13 +1165,14 @@ class EasyAnimateInpaintPipeline(DiffusionPipeline):
                 )
 
                 # predict the noise residual
-                noise_pred = self.transformer(
-                    latent_model_input,
-                    t_expand,
-                    encoder_hidden_states=prompt_embeds,
-                    inpaint_latents=inpaint_latents,
-                    return_dict=False,
-                )[0]
+                with self.transformer.cache_context("cond"):
+                    noise_pred = self.transformer(
+                        latent_model_input,
+                        t_expand,
+                        encoder_hidden_states=prompt_embeds,
+                        inpaint_latents=inpaint_latents,
+                        return_dict=False,
+                    )[0]
                 if noise_pred.size()[1] != self.vae.config.latent_channels:
                     noise_pred, _ = noise_pred.chunk(2, dim=1)
 

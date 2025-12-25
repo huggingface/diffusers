@@ -840,18 +840,19 @@ class HunyuanDiTPipeline(DiffusionPipeline):
                 )
 
                 # predict the noise residual
-                noise_pred = self.transformer(
-                    latent_model_input,
-                    t_expand,
-                    encoder_hidden_states=prompt_embeds,
-                    text_embedding_mask=prompt_attention_mask,
-                    encoder_hidden_states_t5=prompt_embeds_2,
-                    text_embedding_mask_t5=prompt_attention_mask_2,
-                    image_meta_size=add_time_ids,
-                    style=style,
-                    image_rotary_emb=image_rotary_emb,
-                    return_dict=False,
-                )[0]
+                with self.transformer.cache_context("cond"):
+                    noise_pred = self.transformer(
+                        latent_model_input,
+                        t_expand,
+                        encoder_hidden_states=prompt_embeds,
+                        text_embedding_mask=prompt_attention_mask,
+                        encoder_hidden_states_t5=prompt_embeds_2,
+                        text_embedding_mask_t5=prompt_attention_mask_2,
+                        image_meta_size=add_time_ids,
+                        style=style,
+                        image_rotary_emb=image_rotary_emb,
+                        return_dict=False,
+                    )[0]
 
                 noise_pred, _ = noise_pred.chunk(2, dim=1)
 
