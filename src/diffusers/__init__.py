@@ -307,6 +307,7 @@ else:
             "AutoPipelineForImage2Image",
             "AutoPipelineForInpainting",
             "AutoPipelineForText2Image",
+            "AutoPipelineForText2Video",
             "ConsistencyModelPipeline",
             "DanceDiffusionPipeline",
             "DDIMPipeline",
