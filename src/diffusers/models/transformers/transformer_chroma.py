@@ -14,6 +14,7 @@
 
 
 from typing import Any, Dict, Optional, Tuple, Union
+from functools import lru_cache
 
 import numpy as np
 import torch
@@ -117,6 +118,7 @@ class NerfEmbedder(nn.Module):
         self.hidden_size = hidden_size
         self.embedder = nn.Sequential(nn.Linear(in_channels + max_freqs**2, hidden_size))
 
+    @lru_cache(maxsize=4)
     def fetch_pos(self, patch_size) -> torch.Tensor:
         pos_x = torch.linspace(0, 1, patch_size)
         pos_y = torch.linspace(0, 1, patch_size)
