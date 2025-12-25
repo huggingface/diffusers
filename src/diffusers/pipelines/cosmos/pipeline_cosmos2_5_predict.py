@@ -133,7 +133,7 @@ EXAMPLE_DOC_STRING = """
         ...     num_frames=93,
         ...     generator=torch.Generator().manual_seed(1),
         ... ).frames[0]
-        >>> # export_to_video(video, "image2world.mp4", fps=16)
+        >>> export_to_video(video, "image2world.mp4", fps=16)
 
         >>> # Video2World: condition on an input clip and predict a 93-frame world video.
         >>> prompt = (
