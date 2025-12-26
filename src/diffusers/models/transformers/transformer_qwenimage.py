@@ -571,7 +571,8 @@ class QwenDoubleStreamAttnProcessor2_0:
             # Create 2D joint mask [batch_size, text_seq_len + image_seq_len]
             # The attention dispatch will normalize this and extract sequence lengths
             attention_mask = torch.cat([image_attention_mask, text_attention_mask], dim=1)
-            attention_kwargs['seq_len'] = [text_sample_len + image_seq_len for text_sample_len in encoder_hidden_states_len]
+            if encoder_hidden_states_len is not None:
+                attention_kwargs['seq_len'] = [text_sample_len + image_seq_len for text_sample_len in encoder_hidden_states_len]
 
         # Compute joint attention
         joint_hidden_states = dispatch_attention_fn(
