@@ -129,6 +129,10 @@ class ZImageLoopDenoiser(ModularPipelineBlocks):
                 type_hint=int,
                 description="The number of inference steps to use for the denoising process. Can be generated in set_timesteps step.",
             ),
+            InputParam(
+                kwargs_type="denoiser_input_fields",
+                description="conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.",
+            ),
         ]
         guider_input_names = []
         uncond_guider_input_names = []
