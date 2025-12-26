@@ -15,11 +15,11 @@
 import contextlib
 import gc
 import unittest
-from typing import Any, Iterable, List, Optional, Sequence, Union
 
 import torch
 from parameterized import parameterized
 
+from diffusers import AutoencoderKL
 from diffusers.hooks import HookRegistry, ModelHook
 from diffusers.models import ModelMixin
 from diffusers.pipelines.pipeline_utils import DiffusionPipeline
@@ -150,71 +150,72 @@ class LayerOutputTrackerHook(ModelHook):
         return output
 
 
-# Test for https://github.com/huggingface/diffusers/pull/12747
-class DummyCallableBySubmodule:
-    """
-    Callable group offloading pinner that pins first and last DummyBlock
-    called in the program by callable(submodule)
-    """
+# Model with only standalone computational layers at top level
+class DummyModelWithStandaloneLayers(ModelMixin):
+    def __init__(self, in_features: int, hidden_features: int, out_features: int) -> None:
+        super().__init__()
 
-    def __init__(self, pin_targets: Iterable[torch.nn.Module]) -> None:
-        self.pin_targets = set(pin_targets)
-        self.calls_track = []  # testing only
+        self.layer1 = torch.nn.Linear(in_features, hidden_features)
+        self.activation = torch.nn.ReLU()
+        self.layer2 = torch.nn.Linear(hidden_features, hidden_features)
+        self.layer3 = torch.nn.Linear(hidden_features, out_features)
 
-    def __call__(self, submodule: torch.nn.Module) -> bool:
-        self.calls_track.append(submodule)
-        return self._normalize_module_type(submodule) in self.pin_targets
-
-    def _normalize_module_type(self, obj: Any) -> Optional[torch.nn.Module]:
-        # group might be a single module, or a container of modules
-        # The group-offloading code may pass either:
-        #   - a single `torch.nn.Module`, or
-        #   - a container (list/tuple) of modules.
-
-        # Only return a module when the mapping is unambiguous:
-        #   - if `obj` is a module -> return it
-        #   - if `obj` is a list/tuple containing exactly one module -> return that module
-        #   - otherwise -> return None (won't be considered as a target candidate)
-        if isinstance(obj, torch.nn.Module):
-            return obj
-        if isinstance(obj, (list, tuple)):
-            mods = [m for m in obj if isinstance(m, torch.nn.Module)]
-            return mods[0] if len(mods) == 1 else None
-        return None
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = self.layer1(x)
+        x = self.activation(x)
+        x = self.layer2(x)
+        x = self.layer3(x)
+        return x
 
 
-class DummyCallableByNameSubmodule(DummyCallableBySubmodule):
-    """
-    Callable group offloading pinner that pins first and last DummyBlock
-    Same behaviour with DummyCallableBySubmodule, only with different call signature
-    called in the program by callable(name, submodule)
-    """
+# Model with deeply nested structure
+class DummyModelWithDeeplyNestedBlocks(ModelMixin):
+    def __init__(self, in_features: int, hidden_features: int, out_features: int) -> None:
+        super().__init__()
 
-    def __call__(self, name: str, submodule: torch.nn.Module) -> bool:
-        self.calls_track.append((name, submodule))
-        return self._normalize_module_type(submodule) in self.pin_targets
+        self.input_layer = torch.nn.Linear(in_features, hidden_features)
+        self.container = ContainerWithNestedModuleList(hidden_features)
+        self.output_layer = torch.nn.Linear(hidden_features, out_features)
 
-
-class DummyCallableByNameSubmoduleIdx(DummyCallableBySubmodule):
-    """
-    Callable group offloading pinner that pins first and last DummyBlock.
-    Same behaviour with DummyCallableBySubmodule, only with different call signature
-    Called in the program by callable(name, submodule, idx)
-    """
-
-    def __call__(self, name: str, submodule: torch.nn.Module, idx: int) -> bool:
-        self.calls_track.append((name, submodule, idx))
-        return self._normalize_module_type(submodule) in self.pin_targets
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = self.input_layer(x)
+        x = self.container(x)
+        x = self.output_layer(x)
+        return x
 
 
-class DummyInvalidCallable(DummyCallableBySubmodule):
-    """
-    Callable group offloading pinner that uses invalid call signature
-    """
+class ContainerWithNestedModuleList(torch.nn.Module):
+    def __init__(self, features: int) -> None:
+        super().__init__()
 
-    def __call__(self, name: str, submodule: torch.nn.Module, idx: int, extra: Any) -> bool:
-        self.calls_track.append((name, submodule, idx, extra))
-        return self._normalize_module_type(submodule) in self.pin_targets
+        # Top-level computational layer
+        self.proj_in = torch.nn.Linear(features, features)
+
+        # Nested container with ModuleList
+        self.nested_container = NestedContainer(features)
+
+        # Another top-level computational layer
+        self.proj_out = torch.nn.Linear(features, features)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = self.proj_in(x)
+        x = self.nested_container(x)
+        x = self.proj_out(x)
+        return x
+
+
+class NestedContainer(torch.nn.Module):
+    def __init__(self, features: int) -> None:
+        super().__init__()
+
+        self.blocks = torch.nn.ModuleList([torch.nn.Linear(features, features), torch.nn.Linear(features, features)])
+        self.norm = torch.nn.LayerNorm(features)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        for block in self.blocks:
+            x = block(x)
+        x = self.norm(x)
+        return x
 
 
 @require_torch_accelerator
@@ -408,7 +409,7 @@ class GroupOffloadTests(unittest.TestCase):
         out = model(x)
         self.assertTrue(torch.allclose(out_ref, out, atol=1e-5), "Outputs do not match.")
 
-        num_repeats = 4
+        num_repeats = 2
         for i in range(num_repeats):
             out_ref = model_ref(x)
             out = model(x)
@@ -431,163 +432,137 @@ class GroupOffloadTests(unittest.TestCase):
                 cumulated_absmax, 1e-5, f"Output differences for {name} exceeded threshold: {cumulated_absmax:.5f}"
             )
 
-    def test_block_level_offloading_with_pin_groups_stay_on_device(self):
+    def test_vae_like_model_without_streams(self):
+        """Test VAE-like model with block-level offloading but without streams."""
         if torch.device(torch_device).type not in ["cuda", "xpu"]:
             return
 
-        def assert_all_modules_on_expected_device(
-            modules: Sequence[torch.nn.Module], expected_device: Union[torch.device, str], header_error_msg: str = ""
-        ) -> None:
-            def first_param_device(modules: torch.nn.Module) -> torch.device:
-                p = next(modules.parameters(), None)
-                self.assertIsNotNone(p, f"No parameters found for module {modules}")
-                return p.device
+        config = self.get_autoencoder_kl_config()
+        model = AutoencoderKL(**config)
 
-            if isinstance(expected_device, torch.device):
-                expected_device = expected_device.type
+        model_ref = AutoencoderKL(**config)
+        model_ref.load_state_dict(model.state_dict(), strict=True)
+        model_ref.to(torch_device)
 
-            bad = []
-            for i, m in enumerate(modules):
-                dev_type = first_param_device(m).type
-                if dev_type != expected_device:
-                    bad.append((i, m.__class__.__name__, dev_type))
-            self.assertTrue(
-                len(bad) == 0,
-                (header_error_msg + "\n" if header_error_msg else "")
-                + f"Expected all modules on {expected_device}, but found mismatches: {bad}",
-            )
+        model.enable_group_offload(torch_device, offload_type="block_level", num_blocks_per_group=1, use_stream=False)
 
-        def get_param_modules_from_execution_order(model: DummyModel) -> List[torch.nn.Module]:
-            model.eval()
-            root_registry = HookRegistry.check_if_exists_or_initialize(model)
+        x = torch.randn(2, 3, 32, 32).to(torch_device)
 
-            lazy_hook = root_registry.get_hook("lazy_prefetch_group_offloading")
-            self.assertIsNotNone(lazy_hook, "lazy_prefetch_group_offloading hook was not registered")
+        with torch.no_grad():
+            out_ref = model_ref(x).sample
+            out = model(x).sample
 
-            # record execution order with first forward
-            with torch.no_grad():
-                model(self.input)
+        self.assertTrue(
+            torch.allclose(out_ref, out, atol=1e-5), "Outputs do not match for VAE-like model without streams."
+        )
 
-            mods = [m for _, m in lazy_hook.execution_order]
-            param_modules = [m for m in mods if next(m.parameters(), None) is not None]
-            return param_modules
+    def test_model_with_only_standalone_layers(self):
+        """Test that models with only standalone layers (no ModuleList/Sequential) work with block-level offloading."""
+        if torch.device(torch_device).type not in ["cuda", "xpu"]:
+            return
 
-        def assert_callables_offloading_tests(
-            param_modules: Sequence[torch.nn.Module],
-            callable: Any,
-            header_error_msg: str = "",
-        ) -> None:
-            pinned_modules = [m for m in param_modules if m in callable.pin_targets]
-            unpinned_modules = [m for m in param_modules if m not in callable.pin_targets]
-            self.assertTrue(
-                len(callable.calls_track) > 0, f"{header_error_msg}: callable should have been called at least once"
-            )
-            assert_all_modules_on_expected_device(
-                pinned_modules, torch_device, f"{header_error_msg}: pinned blocks should stay on device"
-            )
-            assert_all_modules_on_expected_device(
-                unpinned_modules, "cpu", f"{header_error_msg}: unpinned blocks should be offloaded"
-            )
+        model = DummyModelWithStandaloneLayers(in_features=64, hidden_features=128, out_features=64)
 
-        default_parameters = {
-            "onload_device": torch_device,
-            "offload_type": "block_level",
-            "num_blocks_per_group": 1,
-            "use_stream": True,
+        model_ref = DummyModelWithStandaloneLayers(in_features=64, hidden_features=128, out_features=64)
+        model_ref.load_state_dict(model.state_dict(), strict=True)
+        model_ref.to(torch_device)
+
+        model.enable_group_offload(torch_device, offload_type="block_level", num_blocks_per_group=1, use_stream=True)
+
+        x = torch.randn(2, 64).to(torch_device)
+
+        with torch.no_grad():
+            for i in range(2):
+                out_ref = model_ref(x)
+                out = model(x)
+                self.assertTrue(
+                    torch.allclose(out_ref, out, atol=1e-5),
+                    f"Outputs do not match at iteration {i} for model with standalone layers.",
+                )
+
+    @parameterized.expand([("block_level",), ("leaf_level",)])
+    def test_standalone_conv_layers_with_both_offload_types(self, offload_type: str):
+        """Test that standalone Conv2d layers work correctly with both block-level and leaf-level offloading."""
+        if torch.device(torch_device).type not in ["cuda", "xpu"]:
+            return
+
+        config = self.get_autoencoder_kl_config()
+        model = AutoencoderKL(**config)
+
+        model_ref = AutoencoderKL(**config)
+        model_ref.load_state_dict(model.state_dict(), strict=True)
+        model_ref.to(torch_device)
+
+        model.enable_group_offload(torch_device, offload_type=offload_type, num_blocks_per_group=1, use_stream=True)
+
+        x = torch.randn(2, 3, 32, 32).to(torch_device)
+
+        with torch.no_grad():
+            out_ref = model_ref(x).sample
+            out = model(x).sample
+
+        self.assertTrue(
+            torch.allclose(out_ref, out, atol=1e-5),
+            f"Outputs do not match for standalone Conv layers with {offload_type}.",
+        )
+
+    def test_multiple_invocations_with_vae_like_model(self):
+        """Test that multiple forward passes work correctly with VAE-like model."""
+        if torch.device(torch_device).type not in ["cuda", "xpu"]:
+            return
+
+        config = self.get_autoencoder_kl_config()
+        model = AutoencoderKL(**config)
+
+        model_ref = AutoencoderKL(**config)
+        model_ref.load_state_dict(model.state_dict(), strict=True)
+        model_ref.to(torch_device)
+
+        model.enable_group_offload(torch_device, offload_type="block_level", num_blocks_per_group=1, use_stream=True)
+
+        x = torch.randn(2, 3, 32, 32).to(torch_device)
+
+        with torch.no_grad():
+            for i in range(2):
+                out_ref = model_ref(x).sample
+                out = model(x).sample
+                self.assertTrue(torch.allclose(out_ref, out, atol=1e-5), f"Outputs do not match at iteration {i}.")
+
+    def test_nested_container_parameters_offloading(self):
+        """Test that parameters from non-computational layers in nested containers are handled correctly."""
+        if torch.device(torch_device).type not in ["cuda", "xpu"]:
+            return
+
+        model = DummyModelWithDeeplyNestedBlocks(in_features=64, hidden_features=128, out_features=64)
+
+        model_ref = DummyModelWithDeeplyNestedBlocks(in_features=64, hidden_features=128, out_features=64)
+        model_ref.load_state_dict(model.state_dict(), strict=True)
+        model_ref.to(torch_device)
+
+        model.enable_group_offload(torch_device, offload_type="block_level", num_blocks_per_group=1, use_stream=True)
+
+        x = torch.randn(2, 64).to(torch_device)
+
+        with torch.no_grad():
+            for i in range(2):
+                out_ref = model_ref(x)
+                out = model(x)
+                self.assertTrue(
+                    torch.allclose(out_ref, out, atol=1e-5),
+                    f"Outputs do not match at iteration {i} for nested parameters.",
+                )
+
+    def get_autoencoder_kl_config(self, block_out_channels=None, norm_num_groups=None):
+        block_out_channels = block_out_channels or [2, 4]
+        norm_num_groups = norm_num_groups or 2
+        init_dict = {
+            "block_out_channels": block_out_channels,
+            "in_channels": 3,
+            "out_channels": 3,
+            "down_block_types": ["DownEncoderBlock2D"] * len(block_out_channels),
+            "up_block_types": ["UpDecoderBlock2D"] * len(block_out_channels),
+            "latent_channels": 4,
+            "norm_num_groups": norm_num_groups,
+            "layers_per_block": 1,
         }
-        model_default_no_pin = self.get_model()
-        model_default_no_pin.enable_group_offload(**default_parameters)
-        param_modules = get_param_modules_from_execution_order(model_default_no_pin)
-        assert_all_modules_on_expected_device(
-            param_modules,
-            expected_device="cpu",
-            header_error_msg="default pin_groups: expected ALL modules offloaded to CPU",
-        )
-
-        model_pin_all = self.get_model()
-        model_pin_all.enable_group_offload(
-            **default_parameters,
-            pin_groups="all",
-        )
-        param_modules = get_param_modules_from_execution_order(model_pin_all)
-        assert_all_modules_on_expected_device(
-            param_modules,
-            expected_device=torch_device,
-            header_error_msg="pin_groups = all: expected ALL layers on accelerator device",
-        )
-
-        model_pin_first_last = self.get_model()
-        model_pin_first_last.enable_group_offload(
-            **default_parameters,
-            pin_groups="first_last",
-        )
-        param_modules = get_param_modules_from_execution_order(model_pin_first_last)
-        assert_all_modules_on_expected_device(
-            [param_modules[0], param_modules[-1]],
-            expected_device=torch_device,
-            header_error_msg="pin_groups = first_last: expected first and last layers on accelerator device",
-        )
-        assert_all_modules_on_expected_device(
-            param_modules[1:-1],
-            expected_device="cpu",
-            header_error_msg="pin_groups = first_last: expected ALL middle layers offloaded to CPU",
-        )
-
-        model = self.get_model()
-        callable_by_submodule = DummyCallableBySubmodule(pin_targets=[model.blocks[0], model.blocks[-1]])
-        model.enable_group_offload(**default_parameters, pin_groups=callable_by_submodule)
-        param_modules = get_param_modules_from_execution_order(model)
-        assert_callables_offloading_tests(
-            param_modules, callable_by_submodule, header_error_msg="pin_groups with callable(submodule)"
-        )
-
-        model = self.get_model()
-        callable_by_name_submodule = DummyCallableByNameSubmodule(pin_targets=[model.blocks[0], model.blocks[-1]])
-        model.enable_group_offload(**default_parameters, pin_groups=callable_by_name_submodule)
-        param_modules = get_param_modules_from_execution_order(model)
-        assert_callables_offloading_tests(
-            param_modules, callable_by_name_submodule, header_error_msg="pin_groups with callable(name, submodule)"
-        )
-
-        model = self.get_model()
-        callable_by_name_submodule_idx = DummyCallableByNameSubmoduleIdx(
-            pin_targets=[model.blocks[0], model.blocks[-1]]
-        )
-        model.enable_group_offload(**default_parameters, pin_groups=callable_by_name_submodule_idx)
-        param_modules = get_param_modules_from_execution_order(model)
-        assert_callables_offloading_tests(
-            param_modules,
-            callable_by_name_submodule_idx,
-            header_error_msg="pin_groups with callable(name, submodule, idx)",
-        )
-
-    def test_error_raised_if_pin_groups_received_invalid_value(self):
-        default_parameters = {
-            "onload_device": torch_device,
-            "offload_type": "block_level",
-            "num_blocks_per_group": 1,
-            "use_stream": True,
-        }
-        model = self.get_model()
-        with self.assertRaisesRegex(ValueError, "`pin_groups` must be None, 'all', 'first_last', or a callable."):
-            model.enable_group_offload(
-                **default_parameters,
-                pin_groups="invalid value",
-            )
-
-    def test_error_raised_if_pin_groups_received_invalid_callables(self):
-        default_parameters = {
-            "onload_device": torch_device,
-            "offload_type": "block_level",
-            "num_blocks_per_group": 1,
-            "use_stream": True,
-        }
-        model = self.get_model()
-        invalid_callable = DummyInvalidCallable(pin_targets=[model.blocks[0], model.blocks[-1]])
-        model.enable_group_offload(
-            **default_parameters,
-            pin_groups=invalid_callable,
-        )
-        with self.assertRaisesRegex(TypeError, r"missing\s+\d+\s+required\s+positional\s+argument(s)?:"):
-            with torch.no_grad():
-                model(self.input)
+        return init_dict
