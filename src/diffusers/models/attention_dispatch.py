@@ -1467,7 +1467,7 @@ def _flash_attention(
     return (out, lse) if return_lse else out
 
 @_AttentionBackendRegistry.register(
-    AttentionBackendName.NATIVE_SPLIT,
+    AttentionBackendName.FLASH_SPLIT,
     constraints=[_check_device, _check_shape],
     supports_context_parallel=True,
 )
@@ -1526,11 +1526,11 @@ def _flash_attention_hub(
 
 
 @_AttentionBackendRegistry.register(
-    AttentionBackendName.NATIVE_SPLIT,
+    AttentionBackendName.FLASH_HUB_SPLIT,
     constraints=[_check_device, _check_shape],
     supports_context_parallel=True,
 )
-def _flash_split_attention(
+def _flash_hub_split_attention(
     query: torch.Tensor,
     key: torch.Tensor,
     value: torch.Tensor,
