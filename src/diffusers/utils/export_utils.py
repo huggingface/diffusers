@@ -269,3 +269,4 @@ def export_to_merged_video_audio(video_path: str, audio_path: str):
         if os.path.exists(temp_output):
             os.remove(temp_output)
         logger.error(f"merge_video_audio failed with error: {e}")
+        raise

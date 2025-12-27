@@ -155,10 +155,10 @@ def load_video(
                 # Generate sampling indices
                 sampled_indices = []
                 for i in range(n_frames):
-                    indice = start_frame + i * interval
-                    if indice >= total_frames:
+                    index = start_frame + i * interval
+                    if index >= total_frames:
                         break
-                    sampled_indices.append(int(indice))
+                    sampled_indices.append(int(index))
 
                 # Read specific frames
                 for idx in sampled_indices:
@@ -183,7 +183,7 @@ def load_video(
 
 def load_audio(
     audio: Union[str, numpy.ndarray], convert_method: Optional[Callable[[numpy.ndarray], numpy.ndarray]] = None
-) -> numpy.ndarray:
+) -> Tuple[numpy.ndarray, int]:
     """
     Loads `audio` to a numpy array.
 
@@ -218,7 +218,6 @@ def load_audio(
                 f"Incorrect path or URL. URLs must start with `http://` or `https://`, and {audio} is not a valid path."
             )
     elif isinstance(audio, numpy.ndarray):
-        audio = audio
         sample_rate = 16000  # Default sample rate for numpy arrays
     else:
         raise ValueError(

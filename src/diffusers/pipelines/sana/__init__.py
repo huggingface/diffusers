@@ -26,7 +26,6 @@ else:
     _import_structure["pipeline_sana_controlnet"] = ["SanaControlNetPipeline"]
     _import_structure["pipeline_sana_sprint"] = ["SanaSprintPipeline"]
     _import_structure["pipeline_sana_sprint_img2img"] = ["SanaSprintImg2ImgPipeline"]
-    _import_structure["pipeline_sana_video"] = ["SanaVideoPipeline"]
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     try:
@@ -40,7 +39,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .pipeline_sana_controlnet import SanaControlNetPipeline
         from .pipeline_sana_sprint import SanaSprintPipeline
         from .pipeline_sana_sprint_img2img import SanaSprintImg2ImgPipeline
-        from .pipeline_sana_video import SanaVideoPipeline
 else:
     import sys
 

@@ -31,7 +31,7 @@ def is_valid_audio(audio) -> bool:
     Checks if the input is a valid audio.
 
     A valid audio can be:
-    - A 2D or 3D `np.ndarray` or `torch.Tensor` (grayscale or color image).
+    - A 2D or 3D `np.ndarray` or `torch.Tensor` (e.g., mono or multi-channel waveform, or batched audio data).
 
     Args:
         audio (`Union[np.ndarray, torch.Tensor]`):
