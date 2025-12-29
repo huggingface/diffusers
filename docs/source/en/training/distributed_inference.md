@@ -351,3 +351,6 @@ pipeline.transformer.enable_parallelism(config=ContextParallelConfig(ulysses_deg
 
 > [!TIP]
 > Unified Attention is to be used when there are enough devices to arrange in a 2D grid (at least 4 devices).
+
+We ran a benchmark with Ulysess, Ring, and Unified Attention with [this script](https://github.com/huggingface/diffusers/pull/12693#issuecomment-3694727532) on a node of 4 H100 GPUs. The results are summarized as follows:
+
