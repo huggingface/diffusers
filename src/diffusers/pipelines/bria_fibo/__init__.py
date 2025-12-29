@@ -25,6 +25,7 @@ else:
     _import_structure["pipeline_bria_fibo"] = ["BriaFiboPipeline"]
     _import_structure["pipeline_bria_fibo_edit"] = ["BriaFiboEditPipeline"]
 
+
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     try:
         if not (is_transformers_available() and is_torch_available()):
