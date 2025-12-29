@@ -186,7 +186,7 @@ def main(args):
         time_shift_type = pipeline.scheduler.config.time_shift_type
         fixed_scheduler = FlowMatchEulerDiscreteScheduler.from_config(
             pipeline.scheduler.config,
-            dynamic_shifting=False,
+            use_dynamic_shifting=False,
             shift=math.exp(max_shift) if time_shift_type == "exponential" else max_shift,
         )
         pipeline.scheduler = fixed_scheduler
