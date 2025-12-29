@@ -1,4 +1,5 @@
 import argparse
+import math
 import os
 from fractions import Fraction
 from typing import Optional
@@ -6,7 +7,7 @@ from typing import Optional
 import av  # Needs to be installed separately (`pip install av`)
 import torch
 
-from diffusers import LTX2Pipeline
+from diffusers import LTX2Pipeline, FlowMatchEulerDiscreteScheduler
 
 
 # Video export functions copied from original LTX 2.0 code
@@ -150,6 +151,7 @@ def parse_args():
     parser.add_argument("--frame_rate", type=float, default=25.0)
     parser.add_argument("--guidance_scale", type=float, default=3.0)
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--apply_scheduler_fix", action="store_true")
 
     parser.add_argument("--device", type=str, default="cuda:0")
     parser.add_argument("--dtype", type=str, default="bf16")
@@ -179,6 +181,15 @@ def main(args):
         revision=args.revision,
         torch_dtype=args.dtype,
     )
+    if args.apply_scheduler_fix:
+        max_shift = pipeline.scheduler.config.max_shift
+        time_shift_type = pipeline.scheduler.config.time_shift_type
+        fixed_scheduler = FlowMatchEulerDiscreteScheduler.from_config(
+            pipeline.scheduler.config,
+            dynamic_shifting=False,
+            shift=math.exp(max_shift) if time_shift_type == "exponential" else max_shift,
+        )
+        pipeline.scheduler = fixed_scheduler
     pipeline.to(device=args.device)
     if args.cpu_offload:
         pipeline.enable_model_cpu_offload()

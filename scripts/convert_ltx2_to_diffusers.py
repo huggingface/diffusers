@@ -1,4 +1,5 @@
 import argparse
+import math
 import os
 from contextlib import nullcontext
 from typing import Any, Dict, Optional, Tuple
@@ -739,7 +740,8 @@ def main(args):
 
     if args.full_pipeline:
         scheduler = FlowMatchEulerDiscreteScheduler(
-            use_dynamic_shifting=True,
+            use_dynamic_shifting=False,
+            shift=math.exp(2.05),  # Equivalent to dynamic shift if always using max_image_seq_len
             base_shift=0.95,
             max_shift=2.05,
             base_image_seq_len=1024,
