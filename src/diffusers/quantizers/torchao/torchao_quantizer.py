@@ -90,13 +90,14 @@ def _update_torch_safe_globals():
 
         safe_globals.extend([UintxTensor, UintxAQTTensorImpl, NF4Tensor])
 
-        # note: is_torchao_version(">=", "0.16.0") does not work correctly 
+        # note: is_torchao_version(">=", "0.16.0") does not work correctly
         # with torchao nightly, so using a ">" check which does work correctly
         if is_torchao_version(">", "0.15.0"):
             pass
         else:
             from torchao.dtypes.floatx.float8_layout import Float8AQTTensorImpl
             from torchao.dtypes.uintx.uint4_layout import UInt4Tensor
+
             safe_globals.extend([UInt4Tensor, Float8AQTTensorImpl])
 
     except (ImportError, ModuleNotFoundError) as e:
