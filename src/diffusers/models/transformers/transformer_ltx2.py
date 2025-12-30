@@ -1051,6 +1051,7 @@ class LTX2VideoTransformer3DModel(
         encoder_hidden_states: torch.Tensor,
         audio_encoder_hidden_states: torch.Tensor,
         timestep: torch.LongTensor,
+        audio_timestep: Optional[torch.LongTensor] = None,
         encoder_attention_mask: Optional[torch.Tensor] = None,
         audio_encoder_attention_mask: Optional[torch.Tensor] = None,
         num_frames: Optional[int] = None,
@@ -1073,8 +1074,7 @@ class LTX2VideoTransformer3DModel(
                 Input patchified audio latents of shape (batch_size, num_audio_tokens, audio_in_channels).
             encoder_hidden_states (`torch.Tensor`):
                 Input text embeddings of shape TODO.
-            timesteps (`torch.Tensor`):
-                Timestep information of shape (batch_size, num_train_timesteps).
+            TODO for the rest.
         
         Returns:
             `AudioVisualModelOutput` or `tuple`:
@@ -1096,6 +1096,9 @@ class LTX2VideoTransformer3DModel(
                 logger.warning(
                     "Passing `scale` via `attention_kwargs` when not using the PEFT backend is ineffective."
                 )
+
+        # Determine timestep for audio.
+        audio_timestep = audio_timestep if audio_timestep is not None else timestep
 
         # convert encoder_attention_mask to a bias the same way we do for attention_mask
         if encoder_attention_mask is not None and encoder_attention_mask.ndim == 2:
@@ -1143,7 +1146,7 @@ class LTX2VideoTransformer3DModel(
         embedded_timestep = embedded_timestep.view(batch_size, -1, embedded_timestep.size(-1))
 
         temb_audio, audio_embedded_timestep = self.audio_time_embed(
-            timestep.flatten(),
+            audio_timestep.flatten(),
             batch_size=batch_size,
             hidden_dtype=audio_hidden_states.dtype,
         )
@@ -1165,12 +1168,12 @@ class LTX2VideoTransformer3DModel(
         video_cross_attn_a2v_gate = video_cross_attn_a2v_gate.view(batch_size, -1, video_cross_attn_a2v_gate.shape[-1])
 
         audio_cross_attn_scale_shift, _ = self.av_cross_attn_audio_scale_shift(
-            timestep.flatten(),
+            audio_timestep.flatten(),
             batch_size=batch_size,
             hidden_dtype=audio_hidden_states.dtype,
         )
         audio_cross_attn_v2a_gate, _ = self.av_cross_attn_audio_v2a_gate(
-            timestep.flatten() * timestep_cross_attn_gate_scale_factor,
+            audio_timestep.flatten() * timestep_cross_attn_gate_scale_factor,
             batch_size=batch_size,
             hidden_dtype=audio_hidden_states.dtype,
         )
