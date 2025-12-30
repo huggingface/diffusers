@@ -353,17 +353,6 @@ def dispatch_attention_fn(
 
     kwargs = {k: v for k, v in kwargs.items() if k in _AttentionBackendRegistry._supported_arg_names[backend_name]}
 
-    if "_parallel_config" in kwargs and kwargs["_parallel_config"] is not None:
-        attention_backend = AttentionBackendName(backend_name)
-        if not _AttentionBackendRegistry._is_context_parallel_available(attention_backend):
-            compatible_backends = sorted(_AttentionBackendRegistry._supports_context_parallel)
-            raise ValueError(
-                f"Context parallelism is enabled but backend '{attention_backend.value}' "
-                f"which does not support context parallelism. "
-                f"Please set a compatible attention backend: {compatible_backends} using `model.set_attention_backend()` before "
-                f"calling `model.enable_parallelism()`."
-            )
-
     return backend_fn(**kwargs)
 
 

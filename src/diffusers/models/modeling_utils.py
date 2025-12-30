@@ -618,6 +618,15 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             raise ValueError(f"`{backend=}` must be one of the following: " + ", ".join(available_backends))
 
         backend = AttentionBackendName(backend)
+        if not _AttentionBackendRegistry._is_context_parallel_available(backend):
+            compatible_backends = sorted(_AttentionBackendRegistry._supports_context_parallel)
+            raise ValueError(
+                f"Context parallelism is enabled but backend '{backend.value}' "
+                f"which does not support context parallelism. "
+                f"Please set a compatible attention backend: {compatible_backends} using `model.set_attention_backend()` before "
+                f"calling `model.enable_parallelism()`."
+            )
+
         _check_attention_backend_requirements(backend)
         _maybe_download_kernel_for_backend(backend)
 
