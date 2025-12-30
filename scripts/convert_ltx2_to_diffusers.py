@@ -70,7 +70,10 @@ LTX_2_0_VIDEO_VAE_RENAME_DICT = {
     "per_channel_statistics.std-of-means": "latents_std",
 }
 
-LTX_2_0_AUDIO_VAE_RENAME_DICT = {}
+LTX_2_0_AUDIO_VAE_RENAME_DICT = {
+    "per_channel_statistics.mean-of-means": "latents_mean",
+    "per_channel_statistics.std-of-means": "latents_std",
+}
 
 LTX_2_0_VOCODER_RENAME_DICT = {
     "ups": "upsamplers",

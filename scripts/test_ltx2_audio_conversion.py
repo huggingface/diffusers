@@ -22,6 +22,9 @@ def convert_state_dict(state_dict: dict) -> dict:
         if new_key.startswith("decoder."):
             new_key = new_key[len("decoder.") :]
         converted[f"decoder.{new_key}"] = value
+
+    converted["latents_mean"] = converted.pop("decoder.per_channel_statistics.mean-of-means")
+    converted["latents_std"] = converted.pop("decoder.per_channel_statistics.std-of-means")
     return converted
 
 
@@ -87,9 +90,21 @@ def main() -> None:
         latent_width,
         device=device,
         dtype=dtype,
+        generator=torch.Generator(device).manual_seed(42)
     )
 
     original_out = original_decoder(dummy)
+
+    from diffusers.pipelines.ltx2.pipeline_ltx2 import LTX2Pipeline
+
+    _, a_channels, a_time, a_freq = dummy.shape
+    dummy = dummy.permute(0, 2, 1, 3).reshape(-1, a_time, a_channels * a_freq)
+    dummy = LTX2Pipeline._denormalize_audio_latents(
+        dummy,
+        diffusers_model.latents_mean,
+        diffusers_model.latents_std,
+    )
+    dummy = dummy.view(-1, a_time, a_channels, a_freq).permute(0, 2, 1, 3)
     diffusers_out = diffusers_model.decode(dummy).sample
 
     torch.testing.assert_close(diffusers_out, original_out, rtol=1e-4, atol=1e-4)
