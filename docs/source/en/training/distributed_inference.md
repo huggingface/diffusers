@@ -354,3 +354,10 @@ pipeline.transformer.enable_parallelism(config=ContextParallelConfig(ulysses_deg
 
 We ran a benchmark with Ulysess, Ring, and Unified Attention with [this script](https://github.com/huggingface/diffusers/pull/12693#issuecomment-3694727532) on a node of 4 H100 GPUs. The results are summarized as follows:
 
+| CP Backend         | Time / Iter (ms) | Steps / Sec | Peak Memory (GB) |
+|--------------------|------------------|-------------|------------------|
+| ulysses            | 6670.789         | 7.50        | 33.85            |
+| ring               | 13076.492        | 3.82        | 56.02            |
+| unified_balanced   | 11068.705        | 4.52        | 33.85            |
+
+From the above table, it's clear that Unified Attention as a CP backend provides the best trade-off between speed and memory.
