@@ -677,6 +677,7 @@ else:
             "ZImageControlNetInpaintPipeline",
             "ZImageControlNetPipeline",
             "ZImageImg2ImgPipeline",
+            "ZImageOmniPipeline",
             "ZImagePipeline",
         ]
     )
@@ -1390,6 +1391,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             ZImageControlNetInpaintPipeline,
             ZImageControlNetPipeline,
             ZImageImg2ImgPipeline,
+            ZImageOmniPipeline,
             ZImagePipeline,
         )
 
