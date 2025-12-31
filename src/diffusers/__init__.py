@@ -463,6 +463,7 @@ else:
             "CogView4ControlPipeline",
             "CogView4Pipeline",
             "ConsisIDPipeline",
+            "Cosmos2_5_PredictBasePipeline",
             "Cosmos2TextToImagePipeline",
             "Cosmos2VideoToWorldPipeline",
             "CosmosTextToWorldPipeline",
@@ -674,6 +675,7 @@ else:
             "ZImageControlNetInpaintPipeline",
             "ZImageControlNetPipeline",
             "ZImageImg2ImgPipeline",
+            "ZImageOmniPipeline",
             "ZImagePipeline",
         ]
     )
@@ -1175,6 +1177,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             CogView4ControlPipeline,
             CogView4Pipeline,
             ConsisIDPipeline,
+            Cosmos2_5_PredictBasePipeline,
             Cosmos2TextToImagePipeline,
             Cosmos2VideoToWorldPipeline,
             CosmosTextToWorldPipeline,
@@ -1384,6 +1387,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             ZImageControlNetInpaintPipeline,
             ZImageControlNetPipeline,
             ZImageImg2ImgPipeline,
+            ZImageOmniPipeline,
             ZImagePipeline,
         )
 

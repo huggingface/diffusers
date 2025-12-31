@@ -165,6 +165,7 @@ else:
     _import_structure["cogview4"] = ["CogView4Pipeline", "CogView4ControlPipeline"]
     _import_structure["consisid"] = ["ConsisIDPipeline"]
     _import_structure["cosmos"] = [
+        "Cosmos2_5_PredictBasePipeline",
         "Cosmos2TextToImagePipeline",
         "CosmosTextToWorldPipeline",
         "CosmosVideoToWorldPipeline",
@@ -410,6 +411,7 @@ else:
         "ZImagePipeline",
         "ZImageControlNetPipeline",
         "ZImageControlNetInpaintPipeline",
+        "ZImageOmniPipeline",
     ]
     _import_structure["skyreels_v2"] = [
         "SkyReelsV2DiffusionForcingPipeline",
@@ -622,6 +624,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             StableDiffusionXLControlNetXSPipeline,
         )
         from .cosmos import (
+            Cosmos2_5_PredictBasePipeline,
             Cosmos2TextToImagePipeline,
             Cosmos2VideoToWorldPipeline,
             CosmosTextToWorldPipeline,
@@ -854,6 +857,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             ZImageControlNetInpaintPipeline,
             ZImageControlNetPipeline,
             ZImageImg2ImgPipeline,
+            ZImageOmniPipeline,
             ZImagePipeline,
         )
 
