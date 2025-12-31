@@ -15,10 +15,10 @@ jobs:
       latest_branch: ${{ steps.set_latest_branch.outputs.latest_branch }}
     steps:
       - name: Checkout Repo
-        uses: actions/checkout@v3
+        uses: actions/checkout@v6
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v6
         with:
           python-version: '3.8'
 
@@ -40,12 +40,12 @@ jobs:
 
     steps:
       - name: Checkout Repo
-        uses: actions/checkout@v3
+        uses: actions/checkout@v6
         with:
           ref: ${{ needs.find-and-checkout-latest-branch.outputs.latest_branch }}
 
       - name: Setup Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v6
         with:
           python-version: "3.8"
 

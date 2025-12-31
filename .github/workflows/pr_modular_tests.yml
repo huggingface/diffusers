@@ -35,9 +35,9 @@ jobs:
   check_code_quality:
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v6
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v6
         with:
           python-version: "3.10"
       - name: Install dependencies
@@ -55,9 +55,9 @@ jobs:
     needs: check_code_quality
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v6
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v6
         with:
           python-version: "3.10"
       - name: Install dependencies
@@ -102,7 +102,7 @@ jobs:
 
     steps:
     - name: Checkout diffusers
-      uses: actions/checkout@v3
+      uses: actions/checkout@v6
       with:
         fetch-depth: 2
 
@@ -131,7 +131,7 @@ jobs:
 
     - name: Test suite reports artifacts
       if: ${{ always() }}
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v6
       with:
         name: pr_${{ matrix.config.framework }}_${{ matrix.config.report }}_test_reports
         path: reports
