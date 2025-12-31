@@ -768,7 +768,7 @@ class WanImageEmbedding(torch.nn.Module):
         return hidden_states
 
 
-# Copied from diffusers.models.transformers.transformer_wan.WanTimeTextImageEmbedding
+# Modified from diffusers.models.transformers.transformer_wan.WanTimeTextImageEmbedding
 class WanTimeTextImageEmbedding(nn.Module):
     def __init__(
         self,
