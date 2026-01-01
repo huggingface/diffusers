@@ -410,6 +410,7 @@ else:
         "Kandinsky5T2IPipeline",
         "Kandinsky5I2IPipeline",
     ]
+    _import_structure["llada2"] = ["LLaDA2Pipeline", "LLaDA2PipelineOutput"]
     _import_structure["z_image"] = [
         "ZImageImg2ImgPipeline",
         "ZImagePipeline",
@@ -723,6 +724,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             Kandinsky5T2IPipeline,
             Kandinsky5T2VPipeline,
         )
+        from .llada2 import LLaDA2Pipeline, LLaDA2PipelineOutput
         from .latent_consistency_models import (
             LatentConsistencyModelImg2ImgPipeline,
             LatentConsistencyModelPipeline,

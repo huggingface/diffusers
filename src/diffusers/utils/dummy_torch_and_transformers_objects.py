@@ -1403,6 +1403,20 @@ class ImageTextPipelineOutput(metaclass=DummyObject):
     def __init__(self, *args, **kwargs):
         requires_backends(self, ["torch", "transformers"])
 
+
+class LLaDA2PipelineOutput(metaclass=DummyObject):
+    _backends = ["torch", "transformers"]
+
+    def __init__(self, *args, **kwargs):
+        requires_backends(self, ["torch", "transformers"])
+
+
+class LLaDA2Pipeline(metaclass=DummyObject):
+    _backends = ["torch", "transformers"]
+
+    def __init__(self, *args, **kwargs):
+        requires_backends(self, ["torch", "transformers"])
+
     @classmethod
     def from_config(cls, *args, **kwargs):
         requires_backends(cls, ["torch", "transformers"])
