@@ -617,7 +617,7 @@ class LEditsPPPipelineStableDiffusionXL(
             num_edit_tokens,
         )
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_extra_step_kwargs
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_utils.SDMixin.prepare_extra_step_kwargs
     def prepare_extra_step_kwargs(self, eta, generator=None):
         # prepare extra kwargs for the scheduler step, since not all schedulers have the same signature
         # eta (η) is only used with the DDIMScheduler, it will be ignored for other schedulers.
@@ -1701,7 +1701,7 @@ class LEditsPPPipelineStableDiffusionXL(
         return LEditsPPInversionPipelineOutput(images=resized, vae_reconstruction_images=image_rec)
 
 
-# Copied from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl.rescale_noise_cfg
+# Copied from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl_utils.rescale_noise_cfg
 def rescale_noise_cfg(noise_cfg, noise_pred_text, guidance_rescale=0.0):
     r"""
     Rescales `noise_cfg` tensor based on `guidance_rescale` to improve image quality and fix overexposure. Based on
