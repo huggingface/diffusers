@@ -90,10 +90,6 @@ class ContextParallelConfig:
             )
         if self.ring_degree < 1 or self.ulysses_degree < 1:
             raise ValueError("`ring_degree` and `ulysses_degree` must be greater than or equal to 1.")
-        if self.ring_degree > 1 and self.ulysses_degree > 1:
-            raise ValueError(
-                "Unified Ulysses-Ring attention is not yet supported. Please set either `ring_degree` or `ulysses_degree` to 1."
-            )
         if self.rotate_method != "allgather":
             raise NotImplementedError(
                 f"Only rotate_method='allgather' is supported for now, but got {self.rotate_method}."
