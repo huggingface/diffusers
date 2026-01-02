@@ -1451,7 +1451,7 @@ class TemplatedUlyssesAttention(torch.autograd.Function):
         return grad_query, grad_key, grad_value, None, None, None, None, None, None, None, None, None
 
 
-def TemplatedUnifiedAttention(
+def _templated_unified_attention(
     query: torch.Tensor,
     key: torch.Tensor,
     value: torch.Tensor,
@@ -1540,7 +1540,7 @@ def _templated_context_parallel_attention(
         _parallel_config.context_parallel_config.ring_degree > 1
         and _parallel_config.context_parallel_config.ulysses_degree > 1
     ):
-        return TemplatedUnifiedAttention(
+        return _templated_unified_attention(
             query,
             key,
             value,
