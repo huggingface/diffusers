@@ -23,10 +23,10 @@ from diffusers.loaders import FromSingleFileMixin, ZImageLoraLoaderMixin
 from diffusers.models.autoencoders import AutoencoderKL
 from diffusers.models.transformers import ZImageTransformer2DModel
 from diffusers.pipelines.pipeline_utils import DiffusionPipeline
+from diffusers.pipelines.z_image.pipeline_output import ZImagePipelineOutput
 from diffusers.schedulers import FlowMatchEulerDiscreteScheduler
 from diffusers.utils import logging, replace_example_docstring
 from diffusers.utils.torch_utils import randn_tensor
-from diffusers.pipelines.z_image.pipeline_output import ZImagePipelineOutput
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -44,13 +44,13 @@ EXAMPLE_DOC_STRING = """
         >>> init_image = load_image(
         >>>     "https://github.com/exx8/differential-diffusion/blob/main/assets/input.jpg?raw=true",
         >>> )
-        
+
         >>> mask = load_image(
         >>>     "https://github.com/exx8/differential-diffusion/blob/main/assets/map.jpg?raw=true",
         >>> )
 
         >>> prompt = "painting of a mountain landscape with a meadow and a forest, meadow background, anime countryside landscape, anime nature wallpap, anime landscape wallpaper, studio ghibli landscape, anime landscape, mountain behind meadow, anime background art, studio ghibli environment, background of flowery hill, anime beautiful peace scene, forrest background, anime scenery, landscape background, background art, anime scenery concept art"
-        
+
         >>> image = pipe(
         ...     prompt,
         ...     image=init_image,
@@ -371,6 +371,7 @@ class ZImageDifferentialImg2ImgPipeline(DiffusionPipeline, ZImageLoraLoaderMixin
         latents = self.scheduler.scale_noise(image_latents, timestep, noise)
 
         return latents, noise, image_latents, latent_image_ids
+
     def prepare_mask_latents(
         self,
         mask,
@@ -423,8 +424,8 @@ class ZImageDifferentialImg2ImgPipeline(DiffusionPipeline, ZImageLoraLoaderMixin
         # aligning device to prevent device errors when concating it with the latent model input
         masked_image_latents = masked_image_latents.to(device=device, dtype=dtype)
 
-
         return mask, masked_image_latents
+
     @property
     def guidance_scale(self):
         return self._guidance_scale
@@ -809,7 +810,6 @@ class ZImageDifferentialImg2ImgPipeline(DiffusionPipeline, ZImageLoraLoaderMixin
                     if torch.backends.mps.is_available():
                         # some platforms (eg. apple mps) misbehave due to a pytorch bug: https://github.com/pytorch/pytorch/pull/99272
                         latents = latents.to(latents_dtype)
-
 
                 if callback_on_step_end is not None:
                     callback_kwargs = {}
