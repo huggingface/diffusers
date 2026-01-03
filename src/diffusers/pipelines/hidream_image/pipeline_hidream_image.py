@@ -990,14 +990,15 @@ class HiDreamImagePipeline(DiffusionPipeline, HiDreamImageLoraLoaderMixin):
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
                 timestep = t.expand(latent_model_input.shape[0])
 
-                noise_pred = self.transformer(
-                    hidden_states=latent_model_input,
-                    timesteps=timestep,
-                    encoder_hidden_states_t5=prompt_embeds_t5,
-                    encoder_hidden_states_llama3=prompt_embeds_llama3,
-                    pooled_embeds=pooled_prompt_embeds,
-                    return_dict=False,
-                )[0]
+                with self.transformer.cache_context("cond"):
+                    noise_pred = self.transformer(
+                        hidden_states=latent_model_input,
+                        timesteps=timestep,
+                        encoder_hidden_states_t5=prompt_embeds_t5,
+                        encoder_hidden_states_llama3=prompt_embeds_llama3,
+                        pooled_embeds=pooled_prompt_embeds,
+                        return_dict=False,
+                    )[0]
                 noise_pred = -noise_pred
 
                 # perform guidance

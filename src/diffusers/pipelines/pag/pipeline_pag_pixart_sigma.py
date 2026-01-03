@@ -819,14 +819,15 @@ class PixArtSigmaPAGPipeline(DiffusionPipeline, PAGMixin):
                 current_timestep = current_timestep.expand(latent_model_input.shape[0])
 
                 # predict noise model_output
-                noise_pred = self.transformer(
-                    latent_model_input,
-                    encoder_hidden_states=prompt_embeds,
-                    encoder_attention_mask=prompt_attention_mask,
-                    timestep=current_timestep,
-                    added_cond_kwargs=added_cond_kwargs,
-                    return_dict=False,
-                )[0]
+                with self.transformer.cache_context("cond"):
+                    noise_pred = self.transformer(
+                        latent_model_input,
+                        encoder_hidden_states=prompt_embeds,
+                        encoder_attention_mask=prompt_attention_mask,
+                        timestep=current_timestep,
+                        added_cond_kwargs=added_cond_kwargs,
+                        return_dict=False,
+                    )[0]
 
                 # perform guidance
                 if self.do_perturbed_attention_guidance:

@@ -864,15 +864,16 @@ class LuminaPipeline(DiffusionPipeline):
                     ntk_factor=ntk_factor,
                 )
 
-                noise_pred = self.transformer(
-                    hidden_states=latent_model_input,
-                    timestep=current_timestep,
-                    encoder_hidden_states=prompt_embeds,
-                    encoder_mask=prompt_attention_mask,
-                    image_rotary_emb=image_rotary_emb,
-                    cross_attention_kwargs=cross_attention_kwargs,
-                    return_dict=False,
-                )[0]
+                with self.transformer.cache_context("cond"):
+                    noise_pred = self.transformer(
+                        hidden_states=latent_model_input,
+                        timestep=current_timestep,
+                        encoder_hidden_states=prompt_embeds,
+                        encoder_mask=prompt_attention_mask,
+                        image_rotary_emb=image_rotary_emb,
+                        cross_attention_kwargs=cross_attention_kwargs,
+                        return_dict=False,
+                    )[0]
                 noise_pred = noise_pred.chunk(2, dim=1)[0]
 
                 # perform guidance scale

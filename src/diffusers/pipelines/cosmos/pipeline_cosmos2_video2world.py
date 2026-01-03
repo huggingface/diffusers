@@ -696,15 +696,16 @@ class Cosmos2VideoToWorldPipeline(DiffusionPipeline):
                 cond_timestep = cond_indicator * t_conditioning + (1 - cond_indicator) * timestep
                 cond_timestep = cond_timestep.to(transformer_dtype)
 
-                noise_pred = self.transformer(
-                    hidden_states=cond_latent,
-                    timestep=cond_timestep,
-                    encoder_hidden_states=prompt_embeds,
-                    fps=fps,
-                    condition_mask=cond_mask,
-                    padding_mask=padding_mask,
-                    return_dict=False,
-                )[0]
+                with self.transformer.cache_context("cond"):
+                    noise_pred = self.transformer(
+                        hidden_states=cond_latent,
+                        timestep=cond_timestep,
+                        encoder_hidden_states=prompt_embeds,
+                        fps=fps,
+                        condition_mask=cond_mask,
+                        padding_mask=padding_mask,
+                        return_dict=False,
+                    )[0]
                 noise_pred = (c_skip * latents + c_out * noise_pred.float()).to(transformer_dtype)
                 noise_pred = cond_indicator * conditioning_latents + (1 - cond_indicator) * noise_pred
 
@@ -715,15 +716,16 @@ class Cosmos2VideoToWorldPipeline(DiffusionPipeline):
                     uncond_timestep = uncond_indicator * t_conditioning + (1 - uncond_indicator) * timestep
                     uncond_timestep = uncond_timestep.to(transformer_dtype)
 
-                    noise_pred_uncond = self.transformer(
-                        hidden_states=uncond_latent,
-                        timestep=uncond_timestep,
-                        encoder_hidden_states=negative_prompt_embeds,
-                        fps=fps,
-                        condition_mask=uncond_mask,
-                        padding_mask=padding_mask,
-                        return_dict=False,
-                    )[0]
+                    with self.transformer.cache_context("uncond"):
+                        noise_pred_uncond = self.transformer(
+                            hidden_states=uncond_latent,
+                            timestep=uncond_timestep,
+                            encoder_hidden_states=negative_prompt_embeds,
+                            fps=fps,
+                            condition_mask=uncond_mask,
+                            padding_mask=padding_mask,
+                            return_dict=False,
+                        )[0]
                     noise_pred_uncond = (c_skip * latents + c_out * noise_pred_uncond.float()).to(transformer_dtype)
                     noise_pred_uncond = (
                         uncond_indicator * unconditioning_latents + (1 - uncond_indicator) * noise_pred_uncond

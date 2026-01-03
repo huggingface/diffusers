@@ -200,9 +200,10 @@ class DiTPipeline(DiffusionPipeline):
             # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
             timesteps = timesteps.expand(latent_model_input.shape[0])
             # predict noise model_output
-            noise_pred = self.transformer(
-                latent_model_input, timestep=timesteps, class_labels=class_labels_input
-            ).sample
+            with self.transformer.cache_context("cond"):
+                noise_pred = self.transformer(
+                    latent_model_input, timestep=timesteps, class_labels=class_labels_input
+                ).sample
 
             # perform guidance
             if guidance_scale > 1:

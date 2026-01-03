@@ -339,13 +339,14 @@ class AmusedInpaintPipeline(DeprecatedPipelineMixin, DiffusionPipeline):
                 else:
                     model_input = latents
 
-                model_output = self.transformer(
-                    model_input,
-                    micro_conds=micro_conds,
-                    pooled_text_emb=prompt_embeds,
-                    encoder_hidden_states=encoder_hidden_states,
-                    cross_attention_kwargs=cross_attention_kwargs,
-                )
+                with self.transformer.cache_context("cond"):
+                    model_output = self.transformer(
+                        model_input,
+                        micro_conds=micro_conds,
+                        pooled_text_emb=prompt_embeds,
+                        encoder_hidden_states=encoder_hidden_states,
+                        cross_attention_kwargs=cross_attention_kwargs,
+                    )
 
                 if guidance_scale > 1.0:
                     uncond_logits, cond_logits = model_output.chunk(2)

@@ -724,25 +724,27 @@ class Lumina2Pipeline(DiffusionPipeline, Lumina2LoraLoaderMixin):
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
                 current_timestep = current_timestep.expand(latents.shape[0])
 
-                noise_pred_cond = self.transformer(
-                    hidden_states=latents,
-                    timestep=current_timestep,
-                    encoder_hidden_states=prompt_embeds,
-                    encoder_attention_mask=prompt_attention_mask,
-                    return_dict=False,
-                    attention_kwargs=self.attention_kwargs,
-                )[0]
-
-                # perform normalization-based guidance scale on a truncated timestep interval
-                if self.do_classifier_free_guidance and not do_classifier_free_truncation:
-                    noise_pred_uncond = self.transformer(
+                with self.transformer.cache_context("cond"):
+                    noise_pred_cond = self.transformer(
                         hidden_states=latents,
                         timestep=current_timestep,
-                        encoder_hidden_states=negative_prompt_embeds,
-                        encoder_attention_mask=negative_prompt_attention_mask,
+                        encoder_hidden_states=prompt_embeds,
+                        encoder_attention_mask=prompt_attention_mask,
                         return_dict=False,
                         attention_kwargs=self.attention_kwargs,
                     )[0]
+
+                # perform normalization-based guidance scale on a truncated timestep interval
+                if self.do_classifier_free_guidance and not do_classifier_free_truncation:
+                    with self.transformer.cache_context("uncond"):
+                        noise_pred_uncond = self.transformer(
+                            hidden_states=latents,
+                            timestep=current_timestep,
+                            encoder_hidden_states=negative_prompt_embeds,
+                            encoder_attention_mask=negative_prompt_attention_mask,
+                            return_dict=False,
+                            attention_kwargs=self.attention_kwargs,
+                        )[0]
                     noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_cond - noise_pred_uncond)
                     # apply normalization after classifier-free guidance
                     if cfg_normalization:

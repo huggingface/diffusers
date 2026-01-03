@@ -588,23 +588,25 @@ class Cosmos2TextToImagePipeline(DiffusionPipeline):
                 latent_model_input = latents * c_in
                 latent_model_input = latent_model_input.to(transformer_dtype)
 
-                noise_pred = self.transformer(
-                    hidden_states=latent_model_input,
-                    timestep=timestep,
-                    encoder_hidden_states=prompt_embeds,
-                    padding_mask=padding_mask,
-                    return_dict=False,
-                )[0]
-                noise_pred = (c_skip * latents + c_out * noise_pred.float()).to(transformer_dtype)
-
-                if self.do_classifier_free_guidance:
-                    noise_pred_uncond = self.transformer(
+                with self.transformer.cache_context("cond"):
+                    noise_pred = self.transformer(
                         hidden_states=latent_model_input,
                         timestep=timestep,
-                        encoder_hidden_states=negative_prompt_embeds,
+                        encoder_hidden_states=prompt_embeds,
                         padding_mask=padding_mask,
                         return_dict=False,
                     )[0]
+                noise_pred = (c_skip * latents + c_out * noise_pred.float()).to(transformer_dtype)
+
+                if self.do_classifier_free_guidance:
+                    with self.transformer.cache_context("uncond"):
+                        noise_pred_uncond = self.transformer(
+                            hidden_states=latent_model_input,
+                            timestep=timestep,
+                            encoder_hidden_states=negative_prompt_embeds,
+                            padding_mask=padding_mask,
+                            return_dict=False,
+                        )[0]
                     noise_pred_uncond = (c_skip * latents + c_out * noise_pred_uncond.float()).to(transformer_dtype)
                     noise_pred = noise_pred + self.guidance_scale * (noise_pred - noise_pred_uncond)
 

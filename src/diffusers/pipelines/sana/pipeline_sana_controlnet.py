@@ -1059,15 +1059,18 @@ class SanaControlNetPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
                 )[0]
 
                 # predict noise model_output
-                noise_pred = self.transformer(
-                    latent_model_input.to(dtype=transformer_dtype),
-                    encoder_hidden_states=prompt_embeds.to(dtype=transformer_dtype),
-                    encoder_attention_mask=prompt_attention_mask,
-                    timestep=timestep,
-                    return_dict=False,
-                    attention_kwargs=self.attention_kwargs,
-                    controlnet_block_samples=tuple(t.to(dtype=transformer_dtype) for t in controlnet_block_samples),
-                )[0]
+                with self.transformer.cache_context("cond"):
+                    noise_pred = self.transformer(
+                        latent_model_input.to(dtype=transformer_dtype),
+                        encoder_hidden_states=prompt_embeds.to(dtype=transformer_dtype),
+                        encoder_attention_mask=prompt_attention_mask,
+                        timestep=timestep,
+                        return_dict=False,
+                        attention_kwargs=self.attention_kwargs,
+                        controlnet_block_samples=tuple(
+                            t.to(dtype=transformer_dtype) for t in controlnet_block_samples
+                        ),
+                    )[0]
                 noise_pred = noise_pred.float()
 
                 # perform guidance

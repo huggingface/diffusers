@@ -662,15 +662,16 @@ class BriaPipeline(DiffusionPipeline):
                 timestep = t.expand(latent_model_input.shape[0])
 
                 # This is predicts "v" from flow-matching or eps from diffusion
-                noise_pred = self.transformer(
-                    hidden_states=latent_model_input,
-                    timestep=timestep,
-                    encoder_hidden_states=prompt_embeds,
-                    attention_kwargs=self.attention_kwargs,
-                    return_dict=False,
-                    txt_ids=text_ids,
-                    img_ids=latent_image_ids,
-                )[0]
+                with self.transformer.cache_context("cond"):
+                    noise_pred = self.transformer(
+                        hidden_states=latent_model_input,
+                        timestep=timestep,
+                        encoder_hidden_states=prompt_embeds,
+                        attention_kwargs=self.attention_kwargs,
+                        return_dict=False,
+                        txt_ids=text_ids,
+                        img_ids=latent_image_ids,
+                    )[0]
 
                 # perform guidance
                 if self.do_classifier_free_guidance:

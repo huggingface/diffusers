@@ -1178,14 +1178,15 @@ class StableDiffusion3InstructPix2PixPipeline(
                 timestep = t.expand(latent_model_input.shape[0])
                 scaled_latent_model_input = torch.cat([latent_model_input, image_latents], dim=1)
 
-                noise_pred = self.transformer(
-                    hidden_states=scaled_latent_model_input,
-                    timestep=timestep,
-                    encoder_hidden_states=prompt_embeds,
-                    pooled_projections=pooled_prompt_embeds,
-                    joint_attention_kwargs=self.joint_attention_kwargs,
-                    return_dict=False,
-                )[0]
+                with self.transformer.cache_context("cond"):
+                    noise_pred = self.transformer(
+                        hidden_states=scaled_latent_model_input,
+                        timestep=timestep,
+                        encoder_hidden_states=prompt_embeds,
+                        pooled_projections=pooled_prompt_embeds,
+                        joint_attention_kwargs=self.joint_attention_kwargs,
+                        return_dict=False,
+                    )[0]
 
                 # perform guidance
                 if self.do_classifier_free_guidance:
@@ -1204,6 +1205,7 @@ class StableDiffusion3InstructPix2PixPipeline(
                     if skip_guidance_layers is not None and should_skip_layers:
                         timestep = t.expand(latents.shape[0])
                         latent_model_input = latents
+                        # TODO-context
                         noise_pred_skip_layers = self.transformer(
                             hidden_states=latent_model_input,
                             timestep=timestep,
