@@ -882,24 +882,21 @@ the image\n<|vision_start|><|image_pad|><|vision_end|><|im_end|>\n<|im_start|>as
             latents = latents / latents_std + latents_mean
 
             b, c, f, h, w = latents.shape
-
             latents = latents[:, :, 1:]  # remove the first frame as it is the orgin input
-
             latents = latents.permute(0, 2, 1, 3, 4).view(-1, c, 1, h, w)
 
-            image = self.vae.decode(latents, return_dict=False)[0]  # (b f) c 1 h w
+            img = self.vae.decode(latents, return_dict=False)[0]  # (b f) c 1 h w
+            img = img.squeeze(2)
 
-            image = image.squeeze(2)
-
-            image = self.image_processor.postprocess(image, output_type=output_type)
-            images = []
+            img = self.image_processor.postprocess(img, output_type=output_type)
+            image = []
             for bidx in range(b):
-                images.append(image[bidx * f : (bidx + 1) * f])
+                image.append(img[bidx * f : (bidx + 1) * f])
 
         # Offload all models
         self.maybe_free_model_hooks()
 
         if not return_dict:
-            return (images,)
+            return (image,)
 
-        return QwenImagePipelineOutput(images=images)
+        return QwenImagePipelineOutput(images=image)
