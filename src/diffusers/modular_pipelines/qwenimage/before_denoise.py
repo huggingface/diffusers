@@ -639,19 +639,65 @@ class QwenImageEditRoPEInputsStep(ModularPipelineBlocks):
         return components, state
 
 
-class QwenImageEditPlusRoPEInputsStep(QwenImageEditRoPEInputsStep):
+class QwenImageEditPlusRoPEInputsStep(ModularPipelineBlocks):
+    """RoPE inputs step for Edit Plus that handles lists of image heights/widths."""
+
     model_name = "qwenimage-edit-plus"
+
+    @property
+    def description(self) -> str:
+        return (
+            "Step that prepares the RoPE inputs for denoising process. This is used in QwenImage Edit Plus.\n"
+            "Unlike Edit, Edit Plus handles lists of image_height/image_width for multiple reference images.\n"
+            "Should be placed after prepare_latents step."
+        )
+
+    @property
+    def inputs(self) -> List[InputParam]:
+        return [
+            InputParam(name="batch_size", required=True),
+            InputParam(name="image_height", required=True, type_hint=List[int]),
+            InputParam(name="image_width", required=True, type_hint=List[int]),
+            InputParam(name="height", required=True),
+            InputParam(name="width", required=True),
+            InputParam(name="prompt_embeds_mask"),
+            InputParam(name="negative_prompt_embeds_mask"),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> List[OutputParam]:
+        return [
+            OutputParam(
+                name="img_shapes",
+                type_hint=List[List[Tuple[int, int, int]]],
+                description="The shapes of the image latents, used for RoPE calculation",
+            ),
+            OutputParam(
+                name="txt_seq_lens",
+                kwargs_type="denoiser_input_fields",
+                type_hint=List[int],
+                description="The sequence lengths of the prompt embeds, used for RoPE calculation",
+            ),
+            OutputParam(
+                name="negative_txt_seq_lens",
+                kwargs_type="denoiser_input_fields",
+                type_hint=List[int],
+                description="The sequence lengths of the negative prompt embeds, used for RoPE calculation",
+            ),
+        ]
 
     def __call__(self, components: QwenImageModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
 
         vae_scale_factor = components.vae_scale_factor
+
+        # Edit Plus: image_height and image_width are lists
         block_state.img_shapes = [
             [
                 (1, block_state.height // vae_scale_factor // 2, block_state.width // vae_scale_factor // 2),
                 *[
-                    (1, vae_height // vae_scale_factor // 2, vae_width // vae_scale_factor // 2)
-                    for vae_height, vae_width in zip(block_state.image_height, block_state.image_width)
+                    (1, img_height // vae_scale_factor // 2, img_width // vae_scale_factor // 2)
+                    for img_height, img_width in zip(block_state.image_height, block_state.image_width)
                 ],
             ]
         ] * block_state.batch_size
