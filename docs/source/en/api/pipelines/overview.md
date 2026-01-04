@@ -34,6 +34,8 @@ The table below lists all the pipelines currently available in 🤗 Diffusers an
 | [AudioLDM2](audioldm2) | text2audio |
 | [AuraFlow](aura_flow) | text2image |
 | [BLIP Diffusion](blip_diffusion) | text2image |
+| [Block Refinement](block_refinement) | text2text |
+| [Block Token Diffusion](block_token_diffusion) | text2text |
 | [Bria 3.2](bria_3_2) | text2image |
 | [CogVideoX](cogvideox) | text2video |
 | [Consistency Models](consistency_models) | unconditional image generation |
@@ -52,6 +54,7 @@ The table below lists all the pipelines currently available in 🤗 Diffusers an
 | [DiT](dit) | text2image |
 | [Flux](flux) | text2image |
 | [Hunyuan-DiT](hunyuandit) | text2image |
+| [Hybrid Token Diffusion](hybrid_token_diffusion) | text2text |
 | [I2VGen-XL](i2vgenxl) | image2video |
 | [InstructPix2Pix](pix2pix) | image editing |
 | [Kandinsky 2.1](kandinsky) | text2image, image2image, inpainting, interpolation |
@@ -62,6 +65,7 @@ The table below lists all the pipelines currently available in 🤗 Diffusers an
 | [Latent Diffusion](latent_diffusion) | text2image, super-resolution |
 | [Latte](latte) | text2image |
 | [LEDITS++](ledits_pp) | image editing |
+| [LLaDA2](llada2) | text2text |
 | [Lumina-T2X](lumina) | text2image |
 | [Marigold](marigold) | depth-estimation, normals-estimation, intrinsic-decomposition |
 | [MultiDiffusion](panorama) | text2image |
@@ -83,6 +87,7 @@ The table below lists all the pipelines currently available in 🤗 Diffusers an
 | [T2I-Adapter](stable_diffusion/adapter) | text2image |
 | [Text2Video](text_to_video) | text2video, video2video |
 | [Text2Video-Zero](text_to_video_zero) | text2video |
+| [Token Diffusion](token_diffusion) | text2text |
 | [unCLIP](unclip) | text2image, image variation |
 | [UniDiffuser](unidiffuser) | text2image, image2text, image variation, text variation, unconditional image generation, unconditional audio generation |
 | [Value-guided planning](value_guided_sampling) | value guided sampling |

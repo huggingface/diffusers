@@ -54,6 +54,11 @@ Many schedulers are implemented from the [k-diffusion](https://github.com/crowso
 | exponential              | init with `timestep_spacing="linspace"`, `use_exponential_sigmas=True`     |
 | beta                     | init with `timestep_spacing="linspace"`, `use_beta_sigmas=True`            |
 
+## Token diffusion schedulers
+- [TokenDiffusionScheduler](token_diffusion)
+- [BlockTokenDiffusionScheduler](block_token_diffusion)
+- [HybridTokenDiffusionScheduler](hybrid_token_diffusion)
+
 All schedulers are built from the base [`SchedulerMixin`] class which implements low level utilities shared by all schedulers.
 
 ## SchedulerMixin
