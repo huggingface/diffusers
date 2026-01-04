@@ -20,9 +20,8 @@ import numpy as np
 import PIL
 import torch
 from transformers import Qwen2_5_VLForConditionalGeneration, Qwen2Tokenizer, Qwen2VLProcessor
-
 from ...image_processor import VaeImageProcessor
-from ...loaders import FluxLoraLoaderMixin, FromSingleFileMixin
+from ...loaders import FluxLoraLoaderMixin, FromSingleFileMixin, LongCatLoraLoaderMixin
 from ...models.autoencoders import AutoencoderKL
 from ...models.transformers import LongCatImageTransformer2DModel
 from ...pipelines.pipeline_utils import DiffusionPipeline
@@ -228,7 +227,7 @@ def calculate_dimensions(target_area, ratio):
     return width, height
 
 
-class LongCatImageEditPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleFileMixin):
+class LongCatImageEditPipeline(DiffusionPipeline, LongCatLoraLoaderMixin, FromSingleFileMixin):
     r"""
     The LongCat-Image-Edit pipeline for image editing.
     """
