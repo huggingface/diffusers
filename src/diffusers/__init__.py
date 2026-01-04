@@ -323,10 +323,22 @@ else:
             "StableDiffusionMixin",
         ]
     )
+    _import_structure["pipelines"].extend(
+        [
+            "BlockRefinementPipeline",
+            "BlockRefinementPipelineOutput",
+            "BlockTokenDiffusionPipeline",
+            "BlockTokenDiffusionPipelineOutput",
+            "HybridTokenDiffusionPipeline",
+            "TokenDiffusionPipeline",
+            "TokenDiffusionPipelineOutput",
+        ]
+    )
     _import_structure["quantizers"] = ["DiffusersQuantizer"]
     _import_structure["schedulers"].extend(
         [
             "AmusedScheduler",
+            "BlockTokenDiffusionScheduler",
             "CMStochasticIterativeScheduler",
             "CogVideoXDDIMScheduler",
             "CogVideoXDPMScheduler",
@@ -348,6 +360,8 @@ else:
             "FlowMatchHeunDiscreteScheduler",
             "FlowMatchLCMScheduler",
             "HeunDiscreteScheduler",
+            "HybridTokenDiffusionScheduler",
+            "HybridTokenDiffusionSchedulerOutput",
             "IPNDMScheduler",
             "KarrasVeScheduler",
             "KDPM2AncestralDiscreteScheduler",
@@ -364,23 +378,9 @@ else:
             "UnCLIPScheduler",
             "UniPCMultistepScheduler",
             "VQDiffusionScheduler",
-            "BlockTokenDiffusionScheduler",
-            "HybridTokenDiffusionScheduler",
-            "HybridTokenDiffusionSchedulerOutput",
         ]
     )
     _import_structure["training_utils"] = ["EMAModel"]
-    _import_structure["pipelines"].extend(
-        [
-            "BlockRefinementPipeline",
-            "BlockRefinementPipelineOutput",
-            "BlockTokenDiffusionPipeline",
-            "BlockTokenDiffusionPipelineOutput",
-            "HybridTokenDiffusionPipeline",
-            "TokenDiffusionPipeline",
-            "TokenDiffusionPipelineOutput",
-        ]
-    )
 
 try:
     if not (is_torch_available() and is_scipy_available()):
@@ -521,8 +521,6 @@ else:
             "IFPipeline",
             "IFSuperResolutionPipeline",
             "ImageTextPipelineOutput",
-            "LLaDA2Pipeline",
-            "LLaDA2PipelineOutput",
             "Kandinsky3Img2ImgPipeline",
             "Kandinsky3Pipeline",
             "Kandinsky5I2IPipeline",
@@ -552,6 +550,8 @@ else:
             "LDMTextToImagePipeline",
             "LEditsPPPipelineStableDiffusion",
             "LEditsPPPipelineStableDiffusionXL",
+            "LLaDA2Pipeline",
+            "LLaDA2PipelineOutput",
             "LongCatImageEditPipeline",
             "LongCatImagePipeline",
             "LTXConditionPipeline",
@@ -1247,8 +1247,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             IFPipeline,
             IFSuperResolutionPipeline,
             ImageTextPipelineOutput,
-            LLaDA2Pipeline,
-            LLaDA2PipelineOutput,
             Kandinsky3Img2ImgPipeline,
             Kandinsky3Pipeline,
             Kandinsky5I2IPipeline,
@@ -1278,6 +1276,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             LDMTextToImagePipeline,
             LEditsPPPipelineStableDiffusion,
             LEditsPPPipelineStableDiffusionXL,
+            LLaDA2Pipeline,
+            LLaDA2PipelineOutput,
             LongCatImageEditPipeline,
             LongCatImagePipeline,
             LTXConditionPipeline,

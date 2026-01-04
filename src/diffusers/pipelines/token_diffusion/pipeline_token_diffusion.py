@@ -15,10 +15,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import torch
 
+from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...utils import BaseOutput
 from ..pipeline_utils import DiffusionPipeline
 
@@ -55,9 +56,29 @@ class TokenDiffusionPipeline(DiffusionPipeline):
     tokenizer: Any
     scheduler: Any
 
-    def __init__(self, model: Any, scheduler: Any, tokenizer: Optional[Any] = None):
+    _callback_tensor_inputs = ["input_ids", "logits"]
+
+    def __init__(
+        self,
+        model: Any,
+        scheduler: Any,
+        tokenizer: Optional[Any] = None,
+        *,
+        seq_len: int = 64,
+        num_inference_steps: int = 128,
+        inject_start_token: bool = False,
+    ):
         super().__init__()
         self.register_modules(model=model, scheduler=scheduler, tokenizer=tokenizer)
+        self.register_to_config(
+            seq_len=seq_len,
+            num_inference_steps=num_inference_steps,
+            inject_start_token=inject_start_token,
+        )
+
+    @property
+    def num_timesteps(self):
+        return self._num_timesteps
 
     def _resolve_start_token_id(self) -> Optional[int]:
         tok = getattr(self, "tokenizer", None)
@@ -126,21 +147,26 @@ class TokenDiffusionPipeline(DiffusionPipeline):
         self,
         *,
         batch_size: int = 1,
-        seq_len: int = 64,
-        num_inference_steps: int = 128,
+        seq_len: Optional[int] = None,
+        num_inference_steps: Optional[int] = None,
         generator: Optional[torch.Generator] = None,
         prefix_ids: Optional[torch.LongTensor] = None,
         infill_mask: Optional[torch.BoolTensor] = None,
-        inject_start_token: bool = False,
+        inject_start_token: Optional[bool] = None,
         return_text: bool = True,
         return_dict: bool = True,
+        callback_on_step_end: Optional[
+            Union[Callable[[int, int, Dict], None], PipelineCallback, MultiPipelineCallbacks]
+        ] = None,
+        callback_on_step_end_tensor_inputs: Optional[List[str]] = None,
         **model_kwargs,
     ) -> Union[TokenDiffusionPipelineOutput, Tuple[torch.LongTensor, Optional[List[str]]]]:
         """
         Args:
             batch_size: Number of sequences to generate.
-            seq_len: Sequence length in tokens.
-            num_inference_steps: Number of reverse diffusion steps.
+            seq_len: Sequence length in tokens. Uses `pipe.config.seq_len` when `None`.
+            num_inference_steps:
+                Number of reverse diffusion steps. Uses `pipe.config.num_inference_steps` when `None`.
             generator: Optional torch generator for determinism.
             prefix_ids: Optional prefix token IDs to keep fixed at the start of each sequence. Shape `[P]` or
                 `[batch_size, P]`.
@@ -148,13 +174,40 @@ class TokenDiffusionPipeline(DiffusionPipeline):
                 Optional boolean mask of shape `[batch_size, seq_len]` indicating which positions are editable (`True`)
                 vs fixed (`False`). Fixed positions are clamped to the initial values on every step.
             inject_start_token: If True, inject `bos_token_id` (or `cls_token_id`) into position 0 (if available).
+                Uses `pipe.config.inject_start_token` when `None`.
             return_text: If True and tokenizer exists, also return decoded strings.
             return_dict: If True, returns a `TokenDiffusionPipelineOutput`.
+            callback_on_step_end: A function called after each denoising step with signature
+                `callback_on_step_end(self, step: int, timestep: int, callback_kwargs: Dict)`.
+            callback_on_step_end_tensor_inputs: List of tensor keys to include in `callback_kwargs`.
             model_kwargs: Forward kwargs passed to `model(...)` (e.g. attention mask overrides).
         """
+        if seq_len is None:
+            seq_len = int(self.config.seq_len)
+        if num_inference_steps is None:
+            num_inference_steps = int(self.config.num_inference_steps)
+        if inject_start_token is None:
+            inject_start_token = bool(self.config.inject_start_token)
+
+        if callback_on_step_end is not None and isinstance(
+            callback_on_step_end, (PipelineCallback, MultiPipelineCallbacks)
+        ):
+            callback_on_step_end_tensor_inputs = callback_on_step_end.tensor_inputs
+        if callback_on_step_end_tensor_inputs is None:
+            callback_on_step_end_tensor_inputs = ["input_ids"]
+        if callback_on_step_end_tensor_inputs is not None and not all(
+            k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
+        ):
+            raise ValueError(
+                f"`callback_on_step_end_tensor_inputs` has to be in {self._callback_tensor_inputs}, but found "
+                f"{[k for k in callback_on_step_end_tensor_inputs if k not in self._callback_tensor_inputs]}"
+            )
+
         device = self._execution_device
 
         self.scheduler.set_timesteps(num_inference_steps, device=device)
+        timesteps = self.scheduler.timesteps
+        self._num_timesteps = len(timesteps)
 
         input_ids = self._init_latents(batch_size, seq_len, generator=generator, device=device)
         attention_mask = torch.ones_like(input_ids, dtype=torch.long)
@@ -189,7 +242,7 @@ class TokenDiffusionPipeline(DiffusionPipeline):
                 fixed_mask[:, 0] = True
                 fixed_values[:, 0] = start_token_id
 
-        for t in self.scheduler.timesteps:
+        for step_idx, t in enumerate(timesteps):
             out = self.model(input_ids=input_ids, attention_mask=attention_mask, **model_kwargs)
             logits = getattr(out, "logits", None)
             if logits is None:
@@ -203,6 +256,13 @@ class TokenDiffusionPipeline(DiffusionPipeline):
 
             if inject_start_token and start_token_id is not None:
                 input_ids[:, 0] = start_token_id
+
+            if callback_on_step_end is not None:
+                callback_kwargs = {}
+                for k in callback_on_step_end_tensor_inputs:
+                    callback_kwargs[k] = locals()[k]
+                callback_outputs = callback_on_step_end(self, step_idx, t, callback_kwargs)
+                input_ids = callback_outputs.pop("input_ids", input_ids)
 
         texts = None
         if return_text and getattr(self, "tokenizer", None) is not None:

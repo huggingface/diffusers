@@ -15,10 +15,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import torch
 
+from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...utils import BaseOutput
 from ..pipeline_utils import DiffusionPipeline
 
@@ -59,9 +60,33 @@ class BlockTokenDiffusionPipeline(DiffusionPipeline):
     tokenizer: Any
     scheduler: Any
 
-    def __init__(self, model: Any, scheduler: Any, tokenizer: Optional[Any] = None):
+    _callback_tensor_inputs = ["input_ids", "logits", "block_mask"]
+
+    def __init__(
+        self,
+        model: Any,
+        scheduler: Any,
+        tokenizer: Optional[Any] = None,
+        *,
+        seq_len: int = 64,
+        block_size: int = 32,
+        num_inference_steps: int = 64,
+        inject_start_token: bool = False,
+        top_p: float = 1.0,
+    ):
         super().__init__()
         self.register_modules(model=model, scheduler=scheduler, tokenizer=tokenizer)
+        self.register_to_config(
+            seq_len=seq_len,
+            block_size=block_size,
+            num_inference_steps=num_inference_steps,
+            inject_start_token=inject_start_token,
+            top_p=top_p,
+        )
+
+    @property
+    def num_timesteps(self):
+        return self._num_timesteps
 
     def _resolve_start_token_id(self) -> Optional[int]:
         tok = getattr(self, "tokenizer", None)
@@ -111,20 +136,50 @@ class BlockTokenDiffusionPipeline(DiffusionPipeline):
         self,
         *,
         batch_size: int = 1,
-        seq_len: int = 64,
-        block_size: int = 32,
-        num_inference_steps: int = 64,
+        seq_len: Optional[int] = None,
+        block_size: Optional[int] = None,
+        num_inference_steps: Optional[int] = None,
         generator: Optional[torch.Generator] = None,
         prefix_ids: Optional[torch.LongTensor] = None,
         infill_mask: Optional[torch.BoolTensor] = None,
-        inject_start_token: bool = False,
-        top_p: float = 1.0,
+        inject_start_token: Optional[bool] = None,
+        top_p: Optional[float] = None,
         return_text: bool = True,
         return_dict: bool = True,
+        callback_on_step_end: Optional[
+            Union[Callable[[int, int, Dict], None], PipelineCallback, MultiPipelineCallbacks]
+        ] = None,
+        callback_on_step_end_tensor_inputs: Optional[List[str]] = None,
         **model_kwargs,
     ) -> Union[BlockTokenDiffusionPipelineOutput, Tuple[torch.LongTensor, Optional[List[str]]]]:
+        if seq_len is None:
+            seq_len = int(self.config.seq_len)
+        if block_size is None:
+            block_size = int(self.config.block_size)
+        if num_inference_steps is None:
+            num_inference_steps = int(self.config.num_inference_steps)
+        if inject_start_token is None:
+            inject_start_token = bool(self.config.inject_start_token)
+        if top_p is None:
+            top_p = float(self.config.top_p)
+
+        if callback_on_step_end is not None and isinstance(
+            callback_on_step_end, (PipelineCallback, MultiPipelineCallbacks)
+        ):
+            callback_on_step_end_tensor_inputs = callback_on_step_end.tensor_inputs
+        if callback_on_step_end_tensor_inputs is None:
+            callback_on_step_end_tensor_inputs = ["input_ids"]
+        if callback_on_step_end_tensor_inputs is not None and not all(
+            k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
+        ):
+            raise ValueError(
+                f"`callback_on_step_end_tensor_inputs` has to be in {self._callback_tensor_inputs}, but found "
+                f"{[k for k in callback_on_step_end_tensor_inputs if k not in self._callback_tensor_inputs]}"
+            )
+
         device = self._execution_device
         self.scheduler.set_timesteps(num_inference_steps, device=device)
+        timesteps = self.scheduler.timesteps
 
         input_ids = self._init_latents(batch_size, seq_len, generator=generator, device=device)
         attention_mask = torch.ones_like(input_ids, dtype=torch.long)
@@ -165,6 +220,8 @@ class BlockTokenDiffusionPipeline(DiffusionPipeline):
             raise ValueError(f"`block_size` must be in [1, seq_len], got block_size={block_size}, seq_len={seq_len}.")
 
         num_blocks = (seq_len + block_size - 1) // block_size
+        self._num_timesteps = len(timesteps) * int(num_blocks)
+        global_step = 0
         for block_idx in range(num_blocks):
             start = block_idx * block_size
             end = min((block_idx + 1) * block_size, seq_len)
@@ -179,7 +236,7 @@ class BlockTokenDiffusionPipeline(DiffusionPipeline):
 
             input_ids = torch.where(block_mask, int(self.scheduler.mask_token_id), input_ids)
 
-            for t in self.scheduler.timesteps:
+            for step_idx, t in enumerate(timesteps):
                 out = self.model(input_ids=input_ids, attention_mask=attention_mask, **model_kwargs)
                 logits = getattr(out, "logits", None)
                 if logits is None:
@@ -202,6 +259,15 @@ class BlockTokenDiffusionPipeline(DiffusionPipeline):
 
                 if fixed_mask is not None:
                     input_ids = torch.where(fixed_mask, fixed_values, input_ids)
+
+                if callback_on_step_end is not None:
+                    callback_kwargs = {}
+                    for k in callback_on_step_end_tensor_inputs:
+                        callback_kwargs[k] = locals()[k]
+                    callback_outputs = callback_on_step_end(self, global_step, t, callback_kwargs)
+                    input_ids = callback_outputs.pop("input_ids", input_ids)
+
+                global_step += 1
 
         texts = None
         if return_text and getattr(self, "tokenizer", None) is not None:

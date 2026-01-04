@@ -724,7 +724,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             Kandinsky5T2IPipeline,
             Kandinsky5T2VPipeline,
         )
-        from .llada2 import LLaDA2Pipeline, LLaDA2PipelineOutput
         from .latent_consistency_models import (
             LatentConsistencyModelImg2ImgPipeline,
             LatentConsistencyModelPipeline,
@@ -737,6 +736,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             LEditsPPPipelineStableDiffusion,
             LEditsPPPipelineStableDiffusionXL,
         )
+        from .llada2 import LLaDA2Pipeline, LLaDA2PipelineOutput
         from .longcat_image import LongCatImageEditPipeline, LongCatImagePipeline
         from .ltx import LTXConditionPipeline, LTXImageToVideoPipeline, LTXLatentUpsamplePipeline, LTXPipeline
         from .lucy import LucyEditPipeline

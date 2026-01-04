@@ -15,7 +15,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Callable, Dict, List, Optional, Tuple, Union
 
 import torch
 
@@ -55,8 +55,8 @@ class LLaDA2Pipeline(BlockRefinementPipeline):
     r"""
     Adapter pipeline for LLaDA2-style discrete diffusion generation.
 
-    This pipeline subclasses [`BlockRefinementPipeline`] and reuses its sampling loop. It only adapts
-    prompt preparation (including chat templates) and output formatting.
+    This pipeline subclasses [`BlockRefinementPipeline`] and reuses its sampling loop. It only adapts prompt
+    preparation (including chat templates) and output formatting.
     """
 
     @torch.no_grad()
@@ -85,6 +85,8 @@ class LLaDA2Pipeline(BlockRefinementPipeline):
         generator: Optional[torch.Generator] = None,
         return_text: bool = True,
         return_dict: bool = True,
+        callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
+        callback_on_step_end_tensor_inputs: Optional[List[str]] = None,
     ) -> Union[LLaDA2PipelineOutput, Tuple[torch.LongTensor, Optional[List[str]]]]:
         """
         Generate text with block-wise refinement.
@@ -116,6 +118,8 @@ class LLaDA2Pipeline(BlockRefinementPipeline):
             attention_mask_mode=attention_mask_mode,
             generator=generator,
             return_text=return_text,
+            callback_on_step_end=callback_on_step_end,
+            callback_on_step_end_tensor_inputs=callback_on_step_end_tensor_inputs,
         )
 
         if not return_dict:
