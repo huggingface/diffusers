@@ -134,7 +134,8 @@ class WanAttnProcessor:
                 dropout_p=0.0,
                 is_causal=False,
                 backend=self._attention_backend,
-                parallel_config=self._parallel_config,
+                # Reference: https://github.com/huggingface/diffusers/pull/12660
+                parallel_config=None,
             )
             hidden_states_img = hidden_states_img.flatten(2, 3)
             hidden_states_img = hidden_states_img.type_as(query)
@@ -147,7 +148,7 @@ class WanAttnProcessor:
             dropout_p=0.0,
             is_causal=False,
             backend=self._attention_backend,
-            parallel_config=self._parallel_config,
+            parallel_config=(self._parallel_config if encoder_hidden_states is None else None),
         )
         hidden_states = hidden_states.flatten(2, 3)
         hidden_states = hidden_states.type_as(query)
@@ -552,9 +553,11 @@ class WanTransformer3DModel(
         "blocks.0": {
             "hidden_states": ContextParallelInput(split_dim=1, expected_dims=3, split_output=False),
         },
-        "blocks.*": {
-            "encoder_hidden_states": ContextParallelInput(split_dim=1, expected_dims=3, split_output=False),
-        },
+        # Reference: https://github.com/huggingface/diffusers/pull/12660
+        # We need to disable the splitting of encoder_hidden_states because the image_encoder 
+        # (Wan 2.1 I2V) consistently generates 257 tokens for image_embed. This causes the shape 
+        # of encoder_hidden_states—whose token count is always 769 (512 + 257) after concatenation
+        # —to be indivisible by the number of devices in the CP.
         "proj_out": ContextParallelOutput(gather_dim=1, expected_dims=3),
         "": {
             "timestep": ContextParallelInput(split_dim=1, expected_dims=2, split_output=False),
