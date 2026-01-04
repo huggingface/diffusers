@@ -43,14 +43,6 @@ from ..test_pipelines_common import PipelineTesterMixin
 
 enable_full_determinism()
 
-def to_np(tensor):
-    if isinstance(tensor, torch.Tensor):
-        tensor = tensor.detach().cpu().numpy()
-
-    return tensor
-
-
-
 
 class F5TTSPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     pipeline_class = F5FlowPipeline
@@ -115,6 +107,17 @@ class F5TTSPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "vocab_char_map": vocab_char_map,
         }
         return components
+
+    def test_components_function(self):
+        # Override to filter out dict (vocab_char_map) which can't be registered as a module
+        # TODO vocab map needs some better handling
+        init_components = self.get_dummy_components()
+        init_components = {k: v for k, v in init_components.items() if not isinstance(v, (str, int, float, dict))}
+
+        pipe = self.pipeline_class(**self.get_dummy_components())
+
+        self.assertTrue(hasattr(pipe, "components"))
+        self.assertTrue(set(pipe.components.keys()) == set(init_components.keys()))
 
     def get_dummy_inputs(self, device, seed=0):
         if str(device).startswith("mps"):
