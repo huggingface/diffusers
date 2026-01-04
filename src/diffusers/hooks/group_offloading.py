@@ -27,6 +27,9 @@ from ._common import _GO_LC_SUPPORTED_PYTORCH_LAYERS
 from .hooks import HookRegistry, ModelHook
 
 
+VALID_PIN_GROUPS = {"all", "first_last"}
+
+
 if is_accelerate_available():
     from accelerate.hooks import AlignDevicesHook, CpuOffload
     from accelerate.utils import send_to_device
@@ -302,36 +305,19 @@ class GroupOffloadingHook(ModelHook):
         # method is the onload_leader of the group.
         if self.group.onload_leader is None:
             self.group.onload_leader = module
+        is_leader = self.group.onload_leader == module
+        should_onload_next_group = self.next_group is not None and not self.next_group.onload_self
+        should_orchestrate = self.group.pinned or is_leader
 
-        if self.group.pinned:
-            if self.group.onload_leader == module and not self._is_group_on_device():
-                self.group.onload_()
+        if should_orchestrate:
+            # Pinned groups keep their params on the onload device; orchestrate onload/prefetch/sync every call.
+            if self.group.pinned:
+                if is_leader and not self._is_group_on_device():
+                    self.group.onload_()
+            else:
+                if is_leader and self.group.onload_self:
+                    self.group.onload_()
 
-            should_onload_next_group = self.next_group is not None and not self.next_group.onload_self
-            if should_onload_next_group:
-                self.next_group.onload_()
-
-            should_synchronize = (
-                not self.group.onload_self
-                and self.group.stream is not None
-                and not should_onload_next_group
-                and not self.group.record_stream
-            )
-            if should_synchronize:
-                self.group.stream.synchronize()
-
-            args = send_to_device(args, self.group.onload_device, non_blocking=self.group.non_blocking)
-            kwargs = self._send_kwargs_to_device(kwargs)
-            return args, kwargs
-
-        # If the current module is the onload_leader of the group, we onload the group if it is supposed
-        # to onload itself. In the case of using prefetching with streams, we onload the next group if
-        # it is not supposed to onload itself.
-        if self.group.onload_leader == module:
-            if self.group.onload_self:
-                self.group.onload_()
-
-            should_onload_next_group = self.next_group is not None and not self.next_group.onload_self
             if should_onload_next_group:
                 self.next_group.onload_()
 
@@ -345,9 +331,7 @@ class GroupOffloadingHook(ModelHook):
                 # If this group didn't onload itself, it means it was asynchronously onloaded by the
                 # previous group. We need to synchronize the side stream to ensure parameters
                 # are completely loaded to proceed with forward pass. Without this, uninitialized
-                # weights will be used in the computation, leading to incorrect results
-                # Also, we should only do this synchronization if we don't already do it from the sync call in
-                # self.next_group.onload_, hence the `not should_onload_next_group` check.
+                # weights will be used in the computation, leading to incorrect results.
                 self.group.stream.synchronize()
 
         args = send_to_device(args, self.group.onload_device, non_blocking=self.group.non_blocking)
@@ -546,9 +530,6 @@ class LayerExecutionTrackerHook(ModelHook):
         return args, kwargs
 
 
-VALID_PIN_GROUPS = {"all", "first_last"}
-
-
 def _validate_pin_groups(pin_groups: Optional[Union[str, Callable]]) -> Optional[Union[str, Callable]]:
     if pin_groups is None or callable(pin_groups):
         return pin_groups
@@ -708,9 +689,6 @@ def apply_group_offloading(
 
 
 def _apply_group_offloading(module: torch.nn.Module, config: GroupOffloadingConfig) -> None:
-    registry = HookRegistry.check_if_exists_or_initialize(module)
-    registry._group_offload_pin_groups = config.pin_groups
-
     if config.offload_type == GroupOffloadingType.BLOCK_LEVEL:
         _apply_group_offloading_block_level(module, config)
     elif config.offload_type == GroupOffloadingType.LEAF_LEVEL:

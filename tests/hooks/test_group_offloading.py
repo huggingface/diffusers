@@ -15,6 +15,7 @@
 import contextlib
 import gc
 import unittest
+from typing import Any, Iterable, List, Optional, Sequence, Union
 
 import torch
 from parameterized import parameterized
@@ -34,7 +35,6 @@ from ..testing_utils import (
     torch_device,
 )
 
-from typing import Any, Iterable, List, Optional, Sequence, Union
 
 class DummyBlock(torch.nn.Module):
     def __init__(self, in_features: int, hidden_features: int, out_features: int) -> None:
@@ -217,8 +217,10 @@ class NestedContainer(torch.nn.Module):
             x = block(x)
         x = self.norm(x)
         return x
-    
+
     # Test for https://github.com/huggingface/diffusers/pull/12747
+
+
 class DummyCallableBySubmodule:
     """
     Callable group offloading pinner that pins first and last DummyBlock
@@ -633,7 +635,7 @@ class GroupOffloadTests(unittest.TestCase):
             "layers_per_block": 1,
         }
         return init_dict
-    
+
     def test_block_level_offloading_with_pin_groups_stay_on_device(self):
         if torch.device(torch_device).type not in ["cuda", "xpu"]:
             return
