@@ -69,22 +69,28 @@ class LLaDA2Pipeline(BlockRefinementPipeline):
         input_ids: Optional[torch.LongTensor] = None,
         use_chat_template: bool = True,
         add_generation_prompt: bool = True,
-        gen_length: int = 512,
+        gen_length: int = 2048,
         block_length: int = 32,
         steps: int = 32,
         temperature: float = 0.0,
         top_p: Optional[float] = None,
         top_k: Optional[int] = None,
+        sampling_method: str = "multinomial",
         threshold: float = 0.95,
         minimal_topk: int = 1,
-        eos_early_stop: bool = True,
+        eos_early_stop: bool = False,
         eos_token_id: Optional[int] = None,
         mask_token_id: Optional[int] = None,
-        attention_mask_mode: str = "auto",
+        attention_mask_mode: str = "4d",
         generator: Optional[torch.Generator] = None,
         return_text: bool = True,
         return_dict: bool = True,
     ) -> Union[LLaDA2PipelineOutput, Tuple[torch.LongTensor, Optional[List[str]]]]:
+        """
+        Generate text with block-wise refinement.
+
+        Examples:
+        """
         prompt_ids = self._prepare_prompt_ids(
             prompt=prompt,
             messages=messages,
@@ -101,6 +107,7 @@ class LLaDA2Pipeline(BlockRefinementPipeline):
             temperature=temperature,
             top_p=top_p,
             top_k=top_k,
+            sampling_method=sampling_method,
             threshold=threshold,
             minimal_topk=minimal_topk,
             eos_early_stop=eos_early_stop,
@@ -132,10 +139,18 @@ class LLaDA2Pipeline(BlockRefinementPipeline):
                 return None
             raise ValueError("Tokenizer is required to encode `prompt` or `messages`.")
 
+        def _extract_input_ids(encoded):
+            if isinstance(encoded, dict) and "input_ids" in encoded:
+                return encoded["input_ids"]
+            if hasattr(encoded, "input_ids"):
+                return encoded.input_ids
+            return encoded
+
         if messages is not None:
-            return self.tokenizer.apply_chat_template(
+            encoded = self.tokenizer.apply_chat_template(
                 messages, add_generation_prompt=add_generation_prompt, tokenize=True, return_tensors="pt"
             )
+            return _extract_input_ids(encoded)
 
         if prompt is None:
             return None
@@ -143,15 +158,16 @@ class LLaDA2Pipeline(BlockRefinementPipeline):
         if use_chat_template and getattr(self.tokenizer, "chat_template", None):
             if isinstance(prompt, list):
                 raise ValueError("`prompt` must be a string when `use_chat_template=True`.")
-            return self.tokenizer.apply_chat_template(
+            encoded = self.tokenizer.apply_chat_template(
                 [{"role": "user", "content": prompt}],
                 add_generation_prompt=add_generation_prompt,
                 tokenize=True,
                 return_tensors="pt",
             )
+            return _extract_input_ids(encoded)
 
         encoded = self.tokenizer(prompt, return_tensors="pt", padding=isinstance(prompt, list))
-        return encoded["input_ids"]
+        return _extract_input_ids(encoded)
 
 
 __all__ = ["LLaDA2Pipeline", "LLaDA2PipelineOutput"]

@@ -52,7 +52,7 @@ def main():
     parser.add_argument(
         "--gen_length",
         type=int,
-        default=512,
+        default=2048,
         help="Number of tokens to generate.",
     )
     parser.add_argument(
@@ -90,6 +90,13 @@ def main():
         type=float,
         default=0.95,
         help="Confidence threshold for committing tokens.",
+    )
+    parser.add_argument(
+        "--sampling_method",
+        type=str,
+        default="multinomial",
+        choices=["auto", "greedy", "multinomial"],
+        help="Sampling method for block refinement.",
     )
     parser.add_argument(
         "--eos_early_stop",
@@ -215,6 +222,7 @@ def main():
         top_p=args.top_p,
         top_k=args.top_k,
         threshold=args.threshold,
+        sampling_method=args.sampling_method,
         eos_early_stop=args.eos_early_stop,
         generator=generator,
     )

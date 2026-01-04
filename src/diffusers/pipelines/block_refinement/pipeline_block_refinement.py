@@ -64,6 +64,7 @@ def _sample_with_temperature_topk_topp(
     top_k: Optional[int],
     top_p: Optional[float],
     generator: Optional[torch.Generator],
+    use_multinomial: bool,
 ) -> tuple[torch.LongTensor, torch.Tensor]:
     vocab_size = logits.shape[-1]
     flat_logits = logits.reshape(-1, vocab_size)
@@ -71,17 +72,19 @@ def _sample_with_temperature_topk_topp(
     filtered = _top_k_filtering(flat_logits, top_k=top_k)
     filtered = _top_p_filtering(filtered, top_p=top_p)
 
-    if temperature == 0.0:
-        token = filtered.argmax(dim=-1, keepdim=True)
-        probs = torch.softmax(filtered.float(), dim=-1)
-        token_prob = torch.gather(probs, -1, token)
-    else:
-        if temperature < 0:
-            raise ValueError(f"`temperature` must be >= 0, got {temperature}.")
+    if temperature < 0:
+        raise ValueError(f"`temperature` must be >= 0, got {temperature}.")
+
+    scaled = filtered
+    if temperature > 0.0 and temperature != 1.0:
         scaled = filtered / float(temperature)
-        probs = torch.softmax(scaled.float(), dim=-1)
+
+    probs = torch.softmax(scaled.float(), dim=-1)
+    if use_multinomial:
         token = torch.multinomial(probs, num_samples=1, generator=generator)
-        token_prob = torch.gather(probs, -1, token)
+    else:
+        token = scaled.argmax(dim=-1, keepdim=True)
+    token_prob = torch.gather(probs, -1, token)
 
     return token.view(*logits.shape[:-1]), token_prob.view(*logits.shape[:-1])
 
@@ -209,6 +212,7 @@ class BlockRefinementPipeline(DiffusionPipeline):
         temperature: float = 0.0,
         top_p: Optional[float] = None,
         top_k: Optional[int] = None,
+        sampling_method: str = "auto",
         threshold: float = 0.95,
         minimal_topk: int = 1,
         eos_early_stop: bool = False,
@@ -228,6 +232,10 @@ class BlockRefinementPipeline(DiffusionPipeline):
             raise ValueError(f"`minimal_topk` must be > 0, got {minimal_topk}.")
         if not (0.0 <= threshold <= 1.0) and not (threshold > 1.0):
             raise ValueError(f"`threshold` must be in [0, 1] (or > 1 to force top-k commits), got {threshold}.")
+        if sampling_method not in {"auto", "greedy", "multinomial"}:
+            raise ValueError(
+                f"`sampling_method` must be one of {{'auto','greedy','multinomial'}}, got {sampling_method!r}."
+            )
 
         model_params = list(self.model.parameters()) if hasattr(self.model, "parameters") else []
         model_device = model_params[0].device if len(model_params) > 0 else torch.device("cpu")
@@ -271,6 +279,8 @@ class BlockRefinementPipeline(DiffusionPipeline):
         finished = torch.zeros((batch_size,), device=model_device, dtype=torch.bool)
         resolved_attention_mode: str = str(attention_mask_mode)
 
+        use_multinomial = sampling_method == "multinomial" or (sampling_method == "auto" and float(temperature) != 0.0)
+
         for num_block in range(int(prefill_blocks), int(num_blocks)):
             current_window_end = (num_block + 1) * int(block_length)
             cur_x = x[:, :current_window_end]
@@ -301,6 +311,7 @@ class BlockRefinementPipeline(DiffusionPipeline):
                     top_k=top_k,
                     top_p=top_p,
                     generator=generator,
+                    use_multinomial=use_multinomial,
                 )
 
                 num_to_transfer = int(transfer_schedule[step_idx].item())
