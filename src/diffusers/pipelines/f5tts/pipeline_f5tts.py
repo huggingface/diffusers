@@ -41,6 +41,8 @@ from typing import Optional, Union, List
 
 
 class F5FlowPipeline(DiffusionPipeline):
+    model_cpu_offload_seq = "conditioning_encoder->transformer"
+    
     def __init__(
         self,
         transformer: F5DiTModel,
@@ -148,11 +150,10 @@ class F5FlowPipeline(DiffusionPipeline):
             duration = torch.tensor(duration_list, dtype=torch.long, device=ref_audio.device)
 
         cond = ref_audio
-
         if cond.ndim == 2:
             cond = cond.to('cpu') # mel spec needs cpu
             cond = self.mel_spec(cond)
-            cond = cond.to(self.device)
+            cond = cond.to(self._execution_device)
             cond = cond.permute(0, 2, 1)
             if len(ref_text) > 1:
                 # repeat cond for batch inference, TODO allow different conds in batch
@@ -163,12 +164,12 @@ class F5FlowPipeline(DiffusionPipeline):
         lens = torch.full((batch,), cond_seq_len, device=device, dtype=torch.long)
 
         text = self.list_str_to_idx(text_list, self.vocab_char_map).to(device)
+        duration = duration.to(device)
 
         # duration
         cond_mask = self.lens_to_mask(lens)
         if isinstance(duration, int):
             duration = torch.full((batch,), duration, device=device, dtype=torch.long)
-
         duration = torch.maximum(
             torch.maximum((text != -1).sum(dim=-1), lens) + 1, duration
         )  # duration at least text/audio prompt length plus one token, so something is generated
@@ -281,6 +282,8 @@ class F5FlowPipeline(DiffusionPipeline):
         out = out.to(torch.float32)  # generated mel spectrogram
         audio = out.permute(0, 2, 1)
 
+        # Offload all models
+        self.maybe_free_model_hooks()
         if not return_dict:
             return (audio,)
         return AudioPipelineOutput(audios=audio)
