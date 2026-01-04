@@ -43,6 +43,14 @@ from ..test_pipelines_common import PipelineTesterMixin
 
 enable_full_determinism()
 
+def to_np(tensor):
+    if isinstance(tensor, torch.Tensor):
+        tensor = tensor.detach().cpu().numpy()
+
+    return tensor
+
+
+
 
 class F5TTSPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     pipeline_class = F5FlowPipeline
@@ -101,9 +109,9 @@ class F5TTSPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         vocab_char_map = {chr(i + 97): i for i in range(26)}
 
         components = {
-            "transformer": transformer,
+            "transformer": transformer.eval(),
             "scheduler": scheduler,
-            "conditioning_encoder": conditioning_encoder,
+            "conditioning_encoder": conditioning_encoder.eval(),
             "vocab_char_map": vocab_char_map,
         }
         return components
