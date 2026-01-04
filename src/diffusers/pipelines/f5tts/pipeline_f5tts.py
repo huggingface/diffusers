@@ -7,7 +7,6 @@ nw - raw wave length
 d - dimension
 """
 
-from __future__ import annotations
 from random import random
 from typing import Callable
 
@@ -33,7 +32,7 @@ from diffusers.schedulers import FlowMatchEulerDiscreteScheduler
 # helpers
 import jieba
 from pypinyin import lazy_pinyin, Style
-from typing import Optional, Union, List
+from typing import Optional, Union, List, Dict
 
 
 
@@ -48,7 +47,7 @@ class F5FlowPipeline(DiffusionPipeline):
         transformer: F5DiTModel,
         conditioning_encoder: F5ConditioningEncoder,
         scheduler: FlowMatchEulerDiscreteScheduler,
-        vocab_char_map: dict[str:int],
+        vocab_char_map: Optional[Dict[str, int]] = None,
     ):
         super().__init__()
         self.transformer = transformer
@@ -66,11 +65,32 @@ class F5FlowPipeline(DiffusionPipeline):
             conditioning_encoder=conditioning_encoder,
             scheduler=scheduler,
         )
-        self.register_to_config(
-            vocab_char_map=vocab_char_map,
-        )
+        # self.register_to_config(
+        #     vocab_char_map=vocab_char_map,
+        # )
 
+    def save_pretrained(self, save_directory, **kwargs):
+        super().save_pretrained(save_directory, **kwargs)
+        # Save vocab_char_map as JSON
+        if self.vocab_char_map is not None:
+            import json
+            vocab_path = os.path.join(save_directory, "vocab_char_map.json")
+            with open(vocab_path, "w") as f:
+                json.dump(self.vocab_char_map, f)
 
+    @classmethod
+    def from_pretrained(cls, pretrained_model_name_or_path, **kwargs):
+        # Load vocab_char_map if it exists
+        import json
+        vocab_path = os.path.join(pretrained_model_name_or_path, "vocab_char_map.json")
+        vocab_char_map = None
+        if os.path.exists(vocab_path):
+            with open(vocab_path, "r") as f:
+                vocab_char_map = json.load(f)
+        
+        pipe = super().from_pretrained(pretrained_model_name_or_path, **kwargs)
+        pipe.vocab_char_map = vocab_char_map
+        return pipe
 
     # char tokenizer, based on custom dataset's extracted .txt file
     def list_str_to_idx(
@@ -78,7 +98,7 @@ class F5FlowPipeline(DiffusionPipeline):
         text: list[str] | list[list[str]],
         vocab_char_map: dict[str, int],  # {char: idx}
         padding_value=-1,
-    ) -> int["b nt"]:  # noqa: F722
+    ) -> "int[b nt]":  # noqa: F722
         list_idx_tensors = [torch.tensor([vocab_char_map.get(c, 0) for c in t]) for t in text]  # pinyin or char style
         text = pad_sequence(list_idx_tensors, padding_value=padding_value, batch_first=True)
         return text
@@ -86,7 +106,7 @@ class F5FlowPipeline(DiffusionPipeline):
 
 
 
-    def lens_to_mask(self, t: int["b"], length: int | None = None) -> bool["b n"]:  # noqa: F722 F821
+    def lens_to_mask(self, t: "int[b]", length: int | None = None) -> "bool[b n]":  # noqa: F722 F821
         if length is None:
             length = t.amax()
 
@@ -267,6 +287,7 @@ class F5FlowPipeline(DiffusionPipeline):
                     pred,
                     t,
                     y0,
+                    generator=generator
                 ).prev_sample
                 
                 progress_bar.update()

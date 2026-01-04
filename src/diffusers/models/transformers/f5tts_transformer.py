@@ -21,6 +21,8 @@ from ..attention_processor import F5TTSAttnProcessor2_0
 from ..attention import Attention
 from einops import rearrange, repeat, reduce, pack, unpack
 from torch import nn, einsum, tensor, Tensor, cat, stack, arange, is_tensor
+from ..modeling_utils import ModelMixin
+from ...configuration_utils import ConfigMixin, register_to_config
 # import jieba
 # from pypinyin import Style, lazy_pinyin
 
@@ -318,7 +320,8 @@ class InputEmbedding(nn.Module):
 # Transformer backbone using DiT blocks
 
 # Adding this to decouple the conditoning encoding from the DiT backbone
-class F5ConditioningEncoder(nn.Module):
+class F5ConditioningEncoder(ModelMixin, ConfigMixin):
+    @register_to_config
     def __init__(
         self,
         dim,
@@ -380,11 +383,11 @@ class AdaLayerNorm_Final(nn.Module):
         return x
 
 
-class F5DiTModel(nn.Module):
+class F5DiTModel(ModelMixin, ConfigMixin):
+    @register_to_config
     def __init__(
         self,
-        *,
-        dim,
+        dim=1024,
         depth=8,
         heads=8,
         dim_head=64,
