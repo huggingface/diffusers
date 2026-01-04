@@ -13,10 +13,11 @@ from typing import Any, Callable, Dict, List, Optional, Union
 
 import numpy as np
 import torch
+from PIL import Image
 from transformers import AutoTokenizer
 from transformers.models.smollm3.modeling_smollm3 import SmolLM3ForCausalLM
 
-from ...image_processor import PipelineImageInput, VaeImageProcessor, is_valid_image
+from ...image_processor import PipelineImageInput, VaeImageProcessor
 from ...loaders import FluxLoraLoaderMixin
 from ...models.autoencoders.autoencoder_kl_wan import AutoencoderKLWan
 from ...models.transformers.transformer_bria_fibo import BriaFiboTransformer2DModel
@@ -45,31 +46,40 @@ else:
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
+PipelineMaskInput = Union[
+    torch.FloatTensor, Image.Image, List[Image.Image], List[torch.FloatTensor], np.ndarray, List[np.ndarray]
+]
+
+# TODO: Update example docstring
 EXAMPLE_DOC_STRING = """
     Example:
     ```python
     import torch
-    from diffusers import BriaFiboPipeline
+    from diffusers import BriaFiboEditPipeline
     from diffusers.modular_pipelines import ModularPipeline
 
     torch.set_grad_enabled(False)
-    vlm_pipe = ModularPipeline.from_pretrained("briaai/FIBO-VLM-prompt-to-JSON", trust_remote_code=True)
+    vlm_pipe = ModularPipelineBlocks.from_pretrained("briaai/FIBO-VLM-prompt-to-JSON", trust_remote_code=True)
+    vlm_pipe = vlm_pipe.init_pipeline()
 
-    pipe = BriaFiboPipeline.from_pretrained(
-        "briaai/FIBO",
-        trust_remote_code=True,
+    pipe = BriaFiboEditPipeline.from_pretrained(
+        "briaai/fibo-edit",
         torch_dtype=torch.bfloat16,
     )
-    pipe.enable_model_cpu_offload()
+    pipe.to("cuda")
 
-    with torch.inference_mode():
-        # 1. Create a prompt to generate an initial image
-        output = vlm_pipe(prompt="a beautiful dog")
-        json_prompt_generate = output.values["json_prompt"]
+    output = vlm_pipe(
+        prompt="A hyper-detailed, ultra-fluffy owl sitting in the trees at night, looking directly at the camera with wide, adorable, expressive eyes. Its feathers are soft and voluminous, catching the cool moonlight with subtle silver highlights. The owl's gaze is curious and full of charm, giving it a whimsical, storybook-like personality."
+    )
+    json_prompt_generate = json.loads(output.values["json_prompt"])
 
-        # Generate the image from the structured json prompt
-        results_generate = pipe(prompt=json_prompt_generate, num_inference_steps=50, guidance_scale=5)
-        results_generate.images[0].save("image_generate.png")
+    image = Image.open("image_generate.png")
+
+    edit_prompt = "Make the owl to be a cat"
+
+    json_prompt_generate["edit_instruction"] = edit_prompt
+
+    results_generate = pipe(prompt=json_prompt_generate, num_inference_steps=50, guidance_scale=3.5, image=image, output_type="np")
     ```
 """
 
@@ -127,6 +137,96 @@ def is_valid_edit_json(json_input: str | dict):
             return False
     except json.JSONDecodeError:
         return False
+
+
+def is_valid_mask(mask: PipelineMaskInput):
+    """
+    Check if the mask is a valid mask.
+    """
+    if isinstance(mask, torch.Tensor):
+        return True
+    elif isinstance(mask, Image.Image):
+        return True
+    elif isinstance(mask, list):
+        return all(isinstance(m, (torch.Tensor, Image.Image, np.ndarray)) for m in mask)
+    elif isinstance(mask, np.ndarray):
+        return mask.ndim in [2, 3] and mask.min() >= 0 and mask.max() <= 1
+    else:
+        return False
+
+
+def get_mask_size(mask: PipelineMaskInput):
+    """
+    Get the size of the mask.
+    """
+    if isinstance(mask, torch.Tensor):
+        return mask.shape[-2:]
+    elif isinstance(mask, Image.Image):
+        return mask.size[::-1]  # (height, width)
+    elif isinstance(mask, list):
+        return [get_mask_size(m) for m in mask]
+    elif isinstance(mask, np.ndarray):
+        return mask.shape[-2:]
+    else:
+        return None
+
+
+def get_image_size(image: PipelineImageInput):
+    """
+    Get the size of the image.
+    """
+    if isinstance(image, torch.Tensor):
+        return image.shape[-2:]
+    elif isinstance(image, Image.Image):
+        return image.size[::-1]  # (height, width)
+    elif isinstance(image, list):
+        return [get_image_size(i) for i in image]
+    else:
+        return None
+
+
+def paste_mask_on_image(mask: PipelineMaskInput, image: PipelineImageInput):
+    """convert mask and image to PIL Images and paste the mask on the image"""
+    if isinstance(mask, torch.Tensor):
+        if mask.ndim == 3 and mask.shape[0] == 1:
+            mask = mask.squeeze(0)
+        mask = Image.fromarray((mask.cpu().numpy() * 255).astype(np.uint8))
+    elif isinstance(mask, Image.Image):
+        pass
+    elif isinstance(mask, list):
+        mask = mask[0]
+        if isinstance(mask, torch.Tensor):
+            if mask.ndim == 3 and mask.shape[0] == 1:
+                mask = mask.squeeze(0)
+            mask = Image.fromarray((mask.cpu().numpy() * 255).astype(np.uint8))
+        elif isinstance(mask, np.ndarray):
+            mask = Image.fromarray((mask * 255).astype(np.uint8))
+    elif isinstance(mask, np.ndarray):
+        mask = Image.fromarray((mask * 255).astype(np.uint8))
+
+    if isinstance(image, torch.Tensor):
+        if image.ndim == 3:
+            image = image.permute(1, 2, 0)
+        image = Image.fromarray((image.cpu().numpy() * 255).astype(np.uint8))
+    elif isinstance(image, Image.Image):
+        pass
+    elif isinstance(image, list):
+        image = image[0]
+        if isinstance(image, torch.Tensor):
+            if image.ndim == 3:
+                image = image.permute(1, 2, 0)
+            image = Image.fromarray((image.cpu().numpy() * 255).astype(np.uint8))
+        elif isinstance(image, np.ndarray):
+            image = Image.fromarray((image * 255).astype(np.uint8))
+    elif isinstance(image, np.ndarray):
+        image = Image.fromarray((image * 255).astype(np.uint8))
+
+    mask = mask.convert("L")
+    image = image.convert("RGB")
+    gray_color = (128, 128, 128)
+    gray_img = Image.new("RGB", image.size, gray_color)
+    image = Image.composite(gray_img, image, mask)
+    return image
 
 
 class BriaFiboEditPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
@@ -517,10 +617,12 @@ class BriaFiboEditPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
         self,
         prompt: Union[str, List[str]] = None,
         image: Optional[PipelineImageInput] = None,
+        mask: Optional[PipelineMaskInput] = None,
         height: Optional[int] = None,
         width: Optional[int] = None,
         num_inference_steps: int = 30,
         timesteps: List[int] = None,
+        seed: Optional[int] = None,
         guidance_scale: float = 5,
         negative_prompt: Optional[Union[str, List[str]]] = None,
         num_images_per_prompt: Optional[int] = 1,
@@ -554,6 +656,8 @@ class BriaFiboEditPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
             num_inference_steps (`int`, *optional*, defaults to 50):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
+            seed (`int`, *optional*):
+                A seed used to make generation deterministic.
             timesteps (`List[int]`, *optional*):
                 Custom timesteps to use for the denoising process with schedulers which support a `timesteps` argument
                 in their `set_timesteps` method. If not defined, the default behavior when `num_inference_steps` is
@@ -612,18 +716,23 @@ class BriaFiboEditPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
             generated images.
         """
 
-        if image is not None and _auto_resize and height is None and width is None:
-            image_height, image_width = self.image_processor.get_default_height_width(image)
-            # area = min(prefered_resolutions.keys(),key=lambda size: abs(image_height*image_width-size))
-            # TODO (DT) remove hard coded resolution here
-            image_width, image_height = min(
-                PREFERRED_RESOLUTION[1024 * 1024], key=lambda size: abs(size[0] / size[1] - image_width / image_height)
-            )
-            width, height = image_width, image_height
+        if height is None or width is None:
+            if image is not None:
+                image_height, image_width = self.image_processor.get_default_height_width(image)
+                if _auto_resize:
+                    image_width, image_height = min(
+                        PREFERRED_RESOLUTION[1024 * 1024],
+                        key=lambda size: abs(size[0] / size[1] - image_width / image_height),
+                    )
+                width, height = image_width, image_height
+            else:
+                raise ValueError("You must provide either an image or both height and width.")
 
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(
+            seed=seed,
             image=image,
+            mask=mask,
             prompt=prompt,
             height=height,
             width=width,
@@ -631,6 +740,9 @@ class BriaFiboEditPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
             callback_on_step_end_tensor_inputs=callback_on_step_end_tensor_inputs,
             max_sequence_length=max_sequence_length,
         )
+
+        if mask is not None and image is not None:
+            image = paste_mask_on_image(mask, image)
 
         self._guidance_scale = guidance_scale
         self._joint_attention_kwargs = joint_attention_kwargs
@@ -648,7 +760,7 @@ class BriaFiboEditPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
             batch_size = prompt_embeds.shape[0]
 
         device = self._execution_device
-
+        generator = torch.Generator(device=device).manual_seed(seed) if seed is not None else None
         lora_scale = (
             self.joint_attention_kwargs.get("scale", None) if self.joint_attention_kwargs is not None else None
         )
@@ -943,7 +1055,9 @@ class BriaFiboEditPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
     def check_inputs(
         self,
         prompt,
+        seed,
         image,
+        mask,
         height,
         width,
         negative_prompt=None,
@@ -952,8 +1066,18 @@ class BriaFiboEditPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
         callback_on_step_end_tensor_inputs=None,
         max_sequence_length=None,
     ):
-        if image is not None and not is_valid_image(image):
+        if seed is not None and not isinstance(seed, int):
+            raise ValueError("Seed must be an integer")
+        if image is not None and not isinstance(image, (torch.Tensor, Image.Image, list)):
             raise ValueError("Image must be a valid image")
+        if image is None and mask is not None:
+            raise ValueError("If mask is provided, image must also be provided")
+
+        if mask is not None and not is_valid_mask(mask):
+            raise ValueError("Mask must be a valid mask")
+
+        if mask is not None and image is not None and not (get_mask_size(mask) == get_image_size(image)):
+            raise ValueError("Mask and image must have the same size")
 
         if height % (self.vae_scale_factor * 2) != 0 or width % (self.vae_scale_factor * 2) != 0:
             logger.warning(

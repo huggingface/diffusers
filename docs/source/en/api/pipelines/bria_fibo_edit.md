@@ -12,11 +12,18 @@ specific language governing permissions and limitations under the License.
 
 # Bria Fibo Edit
 
-Introducing FIBO: The First JSON-Native Model for Precise Editing & Control We are proud to release FIBO, a groundbreaking 8-billion parameter model that redefines professional image editing by moving beyond freeform text to structured JSON-native prompting.
-
+Fibo Edit is an 8B parameter image-to-image model that introduces a new paradigm of structured control, operating on JSON inputs paired with source images to enable deterministic and repeatable editing workflows.
+Featuring native masking for granular precision, it moves beyond simple prompt-based diffusion to offer explicit, interpretable control optimized for production environments.
+Its lightweight architecture is designed for deep customization, empowering researchers to build specialized "Edit" models for domain-specific tasks while delivering top-tier aesthetic quality
 
 ## Usage
+_As the model is gated, before using it with diffusers you first need to go to the [Bria Fibo Hugging Face page](https://huggingface.co/briaai/FIBO), fill in the form and accept the gate. Once you are in, you need to login so that your system knows you’ve accepted the gate._
 
+Use the command below to log in:
+
+```bash
+hf auth login
+```
 
 
 ## BriaFiboEditPipeline

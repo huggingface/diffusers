@@ -16,12 +16,13 @@ import unittest
 
 import numpy as np
 import torch
+from PIL import Image
 from transformers import AutoTokenizer
 from transformers.models.smollm3.modeling_smollm3 import SmolLM3Config, SmolLM3ForCausalLM
 
 from diffusers import (
     AutoencoderKLWan,
-    BriaFiboPipeline,
+    BriaFiboEditPipeline,
     FlowMatchEulerDiscreteScheduler,
 )
 from diffusers.models.transformers.transformer_bria_fibo import BriaFiboTransformer2DModel
@@ -37,7 +38,7 @@ enable_full_determinism()
 
 
 class BriaFiboPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
-    pipeline_class = BriaFiboPipeline
+    pipeline_class = BriaFiboEditPipeline
     params = frozenset(["prompt", "height", "width", "guidance_scale"])
     batch_params = frozenset(["prompt"])
     test_xformers_attention = False
@@ -60,10 +61,15 @@ class BriaFiboPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             axes_dims_rope=[0, 4, 4],
         )
 
-        torch.manual_seed(0)
         vae = AutoencoderKLWan(
-            base_dim=160,
-            decoder_base_dim=256,
+            base_dim=80,
+            decoder_base_dim=128,
+            dim_mult=[1, 2, 4, 4],
+            dropout=0.0,
+            in_channels=12,
+            latents_mean=[0.0] * 16,
+            latents_std=[1.0] * 16,
+            is_residual=True,
             num_res_blocks=2,
             out_channels=12,
             patch_size=2,
@@ -72,10 +78,7 @@ class BriaFiboPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             temperal_downsample=[False, True, True],
             z_dim=16,
         )
-
         scheduler = FlowMatchEulerDiscreteScheduler()
-
-        torch.manual_seed(0)
         text_encoder = SmolLM3ForCausalLM(SmolLM3Config(hidden_size=32))
         tokenizer = AutoTokenizer.from_pretrained("hf-internal-testing/tiny-random-t5")
 
@@ -93,21 +96,34 @@ class BriaFiboPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             generator = torch.manual_seed(seed)
         else:
             generator = torch.Generator(device="cpu").manual_seed(seed)
-
         inputs = {
-            "prompt": "{'text': 'A painting of a squirrel eating a burger'}",
+            "prompt": '{"text": "A painting of a squirrel eating a burger","edit_instruction": "A painting of a squirrel eating a burger"}',
             "negative_prompt": "bad, ugly",
             "generator": generator,
             "num_inference_steps": 2,
             "guidance_scale": 5.0,
-            "height": 32,
-            "width": 32,
+            "height": 192,
+            "width": 336,
             "output_type": "np",
         }
+        image = Image.new("RGB", (336, 192), (255, 255, 255))
+        inputs["image"] = image
         return inputs
 
     @unittest.skip(reason="will not be supported due to dim-fusion")
     def test_encode_prompt_works_in_isolation(self):
+        pass
+
+    @unittest.skip(reason="Batching is not supported yet")
+    def test_num_images_per_prompt(self):
+        pass
+
+    @unittest.skip(reason="Batching is not supported yet")
+    def test_inference_batch_consistent(self):
+        pass
+
+    @unittest.skip(reason="Batching is not supported yet")
+    def test_inference_batch_single_identical(self):
         pass
 
     def test_bria_fibo_different_prompts(self):
@@ -117,7 +133,7 @@ class BriaFiboPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         output_same_prompt = pipe(**inputs).images[0]
 
         inputs = self.get_dummy_inputs(torch_device)
-        inputs["prompt"] = "a different prompt"
+        inputs["prompt"] = {"edit_instruction": "a different prompt"}
         output_different_prompts = pipe(**inputs).images[0]
 
         max_diff = np.abs(output_same_prompt - output_different_prompts).max()
@@ -137,3 +153,40 @@ class BriaFiboPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             image = pipe(**inputs).images[0]
             output_height, output_width, _ = image.shape
             assert (output_height, output_width) == (expected_height, expected_width)
+
+    def test_bria_fibo_edit_mask(self):
+        pipe = self.pipeline_class(**self.get_dummy_components())
+        pipe = pipe.to(torch_device)
+        inputs = self.get_dummy_inputs(torch_device)
+
+        mask = Image.fromarray((np.ones((192, 336)) * 255).astype(np.uint8), mode="L")
+
+        inputs.update({"mask": mask})
+        output = pipe(**inputs).images[0]
+
+        assert output.shape == (192, 336, 3)
+
+    def test_bria_fibo_edit_mask_image_size_mismatch(self):
+        pipe = self.pipeline_class(**self.get_dummy_components())
+        pipe = pipe.to(torch_device)
+        inputs = self.get_dummy_inputs(torch_device)
+
+        mask = Image.fromarray((np.ones((64, 64)) * 255).astype(np.uint8), mode="L")
+
+        inputs.update({"mask": mask})
+        with self.assertRaisesRegex(ValueError, "Mask and image must have the same size"):
+            pipe(**inputs)
+
+    def test_bria_fibo_edit_mask_no_image(self):
+        pipe = self.pipeline_class(**self.get_dummy_components())
+        pipe = pipe.to(torch_device)
+        inputs = self.get_dummy_inputs(torch_device)
+
+        mask = Image.fromarray((np.ones((32, 32)) * 255).astype(np.uint8), mode="L")
+
+        # Remove image from inputs if it's there (it shouldn't be by default from get_dummy_inputs)
+        inputs.pop("image", None)
+        inputs.update({"mask": mask})
+
+        with self.assertRaisesRegex(ValueError, "If mask is provided, image must also be provided"):
+            pipe(**inputs)
