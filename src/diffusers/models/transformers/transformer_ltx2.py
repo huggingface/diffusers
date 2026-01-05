@@ -37,13 +37,53 @@ from ..normalization import AdaLayerNormSingle, RMSNorm
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-def apply_rotary_emb(x: torch.Tensor, freqs: Tuple[torch.Tensor, torch.Tensor]) -> torch.Tensor:
+def apply_interleaved_rotary_emb(x: torch.Tensor, freqs: Tuple[torch.Tensor, torch.Tensor]) -> torch.Tensor:
     cos, sin = freqs
     x_real, x_imag = x.unflatten(2, (-1, 2)).unbind(-1)  # [B, S, C // 2]
     x_rotated = torch.stack([-x_imag, x_real], dim=-1).flatten(2)
     out = (x.float() * cos + x_rotated.float() * sin).to(x.dtype)
     return out
 
+def apply_split_rotary_emb(x: torch.Tensor, freqs: Tuple[torch.Tensor, torch.Tensor]) -> torch.Tensor:
+    cos, sin = freqs
+
+    needs_reshape = False
+    if x.ndim != 4 and cos.ndim == 4:
+        # cos is (b, h, t, r) -> reshape x to (b, h, t, dim_per_head)
+        b, h, t, _ = cos.shape
+        x = x.reshape(b, t, h, -1).swapaxes(1, 2)
+        needs_reshape = True
+
+    # Split last dim (2*r) into (d=2, r)
+    last = x.shape[-1]
+    if last % 2 != 0:
+        raise ValueError(f"Expected x.shape[-1] to be even for split rotary, got {last}.")
+    r = last // 2
+
+    # (..., 2, r)
+    split_x = x.reshape(*x.shape[:-1], 2, r)
+    first_x = split_x[..., :1, :]   # (..., 1, r)
+    second_x = split_x[..., 1:, :]  # (..., 1, r)
+
+    cos_u = cos.unsqueeze(-2)  # broadcast to (..., 1, r) against (..., 2, r)
+    sin_u = sin.unsqueeze(-2)
+
+    out = split_x * cos_u
+    first_out = out[..., :1, :]
+    second_out = out[..., 1:, :]
+
+    first_out.addcmul_(-sin_u, second_x)
+    second_out.addcmul_(sin_u, first_x)
+
+    out = out.reshape(*out.shape[:-2], last)
+
+    if needs_reshape:
+        out = out.swapaxes(1, 2).reshape(b, t, -1)
+
+    return out
+
+
+ROTARY_FN_MAP = {"interleaved": apply_interleaved_rotary_emb, "split": apply_split_rotary_emb}
 
 @dataclass
 class AudioVisualModelOutput(BaseOutput):
@@ -147,8 +187,8 @@ class LTX2AudioVideoAttnProcessor:
         key = attn.norm_k(key)
 
         if query_rotary_emb is not None:
-            query = apply_rotary_emb(query, query_rotary_emb)
-            key = apply_rotary_emb(key, key_rotary_emb if key_rotary_emb is not None else query_rotary_emb)
+            query = ROTARY_FN_MAP[attn.rope_type](query, query_rotary_emb)
+            key = ROTARY_FN_MAP[attn.rope_type](key, key_rotary_emb if key_rotary_emb is not None else query_rotary_emb)
 
         query = query.unflatten(2, (attn.heads, -1))
         key = key.unflatten(2, (attn.heads, -1))
@@ -194,6 +234,7 @@ class LTX2Attention(torch.nn.Module, AttentionModuleMixin):
         qk_norm: str = "rms_norm_across_heads",
         norm_eps: float = 1e-6,
         norm_elementwise_affine: bool = True,
+        rope_type: str = "interleaved",
         processor=None,
     ):
         super().__init__()
@@ -209,6 +250,7 @@ class LTX2Attention(torch.nn.Module, AttentionModuleMixin):
         self.dropout = dropout
         self.out_dim = query_dim
         self.heads = heads
+        self.rope_type = rope_type
 
         self.norm_q = torch.nn.RMSNorm(dim_head * heads, eps=norm_eps, elementwise_affine=norm_elementwise_affine)
         self.norm_k = torch.nn.RMSNorm(dim_head * kv_heads, eps=norm_eps, elementwise_affine=norm_elementwise_affine)
@@ -280,6 +322,7 @@ class LTX2VideoTransformerBlock(nn.Module):
         attention_out_bias: bool = True,
         eps: float = 1e-6,
         elementwise_affine: bool = False,
+        rope_type: str = "interleaved",
     ):
         super().__init__()
 
@@ -294,6 +337,7 @@ class LTX2VideoTransformerBlock(nn.Module):
             cross_attention_dim=None,
             out_bias=attention_out_bias,
             qk_norm=qk_norm,
+            rope_type=rope_type,
         )
 
         self.audio_norm1 = RMSNorm(audio_dim, eps=eps, elementwise_affine=elementwise_affine)
@@ -306,6 +350,7 @@ class LTX2VideoTransformerBlock(nn.Module):
             cross_attention_dim=None,
             out_bias=attention_out_bias,
             qk_norm=qk_norm,
+            rope_type=rope_type,
         )
 
         # 2. Prompt Cross-Attention
@@ -319,6 +364,7 @@ class LTX2VideoTransformerBlock(nn.Module):
             bias=attention_bias,
             out_bias=attention_out_bias,
             qk_norm=qk_norm,
+            rope_type=rope_type
         )
 
         self.audio_norm2 = RMSNorm(audio_dim, eps=eps, elementwise_affine=elementwise_affine)
@@ -331,6 +377,7 @@ class LTX2VideoTransformerBlock(nn.Module):
             bias=attention_bias,
             out_bias=attention_out_bias,
             qk_norm=qk_norm,
+            rope_type=rope_type
         )
 
         # 3. Audio-to-Video (a2v) and Video-to-Audio (v2a) Cross-Attention
@@ -345,6 +392,7 @@ class LTX2VideoTransformerBlock(nn.Module):
             bias=attention_bias,
             out_bias=attention_out_bias,
             qk_norm=qk_norm,
+            rope_type=rope_type
         )
 
         # Video-to-Audio (v2a) Attention --> Q: Audio; K,V: Video
@@ -358,6 +406,7 @@ class LTX2VideoTransformerBlock(nn.Module):
             bias=attention_bias,
             out_bias=attention_out_bias,
             qk_norm=qk_norm,
+            rope_type=rope_type,
         )
 
         # 4. Feedforward layers
@@ -561,6 +610,8 @@ class LTX2AudioVideoRotaryPosEmbed(nn.Module):
         causal_offset: int = 1,
         modality: str = "video",
         double_precision: bool = True,
+        rope_type: str = "interleaved",
+        num_attention_heads: int = 32,
     ) -> None:
         super().__init__()
 
@@ -568,7 +619,12 @@ class LTX2AudioVideoRotaryPosEmbed(nn.Module):
         self.patch_size = patch_size
         self.patch_size_t = patch_size_t
 
+        if rope_type not in ["interleaved", "split"]:
+            raise ValueError(f"{rope_type=} not supported. Choose between 'interleaved' and 'split'.")
+        self.rope_type = rope_type
+
         self.base_num_frames = base_num_frames
+        self.num_attention_heads = num_attention_heads
 
         # Video-specific
         self.base_height = base_height
@@ -791,14 +847,41 @@ class LTX2AudioVideoRotaryPosEmbed(nn.Module):
         freqs = freqs.transpose(-1, -2).flatten(2)  # [B, num_patches, self.dim // 2]
 
         # 6. Get real, interleaved (cos, sin) frequencies, padded to self.dim
-        cos_freqs = freqs.cos().repeat_interleave(2, dim=-1)
-        sin_freqs = freqs.sin().repeat_interleave(2, dim=-1)
+        # TODO: consider implementing this as a utility and reuse in `connectors.py`.
+        # src/diffusers/pipelines/ltx2/connectors.py
+        if self.rope_type == "interleaved":
+            cos_freqs = freqs.cos().repeat_interleave(2, dim=-1)
+            sin_freqs = freqs.sin().repeat_interleave(2, dim=-1)
 
-        if self.dim % num_rope_elems != 0:
-            cos_padding = torch.ones_like(cos_freqs[:, :, : self.dim % num_rope_elems])
-            sin_padding = torch.zeros_like(cos_freqs[:, :, : self.dim % num_rope_elems])
-            cos_freqs = torch.cat([cos_padding, cos_freqs], dim=-1)
-            sin_freqs = torch.cat([sin_padding, sin_freqs], dim=-1)
+            if self.dim % num_rope_elems != 0:
+                cos_padding = torch.ones_like(cos_freqs[:, :, : self.dim % num_rope_elems])
+                sin_padding = torch.zeros_like(cos_freqs[:, :, : self.dim % num_rope_elems])
+                cos_freqs = torch.cat([cos_padding, cos_freqs], dim=-1)
+                sin_freqs = torch.cat([sin_padding, sin_freqs], dim=-1)
+        
+        elif self.rope_type == "split":
+            expected_freqs = self.dim // 2
+            current_freqs = freqs.shape[-1]
+            pad_size = expected_freqs - current_freqs
+            cos_freq = freqs.cos()
+            sin_freq = freqs.sin()
+
+            if pad_size != 0:
+                cos_padding = torch.ones_like(cos_freq[:, :, :pad_size])
+                sin_padding = torch.zeros_like(sin_freq[:, :, :pad_size])
+
+                cos_freq = torch.concatenate([cos_padding, cos_freq], axis=-1)
+                sin_freq = torch.concatenate([sin_padding, sin_freq], axis=-1)
+
+            # Reshape freqs to be compatible with multi-head attention
+            b = cos_freq.shape[0]
+            t = cos_freq.shape[1]
+
+            cos_freq = cos_freq.reshape(b, t, self.num_attention_heads, -1)
+            sin_freq = sin_freq.reshape(b, t, self.num_attention_heads, -1)
+
+            cos_freqs = torch.swapaxes(cos_freq, 1, 2)  # (B,H,T,D//2)
+            sin_freqs = torch.swapaxes(sin_freq, 1, 2)  # (B,H,T,D//2)
 
         return cos_freqs, sin_freqs
 
@@ -885,7 +968,8 @@ class LTX2VideoTransformer3DModel(
         rope_double_precision: bool = True,
         causal_offset: int = 1,
         timestep_scale_multiplier: int = 1000,
-        cross_attn_timestep_scale_multiplier: int = 1,
+        cross_attn_timestep_scale_multiplier: int = 1000,
+        rope_type: str = "interleaved",
     ) -> None:
         super().__init__()
 
@@ -952,6 +1036,8 @@ class LTX2VideoTransformer3DModel(
             causal_offset=causal_offset,
             modality="video",
             double_precision=rope_double_precision,
+            rope_type=rope_type,
+            num_attention_heads=num_attention_heads,
         )
         self.audio_rope = LTX2AudioVideoRotaryPosEmbed(
             dim=audio_inner_dim,
@@ -965,6 +1051,8 @@ class LTX2VideoTransformer3DModel(
             causal_offset=causal_offset,
             modality="audio",
             double_precision=rope_double_precision,
+            rope_type=rope_type,
+            num_attention_heads=audio_num_attention_heads,
         )
 
         # Audio-to-Video, Video-to-Audio Cross-Attention
@@ -980,6 +1068,8 @@ class LTX2VideoTransformer3DModel(
             causal_offset=causal_offset,
             modality="video",
             double_precision=rope_double_precision,
+            rope_type=rope_type,
+            num_attention_heads=num_attention_heads,
         )
         self.cross_attn_audio_rope = LTX2AudioVideoRotaryPosEmbed(
             dim=audio_cross_attention_dim,
@@ -992,6 +1082,8 @@ class LTX2VideoTransformer3DModel(
             causal_offset=causal_offset,
             modality="audio",
             double_precision=rope_double_precision,
+            rope_type=rope_type,
+            num_attention_heads=audio_num_attention_heads
         )
 
         # 5. Transformer Blocks
@@ -1012,6 +1104,7 @@ class LTX2VideoTransformer3DModel(
                     attention_out_bias=attention_out_bias,
                     eps=norm_eps,
                     elementwise_affine=norm_elementwise_affine,
+                    rope_type=rope_type,
                 )
                 for _ in range(num_layers)
             ]

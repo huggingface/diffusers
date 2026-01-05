@@ -9,7 +9,6 @@ from ...models.attention import FeedForward
 from ...models.modeling_utils import ModelMixin
 from ...models.transformers.transformer_ltx2 import LTX2Attention, LTX2AudioVideoAttnProcessor
 
-
 class LTX2RotaryPosEmbed1d(nn.Module):
     """
     1D rotary positional embeddings (RoPE) for the LTX 2.0 text encoder connectors.
@@ -21,12 +20,19 @@ class LTX2RotaryPosEmbed1d(nn.Module):
         base_seq_len: int = 4096,
         theta: float = 10000.0,
         double_precision: bool = True,
+        rope_type: str = "interleaved",
+        num_attention_heads: int = 32
     ):
         super().__init__()
+        if rope_type not in ["interleaved", "split"]:
+            raise ValueError(f"{rope_type=} not supported. Choose between 'interleaved' and 'split'.")
+        
         self.dim = dim
         self.base_seq_len = base_seq_len
         self.theta = theta
         self.double_precision = double_precision
+        self.rope_type = rope_type
+        self.num_attention_heads = num_attention_heads
 
     def forward(
         self,
@@ -54,14 +60,39 @@ class LTX2RotaryPosEmbed1d(nn.Module):
         freqs = (grid.unsqueeze(-1) * 2 - 1) * freqs  # [B, seq_len, self.dim // 2]
 
         # 4. Get real, interleaved (cos, sin) frequencies, padded to self.dim
-        cos_freqs = freqs.cos().repeat_interleave(2, dim=-1)
-        sin_freqs = freqs.sin().repeat_interleave(2, dim=-1)
+        if self.rope_type == "interleaved":
+            cos_freqs = freqs.cos().repeat_interleave(2, dim=-1)
+            sin_freqs = freqs.sin().repeat_interleave(2, dim=-1)
 
-        if self.dim % num_rope_elems != 0:
-            cos_padding = torch.ones_like(cos_freqs[:, :, : self.dim % num_rope_elems])
-            sin_padding = torch.zeros_like(sin_freqs[:, :, : self.dim % num_rope_elems])
-            cos_freqs = torch.cat([cos_padding, cos_freqs], dim=-1)
-            sin_freqs = torch.cat([sin_padding, sin_freqs], dim=-1)
+            if self.dim % num_rope_elems != 0:
+                cos_padding = torch.ones_like(cos_freqs[:, :, : self.dim % num_rope_elems])
+                sin_padding = torch.zeros_like(sin_freqs[:, :, : self.dim % num_rope_elems])
+                cos_freqs = torch.cat([cos_padding, cos_freqs], dim=-1)
+                sin_freqs = torch.cat([sin_padding, sin_freqs], dim=-1)
+        
+        elif self.rope_type == "split":
+            expected_freqs = self.dim // 2
+            current_freqs = freqs.shape[-1]
+            pad_size = expected_freqs - current_freqs
+            cos_freq = freqs.cos()
+            sin_freq = freqs.sin()
+
+            if pad_size != 0:
+                cos_padding = torch.ones_like(cos_freq[:, :, :pad_size])
+                sin_padding = torch.zeros_like(sin_freq[:, :, :pad_size])
+
+                cos_freq = torch.concatenate([cos_padding, cos_freq], axis=-1)
+                sin_freq = torch.concatenate([sin_padding, sin_freq], axis=-1)
+
+            # Reshape freqs to be compatible with multi-head attention
+            b = cos_freq.shape[0]
+            t = cos_freq.shape[1]
+
+            cos_freq = cos_freq.reshape(b, t, self.num_attention_heads, -1)
+            sin_freq = sin_freq.reshape(b, t, self.num_attention_heads, -1)
+
+            cos_freqs = torch.swapaxes(cos_freq, 1, 2)  # (B,H,T,D//2)
+            sin_freqs = torch.swapaxes(sin_freq, 1, 2)  # (B,H,T,D//2)
 
         return cos_freqs, sin_freqs
 
@@ -74,6 +105,7 @@ class LTX2TransformerBlock1d(nn.Module):
         attention_head_dim: int,
         activation_fn: str = "gelu-approximate",
         eps: float = 1e-6,
+        rope_type: str = "interleaved",
     ):
         super().__init__()
 
@@ -84,6 +116,7 @@ class LTX2TransformerBlock1d(nn.Module):
             kv_heads=num_attention_heads,
             dim_head=attention_head_dim,
             processor=LTX2AudioVideoAttnProcessor(),
+            rope_type=rope_type
         )
 
         self.norm2 = torch.nn.RMSNorm(dim, eps=eps, elementwise_affine=False)
@@ -126,6 +159,7 @@ class LTX2ConnectorTransformer1d(nn.Module):
         rope_double_precision: bool = True,
         eps: float = 1e-6,
         causal_temporal_positioning: bool = False,
+        rope_type: str = "interleaved"
     ):
         super().__init__()
         self.num_attention_heads = num_attention_heads
@@ -139,7 +173,12 @@ class LTX2ConnectorTransformer1d(nn.Module):
             self.learnable_registers = torch.nn.Parameter(init_registers)
 
         self.rope = LTX2RotaryPosEmbed1d(
-            self.inner_dim, base_seq_len=rope_base_seq_len, theta=rope_theta, double_precision=rope_double_precision
+            self.inner_dim, 
+            base_seq_len=rope_base_seq_len, 
+            theta=rope_theta, 
+            double_precision=rope_double_precision,
+            rope_type=rope_type,
+            num_attention_heads=num_attention_heads
         )
 
         self.transformer_blocks = torch.nn.ModuleList(
@@ -148,6 +187,7 @@ class LTX2ConnectorTransformer1d(nn.Module):
                     dim=self.inner_dim,
                     num_attention_heads=num_attention_heads,
                     attention_head_dim=attention_head_dim,
+                    rope_type=rope_type
                 )
                 for _ in range(num_layers)
             ]
@@ -234,6 +274,7 @@ class LTX2TextConnectors(ModelMixin, ConfigMixin):
         rope_theta: float,
         rope_double_precision: bool,
         causal_temporal_positioning: bool,
+        rope_type: str = "interleaved",
     ):
         super().__init__()
         self.text_proj_in = nn.Linear(caption_channels * text_proj_in_factor, caption_channels, bias=False)
@@ -246,6 +287,7 @@ class LTX2TextConnectors(ModelMixin, ConfigMixin):
             rope_theta=rope_theta,
             rope_double_precision=rope_double_precision,
             causal_temporal_positioning=causal_temporal_positioning,
+            rope_type=rope_type
         )
         self.audio_connector = LTX2ConnectorTransformer1d(
             num_attention_heads=audio_connector_num_attention_heads,
@@ -256,6 +298,7 @@ class LTX2TextConnectors(ModelMixin, ConfigMixin):
             rope_theta=rope_theta,
             rope_double_precision=rope_double_precision,
             causal_temporal_positioning=causal_temporal_positioning,
+            rope_type=rope_type
         )
 
     def forward(
