@@ -360,4 +360,4 @@ We ran a benchmark with Ulysess, Ring, and Unified Attention with [this script](
 | ring               | 13076.492        | 3.82        | 56.02            |
 | unified_balanced   | 11068.705        | 4.52        | 33.85            |
 
-From the above table, it's clear that Unified Attention as a CP backend provides the best trade-off between speed and memory.
+From the above table, it's clear that Ulysses provides better throughput, but the number of devices it can use remains limited to number of attention-heads, a limitation that is solved by unified attention.
