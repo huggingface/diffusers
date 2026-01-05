@@ -14,11 +14,9 @@
 # limitations under the License.
 
 import inspect
-import math
 from dataclasses import dataclass
 from typing import Any, Dict, Optional, Tuple, Union
 
-import numpy as np
 import torch
 import torch.nn as nn
 
@@ -780,28 +778,12 @@ class LTX2AudioVideoRotaryPosEmbed(nn.Module):
         num_rope_elems = num_pos_dims * 2
 
         # 4. Create a 1D grid of frequencies for RoPE
-        start = 1.0
-        end = self.theta
-        if self.double_precision:
-            pow_indices = np.power(
-                self.theta,
-                np.linspace(
-                    np.log(start) / np.log(self.theta),
-                    np.log(end) / np.log(self.theta),
-                    self.dim // num_rope_elems,
-                    dtype=np.float64,
-                ),
-            )
-            freqs = torch.tensor(pow_indices * math.pi / 2, dtype=torch.float32, device=device)
-        else:
-            freqs = self.theta ** torch.linspace(
-                start=math.log(start, self.theta),
-                end=math.log(end, self.theta),
-                steps=self.dim // num_rope_elems,
-                device=device,
-                dtype=torch.float32,
-            )
-            freqs = freqs * math.pi / 2.0
+        freqs_dtype = torch.float64 if self.double_precision else torch.float32
+        pow_indices = torch.pow(
+            self.theta,
+            torch.linspace(start=0.0, end=1.0, steps=self.dim // num_rope_elems, dtype=freqs_dtype, device=device),
+        )
+        freqs = (pow_indices * torch.pi / 2.0).to(dtype=torch.float32)
 
         # 5. Tensor-vector outer product between pos ids tensor of shape (B, 3, num_patches) and freqs vector of shape
         # (self.dim // num_elems,)

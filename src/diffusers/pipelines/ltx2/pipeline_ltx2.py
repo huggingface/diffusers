@@ -29,8 +29,8 @@ from ...utils import is_torch_xla_available, logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from ...video_processor import VideoProcessor
 from ..pipeline_utils import DiffusionPipeline
+from .connectors import LTX2TextConnectors
 from .pipeline_output import LTX2PipelineOutput
-from .text_encoder import LTX2AudioVisualTextEncoder
 from .vocoder import LTX2Vocoder
 
 
@@ -192,9 +192,11 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLoraLoaderMix
         tokenizer (`T5TokenizerFast`):
             Second Tokenizer of class
             [T5TokenizerFast](https://huggingface.co/docs/transformers/en/model_doc/t5#transformers.T5TokenizerFast).
+        connectors ([`LTX2TextConnectors`]):
+            Text connector stack used to adapt text encoder hidden states for the video and audio branches.
     """
 
-    model_cpu_offload_seq = "text_encoder->transformer->vae->audio_vae->vocoder"
+    model_cpu_offload_seq = "text_encoder->connectors->transformer->vae->audio_vae->vocoder"
     _optional_components = []
     _callback_tensor_inputs = ["latents", "prompt_embeds", "negative_prompt_embeds"]
 
@@ -203,8 +205,9 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLoraLoaderMix
         scheduler: FlowMatchEulerDiscreteScheduler,
         vae: AutoencoderKLLTX2Video,
         audio_vae: AutoencoderKLLTX2Audio,
-        text_encoder: LTX2AudioVisualTextEncoder,
+        text_encoder: Gemma3ForConditionalGeneration,
         tokenizer: Union[GemmaTokenizer, GemmaTokenizerFast],
+        connectors: LTX2TextConnectors,
         transformer: LTX2VideoTransformer3DModel,
         vocoder: LTX2Vocoder,
     ):
@@ -215,6 +218,7 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLoraLoaderMix
             audio_vae=audio_vae,
             text_encoder=text_encoder,
             tokenizer=tokenizer,
+            connectors=connectors,
             transformer=transformer,
             vocoder=vocoder,
             scheduler=scheduler,
@@ -252,6 +256,73 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLoraLoaderMix
             self.tokenizer.model_max_length if getattr(self, "tokenizer", None) is not None else 1024
         )
 
+    @staticmethod
+    def _pack_text_embeds(
+        text_hidden_states: torch.Tensor,
+        sequence_lengths: torch.Tensor,
+        device: Union[str, torch.device],
+        padding_side: str = "left",
+        scale_factor: int = 8,
+        eps: float = 1e-6,
+    ) -> torch.Tensor:
+        """
+        Packs and normalizes text encoder hidden states, respecting padding. Normalization is performed per-batch and
+        per-layer in a masked fashion (only over non-padded positions).
+
+        Args:
+            text_hidden_states (`torch.Tensor` of shape `(batch_size, seq_len, hidden_dim, num_layers)`):
+                Per-layer hidden_states from a text encoder (e.g. `Gemma3ForConditionalGeneration`).
+            sequence_lengths (`torch.Tensor of shape `(batch_size,)`):
+                The number of valid (non-padded) tokens for each batch instance.
+            device: (`str` or `torch.device`, *optional*):
+                torch device to place the resulting embeddings on
+            padding_side: (`str`, *optional*, defaults to `"left"`):
+                Whether the text tokenizer performs padding on the `"left"` or `"right"`.
+            scale_factor (`int`, *optional*, defaults to `8`):
+                Scaling factor to multiply the normalized hidden states by.
+            eps (`float`, *optional*, defaults to `1e-6`):
+                A small positive value for numerical stability when performing normalization.
+
+        Returns:
+            `torch.Tensor` of shape `(batch_size, seq_len, hidden_dim * num_layers)`:
+                Normed and flattened text encoder hidden states.
+        """
+        batch_size, seq_len, hidden_dim, num_layers = text_hidden_states.shape
+        original_dtype = text_hidden_states.dtype
+
+        # Create padding mask
+        token_indices = torch.arange(seq_len, device=device).unsqueeze(0)
+        if padding_side == "right":
+            # For right padding, valid tokens are from 0 to sequence_length-1
+            mask = token_indices < sequence_lengths[:, None]  # [batch_size, seq_len]
+        elif padding_side == "left":
+            # For left padding, valid tokens are from (T - sequence_length) to T-1
+            start_indices = seq_len - sequence_lengths[:, None]  # [batch_size, 1]
+            mask = token_indices >= start_indices  # [B, T]
+        else:
+            raise ValueError(f"padding_side must be 'left' or 'right', got {padding_side}")
+        mask = mask[:, :, None, None]  # [batch_size, seq_len] --> [batch_size, seq_len, 1, 1]
+
+        # Compute masked mean over non-padding positions of shape (batch_size, 1, 1, seq_len)
+        masked_text_hidden_states = text_hidden_states.masked_fill(~mask, 0.0)
+        num_valid_positions = (sequence_lengths * hidden_dim).view(batch_size, 1, 1, 1)
+        masked_mean = masked_text_hidden_states.sum(dim=(1, 2), keepdim=True) / (num_valid_positions + eps)
+
+        # Compute min/max over non-padding positions of shape (batch_size, 1, 1 seq_len)
+        x_min = text_hidden_states.masked_fill(~mask, float("inf")).amin(dim=(1, 2), keepdim=True)
+        x_max = text_hidden_states.masked_fill(~mask, float("-inf")).amax(dim=(1, 2), keepdim=True)
+
+        # Normalization
+        normalized_hidden_states = (text_hidden_states - masked_mean) / (x_max - x_min + eps)
+        normalized_hidden_states = normalized_hidden_states * scale_factor
+
+        # Pack the hidden states to a 3D tensor (batch_size, seq_len, hidden_dim * num_layers)
+        normalized_hidden_states = normalized_hidden_states.flatten(2)
+        mask_flat = mask.squeeze(-1).expand(-1, -1, hidden_dim * num_layers)
+        normalized_hidden_states = normalized_hidden_states.masked_fill(~mask_flat, 0.0)
+        normalized_hidden_states = normalized_hidden_states.to(dtype=original_dtype)
+        return normalized_hidden_states
+
     def _get_gemma_prompt_embeds(
         self,
         prompt: Union[str, List[str]],
@@ -274,7 +345,7 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLoraLoaderMix
             max_sequence_length (`int`, defaults to 1024): Maximum sequence length to use for the prompt.
         """
         device = device or self._execution_device
-        dtype = dtype or self.text_encoder.base_text_encoder.dtype
+        dtype = dtype or self.text_encoder.dtype
 
         prompt = [prompt] if isinstance(prompt, str) else prompt
         batch_size = len(prompt)
@@ -296,29 +367,34 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLoraLoaderMix
         )
         text_input_ids = text_inputs.input_ids
         prompt_attention_mask = text_inputs.attention_mask
+        text_input_ids = text_input_ids.to(device)
+        prompt_attention_mask = prompt_attention_mask.to(device)
 
-        prompt_embeds, audio_prompt_embeds, prompt_attention_mask = self.text_encoder(
-            text_input_ids.to(device),
-            attention_mask=prompt_attention_mask.to(device),
+        text_encoder_outputs = self.text_encoder(
+            input_ids=text_input_ids, attention_mask=prompt_attention_mask, output_hidden_states=True
+        )
+        text_encoder_hidden_states = text_encoder_outputs.hidden_states
+        text_encoder_hidden_states = torch.stack(text_encoder_hidden_states, dim=-1)
+        sequence_lengths = prompt_attention_mask.sum(dim=-1)
+
+        prompt_embeds = self._pack_text_embeds(
+            text_encoder_hidden_states,
+            sequence_lengths,
+            device=device,
             padding_side=self.tokenizer.padding_side,
             scale_factor=scale_factor,
         )
         prompt_embeds = prompt_embeds.to(dtype=dtype)
-        audio_prompt_embeds = audio_prompt_embeds.to(dtype=dtype)
 
         # duplicate text embeddings for each generation per prompt, using mps friendly method
         _, seq_len, _ = prompt_embeds.shape
         prompt_embeds = prompt_embeds.repeat(1, num_videos_per_prompt, 1)
         prompt_embeds = prompt_embeds.view(batch_size * num_videos_per_prompt, seq_len, -1)
 
-        _, audio_seq_len, _ = prompt_embeds.shape
-        prompt_embeds = prompt_embeds.repeat(1, num_videos_per_prompt, 1)
-        prompt_embeds = prompt_embeds.view(batch_size * num_videos_per_prompt, audio_seq_len, -1)
-
         prompt_attention_mask = prompt_attention_mask.view(batch_size, -1)
         prompt_attention_mask = prompt_attention_mask.repeat(num_videos_per_prompt, 1)
 
-        return prompt_embeds, audio_prompt_embeds, prompt_attention_mask
+        return prompt_embeds, prompt_attention_mask
 
     def encode_prompt(
         self,
@@ -327,9 +403,7 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLoraLoaderMix
         do_classifier_free_guidance: bool = True,
         num_videos_per_prompt: int = 1,
         prompt_embeds: Optional[torch.Tensor] = None,
-        audio_prompt_embeds: Optional[torch.Tensor] = None,
         negative_prompt_embeds: Optional[torch.Tensor] = None,
-        negative_audio_prompt_embeds: Optional[torch.Tensor] = None,
         prompt_attention_mask: Optional[torch.Tensor] = None,
         negative_prompt_attention_mask: Optional[torch.Tensor] = None,
         max_sequence_length: int = 1024,
@@ -372,7 +446,7 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLoraLoaderMix
             batch_size = prompt_embeds.shape[0]
 
         if prompt_embeds is None:
-            prompt_embeds, audio_prompt_embeds, prompt_attention_mask = self._get_gemma_prompt_embeds(
+            prompt_embeds, prompt_attention_mask = self._get_gemma_prompt_embeds(
                 prompt=prompt,
                 num_videos_per_prompt=num_videos_per_prompt,
                 max_sequence_length=max_sequence_length,
@@ -397,7 +471,7 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLoraLoaderMix
                     " the batch size of `prompt`."
                 )
 
-            negative_prompt_embeds, negative_audio_prompt_embeds, negative_prompt_attention_mask = self._get_gemma_prompt_embeds(
+            negative_prompt_embeds, negative_prompt_attention_mask = self._get_gemma_prompt_embeds(
                 prompt=negative_prompt,
                 num_videos_per_prompt=num_videos_per_prompt,
                 max_sequence_length=max_sequence_length,
@@ -406,7 +480,7 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLoraLoaderMix
                 dtype=dtype,
             )
 
-        return prompt_embeds, audio_prompt_embeds, prompt_attention_mask, negative_prompt_embeds, negative_audio_prompt_embeds, negative_prompt_attention_mask
+        return prompt_embeds, prompt_attention_mask, negative_prompt_embeds, negative_prompt_attention_mask
 
     def check_inputs(
         self,
@@ -668,10 +742,8 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLoraLoaderMix
         latents: Optional[torch.Tensor] = None,
         audio_latents: Optional[torch.Tensor] = None,
         prompt_embeds: Optional[torch.Tensor] = None,
-        audio_prompt_embeds: Optional[torch.Tensor] = None,
         prompt_attention_mask: Optional[torch.Tensor] = None,
         negative_prompt_embeds: Optional[torch.Tensor] = None,
-        negative_audio_prompt_embeds: Optional[torch.Tensor] = None,
         negative_prompt_attention_mask: Optional[torch.Tensor] = None,
         decode_timestep: Union[float, List[float]] = 0.0,
         decode_noise_scale: Optional[Union[float, List[float]]] = None,
@@ -732,16 +804,10 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLoraLoaderMix
             prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
                 provided, text embeddings will be generated from `prompt` input argument.
-            audio_prompt_embeds (`torch.Tensor`, *optional*):
-                Pre-generated text embeddings for audio processing. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
-                provided, text embeddings will be generated from `prompt` input argument.
             prompt_attention_mask (`torch.Tensor`, *optional*):
                 Pre-generated attention mask for text embeddings.
             negative_prompt_embeds (`torch.FloatTensor`, *optional*):
                 Pre-generated negative text embeddings. For PixArt-Sigma this negative prompt should be "". If not
-                provided, negative_prompt_embeds will be generated from `negative_prompt` input argument.
-            negative_audio_prompt_embeds (`torch.FloatTensor`, *optional*):
-                Pre-generated negative text embeddings for audio processing. For PixArt-Sigma this negative prompt should be "". If not
                 provided, negative_prompt_embeds will be generated from `negative_prompt` input argument.
             negative_prompt_attention_mask (`torch.FloatTensor`, *optional*):
                 Pre-generated attention mask for negative text embeddings.
@@ -812,10 +878,8 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLoraLoaderMix
         # 3. Prepare text embeddings
         (
             prompt_embeds,
-            audio_prompt_embeds,
             prompt_attention_mask,
             negative_prompt_embeds,
-            negative_audio_prompt_embeds,
             negative_prompt_attention_mask,
         ) = self.encode_prompt(
             prompt=prompt,
@@ -823,9 +887,7 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLoraLoaderMix
             do_classifier_free_guidance=self.do_classifier_free_guidance,
             num_videos_per_prompt=num_videos_per_prompt,
             prompt_embeds=prompt_embeds,
-            audio_prompt_embeds=audio_prompt_embeds,
             negative_prompt_embeds=negative_prompt_embeds,
-            negative_audio_prompt_embeds=negative_audio_prompt_embeds,
             prompt_attention_mask=prompt_attention_mask,
             negative_prompt_attention_mask=negative_prompt_attention_mask,
             max_sequence_length=max_sequence_length,
@@ -833,8 +895,12 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLoraLoaderMix
         )
         if self.do_classifier_free_guidance:
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds], dim=0)
-            audio_prompt_embeds = torch.cat([negative_audio_prompt_embeds, audio_prompt_embeds], dim=0)
             prompt_attention_mask = torch.cat([negative_prompt_attention_mask, prompt_attention_mask], dim=0)
+
+        additive_attention_mask = (1 - prompt_attention_mask.to(prompt_embeds.dtype)) * -1000000.0
+        connector_prompt_embeds, connector_audio_prompt_embeds, connector_attention_mask = self.connectors(
+            prompt_embeds, additive_attention_mask, additive_mask=True
+        )
 
         # 4. Prepare latent variables
         latent_num_frames = (num_frames - 1) // self.vae_temporal_compression_ratio + 1
@@ -939,11 +1005,11 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLoraLoaderMix
                     noise_pred_video, noise_pred_audio = self.transformer(
                         hidden_states=latent_model_input,
                         audio_hidden_states=audio_latent_model_input,
-                        encoder_hidden_states=prompt_embeds,
-                        audio_encoder_hidden_states=audio_prompt_embeds,
+                        encoder_hidden_states=connector_prompt_embeds,
+                        audio_encoder_hidden_states=connector_audio_prompt_embeds,
                         timestep=timestep,
-                        encoder_attention_mask=prompt_attention_mask,
-                        audio_encoder_attention_mask=prompt_attention_mask,
+                        encoder_attention_mask=connector_attention_mask,
+                        audio_encoder_attention_mask=connector_attention_mask,
                         num_frames=latent_num_frames,
                         height=latent_height,
                         width=latent_width,

@@ -24,7 +24,7 @@ except OptionalDependencyNotAvailable:
 else:
     _import_structure["pipeline_ltx2"] = ["LTX2Pipeline"]
     _import_structure["pipeline_ltx2_image2video"] = ["LTX2ImageToVideoPipeline"]
-    _import_structure["text_encoder"] = ["LTX2AudioVisualTextEncoder"]
+    _import_structure["connectors"] = ["LTX2TextConnectors"]
     _import_structure["vocoder"] = ["LTX2Vocoder"]
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
@@ -37,7 +37,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     else:
         from .pipeline_ltx2 import LTX2Pipeline
         from .pipeline_ltx2_image2video import LTX2ImageToVideoPipeline
-        from .text_encoder import LTX2AudioVisualTextEncoder
+        from .connectors import LTX2TextConnectors
         from .vocoder import LTX2Vocoder
 
 else:

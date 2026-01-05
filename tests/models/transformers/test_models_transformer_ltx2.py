@@ -99,6 +99,7 @@ class LTX2TransformerTests(ModelTesterMixin, unittest.TestCase):
             "num_layers": 2,
             "qk_norm": "rms_norm_across_heads",
             "caption_channels": 16,
+            "rope_double_precision": False,
         }
         inputs_dict = self.dummy_input
         return init_dict, inputs_dict
