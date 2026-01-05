@@ -45,6 +45,7 @@ class UCGMScheduler(SchedulerMixin, ConfigMixin):
         rfba_gap_steps: List[float] = [0.0, 0.0],
         sampling_style: str = "mul",  # "few", "mul", "any"
         integ_st: int = 1,  # Integration start direction (1 or 0)
+        **kwargs,
     ):
         """
         Args:
@@ -69,10 +70,10 @@ class UCGMScheduler(SchedulerMixin, ConfigMixin):
         self.z_hats = []
         self.buffer_freq = 1
         self.begin_index = None
+        self.current_sigma = None
+        self.next_sigma = None
 
-    def kumaraswamy_transform(
-        self, t: torch.Tensor, a: float, b: float, c: float
-    ) -> torch.Tensor:
+    def kumaraswamy_transform(self, t: torch.Tensor, a: float, b: float, c: float) -> torch.Tensor:
         """
         Applies the Kumaraswamy transform to the time steps.
         """
@@ -129,24 +130,20 @@ class UCGMScheduler(SchedulerMixin, ConfigMixin):
 
             if timesteps is not None:
                 if not isinstance(timesteps, torch.Tensor):
-                    timesteps = torch.tensor(
-                        timesteps, dtype=torch.float64, device=device
-                    )
+                    timesteps = torch.tensor(timesteps, dtype=torch.float64, device=device)
                 else:
                     timesteps = timesteps.to(device=device, dtype=torch.float64)
 
             # Consistency checks
             if sigmas is not None and timesteps is not None:
                 if len(sigmas) != len(timesteps):
-                    raise ValueError(
-                        "`sigmas` and `timesteps` must have the same length"
-                    )
+                    raise ValueError("`sigmas` and `timesteps` must have the same length")
 
             # Derive sigmas from timesteps if missing
             if sigmas is None and timesteps is not None:
                 sigmas = timesteps / 1000.0
 
-            # [Added Logic] Apply Time Distribution Control (Kumaraswamy) to Custom Inputs
+            # Apply Time Distribution Control (Kumaraswamy) to Custom Inputs
             # UCGM logic operates on t in [0, 1] (ascending), where sigma = 1 - t.
             # We assume custom sigmas are roughly 1 -> 0 (descending noise level).
 
@@ -154,18 +151,14 @@ class UCGMScheduler(SchedulerMixin, ConfigMixin):
             t_input = (1.0 - sigmas).clamp(0.0, 1.0)
 
             # Apply transform
-            t_transformed = self.kumaraswamy_transform(
-                t_input, *self.config.time_dist_ctrl
-            )
+            t_transformed = self.kumaraswamy_transform(t_input, *self.config.time_dist_ctrl)
 
             # Convert back to sigma (1->0)
             sigmas = 1.0 - t_transformed
 
             # [CRITICAL] Ensure tail is 0.0 to enable the final cleanup step
             if sigmas[-1].abs() > 1e-6:
-                sigmas = torch.cat(
-                    [sigmas, torch.zeros(1, dtype=sigmas.dtype, device=sigmas.device)]
-                )
+                sigmas = torch.cat([sigmas, torch.zeros(1, dtype=sigmas.dtype, device=sigmas.device)])
 
             self.sigmas = sigmas
             # Recalculate timesteps from the potentially modified sigmas (with 0.0 appended)
@@ -194,9 +187,7 @@ class UCGMScheduler(SchedulerMixin, ConfigMixin):
         t_start = rfba_gap_steps[0]
         t_end = 1.0 - rfba_gap_steps[1]
 
-        t_steps = torch.linspace(
-            t_start, t_end, actual_steps, dtype=torch.float64, device=device
-        )
+        t_steps = torch.linspace(t_start, t_end, actual_steps, dtype=torch.float64, device=device)
 
         if abs(rfba_gap_steps[1] - 0.0) < 1e-9:
             t_steps = t_steps[:-1]
@@ -207,9 +198,7 @@ class UCGMScheduler(SchedulerMixin, ConfigMixin):
         # Generate Sigmas (Noise Levels) and append 0.0
         # sigmas represents 't' in the noise schedule (from 1.0 down to 0.0)
         sigmas = 1.0 - t_steps
-        sigmas = torch.cat(
-            [sigmas, torch.zeros(1, dtype=sigmas.dtype, device=sigmas.device)]
-        )
+        sigmas = torch.cat([sigmas, torch.zeros(1, dtype=sigmas.dtype, device=sigmas.device)])
 
         # Deduplicate final 0.0 if necessary (though linspace logic above handles most cases)
         if len(sigmas) > 1 and torch.abs(sigmas[-1] - sigmas[-2]) < 1e-6:
@@ -225,13 +214,23 @@ class UCGMScheduler(SchedulerMixin, ConfigMixin):
         self.z_hats = []
         self.begin_index = None
 
-    def scale_model_input(
-        self, sample: torch.Tensor, timestep: Optional[int] = None
-    ) -> torch.Tensor:
+    def scale_model_input(self, sample: torch.Tensor, timestep: Optional[int] = None) -> torch.Tensor:
         return sample
 
     def set_begin_index(self, begin_index: int = 0):
         self.begin_index = begin_index
+
+    def get_next_timestep(self):
+        return self.next_sigma * 1000.0
+
+    def get_current_timestep(self):
+        return self.current_sigma * 1000.0
+
+    def get_next_sigma(self):
+        return self.next_sigma
+
+    def get_current_sigma(self):
+        return self.current_sigma
 
     def step(
         self,
@@ -239,6 +238,8 @@ class UCGMScheduler(SchedulerMixin, ConfigMixin):
         timestep: Union[float, torch.Tensor],
         sample: torch.Tensor,
         return_dict: bool = True,
+        generator: Optional[torch.Generator] = None,
+        **kwargs,
     ) -> Union[SchedulerOutput, Tuple]:
         """
         Predict the sample at the previous timestep.
@@ -251,9 +252,7 @@ class UCGMScheduler(SchedulerMixin, ConfigMixin):
             timestep = timestep[0]
 
         if not torch.is_tensor(timestep):
-            timestep = torch.tensor(
-                timestep, device=self.timesteps.device, dtype=torch.float64
-            )
+            timestep = torch.tensor(timestep, device=self.timesteps.device, dtype=torch.float64)
         else:
             timestep = timestep.to(self.timesteps.device, dtype=torch.float64)
 
@@ -267,9 +266,10 @@ class UCGMScheduler(SchedulerMixin, ConfigMixin):
         # --- 2. Prepare Timesteps (Float64) ---
         t_cur = self.sigmas[step_index].abs()
         t_next = self.sigmas[step_index + 1].abs()
+        self.current_sigma = t_cur
+        self.next_sigma = t_next
 
         # --- 3. Internal Calculation (Strict Float64) ---
-        # Ensure all operands are float64 to minimize accumulation error within the step
         F_t = ((-1) ** (1 - self.config.integ_st)) * model_output.to(torch.float64)
         sample_f64 = sample.to(torch.float64)
 
@@ -309,7 +309,13 @@ class UCGMScheduler(SchedulerMixin, ConfigMixin):
         # --- 5. Stochasticity ---
         stochast_ratio = self.config.stochast_ratio
         if isinstance(stochast_ratio, (float, int)) and stochast_ratio > 0:
-            noi = torch.randn_like(sample_f64)
+            noi = torch.randn(
+                sample.shape,
+                generator=generator,
+                device=sample.device,
+                dtype=sample.dtype,
+            )
+            noi = noi.to(torch.float64)  # Cast to calculation dtype
         else:
             noi = torch.zeros_like(sample_f64)
             stochast_ratio = 0.0
