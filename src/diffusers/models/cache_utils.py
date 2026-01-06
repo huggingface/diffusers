@@ -68,16 +68,13 @@ class CacheMixin:
             FasterCacheConfig,
             FirstBlockCacheConfig,
             PyramidAttentionBroadcastConfig,
+            TaylorSeerCacheConfig,
             TeaCacheConfig,
             apply_faster_cache,
             apply_first_block_cache,
             apply_pyramid_attention_broadcast,
-            apply_teacache,
-            TaylorSeerCacheConfig,
-            apply_faster_cache,
-            apply_first_block_cache,
-            apply_pyramid_attention_broadcast,
             apply_taylorseer_cache,
+            apply_teacache,
         )
 
         if self.is_cache_enabled:
@@ -106,14 +103,14 @@ class CacheMixin:
             FirstBlockCacheConfig,
             HookRegistry,
             PyramidAttentionBroadcastConfig,
-            TeaCacheConfig,
             TaylorSeerCacheConfig,
+            TeaCacheConfig,
         )
         from ..hooks.faster_cache import _FASTER_CACHE_BLOCK_HOOK, _FASTER_CACHE_DENOISER_HOOK
         from ..hooks.first_block_cache import _FBC_BLOCK_HOOK, _FBC_LEADER_BLOCK_HOOK
         from ..hooks.pyramid_attention_broadcast import _PYRAMID_ATTENTION_BROADCAST_HOOK
-        from ..hooks.teacache import _TEACACHE_HOOK
         from ..hooks.taylorseer_cache import _TAYLORSEER_CACHE_HOOK
+        from ..hooks.teacache import _TEACACHE_HOOK
 
         if self._cache_config is None:
             logger.warning("Caching techniques have not been enabled, so there's nothing to disable.")
@@ -153,23 +150,3 @@ class CacheMixin:
         yield
 
         registry._set_context(None)
-
-    def enable_teacache(self, rel_l1_thresh: float = 0.2, num_inference_steps: int = None, **kwargs):
-        r"""
-        Enable TeaCache on the model.
-        
-        Args:
-            rel_l1_thresh (`float`, defaults to `0.2`):
-                Threshold for caching decision. Higher = more aggressive caching.
-            num_inference_steps (`int`, *optional*):
-                Total number of inference steps. Required for proper state management.
-            **kwargs: Additional arguments passed to TeaCacheConfig.
-        """
-        from ..hooks import TeaCacheConfig
-
-        config = TeaCacheConfig(
-            rel_l1_thresh=rel_l1_thresh, 
-            num_inference_steps=num_inference_steps,
-            **kwargs
-        )
-        self.enable_cache(config)

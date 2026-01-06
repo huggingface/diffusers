@@ -86,6 +86,91 @@ def _auto_detect_model_type(module):
     raise ValueError(f"TeaCache: Unsupported model '{class_name}'. Supported: {', '.join(model_config.keys())}")
 
 
+# =============================================================================
+# Standalone utility functions (per DN6's feedback - no closures, direct state ops)
+# =============================================================================
+
+
+def _rescale_distance(coefficients, x):
+    """Polynomial rescaling: c[0]*x^4 + c[1]*x^3 + c[2]*x^2 + c[3]*x + c[4]"""
+    c = coefficients
+    return c[0] * x**4 + c[1] * x**3 + c[2] * x**2 + c[3] * x + c[4]
+
+
+@torch.compiler.disable
+def _should_compute(state, modulated_inp, coefficients, rel_l1_thresh):
+    """Determine if full computation is needed (single residual models)."""
+    # First timestep always computes
+    if state.cnt == 0:
+        state.accumulated_rel_l1_distance = 0
+        return True
+    # Last timestep always computes
+    if state.num_steps > 0 and state.cnt == state.num_steps - 1:
+        state.accumulated_rel_l1_distance = 0
+        return True
+    # No previous state - must compute
+    if state.previous_modulated_input is None:
+        return True
+    if state.previous_residual is None:
+        return True
+
+    # Compute L1 distance and check threshold
+    rel_distance = (
+        ((modulated_inp - state.previous_modulated_input).abs().mean() / state.previous_modulated_input.abs().mean())
+        .cpu()
+        .item()
+    )
+    rescaled = _rescale_distance(coefficients, rel_distance)
+    state.accumulated_rel_l1_distance += rescaled
+
+    if state.accumulated_rel_l1_distance < rel_l1_thresh:
+        return False
+
+    state.accumulated_rel_l1_distance = 0
+    return True
+
+
+@torch.compiler.disable
+def _should_compute_dual(state, modulated_inp, coefficients, rel_l1_thresh):
+    """Determine if full computation is needed (dual residual models like CogVideoX)."""
+    # Also check encoder residual
+    if state.previous_residual is None or state.previous_residual_encoder is None:
+        return True
+    return _should_compute(state, modulated_inp, coefficients, rel_l1_thresh)
+
+
+def _update_state(state, output, original_input, modulated_inp):
+    """Update cache state after full computation (single residual)."""
+    state.previous_residual = output - original_input
+    state.previous_modulated_input = modulated_inp
+    state.cnt += 1
+
+
+def _update_state_dual(state, hs_output, enc_output, hs_original, enc_original, modulated_inp):
+    """Update cache state after full computation (dual residual)."""
+    state.previous_residual = hs_output - hs_original
+    state.previous_residual_encoder = enc_output - enc_original
+    state.previous_modulated_input = modulated_inp
+    state.cnt += 1
+
+
+def _apply_cached_residual(state, input_tensor, modulated_inp):
+    """Apply cached residual - fast path (single residual)."""
+    output = input_tensor + state.previous_residual
+    state.previous_modulated_input = modulated_inp
+    state.cnt += 1
+    return output
+
+
+def _apply_cached_residual_dual(state, hs, enc, modulated_inp):
+    """Apply cached residuals - fast path (dual residual)."""
+    hs_out = hs + state.previous_residual
+    enc_out = enc + state.previous_residual_encoder
+    state.previous_modulated_input = modulated_inp
+    state.cnt += 1
+    return hs_out, enc_out
+
+
 @dataclass
 class TeaCacheConfig:
     r"""
@@ -138,9 +223,6 @@ class TeaCacheConfig:
         pipe.to("cuda")
 
         # Enable TeaCache with auto-detection (1.5x speedup)
-        pipe.transformer.enable_teacache(rel_l1_thresh=0.2)
-
-        # Or with explicit config
         config = TeaCacheConfig(rel_l1_thresh=0.2)
         pipe.transformer.enable_cache(config)
 
@@ -320,11 +402,6 @@ class TeaCacheHook(ModelHook):
         self.model_type = None
         self._forward_func = None
 
-    def _rescale_distance(self, x: float) -> float:
-        """Evaluate polynomial: c[0]*x^4 + c[1]*x^3 + c[2]*x^2 + c[3]*x + c[4]"""
-        c = self.coefficients
-        return c[0] * x**4 + c[1] * x**3 + c[2] * x**2 + c[3] * x + c[4]
-
     def _maybe_reset_state_for_new_inference(self, state, module, reset_encoder_residual=False):
         """Reset state if we've completed all steps (start of new inference run).
 
@@ -398,65 +475,6 @@ class TeaCacheHook(ModelHook):
 
         return module
 
-    @torch.compiler.disable
-    def _run_single_residual_cache(
-        self,
-        state: "TeaCacheState",
-        modulated_inp: torch.Tensor,
-        compute_fn: Callable[[], Tuple[torch.Tensor, torch.Tensor]],
-        cached_fn: Callable[[], torch.Tensor],
-    ) -> torch.Tensor:
-        """
-        Shared cache engine for models where we cache exactly one residual tensor.
-
-        `compute_fn` must return `(y, x_base)` where residual is `y - x_base`.
-        `cached_fn` must return `y` computed from the current `x` and cached residual.
-        """
-        should_calc = self._should_compute_full_transformer(state, modulated_inp)
-        if (not should_calc) and (state.previous_residual is None):
-            should_calc = True
-
-        if should_calc:
-            y, x_base = compute_fn()
-            state.previous_residual = y - x_base
-        else:
-            y = cached_fn()
-
-        state.previous_modulated_input = modulated_inp
-        state.cnt += 1
-        return y
-
-    @torch.compiler.disable
-    def _run_dual_residual_cache(
-        self,
-        state: "TeaCacheState",
-        modulated_inp: torch.Tensor,
-        compute_fn: Callable[[], Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]],
-        cached_fn: Callable[[], Tuple[torch.Tensor, torch.Tensor]],
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
-        """
-        Shared cache engine for models where we cache two residual tensors:
-        - hidden_states residual
-        - encoder_hidden_states residual
-
-        `compute_fn` must return `(hs_y, enc_y, hs_x_base, enc_x_base)`.
-        `cached_fn` must return `(hs_y, enc_y)` computed using cached residuals.
-        """
-        should_calc = self._should_compute_full_transformer(state, modulated_inp)
-        if (not should_calc) and (state.previous_residual is None or state.previous_residual_encoder is None):
-            should_calc = True
-
-        if should_calc:
-            hs_y, enc_y, hs_x_base, enc_x_base = compute_fn()
-            state.previous_residual = hs_y - hs_x_base
-            state.previous_residual_encoder = enc_y - enc_x_base
-        else:
-            hs_y, enc_y = cached_fn()
-
-        state.previous_modulated_input = modulated_inp
-        state.cnt += 1
-        return hs_y, enc_y
-
     def new_forward(self, module, *args, **kwargs):
         # Use stored forward function if available (set during initialize_hook)
         if self._forward_func is not None:
@@ -475,46 +493,6 @@ class TeaCacheHook(ModelHook):
 
         logger.warning(f"TeaCache: Unsupported model type {module_class_name}.")
         return self.fn_ref.original_forward(*args, **kwargs)
-
-    @torch.compiler.disable
-    def _should_compute_full_transformer(self, state, modulated_inp):
-        """
-        Determine whether to compute full transformer blocks or reuse cached residual.
-
-        This method implements the core caching decision logic from the TeaCache paper:
-        - Always compute first and last timesteps (for maximum quality)
-        - For intermediate timesteps, compute relative L1 distance between current and previous modulated inputs
-        - Apply polynomial rescaling to convert distance to model-specific caching signal
-        - Accumulate rescaled distances and compare to threshold
-        - Return True (compute) if accumulated distance exceeds threshold, False (cache) otherwise
-        """
-        if state.cnt == 0:
-            state.accumulated_rel_l1_distance = 0
-            return True
-
-        if state.num_steps > 0 and state.cnt == state.num_steps - 1:
-            state.accumulated_rel_l1_distance = 0
-            return True
-
-        if state.previous_modulated_input is None:
-            return True
-
-        rel_distance = (
-            (
-                (modulated_inp - state.previous_modulated_input).abs().mean()
-                / state.previous_modulated_input.abs().mean()
-            )
-            .cpu()
-            .item()
-        )
-        rescaled_distance = self._rescale_distance(rel_distance)
-        state.accumulated_rel_l1_distance += rescaled_distance
-
-        if state.accumulated_rel_l1_distance < self.config.rel_l1_thresh:
-            return False
-
-        state.accumulated_rel_l1_distance = 0
-        return True
 
     def reset_state(self, module):
         self.state_manager.reset()
@@ -550,48 +528,39 @@ def _flux_teacache_forward(
 
     # Inline extractor: Flux uses transformer_blocks[0].norm1
     modulated_inp = module.transformer_blocks[0].norm1(hidden_states, emb=temb)[0]
-    joint_attention_kwargs = kwargs.get("joint_attention_kwargs")
 
-    def cached_fn():
-        return hidden_states + state.previous_residual
-
-    def compute_fn():
-        hs = hidden_states
-        ori_hs = hs.clone()
-
+    # Caching decision and execution
+    if _should_compute(state, modulated_inp, hook.coefficients, hook.config.rel_l1_thresh):
+        # Full computation path
+        ori_hs = hidden_states.clone()
         enc = module.context_embedder(encoder_hidden_states)
 
-        if txt_ids.ndim == 3:
-            txt = txt_ids[0]
-        else:
-            txt = txt_ids
-        if img_ids.ndim == 3:
-            img = img_ids[0]
-        else:
-            img = img_ids
-
+        txt = txt_ids[0] if txt_ids.ndim == 3 else txt_ids
+        img = img_ids[0] if img_ids.ndim == 3 else img_ids
         ids = torch.cat((txt, img), dim=0)
         image_rotary_emb = module.pos_embed(ids)
 
+        joint_attention_kwargs = kwargs.get("joint_attention_kwargs")
         for block in module.transformer_blocks:
-            enc, hs = block(
-                hidden_states=hs,
+            enc, hidden_states = block(
+                hidden_states=hidden_states,
                 encoder_hidden_states=enc,
                 temb=temb,
                 image_rotary_emb=image_rotary_emb,
                 joint_attention_kwargs=joint_attention_kwargs,
             )
         for block in module.single_transformer_blocks:
-            enc, hs = block(
-                hidden_states=hs,
+            enc, hidden_states = block(
+                hidden_states=hidden_states,
                 encoder_hidden_states=enc,
                 temb=temb,
                 image_rotary_emb=image_rotary_emb,
                 joint_attention_kwargs=joint_attention_kwargs,
             )
-        return hs, ori_hs
-
-    hidden_states = hook._run_single_residual_cache(state, modulated_inp, compute_fn=compute_fn, cached_fn=cached_fn)
+        _update_state(state, hidden_states, ori_hs, modulated_inp)
+    else:
+        # Cached path
+        hidden_states = _apply_cached_residual(state, hidden_states, modulated_inp)
 
     hidden_states = module.norm_out(hidden_states, temb)
     output = module.proj_out(hidden_states)
@@ -655,35 +624,34 @@ def _mochi_teacache_forward(
     # Inline extractor: Mochi norm1 returns tuple (modulated_inp, gate_msa, scale_mlp, gate_mlp)
     modulated_inp = module.transformer_blocks[0].norm1(hidden_states, temb)[0]
 
-    def cached_fn():
-        return hidden_states + state.previous_residual
-
-    def compute_fn():
-        hs = hidden_states
-        ori_hs = hs.clone()
+    # Caching decision and execution
+    if _should_compute(state, modulated_inp, hook.coefficients, hook.config.rel_l1_thresh):
+        # Full computation path
+        ori_hs = hidden_states.clone()
         enc = encoder_hidden_states
         for block in module.transformer_blocks:
             if torch.is_grad_enabled() and module.gradient_checkpointing:
-                hs, enc = module._gradient_checkpointing_func(
+                hidden_states, enc = module._gradient_checkpointing_func(
                     block,
-                    hs,
+                    hidden_states,
                     enc,
                     temb,
                     encoder_attention_mask,
                     image_rotary_emb,
                 )
             else:
-                hs, enc = block(
-                    hidden_states=hs,
+                hidden_states, enc = block(
+                    hidden_states=hidden_states,
                     encoder_hidden_states=enc,
                     temb=temb,
                     encoder_attention_mask=encoder_attention_mask,
                     image_rotary_emb=image_rotary_emb,
                 )
-        hs = module.norm_out(hs, temb)
-        return hs, ori_hs
-
-    hidden_states = hook._run_single_residual_cache(state, modulated_inp, compute_fn=compute_fn, cached_fn=cached_fn)
+        hidden_states = module.norm_out(hidden_states, temb)
+        _update_state(state, hidden_states, ori_hs, modulated_inp)
+    else:
+        # Cached path
+        hidden_states = _apply_cached_residual(state, hidden_states, modulated_inp)
 
     hidden_states = module.proj_out(hidden_states)
     hidden_states = hidden_states.reshape(batch_size, num_frames, post_patch_height, post_patch_width, p, p, -1)
@@ -781,7 +749,7 @@ def _lumina2_teacache_forward(
                 rel_l1_change = ((modulated_inp - prev_mod_input).abs().mean() / prev_mean).cpu().item()
             else:
                 rel_l1_change = 0.0 if modulated_inp.abs().mean().item() < 1e-9 else float("inf")
-            rescaled_distance = hook._rescale_distance(rel_l1_change)
+            rescaled_distance = _rescale_distance(hook.coefficients, rel_l1_change)
             current_cache["accumulated_rel_l1_distance"] += rescaled_distance
             if current_cache["accumulated_rel_l1_distance"] < hook.config.rel_l1_thresh:
                 should_calc = False
@@ -882,36 +850,33 @@ def _cogvideox_teacache_forward(
     # Inline extractor: CogVideoX uses timestep embedding directly
     modulated_inp = emb
 
-    def cached_fn():
-        return hs + state.previous_residual, enc + state.previous_residual_encoder
-
-    def compute_fn():
-        hs0 = hs
-        enc0 = enc
-        ori_hs = hs0.clone()
-        ori_enc = enc0.clone()
-        hs1, enc1 = hs0, enc0
+    # Caching decision and execution (dual residual)
+    if _should_compute_dual(state, modulated_inp, hook.coefficients, hook.config.rel_l1_thresh):
+        # Full computation path
+        ori_hs = hs.clone()
+        ori_enc = enc.clone()
         for block in module.transformer_blocks:
             if torch.is_grad_enabled() and module.gradient_checkpointing:
                 ckpt_kwargs = {"use_reentrant": False} if is_torch_version(">=", "1.11.0") else {}
-                hs1, enc1 = torch.utils.checkpoint.checkpoint(
+                hs, enc = torch.utils.checkpoint.checkpoint(
                     lambda *a: block(*a),
-                    hs1,
-                    enc1,
+                    hs,
+                    enc,
                     emb,
                     image_rotary_emb,
                     **ckpt_kwargs,
                 )
             else:
-                hs1, enc1 = block(
-                    hidden_states=hs1,
-                    encoder_hidden_states=enc1,
+                hs, enc = block(
+                    hidden_states=hs,
+                    encoder_hidden_states=enc,
                     temb=emb,
                     image_rotary_emb=image_rotary_emb,
                 )
-        return hs1, enc1, ori_hs, ori_enc
-
-    hs, enc = hook._run_dual_residual_cache(state, modulated_inp, compute_fn=compute_fn, cached_fn=cached_fn)
+        _update_state_dual(state, hs, enc, ori_hs, ori_enc, modulated_inp)
+    else:
+        # Cached path
+        hs, enc = _apply_cached_residual_dual(state, hs, enc, modulated_inp)
 
     if not module.config.use_rotary_positional_embeddings:
         hs = module.norm_final(hs)
@@ -955,25 +920,25 @@ def apply_teacache(module, config: TeaCacheConfig):
     Example:
         ```python
         from diffusers import FluxPipeline
-        from diffusers.hooks import TeaCacheConfig, apply_teacache
+        from diffusers.hooks import TeaCacheConfig
 
         # Load FLUX pipeline
         pipe = FluxPipeline.from_pretrained("black-forest-labs/FLUX.1-schnell", torch_dtype=torch.bfloat16)
         pipe.to("cuda")
 
-        # Apply TeaCache directly to transformer
+        # Enable TeaCache via CacheMixin (recommended)
         config = TeaCacheConfig(rel_l1_thresh=0.2)
-        apply_teacache(pipe.transformer, config)
+        pipe.transformer.enable_cache(config)
 
         # Generate with caching enabled
         image = pipe("A cat on a windowsill", num_inference_steps=4).images[0]
 
-        # Or use the convenience method via CacheMixin
-        pipe.transformer.enable_teacache(rel_l1_thresh=0.2)
+        # Disable caching
+        pipe.transformer.disable_cache()
         ```
 
     Note:
-        For most use cases, it's recommended to use the CacheMixin interface: `pipe.transformer.enable_teacache(...)`
+        For most use cases, it's recommended to use the CacheMixin interface: `pipe.transformer.enable_cache(...)`
         which provides additional convenience methods like `disable_cache()` for easy toggling.
     """
     # Register hook on main transformer

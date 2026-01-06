@@ -142,30 +142,31 @@ class TeaCacheHookTests(unittest.TestCase):
         self.assertIsNotNone(hook.coefficients)
         self.assertIsNotNone(hook.state_manager)
 
-    def test_should_compute_full_transformer_logic(self):
-        """Test _should_compute_full_transformer decision logic."""
-        from diffusers.hooks.teacache import TeaCacheHook, TeaCacheState
+    def test_should_compute_logic(self):
+        """Test _should_compute decision logic."""
+        from diffusers.hooks.teacache import TeaCacheState, _should_compute
 
-        config = TeaCacheConfig(rel_l1_thresh=1.0, coefficients=[1, 0, 0, 0, 0])
-        hook = TeaCacheHook(config)
+        coefficients = [1, 0, 0, 0, 0]
+        rel_l1_thresh = 1.0
         state = TeaCacheState()
 
         x0 = torch.ones(1, 4)
         x1 = torch.ones(1, 4) * 1.1
 
         # First step should always compute
-        self.assertTrue(hook._should_compute_full_transformer(state, x0))
+        self.assertTrue(_should_compute(state, x0, coefficients, rel_l1_thresh))
 
         state.previous_modulated_input = x0
+        state.previous_residual = torch.zeros(1, 4)  # Need residual to skip compute
         state.cnt = 1
         state.num_steps = 4
 
         # Middle step: accumulate distance and stay below threshold => reuse cache
-        self.assertFalse(hook._should_compute_full_transformer(state, x1))
+        self.assertFalse(_should_compute(state, x1, coefficients, rel_l1_thresh))
 
         # Last step: must compute regardless of distance
         state.cnt = state.num_steps - 1
-        self.assertTrue(hook._should_compute_full_transformer(state, x1))
+        self.assertTrue(_should_compute(state, x1, coefficients, rel_l1_thresh))
 
     def test_apply_teacache_with_custom_extractor(self):
         """Test apply_teacache works with custom extractor function."""
