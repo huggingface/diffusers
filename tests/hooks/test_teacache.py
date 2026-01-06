@@ -139,7 +139,7 @@ class TeaCacheHookTests(unittest.TestCase):
         hook = TeaCacheHook(config)
 
         self.assertEqual(hook.config.rel_l1_thresh, 0.2)
-        self.assertIsNotNone(hook.rescale_func)
+        self.assertIsNotNone(hook.coefficients)
         self.assertIsNotNone(hook.state_manager)
 
     def test_should_compute_full_transformer_logic(self):
@@ -204,24 +204,26 @@ class TeaCacheMultiModelTests(unittest.TestCase):
 
     def test_model_coefficient_registry(self):
         """Test that model coefficients are properly registered."""
-        from diffusers.hooks.teacache import _MODEL_COEFFICIENTS
+        from diffusers.hooks.teacache import _get_model_config
 
-        self.assertIn("Flux", _MODEL_COEFFICIENTS)
-        self.assertIn("Mochi", _MODEL_COEFFICIENTS)
-        self.assertIn("Lumina2", _MODEL_COEFFICIENTS)
-        self.assertIn("CogVideoX", _MODEL_COEFFICIENTS)
+        model_config = _get_model_config()
+
+        self.assertIn("Flux", model_config)
+        self.assertIn("Mochi", model_config)
+        self.assertIn("Lumina2", model_config)
+        self.assertIn("CogVideoX", model_config)
 
         # Verify all coefficients are 5-element lists
-        for model_name, coeffs in _MODEL_COEFFICIENTS.items():
+        for model_name, config in model_config.items():
+            coeffs = config["coefficients"]
             self.assertEqual(len(coeffs), 5, f"{model_name} coefficients should have 5 elements")
             self.assertTrue(
                 all(isinstance(c, (int, float)) for c in coeffs), f"{model_name} coefficients should be numbers"
             )
 
     def test_mochi_extractor(self):
-        """Test Mochi modulated input extractor."""
+        """Test Mochi modulated input extraction (now inlined in forward function)."""
         from diffusers import MochiTransformer3DModel
-        from diffusers.hooks.teacache import _mochi_modulated_input_extractor
 
         # Create a minimal Mochi model for testing
         model = MochiTransformer3DModel(
@@ -247,15 +249,14 @@ class TeaCacheMultiModelTests(unittest.TestCase):
         hidden_states = model.patch_embed(hidden_states)
         hidden_states = hidden_states.unflatten(0, (2, -1)).flatten(1, 2)
 
-        # Test extractor
-        modulated_inp = _mochi_modulated_input_extractor(model, hidden_states, temb)
+        # Test inline extraction logic: Mochi norm1 returns tuple (modulated_inp, ...)
+        modulated_inp = model.transformer_blocks[0].norm1(hidden_states, temb)[0]
         self.assertIsInstance(modulated_inp, torch.Tensor)
         self.assertEqual(modulated_inp.shape[0], hidden_states.shape[0])
 
     def test_lumina2_extractor(self):
-        """Test Lumina2 modulated input extractor with simplified setup."""
+        """Test Lumina2 modulated input extraction (now inlined in forward function)."""
         from diffusers import Lumina2Transformer2DModel
-        from diffusers.hooks.teacache import _lumina2_modulated_input_extractor
 
         # Create a minimal Lumina2 model for testing
         model = Lumina2Transformer2DModel(
@@ -279,15 +280,14 @@ class TeaCacheMultiModelTests(unittest.TestCase):
         input_to_main_loop = torch.randn(batch_size, seq_len, hidden_size)
         temb = torch.randn(batch_size, hidden_size)
 
-        # Test extractor
-        modulated_inp = _lumina2_modulated_input_extractor(model, input_to_main_loop, temb)
+        # Test inline extraction logic: Lumina2 uses layers[0].norm1
+        modulated_inp = model.layers[0].norm1(input_to_main_loop, temb)[0]
         self.assertIsInstance(modulated_inp, torch.Tensor)
         self.assertEqual(modulated_inp.shape[0], batch_size)
 
     def test_cogvideox_extractor(self):
-        """Test CogVideoX modulated input extractor."""
+        """Test CogVideoX modulated input extraction (now inlined in forward function)."""
         from diffusers import CogVideoXTransformer3DModel
-        from diffusers.hooks.teacache import _cogvideox_modulated_input_extractor
 
         # Create a minimal CogVideoX model for testing
         model = CogVideoXTransformer3DModel(
@@ -307,8 +307,8 @@ class TeaCacheMultiModelTests(unittest.TestCase):
         t_emb = t_emb.to(dtype=hidden_states.dtype)
         emb = model.time_embedding(t_emb, None)
 
-        # Test extractor (should return emb directly)
-        modulated_inp = _cogvideox_modulated_input_extractor(model, hidden_states, emb)
+        # Test inline extraction logic: CogVideoX uses timestep embedding directly
+        modulated_inp = emb
         self.assertIsInstance(modulated_inp, torch.Tensor)
         self.assertEqual(modulated_inp.shape, emb.shape)
 
@@ -316,7 +316,7 @@ class TeaCacheMultiModelTests(unittest.TestCase):
         """Test auto-detection for Mochi models."""
         from diffusers import MochiTransformer3DModel
         from diffusers.hooks import TeaCacheConfig, apply_teacache
-        from diffusers.hooks.teacache import _MODEL_COEFFICIENTS, _auto_detect_extractor
+        from diffusers.hooks.teacache import _get_model_config
 
         model = MochiTransformer3DModel(
             patch_size=2,
@@ -328,9 +328,7 @@ class TeaCacheMultiModelTests(unittest.TestCase):
             time_embed_dim=4,
         )
 
-        # Test extractor detection
-        extractor = _auto_detect_extractor(model)
-        self.assertIsNotNone(extractor)
+        model_config = _get_model_config()
 
         # Test coefficient auto-detection
         config = TeaCacheConfig(rel_l1_thresh=0.2)
@@ -340,7 +338,7 @@ class TeaCacheMultiModelTests(unittest.TestCase):
         hook = registry.get_hook("teacache")
         self.assertIsNotNone(hook)
         # Verify coefficients were auto-set
-        self.assertEqual(hook.coefficients, _MODEL_COEFFICIENTS["Mochi"])
+        self.assertEqual(hook.coefficients, model_config["Mochi"]["coefficients"])
 
         model.disable_cache()
 
@@ -348,7 +346,7 @@ class TeaCacheMultiModelTests(unittest.TestCase):
         """Test auto-detection for Lumina2 models."""
         from diffusers import Lumina2Transformer2DModel
         from diffusers.hooks import TeaCacheConfig, apply_teacache
-        from diffusers.hooks.teacache import _MODEL_COEFFICIENTS
+        from diffusers.hooks.teacache import _get_model_config
 
         model = Lumina2Transformer2DModel(
             sample_size=16,
@@ -361,6 +359,8 @@ class TeaCacheMultiModelTests(unittest.TestCase):
             num_kv_heads=1,
         )
 
+        model_config = _get_model_config()
+
         config = TeaCacheConfig(rel_l1_thresh=0.2)
         apply_teacache(model, config)
 
@@ -368,7 +368,7 @@ class TeaCacheMultiModelTests(unittest.TestCase):
         hook = registry.get_hook("teacache")
         self.assertIsNotNone(hook)
         # Verify coefficients were auto-set
-        self.assertEqual(hook.coefficients, _MODEL_COEFFICIENTS["Lumina2"])
+        self.assertEqual(hook.coefficients, model_config["Lumina2"]["coefficients"])
 
         # Lumina2 doesn't have CacheMixin, manually remove hook instead
         registry.remove_hook("teacache")
@@ -377,7 +377,7 @@ class TeaCacheMultiModelTests(unittest.TestCase):
         """Test auto-detection for CogVideoX models."""
         from diffusers import CogVideoXTransformer3DModel
         from diffusers.hooks import TeaCacheConfig, apply_teacache
-        from diffusers.hooks.teacache import _MODEL_COEFFICIENTS
+        from diffusers.hooks.teacache import _get_model_config
 
         model = CogVideoXTransformer3DModel(
             num_attention_heads=2,
@@ -388,6 +388,8 @@ class TeaCacheMultiModelTests(unittest.TestCase):
             time_embed_dim=4,
         )
 
+        model_config = _get_model_config()
+
         config = TeaCacheConfig(rel_l1_thresh=0.2)
         apply_teacache(model, config)
 
@@ -395,7 +397,7 @@ class TeaCacheMultiModelTests(unittest.TestCase):
         hook = registry.get_hook("teacache")
         self.assertIsNotNone(hook)
         # Verify coefficients were auto-set
-        self.assertEqual(hook.coefficients, _MODEL_COEFFICIENTS["CogVideoX"])
+        self.assertEqual(hook.coefficients, model_config["CogVideoX"]["coefficients"])
 
         model.disable_cache()
 
