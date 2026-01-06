@@ -815,9 +815,9 @@ def load_sub_model(
         and transformers_version >= version.parse("4.20.0")
     )
     
-    # For transformers models, use 'dtype' instead of 'torch_dtype' to avoid deprecation warnings
+    # For transformers models >= 4.56.0, use 'dtype' instead of 'torch_dtype' to avoid deprecation warnings
     if issubclass(class_obj, torch.nn.Module):
-        if is_transformers_model:
+        if is_transformers_model and transformers_version >= version.parse("4.56.0"):
             loading_kwargs["dtype"] = torch_dtype
         else:
             loading_kwargs["torch_dtype"] = torch_dtype
