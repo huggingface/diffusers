@@ -2261,7 +2261,7 @@ def _sage_attention_hub(
     return_lse: bool = False,
     _parallel_config: Optional["ParallelConfig"] = None,
 ) -> torch.Tensor:
-    attn_mask: Optional[torch.Tensor] = None,
+    attn_mask: Optional[torch.Tensor] = (None,)
     if attn_mask is not None:
         raise ValueError("`attn_mask` is not supported for sage attention")
     lse = None
