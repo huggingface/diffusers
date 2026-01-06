@@ -9,6 +9,7 @@ from ...models.attention import FeedForward
 from ...models.modeling_utils import ModelMixin
 from ...models.transformers.transformer_ltx2 import LTX2Attention, LTX2AudioVideoAttnProcessor
 
+
 class LTX2RotaryPosEmbed1d(nn.Module):
     """
     1D rotary positional embeddings (RoPE) for the LTX 2.0 text encoder connectors.
@@ -21,12 +22,12 @@ class LTX2RotaryPosEmbed1d(nn.Module):
         theta: float = 10000.0,
         double_precision: bool = True,
         rope_type: str = "interleaved",
-        num_attention_heads: int = 32
+        num_attention_heads: int = 32,
     ):
         super().__init__()
         if rope_type not in ["interleaved", "split"]:
             raise ValueError(f"{rope_type=} not supported. Choose between 'interleaved' and 'split'.")
-        
+
         self.dim = dim
         self.base_seq_len = base_seq_len
         self.theta = theta
@@ -69,7 +70,7 @@ class LTX2RotaryPosEmbed1d(nn.Module):
                 sin_padding = torch.zeros_like(sin_freqs[:, :, : self.dim % num_rope_elems])
                 cos_freqs = torch.cat([cos_padding, cos_freqs], dim=-1)
                 sin_freqs = torch.cat([sin_padding, sin_freqs], dim=-1)
-        
+
         elif self.rope_type == "split":
             expected_freqs = self.dim // 2
             current_freqs = freqs.shape[-1]
@@ -116,7 +117,7 @@ class LTX2TransformerBlock1d(nn.Module):
             kv_heads=num_attention_heads,
             dim_head=attention_head_dim,
             processor=LTX2AudioVideoAttnProcessor(),
-            rope_type=rope_type
+            rope_type=rope_type,
         )
 
         self.norm2 = torch.nn.RMSNorm(dim, eps=eps, elementwise_affine=False)
@@ -159,7 +160,7 @@ class LTX2ConnectorTransformer1d(nn.Module):
         rope_double_precision: bool = True,
         eps: float = 1e-6,
         causal_temporal_positioning: bool = False,
-        rope_type: str = "interleaved"
+        rope_type: str = "interleaved",
     ):
         super().__init__()
         self.num_attention_heads = num_attention_heads
@@ -173,12 +174,12 @@ class LTX2ConnectorTransformer1d(nn.Module):
             self.learnable_registers = torch.nn.Parameter(init_registers)
 
         self.rope = LTX2RotaryPosEmbed1d(
-            self.inner_dim, 
-            base_seq_len=rope_base_seq_len, 
-            theta=rope_theta, 
+            self.inner_dim,
+            base_seq_len=rope_base_seq_len,
+            theta=rope_theta,
             double_precision=rope_double_precision,
             rope_type=rope_type,
-            num_attention_heads=num_attention_heads
+            num_attention_heads=num_attention_heads,
         )
 
         self.transformer_blocks = torch.nn.ModuleList(
@@ -187,7 +188,7 @@ class LTX2ConnectorTransformer1d(nn.Module):
                     dim=self.inner_dim,
                     num_attention_heads=num_attention_heads,
                     attention_head_dim=attention_head_dim,
-                    rope_type=rope_type
+                    rope_type=rope_type,
                 )
                 for _ in range(num_layers)
             ]
@@ -253,8 +254,8 @@ class LTX2ConnectorTransformer1d(nn.Module):
 
 class LTX2TextConnectors(ModelMixin, ConfigMixin):
     """
-    Text connector stack used by LTX 2.0 to process the packed text encoder hidden states for both the video and
-    audio streams.
+    Text connector stack used by LTX 2.0 to process the packed text encoder hidden states for both the video and audio
+    streams.
     """
 
     @register_to_config
@@ -287,7 +288,7 @@ class LTX2TextConnectors(ModelMixin, ConfigMixin):
             rope_theta=rope_theta,
             rope_double_precision=rope_double_precision,
             causal_temporal_positioning=causal_temporal_positioning,
-            rope_type=rope_type
+            rope_type=rope_type,
         )
         self.audio_connector = LTX2ConnectorTransformer1d(
             num_attention_heads=audio_connector_num_attention_heads,
@@ -298,7 +299,7 @@ class LTX2TextConnectors(ModelMixin, ConfigMixin):
             rope_theta=rope_theta,
             rope_double_precision=rope_double_precision,
             causal_temporal_positioning=causal_temporal_positioning,
-            rope_type=rope_type
+            rope_type=rope_type,
         )
 
     def forward(

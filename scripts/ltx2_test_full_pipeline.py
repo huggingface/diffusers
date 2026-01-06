@@ -1,5 +1,4 @@
 import argparse
-import math
 import os
 from fractions import Fraction
 from typing import Optional
@@ -211,6 +210,6 @@ def main(args):
     )
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     args = parse_args()
     main(args)

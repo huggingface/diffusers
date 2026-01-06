@@ -1,5 +1,4 @@
 import argparse
-import math
 import os
 from contextlib import nullcontext
 from typing import Any, Dict, Optional, Tuple
@@ -8,9 +7,15 @@ import safetensors.torch
 import torch
 from accelerate import init_empty_weights
 from huggingface_hub import hf_hub_download
-from transformers import AutoModel, AutoTokenizer, Gemma3ForConditionalGeneration
+from transformers import AutoTokenizer, Gemma3ForConditionalGeneration
 
-from diffusers import AutoencoderKLLTX2Audio, AutoencoderKLLTX2Video, FlowMatchEulerDiscreteScheduler, LTX2Pipeline, LTX2VideoTransformer3DModel
+from diffusers import (
+    AutoencoderKLLTX2Audio,
+    AutoencoderKLLTX2Video,
+    FlowMatchEulerDiscreteScheduler,
+    LTX2Pipeline,
+    LTX2VideoTransformer3DModel,
+)
 from diffusers.pipelines.ltx2 import LTX2TextConnectors, LTX2Vocoder
 from diffusers.utils.import_utils import is_accelerate_available
 
@@ -186,7 +191,7 @@ def get_ltx2_transformer_config(version: str) -> Tuple[Dict[str, Any], Dict[str,
                 "num_attention_heads": 2,
                 "attention_head_dim": 8,
                 "cross_attention_dim": 16,
-                "vae_scale_factors": (8, 32 ,32),
+                "vae_scale_factors": (8, 32, 32),
                 "pos_embed_max_pos": 20,
                 "base_height": 2048,
                 "base_width": 2048,
@@ -229,7 +234,7 @@ def get_ltx2_transformer_config(version: str) -> Tuple[Dict[str, Any], Dict[str,
                 "num_attention_heads": 32,
                 "attention_head_dim": 128,
                 "cross_attention_dim": 4096,
-                "vae_scale_factors": (8, 32 ,32),
+                "vae_scale_factors": (8, 32, 32),
                 "pos_embed_max_pos": 20,
                 "base_height": 2048,
                 "base_width": 2048,
@@ -257,7 +262,7 @@ def get_ltx2_transformer_config(version: str) -> Tuple[Dict[str, Any], Dict[str,
                 "causal_offset": 1,
                 "timestep_scale_multiplier": 1000,
                 "cross_attn_timestep_scale_multiplier": 1000,
-                "rope_type": "split"
+                "rope_type": "split",
             },
         }
         rename_dict = LTX_2_0_TRANSFORMER_KEYS_RENAME_DICT
@@ -307,7 +312,7 @@ def get_ltx2_connectors_config(version: str) -> Tuple[Dict[str, Any], Dict[str, 
                 "rope_type": "split",
             },
         }
-    
+
     rename_dict = LTX_2_0_CONNECTORS_KEYS_RENAME_DICT
     special_keys_remap = {}
 
@@ -541,7 +546,7 @@ def get_ltx2_vocoder_config(version: str) -> Tuple[Dict[str, Any], Dict[str, Any
                 "resnet_dilations": [[1, 3, 5], [1, 3, 5], [1, 3, 5]],
                 "leaky_relu_negative_slope": 0.1,
                 "output_sampling_rate": 24000,
-            }
+            },
         }
         rename_dict = LTX_2_0_VOCODER_RENAME_DICT
         special_keys_remap = LTX_2_0_VOCODER_SPECIAL_KEYS_REMAP
@@ -572,7 +577,6 @@ def convert_ltx2_vocoder(original_state_dict: Dict[str, Any], version: str) -> D
 
     vocoder.load_state_dict(original_state_dict, strict=True, assign=True)
     return vocoder
-
 
 
 def load_original_checkpoint(args, filename: Optional[str]) -> Dict[str, Any]:
@@ -757,7 +761,7 @@ def main(args):
         transformer = convert_ltx2_transformer(original_dit_ckpt, version=args.version)
         if not args.full_pipeline:
             transformer.to(dit_dtype).save_pretrained(os.path.join(args.output_path, "transformer"))
-            
+
     if args.connectors or args.full_pipeline:
         if args.dit_filename is not None:
             original_connectors_ckpt = load_hub_or_local_checkpoint(filename=args.dit_filename)
@@ -810,6 +814,6 @@ def main(args):
         pipe.save_pretrained(args.output_path, safe_serialization=True, max_shard_size="5GB")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     args = get_args()
     main(args)

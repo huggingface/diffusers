@@ -90,7 +90,7 @@ def main() -> None:
         latent_width,
         device=device,
         dtype=dtype,
-        generator=torch.Generator(device).manual_seed(42)
+        generator=torch.Generator(device).manual_seed(42),
     )
 
     original_out = original_decoder(dummy)

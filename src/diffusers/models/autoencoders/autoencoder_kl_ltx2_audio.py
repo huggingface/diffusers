@@ -249,6 +249,7 @@ class LTX2AudioUpsample(nn.Module):
 
         return x
 
+
 class LTX2AudioAudioPatchifier:
     """
     Patchifier for spectrogram/audio latents.
@@ -405,9 +406,7 @@ class LTX2AudioDecoder(nn.Module):
         final_block_channels = block_in
 
         if self.norm_type == "group":
-            self.norm_out = nn.GroupNorm(
-                num_groups=32, num_channels=final_block_channels, eps=1e-6, affine=True
-            )
+            self.norm_out = nn.GroupNorm(num_groups=32, num_channels=final_block_channels, eps=1e-6, affine=True)
         elif self.norm_type == "pixel":
             self.norm_out = LTX2AudioPixelNorm(dim=1, eps=1e-6)
         else:
@@ -538,8 +537,8 @@ class AutoencoderKLLTX2Audio(ModelMixin, AutoencoderMixin, ConfigMixin):
 
         # Per-channel statistics for normalizing and denormalizing the latent representation. This statics is computed over
         # the entire dataset and stored in model's checkpoint under AudioVAE state_dict
-        latents_std = torch.zeros((base_channels, ))
-        latents_mean = torch.ones((base_channels, ))
+        latents_std = torch.zeros((base_channels,))
+        latents_mean = torch.ones((base_channels,))
         self.register_buffer("latents_mean", latents_mean, persistent=True)
         self.register_buffer("latents_std", latents_std, persistent=True)
 

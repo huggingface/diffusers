@@ -674,7 +674,9 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLoraLoaderMix
         latents: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         duration_s = num_frames / frame_rate
-        latents_per_second = float(sampling_rate) / float(hop_length) / float(self.audio_vae_temporal_compression_ratio)
+        latents_per_second = (
+            float(sampling_rate) / float(hop_length) / float(self.audio_vae_temporal_compression_ratio)
+        )
         latent_length = int(duration_s * latents_per_second)
 
         if latents is not None:
@@ -995,7 +997,9 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLoraLoaderMix
 
                 latent_model_input = torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents
                 latent_model_input = latent_model_input.to(prompt_embeds.dtype)
-                audio_latent_model_input = torch.cat([audio_latents] * 2) if self.do_classifier_free_guidance else audio_latents
+                audio_latent_model_input = (
+                    torch.cat([audio_latents] * 2) if self.do_classifier_free_guidance else audio_latents
+                )
                 audio_latent_model_input = audio_latent_model_input.to(prompt_embeds.dtype)
 
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
@@ -1026,10 +1030,14 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLoraLoaderMix
 
                 if self.do_classifier_free_guidance:
                     noise_pred_video_uncond, noise_pred_video_text = noise_pred_video.chunk(2)
-                    noise_pred_video = noise_pred_video_uncond + self.guidance_scale * (noise_pred_video_text - noise_pred_video_uncond)
+                    noise_pred_video = noise_pred_video_uncond + self.guidance_scale * (
+                        noise_pred_video_text - noise_pred_video_uncond
+                    )
 
                     noise_pred_audio_uncond, noise_pred_audio_text = noise_pred_audio.chunk(2)
-                    noise_pred_audio = noise_pred_audio_uncond + self.guidance_scale * (noise_pred_audio_text - noise_pred_audio_uncond)
+                    noise_pred_audio = noise_pred_audio_uncond + self.guidance_scale * (
+                        noise_pred_audio_text - noise_pred_audio_uncond
+                    )
 
                     if self.guidance_rescale > 0:
                         # Based on 3.4. in https://huggingface.co/papers/2305.08891

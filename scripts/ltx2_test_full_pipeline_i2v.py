@@ -1,12 +1,11 @@
-
 import argparse
 import os
 from fractions import Fraction
 from typing import Optional
-from PIL import Image
 
 import av  # Needs to be installed separately (`pip install av`)
 import torch
+from PIL import Image
 
 from diffusers.pipelines.ltx2 import LTX2ImageToVideoPipeline
 
@@ -131,7 +130,7 @@ def parse_args():
     parser.add_argument(
         "--negative_prompt",
         type=str,
-        default="shaky, glitchy, low quality, worst quality, deformed, distorted, disfigured, motion smear, motion artifacts, fused fingers, bad anatomy, weird hand, ugly, transition, static."
+        default="shaky, glitchy, low quality, worst quality, deformed, distorted, disfigured, motion smear, motion artifacts, fused fingers, bad anatomy, weird hand, ugly, transition, static.",
     )
 
     parser.add_argument("--num_inference_steps", type=int, default=40)
@@ -166,7 +165,9 @@ def parse_args():
 
 def main(args):
     pipeline = LTX2ImageToVideoPipeline.from_pretrained(
-        args.model_id, revision=args.revision, torch_dtype=args.dtype,
+        args.model_id,
+        revision=args.revision,
+        torch_dtype=args.dtype,
     )
     if args.cpu_offload:
         pipeline.enable_model_cpu_offload()
@@ -201,6 +202,6 @@ def main(args):
     )
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     args = parse_args()
     main(args)

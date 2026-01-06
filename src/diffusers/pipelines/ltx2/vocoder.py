@@ -25,32 +25,18 @@ class ResBlock(nn.Module):
 
         self.convs1 = nn.ModuleList(
             [
-                nn.Conv1d(
-                    channels,
-                    channels,
-                    kernel_size,
-                    stride=stride,
-                    dilation=dilation,
-                    padding=padding_mode
-                )
+                nn.Conv1d(channels, channels, kernel_size, stride=stride, dilation=dilation, padding=padding_mode)
                 for dilation in dilations
             ]
         )
 
         self.convs2 = nn.ModuleList(
             [
-                nn.Conv1d(
-                    channels,
-                    channels,
-                    kernel_size,
-                    stride=stride,
-                    dilation=1,
-                    padding=padding_mode
-                )
+                nn.Conv1d(channels, channels, kernel_size, stride=stride, dilation=1, padding=padding_mode)
                 for _ in range(len(dilations))
             ]
         )
-    
+
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         for conv1, conv2 in zip(self.convs1, self.convs2):
             xt = F.leaky_relu(x, negative_slope=self.negative_slope)
@@ -127,7 +113,7 @@ class LTX2Vocoder(ModelMixin, ConfigMixin):
             input_channels = output_channels
 
         self.conv_out = nn.Conv1d(output_channels, out_channels, 7, stride=1, padding=3)
-    
+
     def forward(self, hidden_states: torch.Tensor, time_last: bool = False) -> torch.Tensor:
         r"""
         Forward pass of the vocoder.
