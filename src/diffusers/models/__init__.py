@@ -68,6 +68,7 @@ if is_torch_available():
     _import_structure["controlnets.controlnet_sparsectrl"] = ["SparseControlNetModel"]
     _import_structure["controlnets.controlnet_union"] = ["ControlNetUnionModel"]
     _import_structure["controlnets.controlnet_xs"] = ["ControlNetXSAdapter", "UNetControlNetXSModel"]
+    _import_structure["controlnets.controlnet_z_image"] = ["ZImageControlNetModel"]
     _import_structure["controlnets.multicontrolnet"] = ["MultiControlNetModel"]
     _import_structure["controlnets.multicontrolnet_union"] = ["MultiControlNetUnionModel"]
     _import_structure["embeddings"] = ["ImageProjection"]
@@ -103,6 +104,7 @@ if is_torch_available():
     _import_structure["transformers.transformer_hunyuan_video_framepack"] = ["HunyuanVideoFramepackTransformer3DModel"]
     _import_structure["transformers.transformer_hunyuanimage"] = ["HunyuanImageTransformer2DModel"]
     _import_structure["transformers.transformer_kandinsky"] = ["Kandinsky5Transformer3DModel"]
+    _import_structure["transformers.transformer_longcat_image"] = ["LongCatImageTransformer2DModel"]
     _import_structure["transformers.transformer_ltx"] = ["LTXVideoTransformer3DModel"]
     _import_structure["transformers.transformer_ltx2"] = ["LTX2VideoTransformer3DModel"]
     _import_structure["transformers.transformer_lumina2"] = ["Lumina2Transformer2DModel"]
@@ -154,9 +156,9 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AutoencoderKLHunyuanImageRefiner,
             AutoencoderKLHunyuanVideo,
             AutoencoderKLHunyuanVideo15,
-            AutoencoderKLLTXVideo,
             AutoencoderKLLTX2Audio,
             AutoencoderKLLTX2Video,
+            AutoencoderKLLTXVideo,
             AutoencoderKLMagvit,
             AutoencoderKLMochi,
             AutoencoderKLQwenImage,
@@ -185,6 +187,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             SD3MultiControlNetModel,
             SparseControlNetModel,
             UNetControlNetXSModel,
+            ZImageControlNetModel,
         )
         from .embeddings import ImageProjection
         from .modeling_utils import ModelMixin
@@ -213,8 +216,9 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             HunyuanVideoTransformer3DModel,
             Kandinsky5Transformer3DModel,
             LatteTransformer3DModel,
-            LTXVideoTransformer3DModel,
+            LongCatImageTransformer2DModel,
             LTX2VideoTransformer3DModel,
+            LTXVideoTransformer3DModel,
             Lumina2Transformer2DModel,
             LuminaNextDiT2DModel,
             MochiTransformer3DModel,

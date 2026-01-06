@@ -25,7 +25,6 @@ from ..activations import get_activation
 from ..embeddings import PixArtAlphaCombinedTimestepSizeEmbeddings
 from ..modeling_outputs import AutoencoderKLOutput
 from ..modeling_utils import ModelMixin
-from ..normalization import RMSNorm
 from .vae import AutoencoderMixin, DecoderOutput, DiagonalGaussianDistribution
 
 
@@ -33,8 +32,8 @@ class PerChannelRMSNorm(nn.Module):
     """
     Per-pixel (per-location) RMS normalization layer.
 
-    For each element along the chosen dimension, this layer normalizes the tensor
-    by the root-mean-square of its values across that dimension:
+    For each element along the chosen dimension, this layer normalizes the tensor by the root-mean-square of its values
+    across that dimension:
 
         y = x / sqrt(mean(x^2, dim=dim, keepdim=True) + eps)
     """
@@ -174,9 +173,7 @@ class LTX2VideoResnetBlock3d(nn.Module):
         if in_channels != out_channels:
             self.norm3 = nn.LayerNorm(in_channels, eps=eps, elementwise_affine=True, bias=True)
             # LTX 2.0 uses a normal nn.Conv3d here rather than LTXVideoCausalConv3d
-            self.conv_shortcut = nn.Conv3d(
-                in_channels=in_channels, out_channels=out_channels, kernel_size=1, stride=1
-            )
+            self.conv_shortcut = nn.Conv3d(in_channels=in_channels, out_channels=out_channels, kernel_size=1, stride=1)
 
         self.per_channel_scale1 = None
         self.per_channel_scale2 = None
@@ -953,7 +950,10 @@ class LTX2VideoDecoder3d(nn.Module):
         self.gradient_checkpointing = False
 
     def forward(
-        self, hidden_states: torch.Tensor, temb: Optional[torch.Tensor] = None, causal: Optional[bool] = None,
+        self,
+        hidden_states: torch.Tensor,
+        temb: Optional[torch.Tensor] = None,
+        causal: Optional[bool] = None,
     ) -> torch.Tensor:
         causal = causal or self.is_causal
 
@@ -1279,7 +1279,8 @@ class AutoencoderKLLTX2Video(ModelMixin, AutoencoderMixin, ConfigMixin, FromOrig
         if self.use_slicing and z.shape[0] > 1:
             if temb is not None:
                 decoded_slices = [
-                    self._decode(z_slice, t_slice, causal=causal).sample for z_slice, t_slice in (z.split(1), temb.split(1))
+                    self._decode(z_slice, t_slice, causal=causal).sample
+                    for z_slice, t_slice in (z.split(1), temb.split(1))
                 ]
             else:
                 decoded_slices = [self._decode(z_slice, causal=causal).sample for z_slice in z.split(1)]

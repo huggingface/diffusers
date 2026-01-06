@@ -13,25 +13,26 @@
 # limitations under the License.
 
 import copy
-from typing import Any, Callable, Dict, List, Optional, Union
 import inspect
+from typing import Any, Callable, Dict, List, Optional, Union
+
 import numpy as np
 import torch
+from transformers import Gemma3ForConditionalGeneration, GemmaTokenizer, GemmaTokenizerFast
 
-from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...image_processor import PipelineImageInput
-from ...utils import is_torch_xla_available, logging, replace_example_docstring
-from ...utils.torch_utils import randn_tensor
-from .connectors import LTX2TextConnectors
-from .pipeline_output import LTX2PipelineOutput
-from ..pipeline_utils import DiffusionPipeline
-from .vocoder import LTX2Vocoder
 from ...loaders import FromSingleFileMixin, LTXVideoLoraLoaderMixin
 from ...models.autoencoders import AutoencoderKLLTX2Audio, AutoencoderKLLTX2Video
 from ...models.transformers import LTX2VideoTransformer3DModel
-from transformers import Gemma3ForConditionalGeneration, GemmaTokenizer, GemmaTokenizerFast
+from ...schedulers import FlowMatchEulerDiscreteScheduler
+from ...utils import is_torch_xla_available, logging, replace_example_docstring
+from ...utils.torch_utils import randn_tensor
 from ...video_processor import VideoProcessor
+from ..pipeline_utils import DiffusionPipeline
+from .connectors import LTX2TextConnectors
+from .pipeline_output import LTX2PipelineOutput
+from .vocoder import LTX2Vocoder
 
 
 if is_torch_xla_available():
@@ -85,6 +86,7 @@ def retrieve_latents(
         return encoder_output.latents
     else:
         raise AttributeError("Could not access latents of provided encoder_output")
+
 
 # Copied from diffusers.pipelines.flux.pipeline_flux.calculate_shift
 def calculate_shift(
@@ -665,7 +667,7 @@ class LTX2ImageToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoL
 
         shape = (batch_size, num_channels_latents, num_frames, height, width)
         mask_shape = (batch_size, 1, num_frames, height, width)
-        
+
         if latents is not None:
             conditioning_mask = latents.new_zeros(mask_shape)
             conditioning_mask[:, :, 0] = 1.0
@@ -697,7 +699,7 @@ class LTX2ImageToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoL
         init_latents = torch.cat(init_latents, dim=0).to(dtype)
         init_latents = self._normalize_latents(init_latents, self.vae.latents_mean, self.vae.latents_std)
         init_latents = init_latents.repeat(1, 1, num_frames, 1, 1)
-        
+
         # First condition is image latents and those should be kept clean.
         conditioning_mask = torch.zeros(mask_shape, device=device, dtype=dtype)
         conditioning_mask[:, :, 0] = 1.0
@@ -731,7 +733,9 @@ class LTX2ImageToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoL
         latents: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         duration_s = num_frames / frame_rate
-        latents_per_second = float(sampling_rate) / float(hop_length) / float(self.audio_vae_temporal_compression_ratio)
+        latents_per_second = (
+            float(sampling_rate) / float(hop_length) / float(self.audio_vae_temporal_compression_ratio)
+        )
         latent_length = int(duration_s * latents_per_second)
 
         if latents is not None:
@@ -982,7 +986,7 @@ class LTX2ImageToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoL
         )
         if self.do_classifier_free_guidance:
             conditioning_mask = torch.cat([conditioning_mask, conditioning_mask])
-        
+
         num_mel_bins = self.audio_vae.config.mel_bins if getattr(self, "audio_vae", None) is not None else 64
         latent_mel_bins = num_mel_bins // self.audio_vae_mel_compression_ratio
 
@@ -1063,12 +1067,14 @@ class LTX2ImageToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoL
 
                 latent_model_input = torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents
                 latent_model_input = latent_model_input.to(prompt_embeds.dtype)
-                audio_latent_model_input = torch.cat([audio_latents] * 2) if self.do_classifier_free_guidance else audio_latents
+                audio_latent_model_input = (
+                    torch.cat([audio_latents] * 2) if self.do_classifier_free_guidance else audio_latents
+                )
                 audio_latent_model_input = audio_latent_model_input.to(prompt_embeds.dtype)
 
                 timestep = t.expand(latent_model_input.shape[0])
                 video_timestep = timestep.unsqueeze(-1) * (1 - conditioning_mask)
-                
+
                 with self.transformer.cache_context("cond_uncond"):
                     noise_pred_video, noise_pred_audio = self.transformer(
                         hidden_states=latent_model_input,
@@ -1095,10 +1101,14 @@ class LTX2ImageToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoL
 
                 if self.do_classifier_free_guidance:
                     noise_pred_video_uncond, noise_pred_video_text = noise_pred_video.chunk(2)
-                    noise_pred_video = noise_pred_video_uncond + self.guidance_scale * (noise_pred_video_text - noise_pred_video_uncond)
+                    noise_pred_video = noise_pred_video_uncond + self.guidance_scale * (
+                        noise_pred_video_text - noise_pred_video_uncond
+                    )
 
                     noise_pred_audio_uncond, noise_pred_audio_text = noise_pred_audio.chunk(2)
-                    noise_pred_audio = noise_pred_audio_uncond + self.guidance_scale * (noise_pred_audio_text - noise_pred_audio_uncond)
+                    noise_pred_audio = noise_pred_audio_uncond + self.guidance_scale * (
+                        noise_pred_audio_text - noise_pred_audio_uncond
+                    )
 
                     if self.guidance_rescale > 0:
                         # Based on 3.4. in https://huggingface.co/papers/2305.08891

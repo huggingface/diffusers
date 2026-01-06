@@ -1,4 +1,4 @@
-__version__ = "0.36.0.dev0"
+__version__ = "0.37.0.dev0"
 
 from typing import TYPE_CHECKING
 
@@ -193,9 +193,9 @@ else:
             "AutoencoderKLHunyuanImageRefiner",
             "AutoencoderKLHunyuanVideo",
             "AutoencoderKLHunyuanVideo15",
-            "AutoencoderKLLTXVideo",
             "AutoencoderKLLTX2Audio",
             "AutoencoderKLLTX2Video",
+            "AutoencoderKLLTXVideo",
             "AutoencoderKLMagvit",
             "AutoencoderKLMochi",
             "AutoencoderKLQwenImage",
@@ -237,8 +237,9 @@ else:
             "Kandinsky3UNet",
             "Kandinsky5Transformer3DModel",
             "LatteTransformer3DModel",
-            "LTXVideoTransformer3DModel",
+            "LongCatImageTransformer2DModel",
             "LTX2VideoTransformer3DModel",
+            "LTXVideoTransformer3DModel",
             "Lumina2Transformer2DModel",
             "LuminaNextDiT2DModel",
             "MochiTransformer3DModel",
@@ -281,6 +282,7 @@ else:
             "WanAnimateTransformer3DModel",
             "WanTransformer3DModel",
             "WanVACETransformer3DModel",
+            "ZImageControlNetModel",
             "ZImageTransformer2DModel",
             "attention_backend",
         ]
@@ -407,6 +409,8 @@ except OptionalDependencyNotAvailable:
 else:
     _import_structure["modular_pipelines"].extend(
         [
+            "Flux2AutoBlocks",
+            "Flux2ModularPipeline",
             "FluxAutoBlocks",
             "FluxKontextAutoBlocks",
             "FluxKontextModularPipeline",
@@ -462,6 +466,7 @@ else:
             "CogView4ControlPipeline",
             "CogView4Pipeline",
             "ConsisIDPipeline",
+            "Cosmos2_5_PredictBasePipeline",
             "Cosmos2TextToImagePipeline",
             "Cosmos2VideoToWorldPipeline",
             "CosmosTextToWorldPipeline",
@@ -533,12 +538,14 @@ else:
             "LDMTextToImagePipeline",
             "LEditsPPPipelineStableDiffusion",
             "LEditsPPPipelineStableDiffusionXL",
+            "LongCatImageEditPipeline",
+            "LongCatImagePipeline",
+            "LTX2ImageToVideoPipeline",
+            "LTX2Pipeline",
             "LTXConditionPipeline",
             "LTXImageToVideoPipeline",
             "LTXLatentUpsamplePipeline",
             "LTXPipeline",
-            "LTX2Pipeline",
-            "LTX2ImageToVideoPipeline",
             "LTX2LatentUpsamplePipeline",
             "LucyEditPipeline",
             "Lumina2Pipeline",
@@ -565,6 +572,7 @@ else:
             "QwenImageEditPlusPipeline",
             "QwenImageImg2ImgPipeline",
             "QwenImageInpaintPipeline",
+            "QwenImageLayeredPipeline",
             "QwenImagePipeline",
             "ReduxImageEncoder",
             "SanaControlNetPipeline",
@@ -670,7 +678,10 @@ else:
             "WuerstchenCombinedPipeline",
             "WuerstchenDecoderPipeline",
             "WuerstchenPriorPipeline",
+            "ZImageControlNetInpaintPipeline",
+            "ZImageControlNetPipeline",
             "ZImageImg2ImgPipeline",
+            "ZImageOmniPipeline",
             "ZImagePipeline",
         ]
     )
@@ -932,9 +943,9 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AutoencoderKLHunyuanImageRefiner,
             AutoencoderKLHunyuanVideo,
             AutoencoderKLHunyuanVideo15,
-            AutoencoderKLLTXVideo,
             AutoencoderKLLTX2Audio,
             AutoencoderKLLTX2Video,
+            AutoencoderKLLTXVideo,
             AutoencoderKLMagvit,
             AutoencoderKLMochi,
             AutoencoderKLQwenImage,
@@ -976,8 +987,9 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             Kandinsky3UNet,
             Kandinsky5Transformer3DModel,
             LatteTransformer3DModel,
-            LTXVideoTransformer3DModel,
+            LongCatImageTransformer2DModel,
             LTX2VideoTransformer3DModel,
+            LTXVideoTransformer3DModel,
             Lumina2Transformer2DModel,
             LuminaNextDiT2DModel,
             MochiTransformer3DModel,
@@ -1019,6 +1031,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             WanAnimateTransformer3DModel,
             WanTransformer3DModel,
             WanVACETransformer3DModel,
+            ZImageControlNetModel,
             ZImageTransformer2DModel,
             attention_backend,
         )
@@ -1120,6 +1133,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .utils.dummy_torch_and_transformers_objects import *  # noqa F403
     else:
         from .modular_pipelines import (
+            Flux2AutoBlocks,
+            Flux2ModularPipeline,
             FluxAutoBlocks,
             FluxKontextAutoBlocks,
             FluxKontextModularPipeline,
@@ -1171,6 +1186,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             CogView4ControlPipeline,
             CogView4Pipeline,
             ConsisIDPipeline,
+            Cosmos2_5_PredictBasePipeline,
             Cosmos2TextToImagePipeline,
             Cosmos2VideoToWorldPipeline,
             CosmosTextToWorldPipeline,
@@ -1242,12 +1258,14 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             LDMTextToImagePipeline,
             LEditsPPPipelineStableDiffusion,
             LEditsPPPipelineStableDiffusionXL,
+            LongCatImageEditPipeline,
+            LongCatImagePipeline,
+            LTX2ImageToVideoPipeline,
+            LTX2Pipeline,
             LTXConditionPipeline,
             LTXImageToVideoPipeline,
             LTXLatentUpsamplePipeline,
             LTXPipeline,
-            LTX2Pipeline,
-            LTX2ImageToVideoPipeline,
             LTX2LatentUpsamplePipeline,
             LucyEditPipeline,
             Lumina2Pipeline,
@@ -1274,6 +1292,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             QwenImageEditPlusPipeline,
             QwenImageImg2ImgPipeline,
             QwenImageInpaintPipeline,
+            QwenImageLayeredPipeline,
             QwenImagePipeline,
             ReduxImageEncoder,
             SanaControlNetPipeline,
@@ -1377,7 +1396,10 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             WuerstchenCombinedPipeline,
             WuerstchenDecoderPipeline,
             WuerstchenPriorPipeline,
+            ZImageControlNetInpaintPipeline,
+            ZImageControlNetPipeline,
             ZImageImg2ImgPipeline,
+            ZImageOmniPipeline,
             ZImagePipeline,
         )
 

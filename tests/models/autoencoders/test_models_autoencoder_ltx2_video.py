@@ -15,8 +15,6 @@
 
 import unittest
 
-import torch
-
 from diffusers import AutoencoderKLLTX2Video
 
 from ...testing_utils import (
