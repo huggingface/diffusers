@@ -119,7 +119,7 @@ class ZImageAutoDenoiseStep(AutoPipelineBlocks):
 
 class ZImageAutoVaeImageEncoderStep(AutoPipelineBlocks):
     block_classes = [ZImageVaeImageEncoderStep]
-    block_names = ["vae_image_encoder"]
+    block_names = ["vae_encoder"]
     block_trigger_inputs = ["image"]
 
     @property
@@ -137,7 +137,7 @@ class ZImageAutoBlocks(SequentialPipelineBlocks):
         ZImageAutoDenoiseStep,
         ZImageVaeDecoderStep,
     ]
-    block_names = ["text_encoder", "vae_image_encoder", "denoise", "decode"]
+    block_names = ["text_encoder", "vae_encoder", "denoise", "decode"]
 
     @property
     def description(self) -> str:
@@ -162,7 +162,7 @@ TEXT2IMAGE_BLOCKS = InsertableDict(
 IMAGE2IMAGE_BLOCKS = InsertableDict(
     [
         ("text_encoder", ZImageTextEncoderStep),
-        ("vae_image_encoder", ZImageVaeImageEncoderStep),
+        ("vae_encoder", ZImageVaeImageEncoderStep),
         ("input", ZImageTextInputStep),
         ("additional_inputs", ZImageAdditionalInputsStep(image_latent_inputs=["image_latents"])),
         ("prepare_latents", ZImagePrepareLatentsStep),
@@ -178,7 +178,7 @@ IMAGE2IMAGE_BLOCKS = InsertableDict(
 AUTO_BLOCKS = InsertableDict(
     [
         ("text_encoder", ZImageTextEncoderStep),
-        ("vae_image_encoder", ZImageAutoVaeImageEncoderStep),
+        ("vae_encoder", ZImageAutoVaeImageEncoderStep),
         ("denoise", ZImageAutoDenoiseStep),
         ("decode", ZImageVaeDecoderStep),
     ]
