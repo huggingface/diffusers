@@ -154,7 +154,8 @@ class UniDiffuserTextDecoder(ModelMixin, ConfigMixin, ModuleUtilsMixin):
         if labels is not None:
             dummy_token = self.get_dummy_token(input_ids.shape[0], input_ids.device)
             labels = torch.cat((dummy_token, input_ids), dim=1)
-        out = self.transformer(inputs_embeds=embedding_cat, labels=labels, attention_mask=attention_mask)
+        with self.transformer.cache_context("cond"):
+            out = self.transformer(inputs_embeds=embedding_cat, labels=labels, attention_mask=attention_mask)
         if self.prefix_hidden_dim is not None:
             return out, hidden
         else:
@@ -250,6 +251,7 @@ class UniDiffuserTextDecoder(ModelMixin, ConfigMixin, ModuleUtilsMixin):
             generated = self.transformer.transformer.wte(input_ids)
 
         for i in range(entry_length):
+            # TODO-context
             outputs = self.transformer(inputs_embeds=generated)
             logits = outputs.logits
             logits = logits[:, -1, :] / (temperature if temperature > 0 else 1.0)

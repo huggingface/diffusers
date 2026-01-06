@@ -718,14 +718,15 @@ class StableAudioPipeline(DiffusionPipeline):
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
                 # predict the noise residual
-                noise_pred = self.transformer(
-                    latent_model_input,
-                    t.unsqueeze(0),
-                    encoder_hidden_states=text_audio_duration_embeds,
-                    global_hidden_states=audio_duration_embeds,
-                    rotary_embedding=rotary_embedding,
-                    return_dict=False,
-                )[0]
+                with self.transformer.cache_context("cond"):
+                    noise_pred = self.transformer(
+                        latent_model_input,
+                        t.unsqueeze(0),
+                        encoder_hidden_states=text_audio_duration_embeds,
+                        global_hidden_states=audio_duration_embeds,
+                        rotary_embedding=rotary_embedding,
+                        return_dict=False,
+                    )[0]
 
                 # perform guidance
                 if do_classifier_free_guidance:

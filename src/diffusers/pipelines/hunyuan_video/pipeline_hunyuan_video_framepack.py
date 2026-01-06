@@ -1001,32 +1001,13 @@ class HunyuanVideoFramepackPipeline(DiffusionPipeline, HunyuanVideoLoraLoaderMix
                     self._current_timestep = t
                     timestep = t.expand(latents.shape[0])
 
-                    noise_pred = self.transformer(
-                        hidden_states=latents.to(transformer_dtype),
-                        timestep=timestep,
-                        encoder_hidden_states=prompt_embeds,
-                        encoder_attention_mask=prompt_attention_mask,
-                        pooled_projections=pooled_prompt_embeds,
-                        image_embeds=image_embeds,
-                        indices_latents=indices_latents,
-                        guidance=guidance,
-                        latents_clean=latents_clean.to(transformer_dtype),
-                        indices_latents_clean=indices_clean_latents,
-                        latents_history_2x=latents_history_2x.to(transformer_dtype),
-                        indices_latents_history_2x=indices_latents_history_2x,
-                        latents_history_4x=latents_history_4x.to(transformer_dtype),
-                        indices_latents_history_4x=indices_latents_history_4x,
-                        attention_kwargs=attention_kwargs,
-                        return_dict=False,
-                    )[0]
-
-                    if do_true_cfg:
-                        neg_noise_pred = self.transformer(
+                    with self.transformer.cache_context("cond"):
+                        noise_pred = self.transformer(
                             hidden_states=latents.to(transformer_dtype),
                             timestep=timestep,
-                            encoder_hidden_states=negative_prompt_embeds,
-                            encoder_attention_mask=negative_prompt_attention_mask,
-                            pooled_projections=negative_pooled_prompt_embeds,
+                            encoder_hidden_states=prompt_embeds,
+                            encoder_attention_mask=prompt_attention_mask,
+                            pooled_projections=pooled_prompt_embeds,
                             image_embeds=image_embeds,
                             indices_latents=indices_latents,
                             guidance=guidance,
@@ -1039,6 +1020,27 @@ class HunyuanVideoFramepackPipeline(DiffusionPipeline, HunyuanVideoLoraLoaderMix
                             attention_kwargs=attention_kwargs,
                             return_dict=False,
                         )[0]
+
+                    if do_true_cfg:
+                        with self.transformer.cache_context("uncond"):
+                            neg_noise_pred = self.transformer(
+                                hidden_states=latents.to(transformer_dtype),
+                                timestep=timestep,
+                                encoder_hidden_states=negative_prompt_embeds,
+                                encoder_attention_mask=negative_prompt_attention_mask,
+                                pooled_projections=negative_pooled_prompt_embeds,
+                                image_embeds=image_embeds,
+                                indices_latents=indices_latents,
+                                guidance=guidance,
+                                latents_clean=latents_clean.to(transformer_dtype),
+                                indices_latents_clean=indices_clean_latents,
+                                latents_history_2x=latents_history_2x.to(transformer_dtype),
+                                indices_latents_history_2x=indices_latents_history_2x,
+                                latents_history_4x=latents_history_4x.to(transformer_dtype),
+                                indices_latents_history_4x=indices_latents_history_4x,
+                                attention_kwargs=attention_kwargs,
+                                return_dict=False,
+                            )[0]
                         noise_pred = neg_noise_pred + true_cfg_scale * (noise_pred - neg_noise_pred)
 
                     # compute the previous noisy sample x_t -> x_t-1

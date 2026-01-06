@@ -615,13 +615,14 @@ class AuraFlowPipeline(DiffusionPipeline, AuraFlowLoraLoaderMixin):
                 timestep = timestep.to(latents.device, dtype=latents.dtype)
 
                 # predict noise model_output
-                noise_pred = self.transformer(
-                    latent_model_input,
-                    encoder_hidden_states=prompt_embeds,
-                    timestep=timestep,
-                    return_dict=False,
-                    attention_kwargs=self.attention_kwargs,
-                )[0]
+                with self.transformer.cache_context("cond"):
+                    noise_pred = self.transformer(
+                        latent_model_input,
+                        encoder_hidden_states=prompt_embeds,
+                        timestep=timestep,
+                        return_dict=False,
+                        attention_kwargs=self.attention_kwargs,
+                    )[0]
 
                 # perform guidance
                 if do_classifier_free_guidance:

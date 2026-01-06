@@ -697,7 +697,8 @@ class FrozenCLIPEmbedderT3(AbstractEncoder, ModelMixin, ConfigMixin):
         z_list = []
         for tokens in tokens_list:
             tokens = tokens.to(self.device)
-            _z = self.transformer(input_ids=tokens, **kwargs)
+            with self.transformer.cache_context("cond"):
+                _z = self.transformer(input_ids=tokens, **kwargs)
             z_list += [_z]
         return torch.cat(z_list, dim=1)
 

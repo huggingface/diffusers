@@ -750,13 +750,14 @@ class PRXPipeline(
                     t_cont = (t.float() / self.scheduler.config.num_train_timesteps).view(1).to(device)
 
                 # Forward through transformer
-                noise_pred = self.transformer(
-                    hidden_states=latents_in,
-                    timestep=t_cont,
-                    encoder_hidden_states=ca_embed,
-                    attention_mask=ca_mask,
-                    return_dict=False,
-                )[0]
+                with self.transformer.cache_context("cond"):
+                    noise_pred = self.transformer(
+                        hidden_states=latents_in,
+                        timestep=t_cont,
+                        encoder_hidden_states=ca_embed,
+                        attention_mask=ca_mask,
+                        return_dict=False,
+                    )[0]
 
                 # Apply CFG
                 if self.do_classifier_free_guidance:

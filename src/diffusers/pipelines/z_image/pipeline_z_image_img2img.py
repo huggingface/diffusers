@@ -637,11 +637,12 @@ class ZImageImg2ImgPipeline(DiffusionPipeline, ZImageLoraLoaderMixin, FromSingle
                 latent_model_input = latent_model_input.unsqueeze(2)
                 latent_model_input_list = list(latent_model_input.unbind(dim=0))
 
-                model_out_list = self.transformer(
-                    latent_model_input_list,
-                    timestep_model_input,
-                    prompt_embeds_model_input,
-                )[0]
+                with self.transformer.cache_context("cond"):
+                    model_out_list = self.transformer(
+                        latent_model_input_list,
+                        timestep_model_input,
+                        prompt_embeds_model_input,
+                    )[0]
 
                 if apply_cfg:
                     # Perform CFG

@@ -707,15 +707,16 @@ class CosmosVideoToWorldPipeline(DiffusionPipeline):
                 cond_latent = self.scheduler.scale_model_input(cond_latent, t)
                 cond_latent = cond_latent.to(transformer_dtype)
 
-                noise_pred = self.transformer(
-                    hidden_states=cond_latent,
-                    timestep=timestep,
-                    encoder_hidden_states=prompt_embeds,
-                    fps=fps,
-                    condition_mask=cond_mask,
-                    padding_mask=padding_mask,
-                    return_dict=False,
-                )[0]
+                with self.transformer.cache_context("cond"):
+                    noise_pred = self.transformer(
+                        hidden_states=cond_latent,
+                        timestep=timestep,
+                        encoder_hidden_states=prompt_embeds,
+                        fps=fps,
+                        condition_mask=cond_mask,
+                        padding_mask=padding_mask,
+                        return_dict=False,
+                    )[0]
 
                 sample = latents
                 if self.do_classifier_free_guidance:
@@ -727,15 +728,16 @@ class CosmosVideoToWorldPipeline(DiffusionPipeline):
                     uncond_latent = self.scheduler.scale_model_input(uncond_latent, t)
                     uncond_latent = uncond_latent.to(transformer_dtype)
 
-                    noise_pred_uncond = self.transformer(
-                        hidden_states=uncond_latent,
-                        timestep=timestep,
-                        encoder_hidden_states=negative_prompt_embeds,
-                        fps=fps,
-                        condition_mask=uncond_mask,
-                        padding_mask=padding_mask,
-                        return_dict=False,
-                    )[0]
+                    with self.transformer.cache_context("uncond"):
+                        noise_pred_uncond = self.transformer(
+                            hidden_states=uncond_latent,
+                            timestep=timestep,
+                            encoder_hidden_states=negative_prompt_embeds,
+                            fps=fps,
+                            condition_mask=uncond_mask,
+                            padding_mask=padding_mask,
+                            return_dict=False,
+                        )[0]
                     noise_pred = torch.cat([noise_pred_uncond, noise_pred])
                     sample = torch.cat([sample, sample])
 

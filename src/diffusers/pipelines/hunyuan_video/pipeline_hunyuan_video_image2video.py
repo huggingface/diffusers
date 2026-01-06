@@ -932,28 +932,30 @@ class HunyuanVideoImageToVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoader
                 elif image_condition_type == "token_replace":
                     latent_model_input = torch.cat([image_latents, latents[:, :, 1:]], dim=2).to(transformer_dtype)
 
-                noise_pred = self.transformer(
-                    hidden_states=latent_model_input,
-                    timestep=timestep,
-                    encoder_hidden_states=prompt_embeds,
-                    encoder_attention_mask=prompt_attention_mask,
-                    pooled_projections=pooled_prompt_embeds,
-                    guidance=guidance,
-                    attention_kwargs=attention_kwargs,
-                    return_dict=False,
-                )[0]
-
-                if do_true_cfg:
-                    neg_noise_pred = self.transformer(
+                with self.transformer.cache_context("cond"):
+                    noise_pred = self.transformer(
                         hidden_states=latent_model_input,
                         timestep=timestep,
-                        encoder_hidden_states=negative_prompt_embeds,
-                        encoder_attention_mask=negative_prompt_attention_mask,
-                        pooled_projections=negative_pooled_prompt_embeds,
+                        encoder_hidden_states=prompt_embeds,
+                        encoder_attention_mask=prompt_attention_mask,
+                        pooled_projections=pooled_prompt_embeds,
                         guidance=guidance,
                         attention_kwargs=attention_kwargs,
                         return_dict=False,
                     )[0]
+
+                if do_true_cfg:
+                    with self.transformer.cache_context("uncond"):
+                        neg_noise_pred = self.transformer(
+                            hidden_states=latent_model_input,
+                            timestep=timestep,
+                            encoder_hidden_states=negative_prompt_embeds,
+                            encoder_attention_mask=negative_prompt_attention_mask,
+                            pooled_projections=negative_pooled_prompt_embeds,
+                            guidance=guidance,
+                            attention_kwargs=attention_kwargs,
+                            return_dict=False,
+                        )[0]
                     noise_pred = neg_noise_pred + true_cfg_scale * (noise_pred - neg_noise_pred)
 
                 # compute the previous noisy sample x_t -> x_t-1

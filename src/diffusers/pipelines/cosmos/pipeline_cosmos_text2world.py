@@ -566,25 +566,27 @@ class CosmosTextToWorldPipeline(DiffusionPipeline):
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
                 latent_model_input = latent_model_input.to(transformer_dtype)
 
-                noise_pred = self.transformer(
-                    hidden_states=latent_model_input,
-                    timestep=timestep,
-                    encoder_hidden_states=prompt_embeds,
-                    fps=fps,
-                    padding_mask=padding_mask,
-                    return_dict=False,
-                )[0]
-
-                sample = latents
-                if self.do_classifier_free_guidance:
-                    noise_pred_uncond = self.transformer(
+                with self.transformer.cache_context("cond"):
+                    noise_pred = self.transformer(
                         hidden_states=latent_model_input,
                         timestep=timestep,
-                        encoder_hidden_states=negative_prompt_embeds,
+                        encoder_hidden_states=prompt_embeds,
                         fps=fps,
                         padding_mask=padding_mask,
                         return_dict=False,
                     )[0]
+
+                sample = latents
+                if self.do_classifier_free_guidance:
+                    with self.transformer.cache_context("uncond"):
+                        noise_pred_uncond = self.transformer(
+                            hidden_states=latent_model_input,
+                            timestep=timestep,
+                            encoder_hidden_states=negative_prompt_embeds,
+                            fps=fps,
+                            padding_mask=padding_mask,
+                            return_dict=False,
+                        )[0]
                     noise_pred = torch.cat([noise_pred_uncond, noise_pred])
                     sample = torch.cat([sample, sample])
 
