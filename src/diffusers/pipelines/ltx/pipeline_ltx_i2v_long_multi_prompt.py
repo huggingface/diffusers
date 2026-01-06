@@ -12,12 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import inspect
+import copy
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
-import PIL
 import numpy as np
-import copy
+import PIL
 import torch
 from transformers import T5EncoderModel, T5TokenizerFast
 
@@ -26,11 +25,12 @@ from ...loaders import FromSingleFileMixin, LTXVideoLoraLoaderMixin
 from ...models.autoencoders import AutoencoderKLLTXVideo
 from ...models.transformers import LTXVideoTransformer3DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler, LTXEulerAncestralRFScheduler
-from ...utils import is_torch_xla_available, replace_example_docstring, logging
+from ...utils import is_torch_xla_available, logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from ...video_processor import VideoProcessor
 from ..pipeline_utils import DiffusionPipeline
 from .pipeline_output import LTXPipelineOutput
+
 
 if is_torch_xla_available():
     import torch_xla.core.xla_model as xm
@@ -46,19 +46,29 @@ EXAMPLE_DOC_STRING = """
         ```py
         >>> import torch
         >>> from diffusers import LTXEulerAncestralRFScheduler, LTXI2VLongMultiPromptPipeline
+
         >>> pipe = LTXI2VLongMultiPromptPipeline.from_pretrained("LTX-Video-0.9.8-13B-distilled")
         >>> # For ComfyUI parity, swap in the RF scheduler (keeps the original config).
         >>> pipe.scheduler = LTXEulerAncestralRFScheduler.from_config(pipe.scheduler.config)
         >>> pipe = pipe.to("cuda").to(dtype=torch.bfloat16)
         >>> # Example A: get decoded frames (PIL)
-        >>> out = pipe(prompt="a chimpanzee walks | a chimpanzee eats", num_frames=161, height=512, width=704,
-        ...            temporal_tile_size=80, temporal_overlap=24, output_type="pil", return_dict=True)
+        >>> out = pipe(
+        ...     prompt="a chimpanzee walks | a chimpanzee eats",
+        ...     num_frames=161,
+        ...     height=512,
+        ...     width=704,
+        ...     temporal_tile_size=80,
+        ...     temporal_overlap=24,
+        ...     output_type="pil",
+        ...     return_dict=True,
+        ... )
         >>> frames = out.frames[0]  # list of PIL.Image.Image
         >>> # Example B: get latent video and decode later (saves VRAM during sampling)
         >>> out_latent = pipe(prompt="a chimpanzee walking", output_type="latent", return_dict=True).frames
         >>> frames = pipe.vae_decode_tiled(out_latent, output_type="pil")[0]
         ```
 """
+
 
 def get_latent_coords(
     latent_num_frames, latent_height, latent_width, batch_size, device, rope_interpolation_scale, latent_idx
@@ -72,14 +82,15 @@ def get_latent_coords(
       latent_width: int. Latent width (W_lat).
       batch_size: int. Batch dimension (B).
       device: torch.device for the resulting tensor.
-      rope_interpolation_scale: tuple[int|float, int|float, int|float]. Scale per (t, y, x) latent step to pixel coords.
+      rope_interpolation_scale:
+          tuple[int|float, int|float, int|float]. Scale per (t, y, x) latent step to pixel coords.
       latent_idx: Optional[int]. When not None, shifts the time coordinate to align segments:
         - <= 0 uses step multiples of rope_interpolation_scale[0]
         - > 0 starts at 1 then increments by rope_interpolation_scale[0]
 
     Returns:
-      Tensor of shape [B, 3, T_lat * H_lat * W_lat] containing top-left coordinates per latent patch,
-      repeated for each batch element.
+      Tensor of shape [B, 3, T_lat * H_lat * W_lat] containing top-left coordinates per latent patch, repeated for each
+      batch element.
     """
     latent_sample_coords = torch.meshgrid(
         torch.arange(0, latent_num_frames, 1, device=device),
@@ -133,11 +144,13 @@ def adain_normalize_latents(
     curr_latents: torch.Tensor, ref_latents: Optional[torch.Tensor], factor: float
 ) -> torch.Tensor:
     """
-    Optional AdaIN normalization: channel-wise mean/variance matching of curr_latents to ref_latents, controlled by factor.
+    Optional AdaIN normalization: channel-wise mean/variance matching of curr_latents to ref_latents, controlled by
+    factor.
 
     Args:
       curr_latents: Tensor [B, C, T, H, W]. Current window latents.
-      ref_latents: Optional[Tensor] [B, C, T_ref, H, W]. Reference latents (e.g., first window) used to compute target stats.
+      ref_latents:
+          Optional[Tensor] [B, C, T_ref, H, W]. Reference latents (e.g., first window) used to compute target stats.
       factor: float in [0, 1]. 0 keeps current stats; 1 matches reference stats.
 
     Returns:
@@ -225,8 +238,8 @@ def inject_prev_tail_latents(
     prev_overlap_len: int,
 ) -> Tuple[torch.Tensor, torch.Tensor, int]:
     """
-    Inject the tail latents from the previous window at the beginning of the current window (first k frames),
-    where k = min(overlap_lat, T_curr, T_prev_tail).
+    Inject the tail latents from the previous window at the beginning of the current window (first k frames), where k =
+    min(overlap_lat, T_curr, T_prev_tail).
 
     Args:
       window_latents: Tensor [B, C, T, H, W]. Current window latents.
@@ -290,7 +303,9 @@ def build_video_coords_for_window(
     if overlap_len > 0:
         replace_corrds.append(get_latent_coords(overlap_len, h, w, b, latents.device, rope_interpolation_scale, 0))
     if guiding_len > 0:
-        replace_corrds.append(get_latent_coords(guiding_len, h, w, b, latents.device, rope_interpolation_scale, overlap_len))
+        replace_corrds.append(
+            get_latent_coords(guiding_len, h, w, b, latents.device, rope_interpolation_scale, overlap_len)
+        )
     if negative_len > 0:
         replace_corrds.append(get_latent_coords(negative_len, h, w, b, latents.device, rope_interpolation_scale, -1))
     if len(replace_corrds) > 0:
@@ -307,7 +322,8 @@ def parse_prompt_segments(prompt: Union[str, List[str]], prompt_segments: Option
 
     Args:
       prompt: str | list[str]. If str contains '|', parts are split by bars and trimmed.
-      prompt_segments: list[dict], optional. Each dict with {"start_window", "end_window", "text"} overrides prompts per window.
+      prompt_segments:
+          list[dict], optional. Each dict with {"start_window", "end_window", "text"} overrides prompts per window.
 
     Returns:
       list[str] containing the positive prompt for each window index.
@@ -346,6 +362,7 @@ def parse_prompt_segments(prompt: Union[str, List[str]], prompt_segments: Option
 def batch_normalize(latents, reference, factor):
     """
     Batch AdaIN-like normalization for latents in dict format (ComfyUI-compatible).
+
     Args:
         latents: dict containing "samples" shaped [B, C, F, H, W]
         reference: dict containing "samples" used to compute target stats
@@ -753,7 +770,8 @@ class LTXI2VLongMultiPromptPipeline(DiffusionPipeline, FromSingleFileMixin, LTXV
         """
         VAE-based spatial tiled decoding (ComfyUI parity) implemented in Diffusers style.
         - Linearly feather and blend overlapping tiles to avoid seams.
-        - Optional last_frame_fix: duplicate the last latent frame before decoding, then drop time_scale_factor frames at the end.
+        - Optional last_frame_fix: duplicate the last latent frame before decoding, then drop time_scale_factor frames
+          at the end.
         - Supports timestep_conditioning and decode_noise_scale injection.
         - By default, "normalized latents" (the denoising output) are de-normalized internally (auto_denormalize=True).
         - Tile fusion is computed in compute_dtype (float32 by default) to reduce blur and color shifts.
@@ -761,7 +779,8 @@ class LTXI2VLongMultiPromptPipeline(DiffusionPipeline, FromSingleFileMixin, LTXV
         Args:
           latents: [B, C_latent, F_latent, H_latent, W_latent]
           decode_timestep: Optional decode timestep (effective only if VAE supports timestep_conditioning)
-          decode_noise_scale: Optional decode noise interpolation (effective only if VAE supports timestep_conditioning)
+          decode_noise_scale:
+              Optional decode noise interpolation (effective only if VAE supports timestep_conditioning)
           horizontal_tiles, vertical_tiles: Number of tiles horizontally/vertically (>= 1)
           overlap: Overlap in latent space (in latent pixels, >= 0)
           last_frame_fix: Whether to enable the "repeat last frame" fix
@@ -779,7 +798,7 @@ class LTXI2VLongMultiPromptPipeline(DiffusionPipeline, FromSingleFileMixin, LTXV
           - If output_type="pt": returns [B, C, F, H, W] (values roughly in [-1, 1])
           - If output_type="np"/"pil": returns post-processed outputs via postprocess_video
         """
-        if output_type =='latent':
+        if output_type == "latent":
             return latents
         if horizontal_tiles < 1 or vertical_tiles < 1:
             raise ValueError("horizontal_tiles and vertical_tiles must be >= 1")
@@ -815,7 +834,9 @@ class LTXI2VLongMultiPromptPipeline(DiffusionPipeline, FromSingleFileMixin, LTXV
             dt = float(decode_timestep) if decode_timestep is not None else 0.0
             vt = torch.tensor([dt], device=device, dtype=latents.dtype)
             if decode_noise_scale is not None:
-                dns = torch.tensor([float(decode_noise_scale)], device=device, dtype=latents.dtype)[:, None, None, None, None]
+                dns = torch.tensor([float(decode_noise_scale)], device=device, dtype=latents.dtype)[
+                    :, None, None, None, None
+                ]
                 noise = randn_tensor(latents.shape, generator=generator, device=device, dtype=latents.dtype)
                 latents = (1 - dns) * latents + dns * noise
         else:
@@ -829,7 +850,6 @@ class LTXI2VLongMultiPromptPipeline(DiffusionPipeline, FromSingleFileMixin, LTXV
             if output_type in ("np", "pil"):
                 return self.video_processor.postprocess_video(decoded, output_type=output_type)
             return decoded
-
 
         # Compute base tile sizes (in latent space)
         base_tile_h = (h_lat + (vertical_tiles - 1) * overlap) // vertical_tiles
@@ -888,19 +908,27 @@ class LTXI2VLongMultiPromptPipeline(DiffusionPipeline, FromSingleFileMixin, LTXV
                 # Horizontal feathering: left/right overlaps
                 if overlap_out_w > 0:
                     if h > 0:
-                        h_blend = torch.linspace(0, 1, steps=overlap_out_w, device=decoded_tile.device, dtype=compute_dtype)
+                        h_blend = torch.linspace(
+                            0, 1, steps=overlap_out_w, device=decoded_tile.device, dtype=compute_dtype
+                        )
                         tile_weights[:, :, :, :, :overlap_out_w] *= h_blend.view(1, 1, 1, 1, -1)
                     if h < horizontal_tiles - 1:
-                        h_blend = torch.linspace(1, 0, steps=overlap_out_w, device=decoded_tile.device, dtype=compute_dtype)
+                        h_blend = torch.linspace(
+                            1, 0, steps=overlap_out_w, device=decoded_tile.device, dtype=compute_dtype
+                        )
                         tile_weights[:, :, :, :, -overlap_out_w:] *= h_blend.view(1, 1, 1, 1, -1)
 
                 # Vertical feathering: top/bottom overlaps
                 if overlap_out_h > 0:
                     if v > 0:
-                        v_blend = torch.linspace(0, 1, steps=overlap_out_h, device=decoded_tile.device, dtype=compute_dtype)
+                        v_blend = torch.linspace(
+                            0, 1, steps=overlap_out_h, device=decoded_tile.device, dtype=compute_dtype
+                        )
                         tile_weights[:, :, :, :overlap_out_h, :] *= v_blend.view(1, 1, 1, -1, 1)
                     if v < vertical_tiles - 1:
-                        v_blend = torch.linspace(1, 0, steps=overlap_out_h, device=decoded_tile.device, dtype=compute_dtype)
+                        v_blend = torch.linspace(
+                            1, 0, steps=overlap_out_h, device=decoded_tile.device, dtype=compute_dtype
+                        )
                         tile_weights[:, :, :, -overlap_out_h:, :] *= v_blend.view(1, 1, 1, -1, 1)
 
                 # Accumulate blended tile
@@ -919,7 +947,6 @@ class LTXI2VLongMultiPromptPipeline(DiffusionPipeline, FromSingleFileMixin, LTXV
         if output_type in ("np", "pil"):
             return self.video_processor.postprocess_video(output, output_type=output_type)
         return output
-
 
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
@@ -1058,11 +1085,12 @@ class LTXI2VLongMultiPromptPipeline(DiffusionPipeline, FromSingleFileMixin, LTXV
                 - W_lat = width // vae_spatial_compression_ratio
 
         Notes:
-            - Seeding: when `seed` is provided, each temporal window uses a local generator seeded with `seed + w_start`,
-              while the shared generator is seeded once for global latents if no generator is passed; otherwise the
-              passed-in generator is reused.
+            - Seeding: when `seed` is provided, each temporal window uses a local generator seeded with `seed +
+              w_start`, while the shared generator is seeded once for global latents if no generator is passed;
+              otherwise the passed-in generator is reused.
             - CFG: unified `noise_pred = uncond + w * (text - uncond)` with optional `guidance_rescale`.
-            - Memory: denoising performs full-frame predictions (no spatial tiling); decoding can be tiled to avoid OOM.
+            - Memory: denoising performs full-frame predictions (no spatial tiling); decoding can be tiled to avoid
+              OOM.
         """
 
         if isinstance(callback_on_step_end, (PipelineCallback, MultiPipelineCallbacks)):
@@ -1071,7 +1099,6 @@ class LTXI2VLongMultiPromptPipeline(DiffusionPipeline, FromSingleFileMixin, LTXV
         # 0. Input validation: height/width must be divisible by 32
         if height % 32 != 0 or width % 32 != 0:
             raise ValueError(f"`height` and `width` have to be divisible by 32 but are {height} and {width}.")
-
 
         self._guidance_scale = guidance_scale
         self._guidance_rescale = guidance_rescale
@@ -1187,18 +1214,35 @@ class LTXI2VLongMultiPromptPipeline(DiffusionPipeline, FromSingleFileMixin, LTXV
                 k = min(overlap_lat, out_latents.shape[2])
                 prev_tail = out_latents[:, :, -k:]
                 window_latents, window_cond_mask_5d, prev_overlap_len = inject_prev_tail_latents(
-                    window_latents, prev_tail, window_cond_mask_5d, overlap_lat, temporal_overlap_cond_strength, prev_overlap_len
+                    window_latents,
+                    prev_tail,
+                    window_cond_mask_5d,
+                    overlap_lat,
+                    temporal_overlap_cond_strength,
+                    prev_overlap_len,
                 )
             # Reference/negative-index latent injection (append 1 frame at window head; controlled by negative_index_strength)
             if window_guidance_latents is not None:
-                guiding_len = window_guidance_latents.shape[2] if w_idx==0 else window_guidance_latents.shape[2] - overlap_lat
+                guiding_len = (
+                    window_guidance_latents.shape[2] if w_idx == 0 else window_guidance_latents.shape[2] - overlap_lat
+                )
                 window_latents, window_cond_mask_5d, prev_overlap_len = inject_prev_tail_latents(
-                    window_latents, window_guidance_latents[:,:,-guiding_len:], window_cond_mask_5d, guiding_len, guiding_strength, prev_overlap_len
+                    window_latents,
+                    window_guidance_latents[:, :, -guiding_len:],
+                    window_cond_mask_5d,
+                    guiding_len,
+                    guiding_strength,
+                    prev_overlap_len,
                 )
             else:
                 guiding_len = 0
             window_latents, window_cond_mask_5d, prev_overlap_len = inject_prev_tail_latents(
-                window_latents, negative_index_latents, window_cond_mask_5d, 1, negative_index_strength, prev_overlap_len
+                window_latents,
+                negative_index_latents,
+                window_cond_mask_5d,
+                1,
+                negative_index_strength,
+                prev_overlap_len,
             )
             if w_idx == 0 and cond_image is not None and cond_strength > 0:
                 # First-frame I2V: smaller mask means stronger preservation of the original latent
@@ -1217,9 +1261,7 @@ class LTXI2VLongMultiPromptPipeline(DiffusionPipeline, FromSingleFileMixin, LTXV
             else:
                 local_gen = generator
             # randn*mask + (1-mask)*latents implements hard-condition initialization
-            init_rand = randn_tensor(
-                window_latents.shape, generator=local_gen, device=device, dtype=torch.float32
-            )
+            init_rand = randn_tensor(window_latents.shape, generator=local_gen, device=device, dtype=torch.float32)
             mixed_latents = init_rand * window_cond_mask_5d + (1 - window_cond_mask_5d) * window_latents
             window_latents_packed = self._pack_latents(
                 window_latents, self.transformer_spatial_patch_size, self.transformer_temporal_patch_size
@@ -1250,7 +1292,9 @@ class LTXI2VLongMultiPromptPipeline(DiffusionPipeline, FromSingleFileMixin, LTXV
                     self._current_timestep = t
 
                     # Model input (stack 2 copies under CFG)
-                    latent_model_input = torch.cat([latents_packed] * 2) if self.do_classifier_free_guidance else latents_packed
+                    latent_model_input = (
+                        torch.cat([latents_packed] * 2) if self.do_classifier_free_guidance else latents_packed
+                    )
                     # Broadcast timesteps, combine with per-token cond mask (I2V at window head)
                     timestep = t.expand(latent_model_input.shape[0])
                     if cond_mask is not None:
@@ -1265,10 +1309,14 @@ class LTXI2VLongMultiPromptPipeline(DiffusionPipeline, FromSingleFileMixin, LTXV
                     )
                     # Inpainting pre-blend (ComfyUI parity: KSamplerX0Inpaint:400)
                     if cond_mask_tokens is not None:
-                        latents_packed = latents_packed * cond_mask_tokens + window_latents_packed * (1.0 - cond_mask_tokens)
+                        latents_packed = latents_packed * cond_mask_tokens + window_latents_packed * (
+                            1.0 - cond_mask_tokens
+                        )
 
                     # Negative-index/overlap lengths (for segmenting time coordinates; RoPE-compatible)
-                    k_negative_count = 1 if (negative_index_latents is not None and float(negative_index_strength) > 0.0) else 0
+                    k_negative_count = (
+                        1 if (negative_index_latents is not None and float(negative_index_strength) > 0.0) else 0
+                    )
                     k_overlap_count = overlap_lat if (w_idx > 0 and overlap_lat > 0) else 0
                     video_coords = build_video_coords_for_window(
                         latents=window_latents,
@@ -1308,7 +1356,9 @@ class LTXI2VLongMultiPromptPipeline(DiffusionPipeline, FromSingleFileMixin, LTXV
                     )[0]
                     # Inpainting post-blend (ComfyUI parity: restore hard-conditioned regions after update)
                     if cond_mask_tokens is not None:
-                        latents_packed = latents_packed * cond_mask_tokens + window_latents_packed * (1.0 - cond_mask_tokens)
+                        latents_packed = latents_packed * cond_mask_tokens + window_latents_packed * (
+                            1.0 - cond_mask_tokens
+                        )
                     if callback_on_step_end is not None:
                         callback_kwargs = {}
                         for k in callback_on_step_end_tensor_inputs:
@@ -1345,10 +1395,10 @@ class LTXI2VLongMultiPromptPipeline(DiffusionPipeline, FromSingleFileMixin, LTXV
                 window_out = window_out[:, :, 1:]  # Drop the first frame of the new window
                 if adain_factor > 0 and first_window_latents is not None:
                     window_out = adain_normalize_latents(window_out, first_window_latents, adain_factor)
-                overlap_len = max(overlap_lat-1, 1)
-                prev_tail_chunk = out_latents[:, :, -window_out.shape[2]:]
+                overlap_len = max(overlap_lat - 1, 1)
+                prev_tail_chunk = out_latents[:, :, -window_out.shape[2] :]
                 fused = linear_overlap_fuse(prev_tail_chunk, window_out, overlap_len)
-                out_latents = torch.cat([out_latents[:, :, :-window_out.shape[2]], fused], dim=2)
+                out_latents = torch.cat([out_latents[:, :, : -window_out.shape[2]], fused], dim=2)
 
         # 7. Decode or return latent
         if output_type == "latent":

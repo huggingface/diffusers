@@ -15,9 +15,8 @@
 """
 LTXEulerAncestralRFScheduler
 
-This scheduler implements a K-diffusion style Euler-Ancestral sampler specialized for
-flow / CONST parameterization, closely mirroring ComfyUI's
-`sample_euler_ancestral_RF` implementation used for LTX-Video.
+This scheduler implements a K-diffusion style Euler-Ancestral sampler specialized for flow / CONST parameterization,
+closely mirroring ComfyUI's `sample_euler_ancestral_RF` implementation used for LTX-Video.
 
 Reference implementation (ComfyUI):
     comfy.k_diffusion.sampling.sample_euler_ancestral_RF
@@ -54,23 +53,21 @@ class LTXEulerAncestralRFScheduler(SchedulerMixin, ConfigMixin):
     """
     Euler-Ancestral scheduler for LTX-Video (RF / CONST parametrization).
 
-    This scheduler is intended for models where the network is trained with a
-    CONST-like parameterization (as in LTXV / FLUX). It approximates ComfyUI's
-    `sample_euler_ancestral_RF` sampler and is useful when reproducing ComfyUI
+    This scheduler is intended for models where the network is trained with a CONST-like parameterization (as in LTXV /
+    FLUX). It approximates ComfyUI's `sample_euler_ancestral_RF` sampler and is useful when reproducing ComfyUI
     workflows inside diffusers.
 
     The scheduler can either:
-    - reuse the [`FlowMatchEulerDiscreteScheduler`] sigma / timestep logic when
-      only `num_inference_steps` is provided (default diffusers-style usage), or
-    - follow an explicit ComfyUI-style sigma schedule when `sigmas` (or
-      `timesteps`) are passed to [`set_timesteps`].
+    - reuse the [`FlowMatchEulerDiscreteScheduler`] sigma / timestep logic when only `num_inference_steps` is provided
+      (default diffusers-style usage), or
+    - follow an explicit ComfyUI-style sigma schedule when `sigmas` (or `timesteps`) are passed to [`set_timesteps`].
 
     Args:
         num_train_timesteps (`int`, defaults to 1000):
             Included for config compatibility; not used to build the schedule.
         eta (`float`, defaults to 1.0):
-            Stochasticity parameter. `eta=0.0` yields deterministic DDIM-like
-            sampling; `eta=1.0` matches ComfyUI's default RF behavior.
+            Stochasticity parameter. `eta=0.0` yields deterministic DDIM-like sampling; `eta=1.0` matches ComfyUI's
+            default RF behavior.
         s_noise (`float`, defaults to 1.0):
             Global scaling factor for the stochastic noise term.
     """
@@ -100,28 +97,27 @@ class LTXEulerAncestralRFScheduler(SchedulerMixin, ConfigMixin):
     @property
     def begin_index(self) -> Optional[int]:
         """
-        The index for the first timestep. It can be set from a pipeline with
-        `set_begin_index` to support image-to-image like workflows that start
-        denoising part-way through the schedule.
+        The index for the first timestep. It can be set from a pipeline with `set_begin_index` to support
+        image-to-image like workflows that start denoising part-way through the schedule.
         """
         return self._begin_index
 
     def set_begin_index(self, begin_index: int = 0):
         """
-        Included for API compatibility; not strictly needed here but kept to
-        allow pipelines that call `set_begin_index`.
+        Included for API compatibility; not strictly needed here but kept to allow pipelines that call
+        `set_begin_index`.
         """
         self._begin_index = begin_index
 
-    def index_for_timestep(self, timestep: Union[float, torch.Tensor], schedule_timesteps: Optional[torch.Tensor] = None) -> int:
+    def index_for_timestep(
+        self, timestep: Union[float, torch.Tensor], schedule_timesteps: Optional[torch.Tensor] = None
+    ) -> int:
         """
         Map a (continuous) `timestep` value to an index into `self.timesteps`.
 
-        This follows the convention used in other discrete schedulers: if the
-        same timestep value appears multiple times in the schedule (which can
-        happen when starting in the middle of the schedule), the *second*
-        occurrence is used for the first `step` call so that no sigma is
-        accidentally skipped.
+        This follows the convention used in other discrete schedulers: if the same timestep value appears multiple
+        times in the schedule (which can happen when starting in the middle of the schedule), the *second* occurrence
+        is used for the first `step` call so that no sigma is accidentally skipped.
         """
         if schedule_timesteps is None:
             if self.timesteps is None:
@@ -140,7 +136,9 @@ class LTXEulerAncestralRFScheduler(SchedulerMixin, ConfigMixin):
         pos = 1 if len(indices) > 1 else 0
 
         if len(indices) == 0:
-            raise ValueError("Passed `timestep` is not in `self.timesteps`. Make sure to use values from `scheduler.timesteps`.")
+            raise ValueError(
+                "Passed `timestep` is not in `self.timesteps`. Make sure to use values from `scheduler.timesteps`."
+            )
 
         return indices[pos].item()
 
@@ -170,28 +168,24 @@ class LTXEulerAncestralRFScheduler(SchedulerMixin, ConfigMixin):
         """
         Set the sigma / timestep schedule for sampling.
 
-        When `sigmas` or `timesteps` are provided explicitly, they are used as
-        the RF sigma schedule (ComfyUI-style) and are expected to include the
-        terminal 0.0. When both are `None`, the scheduler reuses the
-        [`FlowMatchEulerDiscreteScheduler`] logic to generate sigmas from
-        `num_inference_steps` and the stored config (including any
-        resolution-dependent shifting, Karras/beta schedules, etc.).
+        When `sigmas` or `timesteps` are provided explicitly, they are used as the RF sigma schedule (ComfyUI-style)
+        and are expected to include the terminal 0.0. When both are `None`, the scheduler reuses the
+        [`FlowMatchEulerDiscreteScheduler`] logic to generate sigmas from `num_inference_steps` and the stored config
+        (including any resolution-dependent shifting, Karras/beta schedules, etc.).
 
         Args:
             num_inference_steps (`int`, *optional*):
-                Number of denoising steps. If provided together with explicit
-                `sigmas`/`timesteps`, they are expected to be consistent and
-                are otherwise ignored with a warning.
+                Number of denoising steps. If provided together with explicit `sigmas`/`timesteps`, they are expected
+                to be consistent and are otherwise ignored with a warning.
             device (`str` or `torch.device`, *optional*):
                 Device to move the internal tensors to.
             sigmas (`List[float]` or `torch.Tensor`, *optional*):
                 Explicit sigma schedule, e.g. `[1.0, 0.99, ..., 0.0]`.
             timesteps (`List[float]` or `torch.Tensor`, *optional*):
-                Optional alias for `sigmas`. If `sigmas` is None and
-                `timesteps` is provided, timesteps are treated as sigmas.
+                Optional alias for `sigmas`. If `sigmas` is None and `timesteps` is provided, timesteps are treated as
+                sigmas.
             mu (`float`, *optional*):
-                Optional shift parameter used when delegating to
-                [`FlowMatchEulerDiscreteScheduler.set_timesteps`] and
+                Optional shift parameter used when delegating to [`FlowMatchEulerDiscreteScheduler.set_timesteps`] and
                 `config.use_dynamic_shifting` is `True`.
         """
         # 1. Auto-generate schedule (FlowMatch-style) when no explicit sigmas/timesteps are given
@@ -294,9 +288,8 @@ class LTXEulerAncestralRFScheduler(SchedulerMixin, ConfigMixin):
 
         Args:
             model_output (`torch.FloatTensor`):
-                Raw model output at the current step. Interpreted under the
-                CONST parametrization as `v_t`, with denoised state reconstructed as
-                `x0 = x_t - sigma_t * v_t`.
+                Raw model output at the current step. Interpreted under the CONST parametrization as `v_t`, with
+                denoised state reconstructed as `x0 = x_t - sigma_t * v_t`.
             timestep (`float` or `torch.Tensor`):
                 The current sigma value (must match one entry in `self.timesteps`).
             sample (`torch.FloatTensor`):
@@ -304,8 +297,8 @@ class LTXEulerAncestralRFScheduler(SchedulerMixin, ConfigMixin):
             generator (`torch.Generator`, *optional*):
                 Optional generator for reproducible noise.
             return_dict (`bool`):
-                If `True`, return a `LTXEulerAncestralRFSchedulerOutput`; otherwise
-                return a tuple where the first element is the updated sample.
+                If `True`, return a `LTXEulerAncestralRFSchedulerOutput`; otherwise return a tuple where the first
+                element is the updated sample.
         """
 
         if isinstance(timestep, (int, torch.IntTensor, torch.LongTensor)):
@@ -367,8 +360,10 @@ class LTXEulerAncestralRFScheduler(SchedulerMixin, ConfigMixin):
                 # Stochastic ancestral noise
                 if eta > 0.0 and s_noise > 0.0:
                     renoise_coeff = (
-                        sigma_next_b**2 - sigma_down_b**2 * alpha_ip1_b**2 / (alpha_down_b**2 + 1e-12)
-                    ).clamp(min=0.0).sqrt()
+                        (sigma_next_b**2 - sigma_down_b**2 * alpha_ip1_b**2 / (alpha_down_b**2 + 1e-12))
+                        .clamp(min=0.0)
+                        .sqrt()
+                    )
 
                     noise = randn_tensor(
                         sample_f.shape, generator=generator, device=sample_f.device, dtype=sample_f.dtype
