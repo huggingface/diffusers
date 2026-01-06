@@ -86,11 +86,6 @@ def _auto_detect_model_type(module):
     raise ValueError(f"TeaCache: Unsupported model '{class_name}'. Supported: {', '.join(model_config.keys())}")
 
 
-# =============================================================================
-# Standalone utility functions (per DN6's feedback - no closures, direct state ops)
-# =============================================================================
-
-
 def _rescale_distance(coefficients, x):
     """Polynomial rescaling: c[0]*x^4 + c[1]*x^3 + c[2]*x^2 + c[3]*x + c[4]"""
     c = coefficients
