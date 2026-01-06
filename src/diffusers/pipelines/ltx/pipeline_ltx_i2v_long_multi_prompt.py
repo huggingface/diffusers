@@ -11,24 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-EXAMPLE_DOC_STRING="""
-Examples:
-```py
-    >>> import torch
-    >>> from diffusers import LTXEulerAncestralRFScheduler, LTXI2VLongMultiPromptPipeline
-    >>> pipe = LTXI2VLongMultiPromptPipeline.from_pretrained("LTX-Video-0.9.8-13B-distilled")
-    >>> # For ComfyUI parity, swap in the RF scheduler (keeps the original config).
-    >>> pipe.scheduler = LTXEulerAncestralRFScheduler.from_config(pipe.scheduler.config)
-    >>> pipe = pipe.to("cuda").to(dtype=torch.bfloat16)
-    >>> # Example A: get decoded frames (PIL)
-    >>> out = pipe(prompt="a chimpanzee walks | a chimpanzee eats", num_frames=161, height=512, width=704,
-    ...            temporal_tile_size=80, temporal_overlap=24, output_type="pil", return_dict=True)
-    >>> frames = out.frames[0]  # list of PIL.Image.Image
-    >>> # Example B: get latent video and decode later (saves VRAM during sampling)
-    >>> out_latent = pipe(prompt="a chimpanzee walking", output_type="latent", return_dict=True).frames
-    >>> frames = pipe.vae_decode_tiled(out_latent, output_type="pil")[0]
-```
-"""
+
 import inspect
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
@@ -58,6 +41,24 @@ else:
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
+EXAMPLE_DOC_STRING = """
+    Examples:
+        ```py
+        >>> import torch
+        >>> from diffusers import LTXEulerAncestralRFScheduler, LTXI2VLongMultiPromptPipeline
+        >>> pipe = LTXI2VLongMultiPromptPipeline.from_pretrained("LTX-Video-0.9.8-13B-distilled")
+        >>> # For ComfyUI parity, swap in the RF scheduler (keeps the original config).
+        >>> pipe.scheduler = LTXEulerAncestralRFScheduler.from_config(pipe.scheduler.config)
+        >>> pipe = pipe.to("cuda").to(dtype=torch.bfloat16)
+        >>> # Example A: get decoded frames (PIL)
+        >>> out = pipe(prompt="a chimpanzee walks | a chimpanzee eats", num_frames=161, height=512, width=704,
+        ...            temporal_tile_size=80, temporal_overlap=24, output_type="pil", return_dict=True)
+        >>> frames = out.frames[0]  # list of PIL.Image.Image
+        >>> # Example B: get latent video and decode later (saves VRAM during sampling)
+        >>> out_latent = pipe(prompt="a chimpanzee walking", output_type="latent", return_dict=True).frames
+        >>> frames = pipe.vae_decode_tiled(out_latent, output_type="pil")[0]
+        ```
+"""
 
 def get_latent_coords(
     latent_num_frames, latent_height, latent_width, batch_size, device, rope_interpolation_scale, latent_idx
@@ -367,7 +368,7 @@ def batch_normalize(latents, reference, factor):
 
 
 class LTXI2VLongMultiPromptPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLoraLoaderMixin):
-    """
+    r"""
     Long-duration I2V (image-to-video) multi-prompt pipeline with ComfyUI parity.
 
     Key features:
@@ -376,12 +377,21 @@ class LTXI2VLongMultiPromptPipeline(DiffusionPipeline, FromSingleFileMixin, LTXV
     - First-frame hard conditioning via per-token mask for I2V.
     - VRAM control via temporal windowing and VAE tiled decoding.
 
-    Components:
-    - scheduler: FlowMatchEulerDiscreteScheduler or LTXEulerAncestralRFScheduler
-    - vae: AutoencoderKLLTXVideo
-    - text_encoder: T5EncoderModel
-    - tokenizer: T5TokenizerFast
-    - transformer: LTXVideoTransformer3DModel
+    Reference: https://github.com/Lightricks/LTX-Video
+
+    Args:
+        transformer ([`LTXVideoTransformer3DModel`]):
+            Conditional Transformer architecture to denoise the encoded video latents.
+        scheduler ([`FlowMatchEulerDiscreteScheduler`] or [`LTXEulerAncestralRFScheduler`]):
+            A scheduler to be used in combination with `transformer` to denoise the encoded image latents.
+        vae ([`AutoencoderKLLTXVideo`]):
+            Variational Auto-Encoder (VAE) Model to encode and decode images to and from latent representations.
+        text_encoder ([`T5EncoderModel`]):
+            [T5](https://huggingface.co/docs/transformers/en/model_doc/t5#transformers.T5EncoderModel), specifically
+            the [google/t5-v1_1-xxl](https://huggingface.co/google/t5-v1_1-xxl) variant.
+        tokenizer (`T5TokenizerFast`):
+            Tokenizer of class
+            [T5TokenizerFast](https://huggingface.co/docs/transformers/en/model_doc/t5#transformers.T5TokenizerFast).
     """
 
     model_cpu_offload_seq = "text_encoder->transformer->vae"
@@ -723,6 +733,7 @@ class LTXI2VLongMultiPromptPipeline(DiffusionPipeline, FromSingleFileMixin, LTXV
 
         return latents, negative_index_latents, latent_num_frames, latent_height, latent_width
 
+    # TODO: refactor this out
     @torch.no_grad()
     def vae_decode_tiled(
         self,
@@ -908,6 +919,8 @@ class LTXI2VLongMultiPromptPipeline(DiffusionPipeline, FromSingleFileMixin, LTXV
         if output_type in ("np", "pil"):
             return self.video_processor.postprocess_video(output, output_type=output_type)
         return output
+
+
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
@@ -949,69 +962,107 @@ class LTXI2VLongMultiPromptPipeline(DiffusionPipeline, FromSingleFileMixin, LTXV
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
         max_sequence_length: int = 128,
     ):
-        """
+        r"""
         Generate an image-to-video sequence via temporal sliding windows and multi-prompt scheduling.
 
         Args:
-          prompt: str | list[str]. Positive text prompt(s) per window. If a single string contains '|', parts are split by bars.
-          negative_prompt: str | list[str], optional. Negative prompt(s) to suppress undesired content.
-          prompt_segments: list[dict], optional. Segment mapping with {"start_window", "end_window", "text"} to override prompts per window.
-          height: int. Output image height in pixels; must be divisible by 32.
-          width: int. Output image width in pixels; must be divisible by 32.
-          num_frames: int. Number of output frames (in decoded pixel space).
-          frame_rate: float. Frames-per-second; used to normalize temporal coordinates in `video_coords`.
-          guidance_scale: float. CFG scale; values > 1 enable classifier-free guidance.
-          guidance_rescale: float. Optional rescale to mitigate overexposure under CFG (see `rescale_noise_cfg`).
-          num_inference_steps: int, optional. Denoising steps per window. Ignored if `sigmas` is provided.
-          sigmas: list[float] | Tensor, optional. Explicit sigma schedule per window; if set, overrides `num_inference_steps`.
-          generator: torch.Generator | list[torch.Generator], optional. Controls stochasticity; list accepted but first element is used (batch=1).
-          seed: int, optional. If provided, seeds the shared generator for global latents and derives a window-local generator with `seed + w_start` per temporal window.
-          cond_image: PIL.Image.Image | Tensor, optional. Conditioning image; fixes frame 0 via per-token mask when `cond_strength > 0`.
-          cond_strength: float. Strength of first-frame hard conditioning (smaller cond_mask ⇒ stronger preservation).
-          latents: Tensor, optional. Initial latents [B, C_lat, F_lat, H_lat, W_lat]; if None, sampled with `randn_tensor`.
-          temporal_tile_size: int. Temporal window size (in decoded frames); internally scaled by VAE temporal compression.
-          temporal_overlap: int. Overlap between consecutive windows (in decoded frames); internally scaled by compression.
-          temporal_overlap_cond_strength: float. Strength for injecting previous window tail latents at new window head.
-          adain_factor: float. AdaIN normalization strength for cross-window consistency (0 disables).
-          guidance_latents: Tensor, optional. Reference latents injected at window head; length trimmed by overlap for subsequent windows.
-          guiding_strength: float. Injection strength for `guidance_latents`.
-          negative_index_latents: Tensor, optional. A single-frame latent appended at window head for "negative index" semantics.
-          negative_index_strength: float. Injection strength for `negative_index_latents`.
-          skip_steps_sigma_threshold: float, optional. Skip steps whose sigma exceeds this threshold.
-          decode_timestep: float, optional. Decode-time timestep (if VAE supports timestep_conditioning).
-          decode_noise_scale: float, optional. Decode-time noise mix scale (if VAE supports timestep_conditioning).
-          decode_horizontal_tiles: int. Number of horizontal tiles during VAE decoding.
-          decode_vertical_tiles: int. Number of vertical tiles during VAE decoding.
-          decode_overlap: int. Overlap (in latent pixels) between tiles during VAE decoding.
-          output_type: str, optional. "latent" | "pt" | "np" | "pil". If "latent", returns latents without decoding.
-          return_dict: bool. If True, return LTXPipelineOutput; else return tuple(frames,).
-          attention_kwargs: dict, optional. Extra attention parameters forwarded to the transformer.
-          callback_on_step_end: PipelineCallback | MultiPipelineCallbacks, optional. Per-step callback hook.
-          callback_on_step_end_tensor_inputs: list[str]. Keys from locals() to pass into the callback.
-          max_sequence_length: int. Tokenizer max length for prompt encoding.
+            prompt (`str` or `List[str]`, *optional*):
+                Positive text prompt(s) per window. If a single string contains '|', parts are split by bars.
+            negative_prompt (`str` or `List[str]`, *optional*):
+                Negative prompt(s) to suppress undesired content.
+            prompt_segments (`List[dict]`, *optional*):
+                Segment mapping with {"start_window", "end_window", "text"} to override prompts per window.
+            height (`int`, defaults to `512`):
+                Output image height in pixels; must be divisible by 32.
+            width (`int`, defaults to `704`):
+                Output image width in pixels; must be divisible by 32.
+            num_frames (`int`, defaults to `161`):
+                Number of output frames (in decoded pixel space).
+            frame_rate (`float`, defaults to `25`):
+                Frames-per-second; used to normalize temporal coordinates in `video_coords`.
+            guidance_scale (`float`, defaults to `1.0`):
+                CFG scale; values > 1 enable classifier-free guidance.
+            guidance_rescale (`float`, defaults to `0.0`):
+                Optional rescale to mitigate overexposure under CFG (see `rescale_noise_cfg`).
+            num_inference_steps (`int`, *optional*, defaults to `8`):
+                Denoising steps per window. Ignored if `sigmas` is provided.
+            sigmas (`List[float]` or `torch.Tensor`, *optional*):
+                Explicit sigma schedule per window; if set, overrides `num_inference_steps`.
+            generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
+                Controls stochasticity; list accepted but first element is used (batch=1).
+            seed (`int`, *optional*, defaults to `0`):
+                If provided, seeds the shared generator for global latents and derives a window-local generator with
+                `seed + w_start` per temporal window.
+            cond_image (`PIL.Image.Image` or `torch.Tensor`, *optional*):
+                Conditioning image; fixes frame 0 via per-token mask when `cond_strength > 0`.
+            cond_strength (`float`, defaults to `0.5`):
+                Strength of first-frame hard conditioning (smaller cond_mask ⇒ stronger preservation).
+            latents (`torch.Tensor`, *optional*):
+                Initial latents [B, C_lat, F_lat, H_lat, W_lat]; if None, sampled with `randn_tensor`.
+            temporal_tile_size (`int`, defaults to `80`):
+                Temporal window size (in decoded frames); internally scaled by VAE temporal compression.
+            temporal_overlap (`int`, defaults to `24`):
+                Overlap between consecutive windows (in decoded frames); internally scaled by compression.
+            temporal_overlap_cond_strength (`float`, defaults to `0.5`):
+                Strength for injecting previous window tail latents at new window head.
+            adain_factor (`float`, defaults to `0.25`):
+                AdaIN normalization strength for cross-window consistency (0 disables).
+            guidance_latents (`torch.Tensor`, *optional*):
+                Reference latents injected at window head; length trimmed by overlap for subsequent windows.
+            guiding_strength (`float`, defaults to `1.0`):
+                Injection strength for `guidance_latents`.
+            negative_index_latents (`torch.Tensor`, *optional*):
+                A single-frame latent appended at window head for "negative index" semantics.
+            negative_index_strength (`float`, defaults to `1.0`):
+                Injection strength for `negative_index_latents`.
+            skip_steps_sigma_threshold (`float`, *optional*, defaults to `1`):
+                Skip steps whose sigma exceeds this threshold.
+            decode_timestep (`float`, *optional*, defaults to `0.05`):
+                Decode-time timestep (if VAE supports timestep_conditioning).
+            decode_noise_scale (`float`, *optional*, defaults to `0.025`):
+                Decode-time noise mix scale (if VAE supports timestep_conditioning).
+            decode_horizontal_tiles (`int`, defaults to `4`):
+                Number of horizontal tiles during VAE decoding.
+            decode_vertical_tiles (`int`, defaults to `4`):
+                Number of vertical tiles during VAE decoding.
+            decode_overlap (`int`, defaults to `3`):
+                Overlap (in latent pixels) between tiles during VAE decoding.
+            output_type (`str`, *optional*, defaults to `"latent"`):
+                The output format of the generated video. Choose between "latent", "pt", "np", or "pil". If "latent",
+                returns latents without decoding.
+            return_dict (`bool`, *optional*, defaults to `True`):
+                Whether or not to return a [`~pipelines.ltx.LTXPipelineOutput`] instead of a plain tuple.
+            attention_kwargs (`dict`, *optional*):
+                Extra attention parameters forwarded to the transformer.
+            callback_on_step_end (`PipelineCallback` or `MultiPipelineCallbacks`, *optional*):
+                Per-step callback hook.
+            callback_on_step_end_tensor_inputs (`List[str]`, defaults to `["latents"]`):
+                Keys from locals() to pass into the callback.
+            max_sequence_length (`int`, defaults to `128`):
+                Tokenizer max length for prompt encoding.
 
         Returns:
-          - LTXPipelineOutput when `return_dict=True`:
-              frames: Tensor | np.ndarray | list[PIL.Image.Image]
-                • "latent"/"pt": Tensor [B, C, F, H, W]; "latent" is in normalized latent space, "pt" is VAE output space.
-                • "np": np.ndarray post-processed; "pil": list of PIL images.
-          - tuple(frames,) when `return_dict=False`.
+            [`~pipelines.ltx.LTXPipelineOutput`] or `tuple`:
+                If `return_dict` is `True`, [`~pipelines.ltx.LTXPipelineOutput`] is returned, otherwise a `tuple` is
+                returned where the first element is a list with the generated frames. The output format depends on
+                `output_type`:
+                - "latent"/"pt": `torch.Tensor` [B, C, F, H, W]; "latent" is in normalized latent space, "pt" is VAE
+                  output space.
+                - "np": `np.ndarray` post-processed.
+                - "pil": `List[PIL.Image.Image]` list of PIL images.
 
         Shapes:
-          - Latent sizes (when auto-generated):
-            F_lat = (num_frames - 1) // vae_temporal_compression_ratio + 1
-            H_lat = height // vae_spatial_compression_ratio
-            W_lat = width  // vae_spatial_compression_ratio
+            Latent sizes (when auto-generated):
+                - F_lat = (num_frames - 1) // vae_temporal_compression_ratio + 1
+                - H_lat = height // vae_spatial_compression_ratio
+                - W_lat = width // vae_spatial_compression_ratio
 
         Notes:
-          - Seeding: when `seed` is provided, each temporal window uses a local generator seeded with `seed + w_start`, while the shared generator is seeded once for global latents if no generator is passed; otherwise the passed-in generator is reused.
-          - CFG: unified `noise_pred = uncond + w * (text - uncond)` with optional `guidance_rescale`.
-          - Memory: denoising performs full-frame predictions (no spatial tiling); decoding can be tiled to avoid OOM.
-
-        Example:
-          >>> out = pipe(prompt="a chimpanzee walks | a chimpanzee eats", num_frames=161, height=512, width=704,
-          ...            temporal_tile_size=80, temporal_overlap=24, output_type="pil", return_dict=True)
-          >>> frames = out.frames[0]  # list of PIL.Image.Image
+            - Seeding: when `seed` is provided, each temporal window uses a local generator seeded with `seed + w_start`,
+              while the shared generator is seeded once for global latents if no generator is passed; otherwise the
+              passed-in generator is reused.
+            - CFG: unified `noise_pred = uncond + w * (text - uncond)` with optional `guidance_rescale`.
+            - Memory: denoising performs full-frame predictions (no spatial tiling); decoding can be tiled to avoid OOM.
         """
 
         if isinstance(callback_on_step_end, (PipelineCallback, MultiPipelineCallbacks)):
