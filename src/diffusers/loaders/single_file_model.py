@@ -162,7 +162,7 @@ SINGLE_FILE_LOADABLE_CLASSES = {
         "default_subfolder": "transformer",
     },
     "QwenImageTransformer2DModel": {
-        "checkpoint_mapping_fn": lambda x: x,
+        "checkpoint_mapping_fn": lambda checkpoint, **kwargs: checkpoint,
         "default_subfolder": "transformer",
     },
     "Flux2Transformer2DModel": {
