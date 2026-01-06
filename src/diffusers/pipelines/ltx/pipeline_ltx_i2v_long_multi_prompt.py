@@ -502,28 +502,10 @@ class LTXI2VLongMultiPromptPipeline(DiffusionPipeline, FromSingleFileMixin, LTXV
         self,
         prompt: Union[str, List[str]] = None,
         num_videos_per_prompt: int = 1,
-        max_sequence_length: int = 256,
+        max_sequence_length: int = 128,
         device: Optional[torch.device] = None,
         dtype: Optional[torch.dtype] = None,
     ):
-        """
-        Tokenize and encode prompts using the T5 encoder.
-
-        Args:
-          prompt: str or list[str]. If str, it is internally wrapped as a single-element list.
-          num_videos_per_prompt: number of generations per prompt; embeddings are duplicated accordingly.
-          max_sequence_length: tokenizer max length; longer inputs are truncated with a warning.
-          device: optional device override; defaults to the pipeline execution device.
-          dtype: optional dtype override for embeddings; defaults to text_encoder dtype.
-
-        Returns:
-          - prompt_embeds: Tensor of shape [B * num_videos_per_prompt, seq_len, dim]
-          - prompt_attention_mask: Bool Tensor of shape [B * num_videos_per_prompt, seq_len]
-
-        Notes:
-          - Truncation: if inputs exceed `max_sequence_length`, the overflow part is removed and a warning is logged.
-          - Embeddings are duplicated per `num_videos_per_prompt` to match generation count.
-        """
         device = device or self._execution_device
         dtype = dtype or self.text_encoder.dtype
 
@@ -551,7 +533,7 @@ class LTXI2VLongMultiPromptPipeline(DiffusionPipeline, FromSingleFileMixin, LTXV
                 f" {max_sequence_length} tokens: {removed_text}"
             )
 
-        prompt_embeds = self.text_encoder(text_input_ids.to(device), attention_mask=prompt_attention_mask)[0]
+        prompt_embeds = self.text_encoder(text_input_ids.to(device))[0]
         prompt_embeds = prompt_embeds.to(dtype=dtype, device=device)
 
         # duplicate text embeddings for each generation per prompt, using mps friendly method
