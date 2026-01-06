@@ -2,7 +2,6 @@ import argparse
 import os
 
 import torch
-from PIL import Image
 
 from diffusers.pipelines.ltx2 import LTX2ImageToVideoPipeline
 from diffusers.pipelines.ltx2.export_utils import encode_video
