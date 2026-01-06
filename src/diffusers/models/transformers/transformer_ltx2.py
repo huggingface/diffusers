@@ -794,9 +794,7 @@ class LTX2AudioVideoRotaryPosEmbed(nn.Module):
             return self.prepare_audio_coords(*args, **kwargs)
 
     def forward(
-        self,
-        coords: torch.Tensor,
-        device: Optional[Union[str, torch.device]] = None,
+        self, coords: torch.Tensor, device: Optional[Union[str, torch.device]] = None
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         device = device or coords.device
 
