@@ -6,6 +6,7 @@ from PIL import Image
 
 from diffusers.pipelines.ltx2 import LTX2ImageToVideoPipeline
 from diffusers.pipelines.ltx2.export_utils import encode_video
+from diffusers.utils import load_image
 
 
 def parse_args():
@@ -67,8 +68,10 @@ def main(args):
     else:
         pipeline.to(device=args.device)
 
+    image = load_image(args.image_path)
+
     video, audio = pipeline(
-        image=Image.open(args.image_path),
+        image=image,
         prompt=args.prompt,
         negative_prompt=args.negative_prompt,
         height=args.height,
