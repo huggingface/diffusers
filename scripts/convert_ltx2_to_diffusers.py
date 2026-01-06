@@ -635,7 +635,7 @@ def get_args():
 
     parser.add_argument(
         "--original_state_dict_repo_id",
-        default="diffusers-internal-dev/new-ltx-model",
+        default="Lightricks/LTX-2",
         type=str,
         help="HF Hub repo id with LTX 2.0 checkpoint",
     )
@@ -655,7 +655,7 @@ def get_args():
 
     parser.add_argument(
         "--combined_filename",
-        default="ltx-av-step-1932500-interleaved-new-vae.safetensors",
+        default="ltx-2-19b-dev.safetensors",
         type=str,
         help="Filename for combined checkpoint with all LTX 2.0 models (VAE, DiT, etc.)",
     )
