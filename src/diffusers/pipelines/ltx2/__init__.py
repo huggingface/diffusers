@@ -27,6 +27,7 @@ else:
     _import_structure["pipeline_ltx2_latent_upsample"] = ["LTX2LatentUpsamplePipeline"]
     _import_structure["connectors"] = ["LTX2TextConnectors"]
     _import_structure["vocoder"] = ["LTX2Vocoder"]
+    _import_structure["latent_upsampler"] = ["LTX2LatentUpsamplerModel"]
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     try:
@@ -41,6 +42,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .pipeline_ltx2_latent_upsample import LTX2LatentUpsamplePipeline
         from .connectors import LTX2TextConnectors
         from .vocoder import LTX2Vocoder
+        from .latent_upsampler import LTX2LatentUpsamplerModel
 
 else:
     import sys

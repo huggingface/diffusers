@@ -22,8 +22,8 @@ from ...utils import deprecate, get_logger
 from ...utils.torch_utils import randn_tensor
 from ...video_processor import VideoProcessor
 from ..pipeline_utils import DiffusionPipeline
-from ..ltx.modeling_latent_upsampler import LTXLatentUpsamplerModel
 from ..ltx.pipeline_output import LTXPipelineOutput
+from .latent_upsampler import LTX2LatentUpsamplerModel
 
 
 logger = get_logger(__name__)  # pylint: disable=invalid-name
@@ -49,7 +49,7 @@ class LTX2LatentUpsamplePipeline(DiffusionPipeline):
     def __init__(
         self,
         vae: AutoencoderKLLTX2Video,
-        latent_upsampler: LTXLatentUpsamplerModel,
+        latent_upsampler: LTX2LatentUpsamplerModel,
     ) -> None:
         super().__init__()
 
