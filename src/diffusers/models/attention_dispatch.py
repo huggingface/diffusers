@@ -173,6 +173,8 @@ class AttentionBackendName(str, Enum):
     _FLASH_VARLEN_3 = "_flash_varlen_3"
     _FLASH_3_HUB = "_flash_3_hub"
     _FLASH_3_VARLEN_HUB = "_flash_3_varlen_hub"
+    FLASH_SPLIT = "flash_split"
+    FLASH_HUB_SPLIT = "flash_hub_split"
 
     # `aiter`
     AITER = "aiter"
@@ -186,6 +188,7 @@ class AttentionBackendName(str, Enum):
     _NATIVE_MATH = "_native_math"
     _NATIVE_NPU = "_native_npu"
     _NATIVE_XLA = "_native_xla"
+    NATIVE_SPLIT = "native_split"
 
     # `sageattention`
     SAGE = "sage"
@@ -503,7 +506,7 @@ def _prepare_for_flash_attn_or_sage_varlen_without_mask(
     cu_seqlens_k = torch.zeros(batch_size + 1, dtype=torch.int32, device=device)
     cu_seqlens_q[1:] = torch.cumsum(seqlens_q, dim=0)
     cu_seqlens_k[1:] = torch.cumsum(seqlens_k, dim=0)
-    max_seqlen_q = seqlens_q.max().item()
+    max_seqlen_q = seqlens_q.max().item() #TODO item() is inefficient and breaks torch.compile graphs. Use 'seq_len' parameter instead (see split attention backend)
     max_seqlen_k = seqlens_k.max().item()
     return (seqlens_q, seqlens_k), (cu_seqlens_q, cu_seqlens_k), (max_seqlen_q, max_seqlen_k)
 
@@ -1420,6 +1423,7 @@ def _flash_attention(
     query: torch.Tensor,
     key: torch.Tensor,
     value: torch.Tensor,
+    attn_mask: Optional[torch.Tensor] = None,
     dropout_p: float = 0.0,
     is_causal: bool = False,
     scale: Optional[float] = None,
@@ -1427,6 +1431,9 @@ def _flash_attention(
     _parallel_config: Optional["ParallelConfig"] = None,
 ) -> torch.Tensor:
     lse = None
+    if attn_mask is not None:
+        raise ValueError("`attn_mask` is not supported for flash-attn 2.")
+
     if _parallel_config is None:
         out = flash_attn_func(
             q=query,
@@ -1459,6 +1466,28 @@ def _flash_attention(
 
     return (out, lse) if return_lse else out
 
+@_AttentionBackendRegistry.register(
+    AttentionBackendName.FLASH_SPLIT,
+    constraints=[_check_device, _check_shape],
+    supports_context_parallel=True,
+)
+def _flash_split_attention(
+    query: torch.Tensor,
+    key: torch.Tensor,
+    value: torch.Tensor,
+    attn_mask: Optional[torch.Tensor] = None,
+    seq_len: Optional[torch.Tensor] = None, #attn_mask is ignored if seq_len is passed
+    dropout_p: float = 0.0,
+    is_causal: bool = False,
+    scale: Optional[float] = None,
+    return_lse: bool = False,
+    _parallel_config: Optional["ParallelConfig"] = None,
+) -> torch.Tensor:
+    return __split_attention(
+        lambda q, k, v, mask: _flash_attention(q, k, v, mask, dropout_p, is_causal, scale, return_lse, _parallel_config),
+        query, key, value, attn_mask, seq_len,
+    )
+
 
 @_AttentionBackendRegistry.register(
     AttentionBackendName.FLASH_HUB,
@@ -1469,6 +1498,7 @@ def _flash_attention_hub(
     query: torch.Tensor,
     key: torch.Tensor,
     value: torch.Tensor,
+    attn_mask: Optional[torch.Tensor] = None,
     dropout_p: float = 0.0,
     is_causal: bool = False,
     scale: Optional[float] = None,
@@ -1476,6 +1506,9 @@ def _flash_attention_hub(
     _parallel_config: Optional["ParallelConfig"] = None,
 ) -> torch.Tensor:
     lse = None
+    if attn_mask is not None:
+        raise ValueError("`attn_mask` is not supported for flash-attn 2.")
+
     func = _HUB_KERNELS_REGISTRY[AttentionBackendName.FLASH_HUB].kernel_fn
     out = func(
         q=query,
@@ -1490,6 +1523,29 @@ def _flash_attention_hub(
         out, lse, *_ = out
 
     return (out, lse) if return_lse else out
+
+
+@_AttentionBackendRegistry.register(
+    AttentionBackendName.FLASH_HUB_SPLIT,
+    constraints=[_check_device, _check_shape],
+    supports_context_parallel=True,
+)
+def _flash_hub_split_attention(
+    query: torch.Tensor,
+    key: torch.Tensor,
+    value: torch.Tensor,
+    attn_mask: Optional[torch.Tensor] = None,
+    seq_len: Optional[torch.Tensor] = None, #attn_mask is ignored if seq_len is passed
+    dropout_p: float = 0.0,
+    is_causal: bool = False,
+    scale: Optional[float] = None,
+    return_lse: bool = False,
+    _parallel_config: Optional["ParallelConfig"] = None,
+) -> torch.Tensor:
+    return __split_attention(
+        lambda q, k, v, mask: _flash_attention_hub(q, k, v, mask, dropout_p, is_causal, scale, return_lse, _parallel_config),
+        query, key, value, attn_mask, seq_len,
+    )
 
 
 @_AttentionBackendRegistry.register(
@@ -1612,11 +1668,15 @@ def _flash_attention_3(
     query: torch.Tensor,
     key: torch.Tensor,
     value: torch.Tensor,
+    attn_mask: Optional[torch.Tensor] = None,
     scale: Optional[float] = None,
     is_causal: bool = False,
     return_lse: bool = False,
     _parallel_config: Optional["ParallelConfig"] = None,
 ) -> torch.Tensor:
+    if attn_mask is not None:
+        raise ValueError("`attn_mask` is not supported for flash-attn 3.")
+
     out, lse = _wrapped_flash_attn_3(
         q=query,
         k=key,
@@ -1636,6 +1696,7 @@ def _flash_attention_3_hub(
     query: torch.Tensor,
     key: torch.Tensor,
     value: torch.Tensor,
+    attn_mask: Optional[torch.Tensor] = None,
     scale: Optional[float] = None,
     is_causal: bool = False,
     window_size: Tuple[int, int] = (-1, -1),
@@ -1646,6 +1707,8 @@ def _flash_attention_3_hub(
 ) -> torch.Tensor:
     if _parallel_config:
         raise NotImplementedError(f"{AttentionBackendName._FLASH_3_HUB.value} is not implemented for parallelism yet.")
+    if attn_mask is not None:
+        raise ValueError("`attn_mask` is not supported for flash-attn 3.")
 
     func = _HUB_KERNELS_REGISTRY[AttentionBackendName._FLASH_3_HUB].kernel_fn
     out = func(
@@ -1785,12 +1848,16 @@ def _aiter_flash_attention(
     query: torch.Tensor,
     key: torch.Tensor,
     value: torch.Tensor,
+    attn_mask: Optional[torch.Tensor] = None,
     dropout_p: float = 0.0,
     is_causal: bool = False,
     scale: Optional[float] = None,
     return_lse: bool = False,
     _parallel_config: Optional["ParallelConfig"] = None,
 ) -> torch.Tensor:
+    if attn_mask is not None:
+        raise ValueError("`attn_mask` is not supported for aiter attention")
+
     if not return_lse and torch.is_grad_enabled():
         # aiter requires return_lse=True by assertion when gradients are enabled.
         out, lse, *_ = aiter_flash_attn_func(
@@ -1881,6 +1948,42 @@ def _native_flex_attention(
     return out
 
 
+def _prepare_additive_attn_mask(
+    attn_mask: torch.Tensor, target_dtype: torch.dtype, reshape_4d: bool = True
+) -> torch.Tensor:
+    """
+    Convert a 2D boolean attention mask to an additive mask, optionally reshaping to 4D for SDPA.
+
+    This helper is used by both native SDPA and xformers backends to convert boolean masks to the additive format they
+    require.
+
+    Args:
+        attn_mask: 2D boolean tensor [batch_size, seq_len_k] where True means attend, False means mask out
+        target_dtype: The dtype to convert the mask to (usually query.dtype)
+        reshape_4d: If True, reshape from [batch_size, seq_len_k] to [batch_size, 1, 1, seq_len_k] for broadcasting
+
+    Returns:
+        Additive mask tensor where 0.0 means attend and -inf means mask out. Shape is [batch_size, seq_len_k] if
+        reshape_4d=False, or [batch_size, 1, 1, seq_len_k] if reshape_4d=True.
+    """
+    # Ensure it's boolean
+    if attn_mask.dtype != torch.bool:
+        attn_mask = attn_mask.bool()
+
+    # Convert boolean to additive: True -> 0.0, False -> -inf
+    attn_mask = torch.where(attn_mask, 0.0, float("-inf"))
+
+    # Convert to target dtype
+    attn_mask = attn_mask.to(dtype=target_dtype)
+
+    # Optionally reshape to 4D for broadcasting in attention mechanisms
+    if reshape_4d:
+        batch_size, seq_len_k = attn_mask.shape
+        attn_mask = attn_mask.view(batch_size, 1, 1, seq_len_k)
+
+    return attn_mask
+
+
 @_AttentionBackendRegistry.register(
     AttentionBackendName.NATIVE,
     constraints=[_check_device, _check_shape],
@@ -1900,6 +2003,14 @@ def _native_attention(
 ) -> torch.Tensor:
     if return_lse:
         raise ValueError("Native attention backend does not support setting `return_lse=True`.")
+
+    # Convert 2D boolean mask to 4D additive mask for SDPA
+    if attn_mask is not None and attn_mask.ndim == 2:
+        # attn_mask is [batch_size, seq_len_k] boolean: True means attend, False means mask out
+        # SDPA expects [batch_size, 1, 1, seq_len_k] additive mask: 0.0 for attend, -inf for mask out
+        # Use helper to convert boolean to additive mask and reshape to 4D
+        attn_mask = _prepare_additive_attn_mask(attn_mask, target_dtype=query.dtype)
+
     if _parallel_config is None:
         query, key, value = (x.permute(0, 2, 1, 3) for x in (query, key, value))
         out = torch.nn.functional.scaled_dot_product_attention(
@@ -1931,6 +2042,58 @@ def _native_attention(
 
     return out
 
+def __split_attention(
+    attn_fn,
+    query: torch.Tensor,
+    key: torch.Tensor,
+    value: torch.Tensor,
+    attn_mask: Optional[torch.Tensor] = None,
+    seq_len: Optional[torch.Tensor] = None, #attn_mask is ignored if seq_len is passed - both must match
+):
+    batch_size, batch_seq_len = query.shape[:2]
+    if seq_len is None:
+        return attn_fn(query, key, value, attn_mask)
+    if all(sample_seq_len == batch_seq_len for sample_seq_len in seq_len):
+        return attn_fn(query, key, value, None)
+    if any(sample_seq_len > batch_seq_len for sample_seq_len in seq_len):
+        raise ValueError("Attention sequence lengths cannot be longer than maximum sequence length")
+    if len(seq_len) != batch_size:
+        raise ValueError("Attention sequence lengths must match the batch size")
+
+    result = []
+    for index, sample_seq_len in enumerate(seq_len):
+        sliced_query = query[index, :sample_seq_len, :, :].unsqueeze(0)
+        sliced_key =   key  [index, :sample_seq_len, :, :].unsqueeze(0)
+        sliced_value = value[index, :sample_seq_len, :, :].unsqueeze(0)
+        sliced_result = attn_fn(sliced_query, sliced_key, sliced_value, None)
+
+        padding = torch.zeros((1, batch_seq_len - sample_seq_len) + sliced_result.shape[2:], device=sliced_result.device, dtype=sliced_result.dtype)
+        padded_result = torch.cat([sliced_result, padding], dim=1)
+        result.append(padded_result)
+    return torch.cat(result, dim=0)
+
+@_AttentionBackendRegistry.register(
+    AttentionBackendName.NATIVE_SPLIT,
+    constraints=[_check_device, _check_shape],
+    supports_context_parallel=True,
+)
+def _native_split_attention(
+    query: torch.Tensor,
+    key: torch.Tensor,
+    value: torch.Tensor,
+    attn_mask: Optional[torch.Tensor] = None,
+    seq_len: Optional[torch.Tensor] = None, #attn_mask is ignored if seq_len is passed
+    dropout_p: float = 0.0,
+    is_causal: bool = False,
+    scale: Optional[float] = None,
+    enable_gqa: bool = False,
+    return_lse: bool = False,
+    _parallel_config: Optional["ParallelConfig"] = None,
+) -> torch.Tensor:
+    return __split_attention(
+        lambda q, k, v, mask: _native_attention(q, k, v, mask, dropout_p, is_causal, scale, enable_gqa, return_lse, _parallel_config),
+        query, key, value, attn_mask, seq_len,
+    )
 
 @_AttentionBackendRegistry.register(
     AttentionBackendName._NATIVE_CUDNN,
@@ -2028,6 +2191,7 @@ def _native_flash_attention(
     query: torch.Tensor,
     key: torch.Tensor,
     value: torch.Tensor,
+    attn_mask: Optional[torch.Tensor] = None,
     dropout_p: float = 0.0,
     is_causal: bool = False,
     scale: Optional[float] = None,
@@ -2035,6 +2199,9 @@ def _native_flash_attention(
     return_lse: bool = False,
     _parallel_config: Optional["ParallelConfig"] = None,
 ) -> torch.Tensor:
+    if attn_mask is not None:
+        raise ValueError("`attn_mask` is not supported for aiter attention")
+
     lse = None
     if _parallel_config is None and not return_lse:
         query, key, value = (x.permute(0, 2, 1, 3) for x in (query, key, value))
@@ -2113,11 +2280,14 @@ def _native_npu_attention(
     query: torch.Tensor,
     key: torch.Tensor,
     value: torch.Tensor,
+    attn_mask: Optional[torch.Tensor] = None,
     dropout_p: float = 0.0,
     scale: Optional[float] = None,
     return_lse: bool = False,
     _parallel_config: Optional["ParallelConfig"] = None,
 ) -> torch.Tensor:
+    if attn_mask is not None:
+        raise ValueError("`attn_mask` is not supported for NPU attention")
     if return_lse:
         raise ValueError("NPU attention backend does not support setting `return_lse=True`.")
     query, key, value = (x.transpose(1, 2).contiguous() for x in (query, key, value))
@@ -2148,10 +2318,13 @@ def _native_xla_attention(
     query: torch.Tensor,
     key: torch.Tensor,
     value: torch.Tensor,
+    attn_mask: Optional[torch.Tensor] = None,
     is_causal: bool = False,
     return_lse: bool = False,
     _parallel_config: Optional["ParallelConfig"] = None,
 ) -> torch.Tensor:
+    if attn_mask is not None:
+        raise ValueError("`attn_mask` is not supported for XLA attention")
     if return_lse:
         raise ValueError("XLA attention backend does not support setting `return_lse=True`.")
     query, key, value = (x.permute(0, 2, 1, 3) for x in (query, key, value))
@@ -2175,11 +2348,14 @@ def _sage_attention(
     query: torch.Tensor,
     key: torch.Tensor,
     value: torch.Tensor,
+    attn_mask: Optional[torch.Tensor] = None,
     is_causal: bool = False,
     scale: Optional[float] = None,
     return_lse: bool = False,
     _parallel_config: Optional["ParallelConfig"] = None,
 ) -> torch.Tensor:
+    if attn_mask is not None:
+        raise ValueError("`attn_mask` is not supported for sage attention")
     lse = None
     if _parallel_config is None:
         out = sageattn(
@@ -2223,11 +2399,15 @@ def _sage_attention_hub(
     query: torch.Tensor,
     key: torch.Tensor,
     value: torch.Tensor,
+    attn_mask: Optional[torch.Tensor] = None,
     is_causal: bool = False,
     scale: Optional[float] = None,
     return_lse: bool = False,
     _parallel_config: Optional["ParallelConfig"] = None,
 ) -> torch.Tensor:
+    attn_mask: Optional[torch.Tensor] = None,
+    if attn_mask is not None:
+        raise ValueError("`attn_mask` is not supported for sage attention")
     lse = None
     func = _HUB_KERNELS_REGISTRY[AttentionBackendName.SAGE_HUB].kernel_fn
     if _parallel_config is None:
@@ -2309,11 +2489,14 @@ def _sage_qk_int8_pv_fp8_cuda_attention(
     query: torch.Tensor,
     key: torch.Tensor,
     value: torch.Tensor,
+    attn_mask: Optional[torch.Tensor] = None,
     is_causal: bool = False,
     scale: Optional[float] = None,
     return_lse: bool = False,
     _parallel_config: Optional["ParallelConfig"] = None,
 ) -> torch.Tensor:
+    if attn_mask is not None:
+        raise ValueError("`attn_mask` is not supported for sage attention")
     return sageattn_qk_int8_pv_fp8_cuda(
         q=query,
         k=key,
@@ -2333,11 +2516,14 @@ def _sage_qk_int8_pv_fp8_cuda_sm90_attention(
     query: torch.Tensor,
     key: torch.Tensor,
     value: torch.Tensor,
+    attn_mask: Optional[torch.Tensor] = None,
     is_causal: bool = False,
     scale: Optional[float] = None,
     return_lse: bool = False,
     _parallel_config: Optional["ParallelConfig"] = None,
 ) -> torch.Tensor:
+    if attn_mask is not None:
+        raise ValueError("`attn_mask` is not supported for sage attention")
     return sageattn_qk_int8_pv_fp8_cuda_sm90(
         q=query,
         k=key,
@@ -2357,11 +2543,14 @@ def _sage_qk_int8_pv_fp16_cuda_attention(
     query: torch.Tensor,
     key: torch.Tensor,
     value: torch.Tensor,
+    attn_mask: Optional[torch.Tensor] = None,
     is_causal: bool = False,
     scale: Optional[float] = None,
     return_lse: bool = False,
     _parallel_config: Optional["ParallelConfig"] = None,
 ) -> torch.Tensor:
+    if attn_mask is not None:
+        raise ValueError("`attn_mask` is not supported for sage attention")
     return sageattn_qk_int8_pv_fp16_cuda(
         q=query,
         k=key,
@@ -2381,11 +2570,14 @@ def _sage_qk_int8_pv_fp16_triton_attention(
     query: torch.Tensor,
     key: torch.Tensor,
     value: torch.Tensor,
+    attn_mask: Optional[torch.Tensor] = None,
     is_causal: bool = False,
     scale: Optional[float] = None,
     return_lse: bool = False,
     _parallel_config: Optional["ParallelConfig"] = None,
 ) -> torch.Tensor:
+    if attn_mask is not None:
+        raise ValueError("`attn_mask` is not supported for sage attention")
     return sageattn_qk_int8_pv_fp16_triton(
         q=query,
         k=key,
@@ -2423,10 +2615,36 @@ def _xformers_attention(
         attn_mask = xops.LowerTriangularMask()
     elif attn_mask is not None:
         if attn_mask.ndim == 2:
-            attn_mask = attn_mask.view(attn_mask.size(0), 1, attn_mask.size(1), 1)
+            # Convert 2D boolean mask to 4D for xformers
+            # attn_mask is [batch_size, seq_len_k] boolean: True means attend, False means mask
+            # xformers requires 4D masks [batch, heads, seq_q, seq_k]
+            # xformers expects additive bias: 0.0 for attend, -inf for mask
+            # Need memory alignment - create larger tensor and slice for alignment
+            original_seq_len = attn_mask.size(1)
+            aligned_seq_len = ((original_seq_len + 7) // 8) * 8  # Round up to multiple of 8
+
+            # Create aligned 4D tensor and slice to ensure proper memory layout
+            aligned_mask = torch.zeros(
+                (batch_size, num_heads_q, seq_len_q, aligned_seq_len),
+                dtype=query.dtype,
+                device=query.device,
+            )
+            # Fill in the actual mask values (converting boolean to additive)
+            # Use helper to convert 2D boolean -> 4D additive mask
+            mask_additive = _prepare_additive_attn_mask(
+                attn_mask, target_dtype=query.dtype
+            )  # [batch, 1, 1, seq_len_k]
+            # Broadcast to [batch, heads, seq_q, seq_len_k]
+            aligned_mask[:, :, :, :original_seq_len] = mask_additive
+            # Mask out the padding (already -inf from zeros -> where with default)
+            aligned_mask[:, :, :, original_seq_len:] = float("-inf")
+
+            # Slice to actual size with proper alignment
+            attn_mask = aligned_mask[:, :, :, :seq_len_kv]
         elif attn_mask.ndim != 4:
             raise ValueError("Only 2D and 4D attention masks are supported for xformers attention.")
-        attn_mask = attn_mask.expand(batch_size, num_heads_q, seq_len_q, seq_len_kv).type_as(query)
+        elif attn_mask.ndim == 4:
+            attn_mask = attn_mask.expand(batch_size, num_heads_q, seq_len_q, seq_len_kv).type_as(query)
 
     if enable_gqa:
         if num_heads_q % num_heads_kv != 0:
