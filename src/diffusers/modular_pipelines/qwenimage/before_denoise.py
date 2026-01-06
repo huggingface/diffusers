@@ -420,6 +420,64 @@ class QwenImageSetTimestepsStep(ModularPipelineBlocks):
         return components, state
 
 
+class QwenImageLayeredSetTimestepsStep(ModularPipelineBlocks):
+    model_name = "qwenimage-layered"
+
+    @property
+    def description(self) -> str:
+        return "Set timesteps step for QwenImage Layered with custom mu calculation based on image_latents."
+
+    @property
+    def expected_components(self) -> List[ComponentSpec]:
+        return [
+            ComponentSpec("scheduler", FlowMatchEulerDiscreteScheduler),
+        ]
+
+    @property
+    def inputs(self) -> List[InputParam]:
+        return [
+            InputParam("num_inference_steps", default=50, type_hint=int),
+            InputParam("sigmas", type_hint=List[float]),
+            InputParam("image_latents", required=True, type_hint=torch.Tensor),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> List[OutputParam]:
+        return [
+            OutputParam(name="timesteps", type_hint=torch.Tensor),
+        ]
+
+    @torch.no_grad()
+    def __call__(self, components, state: PipelineState) -> PipelineState:
+        block_state = self.get_block_state(state)
+
+        device = components._execution_device
+
+        # Layered-specific mu calculation
+        base_seqlen = 256 * 256 / 16 / 16  # = 256
+        mu = (block_state.image_latents.shape[1] / base_seqlen) ** 0.5
+
+        # Default sigmas if not provided
+        sigmas = (
+            np.linspace(1.0, 1 / block_state.num_inference_steps, block_state.num_inference_steps)
+            if block_state.sigmas is None
+            else block_state.sigmas
+        )
+
+        block_state.timesteps, block_state.num_inference_steps = retrieve_timesteps(
+            components.scheduler,
+            block_state.num_inference_steps,
+            device,
+            sigmas=sigmas,
+            mu=mu,
+        )
+
+        components.scheduler.set_begin_index(0)
+
+        self.set_block_state(state, block_state)
+        return components, state
+
+
 class QwenImageSetTimestepsWithStrengthStep(ModularPipelineBlocks):
     model_name = "qwenimage"
 
@@ -713,6 +771,64 @@ class QwenImageEditPlusRoPEInputsStep(ModularPipelineBlocks):
 
         self.set_block_state(state, block_state)
 
+        return components, state
+
+
+class QwenImageLayeredRoPEInputsStep(ModularPipelineBlocks):
+    model_name = "qwenimage-layered"
+
+    @property
+    def description(self) -> str:
+        return "Step that prepares the RoPE inputs for the denoising process. Should be place after prepare_latents step"
+
+    @property
+    def inputs(self) -> List[InputParam]:
+        return [
+            InputParam(name="batch_size", required=True),
+            InputParam(name="layers", required=True),
+            InputParam(name="height", required=True),
+            InputParam(name="width", required=True),
+            InputParam(name="prompt_embeds_mask"),
+            InputParam(name="negative_prompt_embeds_mask"),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> List[OutputParam]:
+        return [
+            OutputParam(name="img_shapes", type_hint=List[List[Tuple[int, int, int]]], kwargs_type="denoiser_input_fields", description="The shapes of the image latents, used for RoPE calculation"),
+            OutputParam(name="txt_seq_lens", type_hint=List[int], kwargs_type="denoiser_input_fields", description="The sequence lengths of the prompt embeds, used for RoPE calculation"),
+            OutputParam(name="negative_txt_seq_lens", type_hint=List[int], kwargs_type="denoiser_input_fields", description="The sequence lengths of the negative prompt embeds, used for RoPE calculation"),
+            OutputParam(name="additional_t_cond", type_hint=torch.Tensor, kwargs_type="denoiser_input_fields", description="The additional t cond, used for RoPE calculation"),
+        ]
+
+    @torch.no_grad()
+    def __call__(self, components, state: PipelineState) -> PipelineState:
+        block_state = self.get_block_state(state)
+
+        device = components._execution_device
+
+        # All shapes are the same for Layered
+        shape = (1, block_state.height // components.vae_scale_factor // 2, block_state.width // components.vae_scale_factor // 2)
+        
+        # layers+1 output shapes + 1 condition shape (all same)
+        block_state.img_shapes = [
+            [shape] * (block_state.layers + 2)
+        ] * block_state.batch_size
+
+        # txt_seq_lens
+        block_state.txt_seq_lens = (
+            block_state.prompt_embeds_mask.sum(dim=1).tolist() 
+            if block_state.prompt_embeds_mask is not None else None
+        )
+        block_state.negative_txt_seq_lens = (
+            block_state.negative_prompt_embeds_mask.sum(dim=1).tolist()
+            if block_state.negative_prompt_embeds_mask is not None else None
+        )
+
+    
+        block_state.additional_t_cond = torch.tensor([0] * block_state.batch_size).to(device=device, dtype=torch.long)
+
+        self.set_block_state(state, block_state)
         return components, state
 
 

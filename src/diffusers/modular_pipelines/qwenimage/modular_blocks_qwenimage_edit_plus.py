@@ -29,10 +29,10 @@ from .denoise import (
     QwenImageEditDenoiseStep,
 )
 from .encoders import (
-    QwenImageEditPlusResizeDynamicStep,
+    QwenImageEditPlusResizeStep,
     QwenImageEditPlusTextEncoderStep,
     QwenImageEditPlusProcessImagesInputStep,
-    QwenImageVaeEncoderDynamicStep,
+    QwenImageVaeEncoderStep,
 )
 from .inputs import (
     QwenImageEditPlusInputsDynamicStep,
@@ -51,7 +51,7 @@ class QwenImageEditPlusVLEncoderStep(SequentialPipelineBlocks):
     """VL encoder that takes both image and text prompts. Uses 384x384 target area."""
     model_name = "qwenimage-edit-plus"
     block_classes = [
-        QwenImageEditPlusResizeDynamicStep(target_area=384 * 384, output_name="resized_cond_image"),
+        QwenImageEditPlusResizeStep(target_area=384 * 384, output_name="resized_cond_image"),
         QwenImageEditPlusTextEncoderStep(),
     ]
     block_names = ["resize", "encode"]
@@ -69,9 +69,9 @@ class QwenImageEditPlusVaeEncoderStep(SequentialPipelineBlocks):
     """VAE encoder that handles multiple images with different sizes. Uses 1024x1024 target area."""
     model_name = "qwenimage-edit-plus"
     block_classes = [
-        QwenImageEditPlusResizeDynamicStep(target_area=1024 * 1024, output_name="resized_image"),
+        QwenImageEditPlusResizeStep(target_area=1024 * 1024, output_name="resized_image"),
         QwenImageEditPlusProcessImagesInputStep(),
-        QwenImageVaeEncoderDynamicStep(),
+        QwenImageVaeEncoderStep(),
     ]
     block_names = ["resize", "preprocess", "encode"]
 

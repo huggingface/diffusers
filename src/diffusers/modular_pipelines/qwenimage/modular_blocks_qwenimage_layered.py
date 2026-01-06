@@ -37,10 +37,11 @@ from .denoise import (
 )
 from .encoders import (
     QwenImageEditResizeStep,
-    QwenImageEditTextEncoderStep,
-    QwenImageInpaintProcessImagesInputStep,
+    QwenImageTextEncoderStep,
     QwenImageProcessImagesInputStep,
     QwenImageVaeEncoderStep,
+    QwenImageLayeredGetImagePromptStep,
+    QwenImageLayeredPermuteLatentsStep,
 )
 from .inputs import (
     QwenImageInputsDynamicStep,
@@ -55,18 +56,19 @@ logger = logging.get_logger(__name__)
 # 1. TEXT ENCODER
 # ====================
 
-class QwenImageEditVLEncoderStep(SequentialPipelineBlocks):
-    """VL encoder that takes both image and text prompts."""
-    model_name = "qwenimage-edit"
+class QwenImageLayeredTextEncoderStep(SequentialPipelineBlocks):
+    """Text encoder that takes text prompt, will generate a prompt based on image if not provided."""
+    model_name = "qwenimage-layered"
     block_classes = [
         QwenImageEditResizeStep(),
-        QwenImageEditTextEncoderStep(),
+        QwenImageLayeredGetImagePromptStep(),
+        QwenImageTextEncoderStep(),
     ]
-    block_names = ["resize", "encode"]
+    block_names = ["resize", "get_image_prompt", "encode"]
 
     @property
     def description(self) -> str:
-        return "QwenImage-Edit VL encoder step that encode the image and text prompts together."
+        return "QwenImage-Layered Text encoder step that encode the text prompt, will generate a prompt based on image if not provided."
 
 
 # ====================
@@ -74,55 +76,22 @@ class QwenImageEditVLEncoderStep(SequentialPipelineBlocks):
 # ====================
 
 # Edit VAE encoder
-class QwenImageEditVaeEncoderStep(SequentialPipelineBlocks):
-    model_name = "qwenimage-edit"
+class QwenImageLayeredVaeEncoderStep(SequentialPipelineBlocks):
+    model_name = "qwenimage-layered"
     block_classes = [
         QwenImageEditResizeStep(),
         QwenImageProcessImagesInputStep(),
         QwenImageVaeEncoderStep(),
+        QwenImageLayeredPermuteLatentsStep(),
     ]
-    block_names = ["resize", "preprocess", "encode"]
+    block_names = ["resize", "preprocess", "encode", "permute"]
 
     @property
     def description(self) -> str:
         return "Vae encoder step that encode the image inputs into their latent representations."
 
 
-# Edit Inpaint VAE encoder
-class QwenImageEditInpaintVaeEncoderStep(SequentialPipelineBlocks):
-    model_name = "qwenimage-edit"
-    block_classes = [
-        QwenImageEditResizeStep(),
-        QwenImageInpaintProcessImagesInputStep(),
-        QwenImageVaeEncoderStep(input_name="processed_image", output_name="image_latents"),
-    ]
-    block_names = ["resize", "preprocess", "encode"]
 
-    @property
-    def description(self) -> str:
-        return (
-            "This step is used for processing image and mask inputs for QwenImage-Edit inpaint tasks. It:\n"
-            " - resize the image for target area (1024 * 1024) while maintaining the aspect ratio.\n"
-            " - process the resized image and mask image.\n"
-            " - create image latents."
-        )
-
-
-# Auto VAE encoder
-class QwenImageEditAutoVaeEncoderStep(AutoPipelineBlocks):
-    block_classes = [QwenImageEditInpaintVaeEncoderStep, QwenImageEditVaeEncoderStep]
-    block_names = ["edit_inpaint", "edit"]
-    block_trigger_inputs = ["mask_image", "image"]
-
-    @property
-    def description(self):
-        return (
-            "Vae encoder step that encode the image inputs into their latent representations.\n"
-            "This is an auto pipeline block.\n"
-            " - `QwenImageEditInpaintVaeEncoderStep` (edit_inpaint) is used when `mask_image` is provided.\n"
-            " - `QwenImageEditVaeEncoderStep` (edit) is used when `image` is provided.\n"
-            " - if `mask_image` or `image` is not provided, step will be skipped."
-        )
 
 
 # ====================

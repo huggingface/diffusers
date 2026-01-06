@@ -42,7 +42,7 @@ from .encoders import (
     QwenImageInpaintProcessImagesInputStep,
     QwenImageProcessImagesInputStep,
     QwenImageTextEncoderStep,
-    QwenImageVaeEncoderDynamicStep,
+    QwenImageVaeEncoderStep,
 )
 from .inputs import (
     QwenImageControlNetInputsStep,
@@ -60,7 +60,7 @@ logger = logging.get_logger(__name__)
 # inpaint vae encoder
 class QwenImageInpaintVaeEncoderStep(SequentialPipelineBlocks):
     model_name = "qwenimage"
-    block_classes = [QwenImageInpaintProcessImagesInputStep(), QwenImageVaeEncoderDynamicStep()]
+    block_classes = [QwenImageInpaintProcessImagesInputStep(), QwenImageVaeEncoderStep()]
     block_names = ["preprocess", "encode"]
 
     @property
@@ -77,7 +77,7 @@ class QwenImageInpaintVaeEncoderStep(SequentialPipelineBlocks):
 class QwenImageImg2ImgVaeEncoderStep(SequentialPipelineBlocks):
     model_name = "qwenimage"
 
-    block_classes = [QwenImageProcessImagesInputStep(), QwenImageVaeEncoderDynamicStep()]
+    block_classes = [QwenImageProcessImagesInputStep(), QwenImageVaeEncoderStep()]
     block_names = ["preprocess", "encode"]
 
     @property

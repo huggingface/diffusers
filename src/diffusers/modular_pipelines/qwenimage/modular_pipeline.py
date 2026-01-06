@@ -90,6 +90,74 @@ class QwenImagePachifier(ConfigMixin):
         return latents
 
 
+class QwenImageLayeredPachifier(ConfigMixin):
+    """
+    A class to pack and unpack latents for QwenImage Layered.
+    
+    Unlike QwenImagePachifier, this handles 3D latents with shape (B, layers, C, H, W).
+    """
+
+    config_name = "config.json"
+
+    @register_to_config
+    def __init__(self, patch_size: int = 2):
+        super().__init__()
+
+    def pack_latents(self, latents, batch_size, num_channels_latents, height, width, layers):
+        """
+        Pack latents from (B, layers, C, H, W) to (B, layers * H/2 * W/2, C*4).
+        """
+        patch_size = self.config.patch_size
+
+        latents = latents.view(
+            batch_size,
+            layers,
+            num_channels_latents,
+            height // patch_size,
+            patch_size,
+            width // patch_size,
+            patch_size,
+        )
+        latents = latents.permute(0, 1, 3, 5, 2, 4, 6)
+        latents = latents.reshape(
+            batch_size,
+            layers * (height // patch_size) * (width // patch_size),
+            num_channels_latents * patch_size * patch_size,
+        )
+        return latents
+
+    def unpack_latents(self, latents, height, width, layers, vae_scale_factor=8):
+        """
+        Unpack latents from (B, seq, C*4) to (B, C, layers+1, H, W).
+        """
+        batch_size, num_patches, channels = latents.shape
+        patch_size = self.config.patch_size
+
+        height = patch_size * (int(height) // (vae_scale_factor * patch_size))
+        width = patch_size * (int(width) // (vae_scale_factor * patch_size))
+
+        latents = latents.view(
+            batch_size,
+            layers + 1,
+            height // patch_size,
+            width // patch_size,
+            channels // (patch_size * patch_size),
+            patch_size,
+            patch_size,
+        )
+        latents = latents.permute(0, 1, 4, 2, 5, 3, 6)
+        latents = latents.reshape(
+            batch_size,
+            layers + 1,
+            channels // (patch_size * patch_size),
+            height,
+            width,
+        )
+        latents = latents.permute(0, 2, 1, 3, 4)  # (b, c, f, h, w)
+
+        return latents
+
+
 class QwenImageModularPipeline(ModularPipeline, QwenImageLoraLoaderMixin):
     """
     A ModularPipeline for QwenImage.
