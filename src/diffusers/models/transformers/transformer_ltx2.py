@@ -93,9 +93,6 @@ def apply_split_rotary_emb(x: torch.Tensor, freqs: Tuple[torch.Tensor, torch.Ten
     return out
 
 
-ROTARY_FN_MAP = {"interleaved": apply_interleaved_rotary_emb, "split": apply_split_rotary_emb}
-
-
 @dataclass
 class AudioVisualModelOutput(BaseOutput):
     r"""
@@ -198,10 +195,14 @@ class LTX2AudioVideoAttnProcessor:
         key = attn.norm_k(key)
 
         if query_rotary_emb is not None:
-            query = ROTARY_FN_MAP[attn.rope_type](query, query_rotary_emb)
-            key = ROTARY_FN_MAP[attn.rope_type](
-                key, key_rotary_emb if key_rotary_emb is not None else query_rotary_emb
-            )
+            if attn.rope_type == "interleaved":
+                query = apply_interleaved_rotary_emb(query, query_rotary_emb)
+                key = apply_interleaved_rotary_emb(
+                    key, key_rotary_emb if key_rotary_emb is not None else query_rotary_emb
+                )
+            elif attn.rope_type == "split":
+                query = apply_split_rotary_emb(query, query_rotary_emb)
+                key = apply_split_rotary_emb(key, key_rotary_emb if key_rotary_emb is not None else query_rotary_emb)
 
         query = query.unflatten(2, (attn.heads, -1))
         key = key.unflatten(2, (attn.heads, -1))
