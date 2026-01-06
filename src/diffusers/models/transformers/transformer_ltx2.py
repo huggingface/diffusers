@@ -50,8 +50,10 @@ def apply_split_rotary_emb(x: torch.Tensor, freqs: Tuple[torch.Tensor, torch.Ten
     x_dtype = x.dtype
     needs_reshape = False
     if x.ndim != 4 and cos.ndim == 4:
-        # cos is (b, h, t, r) -> reshape x to (b, h, t, dim_per_head)
-        b, h, t, _ = cos.shape
+        # cos is (#b, h, t, r) -> reshape x to (b, h, t, dim_per_head)
+        # The cos/sin batch dim may only be broadcastable, so take batch size from x
+        b = x.shape[0]
+        _, h, t, _ = cos.shape
         x = x.reshape(b, t, h, -1).swapaxes(1, 2)
         needs_reshape = True
 
