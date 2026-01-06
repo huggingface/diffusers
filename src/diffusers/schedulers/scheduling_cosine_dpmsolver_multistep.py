@@ -143,7 +143,7 @@ class CosineDPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         self._begin_index = begin_index
 
     # Copied from diffusers.schedulers.scheduling_edm_euler.EDMEulerScheduler.precondition_inputs
-    def precondition_inputs(self, sample, sigma):
+    def precondition_inputs(self, sample: torch.Tensor, sigma: Union[float, torch.Tensor]) -> torch.Tensor:
         """
         Precondition the input sample by scaling it according to the EDM formulation.
 
@@ -502,9 +502,7 @@ class CosineDPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
 
     # Copied from diffusers.schedulers.scheduling_dpmsolver_multistep.DPMSolverMultistepScheduler.index_for_timestep
     def index_for_timestep(
-        self,
-        timestep: Union[int, torch.Tensor],
-        schedule_timesteps: Optional[torch.Tensor] = None,
+        self, timestep: Union[int, torch.Tensor], schedule_timesteps: Optional[torch.Tensor] = None
     ) -> int:
         """
         Find the index for a given timestep in the schedule.
@@ -689,7 +687,7 @@ class CosineDPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         return noisy_samples
 
     # Copied from diffusers.schedulers.scheduling_edm_euler.EDMEulerScheduler._get_conditioning_c_in
-    def _get_conditioning_c_in(self, sigma):
+    def _get_conditioning_c_in(self, sigma: Union[float, torch.Tensor]) -> Union[float, torch.Tensor]:
         """
         Compute the input conditioning factor for the EDM formulation.
 
