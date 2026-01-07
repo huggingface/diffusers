@@ -761,11 +761,9 @@ class LTX2AudioVideoRotaryPosEmbed(nn.Module):
         """
 
         # 1. Generate coordinates in the frame (time) dimension.
-        audio_duration_s = num_frames / fps
-        latent_frames = int(audio_duration_s * self.audio_latents_per_second)
         # Always compute rope in fp32
         grid_f = torch.arange(
-            start=shift, end=latent_frames + shift, step=self.patch_size_t, dtype=torch.float32, device=device
+            start=shift, end=num_frames + shift, step=self.patch_size_t, dtype=torch.float32, device=device
         )
 
         # 2. Calculate start timstamps in seconds with respect to the original spectrogram grid

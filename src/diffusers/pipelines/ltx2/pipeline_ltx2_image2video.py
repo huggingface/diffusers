@@ -749,7 +749,7 @@ class LTX2ImageToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoL
         latents_per_second = (
             float(sampling_rate) / float(hop_length) / float(self.audio_vae_temporal_compression_ratio)
         )
-        latent_length = int(duration_s * latents_per_second)
+        latent_length = round(duration_s * latents_per_second)
 
         if latents is not None:
             return latents.to(device=device, dtype=dtype), latent_length
