@@ -20,7 +20,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 import numpy as np
 import PIL
 import torch
-from transformers import AutoTokenizer, T5EncoderModel
+from transformers import AutoTokenizer, T5EncoderModel, GlmImageForConditionalGeneration
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...image_processor import VaeImageProcessor
@@ -180,6 +180,7 @@ class GlmImagePipeline(DiffusionPipeline, CogView4LoraLoaderMixin):
         self,
         tokenizer: AutoTokenizer,
         text_encoder: T5EncoderModel,
+        vision_language_encoder: GlmImageForConditionalGeneration,
         vae: AutoencoderKL,
         transformer: GlmImageTransformer2DModel,
         scheduler: FlowMatchEulerDiscreteScheduler,
@@ -187,7 +188,12 @@ class GlmImagePipeline(DiffusionPipeline, CogView4LoraLoaderMixin):
         super().__init__()
 
         self.register_modules(
-            tokenizer=tokenizer, text_encoder=text_encoder, vae=vae, transformer=transformer, scheduler=scheduler
+            tokenizer=tokenizer,
+            text_encoder=text_encoder,
+            vision_language_encoder=vision_language_encoder,
+            vae=vae,
+            transformer=transformer,
+            scheduler=scheduler
         )
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1) if getattr(self, "vae", None) else 8
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
