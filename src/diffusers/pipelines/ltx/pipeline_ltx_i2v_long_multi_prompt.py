@@ -1050,6 +1050,8 @@ class LTXI2VLongMultiPromptPipeline(DiffusionPipeline, FromSingleFileMixin, LTXV
             max_sequence_length (`int`, defaults to `128`):
                 Tokenizer max length for prompt encoding.
 
+        Examples:
+
         Returns:
             [`~pipelines.ltx.LTXPipelineOutput`] or `tuple`:
                 If `return_dict` is `True`, [`~pipelines.ltx.LTXPipelineOutput`] is returned, otherwise a `tuple` is
