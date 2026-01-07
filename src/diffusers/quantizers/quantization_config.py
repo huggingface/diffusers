@@ -532,8 +532,8 @@ class TorchAoConfig(QuantizationConfigMixin):
 
             if self.quant_type not in TORCHAO_QUANT_TYPE_METHODS.keys():
                 is_floatx_quant_type = self.quant_type.startswith("fp")
-                is_floating_quant_type = self.quant_type.startswith("float") or is_floatx_quant_type
-                if is_floating_quant_type and not self._is_xpu_or_cuda_capability_atleast_8_9():
+                is_float_quant_type = self.quant_type.startswith("float") or is_floatx_quant_type
+                if is_float_quant_type and not self._is_xpu_or_cuda_capability_atleast_8_9():
                     raise ValueError(
                         f"Requested quantization type: {self.quant_type} is not supported on GPUs with CUDA capability <= 8.9. You "
                         f"can check the CUDA capability of your GPU using `torch.cuda.get_device_capability()`."
