@@ -415,7 +415,7 @@ export_to_video(video, "output.mp4", fps=24)
   </details>
 
   <details>
-  <summary>Long image-to-video generation with multi-prompt sliding windows (ComfyUI parity)</summary>
+  <summary>Show example code</summary>
 
   ```py
   import torch
@@ -496,11 +496,6 @@ export_to_video(video, "output.mp4", fps=24)
   export_to_video(frames_refined, "ltx_i2v_long_refined.mp4", fps=24)
   ```
 
-  Notes:
-  - Seeding: window-local hard-condition noise uses `seed + w_start` when `seed` is provided; otherwise the passed-in `generator` drives stochasticity.
-  - Height/width must be divisible by 32; latent shapes follow the pipeline docstrings.
-  - Use VAE tiled decoding to avoid OOM for high resolutions or long sequences.
-  - Distilled variants generally prefer `guidance_scale=1.0` and short schedules for refinement.
   </details>
 
 - LTX-Video supports LoRAs with [`~loaders.LTXVideoLoraLoaderMixin.load_lora_weights`].
