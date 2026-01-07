@@ -24,6 +24,7 @@ from .aura_flow import AuraFlowPipeline
 from .chroma import ChromaPipeline
 from .cogview3 import CogView3PlusPipeline
 from .cogview4 import CogView4ControlPipeline, CogView4Pipeline
+from .glm_image import GlmImageDecoderPipeline
 from .controlnet import (
     StableDiffusionControlNetImg2ImgPipeline,
     StableDiffusionControlNetInpaintPipeline,
@@ -167,6 +168,7 @@ AUTO_TEXT2IMAGE_PIPELINES_MAPPING = OrderedDict(
         ("chroma", ChromaPipeline),
         ("cogview3", CogView3PlusPipeline),
         ("cogview4", CogView4Pipeline),
+        ("glm_image", GlmImageDecoderPipeline),
         ("cogview4-control", CogView4ControlPipeline),
         ("qwenimage", QwenImagePipeline),
         ("qwenimage-controlnet", QwenImageControlNetPipeline),
