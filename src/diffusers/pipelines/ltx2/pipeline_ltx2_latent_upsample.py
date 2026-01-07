@@ -95,7 +95,7 @@ def retrieve_latents(
 
 
 class LTX2LatentUpsamplePipeline(DiffusionPipeline):
-    model_cpu_offload_seq = ""
+    model_cpu_offload_seq = "vae->latent_upsampler"
 
     def __init__(
         self,
