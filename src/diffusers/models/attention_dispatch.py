@@ -1940,7 +1940,12 @@ def _native_attention(
 
     # Reshape 2D mask to 4D for SDPA
     # SDPA accepts both boolean masks (torch.bool) and additive masks (float)
-    if attn_mask is not None and attn_mask.ndim == 2 and attn_mask.shape[0] == query.shape[0] and attn_mask.shape[1] == key.shape[1]:
+    if (
+        attn_mask is not None
+        and attn_mask.ndim == 2
+        and attn_mask.shape[0] == query.shape[0]
+        and attn_mask.shape[1] == key.shape[1]
+    ):
         # Just reshape [batch_size, seq_len_k] -> [batch_size, 1, 1, seq_len_k]
         # SDPA handles both boolean and additive masks correctly
         attn_mask = attn_mask.unsqueeze(1).unsqueeze(1)
