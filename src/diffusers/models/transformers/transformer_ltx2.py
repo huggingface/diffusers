@@ -93,9 +93,6 @@ def apply_split_rotary_emb(x: torch.Tensor, freqs: Tuple[torch.Tensor, torch.Ten
     return out
 
 
-ROTARY_FN_MAP = {"interleaved": apply_interleaved_rotary_emb, "split": apply_split_rotary_emb}
-
-
 @dataclass
 class AudioVisualModelOutput(BaseOutput):
     r"""
@@ -198,10 +195,14 @@ class LTX2AudioVideoAttnProcessor:
         key = attn.norm_k(key)
 
         if query_rotary_emb is not None:
-            query = ROTARY_FN_MAP[attn.rope_type](query, query_rotary_emb)
-            key = ROTARY_FN_MAP[attn.rope_type](
-                key, key_rotary_emb if key_rotary_emb is not None else query_rotary_emb
-            )
+            if attn.rope_type == "interleaved":
+                query = apply_interleaved_rotary_emb(query, query_rotary_emb)
+                key = apply_interleaved_rotary_emb(
+                    key, key_rotary_emb if key_rotary_emb is not None else query_rotary_emb
+                )
+            elif attn.rope_type == "split":
+                query = apply_split_rotary_emb(query, query_rotary_emb)
+                key = apply_split_rotary_emb(key, key_rotary_emb if key_rotary_emb is not None else query_rotary_emb)
 
         query = query.unflatten(2, (attn.heads, -1))
         key = key.unflatten(2, (attn.heads, -1))
@@ -458,49 +459,43 @@ class LTX2VideoTransformerBlock(nn.Module):
         audio_encoder_attention_mask: Optional[torch.Tensor] = None,
         a2v_cross_attention_mask: Optional[torch.Tensor] = None,
         v2a_cross_attention_mask: Optional[torch.Tensor] = None,
-        use_video_self_attn: bool = True,
-        use_audio_self_attn: bool = True,
-        use_a2v_cross_attn: bool = True,
-        use_v2a_cross_attn: bool = True,
     ) -> torch.Tensor:
         batch_size = hidden_states.size(0)
 
         # 1. Video and Audio Self-Attention
-        if use_video_self_attn:
-            norm_hidden_states = self.norm1(hidden_states)
+        norm_hidden_states = self.norm1(hidden_states)
 
-            num_ada_params = self.scale_shift_table.shape[0]
-            ada_values = self.scale_shift_table[None, None].to(temb.device) + temb.reshape(
-                batch_size, temb.size(1), num_ada_params, -1
-            )
-            shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = ada_values.unbind(dim=2)
-            norm_hidden_states = norm_hidden_states * (1 + scale_msa) + shift_msa
+        num_ada_params = self.scale_shift_table.shape[0]
+        ada_values = self.scale_shift_table[None, None].to(temb.device) + temb.reshape(
+            batch_size, temb.size(1), num_ada_params, -1
+        )
+        shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = ada_values.unbind(dim=2)
+        norm_hidden_states = norm_hidden_states * (1 + scale_msa) + shift_msa
 
-            attn_hidden_states = self.attn1(
-                hidden_states=norm_hidden_states,
-                encoder_hidden_states=None,
-                query_rotary_emb=video_rotary_emb,
-            )
-            hidden_states = hidden_states + attn_hidden_states * gate_msa
+        attn_hidden_states = self.attn1(
+            hidden_states=norm_hidden_states,
+            encoder_hidden_states=None,
+            query_rotary_emb=video_rotary_emb,
+        )
+        hidden_states = hidden_states + attn_hidden_states * gate_msa
 
-        if use_audio_self_attn:
-            norm_audio_hidden_states = self.audio_norm1(audio_hidden_states)
+        norm_audio_hidden_states = self.audio_norm1(audio_hidden_states)
 
-            num_audio_ada_params = self.audio_scale_shift_table.shape[0]
-            audio_ada_values = self.audio_scale_shift_table[None, None].to(temb_audio.device) + temb_audio.reshape(
-                batch_size, temb_audio.size(1), num_audio_ada_params, -1
-            )
-            audio_shift_msa, audio_scale_msa, audio_gate_msa, audio_shift_mlp, audio_scale_mlp, audio_gate_mlp = (
-                audio_ada_values.unbind(dim=2)
-            )
-            norm_audio_hidden_states = norm_audio_hidden_states * (1 + audio_scale_msa) + audio_shift_msa
+        num_audio_ada_params = self.audio_scale_shift_table.shape[0]
+        audio_ada_values = self.audio_scale_shift_table[None, None].to(temb_audio.device) + temb_audio.reshape(
+            batch_size, temb_audio.size(1), num_audio_ada_params, -1
+        )
+        audio_shift_msa, audio_scale_msa, audio_gate_msa, audio_shift_mlp, audio_scale_mlp, audio_gate_mlp = (
+            audio_ada_values.unbind(dim=2)
+        )
+        norm_audio_hidden_states = norm_audio_hidden_states * (1 + audio_scale_msa) + audio_shift_msa
 
-            attn_audio_hidden_states = self.audio_attn1(
-                hidden_states=norm_audio_hidden_states,
-                encoder_hidden_states=None,
-                query_rotary_emb=audio_rotary_emb,
-            )
-            audio_hidden_states = audio_hidden_states + attn_audio_hidden_states * audio_gate_msa
+        attn_audio_hidden_states = self.audio_attn1(
+            hidden_states=norm_audio_hidden_states,
+            encoder_hidden_states=None,
+            query_rotary_emb=audio_rotary_emb,
+        )
+        audio_hidden_states = audio_hidden_states + attn_audio_hidden_states * audio_gate_msa
 
         # 2. Video and Audio Cross-Attention with the text embeddings
         norm_hidden_states = self.norm2(hidden_states)
@@ -522,80 +517,77 @@ class LTX2VideoTransformerBlock(nn.Module):
         audio_hidden_states = audio_hidden_states + attn_audio_hidden_states
 
         # 3. Audio-to-Video (a2v) and Video-to-Audio (v2a) Cross-Attention
-        if use_a2v_cross_attn or use_v2a_cross_attn:
-            norm_hidden_states = self.audio_to_video_norm(hidden_states)
-            norm_audio_hidden_states = self.video_to_audio_norm(audio_hidden_states)
+        norm_hidden_states = self.audio_to_video_norm(hidden_states)
+        norm_audio_hidden_states = self.video_to_audio_norm(audio_hidden_states)
 
-            # Combine global and per-layer cross attention modulation parameters
-            # Video
-            video_per_layer_ca_scale_shift = self.video_a2v_cross_attn_scale_shift_table[:4, :]
-            video_per_layer_ca_gate = self.video_a2v_cross_attn_scale_shift_table[4:, :]
+        # Combine global and per-layer cross attention modulation parameters
+        # Video
+        video_per_layer_ca_scale_shift = self.video_a2v_cross_attn_scale_shift_table[:4, :]
+        video_per_layer_ca_gate = self.video_a2v_cross_attn_scale_shift_table[4:, :]
 
-            video_ca_scale_shift_table = (
-                video_per_layer_ca_scale_shift[:, :, ...].to(temb_ca_scale_shift.dtype)
-                + temb_ca_scale_shift.reshape(batch_size, temb_ca_scale_shift.shape[1], 4, -1)
-            ).unbind(dim=2)
-            video_ca_gate = (
-                video_per_layer_ca_gate[:, :, ...].to(temb_ca_gate.dtype)
-                + temb_ca_gate.reshape(batch_size, temb_ca_gate.shape[1], 1, -1)
-            ).unbind(dim=2)
+        video_ca_scale_shift_table = (
+            video_per_layer_ca_scale_shift[:, :, ...].to(temb_ca_scale_shift.dtype)
+            + temb_ca_scale_shift.reshape(batch_size, temb_ca_scale_shift.shape[1], 4, -1)
+        ).unbind(dim=2)
+        video_ca_gate = (
+            video_per_layer_ca_gate[:, :, ...].to(temb_ca_gate.dtype)
+            + temb_ca_gate.reshape(batch_size, temb_ca_gate.shape[1], 1, -1)
+        ).unbind(dim=2)
 
-            video_a2v_ca_scale, video_a2v_ca_shift, video_v2a_ca_scale, video_v2a_ca_shift = video_ca_scale_shift_table
-            a2v_gate = video_ca_gate[0].squeeze(2)
+        video_a2v_ca_scale, video_a2v_ca_shift, video_v2a_ca_scale, video_v2a_ca_shift = video_ca_scale_shift_table
+        a2v_gate = video_ca_gate[0].squeeze(2)
 
-            # Audio
-            audio_per_layer_ca_scale_shift = self.audio_a2v_cross_attn_scale_shift_table[:4, :]
-            audio_per_layer_ca_gate = self.audio_a2v_cross_attn_scale_shift_table[4:, :]
+        # Audio
+        audio_per_layer_ca_scale_shift = self.audio_a2v_cross_attn_scale_shift_table[:4, :]
+        audio_per_layer_ca_gate = self.audio_a2v_cross_attn_scale_shift_table[4:, :]
 
-            audio_ca_scale_shift_table = (
-                audio_per_layer_ca_scale_shift[:, :, ...].to(temb_ca_audio_scale_shift.dtype)
-                + temb_ca_audio_scale_shift.reshape(batch_size, temb_ca_audio_scale_shift.shape[1], 4, -1)
-            ).unbind(dim=2)
-            audio_ca_gate = (
-                audio_per_layer_ca_gate[:, :, ...].to(temb_ca_audio_gate.dtype)
-                + temb_ca_audio_gate.reshape(batch_size, temb_ca_audio_gate.shape[1], 1, -1)
-            ).unbind(dim=2)
+        audio_ca_scale_shift_table = (
+            audio_per_layer_ca_scale_shift[:, :, ...].to(temb_ca_audio_scale_shift.dtype)
+            + temb_ca_audio_scale_shift.reshape(batch_size, temb_ca_audio_scale_shift.shape[1], 4, -1)
+        ).unbind(dim=2)
+        audio_ca_gate = (
+            audio_per_layer_ca_gate[:, :, ...].to(temb_ca_audio_gate.dtype)
+            + temb_ca_audio_gate.reshape(batch_size, temb_ca_audio_gate.shape[1], 1, -1)
+        ).unbind(dim=2)
 
-            audio_a2v_ca_scale, audio_a2v_ca_shift, audio_v2a_ca_scale, audio_v2a_ca_shift = audio_ca_scale_shift_table
-            v2a_gate = audio_ca_gate[0].squeeze(2)
+        audio_a2v_ca_scale, audio_a2v_ca_shift, audio_v2a_ca_scale, audio_v2a_ca_shift = audio_ca_scale_shift_table
+        v2a_gate = audio_ca_gate[0].squeeze(2)
 
-            if use_a2v_cross_attn:
-                # Audio-to-Video Cross Attention: Q: Video; K,V: Audio
-                mod_norm_hidden_states = norm_hidden_states * (
-                    1 + video_a2v_ca_scale.squeeze(2)
-                ) + video_a2v_ca_shift.squeeze(2)
-                mod_norm_audio_hidden_states = norm_audio_hidden_states * (
-                    1 + audio_a2v_ca_scale.squeeze(2)
-                ) + audio_a2v_ca_shift.squeeze(2)
+        # Audio-to-Video Cross Attention: Q: Video; K,V: Audio
+        mod_norm_hidden_states = norm_hidden_states * (1 + video_a2v_ca_scale.squeeze(2)) + video_a2v_ca_shift.squeeze(
+            2
+        )
+        mod_norm_audio_hidden_states = norm_audio_hidden_states * (
+            1 + audio_a2v_ca_scale.squeeze(2)
+        ) + audio_a2v_ca_shift.squeeze(2)
 
-                a2v_attn_hidden_states = self.audio_to_video_attn(
-                    mod_norm_hidden_states,
-                    encoder_hidden_states=mod_norm_audio_hidden_states,
-                    query_rotary_emb=ca_video_rotary_emb,
-                    key_rotary_emb=ca_audio_rotary_emb,
-                    attention_mask=a2v_cross_attention_mask,
-                )
+        a2v_attn_hidden_states = self.audio_to_video_attn(
+            mod_norm_hidden_states,
+            encoder_hidden_states=mod_norm_audio_hidden_states,
+            query_rotary_emb=ca_video_rotary_emb,
+            key_rotary_emb=ca_audio_rotary_emb,
+            attention_mask=a2v_cross_attention_mask,
+        )
 
-                hidden_states = hidden_states + a2v_gate * a2v_attn_hidden_states
+        hidden_states = hidden_states + a2v_gate * a2v_attn_hidden_states
 
-            if use_v2a_cross_attn:
-                # Video-to-Audio Cross Attention: Q: Audio; K,V: Video
-                mod_norm_hidden_states = norm_hidden_states * (
-                    1 + video_v2a_ca_scale.squeeze(2)
-                ) + video_v2a_ca_shift.squeeze(2)
-                mod_norm_audio_hidden_states = norm_audio_hidden_states * (
-                    1 + audio_v2a_ca_scale.squeeze(2)
-                ) + audio_v2a_ca_shift.squeeze(2)
+        # Video-to-Audio Cross Attention: Q: Audio; K,V: Video
+        mod_norm_hidden_states = norm_hidden_states * (1 + video_v2a_ca_scale.squeeze(2)) + video_v2a_ca_shift.squeeze(
+            2
+        )
+        mod_norm_audio_hidden_states = norm_audio_hidden_states * (
+            1 + audio_v2a_ca_scale.squeeze(2)
+        ) + audio_v2a_ca_shift.squeeze(2)
 
-                v2a_attn_hidden_states = self.video_to_audio_attn(
-                    mod_norm_audio_hidden_states,
-                    encoder_hidden_states=mod_norm_hidden_states,
-                    query_rotary_emb=ca_audio_rotary_emb,
-                    key_rotary_emb=ca_video_rotary_emb,
-                    attention_mask=v2a_cross_attention_mask,
-                )
+        v2a_attn_hidden_states = self.video_to_audio_attn(
+            mod_norm_audio_hidden_states,
+            encoder_hidden_states=mod_norm_hidden_states,
+            query_rotary_emb=ca_audio_rotary_emb,
+            key_rotary_emb=ca_video_rotary_emb,
+            attention_mask=v2a_cross_attention_mask,
+        )
 
-                audio_hidden_states = audio_hidden_states + v2a_gate * v2a_attn_hidden_states
+        audio_hidden_states = audio_hidden_states + v2a_gate * v2a_attn_hidden_states
 
         # 4. Feedforward
         norm_hidden_states = self.norm3(hidden_states) * (1 + scale_mlp) + shift_mlp
@@ -769,11 +761,9 @@ class LTX2AudioVideoRotaryPosEmbed(nn.Module):
         """
 
         # 1. Generate coordinates in the frame (time) dimension.
-        audio_duration_s = num_frames / fps
-        latent_frames = int(audio_duration_s * self.audio_latents_per_second)
         # Always compute rope in fp32
         grid_f = torch.arange(
-            start=shift, end=latent_frames + shift, step=self.patch_size_t, dtype=torch.float32, device=device
+            start=shift, end=num_frames + shift, step=self.patch_size_t, dtype=torch.float32, device=device
         )
 
         # 2. Calculate start timstamps in seconds with respect to the original spectrogram grid
@@ -802,52 +792,21 @@ class LTX2AudioVideoRotaryPosEmbed(nn.Module):
             return self.prepare_audio_coords(*args, **kwargs)
 
     def forward(
-        self,
-        coords: Optional[torch.Tensor] = None,
-        batch_size: Optional[int] = None,
-        num_frames: Optional[int] = None,
-        height: Optional[int] = None,
-        width: Optional[int] = None,
-        fps: float = 25.0,
-        shift: int = 0,
-        device: Optional[Union[str, torch.device]] = None,
+        self, coords: torch.Tensor, device: Optional[Union[str, torch.device]] = None
     ) -> Tuple[torch.Tensor, torch.Tensor]:
-        if coords is not None:
-            device = device or coords.device
-            batch_size = batch_size or coords.size(0)
-        else:
-            device = device or "cpu"
-            batch_size = batch_size or 1
+        device = device or coords.device
 
-        # 1. Calculate the coordinate grid with respect to data space for the given modality (video, audio).
-        if coords is None and self.modality == "video":
-            coords = self.prepare_video_coords(
-                batch_size,
-                num_frames,
-                height,
-                width,
-                device=device,
-                fps=fps,
-            )
-        elif coords is None and self.modality == "audio":
-            coords = self.prepare_audio_coords(
-                batch_size,
-                num_frames,
-                device=device,
-                shift=shift,
-                fps=fps,
-            )
         # Number of spatiotemporal dimensions (3 for video, 1 (temporal) for audio and cross attn)
         num_pos_dims = coords.shape[1]
 
-        # 2. If the coords are patch boundaries [start, end), use the midpoint of these boundaries as the patch
+        # 1. If the coords are patch boundaries [start, end), use the midpoint of these boundaries as the patch
         # position index
         if coords.ndim == 4:
             coords_start, coords_end = coords.chunk(2, dim=-1)
             coords = (coords_start + coords_end) / 2.0
             coords = coords.squeeze(-1)  # [B, num_pos_dims, num_patches]
 
-        # 3. Get coordinates as a fraction of the base data shape
+        # 2. Get coordinates as a fraction of the base data shape
         if self.modality == "video":
             max_positions = (self.base_num_frames, self.base_height, self.base_width)
         elif self.modality == "audio":
@@ -857,7 +816,7 @@ class LTX2AudioVideoRotaryPosEmbed(nn.Module):
         # Number of spatiotemporal dimensions (3 for video, 1 for audio and cross attn) times 2 for cos, sin
         num_rope_elems = num_pos_dims * 2
 
-        # 4. Create a 1D grid of frequencies for RoPE
+        # 3. Create a 1D grid of frequencies for RoPE
         freqs_dtype = torch.float64 if self.double_precision else torch.float32
         pow_indices = torch.pow(
             self.theta,
@@ -865,12 +824,12 @@ class LTX2AudioVideoRotaryPosEmbed(nn.Module):
         )
         freqs = (pow_indices * torch.pi / 2.0).to(dtype=torch.float32)
 
-        # 5. Tensor-vector outer product between pos ids tensor of shape (B, 3, num_patches) and freqs vector of shape
+        # 4. Tensor-vector outer product between pos ids tensor of shape (B, 3, num_patches) and freqs vector of shape
         # (self.dim // num_elems,)
         freqs = (grid.unsqueeze(-1) * 2 - 1) * freqs  # [B, num_patches, num_pos_dims, self.dim // num_elems]
         freqs = freqs.transpose(-1, -2).flatten(2)  # [B, num_patches, self.dim // 2]
 
-        # 6. Get real, interleaved (cos, sin) frequencies, padded to self.dim
+        # 5. Get real, interleaved (cos, sin) frequencies, padded to self.dim
         # TODO: consider implementing this as a utility and reuse in `connectors.py`.
         # src/diffusers/pipelines/ltx2/connectors.py
         if self.rope_type == "interleaved":
@@ -1220,7 +1179,7 @@ class LTX2VideoTransformer3DModel(
                 batch_size, audio_num_frames, audio_hidden_states.device, fps=fps
             )
 
-        video_rotary_emb = self.rope(video_coords, fps=fps, device=hidden_states.device)
+        video_rotary_emb = self.rope(video_coords, device=hidden_states.device)
         audio_rotary_emb = self.audio_rope(audio_coords, device=audio_hidden_states.device)
 
         video_cross_attn_rotary_emb = self.cross_attn_rope(video_coords[:, 0:1, :], device=hidden_states.device)

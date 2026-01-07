@@ -47,24 +47,36 @@ EXAMPLE_DOC_STRING = """
     Examples:
         ```py
         >>> import torch
-        >>> from diffusers import LTXPipeline
-        >>> from diffusers.utils import export_to_video
+        >>> from diffusers import LTX2Pipeline
+        >>> from diffusers.pipelines.ltx2.export_utils import encode_video
 
-        >>> pipe = LTXPipeline.from_pretrained("Lightricks/LTX-Video", torch_dtype=torch.bfloat16)
-        >>> pipe.to("cuda")
+        >>> pipe = LTX2Pipeline.from_pretrained("Lightricks/LTX-2", torch_dtype=torch.bfloat16)
+        >>> pipe.enable_model_cpu_offload()
 
         >>> prompt = "A woman with long brown hair and light skin smiles at another woman with long blonde hair. The woman with brown hair wears a black jacket and has a small, barely noticeable mole on her right cheek. The camera angle is a close-up, focused on the woman with brown hair's face. The lighting is warm and natural, likely from the setting sun, casting a soft glow on the scene. The scene appears to be real-life footage"
         >>> negative_prompt = "worst quality, inconsistent motion, blurry, jittery, distorted"
 
-        >>> video = pipe(
+        >>> frame_rate = 24.0
+        >>> video, audio = pipe(
         ...     prompt=prompt,
         ...     negative_prompt=negative_prompt,
-        ...     width=704,
-        ...     height=480,
-        ...     num_frames=161,
-        ...     num_inference_steps=50,
-        ... ).frames[0]
-        >>> export_to_video(video, "output.mp4", fps=24)
+        ...     width=768,
+        ...     height=512,
+        ...     frame_rate=frame_rate,
+        ...     num_frames=121,
+        ...     output_type="np",
+        ...     return_dict=False,
+        ... )
+        >>> video = (video * 255).round().astype("uint8")
+        >>> video = torch.from_numpy(video)
+
+        >>> encode_video(
+        ...     video[0],
+        ...     fps=frame_rate,
+        ...     audio=audio[0].float().cpu(),
+        ...     audio_sample_rate=pipe.vocoder.config.output_sampling_rate,  # should be 24000
+        ...     output_path="video.mp4",
+        ... )
         ```
 """
 
@@ -677,7 +689,7 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLoraLoaderMix
         latents_per_second = (
             float(sampling_rate) / float(hop_length) / float(self.audio_vae_temporal_compression_ratio)
         )
-        latent_length = int(duration_s * latents_per_second)
+        latent_length = round(duration_s * latents_per_second)
 
         if latents is not None:
             return latents.to(device=device, dtype=dtype), latent_length
@@ -821,7 +833,7 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLoraLoaderMix
                 The output format of the generate image. Choose between
                 [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
             return_dict (`bool`, *optional*, defaults to `True`):
-                Whether or not to return a [`~pipelines.ltx.LTXPipelineOutput`] instead of a plain tuple.
+                Whether or not to return a [`~pipelines.ltx.LTX2PipelineOutput`] instead of a plain tuple.
             attention_kwargs (`dict`, *optional*):
                 A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
                 `self.processor` in
@@ -841,8 +853,8 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLoraLoaderMix
         Examples:
 
         Returns:
-            [`~pipelines.ltx.LTXPipelineOutput`] or `tuple`:
-                If `return_dict` is `True`, [`~pipelines.ltx.LTXPipelineOutput`] is returned, otherwise a `tuple` is
+            [`~pipelines.ltx.LTX2PipelineOutput`] or `tuple`:
+                If `return_dict` is `True`, [`~pipelines.ltx.LTX2PipelineOutput`] is returned, otherwise a `tuple` is
                 returned where the first element is a list with the generated images.
         """
 

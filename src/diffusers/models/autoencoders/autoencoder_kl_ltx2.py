@@ -1004,7 +1004,7 @@ class LTX2VideoDecoder3d(nn.Module):
 class AutoencoderKLLTX2Video(ModelMixin, AutoencoderMixin, ConfigMixin, FromOriginalModelMixin):
     r"""
     A VAE model with KL loss for encoding images into latents and decoding latent representations into images. Used in
-    [LTX](https://huggingface.co/Lightricks/LTX-Video).
+    [LTX-2](https://huggingface.co/Lightricks/LTX-2).
 
     This model inherits from [`ModelMixin`]. Check the superclass documentation for it's generic methods implemented
     for all models (such as downloading or saving).

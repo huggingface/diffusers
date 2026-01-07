@@ -148,10 +148,7 @@ LTX_2_0_VAE_SPECIAL_KEYS_REMAP = {
     "per_channel_statistics.mean-of-stds": remove_keys_inplace,
 }
 
-LTX_2_0_AUDIO_VAE_SPECIAL_KEYS_REMAP = {
-    "encoder": remove_keys_inplace,
-    "per_channel_statistics": convert_ltx2_audio_vae_per_channel_statistics,
-}
+LTX_2_0_AUDIO_VAE_SPECIAL_KEYS_REMAP = {}
 
 LTX_2_0_VOCODER_SPECIAL_KEYS_REMAP = {}
 
@@ -499,6 +496,7 @@ def get_ltx2_audio_vae_config(version: str) -> Tuple[Dict[str, Any], Dict[str, A
                 "mel_hop_length": 160,
                 "is_causal": True,
                 "mel_bins": 64,
+                "double_z": True,
             },
         }
         rename_dict = LTX_2_0_AUDIO_VAE_RENAME_DICT
@@ -662,7 +660,7 @@ def get_args():
 
     parser.add_argument(
         "--original_state_dict_repo_id",
-        default="diffusers-internal-dev/new-ltx-model",
+        default="Lightricks/LTX-2",
         type=str,
         help="HF Hub repo id with LTX 2.0 checkpoint",
     )
@@ -682,7 +680,7 @@ def get_args():
 
     parser.add_argument(
         "--combined_filename",
-        default="ltx-av-step-1932500-interleaved-new-vae.safetensors",
+        default="ltx-2-19b-dev.safetensors",
         type=str,
         help="Filename for combined checkpoint with all LTX 2.0 models (VAE, DiT, etc.)",
     )

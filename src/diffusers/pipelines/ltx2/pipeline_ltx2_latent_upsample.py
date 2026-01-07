@@ -18,7 +18,7 @@ import torch
 
 from ...image_processor import PipelineImageInput
 from ...models import AutoencoderKLLTX2Video
-from ...utils import deprecate, get_logger, replace_example_docstring
+from ...utils import get_logger, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from ...video_processor import VideoProcessor
 from ..ltx.pipeline_output import LTXPipelineOutput
