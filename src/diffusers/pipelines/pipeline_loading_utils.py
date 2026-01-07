@@ -801,7 +801,7 @@ def load_sub_model(
     # add kwargs to loading method
     diffusers_module = importlib.import_module(__name__.split(".")[0])
     loading_kwargs = {}
-    
+
     is_diffusers_model = issubclass(class_obj, diffusers_module.ModelMixin)
 
     if is_transformers_available():
@@ -814,7 +814,7 @@ def load_sub_model(
         and issubclass(class_obj, PreTrainedModel)
         and transformers_version >= version.parse("4.20.0")
     )
-    
+
     # For transformers models >= 4.56.0, use 'dtype' instead of 'torch_dtype' to avoid deprecation warnings
     if issubclass(class_obj, torch.nn.Module):
         if is_transformers_model and transformers_version >= version.parse("4.56.0"):
