@@ -457,7 +457,7 @@ class TorchAoConfig(QuantizationConfigMixin):
                     - Shorthands: `float8wo`, `float8wo_e5m2`, `float8wo_e4m3`, `float8dq`, `float8dq_e4m3`,
                       `float8_e4m3_tensor`, `float8_e4m3_row`,
 
-                - **Floating point X-bit quantization:** (in torchao <= 0.14.0, not supported in torchao >= 0.15.0)
+                - **Floating point X-bit quantization:** (in torchao <= 0.14.1, not supported in torchao >= 0.15.0)
                     - Full function names: `fpx_weight_only`
                     - Shorthands: `fpX_eAwB`, where `X` is the number of bits (between `1` to `7`), `A` is the number
                       of exponent bits and `B` is the number of mantissa bits. The constraint of `X == A + B + 1` must
@@ -538,10 +538,10 @@ class TorchAoConfig(QuantizationConfigMixin):
                         f"Requested quantization type: {self.quant_type} is not supported on GPUs with CUDA capability <= 8.9. You "
                         f"can check the CUDA capability of your GPU using `torch.cuda.get_device_capability()`."
                     )
-                elif is_floatx_quant_type and not is_torchao_version("<=", "0.14.0"):
+                elif is_floatx_quant_type and not is_torchao_version("<=", "0.14.1"):
                     raise ValueError(
-                        f"Requested quantization type: {self.quant_type} is only supported in torchao <= 0.14.0. "
-                        f"Please downgrade to torchao <= 0.14.0 to use this quantization type."
+                        f"Requested quantization type: {self.quant_type} is only supported in torchao <= 0.14.1. "
+                        f"Please downgrade to torchao <= 0.14.1 to use this quantization type."
                     )
 
                 raise ValueError(
@@ -635,7 +635,7 @@ class TorchAoConfig(QuantizationConfigMixin):
                 uintx_weight_only,
             )
 
-            if is_torchao_version("<=", "0.14.0"):
+            if is_torchao_version("<=", "0.14.1"):
                 from torchao.quantization import fpx_weight_only
             # TODO(aryan): Add a note on how to use PerAxis and PerGroup observers
             from torchao.quantization.observer import PerRow, PerTensor
@@ -657,7 +657,7 @@ class TorchAoConfig(QuantizationConfigMixin):
                 return types
 
             def generate_fpx_quantization_types(bits: int):
-                if is_torchao_version("<=", "0.14.0"):
+                if is_torchao_version("<=", "0.14.1"):
                     types = {}
 
                     for ebits in range(1, bits):
@@ -722,7 +722,7 @@ class TorchAoConfig(QuantizationConfigMixin):
                 "float8_static_activation_float8_weight": float8_static_activation_float8_weight,
             }
 
-            if is_torchao_version("<=", "0.14.0"):
+            if is_torchao_version("<=", "0.14.1"):
                 FLOATX_QUANTIZATION_TYPES.update(generate_fpx_quantization_types(3))
                 FLOATX_QUANTIZATION_TYPES.update(generate_fpx_quantization_types(4))
                 FLOATX_QUANTIZATION_TYPES.update(generate_fpx_quantization_types(5))
