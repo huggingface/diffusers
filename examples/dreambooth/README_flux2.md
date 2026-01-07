@@ -169,7 +169,7 @@ To better track our training experiments, we're using the following flags in the
 > [!NOTE]
 > If you want to train using long prompts with the T5 text encoder, you can use `--max_sequence_length` to set the token limit. The default is 77, but it can be increased to as high as 512. Note that this will use more resources and may slow down the training in some cases.
 
-### FSDP on the Transformers
+### FSDP on the transformer
 By setting the accelerate configuration with FSDP, the transformer block will be wrapped automatically. E.g. set the configuration to:
 
 ```shell
