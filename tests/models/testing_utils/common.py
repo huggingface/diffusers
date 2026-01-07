@@ -479,6 +479,7 @@ class ModelTesterMixin:
         assert_tensors_close(output, output_loaded, atol=1e-4, rtol=0, msg=f"Loaded model output differs for {dtype}")
 
     @require_accelerator
+    @torch.no_grad()
     def test_sharded_checkpoints(self, tmp_path):
         torch.manual_seed(0)
         config = self.get_init_dict()
@@ -513,6 +514,7 @@ class ModelTesterMixin:
         )
 
     @require_accelerator
+    @torch.no_grad()
     def test_sharded_checkpoints_with_variant(self, tmp_path):
         torch.manual_seed(0)
         config = self.get_init_dict()
@@ -551,6 +553,7 @@ class ModelTesterMixin:
             base_output, new_output, atol=1e-5, rtol=0, msg="Output should match after variant sharded save/load"
         )
 
+    @torch.no_grad()
     def test_sharded_checkpoints_with_parallel_loading(self, tmp_path):
         from diffusers.utils import constants
 
@@ -608,6 +611,7 @@ class ModelTesterMixin:
                 constants.HF_PARALLEL_WORKERS = original_parallel_workers
 
     @require_torch_multi_accelerator
+    @torch.no_grad()
     def test_model_parallelism(self, tmp_path):
         if self.model_class._no_split_modules is None:
             pytest.skip("Test not supported for this model as `_no_split_modules` is not set.")

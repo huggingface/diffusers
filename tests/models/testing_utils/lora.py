@@ -82,6 +82,7 @@ class LoraTesterMixin:
         if not issubclass(self.model_class, PeftAdapterMixin):
             pytest.skip(f"PEFT is not supported for this model ({self.model_class.__name__}).")
 
+    @torch.no_grad()
     def test_save_load_lora_adapter(self, tmp_path, rank=4, lora_alpha=4, use_dora=False):
         from peft import LoraConfig
         from peft.utils import get_peft_model_state_dict

@@ -60,6 +60,7 @@ class IPAdapterTesterMixin:
     def modify_inputs_for_ip_adapter(self, model, inputs_dict):
         raise NotImplementedError("child class must implement method to create IPAdapter model inputs")
 
+    @torch.no_grad()
     def test_load_ip_adapter(self):
         init_dict = self.get_init_dict()
         inputs_dict = self.get_dummy_inputs()

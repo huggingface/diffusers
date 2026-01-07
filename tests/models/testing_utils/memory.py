@@ -96,6 +96,7 @@ class CPUOffloadTesterMixin:
     model_split_percents = [0.5, 0.7]
 
     @require_offload_support
+    @torch.no_grad()
     def test_cpu_offload(self, tmp_path):
         config = self.get_init_dict()
         inputs_dict = self.get_dummy_inputs()
@@ -126,6 +127,7 @@ class CPUOffloadTesterMixin:
             )
 
     @require_offload_support
+    @torch.no_grad()
     def test_disk_offload_without_safetensors(self, tmp_path):
         config = self.get_init_dict()
         inputs_dict = self.get_dummy_inputs()
@@ -159,6 +161,7 @@ class CPUOffloadTesterMixin:
         )
 
     @require_offload_support
+    @torch.no_grad()
     def test_disk_offload_with_safetensors(self, tmp_path):
         config = self.get_init_dict()
         inputs_dict = self.get_dummy_inputs()

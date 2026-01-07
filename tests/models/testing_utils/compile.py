@@ -59,6 +59,7 @@ class TorchCompileTesterMixin:
         gc.collect()
         backend_empty_cache(torch_device)
 
+    @torch.no_grad()
     def test_torch_compile_recompilation_and_graph_break(self):
         init_dict = self.get_init_dict()
         inputs_dict = self.get_dummy_inputs()
@@ -70,11 +71,11 @@ class TorchCompileTesterMixin:
         with (
             torch._inductor.utils.fresh_inductor_cache(),
             torch._dynamo.config.patch(error_on_recompile=True),
-            torch.no_grad(),
         ):
             _ = model(**inputs_dict)
             _ = model(**inputs_dict)
 
+    @torch.no_grad()
     def test_torch_compile_repeated_blocks(self):
         if self.model_class._repeated_blocks is None:
             pytest.skip("Skipping test as the model class doesn't have `_repeated_blocks` set.")
@@ -93,7 +94,6 @@ class TorchCompileTesterMixin:
         with (
             torch._inductor.utils.fresh_inductor_cache(),
             torch._dynamo.config.patch(recompile_limit=recompile_limit),
-            torch.no_grad(),
         ):
             _ = model(**inputs_dict)
             _ = model(**inputs_dict)
