@@ -414,7 +414,7 @@ export_to_video(video, "output.mp4", fps=24)
 
   </details>
 
-- Long image-to-video generation with multi-prompt sliding windows (ComfyUI parity).
+- Long image-to-video generation with multi-prompt sliding windows.
 
   <details>
   <summary>Show example code</summary>
@@ -559,8 +559,6 @@ export_to_video(video, "output.mp4", fps=24)
 
 ## LTXI2VLongMultiPromptPipeline
 
-For ComfyUI parity, this pipeline is typically used with `LTXEulerAncestralRFScheduler`.
-You can replace the default scheduler after construction, as shown in the example above.
 
 [[autodoc]] LTXI2VLongMultiPromptPipeline
   - all
