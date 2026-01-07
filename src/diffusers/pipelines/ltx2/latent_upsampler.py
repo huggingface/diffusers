@@ -89,8 +89,8 @@ class PixelShuffleND(torch.nn.Module):
 
 class BlurDownsample(torch.nn.Module):
     """
-    Anti-aliased spatial downsampling by integer stride using a fixed separable binomial kernel.
-    Applies only on H,W. Works for dims=2 or dims=3 (per-frame).
+    Anti-aliased spatial downsampling by integer stride using a fixed separable binomial kernel. Applies only on H,W.
+    Works for dims=2 or dims=3 (per-frame).
     """
 
     def __init__(self, dims: int, stride: int, kernel_size: int = 5) -> None:
@@ -142,6 +142,7 @@ class SpatialRationalResampler(torch.nn.Module):
     input by the (integer) numerator of `scale`, and then performing a blur + stride anti-aliased downsample by the
     (integer) denominator.
     """
+
     def __init__(self, mid_channels: int = 1024, scale: float = 2.0):
         super().__init__()
         self.scale = float(scale)

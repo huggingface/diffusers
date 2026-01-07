@@ -579,7 +579,6 @@ def convert_ltx2_vocoder(original_state_dict: Dict[str, Any], version: str) -> D
     return vocoder
 
 
-
 def get_ltx2_spatial_latent_upsampler_config(version: str):
     if version == "2.0":
         config = {
@@ -831,7 +830,9 @@ def main(args):
         )
         latent_upsampler_config = get_ltx2_spatial_latent_upsampler_config(args.version)
         latent_upsampler = convert_ltx2_spatial_latent_upsampler(
-            original_latent_upsampler_ckpt, latent_upsampler_config, dtype=vae_dtype,
+            original_latent_upsampler_ckpt,
+            latent_upsampler_config,
+            dtype=vae_dtype,
         )
         latent_upsampler.save_pretrained(os.path.join(args.output_path, "latent_upsampler"))
 
