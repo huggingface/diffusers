@@ -476,7 +476,6 @@ export_to_video(video, "output.mp4", fps=24)
 
 ## LTXI2VLongMultiPromptPipeline
 
-
 [[autodoc]] LTXI2VLongMultiPromptPipeline
   - all
   - __call__
