@@ -427,7 +427,7 @@ class GlmImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Cach
 
         # 2. Patch & Text-timestep embedding
         self.image_projector = GlmImageImageProjector(in_channels, inner_dim, patch_size)
-        self.glyph_projector = FeedForward(text_embed_dim, inner_dim, activation_fn="gelu")
+        self.glyph_projector = FeedForward(text_embed_dim, inner_dim, inner_dim=inner_dim, activation_fn="gelu")
         self.prior_token_embedding = nn.Embedding(prior_vq_quantizer_codebook_size, inner_dim)
         self.prior_projector = FeedForward(inner_dim, inner_dim, inner_dim=inner_dim, activation_fn="linear-silu")
 
