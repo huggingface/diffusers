@@ -353,6 +353,7 @@ else:
             "KDPM2AncestralDiscreteScheduler",
             "KDPM2DiscreteScheduler",
             "LCMScheduler",
+            "LTXEulerAncestralRFScheduler",
             "PNDMScheduler",
             "RePaintScheduler",
             "SASolverScheduler",
@@ -463,6 +464,7 @@ else:
             "CogView4ControlPipeline",
             "CogView4Pipeline",
             "ConsisIDPipeline",
+            "Cosmos2_5_PredictBasePipeline",
             "Cosmos2TextToImagePipeline",
             "Cosmos2VideoToWorldPipeline",
             "CosmosTextToWorldPipeline",
@@ -537,6 +539,7 @@ else:
             "LongCatImageEditPipeline",
             "LongCatImagePipeline",
             "LTXConditionPipeline",
+            "LTXI2VLongMultiPromptPipeline",
             "LTXImageToVideoPipeline",
             "LTXLatentUpsamplePipeline",
             "LTXPipeline",
@@ -674,6 +677,7 @@ else:
             "ZImageControlNetInpaintPipeline",
             "ZImageControlNetPipeline",
             "ZImageImg2ImgPipeline",
+            "ZImageOmniPipeline",
             "ZImagePipeline",
         ]
     )
@@ -1086,6 +1090,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             KDPM2AncestralDiscreteScheduler,
             KDPM2DiscreteScheduler,
             LCMScheduler,
+            LTXEulerAncestralRFScheduler,
             PNDMScheduler,
             RePaintScheduler,
             SASolverScheduler,
@@ -1175,6 +1180,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             CogView4ControlPipeline,
             CogView4Pipeline,
             ConsisIDPipeline,
+            Cosmos2_5_PredictBasePipeline,
             Cosmos2TextToImagePipeline,
             Cosmos2VideoToWorldPipeline,
             CosmosTextToWorldPipeline,
@@ -1249,6 +1255,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             LongCatImageEditPipeline,
             LongCatImagePipeline,
             LTXConditionPipeline,
+            LTXI2VLongMultiPromptPipeline,
             LTXImageToVideoPipeline,
             LTXLatentUpsamplePipeline,
             LTXPipeline,
@@ -1384,6 +1391,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             ZImageControlNetInpaintPipeline,
             ZImageControlNetPipeline,
             ZImageImg2ImgPipeline,
+            ZImageOmniPipeline,
             ZImagePipeline,
         )
 
