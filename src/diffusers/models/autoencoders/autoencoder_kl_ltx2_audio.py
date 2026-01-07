@@ -798,7 +798,6 @@ class AutoencoderKLLTX2Audio(ModelMixin, AutoencoderMixin, ConfigMixin):
             z = posterior.sample(generator=generator)
         else:
             z = posterior.mode()
-        print(f"z shape: {z.shape}")
         dec = self.decode(z)
         if not return_dict:
             return (dec.sample,)
