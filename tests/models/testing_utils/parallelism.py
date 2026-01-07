@@ -27,9 +27,9 @@ from ...testing_utils import (
 )
 
 
+@torch.no_grad()
 def _context_parallel_worker(rank, world_size, model_class, init_dict, cp_dict, inputs_dict, result_queue):
     try:
-        # Setup distributed environment
         os.environ["MASTER_ADDR"] = "localhost"
         os.environ["MASTER_PORT"] = "12355"
 
@@ -56,8 +56,7 @@ def _context_parallel_worker(rank, world_size, model_class, init_dict, cp_dict, 
         cp_config = ContextParallelConfig(**cp_dict)
         model.enable_parallelism(config=cp_config)
 
-        with torch.no_grad():
-            output = model(**inputs_on_device, return_dict=False)[0]
+        output = model(**inputs_on_device, return_dict=False)[0]
 
         if rank == 0:
             result_queue.put(("success", output.shape))
@@ -73,8 +72,6 @@ def _context_parallel_worker(rank, world_size, model_class, init_dict, cp_dict, 
 @is_context_parallel
 @require_torch_multi_accelerator
 class ContextParallelTesterMixin:
-    base_precision = 1e-3
-
     @pytest.mark.parametrize("cp_type", ["ulysses_degree", "ring_degree"], ids=["ulysses", "ring"])
     def test_context_parallel_inference(self, cp_type):
         if not torch.distributed.is_available():

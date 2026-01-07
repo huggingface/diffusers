@@ -196,6 +196,7 @@ class CacheTesterMixin:
 
         model.disable_cache()
 
+    @torch.no_grad()
     def _test_reset_stateful_cache(self):
         """Test that _reset_stateful_cache resets the cache state."""
         init_dict = self.get_init_dict()
@@ -207,11 +208,8 @@ class CacheTesterMixin:
 
         model.enable_cache(config)
 
-        # Run forward to populate cache state
-        with torch.no_grad():
-            _ = model(**inputs_dict, return_dict=False)[0]
+        _ = model(**inputs_dict, return_dict=False)[0]
 
-        # Reset should not raise any errors
         model._reset_stateful_cache()
 
         model.disable_cache()
@@ -358,6 +356,7 @@ class FirstBlockCacheTesterMixin(FirstBlockCacheConfigMixin, CacheTesterMixin):
             "Cached output should be different from non-cached output due to cache approximation."
         )
 
+    @torch.no_grad()
     def _test_reset_stateful_cache(self):
         """Test that _reset_stateful_cache resets the FBC cache state (requires cache_context)."""
         init_dict = self.get_init_dict()
@@ -368,12 +367,9 @@ class FirstBlockCacheTesterMixin(FirstBlockCacheConfigMixin, CacheTesterMixin):
         config = self._get_cache_config()
         model.enable_cache(config)
 
-        # FBC requires cache_context to be set for inference
         with model.cache_context("fbc_test"):
-            with torch.no_grad():
-                _ = model(**inputs_dict, return_dict=False)[0]
+            _ = model(**inputs_dict, return_dict=False)[0]
 
-        # Reset should not raise any errors
         model._reset_stateful_cache()
 
         model.disable_cache()
@@ -491,6 +487,7 @@ class FasterCacheTesterMixin(FasterCacheConfigMixin, CacheTesterMixin):
             "Cached output should be different from non-cached output due to cache approximation."
         )
 
+    @torch.no_grad()
     def _test_reset_stateful_cache(self):
         """Test that _reset_stateful_cache resets the FasterCache state."""
         init_dict = self.get_init_dict()
@@ -501,12 +498,9 @@ class FasterCacheTesterMixin(FasterCacheConfigMixin, CacheTesterMixin):
         config = self._get_cache_config()
         model.enable_cache(config)
 
-        # First pass with timestep outside skip range
         self._current_timestep[0] = 1000
-        with torch.no_grad():
-            _ = model(**inputs_dict, return_dict=False)[0]
+        _ = model(**inputs_dict, return_dict=False)[0]
 
-        # Reset should not raise any errors
         model._reset_stateful_cache()
 
         model.disable_cache()

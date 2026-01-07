@@ -145,7 +145,6 @@ class BaseModelTesterConfig:
         - pretrained_model_name_or_path: Hub repository ID for pretrained model (default: None)
         - pretrained_model_kwargs: Additional kwargs for from_pretrained (default: {})
         - output_shape: Expected output shape for output validation tests (default: None)
-        - base_precision: Default tolerance for floating point comparisons (default: 1e-3)
         - model_split_percents: Percentages for model parallelism tests (default: [0.5, 0.7])
 
     Required methods (must be implemented by subclasses):
@@ -259,6 +258,7 @@ class ModelTesterMixin:
             pass
     """
 
+    @torch.no_grad()
     def test_from_save_pretrained(self, tmp_path, atol=5e-5, rtol=5e-5):
         torch.manual_seed(0)
         model = self.model_class(**self.get_init_dict())
@@ -269,7 +269,6 @@ class ModelTesterMixin:
         new_model = self.model_class.from_pretrained(tmp_path)
         new_model.to(torch_device)
 
-        # check if all parameters shape are the same
         for param_name in model.state_dict().keys():
             param_1 = model.state_dict()[param_name]
             param_2 = new_model.state_dict()[param_name]
@@ -277,12 +276,12 @@ class ModelTesterMixin:
                 f"Parameter shape mismatch for {param_name}. Original: {param_1.shape}, loaded: {param_2.shape}"
             )
 
-        with torch.no_grad():
-            image = model(**self.get_dummy_inputs(), return_dict=False)[0]
-            new_image = new_model(**self.get_dummy_inputs(), return_dict=False)[0]
+        image = model(**self.get_dummy_inputs(), return_dict=False)[0]
+        new_image = new_model(**self.get_dummy_inputs(), return_dict=False)[0]
 
         assert_tensors_close(image, new_image, atol=atol, rtol=rtol, msg="Models give different forward passes.")
 
+    @torch.no_grad()
     def test_from_save_pretrained_variant(self, tmp_path, atol=5e-5, rtol=0):
         model = self.model_class(**self.get_init_dict())
         model.to(torch_device)
@@ -291,18 +290,15 @@ class ModelTesterMixin:
         model.save_pretrained(tmp_path, variant="fp16")
         new_model = self.model_class.from_pretrained(tmp_path, variant="fp16")
 
-        # non-variant cannot be loaded
         with pytest.raises(OSError) as exc_info:
             self.model_class.from_pretrained(tmp_path)
 
-        # make sure that error message states what keys are missing
         assert "Error no file named diffusion_pytorch_model.bin found in directory" in str(exc_info.value)
 
         new_model.to(torch_device)
 
-        with torch.no_grad():
-            image = model(**self.get_dummy_inputs(), return_dict=False)[0]
-            new_image = new_model(**self.get_dummy_inputs(), return_dict=False)[0]
+        image = model(**self.get_dummy_inputs(), return_dict=False)[0]
+        new_image = new_model(**self.get_dummy_inputs(), return_dict=False)[0]
 
         assert_tensors_close(image, new_image, atol=atol, rtol=rtol, msg="Models give different forward passes.")
 
@@ -324,16 +320,15 @@ class ModelTesterMixin:
             new_model = self.model_class.from_pretrained(tmp_path, low_cpu_mem_usage=False, torch_dtype=dtype)
             assert new_model.dtype == dtype
 
+    @torch.no_grad()
     def test_determinism(self, atol=1e-5, rtol=0):
         model = self.model_class(**self.get_init_dict())
         model.to(torch_device)
         model.eval()
 
-        with torch.no_grad():
-            first = model(**self.get_dummy_inputs(), return_dict=False)[0]
-            second = model(**self.get_dummy_inputs(), return_dict=False)[0]
+        first = model(**self.get_dummy_inputs(), return_dict=False)[0]
+        second = model(**self.get_dummy_inputs(), return_dict=False)[0]
 
-        # Filter out NaN values before comparison
         first_flat = first.flatten()
         second_flat = second.flatten()
         mask = ~(torch.isnan(first_flat) | torch.isnan(second_flat))
@@ -344,24 +339,23 @@ class ModelTesterMixin:
             first_filtered, second_filtered, atol=atol, rtol=rtol, msg="Model outputs are not deterministic"
         )
 
+    @torch.no_grad()
     def test_output(self, expected_output_shape=None):
         model = self.model_class(**self.get_init_dict())
         model.to(torch_device)
         model.eval()
 
         inputs_dict = self.get_dummy_inputs()
-        with torch.no_grad():
-            output = model(**inputs_dict, return_dict=False)[0]
+        output = model(**inputs_dict, return_dict=False)[0]
 
         assert output is not None, "Model output is None"
         assert output[0].shape == expected_output_shape or self.output_shape, (
             f"Output shape does not match expected. Expected {expected_output_shape}, got {output.shape}"
         )
 
+    @torch.no_grad()
     def test_outputs_equivalence(self):
         def set_nan_tensor_to_zero(t):
-            # Temporary fallback until `aten::_index_put_impl_` is implemented in mps
-            # Track progress in https://github.com/pytorch/pytorch/issues/77764
             device = t.device
             if device.type == "mps":
                 t = t.to("cpu")
@@ -390,9 +384,8 @@ class ModelTesterMixin:
         model.to(torch_device)
         model.eval()
 
-        with torch.no_grad():
-            outputs_dict = model(**self.get_dummy_inputs())
-            outputs_tuple = model(**self.get_dummy_inputs(), return_dict=False)
+        outputs_dict = model(**self.get_dummy_inputs())
+        outputs_tuple = model(**self.get_dummy_inputs(), return_dict=False)
 
         recursive_check(outputs_tuple, outputs_dict)
 
@@ -465,6 +458,7 @@ class ModelTesterMixin:
         reason="float16 and bfloat16 can only be use for inference with an accelerator",
     )
     @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16], ids=["fp16", "bf16"])
+    @torch.no_grad()
     def test_from_save_pretrained_dtype_inference(self, tmp_path, dtype):
         model = self.model_class(**self.get_init_dict())
         model.to(torch_device)
@@ -479,9 +473,8 @@ class ModelTesterMixin:
             else:
                 assert param.data.dtype == dtype
 
-        with torch.no_grad():
-            output = model(**self.get_dummy_inputs(), return_dict=False)[0]
-            output_loaded = model_loaded(**self.get_dummy_inputs(), return_dict=False)[0]
+        output = model(**self.get_dummy_inputs(), return_dict=False)[0]
+        output_loaded = model_loaded(**self.get_dummy_inputs(), return_dict=False)[0]
 
         assert_tensors_close(output, output_loaded, atol=1e-4, rtol=0, msg=f"Loaded model output differs for {dtype}")
 

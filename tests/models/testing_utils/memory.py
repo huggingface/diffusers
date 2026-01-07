@@ -208,7 +208,8 @@ class GroupOffloadTesterMixin:
     """
 
     @require_group_offload_support
-    def test_group_offloading(self, record_stream=False):
+    @pytest.mark.parametrize("record_stream", [False, True])
+    def test_group_offloading(self, record_stream):
         init_dict = self.get_init_dict()
         inputs_dict = self.get_dummy_inputs()
         torch.manual_seed(0)
@@ -280,8 +281,10 @@ class GroupOffloadTesterMixin:
         )
 
     @require_group_offload_support
+    @pytest.mark.parametrize("record_stream", [False, True])
+    @pytest.mark.parametrize("offload_type", ["block_level", "leaf_level"])
     @torch.no_grad()
-    def test_group_offloading_with_layerwise_casting(self, record_stream=False, offload_type="block_level"):
+    def test_group_offloading_with_layerwise_casting(self, record_stream, offload_type):
         torch.manual_seed(0)
         init_dict = self.get_init_dict()
         inputs_dict = self.get_dummy_inputs()
@@ -306,9 +309,11 @@ class GroupOffloadTesterMixin:
         _ = model(**inputs_dict)[0]
 
     @require_group_offload_support
+    @pytest.mark.parametrize("record_stream", [False, True])
+    @pytest.mark.parametrize("offload_type", ["block_level", "leaf_level"])
     @torch.no_grad()
     @torch.inference_mode()
-    def test_group_offloading_with_disk(self, tmp_path, offload_type="block_level", record_stream=False, atol=1e-5):
+    def test_group_offloading_with_disk(self, tmp_path, record_stream, offload_type, atol=1e-5):
         def _has_generator_arg(model):
             sig = inspect.signature(model.forward)
             params = sig.parameters

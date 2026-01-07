@@ -168,15 +168,15 @@ class QuantizationTesterMixin:
             f"Memory ratio {ratio:.2f} is less than expected ({expected_memory_reduction}x). unquantized={mem}, quantized={mem_quantized}"
         )
 
+    @torch.no_grad()
     def _test_quantization_inference(self, config_kwargs):
         model_quantized = self._create_quantized_model(config_kwargs)
 
-        with torch.no_grad():
-            inputs = self.get_dummy_inputs()
-            output = model_quantized(**inputs, return_dict=False)[0]
+        inputs = self.get_dummy_inputs()
+        output = model_quantized(**inputs, return_dict=False)[0]
 
-            assert output is not None, "Model output is None"
-            assert not torch.isnan(output).any(), "Model output contains NaN"
+        assert output is not None, "Model output is None"
+        assert not torch.isnan(output).any(), "Model output contains NaN"
 
     def _test_quantization_dtype_assignment(self, config_kwargs):
         model = self._create_quantized_model(config_kwargs)
@@ -196,6 +196,7 @@ class QuantizationTesterMixin:
 
         model.to(torch_device)
 
+    @torch.no_grad()
     def _test_quantization_lora_inference(self, config_kwargs):
         try:
             from peft import LoraConfig
@@ -217,13 +218,13 @@ class QuantizationTesterMixin:
         )
         model.add_adapter(lora_config)
 
-        with torch.no_grad():
-            inputs = self.get_dummy_inputs()
-            output = model(**inputs, return_dict=False)[0]
+        inputs = self.get_dummy_inputs()
+        output = model(**inputs, return_dict=False)[0]
 
-            assert output is not None, "Model output is None with LoRA"
-            assert not torch.isnan(output).any(), "Model output contains NaN with LoRA"
+        assert output is not None, "Model output is None with LoRA"
+        assert not torch.isnan(output).any(), "Model output contains NaN with LoRA"
 
+    @torch.no_grad()
     def _test_quantization_serialization(self, config_kwargs, tmp_path):
         model = self._create_quantized_model(config_kwargs)
 
@@ -231,10 +232,9 @@ class QuantizationTesterMixin:
 
         model_loaded = self.model_class.from_pretrained(str(tmp_path))
 
-        with torch.no_grad():
-            inputs = self.get_dummy_inputs()
-            output = model_loaded(**inputs, return_dict=False)[0]
-            assert not torch.isnan(output).any(), "Loaded model output contains NaN"
+        inputs = self.get_dummy_inputs()
+        output = model_loaded(**inputs, return_dict=False)[0]
+        assert not torch.isnan(output).any(), "Loaded model output contains NaN"
 
     def _test_quantized_layers(self, config_kwargs):
         model_fp = self._load_unquantized_model()
@@ -317,6 +317,7 @@ class QuantizationTesterMixin:
             f"Model with exclusions should be larger. With exclusion: {mem_with_exclusion}, fully quantized: {mem_fully_quantized}"
         )
 
+    @torch.no_grad()
     def _test_quantization_device_map(self, config_kwargs):
         """
         Test that quantized models work correctly with device_map="auto".
@@ -326,17 +327,15 @@ class QuantizationTesterMixin:
         """
         model = self._create_quantized_model(config_kwargs, device_map="auto")
 
-        # Verify device map is set
         assert hasattr(model, "hf_device_map"), "Model should have hf_device_map attribute"
         assert model.hf_device_map is not None, "hf_device_map should not be None"
 
-        # Verify inference works
-        with torch.no_grad():
-            inputs = self.get_dummy_inputs()
-            output = model(**inputs, return_dict=False)[0]
-            assert output is not None, "Model output is None"
-            assert not torch.isnan(output).any(), "Model output contains NaN"
+        inputs = self.get_dummy_inputs()
+        output = model(**inputs, return_dict=False)[0]
+        assert output is not None, "Model output is None"
+        assert not torch.isnan(output).any(), "Model output contains NaN"
 
+    @torch.no_grad()
     def _test_dequantize(self, config_kwargs):
         """
         Test that dequantize() converts quantized model back to standard linear layers.
@@ -346,24 +345,19 @@ class QuantizationTesterMixin:
         """
         model = self._create_quantized_model(config_kwargs)
 
-        # Verify model has dequantize method
         if not hasattr(model, "dequantize"):
             pytest.skip("Model does not have dequantize method")
 
-        # Dequantize the model
         model.dequantize()
 
-        # Verify no modules are quantized after dequantization
         for name, module in model.named_modules():
             if isinstance(module, torch.nn.Linear):
                 assert not self._is_module_quantized(module), f"Module {name} is still quantized after dequantize()"
 
-        # Verify inference still works after dequantization
-        with torch.no_grad():
-            inputs = self.get_dummy_inputs()
-            output = model(**inputs, return_dict=False)[0]
-            assert output is not None, "Model output is None after dequantization"
-            assert not torch.isnan(output).any(), "Model output contains NaN after dequantization"
+        inputs = self.get_dummy_inputs()
+        output = model(**inputs, return_dict=False)[0]
+        assert output is not None, "Model output is None after dequantization"
+        assert not torch.isnan(output).any(), "Model output contains NaN after dequantization"
 
     def _test_quantization_training(self, config_kwargs):
         """
@@ -566,6 +560,7 @@ class BitsAndBytesTesterMixin(BitsAndBytesConfigMixin, QuantizationTesterMixin):
             torch.bfloat16,
         ], f"Unexpected dtype: {model.config['_pre_quantization_dtype']}"
 
+    @torch.no_grad()
     def test_bnb_keep_modules_in_fp32(self):
         if not hasattr(self.model_class, "_keep_in_fp32_modules"):
             pytest.skip(f"{self.model_class.__name__} does not have _keep_in_fp32_modules")
@@ -589,9 +584,8 @@ class BitsAndBytesTesterMixin(BitsAndBytesConfigMixin, QuantizationTesterMixin):
                             f"Module {name} should be uint8 but is {module.weight.dtype}"
                         )
 
-            with torch.no_grad():
-                inputs = self.get_dummy_inputs()
-                _ = model(**inputs)
+            inputs = self.get_dummy_inputs()
+            _ = model(**inputs)
         finally:
             if original_fp32_modules is not None:
                 self.model_class._keep_in_fp32_modules = original_fp32_modules
@@ -1097,6 +1091,7 @@ class QuantizationCompileTesterMixin:
         backend_empty_cache(torch_device)
         torch.compiler.reset()
 
+    @torch.no_grad()
     def _test_torch_compile(self, config_kwargs):
         """
         Test that torch.compile works correctly with a quantized model.
@@ -1108,16 +1103,15 @@ class QuantizationCompileTesterMixin:
         model.to(torch_device)
         model.eval()
 
-        # Compile the model with fullgraph=True to ensure no graph breaks
         model = torch.compile(model, fullgraph=True)
 
-        # Run inference with error_on_recompile to detect recompilation issues
-        with torch.no_grad(), torch._dynamo.config.patch(error_on_recompile=True):
+        with torch._dynamo.config.patch(error_on_recompile=True):
             inputs = self.get_dummy_inputs()
             output = model(**inputs, return_dict=False)[0]
             assert output is not None, "Model output is None"
             assert not torch.isnan(output).any(), "Model output contains NaN"
 
+    @torch.no_grad()
     def _test_torch_compile_with_group_offload(self, config_kwargs, use_stream=False):
         """
         Test that torch.compile works correctly with a quantized model and group offloading.
@@ -1143,11 +1137,10 @@ class QuantizationCompileTesterMixin:
         model.enable_group_offload(**group_offload_kwargs)
         model = torch.compile(model)
 
-        with torch.no_grad():
-            inputs = self.get_dummy_inputs()
-            output = model(**inputs, return_dict=False)[0]
-            assert output is not None, "Model output is None"
-            assert not torch.isnan(output).any(), "Model output contains NaN"
+        inputs = self.get_dummy_inputs()
+        output = model(**inputs, return_dict=False)[0]
+        assert output is not None, "Model output is None"
+        assert not torch.isnan(output).any(), "Model output contains NaN"
 
 
 @is_bitsandbytes

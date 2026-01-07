@@ -40,7 +40,6 @@ class AttentionTesterMixin:
 
     Expected class attributes to be set by subclasses:
         - model_class: The model class to test
-        - base_precision: Tolerance for floating point comparisons (default: 1e-3)
         - uses_custom_attn_processor: Whether model uses custom attention processors (default: False)
 
     Expected methods to be implemented by subclasses:
@@ -51,8 +50,7 @@ class AttentionTesterMixin:
         Use `pytest -m "not attention"` to skip these tests
     """
 
-    base_precision = 1e-3
-
+    @torch.no_grad()
     def test_fuse_unfuse_qkv_projections(self):
         init_dict = self.get_init_dict()
         inputs_dict = self.get_dummy_inputs()
@@ -63,14 +61,10 @@ class AttentionTesterMixin:
         if not hasattr(model, "fuse_qkv_projections"):
             pytest.skip("Model does not support QKV projection fusion.")
 
-        # Get output before fusion
-        with torch.no_grad():
-            output_before_fusion = model(**inputs_dict, return_dict=False)[0]
+        output_before_fusion = model(**inputs_dict, return_dict=False)[0]
 
-        # Fuse projections
         model.fuse_qkv_projections()
 
-        # Verify fusion occurred by checking for fused attributes
         has_fused_projections = False
         for module in model.modules():
             if isinstance(module, AttentionModuleMixin):
@@ -80,38 +74,30 @@ class AttentionTesterMixin:
                     break
 
         if has_fused_projections:
-            # Get output after fusion
-            with torch.no_grad():
-                output_after_fusion = model(**inputs_dict, return_dict=False)[0]
+            output_after_fusion = model(**inputs_dict, return_dict=False)[0]
 
-            # Verify outputs match
             assert_tensors_close(
                 output_before_fusion,
                 output_after_fusion,
-                atol=self.base_precision,
+                atol=1e-3,
                 rtol=0,
                 msg="Output should not change after fusing projections",
             )
 
-            # Unfuse projections
             model.unfuse_qkv_projections()
 
-            # Verify unfusion occurred
             for module in model.modules():
                 if isinstance(module, AttentionModuleMixin):
                     assert not hasattr(module, "to_qkv"), "to_qkv should be removed after unfusing"
                     assert not hasattr(module, "to_kv"), "to_kv should be removed after unfusing"
                     assert not module.fused_projections, "fused_projections flag should be False"
 
-            # Get output after unfusion
-            with torch.no_grad():
-                output_after_unfusion = model(**inputs_dict, return_dict=False)[0]
+            output_after_unfusion = model(**inputs_dict, return_dict=False)[0]
 
-            # Verify outputs still match
             assert_tensors_close(
                 output_before_fusion,
                 output_after_unfusion,
-                atol=self.base_precision,
+                atol=1e-3,
                 rtol=0,
                 msg="Output should match original after unfusing projections",
             )

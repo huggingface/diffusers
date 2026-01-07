@@ -98,6 +98,7 @@ class TorchCompileTesterMixin:
             _ = model(**inputs_dict)
             _ = model(**inputs_dict)
 
+    @torch.no_grad()
     def test_compile_with_group_offloading(self):
         if not self.model_class._supports_group_offloading:
             pytest.skip("Model does not support group offloading.")
@@ -120,10 +121,10 @@ class TorchCompileTesterMixin:
         model.enable_group_offload(**group_offload_kwargs)
         model.compile()
 
-        with torch.no_grad():
-            _ = model(**inputs_dict)
-            _ = model(**inputs_dict)
+        _ = model(**inputs_dict)
+        _ = model(**inputs_dict)
 
+    @torch.no_grad()
     def test_compile_on_different_shapes(self):
         if self.different_shapes_for_compilation is None:
             pytest.skip(f"Skipping as `different_shapes_for_compilation` is not set for {self.__class__.__name__}.")
@@ -135,10 +136,11 @@ class TorchCompileTesterMixin:
         model = torch.compile(model, fullgraph=True, dynamic=True)
 
         for height, width in self.different_shapes_for_compilation:
-            with torch._dynamo.config.patch(error_on_recompile=True), torch.no_grad():
+            with torch._dynamo.config.patch(error_on_recompile=True):
                 inputs_dict = self.get_dummy_inputs(height=height, width=width)
                 _ = model(**inputs_dict)
 
+    @torch.no_grad()
     def test_compile_works_with_aot(self, tmp_path):
         from torch._inductor.package import load_package
 
@@ -155,6 +157,5 @@ class TorchCompileTesterMixin:
 
         model.forward = loaded_binary
 
-        with torch.no_grad():
-            _ = model(**inputs_dict)
-            _ = model(**inputs_dict)
+        _ = model(**inputs_dict)
+        _ = model(**inputs_dict)
