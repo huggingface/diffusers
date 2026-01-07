@@ -11,7 +11,6 @@ from typing import Any, Dict, Iterable, List, Optional, Set, Tuple, Type, Union
 
 import numpy as np
 import torch
-from accelerate.logging import get_logger
 
 
 if getattr(torch, "distributed", None) is not None:
@@ -26,6 +25,7 @@ from .utils import (
     convert_state_dict_to_diffusers,
     convert_state_dict_to_peft,
     deprecate,
+    is_accelerate_available,
     is_peft_available,
     is_torch_npu_available,
     is_torchvision_available,
@@ -38,6 +38,9 @@ if is_transformers_available():
 
     if transformers.integrations.deepspeed.is_deepspeed_zero3_enabled():
         import deepspeed
+
+if is_accelerate_available():
+    from accelerate.logging import get_logger
 
 if is_peft_available():
     from peft import set_peft_model_state_dict
