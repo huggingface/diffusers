@@ -16,7 +16,7 @@ from diffusers import (
     LTX2Pipeline,
     LTX2VideoTransformer3DModel,
 )
-from diffusers.pipelines.ltx2 import LTX2TextConnectors, LTX2Vocoder
+from diffusers.pipelines.ltx2 import LTX2LatentUpsamplerModel, LTX2TextConnectors, LTX2Vocoder
 from diffusers.utils.import_utils import is_accelerate_available
 
 
@@ -577,6 +577,33 @@ def convert_ltx2_vocoder(original_state_dict: Dict[str, Any], version: str) -> D
     return vocoder
 
 
+def get_ltx2_spatial_latent_upsampler_config(version: str):
+    if version == "2.0":
+        config = {
+            "in_channels": 128,
+            "mid_channels": 1024,
+            "num_blocks_per_stage": 4,
+            "dims": 3,
+            "spatial_upsample": True,
+            "temporal_upsample": False,
+            "rational_spatial_scale": 2.0,
+        }
+    else:
+        raise ValueError(f"Unsupported version: {version}")
+    return config
+
+
+def convert_ltx2_spatial_latent_upsampler(
+    original_state_dict: Dict[str, Any], config: Dict[str, Any], dtype: torch.dtype
+):
+    with init_empty_weights():
+        latent_upsampler = LTX2LatentUpsamplerModel(**config)
+
+    latent_upsampler.load_state_dict(original_state_dict, strict=True, assign=True)
+    latent_upsampler.to(dtype)
+    return latent_upsampler
+
+
 def load_original_checkpoint(args, filename: Optional[str]) -> Dict[str, Any]:
     if args.original_state_dict_repo_id is not None:
         ckpt_path = hf_hub_download(repo_id=args.original_state_dict_repo_id, filename=filename)
@@ -682,6 +709,12 @@ def get_args():
         type=str,
         help="HF Hub id for the LTX 2.0 text tokenizer",
     )
+    parser.add_argument(
+        "--latent_upsampler_filename",
+        default="rc1/ltx-2-spatial-upscaler-x2-1.0-rc1.safetensors",
+        type=str,
+        help="Latent upsampler filename",
+    )
 
     parser.add_argument("--vae", action="store_true", help="Whether to convert the video VAE model")
     parser.add_argument("--audio_vae", action="store_true", help="Whether to convert the audio VAE model")
@@ -689,6 +722,7 @@ def get_args():
     parser.add_argument("--connectors", action="store_true", help="Whether to convert the connector model")
     parser.add_argument("--vocoder", action="store_true", help="Whether to convert the vocoder model")
     parser.add_argument("--text_encoder", action="store_true", help="Whether to conver the text encoder")
+    parser.add_argument("--latent_upsampler", action="store_true", help="Whether to convert the latent upsampler")
     parser.add_argument(
         "--full_pipeline",
         action="store_true",
@@ -787,6 +821,18 @@ def main(args):
         tokenizer = AutoTokenizer.from_pretrained(args.tokenizer_id)
         if not args.full_pipeline:
             tokenizer.save_pretrained(os.path.join(args.output_path, "tokenizer"))
+
+    if args.latent_upsampler:
+        original_latent_upsampler_ckpt = load_hub_or_local_checkpoint(
+            repo_id=args.original_state_dict_repo_id, filename=args.latent_upsampler_filename
+        )
+        latent_upsampler_config = get_ltx2_spatial_latent_upsampler_config(args.version)
+        latent_upsampler = convert_ltx2_spatial_latent_upsampler(
+            original_latent_upsampler_ckpt,
+            latent_upsampler_config,
+            dtype=vae_dtype,
+        )
+        latent_upsampler.save_pretrained(os.path.join(args.output_path, "latent_upsampler"))
 
     if args.full_pipeline:
         scheduler = FlowMatchEulerDiscreteScheduler(

@@ -1082,21 +1082,27 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLoraLoaderMix
                 if XLA_AVAILABLE:
                     xm.mark_step()
 
+        latents = self._unpack_latents(
+            latents,
+            latent_num_frames,
+            latent_height,
+            latent_width,
+            self.transformer_spatial_patch_size,
+            self.transformer_temporal_patch_size,
+        )
+        latents = self._denormalize_latents(
+            latents, self.vae.latents_mean, self.vae.latents_std, self.vae.config.scaling_factor
+        )
+
+        audio_latents = self._denormalize_audio_latents(
+            audio_latents, self.audio_vae.latents_mean, self.audio_vae.latents_std
+        )
+        audio_latents = self._unpack_audio_latents(audio_latents, audio_num_frames, num_mel_bins=latent_mel_bins)
+
         if output_type == "latent":
             video = latents
             audio = audio_latents
         else:
-            latents = self._unpack_latents(
-                latents,
-                latent_num_frames,
-                latent_height,
-                latent_width,
-                self.transformer_spatial_patch_size,
-                self.transformer_temporal_patch_size,
-            )
-            latents = self._denormalize_latents(
-                latents, self.vae.latents_mean, self.vae.latents_std, self.vae.config.scaling_factor
-            )
             latents = latents.to(prompt_embeds.dtype)
 
             if not self.vae.config.timestep_conditioning:
@@ -1121,10 +1127,6 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLoraLoaderMix
             video = self.video_processor.postprocess_video(video, output_type=output_type)
 
             audio_latents = audio_latents.to(self.audio_vae.dtype)
-            audio_latents = self._denormalize_audio_latents(
-                audio_latents, self.audio_vae.latents_mean, self.audio_vae.latents_std
-            )
-            audio_latents = self._unpack_audio_latents(audio_latents, audio_num_frames, num_mel_bins=latent_mel_bins)
             generated_mel_spectrograms = self.audio_vae.decode(audio_latents, return_dict=False)[0]
             audio = self.vocoder(generated_mel_spectrograms)
 
