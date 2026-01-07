@@ -213,6 +213,15 @@ class QwenImageControlNetModel(
         encoder_hidden_states = self.txt_norm(encoder_hidden_states)
         encoder_hidden_states = self.txt_in(encoder_hidden_states)
 
+        # Construct joint attention mask once to avoid reconstructing in every block
+        block_attention_kwargs = joint_attention_kwargs.copy() if joint_attention_kwargs is not None else {}
+        if encoder_hidden_states_mask is not None:
+            # Build joint mask: [text_mask, all_ones_for_image]
+            batch_size, image_seq_len = hidden_states.shape[:2]
+            image_mask = torch.ones((batch_size, image_seq_len), dtype=torch.bool, device=hidden_states.device)
+            joint_attention_mask = torch.cat([encoder_hidden_states_mask, image_mask], dim=1)
+            block_attention_kwargs["attention_mask"] = joint_attention_mask
+
         block_samples = ()
         for block in self.transformer_blocks:
             if torch.is_grad_enabled() and self.gradient_checkpointing:
@@ -220,19 +229,20 @@ class QwenImageControlNetModel(
                     block,
                     hidden_states,
                     encoder_hidden_states,
-                    encoder_hidden_states_mask,
+                    None,  # Don't pass encoder_hidden_states_mask (using attention_mask instead)
                     temb,
                     image_rotary_emb,
+                    block_attention_kwargs,
                 )
 
             else:
                 encoder_hidden_states, hidden_states = block(
                     hidden_states=hidden_states,
                     encoder_hidden_states=encoder_hidden_states,
-                    encoder_hidden_states_mask=encoder_hidden_states_mask,
+                    encoder_hidden_states_mask=None,  # Don't pass (using attention_mask instead)
                     temb=temb,
                     image_rotary_emb=image_rotary_emb,
-                    joint_attention_kwargs=joint_attention_kwargs,
+                    joint_attention_kwargs=block_attention_kwargs,
                 )
             block_samples = block_samples + (hidden_states,)
 
