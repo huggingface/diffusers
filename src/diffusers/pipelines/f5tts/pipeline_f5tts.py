@@ -102,7 +102,24 @@ class F5FlowPipeline(DiffusionPipeline):
         list_idx_tensors = [torch.tensor([vocab_char_map.get(c, 0) for c in t]) for t in text]  # pinyin or char style
         text = pad_sequence(list_idx_tensors, padding_value=padding_value, batch_first=True)
         return text
-    
+
+
+    def get_epss_timesteps(self, n, device, dtype):
+        dt = 1 / 32
+        predefined_timesteps = {
+            5: [0, 2, 4, 8, 16, 32],
+            6: [0, 2, 4, 6, 8, 16, 32],
+            7: [0, 2, 4, 6, 8, 16, 24, 32],
+            10: [0, 2, 4, 6, 8, 12, 16, 20, 24, 28, 32],
+            12: [0, 2, 4, 6, 8, 10, 12, 14, 16, 20, 24, 28, 32],
+            16: [0, 1, 2, 3, 4, 5, 6, 7, 8, 10, 12, 14, 16, 20, 24, 28, 32],
+        }
+        t = predefined_timesteps.get(n, [])
+        if not t:
+            return torch.linspace(0, 1, n + 1, device=device, dtype=dtype)
+        return dt * torch.tensor(t, device=device, dtype=dtype)
+
+        
 
 
 
@@ -249,13 +266,12 @@ class F5FlowPipeline(DiffusionPipeline):
         )
             
             
-        sigmas = torch.linspace(0, 1, num_inference_steps + 1, device=device, dtype=step_cond_input.dtype)
+        sigmas = self.get_epss_timesteps(num_inference_steps, device, step_cond_input.dtype)
         if sway_sampling_coef is not None:
             sigmas = sigmas + sway_sampling_coef * (torch.cos(torch.pi / 2 * sigmas) - 1 + sigmas)
         timesteps = sigmas * (self.scheduler.num_train_timesteps - 1)
         timesteps = timesteps.round().long()
         self.scheduler.set_timesteps(num_inference_steps+1, device=device, sigmas=sigmas.cpu(), timesteps=timesteps.cpu())
-        timesteps = self.scheduler.timesteps.to(device)
         
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(sigmas[:-1]):
@@ -290,12 +306,9 @@ class F5FlowPipeline(DiffusionPipeline):
                     generator=generator
                 ).prev_sample
                 
+                
                 progress_bar.update()
                 
-
-
-
-        # TODO Add Empirically Pruned Step Sampling for low NFE
         sampled = y0
         out = sampled
         out = torch.where(cond_mask, cond, out)
