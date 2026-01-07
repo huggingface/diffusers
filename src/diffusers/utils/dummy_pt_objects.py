@@ -967,7 +967,7 @@ class HiDreamImageTransformer2DModel(metaclass=DummyObject):
         requires_backends(cls, ["torch"])
 
 
-class GlmImageDecoderTransformer2DModel(metaclass=DummyObject):
+class GlmImageTransformer2DModel(metaclass=DummyObject):
     _backends = ["torch"]
 
     def __init__(self, *args, **kwargs):

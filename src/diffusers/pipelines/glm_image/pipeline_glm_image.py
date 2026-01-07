@@ -25,13 +25,13 @@ from transformers import AutoTokenizer, T5EncoderModel
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...image_processor import VaeImageProcessor
 from ...loaders import CogView4LoraLoaderMixin
-from ...models import AutoencoderKL, GlmImageDecoderTransformer2DModel
-from ...models.transformers.transformer_glm_image import GlmImageDecoderAttenProcessorState
+from ...models import AutoencoderKL, GlmImageTransformer2DModel
+from ...models.transformers.transformer_glm_image import GlmImageAttenProcessorState
 from ...pipelines.pipeline_utils import DiffusionPipeline
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import is_torch_xla_available, logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
-from .pipeline_output import GlmImageDecoderPipelineOutput
+from .pipeline_output import GlmImagePipelineOutput
 
 
 if is_torch_xla_available():
@@ -47,9 +47,9 @@ EXAMPLE_DOC_STRING = """
     Examples:
         ```python
         >>> import torch
-        >>> from diffusers import GlmImageDecoderPipeline
+        >>> from diffusers import GlmImagePipeline
 
-        >>> pipe = GlmImageDecoderPipeline.from_pretrained("THUDM/CogView4-6B", torch_dtype=torch.bfloat16)
+        >>> pipe = GlmImagePipeline.from_pretrained("THUDM/CogView4-6B", torch_dtype=torch.bfloat16)
         >>> pipe.to("cuda")
 
         >>> prompt = "A photo of an astronaut riding a horse on mars"
@@ -151,7 +151,7 @@ def retrieve_latents(
         raise AttributeError("Could not access latents of provided encoder_output")
 
 
-class GlmImageDecoderPipeline(DiffusionPipeline, CogView4LoraLoaderMixin):
+class GlmImagePipeline(DiffusionPipeline, CogView4LoraLoaderMixin):
     r"""
     Pipeline for text-to-image generation using CogView4.
 
@@ -162,7 +162,7 @@ class GlmImageDecoderPipeline(DiffusionPipeline, CogView4LoraLoaderMixin):
         vae ([`AutoencoderKL`]):
             Variational Auto-Encoder (VAE) Model to encode and decode images to and from latent representations.
         text_encoder ([`GlmModel`]):
-            Frozen text-encoder. CogView4 uses [Glm-4-9b-hf](https://huggingface.co/THUDM/Glm-4-9b-hf).
+            Frozen text-encoder. CogView4 uses [GLM-Image](https://huggingface.co/zai-org/GLM-Image).
         tokenizer (`PreTrainedTokenizer`):
             Tokenizer of class
             [PreTrainedTokenizer](https://huggingface.co/docs/transformers/main/en/main_classes/tokenizer#transformers.PreTrainedTokenizer).
@@ -179,15 +179,15 @@ class GlmImageDecoderPipeline(DiffusionPipeline, CogView4LoraLoaderMixin):
     def __init__(
         self,
         tokenizer: AutoTokenizer,
-        glyph_encoder: T5EncoderModel,
+        text_encoder: T5EncoderModel,
         vae: AutoencoderKL,
-        transformer: GlmImageDecoderTransformer2DModel,
+        transformer: GlmImageTransformer2DModel,
         scheduler: FlowMatchEulerDiscreteScheduler,
     ):
         super().__init__()
 
         self.register_modules(
-            tokenizer=tokenizer, glyph_encoder=glyph_encoder, vae=vae, transformer=transformer, scheduler=scheduler
+            tokenizer=tokenizer, text_encoder=text_encoder, vae=vae, transformer=transformer, scheduler=scheduler
         )
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1) if getattr(self, "vae", None) else 8
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
@@ -221,7 +221,7 @@ class GlmImageDecoderPipeline(DiffusionPipeline, CogView4LoraLoaderMixin):
         dtype: Optional[torch.dtype] = None,
     ):
         device = device or self._execution_device
-        dtype = dtype or self.glyph_encoder.dtype
+        dtype = dtype or self.text_encoder.dtype
 
         glyph_texts = self.get_glyph_texts(prompt)
         input_ids = self.tokenizer(
@@ -240,7 +240,7 @@ class GlmImageDecoderPipeline(DiffusionPipeline, CogView4LoraLoaderMixin):
             [input_ids_ + [self.tokenizer.pad_token_id] * (max_length - len(input_ids_)) for input_ids_ in input_ids],
             device=device,
         )
-        outputs = self.glyph_encoder(input_ids, attention_mask=attention_mask)
+        outputs = self.text_encoder(input_ids, attention_mask=attention_mask)
         glyph_embeds = outputs.last_hidden_state[attention_mask.bool()].unsqueeze(0)
 
         return glyph_embeds.to(device=device, dtype=dtype)
@@ -442,7 +442,7 @@ class GlmImageDecoderPipeline(DiffusionPipeline, CogView4LoraLoaderMixin):
         ] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
         max_sequence_length: int = 2048,
-    ) -> Union[GlmImageDecoderPipelineOutput, Tuple]:
+    ) -> Union[GlmImagePipelineOutput, Tuple]:
         """
         Function invoked when calling the pipeline for generation.
 
@@ -615,7 +615,7 @@ class GlmImageDecoderPipeline(DiffusionPipeline, CogView4LoraLoaderMixin):
         )
 
         if condition_images is not None:
-            self.transformer.set_attention_processors_state(GlmImageDecoderAttenProcessorState.ImageEditWriteKV)
+            self.transformer.set_attention_processors_state(GlmImageAttenProcessorState.ImageEditWriteKV)
             latents_mean = (
                 torch.tensor(self.vae.config.latents_mean)
                 .view(1, self.vae.config.latent_channels, 1, 1)
@@ -698,7 +698,7 @@ class GlmImageDecoderPipeline(DiffusionPipeline, CogView4LoraLoaderMixin):
                 timestep = t.expand(latents.shape[0]) - 1
 
                 if condition_images is not None:
-                    self.transformer.set_attention_processors_state(GlmImageDecoderAttenProcessorState.ImageEditReadKV)
+                    self.transformer.set_attention_processors_state(GlmImageAttenProcessorState.ImageEditReadKV)
 
                 noise_pred_cond = self.transformer(
                     hidden_states=latent_model_input,
@@ -717,7 +717,7 @@ class GlmImageDecoderPipeline(DiffusionPipeline, CogView4LoraLoaderMixin):
                 if self.do_classifier_free_guidance:
                     if condition_images is not None:
                         self.transformer.set_attention_processors_state(
-                            GlmImageDecoderAttenProcessorState.ImageEditDontReadKV
+                            GlmImageAttenProcessorState.ImageEditDontReadKV
                         )
                     noise_pred_uncond = self.transformer(
                         hidden_states=latent_model_input,
@@ -755,7 +755,7 @@ class GlmImageDecoderPipeline(DiffusionPipeline, CogView4LoraLoaderMixin):
                     xm.mark_step()
 
         self._current_timestep = None
-        self.transformer.set_attention_processors_state(GlmImageDecoderAttenProcessorState.ImageGen)
+        self.transformer.set_attention_processors_state(GlmImageAttenProcessorState.ImageGen)
         self.transformer.clear_attention_processors_cache()
 
         if not output_type == "latent":
@@ -783,4 +783,4 @@ class GlmImageDecoderPipeline(DiffusionPipeline, CogView4LoraLoaderMixin):
         if not return_dict:
             return (condition_images,)
 
-        return GlmImageDecoderPipelineOutput(images=condition_images)
+        return GlmImagePipelineOutput(images=condition_images)

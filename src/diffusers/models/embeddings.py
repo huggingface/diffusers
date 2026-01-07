@@ -1658,7 +1658,7 @@ class CogView3CombinedTimestepSizeEmbeddings(nn.Module):
         return conditioning
 
 
-class GlmImageDecoderCombinedTimestepSizeEmbeddings(nn.Module):
+class GlmImageCombinedTimestepSizeEmbeddings(nn.Module):
     def __init__(self, embedding_dim: int, condition_dim: int, pooled_projection_dim: int, timesteps_dim: int = 256):
         super().__init__()
 

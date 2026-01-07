@@ -8,7 +8,7 @@ from ...utils import BaseOutput
 
 
 @dataclass
-class GlmImageDecoderPipelineOutput(BaseOutput):
+class GlmImagePipelineOutput(BaseOutput):
     """
     Output class for CogView3 pipelines.
 

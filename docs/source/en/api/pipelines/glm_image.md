@@ -20,12 +20,12 @@
 
 This pipeline was contributed by [zRzRzRzRzRzRzR](https://github.com/zRzRzRzRzRzRzR). The original codebase can be found [here](https://huggingface.co/zai-org). The original weights can be found under [hf.co/zai-org](https://huggingface.co/zai-org).
 
-## GlmImageDecoderPipeline
+## GlmImagePipeline
 
-[[autodoc]] GlmImageDecoderPipeline
+[[autodoc]] GlmImagePipeline
   - all
   - __call__
 
-## GlmImageDecoderPipelineOutput
+## GlmImagePipelineOutput
 
-[[autodoc]] pipelines.cogview4.pipeline_output.GlmImageDecoderPipelineOutput
+[[autodoc]] pipelines.cogview4.pipeline_output.GlmImagePipelineOutput

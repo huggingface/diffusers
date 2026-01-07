@@ -354,7 +354,7 @@
       - local: api/models/flux_transformer
         title: FluxTransformer2DModel
       - local: api/models/glm_image_transformer2d
-        title: GlmImageDecoderTransformer2DModel
+        title: GlmImageTransformer2DModel
       - local: api/models/hidream_image_transformer
         title: HiDreamImageTransformer2DModel
       - local: api/models/hunyuan_transformer2d

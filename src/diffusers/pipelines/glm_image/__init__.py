@@ -12,7 +12,7 @@ from ...utils import (
 
 _dummy_objects = {}
 _additional_imports = {}
-_import_structure = {"pipeline_output": ["GlmImageDecoderPipelineOutput"]}
+_import_structure = {"pipeline_output": ["GlmImagePipelineOutput"]}
 
 try:
     if not (is_transformers_available() and is_torch_available()):
@@ -22,7 +22,7 @@ except OptionalDependencyNotAvailable:
 
     _dummy_objects.update(get_objects_from_module(dummy_torch_and_transformers_objects))
 else:
-    _import_structure["pipeline_glm_image"] = ["GlmImageDecoderPipeline"]
+    _import_structure["pipeline_glm_image"] = ["GlmImagePipeline"]
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     try:
         if not (is_transformers_available() and is_torch_available()):
@@ -30,7 +30,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     except OptionalDependencyNotAvailable:
         from ...utils.dummy_torch_and_transformers_objects import *  # noqa F403
     else:
-        from .pipeline_glm_image import GlmImageDecoderPipeline
+        from .pipeline_glm_image import GlmImagePipeline
 else:
     import sys
 

@@ -9,10 +9,10 @@ Unless required by applicable law or agreed to in writing, software distributed 
 an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the
 specific language governing permissions and limitations under the License. -->
 
-# GlmImageDecoderTransformer2DModel
+# GlmImageTransformer2DModel
 
-A Diffusion Transformer model for 2D data from [GlmImageDecoderTransformer2DModel]()
+A Diffusion Transformer model for 2D data from [GlmImageTransformer2DModel]()
 
-## GlmImageDecoderTransformer2DModel
+## GlmImageTransformer2DModel
 
-[[autodoc]] GlmImageDecoderTransformer2DModel
+[[autodoc]] GlmImageTransformer2DModel
