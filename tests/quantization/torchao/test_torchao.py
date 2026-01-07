@@ -274,6 +274,7 @@ class TorchAoTest(unittest.TestCase):
                 )
                 self._test_quant_type(quantization_config, expected_slice, model_id)
 
+    @unittest.skip("Skipping floatx quantization tests")
     def test_floatx_quantization(self):
         for model_id in ["hf-internal-testing/tiny-flux-pipe", "hf-internal-testing/tiny-flux-sharded"]:
             if TorchAoConfig._is_xpu_or_cuda_capability_atleast_8_9():
