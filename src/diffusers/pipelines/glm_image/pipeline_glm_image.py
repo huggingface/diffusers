@@ -15,12 +15,13 @@
 
 import inspect
 import re
+from math import sqrt
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import PIL
 import torch
-from transformers import AutoTokenizer, T5EncoderModel, GlmImageForConditionalGeneration
+from transformers import ByT5Tokenizer, GlmImageForConditionalGeneration, GlmImageProcessor, T5EncoderModel
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...image_processor import VaeImageProcessor
@@ -49,10 +50,10 @@ EXAMPLE_DOC_STRING = """
         >>> import torch
         >>> from diffusers import GlmImagePipeline
 
-        >>> pipe = GlmImagePipeline.from_pretrained("THUDM/CogView4-6B", torch_dtype=torch.bfloat16)
+        >>> pipe = GlmImagePipeline.from_pretrained("zai-org/GLM-Image", torch_dtype=torch.bfloat16)
         >>> pipe.to("cuda")
 
-        >>> prompt = "A photo of an astronaut riding a horse on mars"
+        >>> prompt = "A photo of an astronaut riding a horse on mars<sop>36 24<eop>"
         >>> image = pipe(prompt).images[0]
         >>> image.save("output.png")
         ```
@@ -81,25 +82,6 @@ def retrieve_timesteps(
     r"""
     Calls the scheduler's `set_timesteps` method and retrieves timesteps from the scheduler after the call. Handles
     custom timesteps. Any kwargs will be supplied to `scheduler.set_timesteps`.
-
-    Args:
-        scheduler (`SchedulerMixin`):
-            The scheduler to get timesteps from.
-        num_inference_steps (`int`):
-            The number of diffusion steps used when generating samples with a pre-trained model. If used, `timesteps`
-            must be `None`.
-        device (`str` or `torch.device`, *optional*):
-            The device to which the timesteps should be moved to. If `None`, the timesteps are not moved.
-        timesteps (`List[int]`, *optional*):
-            Custom timesteps used to override the timestep spacing strategy of the scheduler. If `timesteps` is passed,
-            `num_inference_steps` and `sigmas` must be `None`.
-        sigmas (`List[float]`, *optional*):
-            Custom sigmas used to override the timestep spacing strategy of the scheduler. If `sigmas` is passed,
-            `num_inference_steps` and `timesteps` must be `None`.
-
-    Returns:
-        `Tuple[torch.Tensor, int]`: A tuple where the first element is the timestep schedule from the scheduler and the
-        second element is the number of inference steps.
     """
     accepts_timesteps = "timesteps" in set(inspect.signature(scheduler.set_timesteps).parameters.keys())
     accepts_sigmas = "sigmas" in set(inspect.signature(scheduler.set_timesteps).parameters.keys())
@@ -153,32 +135,36 @@ def retrieve_latents(
 
 class GlmImagePipeline(DiffusionPipeline, CogView4LoraLoaderMixin):
     r"""
-    Pipeline for text-to-image generation using CogView4.
+    Pipeline for text-to-image generation using GLM-Image.
 
-    This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods the
-    library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
+    This pipeline integrates both the AR (autoregressive) model for token generation and the DiT (diffusion
+    transformer) model for image decoding.
 
     Args:
         vae ([`AutoencoderKL`]):
             Variational Auto-Encoder (VAE) Model to encode and decode images to and from latent representations.
-        text_encoder ([`GlmModel`]):
-            Frozen text-encoder. CogView4 uses [GLM-Image](https://huggingface.co/zai-org/GLM-Image).
+        text_encoder ([`T5EncoderModel`]):
+            Frozen text-encoder for glyph embeddings.
         tokenizer (`PreTrainedTokenizer`):
-            Tokenizer of class
-            [PreTrainedTokenizer](https://huggingface.co/docs/transformers/main/en/main_classes/tokenizer#transformers.PreTrainedTokenizer).
-        transformer ([`CogView4Transformer2DModel`]):
-            A text conditioned `CogView4Transformer2DModel` to denoise the encoded image latents.
+            Tokenizer for the text encoder.
+        processor (`AutoProcessor`):
+            Processor for the AR model to handle chat templates and tokenization.
+        vision_language_encoder ([`GlmImageForConditionalGeneration`]):
+            The AR model that generates image tokens from text prompts.
+        transformer ([`GlmImageTransformer2DModel`]):
+            A text conditioned transformer to denoise the encoded image latents (DiT).
         scheduler ([`SchedulerMixin`]):
             A scheduler to be used in combination with `transformer` to denoise the encoded image latents.
     """
 
     _optional_components = []
     model_cpu_offload_seq = "transformer->vae"
-    _callback_tensor_inputs = ["latents", "prompt_embeds", "negative_prompt_embeds"]
+    _callback_tensor_inputs = ["latents", "prompt_embeds"]
 
     def __init__(
         self,
-        tokenizer: AutoTokenizer,
+        tokenizer: ByT5Tokenizer,
+        processor: GlmImageProcessor,
         text_encoder: T5EncoderModel,
         vision_language_encoder: GlmImageForConditionalGeneration,
         vae: AutoencoderKL,
@@ -189,11 +175,12 @@ class GlmImagePipeline(DiffusionPipeline, CogView4LoraLoaderMixin):
 
         self.register_modules(
             tokenizer=tokenizer,
+            processor=processor,
             text_encoder=text_encoder,
             vision_language_encoder=vision_language_encoder,
             vae=vae,
             transformer=transformer,
-            scheduler=scheduler
+            scheduler=scheduler,
         )
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1) if getattr(self, "vae", None) else 8
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
@@ -206,10 +193,197 @@ class GlmImagePipeline(DiffusionPipeline, CogView4LoraLoaderMixin):
             else 128
         )
 
-    def get_glyph_texts(
+    def _parse_and_expand_shape_info(self, prompt: str) -> Tuple[str, int, int, int, int]:
+        """
+        Parse the shape info from prompt and expand it for AR model.
+
+        Args:
+            prompt: The prompt containing <sop>H W<eop> shape specification
+
+        Returns:
+            Tuple of (expanded_prompt, token_h, token_w, prev_token_h, prev_token_w)
+        """
+        match = re.search(r"<sop>(\d+)\s+(\d+)<eop>", prompt)
+        if match is None:
+            raise ValueError(f"Prompt must contain shape info in format '<sop>H W<eop>', got: {prompt}")
+
+        token_h, token_w = int(match.group(1)), int(match.group(2))
+        ratio = token_h / token_w
+        prev_token_h = int(sqrt(ratio) * 16)
+        prev_token_w = int(sqrt(1 / ratio) * 16)
+
+        old_shape = f"<sop>{token_h} {token_w}<eop>"
+        new_shape = f"<sop>{token_h} {token_w}<eop><sop>{prev_token_h} {prev_token_w}<eop>"
+        expanded_prompt = prompt.replace(old_shape, new_shape)
+
+        return expanded_prompt, token_h, token_w, prev_token_h, prev_token_w
+
+    def _build_image_grid_thw(
         self,
-        prompt,
-    ):
+        token_h: int,
+        token_w: int,
+        prev_token_h: int,
+        prev_token_w: int,
+        existing_grid: Optional[torch.Tensor] = None,
+        device: Optional[torch.device] = None,
+    ) -> torch.Tensor:
+        """
+        Build image grid tensor for AR model.
+
+        For text-to-image: creates grid for large image + small image For image-to-image: appends new image to existing
+        grid
+        """
+        if existing_grid is None or existing_grid.numel() == 0:
+            # Text-to-image: large image + small image
+            return torch.tensor(
+                [
+                    [1, token_h, token_w],
+                    [1, prev_token_h, prev_token_w],
+                ],
+                device=device,
+            )
+        else:
+            # Image-to-image: append to existing
+            return torch.cat([existing_grid, torch.tensor([[1, token_h, token_w]], device=device)], dim=0)
+
+    def _calculate_ar_generation_params(
+        self, token_h: int, token_w: int, prev_token_h: int, prev_token_w: int, is_text_to_image: bool
+    ) -> Tuple[int, int]:
+        """
+        Calculate max_new_tokens and large_image_start_offset for AR generation.
+        """
+        large_image_tokens = token_h * token_w
+        small_image_tokens = prev_token_h * prev_token_w
+
+        if is_text_to_image:
+            max_new_tokens = small_image_tokens + large_image_tokens + 1
+            large_image_start_offset = small_image_tokens
+        else:
+            max_new_tokens = large_image_tokens + 1
+            large_image_start_offset = 0
+
+        return max_new_tokens, large_image_start_offset
+
+    def _extract_large_image_tokens(
+        self, outputs: torch.Tensor, input_length: int, large_image_start_offset: int, large_image_tokens: int
+    ) -> torch.Tensor:
+        """
+        Extract the large image tokens from AR model output.
+        """
+        generated_tokens = outputs[0][input_length:]
+        large_image_start = large_image_start_offset
+        large_image_end = large_image_start + large_image_tokens
+        return generated_tokens[large_image_start:large_image_end]
+
+    def _upsample_d32_to_d16(self, token_ids: torch.Tensor, token_h: int, token_w: int) -> torch.Tensor:
+        """
+        Upsample token IDs from d32 format to d16 format.
+
+        AR model generates tokens at d32 resolution (each token = 32x32 pixels). DiT expects tokens at d16 resolution
+        (each token = 16x16 pixels). This function performs 2x nearest-neighbor upsampling.
+
+        Args:
+            token_ids: Token IDs of shape [N] where N = token_h * token_w
+            token_h: Height in d32 token units
+            token_w: Width in d32 token units
+
+        Returns:
+            Upsampled token IDs of shape [1, N*4] where N*4 = (token_h*2) * (token_w*2)
+        """
+        # Reshape to spatial format: [1, 1, H, W]
+        token_ids = token_ids.view(1, 1, token_h, token_w)
+
+        # 2x nearest-neighbor upsampling
+        token_ids = torch.nn.functional.interpolate(token_ids.float(), scale_factor=2, mode="nearest").to(
+            dtype=torch.long
+        )
+
+        # Flatten back to [1, H*W*4]
+        token_ids = token_ids.view(1, -1)
+
+        return token_ids
+
+    def generate_prior_tokens(
+        self,
+        prompt: str,
+        condition_images: Optional[List[PIL.Image.Image]] = None,
+    ) -> Tuple[torch.Tensor, int, int]:
+        """
+        Generate prior tokens using the AR (vision_language_encoder) model.
+
+        Args:
+            prompt: The text prompt with shape info (e.g., "description<sop>36 24<eop>")
+            condition_images: Optional list of condition images for i2i
+
+        Returns:
+            Tuple of (prior_token_ids, pixel_height, pixel_width)
+            - prior_token_ids: Upsampled to d16 format, shape [1, token_h*token_w*4]
+            - pixel_height: Image height in pixels
+            - pixel_width: Image width in pixels
+        """
+        device = self.vision_language_encoder.device
+
+        # Parse and expand shape info
+        expanded_prompt, token_h, token_w, prev_h, prev_w = self._parse_and_expand_shape_info(prompt)
+
+        # Build messages for processor
+        content = []
+        if condition_images is not None:
+            for img in condition_images:
+                content.append({"type": "image", "image": img})
+        content.append({"type": "text", "text": expanded_prompt})
+        messages = [{"role": "user", "content": content}]
+
+        # Process inputs
+        inputs = self.processor.apply_chat_template(
+            messages,
+            add_generation_prompt=True,
+            tokenize=True,
+            return_dict=True,
+            return_tensors="pt",
+        )
+
+        # Determine if text-to-image or image-to-image
+        existing_grid = inputs.get("image_grid_thw")
+        is_text_to_image = existing_grid is None or existing_grid.numel() == 0
+
+        # Build image grid
+        inputs["image_grid_thw"] = self._build_image_grid_thw(
+            token_h,
+            token_w,
+            prev_h,
+            prev_w,
+            existing_grid=existing_grid if not is_text_to_image else None,
+            device=device,
+        )
+
+        # Calculate generation parameters
+        max_new_tokens, large_image_offset = self._calculate_ar_generation_params(
+            token_h, token_w, prev_h, prev_w, is_text_to_image
+        )
+        large_image_tokens = token_h * token_w
+
+        # Move inputs to device and generate
+        inputs = inputs.to(device)
+        input_length = inputs["input_ids"].shape[-1]
+
+        outputs = self.vision_language_encoder.generate(
+            **inputs,
+            max_new_tokens=max_new_tokens,
+            do_sample=True,
+        )
+
+        prior_token_ids_d32 = self._extract_large_image_tokens(
+            outputs, input_length, large_image_offset, large_image_tokens
+        )
+        prior_token_ids = self._upsample_d32_to_d16(prior_token_ids_d32, token_h, token_w)
+
+        pixel_height = token_h * 32
+        pixel_width = token_w * 32
+
+        return prior_token_ids, pixel_height, pixel_width
+
+    def get_glyph_texts(self, prompt):
         prompt = prompt[0] if isinstance(prompt, list) else prompt
         ocr_texts = (
             re.findall(r"'([^']*)'", prompt)
@@ -254,11 +428,9 @@ class GlmImagePipeline(DiffusionPipeline, CogView4LoraLoaderMixin):
     def encode_prompt(
         self,
         prompt: Union[str, List[str]],
-        negative_prompt: Optional[Union[str, List[str]]] = None,
         do_classifier_free_guidance: bool = True,
         num_images_per_prompt: int = 1,
         prompt_embeds: Optional[torch.Tensor] = None,
-        negative_prompt_embeds: Optional[torch.Tensor] = None,
         device: Optional[torch.device] = None,
         dtype: Optional[torch.dtype] = None,
         max_sequence_length: int = 2048,
@@ -269,10 +441,6 @@ class GlmImagePipeline(DiffusionPipeline, CogView4LoraLoaderMixin):
         Args:
             prompt (`str` or `List[str]`, *optional*):
                 prompt to be encoded
-            negative_prompt (`str` or `List[str]`, *optional*):
-                The prompt or prompts not to guide the image generation. If not defined, one has to pass
-                `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
-                less than `1`).
             do_classifier_free_guidance (`bool`, *optional*, defaults to `True`):
                 Whether to use classifier free guidance or not.
             num_images_per_prompt (`int`, *optional*, defaults to 1):
@@ -280,10 +448,6 @@ class GlmImagePipeline(DiffusionPipeline, CogView4LoraLoaderMixin):
             prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
                 provided, text embeddings will be generated from `prompt` input argument.
-            negative_prompt_embeds (`torch.Tensor`, *optional*):
-                Pre-generated negative text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
-                weighting. If not provided, negative_prompt_embeds will be generated from `negative_prompt` input
-                argument.
             device: (`torch.device`, *optional*):
                 torch device
             dtype: (`torch.dtype`, *optional*):
@@ -306,8 +470,9 @@ class GlmImagePipeline(DiffusionPipeline, CogView4LoraLoaderMixin):
         prompt_embeds = prompt_embeds.repeat(1, num_images_per_prompt, 1)
         prompt_embeds = prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
 
-        if do_classifier_free_guidance and negative_prompt_embeds is None:
-            negative_prompt = negative_prompt or ""
+        negative_prompt_embeds = None
+        if do_classifier_free_guidance:
+            negative_prompt = ""
             negative_prompt = batch_size * [negative_prompt] if isinstance(negative_prompt, str) else negative_prompt
 
             if prompt is not None and type(prompt) is not type(negative_prompt):
@@ -353,10 +518,8 @@ class GlmImagePipeline(DiffusionPipeline, CogView4LoraLoaderMixin):
         prompt,
         height,
         width,
-        negative_prompt,
         callback_on_step_end_tensor_inputs,
         prompt_embeds=None,
-        negative_prompt_embeds=None,
     ):
         if (
             height is not None
@@ -391,9 +554,6 @@ class GlmImagePipeline(DiffusionPipeline, CogView4LoraLoaderMixin):
     def guidance_scale(self):
         return self._guidance_scale
 
-    # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
-    # of the Imagen paper: https://huggingface.co/papers/2205.11487 . `guidance_scale = 1`
-    # corresponds to doing no classifier free guidance.
     @property
     def do_classifier_free_guidance(self):
         return self._guidance_scale > 1
@@ -418,15 +578,12 @@ class GlmImagePipeline(DiffusionPipeline, CogView4LoraLoaderMixin):
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        prior_token_id: Optional[torch.LongTensor] = None,
         prompt: Optional[Union[str, List[str]]] = None,
-        negative_prompt: Optional[Union[str, List[str]]] = None,
         condition_images: Optional[
             Union[
                 torch.Tensor, PIL.Image.Image, np.ndarray, List[torch.Tensor], List[PIL.Image.Image], List[np.ndarray]
             ]
         ] = None,
-        condition_images_prior_token_id: Optional[Union[torch.LongTensor, List[torch.LongTensor]]] = None,
         height: Optional[int] = None,
         width: Optional[int] = None,
         num_inference_steps: int = 50,
@@ -437,7 +594,6 @@ class GlmImagePipeline(DiffusionPipeline, CogView4LoraLoaderMixin):
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.FloatTensor] = None,
         prompt_embeds: Optional[torch.FloatTensor] = None,
-        negative_prompt_embeds: Optional[torch.FloatTensor] = None,
         crops_coords_top_left: Tuple[int, int] = (0, 0),
         output_type: str = "pil",
         return_dict: bool = True,
@@ -452,109 +608,48 @@ class GlmImagePipeline(DiffusionPipeline, CogView4LoraLoaderMixin):
         Function invoked when calling the pipeline for generation.
 
         Args:
-            image (`torch.Tensor`, `PIL.Image.Image`, `np.ndarray`, `List[torch.Tensor]`, `List[PIL.Image.Image]`, or `List[np.ndarray]`):
-                `Image`, numpy array or tensor representing an image batch to be used as the starting point. For both
-                numpy array and pytorch tensor, the expected value range is between `[0, 1]` If it's a tensor or a list
-                or tensors, the expected shape should be `(B, C, H, W)` or `(C, H, W)`. If it is a numpy array or a
-                list of arrays, the expected shape should be `(B, H, W, C)` or `(H, W, C)` It can also accept image
-                latents as `image`, but if passing latents directly it is not encoded again.
             prompt (`str` or `List[str]`, *optional*):
-                The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds`.
-            negative_prompt (`str` or `List[str]`, *optional*):
-                The prompt or prompts not to guide the image generation. If not defined, one has to pass
-                `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
-                less than `1`).
-            height (`int`, *optional*, defaults to self.transformer.config.sample_size * self.vae_scale_factor):
-                The height in pixels of the generated image. If not provided, it is set to 2048.
-            width (`int`, *optional*, defaults to self.transformer.config.sample_size * self.vae_scale_factor):
-                The width in pixels of the generated image. If not provided it is set to 2048.
+                The prompt or prompts to guide the image generation. Must contain shape info in the format '<sop>H
+                W<eop>' where H and W are token dimensions (d32). Example: "A beautiful sunset<sop>36 24<eop>"
+                generates a 1152x768 image.
+            condition_images: Optional condition images for image-to-image generation.
+            height (`int`, *optional*):
+                The height in pixels. If not provided, derived from prompt shape info.
+            width (`int`, *optional*):
+                The width in pixels. If not provided, derived from prompt shape info.
             num_inference_steps (`int`, *optional*, defaults to `50`):
-                The number of denoising steps. More denoising steps usually lead to a higher quality image at the
-                expense of slower inference.
-            timesteps (`List[int]`, *optional*):
-                Custom timesteps to use for the denoising process with schedulers which support a `timesteps` argument
-                in their `set_timesteps` method. If not defined, the default behavior when `num_inference_steps` is
-                passed will be used. Must be in descending order.
-            sigmas (`List[float]`, *optional*):
-                Custom sigmas to use for the denoising process with schedulers which support a `sigmas` argument in
-                their `set_timesteps` method. If not defined, the default behavior when `num_inference_steps` is passed
-                will be used.
-            guidance_scale (`float`, *optional*, defaults to `5.0`):
-                Guidance scale as defined in [Classifier-Free Diffusion
-                Guidance](https://huggingface.co/papers/2207.12598). `guidance_scale` is defined as `w` of equation 2.
-                of [Imagen Paper](https://huggingface.co/papers/2205.11487). Guidance scale is enabled by setting
-                `guidance_scale > 1`. Higher guidance scale encourages to generate images that are closely linked to
-                the text `prompt`, usually at the expense of lower image quality.
+                The number of denoising steps for DiT.
+            guidance_scale (`float`, *optional*, defaults to `1.5`):
+                Guidance scale for classifier-free guidance.
             num_images_per_prompt (`int`, *optional*, defaults to `1`):
                 The number of images to generate per prompt.
-            generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
-                One or a list of [torch generator(s)](https://pytorch.org/docs/stable/generated/torch.Generator.html)
-                to make generation deterministic.
-            latents (`torch.FloatTensor`, *optional*):
-                Pre-generated noisy latents, sampled from a Gaussian distribution, to be used as inputs for image
-                generation. Can be used to tweak the same generation with different prompts. If not provided, a latents
-                tensor will be generated by sampling using the supplied random `generator`.
-            prompt_embeds (`torch.FloatTensor`, *optional*):
-                Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
-                provided, text embeddings will be generated from `prompt` input argument.
-            negative_prompt_embeds (`torch.FloatTensor`, *optional*):
-                Pre-generated negative text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
-                weighting. If not provided, negative_prompt_embeds will be generated from `negative_prompt` input
-                argument.
-            crops_coords_top_left (`Tuple[int]`, *optional*, defaults to (0, 0)):
-                `crops_coords_top_left` can be used to generate an image that appears to be "cropped" from the position
-                `crops_coords_top_left` downwards. Favorable, well-centered images are usually achieved by setting
-                `crops_coords_top_left` to (0, 0). Part of SDXL's micro-conditioning as explained in section 2.2 of
-                [https://huggingface.co/papers/2307.01952](https://huggingface.co/papers/2307.01952).
+            generator (`torch.Generator`, *optional*):
+                Random generator for reproducibility.
             output_type (`str`, *optional*, defaults to `"pil"`):
-                The output format of the generate image. Choose between
-                [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
-            return_dict (`bool`, *optional*, defaults to `True`):
-                Whether or not to return a [`~pipelines.stable_diffusion_xl.StableDiffusionXLPipelineOutput`] instead
-                of a plain tuple.
-            attention_kwargs (`dict`, *optional*):
-                A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
-                `self.processor` in
-                [diffusers.models.attention_processor](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
-            callback_on_step_end (`Callable`, *optional*):
-                A function that calls at the end of each denoising steps during the inference. The function is called
-                with the following arguments: `callback_on_step_end(self: DiffusionPipeline, step: int, timestep: int,
-                callback_kwargs: Dict)`. `callback_kwargs` will include a list of all tensors as specified by
-                `callback_on_step_end_tensor_inputs`.
-            callback_on_step_end_tensor_inputs (`List`, *optional*):
-                The list of tensor inputs for the `callback_on_step_end` function. The tensors specified in the list
-                will be passed as `callback_kwargs` argument. You will only be able to include variables listed in the
-                `._callback_tensor_inputs` attribute of your pipeline class.
-            max_sequence_length (`int`, defaults to `224`):
-                Maximum sequence length in encoded prompt. Can be set to other values but may lead to poorer results.
+                Output format: "pil", "np", or "latent".
 
         Examples:
 
         Returns:
-            [`~pipelines.cogview4.pipeline_CogView4.CogView4PipelineOutput`] or `tuple`:
-            [`~pipelines.cogview4.pipeline_CogView4.CogView4PipelineOutput`] if `return_dict` is True, otherwise a
-            `tuple`. When returning a tuple, the first element is a list with the generated images.
+            [`GlmImagePipelineOutput`] or `tuple`: Generated images.
         """
 
         if isinstance(callback_on_step_end, (PipelineCallback, MultiPipelineCallbacks)):
             callback_on_step_end_tensor_inputs = callback_on_step_end.tensor_inputs
 
-        # 1. Check inputs. Raise error if not correct
+        # 1. Check inputs
         self.check_inputs(
             prompt,
             height,
             width,
-            negative_prompt,
             callback_on_step_end_tensor_inputs,
             prompt_embeds,
-            negative_prompt_embeds,
         )
         self._guidance_scale = guidance_scale
         self._attention_kwargs = attention_kwargs
         self._current_timestep = None
         self._interrupt = False
 
-        # 2. Default call parameters
         if prompt is not None and isinstance(prompt, str):
             batch_size = 1
         elif prompt is not None and isinstance(prompt, list):
@@ -565,29 +660,50 @@ class GlmImagePipeline(DiffusionPipeline, CogView4LoraLoaderMixin):
 
         device = self._execution_device
 
+        ar_condition_images = None
+        if condition_images is not None:
+            if not isinstance(condition_images, list):
+                condition_images = [condition_images]
+            ar_condition_images = []
+            for img in condition_images:
+                if isinstance(img, PIL.Image.Image):
+                    ar_condition_images.append(img)
+                elif isinstance(img, torch.Tensor):
+                    img_np = img.cpu().numpy()
+                    if img_np.ndim == 4:
+                        img_np = img_np[0]
+                    if img_np.shape[0] in [1, 3, 4]:
+                        img_np = img_np.transpose(1, 2, 0)
+                    if img_np.max() <= 1.0:
+                        img_np = (img_np * 255).astype(np.uint8)
+                    ar_condition_images.append(PIL.Image.fromarray(img_np))
+                else:
+                    ar_condition_images.append(PIL.Image.fromarray(img))
+
+        prior_token_id, ar_height, ar_width = self.generate_prior_tokens(
+            prompt=prompt[0] if isinstance(prompt, list) else prompt,
+            condition_images=ar_condition_images,
+        )
+
+        height = height or ar_height
+        width = width or ar_width
+
         # 3. Encode input prompt
         prompt_embeds, negative_prompt_embeds = self.encode_prompt(
             prompt,
-            negative_prompt,
             self.do_classifier_free_guidance,
             num_images_per_prompt=num_images_per_prompt,
             prompt_embeds=prompt_embeds,
-            negative_prompt_embeds=negative_prompt_embeds,
             max_sequence_length=max_sequence_length,
             device=device,
             dtype=self.dtype,
         )
 
         # 4. process images
-        if condition_images is not None and not isinstance(condition_images, list):
-            condition_images = [condition_images]
-            condition_images_prior_token_id = [condition_images_prior_token_id]
-        assert condition_images is None or (len(condition_images) == len(condition_images_prior_token_id)), (
-            "image and image_prior_token_id must be the same length"
-        )
-
+        condition_images_prior_token_id = None
         if condition_images is not None:
             preprocessed_condition_images = []
+            condition_images_prior_token_id = []
             for img in condition_images:
                 image_height, image_width = img.size[::-1] if isinstance(img, PIL.Image.Image) else img.shape[:2]
                 multiple_of = self.vae_scale_factor * self.transformer.config.patch_size
@@ -595,11 +711,7 @@ class GlmImagePipeline(DiffusionPipeline, CogView4LoraLoaderMixin):
                 image_width = (image_width // multiple_of) * multiple_of
                 img = self.image_processor.preprocess(img, height=image_height, width=image_width)
                 preprocessed_condition_images.append(img)
-                height = height or image_height
-                width = width or image_width
             condition_images = preprocessed_condition_images
-        height = height or self.default_sample_size * self.vae_scale_factor
-        width = width or self.default_sample_size * self.vae_scale_factor
 
         # 5. Prepare latents and (optional) condition_images kv cache
         latent_channels = self.transformer.config.in_channels
@@ -614,7 +726,7 @@ class GlmImagePipeline(DiffusionPipeline, CogView4LoraLoaderMixin):
             latents=latents,
         )
 
-        if condition_images is not None:
+        if condition_images is not None and condition_images_prior_token_id is not None:
             self.transformer.set_attention_processors_state(GlmImageAttenProcessorState.ImageEditWriteKV)
             latents_mean = (
                 torch.tensor(self.vae.config.latents_mean)
@@ -690,7 +802,6 @@ class GlmImagePipeline(DiffusionPipeline, CogView4LoraLoaderMixin):
                 self._current_timestep = t
                 latent_model_input = latents.to(transformer_dtype)
 
-                # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
                 timestep = t.expand(latents.shape[0]) - 1
 
                 if condition_images is not None:
@@ -732,7 +843,6 @@ class GlmImagePipeline(DiffusionPipeline, CogView4LoraLoaderMixin):
 
                 latents = self.scheduler.step(noise_pred, t, latents, return_dict=False)[0]
 
-                # call the callback, if provided
                 if callback_on_step_end is not None:
                     callback_kwargs = {}
                     for k in callback_on_step_end_tensor_inputs:
@@ -740,7 +850,6 @@ class GlmImagePipeline(DiffusionPipeline, CogView4LoraLoaderMixin):
                     callback_outputs = callback_on_step_end(self, i, self.scheduler.sigmas[i], callback_kwargs)
                     latents = callback_outputs.pop("latents", latents)
                     prompt_embeds = callback_outputs.pop("prompt_embeds", prompt_embeds)
-                    negative_prompt_embeds = callback_outputs.pop("negative_prompt_embeds", negative_prompt_embeds)
 
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                     progress_bar.update()
