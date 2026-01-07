@@ -19,7 +19,7 @@ import torch
 from ...models import QwenImageMultiControlNetModel
 from ..modular_pipeline import ModularPipelineBlocks, PipelineState
 from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
-from .modular_pipeline import QwenImageModularPipeline, QwenImagePachifier
+from .modular_pipeline import QwenImageModularPipeline, QwenImagePachifier, QwenImageLayeredPachifier
 
 
 def repeat_tensor_to_batch_size(
@@ -221,7 +221,7 @@ class QwenImageTextInputsStep(ModularPipelineBlocks):
         return components, state
 
 
-class QwenImageInputsDynamicStep(ModularPipelineBlocks):
+class QwenImageAdditionalInputsStep(ModularPipelineBlocks):
     """Input step for QwenImage: update height/width, expand batch, patchify."""
 
     model_name = "qwenimage"
@@ -476,6 +476,131 @@ class QwenImageEditPlusInputsDynamicStep(ModularPipelineBlocks):
 
         self.set_block_state(state, block_state)
         return components, state
+
+# YiYi TODO: support define config default component from the ModularPipeline level.
+# it is same as QwenImageAdditionalInputsStep, but with layered pachifier.
+class QwenImageLayeredAdditionalInputsStep(ModularPipelineBlocks):
+    """Input step for QwenImage Layered: update height/width, expand batch, patchify with layered pachifier."""
+
+    model_name = "qwenimage-layered"
+
+    def __init__(
+        self,
+        image_latent_inputs: List[str] = ["image_latents"],
+        additional_batch_inputs: List[str] = [],
+    ):
+        if not isinstance(image_latent_inputs, list):
+            image_latent_inputs = [image_latent_inputs]
+        if not isinstance(additional_batch_inputs, list):
+            additional_batch_inputs = [additional_batch_inputs]
+
+        self._image_latent_inputs = image_latent_inputs
+        self._additional_batch_inputs = additional_batch_inputs
+        super().__init__()
+
+    @property
+    def description(self) -> str:
+        summary_section = (
+            "Input processing step for Layered that:\n"
+            "  1. For image latent inputs: Updates height/width if None, patchifies with layered pachifier, and expands batch size\n"
+            "  2. For additional batch inputs: Expands batch dimensions to match final batch size"
+        )
+
+        inputs_info = ""
+        if self._image_latent_inputs or self._additional_batch_inputs:
+            inputs_info = "\n\nConfigured inputs:"
+            if self._image_latent_inputs:
+                inputs_info += f"\n  - Image latent inputs: {self._image_latent_inputs}"
+            if self._additional_batch_inputs:
+                inputs_info += f"\n  - Additional batch inputs: {self._additional_batch_inputs}"
+
+        placement_section = "\n\nThis block should be placed after the encoder steps and the text input step."
+
+        return summary_section + inputs_info + placement_section
+
+    @property
+    def expected_components(self) -> List[ComponentSpec]:
+        return [
+            ComponentSpec("pachifier", QwenImageLayeredPachifier, default_creation_method="from_config"),
+        ]
+
+    @property
+    def inputs(self) -> List[InputParam]:
+        inputs = [
+            InputParam(name="num_images_per_prompt", default=1),
+            InputParam(name="batch_size", required=True),
+            InputParam(name="height"),
+            InputParam(name="width"),
+        ]
+
+        for image_latent_input_name in self._image_latent_inputs:
+            inputs.append(InputParam(name=image_latent_input_name))
+
+        for input_name in self._additional_batch_inputs:
+            inputs.append(InputParam(name=input_name))
+
+        return inputs
+
+    @property
+    def intermediate_outputs(self) -> List[OutputParam]:
+        return [
+            OutputParam(name="image_height", type_hint=int, description="The height of the image latents"),
+            OutputParam(name="image_width", type_hint=int, description="The width of the image latents"),
+        ]
+
+    def __call__(self, components: QwenImageModularPipeline, state: PipelineState) -> PipelineState:
+        block_state = self.get_block_state(state)
+
+        # Process image latent inputs
+        for image_latent_input_name in self._image_latent_inputs:
+            image_latent_tensor = getattr(block_state, image_latent_input_name)
+            if image_latent_tensor is None:
+                continue
+
+            # 1. Calculate height/width from latents and update if not provided
+            # Layered latents are (B, layers, C, H, W)
+            height = image_latent_tensor.shape[3] * components.vae_scale_factor
+            width = image_latent_tensor.shape[4] * components.vae_scale_factor
+            block_state.height = block_state.height or height
+            block_state.width = block_state.width or width
+
+            if not hasattr(block_state, "image_height"):
+                block_state.image_height = height
+            if not hasattr(block_state, "image_width"):
+                block_state.image_width = width
+
+            # 2. Patchify with layered pachifier
+            image_latent_tensor = components.pachifier.pack_latents(image_latent_tensor)
+
+            # 3. Expand batch size
+            image_latent_tensor = repeat_tensor_to_batch_size(
+                input_name=image_latent_input_name,
+                input_tensor=image_latent_tensor,
+                num_images_per_prompt=block_state.num_images_per_prompt,
+                batch_size=block_state.batch_size,
+            )
+
+            setattr(block_state, image_latent_input_name, image_latent_tensor)
+
+        # Process additional batch inputs (only batch expansion)
+        for input_name in self._additional_batch_inputs:
+            input_tensor = getattr(block_state, input_name)
+            if input_tensor is None:
+                continue
+
+            input_tensor = repeat_tensor_to_batch_size(
+                input_name=input_name,
+                input_tensor=input_tensor,
+                num_images_per_prompt=block_state.num_images_per_prompt,
+                batch_size=block_state.batch_size,
+            )
+
+            setattr(block_state, input_name, input_tensor)
+
+        self.set_block_state(state, block_state)
+        return components, state
+
+
 class QwenImageControlNetInputsStep(ModularPipelineBlocks):
     model_name = "qwenimage"
 

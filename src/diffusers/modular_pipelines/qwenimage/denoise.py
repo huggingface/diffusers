@@ -682,3 +682,25 @@ class QwenImageEditInpaintDenoiseStep(QwenImageDenoiseLoopWrapper):
             " - `QwenImageLoopAfterDenoiserInpaint`\n"
             "This block supports inpainting tasks for QwenImage Edit."
         )
+
+
+# actually same as QwenImageEditDenoiseStep
+class QwenImageLayeredDenoiseStep(QwenImageDenoiseLoopWrapper):
+    block_classes = [
+        QwenImageEditLoopBeforeDenoiser,
+        QwenImageEditLoopDenoiser,
+        QwenImageLoopAfterDenoiser,
+    ]
+    block_names = ["before_denoiser", "denoiser", "after_denoiser"]
+
+    @property
+    def description(self) -> str:
+        return (
+            "Denoise step that iteratively denoise the latents. \n"
+            "Its loop logic is defined in `QwenImageDenoiseLoopWrapper.__call__` method \n"
+            "At each iteration, it runs blocks defined in `sub_blocks` sequencially:\n"
+            " - `QwenImageEditLoopBeforeDenoiser`\n"
+            " - `QwenImageEditLoopDenoiser`\n"
+            " - `QwenImageLoopAfterDenoiser`\n"
+            "This block supports QwenImage Layered."
+        )

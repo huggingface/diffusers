@@ -43,7 +43,7 @@ from .encoders import (
     QwenImageVaeEncoderStep,
 )
 from .inputs import (
-    QwenImageInputsDynamicStep,
+    QwenImageAdditionalInputsStep,
     QwenImageTextInputsStep,
 )
 
@@ -134,7 +134,7 @@ class QwenImageEditInputStep(SequentialPipelineBlocks):
     model_name = "qwenimage-edit"
     block_classes = [
         QwenImageTextInputsStep(),
-        QwenImageInputsDynamicStep(image_latent_inputs=["image_latents"]),
+        QwenImageAdditionalInputsStep(image_latent_inputs=["image_latents"]),
     ]
     block_names = ["text_inputs", "additional_inputs"]
 
@@ -152,7 +152,7 @@ class QwenImageEditInpaintInputStep(SequentialPipelineBlocks):
     model_name = "qwenimage-edit"
     block_classes = [
         QwenImageTextInputsStep(),
-        QwenImageInputsDynamicStep(image_latent_inputs=["image_latents"], additional_batch_inputs=["processed_mask_image"]),
+        QwenImageAdditionalInputsStep(image_latent_inputs=["image_latents"], additional_batch_inputs=["processed_mask_image"]),
     ]
     block_names = ["text_inputs", "additional_inputs"]
 

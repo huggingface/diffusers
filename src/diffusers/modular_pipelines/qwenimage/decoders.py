@@ -83,7 +83,7 @@ class QwenImageLayeredAfterDenoiseStep(ModularPipelineBlocks):
     @property
     def expected_components(self) -> List[ComponentSpec]:
         return [
-            ComponentSpec("layered_pachifier", QwenImageLayeredPachifier, default_creation_method="from_config"),
+            ComponentSpec("pachifier", QwenImageLayeredPachifier, default_creation_method="from_config"),
         ]
 
     @property
@@ -201,7 +201,6 @@ class QwenImageLayeredDecoderStep(ModularPipelineBlocks):
     def inputs(self) -> List[InputParam]:
         return [
             InputParam("latents", required=True, type_hint=torch.Tensor),
-            InputParam("layers", required=True, type_hint=int),
             InputParam("output_type", default="pil", type_hint=str),
         ]
 
@@ -216,7 +215,6 @@ class QwenImageLayeredDecoderStep(ModularPipelineBlocks):
         block_state = self.get_block_state(state)
 
         latents = block_state.latents
-        layers = block_state.layers
 
         # 1. VAE normalization
         latents = latents.to(components.vae.dtype)

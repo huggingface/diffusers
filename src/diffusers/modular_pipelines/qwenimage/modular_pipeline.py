@@ -94,7 +94,7 @@ class QwenImageLayeredPachifier(ConfigMixin):
     """
     A class to pack and unpack latents for QwenImage Layered.
     
-    Unlike QwenImagePachifier, this handles 3D latents with shape (B, layers, C, H, W).
+    Unlike QwenImagePachifier, this handles 5D latents with shape (B, layers+1, C, H, W).
     """
 
     config_name = "config.json"
@@ -103,25 +103,35 @@ class QwenImageLayeredPachifier(ConfigMixin):
     def __init__(self, patch_size: int = 2):
         super().__init__()
 
-    def pack_latents(self, latents, batch_size, num_channels_latents, height, width, layers):
+    def pack_latents(self, latents):
         """
         Pack latents from (B, layers, C, H, W) to (B, layers * H/2 * W/2, C*4).
         """
+
+        if latents.ndim != 5:
+            raise ValueError(f"Latents must have 5 dimensions (B, layers, C, H, W), but got {latents.ndim}")
+
+        batch_size, layers, num_channels_latents, latent_height, latent_width = latents.shape
         patch_size = self.config.patch_size
+
+        if latent_height % patch_size != 0 or latent_width % patch_size != 0:
+            raise ValueError(
+                f"Latent height and width must be divisible by {patch_size}, but got {latent_height} and {latent_width}"
+            )
 
         latents = latents.view(
             batch_size,
             layers,
             num_channels_latents,
-            height // patch_size,
+            latent_height // patch_size,
             patch_size,
-            width // patch_size,
+            latent_width // patch_size,
             patch_size,
         )
         latents = latents.permute(0, 1, 3, 5, 2, 4, 6)
         latents = latents.reshape(
             batch_size,
-            layers * (height // patch_size) * (width // patch_size),
+            layers * (latent_height // patch_size) * (latent_width // patch_size),
             num_channels_latents * patch_size * patch_size,
         )
         return latents
@@ -130,7 +140,11 @@ class QwenImageLayeredPachifier(ConfigMixin):
         """
         Unpack latents from (B, seq, C*4) to (B, C, layers+1, H, W).
         """
-        batch_size, num_patches, channels = latents.shape
+
+        if latents.ndim != 3:
+            raise ValueError(f"Latents must have 3 dimensions, but got {latents.ndim}")
+
+        batch_size, _, channels = latents.shape
         patch_size = self.config.patch_size
 
         height = patch_size * (int(height) // (vae_scale_factor * patch_size))
@@ -271,3 +285,13 @@ class QwenImageEditPlusModularPipeline(QwenImageEditModularPipeline):
     """
 
     default_blocks_name = "QwenImageEditPlusAutoBlocks"
+
+
+class QwenImageLayeredModularPipeline(QwenImageModularPipeline):
+    """
+    A ModularPipeline for QwenImage-Layered.
+
+    > [!WARNING] > This is an experimental feature and is likely to change in the future.
+    """
+
+    default_blocks_name = "QwenImageLayeredAutoBlocks"

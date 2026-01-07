@@ -23,7 +23,7 @@ from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils.torch_utils import randn_tensor, unwrap_module
 from ..modular_pipeline import ModularPipelineBlocks, PipelineState
 from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
-from .modular_pipeline import QwenImageModularPipeline, QwenImagePachifier
+from .modular_pipeline import QwenImageModularPipeline, QwenImagePachifier, QwenImageLayeredPachifier
 
 
 # Copied from diffusers.pipelines.qwenimage.pipeline_qwenimage.calculate_shift
@@ -192,6 +192,98 @@ class QwenImagePrepareLatentsStep(ModularPipelineBlocks):
         latent_width = 2 * (int(block_state.width) // (components.vae_scale_factor * 2))
 
         shape = (batch_size, components.num_channels_latents, 1, latent_height, latent_width)
+        if isinstance(block_state.generator, list) and len(block_state.generator) != batch_size:
+            raise ValueError(
+                f"You have passed a list of generators of length {len(block_state.generator)}, but requested an effective batch"
+                f" size of {batch_size}. Make sure the batch size matches the length of the generators."
+            )
+        if block_state.latents is None:
+            block_state.latents = randn_tensor(
+                shape, generator=block_state.generator, device=device, dtype=block_state.dtype
+            )
+            block_state.latents = components.pachifier.pack_latents(block_state.latents)
+
+        self.set_block_state(state, block_state)
+        return components, state
+
+
+class QwenImageLayeredPrepareLatentsStep(ModularPipelineBlocks):
+    model_name = "qwenimage-layered"
+
+    @property
+    def description(self) -> str:
+        return "Prepare initial random noise (B, layers+1, C, H, W) for the generation process"
+
+    @property
+    def expected_components(self) -> List[ComponentSpec]:
+        return [
+            ComponentSpec("pachifier", QwenImageLayeredPachifier, default_creation_method="from_config"),
+        ]
+
+    @property
+    def inputs(self) -> List[InputParam]:
+        return [
+            InputParam("latents"),
+            InputParam(name="height"),
+            InputParam(name="width"),
+            InputParam(name="layers", default=4),
+            InputParam(name="num_images_per_prompt", default=1),
+            InputParam(name="generator"),
+            InputParam(
+                name="batch_size",
+                required=True,
+                type_hint=int,
+                description="Number of prompts, the final batch size of model inputs should be batch_size * num_images_per_prompt. Can be generated in input step.",
+            ),
+            InputParam(
+                name="dtype",
+                required=True,
+                type_hint=torch.dtype,
+                description="The dtype of the model inputs, can be generated in input step.",
+            ),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> List[OutputParam]:
+        return [
+            OutputParam(
+                name="latents",
+                type_hint=torch.Tensor,
+                description="The initial latents to use for the denoising process",
+            ),
+        ]
+
+    @staticmethod
+    def check_inputs(height, width, vae_scale_factor):
+        if height is not None and height % (vae_scale_factor * 2) != 0:
+            raise ValueError(f"Height must be divisible by {vae_scale_factor * 2} but is {height}")
+
+        if width is not None and width % (vae_scale_factor * 2) != 0:
+            raise ValueError(f"Width must be divisible by {vae_scale_factor * 2} but is {width}")
+
+    @torch.no_grad()
+    def __call__(self, components: QwenImageModularPipeline, state: PipelineState) -> PipelineState:
+        block_state = self.get_block_state(state)
+
+        self.check_inputs(
+            height=block_state.height,
+            width=block_state.width,
+            vae_scale_factor=components.vae_scale_factor,
+        )
+
+        device = components._execution_device
+        batch_size = block_state.batch_size * block_state.num_images_per_prompt
+
+        # we can update the height and width here since it's used to generate the initial
+        block_state.height = block_state.height or components.default_height
+        block_state.width = block_state.width or components.default_width
+
+        # VAE applies 8x compression on images but we must also account for packing which requires
+        # latent height and width to be divisible by 2.
+        latent_height = 2 * (int(block_state.height) // (components.vae_scale_factor * 2))
+        latent_width = 2 * (int(block_state.width) // (components.vae_scale_factor * 2))
+
+        shape = (batch_size, block_state.layers + 1, components.num_channels_latents, latent_height, latent_width)
         if isinstance(block_state.generator, list) and len(block_state.generator) != batch_size:
             raise ValueError(
                 f"You have passed a list of generators of length {len(block_state.generator)}, but requested an effective batch"
