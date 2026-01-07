@@ -329,7 +329,7 @@ export_to_video(video, "output.mp4", fps=24)
 
   <details>
   <summary>Show example code</summary>
-  
+
   ```python
   import torch
   from diffusers import LTXConditionPipeline, LTXLatentUpsamplePipeline
@@ -469,15 +469,12 @@ export_to_video(video, "output.mp4", fps=24)
       tone_map_compression_ratio=0.6,
       output_type="latent"
   ).frames
-  try:
-      pipe.load_lora_weights(
-          "LTX-Video-ICLoRA-detailer-13b-0.9.8/ltxv-098-ic-lora-detailer-diffusers.safetensors",
-          adapter_name="ic-detailer",
-      )
-      pipe.fuse_lora(components=["transformer"], lora_scale=1.0)
-      print("[Info] IC-LoRA detailer adapter loaded and fused.")
-  except Exception as e:
-      print(f"[Warn] Failed to load IC-LoRA: {e}. Skipping the second refinement sampling.")
+
+  pipe.load_lora_weights(
+    "LTX-Video-ICLoRA-detailer-13b-0.9.8/ltxv-098-ic-lora-detailer-diffusers.safetensors",
+    adapter_name="ic-detailer"
+  )
+  pipe.fuse_lora(components=["transformer"], lora_scale=1.0)
 
   # Short refinement pass (distilled; low steps)
   frames_refined = pipe(
