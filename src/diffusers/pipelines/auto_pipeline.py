@@ -24,7 +24,6 @@ from .aura_flow import AuraFlowPipeline
 from .chroma import ChromaPipeline
 from .cogview3 import CogView3PlusPipeline
 from .cogview4 import CogView4ControlPipeline, CogView4Pipeline
-from .glm_image import GlmImageDecoderPipeline
 from .controlnet import (
     StableDiffusionControlNetImg2ImgPipeline,
     StableDiffusionControlNetInpaintPipeline,
@@ -53,6 +52,7 @@ from .flux import (
     FluxKontextPipeline,
     FluxPipeline,
 )
+from .glm_image import GlmImageDecoderPipeline
 from .hunyuandit import HunyuanDiTPipeline
 from .kandinsky import (
     KandinskyCombinedPipeline,
