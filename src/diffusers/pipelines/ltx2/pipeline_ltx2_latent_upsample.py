@@ -154,7 +154,8 @@ class LTX2LatentUpsamplePipeline(DiffusionPipeline):
             init_latents = [retrieve_latents(self.vae.encode(vid.unsqueeze(0)), generator) for vid in video]
 
         init_latents = torch.cat(init_latents, dim=0).to(dtype)
-        init_latents = self._normalize_latents(init_latents, self.vae.latents_mean, self.vae.latents_std)
+        # NOTE: latent upsampler operates on the unnormalized latents, so don't normalize here
+        # init_latents = self._normalize_latents(init_latents, self.vae.latents_mean, self.vae.latents_std)
         return init_latents
 
     def adain_filter_latent(self, latents: torch.Tensor, reference_latents: torch.Tensor, factor: float = 1.0):
@@ -275,6 +276,7 @@ class LTX2LatentUpsamplePipeline(DiffusionPipeline):
         spatial_patch_size: int = 1,
         temporal_patch_size: int = 1,
         latents: Optional[torch.Tensor] = None,
+        latents_normalized: bool = False,
         decode_timestep: Union[float, List[float]] = 0.0,
         decode_noise_scale: Optional[Union[float, List[float]]] = None,
         adain_factor: float = 0.0,
@@ -305,6 +307,9 @@ class LTX2LatentUpsamplePipeline(DiffusionPipeline):
                 Pre-generated video latents. This can be supplied in place of the `video` argument. Can either be a
                 patch sequence of shape `(batch_size, seq_len, hidden_dim)` or a video latent of shape `(batch_size,
                 latent_channels, latent_frames, latent_height, latent_width)`.
+            latents_normalized (`bool`, *optional*, defaults to `False`)
+                If `latents` are supplied, whether the `latents` are normalized using the VAE latent mean and std. If
+                `True`, the `latents` will be denormalized before being supplied to the latent upsampler.
             decode_timestep (`float`, defaults to `0.0`):
                 The timestep at which generated video is decoded.
             decode_noise_scale (`float`, defaults to `None`):
@@ -362,6 +367,7 @@ class LTX2LatentUpsamplePipeline(DiffusionPipeline):
             video = self.video_processor.preprocess_video(video, height=height, width=width)
             video = video.to(device=device, dtype=torch.float32)
 
+        latents_supplied = latents is not None
         latents = self.prepare_latents(
             video=video,
             batch_size=batch_size,
@@ -376,9 +382,10 @@ class LTX2LatentUpsamplePipeline(DiffusionPipeline):
             latents=latents,
         )
 
-        latents = self._denormalize_latents(
-            latents, self.vae.latents_mean, self.vae.latents_std, self.vae.config.scaling_factor
-        )
+        if latents_supplied and latents_normalized:
+            latents = self._denormalize_latents(
+                latents, self.vae.latents_mean, self.vae.latents_std, self.vae.config.scaling_factor
+            )
         latents = latents.to(self.latent_upsampler.dtype)
         latents_upsampled = self.latent_upsampler(latents)
 

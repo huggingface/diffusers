@@ -108,19 +108,6 @@ def main(args):
     if args.use_video_latents:
         # Manually convert the audio latents to a waveform
         audio = audio.to(pipeline.audio_vae.dtype)
-        audio = pipeline._denormalize_audio_latents(
-            audio, pipeline.audio_vae.latents_mean, pipeline.audio_vae.latents_std
-        )
-
-        sampling_rate = pipeline.audio_sampling_rate
-        hop_length = pipeline.audio_hop_length
-        audio_vae_temporal_scale = pipeline.audio_vae_temporal_compression_ratio
-        duration_s = args.num_frames / args.frame_rate
-        latents_per_second = float(sampling_rate) / float(hop_length) / float(audio_vae_temporal_scale)
-        audio_latent_frames = int(duration_s * latents_per_second)
-        latent_mel_bins = pipeline.audio_vae.config.mel_bins // pipeline.audio_vae_mel_compression_ratio
-        audio = pipeline._unpack_audio_latents(audio, audio_latent_frames, latent_mel_bins)
-
         audio = pipeline.audio_vae.decode(audio, return_dict=False)[0]
         audio = pipeline.vocoder(audio)
 
