@@ -668,7 +668,7 @@ class LTX2AudioDecoder(nn.Module):
 
 class AutoencoderKLLTX2Audio(ModelMixin, AutoencoderMixin, ConfigMixin):
     r"""
-    LTX2 audio VAE. Currently, only implements the decoder.
+    LTX2 audio VAE for encoding and decoding audio latent representations.
     """
 
     _supports_gradient_checkpointing = False

@@ -24,5 +24,6 @@ vae = AutoencoderKLLTX2Audio.from_pretrained("Lightricks/LTX-2", subfolder="vae"
 ## AutoencoderKLLTX2Audio
 
 [[autodoc]] AutoencoderKLLTX2Audio
+    - encode
     - decode
     - all

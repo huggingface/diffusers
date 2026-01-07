@@ -83,6 +83,6 @@ class AutoencoderKLLTX2AudioTests(ModelTesterMixin, AutoencoderTesterMixin, unit
     def test_outputs_equivalence(self):
         pass
 
-    @unittest.skip("AutoencoderKLLTXAudio does not support `norm_num_groups` because it does not use GroupNorm.")
+    @unittest.skip("AutoencoderKLLTX2Audio does not support `norm_num_groups` because it does not use GroupNorm.")
     def test_forward_with_norm_groups(self):
         pass
