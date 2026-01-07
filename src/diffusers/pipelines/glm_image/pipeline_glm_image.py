@@ -193,31 +193,6 @@ class GlmImagePipeline(DiffusionPipeline, CogView4LoraLoaderMixin):
             else 128
         )
 
-    def _parse_and_expand_shape_info(self, prompt: str) -> Tuple[str, int, int, int, int]:
-        """
-        Parse the shape info from prompt and expand it for AR model.
-
-        Args:
-            prompt: The prompt containing <sop>H W<eop> shape specification
-
-        Returns:
-            Tuple of (expanded_prompt, token_h, token_w, prev_token_h, prev_token_w)
-        """
-        match = re.search(r"<sop>(\d+)\s+(\d+)<eop>", prompt)
-        if match is None:
-            raise ValueError(f"Prompt must contain shape info in format '<sop>H W<eop>', got: {prompt}")
-
-        token_h, token_w = int(match.group(1)), int(match.group(2))
-        ratio = token_h / token_w
-        prev_token_h = int(sqrt(ratio) * 16)
-        prev_token_w = int(sqrt(1 / ratio) * 16)
-
-        old_shape = f"<sop>{token_h} {token_w}<eop>"
-        new_shape = f"<sop>{token_h} {token_w}<eop><sop>{prev_token_h} {prev_token_w}<eop>"
-        expanded_prompt = prompt.replace(old_shape, new_shape)
-
-        return expanded_prompt, token_h, token_w, prev_token_h, prev_token_w
-
     def _build_image_grid_thw(
         self,
         token_h: int,
@@ -227,14 +202,7 @@ class GlmImagePipeline(DiffusionPipeline, CogView4LoraLoaderMixin):
         existing_grid: Optional[torch.Tensor] = None,
         device: Optional[torch.device] = None,
     ) -> torch.Tensor:
-        """
-        Build image grid tensor for AR model.
-
-        For text-to-image: creates grid for large image + small image For image-to-image: appends new image to existing
-        grid
-        """
         if existing_grid is None or existing_grid.numel() == 0:
-            # Text-to-image: large image + small image
             return torch.tensor(
                 [
                     [1, token_h, token_w],
@@ -243,8 +211,7 @@ class GlmImagePipeline(DiffusionPipeline, CogView4LoraLoaderMixin):
                 device=device,
             )
         else:
-            # Image-to-image: append to existing
-            return torch.cat([existing_grid, torch.tensor([[1, token_h, token_w]], device=device)], dim=0)
+            return torch.cat([existing_grid.to(device), torch.tensor([[1, token_h, token_w]], device=device)], dim=0)
 
     def _calculate_ar_generation_params(
         self, token_h: int, token_w: int, prev_token_h: int, prev_token_w: int, is_text_to_image: bool
@@ -267,9 +234,6 @@ class GlmImagePipeline(DiffusionPipeline, CogView4LoraLoaderMixin):
     def _extract_large_image_tokens(
         self, outputs: torch.Tensor, input_length: int, large_image_start_offset: int, large_image_tokens: int
     ) -> torch.Tensor:
-        """
-        Extract the large image tokens from AR model output.
-        """
         generated_tokens = outputs[0][input_length:]
         large_image_start = large_image_start_offset
         large_image_end = large_image_start + large_image_tokens
@@ -347,15 +311,16 @@ class GlmImagePipeline(DiffusionPipeline, CogView4LoraLoaderMixin):
 
         Args:
             prompt: The raw text prompt (without shape info)
-            height: Target image height in pixels (must be divisible by 32)
-            width: Target image width in pixels (must be divisible by 32)
+            height: Target image height in pixels (must be divisible by factor)
+            width: Target image width in pixels (must be divisible by factor)
             image: Optional list of condition images for image-to-image generation
+            factor: Token size factor (32 for d32 tokens)
 
         Returns:
             Tuple of (prior_token_ids, pixel_height, pixel_width)
             - prior_token_ids: Upsampled to d16 format, shape [1, token_h*token_w*4]
-            - pixel_height: Image height in pixels (aligned to 32)
-            - pixel_width: Image width in pixels (aligned to 32)
+            - pixel_height: Image height in pixels (aligned to factor)
+            - pixel_width: Image width in pixels (aligned to factor)
 
         """
         device = self.vision_language_encoder.device
@@ -372,11 +337,7 @@ class GlmImagePipeline(DiffusionPipeline, CogView4LoraLoaderMixin):
         content.append({"type": "text", "text": expanded_prompt})
         messages = [{"role": "user", "content": content}]
         inputs = self.processor.apply_chat_template(
-            messages,
-            add_generation_prompt=True,
-            tokenize=True,
-            return_dict=True,
-            return_tensors="pt"
+            messages, add_generation_prompt=True, tokenize=True, return_dict=True, return_tensors="pt"
         )
 
         existing_grid = inputs.get("image_grid_thw")
@@ -389,13 +350,11 @@ class GlmImagePipeline(DiffusionPipeline, CogView4LoraLoaderMixin):
             device=device,
         )
 
-        # Calculate generation parameters
         max_new_tokens, large_image_offset = self._calculate_ar_generation_params(
             token_h, token_w, prev_h, prev_w, is_text_to_image
         )
         large_image_tokens = token_h * token_w
 
-        # Move inputs to device and generate
         inputs = inputs.to(device)
         input_length = inputs["input_ids"].shape[-1]
 
