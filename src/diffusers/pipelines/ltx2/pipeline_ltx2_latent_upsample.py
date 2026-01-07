@@ -67,12 +67,25 @@ class LTX2LatentUpsamplePipeline(DiffusionPipeline):
         self,
         video: Optional[torch.Tensor] = None,
         batch_size: int = 1,
+        num_frames: int = 121,
+        height: int = 512,
+        width: int = 768,
+        spatial_patch_size: int = 1,
+        temporal_patch_size: int = 1,
         dtype: Optional[torch.dtype] = None,
         device: Optional[torch.device] = None,
         generator: Optional[torch.Generator] = None,
         latents: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         if latents is not None:
+            if latents.ndim == 3:
+                # Convert token seq [B, S, D] to latent video [B, C, F, H, W]
+                latent_num_frames = (num_frames - 1) // self.vae_temporal_compression_ratio + 1
+                latent_height = height // self.vae_spatial_compression_ratio
+                latent_width = width // self.vae_spatial_compression_ratio
+                latents = self._unpack_latents(
+                    latents, latent_num_frames, latent_height, latent_width, spatial_patch_size, temporal_patch_size
+                )
             return latents.to(device=device, dtype=dtype)
 
         video = video.to(device=device, dtype=self.vae.dtype)
@@ -175,6 +188,19 @@ class LTX2LatentUpsamplePipeline(DiffusionPipeline):
         latents = latents * latents_std / scaling_factor + latents_mean
         return latents
 
+    @staticmethod
+    # Copied from diffusers.pipelines.ltx2.pipeline_ltx2.LTX2Pipeline._unpack_latents
+    def _unpack_latents(
+        latents: torch.Tensor, num_frames: int, height: int, width: int, patch_size: int = 1, patch_size_t: int = 1
+    ) -> torch.Tensor:
+        # Packed latents of shape [B, S, D] (S is the effective video sequence length, D is the effective feature dimensions)
+        # are unpacked and reshaped into a video tensor of shape [B, C, F, H, W]. This is the inverse operation of
+        # what happens in the `_pack_latents` method.
+        batch_size = latents.size(0)
+        latents = latents.reshape(batch_size, num_frames, height, width, -1, patch_size_t, patch_size, patch_size)
+        latents = latents.permute(0, 4, 1, 5, 2, 6, 3, 7).flatten(6, 7).flatten(4, 5).flatten(2, 3)
+        return latents
+
     def enable_vae_slicing(self):
         r"""
         Enable sliced VAE decoding. When this option is enabled, the VAE will split the input tensor in slices to
@@ -246,6 +272,9 @@ class LTX2LatentUpsamplePipeline(DiffusionPipeline):
         video: Optional[List[PipelineImageInput]] = None,
         height: int = 512,
         width: int = 768,
+        num_frames: int = 121,
+        spatial_patch_size: int = 1,
+        temporal_patch_size: int = 1,
         latents: Optional[torch.Tensor] = None,
         decode_timestep: Union[float, List[float]] = 0.0,
         decode_noise_scale: Optional[Union[float, List[float]]] = None,
@@ -286,6 +315,11 @@ class LTX2LatentUpsamplePipeline(DiffusionPipeline):
         latents = self.prepare_latents(
             video=video,
             batch_size=batch_size,
+            num_frames=num_frames,
+            height=height,
+            width=width,
+            spatial_patch_size=spatial_patch_size,
+            temporal_patch_size=temporal_patch_size,
             dtype=torch.float32,
             device=device,
             generator=generator,

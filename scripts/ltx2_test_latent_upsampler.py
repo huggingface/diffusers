@@ -53,6 +53,7 @@ def parse_args():
     parser.add_argument("--dtype", type=str, default="bf16")
     parser.add_argument("--cpu_offload", action="store_true")
     parser.add_argument("--vae_tiling", action="store_true")
+    parser.add_argument("--use_video_latents", action="store_true")
 
     parser.add_argument(
         "--output_dir",
@@ -83,6 +84,10 @@ def main(args):
 
     image = load_image(args.image_path)
 
+    first_stage_output_type = "pil"
+    if args.use_video_latents:
+        first_stage_output_type = "latent"
+
     video, audio = pipeline(
         image=image,
         prompt=args.prompt,
@@ -94,15 +99,39 @@ def main(args):
         num_inference_steps=args.num_inference_steps,
         guidance_scale=args.guidance_scale,
         generator=torch.Generator(device=args.device).manual_seed(args.seed),
-        output_type="pil",
+        output_type=first_stage_output_type,
         return_dict=False,
     )
+
+    if args.use_video_latents:
+        # Manually convert the audio latents to a waveform
+        audio = audio.to(pipeline.audio_vae.dtype)
+        audio = pipeline._denormalize_audio_latents(
+            audio, pipeline.audio_vae.latents_mean, pipeline.audio_vae.latents_std
+        )
+
+        sampling_rate = pipeline.audio_sampling_rate
+        hop_length = pipeline.audio_hop_length
+        audio_vae_temporal_scale = pipeline.audio_vae_temporal_compression_ratio
+        duration_s = args.num_frames / args.frame_rate
+        latents_per_second = (
+            float(sampling_rate) / float(hop_length) / float(audio_vae_temporal_scale)
+        )
+        audio_latent_frames = int(duration_s * latents_per_second)
+        latent_mel_bins = pipeline.audio_vae.config.mel_bins // pipeline.audio_vae_mel_compression_ratio
+        audio = pipeline._unpack_audio_latents(audio, audio_latent_frames, latent_mel_bins)
+
+        audio = pipeline.audio_vae.decode(audio, return_dict=False)[0]
+        audio = pipeline.vocoder(audio)
+
+        # Get some pipeline configs for upsampling
+        spatial_patch_size = pipeline.transformer_spatial_patch_size
+        temporal_patch_size = pipeline.transformer_temporal_patch_size
 
     # upsample_pipeline = LTX2LatentUpsamplePipeline.from_pretrained(
     #     args.model_id, revision=args.revision, torch_dtype=args.dtype,
     # )
     output_sampling_rate = pipeline.vocoder.config.output_sampling_rate
-    pipeline.to(device="cpu")
     del pipeline  # Otherwise there might be an OOM error?
     torch.cuda.empty_cache()
     gc.collect()
@@ -124,13 +153,21 @@ def main(args):
     if args.vae_tiling:
         upsample_pipeline.enable_vae_tiling()
 
-    video = upsample_pipeline(
-        video=video,
-        height=args.height,
-        width=args.width,
-        output_type="np",
-        return_dict=False,
-    )[0]
+    upsample_kwargs = {
+        "height": args.height,
+        "width": args.width,
+        "output_type": "np",
+        "return_dict": False,
+    }
+    if args.use_video_latents:
+        upsample_kwargs["latents"] = video
+        upsample_kwargs["num_frames"] = args.num_frames
+        upsample_kwargs["spatial_patch_size"] = spatial_patch_size
+        upsample_kwargs["temporal_patch_size"] = temporal_patch_size
+    else:
+        upsample_kwargs["video"] = video
+
+    video = upsample_pipeline(**upsample_kwargs)[0]
 
     # Convert video to uint8 (but keep as NumPy array)
     video = (video * 255).round().astype("uint8")
