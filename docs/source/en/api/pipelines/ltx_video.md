@@ -414,6 +414,8 @@ export_to_video(video, "output.mp4", fps=24)
 
   </details>
 
+- Long image-to-video generation with multi-prompt sliding windows (ComfyUI parity)
+
   <details>
   <summary>Show example code</summary>
 
