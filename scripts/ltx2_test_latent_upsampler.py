@@ -5,9 +5,9 @@ import os
 import torch
 
 from diffusers import AutoencoderKLLTX2Video
-from diffusers.utils import load_image
 from diffusers.pipelines.ltx2 import LTX2ImageToVideoPipeline, LTX2LatentUpsamplePipeline, LTX2LatentUpsamplerModel
 from diffusers.pipelines.ltx2.export_utils import encode_video
+from diffusers.utils import load_image
 
 
 def parse_args():
@@ -75,7 +75,9 @@ def parse_args():
 
 def main(args):
     pipeline = LTX2ImageToVideoPipeline.from_pretrained(
-        args.model_id, revision=args.revision, torch_dtype=args.dtype,
+        args.model_id,
+        revision=args.revision,
+        torch_dtype=args.dtype,
     )
     if args.cpu_offload:
         pipeline.enable_model_cpu_offload()
@@ -114,9 +116,7 @@ def main(args):
         hop_length = pipeline.audio_hop_length
         audio_vae_temporal_scale = pipeline.audio_vae_temporal_compression_ratio
         duration_s = args.num_frames / args.frame_rate
-        latents_per_second = (
-            float(sampling_rate) / float(hop_length) / float(audio_vae_temporal_scale)
-        )
+        latents_per_second = float(sampling_rate) / float(hop_length) / float(audio_vae_temporal_scale)
         audio_latent_frames = int(duration_s * latents_per_second)
         latent_mel_bins = pipeline.audio_vae.config.mel_bins // pipeline.audio_vae_mel_compression_ratio
         audio = pipeline._unpack_audio_latents(audio, audio_latent_frames, latent_mel_bins)
@@ -151,7 +151,7 @@ def main(args):
     upsample_pipeline = LTX2LatentUpsamplePipeline(vae=vae, latent_upsampler=latent_upsampler)
     upsample_pipeline.to(device=args.device)
     if args.vae_tiling:
-        upsample_pipeline.enable_vae_tiling()
+        upsample_pipeline.vae.enable_tiling()
 
     upsample_kwargs = {
         "height": args.height,
@@ -182,6 +182,6 @@ def main(args):
     )
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     args = parse_args()
     main(args)
