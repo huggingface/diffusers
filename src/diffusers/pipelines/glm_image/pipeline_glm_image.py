@@ -27,7 +27,7 @@ from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...image_processor import VaeImageProcessor
 from ...loaders import CogView4LoraLoaderMixin
 from ...models import AutoencoderKL, GlmImageTransformer2DModel
-from ...models.transformers.transformer_glm_image import GlmImageAttenProcessorState
+from ...models.transformers.transformer_glm_image import GlmImageKVCache
 from ...pipelines.pipeline_utils import DiffusionPipeline
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import is_torch_xla_available, logging, replace_example_docstring
@@ -719,8 +719,10 @@ class GlmImagePipeline(DiffusionPipeline, CogView4LoraLoaderMixin):
             latents=latents,
         )
 
+        kv_caches = GlmImageKVCache(num_layers=self.transformer.config.num_layers)
+
         if image is not None and condition_images_prior_token_id is not None:
-            self.transformer.set_attention_processors_state(GlmImageAttenProcessorState.ImageEditWriteKV)
+            kv_caches.set_mode("write")
             latents_mean = (
                 torch.tensor(self.vae.config.latents_mean)
                 .view(1, self.vae.config.latent_channels, 1, 1)
@@ -747,6 +749,7 @@ class GlmImagePipeline(DiffusionPipeline, CogView4LoraLoaderMixin):
                     target_size=torch.tensor([condition_image.shape[-2:]], device=device),
                     crop_coords=torch.zeros((1, 2), device=device),
                     attention_kwargs=attention_kwargs,
+                    kv_caches=kv_caches,
                 )
 
         # 6. Prepare additional timestep conditions
@@ -796,7 +799,7 @@ class GlmImagePipeline(DiffusionPipeline, CogView4LoraLoaderMixin):
                 timestep = t.expand(latents.shape[0]) - 1
 
                 if image is not None:
-                    self.transformer.set_attention_processors_state(GlmImageAttenProcessorState.ImageEditReadKV)
+                    kv_caches.set_mode("read")
 
                 noise_pred_cond = self.transformer(
                     hidden_states=latent_model_input,
@@ -808,14 +811,13 @@ class GlmImagePipeline(DiffusionPipeline, CogView4LoraLoaderMixin):
                     crop_coords=crops_coords_top_left,
                     attention_kwargs=attention_kwargs,
                     return_dict=False,
+                    kv_caches=kv_caches,
                 )[0].float()
 
                 # perform guidance
                 if self.do_classifier_free_guidance:
                     if image is not None:
-                        self.transformer.set_attention_processors_state(
-                            GlmImageAttenProcessorState.ImageEditDontReadKV
-                        )
+                        kv_caches.set_mode("skip")
                     noise_pred_uncond = self.transformer(
                         hidden_states=latent_model_input,
                         encoder_hidden_states=negative_prompt_embeds,
@@ -826,6 +828,7 @@ class GlmImagePipeline(DiffusionPipeline, CogView4LoraLoaderMixin):
                         crop_coords=crops_coords_top_left,
                         attention_kwargs=attention_kwargs,
                         return_dict=False,
+                        kv_caches=kv_caches,
                     )[0].float()
 
                     noise_pred = noise_pred_uncond + self.guidance_scale * (noise_pred_cond - noise_pred_uncond)
@@ -849,8 +852,7 @@ class GlmImagePipeline(DiffusionPipeline, CogView4LoraLoaderMixin):
                     xm.mark_step()
 
         self._current_timestep = None
-        self.transformer.set_attention_processors_state(GlmImageAttenProcessorState.ImageGen)
-        self.transformer.clear_attention_processors_cache()
+        kv_caches.clear()
 
         if not output_type == "latent":
             latents = latents.to(self.vae.dtype)
