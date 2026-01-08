@@ -25,7 +25,6 @@ from transformers import ByT5Tokenizer, GlmImageForConditionalGeneration, GlmIma
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...image_processor import VaeImageProcessor
-from ...loaders import CogView4LoraLoaderMixin
 from ...models import AutoencoderKL, GlmImageTransformer2DModel
 from ...models.transformers.transformer_glm_image import GlmImageKVCache
 from ...pipelines.pipeline_utils import DiffusionPipeline
@@ -134,7 +133,7 @@ def retrieve_latents(
         raise AttributeError("Could not access latents of provided encoder_output")
 
 
-class GlmImagePipeline(DiffusionPipeline, CogView4LoraLoaderMixin):
+class GlmImagePipeline(DiffusionPipeline):
     r"""
     Pipeline for text-to-image generation using GLM-Image.
 
@@ -705,6 +704,10 @@ class GlmImagePipeline(DiffusionPipeline, CogView4LoraLoaderMixin):
                     self.vae.encode(condition_image), generator=generator, sample_mode="argmax"
                 )
                 condition_latent = (condition_latent - latents_mean) / latents_std
+
+                # Do not remove.
+                # It would be use to run the reference image through a
+                # forward pass at timestep 0 and keep the KV cache.
                 _ = self.transformer(
                     hidden_states=condition_latent,
                     encoder_hidden_states=empty_glyph_hiddens,
