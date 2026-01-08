@@ -13,6 +13,7 @@ from diffusers import (
     AutoencoderKLLTX2Audio,
     AutoencoderKLLTX2Video,
     FlowMatchEulerDiscreteScheduler,
+    LTX2LatentUpsamplePipeline,
     LTX2Pipeline,
     LTX2VideoTransformer3DModel,
 )
@@ -728,6 +729,11 @@ def get_args():
         action="store_true",
         help="Whether to save the pipeline. This will attempt to convert all models (e.g. vae, dit, etc.)",
     )
+    parser.add_argument(
+        "--upsample_pipeline",
+        action="store_true",
+        help="Whether to save a latent upsampling pipeline",
+    )
 
     parser.add_argument("--vae_dtype", type=str, default="bf16", choices=["fp32", "fp16", "bf16"])
     parser.add_argument("--audio_vae_dtype", type=str, default="bf16", choices=["fp32", "fp16", "bf16"])
@@ -762,18 +768,26 @@ def main(args):
 
     combined_ckpt = None
     load_combined_models = any(
-        [args.vae, args.audio_vae, args.dit, args.vocoder, args.text_encoder, args.full_pipeline]
+        [
+            args.vae,
+            args.audio_vae,
+            args.dit,
+            args.vocoder,
+            args.text_encoder,
+            args.full_pipeline,
+            args.upsample_pipeline,
+        ]
     )
     if args.combined_filename is not None and load_combined_models:
         combined_ckpt = load_original_checkpoint(args, filename=args.combined_filename)
 
-    if args.vae or args.full_pipeline:
+    if args.vae or args.full_pipeline or args.upsample_pipeline:
         if args.vae_filename is not None:
             original_vae_ckpt = load_hub_or_local_checkpoint(filename=args.vae_filename)
         elif combined_ckpt is not None:
             original_vae_ckpt = get_model_state_dict_from_combined_ckpt(combined_ckpt, args.vae_prefix)
         vae = convert_ltx2_video_vae(original_vae_ckpt, version=args.version)
-        if not args.full_pipeline:
+        if not args.full_pipeline and not args.upsample_pipeline:
             vae.to(vae_dtype).save_pretrained(os.path.join(args.output_path, "vae"))
 
     if args.audio_vae or args.full_pipeline:
@@ -822,7 +836,7 @@ def main(args):
         if not args.full_pipeline:
             tokenizer.save_pretrained(os.path.join(args.output_path, "tokenizer"))
 
-    if args.latent_upsampler:
+    if args.latent_upsampler or args.full_pipeline or args.upsample_pipeline:
         original_latent_upsampler_ckpt = load_hub_or_local_checkpoint(
             repo_id=args.original_state_dict_repo_id, filename=args.latent_upsampler_filename
         )
@@ -832,7 +846,8 @@ def main(args):
             latent_upsampler_config,
             dtype=vae_dtype,
         )
-        latent_upsampler.save_pretrained(os.path.join(args.output_path, "latent_upsampler"))
+        if not args.full_pipeline and not args.upsample_pipeline:
+            latent_upsampler.save_pretrained(os.path.join(args.output_path, "latent_upsampler"))
 
     if args.full_pipeline:
         scheduler = FlowMatchEulerDiscreteScheduler(
@@ -856,6 +871,14 @@ def main(args):
         )
 
         pipe.save_pretrained(args.output_path, safe_serialization=True, max_shard_size="5GB")
+
+    if args.upsample_pipeline:
+        pipe = LTX2LatentUpsamplePipeline(vae=vae, latent_upsampler=latent_upsampler)
+
+        # Put latent upsampling pipeline in its own subdirectory so it doesn't mess with the full pipeline
+        pipe.save_pretrained(
+            os.path.join(args.output_path, "upsample_pipeline"), safe_serialization=True, max_shard_size="5GB"
+        )
 
 
 if __name__ == "__main__":
