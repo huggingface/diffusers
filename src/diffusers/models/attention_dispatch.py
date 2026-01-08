@@ -1140,7 +1140,8 @@ def _npu_attention_forward_op(
 
     return out
 
-# Not implemented Now.
+
+# Not implemented yet.
 def _npu_attention_backward_op(
     ctx: torch.autograd.function.FunctionCtx,
     grad_out: torch.Tensor,
