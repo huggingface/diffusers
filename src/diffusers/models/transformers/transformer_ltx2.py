@@ -1126,12 +1126,44 @@ class LTX2VideoTransformer3DModel(
 
         Args:
             hidden_states (`torch.Tensor`):
-                Input patchified video latents of shape (batch_size, num_video_tokens, in_channels).
+                Input patchified video latents of shape `(batch_size, num_video_tokens, in_channels)`.
             audio_hidden_states (`torch.Tensor`):
-                Input patchified audio latents of shape (batch_size, num_audio_tokens, audio_in_channels).
+                Input patchified audio latents of shape `(batch_size, num_audio_tokens, audio_in_channels)`.
             encoder_hidden_states (`torch.Tensor`):
-                Input text embeddings of shape TODO.
-            TODO for the rest.
+                Input video text embeddings of shape `(batch_size, text_seq_len, self.config.caption_channels)`.
+            audio_encoder_hidden_states (`torch.Tensor`):
+                Input audio text embeddings of shape `(batch_size, text_seq_len, self.config.caption_channels)`.
+            timestep (`torch.Tensor`):
+                Input timestep of shape `(batch_size, num_video_tokens)`. These should already be scaled by
+                `self.config.timestep_scale_multiplier`.
+            audio_timestep (`torch.Tensor`, *optional*):
+                Input timestep of shape `(batch_size,)` or `(batch_size, num_audio_tokens)` for audio modulation
+                params. This is only used by certain pipelines such as the I2V pipeline.
+            encoder_attention_mask (`torch.Tensor`, *optional*):
+                Optional multiplicative text attention mask of shape `(batch_size, text_seq_len)`.
+            audio_encoder_attention_mask (`torch.Tensor`, *optional*):
+                Optional multiplicative text attention mask of shape `(batch_size, text_seq_len)` for audio modeling.
+            num_frames (`int`, *optional*):
+                The number of latent video frames. Used if calculating the video coordinates for RoPE.
+            height (`int`, *optional*):
+                The latent video height. Used if calculating the video coordinates for RoPE.
+            width (`int`, *optional*):
+                The latent video width. Used if calculating the video coordinates for RoPE.
+            fps: (`float`, *optional*, defaults to `24.0`):
+                The desired frames per second of the generated video. Used if calculating the video coordinates for
+                RoPE.
+            audio_num_frames: (`int`, *optional*):
+                The number of latent audio frames. Used if calculating the audio coordinates for RoPE.
+            video_coords (`torch.Tensor`, *optional*):
+                The video coordinates to be used when calculating the rotary positional embeddings (RoPE) of shape
+                `(batch_size, 3, num_video_tokens, 2)`. If not supplied, this will be calculated inside `forward`.
+            audio_coords (`torch.Tensor`, *optional*):
+                The audio coordinates to be used when calculating the rotary positional embeddings (RoPE) of shape
+                `(batch_size, 1, num_audio_tokens, 2)`. If not supplied, this will be calculated inside `forward`.
+            attention_kwargs (`Dict[str, Any]`, *optional*):
+                Optional dict of keyword args to be passed to the attention processor.
+            return_dict (`bool`, *optional*, defaults to `True`):
+                Whether to return a dict-like structured output of type `AudioVisualModelOutput` or a tuple.
 
         Returns:
             `AudioVisualModelOutput` or `tuple`:
