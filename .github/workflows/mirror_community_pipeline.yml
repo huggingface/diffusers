@@ -24,7 +24,6 @@ jobs:
   mirror_community_pipeline:
     env:
       SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL_COMMUNITY_MIRROR }}
-
     runs-on: ubuntu-22.04
     steps:
       # Checkout to correct ref
@@ -39,25 +38,28 @@ jobs:
       #     If ref is 'refs/heads/main' => set 'main'
       #     Else it must be a tag => set {tag}
       - name: Set checkout_ref and path_in_repo
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_INPUT_REF: ${{ github.event.inputs.ref }}
+          GITHUB_REF: ${{ github.ref }}
         run: |
-          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
-            if [ -z "${{ github.event.inputs.ref }}" ]; then
+          if [ "$EVENT_NAME" == "workflow_dispatch" ]; then
+            if [ -z "$EVENT_INPUT_REF" ]; then
               echo "Error: Missing ref input"
               exit 1
-            elif [ "${{ github.event.inputs.ref }}" == "main" ]; then
+            elif [ "$EVENT_INPUT_REF" == "main" ]; then
               echo "CHECKOUT_REF=refs/heads/main" >> $GITHUB_ENV
               echo "PATH_IN_REPO=main" >> $GITHUB_ENV
             else
-              echo "CHECKOUT_REF=refs/tags/${{ github.event.inputs.ref }}" >> $GITHUB_ENV
-              echo "PATH_IN_REPO=${{ github.event.inputs.ref }}" >> $GITHUB_ENV
+              echo "CHECKOUT_REF=refs/tags/$EVENT_INPUT_REF" >> $GITHUB_ENV
+              echo "PATH_IN_REPO=$EVENT_INPUT_REF" >> $GITHUB_ENV
             fi
-          elif [ "${{ github.ref }}" == "refs/heads/main" ]; then
-            echo "CHECKOUT_REF=${{ github.ref }}" >> $GITHUB_ENV
+          elif [ "$GITHUB_REF" == "refs/heads/main" ]; then
+            echo "CHECKOUT_REF=$GITHUB_REF" >> $GITHUB_ENV
             echo "PATH_IN_REPO=main" >> $GITHUB_ENV
           else
             # e.g. refs/tags/v0.28.1 -> v0.28.1
-            echo "CHECKOUT_REF=${{ github.ref }}" >> $GITHUB_ENV
-            echo "PATH_IN_REPO=$(echo ${{ github.ref }} | sed 's/^refs\/tags\///')" >> $GITHUB_ENV
+            echo "CHECKOUT_REF=$GITHUB_REF" >> $GITHUB_ENV
+            echo "PATH_IN_REPO=$(echo $GITHUB_REF | sed 's/^refs\/tags\///')" >> $GITHUB_ENV
           fi
       - name: Print env vars
         run: |
