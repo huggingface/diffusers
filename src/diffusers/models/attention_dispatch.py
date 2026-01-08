@@ -1120,22 +1120,15 @@ def _npu_attention_forward_op(
     _save_ctx: bool = True,
     _parallel_config: Optional["ParallelConfig"] = None,
 ):
-    if enable_gqa:
-        raise ValueError("`enable_gqa` is not yet supported for NPU attention.")
     if return_lse:
         raise ValueError("NPU attention backend does not support setting `return_lse=True`.")
-
-    # Contiguous is a must here when Calling NPU Attention backend.
-    query = query.transpose(1, 2).contiguous()
-    key = key.transpose(1, 2).contiguous()
-    value = value.transpose(1, 2).contiguous()
 
     out = npu_fusion_attention(
         query,
         key,
         value,
-        query.size(1),  # num_heads
-        input_layout="BNSD",
+        query.size(2),  # num_heads
+        input_layout="BSND",
         pse=None,
         scale=1.0 / math.sqrt(query.shape[-1]) if scale is None else scale,
         pre_tockens=65536,
@@ -1145,7 +1138,6 @@ def _npu_attention_forward_op(
         inner_precise=0,
     )[0]
 
-    out = out.transpose(1, 2).contiguous()
     return out
 
 # Not implemented Now.
@@ -2200,14 +2192,12 @@ def _native_npu_attention(
     if return_lse:
         raise ValueError("NPU attention backend does not support setting `return_lse=True`.")
     if _parallel_config is None:
-        query, key, value = (x.transpose(1, 2).contiguous() for x in (query, key, value))
         out = npu_fusion_attention(
             query,
             key,
             value,
-            query.size(1),  # num_heads
-            input_layout="BNSD",
-            # input_layout="BSND",
+            query.size(2),  # num_heads
+            input_layout="BSND",
             pse=None,
             scale=1.0 / math.sqrt(query.shape[-1]) if scale is None else scale,
             pre_tockens=65536,
@@ -2216,7 +2206,6 @@ def _native_npu_attention(
             sync=False,
             inner_precise=0,
         )[0]
-        out = out.transpose(1, 2).contiguous()
     else:
         out = _templated_context_parallel_attention(
             query,
