@@ -168,17 +168,7 @@ class Kandinsky5TimeEmbeddings(nn.Module):
     def forward(self, time):
         args = torch.outer(time.to(torch.float32), self.freqs.to(device=time.device))
         time_embed = torch.cat([torch.cos(args), torch.sin(args)], dim=-1)
-        time_embed = F.linear(
-            self.activation(
-                F.linear(
-                    time_embed,
-                    self.in_layer.weight.to(torch.float32),
-                    self.in_layer.bias.to(torch.float32),
-                )
-            ),
-            self.out_layer.weight.to(torch.float32),
-            self.out_layer.bias.to(torch.float32),
-        )
+        time_embed = self.out_layer(self.activation(self.in_layer(time_embed)))
         return time_embed
 
 
@@ -279,11 +269,7 @@ class Kandinsky5Modulation(nn.Module):
         self.out_layer.bias.data.zero_()
 
     def forward(self, x):
-        return F.linear(
-            self.activation(x.to(torch.float32)),
-            self.out_layer.weight.to(torch.float32),
-            self.out_layer.bias.to(torch.float32),
-        )
+        return self.out_layer(self.activation(x))
 
 
 class Kandinsky5AttnProcessor:
@@ -537,6 +523,7 @@ class Kandinsky5Transformer3DModel(
         "Kandinsky5TransformerEncoderBlock",
         "Kandinsky5TransformerDecoderBlock",
     ]
+    _keep_in_fp32_modules = ["time_embeddings", "modulation", "visual_modulation", "text_modulation"]
     _supports_gradient_checkpointing = True
 
     @register_to_config
