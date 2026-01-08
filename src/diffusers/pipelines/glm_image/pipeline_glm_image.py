@@ -352,7 +352,7 @@ class GlmImagePipeline(DiffusionPipeline, CogView4LoraLoaderMixin):
             prior_token_image_ids = self.vision_language_encoder.get_image_tokens(
                 prior_token_image_embed, existing_grid
             )
-            inputs["image_ids"] = prior_token_image_ids
+
         outputs = self.vision_language_encoder.generate(
             **inputs,
             max_new_tokens=max_new_tokens,
