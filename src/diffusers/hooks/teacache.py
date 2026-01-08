@@ -29,8 +29,8 @@ _TEACACHE_HOOK = "teacache"
 def _get_model_config():
     """Get model configuration mapping.
 
-    Returns dict at runtime when forward functions are defined.
-    Order matters: more specific model variants must come before generic ones.
+    Returns dict at runtime when forward functions are defined. Order matters: more specific model variants must come
+    before generic ones.
     """
     return {
         "FluxKontext": {
@@ -202,8 +202,8 @@ class TeaCacheConfig:
             and statistics tracking. If not provided, TeaCache will still function correctly.
         num_inference_steps (`int`, *optional*, defaults to `None`):
             Total number of inference steps. Required for proper state management - ensures first and last timesteps
-            are always computed (never cached) and that state resets between inference runs. If not provided,
-            TeaCache will attempt to detect via callback or module attribute.
+            are always computed (never cached) and that state resets between inference runs. If not provided, TeaCache
+            will attempt to detect via callback or module attribute.
         num_inference_steps_callback (`Callable[[], int]`, *optional*, defaults to `None`):
             Callback function that returns the total number of inference steps. Alternative to `num_inference_steps`
             for dynamic step counts.
