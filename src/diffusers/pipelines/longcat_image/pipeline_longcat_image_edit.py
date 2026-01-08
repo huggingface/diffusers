@@ -20,8 +20,9 @@ import numpy as np
 import PIL
 import torch
 from transformers import Qwen2_5_VLForConditionalGeneration, Qwen2Tokenizer, Qwen2VLProcessor
+
 from ...image_processor import VaeImageProcessor
-from ...loaders import FluxLoraLoaderMixin, FromSingleFileMixin, LongCatLoraLoaderMixin
+from ...loaders import FromSingleFileMixin, LongCatLoraLoaderMixin
 from ...models.autoencoders import AutoencoderKL
 from ...models.transformers import LongCatImageTransformer2DModel
 from ...pipelines.pipeline_utils import DiffusionPipeline
