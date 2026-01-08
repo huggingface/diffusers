@@ -667,7 +667,7 @@ class LTX2AudioVideoRotaryPosEmbed(nn.Module):
         height: int,
         width: int,
         device: torch.device,
-        fps: float = 25.0,
+        fps: float = 24.0,
     ) -> torch.Tensor:
         """
         Create per-dimension bounds [inclusive start, exclusive end) for each patch with respect to the original pixel
@@ -735,7 +735,6 @@ class LTX2AudioVideoRotaryPosEmbed(nn.Module):
         batch_size: int,
         num_frames: int,
         device: torch.device,
-        fps: float = 25.0,
         shift: int = 0,
     ) -> torch.Tensor:
         """
@@ -1115,7 +1114,7 @@ class LTX2VideoTransformer3DModel(
         num_frames: Optional[int] = None,
         height: Optional[int] = None,
         width: Optional[int] = None,
-        fps: float = 25.0,
+        fps: float = 24.0,
         audio_num_frames: Optional[int] = None,
         video_coords: Optional[torch.Tensor] = None,
         audio_coords: Optional[torch.Tensor] = None,
@@ -1176,7 +1175,7 @@ class LTX2VideoTransformer3DModel(
             )
         if audio_coords is None:
             audio_coords = self.audio_rope.prepare_audio_coords(
-                batch_size, audio_num_frames, audio_hidden_states.device, fps=fps
+                batch_size, audio_num_frames, audio_hidden_states.device
             )
 
         video_rotary_emb = self.rope(video_coords, device=hidden_states.device)

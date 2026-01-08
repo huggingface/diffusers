@@ -807,7 +807,7 @@ class LTX2ImageToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoL
         height: int = 512,
         width: int = 768,
         num_frames: int = 121,
-        frame_rate: float = 25.0,
+        frame_rate: float = 24.0,
         num_inference_steps: int = 40,
         timesteps: List[int] = None,
         guidance_scale: float = 3.0,
@@ -844,7 +844,7 @@ class LTX2ImageToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoL
                 The width in pixels of the generated image. This is set to 848 by default for the best results.
             num_frames (`int`, *optional*, defaults to `121`):
                 The number of video frames to generate
-            frame_rate (`float`, *optional*, defaults to `25.0`):
+            frame_rate (`float`, *optional*, defaults to `24.0`):
                 The frames per second (FPS) of the generated video.
             num_inference_steps (`int`, *optional*, defaults to 40):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
@@ -1067,7 +1067,7 @@ class LTX2ImageToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoL
             latents.shape[0], latent_num_frames, latent_height, latent_width, latents.device, fps=frame_rate
         )
         audio_coords = self.transformer.audio_rope.prepare_audio_coords(
-            audio_latents.shape[0], audio_num_frames, audio_latents.device, fps=frame_rate
+            audio_latents.shape[0], audio_num_frames, audio_latents.device
         )
 
         # 7. Denoising loop
