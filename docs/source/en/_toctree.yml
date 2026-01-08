@@ -367,6 +367,8 @@
         title: LatteTransformer3DModel
       - local: api/models/longcat_image_transformer2d
         title: LongCatImageTransformer2DModel
+      - local: api/models/ltx2_video_transformer3d
+        title: LTX2VideoTransformer3DModel
       - local: api/models/ltx_video_transformer3d
         title: LTXVideoTransformer3DModel
       - local: api/models/lumina2_transformer2d
@@ -443,6 +445,10 @@
         title: AutoencoderKLHunyuanVideo
       - local: api/models/autoencoder_kl_hunyuan_video15
         title: AutoencoderKLHunyuanVideo15
+      - local: api/models/autoencoderkl_audio_ltx_2
+        title: AutoencoderKLLTX2Audio
+      - local: api/models/autoencoderkl_ltx_2
+        title: AutoencoderKLLTX2Video
       - local: api/models/autoencoderkl_ltx_video
         title: AutoencoderKLLTXVideo
       - local: api/models/autoencoderkl_magvit
@@ -678,6 +684,8 @@
         title: Kandinsky 5.0 Video
       - local: api/pipelines/latte
         title: Latte
+      - local: api/pipelines/ltx2
+        title: LTX-2
       - local: api/pipelines/ltx_video
         title: LTXVideo
       - local: api/pipelines/mochi
