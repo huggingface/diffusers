@@ -493,7 +493,6 @@ class GlmImagePipeline(DiffusionPipeline, CogView4LoraLoaderMixin):
         height,
         width,
         callback_on_step_end_tensor_inputs,
-        do_classifier_free_guidance,
         prompt_embeds=None,
     ):
         if (
@@ -524,27 +523,6 @@ class GlmImagePipeline(DiffusionPipeline, CogView4LoraLoaderMixin):
             )
         elif prompt is not None and (not isinstance(prompt, str) and not isinstance(prompt, list)):
             raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
-
-        if do_classifier_free_guidance:
-            if prompt is not None:
-                batch_size = len(prompt)
-            else:
-                batch_size = prompt_embeds.shape[0]
-
-            negative_prompt = None  # Not used in GLM-Image
-            negative_prompt = batch_size * [negative_prompt] if isinstance(negative_prompt, str) else negative_prompt
-
-            if prompt is not None and type(prompt) is not type(negative_prompt):
-                raise TypeError(
-                    f"`negative_prompt` should be the same type to `prompt`, but got {type(negative_prompt)} !="
-                    f" {type(prompt)}."
-                )
-            elif batch_size != len(negative_prompt):
-                raise ValueError(
-                    f"`negative_prompt`: {negative_prompt} has batch size {len(negative_prompt)}, but `prompt`:"
-                    f" {prompt} has batch size {batch_size}. Please make sure that passed `negative_prompt` matches"
-                    " the batch size of `prompt`."
-                )
 
     @property
     def guidance_scale(self):
@@ -634,14 +612,11 @@ class GlmImagePipeline(DiffusionPipeline, CogView4LoraLoaderMixin):
             callback_on_step_end_tensor_inputs = callback_on_step_end.tensor_inputs
 
         # 1. Check inputs
-        self._guidance_scale = guidance_scale
-
         self.check_inputs(
             prompt,
             height,
             width,
             callback_on_step_end_tensor_inputs,
-            self.do_classifier_free_guidance,
             prompt_embeds,
         )
         self._guidance_scale = guidance_scale
