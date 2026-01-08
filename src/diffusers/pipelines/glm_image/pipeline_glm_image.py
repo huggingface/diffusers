@@ -141,16 +141,16 @@ class GlmImagePipeline(DiffusionPipeline):
     transformer) model for image decoding.
 
     Args:
-        vae ([`AutoencoderKL`]):
-            Variational Auto-Encoder (VAE) Model to encode and decode images to and from latent representations.
-        text_encoder ([`T5EncoderModel`]):
-            Frozen text-encoder for glyph embeddings.
         tokenizer (`PreTrainedTokenizer`):
             Tokenizer for the text encoder.
         processor (`AutoProcessor`):
             Processor for the AR model to handle chat templates and tokenization.
+        text_encoder ([`T5EncoderModel`]):
+            Frozen text-encoder for glyph embeddings.
         vision_language_encoder ([`GlmImageForConditionalGeneration`]):
             The AR model that generates image tokens from text prompts.
+        vae ([`AutoencoderKL`]):
+            Variational Auto-Encoder (VAE) Model to encode and decode images to and from latent representations.
         transformer ([`GlmImageTransformer2DModel`]):
             A text conditioned transformer to denoise the encoded image latents (DiT).
         scheduler ([`SchedulerMixin`]):
@@ -193,8 +193,8 @@ class GlmImagePipeline(DiffusionPipeline):
             else 128
         )
 
+    @staticmethod
     def _build_image_grid_thw(
-        self,
         token_h: int,
         token_w: int,
         prev_token_h: int,
@@ -213,12 +213,10 @@ class GlmImagePipeline(DiffusionPipeline):
         else:
             return torch.cat([existing_grid.to(device), torch.tensor([[1, token_h, token_w]], device=device)], dim=0)
 
+    @staticmethod
     def _calculate_ar_generation_params(
-        self, token_h: int, token_w: int, prev_token_h: int, prev_token_w: int, is_text_to_image: bool
+        token_h: int, token_w: int, prev_token_h: int, prev_token_w: int, is_text_to_image: bool
     ) -> Tuple[int, int]:
-        """
-        Calculate max_new_tokens and large_image_start_offset for AR generation.
-        """
         large_image_tokens = token_h * token_w
         small_image_tokens = prev_token_h * prev_token_w
 
@@ -231,15 +229,17 @@ class GlmImagePipeline(DiffusionPipeline):
 
         return max_new_tokens, large_image_start_offset
 
+    @staticmethod
     def _extract_large_image_tokens(
-        self, outputs: torch.Tensor, input_length: int, large_image_start_offset: int, large_image_tokens: int
+        outputs: torch.Tensor, input_length: int, large_image_start_offset: int, large_image_tokens: int
     ) -> torch.Tensor:
         generated_tokens = outputs[0][input_length:]
         large_image_start = large_image_start_offset
         large_image_end = large_image_start + large_image_tokens
         return generated_tokens[large_image_start:large_image_end]
 
-    def _upsample_token_ids(self, token_ids: torch.Tensor, token_h: int, token_w: int) -> torch.Tensor:
+    @staticmethod
+    def _upsample_token_ids(token_ids: torch.Tensor, token_h: int, token_w: int) -> torch.Tensor:
         token_ids = token_ids.view(1, 1, token_h, token_w)
         token_ids = torch.nn.functional.interpolate(token_ids.float(), scale_factor=2, mode="nearest").to(
             dtype=torch.long
@@ -247,26 +247,14 @@ class GlmImagePipeline(DiffusionPipeline):
         token_ids = token_ids.view(1, -1)
         return token_ids
 
+    @staticmethod
     def _build_prompt_with_shape(
-        self,
         prompt: str,
         height: int,
         width: int,
         is_text_to_image: bool,
         factor: int = 32,
     ) -> Tuple[str, int, int, int, int]:
-        """
-        Build prompt with shape info (<sop>H W<eop>) based on height and width.
-
-        Args:
-            prompt: The raw text prompt without shape info
-            height: Target image height in pixels
-            width: Target image width in pixels
-            is_text_to_image: Whether this is text-to-image (True) or image-to-image (False)
-
-        Returns:
-            Tuple of (expanded_prompt, token_h, token_w, prev_token_h, prev_token_w)
-        """
         token_h = height // factor
         token_w = width // factor
         ratio = token_h / token_w
@@ -288,26 +276,6 @@ class GlmImagePipeline(DiffusionPipeline):
         image: Optional[List[PIL.Image.Image]] = None,
         factor: int = 32,
     ) -> Tuple[torch.Tensor, int, int]:
-        """
-        Generate prior tokens using the AR (vision_language_encoder) model.
-
-        Automatically builds the prompt with shape info based on height/width. Users only need to provide the raw text
-        prompt without <sop>...<eop> tags.
-
-        Args:
-            prompt: The raw text prompt (without shape info)
-            height: Target image height in pixels (must be divisible by factor)
-            width: Target image width in pixels (must be divisible by factor)
-            image: Optional list of condition images for image-to-image generation
-            factor: Token size factor (32 for d32 tokens)
-
-        Returns:
-            Tuple of (prior_token_ids, pixel_height, pixel_width)
-            - prior_token_ids: Upsampled to d16 format, shape [1, token_h*token_w*4]
-            - pixel_height: Image height in pixels (aligned to factor)
-            - pixel_width: Image width in pixels (aligned to factor)
-
-        """
         device = self.vision_language_encoder.device
         height = (height // factor) * factor
         width = (width // factor) * factor
