@@ -32,6 +32,12 @@ The original codebase for LTX-2 can be found [here](https://github.com/Lightrick
   - all
   - __call__
 
+## LTX2LatentUpsamplePipeline
+
+[[autodoc]] LTX2LatentUpsamplePipeline
+  - all
+  - __call__
+
 ## LTX2PipelineOutput
 
 [[autodoc]] pipelines.ltx2.pipeline_output.LTX2PipelineOutput
