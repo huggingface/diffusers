@@ -360,7 +360,7 @@ class FluxKontextCoreDenoiseStep(SequentialPipelineBlocks):
 AUTO_BLOCKS = InsertableDict(
     [
         ("text_encoder", FluxTextEncoderStep()),
-        ("image_encoder", FluxAutoVaeEncoderStep()),
+        ("vae_encoder", FluxAutoVaeEncoderStep()),
         ("denoise", FluxCoreDenoiseStep()),
         ("decode", FluxDecodeStep()),
     ]
@@ -369,7 +369,7 @@ AUTO_BLOCKS = InsertableDict(
 AUTO_BLOCKS_KONTEXT = InsertableDict(
     [
         ("text_encoder", FluxTextEncoderStep()),
-        ("image_encoder", FluxKontextAutoVaeEncoderStep()),
+        ("vae_encoder", FluxKontextAutoVaeEncoderStep()),
         ("denoise", FluxKontextCoreDenoiseStep()),
         ("decode", FluxDecodeStep()),
     ]

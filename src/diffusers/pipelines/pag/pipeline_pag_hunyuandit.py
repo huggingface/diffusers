@@ -17,7 +17,7 @@ from typing import Callable, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import torch
-from transformers import BertModel, BertTokenizer, CLIPImageProcessor, MT5Tokenizer, T5EncoderModel
+from transformers import BertModel, BertTokenizer, CLIPImageProcessor, T5EncoderModel, T5Tokenizer
 
 from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput
 
@@ -173,7 +173,7 @@ class HunyuanDiTPAGPipeline(DiffusionPipeline, PAGMixin):
             The HunyuanDiT model designed by Tencent Hunyuan.
         text_encoder_2 (`T5EncoderModel`):
             The mT5 embedder. Specifically, it is 't5-v1_1-xxl'.
-        tokenizer_2 (`MT5Tokenizer`):
+        tokenizer_2 (`T5Tokenizer`):
             The tokenizer for the mT5 embedder.
         scheduler ([`DDPMScheduler`]):
             A scheduler to be used in combination with HunyuanDiT to denoise the encoded image latents.
@@ -208,7 +208,7 @@ class HunyuanDiTPAGPipeline(DiffusionPipeline, PAGMixin):
         feature_extractor: Optional[CLIPImageProcessor] = None,
         requires_safety_checker: bool = True,
         text_encoder_2: Optional[T5EncoderModel] = None,
-        tokenizer_2: Optional[MT5Tokenizer] = None,
+        tokenizer_2: Optional[T5Tokenizer] = None,
         pag_applied_layers: Union[str, List[str]] = "blocks.1",  # "blocks.16.attn1", "blocks.16", "16", 16
     ):
         super().__init__()

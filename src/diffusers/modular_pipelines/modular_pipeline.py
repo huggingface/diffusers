@@ -501,15 +501,19 @@ class ModularPipelineBlocks(ConfigMixin, PushToHubMixin):
 
     @property
     def input_names(self) -> List[str]:
-        return [input_param.name for input_param in self.inputs]
+        return [input_param.name for input_param in self.inputs if input_param.name is not None]
 
     @property
     def intermediate_output_names(self) -> List[str]:
-        return [output_param.name for output_param in self.intermediate_outputs]
+        return [output_param.name for output_param in self.intermediate_outputs if output_param.name is not None]
 
     @property
     def output_names(self) -> List[str]:
-        return [output_param.name for output_param in self.outputs]
+        return [output_param.name for output_param in self.outputs if output_param.name is not None]
+
+    @property
+    def component_names(self) -> List[str]:
+        return [component.name for component in self.expected_components]
 
     @property
     def doc(self):
@@ -1525,10 +1529,8 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
         if blocks is None:
             if modular_config_dict is not None:
                 blocks_class_name = modular_config_dict.get("_blocks_class_name")
-            elif config_dict is not None:
-                blocks_class_name = self.get_default_blocks_name(config_dict)
             else:
-                blocks_class_name = None
+                blocks_class_name = self.get_default_blocks_name(config_dict)
             if blocks_class_name is not None:
                 diffusers_module = importlib.import_module("diffusers")
                 blocks_class = getattr(diffusers_module, blocks_class_name)
@@ -1625,7 +1627,10 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
             return None, config_dict
 
         except EnvironmentError as e:
-            logger.debug(f" model_index.json not found in the repo: {e}")
+            raise EnvironmentError(
+                f"Failed to load config from '{pretrained_model_name_or_path}'. "
+                f"Could not find or load 'modular_model_index.json' or 'model_index.json'."
+            ) from e
 
         return None, None
 
@@ -2550,7 +2555,11 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
             kwargs_type = expected_input_param.kwargs_type
             if name in passed_kwargs:
                 state.set(name, passed_kwargs.pop(name), kwargs_type)
-            elif name not in state.values:
+            elif kwargs_type is not None and kwargs_type in passed_kwargs:
+                kwargs_dict = passed_kwargs.pop(kwargs_type)
+                for k, v in kwargs_dict.items():
+                    state.set(k, v, kwargs_type)
+            elif name is not None and name not in state.values:
                 state.set(name, default, kwargs_type)
 
         # Warn about unexpected inputs

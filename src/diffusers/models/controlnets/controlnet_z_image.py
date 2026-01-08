@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import math
-from typing import List, Literal, Optional
+from typing import List, Literal, Optional, Tuple
 
 import torch
 import torch.nn as nn
@@ -170,6 +170,21 @@ class FeedForward(nn.Module):
         return self.w2(self._forward_silu_gating(self.w1(x), self.w3(x)))
 
 
+# Copied from diffusers.models.transformers.transformer_z_image.select_per_token
+def select_per_token(
+    value_noisy: torch.Tensor,
+    value_clean: torch.Tensor,
+    noise_mask: torch.Tensor,
+    seq_len: int,
+) -> torch.Tensor:
+    noise_mask_expanded = noise_mask.unsqueeze(-1)  # (batch, seq_len, 1)
+    return torch.where(
+        noise_mask_expanded == 1,
+        value_noisy.unsqueeze(1).expand(-1, seq_len, -1),
+        value_clean.unsqueeze(1).expand(-1, seq_len, -1),
+    )
+
+
 @maybe_allow_in_graph
 # Copied from diffusers.models.transformers.transformer_z_image.ZImageTransformerBlock
 class ZImageTransformerBlock(nn.Module):
@@ -220,12 +235,37 @@ class ZImageTransformerBlock(nn.Module):
         attn_mask: torch.Tensor,
         freqs_cis: torch.Tensor,
         adaln_input: Optional[torch.Tensor] = None,
+        noise_mask: Optional[torch.Tensor] = None,
+        adaln_noisy: Optional[torch.Tensor] = None,
+        adaln_clean: Optional[torch.Tensor] = None,
     ):
         if self.modulation:
-            assert adaln_input is not None
-            scale_msa, gate_msa, scale_mlp, gate_mlp = self.adaLN_modulation(adaln_input).unsqueeze(1).chunk(4, dim=2)
-            gate_msa, gate_mlp = gate_msa.tanh(), gate_mlp.tanh()
-            scale_msa, scale_mlp = 1.0 + scale_msa, 1.0 + scale_mlp
+            seq_len = x.shape[1]
+
+            if noise_mask is not None:
+                # Per-token modulation: different modulation for noisy/clean tokens
+                mod_noisy = self.adaLN_modulation(adaln_noisy)
+                mod_clean = self.adaLN_modulation(adaln_clean)
+
+                scale_msa_noisy, gate_msa_noisy, scale_mlp_noisy, gate_mlp_noisy = mod_noisy.chunk(4, dim=1)
+                scale_msa_clean, gate_msa_clean, scale_mlp_clean, gate_mlp_clean = mod_clean.chunk(4, dim=1)
+
+                gate_msa_noisy, gate_mlp_noisy = gate_msa_noisy.tanh(), gate_mlp_noisy.tanh()
+                gate_msa_clean, gate_mlp_clean = gate_msa_clean.tanh(), gate_mlp_clean.tanh()
+
+                scale_msa_noisy, scale_mlp_noisy = 1.0 + scale_msa_noisy, 1.0 + scale_mlp_noisy
+                scale_msa_clean, scale_mlp_clean = 1.0 + scale_msa_clean, 1.0 + scale_mlp_clean
+
+                scale_msa = select_per_token(scale_msa_noisy, scale_msa_clean, noise_mask, seq_len)
+                scale_mlp = select_per_token(scale_mlp_noisy, scale_mlp_clean, noise_mask, seq_len)
+                gate_msa = select_per_token(gate_msa_noisy, gate_msa_clean, noise_mask, seq_len)
+                gate_mlp = select_per_token(gate_mlp_noisy, gate_mlp_clean, noise_mask, seq_len)
+            else:
+                # Global modulation: same modulation for all tokens (avoid double select)
+                mod = self.adaLN_modulation(adaln_input)
+                scale_msa, gate_msa, scale_mlp, gate_mlp = mod.unsqueeze(1).chunk(4, dim=2)
+                gate_msa, gate_mlp = gate_msa.tanh(), gate_mlp.tanh()
+                scale_msa, scale_mlp = 1.0 + scale_msa, 1.0 + scale_mlp
 
             # Attention block
             attn_out = self.attention(
@@ -493,112 +533,93 @@ class ZImageControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigi
     def create_coordinate_grid(size, start=None, device=None):
         if start is None:
             start = (0 for _ in size)
-
         axes = [torch.arange(x0, x0 + span, dtype=torch.int32, device=device) for x0, span in zip(start, size)]
         grids = torch.meshgrid(axes, indexing="ij")
         return torch.stack(grids, dim=-1)
 
+    # Copied from diffusers.models.transformers.transformer_z_image.ZImageTransformer2DModel._patchify_image
+    def _patchify_image(self, image: torch.Tensor, patch_size: int, f_patch_size: int):
+        """Patchify a single image tensor: (C, F, H, W) -> (num_patches, patch_dim)."""
+        pH, pW, pF = patch_size, patch_size, f_patch_size
+        C, F, H, W = image.size()
+        F_tokens, H_tokens, W_tokens = F // pF, H // pH, W // pW
+        image = image.view(C, F_tokens, pF, H_tokens, pH, W_tokens, pW)
+        image = image.permute(1, 3, 5, 2, 4, 6, 0).reshape(F_tokens * H_tokens * W_tokens, pF * pH * pW * C)
+        return image, (F, H, W), (F_tokens, H_tokens, W_tokens)
+
+    # Copied from diffusers.models.transformers.transformer_z_image.ZImageTransformer2DModel._pad_with_ids
+    def _pad_with_ids(
+        self,
+        feat: torch.Tensor,
+        pos_grid_size: Tuple,
+        pos_start: Tuple,
+        device: torch.device,
+        noise_mask_val: Optional[int] = None,
+    ):
+        """Pad feature to SEQ_MULTI_OF, create position IDs and pad mask."""
+        ori_len = len(feat)
+        pad_len = (-ori_len) % SEQ_MULTI_OF
+        total_len = ori_len + pad_len
+
+        # Pos IDs
+        ori_pos_ids = self.create_coordinate_grid(size=pos_grid_size, start=pos_start, device=device).flatten(0, 2)
+        if pad_len > 0:
+            pad_pos_ids = (
+                self.create_coordinate_grid(size=(1, 1, 1), start=(0, 0, 0), device=device)
+                .flatten(0, 2)
+                .repeat(pad_len, 1)
+            )
+            pos_ids = torch.cat([ori_pos_ids, pad_pos_ids], dim=0)
+            padded_feat = torch.cat([feat, feat[-1:].repeat(pad_len, 1)], dim=0)
+            pad_mask = torch.cat(
+                [
+                    torch.zeros(ori_len, dtype=torch.bool, device=device),
+                    torch.ones(pad_len, dtype=torch.bool, device=device),
+                ]
+            )
+        else:
+            pos_ids = ori_pos_ids
+            padded_feat = feat
+            pad_mask = torch.zeros(ori_len, dtype=torch.bool, device=device)
+
+        noise_mask = [noise_mask_val] * total_len if noise_mask_val is not None else None  # token level
+        return padded_feat, pos_ids, pad_mask, total_len, noise_mask
+
     # Copied from diffusers.models.transformers.transformer_z_image.ZImageTransformer2DModel.patchify_and_embed
     def patchify_and_embed(
-        self,
-        all_image: List[torch.Tensor],
-        all_cap_feats: List[torch.Tensor],
-        patch_size: int,
-        f_patch_size: int,
+        self, all_image: List[torch.Tensor], all_cap_feats: List[torch.Tensor], patch_size: int, f_patch_size: int
     ):
-        pH = pW = patch_size
-        pF = f_patch_size
+        """Patchify for basic mode: single image per batch item."""
         device = all_image[0].device
+        all_img_out, all_img_size, all_img_pos_ids, all_img_pad_mask = [], [], [], []
+        all_cap_out, all_cap_pos_ids, all_cap_pad_mask = [], [], []
 
-        all_image_out = []
-        all_image_size = []
-        all_image_pos_ids = []
-        all_image_pad_mask = []
-        all_cap_pos_ids = []
-        all_cap_pad_mask = []
-        all_cap_feats_out = []
-
-        for i, (image, cap_feat) in enumerate(zip(all_image, all_cap_feats)):
-            ### Process Caption
-            cap_ori_len = len(cap_feat)
-            cap_padding_len = (-cap_ori_len) % SEQ_MULTI_OF
-            # padded position ids
-            cap_padded_pos_ids = self.create_coordinate_grid(
-                size=(cap_ori_len + cap_padding_len, 1, 1),
-                start=(1, 0, 0),
-                device=device,
-            ).flatten(0, 2)
-            all_cap_pos_ids.append(cap_padded_pos_ids)
-            # pad mask
-            cap_pad_mask = torch.cat(
-                [
-                    torch.zeros((cap_ori_len,), dtype=torch.bool, device=device),
-                    torch.ones((cap_padding_len,), dtype=torch.bool, device=device),
-                ],
-                dim=0,
+        for image, cap_feat in zip(all_image, all_cap_feats):
+            # Caption
+            cap_out, cap_pos_ids, cap_pad_mask, cap_len, _ = self._pad_with_ids(
+                cap_feat, (len(cap_feat) + (-len(cap_feat)) % SEQ_MULTI_OF, 1, 1), (1, 0, 0), device
             )
-            all_cap_pad_mask.append(
-                cap_pad_mask if cap_padding_len > 0 else torch.zeros((cap_ori_len,), dtype=torch.bool, device=device)
-            )
+            all_cap_out.append(cap_out)
+            all_cap_pos_ids.append(cap_pos_ids)
+            all_cap_pad_mask.append(cap_pad_mask)
 
-            # padded feature
-            cap_padded_feat = torch.cat([cap_feat, cap_feat[-1:].repeat(cap_padding_len, 1)], dim=0)
-            all_cap_feats_out.append(cap_padded_feat)
-
-            ### Process Image
-            C, F, H, W = image.size()
-            all_image_size.append((F, H, W))
-            F_tokens, H_tokens, W_tokens = F // pF, H // pH, W // pW
-
-            image = image.view(C, F_tokens, pF, H_tokens, pH, W_tokens, pW)
-            # "c f pf h ph w pw -> (f h w) (pf ph pw c)"
-            image = image.permute(1, 3, 5, 2, 4, 6, 0).reshape(F_tokens * H_tokens * W_tokens, pF * pH * pW * C)
-
-            image_ori_len = len(image)
-            image_padding_len = (-image_ori_len) % SEQ_MULTI_OF
-
-            image_ori_pos_ids = self.create_coordinate_grid(
-                size=(F_tokens, H_tokens, W_tokens),
-                start=(cap_ori_len + cap_padding_len + 1, 0, 0),
-                device=device,
-            ).flatten(0, 2)
-            image_padded_pos_ids = torch.cat(
-                [
-                    image_ori_pos_ids,
-                    self.create_coordinate_grid(size=(1, 1, 1), start=(0, 0, 0), device=device)
-                    .flatten(0, 2)
-                    .repeat(image_padding_len, 1),
-                ],
-                dim=0,
+            # Image
+            img_patches, size, (F_t, H_t, W_t) = self._patchify_image(image, patch_size, f_patch_size)
+            img_out, img_pos_ids, img_pad_mask, _, _ = self._pad_with_ids(
+                img_patches, (F_t, H_t, W_t), (cap_len + 1, 0, 0), device
             )
-            all_image_pos_ids.append(image_padded_pos_ids if image_padding_len > 0 else image_ori_pos_ids)
-            # pad mask
-            image_pad_mask = torch.cat(
-                [
-                    torch.zeros((image_ori_len,), dtype=torch.bool, device=device),
-                    torch.ones((image_padding_len,), dtype=torch.bool, device=device),
-                ],
-                dim=0,
-            )
-            all_image_pad_mask.append(
-                image_pad_mask
-                if image_padding_len > 0
-                else torch.zeros((image_ori_len,), dtype=torch.bool, device=device)
-            )
-            # padded feature
-            image_padded_feat = torch.cat(
-                [image, image[-1:].repeat(image_padding_len, 1)],
-                dim=0,
-            )
-            all_image_out.append(image_padded_feat if image_padding_len > 0 else image)
+            all_img_out.append(img_out)
+            all_img_size.append(size)
+            all_img_pos_ids.append(img_pos_ids)
+            all_img_pad_mask.append(img_pad_mask)
 
         return (
-            all_image_out,
-            all_cap_feats_out,
-            all_image_size,
-            all_image_pos_ids,
+            all_img_out,
+            all_cap_out,
+            all_img_size,
+            all_img_pos_ids,
             all_cap_pos_ids,
-            all_image_pad_mask,
+            all_img_pad_mask,
             all_cap_pad_mask,
         )
 

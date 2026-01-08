@@ -70,6 +70,12 @@ output.save("output.png")
   - all
   - __call__
 
+## Cosmos2_5_PredictBasePipeline
+
+[[autodoc]] Cosmos2_5_PredictBasePipeline
+  - all
+  - __call__
+
 ## CosmosPipelineOutput
 
 [[autodoc]] pipelines.cosmos.pipeline_output.CosmosPipelineOutput

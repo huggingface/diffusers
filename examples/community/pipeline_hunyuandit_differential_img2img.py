@@ -21,8 +21,8 @@ from transformers import (
     BertModel,
     BertTokenizer,
     CLIPImageProcessor,
-    MT5Tokenizer,
     T5EncoderModel,
+    T5Tokenizer,
 )
 
 from diffusers.callbacks import MultiPipelineCallbacks, PipelineCallback
@@ -260,7 +260,7 @@ class HunyuanDiTDifferentialImg2ImgPipeline(DiffusionPipeline):
             The HunyuanDiT model designed by Tencent Hunyuan.
         text_encoder_2 (`T5EncoderModel`):
             The mT5 embedder. Specifically, it is 't5-v1_1-xxl'.
-        tokenizer_2 (`MT5Tokenizer`):
+        tokenizer_2 (`T5Tokenizer`):
             The tokenizer for the mT5 embedder.
         scheduler ([`DDPMScheduler`]):
             A scheduler to be used in combination with HunyuanDiT to denoise the encoded image latents.
@@ -295,7 +295,7 @@ class HunyuanDiTDifferentialImg2ImgPipeline(DiffusionPipeline):
         feature_extractor: CLIPImageProcessor,
         requires_safety_checker: bool = True,
         text_encoder_2=T5EncoderModel,
-        tokenizer_2=MT5Tokenizer,
+        tokenizer_2=T5Tokenizer,
     ):
         super().__init__()
 

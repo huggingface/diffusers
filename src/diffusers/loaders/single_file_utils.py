@@ -120,7 +120,10 @@ CHECKPOINT_KEY_NAMES = {
     "hunyuan-video": "txt_in.individual_token_refiner.blocks.0.adaLN_modulation.1.bias",
     "instruct-pix2pix": "model.diffusion_model.input_blocks.0.0.weight",
     "lumina2": ["model.diffusion_model.cap_embedder.0.weight", "cap_embedder.0.weight"],
-    "z-image-turbo": "cap_embedder.0.weight",
+    "z-image-turbo": [
+        "model.diffusion_model.layers.0.adaLN_modulation.0.weight",
+        "layers.0.adaLN_modulation.0.weight",
+    ],
     "z-image-turbo-controlnet": "control_all_x_embedder.2-1.weight",
     "z-image-turbo-controlnet-2.x": "control_layers.14.adaLN_modulation.0.weight",
     "sana": [
@@ -223,7 +226,8 @@ DIFFUSERS_DEFAULT_PIPELINE_PATHS = {
     "cosmos-2.0-v2w-14B": {"pretrained_model_name_or_path": "nvidia/Cosmos-Predict2-14B-Video2World"},
     "z-image-turbo": {"pretrained_model_name_or_path": "Tongyi-MAI/Z-Image-Turbo"},
     "z-image-turbo-controlnet": {"pretrained_model_name_or_path": "hlky/Z-Image-Turbo-Fun-Controlnet-Union"},
-    "z-image-turbo-controlnet-2.x": {"pretrained_model_name_or_path": "hlky/Z-Image-Turbo-Fun-Controlnet-Union-2.1"},
+    "z-image-turbo-controlnet-2.0": {"pretrained_model_name_or_path": "hlky/Z-Image-Turbo-Fun-Controlnet-Union-2.0"},
+    "z-image-turbo-controlnet-2.1": {"pretrained_model_name_or_path": "hlky/Z-Image-Turbo-Fun-Controlnet-Union-2.1"},
 }
 
 # Use to configure model sample size when original config is provided
@@ -727,10 +731,7 @@ def infer_diffusers_model_type(checkpoint):
     ):
         model_type = "instruct-pix2pix"
 
-    elif (
-        CHECKPOINT_KEY_NAMES["z-image-turbo"] in checkpoint
-        and checkpoint[CHECKPOINT_KEY_NAMES["z-image-turbo"]].shape[0] == 2560
-    ):
+    elif any(key in checkpoint for key in CHECKPOINT_KEY_NAMES["z-image-turbo"]):
         model_type = "z-image-turbo"
 
     elif any(key in checkpoint for key in CHECKPOINT_KEY_NAMES["lumina2"]):
@@ -784,7 +785,13 @@ def infer_diffusers_model_type(checkpoint):
             raise ValueError(f"Unexpected x_embedder shape: {x_embedder_shape} when loading Cosmos 2.0 model.")
 
     elif CHECKPOINT_KEY_NAMES["z-image-turbo-controlnet-2.x"] in checkpoint:
-        model_type = "z-image-turbo-controlnet-2.x"
+        before_proj_weight = checkpoint.get("control_noise_refiner.0.before_proj.weight", None)
+        if before_proj_weight is None:
+            model_type = "z-image-turbo-controlnet-2.0"
+        elif before_proj_weight is not None and torch.all(before_proj_weight == 0.0):
+            model_type = "z-image-turbo-controlnet-2.0"
+        else:
+            model_type = "z-image-turbo-controlnet-2.1"
 
     elif CHECKPOINT_KEY_NAMES["z-image-turbo-controlnet"] in checkpoint:
         model_type = "z-image-turbo-controlnet"
@@ -3852,6 +3859,7 @@ def convert_z_image_transformer_checkpoint_to_diffusers(checkpoint, **kwargs):
         ".attention.k_norm.weight": ".attention.norm_k.weight",
         ".attention.q_norm.weight": ".attention.norm_q.weight",
         ".attention.out.weight": ".attention.to_out.0.weight",
+        "model.diffusion_model.": "",
     }
 
     def convert_z_image_fused_attention(key: str, state_dict: dict[str, object]) -> None:
@@ -3885,6 +3893,9 @@ def convert_z_image_transformer_checkpoint_to_diffusers(checkpoint, **kwargs):
             new_key = new_key.replace(replace_key, rename_key)
 
         update_state_dict(converted_state_dict, key, new_key)
+
+    if "norm_final.weight" in converted_state_dict.keys():
+        _ = converted_state_dict.pop("norm_final.weight")
 
     # Handle any special logic which can't be expressed by a simple 1:1 remapping with the handlers in
     # special_keys_remap
