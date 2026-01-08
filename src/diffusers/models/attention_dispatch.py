@@ -2183,6 +2183,7 @@ def _native_math_attention(
 @_AttentionBackendRegistry.register(
     AttentionBackendName._NATIVE_NPU,
     constraints=[_check_device, _check_qkv_dtype_bf16_or_fp16, _check_shape],
+    supports_context_parallel=True,
 )
 def _native_npu_attention(
     query: torch.Tensor,
