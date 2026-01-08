@@ -33,10 +33,15 @@ else:
         "EDIT_PLUS_AUTO_BLOCKS",
         "QwenImageEditPlusAutoBlocks",
     ]
+    _import_structure["modular_blocks_qwenimage_layered"] = [
+        "LAYERED_AUTO_BLOCKS",
+        "QwenImageLayeredAutoBlocks",
+    ]
     _import_structure["modular_pipeline"] = [
         "QwenImageEditModularPipeline",
         "QwenImageEditPlusModularPipeline",
         "QwenImageModularPipeline",
+        "QwenImageLayeredModularPipeline",
     ]
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
@@ -58,10 +63,15 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             EDIT_PLUS_AUTO_BLOCKS,
             QwenImageEditPlusAutoBlocks,
         )
+        from .modular_blocks_qwenimage_layered import (
+            LAYERED_AUTO_BLOCKS,
+            QwenImageLayeredAutoBlocks,
+        )
         from .modular_pipeline import (
             QwenImageEditModularPipeline,
             QwenImageEditPlusModularPipeline,
             QwenImageModularPipeline,
+            QwenImageLayeredModularPipeline,
         )
 else:
     import sys

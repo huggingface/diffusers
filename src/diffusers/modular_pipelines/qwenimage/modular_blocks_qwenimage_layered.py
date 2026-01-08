@@ -149,3 +149,12 @@ LAYERED_AUTO_BLOCKS = InsertableDict(
         ("decode", QwenImageLayeredDecoderStep()),
     ]
 )
+
+class QwenImageLayeredAutoBlocks(SequentialPipelineBlocks):
+    model_name = "qwenimage-layered"
+    block_classes = LAYERED_AUTO_BLOCKS.values()
+    block_names = LAYERED_AUTO_BLOCKS.keys()
+
+    @property
+    def description(self):
+        return "Auto Modular pipeline for layered denoising tasks using QwenImage-Layered."
