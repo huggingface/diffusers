@@ -711,7 +711,7 @@ def get_args():
     )
     parser.add_argument(
         "--latent_upsampler_filename",
-        default="rc1/ltx-2-spatial-upscaler-x2-1.0-rc1.safetensors",
+        default="ltx-2-spatial-upscaler-x2-1.0.safetensors",
         type=str,
         help="Latent upsampler filename",
     )
