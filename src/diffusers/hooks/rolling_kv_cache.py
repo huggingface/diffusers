@@ -12,149 +12,112 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from dataclasses import dataclass
-
 import torch
 
-from ..models.attention_processor import Attention
-from ..utils import get_logger
-from ..utils.torch_utils import unwrap_module
-from ._common import _ALL_TRANSFORMER_BLOCK_IDENTIFIERS
-from ._helpers import TransformerBlockRegistry
-from .hooks import HookRegistry, ModelHook
 
-
-logger = get_logger(__name__)  # pylint: disable=invalid-name
-
-ROLLING_KV_CACHE_HOOK = "rolling_kv_cache_hook"
-
-
-@dataclass
-class RollingKVCacheConfig:
-    local_attn_size: int = -1
-    num_sink_tokens: int = 1
-    frame_seq_length: int = 128
-    batch_size: int = 1
-    num_layers: int = None
-    max_seq_length: int = 32760
-
-
-# One hook per each attention layer
-class RollingKVCachekHook(ModelHook):
-    _is_stateful = True
-
+class RollingKVCache:
     def __init__(
         self,
+        module,
         batch_size: int,
         max_seq_length: int,
         num_sink_tokens: int,
-        frame_seq_length: int,
-        num_layers: int,
-        local_attn_size: int,
-        layer_idx: int = None,
     ):
-        self.batch_size = batch_size
-        self.num_sink_tokens = num_sink_tokens
-        self.num_layers = num_layers
-        self.layer_idx = layer_idx
-        if local_attn_size != -1:
-            self.max_seq_length = local_attn_size * frame_seq_length
-        else:
-            self.max_seq_length = max_seq_length
-        self._metadata = None
-        self.cache_initialized = False
-
-    def initialize_hook(self, module):
-        unwrapped_module = unwrap_module(module)
-        self._metadata = TransformerBlockRegistry.get(unwrapped_module.__class__)
-
-        # No access to config anymore from each transformer block? Would be great to get dims from config
-        self.self_attn_kv_shape = [
-            self.batch_size,
-            self.max_seq_length,
-            module.num_heads,
-            module.dim // module.num_heads,
+        encoder_dim = 0
+        self_attn_kv_shape = [
+            batch_size,
+            max_seq_length,
+            module.config.num_attention_heads,
+            module.config.attention_head_dim,
         ]
-        self.cross_attn_kv_shape = [
-            self.batch_size,
-            module.encoder_dim,
-            module.num_heads,
-            module.dim // module.num_heads,
+        cross_attn_kv_shape = [
+            batch_size,
+            encoder_dim,
+            module.config.num_attention_heads,
+            module.config.attention_head_dim,
         ]
-        return module
 
-    def lazy_initialize_cache(self, device: str, dtype: torch.dtype):
-        """
-        Initialize a Per-GPU KV cache for the Wan model.
-        """
-        if not self.cache_initialized:
-            self.cache = CacheLayer(
-                self.num_sink_tokens,
-                self.self_attn_kv_shape,
-                self.cross_attn_kv_shape,
-                self.layer_idx,
-                device=device,
-                dtype=dtype,
+        self.cache_layers = []
+        for layer_idx in range(module.config.num_layers):
+            self.cache_layers.append(
+                CacheLayer(
+                    num_sink_tokens,
+                    self_attn_kv_shape,
+                    cross_attn_kv_shape,
+                    layer_idx=layer_idx,
+                )
             )
-            self.cache_initialized = True
-        return self.cache
 
-    def new_forward(self, module: Attention, *args, **kwargs):
-        original_hidden_states = self._metadata._get_parameter_from_args_kwargs("hidden_states", args, kwargs)
-        current_cache = self.lazy_initialize_cache(original_hidden_states.device, original_hidden_states.dtype)
-        kwargs["kv_cache"] = current_cache
-        output = self.fn_ref.original_forward(*args, **kwargs)
-        return output
+    def __getitem__(self, layer_idx: int):
+        return self.cache_layers[layer_idx]
 
-    def reset_state(self, module):
-        if self.cache_initialized:
-            self.cache.reset()
-        return module
+    def recompute_indices(self, num_new_tokens: int):
+        for cache in self.cache_layers:
+            cache.local_start_index = cache.local_start_index + num_new_tokens
+
+    def reset_state(self):
+        for cache in self.cache_layers:
+            cache.reset()
 
 
 class CacheLayer:
-    def __init__(self, num_sink_tokens, self_attn_kv_shape, cross_attn_kv_shape, layer_idx, device, dtype) -> None:
-        self.key_cache = torch.zeros(self_attn_kv_shape, device=device, dtype=dtype)
-        self.value_cache = torch.zeros(self_attn_kv_shape, device=device, dtype=dtype)
-        # self.cross_key_cache = torch.zeros(cross_attn_kv_shape, device=device, dtype=dtype)
-        # self.cross_value_cache = torch.zeros(cross_attn_kv_shape, device=device, dtype=dtype)
+    def __init__(self, num_sink_tokens, self_attn_kv_shape, cross_attn_kv_shape, layer_idx) -> None:
+        self.self_attn_kv_shape = self_attn_kv_shape
+        self.cross_attn_kv_shape = cross_attn_kv_shape
         self.layer_idx = layer_idx
         self.local_start_index = 0
         self.num_sink_tokens = num_sink_tokens
         self.max_seq_length = self_attn_kv_shape[1]
+        self.cache_initialized = False
+
+    def lazy_initialize(self, device: str, dtype: torch.dtype):
+        if not self.cache_initialized:
+            self.key_cache = torch.zeros(self.self_attn_kv_shape, device=device, dtype=dtype)
+            self.value_cache = torch.zeros(self.self_attn_kv_shape, device=device, dtype=dtype)
+            self.cross_key_cache = torch.zeros(self.cross_attn_kv_shape, device=device, dtype=dtype)
+            self.cross_value_cache = torch.zeros(self.cross_attn_kv_shape, device=device, dtype=dtype)
+            self.cache_initialized = True
 
     def reset(self):
         self.key_cache.zero_()
         self.value_cache.zero_()
-        # self.cross_key_cache.zero_()
-        # self.cross_value_cache.zero_()
+        self.cross_key_cache.zero_()
+        self.cross_value_cache.zero_()
         self.local_start_index = 0
 
     @torch.compiler.disable
     def update(
-        self, key_states: torch.Tensor, value_states: torch.Tensor, rotary_emb: tuple[torch.Tensor, torch.Tensor]
-    ) -> bool:
+        self,
+        key_states: torch.Tensor,
+        value_states: torch.Tensor,
+        rotary_emb: tuple[torch.Tensor, torch.Tensor],
+        is_cross_attn: bool,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        self.lazy_initialize(device=key_states.device, dtype=key_states.dtype)
         num_new_tokens = key_states.shape[1]
+
+        if is_cross_attn:
+            self.cross_key_cache = key_states
+            self.cross_value_cache = value_states
+            return self.cross_key_cache, self.cross_value_cache
+
         # Skip `sink_tokens` and `evicted_tokens`. Roll back cache by removing evicted tokens
         if num_new_tokens + self.local_start_index > self.max_seq_length:
             num_evicted_tokens = (num_new_tokens + self.local_start_index) - self.max_seq_length
 
             keys_to_keep = self.key_cache[:, self.num_sink_tokens + num_evicted_tokens :]
             keys_to_keep = self.rerotate_key_rotary_pos_emb(keys_to_keep, *rotary_emb, num_evicted_tokens)
-            self.key_cache[:, self.num_sink_tokens : -num_evicted_tokens].copy_(keys_to_keep)
+            self.key_cache[:, self.num_sink_tokens : -num_evicted_tokens] = keys_to_keep
 
             values_to_keep = self.value_cache[:, self.num_sink_tokens + num_evicted_tokens :]
-            self.value_cache[:, self.num_sink_tokens : -num_evicted_tokens].copy_(values_to_keep)
+            self.value_cache[:, self.num_sink_tokens : -num_evicted_tokens] = values_to_keep.clone()
             self.local_start_index = self.local_start_index - num_evicted_tokens
 
         # Assign new keys/values directly up to current_end and update running cache positions
         end_index = self.local_start_index + key_states.shape[1]
-        self.key_cache[:, self.local_start_index : end_index].copy_(key_states)
-        self.value_cache[:, self.local_start_index : end_index].copy_(value_states)
+        self.key_cache[:, self.local_start_index : end_index] = key_states
+        self.value_cache[:, self.local_start_index : end_index] = value_states
         return self.key_cache[:, :end_index], self.value_cache[:, :end_index]
-
-    def recompute_indices(self, num_new_tokens: int):
-        self.local_start_index = self.local_start_index + num_new_tokens
 
     @staticmethod
     def _apply_rope(hidden_states, freqs_cos, freqs_sin):
@@ -191,21 +154,3 @@ class CacheLayer:
         # rerotation_sin = -sin[:, num_evicted_tokens]
         rotated_key_states = self._apply_rope(key_states, rerotation_cos, rerotation_sin)
         return rotated_key_states
-
-
-def apply_rolling_kv_cache(module: torch.nn.Module, config: RollingKVCacheConfig) -> None:
-    for name, submodule in module.named_children():
-        if name not in _ALL_TRANSFORMER_BLOCK_IDENTIFIERS or not isinstance(submodule, torch.nn.ModuleList):
-            continue
-        for i, block in enumerate(submodule):
-            registry = HookRegistry.check_if_exists_or_initialize(block)
-            hook = RollingKVCachekHook(
-                batch_size=config.batch_size,
-                max_seq_length=config.max_seq_length,
-                num_sink_tokens=config.num_sink_tokens,
-                frame_seq_length=config.frame_seq_length,
-                num_layers=config.num_layers,
-                local_attn_size=config.local_attn_size,
-                layer_idx=i,
-            )
-            registry.register_hook(hook, ROLLING_KV_CACHE_HOOK)

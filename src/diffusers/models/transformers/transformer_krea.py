@@ -36,26 +36,6 @@ from ..normalization import FP32LayerNorm
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-def _get_qkv_projections(attn: "KreaAttention", hidden_states: torch.Tensor, encoder_hidden_states: torch.Tensor):
-    # encoder_hidden_states is only passed for cross-attention
-    if encoder_hidden_states is None:
-        encoder_hidden_states = hidden_states
-
-    if attn.fused_projections:
-        if attn.cross_attention_dim_head is None:
-            # In self-attention layers, we can fuse the entire QKV projection into a single linear
-            query, key, value = attn.qkv(hidden_states).chunk(3, dim=-1)
-        else:
-            # In cross-attention layers, we can only fuse the KV projections into a single linear
-            query = attn.to_q(hidden_states)
-            key, value = attn.kv(encoder_hidden_states).chunk(2, dim=-1)
-    else:
-        query = attn.to_q(hidden_states)
-        key = attn.to_k(encoder_hidden_states)
-        value = attn.to_v(encoder_hidden_states)
-    return query, key, value
-
-
 def _get_added_kv_projections(attn: "KreaAttention", encoder_hidden_states_img: torch.Tensor):
     if attn.fused_projections:
         key_img, value_img = attn.to_added_kv(encoder_hidden_states_img).chunk(2, dim=-1)
@@ -101,7 +81,7 @@ class KreaAttnProcessor:
         encoder_hidden_states: Optional[torch.Tensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
         rotary_emb: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
-        kv_cache: list[torch.Tensor] = None,
+        cache: list[torch.Tensor] = None,
     ) -> torch.Tensor:
         encoder_hidden_states_img = None
         if attn.add_k_proj is not None:
@@ -110,14 +90,34 @@ class KreaAttnProcessor:
             encoder_hidden_states_img = encoder_hidden_states[:, :image_context_length]
             encoder_hidden_states = encoder_hidden_states[:, image_context_length:]
 
-        query, key, value = _get_qkv_projections(attn, hidden_states, encoder_hidden_states)
+        # encoder_hidden_states is only passed for cross-attention
+        if encoder_hidden_states is not None:
+            if cache is not None and cache.cache_initialized and cache.cross_key_cache.any():
+                key, value = cache.cross_key_cache, cache.cross_value_cache
+            else:
+                if attn.fused_projections:
+                    key, value = attn.kv(encoder_hidden_states).chunk(2, dim=-1)
+                else:
+                    key = attn.to_k(encoder_hidden_states)
+                    value = attn.to_v(encoder_hidden_states)
+                key = attn.norm_k(key).unflatten(2, (attn.heads, -1))
+                value = value.unflatten(2, (attn.heads, -1))
 
-        query = attn.norm_q(query)
-        key = attn.norm_k(key)
+            query = attn.to_q(hidden_states)
+            query = attn.norm_q(query).unflatten(2, (attn.heads, -1))
 
-        query = query.unflatten(2, (attn.heads, -1))
-        key = key.unflatten(2, (attn.heads, -1))
-        value = value.unflatten(2, (attn.heads, -1))
+        else:
+            if attn.fused_projections:
+                # In self-attention layers, we can fuse the entire QKV projection into a single linear
+                query, key, value = attn.qkv(hidden_states).chunk(3, dim=-1)
+            else:
+                query = attn.to_q(hidden_states)
+                key = attn.to_k(hidden_states)
+                value = attn.to_v(hidden_states)
+
+            value = value.unflatten(2, (attn.heads, -1))
+            query = attn.norm_q(query).unflatten(2, (attn.heads, -1))
+            key = attn.norm_k(key).unflatten(2, (attn.heads, -1))
 
         if rotary_emb is not None:
 
@@ -125,14 +125,14 @@ class KreaAttnProcessor:
                 hidden_states: torch.Tensor,
                 freqs_cos: torch.Tensor,
                 freqs_sin: torch.Tensor,
-                kv_cache: torch.Tensor,
+                cache: torch.Tensor,
             ):
                 # NOTE: ideally if we can pass `position_ids` to the model's forward
                 # and use it to compute cos/sin. Similar to common autoregressive
                 # LLMs For now let's initialize one big cos/sin array and slice it
                 # for current frame position
                 block_length = hidden_states.shape[1]
-                start_index = kv_cache.local_start_index if kv_cache is not None else 0
+                start_index = cache.local_start_index if cache is not None else 0
                 freqs_cos = freqs_cos[:, start_index : start_index + block_length]
                 freqs_sin = freqs_sin[:, start_index : start_index + block_length]
                 x1, x2 = hidden_states.unflatten(-1, (-1, 2)).unbind(-1)
@@ -143,11 +143,11 @@ class KreaAttnProcessor:
                 out[..., 1::2] = x1 * sin + x2 * cos
                 return out.type_as(hidden_states)
 
-            query = apply_rotary_emb(query, *rotary_emb, kv_cache)
-            key = apply_rotary_emb(key, *rotary_emb, kv_cache)
+            query = apply_rotary_emb(query, *rotary_emb, cache)
+            key = apply_rotary_emb(key, *rotary_emb, cache)
 
-        if kv_cache is not None:
-            key, value = kv_cache.update(key, value, rotary_emb)
+        if cache is not None:
+            key, value = cache.update(key, value, rotary_emb, is_cross_attn=encoder_hidden_states is not None)
 
         # I2V task
         hidden_states_img = None
@@ -296,12 +296,10 @@ class KreaAttention(torch.nn.Module, AttentionModuleMixin):
         encoder_hidden_states: Optional[torch.Tensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
         rotary_emb: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
-        kv_cache: list[torch.Tensor] = None,
+        cache: list[torch.Tensor] = None,
         **kwargs,
     ) -> torch.Tensor:
-        return self.processor(
-            self, hidden_states, encoder_hidden_states, attention_mask, rotary_emb, kv_cache, **kwargs
-        )
+        return self.processor(self, hidden_states, encoder_hidden_states, attention_mask, rotary_emb, cache, **kwargs)
 
 
 class KreaImageEmbedding(torch.nn.Module):
@@ -411,6 +409,10 @@ class KreaRotaryPosEmbed(nn.Module):
         num_frames = max_num_frames if max_num_frames is not None else num_frames
         p_t, p_h, p_w = self.patch_size
         ppf, pph, ppw = num_frames // p_t, height // p_h, width // p_w
+        ppf = min(
+            ppf,
+            self.attention_head_dim - 2 * (self.attention_head_dim // 3),
+        )
 
         split_sizes = [
             self.attention_head_dim - 2 * (self.attention_head_dim // 3),
@@ -449,10 +451,6 @@ class KreaTransformerBlock(nn.Module):
     ):
         super().__init__()
 
-        self.num_heads = num_heads
-        self.dim = dim
-        self.encoder_dim = dim
-
         # 1. Self-attention
         self.norm1 = nn.LayerNorm(dim, eps, elementwise_affine=False)
         self.attn1 = KreaAttention(
@@ -488,8 +486,7 @@ class KreaTransformerBlock(nn.Module):
         encoder_hidden_states: torch.Tensor,
         temb: torch.Tensor,
         rotary_emb: torch.Tensor,
-        clean_latents: bool = False,
-        kv_cache: list[torch.Tensor] = None,
+        cache: list[torch.Tensor] = None,
     ) -> torch.Tensor:
         # temb: batch_size, 6, inner_dim (wan2.1/wan2.2 14B)
         shift_msa, scale_msa, gate_msa, c_shift_msa, c_scale_msa, c_gate_msa = (
@@ -498,22 +495,18 @@ class KreaTransformerBlock(nn.Module):
 
         # 1. Self-attention
         norm_hidden_states = (self.norm1(hidden_states) * (1 + scale_msa) + shift_msa).type_as(hidden_states)
-        attn_output = self.attn1(norm_hidden_states, None, None, rotary_emb, kv_cache)
+        attn_output = self.attn1(norm_hidden_states, None, None, rotary_emb, cache)
         hidden_states = (hidden_states + attn_output * gate_msa).type_as(hidden_states)
 
         # 2. Cross-attention
         norm_hidden_states = self.norm3(hidden_states).type_as(hidden_states)
-        attn_output = self.attn2(norm_hidden_states, encoder_hidden_states, None, None)
+        attn_output = self.attn2(norm_hidden_states, encoder_hidden_states, None, None, cache)
         hidden_states = hidden_states + attn_output
 
         # 3. Feed-forward
         norm_hidden_states = (self.norm2(hidden_states) * (1 + c_scale_msa) + c_shift_msa).type_as(hidden_states)
         ff_output = self.ffn(norm_hidden_states)
         hidden_states = (hidden_states + ff_output * c_gate_msa).type_as(hidden_states)
-
-        # Last: update the cache position once per denoising loop - when recomputing cache with clean latent
-        if clean_latents:
-            kv_cache.recompute_indices(num_new_tokens=hidden_states.shape[1])
 
         return hidden_states
 
@@ -644,7 +637,7 @@ class KreaTransformerModel(
         encoder_hidden_states: torch.Tensor,
         encoder_hidden_states_image: Optional[torch.Tensor] = None,
         max_num_frames: Optional[int] = None,
-        clean_latents: bool = False,
+        cache=None,
         return_dict: bool = True,
         attention_kwargs: Optional[Dict[str, Any]] = None,
     ) -> Union[torch.Tensor, Dict[str, torch.Tensor]]:
@@ -684,24 +677,24 @@ class KreaTransformerModel(
             encoder_hidden_states = torch.concat([encoder_hidden_states_image, encoder_hidden_states], dim=1)
 
         # 4. Transformer blocks
-        if torch.is_grad_enabled() and self.gradient_checkpointing:
-            for block in self.blocks:
+        for layer_idx, block in enumerate(self.blocks):
+            curr_cache = cache[layer_idx]
+            if torch.is_grad_enabled() and self.gradient_checkpointing:
                 hidden_states = self._gradient_checkpointing_func(
                     block,
                     hidden_states,
                     encoder_hidden_states,
                     timestep_proj,
                     rotary_emb,
-                    clean_latents,
+                    curr_cache,
                 )
-        else:
-            for block in self.blocks:
+            else:
                 hidden_states = block(
                     hidden_states,
                     encoder_hidden_states,
                     timestep_proj,
                     rotary_emb,
-                    clean_latents,
+                    curr_cache,
                 )
 
         # 5. Output norm, projection & unpatchify

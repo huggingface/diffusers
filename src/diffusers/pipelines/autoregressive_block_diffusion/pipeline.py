@@ -21,6 +21,7 @@ import torch
 from transformers import AutoTokenizer, UMT5EncoderModel
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
+from ...hooks.rolling_kv_cache import RollingKVCache
 from ...loaders import WanLoraLoaderMixin
 from ...models import AutoencoderKLWan, KreaTransformerModel
 from ...pipelines.pipeline_utils import DiffusionPipeline
@@ -477,6 +478,9 @@ class BaseAutoregressiveDiffusionPipeline(DiffusionPipeline, WanLoraLoaderMixin)
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
         max_sequence_length: int = 512,
         block_size: int = 9,
+        num_sink_tokens: int = 1560,
+        cache_max_length: int = 1560 * 7,
+        use_cache: bool = True,
     ):
         r"""
         The call function to the pipeline for generation.
@@ -625,9 +629,26 @@ class BaseAutoregressiveDiffusionPipeline(DiffusionPipeline, WanLoraLoaderMixin)
         )
 
         latent_h, latent_w = latents.shape[-2:]
+        p_t, p_h, p_w = self.transformer.config.patch_size
+        frame_seq_length = latent_h // p_h * latent_w // p_w
+
+        cache = negative_cache = None
+        if use_cache:
+            cache = RollingKVCache(
+                self.transformer,
+                batch_size=latents.shape[0],
+                max_seq_length=cache_max_length,
+                num_sink_tokens=num_sink_tokens,
+            )
+            if self.do_classifier_free_guidance:
+                negative_cache = RollingKVCache(
+                    self.transformer,
+                    batch_size=latents.shape[0],
+                    max_seq_length=cache_max_length,
+                    num_sink_tokens=num_sink_tokens,
+                )
 
         # 7. Denoising loop
-        # num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
         self._num_timesteps = len(timesteps)
 
         output = torch.zeros(
@@ -643,10 +664,10 @@ class BaseAutoregressiveDiffusionPipeline(DiffusionPipeline, WanLoraLoaderMixin)
             for block in range(num_blocks):
                 cache_start_frame = block * block_size
                 current_latents = latents[:, :, cache_start_frame : cache_start_frame + block_size]
-                kv_length = cache_start_frame + block_size
-                if not self.using_cache():
-                    # If the transformer has no cache hooks attached, we need a causal blockwise mask
+                if not use_cache:
+                    # If the transformer has no cache, we need a causal blockwise mask
                     # and concatenate past latents with the inputs
+                    kv_length = cache_start_frame + block_size
                     current_latents = torch.cat([output[:, :, :cache_start_frame], current_latents], dim=2)
                     attention_kwargs["attention_mask"] = self.prepare_blockwise_mask(
                         batch_size=batch_size,
@@ -666,6 +687,8 @@ class BaseAutoregressiveDiffusionPipeline(DiffusionPipeline, WanLoraLoaderMixin)
                     guidance_scale=guidance_scale,
                     generator=generator,
                     max_num_frames=num_frames,
+                    cache=cache,
+                    negative_cache=negative_cache,
                     callback_on_step_end=callback_on_step_end,
                     callback_on_step_end_tensor_inputs=callback_on_step_end_tensor_inputs,
                 )
@@ -673,30 +696,31 @@ class BaseAutoregressiveDiffusionPipeline(DiffusionPipeline, WanLoraLoaderMixin)
                 self.scheduler._init_step_index(timesteps[0])
                 output[:, :, cache_start_frame : cache_start_frame + block_size] = denoised_latents[:, :, -block_size:]
 
-                if self.using_cache() and block != num_blocks - 1:
-                    with self.transformer.cache_context("cond"):
+                if use_cache and block != num_blocks - 1:
+                    _ = self.transformer(
+                        hidden_states=denoised_latents,
+                        encoder_hidden_states=prompt_embeds,
+                        timestep=torch.tensor([0] * batch_size, device=timesteps.device),
+                        attention_kwargs=attention_kwargs,
+                        max_num_frames=num_frames,
+                        cache=cache,
+                        return_dict=False,
+                    )
+                    cache.recompute_indices(num_new_tokens=frame_seq_length * block_size)
+
+                    if self.do_classifier_free_guidance:
                         _ = self.transformer(
                             hidden_states=denoised_latents,
-                            encoder_hidden_states=prompt_embeds,
+                            encoder_hidden_states=negative_prompt_embeds,
                             timestep=torch.tensor([0] * batch_size, device=timesteps.device),
                             attention_kwargs=attention_kwargs,
                             max_num_frames=num_frames,
-                            clean_latents=True,
+                            cache=negative_cache,
                             return_dict=False,
                         )
-                    if self.do_classifier_free_guidance:
-                        with self.transformer.cache_context("uncond"):
-                            _ = self.transformer(
-                                hidden_states=denoised_latents,
-                                encoder_hidden_states=negative_prompt_embeds,
-                                timestep=torch.tensor([0] * batch_size, device=timesteps.device),
-                                attention_kwargs=attention_kwargs,
-                                max_num_frames=num_frames,
-                                clean_latents=True,
-                                return_dict=False,
-                            )
-                progress_bar.update()
+                        negative_cache.recompute_indices(num_new_tokens=frame_seq_length * block_size)
 
+                progress_bar.update()
         self._current_timestep = None
 
         if output_type != "latent":
@@ -733,6 +757,8 @@ class BaseAutoregressiveDiffusionPipeline(DiffusionPipeline, WanLoraLoaderMixin)
         guidance_scale,
         generator,
         max_num_frames,
+        cache,
+        negative_cache,
         callback_on_step_end,
         callback_on_step_end_tensor_inputs,
     ):
@@ -743,38 +769,29 @@ class BaseAutoregressiveDiffusionPipeline(DiffusionPipeline, WanLoraLoaderMixin)
             self._current_timestep = t
             timestep = t.expand(latents.shape[0])
 
-            with self.transformer.cache_context("cond"):
-                noise_pred = self.transformer(
+            noise_pred = self.transformer(
+                hidden_states=latents,
+                timestep=timestep,
+                encoder_hidden_states=prompt_embeds,
+                attention_kwargs=attention_kwargs,
+                max_num_frames=max_num_frames,
+                cache=cache,
+                return_dict=False,
+            )[0]
+            if self.do_classifier_free_guidance:
+                noise_uncond = self.transformer(
                     hidden_states=latents,
                     timestep=timestep,
-                    encoder_hidden_states=prompt_embeds,
+                    encoder_hidden_states=negative_prompt_embeds,
                     attention_kwargs=attention_kwargs,
                     max_num_frames=max_num_frames,
+                    cache=negative_cache,
                     return_dict=False,
                 )[0]
-            if self.do_classifier_free_guidance:
-                with self.transformer.cache_context("uncond"):
-                    noise_uncond = self.transformer(
-                        hidden_states=latents,
-                        timestep=timestep,
-                        encoder_hidden_states=negative_prompt_embeds,
-                        attention_kwargs=attention_kwargs,
-                        max_num_frames=max_num_frames,
-                        return_dict=False,
-                    )[0]
                 noise_pred = noise_uncond + guidance_scale * (noise_pred - noise_uncond)
 
             # compute the previous noisy sample x_t -> x_t-1
             latents = self.scheduler.step(noise_pred, t, latents, generator=generator, return_dict=False)[0]
-
-            if callback_on_step_end is not None:
-                callback_kwargs = {}
-                for k in callback_on_step_end_tensor_inputs:
-                    callback_kwargs[k] = locals()[k]
-                callback_outputs = callback_on_step_end(self, i, t, callback_kwargs)
-                latents = callback_outputs.pop("latents", latents)
-                prompt_embeds = callback_outputs.pop("prompt_embeds", prompt_embeds)
-                negative_prompt_embeds = callback_outputs.pop("negative_prompt_embeds", negative_prompt_embeds)
 
             if callback_on_step_end is not None:
                 callback_kwargs = {}
