@@ -134,7 +134,8 @@ class WanAttnProcessor:
                 dropout_p=0.0,
                 is_causal=False,
                 backend=self._attention_backend,
-                parallel_config=self._parallel_config,
+                # Reference: https://github.com/huggingface/diffusers/pull/12909
+                parallel_config=None,
             )
             hidden_states_img = hidden_states_img.flatten(2, 3)
             hidden_states_img = hidden_states_img.type_as(query)
@@ -147,7 +148,8 @@ class WanAttnProcessor:
             dropout_p=0.0,
             is_causal=False,
             backend=self._attention_backend,
-            parallel_config=self._parallel_config,
+            # Reference: https://github.com/huggingface/diffusers/pull/12909
+            parallel_config=(self._parallel_config if encoder_hidden_states is None else None),
         )
         hidden_states = hidden_states.flatten(2, 3)
         hidden_states = hidden_states.type_as(query)
@@ -362,6 +364,11 @@ class WanRotaryPosEmbed(nn.Module):
 
         h_dim = w_dim = 2 * (attention_head_dim // 6)
         t_dim = attention_head_dim - h_dim - w_dim
+
+        self.t_dim = t_dim
+        self.h_dim = h_dim
+        self.w_dim = w_dim
+
         freqs_dtype = torch.float32 if torch.backends.mps.is_available() else torch.float64
 
         freqs_cos = []
@@ -387,11 +394,7 @@ class WanRotaryPosEmbed(nn.Module):
         p_t, p_h, p_w = self.patch_size
         ppf, pph, ppw = num_frames // p_t, height // p_h, width // p_w
 
-        split_sizes = [
-            self.attention_head_dim - 2 * (self.attention_head_dim // 3),
-            self.attention_head_dim // 3,
-            self.attention_head_dim // 3,
-        ]
+        split_sizes = [self.t_dim, self.h_dim, self.w_dim]
 
         freqs_cos = self.freqs_cos.split(split_sizes, dim=1)
         freqs_sin = self.freqs_sin.split(split_sizes, dim=1)
@@ -551,16 +554,21 @@ class WanTransformer3DModel(
         "blocks.0": {
             "hidden_states": ContextParallelInput(split_dim=1, expected_dims=3, split_output=False),
         },
-        "blocks.*": {
-            "encoder_hidden_states": ContextParallelInput(split_dim=1, expected_dims=3, split_output=False),
-        },
+        # Reference: https://github.com/huggingface/diffusers/pull/12909
+        # We need to disable the splitting of encoder_hidden_states because the image_encoder
+        # (Wan 2.1 I2V) consistently generates 257 tokens for image_embed. This causes the shape
+        # of encoder_hidden_states—whose token count is always 769 (512 + 257) after concatenation
+        # —to be indivisible by the number of devices in the CP.
         "proj_out": ContextParallelOutput(gather_dim=1, expected_dims=3),
+        "": {
+            "timestep": ContextParallelInput(split_dim=1, expected_dims=2, split_output=False),
+        },
     }
 
     @register_to_config
     def __init__(
         self,
-        patch_size: Tuple[int] = (1, 2, 2),
+        patch_size: Tuple[int, ...] = (1, 2, 2),
         num_attention_heads: int = 40,
         attention_head_dim: int = 128,
         in_channels: int = 16,

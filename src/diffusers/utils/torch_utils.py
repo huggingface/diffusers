@@ -20,7 +20,7 @@ import os
 from typing import Callable, Dict, List, Optional, Tuple, Union
 
 from . import logging
-from .import_utils import is_torch_available, is_torch_npu_available, is_torch_version
+from .import_utils import is_torch_available, is_torch_mlu_available, is_torch_npu_available, is_torch_version
 
 
 if is_torch_available():
@@ -242,8 +242,8 @@ def fourier_filter(x_in: "torch.Tensor", threshold: int, scale: int) -> "torch.T
 def apply_freeu(
     resolution_idx: int, hidden_states: "torch.Tensor", res_hidden_states: "torch.Tensor", **freeu_kwargs
 ) -> Tuple["torch.Tensor", "torch.Tensor"]:
-    """Applies the FreeU mechanism as introduced in https:
-    //arxiv.org/abs/2309.11497. Adapted from the official code repository: https://github.com/ChenyangSi/FreeU.
+    """Applies the FreeU mechanism as introduced in https://huggingface.co/papers/2309.11497. Adapted from the official
+    code repository: https://github.com/ChenyangSi/FreeU.
 
     Args:
         resolution_idx (`int`): Integer denoting the UNet block where FreeU is being applied.
@@ -286,6 +286,8 @@ def get_device():
         return "xpu"
     elif torch.backends.mps.is_available():
         return "mps"
+    elif is_torch_mlu_available():
+        return "mlu"
     else:
         return "cpu"
 
