@@ -100,7 +100,7 @@ class QwenImageLayeredAfterDenoiseStep(ModularPipelineBlocks):
         block_state = self.get_block_state(state)
 
         # Unpack: (B, seq, C*4) -> (B, C, layers+1, H, W)
-        block_state.latents = components.layered_pachifier.unpack_latents(
+        block_state.latents = components.pachifier.unpack_latents(
             block_state.latents,
             block_state.height,
             block_state.width,
@@ -205,7 +205,7 @@ class QwenImageLayeredDecoderStep(ModularPipelineBlocks):
         ]
 
     @property
-    def outputs(self) -> List[OutputParam]:
+    def intermediate_outputs(self) -> List[OutputParam]:
         return [
             OutputParam(name="images", type_hint=List[List[PIL.Image.Image]]),
         ]
@@ -230,18 +230,19 @@ class QwenImageLayeredDecoderStep(ModularPipelineBlocks):
         )
         latents = latents / latents_std + latents_mean
 
-        # 2. Remove first frame (composite), keep layers frames
-        latents = latents[:, :, 1:]
-
-        # 3. Reshape for batch decoding: (B, C, layers, H, W) -> (B*layers, C, 1, H, W)
+        # 2. Reshape for batch decoding: (B, C, layers+1, H, W) -> (B*layers, C, 1, H, W)
         b, c, f, h, w = latents.shape
-        latents = latents.permute(0, 2, 1, 3, 4).reshape(b * f, c, 1, h, w)
+        # 3. Remove first frame (composite), keep layers frames
+        latents = latents[:, :, 1:]
+        latents = latents.permute(0, 2, 1, 3, 4).reshape(-1, c, 1, h, w)
 
         # 4. Decode: (B*layers, C, 1, H, W) -> (B*layers, C, H, W)
-        image = components.vae.decode(latents, return_dict=False)[0][:, :, 0]
+        image = components.vae.decode(latents, return_dict=False)[0]
+        image = image.squeeze(2)
 
         # 5. Postprocess - returns flat list of B*layers images
         image = components.image_processor.postprocess(image, output_type=block_state.output_type)
+        
 
         # 6. Chunk into list per batch item
         images = []

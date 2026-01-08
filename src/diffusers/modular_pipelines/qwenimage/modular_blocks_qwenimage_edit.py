@@ -38,8 +38,8 @@ from .denoise import (
 from .encoders import (
     QwenImageEditResizeStep,
     QwenImageEditTextEncoderStep,
-    QwenImageInpaintProcessImagesInputStep,
-    QwenImageProcessImagesInputStep,
+    QwenImageEditInpaintProcessImagesInputStep,
+    QwenImageEditProcessImagesInputStep,
     QwenImageVaeEncoderStep,
 )
 from .inputs import (
@@ -78,7 +78,7 @@ class QwenImageEditVaeEncoderStep(SequentialPipelineBlocks):
     model_name = "qwenimage-edit"
     block_classes = [
         QwenImageEditResizeStep(),
-        QwenImageProcessImagesInputStep(),
+        QwenImageEditProcessImagesInputStep(),
         QwenImageVaeEncoderStep(),
     ]
     block_names = ["resize", "preprocess", "encode"]
@@ -93,7 +93,7 @@ class QwenImageEditInpaintVaeEncoderStep(SequentialPipelineBlocks):
     model_name = "qwenimage-edit"
     block_classes = [
         QwenImageEditResizeStep(),
-        QwenImageInpaintProcessImagesInputStep(),
+        QwenImageEditInpaintProcessImagesInputStep(),
         QwenImageVaeEncoderStep(input_name="processed_image", output_name="image_latents"),
     ]
     block_names = ["resize", "preprocess", "encode"]

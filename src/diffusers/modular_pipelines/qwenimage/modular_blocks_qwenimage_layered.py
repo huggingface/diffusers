@@ -30,9 +30,9 @@ from .denoise import (
     QwenImageLayeredDenoiseStep,
 )
 from .encoders import (
-    QwenImageEditResizeStep,
+    QwenImageLayeredResizeStep,
     QwenImageTextEncoderStep,
-    QwenImageProcessImagesInputStep,
+    QwenImageEditProcessImagesInputStep,
     QwenImageVaeEncoderStep,
     QwenImageLayeredGetImagePromptStep,
     QwenImageLayeredPermuteLatentsStep,
@@ -55,7 +55,7 @@ class QwenImageLayeredTextEncoderStep(SequentialPipelineBlocks):
     """Text encoder that takes text prompt, will generate a prompt based on image if not provided."""
     model_name = "qwenimage-layered"
     block_classes = [
-        QwenImageEditResizeStep(),
+        QwenImageLayeredResizeStep(),
         QwenImageLayeredGetImagePromptStep(),
         QwenImageTextEncoderStep(),
     ]
@@ -74,8 +74,8 @@ class QwenImageLayeredTextEncoderStep(SequentialPipelineBlocks):
 class QwenImageLayeredVaeEncoderStep(SequentialPipelineBlocks):
     model_name = "qwenimage-layered"
     block_classes = [
-        QwenImageEditResizeStep(),
-        QwenImageProcessImagesInputStep(),
+        QwenImageLayeredResizeStep(),
+        QwenImageEditProcessImagesInputStep(),
         QwenImageVaeEncoderStep(),
         QwenImageLayeredPermuteLatentsStep(),
     ]

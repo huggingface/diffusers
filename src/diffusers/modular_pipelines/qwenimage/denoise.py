@@ -15,6 +15,7 @@
 from typing import List, Tuple
 
 import torch
+import inspect
 
 from ...configuration_utils import FrozenDict
 from ...guiders import ClassifierFreeGuidance
@@ -351,6 +352,13 @@ class QwenImageEditLoopDenoiser(ModularPipelineBlocks):
             ),
         }
 
+        transformer_args = set(inspect.signature(components.transformer.forward).parameters.keys())
+        additional_cond_kwargs = {}
+        for field_name, field_value in block_state.denoiser_input_fields.items():
+            if field_name in transformer_args and field_name not in guider_inputs:
+                additional_cond_kwargs[field_name] = field_value
+        block_state.additional_cond_kwargs.update(additional_cond_kwargs)
+
         components.guider.set_state(step=i, num_inference_steps=block_state.num_inference_steps, timestep=t)
         guider_state = components.guider.prepare_inputs(guider_inputs)
 
@@ -362,7 +370,6 @@ class QwenImageEditLoopDenoiser(ModularPipelineBlocks):
             guider_state_batch.noise_pred = components.transformer(
                 hidden_states=block_state.latent_model_input,
                 timestep=block_state.timestep / 1000,
-                img_shapes=block_state.img_shapes,
                 attention_kwargs=block_state.attention_kwargs,
                 return_dict=False,
                 **cond_kwargs,

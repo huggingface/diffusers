@@ -257,7 +257,86 @@ def encode_vae_image(
 
 
 class QwenImageEditResizeStep(ModularPipelineBlocks):
-    model_name = "qwenimage"
+    model_name = "qwenimage-edit"
+
+    def __init__(
+        self, 
+        input_name: str = "image", 
+        output_name: str = "resized_image",
+    ):
+        """Create a configurable step for resizing images to the target area while maintaining the aspect ratio.
+        Args:
+            input_name (str, optional): Name of the image field to read from the
+                pipeline state. Defaults to "image".
+            output_name (str, optional): Name of the resized image field to write
+                back to the pipeline state. Defaults to "resized_image".
+        """
+        if not isinstance(input_name, str) or not isinstance(output_name, str):
+            raise ValueError(
+                f"input_name and output_name must be strings but are {type(input_name)} and {type(output_name)}"
+            )
+        self._image_input_name = input_name
+        self._resized_image_output_name = output_name
+        super().__init__()
+
+    @property
+    def description(self) -> str:
+        return f"Image Resize step that resize the {self._image_input_name} to target area while maintaining the aspect ratio."
+
+    @property
+    def expected_components(self) -> List[ComponentSpec]:
+        return [
+            ComponentSpec(
+                "image_resize_processor",
+                VaeImageProcessor,
+                config=FrozenDict({"vae_scale_factor": 16}),
+                default_creation_method="from_config",
+            ),
+        ]
+
+    @property
+    def inputs(self) -> List[InputParam]:
+        return [
+            InputParam(
+                name=self._image_input_name, required=True, type_hint=torch.Tensor, description="The image to resize"
+            ),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> List[OutputParam]:
+        return [
+            OutputParam(
+                name=self._resized_image_output_name, type_hint=List[PIL.Image.Image], description="The resized images"
+            ),
+        ]
+
+    @torch.no_grad()
+    def __call__(self, components: QwenImageModularPipeline, state: PipelineState):
+        block_state = self.get_block_state(state)
+
+        images = getattr(block_state, self._image_input_name)
+
+        if not is_valid_image_imagelist(images):
+            raise ValueError(f"Images must be image or list of images but are {type(images)}")
+
+        if is_valid_image(images):
+            images = [images]
+
+        image_width, image_height = images[0].size
+        calculated_width, calculated_height, _ = calculate_dimensions(1024 * 1024, image_width / image_height)
+
+        resized_images = [
+            components.image_resize_processor.resize(image, height=calculated_height, width=calculated_width)
+            for image in images
+        ]
+
+        setattr(block_state, self._resized_image_output_name, resized_images)
+        self.set_block_state(state, block_state)
+        return components, state
+
+
+class QwenImageLayeredResizeStep(ModularPipelineBlocks):
+    model_name = "qwenimage-layered"
 
     def __init__(
         self, 
@@ -301,7 +380,7 @@ class QwenImageEditResizeStep(ModularPipelineBlocks):
                 name=self._image_input_name, required=True, type_hint=torch.Tensor, description="The image to resize"
             ),
             InputParam(
-                name="target_area", default=1024 * 1024, type_hint=int, description="The target area to resize the image to"
+                name="resolution", default=640, type_hint=int, description="The target area to resize the image to, can be 1024 or 640"
             ),
         ]
 
@@ -313,9 +392,16 @@ class QwenImageEditResizeStep(ModularPipelineBlocks):
             ),
         ]
 
+    @staticmethod
+    def check_inputs(resolution: int):
+        if resolution not in [1024, 640]:
+            raise ValueError(f"Resolution must be 1024 or 640 but is {resolution}")
+
     @torch.no_grad()
     def __call__(self, components: QwenImageModularPipeline, state: PipelineState):
         block_state = self.get_block_state(state)
+
+        self.check_inputs(resolution=block_state.resolution)
 
         images = getattr(block_state, self._image_input_name)
 
@@ -326,7 +412,8 @@ class QwenImageEditResizeStep(ModularPipelineBlocks):
             images = [images]
 
         image_width, image_height = images[0].size
-        calculated_width, calculated_height, _ = calculate_dimensions(block_state.target_area, image_width / image_height)
+        target_area = block_state.resolution * block_state.resolution
+        calculated_width, calculated_height, _ = calculate_dimensions(target_area, image_width / image_height)
 
         resized_images = [
             components.image_resize_processor.resize(image, height=calculated_height, width=calculated_width)
@@ -336,6 +423,7 @@ class QwenImageEditResizeStep(ModularPipelineBlocks):
         setattr(block_state, self._resized_image_output_name, resized_images)
         self.set_block_state(state, block_state)
         return components, state
+
 
 class QwenImageEditPlusResizeStep(ModularPipelineBlocks):
     """Resize each image independently based on its own aspect ratio. For QwenImage Edit Plus."""
@@ -890,7 +978,7 @@ class QwenImageInpaintProcessImagesInputStep(ModularPipelineBlocks):
 
     @property
     def description(self) -> str:
-        return "Image Preprocess step for inpainting task. This processes the image and mask inputs together. Images can be resized first using QwenImageEditResizeStep."
+        return "Image Preprocess step for inpainting task. This processes the image and mask inputs together. Images will be resized to the given height and width."
 
     @property
     def expected_components(self) -> List[ComponentSpec]:
@@ -907,8 +995,7 @@ class QwenImageInpaintProcessImagesInputStep(ModularPipelineBlocks):
     def inputs(self) -> List[InputParam]:
         return [
             InputParam("mask_image", required=True),
-            InputParam("resized_image"),
-            InputParam("image"),
+            InputParam("image", required=True),
             InputParam("height"),
             InputParam("width"),
             InputParam("padding_mask_crop"),
@@ -938,23 +1025,73 @@ class QwenImageInpaintProcessImagesInputStep(ModularPipelineBlocks):
     def __call__(self, components: QwenImageModularPipeline, state: PipelineState):
         block_state = self.get_block_state(state)
 
-        if block_state.resized_image is None and block_state.image is None:
-            raise ValueError("resized_image and image cannot be None at the same time")
-
-        if block_state.resized_image is None:
-            image = block_state.image
-            self.check_inputs(
-                height=block_state.height, width=block_state.width, vae_scale_factor=components.vae_scale_factor
-            )
-            height = block_state.height or components.default_height
-            width = block_state.width or components.default_width
-        else:
-            width, height = block_state.resized_image[0].size
-            image = block_state.resized_image
+        self.check_inputs(
+            height=block_state.height, width=block_state.width, vae_scale_factor=components.vae_scale_factor
+        )
+        height = block_state.height or components.default_height
+        width = block_state.width or components.default_width
 
         block_state.processed_image, block_state.processed_mask_image, block_state.mask_overlay_kwargs = (
             components.image_mask_processor.preprocess(
-                image=image,
+                image=block_state.image,
+                mask=block_state.mask_image,
+                height=height,
+                width=width,
+                padding_mask_crop=block_state.padding_mask_crop,
+            )
+        )
+
+        self.set_block_state(state, block_state)
+        return components, state
+
+
+class QwenImageEditInpaintProcessImagesInputStep(ModularPipelineBlocks):
+    model_name = "qwenimage-edit"
+
+    @property
+    def description(self) -> str:
+        return "Image Preprocess step for inpainting task. This processes the image and mask inputs together. Images should be resized first."
+
+    @property
+    def expected_components(self) -> List[ComponentSpec]:
+        return [
+            ComponentSpec(
+                "image_mask_processor",
+                InpaintProcessor,
+                config=FrozenDict({"vae_scale_factor": 16}),
+                default_creation_method="from_config",
+            ),
+        ]
+
+    @property
+    def inputs(self) -> List[InputParam]:
+        return [
+            InputParam("mask_image", required=True),
+            InputParam("resized_image", required=True),
+            InputParam("padding_mask_crop"),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> List[OutputParam]:
+        return [
+            OutputParam(name="processed_image"),
+            OutputParam(name="processed_mask_image"),
+            OutputParam(
+                name="mask_overlay_kwargs",
+                type_hint=Dict,
+                description="The kwargs for the postprocess step to apply the mask overlay",
+            ),
+        ]
+
+    @torch.no_grad()
+    def __call__(self, components: QwenImageModularPipeline, state: PipelineState):
+        block_state = self.get_block_state(state)
+
+        width, height = block_state.resized_image[0].size
+
+        block_state.processed_image, block_state.processed_mask_image, block_state.mask_overlay_kwargs = (
+            components.image_mask_processor.preprocess(
+                image=block_state.resized_image,
                 mask=block_state.mask_image,
                 height=height,
                 width=width,
@@ -971,7 +1108,7 @@ class QwenImageProcessImagesInputStep(ModularPipelineBlocks):
 
     @property
     def description(self) -> str:
-        return "Image Preprocess step. Images can be resized first using QwenImageEditResizeStep."
+        return "Image Preprocess step. will resize the image to the given height and width."
 
     @property
     def expected_components(self) -> List[ComponentSpec]:
@@ -986,7 +1123,11 @@ class QwenImageProcessImagesInputStep(ModularPipelineBlocks):
 
     @property
     def inputs(self) -> List[InputParam]:
-        return [InputParam("resized_image"), InputParam("image"), InputParam("height"), InputParam("width")]
+        return [
+            InputParam("image", required=True), 
+            InputParam("height"), 
+            InputParam("width"),
+        ]
 
     @property
     def intermediate_outputs(self) -> List[OutputParam]:
@@ -1004,28 +1145,66 @@ class QwenImageProcessImagesInputStep(ModularPipelineBlocks):
     def __call__(self, components: QwenImageModularPipeline, state: PipelineState):
         block_state = self.get_block_state(state)
 
-        if block_state.resized_image is None and block_state.image is None:
-            raise ValueError("resized_image and image cannot be None at the same time")
+        self.check_inputs(
+            height=block_state.height, width=block_state.width, vae_scale_factor=components.vae_scale_factor
+        )
+        height = block_state.height or components.default_height
+        width = block_state.width or components.default_width
 
-        if block_state.resized_image is None:
-            image = block_state.image
-            self.check_inputs(
-                height=block_state.height, width=block_state.width, vae_scale_factor=components.vae_scale_factor
-            )
-            height = block_state.height or components.default_height
-            width = block_state.width or components.default_width
-        else:
-            width, height = block_state.resized_image[0].size
-            image = block_state.resized_image
 
         block_state.processed_image = components.image_processor.preprocess(
-            image=image,
+            image=block_state.image,
             height=height,
             width=width,
         )
 
         self.set_block_state(state, block_state)
         return components, state
+
+
+class QwenImageEditProcessImagesInputStep(ModularPipelineBlocks):
+    model_name = "qwenimage-edit"
+
+    @property
+    def description(self) -> str:
+        return "Image Preprocess step. Images needs to be resized first."
+
+    @property
+    def expected_components(self) -> List[ComponentSpec]:
+        return [
+            ComponentSpec(
+                "image_processor",
+                VaeImageProcessor,
+                config=FrozenDict({"vae_scale_factor": 16}),
+                default_creation_method="from_config",
+            ),
+        ]
+
+    @property
+    def inputs(self) -> List[InputParam]:
+        return [
+            InputParam("resized_image", required=True),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> List[OutputParam]:
+        return [OutputParam(name="processed_image")]
+
+    @torch.no_grad()
+    def __call__(self, components: QwenImageModularPipeline, state: PipelineState):
+        block_state = self.get_block_state(state)
+
+        width, height = block_state.resized_image[0].size
+
+        block_state.processed_image = components.image_processor.preprocess(
+            image=block_state.resized_image,
+            height=height,
+            width=width,
+        )
+
+        self.set_block_state(state, block_state)
+        return components, state
+
 
 class QwenImageEditPlusProcessImagesInputStep(ModularPipelineBlocks):
     model_name = "qwenimage-edit-plus"

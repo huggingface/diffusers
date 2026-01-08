@@ -286,8 +286,8 @@ class QwenImageAdditionalInputsStep(ModularPipelineBlocks):
     @property
     def intermediate_outputs(self) -> List[OutputParam]:
         return [
-            OutputParam(name="image_height", type_hint=int, description="The height of the image latents"),
-            OutputParam(name="image_width", type_hint=int, description="The width of the image latents"),
+            OutputParam(name="image_height", type_hint=int, description="The image height calculated from the image latents dimension"),
+            OutputParam(name="image_width", type_hint=int, description="The image width calculated from the image latents dimension"),
         ]
 
     def __call__(self, components: QwenImageModularPipeline, state: PipelineState) -> PipelineState:
@@ -341,7 +341,7 @@ class QwenImageAdditionalInputsStep(ModularPipelineBlocks):
         return components, state
 
 
-class QwenImageEditPlusInputsDynamicStep(ModularPipelineBlocks):
+class QwenImageEditPlusAdditionalInputsStep(ModularPipelineBlocks):
     """Input step for QwenImage Edit Plus: handles list of latents with different sizes."""
 
     model_name = "qwenimage-edit-plus"
@@ -407,8 +407,8 @@ class QwenImageEditPlusInputsDynamicStep(ModularPipelineBlocks):
     @property
     def intermediate_outputs(self) -> List[OutputParam]:
         return [
-            OutputParam(name="image_height", type_hint=List[int], description="The heights of the image latents"),
-            OutputParam(name="image_width", type_hint=List[int], description="The widths of the image latents"),
+            OutputParam(name="image_height", type_hint=List[int], description="The image heights calculated from the image latents dimension"),
+            OutputParam(name="image_width", type_hint=List[int], description="The image widths calculated from the image latents dimension"),
         ]
 
     def __call__(self, components: QwenImageModularPipeline, state: PipelineState) -> PipelineState:
@@ -529,8 +529,6 @@ class QwenImageLayeredAdditionalInputsStep(ModularPipelineBlocks):
         inputs = [
             InputParam(name="num_images_per_prompt", default=1),
             InputParam(name="batch_size", required=True),
-            InputParam(name="height"),
-            InputParam(name="width"),
         ]
 
         for image_latent_input_name in self._image_latent_inputs:
@@ -544,8 +542,10 @@ class QwenImageLayeredAdditionalInputsStep(ModularPipelineBlocks):
     @property
     def intermediate_outputs(self) -> List[OutputParam]:
         return [
-            OutputParam(name="image_height", type_hint=int, description="The height of the image latents"),
-            OutputParam(name="image_width", type_hint=int, description="The width of the image latents"),
+            OutputParam(name="image_height", type_hint=int, description="The image height calculated from the image latents dimension"),
+            OutputParam(name="image_width", type_hint=int, description="The image width calculated from the image latents dimension"),
+            OutputParam(name="height", type_hint=int, description="The height of the image output"),
+            OutputParam(name="width", type_hint=int, description="The width of the image output"),
         ]
 
     def __call__(self, components: QwenImageModularPipeline, state: PipelineState) -> PipelineState:
@@ -561,8 +561,8 @@ class QwenImageLayeredAdditionalInputsStep(ModularPipelineBlocks):
             # Layered latents are (B, layers, C, H, W)
             height = image_latent_tensor.shape[3] * components.vae_scale_factor
             width = image_latent_tensor.shape[4] * components.vae_scale_factor
-            block_state.height = block_state.height or height
-            block_state.width = block_state.width or width
+            block_state.height = height
+            block_state.width = width
 
             if not hasattr(block_state, "image_height"):
                 block_state.image_height = height
