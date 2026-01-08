@@ -79,7 +79,9 @@ EXAMPLE_DOC_STRING = """
 
     json_prompt_generate["edit_instruction"] = edit_prompt
 
-    results_generate = pipe(prompt=json_prompt_generate, num_inference_steps=50, guidance_scale=3.5, image=image, output_type="np")
+    results_generate = pipe(
+        prompt=json_prompt_generate, num_inference_steps=50, guidance_scale=3.5, image=image, output_type="np"
+    )
     ```
 """
 

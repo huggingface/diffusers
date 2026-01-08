@@ -41,7 +41,7 @@ class DreamBoothFiboEditUnitTests(unittest.TestCase):
         """Test the find_closest_resolution function for aspect ratio selection."""
         # Import the function from the training script
         sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-        from train_dreambooth_fibo_edit import find_closest_resolution, RESOLUTIONS_1k
+        from train_dreambooth_fibo_edit import RESOLUTIONS_1k, find_closest_resolution
 
         # Test square image (1:1 aspect ratio)
         width, height = find_closest_resolution(1024, 1024)
@@ -70,6 +70,7 @@ class DreamBoothFiboEditUnitTests(unittest.TestCase):
         self.assertIsInstance(result, str)
         # Should be valid JSON after cleaning
         import json
+
         parsed = json.loads(result)
         self.assertEqual(parsed["prompt"], "a photo of a cat")
 

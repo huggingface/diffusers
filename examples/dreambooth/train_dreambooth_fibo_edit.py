@@ -1,14 +1,15 @@
+import abc
 import argparse
+import io
 import itertools
 import json
-import os
-import io
-import abc
 import logging
+import os
 import random
 from datetime import datetime
 from pathlib import Path
 from typing import List, Union
+
 import torch
 import transformers
 import ujson
@@ -19,28 +20,27 @@ from accelerate.utils import (
     ProjectConfiguration,
     set_seed,
 )
-from torch.optim import Optimizer
-
-from torch.optim.lr_scheduler import LambdaLR
-
 from huggingface_hub import HfFolder
+from peft import LoraConfig, set_peft_model_state_dict
+from peft.utils import get_peft_model_state_dict
 from PIL import Image
 from PIL.ImageOps import exif_transpose
+from torch.optim import Optimizer
+from torch.optim.lr_scheduler import LambdaLR
 from torch.utils.data import Dataset
 from torchvision import transforms
 from tqdm.auto import tqdm
 from transformers import AutoModelForCausalLM, AutoTokenizer, get_cosine_schedule_with_warmup
-from diffusers.optimization import get_scheduler
-from diffusers.loaders.lora_pipeline import FluxLoraLoaderMixin
-from diffusers.training_utils import cast_training_params
-from diffusers.utils import convert_unet_state_dict_to_peft
-from peft import LoraConfig, set_peft_model_state_dict
-from peft.utils import get_peft_model_state_dict
+
 import diffusers
 from diffusers import AutoencoderKLWan, BriaFiboEditPipeline
+from diffusers.loaders.lora_pipeline import FluxLoraLoaderMixin
 from diffusers.models.transformers.transformer_bria_fibo import (
     BriaFiboTransformer2DModel,
 )
+from diffusers.optimization import get_scheduler
+from diffusers.training_utils import cast_training_params
+from diffusers.utils import convert_unet_state_dict_to_peft
 
 
 # Set Logger
@@ -58,7 +58,7 @@ def parse_args():
     parser.add_argument(
         "--output_dir",
         type=str,
-        default=f"fibo-edit-dreambooth-lora",
+        default="fibo-edit-dreambooth-lora",
         help="The output directory where the model predictions and checkpoints will be written.",
     )
     parser.add_argument(
@@ -291,12 +291,14 @@ def parse_args():
         default="caption",
         help="The column of the dataset containing the instance prompt for each image",
     )
-    parser.add_argument(
-        "--repeats",
-        type=int,
-        default=1,
-        help="How many times to repeat the training data.",
-    ),
+    (
+        parser.add_argument(
+            "--repeats",
+            type=int,
+            default=1,
+            help="How many times to repeat the training data.",
+        ),
+    )
     parser.add_argument(
         "--input_image_column",
         type=str,
@@ -328,6 +330,7 @@ def find_closest_resolution(image_width, image_height):
     closest_ratio = min(aspect_ratios, key=lambda x: abs(x - image_aspect))
     return RESOLUTIONS_1k[closest_ratio]
 
+
 def create_attention_matrix(attention_mask):
     attention_matrix = torch.einsum("bi,bj->bij", attention_mask, attention_mask)
     # convert to 0 - keep, -inf ignore
@@ -335,6 +338,7 @@ def create_attention_matrix(attention_mask):
         attention_matrix == 1, 0.0, -torch.inf
     )  # Apply -inf to ignored tokens for nulling softmax score
     return attention_matrix
+
 
 @torch.no_grad()
 def get_smollm_prompt_embeds(
@@ -366,14 +370,18 @@ def get_smollm_prompt_embeds(
     if len(prompts) == 1:
         assert (attention_mask == 1).all()
 
-    hidden_states = text_encoder(text_input_ids, attention_mask=attention_mask, output_hidden_states=True).hidden_states
+    hidden_states = text_encoder(
+        text_input_ids, attention_mask=attention_mask, output_hidden_states=True
+    ).hidden_states
     # We need a 4096 dim so since we have 2048 we take last 2 layers
     prompt_embeds = torch.concat([hidden_states[-1], hidden_states[-2]], dim=-1)
 
     return prompt_embeds, hidden_states, attention_mask
 
+
 def open_image_from_binary(binary_data):
     return Image.open(io.BytesIO(binary_data))
+
 
 def pad_embedding(prompt_embeds, max_tokens):
     # Pads a tensor which is not masked, i.e. the "initial" tensor mask is 1's
@@ -389,6 +397,7 @@ def pad_embedding(prompt_embeds, max_tokens):
     prompt_embeds = torch.concat([prompt_embeds, padding], dim=1)
 
     return prompt_embeds, attentions_mask
+
 
 class ShiftedLogitNormalTimestepSampler:
     """
@@ -450,6 +459,8 @@ class ShiftedLogitNormalTimestepSampler:
         b = min_shift - m * min_tokens  # Calculate y-intercept
         shift = m * seq_length + b  # Apply linear equation y = mx + b
         return shift
+
+
 class TimestepSampler(abc.ABC):
     """Base class for timestep samplers.
 
@@ -508,6 +519,7 @@ class UniformTimestepSampler(TimestepSampler):
 
         batch_size, seq_length, _ = batch.shape
         return self.sample(batch_size, device=batch.device)
+
 
 class ShiftedStretchedLogitNormalTimestepSampler:
     """
@@ -656,7 +668,6 @@ class DreamBoothDataset(Dataset):
         self.num_instance_images = len(self.instance_images)
         self._length = self.num_instance_images
 
-
         self.source_images = []
         for img in source_images:
             img = open_image_from_binary(img)
@@ -675,7 +686,6 @@ class DreamBoothDataset(Dataset):
     def __len__(self):
         return self._length
 
-
     def _process_image(self, image):
         image = exif_transpose(image)
         if not image.mode == "RGB":
@@ -689,8 +699,6 @@ class DreamBoothDataset(Dataset):
         source_image = self.source_images[index % self.num_source_images]
         instance_image = self._process_image(instance_image)
         source_image = self._process_image(source_image)
-
-
 
         # Get image dimensions and find closest resolution
         img_width, img_height = instance_image.size
@@ -715,9 +723,9 @@ class DreamBoothDataset(Dataset):
         instance_image = transforms.Resize(
             (new_height, new_width), interpolation=transforms.InterpolationMode.BILINEAR
         )(instance_image)
-        source_image = transforms.Resize(
-            (new_height, new_width), interpolation=transforms.InterpolationMode.BILINEAR
-        )(source_image)
+        source_image = transforms.Resize((new_height, new_width), interpolation=transforms.InterpolationMode.BILINEAR)(
+            source_image
+        )
 
         # Center crop to exact target dimensions
         instance_image = transforms.CenterCrop((target_height, target_width))(instance_image)
@@ -743,6 +751,7 @@ class DreamBoothDataset(Dataset):
 
         return example
 
+
 def clean_json_caption(caption):
     """Validate and normalize JSON caption format. Raises ValueError if caption is not valid JSON."""
     try:
@@ -752,6 +761,7 @@ def clean_json_caption(caption):
         raise ValueError(
             f"Caption must be in valid JSON format. Error: {e}. Caption: {caption[:100] if len(str(caption)) > 100 else caption}"
         )
+
 
 def add_lora(transformer, lora_rank):
     target_modules = [
@@ -912,6 +922,7 @@ def get_lr_scheduler(name, optimizer, num_warmup_steps, num_training_steps, cons
         constant_steps=constant_steps,
     )
 
+
 def load_checkpoint(accelerator, args):
     # Load from local checkpoint that sage maker synced to s3 prefix
     global_step = 0
@@ -1061,7 +1072,7 @@ def main(args):
     )
 
     vae_model = AutoencoderKLWan.from_pretrained(args.pretrained_model_name_or_path, subfolder="vae")
-    
+
     vae_model = vae_model.to(accelerator.device).requires_grad_(False)
     # Read vae config
     vae_config = vae_model.config
@@ -1229,7 +1240,9 @@ def main(args):
                 iter_ = iter(train_dataloader)
                 logger.info(f"Rank {RANK} reinit iterator")
 
-        target_pixel_values, input_pixel_values, captions, target_width, target_height = batch  # Get batch with dynamic resolution
+        target_pixel_values, input_pixel_values, captions, target_width, target_height = (
+            batch  # Get batch with dynamic resolution
+        )
         height, width = target_height, target_width
         target_latents, target_latent_image_ids = fibo_edit_pipeline.prepare_image_latents(
             image=target_pixel_values,
@@ -1243,7 +1256,7 @@ def main(args):
         )
         # target latents of the target image should be 0
         target_latent_image_ids[..., 0] = 0
-        
+
         context_latents, context_latent_image_ids = fibo_edit_pipeline.prepare_image_latents(
             image=input_pixel_values,
             batch_size=args.train_batch_size,
@@ -1272,20 +1285,23 @@ def main(args):
         encoder_hidden_states = encoder_hidden_states.to(device=accelerator.device, dtype=torch.float32)
         prompt_attention_mask = prompt_attention_mask.to(device=accelerator.device, dtype=torch.float32)
 
-        
         # create attention mask for the target and context latents
         target_latents_attention_mask = torch.ones(
-            [target_latents.shape[0], target_latents.shape[1]], dtype=target_latents.dtype, device=target_latents.device
+            [target_latents.shape[0], target_latents.shape[1]],
+            dtype=target_latents.dtype,
+            device=target_latents.device,
         )
 
         context_latents_attention_mask = torch.ones(
-            [context_latents.shape[0], context_latents.shape[1]], dtype=context_latents.dtype, device=context_latents.device
+            [context_latents.shape[0], context_latents.shape[1]],
+            dtype=context_latents.dtype,
+            device=context_latents.device,
         )
 
         attention_mask = torch.cat(
             [prompt_attention_mask, target_latents_attention_mask, context_latents_attention_mask], dim=1
         )
-        
+
         with accelerator.accumulate(transformer):
             # Sample noise that we'll add to the latents
             noise = torch.randn_like(target_latents)
@@ -1329,10 +1345,8 @@ def main(args):
 
             # Get the target for loss depending on the prediction type
             target = noise - target_latents  # V pred
-            num_channels_latents = noisy_latents.shape[1]
             latent_height = int(height) // vae_scale_factor
             latent_width = int(width) // vae_scale_factor
-
 
             patched_latent_image_ids = fibo_edit_pipeline._prepare_latent_image_ids(
                 noisy_latents.shape[0],
@@ -1347,11 +1361,11 @@ def main(args):
                 dtype=target_latents.dtype,
                 device=target_latents.device,
             )
-            patched_latent_image_ids = torch.cat(
-                    [patched_latent_image_ids, context_latent_image_ids], dim=0
-                )
+            patched_latent_image_ids = torch.cat([patched_latent_image_ids, context_latent_image_ids], dim=0)
             noisy_latents = torch.cat([noisy_latents, context_latents], dim=1)
-            attention_mask = torch.cat([prompt_attention_mask, latent_attention_mask, context_latents_attention_mask], dim=1)
+            attention_mask = torch.cat(
+                [prompt_attention_mask, latent_attention_mask, context_latents_attention_mask], dim=1
+            )
 
             # Prepare attention_matrix
             attention_mask = create_attention_matrix(attention_mask)  # batch, seq => batch, seq, seq
@@ -1369,7 +1383,7 @@ def main(args):
                 return_dict=False,
                 joint_attention_kwargs=joint_attention_kwargs,
             )[0]
-            model_pred = model_pred[:, :target_latents.shape[1]]
+            model_pred = model_pred[:, : target_latents.shape[1]]
             # Un-Patchify latent  (4 -> 1)
             loss_coeff = WORLD_SIZE / TOTAL_BATCH_NO_ACC
 
