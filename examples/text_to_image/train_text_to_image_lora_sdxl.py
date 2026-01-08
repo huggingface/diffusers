@@ -138,7 +138,11 @@ def log_validation(
 
     # run inference
     generator = torch.Generator(device=accelerator.device).manual_seed(args.seed) if args.seed is not None else None
-    pipeline_args = {"prompt": args.validation_prompt}
+    pipeline_args = {
+        "prompt": args.validation_prompt,
+        "height": args.resolution,
+        "width": args.resolution,
+    }
     if torch.backends.mps.is_available():
         autocast_ctx = nullcontext()
     else:
