@@ -24,6 +24,7 @@ from ...utils import logging
 from ...utils.torch_utils import maybe_allow_in_graph
 from ..attention import FeedForward
 from ..attention_processor import Attention
+from ..attention_dispatch import dispatch_attention_fn
 from ..cache_utils import CacheMixin
 from ..embeddings import PixArtAlphaTextProjection, TimestepEmbedding, Timesteps
 from ..modeling_outputs import Transformer2DModelOutput
@@ -196,6 +197,9 @@ class GlmImageAttnProcessor:
     text_seq_length) where 1 indicates a non-padded token and 0 indicates a padded token.
     """
 
+    _attention_backend = None
+    _parallel_config = None
+
     def __init__(self):
         if not hasattr(F, "scaled_dot_product_attention"):
             raise ImportError("GlmImageAttnProcessor requires PyTorch 2.0. To use it, please upgrade PyTorch to 2.0.")
@@ -262,11 +266,16 @@ class GlmImageAttnProcessor:
             attn_mask_matrix = mix_attn_mask @ mix_attn_mask.transpose(1, 2)
             attention_mask = (attn_mask_matrix > 0).unsqueeze(1).to(query.dtype)
 
-        hidden_states = F.scaled_dot_product_attention(
-            query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
+        hidden_states = dispatch_attention_fn(
+            query,
+            key,
+            value,
+            attn_mask=attention_mask,
+            backend=self._attention_backend,
+            parallel_config=self._parallel_config,
         )
-        hidden_states = hidden_states.transpose(1, 2).flatten(2, 3)
-        hidden_states = hidden_states.type_as(query)
+        hidden_states = hidden_states.flatten(2, 3)
+        hidden_states = hidden_states.to(query.dtype)
 
         # 5. Output projection
         hidden_states = attn.to_out[0](hidden_states)
