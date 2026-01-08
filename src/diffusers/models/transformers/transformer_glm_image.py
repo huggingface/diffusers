@@ -274,7 +274,7 @@ class GlmImageAttnProcessor:
             backend=self._attention_backend,
             parallel_config=self._parallel_config,
         )
-        hidden_states = hidden_states.flatten(2, 3)
+        hidden_states = hidden_states.transpose(1, 2).flatten(2, 3)
         hidden_states = hidden_states.to(query.dtype)
 
         # 5. Output projection
