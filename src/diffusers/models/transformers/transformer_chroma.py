@@ -14,6 +14,7 @@
 
 
 from typing import Any, Dict, Optional, Tuple, Union
+from functools import lru_cache
 
 import numpy as np
 import torch
@@ -34,6 +35,155 @@ from .transformer_flux import FluxAttention, FluxAttnProcessor
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
+
+class Nerf(nn.Module):
+    def __init__(
+        self,
+        in_channels: int,
+        num_layers: int,
+        nerf_hidden_size: int,
+        transformer_hidden_size: int,
+        max_freqs: int,
+        mlp_ratio: int,
+        eps=1e-6,
+    ):
+        super().__init__()
+        self.nerf_embedder = NerfEmbedder(
+            in_channels=in_channels,
+            hidden_size=nerf_hidden_size,
+            max_freqs=max_freqs,
+        )
+        self.blocks = nn.ModuleList(
+            [
+                NerfGLUBlock(
+                    transformer_hidden_size=transformer_hidden_size,
+                    nerf_hidden_size=nerf_hidden_size,
+                    mlp_ratio=mlp_ratio,
+                    eps=eps,
+                )
+                for _ in range(num_layers)
+            ]
+        )
+        self.final_layer = NerfFinalLayer(
+            hidden_size=nerf_hidden_size,
+            out_channels=in_channels,
+            eps=eps,
+        )
+        self.transformer_hidden_size = transformer_hidden_size
+
+    def __call__(
+        self,
+        pixels,
+        latents,
+        patch_size,
+        num_patches,
+    ):
+        batch_size, channels, height, width = pixels.shape
+
+        pixels = nn.functional.unfold(pixels, kernel_size=patch_size, stride=patch_size)
+        pixels = pixels.transpose(1, 2)
+
+        hidden = latents.reshape(batch_size * num_patches, self.transformer_hidden_size)
+        pixels = pixels.reshape(batch_size * num_patches, channels, patch_size**2).transpose(1, 2)
+
+        # Get pixel embeddings
+        latents_dct = self.nerf_embedder(pixels)
+
+        # Pass through blocks
+        for block in self.blocks:
+            latents_dct = block(latents_dct, hidden)
+
+        latents_dct = self.final_layer.norm(latents_dct)
+
+        latents_dct = latents_dct.transpose(1, 2).reshape(batch_size, num_patches, -1).transpose(1, 2)
+        latents_dct = nn.functional.fold(
+            latents_dct,
+            output_size=(height, width),
+            kernel_size=patch_size,
+            stride=patch_size,
+        )
+        return self.final_layer.conv(latents_dct)
+
+
+class NerfEmbedder(nn.Module):
+    def __init__(
+        self,
+        in_channels: int,
+        hidden_size: int,
+        max_freqs: int,
+    ):
+        super().__init__()
+        self.max_freqs = max_freqs
+        self.hidden_size = hidden_size
+        self.embedder = nn.Sequential(nn.Linear(in_channels + max_freqs**2, hidden_size))
+
+    @lru_cache(maxsize=4)
+    def fetch_pos(self, patch_size, device, dtype) -> torch.Tensor:
+        pos_x = torch.linspace(0, 1, patch_size, device=device, dtype=dtype)
+        pos_y = torch.linspace(0, 1, patch_size, device=device, dtype=dtype)
+        pos_y, pos_x = torch.meshgrid(pos_y, pos_x, indexing="ij")
+        pos_x = pos_x.reshape(-1, 1, 1)
+        pos_y = pos_y.reshape(-1, 1, 1)
+        freqs = torch.linspace(0, self.max_freqs - 1, self.max_freqs, device=device, dtype=dtype)
+        freqs_x = freqs[None, :, None]
+        freqs_y = freqs[None, None, :]
+        coeffs = (1 + freqs_x * freqs_y) ** -1
+        dct_x = torch.cos(pos_x * freqs_x * torch.pi)
+        dct_y = torch.cos(pos_y * freqs_y * torch.pi)
+        dct = (dct_x * dct_y * coeffs).view(1, -1, self.max_freqs**2)
+        return dct
+
+    def __call__(self, inputs: torch.Tensor) -> torch.Tensor:
+        batch, pixels, channels = inputs.shape
+        patch_size = int(pixels**0.5)
+        input_dtype = inputs.dtype
+        with torch.autocast(str(inputs.device), enabled=False):
+            inputs = inputs.float()
+            dct = self.fetch_pos(patch_size, inputs.device, torch.float32)
+            dct = dct.repeat(batch, 1, 1)
+            inputs = torch.cat((inputs, dct), dim=-1)
+            inputs = self.embedder.float()(inputs)
+        return inputs.to(dtype=input_dtype)
+
+
+class NerfGLUBlock(nn.Module):
+    def __init__(self, transformer_hidden_size: int, nerf_hidden_size: int, mlp_ratio, eps):
+        super().__init__()
+        total_params = 3 * nerf_hidden_size**2 * mlp_ratio
+        self.param_generator = nn.Linear(transformer_hidden_size, total_params)
+        self.norm = RMSNorm(nerf_hidden_size, eps=eps)
+        self.mlp_ratio = mlp_ratio
+
+    def forward(self, x: torch.Tensor, s: torch.Tensor) -> torch.Tensor:
+        batch_size, num_x, hidden_size_x = x.shape
+        mlp_params = self.param_generator(s)
+        fc1_gate_params, fc1_value_params, fc2_params = mlp_params.chunk(3, dim=-1)
+        fc1_gate = fc1_gate_params.view(batch_size, hidden_size_x, hidden_size_x * self.mlp_ratio)
+        fc1_value = fc1_value_params.view(batch_size, hidden_size_x, hidden_size_x * self.mlp_ratio)
+        fc2 = fc2_params.view(batch_size, hidden_size_x * self.mlp_ratio, hidden_size_x)
+        fc1_gate = torch.nn.functional.normalize(fc1_gate, dim=-2)
+        fc1_value = torch.nn.functional.normalize(fc1_value, dim=-2)
+        fc2 = torch.nn.functional.normalize(fc2, dim=-2)
+        res_x = x
+        x = self.norm(x)
+        x = torch.bmm(torch.nn.functional.silu(torch.bmm(x, fc1_gate)) * torch.bmm(x, fc1_value), fc2)
+        return x + res_x
+
+
+class NerfFinalLayer(nn.Module):
+    def __init__(self, hidden_size: int, out_channels: int, eps):
+        super().__init__()
+        self.norm = RMSNorm(hidden_size, eps=eps)
+        self.conv = nn.Conv2d(
+            in_channels=hidden_size,
+            out_channels=out_channels,
+            kernel_size=3,
+            padding=1,
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.conv(self.norm(x.movedim(1, -1)).movedim(-1, 1))
 
 
 class ChromaAdaLayerNormZeroPruned(nn.Module):
@@ -630,6 +780,308 @@ class ChromaTransformer2DModel(
         temb = pooled_temb[:, -2:]
         hidden_states = self.norm_out(hidden_states, temb)
         output = self.proj_out(hidden_states)
+
+        if USE_PEFT_BACKEND:
+            # remove `lora_scale` from each PEFT layer
+            unscale_lora_layers(self, lora_scale)
+
+        if not return_dict:
+            return (output,)
+
+        return Transformer2DModelOutput(sample=output)
+
+
+class ChromaRadianceTransformer2DModel(
+    ModelMixin,
+    ConfigMixin,
+    PeftAdapterMixin,
+    FromOriginalModelMixin,
+    FluxTransformer2DLoadersMixin,
+    CacheMixin,
+    AttentionMixin,
+):
+    """
+    The Transformer model introduced in Flux, modified for Chroma Radiance.
+
+    Reference: https://huggingface.co/lodestones/Chroma1-Radiance
+
+    Args:
+        patch_size (`int`, defaults to `1`):
+            Patch size to turn the input data into small patches.
+        in_channels (`int`, defaults to `3`):
+            The number of channels in the input.
+        out_channels (`int`, *optional*, defaults to `None`):
+            The number of channels in the output. If not specified, it defaults to `in_channels`.
+        num_layers (`int`, defaults to `19`):
+            The number of layers of dual stream DiT blocks to use.
+        num_single_layers (`int`, defaults to `38`):
+            The number of layers of single stream DiT blocks to use.
+        attention_head_dim (`int`, defaults to `128`):
+            The number of dimensions to use for each attention head.
+        num_attention_heads (`int`, defaults to `24`):
+            The number of attention heads to use.
+        joint_attention_dim (`int`, defaults to `4096`):
+            The number of dimensions to use for the joint attention (embedding/channel dimension of
+            `encoder_hidden_states`).
+        axes_dims_rope (`Tuple[int]`, defaults to `(16, 56, 56)`):
+            The dimensions to use for the rotary positional embeddings.
+        x0 (`bool`, defaults to `True`):
+            Whether or not to use x0 prediction
+    """
+
+    _supports_gradient_checkpointing = True
+    _no_split_modules = ["ChromaTransformerBlock", "ChromaSingleTransformerBlock"]
+    _repeated_blocks = ["ChromaTransformerBlock", "ChromaSingleTransformerBlock"]
+    _skip_layerwise_casting_patterns = ["pos_embed", "norm"]
+
+    @register_to_config
+    def __init__(
+        self,
+        patch_size: int = 16,
+        in_channels: int = 3,
+        out_channels: Optional[int] = None,
+        num_layers: int = 19,
+        num_single_layers: int = 38,
+        attention_head_dim: int = 128,
+        num_attention_heads: int = 24,
+        joint_attention_dim: int = 4096,
+        axes_dims_rope: Tuple[int, ...] = (16, 56, 56),
+        approximator_num_channels: int = 64,
+        approximator_hidden_dim: int = 5120,
+        approximator_layers: int = 5,
+        nerf_layers: int = 4,
+        nerf_hidden_dim: int = 64,
+        nerf_max_freqs: int = 8,
+        nerf_mlp_ratio: int = 4,
+        x0: bool = True,
+    ):
+        super().__init__()
+        self.out_channels = out_channels or in_channels
+        self.inner_dim = num_attention_heads * attention_head_dim
+
+        self.pos_embed = FluxPosEmbed(theta=10000, axes_dim=axes_dims_rope)
+
+        self.time_text_embed = ChromaCombinedTimestepTextProjEmbeddings(
+            num_channels=approximator_num_channels // 4,
+            out_dim=3 * num_single_layers + 2 * 6 * num_layers + 2,
+        )
+        self.distilled_guidance_layer = ChromaApproximator(
+            in_dim=approximator_num_channels,
+            out_dim=self.inner_dim,
+            hidden_dim=approximator_hidden_dim,
+            n_layers=approximator_layers,
+        )
+
+        self.nerf = Nerf(
+            in_channels,
+            nerf_layers,
+            nerf_hidden_dim,
+            self.inner_dim,
+            nerf_max_freqs,
+            nerf_mlp_ratio,
+        )
+
+        self.x_embedder_patch = nn.Conv2d(
+            in_channels,
+            self.inner_dim,
+            kernel_size=patch_size,
+            stride=patch_size,
+            bias=True,
+        )
+
+        self.context_embedder = nn.Linear(joint_attention_dim, self.inner_dim)
+
+        self.transformer_blocks = nn.ModuleList(
+            [
+                ChromaTransformerBlock(
+                    dim=self.inner_dim,
+                    num_attention_heads=num_attention_heads,
+                    attention_head_dim=attention_head_dim,
+                )
+                for _ in range(num_layers)
+            ]
+        )
+
+        self.single_transformer_blocks = nn.ModuleList(
+            [
+                ChromaSingleTransformerBlock(
+                    dim=self.inner_dim,
+                    num_attention_heads=num_attention_heads,
+                    attention_head_dim=attention_head_dim,
+                )
+                for _ in range(num_single_layers)
+            ]
+        )
+
+        self.gradient_checkpointing = False
+        self.x0 = x0
+
+    def forward(
+        self,
+        hidden_states: torch.Tensor,
+        encoder_hidden_states: torch.Tensor = None,
+        timestep: torch.LongTensor = None,
+        img_ids: torch.Tensor = None,
+        txt_ids: torch.Tensor = None,
+        attention_mask: torch.Tensor = None,
+        joint_attention_kwargs: Optional[Dict[str, Any]] = None,
+        controlnet_block_samples=None,
+        controlnet_single_block_samples=None,
+        return_dict: bool = True,
+        controlnet_blocks_repeat: bool = False,
+    ) -> Union[torch.Tensor, Transformer2DModelOutput]:
+        """
+        The [`FluxTransformer2DModel`] forward method.
+
+        Args:
+            hidden_states (`torch.Tensor` of shape `(batch_size, image_sequence_length, in_channels)`):
+                Input `hidden_states`.
+            encoder_hidden_states (`torch.Tensor` of shape `(batch_size, text_sequence_length, joint_attention_dim)`):
+                Conditional embeddings (embeddings computed from the input conditions such as prompts) to use.
+            timestep ( `torch.LongTensor`):
+                Used to indicate denoising step.
+            block_controlnet_hidden_states: (`list` of `torch.Tensor`):
+                A list of tensors that if specified are added to the residuals of transformer blocks.
+            joint_attention_kwargs (`dict`, *optional*):
+                A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
+                `self.processor` in
+                [diffusers.models.attention_processor](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
+            return_dict (`bool`, *optional*, defaults to `True`):
+                Whether or not to return a [`~models.transformer_2d.Transformer2DModelOutput`] instead of a plain
+                tuple.
+
+        Returns:
+            If `return_dict` is True, an [`~models.transformer_2d.Transformer2DModelOutput`] is returned, otherwise a
+            `tuple` where the first element is the sample tensor.
+        """
+        pixels = hidden_states.to(self.device)
+        if joint_attention_kwargs is not None:
+            joint_attention_kwargs = joint_attention_kwargs.copy()
+            lora_scale = joint_attention_kwargs.pop("scale", 1.0)
+        else:
+            lora_scale = 1.0
+
+        if USE_PEFT_BACKEND:
+            # weight the lora layers by setting `lora_scale` for each PEFT layer
+            scale_lora_layers(self, lora_scale)
+        else:
+            if joint_attention_kwargs is not None and joint_attention_kwargs.get("scale", None) is not None:
+                logger.warning(
+                    "Passing `scale` via `joint_attention_kwargs` when not using the PEFT backend is ineffective."
+                )
+
+        if self.config.patch_size == 32:
+            _, _, height, width = hidden_states.shape
+            hidden_states = nn.functional.interpolate(hidden_states, size=(height // 2, width // 2), mode="nearest")
+        hidden_states = self.x_embedder_patch(hidden_states)
+        num_patches = hidden_states.shape[2] * hidden_states.shape[3]
+        hidden_states = hidden_states.flatten(2).transpose(1, 2)
+
+        timestep = timestep.to(hidden_states.dtype) * 1000
+
+        input_vec = self.time_text_embed(timestep)
+        pooled_temb = self.distilled_guidance_layer(input_vec)
+
+        encoder_hidden_states = self.context_embedder(encoder_hidden_states)
+
+        if txt_ids.ndim == 3:
+            logger.warning(
+                "Passing `txt_ids` 3d torch.Tensor is deprecated."
+                "Please remove the batch dimension and pass it as a 2d torch Tensor"
+            )
+            txt_ids = txt_ids[0]
+        if img_ids.ndim == 3:
+            logger.warning(
+                "Passing `img_ids` 3d torch.Tensor is deprecated."
+                "Please remove the batch dimension and pass it as a 2d torch Tensor"
+            )
+            img_ids = img_ids[0]
+
+        ids = torch.cat((txt_ids, img_ids), dim=0)
+        image_rotary_emb = self.pos_embed(ids)
+
+        if joint_attention_kwargs is not None and "ip_adapter_image_embeds" in joint_attention_kwargs:
+            ip_adapter_image_embeds = joint_attention_kwargs.pop("ip_adapter_image_embeds")
+            ip_hidden_states = self.encoder_hid_proj(ip_adapter_image_embeds)
+            joint_attention_kwargs.update({"ip_hidden_states": ip_hidden_states})
+
+        for index_block, block in enumerate(self.transformer_blocks):
+            img_offset = 3 * len(self.single_transformer_blocks)
+            txt_offset = img_offset + 6 * len(self.transformer_blocks)
+            img_modulation = img_offset + 6 * index_block
+            text_modulation = txt_offset + 6 * index_block
+            temb = torch.cat(
+                (
+                    pooled_temb[:, img_modulation : img_modulation + 6],
+                    pooled_temb[:, text_modulation : text_modulation + 6],
+                ),
+                dim=1,
+            )
+            if torch.is_grad_enabled() and self.gradient_checkpointing:
+                encoder_hidden_states, hidden_states = self._gradient_checkpointing_func(
+                    block, hidden_states, encoder_hidden_states, temb, image_rotary_emb, attention_mask
+                )
+
+            else:
+                encoder_hidden_states, hidden_states = block(
+                    hidden_states=hidden_states,
+                    encoder_hidden_states=encoder_hidden_states,
+                    temb=temb,
+                    image_rotary_emb=image_rotary_emb,
+                    attention_mask=attention_mask,
+                    joint_attention_kwargs=joint_attention_kwargs,
+                )
+
+            # controlnet residual
+            if controlnet_block_samples is not None:
+                interval_control = len(self.transformer_blocks) / len(controlnet_block_samples)
+                interval_control = int(np.ceil(interval_control))
+                # For Xlabs ControlNet.
+                if controlnet_blocks_repeat:
+                    hidden_states = (
+                        hidden_states + controlnet_block_samples[index_block % len(controlnet_block_samples)]
+                    )
+                else:
+                    hidden_states = hidden_states + controlnet_block_samples[index_block // interval_control]
+        hidden_states = torch.cat([encoder_hidden_states, hidden_states], dim=1)
+
+        for index_block, block in enumerate(self.single_transformer_blocks):
+            start_idx = 3 * index_block
+            temb = pooled_temb[:, start_idx : start_idx + 3]
+            if torch.is_grad_enabled() and self.gradient_checkpointing:
+                hidden_states = self._gradient_checkpointing_func(
+                    block,
+                    hidden_states,
+                    temb,
+                    image_rotary_emb,
+                )
+
+            else:
+                hidden_states = block(
+                    hidden_states=hidden_states,
+                    temb=temb,
+                    image_rotary_emb=image_rotary_emb,
+                    attention_mask=attention_mask,
+                    joint_attention_kwargs=joint_attention_kwargs,
+                )
+
+            # controlnet residual
+            if controlnet_single_block_samples is not None:
+                interval_control = len(self.single_transformer_blocks) / len(controlnet_single_block_samples)
+                interval_control = int(np.ceil(interval_control))
+                hidden_states[:, encoder_hidden_states.shape[1] :, ...] = (
+                    hidden_states[:, encoder_hidden_states.shape[1] :, ...]
+                    + controlnet_single_block_samples[index_block // interval_control]
+                )
+
+        hidden_states = hidden_states[:, encoder_hidden_states.shape[1] :, ...]
+
+        output = self.nerf(pixels, hidden_states, self.config.patch_size, num_patches)
+
+        # using x0 prediction
+
+        if self.x0:
+            output = (pixels - output) / (timestep / 1000).view(-1, 1, 1, 1)
 
         if USE_PEFT_BACKEND:
             # remove `lora_scale` from each PEFT layer
