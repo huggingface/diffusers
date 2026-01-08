@@ -557,11 +557,6 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             ...     use_stream=True,
             ... )
             ```
-
-        Args:
-            pin_groups (`"first_last"` | `"all"` | `Callable`, *optional*):
-                Optionally keep selected groups on the onload device permanently. See
-                [`~hooks.group_offloading.apply_group_offloading`] for details.
         """
         from ..hooks import apply_group_offloading
 

@@ -161,7 +161,7 @@ class ModuleGroup:
         finally:
             pinned_dict = None
 
-    def _transfer_tensor_to_device(self, tensor, source_tensor, default_stream=None):
+    def _transfer_tensor_to_device(self, tensor, source_tensor, default_stream):
         tensor.data = source_tensor.to(self.onload_device, non_blocking=self.non_blocking)
         if self.record_stream:
             tensor.data.record_stream(default_stream)
@@ -295,7 +295,11 @@ class GroupOffloadingHook(ModelHook):
         self.config = config
 
     def initialize_hook(self, module: torch.nn.Module) -> torch.nn.Module:
-        # For disk offload we materialize the safetensor files upfront so callers can inspect them immediately.
+        # Disk offload only: materialize the safetensor files up front so they exist right after enable_group_offload.
+        # Needed for flows/tests that inspect the offload dir before the first forward
+        #   eg: model.enable_group_offload(..., offload_to_disk_path=tmpdir)
+        #   assert glob.glob(f"{tmpdir}/*.safetensors")
+        # In-memory offload stays lazy to allow adapter loading before the first forward.
         if self.group.offload_to_disk_path is not None and self.group.offload_leader == module:
             self.group.offload_()
         return module
@@ -305,18 +309,18 @@ class GroupOffloadingHook(ModelHook):
         # method is the onload_leader of the group.
         if self.group.onload_leader is None:
             self.group.onload_leader = module
-        is_leader = self.group.onload_leader == module
-        should_onload_next_group = self.next_group is not None and not self.next_group.onload_self
-        should_orchestrate = self.group.pinned or is_leader
 
-        if should_orchestrate:
-            # Pinned groups keep their params on the onload device; orchestrate onload/prefetch/sync every call.
+        should_onload_next_group = self.next_group is not None and not self.next_group.onload_self
+
+        if self.group.onload_leader == module:
+            # If the current module is the onload_leader of the group, we onload the group if it is supposed
+            # to onload itself. In the case of using prefetching with streams, we onload the next group if
+            # it is not supposed to onload itself.
             if self.group.pinned:
-                if is_leader and not self._is_group_on_device():
+                if not self._is_group_on_device():
                     self.group.onload_()
-            else:
-                if is_leader and self.group.onload_self:
-                    self.group.onload_()
+            elif self.group.onload_self:
+                self.group.onload_()
 
             if should_onload_next_group:
                 self.next_group.onload_()
@@ -335,18 +339,10 @@ class GroupOffloadingHook(ModelHook):
                 self.group.stream.synchronize()
 
         args = send_to_device(args, self.group.onload_device, non_blocking=self.group.non_blocking)
-        kwargs = self._send_kwargs_to_device(kwargs)
-        return args, kwargs
 
-    def post_forward(self, module: torch.nn.Module, output):
-        if self.group.pinned:
-            return output
-
-        if self.group.offload_leader == module:
-            self.group.offload_()
-        return output
-
-    def _send_kwargs_to_device(self, kwargs):
+        # Some Autoencoder models use a feature cache that is passed through submodules and modified in place.
+        # The `send_to_device` call returns a copy of this feature cache object which breaks the inplace updates.
+        # Use `exclude_kwargs` to mark these cache features so they are not moved.
         exclude_kwargs = self.config.exclude_kwargs or []
         if exclude_kwargs:
             moved_kwargs = send_to_device(
@@ -355,8 +351,19 @@ class GroupOffloadingHook(ModelHook):
                 non_blocking=self.group.non_blocking,
             )
             kwargs.update(moved_kwargs)
-            return kwargs
-        return send_to_device(kwargs, self.group.onload_device, non_blocking=self.group.non_blocking)
+        else:
+            kwargs = send_to_device(kwargs, self.group.onload_device, non_blocking=self.group.non_blocking)
+
+        return args, kwargs
+
+    def post_forward(self, module: torch.nn.Module, output):
+        # Pinned groups stay resident, otherwise offload when the offload leader finishes.
+        if self.group.pinned:
+            return output
+
+        if self.group.offload_leader == module:
+            self.group.offload_()
+        return output
 
     def _is_group_on_device(self) -> bool:
         tensors = []
@@ -535,6 +542,10 @@ def _validate_pin_groups(pin_groups: Optional[Union[str, Callable]]) -> Optional
         return pin_groups
     if isinstance(pin_groups, str) and pin_groups in VALID_PIN_GROUPS:
         return pin_groups
+    elif isinstance(pin_groups, str) and pin_groups not in VALID_PIN_GROUPS:
+        raise ValueError(
+            f"`pin_groups` must be None, {', '.join(repr(v) for v in sorted(VALID_PIN_GROUPS))}, or a callable."
+        )
     raise ValueError(
         f"`pin_groups` must be None, {', '.join(repr(v) for v in sorted(VALID_PIN_GROUPS))}, or a callable."
     )
