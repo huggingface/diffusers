@@ -23,8 +23,8 @@ from ...loaders import PeftAdapterMixin
 from ...utils import logging
 from ...utils.torch_utils import maybe_allow_in_graph
 from ..attention import FeedForward
-from ..attention_processor import Attention
 from ..attention_dispatch import dispatch_attention_fn
+from ..attention_processor import Attention
 from ..cache_utils import CacheMixin
 from ..embeddings import PixArtAlphaTextProjection, TimestepEmbedding, Timesteps
 from ..modeling_outputs import Transformer2DModelOutput
