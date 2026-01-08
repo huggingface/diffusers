@@ -35,6 +35,7 @@ EXAMPLE_DOC_STRING = """
         >>> import torch
         >>> from diffusers import LTX2ImageToVideoPipeline, LTX2LatentUpsamplePipeline
         >>> from diffusers.pipelines.ltx2.export_utils import encode_video
+        >>> from diffusers.pipelines.ltx2.latent_upsampler import LTX2LatentUpsamplerModel
         >>> from diffusers.utils import load_image
 
         >>> pipe = LTX2ImageToVideoPipeline.from_pretrained("Lightricks/LTX-2", torch_dtype=torch.bfloat16)
@@ -61,9 +62,12 @@ EXAMPLE_DOC_STRING = """
         ...     return_dict=False,
         ... )
 
-        >>> upsample_pipe = LTX2LatentUpsamplePipeline.from_pretrained("Lightricks/LTX-2", torch_dtype=torch.bfloat16)
+        >>> latent_upsampler = LTX2LatentUpsamplerModel.from_pretrained(
+        ...     "Lightricks/LTX-2", subfolder="latent_upsampler", torch_dtype=torch.bfloat16
+        ... )
+        >>> upsample_pipe = LTX2LatentUpsamplePipeline(vae=pipe.vae, latent_upsampler=latent_upsampler)
         >>> upsample_pipe.vae.enable_tiling()
-        >>> upsample_pipe.to("cuda")
+        >>> upsample_pipe.to(device="cuda", dtype=torch.bfloat16)
 
         >>> video = upsample_pipe(
         ...     video=video,
