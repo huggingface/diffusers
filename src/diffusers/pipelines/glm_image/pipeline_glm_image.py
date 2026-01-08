@@ -526,11 +526,12 @@ class GlmImagePipeline(DiffusionPipeline, CogView4LoraLoaderMixin):
             raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
 
         if do_classifier_free_guidance:
-            negative_prompt = ""
             if prompt is not None:
                 batch_size = len(prompt)
             else:
                 batch_size = prompt_embeds.shape[0]
+
+            negative_prompt = None  # Not used in GLM-Image
             negative_prompt = batch_size * [negative_prompt] if isinstance(negative_prompt, str) else negative_prompt
 
             if prompt is not None and type(prompt) is not type(negative_prompt):
@@ -633,6 +634,8 @@ class GlmImagePipeline(DiffusionPipeline, CogView4LoraLoaderMixin):
             callback_on_step_end_tensor_inputs = callback_on_step_end.tensor_inputs
 
         # 1. Check inputs
+        self._guidance_scale = guidance_scale
+
         self.check_inputs(
             prompt,
             height,
