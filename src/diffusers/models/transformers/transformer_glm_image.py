@@ -25,13 +25,44 @@ from ...utils.torch_utils import maybe_allow_in_graph
 from ..attention import FeedForward
 from ..attention_processor import Attention
 from ..cache_utils import CacheMixin
-from ..embeddings import GlmImageCombinedTimestepSizeEmbeddings
+from ..embeddings import PixArtAlphaTextProjection, TimestepEmbedding, Timesteps
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
 from ..normalization import LayerNorm, RMSNorm
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
+
+class GlmImageCombinedTimestepSizeEmbeddings(nn.Module):
+    def __init__(self, embedding_dim: int, condition_dim: int, pooled_projection_dim: int, timesteps_dim: int = 256):
+        super().__init__()
+
+        self.time_proj = Timesteps(num_channels=timesteps_dim, flip_sin_to_cos=True, downscale_freq_shift=0)
+        self.condition_proj = Timesteps(num_channels=condition_dim, flip_sin_to_cos=True, downscale_freq_shift=0)
+        self.timestep_embedder = TimestepEmbedding(in_channels=timesteps_dim, time_embed_dim=embedding_dim)
+        self.condition_embedder = PixArtAlphaTextProjection(pooled_projection_dim, embedding_dim, act_fn="silu")
+
+    def forward(
+        self,
+        timestep: torch.Tensor,
+        target_size: torch.Tensor,
+        crop_coords: torch.Tensor,
+        hidden_dtype: torch.dtype,
+    ) -> torch.Tensor:
+        timesteps_proj = self.time_proj(timestep)
+
+        crop_coords_proj = self.condition_proj(crop_coords.flatten()).view(crop_coords.size(0), -1)
+        target_size_proj = self.condition_proj(target_size.flatten()).view(target_size.size(0), -1)
+
+        # (B, 2 * condition_dim)
+        condition_proj = torch.cat([crop_coords_proj, target_size_proj], dim=1)
+
+        timesteps_emb = self.timestep_embedder(timesteps_proj.to(dtype=hidden_dtype))  # (B, embedding_dim)
+        condition_emb = self.condition_embedder(condition_proj.to(dtype=hidden_dtype))  # (B, embedding_dim)
+
+        conditioning = timesteps_emb + condition_emb
+        return conditioning
 
 
 class GlmImageImageProjector(nn.Module):
@@ -302,8 +333,7 @@ class GlmImageTransformerBlock(nn.Module):
         ) = self.norm1(hidden_states, encoder_hidden_states, temb)
 
         # 2. Attention
-        if attention_kwargs is None:
-            attention_kwargs = {}
+        attention_kwargs = attention_kwargs or {}
 
         attn_hidden_states, attn_encoder_hidden_states = self.attn1(
             hidden_states=norm_hidden_states,

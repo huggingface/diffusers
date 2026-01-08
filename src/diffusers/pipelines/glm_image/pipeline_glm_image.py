@@ -239,26 +239,11 @@ class GlmImagePipeline(DiffusionPipeline, CogView4LoraLoaderMixin):
         large_image_end = large_image_start + large_image_tokens
         return generated_tokens[large_image_start:large_image_end]
 
-    def _upsample_d32_to_d16(self, token_ids: torch.Tensor, token_h: int, token_w: int) -> torch.Tensor:
-        """
-        Upsample token IDs from d32 format to d16 format.
-
-        AR model generates tokens at d32 resolution (each token = 32x32 pixels). DiT expects tokens at d16 resolution
-        (each token = 16x16 pixels). This function performs 2x nearest-neighbor upsampling.
-
-        Args:
-            token_ids: Token IDs of shape [N] where N = token_h * token_w
-            token_h: Height in d32 token units
-            token_w: Width in d32 token units
-
-        Returns:
-            Upsampled token IDs of shape [1, N*4] where N*4 = (token_h*2) * (token_w*2)
-        """
+    def _upsample_token_ids(self, token_ids: torch.Tensor, token_h: int, token_w: int) -> torch.Tensor:
         token_ids = token_ids.view(1, 1, token_h, token_w)
         token_ids = torch.nn.functional.interpolate(token_ids.float(), scale_factor=2, mode="nearest").to(
             dtype=torch.long
         )
-
         token_ids = token_ids.view(1, -1)
         return token_ids
 
@@ -377,7 +362,7 @@ class GlmImagePipeline(DiffusionPipeline, CogView4LoraLoaderMixin):
         prior_token_ids_d32 = self._extract_large_image_tokens(
             outputs, input_length, large_image_offset, large_image_tokens
         )
-        prior_token_ids = self._upsample_d32_to_d16(prior_token_ids_d32, token_h, token_w)
+        prior_token_ids = self._upsample_token_ids(prior_token_ids_d32, token_h, token_w)
 
         pixel_height = token_h * factor
         pixel_width = token_w * factor
@@ -683,10 +668,8 @@ class GlmImagePipeline(DiffusionPipeline, CogView4LoraLoaderMixin):
         )
 
         # 4. process images
-        condition_images_prior_token_id = None
         if image is not None:
             preprocessed_condition_images = []
-            condition_images_prior_token_id = []
             for img in image:
                 image_height, image_width = img.size[::-1] if isinstance(img, PIL.Image.Image) else img.shape[:2]
                 multiple_of = self.vae_scale_factor * self.transformer.config.patch_size
@@ -728,7 +711,7 @@ class GlmImagePipeline(DiffusionPipeline, CogView4LoraLoaderMixin):
                 .to(self.vae.device, self.vae.dtype)
             )
             empty_glyph_hiddens = torch.zeros_like(prompt_embeds)[:1, :0, ...]
-            for condition_image, condition_image_prior_token_id in zip(image, condition_images_prior_token_id):
+            for condition_image, condition_image_prior_token_id in zip(image, prior_token_image_ids):
                 condition_image = condition_image.to(device=device, dtype=self.vae.dtype)
                 condition_latent = retrieve_latents(
                     self.vae.encode(condition_image), generator=generator, sample_mode="argmax"
