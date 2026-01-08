@@ -139,7 +139,8 @@ class TeaCacheHookTests(unittest.TestCase):
         hook = TeaCacheHook(config)
 
         self.assertEqual(hook.config.rel_l1_thresh, 0.2)
-        self.assertIsNotNone(hook.coefficients)
+        # coefficients is None until initialize_hook() is called with a model (auto-detection)
+        self.assertIsNone(hook.coefficients)
         self.assertIsNotNone(hook.state_manager)
 
     def test_should_compute_logic(self):
@@ -168,36 +169,24 @@ class TeaCacheHookTests(unittest.TestCase):
         state.cnt = state.num_steps - 1
         self.assertTrue(_should_compute(state, x1, coefficients, rel_l1_thresh))
 
-    def test_apply_teacache_with_custom_extractor(self):
-        """Test apply_teacache works with custom extractor function."""
+    def test_apply_teacache_unsupported_model_raises_error(self):
+        """Test that apply_teacache raises error for unsupported models."""
         from diffusers.hooks import apply_teacache
         from diffusers.models import CacheMixin
 
-        class DummyModule(torch.nn.Module, CacheMixin):
+        class UnsupportedModule(torch.nn.Module, CacheMixin):
             def __init__(self):
                 super().__init__()
                 self.dummy = torch.nn.Linear(4, 4)
 
-        module = DummyModule()
+        module = UnsupportedModule()
+        config = TeaCacheConfig(rel_l1_thresh=0.2)
 
-        # Custom extractor function
-        def custom_extractor(mod, hidden_states, temb):
-            return hidden_states
-
-        # Must provide coefficients when using custom extractor (no auto-detection)
-        custom_coeffs = [1.0, 2.0, 3.0, 4.0, 5.0]
-        config = TeaCacheConfig(
-            rel_l1_thresh=0.2, extract_modulated_input_fn=custom_extractor, coefficients=custom_coeffs
-        )
-
-        # Should not raise - TeaCache works with custom extractor when coefficients provided
-        apply_teacache(module, config)
-
-        # Verify registry and disable path work
-        registry = HookRegistry.check_if_exists_or_initialize(module)
-        self.assertIn("teacache", registry.hooks)
-
-        module.disable_cache()
+        # Should raise ValueError for unsupported model type
+        with self.assertRaises(ValueError) as context:
+            apply_teacache(module, config)
+        self.assertIn("Unsupported model", str(context.exception))
+        self.assertIn("UnsupportedModule", str(context.exception))
 
 
 class TeaCacheMultiModelTests(unittest.TestCase):
