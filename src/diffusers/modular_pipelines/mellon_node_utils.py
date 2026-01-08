@@ -169,6 +169,14 @@ class MellonParam:
         )
 
     @classmethod
+    def num_frames(cls, default: int = 81) -> "MellonParam":
+        return cls(name="num_frames", label="Frames", type="int", default=default, min=1, max=480, display="slider")
+
+    @classmethod
+    def videos(cls) -> "MellonParam":
+        return cls(name="videos", label="Videos", type="video", display="output")
+
+    @classmethod
     def vae(cls) -> "MellonParam":
         """
         VAE model info dict.
