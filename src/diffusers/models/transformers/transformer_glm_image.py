@@ -250,8 +250,8 @@ class GlmImageAttnProcessor:
                 kv_cache.store(key, value)
             elif kv_cache.mode == "read":
                 k_cache, v_cache = kv_cache.get()
-                key = torch.cat([k_cache, key], dim=2) if k_cache is not None else key
-                value = torch.cat([v_cache, value], dim=2) if v_cache is not None else value
+                key = torch.cat([k_cache, key], dim=1) if k_cache is not None else key
+                value = torch.cat([v_cache, value], dim=1) if v_cache is not None else value
             elif kv_cache.mode == "skip":
                 pass
 
@@ -277,7 +277,7 @@ class GlmImageAttnProcessor:
             parallel_config=self._parallel_config,
         )
         hidden_states = hidden_states.flatten(2, 3)
-        hidden_states = hidden_states.type_as(query)
+        hidden_states = hidden_states.to(query.dtype)
 
         # 5. Output projection
         hidden_states = attn.to_out[0](hidden_states)
