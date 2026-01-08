@@ -33,12 +33,12 @@ EXAMPLE_DOC_STRING = """
     Examples:
         ```py
         >>> import torch
-        >>> from diffusers import LTX2ImageToVideoPipeline, LTX2
-        >>> from diffusers.utils import load_image
+        >>> from diffusers import LTX2ImageToVideoPipeline, LTX2LatentUpsamplePipeline
         >>> from diffusers.pipelines.ltx2.export_utils import encode_video
+        >>> from diffusers.utils import load_image
 
-        >>> pipe = LTX2ImageToVideoPipeline.from_pretrained("Lightricks/LTX-Video-2", torch_dtype=torch.bfloat16)
-        >>> pipe.to("cuda")
+        >>> pipe = LTX2ImageToVideoPipeline.from_pretrained("Lightricks/LTX-2", torch_dtype=torch.bfloat16)
+        >>> pipe.enable_model_cpu_offload()
 
         >>> image = load_image(
         ...     "https://huggingface.co/datasets/a-r-r-o-w/tiny-meme-dataset-captioned/resolve/main/images/8.png"
@@ -46,6 +46,7 @@ EXAMPLE_DOC_STRING = """
         >>> prompt = "A young girl stands calmly in the foreground, looking directly at the camera, as a house fire rages in the background."
         >>> negative_prompt = "worst quality, inconsistent motion, blurry, jittery, distorted"
 
+        >>> frame_rate = 24.0
         >>> video, audio = pipe(
         ...     image=image,
         ...     prompt=prompt,
@@ -53,29 +54,36 @@ EXAMPLE_DOC_STRING = """
         ...     width=768,
         ...     height=512,
         ...     num_frames=121,
-        ...     frame_rate=25.0,
+        ...     frame_rate=frame_rate,
         ...     num_inference_steps=40,
-        ...     guidance_scale=3.0,
+        ...     guidance_scale=4.0,
         ...     output_type="pil",
         ...     return_dict=False,
         ... )
 
         >>> upsample_pipe = LTX2LatentUpsamplePipeline.from_pretrained(
-        ...     "Lightricks/LTX-Video-2", torch_dtype=torch.bfloat16
+        ...     "Lightricks/LTX-2", torch_dtype=torch.bfloat16
         ... )
+        >>> upsample_pipe.vae.enable_tiling()
         >>> upsample_pipe.to("cuda")
 
         >>> video = upsample_pipe(
         ...     video=video,
         ...     width=768,
         ...     height=512,
-        ...     output_type="pil",
+        ...     output_type="np",
         ...     return_dict=False,
         ... )[0]
-
         >>> video = (video * 255).round().astype("uint8")
         >>> video = torch.from_numpy(video)
-        >>> encode_video(video[0], fps=25.0, audio=audio[0].float().cpu(), output_path="output.mp4")
+
+        >>> encode_video(
+        ...     video[0],
+        ...     fps=frame_rate,
+        ...     audio=audio[0].float().cpu(),
+        ...     audio_sample_rate=pipe.vocoder.config.output_sampling_rate,  # should be 24000
+        ...     output_path="video.mp4",
+        ... )
         ```
 """
 

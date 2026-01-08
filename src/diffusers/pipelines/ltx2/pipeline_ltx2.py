@@ -62,8 +62,10 @@ EXAMPLE_DOC_STRING = """
         ...     negative_prompt=negative_prompt,
         ...     width=768,
         ...     height=512,
-        ...     frame_rate=frame_rate,
         ...     num_frames=121,
+        ...     frame_rate=frame_rate,
+        ...     num_inference_steps=40,
+        ...     guidance_scale=4.0,
         ...     output_type="np",
         ...     return_dict=False,
         ... )
