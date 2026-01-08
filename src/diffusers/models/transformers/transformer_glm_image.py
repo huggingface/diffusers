@@ -224,9 +224,9 @@ class GlmImageAttnProcessor:
         key = attn.to_k(hidden_states)
         value = attn.to_v(hidden_states)
 
-        query = query.unflatten(2, (attn.heads, -1)).transpose(1, 2)
-        key = key.unflatten(2, (attn.heads, -1)).transpose(1, 2)
-        value = value.unflatten(2, (attn.heads, -1)).transpose(1, 2)
+        query = query.unflatten(2, (attn.heads, -1))
+        key = key.unflatten(2, (attn.heads, -1))
+        value = value.unflatten(2, (attn.heads, -1))
 
         # 2. QK normalization
         if attn.norm_q is not None:
@@ -238,11 +238,11 @@ class GlmImageAttnProcessor:
         if image_rotary_emb is not None:
             from ..embeddings import apply_rotary_emb
 
-            query[:, :, text_seq_length:, :] = apply_rotary_emb(
-                query[:, :, text_seq_length:, :], image_rotary_emb, use_real_unbind_dim=-2
+            query[:, text_seq_length:, :, :] = apply_rotary_emb(
+                query[:, text_seq_length:, :, :], image_rotary_emb, sequence_dim=1, use_real_unbind_dim=-2
             )
-            key[:, :, text_seq_length:, :] = apply_rotary_emb(
-                key[:, :, text_seq_length:, :], image_rotary_emb, use_real_unbind_dim=-2
+            key[:, text_seq_length:, :, :] = apply_rotary_emb(
+                key[:, text_seq_length:, :, :], image_rotary_emb, sequence_dim=1, use_real_unbind_dim=-2
             )
 
         if kv_cache is not None:
@@ -271,11 +271,13 @@ class GlmImageAttnProcessor:
             key,
             value,
             attn_mask=attention_mask,
+            dropout_p=0.0,
+            is_causal=False,
             backend=self._attention_backend,
             parallel_config=self._parallel_config,
         )
-        hidden_states = hidden_states.transpose(1, 2).flatten(2, 3)
-        hidden_states = hidden_states.to(query.dtype)
+        hidden_states = hidden_states.flatten(2, 3)
+        hidden_states = hidden_states.type_as(query)
 
         # 5. Output projection
         hidden_states = attn.to_out[0](hidden_states)
