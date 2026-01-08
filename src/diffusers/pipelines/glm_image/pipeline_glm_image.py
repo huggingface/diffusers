@@ -302,7 +302,7 @@ class GlmImagePipeline(DiffusionPipeline, CogView4LoraLoaderMixin):
         width: int,
         image: Optional[List[PIL.Image.Image]] = None,
         factor: int = 32,
-    ) -> Tuple[torch.Tensor, int, int]:
+    ) -> Tuple[torch.Tensor, torch.Tensor, int, int]:
         """
         Generate prior tokens using the AR (vision_language_encoder) model.
 
@@ -364,6 +364,16 @@ class GlmImagePipeline(DiffusionPipeline, CogView4LoraLoaderMixin):
             do_sample=True,
         )
 
+        ## TODO: transformers not return image_ids so need run again to get image_ids, need optimize
+        prior_token_image_ids = None
+        if image is not None:
+            prior_token_image_embed = self.vision_language_encoder.get_image_features(
+                inputs["pixel_values"], existing_grid
+            )
+            prior_token_image_embed = torch.cat(prior_token_image_embed, dim=0)
+            prior_token_image_ids = self.vision_language_encoder.get_image_tokens(
+                prior_token_image_embed, existing_grid
+            )
         prior_token_ids_d32 = self._extract_large_image_tokens(
             outputs, input_length, large_image_offset, large_image_tokens
         )
@@ -372,7 +382,7 @@ class GlmImagePipeline(DiffusionPipeline, CogView4LoraLoaderMixin):
         pixel_height = token_h * factor
         pixel_width = token_w * factor
 
-        return prior_token_ids, pixel_height, pixel_width
+        return prior_token_ids, prior_token_image_ids, pixel_height, pixel_width
 
     def get_glyph_texts(self, prompt):
         prompt = prompt[0] if isinstance(prompt, list) else prompt
@@ -651,29 +661,9 @@ class GlmImagePipeline(DiffusionPipeline, CogView4LoraLoaderMixin):
 
         device = self._execution_device
 
-        ar_condition_images = None
-        if image is not None:
-            if not isinstance(image, list):
-                image = [image]
-            ar_condition_images = []
-            for img in image:
-                if isinstance(img, PIL.Image.Image):
-                    ar_condition_images.append(img)
-                elif isinstance(img, torch.Tensor):
-                    img_np = img.cpu().numpy()
-                    if img_np.ndim == 4:
-                        img_np = img_np[0]
-                    if img_np.shape[0] in [1, 3, 4]:
-                        img_np = img_np.transpose(1, 2, 0)
-                    if img_np.max() <= 1.0:
-                        img_np = (img_np * 255).astype(np.uint8)
-                    ar_condition_images.append(PIL.Image.fromarray(img_np))
-                else:
-                    ar_condition_images.append(PIL.Image.fromarray(img))
-
-        prior_token_id, ar_height, ar_width = self.generate_prior_tokens(
+        prior_token_id, prior_token_image_ids, ar_height, ar_width = self.generate_prior_tokens(
             prompt=prompt[0] if isinstance(prompt, list) else prompt,
-            image=ar_condition_images,
+            image=image,
             height=height,
             width=width,
         )
@@ -681,7 +671,7 @@ class GlmImagePipeline(DiffusionPipeline, CogView4LoraLoaderMixin):
         height = height or ar_height
         width = width or ar_width
 
-        # 3. Encode input prompt
+        # 4. Encode input prompt
         prompt_embeds, negative_prompt_embeds = self.encode_prompt(
             prompt,
             self.do_classifier_free_guidance,
@@ -693,10 +683,8 @@ class GlmImagePipeline(DiffusionPipeline, CogView4LoraLoaderMixin):
         )
 
         # 4. process images
-        condition_images_prior_token_id = None
         if image is not None:
             preprocessed_condition_images = []
-            condition_images_prior_token_id = []
             for img in image:
                 image_height, image_width = img.size[::-1] if isinstance(img, PIL.Image.Image) else img.shape[:2]
                 multiple_of = self.vae_scale_factor * self.transformer.config.patch_size
@@ -704,7 +692,11 @@ class GlmImagePipeline(DiffusionPipeline, CogView4LoraLoaderMixin):
                 image_width = (image_width // multiple_of) * multiple_of
                 img = self.image_processor.preprocess(img, height=image_height, width=image_width)
                 preprocessed_condition_images.append(img)
+                height = height or image_height
+                width = width or image_width
             image = preprocessed_condition_images
+        height = height or self.default_sample_size * self.vae_scale_factor
+        width = width or self.default_sample_size * self.vae_scale_factor
 
         # 5. Prepare latents and (optional) image kv cache
         latent_channels = self.transformer.config.in_channels
@@ -719,7 +711,7 @@ class GlmImagePipeline(DiffusionPipeline, CogView4LoraLoaderMixin):
             latents=latents,
         )
 
-        if image is not None and condition_images_prior_token_id is not None:
+        if image is not None:
             self.transformer.set_attention_processors_state(GlmImageAttenProcessorState.ImageEditWriteKV)
             latents_mean = (
                 torch.tensor(self.vae.config.latents_mean)
@@ -732,7 +724,7 @@ class GlmImagePipeline(DiffusionPipeline, CogView4LoraLoaderMixin):
                 .to(self.vae.device, self.vae.dtype)
             )
             empty_glyph_hiddens = torch.zeros_like(prompt_embeds)[:1, :0, ...]
-            for condition_image, condition_image_prior_token_id in zip(image, condition_images_prior_token_id):
+            for condition_image, condition_image_prior_token_id in zip(image, prior_token_image_ids):
                 condition_image = condition_image.to(device=device, dtype=self.vae.dtype)
                 condition_latent = retrieve_latents(
                     self.vae.encode(condition_image), generator=generator, sample_mode="argmax"
