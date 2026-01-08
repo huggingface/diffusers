@@ -61,9 +61,7 @@ EXAMPLE_DOC_STRING = """
         ...     return_dict=False,
         ... )
 
-        >>> upsample_pipe = LTX2LatentUpsamplePipeline.from_pretrained(
-        ...     "Lightricks/LTX-2", torch_dtype=torch.bfloat16
-        ... )
+        >>> upsample_pipe = LTX2LatentUpsamplePipeline.from_pretrained("Lightricks/LTX-2", torch_dtype=torch.bfloat16)
         >>> upsample_pipe.vae.enable_tiling()
         >>> upsample_pipe.to("cuda")
 
