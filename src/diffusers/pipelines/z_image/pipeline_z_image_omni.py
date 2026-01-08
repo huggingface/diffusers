@@ -15,18 +15,18 @@
 import inspect
 from typing import Any, Callable, Dict, List, Optional, Union
 
+import PIL
 import torch
-from transformers import AutoTokenizer, PreTrainedModel
+from transformers import AutoTokenizer, PreTrainedModel, Siglip2ImageProcessorFast, Siglip2VisionModel
 
-from ...image_processor import PipelineImageInput, VaeImageProcessor
-from ...loaders import FromSingleFileMixin
+from ...loaders import FromSingleFileMixin, ZImageLoraLoaderMixin
 from ...models.autoencoders import AutoencoderKL
-from ...models.controlnets import ZImageControlNetModel
 from ...models.transformers import ZImageTransformer2DModel
 from ...pipelines.pipeline_utils import DiffusionPipeline
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
+from ..flux2.image_processor import Flux2ImageProcessor
 from .pipeline_output import ZImagePipelineOutput
 
 
@@ -36,40 +36,9 @@ EXAMPLE_DOC_STRING = """
     Examples:
         ```py
         >>> import torch
-        >>> from diffusers import ZImageControlNetPipeline
-        >>> from diffusers import ZImageControlNetModel
-        >>> from diffusers.utils import load_image
-        >>> from huggingface_hub import hf_hub_download
+        >>> from diffusers import ZImageOmniPipeline
 
-        >>> controlnet = ZImageControlNetModel.from_single_file(
-        ...     hf_hub_download(
-        ...         "alibaba-pai/Z-Image-Turbo-Fun-Controlnet-Union",
-        ...         filename="Z-Image-Turbo-Fun-Controlnet-Union.safetensors",
-        ...     ),
-        ...     torch_dtype=torch.bfloat16,
-        ... )
-
-        >>> # 2.1
-        >>> # controlnet = ZImageControlNetModel.from_single_file(
-        >>> #     hf_hub_download(
-        >>> #         "alibaba-pai/Z-Image-Turbo-Fun-Controlnet-Union-2.0",
-        >>> #         filename="Z-Image-Turbo-Fun-Controlnet-Union-2.1.safetensors",
-        >>> #     ),
-        >>> #     torch_dtype=torch.bfloat16,
-        >>> # )
-
-        >>> # 2.0
-        >>> # controlnet = ZImageControlNetModel.from_single_file(
-        >>> #     hf_hub_download(
-        >>> #         "alibaba-pai/Z-Image-Turbo-Fun-Controlnet-Union-2.0",
-        >>> #         filename="Z-Image-Turbo-Fun-Controlnet-Union-2.0.safetensors",
-        >>> #     ),
-        >>> #     torch_dtype=torch.bfloat16,
-        >>> # )
-
-        >>> pipe = ZImageControlNetPipeline.from_pretrained(
-        ...     "Tongyi-MAI/Z-Image-Turbo", controlnet=controlnet, torch_dtype=torch.bfloat16
-        ... )
+        >>> pipe = ZImageOmniPipeline.from_pretrained("Z-a-o/Z-Image-Turbo", torch_dtype=torch.bfloat16)
         >>> pipe.to("cuda")
 
         >>> # Optionally, set the attention backend to flash-attn 2 or 3, default is SDPA in PyTorch.
@@ -78,19 +47,14 @@ EXAMPLE_DOC_STRING = """
         >>> # (2) Use flash attention 3
         >>> # pipe.transformer.set_attention_backend("_flash_3")
 
-        >>> control_image = load_image(
-        ...     "https://huggingface.co/alibaba-pai/Z-Image-Turbo-Fun-Controlnet-Union/resolve/main/asset/pose.jpg?download=true"
-        ... )
-        >>> prompt = "一位年轻女子站在阳光明媚的海岸线上，白裙在轻拂的海风中微微飘动。她拥有一头鲜艳的紫色长发，在风中轻盈舞动，发间系着一个精致的黑色蝴蝶结，与身后柔和的蔚蓝天空形成鲜明对比。她面容清秀，眉目精致，透着一股甜美的青春气息；神情柔和，略带羞涩，目光静静地凝望着远方的地平线，双手自然交叠于身前，仿佛沉浸在思绪之中。在她身后，是辽阔无垠、波光粼粼的大海，阳光洒在海面上，映出温暖的金色光晕。"
+        >>> prompt = "一幅为名为“造相「Z-IMAGE-TURBO」”的项目设计的创意海报。画面巧妙地将文字概念视觉化：一辆复古蒸汽小火车化身为巨大的拉链头，正拉开厚厚的冬日积雪，展露出一个生机盎然的春天。"
         >>> image = pipe(
         ...     prompt,
-        ...     control_image=control_image,
-        ...     controlnet_conditioning_scale=0.75,
-        ...     height=1728,
-        ...     width=992,
+        ...     height=1024,
+        ...     width=1024,
         ...     num_inference_steps=9,
         ...     guidance_scale=0.0,
-        ...     generator=torch.Generator("cuda").manual_seed(43),
+        ...     generator=torch.Generator("cuda").manual_seed(42),
         ... ).images[0]
         >>> image.save("zimage.png")
         ```
@@ -109,20 +73,6 @@ def calculate_shift(
     b = base_shift - m * base_seq_len
     mu = image_seq_len * m + b
     return mu
-
-
-# Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.retrieve_latents
-def retrieve_latents(
-    encoder_output: torch.Tensor, generator: Optional[torch.Generator] = None, sample_mode: str = "sample"
-):
-    if hasattr(encoder_output, "latent_dist") and sample_mode == "sample":
-        return encoder_output.latent_dist.sample(generator)
-    elif hasattr(encoder_output, "latent_dist") and sample_mode == "argmax":
-        return encoder_output.latent_dist.mode()
-    elif hasattr(encoder_output, "latents"):
-        return encoder_output.latents
-    else:
-        raise AttributeError("Could not access latents of provided encoder_output")
 
 
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.retrieve_timesteps
@@ -185,7 +135,7 @@ def retrieve_timesteps(
     return timesteps, num_inference_steps
 
 
-class ZImageControlNetPipeline(DiffusionPipeline, FromSingleFileMixin):
+class ZImageOmniPipeline(DiffusionPipeline, ZImageLoraLoaderMixin, FromSingleFileMixin):
     model_cpu_offload_seq = "text_encoder->transformer->vae"
     _optional_components = []
     _callback_tensor_inputs = ["latents", "prompt_embeds"]
@@ -197,10 +147,10 @@ class ZImageControlNetPipeline(DiffusionPipeline, FromSingleFileMixin):
         text_encoder: PreTrainedModel,
         tokenizer: AutoTokenizer,
         transformer: ZImageTransformer2DModel,
-        controlnet: ZImageControlNetModel,
+        siglip: Siglip2VisionModel,
+        siglip_processor: Siglip2ImageProcessorFast,
     ):
         super().__init__()
-        controlnet = ZImageControlNetModel.from_transformer(controlnet, transformer)
 
         self.register_modules(
             vae=vae,
@@ -208,12 +158,14 @@ class ZImageControlNetPipeline(DiffusionPipeline, FromSingleFileMixin):
             tokenizer=tokenizer,
             scheduler=scheduler,
             transformer=transformer,
-            controlnet=controlnet,
+            siglip=siglip,
+            siglip_processor=siglip_processor,
         )
         self.vae_scale_factor = (
             2 ** (len(self.vae.config.block_out_channels) - 1) if hasattr(self, "vae") and self.vae is not None else 8
         )
-        self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor * 2)
+        # self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor * 2)
+        self.image_processor = Flux2ImageProcessor(vae_scale_factor=self.vae_scale_factor * 2)
 
     def encode_prompt(
         self,
@@ -224,6 +176,7 @@ class ZImageControlNetPipeline(DiffusionPipeline, FromSingleFileMixin):
         prompt_embeds: Optional[List[torch.FloatTensor]] = None,
         negative_prompt_embeds: Optional[torch.FloatTensor] = None,
         max_sequence_length: int = 512,
+        num_condition_images: int = 0,
     ):
         prompt = [prompt] if isinstance(prompt, str) else prompt
         prompt_embeds = self._encode_prompt(
@@ -231,6 +184,7 @@ class ZImageControlNetPipeline(DiffusionPipeline, FromSingleFileMixin):
             device=device,
             prompt_embeds=prompt_embeds,
             max_sequence_length=max_sequence_length,
+            num_condition_images=num_condition_images,
         )
 
         if do_classifier_free_guidance:
@@ -244,6 +198,7 @@ class ZImageControlNetPipeline(DiffusionPipeline, FromSingleFileMixin):
                 device=device,
                 prompt_embeds=negative_prompt_embeds,
                 max_sequence_length=max_sequence_length,
+                num_condition_images=num_condition_images,
             )
         else:
             negative_prompt_embeds = []
@@ -255,6 +210,7 @@ class ZImageControlNetPipeline(DiffusionPipeline, FromSingleFileMixin):
         device: Optional[torch.device] = None,
         prompt_embeds: Optional[List[torch.FloatTensor]] = None,
         max_sequence_length: int = 512,
+        num_condition_images: int = 0,
     ) -> List[torch.FloatTensor]:
         device = device or self._execution_device
 
@@ -265,19 +221,24 @@ class ZImageControlNetPipeline(DiffusionPipeline, FromSingleFileMixin):
             prompt = [prompt]
 
         for i, prompt_item in enumerate(prompt):
-            messages = [
-                {"role": "user", "content": prompt_item},
-            ]
-            prompt_item = self.tokenizer.apply_chat_template(
-                messages,
-                tokenize=False,
-                add_generation_prompt=True,
-                enable_thinking=True,
-            )
-            prompt[i] = prompt_item
+            if num_condition_images == 0:
+                prompt[i] = ["<|im_start|>user\n" + prompt_item + "<|im_end|>\n<|im_start|>assistant\n"]
+            elif num_condition_images > 0:
+                prompt_list = ["<|im_start|>user\n<|vision_start|>"]
+                prompt_list += ["<|vision_end|><|vision_start|>"] * (num_condition_images - 1)
+                prompt_list += ["<|vision_end|>" + prompt_item + "<|im_end|>\n<|im_start|>assistant\n<|vision_start|>"]
+                prompt_list += ["<|vision_end|><|im_end|>"]
+                prompt[i] = prompt_list
+
+        flattened_prompt = []
+        prompt_list_lengths = []
+
+        for i in range(len(prompt)):
+            prompt_list_lengths.append(len(prompt[i]))
+            flattened_prompt.extend(prompt[i])
 
         text_inputs = self.tokenizer(
-            prompt,
+            flattened_prompt,
             padding="max_length",
             max_length=max_sequence_length,
             truncation=True,
@@ -294,9 +255,14 @@ class ZImageControlNetPipeline(DiffusionPipeline, FromSingleFileMixin):
         ).hidden_states[-2]
 
         embeddings_list = []
-
-        for i in range(len(prompt_embeds)):
-            embeddings_list.append(prompt_embeds[i][prompt_masks[i]])
+        start_idx = 0
+        for i in range(len(prompt_list_lengths)):
+            batch_embeddings = []
+            end_idx = start_idx + prompt_list_lengths[i]
+            for j in range(start_idx, end_idx):
+                batch_embeddings.append(prompt_embeds[j][prompt_masks[j]])
+            embeddings_list.append(batch_embeddings)
+            start_idx = end_idx
 
         return embeddings_list
 
@@ -324,40 +290,48 @@ class ZImageControlNetPipeline(DiffusionPipeline, FromSingleFileMixin):
             latents = latents.to(device)
         return latents
 
-    # Copied from diffusers.pipelines.controlnet_sd3.pipeline_stable_diffusion_3_controlnet.StableDiffusion3ControlNetPipeline.prepare_image
-    def prepare_image(
+    def prepare_image_latents(
         self,
-        image,
-        width,
-        height,
+        images: List[torch.Tensor],
         batch_size,
-        num_images_per_prompt,
         device,
         dtype,
-        do_classifier_free_guidance=False,
-        guess_mode=False,
     ):
-        if isinstance(image, torch.Tensor):
-            pass
-        else:
-            image = self.image_processor.preprocess(image, height=height, width=width)
+        image_latents = []
+        for image in images:
+            image = image.to(device=device, dtype=dtype)
+            image_latent = (
+                self.vae.encode(image.bfloat16()).latent_dist.mode()[0] - self.vae.config.shift_factor
+            ) * self.vae.config.scaling_factor
+            image_latent = image_latent.unsqueeze(1).to(dtype)
+            image_latents.append(image_latent)  # (16, 128, 128)
 
-        image_batch_size = image.shape[0]
+        # image_latents = [image_latents] * batch_size
+        image_latents = [image_latents.copy() for _ in range(batch_size)]
 
-        if image_batch_size == 1:
-            repeat_by = batch_size
-        else:
-            # image batch size is the same as prompt batch size
-            repeat_by = num_images_per_prompt
+        return image_latents
 
-        image = image.repeat_interleave(repeat_by, dim=0)
+    def prepare_siglip_embeds(
+        self,
+        images: List[torch.Tensor],
+        batch_size,
+        device,
+        dtype,
+    ):
+        siglip_embeds = []
+        for image in images:
+            siglip_inputs = self.siglip_processor(images=[image], return_tensors="pt").to(device)
+            shape = siglip_inputs.spatial_shapes[0]
+            hidden_state = self.siglip(**siglip_inputs).last_hidden_state
+            B, N, C = hidden_state.shape
+            hidden_state = hidden_state[:, : shape[0] * shape[1]]
+            hidden_state = hidden_state.view(shape[0], shape[1], C)
+            siglip_embeds.append(hidden_state.to(dtype))
 
-        image = image.to(device=device, dtype=dtype)
+        # siglip_embeds = [siglip_embeds] * batch_size
+        siglip_embeds = [siglip_embeds.copy() for _ in range(batch_size)]
 
-        if do_classifier_free_guidance and not guess_mode:
-            image = torch.cat([image] * 2)
-
-        return image
+        return siglip_embeds
 
     @property
     def guidance_scale(self):
@@ -383,14 +357,13 @@ class ZImageControlNetPipeline(DiffusionPipeline, FromSingleFileMixin):
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
+        image: Optional[Union[List[PIL.Image.Image], PIL.Image.Image]] = None,
         prompt: Union[str, List[str]] = None,
         height: Optional[int] = None,
         width: Optional[int] = None,
         num_inference_steps: int = 50,
         sigmas: Optional[List[float]] = None,
         guidance_scale: float = 5.0,
-        control_image: PipelineImageInput = None,
-        controlnet_conditioning_scale: Union[float, List[float]] = 0.75,
         cfg_normalization: bool = False,
         cfg_truncation: float = 1.0,
         negative_prompt: Optional[Union[str, List[str]]] = None,
@@ -410,6 +383,12 @@ class ZImageControlNetPipeline(DiffusionPipeline, FromSingleFileMixin):
         Function invoked when calling the pipeline for generation.
 
         Args:
+            image (`torch.Tensor`, `PIL.Image.Image`, `np.ndarray`, `List[torch.Tensor]`, `List[PIL.Image.Image]`, or `List[np.ndarray]`):
+                `Image`, numpy array or tensor representing an image batch to be used as the starting point. For both
+                numpy array and pytorch tensor, the expected value range is between `[0, 1]` If it's a tensor or a list
+                or tensors, the expected shape should be `(B, C, H, W)` or `(C, H, W)`. If it is a numpy array or a
+                list of arrays, the expected shape should be `(B, H, W, C)` or `(H, W, C)` It can also accept image
+                latents as `image`, but if passing latents directly it is not encoded again.
             prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds`.
                 instead.
@@ -483,20 +462,10 @@ class ZImageControlNetPipeline(DiffusionPipeline, FromSingleFileMixin):
             `return_dict` is True, otherwise a `tuple`. When returning a tuple, the first element is a list with the
             generated images.
         """
-        height = height or 1024
-        width = width or 1024
 
-        vae_scale = self.vae_scale_factor * 2
-        if height % vae_scale != 0:
-            raise ValueError(
-                f"Height must be divisible by {vae_scale} (got {height}). "
-                f"Please adjust the height to a multiple of {vae_scale}."
-            )
-        if width % vae_scale != 0:
-            raise ValueError(
-                f"Width must be divisible by {vae_scale} (got {width}). "
-                f"Please adjust the width to a multiple of {vae_scale}."
-            )
+        if image is not None and not isinstance(image, list):
+            image = [image]
+        num_condition_images = len(image) if image is not None else 0
 
         device = self._execution_device
 
@@ -505,6 +474,7 @@ class ZImageControlNetPipeline(DiffusionPipeline, FromSingleFileMixin):
         self._interrupt = False
         self._cfg_normalization = cfg_normalization
         self._cfg_truncation = cfg_truncation
+
         # 2. Define call parameters
         if prompt is not None and isinstance(prompt, str):
             batch_size = 1
@@ -532,38 +502,53 @@ class ZImageControlNetPipeline(DiffusionPipeline, FromSingleFileMixin):
                 negative_prompt_embeds=negative_prompt_embeds,
                 device=device,
                 max_sequence_length=max_sequence_length,
+                num_condition_images=num_condition_images,
+            )
+
+        # 3. Process condition images. Copied from diffusers.pipelines.flux2.pipeline_flux2
+        condition_images = []
+        resized_images = []
+        if image is not None:
+            for img in image:
+                self.image_processor.check_image_input(img)
+            for img in image:
+                image_width, image_height = img.size
+                if image_width * image_height > 1024 * 1024:
+                    if height is not None and width is not None:
+                        img = self.image_processor._resize_to_target_area(img, height * width)
+                    else:
+                        img = self.image_processor._resize_to_target_area(img, 1024 * 1024)
+                    image_width, image_height = img.size
+                resized_images.append(img)
+
+                multiple_of = self.vae_scale_factor * 2
+                image_width = (image_width // multiple_of) * multiple_of
+                image_height = (image_height // multiple_of) * multiple_of
+                img = self.image_processor.preprocess(img, height=image_height, width=image_width, resize_mode="crop")
+                condition_images.append(img)
+
+            if len(condition_images) > 0:
+                height = height or image_height
+                width = width or image_width
+
+        else:
+            height = height or 1024
+            width = width or 1024
+
+        vae_scale = self.vae_scale_factor * 2
+        if height % vae_scale != 0:
+            raise ValueError(
+                f"Height must be divisible by {vae_scale} (got {height}). "
+                f"Please adjust the height to a multiple of {vae_scale}."
+            )
+        if width % vae_scale != 0:
+            raise ValueError(
+                f"Width must be divisible by {vae_scale} (got {width}). "
+                f"Please adjust the width to a multiple of {vae_scale}."
             )
 
         # 4. Prepare latent variables
         num_channels_latents = self.transformer.in_channels
-
-        control_image = self.prepare_image(
-            image=control_image,
-            width=width,
-            height=height,
-            batch_size=batch_size * num_images_per_prompt,
-            num_images_per_prompt=num_images_per_prompt,
-            device=device,
-            dtype=self.vae.dtype,
-        )
-        height, width = control_image.shape[-2:]
-        control_image = retrieve_latents(self.vae.encode(control_image), generator=generator, sample_mode="argmax")
-        control_image = (control_image - self.vae.config.shift_factor) * self.vae.config.scaling_factor
-        control_image = control_image.unsqueeze(2)
-
-        if num_channels_latents != self.controlnet.config.control_in_dim:
-            # For model version 2.0
-            control_image = torch.cat(
-                [
-                    control_image,
-                    torch.zeros(
-                        control_image.shape[0],
-                        self.controlnet.config.control_in_dim - num_channels_latents,
-                        *control_image.shape[2:],
-                    ).to(device=control_image.device, dtype=control_image.dtype),
-                ],
-                dim=1,
-            )
 
         latents = self.prepare_latents(
             batch_size * num_images_per_prompt,
@@ -576,11 +561,36 @@ class ZImageControlNetPipeline(DiffusionPipeline, FromSingleFileMixin):
             latents,
         )
 
+        condition_latents = self.prepare_image_latents(
+            images=condition_images,
+            batch_size=batch_size * num_images_per_prompt,
+            device=device,
+            dtype=torch.float32,
+        )
+        condition_latents = [[lat.to(self.transformer.dtype) for lat in lats] for lats in condition_latents]
+        if self.do_classifier_free_guidance:
+            negative_condition_latents = [[lat.clone() for lat in batch] for batch in condition_latents]
+
+        condition_siglip_embeds = self.prepare_siglip_embeds(
+            images=resized_images,
+            batch_size=batch_size * num_images_per_prompt,
+            device=device,
+            dtype=torch.float32,
+        )
+        condition_siglip_embeds = [[se.to(self.transformer.dtype) for se in sels] for sels in condition_siglip_embeds]
+        if self.do_classifier_free_guidance:
+            negative_condition_siglip_embeds = [[se.clone() for se in batch] for batch in condition_siglip_embeds]
+
         # Repeat prompt_embeds for num_images_per_prompt
         if num_images_per_prompt > 1:
             prompt_embeds = [pe for pe in prompt_embeds for _ in range(num_images_per_prompt)]
             if self.do_classifier_free_guidance and negative_prompt_embeds:
                 negative_prompt_embeds = [npe for npe in negative_prompt_embeds for _ in range(num_images_per_prompt)]
+
+        condition_siglip_embeds = [None if sels == [] else sels + [None] for sels in condition_siglip_embeds]
+        negative_condition_siglip_embeds = [
+            None if sels == [] else sels + [None] for sels in negative_condition_siglip_embeds
+        ]
 
         actual_batch_size = batch_size * num_images_per_prompt
         image_seq_len = (latents.shape[2] // 2) * (latents.shape[3] // 2)
@@ -634,28 +644,36 @@ class ZImageControlNetPipeline(DiffusionPipeline, FromSingleFileMixin):
                     latents_typed = latents.to(self.transformer.dtype)
                     latent_model_input = latents_typed.repeat(2, 1, 1, 1)
                     prompt_embeds_model_input = prompt_embeds + negative_prompt_embeds
+                    condition_latents_model_input = condition_latents + negative_condition_latents
+                    condition_siglip_embeds_model_input = condition_siglip_embeds + negative_condition_siglip_embeds
                     timestep_model_input = timestep.repeat(2)
                 else:
                     latent_model_input = latents.to(self.transformer.dtype)
                     prompt_embeds_model_input = prompt_embeds
+                    condition_latents_model_input = condition_latents
+                    condition_siglip_embeds_model_input = condition_siglip_embeds
                     timestep_model_input = timestep
 
                 latent_model_input = latent_model_input.unsqueeze(2)
                 latent_model_input_list = list(latent_model_input.unbind(dim=0))
 
-                controlnet_block_samples = self.controlnet(
-                    latent_model_input_list,
-                    timestep_model_input,
-                    prompt_embeds_model_input,
-                    control_image,
-                    conditioning_scale=controlnet_conditioning_scale,
-                )
+                # Combine condition latents with target latent
+                current_batch_size = len(latent_model_input_list)
+                x_combined = [
+                    condition_latents_model_input[i] + [latent_model_input_list[i]] for i in range(current_batch_size)
+                ]
+                # Create noise mask: 0 for condition images (clean), 1 for target image (noisy)
+                image_noise_mask = [
+                    [0] * len(condition_latents_model_input[i]) + [1] for i in range(current_batch_size)
+                ]
 
                 model_out_list = self.transformer(
-                    latent_model_input_list,
-                    timestep_model_input,
-                    prompt_embeds_model_input,
-                    controlnet_block_samples=controlnet_block_samples,
+                    x=x_combined,
+                    t=timestep_model_input,
+                    cap_feats=prompt_embeds_model_input,
+                    siglip_feats=condition_siglip_embeds_model_input,
+                    image_noise_mask=image_noise_mask,
+                    return_dict=False,
                 )[0]
 
                 if apply_cfg:
