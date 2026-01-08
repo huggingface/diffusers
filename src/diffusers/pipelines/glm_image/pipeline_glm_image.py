@@ -53,7 +53,7 @@ EXAMPLE_DOC_STRING = """
         >>> pipe = GlmImagePipeline.from_pretrained("zai-org/GLM-Image", torch_dtype=torch.bfloat16)
         >>> pipe.to("cuda")
 
-        >>> prompt = "A photo of an astronaut riding a horse on mars<sop>36 24<eop>"
+        >>> prompt = "A photo of an astronaut riding a horse on mars"
         >>> image = pipe(prompt).images[0]
         >>> image.save("output.png")
         ```
@@ -71,6 +71,7 @@ def calculate_shift(
     return mu
 
 
+# Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.retrieve_timesteps
 def retrieve_timesteps(
     scheduler,
     num_inference_steps: Optional[int] = None,
@@ -158,7 +159,7 @@ class GlmImagePipeline(DiffusionPipeline, CogView4LoraLoaderMixin):
     """
 
     _optional_components = []
-    model_cpu_offload_seq = "transformer->vae"
+    model_cpu_offload_seq = "text_encoder->vision_language_encoder->transformer->vae"
     _callback_tensor_inputs = ["latents", "prompt_embeds"]
 
     def __init__(
@@ -460,19 +461,6 @@ class GlmImagePipeline(DiffusionPipeline, CogView4LoraLoaderMixin):
         if do_classifier_free_guidance:
             negative_prompt = ""
             negative_prompt = batch_size * [negative_prompt] if isinstance(negative_prompt, str) else negative_prompt
-
-            if prompt is not None and type(prompt) is not type(negative_prompt):
-                raise TypeError(
-                    f"`negative_prompt` should be the same type to `prompt`, but got {type(negative_prompt)} !="
-                    f" {type(prompt)}."
-                )
-            elif batch_size != len(negative_prompt):
-                raise ValueError(
-                    f"`negative_prompt`: {negative_prompt} has batch size {len(negative_prompt)}, but `prompt`:"
-                    f" {prompt} has batch size {batch_size}. Please make sure that passed `negative_prompt` matches"
-                    " the batch size of `prompt`."
-                )
-
             negative_prompt_embeds = self._get_glyph_embeds(negative_prompt, max_sequence_length, device, dtype)
 
             seq_len = negative_prompt_embeds.size(1)
@@ -505,6 +493,7 @@ class GlmImagePipeline(DiffusionPipeline, CogView4LoraLoaderMixin):
         height,
         width,
         callback_on_step_end_tensor_inputs,
+        do_classifier_free_guidance,
         prompt_embeds=None,
     ):
         if (
@@ -535,6 +524,26 @@ class GlmImagePipeline(DiffusionPipeline, CogView4LoraLoaderMixin):
             )
         elif prompt is not None and (not isinstance(prompt, str) and not isinstance(prompt, list)):
             raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
+
+        if do_classifier_free_guidance:
+            negative_prompt = ""
+            if prompt is not None:
+                batch_size = len(prompt)
+            else:
+                batch_size = prompt_embeds.shape[0]
+            negative_prompt = batch_size * [negative_prompt] if isinstance(negative_prompt, str) else negative_prompt
+
+            if prompt is not None and type(prompt) is not type(negative_prompt):
+                raise TypeError(
+                    f"`negative_prompt` should be the same type to `prompt`, but got {type(negative_prompt)} !="
+                    f" {type(prompt)}."
+                )
+            elif batch_size != len(negative_prompt):
+                raise ValueError(
+                    f"`negative_prompt`: {negative_prompt} has batch size {len(negative_prompt)}, but `prompt`:"
+                    f" {prompt} has batch size {batch_size}. Please make sure that passed `negative_prompt` matches"
+                    " the batch size of `prompt`."
+                )
 
     @property
     def guidance_scale(self):
@@ -629,6 +638,7 @@ class GlmImagePipeline(DiffusionPipeline, CogView4LoraLoaderMixin):
             height,
             width,
             callback_on_step_end_tensor_inputs,
+            self.do_classifier_free_guidance,
             prompt_embeds,
         )
         self._guidance_scale = guidance_scale

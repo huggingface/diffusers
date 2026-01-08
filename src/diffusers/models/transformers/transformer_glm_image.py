@@ -62,6 +62,8 @@ class GlmImageCombinedTimestepSizeEmbeddings(nn.Module):
         condition_emb = self.condition_embedder(condition_proj.to(dtype=hidden_dtype))  # (B, embedding_dim)
 
         conditioning = timesteps_emb + condition_emb
+        conditioning = F.silu(conditioning)
+
         return conditioning
 
 
@@ -560,7 +562,6 @@ class GlmImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Cach
         hidden_states = hidden_states + prior_hidden_states
 
         temb = self.time_condition_embed(timestep, target_size, crop_coords, hidden_states.dtype)
-        temb = F.silu(temb)
 
         # 3. Transformer blocks
         for idx, block in enumerate(self.transformer_blocks):
