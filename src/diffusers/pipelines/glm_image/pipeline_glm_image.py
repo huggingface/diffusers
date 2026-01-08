@@ -358,6 +358,16 @@ class GlmImagePipeline(DiffusionPipeline, CogView4LoraLoaderMixin):
         inputs = inputs.to(device)
         input_length = inputs["input_ids"].shape[-1]
 
+        prior_token_image_ids = None
+        if image is not None:
+            prior_token_image_embed = self.vision_language_encoder.get_image_features(
+                inputs["pixel_values"], existing_grid
+            )
+            prior_token_image_embed = torch.cat(prior_token_image_embed, dim=0)
+            prior_token_image_ids = self.vision_language_encoder.get_image_tokens(
+                prior_token_image_embed, existing_grid
+            )
+            inputs["image_ids"] = prior_token_image_ids
         outputs = self.vision_language_encoder.generate(
             **inputs,
             max_new_tokens=max_new_tokens,
@@ -372,7 +382,7 @@ class GlmImagePipeline(DiffusionPipeline, CogView4LoraLoaderMixin):
         pixel_height = token_h * factor
         pixel_width = token_w * factor
 
-        return prior_token_ids, pixel_height, pixel_width
+        return prior_token_ids, prior_token_image_ids, pixel_height, pixel_width
 
     def get_glyph_texts(self, prompt):
         prompt = prompt[0] if isinstance(prompt, list) else prompt
