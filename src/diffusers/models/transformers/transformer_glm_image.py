@@ -593,6 +593,8 @@ class GlmImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Cach
 
         # 5. Unpatchify
         hidden_states = hidden_states.reshape(batch_size, post_patch_height, post_patch_width, -1, p, p)
+
+        # Rearrange tensor from (B, H_p, W_p, C, p, p) to (B, C, H_p * p, W_p * p)
         output = hidden_states.permute(0, 3, 1, 4, 2, 5).flatten(4, 5).flatten(2, 3)
 
         if not return_dict:
