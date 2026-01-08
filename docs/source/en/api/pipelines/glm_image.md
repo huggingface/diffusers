@@ -43,22 +43,19 @@ This pipeline was contributed by [zRzRzRzRzRzRzR](https://github.com/zRzRzRzRzRz
 ```python
 import torch
 from diffusers.pipelines.glm_image import GlmImagePipeline
-def main():
-    pipe = GlmImagePipeline.from_pretrained("zai-org/GLM-Image",torch_dtype=torch.bfloat16,device_map="cuda")
-    prompt = "现代美食杂志风格的甜点制作教程图，主题为覆盆子慕斯蛋糕。整体布局干净明亮，分为四个主要区域：顶部左侧是黑色粗体标题“覆盆子慕斯蛋糕制作指南”，右侧搭配光线柔和的成品蛋糕特写照片，蛋糕呈淡粉色，表面点缀新鲜覆盆子与薄荷叶；左下方为配料清单区域，标题“配料”使用简洁字体，下方列有“面粉 150g”“鸡蛋 3个”“细砂糖 120g”“覆盆子果泥 200g”“明胶片 10g”“淡奶油 300ml”“新鲜覆盆子”等配料，每种配料旁配有简约线图标（如面粉袋、鸡蛋、糖罐等）；右下方是四个等大的步骤方框，每个方框内含高清微距实拍图及对应操作说明，从上到下依次为：步骤1展示打蛋器打发白色泡沫（对应说明“打发蛋白至干性发泡”），步骤2展示红白相间的混合物被刮刀翻拌（对应说明“轻柔翻拌果泥与面糊”），步骤3展示粉色液体被倒入圆形模具（对应说明“倒入模具并冷藏4小时”），步骤4展示成品蛋糕表面装饰覆盆子与薄荷叶（对应说明“用覆盆子和薄荷装饰”）；底部边缘设浅棕色信息条，左侧图标分别代表“准备时间：30分钟”“烹饪时间：20分钟”“份量：8人份”。整体色调以奶油白、淡粉色为主，背景带轻微纸质纹理，图文排版紧凑有序，信息层级分明。"
-    image = pipe(
-        prompt=prompt,
-        height=89 * 32,
-        width=45 * 32,
-        num_inference_steps=30,
-        guidance_scale=1.5,
-        generator=torch.Generator(device="cuda").manual_seed(42),
-    ).images[0]
 
-    image.save("output_t2i.png")
+pipe = GlmImagePipeline.from_pretrained("zai-org/GLM-Image",torch_dtype=torch.bfloat16,device_map="cuda")
+prompt = "A beautifully designed modern food magazine style dessert recipe illustration, themed around a raspberry mousse cake. The overall layout is clean and bright, divided into four main areas: the top left features a bold black title 'Raspberry Mousse Cake Recipe Guide', with a soft-lit close-up photo of the finished cake on the right, showcasing a light pink cake adorned with fresh raspberries and mint leaves; the bottom left contains an ingredient list section, titled 'Ingredients' in a simple font, listing 'Flour 150g', 'Eggs 3', 'Sugar 120g', 'Raspberry puree 200g', 'Gelatin sheets 10g', 'Whipping cream 300ml', and 'Fresh raspberries', each accompanied by minimalist line icons (like a flour bag, eggs, sugar jar, etc.); the bottom right displays four equally sized step boxes, each containing high-definition macro photos and corresponding instructions, arranged from top to bottom as follows: Step 1 shows a whisk whipping white foam (with the instruction 'Whip egg whites to stiff peaks'), Step 2 shows a red-and-white mixture being folded with a spatula (with the instruction 'Gently fold in the puree and batter'), Step 3 shows pink liquid being poured into a round mold (with the instruction 'Pour into mold and chill for 4 hours'), Step 4 shows the finished cake decorated with raspberries and mint leaves (with the instruction 'Decorate with raspberries and mint'); a light brown information bar runs along the bottom edge, with icons on the left representing 'Preparation time: 30 minutes', 'Cooking time: 20 minutes', and 'Servings: 8'. The overall color scheme is dominated by creamy white and light pink, with a subtle paper texture in the background, featuring compact and orderly text and image layout with clear information hierarchy."
+image = pipe(
+    prompt=prompt,
+    height=32 * 32,
+    width=36 * 32,
+    num_inference_steps=30,
+    guidance_scale=1.5,
+    generator=torch.Generator(device="cuda").manual_seed(42),
+).images[0]
 
-if __name__ == "__main__":
-    main()
+image.save("output_t2i.png")
 ```
 
 ### Image to Image Generation
@@ -68,25 +65,21 @@ import torch
 from diffusers.pipelines.glm_image import GlmImagePipeline
 from PIL import Image
 
-def main():
-    pipe = GlmImagePipeline.from_pretrained("zai-org/GLM-Image",torch_dtype=torch.bfloat16,device_map="cuda")
-    image_path = "cond.jpg" 
-    prompt = "Replace the background of the snow forest with an underground station featuring an automatic escalator."
-    image = Image.open(image_path).convert("RGB")
-    image = pipe(
-        prompt=prompt,
-        image=[image], # can input multiple images for multi-image-to-image generation such as [image, image1]
-        height=33 * 32,
-        width=32 * 32,
-        num_inference_steps=30,
-        guidance_scale=1.5,
-        generator=torch.Generator(device="cuda").manual_seed(42),
-    ).images[0]
+pipe = GlmImagePipeline.from_pretrained("zai-org/GLM-Image",torch_dtype=torch.bfloat16,device_map="cuda")
+image_path = "cond.jpg" 
+prompt = "Replace the background of the snow forest with an underground station featuring an automatic escalator."
+image = Image.open(image_path).convert("RGB")
+image = pipe(
+    prompt=prompt,
+    image=[image], # can input multiple images for multi-image-to-image generation such as [image, image1]
+    height=33 * 32,
+    width=32 * 32,
+    num_inference_steps=30,
+    guidance_scale=1.5,
+    generator=torch.Generator(device="cuda").manual_seed(42),
+).images[0]
 
-    image.save("output_t2i.png")
-
-if __name__ == "__main__":
-    main()
+image.save("output_i2i.png")
 ```
 
 + Since the AR model used in GLM-Image is configured with `do_sample=True` and a temperature of `0.95` by default, the generated images can vary significantly across runs. We do not recommend setting do_sample=False, as this may lead to incorrect or degenerate outputs from the AR model.
