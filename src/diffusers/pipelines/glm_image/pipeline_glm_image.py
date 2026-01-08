@@ -645,7 +645,7 @@ class GlmImagePipeline(DiffusionPipeline):
             num_channels_latents=latent_channels,
             height=height,
             width=width,
-            dtype=torch.float32,
+            dtype=prompt_embeds.dtype,
             device=device,
             generator=generator,
             latents=latents,
@@ -655,19 +655,14 @@ class GlmImagePipeline(DiffusionPipeline):
 
         if image is not None:
             kv_caches.set_mode("write")
-            latents_mean = (
-                torch.tensor(self.vae.config.latents_mean)
-                .view(1, self.vae.config.latent_channels, 1, 1)
-                .to(self.vae.device, self.vae.dtype)
-            )
-            latents_std = (
-                torch.tensor(self.vae.config.latents_std)
-                .view(1, self.vae.config.latent_channels, 1, 1)
-                .to(self.vae.device, self.vae.dtype)
-            )
-            empty_glyph_hiddens = torch.zeros_like(prompt_embeds)[:1, :0, ...]
+            latents_mean = torch.tensor(self.vae.config.latents_mean).view(1, self.vae.config.latent_channels, 1, 1)
+            latents_std = torch.tensor(self.vae.config.latents_std).view(1, self.vae.config.latent_channels, 1, 1)
+
+            latents_mean = latents_mean.to(device=device, dtype=prompt_embeds.dtype)
+            latents_std = latents_std.to(device=device, dtype=prompt_embeds.dtype)
+
             for condition_image, condition_image_prior_token_id in zip(image, prior_token_image_ids):
-                condition_image = condition_image.to(device=device, dtype=self.vae.dtype)
+                condition_image = condition_image.to(device=device, dtype=prompt_embeds.dtype)
                 condition_latent = retrieve_latents(
                     self.vae.encode(condition_image), generator=generator, sample_mode="argmax"
                 )
@@ -678,7 +673,7 @@ class GlmImagePipeline(DiffusionPipeline):
                 # forward pass at timestep 0 and keep the KV cache.
                 _ = self.transformer(
                     hidden_states=condition_latent,
-                    encoder_hidden_states=empty_glyph_hiddens,
+                    encoder_hidden_states=torch.zeros_like(prompt_embeds)[:1, :0, ...],
                     prior_token_id=condition_image_prior_token_id,
                     prior_token_drop=torch.full_like(condition_image_prior_token_id, False, dtype=torch.bool),
                     timestep=torch.zeros((1,), device=device),
