@@ -90,10 +90,10 @@ class QwenImageLayeredVaeEncoderStep(SequentialPipelineBlocks):
 
 
 # ====================
-# 3. DENOISE - input -> prepare_latents -> set_timesteps -> prepare_rope_inputs -> denoise -> after_denoise
+# 3. DENOISE (input -> prepare_latents -> set_timesteps -> prepare_rope_inputs -> denoise -> after_denoise)
 # ====================
 
-# Layered input step
+# assemble input steps
 class QwenImageLayeredInputStep(SequentialPipelineBlocks):
     model_name = "qwenimage-layered"
     block_classes = [
@@ -111,7 +111,7 @@ class QwenImageLayeredInputStep(SequentialPipelineBlocks):
         )
 
 
-# 1. img2img core denoise
+# Qwen Image Layered (image2image) core denoise step
 class QwenImageLayeredCoreDenoiseStep(SequentialPipelineBlocks):
     model_name = "qwenimage-layered"
     block_classes = [
@@ -138,7 +138,7 @@ class QwenImageLayeredCoreDenoiseStep(SequentialPipelineBlocks):
 
 
 # ====================
-# 5. AUTO BLOCKS & PRESETS
+# 4. AUTO BLOCKS & PRESETS
 # ====================
 
 LAYERED_AUTO_BLOCKS = InsertableDict(

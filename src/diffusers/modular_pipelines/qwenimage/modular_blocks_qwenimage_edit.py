@@ -126,10 +126,10 @@ class QwenImageEditAutoVaeEncoderStep(AutoPipelineBlocks):
 
 
 # ====================
-# 3. DENOISE - input -> prepare_latents -> set_timesteps -> prepare_rope_inputs -> denoise -> after_denoise
+# 3. DENOISE (input -> prepare_latents -> set_timesteps -> prepare_rope_inputs -> denoise -> after_denoise)
 # ====================
 
-# Edit input step
+# assemble input steps
 class QwenImageEditInputStep(SequentialPipelineBlocks):
     model_name = "qwenimage-edit"
     block_classes = [
@@ -147,7 +147,6 @@ class QwenImageEditInputStep(SequentialPipelineBlocks):
         )
 
 
-# Edit Inpaint input step
 class QwenImageEditInpaintInputStep(SequentialPipelineBlocks):
     model_name = "qwenimage-edit"
     block_classes = [
@@ -165,7 +164,7 @@ class QwenImageEditInpaintInputStep(SequentialPipelineBlocks):
         )
 
 
-# Edit Inpaint prepare latents step
+# assemble prepare latents steps
 class QwenImageEditInpaintPrepareLatentsStep(SequentialPipelineBlocks):
     model_name = "qwenimage-edit"
     block_classes = [QwenImagePrepareLatentsWithStrengthStep(), QwenImageCreateMaskLatentsStep()]
@@ -180,7 +179,7 @@ class QwenImageEditInpaintPrepareLatentsStep(SequentialPipelineBlocks):
         )
 
 
-# 1. Edit (img2img) core denoise
+# Qwen Image Edit (image2image) core denoise step
 class QwenImageEditCoreDenoiseStep(SequentialPipelineBlocks):
     model_name = "qwenimage-edit"
     block_classes = [
@@ -205,7 +204,7 @@ class QwenImageEditCoreDenoiseStep(SequentialPipelineBlocks):
         return "Core denoising workflow for QwenImage-Edit edit (img2img) task."
 
 
-# 2. Edit Inpaint core denoise
+# Qwen Image Edit (inpainting) core denoise step
 class QwenImageEditInpaintCoreDenoiseStep(SequentialPipelineBlocks):
     model_name = "qwenimage-edit"
     block_classes = [
@@ -232,8 +231,9 @@ class QwenImageEditInpaintCoreDenoiseStep(SequentialPipelineBlocks):
         return "Core denoising workflow for QwenImage-Edit edit inpaint task."
 
 
-# Auto core denoise step
+# Auto core denoise step for QwenImage Edit
 class QwenImageEditAutoCoreDenoiseStep(ConditionalPipelineBlocks):
+    model_name = "qwenimage-edit"
     block_classes = [
         QwenImageEditInpaintCoreDenoiseStep,
         QwenImageEditCoreDenoiseStep,

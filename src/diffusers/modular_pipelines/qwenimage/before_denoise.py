@@ -672,6 +672,7 @@ class QwenImageRoPEInputsStep(ModularPipelineBlocks):
         return [
             OutputParam(
                 name="img_shapes",
+                kwargs_type="denoiser_input_fields",
                 type_hint=List[List[Tuple[int, int, int]]],
                 description="The shapes of the images latents, used for RoPE calculation",
             ),
@@ -739,6 +740,7 @@ class QwenImageEditRoPEInputsStep(ModularPipelineBlocks):
         return [
             OutputParam(
                 name="img_shapes",
+                kwargs_type="denoiser_input_fields",
                 type_hint=List[List[Tuple[int, int, int]]],
                 description="The shapes of the images latents, used for RoPE calculation",
             ),
@@ -819,6 +821,7 @@ class QwenImageEditPlusRoPEInputsStep(ModularPipelineBlocks):
         return [
             OutputParam(
                 name="img_shapes",
+                kwargs_type="denoiser_input_fields",
                 type_hint=List[List[Tuple[int, int, int]]],
                 description="The shapes of the image latents, used for RoPE calculation",
             ),

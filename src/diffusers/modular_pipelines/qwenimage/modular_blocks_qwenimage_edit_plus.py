@@ -84,10 +84,10 @@ class QwenImageEditPlusVaeEncoderStep(SequentialPipelineBlocks):
 
 
 # ====================
-# 3. DENOISE - input -> prepare_latents -> set_timesteps -> prepare_rope_inputs -> denoise -> after_denoise
+# 3. DENOISE (input -> prepare_latents -> set_timesteps -> prepare_rope_inputs -> denoise -> after_denoise)
 # ====================
 
-# Edit Plus input step
+# assemble input steps
 class QwenImageEditPlusInputStep(SequentialPipelineBlocks):
     model_name = "qwenimage-edit-plus"
     block_classes = [
@@ -107,7 +107,7 @@ class QwenImageEditPlusInputStep(SequentialPipelineBlocks):
         )
 
 
-# Edit Plus core denoise
+# Qwen Image Edit Plus (image2image) core denoise step
 class QwenImageEditPlusCoreDenoiseStep(SequentialPipelineBlocks):
     model_name = "qwenimage-edit-plus"
     block_classes = [
