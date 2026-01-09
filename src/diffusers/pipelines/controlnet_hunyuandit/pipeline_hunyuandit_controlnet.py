@@ -1,4 +1,4 @@
-# Copyright 2024 HunyuanDiT Authors and The HuggingFace Team. All rights reserved.
+# Copyright 2025 HunyuanDiT Authors and The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -17,7 +17,7 @@ from typing import Callable, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import torch
-from transformers import BertModel, BertTokenizer, CLIPImageProcessor, MT5Tokenizer, T5EncoderModel
+from transformers import BertModel, BertTokenizer, CLIPImageProcessor, T5EncoderModel, T5Tokenizer
 
 from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput
 
@@ -27,11 +27,7 @@ from ...models import AutoencoderKL, HunyuanDiT2DControlNetModel, HunyuanDiT2DMo
 from ...models.embeddings import get_2d_rotary_pos_embed
 from ...pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
 from ...schedulers import DDPMScheduler
-from ...utils import (
-    is_torch_xla_available,
-    logging,
-    replace_example_docstring,
-)
+from ...utils import is_torch_xla_available, logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
 
@@ -144,7 +140,7 @@ def rescale_noise_cfg(noise_cfg, noise_pred_text, guidance_rescale=0.0):
     r"""
     Rescales `noise_cfg` tensor based on `guidance_rescale` to improve image quality and fix overexposure. Based on
     Section 3.4 from [Common Diffusion Noise Schedules and Sample Steps are
-    Flawed](https://arxiv.org/pdf/2305.08891.pdf).
+    Flawed](https://huggingface.co/papers/2305.08891).
 
     Args:
         noise_cfg (`torch.Tensor`):
@@ -189,7 +185,7 @@ class HunyuanDiTControlNetPipeline(DiffusionPipeline):
             The HunyuanDiT model designed by Tencent Hunyuan.
         text_encoder_2 (`T5EncoderModel`):
             The mT5 embedder. Specifically, it is 't5-v1_1-xxl'.
-        tokenizer_2 (`MT5Tokenizer`):
+        tokenizer_2 (`T5Tokenizer`):
             The tokenizer for the mT5 embedder.
         scheduler ([`DDPMScheduler`]):
             A scheduler to be used in combination with HunyuanDiT to denoise the encoded image latents.
@@ -233,7 +229,7 @@ class HunyuanDiTControlNetPipeline(DiffusionPipeline):
             HunyuanDiT2DMultiControlNetModel,
         ],
         text_encoder_2: Optional[T5EncoderModel] = None,
-        tokenizer_2: Optional[MT5Tokenizer] = None,
+        tokenizer_2: Optional[T5Tokenizer] = None,
         requires_safety_checker: bool = True,
     ):
         super().__init__()
@@ -463,7 +459,7 @@ class HunyuanDiTControlNetPipeline(DiffusionPipeline):
     def prepare_extra_step_kwargs(self, generator, eta):
         # prepare extra kwargs for the scheduler step, since not all schedulers have the same signature
         # eta (η) is only used with the DDIMScheduler, it will be ignored for other schedulers.
-        # eta corresponds to η in DDIM paper: https://arxiv.org/abs/2010.02502
+        # eta corresponds to η in DDIM paper: https://huggingface.co/papers/2010.02502
         # and should be between [0, 1]
 
         accepts_eta = "eta" in set(inspect.signature(self.scheduler.step).parameters.keys())
@@ -621,7 +617,7 @@ class HunyuanDiTControlNetPipeline(DiffusionPipeline):
         return self._guidance_rescale
 
     # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
-    # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`
+    # of the Imagen paper: https://huggingface.co/papers/2205.11487 . `guidance_scale = 1`
     # corresponds to doing no classifier free guidance.
     @property
     def do_classifier_free_guidance(self):
@@ -709,8 +705,8 @@ class HunyuanDiTControlNetPipeline(DiffusionPipeline):
             num_images_per_prompt (`int`, *optional*, defaults to 1):
                 The number of images to generate per prompt.
             eta (`float`, *optional*, defaults to 0.0):
-                Corresponds to parameter eta (η) from the [DDIM](https://arxiv.org/abs/2010.02502) paper. Only applies
-                to the [`~schedulers.DDIMScheduler`], and is ignored in other schedulers.
+                Corresponds to parameter eta (η) from the [DDIM](https://huggingface.co/papers/2010.02502) paper. Only
+                applies to the [`~schedulers.DDIMScheduler`], and is ignored in other schedulers.
             generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
                 A [`torch.Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make
                 generation deterministic.
@@ -746,7 +742,7 @@ class HunyuanDiTControlNetPipeline(DiffusionPipeline):
                 inputs will be passed.
             guidance_rescale (`float`, *optional*, defaults to 0.0):
                 Rescale the noise_cfg according to `guidance_rescale`. Based on findings of [Common Diffusion Noise
-                Schedules and Sample Steps are Flawed](https://arxiv.org/pdf/2305.08891.pdf). See Section 3.4
+                Schedules and Sample Steps are Flawed](https://huggingface.co/papers/2305.08891). See Section 3.4
             original_size (`Tuple[int, int]`, *optional*, defaults to `(1024, 1024)`):
                 The original size of the image. Used to calculate the time ids.
             target_size (`Tuple[int, int]`, *optional*):
@@ -1009,7 +1005,7 @@ class HunyuanDiTControlNetPipeline(DiffusionPipeline):
                     noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
 
                 if self.do_classifier_free_guidance and guidance_rescale > 0.0:
-                    # Based on 3.4. in https://arxiv.org/pdf/2305.08891.pdf
+                    # Based on 3.4. in https://huggingface.co/papers/2305.08891
                     noise_pred = rescale_noise_cfg(noise_pred, noise_pred_text, guidance_rescale=guidance_rescale)
 
                 # compute the previous noisy sample x_t -> x_t-1

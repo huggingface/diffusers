@@ -12,6 +12,7 @@
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
+# limitations under the License.
 
 import argparse
 import copy
@@ -63,7 +64,7 @@ if is_wandb_available():
     import wandb
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.33.0.dev0")
+check_min_version("0.37.0.dev0")
 
 logger = get_logger(__name__)
 
@@ -536,7 +537,7 @@ def parse_args(input_args=None):
         type=float,
         default=None,
         help="SNR weighting gamma to be used if rebalancing the loss. Recommended value is 5.0. "
-        "More details here: https://arxiv.org/abs/2303.09556.",
+        "More details here: https://huggingface.co/papers/2303.09556.",
     )
     parser.add_argument(
         "--pre_compute_text_embeddings",
@@ -807,7 +808,7 @@ def main(args):
     if args.report_to == "wandb" and args.hub_token is not None:
         raise ValueError(
             "You cannot use both --report_to=wandb and --hub_token due to a security risk of exposing your token."
-            " Please use `huggingface-cli login` to authenticate with the Hub."
+            " Please use `hf auth login` to authenticate with the Hub."
         )
 
     logging_dir = Path(args.output_dir, args.logging_dir)
@@ -1114,17 +1115,22 @@ def main(args):
     )
 
     # Scheduler and math around the number of training steps.
-    overrode_max_train_steps = False
-    num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
+    # Check the PR https://github.com/huggingface/diffusers/pull/8312 for detailed explanation.
+    num_warmup_steps_for_scheduler = args.lr_warmup_steps * accelerator.num_processes
     if args.max_train_steps is None:
-        args.max_train_steps = args.num_train_epochs * num_update_steps_per_epoch
-        overrode_max_train_steps = True
+        len_train_dataloader_after_sharding = math.ceil(len(train_dataloader) / accelerator.num_processes)
+        num_update_steps_per_epoch = math.ceil(len_train_dataloader_after_sharding / args.gradient_accumulation_steps)
+        num_training_steps_for_scheduler = (
+            args.num_train_epochs * accelerator.num_processes * num_update_steps_per_epoch
+        )
+    else:
+        num_training_steps_for_scheduler = args.max_train_steps * accelerator.num_processes
 
     lr_scheduler = get_scheduler(
         args.lr_scheduler,
         optimizer=optimizer,
-        num_warmup_steps=args.lr_warmup_steps * accelerator.num_processes,
-        num_training_steps=args.max_train_steps * accelerator.num_processes,
+        num_warmup_steps=num_warmup_steps_for_scheduler,
+        num_training_steps=num_training_steps_for_scheduler,
         num_cycles=args.lr_num_cycles,
         power=args.lr_power,
     )
@@ -1156,8 +1162,14 @@ def main(args):
 
     # We need to recalculate our total training steps as the size of the training dataloader may have changed.
     num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
-    if overrode_max_train_steps:
+    if args.max_train_steps is None:
         args.max_train_steps = args.num_train_epochs * num_update_steps_per_epoch
+        if num_training_steps_for_scheduler != args.max_train_steps:
+            logger.warning(
+                f"The length of the 'train_dataloader' after 'accelerator.prepare' ({len(train_dataloader)}) does not match "
+                f"the expected length ({len_train_dataloader_after_sharding}) when the learning rate scheduler was created. "
+                f"This inconsistency may result in the learning rate scheduler not functioning properly."
+            )
     # Afterwards we recalculate our number of training epochs
     args.num_train_epochs = math.ceil(args.max_train_steps / num_update_steps_per_epoch)
 
@@ -1296,7 +1308,7 @@ def main(args):
                 if args.snr_gamma is None:
                     loss = F.mse_loss(model_pred.float(), target.float(), reduction="mean")
                 else:
-                    # Compute loss-weights as per Section 3.4 of https://arxiv.org/abs/2303.09556.
+                    # Compute loss-weights as per Section 3.4 of https://huggingface.co/papers/2303.09556.
                     # Since we predict the noise instead of x_0, the original formulation is slightly changed.
                     # This is discussed in Section 4.2 of the same paper.
                     snr = compute_snr(noise_scheduler, timesteps)

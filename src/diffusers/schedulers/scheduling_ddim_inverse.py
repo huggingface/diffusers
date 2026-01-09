@@ -1,4 +1,4 @@
-# Copyright 2024 The HuggingFace Team. All rights reserved.
+# Copyright 2025 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -16,7 +16,7 @@
 # and https://github.com/hojonathanho/diffusion
 import math
 from dataclasses import dataclass
-from typing import List, Optional, Tuple, Union
+from typing import List, Literal, Optional, Tuple, Union
 
 import numpy as np
 import torch
@@ -47,10 +47,10 @@ class DDIMSchedulerOutput(BaseOutput):
 
 # Copied from diffusers.schedulers.scheduling_ddpm.betas_for_alpha_bar
 def betas_for_alpha_bar(
-    num_diffusion_timesteps,
-    max_beta=0.999,
-    alpha_transform_type="cosine",
-):
+    num_diffusion_timesteps: int,
+    max_beta: float = 0.999,
+    alpha_transform_type: Literal["cosine", "exp"] = "cosine",
+) -> torch.Tensor:
     """
     Create a beta schedule that discretizes the given alpha_t_bar function, which defines the cumulative product of
     (1-beta) over time from t = [0,1].
@@ -58,16 +58,17 @@ def betas_for_alpha_bar(
     Contains a function alpha_bar that takes an argument t and transforms it to the cumulative product of (1-beta) up
     to that part of the diffusion process.
 
-
     Args:
-        num_diffusion_timesteps (`int`): the number of betas to produce.
-        max_beta (`float`): the maximum beta to use; use values lower than 1 to
-                     prevent singularities.
-        alpha_transform_type (`str`, *optional*, default to `cosine`): the type of noise schedule for alpha_bar.
-                     Choose from `cosine` or `exp`
+        num_diffusion_timesteps (`int`):
+            The number of betas to produce.
+        max_beta (`float`, defaults to `0.999`):
+            The maximum beta to use; use values lower than 1 to avoid numerical instability.
+        alpha_transform_type (`"cosine"` or `"exp"`, defaults to `"cosine"`):
+            The type of noise schedule for `alpha_bar`. Choose from `cosine` or `exp`.
 
     Returns:
-        betas (`np.ndarray`): the betas used by the scheduler to step the model outputs
+        `torch.Tensor`:
+            The betas used by the scheduler to step the model outputs.
     """
     if alpha_transform_type == "cosine":
 
@@ -100,15 +101,15 @@ def betas_for_alpha_bar(
 # Copied from diffusers.schedulers.scheduling_ddim.rescale_zero_terminal_snr
 def rescale_zero_terminal_snr(betas):
     """
-    Rescales betas to have zero terminal SNR Based on https://arxiv.org/pdf/2305.08891.pdf (Algorithm 1)
-
+    Rescales betas to have zero terminal SNR Based on https://huggingface.co/papers/2305.08891 (Algorithm 1)
 
     Args:
         betas (`torch.Tensor`):
-            the betas that the scheduler is being initialized with.
+            The betas that the scheduler is being initialized with.
 
     Returns:
-        `torch.Tensor`: rescaled betas with zero terminal SNR
+        `torch.Tensor`:
+            Rescaled betas with zero terminal SNR.
     """
     # Convert betas to alphas_bar_sqrt
     alphas = 1.0 - betas
@@ -166,7 +167,7 @@ class DDIMInverseScheduler(SchedulerMixin, ConfigMixin):
         prediction_type (`str`, defaults to `epsilon`, *optional*):
             Prediction type of the scheduler function; can be `epsilon` (predicts the noise of the diffusion process),
             `sample` (directly predicts the noisy sample`) or `v_prediction` (see section 2.4 of [Imagen
-            Video](https://imagen.research.google/video/paper.pdf) paper).
+            Video](https://huggingface.co/papers/2210.02303) paper).
         timestep_spacing (`str`, defaults to `"leading"`):
             The way the timesteps should be scaled. Refer to Table 2 of the [Common Diffusion Noise Schedules and
             Sample Steps are Flawed](https://huggingface.co/papers/2305.08891) for more information.
@@ -273,7 +274,7 @@ class DDIMInverseScheduler(SchedulerMixin, ConfigMixin):
 
         self.num_inference_steps = num_inference_steps
 
-        # "leading" and "trailing" corresponds to annotation of Table 2. of https://arxiv.org/abs/2305.08891
+        # "leading" and "trailing" corresponds to annotation of Table 2. of https://huggingface.co/papers/2305.08891
         if self.config.timestep_spacing == "leading":
             step_ratio = self.config.num_train_timesteps // self.num_inference_steps
             # creates integer timesteps by multiplying by ratio
@@ -345,7 +346,7 @@ class DDIMInverseScheduler(SchedulerMixin, ConfigMixin):
         beta_prod_t = 1 - alpha_prod_t
 
         # 3. compute predicted original sample from predicted noise also called
-        # "predicted x_0" of formula (12) from https://arxiv.org/pdf/2010.02502.pdf
+        # "predicted x_0" of formula (12) from https://huggingface.co/papers/2010.02502
         if self.config.prediction_type == "epsilon":
             pred_original_sample = (sample - beta_prod_t ** (0.5) * model_output) / alpha_prod_t ** (0.5)
             pred_epsilon = model_output
@@ -367,10 +368,10 @@ class DDIMInverseScheduler(SchedulerMixin, ConfigMixin):
                 -self.config.clip_sample_range, self.config.clip_sample_range
             )
 
-        # 5. compute "direction pointing to x_t" of formula (12) from https://arxiv.org/pdf/2010.02502.pdf
+        # 5. compute "direction pointing to x_t" of formula (12) from https://huggingface.co/papers/2010.02502
         pred_sample_direction = (1 - alpha_prod_t_prev) ** (0.5) * pred_epsilon
 
-        # 6. compute x_t without "random noise" of formula (12) from https://arxiv.org/pdf/2010.02502.pdf
+        # 6. compute x_t without "random noise" of formula (12) from https://huggingface.co/papers/2010.02502
         prev_sample = alpha_prod_t_prev ** (0.5) * pred_original_sample + pred_sample_direction
 
         if not return_dict:

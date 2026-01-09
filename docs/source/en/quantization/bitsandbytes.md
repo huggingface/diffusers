@@ -1,4 +1,4 @@
-<!--Copyright 2024 The HuggingFace Team. All rights reserved.
+<!--Copyright 2025 The HuggingFace Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -48,8 +48,8 @@ For Ada and higher-series GPUs. we recommend changing `torch_dtype` to `torch.bf
 ```py
 from diffusers import BitsAndBytesConfig as DiffusersBitsAndBytesConfig
 from transformers import BitsAndBytesConfig as TransformersBitsAndBytesConfig
-
-from diffusers import FluxTransformer2DModel
+import torch
+from diffusers import AutoModel
 from transformers import T5EncoderModel
 
 quant_config = TransformersBitsAndBytesConfig(load_in_8bit=True,)
@@ -63,7 +63,7 @@ text_encoder_2_8bit = T5EncoderModel.from_pretrained(
 
 quant_config = DiffusersBitsAndBytesConfig(load_in_8bit=True,)
 
-transformer_8bit = FluxTransformer2DModel.from_pretrained(
+transformer_8bit = AutoModel.from_pretrained(
     "black-forest-labs/FLUX.1-dev",
     subfolder="transformer",
     quantization_config=quant_config,
@@ -74,7 +74,7 @@ transformer_8bit = FluxTransformer2DModel.from_pretrained(
 By default, all the other modules such as `torch.nn.LayerNorm` are converted to `torch.float16`. You can change the data type of these modules with the `torch_dtype` parameter.
 
 ```diff
-transformer_8bit = FluxTransformer2DModel.from_pretrained(
+transformer_8bit = AutoModel.from_pretrained(
     "black-forest-labs/FLUX.1-dev",
     subfolder="transformer",
     quantization_config=quant_config,
@@ -88,6 +88,8 @@ Setting `device_map="auto"` automatically fills all available space on the GPU(s
 CPU, and finally, the hard drive (the absolute slowest option) if there is still not enough memory.
 
 ```py
+from diffusers import FluxPipeline
+
 pipe = FluxPipeline.from_pretrained(
     "black-forest-labs/FLUX.1-dev",
     transformer=transformer_8bit,
@@ -132,8 +134,8 @@ For Ada and higher-series GPUs. we recommend changing `torch_dtype` to `torch.bf
 ```py
 from diffusers import BitsAndBytesConfig as DiffusersBitsAndBytesConfig
 from transformers import BitsAndBytesConfig as TransformersBitsAndBytesConfig
-
-from diffusers import FluxTransformer2DModel
+import torch
+from diffusers import AutoModel
 from transformers import T5EncoderModel
 
 quant_config = TransformersBitsAndBytesConfig(load_in_4bit=True,)
@@ -147,7 +149,7 @@ text_encoder_2_4bit = T5EncoderModel.from_pretrained(
 
 quant_config = DiffusersBitsAndBytesConfig(load_in_4bit=True,)
 
-transformer_4bit = FluxTransformer2DModel.from_pretrained(
+transformer_4bit = AutoModel.from_pretrained(
     "black-forest-labs/FLUX.1-dev",
     subfolder="transformer",
     quantization_config=quant_config,
@@ -158,7 +160,7 @@ transformer_4bit = FluxTransformer2DModel.from_pretrained(
 By default, all the other modules such as `torch.nn.LayerNorm` are converted to `torch.float16`. You can change the data type of these modules with the `torch_dtype` parameter.
 
 ```diff
-transformer_4bit = FluxTransformer2DModel.from_pretrained(
+transformer_4bit = AutoModel.from_pretrained(
     "black-forest-labs/FLUX.1-dev",
     subfolder="transformer",
     quantization_config=quant_config,
@@ -171,6 +173,8 @@ Let's generate an image using our quantized models.
 Setting `device_map="auto"` automatically fills all available space on the GPU(s) first, then the CPU, and finally, the hard drive (the absolute slowest option) if there is still not enough memory.
 
 ```py
+from diffusers import FluxPipeline
+
 pipe = FluxPipeline.from_pretrained(
     "black-forest-labs/FLUX.1-dev",
     transformer=transformer_4bit,
@@ -202,11 +206,8 @@ Once a model is quantized, you can push the model to the Hub with the [`~ModelMi
 </hfoption>
 </hfoptions>
 
-<Tip warning={true}>
-
-Training with 8-bit and 4-bit weights are only supported for training *extra* parameters.
-
-</Tip>
+> [!WARNING]
+> Training with 8-bit and 4-bit weights are only supported for training *extra* parameters.
 
 Check your memory footprint with the `get_memory_footprint` method:
 
@@ -214,25 +215,24 @@ Check your memory footprint with the `get_memory_footprint` method:
 print(model.get_memory_footprint())
 ```
 
+Note that this only tells you the memory footprint of the model params and does _not_ estimate the inference memory requirements.
+
 Quantized models can be loaded from the [`~ModelMixin.from_pretrained`] method without needing to specify the `quantization_config` parameters:
 
 ```py
-from diffusers import FluxTransformer2DModel, BitsAndBytesConfig
+from diffusers import AutoModel, BitsAndBytesConfig
 
 quantization_config = BitsAndBytesConfig(load_in_4bit=True)
 
-model_4bit = FluxTransformer2DModel.from_pretrained(
+model_4bit = AutoModel.from_pretrained(
     "hf-internal-testing/flux.1-dev-nf4-pkg", subfolder="transformer"
 )
 ```
 
 ## 8-bit (LLM.int8() algorithm)
 
-<Tip>
-
-Learn more about the details of 8-bit quantization in this [blog post](https://huggingface.co/blog/hf-bitsandbytes-integration)!
-
-</Tip>
+> [!TIP]
+> Learn more about the details of 8-bit quantization in this [blog post](https://huggingface.co/blog/hf-bitsandbytes-integration)!
 
 This section explores some of the specific features of 8-bit models, such as outlier thresholds and skipping module conversion.
 
@@ -243,13 +243,13 @@ An "outlier" is a hidden state value greater than a certain threshold, and these
 To find the best threshold for your model, we recommend experimenting with the `llm_int8_threshold` parameter in [`BitsAndBytesConfig`]:
 
 ```py
-from diffusers import FluxTransformer2DModel, BitsAndBytesConfig
+from diffusers import AutoModel, BitsAndBytesConfig
 
 quantization_config = BitsAndBytesConfig(
     load_in_8bit=True, llm_int8_threshold=10,
 )
 
-model_8bit = FluxTransformer2DModel.from_pretrained(
+model_8bit = AutoModel.from_pretrained(
     "black-forest-labs/FLUX.1-dev",
     subfolder="transformer",
     quantization_config=quantization_config,
@@ -277,11 +277,8 @@ model_8bit = SD3Transformer2DModel.from_pretrained(
 
 ## 4-bit (QLoRA algorithm)
 
-<Tip>
-
-Learn more about its details in this [blog post](https://huggingface.co/blog/4bit-transformers-bitsandbytes).
-
-</Tip>
+> [!TIP]
+> Learn more about its details in this [blog post](https://huggingface.co/blog/4bit-transformers-bitsandbytes).
 
 This section explores some of the specific features of 4-bit models, such as changing the compute data type, using the Normal Float 4 (NF4) data type, and using nested quantization.
 
@@ -305,7 +302,7 @@ NF4 is a 4-bit data type from the [QLoRA](https://hf.co/papers/2305.14314) paper
 from diffusers import BitsAndBytesConfig as DiffusersBitsAndBytesConfig
 from transformers import BitsAndBytesConfig as TransformersBitsAndBytesConfig
 
-from diffusers import FluxTransformer2DModel
+from diffusers import AutoModel
 from transformers import T5EncoderModel
 
 quant_config = TransformersBitsAndBytesConfig(
@@ -325,7 +322,7 @@ quant_config = DiffusersBitsAndBytesConfig(
     bnb_4bit_quant_type="nf4",
 )
 
-transformer_4bit = FluxTransformer2DModel.from_pretrained(
+transformer_4bit = AutoModel.from_pretrained(
     "black-forest-labs/FLUX.1-dev",
     subfolder="transformer",
     quantization_config=quant_config,
@@ -343,7 +340,7 @@ Nested quantization is a technique that can save additional memory at no additio
 from diffusers import BitsAndBytesConfig as DiffusersBitsAndBytesConfig
 from transformers import BitsAndBytesConfig as TransformersBitsAndBytesConfig
 
-from diffusers import FluxTransformer2DModel
+from diffusers import AutoModel
 from transformers import T5EncoderModel
 
 quant_config = TransformersBitsAndBytesConfig(
@@ -363,7 +360,7 @@ quant_config = DiffusersBitsAndBytesConfig(
     bnb_4bit_use_double_quant=True,
 )
 
-transformer_4bit = FluxTransformer2DModel.from_pretrained(
+transformer_4bit = AutoModel.from_pretrained(
     "black-forest-labs/FLUX.1-dev",
     subfolder="transformer",
     quantization_config=quant_config,
@@ -379,7 +376,7 @@ Once quantized, you can dequantize a model to its original precision, but this m
 from diffusers import BitsAndBytesConfig as DiffusersBitsAndBytesConfig
 from transformers import BitsAndBytesConfig as TransformersBitsAndBytesConfig
 
-from diffusers import FluxTransformer2DModel
+from diffusers import AutoModel
 from transformers import T5EncoderModel
 
 quant_config = TransformersBitsAndBytesConfig(
@@ -399,7 +396,7 @@ quant_config = DiffusersBitsAndBytesConfig(
     bnb_4bit_use_double_quant=True,
 )
 
-transformer_4bit = FluxTransformer2DModel.from_pretrained(
+transformer_4bit = AutoModel.from_pretrained(
     "black-forest-labs/FLUX.1-dev",
     subfolder="transformer",
     quantization_config=quant_config,
@@ -410,7 +407,46 @@ text_encoder_2_4bit.dequantize()
 transformer_4bit.dequantize()
 ```
 
+## torch.compile
+
+Speed up inference with `torch.compile`. Make sure you have the latest `bitsandbytes` installed and we also recommend installing [PyTorch nightly](https://pytorch.org/get-started/locally/).
+
+<hfoptions id="bnb">
+<hfoption id="8-bit">
+```py
+torch._dynamo.config.capture_dynamic_output_shape_ops = True
+
+quant_config = DiffusersBitsAndBytesConfig(load_in_8bit=True)
+transformer_4bit = AutoModel.from_pretrained(
+    "black-forest-labs/FLUX.1-dev",
+    subfolder="transformer",
+    quantization_config=quant_config,
+    torch_dtype=torch.float16,
+)
+transformer_4bit.compile(fullgraph=True)
+```
+
+</hfoption>
+<hfoption id="4-bit">
+
+```py
+quant_config = DiffusersBitsAndBytesConfig(load_in_4bit=True)
+transformer_4bit = AutoModel.from_pretrained(
+    "black-forest-labs/FLUX.1-dev",
+    subfolder="transformer",
+    quantization_config=quant_config,
+    torch_dtype=torch.float16,
+)
+transformer_4bit.compile(fullgraph=True)
+```
+</hfoption>
+</hfoptions>
+
+On an RTX 4090 with compilation, 4-bit Flux generation completed in 25.809 seconds versus 32.570 seconds without.
+
+Check out the [benchmarking script](https://gist.github.com/sayakpaul/0db9d8eeeb3d2a0e5ed7cf0d9ca19b7d) for more details.
+
 ## Resources
 
 * [End-to-end notebook showing Flux.1 Dev inference in a free-tier Colab](https://gist.github.com/sayakpaul/c76bd845b48759e11687ac550b99d8b4)
-* [Training](https://gist.github.com/sayakpaul/05afd428bc089b47af7c016e42004527)
+* [Training](https://github.com/huggingface/diffusers/blob/8c661ea586bf11cb2440da740dd3c4cf84679b85/examples/dreambooth/README_hidream.md#using-quantization)

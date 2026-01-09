@@ -1,4 +1,4 @@
-<!--Copyright 2024 The HuggingFace Team. All rights reserved.
+<!--Copyright 2025 The HuggingFace Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -63,7 +63,7 @@ export_to_video(frames, "generated.mp4", fps=7)
 
 ## torch.compile
 
-You can gain a 20-25% speedup at the expense of slightly increased memory by [compiling](../optimization/torch2.0#torchcompile) the UNet.
+You can gain a 20-25% speedup at the expense of slightly increased memory by [compiling](../optimization/fp16#torchcompile) the UNet.
 
 ```diff
 - pipe.enable_model_cpu_offload()

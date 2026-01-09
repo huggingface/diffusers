@@ -1,4 +1,4 @@
-# Copyright 2024 The HuggingFace Team. All rights reserved.
+# Copyright 2025 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -33,22 +33,18 @@ from ...loaders import (
     TextualInversionLoaderMixin,
 )
 from ...models import AutoencoderKL, UNet2DConditionModel
-from ...models.attention_processor import (
-    AttnProcessor2_0,
-    FusedAttnProcessor2_0,
-    XFormersAttnProcessor,
-)
 from ...models.lora import adjust_lora_scale_text_encoder
 from ...schedulers import KarrasDiffusionSchedulers, LMSDiscreteScheduler
 from ...utils import (
     USE_PEFT_BACKEND,
+    deprecate,
     logging,
     replace_example_docstring,
     scale_lora_layers,
     unscale_lora_layers,
 )
 from ...utils.torch_utils import randn_tensor
-from ..pipeline_utils import DiffusionPipeline, StableDiffusionMixin
+from ..pipeline_utils import DeprecatedPipelineMixin, DiffusionPipeline, StableDiffusionMixin
 from ..stable_diffusion_xl.pipeline_output import StableDiffusionXLPipelineOutput
 
 
@@ -88,6 +84,7 @@ class ModelWrapper:
 
 
 class StableDiffusionXLKDiffusionPipeline(
+    DeprecatedPipelineMixin,
     DiffusionPipeline,
     StableDiffusionMixin,
     FromSingleFileMixin,
@@ -95,6 +92,8 @@ class StableDiffusionXLKDiffusionPipeline(
     TextualInversionLoaderMixin,
     IPAdapterMixin,
 ):
+    _last_supported_version = "0.33.1"
+
     r"""
     Pipeline for text-to-image generation using Stable Diffusion XL and k-diffusion.
 
@@ -542,22 +541,12 @@ class StableDiffusionXLKDiffusionPipeline(
 
     # Copied from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl.StableDiffusionXLPipeline.upcast_vae
     def upcast_vae(self):
-        dtype = self.vae.dtype
-        self.vae.to(dtype=torch.float32)
-        use_torch_2_0_or_xformers = isinstance(
-            self.vae.decoder.mid_block.attentions[0].processor,
-            (
-                AttnProcessor2_0,
-                XFormersAttnProcessor,
-                FusedAttnProcessor2_0,
-            ),
+        deprecate(
+            "upcast_vae",
+            "1.0.0",
+            "`upcast_vae` is deprecated. Please use `pipe.vae.to(torch.float32)`. For more details, please refer to: https://github.com/huggingface/diffusers/pull/12619#issue-3606633695.",
         )
-        # if xformers or torch_2_0 is used attention block does not need
-        # to be in float32 which can save lots of memory
-        if use_torch_2_0_or_xformers:
-            self.vae.post_quant_conv.to(dtype)
-            self.vae.decoder.conv_in.to(dtype)
-            self.vae.decoder.mid_block.to(dtype)
+        self.vae.to(dtype=torch.float32)
 
     @property
     def guidance_scale(self):
@@ -568,7 +557,7 @@ class StableDiffusionXLKDiffusionPipeline(
         return self._clip_skip
 
     # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
-    # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`
+    # of the Imagen paper: https://huggingface.co/papers/2205.11487 . `guidance_scale = 1`
     # corresponds to doing no classifier free guidance.
     @property
     def do_classifier_free_guidance(self):
@@ -629,11 +618,11 @@ class StableDiffusionXLKDiffusionPipeline(
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
             guidance_scale (`float`, *optional*, defaults to 5.0):
-                Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598).
-                `guidance_scale` is defined as `w` of equation 2. of [Imagen
-                Paper](https://arxiv.org/pdf/2205.11487.pdf). Guidance scale is enabled by setting `guidance_scale >
-                1`. Higher guidance scale encourages to generate images that are closely linked to the text `prompt`,
-                usually at the expense of lower image quality.
+                Guidance scale as defined in [Classifier-Free Diffusion
+                Guidance](https://huggingface.co/papers/2207.12598). `guidance_scale` is defined as `w` of equation 2.
+                of [Imagen Paper](https://huggingface.co/papers/2205.11487). Guidance scale is enabled by setting
+                `guidance_scale > 1`. Higher guidance scale encourages to generate images that are closely linked to
+                the text `prompt`, usually at the expense of lower image quality.
             negative_prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts not to guide the image generation. If not defined, one has to pass
                 `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
@@ -649,7 +638,7 @@ class StableDiffusionXLKDiffusionPipeline(
             latents (`torch.Tensor`, *optional*):
                 Pre-generated noisy latents, sampled from a Gaussian distribution, to be used as inputs for image
                 generation. Can be used to tweak the same generation with different prompts. If not provided, a latents
-                tensor will ge generated by sampling using the supplied random `generator`.
+                tensor will be generated by sampling using the supplied random `generator`.
             prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
                 provided, text embeddings will be generated from `prompt` input argument.

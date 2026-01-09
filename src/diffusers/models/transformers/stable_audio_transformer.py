@@ -1,4 +1,4 @@
-# Copyright 2024 Stability AI and The HuggingFace Team. All rights reserved.
+# Copyright 2025 Stability AI and The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,24 +13,19 @@
 # limitations under the License.
 
 
-from typing import Dict, Optional, Union
+from typing import Optional, Union
 
 import numpy as np
 import torch
 import torch.nn as nn
-import torch.utils.checkpoint
 
 from ...configuration_utils import ConfigMixin, register_to_config
-from ...models.attention import FeedForward
-from ...models.attention_processor import (
-    Attention,
-    AttentionProcessor,
-    StableAudioAttnProcessor2_0,
-)
-from ...models.modeling_utils import ModelMixin
-from ...models.transformers.transformer_2d import Transformer2DModelOutput
 from ...utils import logging
 from ...utils.torch_utils import maybe_allow_in_graph
+from ..attention import AttentionMixin, FeedForward
+from ..attention_processor import Attention, StableAudioAttnProcessor2_0
+from ..modeling_utils import ModelMixin
+from ..transformers.transformer_2d import Transformer2DModelOutput
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -187,7 +182,7 @@ class StableAudioDiTBlock(nn.Module):
         return hidden_states
 
 
-class StableAudioDiTModel(ModelMixin, ConfigMixin):
+class StableAudioDiTModel(ModelMixin, AttentionMixin, ConfigMixin):
     """
     The Diffusion Transformer model introduced in Stable Audio.
 
@@ -278,66 +273,6 @@ class StableAudioDiTModel(ModelMixin, ConfigMixin):
         self.postprocess_conv = nn.Conv1d(self.out_channels, self.out_channels, 1, bias=False)
 
         self.gradient_checkpointing = False
-
-    @property
-    # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.attn_processors
-    def attn_processors(self) -> Dict[str, AttentionProcessor]:
-        r"""
-        Returns:
-            `dict` of attention processors: A dictionary containing all attention processors used in the model with
-            indexed by its weight name.
-        """
-        # set recursively
-        processors = {}
-
-        def fn_recursive_add_processors(name: str, module: torch.nn.Module, processors: Dict[str, AttentionProcessor]):
-            if hasattr(module, "get_processor"):
-                processors[f"{name}.processor"] = module.get_processor()
-
-            for sub_name, child in module.named_children():
-                fn_recursive_add_processors(f"{name}.{sub_name}", child, processors)
-
-            return processors
-
-        for name, module in self.named_children():
-            fn_recursive_add_processors(name, module, processors)
-
-        return processors
-
-    # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.set_attn_processor
-    def set_attn_processor(self, processor: Union[AttentionProcessor, Dict[str, AttentionProcessor]]):
-        r"""
-        Sets the attention processor to use to compute attention.
-
-        Parameters:
-            processor (`dict` of `AttentionProcessor` or only `AttentionProcessor`):
-                The instantiated processor class or a dictionary of processor classes that will be set as the processor
-                for **all** `Attention` layers.
-
-                If `processor` is a dict, the key needs to define the path to the corresponding cross attention
-                processor. This is strongly recommended when setting trainable attention processors.
-
-        """
-        count = len(self.attn_processors.keys())
-
-        if isinstance(processor, dict) and len(processor) != count:
-            raise ValueError(
-                f"A dict of processors was passed, but the number of processors {len(processor)} does not match the"
-                f" number of attention layers: {count}. Please make sure to pass {count} processor classes."
-            )
-
-        def fn_recursive_attn_processor(name: str, module: torch.nn.Module, processor):
-            if hasattr(module, "set_processor"):
-                if not isinstance(processor, dict):
-                    module.set_processor(processor)
-                else:
-                    module.set_processor(processor.pop(f"{name}.processor"))
-
-            for sub_name, child in module.named_children():
-                fn_recursive_attn_processor(f"{name}.{sub_name}", child, processor)
-
-        for name, module in self.named_children():
-            fn_recursive_attn_processor(name, module, processor)
 
     # Copied from diffusers.models.transformers.hunyuan_transformer_2d.HunyuanDiT2DModel.set_default_attn_processor with Hunyuan->StableAudio
     def set_default_attn_processor(self):

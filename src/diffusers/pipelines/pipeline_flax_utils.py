@@ -248,9 +248,8 @@ class FlaxDiffusionPipeline(ConfigMixin, PushToHubMixin):
                       pretrained pipeline hosted on the Hub.
                     - A path to a *directory* (for example `./my_model_directory`) containing the model weights saved
                       using [`~FlaxDiffusionPipeline.save_pretrained`].
-            dtype (`str` or `jnp.dtype`, *optional*):
-                Override the default `jnp.dtype` and load the model under this dtype. If `"auto"`, the dtype is
-                automatically derived from the model's weights.
+            dtype (`jnp.dtype`, *optional*):
+                Override the default `jnp.dtype` and load the model under this dtype.
             force_download (`bool`, *optional*, defaults to `False`):
                 Whether or not to force the (re-)download of the model weights and configuration files, overriding the
                 cached versions if they exist.
@@ -277,12 +276,8 @@ class FlaxDiffusionPipeline(ConfigMixin, PushToHubMixin):
                 Can be used to overwrite load and saveable variables (the pipeline components) of the specific pipeline
                 class. The overwritten components are passed directly to the pipelines `__init__` method.
 
-        <Tip>
-
-        To use private or [gated models](https://huggingface.co/docs/hub/models-gated#gated-models), log-in with
-        `huggingface-cli login`.
-
-        </Tip>
+        > [!TIP] > To use private or [gated models](https://huggingface.co/docs/hub/models-gated#gated-models), log-in
+        with `hf > auth login`.
 
         Examples:
 
@@ -313,6 +308,11 @@ class FlaxDiffusionPipeline(ConfigMixin, PushToHubMixin):
         >>> dpm_params["scheduler"] = dpmpp_state
         ```
         """
+        logger.warning(
+            "Flax classes are deprecated and will be removed in Diffusers v1.0.0. We "
+            "recommend migrating to PyTorch classes or pinning your version of Diffusers."
+        )
+
         cache_dir = kwargs.pop("cache_dir", None)
         proxies = kwargs.pop("proxies", None)
         local_files_only = kwargs.pop("local_files_only", False)
@@ -469,7 +469,7 @@ class FlaxDiffusionPipeline(ConfigMixin, PushToHubMixin):
                 class_obj = import_flax_or_no_model(pipeline_module, class_name)
 
                 importable_classes = ALL_IMPORTABLE_CLASSES
-                class_candidates = {c: class_obj for c in importable_classes.keys()}
+                class_candidates = dict.fromkeys(importable_classes.keys(), class_obj)
             else:
                 # else we just import it from the library.
                 library = importlib.import_module(library_name)

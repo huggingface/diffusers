@@ -1,4 +1,4 @@
-# Copyright 2024 The HuggingFace Team. All rights reserved.
+# Copyright 2025 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -20,7 +20,7 @@ import jax.numpy as jnp
 from flax.core.frozen_dict import FrozenDict
 
 from ...configuration_utils import ConfigMixin, flax_register_to_config
-from ...utils import BaseOutput
+from ...utils import BaseOutput, logging
 from ..embeddings_flax import FlaxTimestepEmbedding, FlaxTimesteps
 from ..modeling_flax_utils import FlaxModelMixin
 from .unet_2d_blocks_flax import (
@@ -30,6 +30,9 @@ from .unet_2d_blocks_flax import (
     FlaxUNetMidBlock2DCrossAttn,
     FlaxUpBlock2D,
 )
+
+
+logger = logging.get_logger(__name__)
 
 
 @flax.struct.dataclass
@@ -94,7 +97,7 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
             Whether to flip the sin to cos in the time embedding.
         freq_shift (`int`, *optional*, defaults to 0): The frequency shift to apply to the time embedding.
         use_memory_efficient_attention (`bool`, *optional*, defaults to `False`):
-            Enable memory efficient attention as described [here](https://arxiv.org/abs/2112.05682).
+            Enable memory efficient attention as described [here](https://huggingface.co/papers/2112.05682).
         split_head_dim (`bool`, *optional*, defaults to `False`):
             Whether to split the head dimension into a new axis for the self-attention computation. In most cases,
             enabling this flag should speed up the computation for Stable Diffusion 2.x and Stable Diffusion XL.
@@ -163,6 +166,11 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
         return self.init(rngs, sample, timesteps, encoder_hidden_states, added_cond_kwargs)["params"]
 
     def setup(self) -> None:
+        logger.warning(
+            "Flax classes are deprecated and will be removed in Diffusers v1.0.0. We "
+            "recommend migrating to PyTorch classes or pinning your version of Diffusers."
+        )
+
         block_out_channels = self.block_out_channels
         time_embed_dim = block_out_channels[0] * 4
 

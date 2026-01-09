@@ -1,4 +1,4 @@
-# Copyright 2024 The HuggingFace Team. All rights reserved.
+# Copyright 2025 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -35,8 +35,8 @@ from ...utils import (
     logging,
     replace_example_docstring,
 )
-from ...utils.torch_utils import randn_tensor
-from ..pipeline_utils import AudioPipelineOutput, DiffusionPipeline, StableDiffusionMixin
+from ...utils.torch_utils import empty_device_cache, get_device, randn_tensor
+from ..pipeline_utils import AudioPipelineOutput, DeprecatedPipelineMixin, DiffusionPipeline, StableDiffusionMixin
 
 
 if is_librosa_available():
@@ -76,7 +76,8 @@ EXAMPLE_DOC_STRING = """
 """
 
 
-class MusicLDMPipeline(DiffusionPipeline, StableDiffusionMixin):
+class MusicLDMPipeline(DeprecatedPipelineMixin, DiffusionPipeline, StableDiffusionMixin):
+    _last_supported_version = "0.33.1"
     r"""
     Pipeline for text-to-audio generation using MusicLDM.
 
@@ -297,7 +298,7 @@ class MusicLDMPipeline(DiffusionPipeline, StableDiffusionMixin):
     def prepare_extra_step_kwargs(self, generator, eta):
         # prepare extra kwargs for the scheduler step, since not all schedulers have the same signature
         # eta (η) is only used with the DDIMScheduler, it will be ignored for other schedulers.
-        # eta corresponds to η in DDIM paper: https://arxiv.org/abs/2010.02502
+        # eta corresponds to η in DDIM paper: https://huggingface.co/papers/2010.02502
         # and should be between [0, 1]
 
         accepts_eta = "eta" in set(inspect.signature(self.scheduler.step).parameters.keys())
@@ -396,20 +397,22 @@ class MusicLDMPipeline(DiffusionPipeline, StableDiffusionMixin):
     def enable_model_cpu_offload(self, gpu_id=0):
         r"""
         Offloads all models to CPU using accelerate, reducing memory usage with a low impact on performance. Compared
-        to `enable_sequential_cpu_offload`, this method moves one whole model at a time to the GPU when its `forward`
-        method is called, and the model remains in GPU until the next model runs. Memory savings are lower than with
-        `enable_sequential_cpu_offload`, but performance is much better due to the iterative execution of the `unet`.
+        to `enable_sequential_cpu_offload`, this method moves one whole model at a time to the accelerator when its
+        `forward` method is called, and the model remains in accelerator until the next model runs. Memory savings are
+        lower than with `enable_sequential_cpu_offload`, but performance is much better due to the iterative execution
+        of the `unet`.
         """
         if is_accelerate_available() and is_accelerate_version(">=", "0.17.0.dev0"):
             from accelerate import cpu_offload_with_hook
         else:
             raise ImportError("`enable_model_cpu_offload` requires `accelerate v0.17.0` or higher.")
 
-        device = torch.device(f"cuda:{gpu_id}")
+        device_type = get_device()
+        device = torch.device(f"{device_type}:{gpu_id}")
 
         if self.device.type != "cpu":
             self.to("cpu", silence_dtype_warnings=True)
-            torch.cuda.empty_cache()  # otherwise we don't see the memory savings (but they probably exist)
+            empty_device_cache()  # otherwise we don't see the memory savings (but they probably exist)
 
         model_sequence = [
             self.text_encoder.text_model,
@@ -472,8 +475,8 @@ class MusicLDMPipeline(DiffusionPipeline, StableDiffusionMixin):
                 and the input text. This scoring ranks the generated waveforms based on their cosine similarity to text
                 input in the joint text-audio embedding space.
             eta (`float`, *optional*, defaults to 0.0):
-                Corresponds to parameter eta (η) from the [DDIM](https://arxiv.org/abs/2010.02502) paper. Only applies
-                to the [`~schedulers.DDIMScheduler`], and is ignored in other schedulers.
+                Corresponds to parameter eta (η) from the [DDIM](https://huggingface.co/papers/2010.02502) paper. Only
+                applies to the [`~schedulers.DDIMScheduler`], and is ignored in other schedulers.
             generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
                 A [`torch.Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make
                 generation deterministic.
@@ -548,7 +551,7 @@ class MusicLDMPipeline(DiffusionPipeline, StableDiffusionMixin):
 
         device = self._execution_device
         # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
-        # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`
+        # of the Imagen paper: https://huggingface.co/papers/2205.11487 . `guidance_scale = 1`
         # corresponds to doing no classifier free guidance.
         do_classifier_free_guidance = guidance_scale > 1.0
 

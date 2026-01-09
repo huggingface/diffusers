@@ -1,4 +1,4 @@
-# Copyright 2024 Katherine Crowson and The HuggingFace Team. All rights reserved.
+# Copyright 2025 Katherine Crowson and The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -52,8 +52,8 @@ class FlaxEulerDiscreteSchedulerOutput(FlaxSchedulerOutput):
 
 class FlaxEulerDiscreteScheduler(FlaxSchedulerMixin, ConfigMixin):
     """
-    Euler scheduler (Algorithm 2) from Karras et al. (2022) https://arxiv.org/abs/2206.00364. . Based on the original
-    k-diffusion implementation by Katherine Crowson:
+    Euler scheduler (Algorithm 2) from Karras et al. (2022) https://huggingface.co/papers/2206.00364. . Based on the
+    original k-diffusion implementation by Katherine Crowson:
     https://github.com/crowsonkb/k-diffusion/blob/481677d114f6ea445aa009cf5bd7a9cdee909e47/k_diffusion/sampling.py#L51
 
 
@@ -74,7 +74,7 @@ class FlaxEulerDiscreteScheduler(FlaxSchedulerMixin, ConfigMixin):
         prediction_type (`str`, default `epsilon`, optional):
             prediction type of the scheduler function, one of `epsilon` (predicting the noise of the diffusion
             process), `sample` (directly predicting the noisy sample`) or `v_prediction` (see section 2.4
-            https://imagen.research.google/video/paper.pdf)
+            https://huggingface.co/papers/2210.02303)
         dtype (`jnp.dtype`, *optional*, defaults to `jnp.float32`):
             the `dtype` used for params and computation.
     """

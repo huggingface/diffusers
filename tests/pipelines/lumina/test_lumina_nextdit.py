@@ -10,16 +10,15 @@ from diffusers import (
     FlowMatchEulerDiscreteScheduler,
     LuminaNextDiT2DModel,
     LuminaPipeline,
-    LuminaText2ImgPipeline,
 )
-from diffusers.utils.testing_utils import (
+
+from ...testing_utils import (
     backend_empty_cache,
     numpy_cosine_similarity_distance,
     require_torch_accelerator,
     slow,
     torch_device,
 )
-
 from ..test_pipelines_common import PipelineTesterMixin
 
 
@@ -104,12 +103,6 @@ class LuminaPipelineFastTests(unittest.TestCase, PipelineTesterMixin):
     @unittest.skip("xformers attention processor does not exist for Lumina")
     def test_xformers_attention_forwardGenerator_pass(self):
         pass
-
-    def test_deprecation_raises_warning(self):
-        with self.assertWarns(FutureWarning) as warning:
-            _ = LuminaText2ImgPipeline(**self.get_dummy_components()).to(torch_device)
-        warning_message = str(warning.warnings[0].message)
-        assert "renamed to `LuminaPipeline`" in warning_message
 
 
 @slow

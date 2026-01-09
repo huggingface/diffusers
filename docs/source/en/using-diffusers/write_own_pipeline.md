@@ -1,4 +1,4 @@
-<!--Copyright 2024 The HuggingFace Team. All rights reserved.
+<!--Copyright 2025 The HuggingFace Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -110,11 +110,8 @@ Stable Diffusion is a text-to-image *latent diffusion* model. It is called a lat
 
 As you can see, this is already more complex than the DDPM pipeline which only contains a UNet model. The Stable Diffusion model has three separate pretrained models.
 
-<Tip>
-
-💡 Read the [How does Stable Diffusion work?](https://huggingface.co/blog/stable_diffusion#how-does-stable-diffusion-work) blog for more details about how the VAE, UNet, and text encoder models work.
-
-</Tip>
+> [!TIP]
+> 💡 Read the [How does Stable Diffusion work?](https://huggingface.co/blog/stable_diffusion#how-does-stable-diffusion-work) blog for more details about how the VAE, UNet, and text encoder models work.
 
 Now that you know what you need for the Stable Diffusion pipeline, load all these components with the [`~ModelMixin.from_pretrained`] method. You can find them in the pretrained [`stable-diffusion-v1-5/stable-diffusion-v1-5`](https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5) checkpoint, and each component is stored in a separate subfolder:
 
@@ -155,11 +152,8 @@ To speed up inference, move the models to a GPU since, unlike the scheduler, the
 
 The next step is to tokenize the text to generate embeddings. The text is used to condition the UNet model and steer the diffusion process towards something that resembles the input prompt.
 
-<Tip>
-
-💡 The `guidance_scale` parameter determines how much weight should be given to the prompt when generating an image.
-
-</Tip>
+> [!TIP]
+> 💡 The `guidance_scale` parameter determines how much weight should be given to the prompt when generating an image.
 
 Feel free to choose any prompt you like if you want to generate something else!
 
@@ -202,15 +196,12 @@ Let's concatenate the conditional and unconditional embeddings into a batch to a
 
 Next, generate some initial random noise as a starting point for the diffusion process. This is the latent representation of the image, and it'll be gradually denoised. At this point, the `latent` image is smaller than the final image size but that's okay though because the model will transform it into the final 512x512 image dimensions later.
 
-<Tip>
-
-💡 The height and width are divided by 8 because the `vae` model has 3 down-sampling layers. You can check by running the following:
-
-```py
-2 ** (len(vae.config.block_out_channels) - 1) == 8
-```
-
-</Tip>
+> [!TIP]
+> 💡 The height and width are divided by 8 because the `vae` model has 3 down-sampling layers. You can check by running the following:
+>
+> ```py
+> 2 ** (len(vae.config.block_out_channels) - 1) == 8
+> ```
 
 ```py
 >>> latents = torch.randn(
@@ -289,5 +280,5 @@ This is really what 🧨 Diffusers is designed for: to make it intuitive and eas
 
 For your next steps, feel free to:
 
-* Learn how to [build and contribute a pipeline](../using-diffusers/contribute_pipeline) to 🧨 Diffusers. We can't wait and see what you'll come up with!
+* Learn how to [build and contribute a pipeline](../conceptual/contribution) to 🧨 Diffusers. We can't wait and see what you'll come up with!
 * Explore [existing pipelines](../api/pipelines/overview) in the library, and see if you can deconstruct and build a pipeline from scratch using the models and schedulers separately.

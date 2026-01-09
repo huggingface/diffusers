@@ -535,7 +535,7 @@ def main(args):
     if args.report_to == "wandb" and args.hub_token is not None:
         raise ValueError(
             "You cannot use both --report_to=wandb and --hub_token due to a security risk of exposing your token."
-            " Please use `huggingface-cli login` to authenticate with the Hub."
+            " Please use `hf auth login` to authenticate with the Hub."
         )
 
     logging_dir = Path(args.output_dir, args.logging_dir)
@@ -759,7 +759,7 @@ def main(args):
         unet, text_encoder, optimizer, train_dataloader
     )
 
-    # For mixed precision training we cast all non-trainable weigths (vae, non-lora text_encoder and non-lora unet) to half-precision
+    # For mixed precision training we cast all non-trainable weights (vae, non-lora text_encoder and non-lora unet) to half-precision
     # as these weights are only used for inference, keeping weights in full precision is not required.
     weight_dtype = torch.float32
     if accelerator.mixed_precision == "fp16":

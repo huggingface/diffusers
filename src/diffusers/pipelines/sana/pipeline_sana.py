@@ -1,4 +1,4 @@
-# Copyright 2024 PixArt-Sigma Authors and The HuggingFace Team. All rights reserved.
+# Copyright 2025 SANA Authors and The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -30,6 +30,7 @@ from ...schedulers import DPMSolverMultistepScheduler
 from ...utils import (
     BACKENDS_MAPPING,
     USE_PEFT_BACKEND,
+    deprecate,
     is_bs4_available,
     is_ftfy_available,
     is_torch_xla_available,
@@ -38,7 +39,7 @@ from ...utils import (
     scale_lora_layers,
     unscale_lora_layers,
 )
-from ...utils.torch_utils import randn_tensor
+from ...utils.torch_utils import get_device, is_torch_version, randn_tensor
 from ..pipeline_utils import DiffusionPipeline
 from ..pixart_alpha.pipeline_pixart_alpha import (
     ASPECT_RATIO_512_BIN,
@@ -224,6 +225,12 @@ class SanaPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
         Enable sliced VAE decoding. When this option is enabled, the VAE will split the input tensor in slices to
         compute decoding in several steps. This is useful to save some memory and allow larger batch sizes.
         """
+        depr_message = f"Calling `enable_vae_slicing()` on a `{self.__class__.__name__}` is deprecated and this method will be removed in a future version. Please use `pipe.vae.enable_slicing()`."
+        deprecate(
+            "enable_vae_slicing",
+            "0.40.0",
+            depr_message,
+        )
         self.vae.enable_slicing()
 
     def disable_vae_slicing(self):
@@ -231,6 +238,12 @@ class SanaPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
         Disable sliced VAE decoding. If `enable_vae_slicing` was previously enabled, this method will go back to
         computing decoding in one step.
         """
+        depr_message = f"Calling `disable_vae_slicing()` on a `{self.__class__.__name__}` is deprecated and this method will be removed in a future version. Please use `pipe.vae.disable_slicing()`."
+        deprecate(
+            "disable_vae_slicing",
+            "0.40.0",
+            depr_message,
+        )
         self.vae.disable_slicing()
 
     def enable_vae_tiling(self):
@@ -239,6 +252,12 @@ class SanaPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
         compute decoding and encoding in several steps. This is useful for saving a large amount of memory and to allow
         processing larger images.
         """
+        depr_message = f"Calling `enable_vae_tiling()` on a `{self.__class__.__name__}` is deprecated and this method will be removed in a future version. Please use `pipe.vae.enable_tiling()`."
+        deprecate(
+            "enable_vae_tiling",
+            "0.40.0",
+            depr_message,
+        )
         self.vae.enable_tiling()
 
     def disable_vae_tiling(self):
@@ -246,6 +265,12 @@ class SanaPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
         Disable tiled VAE decoding. If `enable_vae_tiling` was previously enabled, this method will go back to
         computing decoding in one step.
         """
+        depr_message = f"Calling `disable_vae_tiling()` on a `{self.__class__.__name__}` is deprecated and this method will be removed in a future version. Please use `pipe.vae.disable_tiling()`."
+        deprecate(
+            "disable_vae_tiling",
+            "0.40.0",
+            depr_message,
+        )
         self.vae.disable_tiling()
 
     def _get_gemma_prompt_embeds(
@@ -440,7 +465,7 @@ class SanaPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
     def prepare_extra_step_kwargs(self, generator, eta):
         # prepare extra kwargs for the scheduler step, since not all schedulers have the same signature
         # eta (η) is only used with the DDIMScheduler, it will be ignored for other schedulers.
-        # eta corresponds to η in DDIM paper: https://arxiv.org/abs/2010.02502
+        # eta corresponds to η in DDIM paper: https://huggingface.co/papers/2010.02502
         # and should be between [0, 1]
 
         accepts_eta = "eta" in set(inspect.signature(self.scheduler.step).parameters.keys())
@@ -600,7 +625,7 @@ class SanaPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
         # &amp
         caption = re.sub(r"&amp", "", caption)
 
-        # ip adresses:
+        # ip addresses:
         caption = re.sub(r"\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}", " ", caption)
 
         # article ids:
@@ -761,11 +786,11 @@ class SanaPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
                 their `set_timesteps` method. If not defined, the default behavior when `num_inference_steps` is passed
                 will be used.
             guidance_scale (`float`, *optional*, defaults to 4.5):
-                Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598).
-                `guidance_scale` is defined as `w` of equation 2. of [Imagen
-                Paper](https://arxiv.org/pdf/2205.11487.pdf). Guidance scale is enabled by setting `guidance_scale >
-                1`. Higher guidance scale encourages to generate images that are closely linked to the text `prompt`,
-                usually at the expense of lower image quality.
+                Guidance scale as defined in [Classifier-Free Diffusion
+                Guidance](https://huggingface.co/papers/2207.12598). `guidance_scale` is defined as `w` of equation 2.
+                of [Imagen Paper](https://huggingface.co/papers/2205.11487). Guidance scale is enabled by setting
+                `guidance_scale > 1`. Higher guidance scale encourages to generate images that are closely linked to
+                the text `prompt`, usually at the expense of lower image quality.
             num_images_per_prompt (`int`, *optional*, defaults to 1):
                 The number of images to generate per prompt.
             height (`int`, *optional*, defaults to self.unet.config.sample_size):
@@ -773,15 +798,15 @@ class SanaPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
             width (`int`, *optional*, defaults to self.unet.config.sample_size):
                 The width in pixels of the generated image.
             eta (`float`, *optional*, defaults to 0.0):
-                Corresponds to parameter eta (η) in the DDIM paper: https://arxiv.org/abs/2010.02502. Only applies to
-                [`schedulers.DDIMScheduler`], will be ignored for others.
+                Corresponds to parameter eta (η) in the DDIM paper: https://huggingface.co/papers/2010.02502. Only
+                applies to [`schedulers.DDIMScheduler`], will be ignored for others.
             generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
                 One or a list of [torch generator(s)](https://pytorch.org/docs/stable/generated/torch.Generator.html)
                 to make generation deterministic.
             latents (`torch.Tensor`, *optional*):
                 Pre-generated noisy latents, sampled from a Gaussian distribution, to be used as inputs for image
                 generation. Can be used to tweak the same generation with different prompts. If not provided, a latents
-                tensor will ge generated by sampling using the supplied random `generator`.
+                tensor will be generated by sampling using the supplied random `generator`.
             prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
                 provided, text embeddings will be generated from `prompt` input argument.
@@ -982,9 +1007,15 @@ class SanaPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
             image = latents
         else:
             latents = latents.to(self.vae.dtype)
+            torch_accelerator_module = getattr(torch, get_device(), torch.cuda)
+            oom_error = (
+                torch.OutOfMemoryError
+                if is_torch_version(">=", "2.5.0")
+                else torch_accelerator_module.OutOfMemoryError
+            )
             try:
                 image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False)[0]
-            except torch.cuda.OutOfMemoryError as e:
+            except oom_error as e:
                 warnings.warn(
                     f"{e}. \n"
                     f"Try to use VAE tiling for large images. For example: \n"

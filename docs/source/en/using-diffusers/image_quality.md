@@ -1,4 +1,4 @@
-<!--Copyright 2024 The HuggingFace Team. All rights reserved.
+<!--Copyright 2025 The HuggingFace Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -10,13 +10,7 @@ an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express o
 specific language governing permissions and limitations under the License.
 -->
 
-# Controlling image quality
-
-The components of a diffusion model, like the UNet and scheduler, can be optimized to improve the quality of generated images leading to better details. These techniques are especially useful if you don't have the resources to simply use a larger model for inference. You can enable these techniques during inference without any additional training.
-
-This guide will show you how to turn these techniques on in your pipeline and how to configure them to improve the quality of your generated images.
-
-## Details
+# FreeU
 
 [FreeU](https://hf.co/papers/2309.11497) improves image details by rebalancing the UNet's backbone and skip connection weights. The skip connections can cause the model to overlook some of the backbone semantics which may lead to unnatural image details in the generated image. This technique does not require any additional training and can be applied on the fly during inference for tasks like image-to-image and text-to-video.
 
@@ -139,7 +133,7 @@ export_to_video(video_frames, "teddy_bear.mp4", fps=10)
 </hfoption>
 </hfoptions>
 
-Call the [`pipelines.StableDiffusionMixin.disable_freeu`] method to disable FreeU.
+Call the [`~pipelines.StableDiffusionMixin.disable_freeu`] method to disable FreeU.
 
 ```py
 pipeline.disable_freeu()

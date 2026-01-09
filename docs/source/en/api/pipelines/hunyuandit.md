@@ -1,4 +1,4 @@
-<!--Copyright 2024 The HuggingFace Team and Tencent Hunyuan Team. All rights reserved.
+<!--Copyright 2025 The HuggingFace Team and Tencent Hunyuan Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -13,7 +13,7 @@ specific language governing permissions and limitations under the License.
 # Hunyuan-DiT
 ![chinese elements understanding](https://github.com/gnobitab/diffusers-hunyuan/assets/1157982/39b99036-c3cb-4f16-bb1a-40ec25eda573)
 
-[Hunyuan-DiT : A Powerful Multi-Resolution Diffusion Transformer with Fine-Grained Chinese Understanding](https://arxiv.org/abs/2405.08748) from Tencent Hunyuan.
+[Hunyuan-DiT : A Powerful Multi-Resolution Diffusion Transformer with Fine-Grained Chinese Understanding](https://huggingface.co/papers/2405.08748) from Tencent Hunyuan.
 
 The abstract from the paper is:
 
@@ -28,17 +28,11 @@ HunyuanDiT has the following components:
 * It uses a diffusion transformer as the backbone
 * It combines two text encoders, a bilingual CLIP and a multilingual T5 encoder
 
-<Tip>
+> [!TIP]
+> Make sure to check out the Schedulers [guide](../../using-diffusers/schedulers) to learn how to explore the tradeoff between scheduler speed and quality, and see the [reuse components across pipelines](../../using-diffusers/loading#reuse-a-pipeline) section to learn how to efficiently load the same components into multiple pipelines.
 
-Make sure to check out the Schedulers [guide](../../using-diffusers/schedulers) to learn how to explore the tradeoff between scheduler speed and quality, and see the [reuse components across pipelines](../../using-diffusers/loading#reuse-a-pipeline) section to learn how to efficiently load the same components into multiple pipelines.
-
-</Tip>
-
-<Tip>
-
-You can further improve generation quality by passing the generated image from [`HungyuanDiTPipeline`] to the [SDXL refiner](../../using-diffusers/sdxl#base-to-refiner-model) model.
-
-</Tip>
+> [!TIP]
+> You can further improve generation quality by passing the generated image from [`HungyuanDiTPipeline`] to the [SDXL refiner](../../using-diffusers/sdxl#base-to-refiner-model) model.
 
 ## Optimization
 

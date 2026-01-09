@@ -1,4 +1,4 @@
-# Copyright 2024 OmniGen team and The HuggingFace Team. All rights reserved.
+# Copyright 2025 OmniGen team and The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -23,11 +23,13 @@ from ...image_processor import PipelineImageInput, VaeImageProcessor
 from ...models.autoencoders import AutoencoderKL
 from ...models.transformers import OmniGenTransformer2DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
-from ...utils import is_torch_xla_available, logging, replace_example_docstring
+from ...utils import deprecate, is_torch_xla_available, is_torchvision_available, logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
-from .processor_omnigen import OmniGenMultiModalProcessor
 
+
+if is_torchvision_available():
+    from .processor_omnigen import OmniGenMultiModalProcessor
 
 if is_torch_xla_available():
     XLA_AVAILABLE = True
@@ -120,7 +122,7 @@ class OmniGenPipeline(
     r"""
     The OmniGen pipeline for multimodal-to-image generation.
 
-    Reference: https://arxiv.org/pdf/2409.11340
+    Reference: https://huggingface.co/papers/2409.11340
 
     Args:
         transformer ([`OmniGenTransformer2DModel`]):
@@ -176,7 +178,7 @@ class OmniGenPipeline(
         get the continue embedding of input images by VAE
 
         Args:
-            input_pixel_values: normlized pixel of input images
+            input_pixel_values: normalized pixel of input images
             device:
         Returns: torch.Tensor
         """
@@ -233,6 +235,12 @@ class OmniGenPipeline(
         Enable sliced VAE decoding. When this option is enabled, the VAE will split the input tensor in slices to
         compute decoding in several steps. This is useful to save some memory and allow larger batch sizes.
         """
+        depr_message = f"Calling `enable_vae_slicing()` on a `{self.__class__.__name__}` is deprecated and this method will be removed in a future version. Please use `pipe.vae.enable_slicing()`."
+        deprecate(
+            "enable_vae_slicing",
+            "0.40.0",
+            depr_message,
+        )
         self.vae.enable_slicing()
 
     def disable_vae_slicing(self):
@@ -240,6 +248,12 @@ class OmniGenPipeline(
         Disable sliced VAE decoding. If `enable_vae_slicing` was previously enabled, this method will go back to
         computing decoding in one step.
         """
+        depr_message = f"Calling `disable_vae_slicing()` on a `{self.__class__.__name__}` is deprecated and this method will be removed in a future version. Please use `pipe.vae.disable_slicing()`."
+        deprecate(
+            "disable_vae_slicing",
+            "0.40.0",
+            depr_message,
+        )
         self.vae.disable_slicing()
 
     def enable_vae_tiling(self):
@@ -248,6 +262,12 @@ class OmniGenPipeline(
         compute decoding and encoding in several steps. This is useful for saving a large amount of memory and to allow
         processing larger images.
         """
+        depr_message = f"Calling `enable_vae_tiling()` on a `{self.__class__.__name__}` is deprecated and this method will be removed in a future version. Please use `pipe.vae.enable_tiling()`."
+        deprecate(
+            "enable_vae_tiling",
+            "0.40.0",
+            depr_message,
+        )
         self.vae.enable_tiling()
 
     def disable_vae_tiling(self):
@@ -255,6 +275,12 @@ class OmniGenPipeline(
         Disable tiled VAE decoding. If `enable_vae_tiling` was previously enabled, this method will go back to
         computing decoding in one step.
         """
+        depr_message = f"Calling `disable_vae_tiling()` on a `{self.__class__.__name__}` is deprecated and this method will be removed in a future version. Please use `pipe.vae.disable_tiling()`."
+        deprecate(
+            "disable_vae_tiling",
+            "0.40.0",
+            depr_message,
+        )
         self.vae.disable_tiling()
 
     # Copied from diffusers.pipelines.stable_diffusion_3.pipeline_stable_diffusion_3.StableDiffusion3Pipeline.prepare_latents
@@ -346,13 +372,13 @@ class OmniGenPipeline(
                 in their `set_timesteps` method. If not defined, the default behavior when `num_inference_steps` is
                 passed will be used. Must be in descending order.
             guidance_scale (`float`, *optional*, defaults to 2.5):
-                Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598).
-                `guidance_scale` is defined as `w` of equation 2. of [Imagen
-                Paper](https://arxiv.org/pdf/2205.11487.pdf). Guidance scale is enabled by setting `guidance_scale >
-                1`. Higher guidance scale encourages to generate images that are closely linked to the text `prompt`,
-                usually at the expense of lower image quality.
+                Guidance scale as defined in [Classifier-Free Diffusion
+                Guidance](https://huggingface.co/papers/2207.12598). `guidance_scale` is defined as `w` of equation 2.
+                of [Imagen Paper](https://huggingface.co/papers/2205.11487). Guidance scale is enabled by setting
+                `guidance_scale > 1`. Higher guidance scale encourages to generate images that are closely linked to
+                the text `prompt`, usually at the expense of lower image quality.
             img_guidance_scale (`float`, *optional*, defaults to 1.6):
-                Defined as equation 3 in [Instrucpix2pix](https://arxiv.org/pdf/2211.09800).
+                Defined as equation 3 in [Instrucpix2pix](https://huggingface.co/papers/2211.09800).
             use_input_image_size_as_output (bool, defaults to False):
                 whether to use the input image size as the output image size, which can be used for single-image input,
                 e.g., image editing task
@@ -364,7 +390,7 @@ class OmniGenPipeline(
             latents (`torch.Tensor`, *optional*):
                 Pre-generated noisy latents, sampled from a Gaussian distribution, to be used as inputs for image
                 generation. Can be used to tweak the same generation with different prompts. If not provided, a latents
-                tensor will ge generated by sampling using the supplied random `generator`.
+                tensor will be generated by sampling using the supplied random `generator`.
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generate image. Choose between
                 [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.

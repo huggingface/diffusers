@@ -1,4 +1,4 @@
-# Copyright 2024 The HuggingFace Team. All rights reserved.
+# Copyright 2025 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -116,6 +116,7 @@ class VaeImageProcessor(ConfigMixin):
         vae_scale_factor: int = 8,
         vae_latent_channels: int = 4,
         resample: str = "lanczos",
+        reducing_gap: int = None,
         do_normalize: bool = True,
         do_binarize: bool = False,
         do_convert_rgb: bool = False,
@@ -408,7 +409,7 @@ class VaeImageProcessor(ConfigMixin):
         src_w = width if ratio < src_ratio else image.width * height // image.height
         src_h = height if ratio >= src_ratio else image.height * width // image.width
 
-        resized = image.resize((src_w, src_h), resample=PIL_INTERPOLATION["lanczos"])
+        resized = image.resize((src_w, src_h), resample=PIL_INTERPOLATION[self.config.resample])
         res = Image.new("RGB", (width, height))
         res.paste(resized, box=(width // 2 - src_w // 2, height // 2 - src_h // 2))
 
@@ -459,7 +460,7 @@ class VaeImageProcessor(ConfigMixin):
         src_w = width if ratio > src_ratio else image.width * height // image.height
         src_h = height if ratio <= src_ratio else image.height * width // image.width
 
-        resized = image.resize((src_w, src_h), resample=PIL_INTERPOLATION["lanczos"])
+        resized = image.resize((src_w, src_h), resample=PIL_INTERPOLATION[self.config.resample])
         res = Image.new("RGB", (width, height))
         res.paste(resized, box=(width // 2 - src_w // 2, height // 2 - src_h // 2))
         return res
@@ -498,7 +499,11 @@ class VaeImageProcessor(ConfigMixin):
             raise ValueError(f"Only PIL image input is supported for resize_mode {resize_mode}")
         if isinstance(image, PIL.Image.Image):
             if resize_mode == "default":
-                image = image.resize((width, height), resample=PIL_INTERPOLATION[self.config.resample])
+                image = image.resize(
+                    (width, height),
+                    resample=PIL_INTERPOLATION[self.config.resample],
+                    reducing_gap=self.config.reducing_gap,
+                )
             elif resize_mode == "fill":
                 image = self._resize_and_fill(image, width, height)
             elif resize_mode == "crop":
@@ -518,6 +523,7 @@ class VaeImageProcessor(ConfigMixin):
                 size=(height, width),
             )
             image = self.pt_to_numpy(image)
+
         return image
 
     def binarize(self, image: PIL.Image.Image) -> PIL.Image.Image:
@@ -833,6 +839,137 @@ class VaeImageProcessor(ConfigMixin):
         return image
 
 
+class InpaintProcessor(ConfigMixin):
+    """
+    Image processor for inpainting image and mask.
+    """
+
+    config_name = CONFIG_NAME
+
+    @register_to_config
+    def __init__(
+        self,
+        do_resize: bool = True,
+        vae_scale_factor: int = 8,
+        vae_latent_channels: int = 4,
+        resample: str = "lanczos",
+        reducing_gap: int = None,
+        do_normalize: bool = True,
+        do_binarize: bool = False,
+        do_convert_grayscale: bool = False,
+        mask_do_normalize: bool = False,
+        mask_do_binarize: bool = True,
+        mask_do_convert_grayscale: bool = True,
+    ):
+        super().__init__()
+
+        self._image_processor = VaeImageProcessor(
+            do_resize=do_resize,
+            vae_scale_factor=vae_scale_factor,
+            vae_latent_channels=vae_latent_channels,
+            resample=resample,
+            reducing_gap=reducing_gap,
+            do_normalize=do_normalize,
+            do_binarize=do_binarize,
+            do_convert_grayscale=do_convert_grayscale,
+        )
+        self._mask_processor = VaeImageProcessor(
+            do_resize=do_resize,
+            vae_scale_factor=vae_scale_factor,
+            vae_latent_channels=vae_latent_channels,
+            resample=resample,
+            reducing_gap=reducing_gap,
+            do_normalize=mask_do_normalize,
+            do_binarize=mask_do_binarize,
+            do_convert_grayscale=mask_do_convert_grayscale,
+        )
+
+    def preprocess(
+        self,
+        image: PIL.Image.Image,
+        mask: PIL.Image.Image = None,
+        height: int = None,
+        width: int = None,
+        padding_mask_crop: Optional[int] = None,
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        """
+        Preprocess the image and mask.
+        """
+        if mask is None and padding_mask_crop is not None:
+            raise ValueError("mask must be provided if padding_mask_crop is provided")
+
+        # if mask is None, same behavior as regular image processor
+        if mask is None:
+            return self._image_processor.preprocess(image, height=height, width=width)
+
+        if padding_mask_crop is not None:
+            crops_coords = self._image_processor.get_crop_region(mask, width, height, pad=padding_mask_crop)
+            resize_mode = "fill"
+        else:
+            crops_coords = None
+            resize_mode = "default"
+
+        processed_image = self._image_processor.preprocess(
+            image,
+            height=height,
+            width=width,
+            crops_coords=crops_coords,
+            resize_mode=resize_mode,
+        )
+
+        processed_mask = self._mask_processor.preprocess(
+            mask,
+            height=height,
+            width=width,
+            resize_mode=resize_mode,
+            crops_coords=crops_coords,
+        )
+
+        if crops_coords is not None:
+            postprocessing_kwargs = {
+                "crops_coords": crops_coords,
+                "original_image": image,
+                "original_mask": mask,
+            }
+        else:
+            postprocessing_kwargs = {
+                "crops_coords": None,
+                "original_image": None,
+                "original_mask": None,
+            }
+
+        return processed_image, processed_mask, postprocessing_kwargs
+
+    def postprocess(
+        self,
+        image: torch.Tensor,
+        output_type: str = "pil",
+        original_image: Optional[PIL.Image.Image] = None,
+        original_mask: Optional[PIL.Image.Image] = None,
+        crops_coords: Optional[Tuple[int, int, int, int]] = None,
+    ) -> Tuple[PIL.Image.Image, PIL.Image.Image]:
+        """
+        Postprocess the image, optionally apply mask overlay
+        """
+        image = self._image_processor.postprocess(
+            image,
+            output_type=output_type,
+        )
+        # optionally apply the mask overlay
+        if crops_coords is not None and (original_image is None or original_mask is None):
+            raise ValueError("original_image and original_mask must be provided if crops_coords is provided")
+
+        elif crops_coords is not None and output_type != "pil":
+            raise ValueError("output_type must be 'pil' if crops_coords is provided")
+
+        elif crops_coords is not None:
+            image = [
+                self._image_processor.apply_overlay(original_mask, original_image, i, crops_coords) for i in image
+            ]
+
+        return image
+
+
 class VaeImageProcessorLDM3D(VaeImageProcessor):
     """
     Image processor for VAE LDM3D.
@@ -908,16 +1045,39 @@ class VaeImageProcessorLDM3D(VaeImageProcessor):
     def rgblike_to_depthmap(image: Union[np.ndarray, torch.Tensor]) -> Union[np.ndarray, torch.Tensor]:
         r"""
         Convert an RGB-like depth image to a depth map.
-
-        Args:
-            image (`Union[np.ndarray, torch.Tensor]`):
-                The RGB-like depth image to convert.
-
-        Returns:
-            `Union[np.ndarray, torch.Tensor]`:
-                The corresponding depth map.
         """
-        return image[:, :, 1] * 2**8 + image[:, :, 2]
+        # 1. Cast the tensor to a larger integer type (e.g., int32)
+        #    to safely perform the multiplication by 256.
+        # 2. Perform the 16-bit combination: High-byte * 256 + Low-byte.
+        # 3. Cast the final result to the desired depth map type (uint16) if needed
+        #    before returning, though leaving it as int32/int64 is often safer
+        #    for return value from a library function.
+
+        if isinstance(image, torch.Tensor):
+            # Cast to a safe dtype (e.g., int32 or int64) for the calculation
+            original_dtype = image.dtype
+            image_safe = image.to(torch.int32)
+
+            # Calculate the depth map
+            depth_map = image_safe[:, :, 1] * 256 + image_safe[:, :, 2]
+
+            # You may want to cast the final result to uint16, but casting to a
+            # larger int type (like int32) is sufficient to fix the overflow.
+            # depth_map = depth_map.to(torch.uint16) # Uncomment if uint16 is strictly required
+            return depth_map.to(original_dtype)
+
+        elif isinstance(image, np.ndarray):
+            # NumPy equivalent: Cast to a safe dtype (e.g., np.int32)
+            original_dtype = image.dtype
+            image_safe = image.astype(np.int32)
+
+            # Calculate the depth map
+            depth_map = image_safe[:, :, 1] * 256 + image_safe[:, :, 2]
+
+            # depth_map = depth_map.astype(np.uint16) # Uncomment if uint16 is strictly required
+            return depth_map.astype(original_dtype)
+        else:
+            raise TypeError("Input image must be a torch.Tensor or np.ndarray")
 
     def numpy_to_depth(self, images: np.ndarray) -> List[PIL.Image.Image]:
         r"""

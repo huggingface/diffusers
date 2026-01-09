@@ -19,7 +19,8 @@ from diffusers import (
     UNet2DConditionModel,
 )
 from diffusers.pipelines.pipeline_loading_utils import is_safetensors_compatible, variant_compatible_siblings
-from diffusers.utils.testing_utils import require_torch_gpu, torch_device
+
+from ..testing_utils import require_torch_accelerator, torch_device
 
 
 class IsSafetensorsCompatibleTests(unittest.TestCase):
@@ -87,21 +88,24 @@ class IsSafetensorsCompatibleTests(unittest.TestCase):
             "unet/diffusion_pytorch_model.fp16.bin",
             "unet/diffusion_pytorch_model.fp16.safetensors",
         ]
-        self.assertTrue(is_safetensors_compatible(filenames))
+        self.assertFalse(is_safetensors_compatible(filenames))
+        self.assertTrue(is_safetensors_compatible(filenames, variant="fp16"))
 
     def test_diffusers_model_is_compatible_variant(self):
         filenames = [
             "unet/diffusion_pytorch_model.fp16.bin",
             "unet/diffusion_pytorch_model.fp16.safetensors",
         ]
-        self.assertTrue(is_safetensors_compatible(filenames))
+        self.assertFalse(is_safetensors_compatible(filenames))
+        self.assertTrue(is_safetensors_compatible(filenames, variant="fp16"))
 
     def test_diffusers_model_is_compatible_variant_mixed(self):
         filenames = [
             "unet/diffusion_pytorch_model.bin",
             "unet/diffusion_pytorch_model.fp16.safetensors",
         ]
-        self.assertTrue(is_safetensors_compatible(filenames))
+        self.assertFalse(is_safetensors_compatible(filenames))
+        self.assertTrue(is_safetensors_compatible(filenames, variant="fp16"))
 
     def test_diffusers_model_is_not_compatible_variant(self):
         filenames = [
@@ -121,7 +125,8 @@ class IsSafetensorsCompatibleTests(unittest.TestCase):
             "text_encoder/pytorch_model.fp16.bin",
             "text_encoder/model.fp16.safetensors",
         ]
-        self.assertTrue(is_safetensors_compatible(filenames))
+        self.assertFalse(is_safetensors_compatible(filenames))
+        self.assertTrue(is_safetensors_compatible(filenames, variant="fp16"))
 
     def test_transformer_model_is_not_compatible_variant(self):
         filenames = [
@@ -145,7 +150,8 @@ class IsSafetensorsCompatibleTests(unittest.TestCase):
             "unet/diffusion_pytorch_model.fp16.bin",
             "unet/diffusion_pytorch_model.fp16.safetensors",
         ]
-        self.assertTrue(is_safetensors_compatible(filenames, folder_names={"vae", "unet"}))
+        self.assertFalse(is_safetensors_compatible(filenames, folder_names={"vae", "unet"}))
+        self.assertTrue(is_safetensors_compatible(filenames, folder_names={"vae", "unet"}, variant="fp16"))
 
     def test_transformer_model_is_not_compatible_variant_extra_folder(self):
         filenames = [
@@ -173,7 +179,8 @@ class IsSafetensorsCompatibleTests(unittest.TestCase):
             "text_encoder/model.fp16-00001-of-00002.safetensors",
             "text_encoder/model.fp16-00001-of-00002.safetensors",
         ]
-        self.assertTrue(is_safetensors_compatible(filenames))
+        self.assertFalse(is_safetensors_compatible(filenames))
+        self.assertTrue(is_safetensors_compatible(filenames, variant="fp16"))
 
     def test_diffusers_is_compatible_sharded(self):
         filenames = [
@@ -189,13 +196,15 @@ class IsSafetensorsCompatibleTests(unittest.TestCase):
             "unet/diffusion_pytorch_model.fp16-00001-of-00002.safetensors",
             "unet/diffusion_pytorch_model.fp16-00001-of-00002.safetensors",
         ]
-        self.assertTrue(is_safetensors_compatible(filenames))
+        self.assertFalse(is_safetensors_compatible(filenames))
+        self.assertTrue(is_safetensors_compatible(filenames, variant="fp16"))
 
     def test_diffusers_is_compatible_only_variants(self):
         filenames = [
             "unet/diffusion_pytorch_model.fp16.safetensors",
         ]
-        self.assertTrue(is_safetensors_compatible(filenames))
+        self.assertFalse(is_safetensors_compatible(filenames))
+        self.assertTrue(is_safetensors_compatible(filenames, variant="fp16"))
 
     def test_diffusers_is_compatible_no_components(self):
         filenames = [
@@ -208,6 +217,20 @@ class IsSafetensorsCompatibleTests(unittest.TestCase):
             "diffusion_pytorch_model.fp16.bin",
         ]
         self.assertFalse(is_safetensors_compatible(filenames))
+
+    def test_is_compatible_mixed_variants(self):
+        filenames = [
+            "unet/diffusion_pytorch_model.fp16.safetensors",
+            "vae/diffusion_pytorch_model.safetensors",
+        ]
+        self.assertTrue(is_safetensors_compatible(filenames, variant="fp16"))
+
+    def test_is_compatible_variant_and_non_safetensors(self):
+        filenames = [
+            "unet/diffusion_pytorch_model.fp16.safetensors",
+            "vae/diffusion_pytorch_model.bin",
+        ]
+        self.assertFalse(is_safetensors_compatible(filenames, variant="fp16"))
 
 
 class VariantCompatibleSiblingsTest(unittest.TestCase):
@@ -828,9 +851,9 @@ class ProgressBarTests(unittest.TestCase):
             self.assertTrue(stderr.getvalue() == "", "Progress bar should be disabled")
 
 
-@require_torch_gpu
+@require_torch_accelerator
 class PipelineDeviceAndDtypeStabilityTests(unittest.TestCase):
-    expected_pipe_device = torch.device("cuda:0")
+    expected_pipe_device = torch.device(f"{torch_device}:0")
     expected_pipe_dtype = torch.float64
 
     def get_dummy_components_image_generation(self):
@@ -899,8 +922,8 @@ class PipelineDeviceAndDtypeStabilityTests(unittest.TestCase):
         pipe.to(device=torch_device, dtype=torch.float32)
 
         pipe.unet.to(device="cpu")
-        pipe.vae.to(device="cuda")
-        pipe.text_encoder.to(device="cuda:0")
+        pipe.vae.to(device=torch_device)
+        pipe.text_encoder.to(device=f"{torch_device}:0")
 
         pipe_device = pipe.device
 

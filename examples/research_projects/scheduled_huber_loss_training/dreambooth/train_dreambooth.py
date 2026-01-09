@@ -12,6 +12,7 @@
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
+# limitations under the License.
 
 import argparse
 import copy
@@ -536,7 +537,7 @@ def parse_args(input_args=None):
         type=float,
         default=None,
         help="SNR weighting gamma to be used if rebalancing the loss. Recommended value is 5.0. "
-        "More details here: https://arxiv.org/abs/2303.09556.",
+        "More details here: https://huggingface.co/papers/2303.09556.",
     )
     parser.add_argument(
         "--pre_compute_text_embeddings",
@@ -854,7 +855,7 @@ def main(args):
     if args.report_to == "wandb" and args.hub_token is not None:
         raise ValueError(
             "You cannot use both --report_to=wandb and --hub_token due to a security risk of exposing your token."
-            " Please use `huggingface-cli login` to authenticate with the Hub."
+            " Please use `hf auth login` to authenticate with the Hub."
         )
 
     logging_dir = Path(args.output_dir, args.logging_dir)
@@ -1369,7 +1370,7 @@ def main(args):
                         model_pred.float(), target.float(), reduction="mean", loss_type=args.loss_type, huber_c=huber_c
                     )
                 else:
-                    # Compute loss-weights as per Section 3.4 of https://arxiv.org/abs/2303.09556.
+                    # Compute loss-weights as per Section 3.4 of https://huggingface.co/papers/2303.09556.
                     # Since we predict the noise instead of x_0, the original formulation is slightly changed.
                     # This is discussed in Section 4.2 of the same paper.
                     snr = compute_snr(noise_scheduler, timesteps)

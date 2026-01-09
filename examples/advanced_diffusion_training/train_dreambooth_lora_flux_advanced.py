@@ -12,6 +12,25 @@
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
+# limitations under the License.
+
+# /// script
+# dependencies = [
+#     "diffusers @ git+https://github.com/huggingface/diffusers.git",
+#     "torch>=2.0.0",
+#     "accelerate>=0.31.0",
+#     "transformers>=4.41.2",
+#     "ftfy",
+#     "tensorboard",
+#     "Jinja2",
+#     "peft>=0.11.1",
+#     "sentencepiece",
+#     "torchvision",
+#     "datasets",
+#     "bitsandbytes",
+#     "prodigyopt",
+# ]
+# ///
 
 import argparse
 import copy
@@ -55,6 +74,7 @@ from diffusers import (
 )
 from diffusers.optimization import get_scheduler
 from diffusers.training_utils import (
+    _collate_lora_metadata,
     _set_state_dict_into_text_encoder,
     cast_training_params,
     compute_density_for_timestep_sampling,
@@ -74,7 +94,7 @@ if is_wandb_available():
     import wandb
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.33.0.dev0")
+check_min_version("0.37.0.dev0")
 
 logger = get_logger(__name__)
 
@@ -430,6 +450,16 @@ def parse_args(input_args=None):
         default=4,
         help=("The dimension of the LoRA update matrices."),
     )
+
+    parser.add_argument(
+        "--lora_alpha",
+        type=int,
+        default=4,
+        help="LoRA alpha to be used for additional scaling.",
+    )
+
+    parser.add_argument("--lora_dropout", type=float, default=0.0, help="Dropout probability for LoRA layers")
+
     parser.add_argument(
         "--with_prior_preservation",
         default=False,
@@ -770,6 +800,15 @@ def parse_args(input_args=None):
         ),
     )
     parser.add_argument("--local_rank", type=int, default=-1, help="For distributed training: local_rank")
+    parser.add_argument(
+        "--image_interpolation_mode",
+        type=str,
+        default="lanczos",
+        choices=[
+            f.lower() for f in dir(transforms.InterpolationMode) if not f.startswith("__") and not f.endswith("__")
+        ],
+        help="The image interpolation method to use for resizing images.",
+    )
 
     if input_args is not None:
         args = parser.parse_args(input_args)
@@ -951,6 +990,7 @@ class DreamBoothDataset(Dataset):
 
     def __init__(
         self,
+        args,
         instance_data_root,
         instance_prompt,
         class_prompt,
@@ -960,10 +1000,8 @@ class DreamBoothDataset(Dataset):
         class_num=None,
         size=1024,
         repeats=1,
-        center_crop=False,
     ):
         self.size = size
-        self.center_crop = center_crop
 
         self.instance_prompt = instance_prompt
         self.custom_instance_prompts = None
@@ -1034,8 +1072,11 @@ class DreamBoothDataset(Dataset):
             self.instance_images.extend(itertools.repeat(img, repeats))
 
         self.pixel_values = []
-        train_resize = transforms.Resize(size, interpolation=transforms.InterpolationMode.BILINEAR)
-        train_crop = transforms.CenterCrop(size) if center_crop else transforms.RandomCrop(size)
+        interpolation = getattr(transforms.InterpolationMode, args.image_interpolation_mode.upper(), None)
+        if interpolation is None:
+            raise ValueError(f"Unsupported interpolation mode {interpolation=}.")
+        train_resize = transforms.Resize(size, interpolation=interpolation)
+        train_crop = transforms.CenterCrop(size) if args.center_crop else transforms.RandomCrop(size)
         train_flip = transforms.RandomHorizontalFlip(p=1.0)
         train_transforms = transforms.Compose(
             [
@@ -1052,11 +1093,11 @@ class DreamBoothDataset(Dataset):
                 # flip
                 image = train_flip(image)
             if args.center_crop:
-                y1 = max(0, int(round((image.height - args.resolution) / 2.0)))
-                x1 = max(0, int(round((image.width - args.resolution) / 2.0)))
+                y1 = max(0, int(round((image.height - self.size) / 2.0)))
+                x1 = max(0, int(round((image.width - self.size) / 2.0)))
                 image = train_crop(image)
             else:
-                y1, x1, h, w = train_crop.get_params(image, (args.resolution, args.resolution))
+                y1, x1, h, w = train_crop.get_params(image, (self.size, self.size))
                 image = crop(image, y1, x1, h, w)
             image = train_transforms(image)
             self.pixel_values.append(image)
@@ -1078,8 +1119,8 @@ class DreamBoothDataset(Dataset):
 
         self.image_transforms = transforms.Compose(
             [
-                transforms.Resize(size, interpolation=transforms.InterpolationMode.BILINEAR),
-                transforms.CenterCrop(size) if center_crop else transforms.RandomCrop(size),
+                transforms.Resize(size, interpolation=interpolation),
+                transforms.CenterCrop(size) if args.center_crop else transforms.RandomCrop(size),
                 transforms.ToTensor(),
                 transforms.Normalize([0.5], [0.5]),
             ]
@@ -1299,7 +1340,7 @@ def main(args):
     if args.report_to == "wandb" and args.hub_token is not None:
         raise ValueError(
             "You cannot use both --report_to=wandb and --hub_token due to a security risk of exposing your token."
-            " Please use `huggingface-cli login` to authenticate with the Hub."
+            " Please use `hf auth login` to authenticate with the Hub."
         )
 
     if torch.backends.mps.is_available() and args.mixed_precision == "bf16":
@@ -1362,6 +1403,7 @@ def main(args):
                 torch_dtype = torch.float16
             elif args.prior_generation_precision == "bf16":
                 torch_dtype = torch.bfloat16
+
             pipeline = FluxPipeline.from_pretrained(
                 args.pretrained_model_name_or_path,
                 torch_dtype=torch_dtype,
@@ -1382,7 +1424,8 @@ def main(args):
             for example in tqdm(
                 sample_dataloader, desc="Generating class images", disable=not accelerator.is_local_main_process
             ):
-                images = pipeline(example["prompt"]).images
+                with torch.autocast(device_type=accelerator.device.type, dtype=torch_dtype):
+                    images = pipeline(prompt=example["prompt"]).images
 
                 for i, image in enumerate(images):
                     hash_image = insecure_hashlib.sha1(image.tobytes()).hexdigest()
@@ -1541,7 +1584,8 @@ def main(args):
     # now we will add new LoRA weights to the attention layers
     transformer_lora_config = LoraConfig(
         r=args.rank,
-        lora_alpha=args.rank,
+        lora_alpha=args.lora_alpha,
+        lora_dropout=args.lora_dropout,
         init_lora_weights="gaussian",
         target_modules=target_modules,
     )
@@ -1549,7 +1593,8 @@ def main(args):
     if args.train_text_encoder:
         text_lora_config = LoraConfig(
             r=args.rank,
-            lora_alpha=args.rank,
+            lora_alpha=args.lora_alpha,
+            lora_dropout=args.lora_dropout,
             init_lora_weights="gaussian",
             target_modules=["q_proj", "k_proj", "v_proj", "out_proj"],
         )
@@ -1565,13 +1610,15 @@ def main(args):
         if accelerator.is_main_process:
             transformer_lora_layers_to_save = None
             text_encoder_one_lora_layers_to_save = None
-
+            modules_to_save = {}
             for model in models:
                 if isinstance(model, type(unwrap_model(transformer))):
                     transformer_lora_layers_to_save = get_peft_model_state_dict(model)
+                    modules_to_save["transformer"] = model
                 elif isinstance(model, type(unwrap_model(text_encoder_one))):
                     if args.train_text_encoder:  # when --train_text_encoder_ti we don't save the layers
                         text_encoder_one_lora_layers_to_save = get_peft_model_state_dict(model)
+                        modules_to_save["text_encoder"] = model
                 elif isinstance(model, type(unwrap_model(text_encoder_two))):
                     pass  # when --train_text_encoder_ti and --enable_t5_ti we don't save the layers
                 else:
@@ -1584,6 +1631,7 @@ def main(args):
                 output_dir,
                 transformer_lora_layers=transformer_lora_layers_to_save,
                 text_encoder_lora_layers=text_encoder_one_lora_layers_to_save,
+                **_collate_lora_metadata(modules_to_save),
             )
         if args.train_text_encoder_ti:
             embedding_handler.save_embeddings(f"{args.output_dir}/{Path(args.output_dir).name}_emb.safetensors")
@@ -1799,6 +1847,7 @@ def main(args):
 
     # Dataset and DataLoaders creation:
     train_dataset = DreamBoothDataset(
+        args=args,
         instance_data_root=args.instance_data_dir,
         instance_prompt=args.instance_prompt,
         train_text_encoder_ti=args.train_text_encoder_ti,
@@ -1808,7 +1857,6 @@ def main(args):
         class_num=args.num_class_images,
         size=args.resolution,
         repeats=args.repeats,
-        center_crop=args.center_crop,
     )
 
     train_dataloader = torch.utils.data.DataLoader(
@@ -1915,17 +1963,22 @@ def main(args):
             free_memory()
 
     # Scheduler and math around the number of training steps.
-    overrode_max_train_steps = False
-    num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
+    # Check the PR https://github.com/huggingface/diffusers/pull/8312 for detailed explanation.
+    num_warmup_steps_for_scheduler = args.lr_warmup_steps * accelerator.num_processes
     if args.max_train_steps is None:
-        args.max_train_steps = args.num_train_epochs * num_update_steps_per_epoch
-        overrode_max_train_steps = True
+        len_train_dataloader_after_sharding = math.ceil(len(train_dataloader) / accelerator.num_processes)
+        num_update_steps_per_epoch = math.ceil(len_train_dataloader_after_sharding / args.gradient_accumulation_steps)
+        num_training_steps_for_scheduler = (
+            args.num_train_epochs * accelerator.num_processes * num_update_steps_per_epoch
+        )
+    else:
+        num_training_steps_for_scheduler = args.max_train_steps * accelerator.num_processes
 
     lr_scheduler = get_scheduler(
         args.lr_scheduler,
         optimizer=optimizer,
-        num_warmup_steps=args.lr_warmup_steps * accelerator.num_processes,
-        num_training_steps=args.max_train_steps * accelerator.num_processes,
+        num_warmup_steps=num_warmup_steps_for_scheduler,
+        num_training_steps=num_training_steps_for_scheduler,
         num_cycles=args.lr_num_cycles,
         power=args.lr_power,
     )
@@ -1949,7 +2002,6 @@ def main(args):
                 lr_scheduler,
             )
         else:
-            print("I SHOULD BE HERE")
             transformer, text_encoder_one, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
                 transformer, text_encoder_one, optimizer, train_dataloader, lr_scheduler
             )
@@ -1961,8 +2013,14 @@ def main(args):
 
     # We need to recalculate our total training steps as the size of the training dataloader may have changed.
     num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
-    if overrode_max_train_steps:
+    if args.max_train_steps is None:
         args.max_train_steps = args.num_train_epochs * num_update_steps_per_epoch
+        if num_training_steps_for_scheduler != args.max_train_steps:
+            logger.warning(
+                f"The length of the 'train_dataloader' after 'accelerator.prepare' ({len(train_dataloader)}) does not match "
+                f"the expected length ({len_train_dataloader_after_sharding}) when the learning rate scheduler was created. "
+                f"This inconsistency may result in the learning rate scheduler not functioning properly."
+            )
     # Afterwards we recalculate our number of training epochs
     args.num_train_epochs = math.ceil(args.max_train_steps / num_update_steps_per_epoch)
 
@@ -2171,7 +2229,7 @@ def main(args):
                 # Predict the noise residual
                 model_pred = transformer(
                     hidden_states=packed_noisy_model_input,
-                    # YiYi notes: divide it by 1000 for now because we scale it by 1000 in the transforme rmodel (we should not keep it but I want to keep the inputs same for the model for testing)
+                    # YiYi notes: divide it by 1000 for now because we scale it by 1000 in the transformer model (we should not keep it but I want to keep the inputs same for the model for testing)
                     timestep=timesteps / 1000,
                     guidance=guidance,
                     pooled_projections=pooled_prompt_embeds,
@@ -2332,16 +2390,19 @@ def main(args):
     # Save the lora layers
     accelerator.wait_for_everyone()
     if accelerator.is_main_process:
+        modules_to_save = {}
         transformer = unwrap_model(transformer)
         if args.upcast_before_saving:
             transformer.to(torch.float32)
         else:
             transformer = transformer.to(weight_dtype)
         transformer_lora_layers = get_peft_model_state_dict(transformer)
+        modules_to_save["transformer"] = transformer
 
         if args.train_text_encoder:
             text_encoder_one = unwrap_model(text_encoder_one)
             text_encoder_lora_layers = get_peft_model_state_dict(text_encoder_one.to(torch.float32))
+            modules_to_save["text_encoder"] = text_encoder_one
         else:
             text_encoder_lora_layers = None
 
@@ -2350,6 +2411,7 @@ def main(args):
                 save_directory=args.output_dir,
                 transformer_lora_layers=transformer_lora_layers,
                 text_encoder_lora_layers=text_encoder_lora_layers,
+                **_collate_lora_metadata(modules_to_save),
             )
 
         if args.train_text_encoder_ti:

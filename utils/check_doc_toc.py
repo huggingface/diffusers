@@ -21,20 +21,23 @@ import yaml
 
 PATH_TO_TOC = "docs/source/en/_toctree.yml"
 
+# Titles that should maintain their position and not be sorted alphabetically
+FIXED_POSITION_TITLES = {"overview", "autopipeline"}
+
 
 def clean_doc_toc(doc_list):
     """
     Cleans the table of content of the model documentation by removing duplicates and sorting models alphabetically.
     """
     counts = defaultdict(int)
-    overview_doc = []
+    fixed_position_docs = []
     new_doc_list = []
     for doc in doc_list:
         if "local" in doc:
             counts[doc["local"]] += 1
 
-        if doc["title"].lower() == "overview":
-            overview_doc.append({"local": doc["local"], "title": doc["title"]})
+        if doc["title"].lower() in FIXED_POSITION_TITLES:
+            fixed_position_docs.append({"local": doc["local"], "title": doc["title"]})
         else:
             new_doc_list.append(doc)
 
@@ -57,14 +60,13 @@ def clean_doc_toc(doc_list):
     new_doc.extend([doc for doc in doc_list if "local" not in counts or counts[doc["local"]] == 1])
     new_doc = sorted(new_doc, key=lambda s: s["title"].lower())
 
-    # "overview" gets special treatment and is always first
-    if len(overview_doc) > 1:
-        raise ValueError("{doc_list} has two 'overview' docs which is not allowed.")
+    # Fixed-position titles maintain their original order
+    result = []
+    for doc in fixed_position_docs:
+        result.append(doc)
 
-    overview_doc.extend(new_doc)
-
-    # Sort
-    return overview_doc
+    result.extend(new_doc)
+    return result
 
 
 def check_scheduler_doc(overwrite=False):
@@ -123,11 +125,13 @@ def check_pipeline_doc(overwrite=False):
 
     # sort sub pipeline docs
     for pipeline_doc in pipeline_docs:
-        if "section" in pipeline_doc:
-            sub_pipeline_doc = pipeline_doc["section"]
+        if "sections" in pipeline_doc:
+            sub_pipeline_doc = pipeline_doc["sections"]
             new_sub_pipeline_doc = clean_doc_toc(sub_pipeline_doc)
-            if overwrite:
-                pipeline_doc["section"] = new_sub_pipeline_doc
+            if new_sub_pipeline_doc != sub_pipeline_doc:
+                diff = True
+                if overwrite:
+                    pipeline_doc["sections"] = new_sub_pipeline_doc
         new_pipeline_docs.append(pipeline_doc)
 
     # sort overall pipeline doc
@@ -149,6 +153,55 @@ def check_pipeline_doc(overwrite=False):
             )
 
 
+def check_model_doc(overwrite=False):
+    with open(PATH_TO_TOC, encoding="utf-8") as f:
+        content = yaml.safe_load(f.read())
+
+    # Get to the API doc
+    api_idx = 0
+    while content[api_idx]["title"] != "API":
+        api_idx += 1
+    api_doc = content[api_idx]["sections"]
+
+    # Then to the model doc
+    model_idx = 0
+    while api_doc[model_idx]["title"] != "Models":
+        model_idx += 1
+
+    diff = False
+    model_docs = api_doc[model_idx]["sections"]
+    new_model_docs = []
+
+    # sort sub model docs
+    for model_doc in model_docs:
+        if "sections" in model_doc:
+            sub_model_doc = model_doc["sections"]
+            new_sub_model_doc = clean_doc_toc(sub_model_doc)
+            if new_sub_model_doc != sub_model_doc:
+                diff = True
+                if overwrite:
+                    model_doc["sections"] = new_sub_model_doc
+        new_model_docs.append(model_doc)
+
+    # sort overall model doc
+    new_model_docs = clean_doc_toc(new_model_docs)
+
+    if new_model_docs != model_docs:
+        diff = True
+        if overwrite:
+            api_doc[model_idx]["sections"] = new_model_docs
+
+    if diff:
+        if overwrite:
+            content[api_idx]["sections"] = api_doc
+            with open(PATH_TO_TOC, "w", encoding="utf-8") as f:
+                f.write(yaml.dump(content, allow_unicode=True))
+        else:
+            raise ValueError(
+                "The model doc part of the table of content is not properly sorted, run `make style` to fix this."
+            )
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--fix_and_overwrite", action="store_true", help="Whether to fix inconsistencies.")
@@ -156,3 +209,4 @@ if __name__ == "__main__":
 
     check_scheduler_doc(args.fix_and_overwrite)
     check_pipeline_doc(args.fix_and_overwrite)
+    check_model_doc(args.fix_and_overwrite)

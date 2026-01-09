@@ -1,4 +1,4 @@
-# Copyright 2024 Stability AI and The HuggingFace Team. All rights reserved.
+# Copyright 2025 Stability AI and The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -25,11 +25,7 @@ from transformers import (
 from ...models import AutoencoderOobleck, StableAudioDiTModel
 from ...models.embeddings import get_1d_rotary_pos_embed
 from ...schedulers import EDMDPMSolverMultistepScheduler
-from ...utils import (
-    is_torch_xla_available,
-    logging,
-    replace_example_docstring,
-)
+from ...utils import deprecate, is_torch_xla_available, logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import AudioPipelineOutput, DiffusionPipeline
 from .modeling_stable_audio import StableAudioProjectionModel
@@ -134,6 +130,12 @@ class StableAudioPipeline(DiffusionPipeline):
         Enable sliced VAE decoding. When this option is enabled, the VAE will split the input tensor in slices to
         compute decoding in several steps. This is useful to save some memory and allow larger batch sizes.
         """
+        depr_message = f"Calling `enable_vae_slicing()` on a `{self.__class__.__name__}` is deprecated and this method will be removed in a future version. Please use `pipe.vae.enable_slicing()`."
+        deprecate(
+            "enable_vae_slicing",
+            "0.40.0",
+            depr_message,
+        )
         self.vae.enable_slicing()
 
     # Copied from diffusers.pipelines.pipeline_utils.StableDiffusionMixin.disable_vae_slicing
@@ -142,6 +144,12 @@ class StableAudioPipeline(DiffusionPipeline):
         Disable sliced VAE decoding. If `enable_vae_slicing` was previously enabled, this method will go back to
         computing decoding in one step.
         """
+        depr_message = f"Calling `disable_vae_slicing()` on a `{self.__class__.__name__}` is deprecated and this method will be removed in a future version. Please use `pipe.vae.disable_slicing()`."
+        deprecate(
+            "disable_vae_slicing",
+            "0.40.0",
+            depr_message,
+        )
         self.vae.disable_slicing()
 
     def encode_prompt(
@@ -306,7 +314,7 @@ class StableAudioPipeline(DiffusionPipeline):
     def prepare_extra_step_kwargs(self, generator, eta):
         # prepare extra kwargs for the scheduler step, since not all schedulers have the same signature
         # eta (η) is only used with the DDIMScheduler, it will be ignored for other schedulers.
-        # eta corresponds to η in DDIM paper: https://arxiv.org/abs/2010.02502
+        # eta corresponds to η in DDIM paper: https://huggingface.co/papers/2010.02502
         # and should be between [0, 1]
 
         accepts_eta = "eta" in set(inspect.signature(self.scheduler.step).parameters.keys())
@@ -526,8 +534,8 @@ class StableAudioPipeline(DiffusionPipeline):
             num_waveforms_per_prompt (`int`, *optional*, defaults to 1):
                 The number of waveforms to generate per prompt.
             eta (`float`, *optional*, defaults to 0.0):
-                Corresponds to parameter eta (η) from the [DDIM](https://arxiv.org/abs/2010.02502) paper. Only applies
-                to the [`~schedulers.DDIMScheduler`], and is ignored in other schedulers.
+                Corresponds to parameter eta (η) from the [DDIM](https://huggingface.co/papers/2010.02502) paper. Only
+                applies to the [`~schedulers.DDIMScheduler`], and is ignored in other schedulers.
             generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
                 A [`torch.Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make
                 generation deterministic.
@@ -616,7 +624,7 @@ class StableAudioPipeline(DiffusionPipeline):
 
         device = self._execution_device
         # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
-        # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`
+        # of the Imagen paper: https://huggingface.co/papers/2205.11487 . `guidance_scale = 1`
         # corresponds to doing no classifier free guidance.
         do_classifier_free_guidance = guidance_scale > 1.0
 

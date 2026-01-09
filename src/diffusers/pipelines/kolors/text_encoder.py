@@ -1,4 +1,4 @@
-# Copyright 2024 ChatGLM3-6B Model Team, Kwai-Kolors Team and The HuggingFace Team. All rights reserved.
+# Copyright 2025 ChatGLM3-6B Model Team, Kwai-Kolors Team and The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -434,7 +434,7 @@ class MLP(torch.nn.Module):
 
         self.add_bias = config.add_bias_linear
 
-        # Project to 4h. If using swiglu double the output width, see https://arxiv.org/pdf/2002.05202.pdf
+        # Project to 4h. If using swiglu double the output width, see https://huggingface.co/papers/2002.05202
         self.dense_h_to_4h = nn.Linear(
             config.hidden_size,
             config.ffn_hidden_size * 2,
@@ -668,7 +668,7 @@ class Embedding(torch.nn.Module):
         # Embeddings.
         words_embeddings = self.word_embeddings(input_ids)
         embeddings = words_embeddings
-        # Data format change to avoid explicit tranposes : [b s h] --> [s b h].
+        # Data format change to avoid explicit transposes : [b s h] --> [s b h].
         embeddings = embeddings.transpose(0, 1).contiguous()
         # If the input flag for fp32 residual connection is set, convert for float.
         if self.fp32_residual_connection:

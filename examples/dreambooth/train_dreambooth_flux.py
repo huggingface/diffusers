@@ -12,6 +12,21 @@
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
+# limitations under the License.
+
+# /// script
+# dependencies = [
+#     "diffusers @ git+https://github.com/huggingface/diffusers.git",
+#     "torch>=2.0.0",
+#     "accelerate>=0.31.0",
+#     "transformers>=4.41.2",
+#     "ftfy",
+#     "tensorboard",
+#     "Jinja2",
+#     "peft>=0.11.1",
+#     "sentencepiece",
+# ]
+# ///
 
 import argparse
 import copy
@@ -65,7 +80,7 @@ if is_wandb_available():
     import wandb
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.33.0.dev0")
+check_min_version("0.37.0.dev0")
 
 logger = get_logger(__name__)
 
@@ -618,6 +633,16 @@ def parse_args(input_args=None):
         ),
     )
     parser.add_argument("--local_rank", type=int, default=-1, help="For distributed training: local_rank")
+    parser.add_argument(
+        "--image_interpolation_mode",
+        type=str,
+        default="lanczos",
+        choices=[
+            f.lower() for f in dir(transforms.InterpolationMode) if not f.startswith("__") and not f.endswith("__")
+        ],
+        help="The image interpolation method to use for resizing images.",
+    )
+    parser.add_argument("--enable_npu_flash_attention", action="store_true", help="Enabla Flash Attention for NPU")
 
     if input_args is not None:
         args = parser.parse_args(input_args)
@@ -737,7 +762,10 @@ class DreamBoothDataset(Dataset):
             self.instance_images.extend(itertools.repeat(img, repeats))
 
         self.pixel_values = []
-        train_resize = transforms.Resize(size, interpolation=transforms.InterpolationMode.BILINEAR)
+        interpolation = getattr(transforms.InterpolationMode, args.image_interpolation_mode.upper(), None)
+        if interpolation is None:
+            raise ValueError(f"Unsupported interpolation mode {interpolation=}.")
+        train_resize = transforms.Resize(size, interpolation=interpolation)
         train_crop = transforms.CenterCrop(size) if center_crop else transforms.RandomCrop(size)
         train_flip = transforms.RandomHorizontalFlip(p=1.0)
         train_transforms = transforms.Compose(
@@ -1001,7 +1029,7 @@ def main(args):
     if args.report_to == "wandb" and args.hub_token is not None:
         raise ValueError(
             "You cannot use both --report_to=wandb and --hub_token due to a security risk of exposing your token."
-            " Please use `huggingface-cli login` to authenticate with the Hub."
+            " Please use `hf auth login` to authenticate with the Hub."
         )
 
     if torch.backends.mps.is_available() and args.mixed_precision == "bf16":
@@ -1154,6 +1182,13 @@ def main(args):
     else:
         text_encoder_one.requires_grad_(False)
         text_encoder_two.requires_grad_(False)
+
+    if args.enable_npu_flash_attention:
+        if is_torch_npu_available():
+            logger.info("npu flash attention enabled.")
+            transformer.set_attention_backend("_native_npu")
+        else:
+            raise ValueError("npu flash attention requires torch_npu extensions and is supported only on npu device ")
 
     # For mixed precision training we cast all non-trainable weights (vae, text_encoder and transformer) to half-precision
     # as these weights are only used for inference, keeping weights in full precision is not required.
@@ -1407,17 +1442,22 @@ def main(args):
                 tokens_two = torch.cat([tokens_two, class_tokens_two], dim=0)
 
     # Scheduler and math around the number of training steps.
-    overrode_max_train_steps = False
-    num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
+    # Check the PR https://github.com/huggingface/diffusers/pull/8312 for detailed explanation.
+    num_warmup_steps_for_scheduler = args.lr_warmup_steps * accelerator.num_processes
     if args.max_train_steps is None:
-        args.max_train_steps = args.num_train_epochs * num_update_steps_per_epoch
-        overrode_max_train_steps = True
+        len_train_dataloader_after_sharding = math.ceil(len(train_dataloader) / accelerator.num_processes)
+        num_update_steps_per_epoch = math.ceil(len_train_dataloader_after_sharding / args.gradient_accumulation_steps)
+        num_training_steps_for_scheduler = (
+            args.num_train_epochs * accelerator.num_processes * num_update_steps_per_epoch
+        )
+    else:
+        num_training_steps_for_scheduler = args.max_train_steps * accelerator.num_processes
 
     lr_scheduler = get_scheduler(
         args.lr_scheduler,
         optimizer=optimizer,
-        num_warmup_steps=args.lr_warmup_steps * accelerator.num_processes,
-        num_training_steps=args.max_train_steps * accelerator.num_processes,
+        num_warmup_steps=num_warmup_steps_for_scheduler,
+        num_training_steps=num_training_steps_for_scheduler,
         num_cycles=args.lr_num_cycles,
         power=args.lr_power,
     )
@@ -1444,8 +1484,14 @@ def main(args):
 
     # We need to recalculate our total training steps as the size of the training dataloader may have changed.
     num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
-    if overrode_max_train_steps:
+    if args.max_train_steps is None:
         args.max_train_steps = args.num_train_epochs * num_update_steps_per_epoch
+        if num_training_steps_for_scheduler != args.max_train_steps:
+            logger.warning(
+                f"The length of the 'train_dataloader' after 'accelerator.prepare' ({len(train_dataloader)}) does not match "
+                f"the expected length ({len_train_dataloader_after_sharding}) when the learning rate scheduler was created. "
+                f"This inconsistency may result in the learning rate scheduler not functioning properly."
+            )
     # Afterwards we recalculate our number of training epochs
     args.num_train_epochs = math.ceil(args.max_train_steps / num_update_steps_per_epoch)
 
@@ -1611,7 +1657,7 @@ def main(args):
                 # Predict the noise residual
                 model_pred = transformer(
                     hidden_states=packed_noisy_model_input,
-                    # YiYi notes: divide it by 1000 for now because we scale it by 1000 in the transforme rmodel (we should not keep it but I want to keep the inputs same for the model for testing)
+                    # YiYi notes: divide it by 1000 for now because we scale it by 1000 in the transformer model (we should not keep it but I want to keep the inputs same for the model for testing)
                     timestep=timesteps / 1000,
                     guidance=guidance,
                     pooled_projections=pooled_prompt_embeds,

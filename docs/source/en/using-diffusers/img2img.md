@@ -1,4 +1,4 @@
-<!--Copyright 2024 The HuggingFace Team. All rights reserved.
+<!--Copyright 2025 The HuggingFace Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -33,11 +33,8 @@ pipeline.enable_model_cpu_offload()
 pipeline.enable_xformers_memory_efficient_attention()
 ```
 
-<Tip>
-
-You'll notice throughout the guide, we use [`~DiffusionPipeline.enable_model_cpu_offload`] and [`~DiffusionPipeline.enable_xformers_memory_efficient_attention`], to save memory and increase inference speed. If you're using PyTorch 2.0, then you don't need to call [`~DiffusionPipeline.enable_xformers_memory_efficient_attention`] on your pipeline because it'll already be using PyTorch 2.0's native [scaled-dot product attention](../optimization/torch2.0#scaled-dot-product-attention).
-
-</Tip>
+> [!TIP]
+> You'll notice throughout the guide, we use [`~DiffusionPipeline.enable_model_cpu_offload`] and [`~DiffusionPipeline.enable_xformers_memory_efficient_attention`], to save memory and increase inference speed. If you're using PyTorch 2.0, then you don't need to call [`~DiffusionPipeline.enable_xformers_memory_efficient_attention`] on your pipeline because it'll already be using PyTorch 2.0's native [scaled-dot product attention](../optimization/fp16#scaled-dot-product-attention).
 
 2. Load an image to pass to the pipeline:
 
@@ -386,11 +383,8 @@ prompt = "Astronaut in a jungle, cold color palette, muted colors, detailed, 8k"
 image = pipeline(prompt, image=init_image, output_type="latent").images[0]
 ```
 
-<Tip>
-
-It is important to specify `output_type="latent"` in the pipeline to keep all the outputs in latent space to avoid an unnecessary decode-encode step. This only works if the chained pipelines are using the same VAE.
-
-</Tip>
+> [!TIP]
+> It is important to specify `output_type="latent"` in the pipeline to keep all the outputs in latent space to avoid an unnecessary decode-encode step. This only works if the chained pipelines are using the same VAE.
 
 Pass the latent output from this pipeline to the next pipeline to generate an image in a [comic book art style](https://huggingface.co/ogkalu/Comic-Diffusion):
 
@@ -449,11 +443,8 @@ prompt = "Astronaut in a jungle, cold color palette, muted colors, detailed, 8k"
 image_1 = pipeline(prompt, image=init_image, output_type="latent").images[0]
 ```
 
-<Tip>
-
-It is important to specify `output_type="latent"` in the pipeline to keep all the outputs in *latent* space to avoid an unnecessary decode-encode step. This only works if the chained pipelines are using the same VAE.
-
-</Tip>
+> [!TIP]
+> It is important to specify `output_type="latent"` in the pipeline to keep all the outputs in *latent* space to avoid an unnecessary decode-encode step. This only works if the chained pipelines are using the same VAE.
 
 Chain it to an upscaler pipeline to increase the image resolution:
 
@@ -589,17 +580,17 @@ make_image_grid([init_image, depth_image, image_control_net, image_elden_ring], 
 
 ## Optimize
 
-Running diffusion models is computationally expensive and intensive, but with a few optimization tricks, it is entirely possible to run them on consumer and free-tier GPUs. For example, you can use a more memory-efficient form of attention such as PyTorch 2.0's [scaled-dot product attention](../optimization/torch2.0#scaled-dot-product-attention) or [xFormers](../optimization/xformers) (you can use one or the other, but there's no need to use both). You can also offload the model to the GPU while the other pipeline components wait on the CPU.
+Running diffusion models is computationally expensive and intensive, but with a few optimization tricks, it is entirely possible to run them on consumer and free-tier GPUs. For example, you can use a more memory-efficient form of attention such as PyTorch 2.0's [scaled-dot product attention](../optimization/fp16#scaled-dot-product-attention) or [xFormers](../optimization/xformers) (you can use one or the other, but there's no need to use both). You can also offload the model to the GPU while the other pipeline components wait on the CPU.
 
 ```diff
 + pipeline.enable_model_cpu_offload()
 + pipeline.enable_xformers_memory_efficient_attention()
 ```
 
-With [`torch.compile`](../optimization/torch2.0#torchcompile), you can boost your inference speed even more by wrapping your UNet with it:
+With [`torch.compile`](../optimization/fp16#torchcompile), you can boost your inference speed even more by wrapping your UNet with it:
 
 ```py
 pipeline.unet = torch.compile(pipeline.unet, mode="reduce-overhead", fullgraph=True)
 ```
 
-To learn more, take a look at the [Reduce memory usage](../optimization/memory) and [Torch 2.0](../optimization/torch2.0) guides.
+To learn more, take a look at the [Reduce memory usage](../optimization/memory) and [Accelerate inference](../optimization/fp16) guides.

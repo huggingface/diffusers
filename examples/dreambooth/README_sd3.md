@@ -1,6 +1,6 @@
 # DreamBooth training example for Stable Diffusion 3 (SD3)
 
-[DreamBooth](https://arxiv.org/abs/2208.12242) is a method to personalize text2image models like stable diffusion given just a few (3~5) images of a subject.
+[DreamBooth](https://huggingface.co/papers/2208.12242) is a method to personalize text2image models like stable diffusion given just a few (3~5) images of a subject.
 
 The `train_dreambooth_sd3.py` script shows how to implement the training procedure and adapt it for [Stable Diffusion 3](https://huggingface.co/papers/2403.03206). We also provide a LoRA implementation in the `train_dreambooth_lora_sd3.py` script.
 
@@ -8,7 +8,7 @@ The `train_dreambooth_sd3.py` script shows how to implement the training procedu
 > As the model is gated, before using it with diffusers you first need to go to the [Stable Diffusion 3 Medium Hugging Face page](https://huggingface.co/stabilityai/stable-diffusion-3-medium-diffusers), fill in the form and accept the gate. Once you are in, you need to log in so that your system knows you’ve accepted the gate. Use the command below to log in:
 
 ```bash
-huggingface-cli login
+hf auth login
 ```
 
 This will also allow us to push the trained model parameters to the Hugging Face Hub platform.

@@ -1,6 +1,6 @@
 ## Textual Inversion fine-tuning example
 
-[Textual inversion](https://arxiv.org/abs/2208.01618) is a method to personalize text2image models like stable diffusion on your own images using just 3-5 examples.
+[Textual inversion](https://huggingface.co/papers/2208.01618) is a method to personalize text2image models like stable diffusion on your own images using just 3-5 examples.
 The `textual_inversion.py` script shows how to implement the training procedure and adapt it for stable diffusion.
 
 ## Running on Colab
@@ -46,7 +46,7 @@ You have to be a registered user in 🤗 Hugging Face Hub, and you'll also need 
 Run the following command to authenticate your token
 
 ```bash
-huggingface-cli login
+hf auth login
 ```
 
 If you have already cloned the repo, then you won't need to go through these steps.

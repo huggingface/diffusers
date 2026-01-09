@@ -1,4 +1,4 @@
-# Copyright 2024 The HuggingFace Team. All rights reserved.
+# Copyright 2025 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -16,13 +16,15 @@ Import utilities: Utilities related to imports and our lazy inits.
 """
 
 import importlib.util
+import inspect
 import operator as op
 import os
 import sys
-from collections import OrderedDict
+from collections import OrderedDict, defaultdict
+from functools import lru_cache as cache
 from itertools import chain
 from types import ModuleType
-from typing import Any, Union
+from typing import Any, Tuple, Union
 
 from huggingface_hub.utils import is_jinja_available  # noqa: F401
 from packaging.version import Version, parse
@@ -35,7 +37,10 @@ if sys.version_info < (3, 8):
     import importlib_metadata
 else:
     import importlib.metadata as importlib_metadata
-
+try:
+    _package_map = importlib_metadata.packages_distributions()  # load-once to avoid expensive calls
+except Exception:
+    _package_map = None
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
@@ -54,12 +59,34 @@ STR_OPERATION_TO_FUNC = {">": op.gt, ">=": op.ge, "==": op.eq, "!=": op.ne, "<="
 _is_google_colab = "google.colab" in sys.modules or any(k.startswith("COLAB_") for k in os.environ)
 
 
-def _is_package_available(pkg_name: str):
+def _is_package_available(pkg_name: str, get_dist_name: bool = False) -> Tuple[bool, str]:
+    global _package_map
     pkg_exists = importlib.util.find_spec(pkg_name) is not None
     pkg_version = "N/A"
 
     if pkg_exists:
+        if _package_map is None:
+            _package_map = defaultdict(list)
+            try:
+                # Fallback for Python < 3.10
+                for dist in importlib_metadata.distributions():
+                    _top_level_declared = (dist.read_text("top_level.txt") or "").split()
+                    # Infer top-level package names from file structure
+                    _inferred_opt_names = {
+                        f.parts[0] if len(f.parts) > 1 else inspect.getmodulename(f) for f in (dist.files or [])
+                    } - {None}
+                    _top_level_inferred = filter(lambda name: "." not in name, _inferred_opt_names)
+                    for pkg in _top_level_declared or _top_level_inferred:
+                        _package_map[pkg].append(dist.metadata["Name"])
+            except Exception as _:
+                pass
         try:
+            if get_dist_name and pkg_name in _package_map and _package_map[pkg_name]:
+                if len(_package_map[pkg_name]) > 1:
+                    logger.warning(
+                        f"Multiple distributions found for package {pkg_name}. Picked distribution: {_package_map[pkg_name][0]}"
+                    )
+                pkg_name = _package_map[pkg_name][0]
             pkg_version = importlib_metadata.version(pkg_name)
             logger.debug(f"Successfully imported {pkg_name} version {pkg_version}")
         except (ImportError, importlib_metadata.PackageNotFoundError):
@@ -74,6 +101,7 @@ if USE_TORCH in ENV_VARS_TRUE_AND_AUTO_VALUES and USE_TF not in ENV_VARS_TRUE_VA
 else:
     logger.info("Disabling PyTorch because USE_TORCH is set")
     _torch_available = False
+    _torch_version = "N/A"
 
 _jax_version = "N/A"
 _flax_version = "N/A"
@@ -93,7 +121,7 @@ if USE_SAFETENSORS in ENV_VARS_TRUE_AND_AUTO_VALUES:
     _safetensors_available, _safetensors_version = _is_package_available("safetensors")
 
 else:
-    logger.info("Disabling Safetensors because USE_TF is set")
+    logger.info("Disabling Safetensors because USE_SAFETENSORS is set")
     _safetensors_available = False
 
 _onnxruntime_version = "N/A"
@@ -164,8 +192,10 @@ except importlib_metadata.PackageNotFoundError:
 
 _torch_xla_available, _torch_xla_version = _is_package_available("torch_xla")
 _torch_npu_available, _torch_npu_version = _is_package_available("torch_npu")
+_torch_mlu_available, _torch_mlu_version = _is_package_available("torch_mlu")
 _transformers_available, _transformers_version = _is_package_available("transformers")
 _hf_hub_available, _hf_hub_version = _is_package_available("huggingface_hub")
+_kernels_available, _kernels_version = _is_package_available("kernels")
 _inflect_available, _inflect_version = _is_package_available("inflect")
 _unidecode_available, _unidecode_version = _is_package_available("unidecode")
 _k_diffusion_available, _k_diffusion_version = _is_package_available("k_diffusion")
@@ -189,15 +219,18 @@ _xformers_available, _xformers_version = _is_package_available("xformers")
 _gguf_available, _gguf_version = _is_package_available("gguf")
 _torchao_available, _torchao_version = _is_package_available("torchao")
 _bitsandbytes_available, _bitsandbytes_version = _is_package_available("bitsandbytes")
-_torchao_available, _torchao_version = _is_package_available("torchao")
-
-_optimum_quanto_available = importlib.util.find_spec("optimum") is not None
-if _optimum_quanto_available:
-    try:
-        _optimum_quanto_version = importlib_metadata.version("optimum_quanto")
-        logger.debug(f"Successfully import optimum-quanto version {_optimum_quanto_version}")
-    except importlib_metadata.PackageNotFoundError:
-        _optimum_quanto_available = False
+_optimum_quanto_available, _optimum_quanto_version = _is_package_available("optimum", get_dist_name=True)
+_pytorch_retinaface_available, _pytorch_retinaface_version = _is_package_available("pytorch_retinaface")
+_better_profanity_available, _better_profanity_version = _is_package_available("better_profanity")
+_nltk_available, _nltk_version = _is_package_available("nltk")
+_cosmos_guardrail_available, _cosmos_guardrail_version = _is_package_available("cosmos_guardrail")
+_sageattention_available, _sageattention_version = _is_package_available("sageattention")
+_flash_attn_available, _flash_attn_version = _is_package_available("flash_attn")
+_flash_attn_3_available, _flash_attn_3_version = _is_package_available("flash_attn_3")
+_aiter_available, _aiter_version = _is_package_available("aiter")
+_kornia_available, _kornia_version = _is_package_available("kornia")
+_nvidia_modelopt_available, _nvidia_modelopt_version = _is_package_available("modelopt", get_dist_name=True)
+_av_available, _av_version = _is_package_available("av")
 
 
 def is_torch_available():
@@ -210,6 +243,10 @@ def is_torch_xla_available():
 
 def is_torch_npu_available():
     return _torch_npu_available
+
+
+def is_torch_mlu_available():
+    return _torch_mlu_available
 
 
 def is_flax_available():
@@ -250,6 +287,10 @@ def is_xformers_available():
 
 def is_accelerate_available():
     return _accelerate_available
+
+
+def is_kernels_available():
+    return _kernels_available
 
 
 def is_k_diffusion_available():
@@ -332,8 +373,56 @@ def is_optimum_quanto_available():
     return _optimum_quanto_available
 
 
+def is_nvidia_modelopt_available():
+    return _nvidia_modelopt_available
+
+
 def is_timm_available():
     return _timm_available
+
+
+def is_pytorch_retinaface_available():
+    return _pytorch_retinaface_available
+
+
+def is_better_profanity_available():
+    return _better_profanity_available
+
+
+def is_nltk_available():
+    return _nltk_available
+
+
+def is_cosmos_guardrail_available():
+    return _cosmos_guardrail_available
+
+
+def is_hpu_available():
+    return all(importlib.util.find_spec(lib) for lib in ("habana_frameworks", "habana_frameworks.torch"))
+
+
+def is_sageattention_available():
+    return _sageattention_available
+
+
+def is_flash_attn_available():
+    return _flash_attn_available
+
+
+def is_flash_attn_3_available():
+    return _flash_attn_3_available
+
+
+def is_aiter_available():
+    return _aiter_available
+
+
+def is_kornia_available():
+    return _kornia_available
+
+
+def is_av_available():
+    return _av_available
 
 
 # docstyle-ignore
@@ -484,6 +573,22 @@ QUANTO_IMPORT_ERROR = """
 install optimum-quanto`
 """
 
+# docstyle-ignore
+PYTORCH_RETINAFACE_IMPORT_ERROR = """
+{0} requires the pytorch_retinaface library but it was not found in your environment. You can install it with pip: `pip install pytorch_retinaface`
+"""
+
+# docstyle-ignore
+BETTER_PROFANITY_IMPORT_ERROR = """
+{0} requires the better_profanity library but it was not found in your environment. You can install it with pip: `pip install better_profanity`
+"""
+
+# docstyle-ignore
+NLTK_IMPORT_ERROR = """
+{0} requires the nltk library but it was not found in your environment. You can install it with pip: `pip install nltk`
+"""
+
+
 BACKENDS_MAPPING = OrderedDict(
     [
         ("bs4", (is_bs4_available, BS4_IMPORT_ERROR)),
@@ -512,6 +617,9 @@ BACKENDS_MAPPING = OrderedDict(
         ("gguf", (is_gguf_available, GGUF_IMPORT_ERROR)),
         ("torchao", (is_torchao_available, TORCHAO_IMPORT_ERROR)),
         ("quanto", (is_optimum_quanto_available, QUANTO_IMPORT_ERROR)),
+        ("pytorch_retinaface", (is_pytorch_retinaface_available, PYTORCH_RETINAFACE_IMPORT_ERROR)),
+        ("better_profanity", (is_better_profanity_available, BETTER_PROFANITY_IMPORT_ERROR)),
+        ("nltk", (is_nltk_available, NLTK_IMPORT_ERROR)),
     ]
 )
 
@@ -581,6 +689,7 @@ def compare_versions(library_or_version: Union[str, Version], operation: str, re
 
 
 # This function was copied from: https://github.com/huggingface/accelerate/blob/874c4967d94badd24f893064cc3bef45f57cadf7/src/accelerate/utils/versions.py#L338
+@cache
 def is_torch_version(operation: str, version: str):
     """
     Compares the current PyTorch version to a given reference with an operation.
@@ -594,6 +703,7 @@ def is_torch_version(operation: str, version: str):
     return compare_versions(parse(_torch_version), operation, version)
 
 
+@cache
 def is_torch_xla_version(operation: str, version: str):
     """
     Compares the current torch_xla version to a given reference with an operation.
@@ -609,6 +719,7 @@ def is_torch_xla_version(operation: str, version: str):
     return compare_versions(parse(_torch_xla_version), operation, version)
 
 
+@cache
 def is_transformers_version(operation: str, version: str):
     """
     Compares the current Transformers version to a given reference with an operation.
@@ -624,6 +735,7 @@ def is_transformers_version(operation: str, version: str):
     return compare_versions(parse(_transformers_version), operation, version)
 
 
+@cache
 def is_hf_hub_version(operation: str, version: str):
     """
     Compares the current Hugging Face Hub version to a given reference with an operation.
@@ -639,6 +751,7 @@ def is_hf_hub_version(operation: str, version: str):
     return compare_versions(parse(_hf_hub_version), operation, version)
 
 
+@cache
 def is_accelerate_version(operation: str, version: str):
     """
     Compares the current Accelerate version to a given reference with an operation.
@@ -654,6 +767,7 @@ def is_accelerate_version(operation: str, version: str):
     return compare_versions(parse(_accelerate_version), operation, version)
 
 
+@cache
 def is_peft_version(operation: str, version: str):
     """
     Compares the current PEFT version to a given reference with an operation.
@@ -669,6 +783,7 @@ def is_peft_version(operation: str, version: str):
     return compare_versions(parse(_peft_version), operation, version)
 
 
+@cache
 def is_bitsandbytes_version(operation: str, version: str):
     """
     Args:
@@ -683,6 +798,7 @@ def is_bitsandbytes_version(operation: str, version: str):
     return compare_versions(parse(_bitsandbytes_version), operation, version)
 
 
+@cache
 def is_gguf_version(operation: str, version: str):
     """
     Compares the current Accelerate version to a given reference with an operation.
@@ -698,6 +814,7 @@ def is_gguf_version(operation: str, version: str):
     return compare_versions(parse(_gguf_version), operation, version)
 
 
+@cache
 def is_torchao_version(operation: str, version: str):
     """
     Compares the current torchao version to a given reference with an operation.
@@ -713,6 +830,7 @@ def is_torchao_version(operation: str, version: str):
     return compare_versions(parse(_torchao_version), operation, version)
 
 
+@cache
 def is_k_diffusion_version(operation: str, version: str):
     """
     Compares the current k-diffusion version to a given reference with an operation.
@@ -728,6 +846,7 @@ def is_k_diffusion_version(operation: str, version: str):
     return compare_versions(parse(_k_diffusion_version), operation, version)
 
 
+@cache
 def is_optimum_quanto_version(operation: str, version: str):
     """
     Compares the current Accelerate version to a given reference with an operation.
@@ -741,6 +860,86 @@ def is_optimum_quanto_version(operation: str, version: str):
     if not _optimum_quanto_available:
         return False
     return compare_versions(parse(_optimum_quanto_version), operation, version)
+
+
+@cache
+def is_nvidia_modelopt_version(operation: str, version: str):
+    """
+    Compares the current Nvidia ModelOpt version to a given reference with an operation.
+
+    Args:
+        operation (`str`):
+            A string representation of an operator, such as `">"` or `"<="`
+        version (`str`):
+            A version string
+    """
+    if not _nvidia_modelopt_available:
+        return False
+    return compare_versions(parse(_nvidia_modelopt_version), operation, version)
+
+
+@cache
+def is_xformers_version(operation: str, version: str):
+    """
+    Compares the current xformers version to a given reference with an operation.
+
+    Args:
+        operation (`str`):
+            A string representation of an operator, such as `">"` or `"<="`
+        version (`str`):
+            A version string
+    """
+    if not _xformers_available:
+        return False
+    return compare_versions(parse(_xformers_version), operation, version)
+
+
+@cache
+def is_sageattention_version(operation: str, version: str):
+    """
+    Compares the current sageattention version to a given reference with an operation.
+
+    Args:
+        operation (`str`):
+            A string representation of an operator, such as `">"` or `"<="`
+        version (`str`):
+            A version string
+    """
+    if not _sageattention_available:
+        return False
+    return compare_versions(parse(_sageattention_version), operation, version)
+
+
+@cache
+def is_flash_attn_version(operation: str, version: str):
+    """
+    Compares the current flash-attention version to a given reference with an operation.
+
+    Args:
+        operation (`str`):
+            A string representation of an operator, such as `">"` or `"<="`
+        version (`str`):
+            A version string
+    """
+    if not _flash_attn_available:
+        return False
+    return compare_versions(parse(_flash_attn_version), operation, version)
+
+
+@cache
+def is_aiter_version(operation: str, version: str):
+    """
+    Compares the current aiter version to a given reference with an operation.
+
+    Args:
+        operation (`str`):
+            A string representation of an operator, such as `">"` or `"<="`
+        version (`str`):
+            A version string
+    """
+    if not _aiter_available:
+        return False
+    return compare_versions(parse(_aiter_version), operation, version)
 
 
 def get_objects_from_module(module):

@@ -12,6 +12,21 @@
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
+# limitations under the License.
+
+# /// script
+# dependencies = [
+#     "diffusers @ git+https://github.com/huggingface/diffusers.git",
+#     "torch>=2.0.0",
+#     "accelerate>=0.31.0",
+#     "transformers>=4.41.2",
+#     "ftfy",
+#     "tensorboard",
+#     "Jinja2",
+#     "peft>=0.11.1",
+#     "sentencepiece",
+# ]
+# ///
 
 import argparse
 import gc
@@ -73,7 +88,7 @@ from diffusers.utils.import_utils import is_xformers_available
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.33.0.dev0")
+check_min_version("0.37.0.dev0")
 
 logger = get_logger(__name__)
 
@@ -498,7 +513,7 @@ def parse_args(input_args=None):
         type=float,
         default=None,
         help="SNR weighting gamma to be used if rebalancing the loss. Recommended value is 5.0. "
-        "More details here: https://arxiv.org/abs/2303.09556.",
+        "More details here: https://huggingface.co/papers/2303.09556.",
     )
     parser.add_argument(
         "--lr_warmup_steps", type=int, default=500, help="Number of steps for the warmup in the lr scheduler."
@@ -658,12 +673,14 @@ def parse_args(input_args=None):
         default=4,
         help=("The dimension of the LoRA update matrices."),
     )
+    parser.add_argument("--lora_dropout", type=float, default=0.0, help="Dropout probability for LoRA layers")
+
     parser.add_argument(
         "--use_dora",
         action="store_true",
         default=False,
         help=(
-            "Whether to train a DoRA as proposed in- DoRA: Weight-Decomposed Low-Rank Adaptation https://arxiv.org/abs/2402.09353. "
+            "Whether to train a DoRA as proposed in- DoRA: Weight-Decomposed Low-Rank Adaptation https://huggingface.co/papers/2402.09353. "
             "Note: to use DoRA you need to install peft from main, `pip install git+https://github.com/huggingface/peft.git`"
         ),
     )
@@ -672,6 +689,15 @@ def parse_args(input_args=None):
         action="store_true",
         default=False,
         help="Cache the VAE latents",
+    )
+    parser.add_argument(
+        "--image_interpolation_mode",
+        type=str,
+        default="lanczos",
+        choices=[
+            f.lower() for f in dir(transforms.InterpolationMode) if not f.startswith("__") and not f.endswith("__")
+        ],
+        help="The image interpolation method to use for resizing images.",
     )
 
     if input_args is not None:
@@ -907,6 +933,10 @@ class DreamBoothDataset(Dataset):
         self.num_instance_images = len(self.instance_images)
         self._length = self.num_instance_images
 
+        interpolation = getattr(transforms.InterpolationMode, args.image_interpolation_mode.upper(), None)
+        if interpolation is None:
+            raise ValueError(f"Unsupported interpolation mode {interpolation=}.")
+
         if class_data_root is not None:
             self.class_data_root = Path(class_data_root)
             self.class_data_root.mkdir(parents=True, exist_ok=True)
@@ -921,7 +951,7 @@ class DreamBoothDataset(Dataset):
 
         self.image_transforms = transforms.Compose(
             [
-                transforms.Resize(size, interpolation=transforms.InterpolationMode.BILINEAR),
+                transforms.Resize(size, interpolation=interpolation),
                 transforms.CenterCrop(size) if center_crop else transforms.RandomCrop(size),
                 transforms.ToTensor(),
                 transforms.Normalize([0.5], [0.5]),
@@ -1035,7 +1065,7 @@ def main(args):
     if args.report_to == "wandb" and args.hub_token is not None:
         raise ValueError(
             "You cannot use both --report_to=wandb and --hub_token due to a security risk of exposing your token."
-            " Please use `huggingface-cli login` to authenticate with the Hub."
+            " Please use `hf auth login` to authenticate with the Hub."
         )
 
     logging_dir = Path(args.output_dir, args.logging_dir)
@@ -1235,6 +1265,7 @@ def main(args):
     unet_lora_config = LoraConfig(
         r=args.rank,
         lora_alpha=args.rank,
+        lora_dropout=args.lora_dropout,
         use_dora=args.use_dora,
         init_lora_weights="gaussian",
         target_modules=["to_k", "to_q", "to_v", "to_out.0"],
@@ -1247,6 +1278,7 @@ def main(args):
         text_lora_config = LoraConfig(
             r=args.rank,
             lora_alpha=args.rank,
+            lora_dropout=args.lora_dropout,
             use_dora=args.use_dora,
             init_lora_weights="gaussian",
             target_modules=["q_proj", "k_proj", "v_proj", "out_proj"],
@@ -1754,7 +1786,7 @@ def main(args):
                 if args.snr_gamma is None:
                     loss = F.mse_loss(model_pred.float(), target.float(), reduction="mean")
                 else:
-                    # Compute loss-weights as per Section 3.4 of https://arxiv.org/abs/2303.09556.
+                    # Compute loss-weights as per Section 3.4 of https://huggingface.co/papers/2303.09556.
                     # Since we predict the noise instead of x_0, the original formulation is slightly changed.
                     # This is discussed in Section 4.2 of the same paper.
 

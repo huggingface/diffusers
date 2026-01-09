@@ -1,4 +1,4 @@
-# Copyright 2024 The HuggingFace Team. All rights reserved.
+# Copyright 2025 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -453,7 +453,7 @@ class FromSingleFileMixin:
                     logger.warning(
                         "Detected legacy `from_single_file` loading behavior. Attempting to create the pipeline based on inferred components.\n"
                         "This may lead to errors if the model components are not correctly inferred. \n"
-                        "To avoid this warning, please explicity pass the `config` argument to `from_single_file` with a path to a local diffusers model repo \n"
+                        "To avoid this warning, please explicitly pass the `config` argument to `from_single_file` with a path to a local diffusers model repo \n"
                         "e.g. `from_single_file(<my model checkpoint path>, config=<path to local diffusers model repo>) \n"
                         "or run `from_single_file` with `local_files_only=False` first to update the local cache directory with "
                         "the necessary config files.\n"

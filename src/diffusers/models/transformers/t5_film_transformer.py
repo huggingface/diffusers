@@ -1,4 +1,4 @@
-# Copyright 2024 The HuggingFace Team. All rights reserved.
+# Copyright 2025 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -390,7 +390,7 @@ class T5LayerNorm(nn.Module):
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         # T5 uses a layer_norm which only scales and doesn't shift, which is also known as Root Mean
-        # Square Layer Normalization https://arxiv.org/abs/1910.07467 thus variance is calculated
+        # Square Layer Normalization https://huggingface.co/papers/1910.07467 thus variance is calculated
         # w/o mean and there is no bias. Additionally we want to make sure that the accumulation for
         # half-precision inputs is done in fp32
 
@@ -407,7 +407,7 @@ class T5LayerNorm(nn.Module):
 class NewGELUActivation(nn.Module):
     """
     Implementation of the GELU activation function currently in Google BERT repo (identical to OpenAI GPT). Also see
-    the Gaussian Error Linear Units paper: https://arxiv.org/abs/1606.08415
+    the Gaussian Error Linear Units paper: https://huggingface.co/papers/1606.08415
     """
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:

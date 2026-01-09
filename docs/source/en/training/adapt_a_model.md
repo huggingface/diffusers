@@ -16,12 +16,12 @@ pipeline.unet.config["in_channels"]
 4
 ```
 
-Inpainting requires 9 channels in the input sample. You can check this value in a pretrained inpainting model like [`runwayml/stable-diffusion-inpainting`](https://huggingface.co/runwayml/stable-diffusion-inpainting):
+Inpainting requires 9 channels in the input sample. You can check this value in a pretrained inpainting model like [`stable-diffusion-v1-5/stable-diffusion-inpainting`](https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-inpainting):
 
 ```py
 from diffusers import StableDiffusionPipeline
 
-pipeline = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-inpainting", use_safetensors=True)
+pipeline = StableDiffusionPipeline.from_pretrained("stable-diffusion-v1-5/stable-diffusion-inpainting", use_safetensors=True)
 pipeline.unet.config["in_channels"]
 9
 ```
@@ -31,10 +31,10 @@ To adapt your text-to-image model for inpainting, you'll need to change the numb
 Initialize a [`UNet2DConditionModel`] with the pretrained text-to-image model weights, and change `in_channels` to 9. Changing the number of `in_channels` means you need to set `ignore_mismatched_sizes=True` and `low_cpu_mem_usage=False` to avoid a size mismatch error because the shape is different now.
 
 ```py
-from diffusers import UNet2DConditionModel
+from diffusers import AutoModel
 
 model_id = "stable-diffusion-v1-5/stable-diffusion-v1-5"
-unet = UNet2DConditionModel.from_pretrained(
+unet = AutoModel.from_pretrained(
     model_id,
     subfolder="unet",
     in_channels=9,

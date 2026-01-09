@@ -1,4 +1,4 @@
-# Copyright 2024 The HuggingFace Team. All rights reserved.
+# Copyright 2025 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -433,8 +433,8 @@ class StableDiffusionLatentUpscalePipeline(DiffusionPipeline, StableDiffusionMix
                 The prompt or prompts to guide what to not include in image generation. If not defined, you need to
                 pass `negative_prompt_embeds` instead. Ignored when not using guidance (`guidance_scale < 1`).
             eta (`float`, *optional*, defaults to 0.0):
-                Corresponds to parameter eta (η) from the [DDIM](https://arxiv.org/abs/2010.02502) paper. Only applies
-                to the [`~schedulers.DDIMScheduler`], and is ignored in other schedulers.
+                Corresponds to parameter eta (η) from the [DDIM](https://huggingface.co/papers/2010.02502) paper. Only
+                applies to the [`~schedulers.DDIMScheduler`], and is ignored in other schedulers.
             generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
                 A [`torch.Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make
                 generation deterministic.
@@ -516,7 +516,7 @@ class StableDiffusionLatentUpscalePipeline(DiffusionPipeline, StableDiffusionMix
             batch_size = prompt_embeds.shape[0]
         device = self._execution_device
         # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
-        # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`
+        # of the Imagen paper: https://huggingface.co/papers/2205.11487 . `guidance_scale = 1`
         # corresponds to doing no classifier free guidance.
         do_classifier_free_guidance = guidance_scale > 1.0
 

@@ -31,7 +31,9 @@ from diffusers import (
     MarigoldDepthPipeline,
     UNet2DConditionModel,
 )
-from diffusers.utils.testing_utils import (
+
+from ...testing_utils import (
+    Expectations,
     backend_empty_cache,
     enable_full_determinism,
     floats_tensor,
@@ -41,7 +43,6 @@ from diffusers.utils.testing_utils import (
     slow,
     torch_device,
 )
-
 from ..test_pipelines_common import PipelineTesterMixin
 
 
@@ -356,7 +357,7 @@ class MarigoldDepthPipelineIntegrationTests(unittest.TestCase):
             match_input_resolution=True,
         )
 
-    def test_marigold_depth_einstein_f32_cuda_G0_S1_P768_E1_B1_M1(self):
+    def test_marigold_depth_einstein_f32_accelerator_G0_S1_P768_E1_B1_M1(self):
         self._test_marigold_depth(
             is_fp16=False,
             device=torch_device,
@@ -369,7 +370,7 @@ class MarigoldDepthPipelineIntegrationTests(unittest.TestCase):
             match_input_resolution=True,
         )
 
-    def test_marigold_depth_einstein_f16_cuda_G0_S1_P768_E1_B1_M1(self):
+    def test_marigold_depth_einstein_f16_accelerator_G0_S1_P768_E1_B1_M1(self):
         self._test_marigold_depth(
             is_fp16=True,
             device=torch_device,
@@ -382,7 +383,7 @@ class MarigoldDepthPipelineIntegrationTests(unittest.TestCase):
             match_input_resolution=True,
         )
 
-    def test_marigold_depth_einstein_f16_cuda_G2024_S1_P768_E1_B1_M1(self):
+    def test_marigold_depth_einstein_f16_accelerator_G2024_S1_P768_E1_B1_M1(self):
         self._test_marigold_depth(
             is_fp16=True,
             device=torch_device,
@@ -395,12 +396,23 @@ class MarigoldDepthPipelineIntegrationTests(unittest.TestCase):
             match_input_resolution=True,
         )
 
-    def test_marigold_depth_einstein_f16_cuda_G0_S2_P768_E1_B1_M1(self):
+    def test_marigold_depth_einstein_f16_accelerator_G0_S2_P768_E1_B1_M1(self):
+        # fmt: off
+        expected_slices = Expectations(
+            {
+                ("cuda", 7): np.array([0.1085, 0.1098, 0.1110, 0.1081, 0.1085, 0.1082, 0.1085, 0.1057, 0.0996]),
+                ("xpu", 3): np.array([0.1084, 0.1096, 0.1108, 0.1080, 0.1083, 0.1080,
+ 0.1085, 0.1057, 0.0996]),
+            }
+        )
+        expected_slice = expected_slices.get_expectation()
+        # fmt: on
+
         self._test_marigold_depth(
             is_fp16=True,
             device=torch_device,
             generator_seed=0,
-            expected_slice=np.array([0.1085, 0.1098, 0.1110, 0.1081, 0.1085, 0.1082, 0.1085, 0.1057, 0.0996]),
+            expected_slice=expected_slice,
             num_inference_steps=2,
             processing_resolution=768,
             ensemble_size=1,
@@ -408,7 +420,7 @@ class MarigoldDepthPipelineIntegrationTests(unittest.TestCase):
             match_input_resolution=True,
         )
 
-    def test_marigold_depth_einstein_f16_cuda_G0_S1_P512_E1_B1_M1(self):
+    def test_marigold_depth_einstein_f16_accelerator_G0_S1_P512_E1_B1_M1(self):
         self._test_marigold_depth(
             is_fp16=True,
             device=torch_device,
@@ -421,7 +433,7 @@ class MarigoldDepthPipelineIntegrationTests(unittest.TestCase):
             match_input_resolution=True,
         )
 
-    def test_marigold_depth_einstein_f16_cuda_G0_S1_P768_E3_B1_M1(self):
+    def test_marigold_depth_einstein_f16_accelerator_G0_S1_P768_E3_B1_M1(self):
         self._test_marigold_depth(
             is_fp16=True,
             device=torch_device,
@@ -435,7 +447,7 @@ class MarigoldDepthPipelineIntegrationTests(unittest.TestCase):
             match_input_resolution=True,
         )
 
-    def test_marigold_depth_einstein_f16_cuda_G0_S1_P768_E4_B2_M1(self):
+    def test_marigold_depth_einstein_f16_accelerator_G0_S1_P768_E4_B2_M1(self):
         self._test_marigold_depth(
             is_fp16=True,
             device=torch_device,
@@ -449,7 +461,7 @@ class MarigoldDepthPipelineIntegrationTests(unittest.TestCase):
             match_input_resolution=True,
         )
 
-    def test_marigold_depth_einstein_f16_cuda_G0_S1_P512_E1_B1_M0(self):
+    def test_marigold_depth_einstein_f16_accelerator_G0_S1_P512_E1_B1_M0(self):
         self._test_marigold_depth(
             is_fp16=True,
             device=torch_device,

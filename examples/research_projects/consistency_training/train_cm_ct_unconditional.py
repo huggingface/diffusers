@@ -789,7 +789,7 @@ def main(args):
     if args.report_to == "wandb" and args.hub_token is not None:
         raise ValueError(
             "You cannot use both --report_to=wandb and --hub_token due to a security risk of exposing your token."
-            " Please use `huggingface-cli login` to authenticate with the Hub."
+            " Please use `hf auth login` to authenticate with the Hub."
         )
 
     accelerator_project_config = ProjectConfiguration(project_dir=args.output_dir, logging_dir=logging_dir)
@@ -1147,7 +1147,7 @@ def main(args):
         tracker_config = dict(vars(args))
         accelerator.init_trackers(args.tracker_project_name, config=tracker_config)
 
-    # Function for unwraping if torch.compile() was used in accelerate.
+    # Function for unwrapping if torch.compile() was used in accelerate.
     def unwrap_model(model):
         model = accelerator.unwrap_model(model)
         model = model._orig_mod if is_compiled_module(model) else model

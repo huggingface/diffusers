@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2024 HuggingFace Inc.
+# Copyright 2025 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -28,7 +28,8 @@ from diffusers import (
     logging,
 )
 from diffusers.configuration_utils import ConfigMixin, register_to_config
-from diffusers.utils.testing_utils import CaptureLogger
+
+from ..testing_utils import CaptureLogger
 
 
 class SampleObject(ConfigMixin):

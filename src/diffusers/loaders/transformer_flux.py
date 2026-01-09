@@ -1,4 +1,4 @@
-# Copyright 2024 The HuggingFace Team. All rights reserved.
+# Copyright 2025 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -17,12 +17,10 @@ from ..models.embeddings import (
     ImageProjection,
     MultiIPAdapterImageProjection,
 )
-from ..models.modeling_utils import _LOW_CPU_MEM_USAGE_DEFAULT, load_model_dict_into_meta
-from ..utils import (
-    is_accelerate_available,
-    is_torch_version,
-    logging,
-)
+from ..models.model_loading_utils import load_model_dict_into_meta
+from ..models.modeling_utils import _LOW_CPU_MEM_USAGE_DEFAULT
+from ..utils import is_accelerate_available, is_torch_version, logging
+from ..utils.torch_utils import empty_device_cache
 
 
 if is_accelerate_available():
@@ -84,13 +82,12 @@ class FluxTransformer2DLoadersMixin:
         else:
             device_map = {"": self.device}
             load_model_dict_into_meta(image_projection, updated_state_dict, device_map=device_map, dtype=self.dtype)
+            empty_device_cache()
 
         return image_projection
 
     def _convert_ip_adapter_attn_to_diffusers(self, state_dicts, low_cpu_mem_usage=_LOW_CPU_MEM_USAGE_DEFAULT):
-        from ..models.attention_processor import (
-            FluxIPAdapterJointAttnProcessor2_0,
-        )
+        from ..models.transformers.transformer_flux import FluxIPAdapterAttnProcessor
 
         if low_cpu_mem_usage:
             if is_accelerate_available():
@@ -122,7 +119,7 @@ class FluxTransformer2DLoadersMixin:
             else:
                 cross_attention_dim = self.config.joint_attention_dim
                 hidden_size = self.inner_dim
-                attn_processor_class = FluxIPAdapterJointAttnProcessor2_0
+                attn_processor_class = FluxIPAdapterAttnProcessor
                 num_image_text_embeds = []
                 for state_dict in state_dicts:
                     if "proj.weight" in state_dict["image_proj"]:
@@ -157,6 +154,8 @@ class FluxTransformer2DLoadersMixin:
                     load_model_dict_into_meta(attn_procs[name], value_dict, device_map=device_map, dtype=dtype)
 
                 key_id += 1
+
+        empty_device_cache()
 
         return attn_procs
 

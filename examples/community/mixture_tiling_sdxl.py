@@ -30,17 +30,13 @@ from diffusers.loaders import (
     TextualInversionLoaderMixin,
 )
 from diffusers.models import AutoencoderKL, UNet2DConditionModel
-from diffusers.models.attention_processor import (
-    AttnProcessor2_0,
-    FusedAttnProcessor2_0,
-    XFormersAttnProcessor,
-)
 from diffusers.models.lora import adjust_lora_scale_text_encoder
 from diffusers.pipelines.pipeline_utils import DiffusionPipeline, StableDiffusionMixin
 from diffusers.pipelines.stable_diffusion_xl.pipeline_output import StableDiffusionXLPipelineOutput
 from diffusers.schedulers import KarrasDiffusionSchedulers, LMSDiscreteScheduler
 from diffusers.utils import (
     USE_PEFT_BACKEND,
+    deprecate,
     is_invisible_watermark_available,
     is_torch_xla_available,
     logging,
@@ -201,7 +197,7 @@ def rescale_noise_cfg(noise_cfg, noise_pred_text, guidance_rescale=0.0):
     r"""
     Rescales `noise_cfg` tensor based on `guidance_rescale` to improve image quality and fix overexposure. Based on
     Section 3.4 from [Common Diffusion Noise Schedules and Sample Steps are
-    Flawed](https://arxiv.org/pdf/2305.08891.pdf).
+    Flawed](https://huggingface.co/papers/2305.08891).
 
     Args:
         noise_cfg (`torch.Tensor`):
@@ -631,7 +627,7 @@ class StableDiffusionXLTilingPipeline(
     def prepare_extra_step_kwargs(self, generator, eta):
         # prepare extra kwargs for the scheduler step, since not all schedulers have the same signature
         # eta (η) is only used with the DDIMScheduler, it will be ignored for other schedulers.
-        # eta corresponds to η in DDIM paper: https://arxiv.org/abs/2010.02502
+        # eta corresponds to η in DDIM paper: https://huggingface.co/papers/2010.02502
         # and should be between [0, 1]
 
         accepts_eta = "eta" in set(inspect.signature(self.scheduler.step).parameters.keys())
@@ -710,22 +706,8 @@ class StableDiffusionXLTilingPipeline(
         return torch.tile(weights_torch, (nbatches, self.unet.config.in_channels, 1, 1))
 
     def upcast_vae(self):
-        dtype = self.vae.dtype
+        deprecate("upcast_vae", "1.0.0", "`upcast_vae` is deprecated. Please use `pipe.vae.to(torch.float32)`")
         self.vae.to(dtype=torch.float32)
-        use_torch_2_0_or_xformers = isinstance(
-            self.vae.decoder.mid_block.attentions[0].processor,
-            (
-                AttnProcessor2_0,
-                XFormersAttnProcessor,
-                FusedAttnProcessor2_0,
-            ),
-        )
-        # if xformers or torch_2_0 is used attention block does not need
-        # to be in float32 which can save lots of memory
-        if use_torch_2_0_or_xformers:
-            self.vae.post_quant_conv.to(dtype)
-            self.vae.decoder.conv_in.to(dtype)
-            self.vae.decoder.mid_block.to(dtype)
 
     # Copied from diffusers.pipelines.latent_consistency_models.pipeline_latent_consistency_text2img.LatentConsistencyModelPipeline.get_guidance_scale_embedding
     def get_guidance_scale_embedding(
@@ -767,7 +749,7 @@ class StableDiffusionXLTilingPipeline(
         return self._clip_skip
 
     # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
-    # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`
+    # of the Imagen paper: https://huggingface.co/papers/2205.11487 . `guidance_scale = 1`
     # corresponds to doing no classifier free guidance.
     @property
     def do_classifier_free_guidance(self):
@@ -839,9 +821,9 @@ class StableDiffusionXLTilingPipeline(
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
             guidance_scale (`float`, *optional*, defaults to 5.0):
-                Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598).
+                Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://huggingface.co/papers/2207.12598).
                 `guidance_scale` is defined as `w` of equation 2. of [Imagen
-                Paper](https://arxiv.org/pdf/2205.11487.pdf). Guidance scale is enabled by setting `guidance_scale >
+                Paper](https://huggingface.co/papers/2205.11487). Guidance scale is enabled by setting `guidance_scale >
                 1`. Higher guidance scale encourages to generate images that are closely linked to the text `prompt`,
                 usually at the expense of lower image quality.
             negative_prompt (`str` or `List[str]`, *optional*):
@@ -851,7 +833,7 @@ class StableDiffusionXLTilingPipeline(
             num_images_per_prompt (`int`, *optional*, defaults to 1):
                 The number of images to generate per prompt.
             eta (`float`, *optional*, defaults to 0.0):
-                Corresponds to parameter eta (η) in the DDIM paper: https://arxiv.org/abs/2010.02502. Only applies to
+                Corresponds to parameter eta (η) in the DDIM paper: https://huggingface.co/papers/2010.02502. Only applies to
                 [`schedulers.DDIMScheduler`], will be ignored for others.
             generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
                 One or a list of [torch generator(s)](https://pytorch.org/docs/stable/generated/torch.Generator.html)

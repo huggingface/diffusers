@@ -55,8 +55,8 @@ for key in orig_state_dict.keys():
         state_dict[key.replace("attn.out_proj.bias", "to_out.0.bias")] = weights
     else:
         state_dict[key] = orig_state_dict[key]
-deocder = WuerstchenDiffNeXt()
-deocder.load_state_dict(state_dict)
+decoder = WuerstchenDiffNeXt()
+decoder.load_state_dict(state_dict)
 
 # Prior
 orig_state_dict = torch.load(os.path.join(model_path, "model_v3_stage_c.pt"), map_location=device)["ema_state_dict"]
@@ -94,7 +94,7 @@ prior_pipeline = WuerstchenPriorPipeline(
 prior_pipeline.save_pretrained("warp-ai/wuerstchen-prior")
 
 decoder_pipeline = WuerstchenDecoderPipeline(
-    text_encoder=gen_text_encoder, tokenizer=gen_tokenizer, vqgan=vqmodel, decoder=deocder, scheduler=scheduler
+    text_encoder=gen_text_encoder, tokenizer=gen_tokenizer, vqgan=vqmodel, decoder=decoder, scheduler=scheduler
 )
 decoder_pipeline.save_pretrained("warp-ai/wuerstchen")
 
@@ -103,7 +103,7 @@ wuerstchen_pipeline = WuerstchenCombinedPipeline(
     # Decoder
     text_encoder=gen_text_encoder,
     tokenizer=gen_tokenizer,
-    decoder=deocder,
+    decoder=decoder,
     scheduler=scheduler,
     vqgan=vqmodel,
     # Prior

@@ -1,4 +1,4 @@
-<!--Copyright 2024 The HuggingFace Team. All rights reserved.
+<!--Copyright 2025 The HuggingFace Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -19,6 +19,12 @@ All pipelines with [`VaeImageProcessor`] accept PIL Image, PyTorch tensor, or Nu
 ## VaeImageProcessor
 
 [[autodoc]] image_processor.VaeImageProcessor
+
+## InpaintProcessor
+
+The [`InpaintProcessor`] accepts `mask` and `image` inputs and process them together. Optionally, it can accept padding_mask_crop and apply mask overlay.
+
+[[autodoc]] image_processor.InpaintProcessor
 
 ## VaeImageProcessorLDM3D
 

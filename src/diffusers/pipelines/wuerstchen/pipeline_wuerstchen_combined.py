@@ -1,4 +1,4 @@
-# Copyright 2024 The HuggingFace Team. All rights reserved.
+# Copyright 2025 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -18,7 +18,7 @@ from transformers import CLIPTextModel, CLIPTokenizer
 
 from ...schedulers import DDPMWuerstchenScheduler
 from ...utils import deprecate, replace_example_docstring
-from ..pipeline_utils import DiffusionPipeline
+from ..pipeline_utils import DeprecatedPipelineMixin, DiffusionPipeline
 from .modeling_paella_vq_model import PaellaVQModel
 from .modeling_wuerstchen_diffnext import WuerstchenDiffNeXt
 from .modeling_wuerstchen_prior import WuerstchenPrior
@@ -40,7 +40,7 @@ TEXT2IMAGE_EXAMPLE_DOC_STRING = """
 """
 
 
-class WuerstchenCombinedPipeline(DiffusionPipeline):
+class WuerstchenCombinedPipeline(DeprecatedPipelineMixin, DiffusionPipeline):
     """
     Combined Pipeline for text-to-image generation using Wuerstchen
 
@@ -68,6 +68,7 @@ class WuerstchenCombinedPipeline(DiffusionPipeline):
             The scheduler to be used for prior pipeline.
     """
 
+    _last_supported_version = "0.33.1"
     _load_connected_pipes = True
 
     def __init__(
@@ -112,7 +113,7 @@ class WuerstchenCombinedPipeline(DiffusionPipeline):
     def enable_xformers_memory_efficient_attention(self, attention_op: Optional[Callable] = None):
         self.decoder_pipe.enable_xformers_memory_efficient_attention(attention_op)
 
-    def enable_model_cpu_offload(self, gpu_id: Optional[int] = None, device: Union[torch.device, str] = "cuda"):
+    def enable_model_cpu_offload(self, gpu_id: Optional[int] = None, device: Union[torch.device, str] = None):
         r"""
         Offloads all models to CPU using accelerate, reducing memory usage with a low impact on performance. Compared
         to `enable_sequential_cpu_offload`, this method moves one whole model at a time to the GPU when its `forward`
@@ -122,7 +123,7 @@ class WuerstchenCombinedPipeline(DiffusionPipeline):
         self.prior_pipe.enable_model_cpu_offload(gpu_id=gpu_id, device=device)
         self.decoder_pipe.enable_model_cpu_offload(gpu_id=gpu_id, device=device)
 
-    def enable_sequential_cpu_offload(self, gpu_id: Optional[int] = None, device: Union[torch.device, str] = "cuda"):
+    def enable_sequential_cpu_offload(self, gpu_id: Optional[int] = None, device: Union[torch.device, str] = None):
         r"""
         Offloads all models (`unet`, `text_encoder`, `vae`, and `safety checker` state dicts) to CPU using 🤗
         Accelerate, significantly reducing memory usage. Models are moved to a `torch.device('meta')` and loaded on a
@@ -190,11 +191,11 @@ class WuerstchenCombinedPipeline(DiffusionPipeline):
             width (`int`, *optional*, defaults to 512):
                 The width in pixels of the generated image.
             prior_guidance_scale (`float`, *optional*, defaults to 4.0):
-                Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598).
-                `prior_guidance_scale` is defined as `w` of equation 2. of [Imagen
-                Paper](https://arxiv.org/pdf/2205.11487.pdf). Guidance scale is enabled by setting
-                `prior_guidance_scale > 1`. Higher guidance scale encourages to generate images that are closely linked
-                to the text `prompt`, usually at the expense of lower image quality.
+                Guidance scale as defined in [Classifier-Free Diffusion
+                Guidance](https://huggingface.co/papers/2207.12598). `prior_guidance_scale` is defined as `w` of
+                equation 2. of [Imagen Paper](https://huggingface.co/papers/2205.11487). Guidance scale is enabled by
+                setting `prior_guidance_scale > 1`. Higher guidance scale encourages to generate images that are
+                closely linked to the text `prompt`, usually at the expense of lower image quality.
             prior_num_inference_steps (`Union[int, Dict[float, int]]`, *optional*, defaults to 60):
                 The number of prior denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference. For more specific timestep spacing, you can pass customized
@@ -210,18 +211,18 @@ class WuerstchenCombinedPipeline(DiffusionPipeline):
                 Custom timesteps to use for the denoising process for the decoder. If not defined, equal spaced
                 `num_inference_steps` timesteps are used. Must be in descending order.
             decoder_guidance_scale (`float`, *optional*, defaults to 0.0):
-                Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598).
-                `guidance_scale` is defined as `w` of equation 2. of [Imagen
-                Paper](https://arxiv.org/pdf/2205.11487.pdf). Guidance scale is enabled by setting `guidance_scale >
-                1`. Higher guidance scale encourages to generate images that are closely linked to the text `prompt`,
-                usually at the expense of lower image quality.
+                Guidance scale as defined in [Classifier-Free Diffusion
+                Guidance](https://huggingface.co/papers/2207.12598). `guidance_scale` is defined as `w` of equation 2.
+                of [Imagen Paper](https://huggingface.co/papers/2205.11487). Guidance scale is enabled by setting
+                `guidance_scale > 1`. Higher guidance scale encourages to generate images that are closely linked to
+                the text `prompt`, usually at the expense of lower image quality.
             generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
                 One or a list of [torch generator(s)](https://pytorch.org/docs/stable/generated/torch.Generator.html)
                 to make generation deterministic.
             latents (`torch.Tensor`, *optional*):
                 Pre-generated noisy latents, sampled from a Gaussian distribution, to be used as inputs for image
                 generation. Can be used to tweak the same generation with different prompts. If not provided, a latents
-                tensor will ge generated by sampling using the supplied random `generator`.
+                tensor will be generated by sampling using the supplied random `generator`.
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generate image. Choose between: `"pil"` (`PIL.Image.Image`), `"np"`
                 (`np.array`) or `"pt"` (`torch.Tensor`).

@@ -43,7 +43,7 @@ You have to be a registered user in 🤗 Hugging Face Hub, and you'll also need 
 Run the following command to authenticate your token
 
 ```bash
-huggingface-cli login
+hf auth login
 ```
 
 If you have already cloned the repo, then you won't need to go through these steps.
@@ -156,7 +156,7 @@ accelerate launch --mixed_precision="fp16" --multi_gpu  train_text_to_image.py \
 
 #### Training with Min-SNR weighting
 
-We support training with the Min-SNR weighting strategy proposed in [Efficient Diffusion Training via Min-SNR Weighting Strategy](https://arxiv.org/abs/2303.09556) which helps to achieve faster convergence
+We support training with the Min-SNR weighting strategy proposed in [Efficient Diffusion Training via Min-SNR Weighting Strategy](https://huggingface.co/papers/2303.09556) which helps to achieve faster convergence
 by rebalancing the loss. In order to use it, one needs to set the `--snr_gamma` argument. The recommended
 value when using it is 5.0.
 
@@ -179,13 +179,13 @@ EMA weights require an additional full-precision copy of the model parameters to
 
 #### Training with DREAM
 
-We support training epsilon (noise) prediction models using the [DREAM (Diffusion Rectification and Estimation-Adaptive Models) strategy](https://arxiv.org/abs/2312.00210). DREAM claims to increase model fidelity for the performance cost of an extra grad-less unet `forward` step in the training loop.  You can turn on DREAM training by using the `--dream_training` argument. The `--dream_detail_preservation` argument controls the detail preservation variable p and is the default of 1 from the paper.
+We support training epsilon (noise) prediction models using the [DREAM (Diffusion Rectification and Estimation-Adaptive Models) strategy](https://huggingface.co/papers/2312.00210). DREAM claims to increase model fidelity for the performance cost of an extra grad-less unet `forward` step in the training loop.  You can turn on DREAM training by using the `--dream_training` argument. The `--dream_detail_preservation` argument controls the detail preservation variable p and is the default of 1 from the paper.
 
 
 
 ## Training with LoRA
 
-Low-Rank Adaption of Large Language Models was first introduced by Microsoft in [LoRA: Low-Rank Adaptation of Large Language Models](https://arxiv.org/abs/2106.09685) by *Edward J. Hu, Yelong Shen, Phillip Wallis, Zeyuan Allen-Zhu, Yuanzhi Li, Shean Wang, Lu Wang, Weizhu Chen*.
+Low-Rank Adaption of Large Language Models was first introduced by Microsoft in [LoRA: Low-Rank Adaptation of Large Language Models](https://huggingface.co/papers/2106.09685) by *Edward J. Hu, Yelong Shen, Phillip Wallis, Zeyuan Allen-Zhu, Yuanzhi Li, Shean Wang, Lu Wang, Weizhu Chen*.
 
 In a nutshell, LoRA allows adapting pretrained models by adding pairs of rank-decomposition matrices to existing weights and **only** training those newly added weights. This has a couple of advantages:
 
@@ -215,7 +215,7 @@ For this example we want to directly store the trained LoRA embeddings on the Hu
 we need to be logged in and add the `--push_to_hub` flag.
 
 ```bash
-huggingface-cli login
+hf auth login
 ```
 
 Now we can start training!

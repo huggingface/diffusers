@@ -12,6 +12,7 @@
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
+# limitations under the License.
 
 import argparse
 import contextlib
@@ -60,7 +61,7 @@ if is_wandb_available():
     import wandb
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.33.0.dev0")
+check_min_version("0.37.0.dev0")
 
 logger = get_logger(__name__)
 
@@ -178,11 +179,11 @@ def log_validation(
         else:
             logger.warning(f"image logging not implemented for {tracker.name}")
 
-        del pipeline
-        gc.collect()
-        torch.cuda.empty_cache()
+    del pipeline
+    gc.collect()
+    torch.cuda.empty_cache()
 
-        return image_logs
+    return image_logs
 
 
 def import_model_class_from_model_name_or_path(pretrained_model_name_or_path: str, revision: str):
@@ -734,7 +735,7 @@ def main(args):
     if args.report_to == "wandb" and args.hub_token is not None:
         raise ValueError(
             "You cannot use both --report_to=wandb and --hub_token due to a security risk of exposing your token."
-            " Please use `huggingface-cli login` to authenticate with the Hub."
+            " Please use `hf auth login` to authenticate with the Hub."
         )
 
     logging_dir = Path(args.output_dir, args.logging_dir)

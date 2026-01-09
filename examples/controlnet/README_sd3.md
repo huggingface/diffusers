@@ -1,6 +1,6 @@
 # ControlNet training example for Stable Diffusion 3/3.5 (SD3/3.5)
 
-The `train_controlnet_sd3.py` script shows how to implement the ControlNet training procedure and adapt it for [Stable Diffusion 3](https://arxiv.org/abs/2403.03206) and [Stable Diffusion 3.5](https://stability.ai/news/introducing-stable-diffusion-3-5).
+The `train_controlnet_sd3.py` script shows how to implement the ControlNet training procedure and adapt it for [Stable Diffusion 3](https://huggingface.co/papers/2403.03206) and [Stable Diffusion 3.5](https://stability.ai/news/introducing-stable-diffusion-3-5).
 
 ## Running locally with PyTorch
 
@@ -56,7 +56,7 @@ First download the SD3 model from [Hugging Face Hub](https://huggingface.co/stab
 > As the model is gated, before using it with diffusers you first need to go to the [Stable Diffusion 3 Medium Hugging Face page](https://huggingface.co/stabilityai/stable-diffusion-3-medium-diffusers) or [Stable Diffusion 3.5 Large Hugging Face page](https://huggingface.co/stabilityai/stable-diffusion-3.5-medium), fill in the form and accept the gate. Once you are in, you need to log in so that your system knows you’ve accepted the gate. Use the command below to log in:
 
 ```bash
-huggingface-cli login
+hf auth login
 ```
 
 This will also allow us to push the trained model parameters to the Hugging Face Hub platform.

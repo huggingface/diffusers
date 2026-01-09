@@ -1,6 +1,6 @@
 # DreamBooth training example for FLUX.1 [dev]
 
-[DreamBooth](https://arxiv.org/abs/2208.12242) is a method to personalize text2image models like stable diffusion given just a few (3~5) images of a subject.
+[DreamBooth](https://huggingface.co/papers/2208.12242) is a method to personalize text2image models like stable diffusion given just a few (3~5) images of a subject.
 
 The `train_dreambooth_flux.py` script shows how to implement the training procedure and adapt it for [FLUX.1 [dev]](https://blackforestlabs.ai/announcing-black-forest-labs/). We also provide a LoRA implementation in the `train_dreambooth_lora_flux.py` script.
 > [!NOTE]
@@ -19,7 +19,7 @@ The `train_dreambooth_flux.py` script shows how to implement the training proced
 > As the model is gated, before using it with diffusers you first need to go to the [FLUX.1 [dev] Hugging Face page](https://huggingface.co/black-forest-labs/FLUX.1-dev), fill in the form and accept the gate. Once you are in, you need to log in so that your system knows you’ve accepted the gate. Use the command below to log in:
 
 ```bash
-huggingface-cli login
+hf auth login
 ```
 
 This will also allow us to push the trained model parameters to the Hugging Face Hub platform.
@@ -134,7 +134,7 @@ Note also that we use PEFT library as backend for LoRA training, make sure to ha
 Prodigy is an adaptive optimizer that dynamically adjusts the learning rate learned parameters based on past gradients, allowing for more efficient convergence. 
 By using prodigy we can "eliminate" the need for manual learning rate tuning. read more [here](https://huggingface.co/blog/sdxl_lora_advanced_script#adaptive-optimizers).
 
-to use prodigy, specify
+to use prodigy, first make sure to install the prodigyopt library: `pip install prodigyopt`, and then specify -
 ```bash
 --optimizer="prodigy"
 ```
@@ -170,16 +170,33 @@ accelerate launch train_dreambooth_lora_flux.py \
   --push_to_hub
 ```
 
+### LoRA Rank and Alpha
+Two key LoRA hyperparameters are LoRA rank and LoRA alpha. 
+- `--rank`: Defines the dimension of the trainable LoRA matrices. A higher rank means more expressiveness and capacity to learn (and more parameters).
+- `--lora_alpha`: A scaling factor for the LoRA's output. The LoRA update is scaled by lora_alpha / lora_rank.
+- lora_alpha vs. rank:
+This ratio dictates the LoRA's effective strength:
+lora_alpha == rank: Scaling factor is 1. The LoRA is applied with its learned strength. (e.g., alpha=16, rank=16)
+lora_alpha < rank: Scaling factor < 1. Reduces the LoRA's impact. Useful for subtle changes or to prevent overpowering the base model. (e.g., alpha=8, rank=16)
+lora_alpha > rank: Scaling factor > 1. Amplifies the LoRA's impact. Allows a lower rank LoRA to have a stronger effect. (e.g., alpha=32, rank=16)
+
+> [!TIP]
+> A common starting point is to set `lora_alpha` equal to `rank`. 
+> Some also set `lora_alpha` to be twice the `rank` (e.g., lora_alpha=32 for lora_rank=16) 
+> to give the LoRA updates more influence without increasing parameter count. 
+> If you find your LoRA is "overcooking" or learning too aggressively, consider setting `lora_alpha` to half of `rank` 
+> (e.g., lora_alpha=8 for rank=16). Experimentation is often key to finding the optimal balance for your use case.
+
 ### Target Modules
 When LoRA was first adapted from language models to diffusion models, it was applied to the cross-attention layers in the Unet that relate the image representations with the prompts that describe them. 
 More recently, SOTA text-to-image diffusion models replaced the Unet with a diffusion Transformer(DiT). With this change, we may also want to explore 
-applying LoRA training onto different types of layers and blocks. To allow more flexibility and control over the targeted modules we added `--lora_layers`- in which you can specify in a comma seperated string
+applying LoRA training onto different types of layers and blocks. To allow more flexibility and control over the targeted modules we added `--lora_layers`- in which you can specify in a comma separated string
 the exact modules for LoRA training. Here are some examples of target modules you can provide: 
 - for attention only layers: `--lora_layers="attn.to_k,attn.to_q,attn.to_v,attn.to_out.0"`
 - to train the same modules as in the fal trainer: `--lora_layers="attn.to_k,attn.to_q,attn.to_v,attn.to_out.0,attn.add_k_proj,attn.add_q_proj,attn.add_v_proj,attn.to_add_out,ff.net.0.proj,ff.net.2,ff_context.net.0.proj,ff_context.net.2"`
 - to train the same modules as in ostris ai-toolkit / replicate trainer: `--lora_blocks="attn.to_k,attn.to_q,attn.to_v,attn.to_out.0,attn.add_k_proj,attn.add_q_proj,attn.add_v_proj,attn.to_add_out,ff.net.0.proj,ff.net.2,ff_context.net.0.proj,ff_context.net.2,norm1_context.linear, norm1.linear,norm.linear,proj_mlp,proj_out"`
 > [!NOTE]
-> `--lora_layers` can also be used to specify which **blocks** to apply LoRA training to. To do so, simply add a block prefix to each layer in the comma seperated string:
+> `--lora_layers` can also be used to specify which **blocks** to apply LoRA training to. To do so, simply add a block prefix to each layer in the comma separated string:
 > **single DiT blocks**: to target the ith single transformer block, add the prefix `single_transformer_blocks.i`, e.g. - `single_transformer_blocks.i.attn.to_k`
 > **MMDiT blocks**: to target the ith MMDiT block, add the prefix `transformer_blocks.i`, e.g. - `transformer_blocks.i.attn.to_k` 
 > [!NOTE]
@@ -242,6 +259,97 @@ to enable `latent_caching` simply pass `--cache_latents`.
 ### Precision of saved LoRA layers
 By default, trained transformer layers are saved in the precision dtype in which training was performed. E.g. when training in mixed precision is enabled with `--mixed_precision="bf16"`, final finetuned layers will be saved in `torch.bfloat16` as well. 
 This reduces memory requirements significantly w/o a significant quality loss. Note that if you do wish to save the final layers in float32 at the expanse of more memory usage, you can do so by passing `--upcast_before_saving`.
+
+## Training Kontext
+
+[Kontext](https://bfl.ai/announcements/flux-1-kontext) lets us perform image editing as well as image generation. Even though it can accept both image and text as inputs, one can use it for text-to-image (T2I) generation, too. We
+provide a simple script for LoRA fine-tuning Kontext in [train_dreambooth_lora_flux_kontext.py](./train_dreambooth_lora_flux_kontext.py) for both T2I and I2I. The optimizations discussed above apply this script, too.
+
+**important**
+
+> [!NOTE] 
+> To make sure you can successfully run the latest version of the kontext example script, we highly recommend installing from source.
+> To do this, execute the following steps in a new virtual environment:
+> ```
+> git clone https://github.com/huggingface/diffusers
+> cd diffusers
+> pip install -e .
+> ```
+
+Below is an example training command:
+
+```bash
+accelerate launch train_dreambooth_lora_flux_kontext.py \
+  --pretrained_model_name_or_path=black-forest-labs/FLUX.1-Kontext-dev  \
+  --instance_data_dir="dog" \
+  --output_dir="kontext-dog" \
+  --mixed_precision="bf16" \
+  --instance_prompt="a photo of sks dog" \
+  --resolution=1024 \
+  --train_batch_size=1 \
+  --guidance_scale=1 \
+  --gradient_accumulation_steps=4 \
+  --gradient_checkpointing \
+  --optimizer="adamw" \
+  --use_8bit_adam \
+  --cache_latents \
+  --learning_rate=1e-4 \
+  --lr_scheduler="constant" \
+  --lr_warmup_steps=0 \
+  --max_train_steps=500 \
+  --seed="0" 
+```
+
+Fine-tuning Kontext on the T2I task can be useful when working with specific styles/subjects where it may not
+perform as expected.
+
+Image-guided fine-tuning (I2I) is also supported. To start, you must have a dataset containing triplets:
+
+* Condition image
+* Target image
+* Instruction
+
+[kontext-community/relighting](https://huggingface.co/datasets/kontext-community/relighting) is a good example of such a dataset. If you are using such a dataset, you can use the command below to launch training:
+
+```bash
+accelerate launch train_dreambooth_lora_flux_kontext.py \
+  --pretrained_model_name_or_path=black-forest-labs/FLUX.1-Kontext-dev  \
+  --output_dir="kontext-i2i" \
+  --dataset_name="kontext-community/relighting" \
+  --image_column="output" --cond_image_column="file_name" --caption_column="instruction" \
+  --mixed_precision="bf16" \
+  --resolution=1024 \
+  --train_batch_size=1 \
+  --guidance_scale=1 \
+  --gradient_accumulation_steps=4 \
+  --gradient_checkpointing \
+  --optimizer="adamw" \
+  --use_8bit_adam \
+  --cache_latents \
+  --learning_rate=1e-4 \
+  --lr_scheduler="constant" \
+  --lr_warmup_steps=200 \
+  --max_train_steps=1000 \
+  --rank=16\
+  --seed="0" 
+```
+
+More generally, when performing I2I fine-tuning, we expect you to:
+
+* Have a dataset `kontext-community/relighting`
+* Supply `image_column`, `cond_image_column`, and `caption_column` values when launching training
+
+### Misc notes
+
+* By default, we use `mode` as the value of `--vae_encode_mode` argument. This is because Kontext uses `mode()` of the distribution predicted by the VAE instead of sampling from it.
+### Aspect Ratio Bucketing
+we've added aspect ratio bucketing support which allows training on images with different aspect ratios without cropping them to a single square resolution. This technique helps preserve the original composition of training images and can improve training efficiency.
+
+To enable aspect ratio bucketing, pass `--aspect_ratio_buckets` argument with a semicolon-separated list of height,width pairs, such as:
+
+`--aspect_ratio_buckets="672,1568;688,1504;720,1456;752,1392;800,1328;832,1248;880,1184;944,1104;1024,1024;1104,944;1184,880;1248,832;1328,800;1392,752;1456,720;1504,688;1568,672"
+`
+Since Flux Kontext finetuning is still an experimental phase, we encourage you to explore different settings and share your insights! 🤗 
 
 ## Other notes
 Thanks to `bghira` and `ostris` for their help with reviewing & insight sharing ♥️

@@ -42,7 +42,7 @@ EXAMPLE_DOC_STRING = """
         ```py
         >>> import torch
         >>> from diffusers import StableDiffusionPipeline
-        >>> pipe = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16)
+        >>> pipe = StableDiffusionPipeline.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5", torch_dtype=torch.float16)
         >>> pipe = pipe.to("cuda")
         >>> prompt = "a photo of an astronaut riding a horse on mars"
         >>> image = pipe(prompt).images[0]
@@ -279,7 +279,7 @@ class PAGCFGIdentitySelfAttnProcessor:
 def rescale_noise_cfg(noise_cfg, noise_pred_text, guidance_rescale=0.0):
     """
     Rescale `noise_cfg` according to `guidance_rescale`. Based on findings of [Common Diffusion Noise Schedules and
-    Sample Steps are Flawed](https://arxiv.org/pdf/2305.08891.pdf). See Section 3.4
+    Sample Steps are Flawed](https://huggingface.co/papers/2305.08891). See Section 3.4
     """
     std_text = noise_pred_text.std(dim=list(range(1, noise_pred_text.ndim)), keepdim=True)
     std_cfg = noise_cfg.std(dim=list(range(1, noise_cfg.ndim)), keepdim=True)
@@ -359,7 +359,7 @@ class StableDiffusionPAGPipeline(
             [`DDIMScheduler`], [`LMSDiscreteScheduler`], or [`PNDMScheduler`].
         safety_checker ([`StableDiffusionSafetyChecker`]):
             Classification module that estimates whether generated images could be considered offensive or harmful.
-            Please refer to the [model card](https://huggingface.co/runwayml/stable-diffusion-v1-5) for more details
+            Please refer to the [model card](https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5) for more details
             about a model's potential harms.
         feature_extractor ([`~transformers.CLIPImageProcessor`]):
             A `CLIPImageProcessor` to extract features from generated images; used as inputs to the `safety_checker`.
@@ -440,8 +440,8 @@ class StableDiffusionPAGPipeline(
                 "The configuration file of the unet has set the default `sample_size` to smaller than"
                 " 64 which seems highly unlikely. If your checkpoint is a fine-tuned version of any of the"
                 " following: \n- CompVis/stable-diffusion-v1-4 \n- CompVis/stable-diffusion-v1-3 \n-"
-                " CompVis/stable-diffusion-v1-2 \n- CompVis/stable-diffusion-v1-1 \n- runwayml/stable-diffusion-v1-5"
-                " \n- runwayml/stable-diffusion-inpainting \n you should change 'sample_size' to 64 in the"
+                " CompVis/stable-diffusion-v1-2 \n- CompVis/stable-diffusion-v1-1 \n- stable-diffusion-v1-5/stable-diffusion-v1-5"
+                " \n- stable-diffusion-v1-5/stable-diffusion-inpainting \n you should change 'sample_size' to 64 in the"
                 " configuration file. Please make sure to update the config accordingly as leaving `sample_size=32`"
                 " in the config might lead to incorrect results in future versions. If you have downloaded this"
                 " checkpoint from the Hugging Face Hub, it would be very nice if you could open a Pull request for"
@@ -471,6 +471,12 @@ class StableDiffusionPAGPipeline(
         Enable sliced VAE decoding. When this option is enabled, the VAE will split the input tensor in slices to
         compute decoding in several steps. This is useful to save some memory and allow larger batch sizes.
         """
+        depr_message = f"Calling `enable_vae_slicing()` on a `{self.__class__.__name__}` is deprecated and this method will be removed in a future version. Please use `pipe.vae.enable_slicing()`."
+        deprecate(
+            "enable_vae_slicing",
+            "0.40.0",
+            depr_message,
+        )
         self.vae.enable_slicing()
 
     def disable_vae_slicing(self):
@@ -478,6 +484,12 @@ class StableDiffusionPAGPipeline(
         Disable sliced VAE decoding. If `enable_vae_slicing` was previously enabled, this method will go back to
         computing decoding in one step.
         """
+        depr_message = f"Calling `disable_vae_slicing()` on a `{self.__class__.__name__}` is deprecated and this method will be removed in a future version. Please use `pipe.vae.disable_slicing()`."
+        deprecate(
+            "disable_vae_slicing",
+            "0.40.0",
+            depr_message,
+        )
         self.vae.disable_slicing()
 
     def enable_vae_tiling(self):
@@ -486,6 +498,12 @@ class StableDiffusionPAGPipeline(
         compute decoding and encoding in several steps. This is useful for saving a large amount of memory and to allow
         processing larger images.
         """
+        depr_message = f"Calling `enable_vae_tiling()` on a `{self.__class__.__name__}` is deprecated and this method will be removed in a future version. Please use `pipe.vae.enable_tiling()`."
+        deprecate(
+            "enable_vae_tiling",
+            "0.40.0",
+            depr_message,
+        )
         self.vae.enable_tiling()
 
     def disable_vae_tiling(self):
@@ -493,6 +511,12 @@ class StableDiffusionPAGPipeline(
         Disable tiled VAE decoding. If `enable_vae_tiling` was previously enabled, this method will go back to
         computing decoding in one step.
         """
+        depr_message = f"Calling `disable_vae_tiling()` on a `{self.__class__.__name__}` is deprecated and this method will be removed in a future version. Please use `pipe.vae.disable_tiling()`."
+        deprecate(
+            "disable_vae_tiling",
+            "0.40.0",
+            depr_message,
+        )
         self.vae.disable_tiling()
 
     def _encode_prompt(
@@ -793,7 +817,7 @@ class StableDiffusionPAGPipeline(
     def prepare_extra_step_kwargs(self, generator, eta):
         # prepare extra kwargs for the scheduler step, since not all schedulers have the same signature
         # eta (η) is only used with the DDIMScheduler, it will be ignored for other schedulers.
-        # eta corresponds to η in DDIM paper: https://arxiv.org/abs/2010.02502
+        # eta corresponds to η in DDIM paper: https://huggingface.co/papers/2010.02502
         # and should be between [0, 1]
 
         accepts_eta = "eta" in set(inspect.signature(self.scheduler.step).parameters.keys())
@@ -889,7 +913,7 @@ class StableDiffusionPAGPipeline(
         return latents
 
     def enable_freeu(self, s1: float, s2: float, b1: float, b2: float):
-        r"""Enables the FreeU mechanism as in https://arxiv.org/abs/2309.11497.
+        r"""Enables the FreeU mechanism as in https://huggingface.co/papers/2309.11497.
         The suffixes after the scaling factors represent the stages where they are being applied.
         Please refer to the [official repository](https://github.com/ChenyangSi/FreeU) for combinations of the values
         that are known to work well for different pipelines such as Stable Diffusion v1, v2, and Stable Diffusion XL.
@@ -916,9 +940,8 @@ class StableDiffusionPAGPipeline(
         """
         Enables fused QKV projections. For self-attention modules, all projection matrices (i.e., query,
         key, value) are fused. For cross-attention modules, key and value projection matrices are fused.
-        <Tip warning={true}>
-        This API is 🧪 experimental.
-        </Tip>
+        > [!WARNING]
+        > This API is 🧪 experimental.
         Args:
             unet (`bool`, defaults to `True`): To apply fusion on the UNet.
             vae (`bool`, defaults to `True`): To apply fusion on the VAE.
@@ -942,9 +965,8 @@ class StableDiffusionPAGPipeline(
     # Copied from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl.StableDiffusionXLPipeline.unfuse_qkv_projections
     def unfuse_qkv_projections(self, unet: bool = True, vae: bool = True):
         """Disable QKV projection fusion if enabled.
-        <Tip warning={true}>
-        This API is 🧪 experimental.
-        </Tip>
+        > [!WARNING]
+        > This API is 🧪 experimental.
         Args:
             unet (`bool`, defaults to `True`): To apply fusion on the UNet.
             vae (`bool`, defaults to `True`): To apply fusion on the VAE.
@@ -1032,7 +1054,7 @@ class StableDiffusionPAGPipeline(
         return self._clip_skip
 
     # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
-    # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`
+    # of the Imagen paper: https://huggingface.co/papers/2205.11487 . `guidance_scale = 1`
     # corresponds to doing no classifier free guidance.
     @property
     def do_classifier_free_guidance(self):
@@ -1126,7 +1148,7 @@ class StableDiffusionPAGPipeline(
             num_images_per_prompt (`int`, *optional*, defaults to 1):
                 The number of images to generate per prompt.
             eta (`float`, *optional*, defaults to 0.0):
-                Corresponds to parameter eta (η) from the [DDIM](https://arxiv.org/abs/2010.02502) paper. Only applies
+                Corresponds to parameter eta (η) from the [DDIM](https://huggingface.co/papers/2010.02502) paper. Only applies
                 to the [`~schedulers.DDIMScheduler`], and is ignored in other schedulers.
             generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
                 A [`torch.Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make
@@ -1155,7 +1177,7 @@ class StableDiffusionPAGPipeline(
                 [`self.processor`](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
             guidance_rescale (`float`, *optional*, defaults to 0.0):
                 Guidance rescale factor from [Common Diffusion Noise Schedules and Sample Steps are
-                Flawed](https://arxiv.org/pdf/2305.08891.pdf). Guidance rescale factor should fix overexposure when
+                Flawed](https://huggingface.co/papers/2305.08891). Guidance rescale factor should fix overexposure when
                 using zero terminal SNR.
             clip_skip (`int`, *optional*):
                 Number of layers to be skipped from CLIP while computing the prompt embeddings. A value of 1 means that
@@ -1414,7 +1436,7 @@ class StableDiffusionPAGPipeline(
                     )
 
                 if self.do_classifier_free_guidance and self.guidance_rescale > 0.0:
-                    # Based on 3.4. in https://arxiv.org/pdf/2305.08891.pdf
+                    # Based on 3.4. in https://huggingface.co/papers/2305.08891
                     noise_pred = rescale_noise_cfg(noise_pred, noise_pred_text, guidance_rescale=self.guidance_rescale)
 
                 # compute the previous noisy sample x_t -> x_t-1

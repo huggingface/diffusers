@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-# Based on [In-Context Learning Unlocked for Diffusion Models](https://arxiv.org/abs/2305.01115)
+# Based on [In-Context Learning Unlocked for Diffusion Models](https://huggingface.co/papers/2305.01115)
 # Authors: Zhendong Wang, Yifan Jiang, Yadong Lu, Yelong Shen, Pengcheng He, Weizhu Chen, Zhangyang Wang, Mingyuan Zhou
 # Project Page: https://zhendong-wang.github.io/prompt-diffusion.github.io/
 # Code: https://github.com/Zhendong-Wang/Prompt-Diffusion
@@ -148,7 +148,7 @@ class PromptDiffusionPipeline(
     r"""
     Pipeline for text-to-image generation using Stable Diffusion with ControlNet guidance.
 
-    This pipeline also adds experimental support for [Prompt Diffusion](https://arxiv.org/abs/2305.01115).
+    This pipeline also adds experimental support for [Prompt Diffusion](https://huggingface.co/papers/2305.01115).
 
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods
     implemented for all pipelines (downloading, saving, running on a particular device, etc.).
@@ -177,7 +177,7 @@ class PromptDiffusionPipeline(
             [`DDIMScheduler`], [`LMSDiscreteScheduler`], or [`PNDMScheduler`].
         safety_checker ([`StableDiffusionSafetyChecker`]):
             Classification module that estimates whether generated images could be considered offensive or harmful.
-            Please refer to the [model card](https://huggingface.co/runwayml/stable-diffusion-v1-5) for more details
+            Please refer to the [model card](https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5) for more details
             about a model's potential harms.
         feature_extractor ([`~transformers.CLIPImageProcessor`]):
             A `CLIPImageProcessor` to extract features from generated images; used as inputs to the `safety_checker`.
@@ -263,6 +263,12 @@ class PromptDiffusionPipeline(
         compute decoding and encoding in several steps. This is useful for saving a large amount of memory and to allow
         processing larger images.
         """
+        depr_message = f"Calling `enable_vae_tiling()` on a `{self.__class__.__name__}` is deprecated and this method will be removed in a future version. Please use `pipe.vae.enable_tiling()`."
+        deprecate(
+            "enable_vae_tiling",
+            "0.40.0",
+            depr_message,
+        )
         self.vae.enable_tiling()
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.disable_vae_tiling
@@ -271,6 +277,12 @@ class PromptDiffusionPipeline(
         Disable tiled VAE decoding. If `enable_vae_tiling` was previously enabled, this method will go back to
         computing decoding in one step.
         """
+        depr_message = f"Calling `disable_vae_tiling()` on a `{self.__class__.__name__}` is deprecated and this method will be removed in a future version. Please use `pipe.vae.disable_tiling()`."
+        deprecate(
+            "disable_vae_tiling",
+            "0.40.0",
+            depr_message,
+        )
         self.vae.disable_tiling()
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline._encode_prompt
@@ -544,7 +556,7 @@ class PromptDiffusionPipeline(
     def prepare_extra_step_kwargs(self, generator, eta):
         # prepare extra kwargs for the scheduler step, since not all schedulers have the same signature
         # eta (η) is only used with the DDIMScheduler, it will be ignored for other schedulers.
-        # eta corresponds to η in DDIM paper: https://arxiv.org/abs/2010.02502
+        # eta corresponds to η in DDIM paper: https://huggingface.co/papers/2010.02502
         # and should be between [0, 1]
 
         accepts_eta = "eta" in set(inspect.signature(self.scheduler.step).parameters.keys())
@@ -813,7 +825,7 @@ class PromptDiffusionPipeline(
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_freeu
     def enable_freeu(self, s1: float, s2: float, b1: float, b2: float):
-        r"""Enables the FreeU mechanism as in https://arxiv.org/abs/2309.11497.
+        r"""Enables the FreeU mechanism as in https://huggingface.co/papers/2309.11497.
 
         The suffixes after the scaling factors represent the stages where they are being applied.
 
@@ -877,7 +889,7 @@ class PromptDiffusionPipeline(
         return self._clip_skip
 
     # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
-    # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`
+    # of the Imagen paper: https://huggingface.co/papers/2205.11487 . `guidance_scale = 1`
     # corresponds to doing no classifier free guidance.
     @property
     def do_classifier_free_guidance(self):
@@ -959,7 +971,7 @@ class PromptDiffusionPipeline(
             num_images_per_prompt (`int`, *optional*, defaults to 1):
                 The number of images to generate per prompt.
             eta (`float`, *optional*, defaults to 0.0):
-                Corresponds to parameter eta (η) from the [DDIM](https://arxiv.org/abs/2010.02502) paper. Only applies
+                Corresponds to parameter eta (η) from the [DDIM](https://huggingface.co/papers/2010.02502) paper. Only applies
                 to the [`~schedulers.DDIMScheduler`], and is ignored in other schedulers.
             generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
                 A [`torch.Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make

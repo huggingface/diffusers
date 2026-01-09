@@ -12,6 +12,7 @@
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
+# limitations under the License.
 
 import argparse
 import copy
@@ -51,7 +52,7 @@ from diffusers import (
     FlowMatchEulerDiscreteScheduler,
     FluxTransformer2DModel,
 )
-from diffusers.models.controlnet_flux import FluxControlNetModel
+from diffusers.models.controlnets.controlnet_flux import FluxControlNetModel
 from diffusers.optimization import get_scheduler
 from diffusers.pipelines.flux.pipeline_flux_controlnet import FluxControlNetPipeline
 from diffusers.training_utils import compute_density_for_timestep_sampling, free_memory
@@ -65,7 +66,7 @@ if is_wandb_available():
     import wandb
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.33.0.dev0")
+check_min_version("0.37.0.dev0")
 
 logger = get_logger(__name__)
 if is_torch_npu_available():
@@ -148,7 +149,7 @@ def log_validation(
                     pooled_prompt_embeds=pooled_prompt_embeds,
                     control_image=validation_image,
                     num_inference_steps=28,
-                    controlnet_conditioning_scale=0.7,
+                    controlnet_conditioning_scale=1,
                     guidance_scale=3.5,
                     generator=generator,
                 ).images[0]
@@ -192,9 +193,9 @@ def log_validation(
         else:
             logger.warning(f"image logging not implemented for {tracker.name}")
 
-        del pipeline
-        free_memory()
-        return image_logs
+    del pipeline
+    free_memory()
+    return image_logs
 
 
 def save_model_card(repo_id: str, image_logs=None, base_model=str, repo_folder=None):
@@ -639,6 +640,15 @@ def parse_args(input_args=None):
         action="store_true",
         help="Enable model cpu offload and save memory.",
     )
+    parser.add_argument(
+        "--image_interpolation_mode",
+        type=str,
+        default="lanczos",
+        choices=[
+            f.lower() for f in dir(transforms.InterpolationMode) if not f.startswith("__") and not f.endswith("__")
+        ],
+        help="The image interpolation method to use for resizing images.",
+    )
 
     if input_args is not None:
         args = parser.parse_args(input_args)
@@ -736,9 +746,13 @@ def get_train_dataset(args, accelerator):
 
 
 def prepare_train_dataset(dataset, accelerator):
+    interpolation = getattr(transforms.InterpolationMode, args.image_interpolation_mode.upper(), None)
+    if interpolation is None:
+        raise ValueError(f"Unsupported interpolation mode {interpolation=}.")
+
     image_transforms = transforms.Compose(
         [
-            transforms.Resize(args.resolution, interpolation=transforms.InterpolationMode.BILINEAR),
+            transforms.Resize(args.resolution, interpolation=interpolation),
             transforms.CenterCrop(args.resolution),
             transforms.ToTensor(),
             transforms.Normalize([0.5], [0.5]),
@@ -747,7 +761,7 @@ def prepare_train_dataset(dataset, accelerator):
 
     conditioning_image_transforms = transforms.Compose(
         [
-            transforms.Resize(args.resolution, interpolation=transforms.InterpolationMode.BILINEAR),
+            transforms.Resize(args.resolution, interpolation=interpolation),
             transforms.CenterCrop(args.resolution),
             transforms.ToTensor(),
             transforms.Normalize([0.5], [0.5]),
@@ -801,7 +815,7 @@ def main(args):
     if args.report_to == "wandb" and args.hub_token is not None:
         raise ValueError(
             "You cannot use both --report_to=wandb and --hub_token due to a security risk of exposing your token."
-            " Please use `huggingface-cli login` to authenticate with the Hub."
+            " Please use `hf auth login` to authenticate with the Hub."
         )
 
     logging_out_dir = Path(args.output_dir, args.logging_dir)
@@ -1085,8 +1099,6 @@ def main(args):
         return {"prompt_embeds": prompt_embeds, "pooled_prompt_embeds": pooled_prompt_embeds, "text_ids": text_ids}
 
     train_dataset = get_train_dataset(args, accelerator)
-    text_encoders = [text_encoder_one, text_encoder_two]
-    tokenizers = [tokenizer_one, tokenizer_two]
     compute_embeddings_fn = functools.partial(
         compute_embeddings,
         flux_controlnet_pipeline=flux_controlnet_pipeline,
@@ -1103,7 +1115,8 @@ def main(args):
             compute_embeddings_fn, batched=True, new_fingerprint=new_fingerprint, batch_size=50
         )
 
-    del text_encoders, tokenizers, text_encoder_one, text_encoder_two, tokenizer_one, tokenizer_two
+    text_encoder_one.to("cpu")
+    text_encoder_two.to("cpu")
     free_memory()
 
     # Then get the training dataset ready to be passed to the dataloader.

@@ -1,4 +1,4 @@
-# Copyright 2024 The HuggingFace Team. All rights reserved.
+# Copyright 2025 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -33,7 +33,7 @@ class FreeInitMixin:
         spatial_stop_frequency: float = 0.25,
         temporal_stop_frequency: float = 0.25,
     ):
-        """Enables the FreeInit mechanism as in https://arxiv.org/abs/2312.07537.
+        """Enables the FreeInit mechanism as in https://huggingface.co/papers/2312.07537.
 
         This implementation has been adapted from the [official repository](https://github.com/TianxingWu/FreeInit).
 

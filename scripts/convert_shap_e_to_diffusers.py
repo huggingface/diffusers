@@ -984,7 +984,7 @@ def renderer(*, args, checkpoint_map_location):
     return renderer_model
 
 
-# prior model will expect clip_mean and clip_std, whic are missing from the state_dict
+# prior model will expect clip_mean and clip_std, which are missing from the state_dict
 PRIOR_EXPECTED_MISSING_KEYS = ["clip_mean", "clip_std"]
 
 

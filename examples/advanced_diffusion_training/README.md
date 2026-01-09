@@ -4,9 +4,9 @@
 > [!TIP]
 > 💡 This example follows the techniques and recommended practices covered in the blog post: [LoRA training scripts of the world, unite!](https://huggingface.co/blog/sdxl_lora_advanced_script). Make sure to check it out before starting 🤗
 
-[DreamBooth](https://arxiv.org/abs/2208.12242) is a method to personalize text2image models like stable diffusion given just a few(3~5) images of a subject.
+[DreamBooth](https://huggingface.co/papers/2208.12242) is a method to personalize text2image models like stable diffusion given just a few(3~5) images of a subject.
 
-LoRA - Low-Rank Adaption of Large Language Models, was first introduced by Microsoft in [LoRA: Low-Rank Adaptation of Large Language Models](https://arxiv.org/abs/2106.09685) by *Edward J. Hu, Yelong Shen, Phillip Wallis, Zeyuan Allen-Zhu, Yuanzhi Li, Shean Wang, Lu Wang, Weizhu Chen*
+LoRA - Low-Rank Adaption of Large Language Models, was first introduced by Microsoft in [LoRA: Low-Rank Adaptation of Large Language Models](https://huggingface.co/papers/2106.09685) by *Edward J. Hu, Yelong Shen, Phillip Wallis, Zeyuan Allen-Zhu, Yuanzhi Li, Shean Wang, Lu Wang, Weizhu Chen*
 In a nutshell, LoRA allows to adapt pretrained models by adding pairs of rank-decomposition matrices to existing weights and **only** training those newly added weights. This has a couple of advantages:
 - Previous pretrained weights are kept frozen so that the model is not prone to [catastrophic forgetting](https://www.pnas.org/doi/10.1073/pnas.1611835114)
 - Rank-decomposition matrices have significantly fewer parameters than the original model, which means that trained LoRA weights are easily portable.
@@ -15,7 +15,7 @@ In a nutshell, LoRA allows to adapt pretrained models by adding pairs of rank-de
 the popular [lora](https://github.com/cloneofsimo/lora) GitHub repository.
 
 The `train_dreambooth_lora_sdxl_advanced.py` script shows how to implement dreambooth-LoRA, combining the training process shown in `train_dreambooth_lora_sdxl.py`, with
-advanced features and techniques, inspired and built upon contributions by [Nataniel Ruiz](https://twitter.com/natanielruizg): [Dreambooth](https://dreambooth.github.io), [Rinon Gal](https://twitter.com/RinonGal): [Textual Inversion](https://textual-inversion.github.io), [Ron Mokady](https://twitter.com/MokadyRon): [Pivotal Tuning](https://arxiv.org/abs/2106.05744), [Simo Ryu](https://twitter.com/cloneofsimo): [cog-sdxl](https://github.com/replicate/cog-sdxl),
+advanced features and techniques, inspired and built upon contributions by [Nataniel Ruiz](https://twitter.com/natanielruizg): [Dreambooth](https://dreambooth.github.io), [Rinon Gal](https://twitter.com/RinonGal): [Textual Inversion](https://textual-inversion.github.io), [Ron Mokady](https://twitter.com/MokadyRon): [Pivotal Tuning](https://huggingface.co/papers/2106.05744), [Simo Ryu](https://twitter.com/cloneofsimo): [cog-sdxl](https://github.com/replicate/cog-sdxl),
 [Kohya](https://twitter.com/kohya_tech/): [sd-scripts](https://github.com/kohya-ss/sd-scripts), [The Last Ben](https://twitter.com/__TheBen): [fast-stable-diffusion](https://github.com/TheLastBen/fast-stable-diffusion) ❤️
 
 > [!NOTE]
@@ -69,7 +69,7 @@ Note also that we use PEFT library as backend for LoRA training, make sure to ha
 
 Lastly, we recommend logging into your HF account so that your trained LoRA is automatically uploaded to the hub:
 ```bash
-huggingface-cli login
+hf auth login
 ```
 This command will prompt you for a token. Copy-paste yours from your [settings/tokens](https://huggingface.co/settings/tokens),and press Enter.
 
@@ -125,9 +125,10 @@ Now we'll simply specify the name of the dataset and caption column (in this cas
 ```
 
 You can also load a dataset straight from by specifying it's name in `dataset_name`.
-Look [here](https://huggingface.co/blog/sdxl_lora_advanced_script#custom-captioning) for more info on creating/loadin your own caption dataset.
+Look [here](https://huggingface.co/blog/sdxl_lora_advanced_script#custom-captioning) for more info on creating/loading your own caption dataset.
 
 - **optimizer**: for this example, we'll use [prodigy](https://huggingface.co/blog/sdxl_lora_advanced_script#adaptive-optimizers) - an adaptive optimizer
+  - To use Prodigy, please make sure to install the prodigyopt library: `pip install prodigyopt`
 - **pivotal tuning**
 - **min SNR gamma**
 
@@ -246,7 +247,7 @@ SDXL's VAE is known to suffer from numerical instability issues. This is why we 
 
 ### DoRA training
 The advanced script supports DoRA training too!
-> Proposed in [DoRA: Weight-Decomposed Low-Rank Adaptation](https://arxiv.org/abs/2402.09353),
+> Proposed in [DoRA: Weight-Decomposed Low-Rank Adaptation](https://huggingface.co/papers/2402.09353),
 **DoRA** is very similar to LoRA, except it decomposes the pre-trained weight into two components, **magnitude** and **direction** and employs LoRA for _directional_ updates to efficiently minimize the number of trainable parameters.
 The authors found that by using DoRA, both the learning capacity and training stability of LoRA are enhanced without any additional overhead during inference.
 
@@ -272,7 +273,7 @@ The inference is the same as if you train a regular LoRA 🤗
 
 ## Conducting EDM-style training
 
-It's now possible to perform EDM-style training as proposed in [Elucidating the Design Space of Diffusion-Based Generative Models](https://arxiv.org/abs/2206.00364).
+It's now possible to perform EDM-style training as proposed in [Elucidating the Design Space of Diffusion-Based Generative Models](https://huggingface.co/papers/2206.00364).
 
 simply set:
 
@@ -317,7 +318,7 @@ accelerate launch train_dreambooth_lora_sdxl_advanced.py \
 
 ### B-LoRA training
 The advanced script now supports B-LoRA training too!
-> Proposed in [Implicit Style-Content Separation using B-LoRA](https://arxiv.org/abs/2403.14572),
+> Proposed in [Implicit Style-Content Separation using B-LoRA](https://huggingface.co/papers/2403.14572),
 B-LoRA is a method that leverages LoRA to implicitly separate the style and content components of a **single** image.
 It was shown that learning the LoRA weights of two specific blocks (referred to as B-LoRAs)
 achieves style-content separation that cannot be achieved by training each B-LoRA independently.
@@ -404,7 +405,7 @@ The advanced script now supports custom choice of U-net blocks to train during D
 > In light of this, we're introducing a new feature to the advanced script to allow for configurable U-net learned blocks.
 
 **Usage**
-Configure LoRA learned U-net blocks adding a `lora_unet_blocks` flag, with a comma seperated string specifying the targeted blocks.
+Configure LoRA learned U-net blocks adding a `lora_unet_blocks` flag, with a comma separated string specifying the targeted blocks.
 e.g:
 ```bash
 --lora_unet_blocks="unet.up_blocks.0.attentions.0,unet.up_blocks.0.attentions.1"

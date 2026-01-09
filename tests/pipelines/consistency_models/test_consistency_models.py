@@ -10,15 +10,17 @@ from diffusers import (
     ConsistencyModelPipeline,
     UNet2DModel,
 )
-from diffusers.utils.testing_utils import (
+from diffusers.utils.torch_utils import randn_tensor
+
+from ...testing_utils import (
+    Expectations,
+    backend_empty_cache,
     enable_full_determinism,
     nightly,
     require_torch_2,
-    require_torch_gpu,
+    require_torch_accelerator,
     torch_device,
 )
-from diffusers.utils.torch_utils import randn_tensor
-
 from ..pipeline_params import UNCONDITIONAL_IMAGE_GENERATION_BATCH_PARAMS, UNCONDITIONAL_IMAGE_GENERATION_PARAMS
 from ..test_pipelines_common import PipelineTesterMixin
 
@@ -168,17 +170,17 @@ class ConsistencyModelPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
 
 @nightly
-@require_torch_gpu
+@require_torch_accelerator
 class ConsistencyModelPipelineSlowTests(unittest.TestCase):
     def setUp(self):
         super().setUp()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def tearDown(self):
         super().tearDown()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def get_inputs(self, seed=0, get_fixed_latents=False, device="cpu", dtype=torch.float32, shape=(1, 3, 64, 64)):
         generator = torch.manual_seed(seed)
@@ -264,11 +266,19 @@ class ConsistencyModelPipelineSlowTests(unittest.TestCase):
         # Ensure usage of flash attention in torch 2.0
         with sdp_kernel(enable_flash=True, enable_math=False, enable_mem_efficient=False):
             image = pipe(**inputs).images
+
         assert image.shape == (1, 64, 64, 3)
 
         image_slice = image[0, -3:, -3:, -1]
 
-        expected_slice = np.array([0.1845, 0.1371, 0.1211, 0.2035, 0.1954, 0.1323, 0.1773, 0.1593, 0.1314])
+        expected_slices = Expectations(
+            {
+                ("xpu", 3): np.array([0.0816, 0.0518, 0.0445, 0.0594, 0.0739, 0.0534, 0.0805, 0.0457, 0.0765]),
+                ("cuda", 7): np.array([0.1845, 0.1371, 0.1211, 0.2035, 0.1954, 0.1323, 0.1773, 0.1593, 0.1314]),
+                ("cuda", 8): np.array([0.0816, 0.0518, 0.0445, 0.0594, 0.0739, 0.0534, 0.0805, 0.0457, 0.0765]),
+            }
+        )
+        expected_slice = expected_slices.get_expectation()
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 

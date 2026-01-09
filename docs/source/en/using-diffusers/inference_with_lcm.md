@@ -1,4 +1,4 @@
-<!--Copyright 2024 The HuggingFace Team. All rights reserved.
+<!--Copyright 2025 The HuggingFace Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -215,7 +215,7 @@ from diffusers import AutoPipelineForInpainting, LCMScheduler
 from diffusers.utils import load_image, make_image_grid
 
 pipe = AutoPipelineForInpainting.from_pretrained(
-    "runwayml/stable-diffusion-inpainting",
+    "stable-diffusion-v1-5/stable-diffusion-inpainting",
     torch_dtype=torch.float16,
     variant="fp16",
 ).to("cuda")
@@ -257,7 +257,7 @@ LCMs are compatible with adapters like LoRA, ControlNet, T2I-Adapter, and Animat
 
 ### LoRA
 
-[LoRA](../using-diffusers/loading_adapters#lora) adapters can be rapidly finetuned to learn a new style from just a few images and plugged into a pretrained model to generate images in that style.
+[LoRA](../tutorials/using_peft_for_inference) adapters can be rapidly finetuned to learn a new style from just a few images and plugged into a pretrained model to generate images in that style.
 
 <hfoptions id="lcm-lora">
 <hfoption id="LCM">
@@ -485,7 +485,7 @@ image = image[:, :, None]
 image = np.concatenate([image, image, image], axis=2)
 canny_image = Image.fromarray(image).resize((1024, 1216))
 
-adapter = T2IAdapter.from_pretrained("TencentARC/t2i-adapter-canny-sdxl-1.0", torch_dtype=torch.float16, varient="fp16").to("cuda")
+adapter = T2IAdapter.from_pretrained("TencentARC/t2i-adapter-canny-sdxl-1.0", torch_dtype=torch.float16, variant="fp16").to("cuda")
 
 unet = UNet2DConditionModel.from_pretrained(
     "latent-consistency/lcm-sdxl",
@@ -551,7 +551,7 @@ image = image[:, :, None]
 image = np.concatenate([image, image, image], axis=2)
 canny_image = Image.fromarray(image).resize((1024, 1024))
 
-adapter = T2IAdapter.from_pretrained("TencentARC/t2i-adapter-canny-sdxl-1.0", torch_dtype=torch.float16, varient="fp16").to("cuda")
+adapter = T2IAdapter.from_pretrained("TencentARC/t2i-adapter-canny-sdxl-1.0", torch_dtype=torch.float16, variant="fp16").to("cuda")
 
 pipe = StableDiffusionXLAdapterPipeline.from_pretrained(
     "stabilityai/stable-diffusion-xl-base-1.0",

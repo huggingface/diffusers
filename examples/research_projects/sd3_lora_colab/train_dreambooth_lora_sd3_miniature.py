@@ -623,7 +623,7 @@ def main(args):
     if args.report_to == "wandb" and args.hub_token is not None:
         raise ValueError(
             "You cannot use both --report_to=wandb and --hub_token due to a security risk of exposing your token."
-            " Please use `huggingface-cli login` to authenticate with the Hub."
+            " Please use `hf auth login` to authenticate with the Hub."
         )
 
     if torch.backends.mps.is_available() and args.mixed_precision == "bf16":
@@ -1001,7 +1001,7 @@ def main(args):
                     return_dict=False,
                 )[0]
 
-                # Follow: Section 5 of https://arxiv.org/abs/2206.00364.
+                # Follow: Section 5 of https://huggingface.co/papers/2206.00364.
                 # Preconditioning of the model outputs.
                 model_pred = model_pred * (-sigmas) + noisy_model_input
 

@@ -1,4 +1,4 @@
-<!--Copyright 2024 The HuggingFace Team. All rights reserved.
+<!--Copyright 2025 The HuggingFace Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -78,11 +78,8 @@ write_basic_config()
 
 학습 스크립트는 `diffusion_pytorch_model.bin` 파일을 생성하고, 그것을 당신의 리포지토리에 저장합니다.
 
-<Tip>
-
-💡 전체 학습은 V100 GPU 4개를 사용할 경우, 2시간이 소요됩니다.
-
-</Tip>
+> [!TIP]
+> 💡 전체 학습은 V100 GPU 4개를 사용할 경우, 2시간이 소요됩니다.
 
 예를 들어, [Oxford Flowers](https://huggingface.co/datasets/huggan/flowers-102-categories) 데이터셋을 사용해 파인튜닝할 경우:
 

@@ -1,4 +1,4 @@
-# Copyright 2024 The HuggingFace Team. All rights reserved.
+# Copyright 2025 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -43,12 +43,8 @@ class BaseOutput(OrderedDict):
     tuple) or strings (like a dictionary) that will ignore the `None` attributes. Otherwise behaves like a regular
     Python dictionary.
 
-    <Tip warning={true}>
-
-    You can't unpack a [`BaseOutput`] directly. Use the [`~utils.BaseOutput.to_tuple`] method to convert it to a tuple
-    first.
-
-    </Tip>
+    > [!WARNING] > You can't unpack a [`BaseOutput`] directly. Use the [`~utils.BaseOutput.to_tuple`] method to convert
+    it to a tuple > first.
     """
 
     def __init_subclass__(cls) -> None:
@@ -71,6 +67,7 @@ class BaseOutput(OrderedDict):
                     cls,
                     torch.utils._pytree._dict_flatten,
                     lambda values, context: cls(**torch.utils._pytree._dict_unflatten(values, context)),
+                    serialized_type_name=f"{cls.__module__}.{cls.__name__}",
                 )
 
     def __post_init__(self) -> None:

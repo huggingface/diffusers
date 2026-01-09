@@ -1,4 +1,4 @@
-<!--Copyright 2024 The HuggingFace Team. All rights reserved.
+<!--Copyright 2025 The HuggingFace Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -20,18 +20,27 @@ LoRA is a fast and lightweight training method that inserts and trains a signifi
 - [`FluxLoraLoaderMixin`] provides similar functions for [Flux](https://huggingface.co/docs/diffusers/main/en/api/pipelines/flux).
 - [`CogVideoXLoraLoaderMixin`] provides similar functions for [CogVideoX](https://huggingface.co/docs/diffusers/main/en/api/pipelines/cogvideox).
 - [`Mochi1LoraLoaderMixin`] provides similar functions for [Mochi](https://huggingface.co/docs/diffusers/main/en/api/pipelines/mochi).
+- [`AuraFlowLoraLoaderMixin`] provides similar functions for [AuraFlow](https://huggingface.co/fal/AuraFlow).
 - [`LTXVideoLoraLoaderMixin`] provides similar functions for [LTX-Video](https://huggingface.co/docs/diffusers/main/en/api/pipelines/ltx_video).
 - [`SanaLoraLoaderMixin`] provides similar functions for [Sana](https://huggingface.co/docs/diffusers/main/en/api/pipelines/sana).
 - [`HunyuanVideoLoraLoaderMixin`] provides similar functions for [HunyuanVideo](https://huggingface.co/docs/diffusers/main/en/api/pipelines/hunyuan_video).
 - [`Lumina2LoraLoaderMixin`] provides similar functions for [Lumina2](https://huggingface.co/docs/diffusers/main/en/api/pipelines/lumina2).
+- [`WanLoraLoaderMixin`] provides similar functions for [Wan](https://huggingface.co/docs/diffusers/main/en/api/pipelines/wan).
+- [`SkyReelsV2LoraLoaderMixin`] provides similar functions for [SkyReels-V2](https://huggingface.co/docs/diffusers/main/en/api/pipelines/skyreels_v2).
+- [`CogView4LoraLoaderMixin`] provides similar functions for [CogView4](https://huggingface.co/docs/diffusers/main/en/api/pipelines/cogview4).
 - [`AmusedLoraLoaderMixin`] is for the [`AmusedPipeline`].
+- [`HiDreamImageLoraLoaderMixin`] provides similar functions for [HiDream Image](https://huggingface.co/docs/diffusers/main/en/api/pipelines/hidream)
+- [`QwenImageLoraLoaderMixin`] provides similar functions for [Qwen Image](https://huggingface.co/docs/diffusers/main/en/api/pipelines/qwen).
+- [`ZImageLoraLoaderMixin`] provides similar functions for [Z-Image](https://huggingface.co/docs/diffusers/main/en/api/pipelines/zimage).
+- [`Flux2LoraLoaderMixin`] provides similar functions for [Flux2](https://huggingface.co/docs/diffusers/main/en/api/pipelines/flux2).
 - [`LoraBaseMixin`] provides a base class with several utility methods to fuse, unfuse, unload, LoRAs and more.
 
-<Tip>
+> [!TIP]
+> To learn more about how to load LoRA weights, see the [LoRA](../../tutorials/using_peft_for_inference) loading guide.
 
-To learn more about how to load LoRA weights, see the [LoRA](../../using-diffusers/loading_adapters#lora) loading guide.
+## LoraBaseMixin
 
-</Tip>
+[[autodoc]] loaders.lora_base.LoraBaseMixin
 
 ## StableDiffusionLoraLoaderMixin
 
@@ -49,6 +58,10 @@ To learn more about how to load LoRA weights, see the [LoRA](../../using-diffuse
 
 [[autodoc]] loaders.lora_pipeline.FluxLoraLoaderMixin
 
+## Flux2LoraLoaderMixin
+
+[[autodoc]] loaders.lora_pipeline.Flux2LoraLoaderMixin
+
 ## CogVideoXLoraLoaderMixin
 
 [[autodoc]] loaders.lora_pipeline.CogVideoXLoraLoaderMixin
@@ -56,6 +69,9 @@ To learn more about how to load LoRA weights, see the [LoRA](../../using-diffuse
 ## Mochi1LoraLoaderMixin
 
 [[autodoc]] loaders.lora_pipeline.Mochi1LoraLoaderMixin
+## AuraFlowLoraLoaderMixin
+
+[[autodoc]] loaders.lora_pipeline.AuraFlowLoraLoaderMixin
 
 ## LTXVideoLoraLoaderMixin
 
@@ -73,9 +89,36 @@ To learn more about how to load LoRA weights, see the [LoRA](../../using-diffuse
 
 [[autodoc]] loaders.lora_pipeline.Lumina2LoraLoaderMixin
 
+## CogView4LoraLoaderMixin
+
+[[autodoc]] loaders.lora_pipeline.CogView4LoraLoaderMixin
+
+## WanLoraLoaderMixin
+
+[[autodoc]] loaders.lora_pipeline.WanLoraLoaderMixin
+
+## SkyReelsV2LoraLoaderMixin
+
+[[autodoc]] loaders.lora_pipeline.SkyReelsV2LoraLoaderMixin
+
 ## AmusedLoraLoaderMixin
 
 [[autodoc]] loaders.lora_pipeline.AmusedLoraLoaderMixin
+
+## HiDreamImageLoraLoaderMixin
+
+[[autodoc]] loaders.lora_pipeline.HiDreamImageLoraLoaderMixin
+
+## QwenImageLoraLoaderMixin
+
+[[autodoc]] loaders.lora_pipeline.QwenImageLoraLoaderMixin
+
+## ZImageLoraLoaderMixin
+
+[[autodoc]] loaders.lora_pipeline.ZImageLoraLoaderMixin
+
+## KandinskyLoraLoaderMixin
+[[autodoc]] loaders.lora_pipeline.KandinskyLoraLoaderMixin
 
 ## LoraBaseMixin
 

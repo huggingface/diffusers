@@ -2,7 +2,7 @@
 
 Please note that this project is not actively maintained. However, you can open an issue and tag @gzguevara.
 
-[DreamBooth](https://arxiv.org/abs/2208.12242) is a method to personalize text2image models like stable diffusion given just a few(3~5) images of a subject. This project consists of **two parts**. Training Stable Diffusion for inpainting requieres prompt-image-mask pairs. The Unet of inpainiting models have 5 additional input channels (4 for the encoded masked-image and 1 for the mask itself).
+[DreamBooth](https://huggingface.co/papers/2208.12242) is a method to personalize text2image models like stable diffusion given just a few(3~5) images of a subject. This project consists of **two parts**. Training Stable Diffusion for inpainting requires prompt-image-mask pairs. The Unet of inpainiting models have 5 additional input channels (4 for the encoded masked-image and 1 for the mask itself).
 
 **The first part**, the `multi_inpaint_dataset.ipynb` notebook, demonstrates how make a 🤗 dataset of prompt-image-mask pairs. You can, however, skip the first part and move straight to the second part with the example datasets in this project. ([cat toy dataset masked](https://huggingface.co/datasets/gzguevara/cat_toy_masked), [mr. potato head dataset masked](https://huggingface.co/datasets/gzguevara/mr_potato_head_masked))
 
@@ -27,7 +27,7 @@ You can build multiple datasets for every subject and upload them to the 🤗 hu
 Before launching the training script, make sure to select the inpainting the target model, the output directory and the 🤗 datasets.
 
 ```bash
-export MODEL_NAME="runwayml/stable-diffusion-inpainting"
+export MODEL_NAME="stable-diffusion-v1-5/stable-diffusion-inpainting"
 export OUTPUT_DIR="path-to-save-model"
 
 export DATASET_1="gzguevara/mr_potato_head_masked"
@@ -73,7 +73,7 @@ accelerate launch train_multi_subject_dreambooth_inpaint.py \
 
 ## 3. Results
 
-A [![Weights & Biases](https://img.shields.io/badge/Weights%20&%20Biases-Report-blue)](https://wandb.ai/gzguevara/uncategorized/reports/Multi-Subject-Dreambooth-for-Inpainting--Vmlldzo2MzY5NDQ4?accessToken=y0nya2d7baguhbryxaikbfr1203amvn1jsmyl07vk122mrs7tnph037u1nqgse8t) is provided showing the training progress by every 50 steps. Note, the reported  weights & baises run was performed on a A100 GPU with the following stetting:
+A [![Weights & Biases](https://img.shields.io/badge/Weights%20&%20Biases-Report-blue)](https://wandb.ai/gzguevara/uncategorized/reports/Multi-Subject-Dreambooth-for-Inpainting--Vmlldzo2MzY5NDQ4?accessToken=y0nya2d7baguhbryxaikbfr1203amvn1jsmyl07vk122mrs7tnph037u1nqgse8t) is provided showing the training progress by every 50 steps. Note, the reported weights & biases run was performed on a A100 GPU with the following stetting:
 
 ```bash
 accelerate launch train_multi_subject_dreambooth_inpaint.py \

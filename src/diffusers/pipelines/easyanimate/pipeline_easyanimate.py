@@ -101,7 +101,7 @@ def rescale_noise_cfg(noise_cfg, noise_pred_text, guidance_rescale=0.0):
     r"""
     Rescales `noise_cfg` tensor based on `guidance_rescale` to improve image quality and fix overexposure. Based on
     Section 3.4 from [Common Diffusion Noise Schedules and Sample Steps are
-    Flawed](https://arxiv.org/pdf/2305.08891.pdf).
+    Flawed](https://huggingface.co/papers/2305.08891).
 
     Args:
         noise_cfg (`torch.Tensor`):
@@ -404,7 +404,7 @@ class EasyAnimatePipeline(DiffusionPipeline):
     def prepare_extra_step_kwargs(self, generator, eta):
         # prepare extra kwargs for the scheduler step, since not all schedulers have the same signature
         # eta (η) is only used with the DDIMScheduler, it will be ignored for other schedulers.
-        # eta corresponds to η in DDIM paper: https://arxiv.org/abs/2010.02502
+        # eta corresponds to η in DDIM paper: https://huggingface.co/papers/2010.02502
         # and should be between [0, 1]
 
         accepts_eta = "eta" in set(inspect.signature(self.scheduler.step).parameters.keys())
@@ -507,7 +507,7 @@ class EasyAnimatePipeline(DiffusionPipeline):
         return self._guidance_rescale
 
     # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
-    # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`
+    # of the Imagen paper: https://huggingface.co/papers/2205.11487 . `guidance_scale = 1`
     # corresponds to doing no classifier free guidance.
     @property
     def do_classifier_free_guidance(self):
@@ -732,7 +732,7 @@ class EasyAnimatePipeline(DiffusionPipeline):
                     noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
 
                 if self.do_classifier_free_guidance and guidance_rescale > 0.0:
-                    # Based on 3.4. in https://arxiv.org/pdf/2305.08891.pdf
+                    # Based on 3.4. in https://huggingface.co/papers/2305.08891
                     noise_pred = rescale_noise_cfg(noise_pred, noise_pred_text, guidance_rescale=guidance_rescale)
 
                 # compute the previous noisy sample x_t -> x_t-1

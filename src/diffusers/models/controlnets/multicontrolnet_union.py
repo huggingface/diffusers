@@ -4,10 +4,10 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 import torch
 from torch import nn
 
-from ...models.controlnets.controlnet import ControlNetOutput
-from ...models.controlnets.controlnet_union import ControlNetUnionModel
-from ...models.modeling_utils import ModelMixin
 from ...utils import logging
+from ..controlnets.controlnet import ControlNetOutput
+from ..controlnets.controlnet_union import ControlNetUnionModel
+from ..modeling_utils import ModelMixin
 
 
 logger = logging.get_logger(__name__)
@@ -143,9 +143,8 @@ class MultiControlNetUnionModel(ModelMixin):
                 A path to a *directory* containing model weights saved using
                 [`~models.controlnets.multicontrolnet.MultiControlNetUnionModel.save_pretrained`], e.g.,
                 `./my_model_directory/controlnet`.
-            torch_dtype (`str` or `torch.dtype`, *optional*):
-                Override the default `torch.dtype` and load the model under this dtype. If `"auto"` is passed the dtype
-                will be automatically derived from the model's weights.
+            torch_dtype (`torch.dtype`, *optional*):
+                Override the default `torch.dtype` and load the model under this dtype.
             output_loading_info(`bool`, *optional*, defaults to `False`):
                 Whether or not to also return a dictionary containing missing keys, unexpected keys and error messages.
             device_map (`str` or `Dict[str, Union[int, str, torch.device]]`, *optional*):

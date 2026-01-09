@@ -1,6 +1,6 @@
 # IP Adapter Training Example 
 
-[IP Adapter](https://arxiv.org/abs/2308.06721) is a novel approach designed to enhance text-to-image models such as Stable Diffusion by enabling them to generate images based on image prompts rather than text prompts alone. Unlike traditional methods that rely solely on complex text prompts, IP Adapter introduces the concept of using image prompts, leveraging the idea that "an image is worth a thousand words." By decoupling cross-attention layers for text and image features, IP Adapter effectively integrates image prompts into the generation process without the need for extensive fine-tuning or large computing resources.
+[IP Adapter](https://huggingface.co/papers/2308.06721) is a novel approach designed to enhance text-to-image models such as Stable Diffusion by enabling them to generate images based on image prompts rather than text prompts alone. Unlike traditional methods that rely solely on complex text prompts, IP Adapter introduces the concept of using image prompts, leveraging the idea that "an image is worth a thousand words." By decoupling cross-attention layers for text and image features, IP Adapter effectively integrates image prompts into the generation process without the need for extensive fine-tuning or large computing resources.
 
 ## Training locally with PyTorch
 
@@ -55,7 +55,7 @@ The Accelerate launch command is used to train a model using multiple GPUs and m
 ```
 accelerate launch --mixed_precision "fp16" \
 tutorial_train_ip-adapter.py \
---pretrained_model_name_or_path="runwayml/stable-diffusion-v1-5/" \
+--pretrained_model_name_or_path="stable-diffusion-v1-5/stable-diffusion-v1-5/" \
 --image_encoder_path="{image_encoder_path}" \
 --data_json_file="{data.json}" \
 --data_root_path="{image_path}" \
@@ -73,7 +73,7 @@ tutorial_train_ip-adapter.py \
 ```
 accelerate launch --num_processes 8 --multi_gpu --mixed_precision "fp16" \
   tutorial_train_ip-adapter.py \
-  --pretrained_model_name_or_path="runwayml/stable-diffusion-v1-5/" \
+  --pretrained_model_name_or_path="stable-diffusion-v1-5/stable-diffusion-v1-5/" \
   --image_encoder_path="{image_encoder_path}" \
   --data_json_file="{data.json}" \
   --data_root_path="{image_path}" \

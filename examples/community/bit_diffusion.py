@@ -74,7 +74,7 @@ def ddim_bit_scheduler_step(
             "Number of inference steps is 'None', you need to run 'set_timesteps' after creating the scheduler"
         )
 
-    # See formulas (12) and (16) of DDIM paper https://arxiv.org/pdf/2010.02502.pdf
+    # See formulas (12) and (16) of DDIM paper https://huggingface.co/papers/2010.02502
     # Ideally, read DDIM paper in-detail understanding
 
     # Notation (<variable name> -> <name in paper>
@@ -95,7 +95,7 @@ def ddim_bit_scheduler_step(
     beta_prod_t = 1 - alpha_prod_t
 
     # 3. compute predicted original sample from predicted noise also called
-    # "predicted x_0" of formula (12) from https://arxiv.org/pdf/2010.02502.pdf
+    # "predicted x_0" of formula (12) from https://huggingface.co/papers/2010.02502
     pred_original_sample = (sample - beta_prod_t ** (0.5) * model_output) / alpha_prod_t ** (0.5)
 
     # 4. Clip "predicted x_0"
@@ -112,10 +112,10 @@ def ddim_bit_scheduler_step(
         # the model_output is always re-derived from the clipped x_0 in Glide
         model_output = (sample - alpha_prod_t ** (0.5) * pred_original_sample) / beta_prod_t ** (0.5)
 
-    # 6. compute "direction pointing to x_t" of formula (12) from https://arxiv.org/pdf/2010.02502.pdf
+    # 6. compute "direction pointing to x_t" of formula (12) from https://huggingface.co/papers/2010.02502
     pred_sample_direction = (1 - alpha_prod_t_prev - std_dev_t**2) ** (0.5) * model_output
 
-    # 7. compute x_t without "random noise" of formula (12) from https://arxiv.org/pdf/2010.02502.pdf
+    # 7. compute x_t without "random noise" of formula (12) from https://huggingface.co/papers/2010.02502
     prev_sample = alpha_prod_t_prev ** (0.5) * pred_original_sample + pred_sample_direction
 
     if eta > 0:
@@ -172,7 +172,7 @@ def ddpm_bit_scheduler_step(
     beta_prod_t_prev = 1 - alpha_prod_t_prev
 
     # 2. compute predicted original sample from predicted noise also called
-    # "predicted x_0" of formula (15) from https://arxiv.org/pdf/2006.11239.pdf
+    # "predicted x_0" of formula (15) from https://huggingface.co/papers/2006.11239
     if prediction_type == "epsilon":
         pred_original_sample = (sample - beta_prod_t ** (0.5) * model_output) / alpha_prod_t ** (0.5)
     elif prediction_type == "sample":
@@ -186,12 +186,12 @@ def ddpm_bit_scheduler_step(
         pred_original_sample = torch.clamp(pred_original_sample, -scale, scale)
 
     # 4. Compute coefficients for pred_original_sample x_0 and current sample x_t
-    # See formula (7) from https://arxiv.org/pdf/2006.11239.pdf
+    # See formula (7) from https://huggingface.co/papers/2006.11239
     pred_original_sample_coeff = (alpha_prod_t_prev ** (0.5) * self.betas[t]) / beta_prod_t
     current_sample_coeff = self.alphas[t] ** (0.5) * beta_prod_t_prev / beta_prod_t
 
     # 5. Compute predicted previous sample µ_t
-    # See formula (7) from https://arxiv.org/pdf/2006.11239.pdf
+    # See formula (7) from https://huggingface.co/papers/2006.11239
     pred_prev_sample = pred_original_sample_coeff * pred_original_sample + current_sample_coeff * sample
 
     # 6. Add noise

@@ -12,6 +12,7 @@
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
+# limitations under the License.
 
 import argparse
 import logging
@@ -81,7 +82,7 @@ else:
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.33.0.dev0")
+check_min_version("0.37.0.dev0")
 
 logger = get_logger(__name__)
 
@@ -594,7 +595,7 @@ def main():
     if args.report_to == "wandb" and args.hub_token is not None:
         raise ValueError(
             "You cannot use both --report_to=wandb and --hub_token due to a security risk of exposing your token."
-            " Please use `huggingface-cli login` to authenticate with the Hub."
+            " Please use `hf auth login` to authenticate with the Hub."
         )
 
     logging_dir = os.path.join(args.output_dir, args.logging_dir)
@@ -789,7 +790,7 @@ def main():
         text_encoder, optimizer, train_dataloader, lr_scheduler
     )
 
-    # For mixed precision training we cast all non-trainable weigths (vae, non-lora text_encoder and non-lora unet) to half-precision
+    # For mixed precision training we cast all non-trainable weights (vae, non-lora text_encoder and non-lora unet) to half-precision
     # as these weights are only used for inference, keeping weights in full precision is not required.
     weight_dtype = torch.float32
     if accelerator.mixed_precision == "fp16":

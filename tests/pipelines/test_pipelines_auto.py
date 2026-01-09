@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2024 HuggingFace Inc.
+# Copyright 2025 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -35,7 +35,8 @@ from diffusers.pipelines.auto_pipeline import (
     AUTO_INPAINT_PIPELINES_MAPPING,
     AUTO_TEXT2IMAGE_PIPELINES_MAPPING,
 )
-from diffusers.utils.testing_utils import slow
+
+from ..testing_utils import slow
 
 
 PRETRAINED_MODEL_REPO_MAPPING = OrderedDict(

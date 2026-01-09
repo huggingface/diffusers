@@ -1,4 +1,4 @@
-# Copyright 2024 Stanford University Team and The HuggingFace Team. All rights reserved.
+# Copyright 2025 Stanford University Team and The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -450,7 +450,7 @@ def betas_for_alpha_bar(
 
 def rescale_zero_terminal_snr(betas):
     """
-    Rescales betas to have zero terminal SNR Based on https://arxiv.org/pdf/2305.08891.pdf (Algorithm 1)
+    Rescales betas to have zero terminal SNR Based on https://huggingface.co/papers/2305.08891 (Algorithm 1)
     Args:
         betas (`torch.Tensor`):
             the betas that the scheduler is being initialized with.
@@ -620,7 +620,7 @@ class LCMSchedulerWithTimestamp(SchedulerMixin, ConfigMixin):
         s. Dynamic thresholding pushes saturated pixels (those near -1 and 1) inwards, thereby actively preventing
         pixels from saturation at each step. We find that dynamic thresholding results in significantly better
         photorealism as well as better image-text alignment, especially when using very large guidance weights."
-        https://arxiv.org/abs/2205.11487
+        https://huggingface.co/papers/2205.11487
         """
         dtype = sample.dtype
         batch_size, channels, height, width = sample.shape
@@ -647,7 +647,7 @@ class LCMSchedulerWithTimestamp(SchedulerMixin, ConfigMixin):
         return sample
 
     def set_timesteps(
-        self, stength, num_inference_steps: int, lcm_origin_steps: int, device: Union[str, torch.device] = None
+        self, strength, num_inference_steps: int, lcm_origin_steps: int, device: Union[str, torch.device] = None
     ):
         """
         Sets the discrete timesteps used for the diffusion chain (to be run before inference).
@@ -668,7 +668,7 @@ class LCMSchedulerWithTimestamp(SchedulerMixin, ConfigMixin):
         # LCM Timesteps Setting:  # Linear Spacing
         c = self.config.num_train_timesteps // lcm_origin_steps
         lcm_origin_timesteps = (
-            np.asarray(list(range(1, int(lcm_origin_steps * stength) + 1))) * c - 1
+            np.asarray(list(range(1, int(lcm_origin_steps * strength) + 1))) * c - 1
         )  # LCM Training  Steps Schedule
         skipping_step = len(lcm_origin_timesteps) // num_inference_steps
         timesteps = lcm_origin_timesteps[::-skipping_step][:num_inference_steps]  # LCM Inference Steps Schedule

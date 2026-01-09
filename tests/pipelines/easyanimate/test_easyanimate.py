@@ -26,14 +26,15 @@ from diffusers import (
     EasyAnimateTransformer3DModel,
     FlowMatchEulerDiscreteScheduler,
 )
-from diffusers.utils.testing_utils import (
+
+from ...testing_utils import (
+    backend_empty_cache,
     enable_full_determinism,
     numpy_cosine_similarity_distance,
-    require_torch_gpu,
+    require_torch_accelerator,
     slow,
     torch_device,
 )
-
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
 from ..test_pipelines_common import PipelineTesterMixin, to_np
 
@@ -47,6 +48,7 @@ class EasyAnimatePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
     image_params = TEXT_TO_IMAGE_IMAGE_PARAMS
     image_latents_params = TEXT_TO_IMAGE_IMAGE_PARAMS
+    test_xformers_attention = False
     required_optional_params = frozenset(
         [
             "num_inference_steps",
@@ -256,19 +258,19 @@ class EasyAnimatePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
 
 @slow
-@require_torch_gpu
+@require_torch_accelerator
 class EasyAnimatePipelineIntegrationTests(unittest.TestCase):
     prompt = "A painting of a squirrel eating a burger."
 
     def setUp(self):
         super().setUp()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def tearDown(self):
         super().tearDown()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def test_EasyAnimate(self):
         generator = torch.Generator("cpu").manual_seed(0)

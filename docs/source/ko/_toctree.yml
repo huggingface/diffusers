@@ -175,7 +175,7 @@
     - local: optimization/mps
       title: Metal Performance Shaders (MPS)
     - local: optimization/habana
-      title: Habana Gaudi
+      title: Intel Gaudi
     title: 최적화된 하드웨어
   title: 추론 가속화와 메모리 줄이기
 - sections:

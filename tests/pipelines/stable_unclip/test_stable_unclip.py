@@ -13,8 +13,18 @@ from diffusers import (
     UNet2DConditionModel,
 )
 from diffusers.pipelines.stable_diffusion.stable_unclip_image_normalizer import StableUnCLIPImageNormalizer
-from diffusers.utils.testing_utils import enable_full_determinism, load_numpy, nightly, require_torch_gpu, torch_device
 
+from ...testing_utils import (
+    backend_empty_cache,
+    backend_max_memory_allocated,
+    backend_reset_max_memory_allocated,
+    backend_reset_peak_memory_stats,
+    enable_full_determinism,
+    load_numpy,
+    nightly,
+    require_torch_accelerator,
+    torch_device,
+)
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
 from ..test_pipelines_common import (
     PipelineKarrasSchedulerTesterMixin,
@@ -190,19 +200,19 @@ class StableUnCLIPPipelineFastTests(
 
 
 @nightly
-@require_torch_gpu
+@require_torch_accelerator
 class StableUnCLIPPipelineIntegrationTests(unittest.TestCase):
     def setUp(self):
         # clean up the VRAM before each test
         super().setUp()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def tearDown(self):
         # clean up the VRAM after each test
         super().tearDown()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def test_stable_unclip(self):
         expected_image = load_numpy(
@@ -217,7 +227,7 @@ class StableUnCLIPPipelineIntegrationTests(unittest.TestCase):
         pipe.enable_sequential_cpu_offload()
 
         generator = torch.Generator(device="cpu").manual_seed(0)
-        output = pipe("anime turle", generator=generator, output_type="np")
+        output = pipe("anime turtle", generator=generator, output_type="np")
 
         image = output.images[0]
 
@@ -226,9 +236,9 @@ class StableUnCLIPPipelineIntegrationTests(unittest.TestCase):
         assert_mean_pixel_difference(image, expected_image)
 
     def test_stable_unclip_pipeline_with_sequential_cpu_offloading(self):
-        torch.cuda.empty_cache()
-        torch.cuda.reset_max_memory_allocated()
-        torch.cuda.reset_peak_memory_stats()
+        backend_empty_cache(torch_device)
+        backend_reset_max_memory_allocated(torch_device)
+        backend_reset_peak_memory_stats(torch_device)
 
         pipe = StableUnCLIPPipeline.from_pretrained("fusing/stable-unclip-2-1-l", torch_dtype=torch.float16)
         pipe.set_progress_bar_config(disable=None)
@@ -242,6 +252,6 @@ class StableUnCLIPPipelineIntegrationTests(unittest.TestCase):
             output_type="np",
         )
 
-        mem_bytes = torch.cuda.max_memory_allocated()
+        mem_bytes = backend_max_memory_allocated(torch_device)
         # make sure that less than 7 GB is allocated
         assert mem_bytes < 7 * 10**9

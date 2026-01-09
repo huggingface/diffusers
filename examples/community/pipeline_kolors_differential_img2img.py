@@ -1,4 +1,4 @@
-# Copyright 2024 Stability AI, Kwai-Kolors Team and The HuggingFace Team. All rights reserved.
+# Copyright 2025 Stability AI, Kwai-Kolors Team and The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -22,13 +22,12 @@ from diffusers.callbacks import MultiPipelineCallbacks, PipelineCallback
 from diffusers.image_processor import PipelineImageInput, VaeImageProcessor
 from diffusers.loaders import IPAdapterMixin, StableDiffusionXLLoraLoaderMixin
 from diffusers.models import AutoencoderKL, ImageProjection, UNet2DConditionModel
-from diffusers.models.attention_processor import AttnProcessor2_0, FusedAttnProcessor2_0, XFormersAttnProcessor
 from diffusers.pipelines.kolors.pipeline_output import KolorsPipelineOutput
 from diffusers.pipelines.kolors.text_encoder import ChatGLMModel
 from diffusers.pipelines.kolors.tokenizer import ChatGLMTokenizer
 from diffusers.pipelines.pipeline_utils import DiffusionPipeline, StableDiffusionMixin
 from diffusers.schedulers import KarrasDiffusionSchedulers
-from diffusers.utils import is_torch_xla_available, logging, replace_example_docstring
+from diffusers.utils import deprecate, is_torch_xla_available, logging, replace_example_docstring
 from diffusers.utils.torch_utils import randn_tensor
 
 
@@ -462,7 +461,7 @@ class KolorsDifferentialImg2ImgPipeline(
     def prepare_extra_step_kwargs(self, generator, eta):
         # prepare extra kwargs for the scheduler step, since not all schedulers have the same signature
         # eta (η) is only used with the DDIMScheduler, it will be ignored for other schedulers.
-        # eta corresponds to η in DDIM paper: https://arxiv.org/abs/2010.02502
+        # eta corresponds to η in DDIM paper: https://huggingface.co/papers/2010.02502
         # and should be between [0, 1]
 
         accepts_eta = "eta" in set(inspect.signature(self.scheduler.step).parameters.keys())
@@ -709,24 +708,9 @@ class KolorsDifferentialImg2ImgPipeline(
         add_time_ids = torch.tensor([add_time_ids], dtype=dtype)
         return add_time_ids
 
-    # Copied from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl.StableDiffusionXLPipeline.upcast_vae
     def upcast_vae(self):
-        dtype = self.vae.dtype
+        deprecate("upcast_vae", "1.0.0", "`upcast_vae` is deprecated. Please use `pipe.vae.to(torch.float32)`")
         self.vae.to(dtype=torch.float32)
-        use_torch_2_0_or_xformers = isinstance(
-            self.vae.decoder.mid_block.attentions[0].processor,
-            (
-                AttnProcessor2_0,
-                XFormersAttnProcessor,
-                FusedAttnProcessor2_0,
-            ),
-        )
-        # if xformers or torch_2_0 is used attention block does not need
-        # to be in float32 which can save lots of memory
-        if use_torch_2_0_or_xformers:
-            self.vae.post_quant_conv.to(dtype)
-            self.vae.decoder.conv_in.to(dtype)
-            self.vae.decoder.mid_block.to(dtype)
 
     # Copied from diffusers.pipelines.latent_consistency_models.pipeline_latent_consistency_text2img.LatentConsistencyModelPipeline.get_guidance_scale_embedding
     def get_guidance_scale_embedding(
@@ -764,7 +748,7 @@ class KolorsDifferentialImg2ImgPipeline(
         return self._guidance_scale
 
     # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
-    # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`
+    # of the Imagen paper: https://huggingface.co/papers/2205.11487 . `guidance_scale = 1`
     # corresponds to doing no classifier free guidance.
     @property
     def do_classifier_free_guidance(self):
@@ -884,9 +868,9 @@ class KolorsDifferentialImg2ImgPipeline(
                 "Mixture of Denoisers" multi-pipeline setup, as elaborated in [**Refining the Image
                 Output**](https://huggingface.co/docs/diffusers/api/pipelines/stable_diffusion/stable_diffusion_xl#refining-the-image-output)
             guidance_scale (`float`, *optional*, defaults to 5.0):
-                Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598).
+                Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://huggingface.co/papers/2207.12598).
                 `guidance_scale` is defined as `w` of equation 2. of [Imagen
-                Paper](https://arxiv.org/pdf/2205.11487.pdf). Guidance scale is enabled by setting `guidance_scale >
+                Paper](https://huggingface.co/papers/2205.11487). Guidance scale is enabled by setting `guidance_scale >
                 1`. Higher guidance scale encourages to generate images that are closely linked to the text `prompt`,
                 usually at the expense of lower image quality.
             negative_prompt (`str` or `List[str]`, *optional*):
@@ -896,7 +880,7 @@ class KolorsDifferentialImg2ImgPipeline(
             num_images_per_prompt (`int`, *optional*, defaults to 1):
                 The number of images to generate per prompt.
             eta (`float`, *optional*, defaults to 0.0):
-                Corresponds to parameter eta (η) in the DDIM paper: https://arxiv.org/abs/2010.02502. Only applies to
+                Corresponds to parameter eta (η) in the DDIM paper: https://huggingface.co/papers/2010.02502. Only applies to
                 [`schedulers.DDIMScheduler`], will be ignored for others.
             generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
                 One or a list of [torch generator(s)](https://pytorch.org/docs/stable/generated/torch.Generator.html)
@@ -904,7 +888,7 @@ class KolorsDifferentialImg2ImgPipeline(
             latents (`torch.Tensor`, *optional*):
                 Pre-generated noisy latents, sampled from a Gaussian distribution, to be used as inputs for image
                 generation. Can be used to tweak the same generation with different prompts. If not provided, a latents
-                tensor will ge generated by sampling using the supplied random `generator`.
+                tensor will be generated by sampling using the supplied random `generator`.
             prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
                 provided, text embeddings will be generated from `prompt` input argument.

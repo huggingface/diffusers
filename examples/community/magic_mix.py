@@ -129,7 +129,7 @@ class MagicMixPipeline(DiffusionPipeline):
 
                     input = (
                         (mix_factor * latents) + (1 - mix_factor) * orig_latents
-                    )  # interpolating between layout noise and conditionally generated noise to preserve layout sematics
+                    )  # interpolating between layout noise and conditionally generated noise to preserve layout semantics
                     input = torch.cat([input] * 2)
 
                 else:  # content generation phase

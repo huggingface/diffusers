@@ -1,4 +1,4 @@
-# Copyright 2024 The HuggingFace Team.
+# Copyright 2025 The HuggingFace Team.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -23,7 +23,8 @@ from transformers import AutoTokenizer, T5EncoderModel
 
 from diffusers import AutoencoderKLCogVideoX, CogVideoXImageToVideoPipeline, CogVideoXTransformer3DModel, DDIMScheduler
 from diffusers.utils import load_image
-from diffusers.utils.testing_utils import (
+
+from ...testing_utils import (
     backend_empty_cache,
     enable_full_determinism,
     numpy_cosine_similarity_distance,
@@ -31,7 +32,6 @@ from diffusers.utils.testing_utils import (
     slow,
     torch_device,
 )
-
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
 from ..test_pipelines_common import (
     PipelineTesterMixin,
@@ -270,7 +270,7 @@ class CogVideoXImageToVideoPipelineFastTests(PipelineTesterMixin, unittest.TestC
         generator_device = "cpu"
         components = self.get_dummy_components()
 
-        # The reason to modify it this way is because I2V Transformer limits the generation to resolutions used during initalization.
+        # The reason to modify it this way is because I2V Transformer limits the generation to resolutions used during initialization.
         # This limitation comes from using learned positional embeddings which cannot be generated on-the-fly like sincos or RoPE embeddings.
         # See the if-statement on "self.use_learned_positional_embeddings" in diffusers/models/embeddings.py
         components["transformer"] = CogVideoXTransformer3DModel.from_config(

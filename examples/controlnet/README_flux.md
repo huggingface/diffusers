@@ -6,11 +6,23 @@ Training script provided by LibAI, which is an institution dedicated to the prog
 > [!NOTE]
 > **Memory consumption**
 >
-> Flux can be quite expensive to run on consumer hardware devices and as a result, ControlNet training of it comes with higher memory requirements than usual. 
+> Flux can be quite expensive to run on consumer hardware devices and as a result, ControlNet training of it comes with higher memory requirements than usual.
+
+Here is a gpu memory consumption for reference, tested on a single A100 with 80G.
+
+| period | GPU |
+| - | - | 
+| load as float32 | ~70G |
+| mv transformer and vae to bf16 | ~48G |
+| pre compute txt embeddings | ~62G |
+| **offload te to cpu** | ~30G |
+| training | ~58G |
+| validation | ~71G |
+
 
 > **Gated access**
 >
-> As the model is gated, before using it with diffusers you first need to go to the [FLUX.1 [dev] Hugging Face page](https://huggingface.co/black-forest-labs/FLUX.1-dev), fill in the form and accept the gate. Once you are in, you need to log in so that your system knows you’ve accepted the gate. Use the command below to log in: `huggingface-cli login`
+> As the model is gated, before using it with diffusers you first need to go to the [FLUX.1 [dev] Hugging Face page](https://huggingface.co/black-forest-labs/FLUX.1-dev), fill in the form and accept the gate. Once you are in, you need to log in so that your system knows you’ve accepted the gate. Use the command below to log in: `hf auth login`
 
 
 ## Running locally with PyTorch
@@ -76,7 +88,7 @@ wget https://huggingface.co/datasets/huggingface/documentation-images/resolve/ma
 wget https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/controlnet_training/conditioning_image_2.png
 ```
 
-Then run `huggingface-cli login` to log into your Hugging Face account. This is needed to be able to push the trained ControlNet parameters to Hugging Face Hub.
+Then run `hf auth login` to log into your Hugging Face account. This is needed to be able to push the trained ControlNet parameters to Hugging Face Hub.
 
 we can define the num_layers, num_single_layers, which determines the size of the control(default values are num_layers=4, num_single_layers=10)
 
@@ -98,8 +110,9 @@ accelerate launch train_controlnet_flux.py \
     --validation_image "./conditioning_image_1.png" "./conditioning_image_2.png" \
     --validation_prompt "red circle with blue background" "cyan circle with brown floral background" \
     --train_batch_size=1 \
-    --gradient_accumulation_steps=4 \
+    --gradient_accumulation_steps=16 \
     --report_to="wandb" \
+    --lr_scheduler="cosine" \
     --num_double_layers=4 \
     --num_single_layers=0 \
     --seed=42 \
@@ -398,7 +411,7 @@ export CAPTION_COLUMN='caption_column'
 
 export CACHE_DIR="/data/train_csr/.cache/huggingface/"
 export OUTPUT_DIR='/data/train_csr/FLUX/MODEL_OUT/'$MODEL_TYPE
-# The first step is to use Python to precompute all caches.Replace the first line below with this line. (I am not sure why using acclerate would cause problems.)
+# The first step is to use Python to precompute all caches.Replace the first line below with this line. (I am not sure why using accelerate would cause problems.)
 
 CUDA_VISIBLE_DEVICES=0 python3 train_controlnet_flux.py \
 

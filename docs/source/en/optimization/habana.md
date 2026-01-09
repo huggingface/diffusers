@@ -1,4 +1,4 @@
-<!--Copyright 2024 The HuggingFace Team. All rights reserved.
+<!--Copyright 2025 The HuggingFace Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -10,67 +10,22 @@ an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express o
 specific language governing permissions and limitations under the License.
 -->
 
-# Habana Gaudi
+# Intel Gaudi
 
-🤗 Diffusers is compatible with Habana Gaudi through 🤗 [Optimum](https://huggingface.co/docs/optimum/habana/usage_guides/stable_diffusion). Follow the [installation](https://docs.habana.ai/en/latest/Installation_Guide/index.html) guide to install the SynapseAI and Gaudi drivers, and then install Optimum Habana:
+The Intel Gaudi AI accelerator family includes [Intel Gaudi 1](https://habana.ai/products/gaudi/), [Intel Gaudi 2](https://habana.ai/products/gaudi2/), and [Intel Gaudi 3](https://habana.ai/products/gaudi3/). Each server is equipped with 8 devices, known as Habana Processing Units (HPUs), providing 128GB of memory on Gaudi 3, 96GB on Gaudi 2, and 32GB on the first-gen Gaudi. For more details on the underlying hardware architecture, check out the [Gaudi Architecture](https://docs.habana.ai/en/latest/Gaudi_Overview/Gaudi_Architecture.html) overview.
 
-```bash
-python -m pip install --upgrade-strategy eager optimum[habana]
+Diffusers pipelines can take advantage of HPU acceleration, even if a pipeline hasn't been added to [Optimum for Intel Gaudi](https://huggingface.co/docs/optimum/main/en/habana/index) yet, with the [GPU Migration Toolkit](https://docs.habana.ai/en/latest/PyTorch/PyTorch_Model_Porting/GPU_Migration_Toolkit/GPU_Migration_Toolkit.html).
+
+Call `.to("hpu")` on your pipeline to move it to a HPU device as shown below for Flux:
+```py
+import torch
+from diffusers import DiffusionPipeline
+
+pipeline = DiffusionPipeline.from_pretrained("black-forest-labs/FLUX.1-schnell", torch_dtype=torch.bfloat16)
+pipeline.to("hpu")
+
+image = pipeline("An image of a squirrel in Picasso style").images[0]
 ```
 
-To generate images with Stable Diffusion 1 and 2 on Gaudi, you need to instantiate two instances:
-
-- [`~optimum.habana.diffusers.GaudiStableDiffusionPipeline`], a pipeline for text-to-image generation.
-- [`~optimum.habana.diffusers.GaudiDDIMScheduler`], a Gaudi-optimized scheduler.
-
-When you initialize the pipeline, you have to specify `use_habana=True` to deploy it on HPUs and to get the fastest possible generation, you should enable **HPU graphs** with `use_hpu_graphs=True`.
-
-Finally, specify a [`~optimum.habana.GaudiConfig`] which can be downloaded from the [Habana](https://huggingface.co/Habana) organization on the Hub.
-
-```python
-from optimum.habana import GaudiConfig
-from optimum.habana.diffusers import GaudiDDIMScheduler, GaudiStableDiffusionPipeline
-
-model_name = "stabilityai/stable-diffusion-2-base"
-scheduler = GaudiDDIMScheduler.from_pretrained(model_name, subfolder="scheduler")
-pipeline = GaudiStableDiffusionPipeline.from_pretrained(
-    model_name,
-    scheduler=scheduler,
-    use_habana=True,
-    use_hpu_graphs=True,
-    gaudi_config="Habana/stable-diffusion-2",
-)
-```
-
-Now you can call the pipeline to generate images by batches from one or several prompts:
-
-```python
-outputs = pipeline(
-    prompt=[
-        "High quality photo of an astronaut riding a horse in space",
-        "Face of a yellow cat, high resolution, sitting on a park bench",
-    ],
-    num_images_per_prompt=10,
-    batch_size=4,
-)
-```
-
-For more information, check out 🤗 Optimum Habana's [documentation](https://huggingface.co/docs/optimum/habana/usage_guides/stable_diffusion) and the [example](https://github.com/huggingface/optimum-habana/tree/main/examples/stable-diffusion) provided in the official GitHub repository.
-
-## Benchmark
-
-We benchmarked Habana's first-generation Gaudi and Gaudi2 with the [Habana/stable-diffusion](https://huggingface.co/Habana/stable-diffusion) and [Habana/stable-diffusion-2](https://huggingface.co/Habana/stable-diffusion-2) Gaudi configurations (mixed precision bf16/fp32) to demonstrate their performance.
-
-For [Stable Diffusion v1.5](https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5) on 512x512 images:
-
-|                        | Latency (batch size = 1) | Throughput  |
-| ---------------------- |:------------------------:|:---------------------------:|
-| first-generation Gaudi | 3.80s                    | 0.308 images/s (batch size = 8)             |
-| Gaudi2                 | 1.33s                    | 1.081 images/s (batch size = 8)             |
-
-For [Stable Diffusion v2.1](https://huggingface.co/stabilityai/stable-diffusion-2-1) on 768x768 images:
-
-|                        | Latency (batch size = 1) | Throughput                      |
-| ---------------------- |:------------------------:|:-------------------------------:|
-| first-generation Gaudi | 10.2s                    | 0.108 images/s (batch size = 4) |
-| Gaudi2                 | 3.17s                    | 0.379 images/s (batch size = 8) |
+> [!TIP]
+> For Gaudi-optimized diffusion pipeline implementations, we recommend using [Optimum for Intel Gaudi](https://huggingface.co/docs/optimum/main/en/habana/index).
