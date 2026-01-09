@@ -15,14 +15,14 @@ from diffusers import (
     VisualClozeGenerationPipeline,
 )
 from diffusers.utils import logging
-from diffusers.utils.testing_utils import (
+
+from ...testing_utils import (
     CaptureLogger,
     enable_full_determinism,
     floats_tensor,
     require_accelerator,
     torch_device,
 )
-
 from ..test_pipelines_common import PipelineTesterMixin, to_np
 
 

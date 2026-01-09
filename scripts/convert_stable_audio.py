@@ -1,4 +1,4 @@
-# Run this script to convert the Stable Cascade model weights to a diffusers pipeline.
+# Run this script to convert the Stable Audio model weights to a diffusers pipeline.
 import argparse
 import json
 import os
@@ -18,7 +18,7 @@ from diffusers import (
     StableAudioPipeline,
     StableAudioProjectionModel,
 )
-from diffusers.models.modeling_utils import load_model_dict_into_meta
+from diffusers.models.model_loading_utils import load_model_dict_into_meta
 from diffusers.utils import is_accelerate_available
 
 

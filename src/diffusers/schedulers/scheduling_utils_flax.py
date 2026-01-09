@@ -1,4 +1,4 @@
-# Copyright 2024 The HuggingFace Team. All rights reserved.
+# Copyright 2025 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -22,8 +22,10 @@ import flax
 import jax.numpy as jnp
 from huggingface_hub.utils import validate_hf_hub_args
 
-from ..utils import BaseOutput, PushToHubMixin
+from ..utils import BaseOutput, PushToHubMixin, logging
 
+
+logger = logging.get_logger(__name__)
 
 SCHEDULER_CONFIG_NAME = "scheduler_config.json"
 
@@ -118,21 +120,18 @@ class FlaxSchedulerMixin(PushToHubMixin):
                 git-based system for storing models and other artifacts on huggingface.co, so `revision` can be any
                 identifier allowed by git.
 
-        <Tip>
+        > [!TIP] > It is required to be logged in (`hf auth login`) when you want to use private or [gated >
+        models](https://huggingface.co/docs/hub/models-gated#gated-models).
 
-         It is required to be logged in (`huggingface-cli login`) when you want to use private or [gated
-         models](https://huggingface.co/docs/hub/models-gated#gated-models).
-
-        </Tip>
-
-        <Tip>
-
-        Activate the special ["offline-mode"](https://huggingface.co/transformers/installation.html#offline-mode) to
-        use this method in a firewalled environment.
-
-        </Tip>
+        > [!TIP] > Activate the special
+        ["offline-mode"](https://huggingface.co/transformers/installation.html#offline-mode) to > use this method in a
+        firewalled environment.
 
         """
+        logger.warning(
+            "Flax classes are deprecated and will be removed in Diffusers v1.0.0. We "
+            "recommend migrating to PyTorch classes or pinning your version of Diffusers."
+        )
         config, kwargs = cls.load_config(
             pretrained_model_name_or_path=pretrained_model_name_or_path,
             subfolder=subfolder,

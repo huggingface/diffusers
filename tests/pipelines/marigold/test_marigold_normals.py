@@ -31,7 +31,8 @@ from diffusers import (
     MarigoldNormalsPipeline,
     UNet2DConditionModel,
 )
-from diffusers.utils.testing_utils import (
+
+from ...testing_utils import (
     backend_empty_cache,
     enable_full_determinism,
     floats_tensor,
@@ -40,7 +41,6 @@ from diffusers.utils.testing_utils import (
     slow,
     torch_device,
 )
-
 from ..test_pipelines_common import PipelineTesterMixin
 
 

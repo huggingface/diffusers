@@ -4,7 +4,7 @@
 # Copyright (c) 2021 OpenAI
 # MIT License
 #
-# Copyright 2024 The HuggingFace Team. All rights reserved.
+# Copyright 2025 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -46,7 +46,9 @@ class DiTPipeline(DiffusionPipeline):
 
     Parameters:
         transformer ([`DiTTransformer2DModel`]):
-            A class conditioned `DiTTransformer2DModel` to denoise the encoded image latents.
+            A class conditioned `DiTTransformer2DModel` to denoise the encoded image latents. Initially published as
+            [`Transformer2DModel`](https://huggingface.co/facebook/DiT-XL-2-256/blob/main/transformer/config.json#L2)
+            in the config, but the mismatch can be ignored.
         vae ([`AutoencoderKL`]):
             Variational Auto-Encoder (VAE) model to encode and decode images to and from latent representations.
         scheduler ([`DDIMScheduler`]):

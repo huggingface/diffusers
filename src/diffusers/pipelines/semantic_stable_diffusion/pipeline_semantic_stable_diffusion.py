@@ -11,7 +11,7 @@ from ...pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyCh
 from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import deprecate, is_torch_xla_available, logging
 from ...utils.torch_utils import randn_tensor
-from ..pipeline_utils import DiffusionPipeline, StableDiffusionMixin
+from ..pipeline_utils import DeprecatedPipelineMixin, DiffusionPipeline, StableDiffusionMixin
 from .pipeline_output import SemanticStableDiffusionPipelineOutput
 
 
@@ -25,7 +25,8 @@ else:
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-class SemanticStableDiffusionPipeline(DiffusionPipeline, StableDiffusionMixin):
+class SemanticStableDiffusionPipeline(DeprecatedPipelineMixin, DiffusionPipeline, StableDiffusionMixin):
+    _last_supported_version = "0.33.1"
     r"""
     Pipeline for text-to-image generation using Stable Diffusion with latent editing.
 
@@ -47,8 +48,8 @@ class SemanticStableDiffusionPipeline(DiffusionPipeline, StableDiffusionMixin):
             [`DDIMScheduler`], [`LMSDiscreteScheduler`], or [`PNDMScheduler`].
         safety_checker ([`Q16SafetyChecker`]):
             Classification module that estimates whether generated images could be considered offensive or harmful.
-            Please refer to the [model card](https://huggingface.co/runwayml/stable-diffusion-v1-5) for more details
-            about a model's potential harms.
+            Please refer to the [model card](https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5) for
+            more details about a model's potential harms.
         feature_extractor ([`~transformers.CLIPImageProcessor`]):
             A `CLIPImageProcessor` to extract features from generated images; used as inputs to the `safety_checker`.
     """
@@ -331,7 +332,7 @@ class SemanticStableDiffusionPipeline(DiffusionPipeline, StableDiffusionMixin):
         >>> from diffusers import SemanticStableDiffusionPipeline
 
         >>> pipe = SemanticStableDiffusionPipeline.from_pretrained(
-        ...     "runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16
+        ...     "stable-diffusion-v1-5/stable-diffusion-v1-5", torch_dtype=torch.float16
         ... )
         >>> pipe = pipe.to("cuda")
 

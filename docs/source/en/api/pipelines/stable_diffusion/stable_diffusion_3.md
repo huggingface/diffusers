@@ -1,4 +1,4 @@
-<!--Copyright 2024 The HuggingFace Team. All rights reserved.
+<!--Copyright 2025 The HuggingFace Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -31,14 +31,11 @@ _As the model is gated, before using it with diffusers you first need to go to t
 Use the command below to log in:
 
 ```bash
-huggingface-cli login
+hf auth login
 ```
 
-<Tip>
-
-The SD3 pipeline uses three text encoders to generate an image. Model offloading is necessary in order for it to run on most commodity hardware. Please use the `torch.float16` data type for additional memory savings.
-
-</Tip>
+> [!TIP]
+> The SD3 pipeline uses three text encoders to generate an image. Model offloading is necessary in order for it to run on most commodity hardware. Please use the `torch.float16` data type for additional memory savings.
 
 ```python
 import torch
@@ -124,11 +121,8 @@ image.save("result.jpg")
 </div>
 
 
-<Tip>
-
-Check out [IP-Adapter](../../../using-diffusers/ip_adapter) to learn more about how IP-Adapters work.
-
-</Tip>
+> [!TIP]
+> Check out [IP-Adapter](../../../using-diffusers/ip_adapter) to learn more about how IP-Adapters work.
 
 
 ## Memory Optimisations for SD3
@@ -277,7 +271,7 @@ Check out the full script [here](https://gist.github.com/sayakpaul/508d89d7aad4f
 
 Quantization helps reduce the memory requirements of very large models by storing model weights in a lower precision data type. However, quantization may have varying impact on video quality depending on the video model.
 
-Refer to the [Quantization](../../quantization/overview) overview to learn more about supported quantization backends and selecting a quantization backend that supports your use case. The example below demonstrates how to load a quantized [`StableDiffusion3Pipeline`] for inference with bitsandbytes.
+Refer to the [Quantization](../../../quantization/overview) overview to learn more about supported quantization backends and selecting a quantization backend that supports your use case. The example below demonstrates how to load a quantized [`StableDiffusion3Pipeline`] for inference with bitsandbytes.
 
 ```py
 import torch
@@ -333,11 +327,8 @@ image = pipe(
 
 You can send a different prompt to the CLIP Text Encoders and the T5 Text Encoder to prevent the prompt from being truncated by the CLIP Text Encoders and to improve generation.
 
-<Tip>
-
-The prompt with the CLIP Text Encoders is still truncated to the 77 token limit.
-
-</Tip>
+> [!TIP]
+> The prompt with the CLIP Text Encoders is still truncated to the 77 token limit.
 
 ```python
 prompt = "A whimsical and creative image depicting a hybrid creature that is a mix of a waffle and a hippopotamus, basking in a river of melted butter amidst a breakfast-themed landscape. A river of warm, melted butter, pancake-like foliage in the background, a towering pepper mill standing in for a tree."

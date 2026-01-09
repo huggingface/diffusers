@@ -1,4 +1,4 @@
-<!--Copyright 2024 The HuggingFace Team. All rights reserved.
+<!--Copyright 2025 The HuggingFace Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -206,11 +206,8 @@ Once a model is quantized, you can push the model to the Hub with the [`~ModelMi
 </hfoption>
 </hfoptions>
 
-<Tip warning={true}>
-
-Training with 8-bit and 4-bit weights are only supported for training *extra* parameters.
-
-</Tip>
+> [!WARNING]
+> Training with 8-bit and 4-bit weights are only supported for training *extra* parameters.
 
 Check your memory footprint with the `get_memory_footprint` method:
 
@@ -234,11 +231,8 @@ model_4bit = AutoModel.from_pretrained(
 
 ## 8-bit (LLM.int8() algorithm)
 
-<Tip>
-
-Learn more about the details of 8-bit quantization in this [blog post](https://huggingface.co/blog/hf-bitsandbytes-integration)!
-
-</Tip>
+> [!TIP]
+> Learn more about the details of 8-bit quantization in this [blog post](https://huggingface.co/blog/hf-bitsandbytes-integration)!
 
 This section explores some of the specific features of 8-bit models, such as outlier thresholds and skipping module conversion.
 
@@ -283,11 +277,8 @@ model_8bit = SD3Transformer2DModel.from_pretrained(
 
 ## 4-bit (QLoRA algorithm)
 
-<Tip>
-
-Learn more about its details in this [blog post](https://huggingface.co/blog/4bit-transformers-bitsandbytes).
-
-</Tip>
+> [!TIP]
+> Learn more about its details in this [blog post](https://huggingface.co/blog/4bit-transformers-bitsandbytes).
 
 This section explores some of the specific features of 4-bit models, such as changing the compute data type, using the Normal Float 4 (NF4) data type, and using nested quantization.
 
@@ -415,6 +406,45 @@ transformer_4bit = AutoModel.from_pretrained(
 text_encoder_2_4bit.dequantize()
 transformer_4bit.dequantize()
 ```
+
+## torch.compile
+
+Speed up inference with `torch.compile`. Make sure you have the latest `bitsandbytes` installed and we also recommend installing [PyTorch nightly](https://pytorch.org/get-started/locally/).
+
+<hfoptions id="bnb">
+<hfoption id="8-bit">
+```py
+torch._dynamo.config.capture_dynamic_output_shape_ops = True
+
+quant_config = DiffusersBitsAndBytesConfig(load_in_8bit=True)
+transformer_4bit = AutoModel.from_pretrained(
+    "black-forest-labs/FLUX.1-dev",
+    subfolder="transformer",
+    quantization_config=quant_config,
+    torch_dtype=torch.float16,
+)
+transformer_4bit.compile(fullgraph=True)
+```
+
+</hfoption>
+<hfoption id="4-bit">
+
+```py
+quant_config = DiffusersBitsAndBytesConfig(load_in_4bit=True)
+transformer_4bit = AutoModel.from_pretrained(
+    "black-forest-labs/FLUX.1-dev",
+    subfolder="transformer",
+    quantization_config=quant_config,
+    torch_dtype=torch.float16,
+)
+transformer_4bit.compile(fullgraph=True)
+```
+</hfoption>
+</hfoptions>
+
+On an RTX 4090 with compilation, 4-bit Flux generation completed in 25.809 seconds versus 32.570 seconds without.
+
+Check out the [benchmarking script](https://gist.github.com/sayakpaul/0db9d8eeeb3d2a0e5ed7cf0d9ca19b7d) for more details.
 
 ## Resources
 

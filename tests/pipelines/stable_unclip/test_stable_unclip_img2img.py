@@ -17,7 +17,8 @@ from diffusers import AutoencoderKL, DDIMScheduler, DDPMScheduler, StableUnCLIPI
 from diffusers.pipelines.pipeline_utils import DiffusionPipeline
 from diffusers.pipelines.stable_diffusion.stable_unclip_image_normalizer import StableUnCLIPImageNormalizer
 from diffusers.utils.import_utils import is_xformers_available
-from diffusers.utils.testing_utils import (
+
+from ...testing_utils import (
     backend_empty_cache,
     backend_max_memory_allocated,
     backend_reset_max_memory_allocated,
@@ -31,7 +32,6 @@ from diffusers.utils.testing_utils import (
     skip_mps,
     torch_device,
 )
-
 from ..pipeline_params import TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS, TEXT_GUIDED_IMAGE_VARIATION_PARAMS
 from ..test_pipelines_common import (
     PipelineKarrasSchedulerTesterMixin,
@@ -250,7 +250,7 @@ class StableUnCLIPImg2ImgPipelineIntegrationTests(unittest.TestCase):
         pipe.enable_sequential_cpu_offload()
 
         generator = torch.Generator(device="cpu").manual_seed(0)
-        output = pipe(input_image, "anime turle", generator=generator, output_type="np")
+        output = pipe(input_image, "anime turtle", generator=generator, output_type="np")
 
         image = output.images[0]
 
@@ -277,7 +277,7 @@ class StableUnCLIPImg2ImgPipelineIntegrationTests(unittest.TestCase):
         pipe.enable_sequential_cpu_offload()
 
         generator = torch.Generator(device="cpu").manual_seed(0)
-        output = pipe(input_image, "anime turle", generator=generator, output_type="np")
+        output = pipe(input_image, "anime turtle", generator=generator, output_type="np")
 
         image = output.images[0]
 

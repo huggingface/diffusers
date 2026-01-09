@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2024 HuggingFace Inc.
+# Copyright 2025 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -32,7 +32,8 @@ from diffusers import (
     StableDiffusionPipeline,
 )
 from diffusers.utils.import_utils import is_accelerate_available
-from diffusers.utils.testing_utils import (
+
+from ..testing_utils import (
     Expectations,
     backend_empty_cache,
     load_image,
@@ -47,7 +48,7 @@ from diffusers.utils.testing_utils import (
 
 sys.path.append(".")
 
-from utils import PeftLoraLoaderMixinTests, check_if_lora_correctly_set  # noqa: E402
+from .utils import PeftLoraLoaderMixinTests, check_if_lora_correctly_set  # noqa: E402
 
 
 if is_accelerate_available():
@@ -120,7 +121,7 @@ class StableDiffusionLoRATests(PeftLoraLoaderMixinTests, unittest.TestCase):
 
         self.assertTrue(
             check_if_lora_correctly_set(pipe.unet),
-            "Lora not correctly set in text encoder",
+            "Lora not correctly set in unet",
         )
 
         # We will offload the first adapter in CPU and check if the offloading
@@ -187,7 +188,7 @@ class StableDiffusionLoRATests(PeftLoraLoaderMixinTests, unittest.TestCase):
 
         self.assertTrue(
             check_if_lora_correctly_set(pipe.unet),
-            "Lora not correctly set in text encoder",
+            "Lora not correctly set in unet",
         )
 
         for name, param in pipe.unet.named_parameters():
@@ -207,6 +208,53 @@ class StableDiffusionLoRATests(PeftLoraLoaderMixinTests, unittest.TestCase):
         for name, param in pipe.text_encoder.named_parameters():
             if "lora_" in name:
                 self.assertNotEqual(param.device, torch.device("cpu"))
+
+    @slow
+    @require_torch_accelerator
+    def test_integration_set_lora_device_different_target_layers(self):
+        # fixes a bug that occurred when calling set_lora_device with multiple adapters loaded that target different
+        # layers, see #11833
+        from peft import LoraConfig
+
+        path = "stable-diffusion-v1-5/stable-diffusion-v1-5"
+        pipe = StableDiffusionPipeline.from_pretrained(path, torch_dtype=torch.float16)
+        # configs partly target the same, partly different layers
+        config0 = LoraConfig(target_modules=["to_k", "to_v"])
+        config1 = LoraConfig(target_modules=["to_k", "to_q"])
+        pipe.unet.add_adapter(config0, adapter_name="adapter-0")
+        pipe.unet.add_adapter(config1, adapter_name="adapter-1")
+        pipe = pipe.to(torch_device)
+
+        self.assertTrue(
+            check_if_lora_correctly_set(pipe.unet),
+            "Lora not correctly set in unet",
+        )
+
+        # sanity check that the adapters don't target the same layers, otherwise the test passes even without the fix
+        modules_adapter_0 = {n for n, _ in pipe.unet.named_modules() if n.endswith(".adapter-0")}
+        modules_adapter_1 = {n for n, _ in pipe.unet.named_modules() if n.endswith(".adapter-1")}
+        self.assertNotEqual(modules_adapter_0, modules_adapter_1)
+        self.assertTrue(modules_adapter_0 - modules_adapter_1)
+        self.assertTrue(modules_adapter_1 - modules_adapter_0)
+
+        # setting both separately works
+        pipe.set_lora_device(["adapter-0"], "cpu")
+        pipe.set_lora_device(["adapter-1"], "cpu")
+
+        for name, module in pipe.unet.named_modules():
+            if "adapter-0" in name and not isinstance(module, (nn.Dropout, nn.Identity)):
+                self.assertTrue(module.weight.device == torch.device("cpu"))
+            elif "adapter-1" in name and not isinstance(module, (nn.Dropout, nn.Identity)):
+                self.assertTrue(module.weight.device == torch.device("cpu"))
+
+        # setting both at once also works
+        pipe.set_lora_device(["adapter-0", "adapter-1"], torch_device)
+
+        for name, module in pipe.unet.named_modules():
+            if "adapter-0" in name and not isinstance(module, (nn.Dropout, nn.Identity)):
+                self.assertTrue(module.weight.device != torch.device("cpu"))
+            elif "adapter-1" in name and not isinstance(module, (nn.Dropout, nn.Identity)):
+                self.assertTrue(module.weight.device != torch.device("cpu"))
 
 
 @slow

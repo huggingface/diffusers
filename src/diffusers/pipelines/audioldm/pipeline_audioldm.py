@@ -1,4 +1,4 @@
-# Copyright 2024 The HuggingFace Team. All rights reserved.
+# Copyright 2025 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -24,7 +24,7 @@ from ...models import AutoencoderKL, UNet2DConditionModel
 from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import is_torch_xla_available, logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
-from ..pipeline_utils import AudioPipelineOutput, DiffusionPipeline, StableDiffusionMixin
+from ..pipeline_utils import AudioPipelineOutput, DeprecatedPipelineMixin, DiffusionPipeline, StableDiffusionMixin
 
 
 if is_torch_xla_available():
@@ -57,7 +57,7 @@ EXAMPLE_DOC_STRING = """
 """
 
 
-class AudioLDMPipeline(DiffusionPipeline, StableDiffusionMixin):
+class AudioLDMPipeline(DeprecatedPipelineMixin, DiffusionPipeline, StableDiffusionMixin):
     r"""
     Pipeline for text-to-audio generation using AudioLDM.
 
@@ -81,6 +81,7 @@ class AudioLDMPipeline(DiffusionPipeline, StableDiffusionMixin):
             Vocoder of class `SpeechT5HifiGan`.
     """
 
+    _last_supported_version = "0.33.1"
     model_cpu_offload_seq = "text_encoder->unet->vae"
 
     def __init__(

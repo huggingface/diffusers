@@ -1,4 +1,4 @@
-<!--Copyright 2024 The HuggingFace Team. All rights reserved.
+<!--Copyright 2025 The HuggingFace Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -11,7 +11,7 @@ specific language governing permissions and limitations under the License.
 
 -->
 
-# Quantization
+# Getting started
 
 Quantization focuses on representing data with fewer bits while also trying to preserve the precision of the original data. This often means converting a data type to represent the same information with fewer bits. For example, if your model weights are stored as 32-bit floating points and they're quantized to 16-bit floating points, this halves the model size which makes it easier to store and reduces memory usage. Lower precision can also speedup inference because it takes less time to perform calculations with fewer bits.
 
@@ -19,18 +19,26 @@ Diffusers supports multiple quantization backends to make large diffusion models
 
 ## Pipeline-level quantization
 
-There are two ways you can use [`~quantizers.PipelineQuantizationConfig`] depending on the level of control you want over the quantization specifications of each model in the pipeline.
+There are two ways to use [`~quantizers.PipelineQuantizationConfig`] depending on how much customization you want to apply to the quantization configuration. 
 
-- for more basic and simple use cases, you only need to define the `quant_backend`, `quant_kwargs`, and `components_to_quantize`
-- for more granular quantization control, provide a `quant_mapping` that provides the quantization specifications for the individual model components
+- for basic use cases, define the `quant_backend`, `quant_kwargs`, and `components_to_quantize` arguments
+- for granular quantization control, define a `quant_mapping` that provides the quantization configuration for individual model components
 
-### Simple quantization
+### Basic quantization
 
 Initialize [`~quantizers.PipelineQuantizationConfig`] with the following parameters.
 
 - `quant_backend` specifies which quantization backend to use. Currently supported backends include: `bitsandbytes_4bit`, `bitsandbytes_8bit`, `gguf`, `quanto`, and `torchao`.
-- `quant_kwargs` contains the specific quantization arguments to use.
-- `components_to_quantize` specifies which components of the pipeline to quantize. Typically, you should quantize the most compute intensive components like the transformer. The text encoder is another component to consider quantizing if a pipeline has more than one such as [`FluxPipeline`]. The example below quantizes the T5 text encoder in [`FluxPipeline`] while keeping the CLIP model intact.
+- `quant_kwargs` specifies the quantization arguments to use.
+
+> [!TIP]
+> These `quant_kwargs` arguments are different for each backend. Refer to the [Quantization API](../api/quantization) docs to view the arguments for each backend.
+
+- `components_to_quantize` specifies which component(s) of the pipeline to quantize. Typically, you should quantize the most compute intensive components like the transformer. The text encoder is another component to consider quantizing if a pipeline has more than one such as [`FluxPipeline`]. The example below quantizes the T5 text encoder in [`FluxPipeline`] while keeping the CLIP model intact.
+
+   `components_to_quantize` accepts either a list for multiple models or a string for a single model.
+
+The example below loads the bitsandbytes backend with the following arguments from [`~quantizers.quantization_config.BitsAndBytesConfig`], `load_in_4bit`, `bnb_4bit_quant_type`, and `bnb_4bit_compute_dtype`.
 
 ```py
 import torch
@@ -56,13 +64,14 @@ pipe = DiffusionPipeline.from_pretrained(
 image = pipe("photo of a cute dog").images[0]
 ```
 
-### quant_mapping
 
-The `quant_mapping` argument provides more flexible options for how to quantize each individual component in a pipeline, like combining different quantization backends.
+### Advanced quantization
+
+The `quant_mapping` argument provides more options for how to quantize each individual component in a pipeline, like combining different quantization backends.
 
 Initialize [`~quantizers.PipelineQuantizationConfig`] and pass a `quant_mapping` to it. The `quant_mapping` allows you to specify the quantization options for each component in the pipeline such as the transformer and text encoder.
 
-The example below uses two quantization backends, [`~quantizers.QuantoConfig`] and [`transformers.BitsAndBytesConfig`], for the transformer and text encoder.
+The example below uses two quantization backends, [`~quantizers.quantization_config.QuantoConfig`] and [`transformers.BitsAndBytesConfig`], for the transformer and text encoder.
 
 ```py
 import torch
@@ -85,7 +94,7 @@ pipeline_quant_config = PipelineQuantizationConfig(
 There is a separate bitsandbytes backend in [Transformers](https://huggingface.co/docs/transformers/main_classes/quantization#transformers.BitsAndBytesConfig). You need to import and use [`transformers.BitsAndBytesConfig`] for components that come from Transformers. For example, `text_encoder_2` in [`FluxPipeline`] is a [`~transformers.T5EncoderModel`] from Transformers so you need to use [`transformers.BitsAndBytesConfig`] instead of [`diffusers.BitsAndBytesConfig`].
 
 > [!TIP]
-> Use the [simple quantization](#simple-quantization) method above if you don't want to manage these distinct imports or aren't sure where each pipeline component comes from.
+> Use the [basic quantization](#basic-quantization) method above if you don't want to manage these distinct imports or aren't sure where each pipeline component comes from.
 
 ```py
 import torch

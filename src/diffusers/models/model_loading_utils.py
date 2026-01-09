@@ -14,11 +14,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import functools
 import importlib
 import inspect
 import os
 from array import array
-from collections import OrderedDict
+from collections import OrderedDict, defaultdict
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Dict, List, Optional, Union
 from zipfile import is_zipfile
@@ -30,6 +32,7 @@ from huggingface_hub.utils import EntryNotFoundError
 
 from ..quantizers import DiffusersQuantizer
 from ..utils import (
+    DEFAULT_HF_PARALLEL_LOADING_WORKERS,
     GGUF_FILE_EXTENSION,
     SAFE_WEIGHTS_INDEX_NAME,
     SAFETENSORS_FILE_EXTENSION,
@@ -38,6 +41,7 @@ from ..utils import (
     _get_model_file,
     deprecate,
     is_accelerate_available,
+    is_accelerate_version,
     is_gguf_available,
     is_torch_available,
     is_torch_version,
@@ -107,9 +111,6 @@ def _determine_device_map(
 
         device_map_kwargs["max_memory"] = max_memory
         device_map = infer_auto_device_map(model, dtype=target_dtype, **device_map_kwargs)
-
-        if hf_quantizer is not None:
-            hf_quantizer.validate_environment(device_map=device_map)
 
     return device_map
 
@@ -252,6 +253,10 @@ def load_model_dict_into_meta(
                 param = param.to(dtype)
                 set_module_kwargs["dtype"] = dtype
 
+        if is_accelerate_version(">", "1.8.1"):
+            set_module_kwargs["non_blocking"] = True
+            set_module_kwargs["clear_cache"] = False
+
         # For compatibility with PyTorch load_state_dict which converts state dict dtype to existing dtype in model, and which
         # uses `param.copy_(input_param)` that preserves the contiguity of the parameter in the model.
         # Reference: https://github.com/pytorch/pytorch/blob/db79ceb110f6646523019a59bbd7b838f43d4a86/torch/nn/modules/module.py#L2040C29-L2040C29
@@ -302,6 +307,161 @@ def load_model_dict_into_meta(
             set_module_tensor_to_device(model, param_name, param_device, value=param, **set_module_kwargs)
 
     return offload_index, state_dict_index
+
+
+def check_support_param_buffer_assignment(model_to_load, state_dict, start_prefix=""):
+    """
+    Checks if `model_to_load` supports param buffer assignment (such as when loading in empty weights) by first
+    checking if the model explicitly disables it, then by ensuring that the state dict keys are a subset of the model's
+    parameters.
+
+    """
+    if model_to_load.device.type == "meta":
+        return False
+
+    if len([key for key in state_dict if key.startswith(start_prefix)]) == 0:
+        return False
+
+    # Some models explicitly do not support param buffer assignment
+    if not getattr(model_to_load, "_supports_param_buffer_assignment", True):
+        logger.debug(
+            f"{model_to_load.__class__.__name__} does not support param buffer assignment, loading will be slower"
+        )
+        return False
+
+    # If the model does, the incoming `state_dict` and the `model_to_load` must be the same dtype
+    first_key = next(iter(model_to_load.state_dict().keys()))
+    if start_prefix + first_key in state_dict:
+        return state_dict[start_prefix + first_key].dtype == model_to_load.state_dict()[first_key].dtype
+
+    return False
+
+
+def _load_shard_file(
+    shard_file,
+    model,
+    model_state_dict,
+    device_map=None,
+    dtype=None,
+    hf_quantizer=None,
+    keep_in_fp32_modules=None,
+    dduf_entries=None,
+    loaded_keys=None,
+    unexpected_keys=None,
+    offload_index=None,
+    offload_folder=None,
+    state_dict_index=None,
+    state_dict_folder=None,
+    ignore_mismatched_sizes=False,
+    low_cpu_mem_usage=False,
+):
+    state_dict = load_state_dict(shard_file, dduf_entries=dduf_entries)
+    mismatched_keys = _find_mismatched_keys(
+        state_dict,
+        model_state_dict,
+        loaded_keys,
+        ignore_mismatched_sizes,
+    )
+    error_msgs = []
+    if low_cpu_mem_usage:
+        offload_index, state_dict_index = load_model_dict_into_meta(
+            model,
+            state_dict,
+            device_map=device_map,
+            dtype=dtype,
+            hf_quantizer=hf_quantizer,
+            keep_in_fp32_modules=keep_in_fp32_modules,
+            unexpected_keys=unexpected_keys,
+            offload_folder=offload_folder,
+            offload_index=offload_index,
+            state_dict_index=state_dict_index,
+            state_dict_folder=state_dict_folder,
+        )
+    else:
+        assign_to_params_buffers = check_support_param_buffer_assignment(model, state_dict)
+
+        error_msgs += _load_state_dict_into_model(model, state_dict, assign_to_params_buffers)
+    return offload_index, state_dict_index, mismatched_keys, error_msgs
+
+
+def _load_shard_files_with_threadpool(
+    shard_files,
+    model,
+    model_state_dict,
+    device_map=None,
+    dtype=None,
+    hf_quantizer=None,
+    keep_in_fp32_modules=None,
+    dduf_entries=None,
+    loaded_keys=None,
+    unexpected_keys=None,
+    offload_index=None,
+    offload_folder=None,
+    state_dict_index=None,
+    state_dict_folder=None,
+    ignore_mismatched_sizes=False,
+    low_cpu_mem_usage=False,
+):
+    # Do not spawn anymore workers than you need
+    num_workers = min(len(shard_files), DEFAULT_HF_PARALLEL_LOADING_WORKERS)
+
+    logger.info(f"Loading model weights in parallel with {num_workers} workers...")
+
+    error_msgs = []
+    mismatched_keys = []
+
+    load_one = functools.partial(
+        _load_shard_file,
+        model=model,
+        model_state_dict=model_state_dict,
+        device_map=device_map,
+        dtype=dtype,
+        hf_quantizer=hf_quantizer,
+        keep_in_fp32_modules=keep_in_fp32_modules,
+        dduf_entries=dduf_entries,
+        loaded_keys=loaded_keys,
+        unexpected_keys=unexpected_keys,
+        offload_index=offload_index,
+        offload_folder=offload_folder,
+        state_dict_index=state_dict_index,
+        state_dict_folder=state_dict_folder,
+        ignore_mismatched_sizes=ignore_mismatched_sizes,
+        low_cpu_mem_usage=low_cpu_mem_usage,
+    )
+
+    with ThreadPoolExecutor(max_workers=num_workers) as executor:
+        with logging.tqdm(total=len(shard_files), desc="Loading checkpoint shards") as pbar:
+            futures = [executor.submit(load_one, shard_file) for shard_file in shard_files]
+            for future in as_completed(futures):
+                result = future.result()
+                offload_index, state_dict_index, _mismatched_keys, _error_msgs = result
+                error_msgs += _error_msgs
+                mismatched_keys += _mismatched_keys
+                pbar.update(1)
+
+    return offload_index, state_dict_index, mismatched_keys, error_msgs
+
+
+def _find_mismatched_keys(
+    state_dict,
+    model_state_dict,
+    loaded_keys,
+    ignore_mismatched_sizes,
+):
+    mismatched_keys = []
+    if ignore_mismatched_sizes:
+        for checkpoint_key in loaded_keys:
+            model_key = checkpoint_key
+            # If the checkpoint is sharded, we may not have the key here.
+            if checkpoint_key not in state_dict:
+                continue
+
+            if model_key in model_state_dict and state_dict[checkpoint_key].shape != model_state_dict[model_key].shape:
+                mismatched_keys.append(
+                    (checkpoint_key, state_dict[checkpoint_key].shape, model_state_dict[model_key].shape)
+                )
+                del state_dict[checkpoint_key]
+    return mismatched_keys
 
 
 def _load_state_dict_into_model(
@@ -520,3 +680,72 @@ def load_gguf_checkpoint(gguf_checkpoint_path, return_tensors=False):
         parsed_parameters[name] = GGUFParameter(weights, quant_type=quant_type) if is_gguf_quant else weights
 
     return parsed_parameters
+
+
+def _find_mismatched_keys(state_dict, model_state_dict, loaded_keys, ignore_mismatched_sizes):
+    mismatched_keys = []
+    if not ignore_mismatched_sizes:
+        return mismatched_keys
+    for checkpoint_key in loaded_keys:
+        model_key = checkpoint_key
+        # If the checkpoint is sharded, we may not have the key here.
+        if checkpoint_key not in state_dict:
+            continue
+
+        if model_key in model_state_dict and state_dict[checkpoint_key].shape != model_state_dict[model_key].shape:
+            mismatched_keys.append(
+                (checkpoint_key, state_dict[checkpoint_key].shape, model_state_dict[model_key].shape)
+            )
+            del state_dict[checkpoint_key]
+    return mismatched_keys
+
+
+def _expand_device_map(device_map, param_names):
+    """
+    Expand a device map to return the correspondence parameter name to device.
+    """
+    new_device_map = {}
+    for module, device in device_map.items():
+        new_device_map.update(
+            {p: device for p in param_names if p == module or p.startswith(f"{module}.") or module == ""}
+        )
+    return new_device_map
+
+
+# Adapted from: https://github.com/huggingface/transformers/blob/0687d481e2c71544501ef9cb3eef795a6e79b1de/src/transformers/modeling_utils.py#L5859
+def _caching_allocator_warmup(
+    model, expanded_device_map: Dict[str, torch.device], dtype: torch.dtype, hf_quantizer: Optional[DiffusersQuantizer]
+) -> None:
+    """
+    This function warm-ups the caching allocator based on the size of the model tensors that will reside on each
+    device. It allows to have one large call to Malloc, instead of recursively calling it later when loading the model,
+    which is actually the loading speed bottleneck. Calling this function allows to cut the model loading time by a
+    very large margin.
+    """
+    factor = 2 if hf_quantizer is None else hf_quantizer.get_cuda_warm_up_factor()
+
+    # Keep only accelerator devices
+    accelerator_device_map = {
+        param: torch.device(device)
+        for param, device in expanded_device_map.items()
+        if str(device) not in ["cpu", "disk"]
+    }
+    if not accelerator_device_map:
+        return
+
+    elements_per_device = defaultdict(int)
+    for param_name, device in accelerator_device_map.items():
+        try:
+            p = model.get_parameter(param_name)
+        except AttributeError:
+            try:
+                p = model.get_buffer(param_name)
+            except AttributeError:
+                raise AttributeError(f"Parameter or buffer with name={param_name} not found in model")
+        # TODO: account for TP when needed.
+        elements_per_device[device] += p.numel()
+
+    # This will kick off the caching allocator to avoid having to Malloc afterwards
+    for device, elem_count in elements_per_device.items():
+        warmup_elems = max(1, elem_count // factor)
+        _ = torch.empty(warmup_elems, dtype=dtype, device=device, requires_grad=False)

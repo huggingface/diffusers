@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2024 HuggingFace Inc.
+# Copyright 2025 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -26,12 +26,12 @@ from diffusers import (
     StableDiffusion3ControlNetInpaintingPipeline,
 )
 from diffusers.models import SD3ControlNetModel
-from diffusers.utils.testing_utils import (
+from diffusers.utils.torch_utils import randn_tensor
+
+from ...testing_utils import (
     enable_full_determinism,
     torch_device,
 )
-from diffusers.utils.torch_utils import randn_tensor
-
 from ..test_pipelines_common import PipelineTesterMixin
 
 

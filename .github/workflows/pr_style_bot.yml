@@ -14,4 +14,4 @@ jobs:
     with:
       python_quality_dependencies: "[quality]"
     secrets:
-      bot_token: ${{ secrets.GITHUB_TOKEN }}
+      bot_token: ${{ secrets.HF_STYLE_BOT_ACTION }}

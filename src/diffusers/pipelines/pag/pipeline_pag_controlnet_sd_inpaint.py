@@ -1,4 +1,4 @@
-# Copyright 2024 The HuggingFace Team. All rights reserved.
+# Copyright 2025 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -37,7 +37,7 @@ from ...utils import (
     scale_lora_layers,
     unscale_lora_layers,
 )
-from ...utils.torch_utils import is_compiled_module, randn_tensor
+from ...utils.torch_utils import empty_device_cache, is_compiled_module, randn_tensor
 from ..pipeline_utils import DiffusionPipeline, StableDiffusionMixin
 from ..stable_diffusion import StableDiffusionPipelineOutput
 from ..stable_diffusion.safety_checker import StableDiffusionSafetyChecker
@@ -93,7 +93,10 @@ EXAMPLE_DOC_STRING = """
         ...     "lllyasviel/control_v11p_sd15_inpaint", torch_dtype=torch.float16
         ... )
         >>> pipe = AutoPipelineForInpainting.from_pretrained(
-        ...     "runwayml/stable-diffusion-v1-5", controlnet=controlnet, torch_dtype=torch.float16, enable_pag=True
+        ...     "stable-diffusion-v1-5/stable-diffusion-v1-5",
+        ...     controlnet=controlnet,
+        ...     torch_dtype=torch.float16,
+        ...     enable_pag=True,
         ... )
 
         >>> pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
@@ -150,16 +153,13 @@ class StableDiffusionControlNetPAGInpaintPipeline(
         - [`~loaders.FromSingleFileMixin.from_single_file`] for loading `.ckpt` files
         - [`~loaders.IPAdapterMixin.load_ip_adapter`] for loading IP Adapters
 
-    <Tip>
-
-    This pipeline can be used with checkpoints that have been specifically fine-tuned for inpainting
-    ([runwayml/stable-diffusion-inpainting](https://huggingface.co/runwayml/stable-diffusion-inpainting)) as well as
-    default text-to-image Stable Diffusion checkpoints
-    ([runwayml/stable-diffusion-v1-5](https://huggingface.co/runwayml/stable-diffusion-v1-5)). Default text-to-image
-    Stable Diffusion checkpoints might be preferable for ControlNets that have been fine-tuned on those, such as
+    > [!TIP] > This pipeline can be used with checkpoints that have been specifically fine-tuned for inpainting >
+    ([stable-diffusion-v1-5/stable-diffusion-inpainting](https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-inpainting))
+    as well as > default text-to-image Stable Diffusion checkpoints >
+    ([stable-diffusion-v1-5/stable-diffusion-v1-5](https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5)).
+    Default text-to-image > Stable Diffusion checkpoints might be preferable for ControlNets that have been fine-tuned
+    on those, such as >
     [lllyasviel/control_v11p_sd15_inpaint](https://huggingface.co/lllyasviel/control_v11p_sd15_inpaint).
-
-    </Tip>
 
     Args:
         vae ([`AutoencoderKL`]):
@@ -179,8 +179,8 @@ class StableDiffusionControlNetPAGInpaintPipeline(
             [`DDIMScheduler`], [`LMSDiscreteScheduler`], or [`PNDMScheduler`].
         safety_checker ([`StableDiffusionSafetyChecker`]):
             Classification module that estimates whether generated images could be considered offensive or harmful.
-            Please refer to the [model card](https://huggingface.co/runwayml/stable-diffusion-v1-5) for more details
-            about a model's potential harms.
+            Please refer to the [model card](https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5) for
+            more details about a model's potential harms.
         feature_extractor ([`~transformers.CLIPImageProcessor`]):
             A `CLIPImageProcessor` to extract features from generated images; used as inputs to the `safety_checker`.
     """
@@ -1332,7 +1332,7 @@ class StableDiffusionControlNetPAGInpaintPipeline(
 
         # 7.1 Check that sizes of mask, masked image and latents match
         if num_channels_unet == 9:
-            # default case for runwayml/stable-diffusion-inpainting
+            # default case for stable-diffusion-v1-5/stable-diffusion-inpainting
             num_channels_mask = mask.shape[1]
             num_channels_masked_image = masked_image_latents.shape[1]
             if num_channels_latents + num_channels_mask + num_channels_masked_image != self.unet.config.in_channels:
@@ -1521,7 +1521,7 @@ class StableDiffusionControlNetPAGInpaintPipeline(
         if hasattr(self, "final_offload_hook") and self.final_offload_hook is not None:
             self.unet.to("cpu")
             self.controlnet.to("cpu")
-            torch.cuda.empty_cache()
+            empty_device_cache()
 
         if not output_type == "latent":
             image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False, generator=generator)[

@@ -1,4 +1,4 @@
-# Copyright 2024 The HuggingFace Team. All rights reserved.
+# Copyright 2025 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -18,7 +18,6 @@ from typing import Callable, List, Optional, Union
 import numpy as np
 import PIL.Image
 import torch
-import torch.utils.checkpoint
 from transformers import CLIPImageProcessor, CLIPVisionModelWithProjection
 
 from ....image_processor import VaeImageProcessor

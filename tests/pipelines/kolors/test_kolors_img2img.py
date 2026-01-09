@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2024 HuggingFace Inc.
+# Copyright 2025 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -26,11 +26,11 @@ from diffusers import (
     UNet2DConditionModel,
 )
 from diffusers.pipelines.kolors import ChatGLMModel, ChatGLMTokenizer
-from diffusers.utils.testing_utils import (
+
+from ...testing_utils import (
     enable_full_determinism,
     floats_tensor,
 )
-
 from ..pipeline_params import (
     TEXT_TO_IMAGE_BATCH_PARAMS,
     TEXT_TO_IMAGE_CALLBACK_CFG_PARAMS,
@@ -155,6 +155,6 @@ class KolorsPipelineImg2ImgFastTests(PipelineTesterMixin, unittest.TestCase):
     def test_float16_inference(self):
         super().test_float16_inference(expected_max_diff=7e-2)
 
-    @unittest.skip("Test not supported because kolors img2img doesn't take pooled embeds as inputs unline kolors t2i.")
+    @unittest.skip("Test not supported because kolors img2img doesn't take pooled embeds as inputs unlike kolors t2i.")
     def test_encode_prompt_works_in_isolation(self):
         pass

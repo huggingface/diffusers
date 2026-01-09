@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2024 HuggingFace Inc.
+# Copyright 2025 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,13 +14,13 @@
 # limitations under the License.
 
 import gc
-import unittest
 
 import torch
 
 from diffusers import StableCascadeUNet
 from diffusers.utils import logging
-from diffusers.utils.testing_utils import (
+
+from ..testing_utils import (
     backend_empty_cache,
     enable_full_determinism,
     require_torch_accelerator,
@@ -36,14 +36,12 @@ enable_full_determinism()
 
 @slow
 @require_torch_accelerator
-class StableCascadeUNetSingleFileTest(unittest.TestCase):
-    def setUp(self):
-        super().setUp()
+class StableCascadeUNetSingleFileTest:
+    def setup_method(self):
         gc.collect()
         backend_empty_cache(torch_device)
 
-    def tearDown(self):
-        super().tearDown()
+    def teardown_method(self):
         gc.collect()
         backend_empty_cache(torch_device)
 

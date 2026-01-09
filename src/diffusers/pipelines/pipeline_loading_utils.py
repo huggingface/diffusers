@@ -19,12 +19,12 @@ import warnings
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Union
 
+import httpx
 import requests
 import torch
 from huggingface_hub import DDUFEntry, ModelCard, model_info, snapshot_download
-from huggingface_hub.utils import OfflineModeIsEnabled, validate_hf_hub_args
+from huggingface_hub.utils import HfHubHTTPError, OfflineModeIsEnabled, validate_hf_hub_args
 from packaging import version
-from requests.exceptions import HTTPError
 
 from .. import __version__
 from ..utils import (
@@ -33,6 +33,7 @@ from ..utils import (
     ONNX_WEIGHTS_NAME,
     SAFETENSORS_WEIGHTS_NAME,
     WEIGHTS_NAME,
+    _maybe_remap_transformers_class,
     deprecate,
     get_class_from_dynamic_module,
     is_accelerate_available,
@@ -48,9 +49,11 @@ from .transformers_loading_utils import _load_tokenizer_from_dduf, _load_transfo
 if is_transformers_available():
     import transformers
     from transformers import PreTrainedModel, PreTrainedTokenizerBase
-    from transformers.utils import FLAX_WEIGHTS_NAME as TRANSFORMERS_FLAX_WEIGHTS_NAME
     from transformers.utils import SAFE_WEIGHTS_NAME as TRANSFORMERS_SAFE_WEIGHTS_NAME
     from transformers.utils import WEIGHTS_NAME as TRANSFORMERS_WEIGHTS_NAME
+
+    if is_transformers_version("<=", "4.56.2"):
+        from transformers.utils import FLAX_WEIGHTS_NAME as TRANSFORMERS_FLAX_WEIGHTS_NAME
 
 if is_accelerate_available():
     import accelerate
@@ -73,6 +76,7 @@ LOADABLE_CLASSES = {
         "SchedulerMixin": ["save_pretrained", "from_pretrained"],
         "DiffusionPipeline": ["save_pretrained", "from_pretrained"],
         "OnnxRuntimeModel": ["save_pretrained", "from_pretrained"],
+        "BaseGuidance": ["save_pretrained", "from_pretrained"],
     },
     "transformers": {
         "PreTrainedTokenizer": ["save_pretrained", "from_pretrained"],
@@ -112,7 +116,9 @@ def is_safetensors_compatible(filenames, passed_components=None, folder_names=No
     ]
 
     if is_transformers_available():
-        weight_names += [TRANSFORMERS_WEIGHTS_NAME, TRANSFORMERS_SAFE_WEIGHTS_NAME, TRANSFORMERS_FLAX_WEIGHTS_NAME]
+        weight_names += [TRANSFORMERS_WEIGHTS_NAME, TRANSFORMERS_SAFE_WEIGHTS_NAME]
+        if is_transformers_version("<=", "4.56.2"):
+            weight_names += [TRANSFORMERS_FLAX_WEIGHTS_NAME]
 
     # model_pytorch, diffusion_model_pytorch, ...
     weight_prefixes = [w.split(".")[0] for w in weight_names]
@@ -191,7 +197,9 @@ def filter_model_files(filenames):
     ]
 
     if is_transformers_available():
-        weight_names += [TRANSFORMERS_WEIGHTS_NAME, TRANSFORMERS_SAFE_WEIGHTS_NAME, TRANSFORMERS_FLAX_WEIGHTS_NAME]
+        weight_names += [TRANSFORMERS_WEIGHTS_NAME, TRANSFORMERS_SAFE_WEIGHTS_NAME]
+        if is_transformers_version("<=", "4.56.2"):
+            weight_names += [TRANSFORMERS_FLAX_WEIGHTS_NAME]
 
     allowed_extensions = [wn.split(".")[-1] for wn in weight_names]
 
@@ -212,7 +220,9 @@ def variant_compatible_siblings(filenames, variant=None, ignore_patterns=None) -
     ]
 
     if is_transformers_available():
-        weight_names += [TRANSFORMERS_WEIGHTS_NAME, TRANSFORMERS_SAFE_WEIGHTS_NAME, TRANSFORMERS_FLAX_WEIGHTS_NAME]
+        weight_names += [TRANSFORMERS_WEIGHTS_NAME, TRANSFORMERS_SAFE_WEIGHTS_NAME]
+        if is_transformers_version("<=", "4.56.2"):
+            weight_names += [TRANSFORMERS_FLAX_WEIGHTS_NAME]
 
     # model_pytorch, diffusion_model_pytorch, ...
     weight_prefixes = [w.split(".")[0] for w in weight_names]
@@ -348,6 +358,11 @@ def maybe_raise_or_warn(
     """Simple helper method to raise or warn in case incorrect module has been passed"""
     if not is_pipeline_module:
         library = importlib.import_module(library_name)
+
+        # Handle deprecated Transformers classes
+        if library_name == "transformers":
+            class_name = _maybe_remap_transformers_class(class_name) or class_name
+
         class_obj = getattr(library, class_name)
         class_candidates = {c: getattr(library, c, None) for c in importable_classes.keys()}
 
@@ -371,6 +386,27 @@ def maybe_raise_or_warn(
         )
 
 
+# a simpler version of get_class_obj_and_candidates, it won't work with custom code
+def simple_get_class_obj(library_name, class_name):
+    from diffusers import pipelines
+
+    is_pipeline_module = hasattr(pipelines, library_name)
+
+    if is_pipeline_module:
+        pipeline_module = getattr(pipelines, library_name)
+        class_obj = getattr(pipeline_module, class_name)
+    else:
+        library = importlib.import_module(library_name)
+
+        # Handle deprecated Transformers classes
+        if library_name == "transformers":
+            class_name = _maybe_remap_transformers_class(class_name) or class_name
+
+        class_obj = getattr(library, class_name)
+
+    return class_obj
+
+
 def get_class_obj_and_candidates(
     library_name, class_name, importable_classes, pipelines, is_pipeline_module, component_name=None, cache_dir=None
 ):
@@ -391,6 +427,10 @@ def get_class_obj_and_candidates(
     else:
         # else we just import it from the library.
         library = importlib.import_module(library_name)
+
+        # Handle deprecated Transformers classes
+        if library_name == "transformers":
+            class_name = _maybe_remap_transformers_class(class_name) or class_name
 
         class_obj = getattr(library, class_name)
         class_candidates = {c: getattr(library, c, None) for c in importable_classes.keys()}
@@ -452,7 +492,7 @@ def _get_pipeline_class(
             revision=revision,
         )
 
-    if class_obj.__name__ != "DiffusionPipeline":
+    if class_obj.__name__ != "DiffusionPipeline" and class_obj.__name__ != "ModularPipeline":
         return class_obj
 
     diffusers_module = importlib.import_module(class_obj.__module__.split(".")[0])
@@ -597,6 +637,9 @@ def _assign_components_to_devices(
 
 
 def _get_final_device_map(device_map, pipeline_class, passed_class_obj, init_dict, library, max_memory, **kwargs):
+    # TODO: separate out different device_map methods when it gets to it.
+    if device_map != "balanced":
+        return device_map
     # To avoid circular import problem.
     from diffusers import pipelines
 
@@ -758,12 +801,6 @@ def load_sub_model(
     # add kwargs to loading method
     diffusers_module = importlib.import_module(__name__.split(".")[0])
     loading_kwargs = {}
-    if issubclass(class_obj, torch.nn.Module):
-        loading_kwargs["torch_dtype"] = torch_dtype
-    if issubclass(class_obj, diffusers_module.OnnxRuntimeModel):
-        loading_kwargs["provider"] = provider
-        loading_kwargs["sess_options"] = sess_options
-        loading_kwargs["provider_options"] = provider_options
 
     is_diffusers_model = issubclass(class_obj, diffusers_module.ModelMixin)
 
@@ -777,6 +814,17 @@ def load_sub_model(
         and issubclass(class_obj, PreTrainedModel)
         and transformers_version >= version.parse("4.20.0")
     )
+
+    # For transformers models >= 4.56.0, use 'dtype' instead of 'torch_dtype' to avoid deprecation warnings
+    if issubclass(class_obj, torch.nn.Module):
+        if is_transformers_model and transformers_version >= version.parse("4.56.0"):
+            loading_kwargs["dtype"] = torch_dtype
+        else:
+            loading_kwargs["torch_dtype"] = torch_dtype
+    if issubclass(class_obj, diffusers_module.OnnxRuntimeModel):
+        loading_kwargs["provider"] = provider
+        loading_kwargs["sess_options"] = sess_options
+        loading_kwargs["provider_options"] = provider_options
 
     # When loading a transformers model, if the device_map is None, the weights will be initialized as opposed to diffusers.
     # To make default loading faster we set the `low_cpu_mem_usage=low_cpu_mem_usage` flag which is `True` by default.
@@ -811,6 +859,9 @@ def load_sub_model(
         else:
             loading_kwargs["low_cpu_mem_usage"] = False
 
+    if is_transformers_model and is_transformers_version(">=", "4.57.0"):
+        loading_kwargs.pop("offload_state_dict")
+
     if (
         quantization_config is not None
         and isinstance(quantization_config, PipelineQuantizationConfig)
@@ -836,6 +887,9 @@ def load_sub_model(
         # remove hooks
         remove_hook_from_module(loaded_sub_model, recurse=True)
         needs_offloading_to_cpu = device_map[""] == "cpu"
+        skip_keys = None
+        if hasattr(loaded_sub_model, "_skip_keys") and loaded_sub_model._skip_keys is not None:
+            skip_keys = loaded_sub_model._skip_keys
 
         if needs_offloading_to_cpu:
             dispatch_model(
@@ -844,9 +898,10 @@ def load_sub_model(
                 device_map=device_map,
                 force_hooks=True,
                 main_device=0,
+                skip_keys=skip_keys,
             )
         else:
-            dispatch_model(loaded_sub_model, device_map=device_map, force_hooks=True)
+            dispatch_model(loaded_sub_model, device_map=device_map, force_hooks=True, skip_keys=skip_keys)
 
     return loaded_sub_model
 
@@ -892,7 +947,10 @@ def _fetch_class_library_tuple(module):
         library = not_compiled_module.__module__
 
     # retrieve class_name
-    class_name = not_compiled_module.__class__.__name__
+    if isinstance(not_compiled_module, type):
+        class_name = not_compiled_module.__name__
+    else:
+        class_name = not_compiled_module.__class__.__name__
 
     return (library, class_name)
 
@@ -1080,7 +1138,7 @@ def _download_dduf_file(
     if not local_files_only:
         try:
             info = model_info(pretrained_model_name, token=token, revision=revision)
-        except (HTTPError, OfflineModeIsEnabled, requests.ConnectionError) as e:
+        except (HfHubHTTPError, OfflineModeIsEnabled, requests.ConnectionError, httpx.NetworkError) as e:
             logger.warning(f"Couldn't connect to the Hub: {e}.\nWill try to load from local cache.")
             local_files_only = True
             model_info_call_error = e  # save error to reraise it if model is not cached locally
@@ -1131,3 +1189,26 @@ def _maybe_raise_error_for_incorrect_transformers(config_dict):
                 break
     if has_transformers_component and not is_transformers_version(">", "4.47.1"):
         raise ValueError("Please upgrade your `transformers` installation to the latest version to use DDUF.")
+
+
+def _maybe_warn_for_wrong_component_in_quant_config(pipe_init_dict, quant_config):
+    if quant_config is None:
+        return
+
+    actual_pipe_components = set(pipe_init_dict.keys())
+    missing = ""
+    quant_components = None
+    if getattr(quant_config, "components_to_quantize", None) is not None:
+        quant_components = set(quant_config.components_to_quantize)
+    elif getattr(quant_config, "quant_mapping", None) is not None and isinstance(quant_config.quant_mapping, dict):
+        quant_components = set(quant_config.quant_mapping.keys())
+
+    if quant_components and not quant_components.issubset(actual_pipe_components):
+        missing = quant_components - actual_pipe_components
+
+    if missing:
+        logger.warning(
+            f"The following components in the quantization config {missing} will be ignored "
+            "as they do not belong to the underlying pipeline. Acceptable values for the pipeline "
+            f"components are: {', '.join(actual_pipe_components)}."
+        )

@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2024 HuggingFace Inc and Tencent Hunyuan Team.
+# Copyright 2025 HuggingFace Inc and Tencent Hunyuan Team.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -28,15 +28,15 @@ from diffusers import (
 )
 from diffusers.models import HunyuanDiT2DControlNetModel, HunyuanDiT2DMultiControlNetModel
 from diffusers.utils import load_image
-from diffusers.utils.testing_utils import (
+from diffusers.utils.torch_utils import randn_tensor
+
+from ...testing_utils import (
     backend_empty_cache,
     enable_full_determinism,
     require_torch_accelerator,
     slow,
     torch_device,
 )
-from diffusers.utils.torch_utils import randn_tensor
-
 from ..test_pipelines_common import PipelineTesterMixin
 
 
@@ -155,7 +155,7 @@ class HunyuanDiTControlNetPipelineFastTests(unittest.TestCase, PipelineTesterMix
 
         if torch_device == "xpu":
             expected_slice = np.array(
-                [0.6376953, 0.84375, 0.58691406, 0.48046875, 0.43652344, 0.5517578, 0.54248047, 0.5644531, 0.48217773]
+                [0.6948242, 0.89160156, 0.59375, 0.5078125, 0.57910156, 0.6035156, 0.58447266, 0.53564453, 0.52246094]
             )
         else:
             expected_slice = np.array(

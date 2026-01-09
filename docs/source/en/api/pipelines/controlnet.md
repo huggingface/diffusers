@@ -1,4 +1,4 @@
-<!--Copyright 2024 The HuggingFace Team. All rights reserved.
+<!--Copyright 2025 The HuggingFace Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -28,11 +28,8 @@ This model was contributed by [takuma104](https://huggingface.co/takuma104). ❤
 
 The original codebase can be found at [lllyasviel/ControlNet](https://github.com/lllyasviel/ControlNet), and you can find official ControlNet checkpoints on [lllyasviel's](https://huggingface.co/lllyasviel) Hub profile.
 
-<Tip>
-
-Make sure to check out the Schedulers [guide](../../using-diffusers/schedulers) to learn how to explore the tradeoff between scheduler speed and quality, and see the [reuse components across pipelines](../../using-diffusers/loading#reuse-a-pipeline) section to learn how to efficiently load the same components into multiple pipelines.
-
-</Tip>
+> [!TIP]
+> Make sure to check out the Schedulers [guide](../../using-diffusers/schedulers) to learn how to explore the tradeoff between scheduler speed and quality, and see the [reuse components across pipelines](../../using-diffusers/loading#reuse-a-pipeline) section to learn how to efficiently load the same components into multiple pipelines.
 
 ## StableDiffusionControlNetPipeline
 [[autodoc]] StableDiffusionControlNetPipeline
@@ -72,11 +69,3 @@ Make sure to check out the Schedulers [guide](../../using-diffusers/schedulers) 
 
 ## StableDiffusionPipelineOutput
 [[autodoc]] pipelines.stable_diffusion.StableDiffusionPipelineOutput
-
-## FlaxStableDiffusionControlNetPipeline
-[[autodoc]] FlaxStableDiffusionControlNetPipeline
-	- all
-	- __call__
-
-## FlaxStableDiffusionControlNetPipelineOutput
-[[autodoc]] pipelines.stable_diffusion.FlaxStableDiffusionPipelineOutput

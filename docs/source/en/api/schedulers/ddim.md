@@ -1,4 +1,4 @@
-<!--Copyright 2024 The HuggingFace Team. All rights reserved.
+<!--Copyright 2025 The HuggingFace Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -28,11 +28,8 @@ The original codebase of this paper can be found at [ermongroup/ddim](https://gi
 
 The paper [Common Diffusion Noise Schedules and Sample Steps are Flawed](https://huggingface.co/papers/2305.08891) claims that a mismatch between the training and inference settings leads to suboptimal inference generation results for Stable Diffusion. To fix this, the authors propose:
 
-<Tip warning={true}>
-
-🧪 This is an experimental feature!
-
-</Tip>
+> [!WARNING]
+> 🧪 This is an experimental feature!
 
 1. rescale the noise schedule to enforce zero terminal signal-to-noise ratio (SNR)
 

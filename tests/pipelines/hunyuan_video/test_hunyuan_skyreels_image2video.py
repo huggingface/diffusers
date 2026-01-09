@@ -1,4 +1,4 @@
-# Copyright 2024 The HuggingFace Team.
+# Copyright 2025 The HuggingFace Team.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -26,8 +26,8 @@ from diffusers import (
     HunyuanSkyreelsImageToVideoPipeline,
     HunyuanVideoTransformer3DModel,
 )
-from diffusers.utils.testing_utils import enable_full_determinism, torch_device
 
+from ...testing_utils import enable_full_determinism, torch_device
 from ..test_pipelines_common import PipelineTesterMixin, PyramidAttentionBroadcastTesterMixin, to_np
 
 
@@ -192,11 +192,18 @@ class HunyuanSkyreelsImageToVideoPipelineFastTests(
         inputs = self.get_dummy_inputs(device)
         video = pipe(**inputs).frames
         generated_video = video[0]
-
         self.assertEqual(generated_video.shape, (9, 3, 16, 16))
-        expected_video = torch.randn(9, 3, 16, 16)
-        max_diff = np.abs(generated_video - expected_video).max()
-        self.assertLessEqual(max_diff, 1e10)
+
+        # fmt: off
+        expected_slice = torch.tensor([0.5832, 0.5498, 0.4839, 0.4744, 0.4515, 0.4832, 0.496, 0.563, 0.5918, 0.5979, 0.5101, 0.6168, 0.6613, 0.536, 0.55, 0.5775])
+        # fmt: on
+
+        generated_slice = generated_video.flatten()
+        generated_slice = torch.cat([generated_slice[:8], generated_slice[-8:]])
+        self.assertTrue(
+            torch.allclose(generated_slice, expected_slice, atol=1e-3),
+            "The generated video does not match the expected slice.",
+        )
 
     def test_callback_inputs(self):
         sig = inspect.signature(self.pipeline_class.__call__)

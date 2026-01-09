@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2024 HuggingFace Inc.
+# Copyright 2025 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -22,8 +22,8 @@ from transformers import CLIPTextConfig, CLIPTextModelWithProjection, CLIPTokeni
 from diffusers import DDPMWuerstchenScheduler, StableCascadeCombinedPipeline
 from diffusers.models import StableCascadeUNet
 from diffusers.pipelines.wuerstchen import PaellaVQModel
-from diffusers.utils.testing_utils import enable_full_determinism, require_torch_accelerator, torch_device
 
+from ...testing_utils import enable_full_determinism, require_torch_accelerator, torch_device
 from ..test_pipelines_common import PipelineTesterMixin
 
 

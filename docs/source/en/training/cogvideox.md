@@ -1,4 +1,4 @@
-<!--Copyright 2024 The HuggingFace Team. All rights reserved.
+<!--Copyright 2025 The HuggingFace Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -145,10 +145,10 @@ When running `accelerate config`, if you use torch.compile, there can be dramati
 If you would like to push your model to the Hub after training is completed with a neat model card, make sure you're logged in:
 
 ```bash
-huggingface-cli login
+hf auth login
 
 # Alternatively, you could upload your model manually using:
-# huggingface-cli upload my-cool-account-name/my-cool-lora-name /path/to/awesome/lora
+# hf upload my-cool-account-name/my-cool-lora-name /path/to/awesome/lora
 ```
 
 Make sure your data is prepared as described in [Data Preparation](#data-preparation). When ready, you can begin training!

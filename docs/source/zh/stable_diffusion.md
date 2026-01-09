@@ -1,4 +1,4 @@
-<!--Copyright 2024 The HuggingFace Team. All rights reserved.
+<!--Copyright 2025 The HuggingFace Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -39,11 +39,8 @@ prompt = "portrait photo of a old warrior chief"
 
 ## 速度
 
-<Tip>
-
-💡 如果你没有 GPU, 你可以从像 [Colab](https://colab.research.google.com/) 这样的 GPU 提供商获取免费的 GPU !
-
-</Tip>
+> [!TIP]
+> 💡 如果你没有 GPU, 你可以从像 [Colab](https://colab.research.google.com/) 这样的 GPU 提供商获取免费的 GPU !
 
 加速推理的最简单方法之一是将 pipeline 放在 GPU 上 ，就像使用任何 PyTorch 模块一样：
 
@@ -91,11 +88,8 @@ image
 
 这一次，生成图像只花了约 11 秒，比之前快了近 3 倍！
 
-<Tip>
-
-💡 我们强烈建议把 pipeline 精度降低至 `float16` , 到目前为止, 我们很少看到输出质量有任何下降。
-
-</Tip>
+> [!TIP]
+> 💡 我们强烈建议把 pipeline 精度降低至 `float16` , 到目前为止, 我们很少看到输出质量有任何下降。
 
 另一个选择是减少推理步数。 你可以选择一个更高效的调度器 (*scheduler*) 可以减少推理步数同时保证输出质量。您可以在 [DiffusionPipeline] 中通过调用compatibles方法找到与当前模型兼容的调度器 (*scheduler*)。
 

@@ -30,13 +30,14 @@ from diffusers.utils.constants import (
 from diffusers.utils.remote_utils import (
     remote_decode,
 )
-from diffusers.utils.testing_utils import (
+from diffusers.video_processor import VideoProcessor
+
+from ..testing_utils import (
     enable_full_determinism,
     slow,
     torch_all_close,
     torch_device,
 )
-from diffusers.video_processor import VideoProcessor
 
 
 enable_full_determinism()

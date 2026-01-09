@@ -1,4 +1,4 @@
-# Copyright 2024 The HuggingFace Team. All rights reserved.
+# Copyright 2025 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -21,7 +21,7 @@ from ...image_processor import VaeImageProcessor
 from ...models import UVit2DModel, VQModel
 from ...schedulers import AmusedScheduler
 from ...utils import is_torch_xla_available, replace_example_docstring
-from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
+from ..pipeline_utils import DeprecatedPipelineMixin, DiffusionPipeline, ImagePipelineOutput
 
 
 if is_torch_xla_available():
@@ -47,7 +47,8 @@ EXAMPLE_DOC_STRING = """
 """
 
 
-class AmusedPipeline(DiffusionPipeline):
+class AmusedPipeline(DeprecatedPipelineMixin, DiffusionPipeline):
+    _last_supported_version = "0.33.1"
     image_processor: VaeImageProcessor
     vqvae: VQModel
     tokenizer: CLIPTokenizer

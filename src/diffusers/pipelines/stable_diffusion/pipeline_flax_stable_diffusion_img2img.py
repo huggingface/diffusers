@@ -1,4 +1,4 @@
-# Copyright 2024 The HuggingFace Team. All rights reserved.
+# Copyright 2025 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -389,12 +389,8 @@ class FlaxStableDiffusionImg2ImgPipeline(FlaxDiffusionPipeline):
             jit (`bool`, defaults to `False`):
                 Whether to run `pmap` versions of the generation and safety scoring functions.
 
-                    <Tip warning={true}>
-
-                    This argument exists because `__call__` is not yet end-to-end pmap-able. It will be removed in a
-                    future release.
-
-                    </Tip>
+                    > [!WARNING] > This argument exists because `__call__` is not yet end-to-end pmap-able. It will be
+                    removed in a > future release.
 
         Examples:
 
