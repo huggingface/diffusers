@@ -2140,6 +2140,60 @@ def _convert_non_diffusers_ltxv_lora_to_diffusers(state_dict, non_diffusers_pref
     return converted_state_dict
 
 
+def _convert_non_diffusers_ltx2_lora_to_diffusers(state_dict, non_diffusers_prefix="model.diffusion_model"):
+    """
+    Converts a non-diffusers LTX2 LoRA state dict to diffusers format.
+
+    This handles key remapping from the original LTX2 checkpoint format to the diffusers format, applying the same
+    transformations as in convert_ltx2_to_diffusers.py.
+    """
+    if not all(k.startswith(f"{non_diffusers_prefix}.") for k in state_dict):
+        raise ValueError("Invalid LoRA state dict for LTX2.")
+
+    # Remove the prefix
+    converted_state_dict = {k.removeprefix(f"{non_diffusers_prefix}."): v for k, v in state_dict.items()}
+
+    # Apply LTX2 transformer key renaming
+    # Based on LTX_2_0_TRANSFORMER_KEYS_RENAME_DICT from convert_ltx2_to_diffusers.py
+    rename_dict = {
+        "patchify_proj": "proj_in",
+        "audio_patchify_proj": "audio_proj_in",
+        "av_ca_video_scale_shift_adaln_single": "av_cross_attn_video_scale_shift",
+        "av_ca_a2v_gate_adaln_single": "av_cross_attn_video_a2v_gate",
+        "av_ca_audio_scale_shift_adaln_single": "av_cross_attn_audio_scale_shift",
+        "av_ca_v2a_gate_adaln_single": "av_cross_attn_audio_v2a_gate",
+        "scale_shift_table_a2v_ca_video": "video_a2v_cross_attn_scale_shift_table",
+        "scale_shift_table_a2v_ca_audio": "audio_a2v_cross_attn_scale_shift_table",
+        "q_norm": "norm_q",
+        "k_norm": "norm_k",
+    }
+
+    # Apply renaming
+    renamed_state_dict = {}
+    for key, value in converted_state_dict.items():
+        new_key = key
+        for old_pattern, new_pattern in rename_dict.items():
+            new_key = new_key.replace(old_pattern, new_pattern)
+        renamed_state_dict[new_key] = value
+
+    # Handle adaln_single -> time_embed and audio_adaln_single -> audio_time_embed
+    final_state_dict = {}
+    for key, value in renamed_state_dict.items():
+        if key.startswith("adaln_single."):
+            new_key = key.replace("adaln_single.", "time_embed.")
+            final_state_dict[new_key] = value
+        elif key.startswith("audio_adaln_single."):
+            new_key = key.replace("audio_adaln_single.", "audio_time_embed.")
+            final_state_dict[new_key] = value
+        else:
+            final_state_dict[key] = value
+
+    # Add transformer prefix
+    final_state_dict = {f"transformer.{k}": v for k, v in final_state_dict.items()}
+
+    return final_state_dict
+
+
 def _convert_non_diffusers_qwen_lora_to_diffusers(state_dict):
     has_diffusion_model = any(k.startswith("diffusion_model.") for k in state_dict)
     if has_diffusion_model:
