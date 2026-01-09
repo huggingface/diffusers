@@ -23,7 +23,7 @@ from diffusers import (
     KandinskyV22InpaintCombinedPipeline,
 )
 
-from ...testing_utils import enable_full_determinism, require_torch_accelerator, torch_device
+from ...testing_utils import enable_full_determinism, require_accelerator, require_torch_accelerator, torch_device
 from ..test_pipelines_common import PipelineTesterMixin
 from .test_kandinsky import Dummies
 from .test_kandinsky_img2img import Dummies as Img2ImgDummies
@@ -402,6 +402,7 @@ class KandinskyV22PipelineInpaintCombinedFastTests(PipelineTesterMixin, unittest
     def test_save_load_optional_components(self):
         super().test_save_load_optional_components(expected_max_difference=5e-4)
 
+    @require_accelerator
     def test_sequential_cpu_offload_forward_pass(self):
         super().test_sequential_cpu_offload_forward_pass(expected_max_diff=5e-4)
 

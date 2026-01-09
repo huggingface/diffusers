@@ -16,14 +16,13 @@
 # QwenImageVAE is further fine-tuned from the Wan Video VAE to achieve improved performance.
 # For more information about the Wan VAE, please refer to:
 # - GitHub: https://github.com/Wan-Video/Wan2.1
-# - arXiv: https://arxiv.org/abs/2503.20314
+# - Paper: https://huggingface.co/papers/2503.20314
 
 from typing import List, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import torch.utils.checkpoint
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FromOriginalModelMixin
@@ -32,7 +31,7 @@ from ...utils.accelerate_utils import apply_forward_hook
 from ..activations import get_activation
 from ..modeling_outputs import AutoencoderKLOutput
 from ..modeling_utils import ModelMixin
-from .vae import DecoderOutput, DiagonalGaussianDistribution
+from .vae import AutoencoderMixin, DecoderOutput, DiagonalGaussianDistribution
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -395,6 +394,7 @@ class QwenImageEncoder3d(nn.Module):
         attn_scales=[],
         temperal_downsample=[True, True, False],
         dropout=0.0,
+        input_channels=3,
         non_linearity: str = "silu",
     ):
         super().__init__()
@@ -411,7 +411,7 @@ class QwenImageEncoder3d(nn.Module):
         scale = 1.0
 
         # init block
-        self.conv_in = QwenImageCausalConv3d(3, dims[0], 3, padding=1)
+        self.conv_in = QwenImageCausalConv3d(input_channels, dims[0], 3, padding=1)
 
         # downsample blocks
         self.down_blocks = nn.ModuleList([])
@@ -571,6 +571,7 @@ class QwenImageDecoder3d(nn.Module):
         attn_scales=[],
         temperal_upsample=[False, True, True],
         dropout=0.0,
+        input_channels=3,
         non_linearity: str = "silu",
     ):
         super().__init__()
@@ -622,7 +623,7 @@ class QwenImageDecoder3d(nn.Module):
 
         # output blocks
         self.norm_out = QwenImageRMS_norm(out_dim, images=False)
-        self.conv_out = QwenImageCausalConv3d(out_dim, 3, 3, padding=1)
+        self.conv_out = QwenImageCausalConv3d(out_dim, input_channels, 3, padding=1)
 
         self.gradient_checkpointing = False
 
@@ -664,7 +665,7 @@ class QwenImageDecoder3d(nn.Module):
         return x
 
 
-class AutoencoderKLQwenImage(ModelMixin, ConfigMixin, FromOriginalModelMixin):
+class AutoencoderKLQwenImage(ModelMixin, AutoencoderMixin, ConfigMixin, FromOriginalModelMixin):
     r"""
     A VAE model with KL loss for encoding videos into latents and decoding latent representations into videos.
 
@@ -680,11 +681,12 @@ class AutoencoderKLQwenImage(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         self,
         base_dim: int = 96,
         z_dim: int = 16,
-        dim_mult: Tuple[int] = [1, 2, 4, 4],
+        dim_mult: Tuple[int, ...] = (1, 2, 4, 4),
         num_res_blocks: int = 2,
         attn_scales: List[float] = [],
         temperal_downsample: List[bool] = [False, True, True],
         dropout: float = 0.0,
+        input_channels: int = 3,
         latents_mean: List[float] = [-0.7571, -0.7089, -0.9113, 0.1075, -0.1745, 0.9653, -0.1517, 1.5508, 0.4134, -0.0715, 0.5517, -0.3632, -0.1922, -0.9497, 0.2503, -0.2921],
         latents_std: List[float] = [2.8184, 1.4541, 2.3275, 2.6558, 1.2196, 1.7708, 2.6052, 2.0743, 3.2687, 2.1526, 2.8652, 1.5579, 1.6382, 1.1253, 2.8251, 1.9160],
     ) -> None:
@@ -696,13 +698,13 @@ class AutoencoderKLQwenImage(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         self.temperal_upsample = temperal_downsample[::-1]
 
         self.encoder = QwenImageEncoder3d(
-            base_dim, z_dim * 2, dim_mult, num_res_blocks, attn_scales, self.temperal_downsample, dropout
+            base_dim, z_dim * 2, dim_mult, num_res_blocks, attn_scales, self.temperal_downsample, dropout, input_channels
         )
         self.quant_conv = QwenImageCausalConv3d(z_dim * 2, z_dim * 2, 1)
         self.post_quant_conv = QwenImageCausalConv3d(z_dim, z_dim, 1)
 
         self.decoder = QwenImageDecoder3d(
-            base_dim, z_dim, dim_mult, num_res_blocks, attn_scales, self.temperal_upsample, dropout
+            base_dim, z_dim, dim_mult, num_res_blocks, attn_scales, self.temperal_upsample, dropout, input_channels
         )
 
         self.spatial_compression_ratio = 2 ** len(self.temperal_downsample)
@@ -763,27 +765,6 @@ class AutoencoderKLQwenImage(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         self.tile_sample_min_width = tile_sample_min_width or self.tile_sample_min_width
         self.tile_sample_stride_height = tile_sample_stride_height or self.tile_sample_stride_height
         self.tile_sample_stride_width = tile_sample_stride_width or self.tile_sample_stride_width
-
-    def disable_tiling(self) -> None:
-        r"""
-        Disable tiled VAE decoding. If `enable_tiling` was previously enabled, this method will go back to computing
-        decoding in one step.
-        """
-        self.use_tiling = False
-
-    def enable_slicing(self) -> None:
-        r"""
-        Enable sliced VAE decoding. When this option is enabled, the VAE will split the input tensor in slices to
-        compute decoding in several steps. This is useful to save some memory and allow larger batch sizes.
-        """
-        self.use_slicing = True
-
-    def disable_slicing(self) -> None:
-        r"""
-        Disable sliced VAE decoding. If `enable_slicing` was previously enabled, this method will go back to computing
-        decoding in one step.
-        """
-        self.use_slicing = False
 
     def clear_cache(self):
         def _count_conv3d(model):

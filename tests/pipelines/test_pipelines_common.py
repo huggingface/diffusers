@@ -36,6 +36,7 @@ from diffusers.hooks import apply_group_offloading
 from diffusers.hooks.faster_cache import FasterCacheBlockHook, FasterCacheDenoiserHook
 from diffusers.hooks.first_block_cache import FirstBlockCacheConfig
 from diffusers.hooks.pyramid_attention_broadcast import PyramidAttentionBroadcastHook
+from diffusers.hooks.taylorseer_cache import TaylorSeerCacheConfig
 from diffusers.image_processor import VaeImageProcessor
 from diffusers.loaders import FluxIPAdapterMixin, IPAdapterMixin
 from diffusers.models.attention import AttentionModuleMixin
@@ -103,7 +104,7 @@ def check_qkv_fusion_processors_exist(model):
 def check_qkv_fused_layers_exist(model, layer_names):
     is_fused_submodules = []
     for submodule in model.modules():
-        if not isinstance(submodule, AttentionModuleMixin):
+        if not isinstance(submodule, AttentionModuleMixin) or not submodule._supports_qkv_fusion:
             continue
         is_fused_attribute_set = submodule.fused_projections
         is_fused_layer = True
@@ -1422,7 +1423,18 @@ class PipelineTesterMixin:
     def test_save_load_float16(self, expected_max_diff=1e-2):
         components = self.get_dummy_components()
         for name, module in components.items():
-            if hasattr(module, "half"):
+            # Account for components with _keep_in_fp32_modules
+            if hasattr(module, "_keep_in_fp32_modules") and module._keep_in_fp32_modules is not None:
+                for name, param in module.named_parameters():
+                    if any(
+                        module_to_keep_in_fp32 in name.split(".")
+                        for module_to_keep_in_fp32 in module._keep_in_fp32_modules
+                    ):
+                        param.data = param.data.to(torch_device).to(torch.float32)
+                    else:
+                        param.data = param.data.to(torch_device).to(torch.float16)
+
+            elif hasattr(module, "half"):
                 components[name] = module.to(torch_device).half()
 
         pipe = self.pipeline_class(**components)
@@ -1460,6 +1472,8 @@ class PipelineTesterMixin:
 
     def test_save_load_optional_components(self, expected_max_difference=1e-4):
         if not hasattr(self.pipeline_class, "_optional_components"):
+            return
+        if not self.pipeline_class._optional_components:
             return
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
@@ -2905,6 +2919,57 @@ class FirstBlockCacheTesterMixin:
 
         assert np.allclose(original_image_slice, image_slice_fbc_enabled, atol=expected_atol), (
             "FirstBlockCache outputs should not differ much."
+        )
+        assert np.allclose(original_image_slice, image_slice_fbc_disabled, atol=1e-4), (
+            "Outputs from normal inference and after disabling cache should not differ."
+        )
+
+
+class TaylorSeerCacheTesterMixin:
+    taylorseer_cache_config = TaylorSeerCacheConfig(
+        cache_interval=5,
+        disable_cache_before_step=10,
+        max_order=1,
+        taylor_factors_dtype=torch.bfloat16,
+        use_lite_mode=True,
+    )
+
+    def test_taylorseer_cache_inference(self, expected_atol: float = 0.1):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+
+        def create_pipe():
+            torch.manual_seed(0)
+            num_layers = 2
+            components = self.get_dummy_components(num_layers=num_layers)
+            pipe = self.pipeline_class(**components)
+            pipe = pipe.to(device)
+            pipe.set_progress_bar_config(disable=None)
+            return pipe
+
+        def run_forward(pipe):
+            torch.manual_seed(0)
+            inputs = self.get_dummy_inputs(device)
+            inputs["num_inference_steps"] = 50
+            return pipe(**inputs)[0]
+
+        # Run inference without TaylorSeerCache
+        pipe = create_pipe()
+        output = run_forward(pipe).flatten()
+        original_image_slice = np.concatenate((output[:8], output[-8:]))
+
+        # Run inference with TaylorSeerCache enabled
+        pipe = create_pipe()
+        pipe.transformer.enable_cache(self.taylorseer_cache_config)
+        output = run_forward(pipe).flatten()
+        image_slice_fbc_enabled = np.concatenate((output[:8], output[-8:]))
+
+        # Run inference with TaylorSeerCache disabled
+        pipe.transformer.disable_cache()
+        output = run_forward(pipe).flatten()
+        image_slice_fbc_disabled = np.concatenate((output[:8], output[-8:]))
+
+        assert np.allclose(original_image_slice, image_slice_fbc_enabled, atol=expected_atol), (
+            "TaylorSeerCache outputs should not differ much."
         )
         assert np.allclose(original_image_slice, image_slice_fbc_disabled, atol=1e-4), (
             "Outputs from normal inference and after disabling cache should not differ."

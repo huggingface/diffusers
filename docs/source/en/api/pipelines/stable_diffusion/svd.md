@@ -29,7 +29,7 @@ The abstract from the paper is:
 
 Video generation is memory-intensive and one way to reduce your memory usage is to set `enable_forward_chunking` on the pipeline's UNet so you don't run the entire feedforward layer at once. Breaking it up into chunks in a loop is more efficient.
 
-Check out the [Text or image-to-video](text-img2vid) guide for more details about how certain parameters can affect video generation and how to optimize inference by reducing memory usage.
+Check out the [Text or image-to-video](../../../using-diffusers/text-img2vid) guide for more details about how certain parameters can affect video generation and how to optimize inference by reducing memory usage.
 
 ## StableVideoDiffusionPipeline
 

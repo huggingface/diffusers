@@ -19,6 +19,7 @@ RUN apt install -y bash \
     git-lfs \
     curl \
     ca-certificates \
+    libglib2.0-0 \
     libsndfile1-dev \
     libgl1 \
     python3 \
@@ -46,6 +47,6 @@ RUN uv pip install --no-cache-dir \
     accelerate \
     numpy==1.26.4 \
     pytorch-lightning \
-    hf_transfer
+    hf_xet
 
 CMD ["/bin/bash"]
