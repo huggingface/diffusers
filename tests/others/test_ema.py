@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2024 HuggingFace Inc.
+# Copyright 2025 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -20,7 +20,8 @@ import torch
 
 from diffusers import UNet2DConditionModel
 from diffusers.training_utils import EMAModel
-from diffusers.utils.testing_utils import enable_full_determinism, skip_mps, torch_device
+
+from ..testing_utils import enable_full_determinism, skip_mps, torch_device
 
 
 enable_full_determinism()

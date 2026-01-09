@@ -1,4 +1,4 @@
-# Copyright 2024 The HuggingFace Team.
+# Copyright 2025 The HuggingFace Team.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -23,7 +23,8 @@ from transformers import AutoTokenizer, T5EncoderModel
 
 from diffusers import AutoencoderKLCogVideoX, ConsisIDPipeline, ConsisIDTransformer3DModel, DDIMScheduler
 from diffusers.utils import load_image
-from diffusers.utils.testing_utils import (
+
+from ...testing_utils import (
     backend_empty_cache,
     enable_full_determinism,
     numpy_cosine_similarity_distance,
@@ -31,7 +32,6 @@ from diffusers.utils.testing_utils import (
     slow,
     torch_device,
 )
-
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
 from ..test_pipelines_common import (
     PipelineTesterMixin,

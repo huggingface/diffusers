@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2024 HuggingFace Inc.
+# Copyright 2025 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -18,20 +18,16 @@ import unittest
 import torch
 
 from diffusers import VQModel
-from diffusers.utils.testing_utils import (
-    backend_manual_seed,
-    enable_full_determinism,
-    floats_tensor,
-    torch_device,
-)
 
-from ..test_modeling_common import ModelTesterMixin, UNetTesterMixin
+from ...testing_utils import backend_manual_seed, enable_full_determinism, floats_tensor, torch_device
+from ..test_modeling_common import ModelTesterMixin
+from .testing_utils import AutoencoderTesterMixin
 
 
 enable_full_determinism()
 
 
-class VQModelTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
+class VQModelTests(ModelTesterMixin, AutoencoderTesterMixin, unittest.TestCase):
     model_class = VQModel
     main_input_name = "sample"
 

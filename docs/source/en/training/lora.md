@@ -1,4 +1,4 @@
-<!--Copyright 2024 The HuggingFace Team. All rights reserved.
+<!--Copyright 2025 The HuggingFace Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -12,19 +12,13 @@ specific language governing permissions and limitations under the License.
 
 # LoRA
 
-<Tip warning={true}>
-
-This is experimental and the API may change in the future.
-
-</Tip>
+> [!WARNING]
+> This is experimental and the API may change in the future.
 
 [LoRA (Low-Rank Adaptation of Large Language Models)](https://hf.co/papers/2106.09685) is a popular and lightweight training technique that significantly reduces the number of trainable parameters. It works by inserting a smaller number of new weights into the model and only these are trained. This makes training with LoRA much faster, memory-efficient, and produces smaller model weights (a few hundred MBs), which are easier to store and share. LoRA can also be combined with other training techniques like DreamBooth to speedup training.
 
-<Tip>
-
-LoRA is very versatile and supported for [DreamBooth](https://github.com/huggingface/diffusers/blob/main/examples/dreambooth/train_dreambooth_lora.py), [Kandinsky 2.2](https://github.com/huggingface/diffusers/blob/main/examples/kandinsky2_2/text_to_image/train_text_to_image_lora_decoder.py), [Stable Diffusion XL](https://github.com/huggingface/diffusers/blob/main/examples/text_to_image/train_text_to_image_lora_sdxl.py), [text-to-image](https://github.com/huggingface/diffusers/blob/main/examples/text_to_image/train_text_to_image_lora.py), and [Wuerstchen](https://github.com/huggingface/diffusers/blob/main/examples/wuerstchen/text_to_image/train_text_to_image_lora_prior.py).
-
-</Tip>
+> [!TIP]
+> LoRA is very versatile and supported for [DreamBooth](https://github.com/huggingface/diffusers/blob/main/examples/dreambooth/train_dreambooth_lora.py), [Kandinsky 2.2](https://github.com/huggingface/diffusers/blob/main/examples/kandinsky2_2/text_to_image/train_text_to_image_lora_decoder.py), [Stable Diffusion XL](https://github.com/huggingface/diffusers/blob/main/examples/text_to_image/train_text_to_image_lora_sdxl.py), [text-to-image](https://github.com/huggingface/diffusers/blob/main/examples/text_to_image/train_text_to_image_lora.py), and [Wuerstchen](https://github.com/huggingface/diffusers/blob/main/examples/wuerstchen/text_to_image/train_text_to_image_lora_prior.py).
 
 This guide will explore the [train_text_to_image_lora.py](https://github.com/huggingface/diffusers/blob/main/examples/text_to_image/train_text_to_image_lora.py) script to help you become more familiar with it, and how you can adapt it for your own use-case.
 
@@ -38,30 +32,13 @@ pip install .
 
 Navigate to the example folder with the training script and install the required dependencies for the script you're using:
 
-<hfoptions id="installation">
-<hfoption id="PyTorch">
-
 ```bash
 cd examples/text_to_image
 pip install -r requirements.txt
 ```
 
-</hfoption>
-<hfoption id="Flax">
-
-```bash
-cd examples/text_to_image
-pip install -r requirements_flax.txt
-```
-
-</hfoption>
-</hfoptions>
-
-<Tip>
-
-🤗 Accelerate is a library for helping you train on multiple GPUs/TPUs or with mixed-precision. It'll automatically configure your training setup based on your hardware and environment. Take a look at the 🤗 Accelerate [Quick tour](https://huggingface.co/docs/accelerate/quicktour) to learn more.
-
-</Tip>
+> [!TIP]
+> 🤗 Accelerate is a library for helping you train on multiple GPUs/TPUs or with mixed-precision. It'll automatically configure your training setup based on your hardware and environment. Take a look at the 🤗 Accelerate [Quick tour](https://huggingface.co/docs/accelerate/quicktour) to learn more.
 
 Initialize an 🤗 Accelerate environment:
 
@@ -85,11 +62,8 @@ write_basic_config()
 
 Lastly, if you want to train a model on your own dataset, take a look at the [Create a dataset for training](create_dataset) guide to learn how to create a dataset that works with the training script.
 
-<Tip>
-
-The following sections highlight parts of the training script that are important for understanding how to modify it, but it doesn't cover every aspect of the script in detail. If you're interested in learning more, feel free to read through the [script](https://github.com/huggingface/diffusers/blob/main/examples/text_to_image/train_text_to_image_lora.py) and let us know if you have any questions or concerns.
-
-</Tip>
+> [!TIP]
+> The following sections highlight parts of the training script that are important for understanding how to modify it, but it doesn't cover every aspect of the script in detail. If you're interested in learning more, feel free to read through the [script](https://github.com/huggingface/diffusers/blob/main/examples/text_to_image/train_text_to_image_lora.py) and let us know if you have any questions or concerns.
 
 ## Script parameters
 
@@ -177,11 +151,8 @@ Let's train on the [Naruto BLIP captions](https://huggingface.co/datasets/lambda
 
 If you're training on more than one GPU, add the `--multi_gpu` parameter to the `accelerate launch` command.
 
-<Tip warning={true}>
-
-A full training run takes ~5 hours on a 2080 Ti GPU with 11GB of VRAM.
-
-</Tip>
+> [!WARNING]
+> A full training run takes ~5 hours on a 2080 Ti GPU with 11GB of VRAM.
 
 ```bash
 export MODEL_NAME="stable-diffusion-v1-5/stable-diffusion-v1-5"
@@ -227,5 +198,5 @@ image = pipeline("A naruto with blue eyes").images[0]
 
 Congratulations on training a new model with LoRA! To learn more about how to use your new model, the following guides may be helpful:
 
-- Learn how to [load different LoRA formats](../using-diffusers/loading_adapters#LoRA) trained using community trainers like Kohya and TheLastBen.
+- Learn how to [load different LoRA formats](../tutorials/using_peft_for_inference) trained using community trainers like Kohya and TheLastBen.
 - Learn how to use and [combine multiple LoRA's](../tutorials/using_peft_for_inference) with PEFT for inference.

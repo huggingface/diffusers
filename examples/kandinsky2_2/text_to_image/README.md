@@ -41,7 +41,7 @@ For all our examples, we will directly store the trained weights on the Hub, so 
 Run the following command to authenticate your token
 
 ```bash
-huggingface-cli login
+hf auth login
 ```
 
 We also use [Weights and Biases](https://docs.wandb.ai/quickstart) logging by default, because it is really useful to monitor the training progress by regularly generating sample images during training. To install wandb, run

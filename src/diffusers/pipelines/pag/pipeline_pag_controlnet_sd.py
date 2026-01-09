@@ -1,4 +1,4 @@
-# Copyright 2024 The HuggingFace Team. All rights reserved.
+# Copyright 2025 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -36,7 +36,7 @@ from ...utils import (
     scale_lora_layers,
     unscale_lora_layers,
 )
-from ...utils.torch_utils import is_compiled_module, is_torch_version, randn_tensor
+from ...utils.torch_utils import empty_device_cache, is_compiled_module, is_torch_version, randn_tensor
 from ..pipeline_utils import DiffusionPipeline, StableDiffusionMixin
 from ..stable_diffusion.pipeline_output import StableDiffusionPipelineOutput
 from ..stable_diffusion.safety_checker import StableDiffusionSafetyChecker
@@ -80,7 +80,10 @@ EXAMPLE_DOC_STRING = """
         >>> # load control net and stable diffusion v1-5
         >>> controlnet = ControlNetModel.from_pretrained("lllyasviel/sd-controlnet-canny", torch_dtype=torch.float16)
         >>> pipe = AutoPipelineForText2Image.from_pretrained(
-        ...     "runwayml/stable-diffusion-v1-5", controlnet=controlnet, torch_dtype=torch.float16, enable_pag=True
+        ...     "stable-diffusion-v1-5/stable-diffusion-v1-5",
+        ...     controlnet=controlnet,
+        ...     torch_dtype=torch.float16,
+        ...     enable_pag=True,
         ... )
 
         >>> # speed up diffusion process with faster scheduler and memory optimization
@@ -202,8 +205,8 @@ class StableDiffusionControlNetPAGPipeline(
             [`DDIMScheduler`], [`LMSDiscreteScheduler`], or [`PNDMScheduler`].
         safety_checker ([`StableDiffusionSafetyChecker`]):
             Classification module that estimates whether generated images could be considered offensive or harmful.
-            Please refer to the [model card](https://huggingface.co/runwayml/stable-diffusion-v1-5) for more details
-            about a model's potential harms.
+            Please refer to the [model card](https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5) for
+            more details about a model's potential harms.
         feature_extractor ([`~transformers.CLIPImageProcessor`]):
             A `CLIPImageProcessor` to extract features from generated images; used as inputs to the `safety_checker`.
     """
@@ -1231,7 +1234,11 @@ class StableDiffusionControlNetPAGPipeline(
             for i, t in enumerate(timesteps):
                 # Relevant thread:
                 # https://dev-discuss.pytorch.org/t/cudagraphs-in-pytorch-2-0/1428
-                if (is_unet_compiled and is_controlnet_compiled) and is_torch_higher_equal_2_1:
+                if (
+                    torch.cuda.is_available()
+                    and (is_unet_compiled and is_controlnet_compiled)
+                    and is_torch_higher_equal_2_1
+                ):
                     torch._inductor.cudagraph_mark_step_begin()
                 # expand the latents if we are doing classifier free guidance
                 latent_model_input = torch.cat([latents] * (prompt_embeds.shape[0] // latents.shape[0]))
@@ -1312,7 +1319,7 @@ class StableDiffusionControlNetPAGPipeline(
         if hasattr(self, "final_offload_hook") and self.final_offload_hook is not None:
             self.unet.to("cpu")
             self.controlnet.to("cpu")
-            torch.cuda.empty_cache()
+            empty_device_cache()
 
         if not output_type == "latent":
             image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False, generator=generator)[

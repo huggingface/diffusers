@@ -1,4 +1,4 @@
-<!--Copyright 2024 The HuggingFace Team. All rights reserved.
+<!--Copyright 2025 The HuggingFace Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -31,11 +31,8 @@ specific language governing permissions and limitations under the License.
 
 快速入门将告诉你如何使用[`DiffusionPipeline`]进行推理，然后指导你如何结合模型和调度器以复现[`DiffusionPipeline`]内部发生的事情。
 
-<Tip>
-
-快速入门是🧨[Diffusers入门](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/diffusers_intro.ipynb)的简化版，可以帮助你快速上手。如果你想了解更多关于🧨 Diffusers的目标、设计理念以及关于它的核心API的更多细节，可以点击🧨[Diffusers入门](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/diffusers_intro.ipynb)查看。
-
-</Tip>
+> [!TIP]
+> 快速入门是🧨[Diffusers入门](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/diffusers_intro.ipynb)的简化版，可以帮助你快速上手。如果你想了解更多关于🧨 Diffusers的目标、设计理念以及关于它的核心API的更多细节，可以点击🧨[Diffusers入门](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/diffusers_intro.ipynb)查看。
 
 在开始之前，确认一下你已经安装好了所需要的库：
 
@@ -66,11 +63,10 @@ pip install --upgrade diffusers accelerate transformers
 您可以在Hugging Face Hub上使用[DiffusionPipeline]的任何检查点。
 在本快速入门中，您将加载stable-diffusion-v1-5检查点，用于文本到图像生成。
 
-<Tip warning={true}>。
-
-对于[Stable Diffusion](https://huggingface.co/CompVis/stable-diffusion)模型，在运行该模型之前，请先仔细阅读[许可证](https://huggingface.co/spaces/CompVis/stable-diffusion-license)。🧨 Diffusers实现了一个[`safety_checker`](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/stable_diffusion/safety_checker.py)，以防止有攻击性的或有害的内容，但Stable Diffusion模型改进图像的生成能力仍有可能产生潜在的有害内容。
-
-</Tip>
+> [!WARNING]
+> 。
+>
+> 对于[Stable Diffusion](https://huggingface.co/CompVis/stable-diffusion)模型，在运行该模型之前，请先仔细阅读[许可证](https://huggingface.co/spaces/CompVis/stable-diffusion-license)。🧨 Diffusers实现了一个[`safety_checker`](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/stable_diffusion/safety_checker.py)，以防止有攻击性的或有害的内容，但Stable Diffusion模型改进图像的生成能力仍有可能产生潜在的有害内容。
 
 用[`~DiffusionPipeline.from_pretrained`]方法加载模型。
 
@@ -221,11 +217,8 @@ torch.Size([1, 3, 256, 256])
 
 
 
-<Tip>
-
-🧨 Diffusers是一个用于构建扩散系统的工具箱。预定义好的扩散系统[`DiffusionPipeline`]能方便你快速试用，你也可以单独选择自己的模型和调度器组件来建立一个自定义的扩散系统。
-
-</Tip>
+> [!TIP]
+> 🧨 Diffusers是一个用于构建扩散系统的工具箱。预定义好的扩散系统[`DiffusionPipeline`]能方便你快速试用，你也可以单独选择自己的模型和调度器组件来建立一个自定义的扩散系统。
 
 在快速入门教程中，你将用它的[`~diffusers.ConfigMixin.from_config`]方法实例化[`DDPMScheduler`]：
 
@@ -249,12 +242,8 @@ DDPMScheduler {
 }
 ```
 
-<Tip>
-
-
-💡 注意调度器是如何从配置中实例化的。与模型不同，调度器没有可训练的权重，而且是无参数的。
-
-</Tip>
+> [!TIP]
+> 💡 注意调度器是如何从配置中实例化的。与模型不同，调度器没有可训练的权重，而且是无参数的。
 
 * `num_train_timesteps`：去噪过程的长度，或者换句话说，将随机高斯噪声处理成数据样本所需的时间步数。
 * `beta_schedule`：用于推理和训练的噪声表。

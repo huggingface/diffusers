@@ -1,4 +1,4 @@
-<!--Copyright 2024 The HuggingFace Team. All rights reserved.
+<!--Copyright 2025 The HuggingFace Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -15,11 +15,8 @@ specific language governing permissions and limitations under the License.
 
 Quantization techniques reduce memory and computational costs by representing weights and activations with lower-precision data types like 8-bit integers (int8). This enables loading larger models you normally wouldn't be able to fit into memory, and speeding up inference.
 
-<Tip>
-
-Learn how to quantize models in the [Quantization](../quantization/overview) guide.
-
-</Tip>
+> [!TIP]
+> Learn how to quantize models in the [Quantization](../quantization/overview) guide.
 
 ## PipelineQuantizationConfig
 
@@ -27,19 +24,19 @@ Learn how to quantize models in the [Quantization](../quantization/overview) gui
 
 ## BitsAndBytesConfig
 
-[[autodoc]] BitsAndBytesConfig
+[[autodoc]] quantizers.quantization_config.BitsAndBytesConfig
 
 ## GGUFQuantizationConfig
 
-[[autodoc]] GGUFQuantizationConfig
+[[autodoc]] quantizers.quantization_config.GGUFQuantizationConfig
 
 ## QuantoConfig
 
-[[autodoc]] QuantoConfig
+[[autodoc]] quantizers.quantization_config.QuantoConfig
 
 ## TorchAoConfig
 
-[[autodoc]] TorchAoConfig
+[[autodoc]] quantizers.quantization_config.TorchAoConfig
 
 ## DiffusersQuantizer
 

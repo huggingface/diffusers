@@ -156,7 +156,7 @@ For this example we want to directly store the trained LoRA embeddings on the Hu
 we need to be logged in and add the `--push_to_hub` flag.
 
 ```bash
-huggingface-cli login
+hf auth login
 ```
 
 Now we can start training!

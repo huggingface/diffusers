@@ -1,4 +1,4 @@
-<!-- Copyright 2024 The HuggingFace Team. All rights reserved.
+<!-- Copyright 2025 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -54,7 +54,7 @@ pipeline_quant_config = PipelineQuantizationConfig(
       "bnb_4bit_quant_type": "nf4",
       "bnb_4bit_compute_dtype": torch.bfloat16
       },
-    components_to_quantize=["transformer"]
+    components_to_quantize="transformer"
 )
 
 pipeline = HunyuanVideoPipeline.from_pretrained(
@@ -91,7 +91,7 @@ pipeline_quant_config = PipelineQuantizationConfig(
       "bnb_4bit_quant_type": "nf4",
       "bnb_4bit_compute_dtype": torch.bfloat16
       },
-    components_to_quantize=["transformer"]
+    components_to_quantize="transformer"
 )
 
 pipeline = HunyuanVideoPipeline.from_pretrained(
@@ -139,7 +139,7 @@ export_to_video(video, "output.mp4", fps=15)
         "bnb_4bit_quant_type": "nf4",
         "bnb_4bit_compute_dtype": torch.bfloat16
         },
-      components_to_quantize=["transformer"]
+      components_to_quantize="transformer"
   )
 
   pipeline = HunyuanVideoPipeline.from_pretrained(

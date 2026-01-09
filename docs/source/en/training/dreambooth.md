@@ -1,4 +1,4 @@
-<!--Copyright 2024 The HuggingFace Team. All rights reserved.
+<!--Copyright 2025 The HuggingFace Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -14,7 +14,7 @@ specific language governing permissions and limitations under the License.
 
 [DreamBooth](https://huggingface.co/papers/2208.12242) is a training technique that updates the entire diffusion model by training on just a few images of a subject or style. It works by associating a special word in the prompt with the example images.
 
-If you're training on a GPU with limited vRAM, you should try enabling the `gradient_checkpointing` and `mixed_precision` parameters in the training command. You can also reduce your memory footprint by using memory-efficient attention with [xFormers](../optimization/xformers). JAX/Flax training is also supported for efficient training on TPUs and GPUs, but it doesn't support gradient checkpointing or xFormers. You should have a GPU with >30GB of memory if you want to train faster with Flax.
+If you're training on a GPU with limited vRAM, you should try enabling the `gradient_checkpointing` and `mixed_precision` parameters in the training command. You can also reduce your memory footprint by using memory-efficient attention with [xFormers](../optimization/xformers).
 
 This guide will explore the [train_dreambooth.py](https://github.com/huggingface/diffusers/blob/main/examples/dreambooth/train_dreambooth.py) script to help you become more familiar with it, and how you can adapt it for your own use-case.
 
@@ -28,30 +28,13 @@ pip install .
 
 Navigate to the example folder with the training script and install the required dependencies for the script you're using:
 
-<hfoptions id="installation">
-<hfoption id="PyTorch">
-
 ```bash
 cd examples/dreambooth
 pip install -r requirements.txt
 ```
 
-</hfoption>
-<hfoption id="Flax">
-
-```bash
-cd examples/dreambooth
-pip install -r requirements_flax.txt
-```
-
-</hfoption>
-</hfoptions>
-
-<Tip>
-
-🤗 Accelerate is a library for helping you train on multiple GPUs/TPUs or with mixed-precision. It'll automatically configure your training setup based on your hardware and environment. Take a look at the 🤗 Accelerate [Quick tour](https://huggingface.co/docs/accelerate/quicktour) to learn more.
-
-</Tip>
+> [!TIP]
+> 🤗 Accelerate is a library for helping you train on multiple GPUs/TPUs or with mixed-precision. It'll automatically configure your training setup based on your hardware and environment. Take a look at the 🤗 Accelerate [Quick tour](https://huggingface.co/docs/accelerate/quicktour) to learn more.
 
 Initialize an 🤗 Accelerate environment:
 
@@ -75,19 +58,13 @@ write_basic_config()
 
 Lastly, if you want to train a model on your own dataset, take a look at the [Create a dataset for training](create_dataset) guide to learn how to create a dataset that works with the training script.
 
-<Tip>
-
-The following sections highlight parts of the training script that are important for understanding how to modify it, but it doesn't cover every aspect of the script in detail. If you're interested in learning more, feel free to read through the [script](https://github.com/huggingface/diffusers/blob/main/examples/dreambooth/train_dreambooth.py) and let us know if you have any questions or concerns.
-
-</Tip>
+> [!TIP]
+> The following sections highlight parts of the training script that are important for understanding how to modify it, but it doesn't cover every aspect of the script in detail. If you're interested in learning more, feel free to read through the [script](https://github.com/huggingface/diffusers/blob/main/examples/dreambooth/train_dreambooth.py) and let us know if you have any questions or concerns.
 
 ## Script parameters
 
-<Tip warning={true}>
-
-DreamBooth is very sensitive to training hyperparameters, and it is easy to overfit. Read the [Training Stable Diffusion with Dreambooth using 🧨 Diffusers](https://huggingface.co/blog/dreambooth) blog post for recommended settings for different subjects to help you choose the appropriate hyperparameters.
-
-</Tip>
+> [!WARNING]
+> DreamBooth is very sensitive to training hyperparameters, and it is easy to overfit. Read the [Training Stable Diffusion with Dreambooth using 🧨 Diffusers](https://huggingface.co/blog/dreambooth) blog post for recommended settings for different subjects to help you choose the appropriate hyperparameters.
 
 The training script offers many parameters for customizing your training run. All of the parameters and their descriptions are found in the [`parse_args()`](https://github.com/huggingface/diffusers/blob/072e00897a7cf4302c347a63ec917b4b8add16d4/examples/dreambooth/train_dreambooth.py#L228) function. The parameters are set with default values that should work pretty well out-of-the-box, but you can also set your own values in the training command if you'd like.
 
@@ -110,7 +87,7 @@ Some basic and important parameters to know and specify are:
 
 ### Min-SNR weighting
 
-The [Min-SNR](https://huggingface.co/papers/2303.09556) weighting strategy can help with training by rebalancing the loss to achieve faster convergence. The training script supports predicting `epsilon` (noise) or `v_prediction`, but Min-SNR is compatible with both prediction types. This weighting strategy is only supported by PyTorch and is unavailable in the Flax training script.
+The [Min-SNR](https://huggingface.co/papers/2303.09556) weighting strategy can help with training by rebalancing the loss to achieve faster convergence. The training script supports predicting `epsilon` (noise) or `v_prediction`, but Min-SNR is compatible with both prediction types. This weighting strategy is only supported by PyTorch.
 
 Add the `--snr_gamma` parameter and set it to the recommended value of 5.0:
 
@@ -311,9 +288,6 @@ That's it! You don't need to add any additional parameters to your training comm
 </hfoption>
 </hfoptions>
 
-<hfoptions id="training-inference">
-<hfoption id="PyTorch">
-
 ```bash
 export MODEL_NAME="stable-diffusion-v1-5/stable-diffusion-v1-5"
 export INSTANCE_DIR="./dog"
@@ -334,57 +308,28 @@ accelerate launch train_dreambooth.py \
   --push_to_hub
 ```
 
-</hfoption>
-<hfoption id="Flax">
-
-```bash
-export MODEL_NAME="duongna/stable-diffusion-v1-4-flax"
-export INSTANCE_DIR="./dog"
-export OUTPUT_DIR="path-to-save-model"
-
-python train_dreambooth_flax.py \
-  --pretrained_model_name_or_path=$MODEL_NAME  \
-  --instance_data_dir=$INSTANCE_DIR \
-  --output_dir=$OUTPUT_DIR \
-  --instance_prompt="a photo of sks dog" \
-  --resolution=512 \
-  --train_batch_size=1 \
-  --learning_rate=5e-6 \
-  --max_train_steps=400 \
-  --push_to_hub
-```
-
-</hfoption>
-</hfoptions>
-
 Once training is complete, you can use your newly trained model for inference!
 
-<Tip>
-
-Can't wait to try your model for inference before training is complete? 🤭 Make sure you have the latest version of 🤗 Accelerate installed.
-
-```py
-from diffusers import DiffusionPipeline, UNet2DConditionModel
-from transformers import CLIPTextModel
-import torch
-
-unet = UNet2DConditionModel.from_pretrained("path/to/model/checkpoint-100/unet")
-
-# if you have trained with `--args.train_text_encoder` make sure to also load the text encoder
-text_encoder = CLIPTextModel.from_pretrained("path/to/model/checkpoint-100/checkpoint-100/text_encoder")
-
-pipeline = DiffusionPipeline.from_pretrained(
-    "stable-diffusion-v1-5/stable-diffusion-v1-5", unet=unet, text_encoder=text_encoder, dtype=torch.float16,
-).to("cuda")
-
-image = pipeline("A photo of sks dog in a bucket", num_inference_steps=50, guidance_scale=7.5).images[0]
-image.save("dog-bucket.png")
-```
-
-</Tip>
-
-<hfoptions id="training-inference">
-<hfoption id="PyTorch">
+> [!TIP]
+> Can't wait to try your model for inference before training is complete? 🤭 Make sure you have the latest version of 🤗 Accelerate installed.
+>
+> ```py
+> from diffusers import DiffusionPipeline, UNet2DConditionModel
+> from transformers import CLIPTextModel
+> import torch
+>
+> unet = UNet2DConditionModel.from_pretrained("path/to/model/checkpoint-100/unet")
+>
+> # if you have trained with `--args.train_text_encoder` make sure to also load the text encoder
+> text_encoder = CLIPTextModel.from_pretrained("path/to/model/checkpoint-100/checkpoint-100/text_encoder")
+>
+> pipeline = DiffusionPipeline.from_pretrained(
+>     "stable-diffusion-v1-5/stable-diffusion-v1-5", unet=unet, text_encoder=text_encoder, dtype=torch.float16,
+> ).to("cuda")
+>
+> image = pipeline("A photo of sks dog in a bucket", num_inference_steps=50, guidance_scale=7.5).images[0]
+> image.save("dog-bucket.png")
+> ```
 
 ```py
 from diffusers import DiffusionPipeline
@@ -394,39 +339,6 @@ pipeline = DiffusionPipeline.from_pretrained("path_to_saved_model", torch_dtype=
 image = pipeline("A photo of sks dog in a bucket", num_inference_steps=50, guidance_scale=7.5).images[0]
 image.save("dog-bucket.png")
 ```
-
-</hfoption>
-<hfoption id="Flax">
-
-```py
-import jax
-import numpy as np
-from flax.jax_utils import replicate
-from flax.training.common_utils import shard
-from diffusers import FlaxStableDiffusionPipeline
-
-pipeline, params = FlaxStableDiffusionPipeline.from_pretrained("path-to-your-trained-model", dtype=jax.numpy.bfloat16)
-
-prompt = "A photo of sks dog in a bucket"
-prng_seed = jax.random.PRNGKey(0)
-num_inference_steps = 50
-
-num_samples = jax.device_count()
-prompt = num_samples * [prompt]
-prompt_ids = pipeline.prepare_inputs(prompt)
-
-# shard inputs and rng
-params = replicate(params)
-prng_seed = jax.random.split(prng_seed, jax.device_count())
-prompt_ids = shard(prompt_ids)
-
-images = pipeline(prompt_ids, params, prng_seed, num_inference_steps, jit=True).images
-images = pipeline.numpy_to_pil(np.asarray(images.reshape((num_samples,) + images.shape[-3:])))
-image.save("dog-bucket.png")
-```
-
-</hfoption>
-</hfoptions>
 
 ## LoRA
 
@@ -636,4 +548,4 @@ Training the DeepFloyd IF model can be challenging, but here are some tips that 
 
 Congratulations on training your DreamBooth model! To learn more about how to use your new model, the following guide may be helpful:
 
-- Learn how to [load a DreamBooth](../using-diffusers/loading_adapters) model for inference if you trained your model with LoRA.
+- Learn how to [load a DreamBooth](../using-diffusers/dreambooth) model for inference if you trained your model with LoRA.

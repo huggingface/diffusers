@@ -1,4 +1,4 @@
-# Copyright 2024 The HuggingFace Team. All rights reserved.
+# Copyright 2025 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -39,14 +39,11 @@ from ...loaders import (
     TextualInversionLoaderMixin,
 )
 from ...models import AutoencoderKL, ControlNetModel, ImageProjection, MultiControlNetModel, UNet2DConditionModel
-from ...models.attention_processor import (
-    AttnProcessor2_0,
-    XFormersAttnProcessor,
-)
 from ...models.lora import adjust_lora_scale_text_encoder
 from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import (
     USE_PEFT_BACKEND,
+    deprecate,
     logging,
     replace_example_docstring,
     scale_lora_layers,
@@ -940,21 +937,12 @@ class StableDiffusionXLControlNetPAGPipeline(
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_upscale.StableDiffusionUpscalePipeline.upcast_vae
     def upcast_vae(self):
-        dtype = self.vae.dtype
-        self.vae.to(dtype=torch.float32)
-        use_torch_2_0_or_xformers = isinstance(
-            self.vae.decoder.mid_block.attentions[0].processor,
-            (
-                AttnProcessor2_0,
-                XFormersAttnProcessor,
-            ),
+        deprecate(
+            "upcast_vae",
+            "1.0.0",
+            "`upcast_vae` is deprecated. Please use `pipe.vae.to(torch.float32)`. For more details, please refer to: https://github.com/huggingface/diffusers/pull/12619#issue-3606633695.",
         )
-        # if xformers or torch_2_0 is used attention block does not need
-        # to be in float32 which can save lots of memory
-        if use_torch_2_0_or_xformers:
-            self.vae.post_quant_conv.to(dtype)
-            self.vae.decoder.conv_in.to(dtype)
-            self.vae.decoder.mid_block.to(dtype)
+        self.vae.to(dtype=torch.float32)
 
     # Copied from diffusers.pipelines.latent_consistency_models.pipeline_latent_consistency_text2img.LatentConsistencyModelPipeline.get_guidance_scale_embedding
     def get_guidance_scale_embedding(
@@ -1502,7 +1490,11 @@ class StableDiffusionXLControlNetPAGPipeline(
             for i, t in enumerate(timesteps):
                 # Relevant thread:
                 # https://dev-discuss.pytorch.org/t/cudagraphs-in-pytorch-2-0/1428
-                if (is_unet_compiled and is_controlnet_compiled) and is_torch_higher_equal_2_1:
+                if (
+                    torch.cuda.is_available()
+                    and (is_unet_compiled and is_controlnet_compiled)
+                    and is_torch_higher_equal_2_1
+                ):
                     torch._inductor.cudagraph_mark_step_begin()
                 # expand the latents if we are doing classifier free guidance
                 latent_model_input = torch.cat([latents] * (prompt_embeds.shape[0] // latents.shape[0]))

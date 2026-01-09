@@ -1,4 +1,4 @@
-# Copyright 2024 HuggingFace Inc.
+# Copyright 2025 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -22,7 +22,8 @@ from transformers import CLIPImageProcessor, CLIPVisionConfig, CLIPVisionModel
 
 from diffusers import HeunDiscreteScheduler, PriorTransformer, ShapEImg2ImgPipeline
 from diffusers.pipelines.shap_e import ShapERenderer
-from diffusers.utils.testing_utils import (
+
+from ...testing_utils import (
     backend_empty_cache,
     floats_tensor,
     load_image,
@@ -31,7 +32,6 @@ from diffusers.utils.testing_utils import (
     require_torch_accelerator,
     torch_device,
 )
-
 from ..test_pipelines_common import PipelineTesterMixin, assert_mean_pixel_difference
 
 

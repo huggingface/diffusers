@@ -1,4 +1,4 @@
-# Copyright 2024 The HuggingFace Team.
+# Copyright 2025 The HuggingFace Team.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import tempfile
 import unittest
 
 import numpy as np
@@ -26,8 +27,8 @@ from transformers import (
 )
 
 from diffusers import AutoencoderKLWan, FlowMatchEulerDiscreteScheduler, WanImageToVideoPipeline, WanTransformer3DModel
-from diffusers.utils.testing_utils import enable_full_determinism
 
+from ...testing_utils import enable_full_determinism, torch_device
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
 from ..test_pipelines_common import PipelineTesterMixin
 
@@ -110,6 +111,7 @@ class WanImageToVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "tokenizer": tokenizer,
             "image_encoder": image_encoder,
             "image_processor": image_processor,
+            "transformer_2": None,
         }
         return components
 
@@ -147,11 +149,15 @@ class WanImageToVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         inputs = self.get_dummy_inputs(device)
         video = pipe(**inputs).frames
         generated_video = video[0]
-
         self.assertEqual(generated_video.shape, (9, 3, 16, 16))
-        expected_video = torch.randn(9, 3, 16, 16)
-        max_diff = np.abs(generated_video - expected_video).max()
-        self.assertLessEqual(max_diff, 1e10)
+
+        # fmt: off
+        expected_slice = torch.tensor([0.4525, 0.4525, 0.4497, 0.4536, 0.452, 0.4529, 0.454, 0.4535, 0.5072, 0.5527, 0.5165, 0.5244, 0.5481, 0.5282, 0.5208, 0.5214])
+        # fmt: on
+
+        generated_slice = generated_video.flatten()
+        generated_slice = torch.cat([generated_slice[:8], generated_slice[-8:]])
+        self.assertTrue(torch.allclose(generated_slice, expected_slice, atol=1e-3))
 
     @unittest.skip("Test not supported")
     def test_attention_slicing_forward_pass(self):
@@ -161,8 +167,65 @@ class WanImageToVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     def test_inference_batch_single_identical(self):
         pass
 
+    # _optional_components include transformer, transformer_2 and image_encoder, image_processor, but only transformer_2 is optional for wan2.1 i2v pipeline
+    def test_save_load_optional_components(self, expected_max_difference=1e-4):
+        optional_component = "transformer_2"
 
-class WanFLFToVideoPipelineFastTests(WanImageToVideoPipelineFastTests):
+        components = self.get_dummy_components()
+        components[optional_component] = None
+        pipe = self.pipeline_class(**components)
+        for component in pipe.components.values():
+            if hasattr(component, "set_default_attn_processor"):
+                component.set_default_attn_processor()
+        pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        generator_device = "cpu"
+        inputs = self.get_dummy_inputs(generator_device)
+        torch.manual_seed(0)
+        output = pipe(**inputs)[0]
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            pipe.save_pretrained(tmpdir, safe_serialization=False)
+            pipe_loaded = self.pipeline_class.from_pretrained(tmpdir)
+            for component in pipe_loaded.components.values():
+                if hasattr(component, "set_default_attn_processor"):
+                    component.set_default_attn_processor()
+            pipe_loaded.to(torch_device)
+            pipe_loaded.set_progress_bar_config(disable=None)
+
+        self.assertTrue(
+            getattr(pipe_loaded, optional_component) is None,
+            f"`{optional_component}` did not stay set to None after loading.",
+        )
+
+        inputs = self.get_dummy_inputs(generator_device)
+        torch.manual_seed(0)
+        output_loaded = pipe_loaded(**inputs)[0]
+
+        max_diff = np.abs(output.detach().cpu().numpy() - output_loaded.detach().cpu().numpy()).max()
+        self.assertLess(max_diff, expected_max_difference)
+
+
+class WanFLFToVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+    pipeline_class = WanImageToVideoPipeline
+    params = TEXT_TO_IMAGE_PARAMS - {"cross_attention_kwargs", "height", "width"}
+    batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
+    image_params = TEXT_TO_IMAGE_IMAGE_PARAMS
+    image_latents_params = TEXT_TO_IMAGE_IMAGE_PARAMS
+    required_optional_params = frozenset(
+        [
+            "num_inference_steps",
+            "generator",
+            "latents",
+            "return_dict",
+            "callback_on_step_end",
+            "callback_on_step_end_tensor_inputs",
+        ]
+    )
+    test_xformers_attention = False
+    supports_dduf = False
+
     def get_dummy_components(self):
         torch.manual_seed(0)
         vae = AutoencoderKLWan(
@@ -220,6 +283,7 @@ class WanFLFToVideoPipelineFastTests(WanImageToVideoPipelineFastTests):
             "tokenizer": tokenizer,
             "image_encoder": image_encoder,
             "image_processor": image_processor,
+            "transformer_2": None,
         }
         return components
 
@@ -247,3 +311,71 @@ class WanFLFToVideoPipelineFastTests(WanImageToVideoPipelineFastTests):
             "output_type": "pt",
         }
         return inputs
+
+    def test_inference(self):
+        device = "cpu"
+
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe.to(device)
+        pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device)
+        video = pipe(**inputs).frames
+        generated_video = video[0]
+        self.assertEqual(generated_video.shape, (9, 3, 16, 16))
+
+        # fmt: off
+        expected_slice = torch.tensor([0.4531, 0.4527, 0.4498, 0.4542, 0.4526, 0.4527, 0.4534, 0.4534, 0.5061, 0.5185, 0.5283, 0.5181, 0.5309, 0.5365, 0.5113, 0.5244])
+        # fmt: on
+
+        generated_slice = generated_video.flatten()
+        generated_slice = torch.cat([generated_slice[:8], generated_slice[-8:]])
+        self.assertTrue(torch.allclose(generated_slice, expected_slice, atol=1e-3))
+
+    @unittest.skip("Test not supported")
+    def test_attention_slicing_forward_pass(self):
+        pass
+
+    @unittest.skip("TODO: revisit failing as it requires a very high threshold to pass")
+    def test_inference_batch_single_identical(self):
+        pass
+
+    # _optional_components include transformer, transformer_2 and image_encoder, image_processor, but only transformer_2 is optional for wan2.1 FLFT2V pipeline
+    def test_save_load_optional_components(self, expected_max_difference=1e-4):
+        optional_component = "transformer_2"
+
+        components = self.get_dummy_components()
+        components[optional_component] = None
+        pipe = self.pipeline_class(**components)
+        for component in pipe.components.values():
+            if hasattr(component, "set_default_attn_processor"):
+                component.set_default_attn_processor()
+        pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        generator_device = "cpu"
+        inputs = self.get_dummy_inputs(generator_device)
+        torch.manual_seed(0)
+        output = pipe(**inputs)[0]
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            pipe.save_pretrained(tmpdir, safe_serialization=False)
+            pipe_loaded = self.pipeline_class.from_pretrained(tmpdir)
+            for component in pipe_loaded.components.values():
+                if hasattr(component, "set_default_attn_processor"):
+                    component.set_default_attn_processor()
+            pipe_loaded.to(torch_device)
+            pipe_loaded.set_progress_bar_config(disable=None)
+
+        self.assertTrue(
+            getattr(pipe_loaded, optional_component) is None,
+            f"`{optional_component}` did not stay set to None after loading.",
+        )
+
+        inputs = self.get_dummy_inputs(generator_device)
+        torch.manual_seed(0)
+        output_loaded = pipe_loaded(**inputs)[0]
+
+        max_diff = np.abs(output.detach().cpu().numpy() - output_loaded.detach().cpu().numpy()).max()
+        self.assertLess(max_diff, expected_max_difference)

@@ -1,4 +1,4 @@
-# Copyright 2024 NVIDIA and The HuggingFace Team. All rights reserved.
+# Copyright 2025 NVIDIA and The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -53,13 +53,9 @@ class KarrasVeScheduler(SchedulerMixin, ConfigMixin):
     This model inherits from [`SchedulerMixin`] and [`ConfigMixin`]. Check the superclass documentation for the generic
     methods the library implements for all schedulers such as loading and saving.
 
-    <Tip>
-
-    For more details on the parameters, see [Appendix E](https://huggingface.co/papers/2206.00364). The grid search
-    values used to find the optimal `{s_noise, s_churn, s_min, s_max}` for a specific model are described in Table 5 of
-    the paper.
-
-    </Tip>
+    > [!TIP] > For more details on the parameters, see [Appendix E](https://huggingface.co/papers/2206.00364). The grid
+    search > values used to find the optimal `{s_noise, s_churn, s_min, s_max}` for a specific model are described in
+    Table 5 of > the paper.
 
     Args:
         sigma_min (`float`, defaults to 0.02):

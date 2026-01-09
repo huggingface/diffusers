@@ -1,4 +1,4 @@
-<!--Copyright 2024 The HuggingFace Team. All rights reserved.
+<!--Copyright 2025 The HuggingFace Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -22,11 +22,8 @@ When the input is **continuous**:
 
 When the input is **discrete**:
 
-<Tip>
-
-It is assumed one of the input classes is the masked latent pixel. The predicted classes of the unnoised image don't contain a prediction for the masked pixel because the unnoised image cannot be masked.
-
-</Tip>
+> [!TIP]
+> It is assumed one of the input classes is the masked latent pixel. The predicted classes of the unnoised image don't contain a prediction for the masked pixel because the unnoised image cannot be masked.
 
 1. Convert input (classes of latent pixels) to embeddings and apply positional embeddings.
 2. Apply the Transformer blocks in the standard way.

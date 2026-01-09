@@ -1,4 +1,4 @@
-# Copyright 2024 The NVIDIA Team and The HuggingFace Team. All rights reserved.
+# Copyright 2025 The NVIDIA Team and The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -20,6 +20,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from ...configuration_utils import ConfigMixin, register_to_config
+from ...loaders import FromOriginalModelMixin
 from ...utils import is_torchvision_available
 from ..attention import FeedForward
 from ..attention_processor import Attention
@@ -186,9 +187,15 @@ class CosmosAttnProcessor2_0:
             key = apply_rotary_emb(key, image_rotary_emb, use_real=True, use_real_unbind_dim=-2)
 
         # 4. Prepare for GQA
-        query_idx = torch.tensor(query.size(3), device=query.device)
-        key_idx = torch.tensor(key.size(3), device=key.device)
-        value_idx = torch.tensor(value.size(3), device=value.device)
+        if torch.onnx.is_in_onnx_export():
+            query_idx = torch.tensor(query.size(3), device=query.device)
+            key_idx = torch.tensor(key.size(3), device=key.device)
+            value_idx = torch.tensor(value.size(3), device=value.device)
+
+        else:
+            query_idx = query.size(3)
+            key_idx = key.size(3)
+            value_idx = value.size(3)
         key = key.repeat_interleave(query_idx // key_idx, dim=3)
         value = value.repeat_interleave(query_idx // value_idx, dim=3)
 
@@ -377,7 +384,7 @@ class CosmosLearnablePositionalEmbed(nn.Module):
         return (emb / norm).type_as(hidden_states)
 
 
-class CosmosTransformer3DModel(ModelMixin, ConfigMixin):
+class CosmosTransformer3DModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
     r"""
     A Transformer model for video-like data used in [Cosmos](https://github.com/NVIDIA/Cosmos).
 
@@ -432,6 +439,9 @@ class CosmosTransformer3DModel(ModelMixin, ConfigMixin):
         rope_scale: Tuple[float, float, float] = (2.0, 1.0, 1.0),
         concat_padding_mask: bool = True,
         extra_pos_embed_type: Optional[str] = "learnable",
+        use_crossattn_projection: bool = False,
+        crossattn_proj_in_channels: int = 1024,
+        encoder_hidden_states_channels: int = 1024,
     ) -> None:
         super().__init__()
         hidden_size = num_attention_heads * attention_head_dim
@@ -478,6 +488,12 @@ class CosmosTransformer3DModel(ModelMixin, ConfigMixin):
             hidden_size, patch_size[0] * patch_size[1] * patch_size[2] * out_channels, bias=False
         )
 
+        if self.config.use_crossattn_projection:
+            self.crossattn_proj = nn.Sequential(
+                nn.Linear(crossattn_proj_in_channels, encoder_hidden_states_channels, bias=True),
+                nn.GELU(),
+            )
+
         self.gradient_checkpointing = False
 
     def forward(
@@ -517,6 +533,7 @@ class CosmosTransformer3DModel(ModelMixin, ConfigMixin):
         post_patch_num_frames = num_frames // p_t
         post_patch_height = height // p_h
         post_patch_width = width // p_w
+
         hidden_states = self.patch_embed(hidden_states)
         hidden_states = hidden_states.flatten(1, 3)  # [B, T, H, W, C] -> [B, THW, C]
 
@@ -538,6 +555,9 @@ class CosmosTransformer3DModel(ModelMixin, ConfigMixin):
             )  # [BT, C] -> [B, T, 1, 1, C] -> [B, T, H, W, C] -> [B, THW, C]
         else:
             assert False
+
+        if self.config.use_crossattn_projection:
+            encoder_hidden_states = self.crossattn_proj(encoder_hidden_states)
 
         # 5. Transformer blocks
         for block in self.transformer_blocks:

@@ -1,4 +1,4 @@
-<!--Copyright 2024 The HuggingFace Team. All rights reserved.
+<!--Copyright 2025 The HuggingFace Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -109,11 +109,8 @@ pip install -e ".[flax]"
 现在，不只是在通常的库路径，Python 还会在你克隆的文件夹内寻找包。
 例如，如果你的 Python 包通常安装在 `~/anaconda3/envs/main/lib/python3.10/Site-packages/`，Python 也会搜索你克隆到的文件夹。`~/diffusers/`。
 
-<Tip warning={true}>
-
-如果你想继续使用这个库，你必须保留 `diffusers` 文件夹。
-
-</Tip>
+> [!WARNING]
+> 如果你想继续使用这个库，你必须保留 `diffusers` 文件夹。
 
 
 现在你可以用下面的命令轻松地将你克隆的 🤗 Diffusers 库更新到最新版本。

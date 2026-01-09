@@ -1,4 +1,4 @@
-<!-- Copyright 2024 The HuggingFace Team. All rights reserved.
+<!-- Copyright 2025 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -121,15 +121,13 @@ export_to_video(frames, "mochi.mp4", fps=30)
 
 The [Genmo Mochi implementation](https://github.com/genmoai/mochi/tree/main) uses different precision values for each stage in the inference process. The text encoder and VAE use `torch.float32`, while the DiT uses `torch.bfloat16` with the [attention kernel](https://pytorch.org/docs/stable/generated/torch.nn.attention.sdpa_kernel.html#torch.nn.attention.sdpa_kernel) set to `EFFICIENT_ATTENTION`. Diffusers pipelines currently do not support setting different `dtypes` for different stages of the pipeline. In order to run inference in the same way as the original implementation, please refer to the following example.
 
-<Tip>
-The original Mochi implementation zeros out empty prompts. However, enabling this option and placing the entire pipeline under autocast can lead to numerical overflows with the T5 text encoder.
+> [!TIP]
+> The original Mochi implementation zeros out empty prompts. However, enabling this option and placing the entire pipeline under autocast can lead to numerical overflows with the T5 text encoder.
+>
+> When enabling `force_zeros_for_empty_prompt`, it is recommended to run the text encoding step outside the autocast context in full precision.
 
-When enabling `force_zeros_for_empty_prompt`, it is recommended to run the text encoding step outside the autocast context in full precision.
-</Tip>
-
-<Tip>
-Decoding the latents in full precision is very memory intensive. You will need at least 70GB VRAM to generate the 163 frames in this example. To reduce memory, either reduce the number of frames or run the decoding step in `torch.bfloat16`.
-</Tip>
+> [!TIP]
+> Decoding the latents in full precision is very memory intensive. You will need at least 70GB VRAM to generate the 163 frames in this example. To reduce memory, either reduce the number of frames or run the decoding step in `torch.bfloat16`.
 
 ```python
 import torch
@@ -231,9 +229,8 @@ export_to_video(frames, "output.mp4", fps=30)
 
 You can use `from_single_file` to load the Mochi transformer in its original format.
 
-<Tip>
-Diffusers currently doesn't support using the FP8 scaled versions of the Mochi single file checkpoints.
-</Tip>
+> [!TIP]
+> Diffusers currently doesn't support using the FP8 scaled versions of the Mochi single file checkpoints.
 
 ```python
 import torch

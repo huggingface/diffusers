@@ -1,4 +1,4 @@
-# Copyright 2024 Zhejiang University Team and The HuggingFace Team. All rights reserved.
+# Copyright 2025 Zhejiang University Team and The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -103,7 +103,7 @@ class FlaxPNDMScheduler(FlaxSchedulerMixin, ConfigMixin):
         prediction_type (`str`, default `epsilon`, optional):
             prediction type of the scheduler function, one of `epsilon` (predicting the noise of the diffusion
             process), `sample` (directly predicting the noisy sample`) or `v_prediction` (see section 2.4
-            https://imagen.research.google/video/paper.pdf)
+            https://huggingface.co/papers/2210.02303)
         dtype (`jnp.dtype`, *optional*, defaults to `jnp.float32`):
             the `dtype` used for params and computation.
     """

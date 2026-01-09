@@ -1,4 +1,4 @@
-# Copyright 2024 Black Forest Labs and The HuggingFace Team. All rights reserved.
+# Copyright 2025 Black Forest Labs and The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -25,6 +25,7 @@ from ...models import AutoencoderKL, ChromaTransformer2DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import (
     USE_PEFT_BACKEND,
+    deprecate,
     is_torch_xla_available,
     logging,
     replace_example_docstring,
@@ -52,12 +53,22 @@ EXAMPLE_DOC_STRING = """
         >>> import torch
         >>> from diffusers import ChromaPipeline
 
-        >>> pipe = ChromaPipeline.from_single_file(
-        ...     "chroma-unlocked-v35-detail-calibrated.safetensors", torch_dtype=torch.bfloat16
+        >>> model_id = "lodestones/Chroma1-HD"
+        >>> ckpt_path = "https://huggingface.co/lodestones/Chroma1-HD/blob/main/Chroma1-HD.safetensors"
+        >>> transformer = ChromaTransformer2DModel.from_single_file(ckpt_path, torch_dtype=torch.bfloat16)
+        >>> pipe = ChromaPipeline.from_pretrained(
+        ...     model_id,
+        ...     transformer=transformer,
+        ...     torch_dtype=torch.bfloat16,
         ... )
-        >>> pipe.to("cuda")
-        >>> prompt = "A cat holding a sign that says hello world"
-        >>> image = pipe(prompt, num_inference_steps=28, guidance_scale=4.0).images[0]
+        >>> pipe.enable_model_cpu_offload()
+        >>> prompt = [
+        ...     "A high-fashion close-up portrait of a blonde woman in clear sunglasses. The image uses a bold teal and red color split for dramatic lighting. The background is a simple teal-green. The photo is sharp and well-composed, and is designed for viewing with anaglyph 3D glasses for optimal effect. It looks professionally done."
+        ... ]
+        >>> negative_prompt = [
+        ...     "low quality, ugly, unfinished, out of focus, deformed, disfigure, blurry, smudged, restricted palette, flat colors"
+        ... ]
+        >>> image = pipe(prompt, negative_prompt=negative_prompt).images[0]
         >>> image.save("chroma.png")
         ```
 """
@@ -147,7 +158,7 @@ class ChromaPipeline(
     r"""
     The Chroma pipeline for text-to-image generation.
 
-    Reference: https://huggingface.co/lodestones/Chroma/
+    Reference: https://huggingface.co/lodestones/Chroma1-HD/
 
     Args:
         transformer ([`ChromaTransformer2DModel`]):
@@ -222,19 +233,23 @@ class ChromaPipeline(
             return_tensors="pt",
         )
         text_input_ids = text_inputs.input_ids
-        attention_mask = text_inputs.attention_mask.clone()
+        tokenizer_mask = text_inputs.attention_mask
 
-        # Chroma requires the attention mask to include one padding token
-        seq_lengths = attention_mask.sum(dim=1)
-        mask_indices = torch.arange(attention_mask.size(1)).unsqueeze(0).expand(batch_size, -1)
-        attention_mask = (mask_indices <= seq_lengths.unsqueeze(1)).long()
+        tokenizer_mask_device = tokenizer_mask.to(device)
 
+        # unlike FLUX, Chroma uses the attention mask when generating the T5 embedding
         prompt_embeds = self.text_encoder(
-            text_input_ids.to(device), output_hidden_states=False, attention_mask=attention_mask.to(device)
+            text_input_ids.to(device),
+            output_hidden_states=False,
+            attention_mask=tokenizer_mask_device,
         )[0]
 
-        dtype = self.text_encoder.dtype
         prompt_embeds = prompt_embeds.to(dtype=dtype, device=device)
+
+        # for the text tokens, chroma requires that all except the first padding token are masked out during the forward pass through the transformer
+        seq_lengths = tokenizer_mask_device.sum(dim=1)
+        mask_indices = torch.arange(tokenizer_mask_device.size(1), device=device).unsqueeze(0).expand(batch_size, -1)
+        attention_mask = (mask_indices <= seq_lengths.unsqueeze(1)).to(dtype=dtype, device=device)
 
         _, seq_len, _ = prompt_embeds.shape
 
@@ -242,7 +257,10 @@ class ChromaPipeline(
         prompt_embeds = prompt_embeds.repeat(1, num_images_per_prompt, 1)
         prompt_embeds = prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
 
-        return prompt_embeds
+        attention_mask = attention_mask.repeat(1, num_images_per_prompt)
+        attention_mask = attention_mask.view(batch_size * num_images_per_prompt, seq_len)
+
+        return prompt_embeds, attention_mask
 
     def encode_prompt(
         self,
@@ -250,8 +268,10 @@ class ChromaPipeline(
         negative_prompt: Union[str, List[str]] = None,
         device: Optional[torch.device] = None,
         num_images_per_prompt: int = 1,
-        prompt_embeds: Optional[torch.FloatTensor] = None,
-        negative_prompt_embeds: Optional[torch.FloatTensor] = None,
+        prompt_embeds: Optional[torch.Tensor] = None,
+        negative_prompt_embeds: Optional[torch.Tensor] = None,
+        prompt_attention_mask: Optional[torch.Tensor] = None,
+        negative_prompt_attention_mask: Optional[torch.Tensor] = None,
         do_classifier_free_guidance: bool = True,
         max_sequence_length: int = 512,
         lora_scale: Optional[float] = None,
@@ -268,7 +288,7 @@ class ChromaPipeline(
                 torch device
             num_images_per_prompt (`int`):
                 number of images that should be generated per prompt
-            prompt_embeds (`torch.FloatTensor`, *optional*):
+            prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
                 provided, text embeddings will be generated from `prompt` input argument.
             lora_scale (`float`, *optional*):
@@ -293,7 +313,7 @@ class ChromaPipeline(
             batch_size = prompt_embeds.shape[0]
 
         if prompt_embeds is None:
-            prompt_embeds = self._get_t5_prompt_embeds(
+            prompt_embeds, prompt_attention_mask = self._get_t5_prompt_embeds(
                 prompt=prompt,
                 num_images_per_prompt=num_images_per_prompt,
                 max_sequence_length=max_sequence_length,
@@ -323,12 +343,13 @@ class ChromaPipeline(
                         " the batch size of `prompt`."
                     )
 
-                negative_prompt_embeds = self._get_t5_prompt_embeds(
+                negative_prompt_embeds, negative_prompt_attention_mask = self._get_t5_prompt_embeds(
                     prompt=negative_prompt,
                     num_images_per_prompt=num_images_per_prompt,
                     max_sequence_length=max_sequence_length,
                     device=device,
                 )
+
             negative_text_ids = torch.zeros(negative_prompt_embeds.shape[1], 3).to(device=device, dtype=dtype)
 
         if self.text_encoder is not None:
@@ -336,7 +357,14 @@ class ChromaPipeline(
                 # Retrieve the original scale by scaling back the LoRA layers
                 unscale_lora_layers(self.text_encoder, lora_scale)
 
-        return prompt_embeds, text_ids, negative_prompt_embeds, negative_text_ids
+        return (
+            prompt_embeds,
+            text_ids,
+            prompt_attention_mask,
+            negative_prompt_embeds,
+            negative_text_ids,
+            negative_prompt_attention_mask,
+        )
 
     # Copied from diffusers.pipelines.flux.pipeline_flux.FluxPipeline.encode_image
     def encode_image(self, image, device, num_images_per_prompt):
@@ -394,7 +422,9 @@ class ChromaPipeline(
         width,
         negative_prompt=None,
         prompt_embeds=None,
+        prompt_attention_mask=None,
         negative_prompt_embeds=None,
+        negative_prompt_attention_mask=None,
         callback_on_step_end_tensor_inputs=None,
         max_sequence_length=None,
     ):
@@ -426,6 +456,14 @@ class ChromaPipeline(
             raise ValueError(
                 f"Cannot forward both `negative_prompt`: {negative_prompt} and `negative_prompt_embeds`:"
                 f" {negative_prompt_embeds}. Please make sure to only forward one of the two."
+            )
+
+        if prompt_embeds is not None and prompt_attention_mask is None:
+            raise ValueError("Cannot provide `prompt_embeds` without also providing `prompt_attention_mask")
+
+        if negative_prompt_embeds is not None and negative_prompt_attention_mask is None:
+            raise ValueError(
+                "Cannot provide `negative_prompt_embeds` without also providing `negative_prompt_attention_mask"
             )
 
         if max_sequence_length is not None and max_sequence_length > 512:
@@ -474,6 +512,12 @@ class ChromaPipeline(
         Enable sliced VAE decoding. When this option is enabled, the VAE will split the input tensor in slices to
         compute decoding in several steps. This is useful to save some memory and allow larger batch sizes.
         """
+        depr_message = f"Calling `enable_vae_slicing()` on a `{self.__class__.__name__}` is deprecated and this method will be removed in a future version. Please use `pipe.vae.enable_slicing()`."
+        deprecate(
+            "enable_vae_slicing",
+            "0.40.0",
+            depr_message,
+        )
         self.vae.enable_slicing()
 
     def disable_vae_slicing(self):
@@ -481,6 +525,12 @@ class ChromaPipeline(
         Disable sliced VAE decoding. If `enable_vae_slicing` was previously enabled, this method will go back to
         computing decoding in one step.
         """
+        depr_message = f"Calling `disable_vae_slicing()` on a `{self.__class__.__name__}` is deprecated and this method will be removed in a future version. Please use `pipe.vae.disable_slicing()`."
+        deprecate(
+            "disable_vae_slicing",
+            "0.40.0",
+            depr_message,
+        )
         self.vae.disable_slicing()
 
     def enable_vae_tiling(self):
@@ -489,6 +539,12 @@ class ChromaPipeline(
         compute decoding and encoding in several steps. This is useful for saving a large amount of memory and to allow
         processing larger images.
         """
+        depr_message = f"Calling `enable_vae_tiling()` on a `{self.__class__.__name__}` is deprecated and this method will be removed in a future version. Please use `pipe.vae.enable_tiling()`."
+        deprecate(
+            "enable_vae_tiling",
+            "0.40.0",
+            depr_message,
+        )
         self.vae.enable_tiling()
 
     def disable_vae_tiling(self):
@@ -496,6 +552,12 @@ class ChromaPipeline(
         Disable tiled VAE decoding. If `enable_vae_tiling` was previously enabled, this method will go back to
         computing decoding in one step.
         """
+        depr_message = f"Calling `disable_vae_tiling()` on a `{self.__class__.__name__}` is deprecated and this method will be removed in a future version. Please use `pipe.vae.disable_tiling()`."
+        deprecate(
+            "disable_vae_tiling",
+            "0.40.0",
+            depr_message,
+        )
         self.vae.disable_tiling()
 
     # Copied from diffusers.pipelines.flux.pipeline_flux.FluxPipeline.prepare_latents
@@ -534,6 +596,24 @@ class ChromaPipeline(
 
         return latents, latent_image_ids
 
+    def _prepare_attention_mask(
+        self,
+        batch_size,
+        sequence_length,
+        dtype,
+        attention_mask=None,
+    ):
+        if attention_mask is None:
+            return attention_mask
+
+        # Extend the prompt attention mask to account for image tokens in the final sequence
+        attention_mask = torch.cat(
+            [attention_mask, torch.ones(batch_size, sequence_length, device=attention_mask.device, dtype=torch.bool)],
+            dim=1,
+        )
+
+        return attention_mask
+
     @property
     def guidance_scale(self):
         return self._guidance_scale
@@ -566,18 +646,20 @@ class ChromaPipeline(
         negative_prompt: Union[str, List[str]] = None,
         height: Optional[int] = None,
         width: Optional[int] = None,
-        num_inference_steps: int = 28,
+        num_inference_steps: int = 35,
         sigmas: Optional[List[float]] = None,
-        guidance_scale: float = 3.5,
+        guidance_scale: float = 5.0,
         num_images_per_prompt: Optional[int] = 1,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
-        latents: Optional[torch.FloatTensor] = None,
-        prompt_embeds: Optional[torch.FloatTensor] = None,
+        latents: Optional[torch.Tensor] = None,
+        prompt_embeds: Optional[torch.Tensor] = None,
         ip_adapter_image: Optional[PipelineImageInput] = None,
         ip_adapter_image_embeds: Optional[List[torch.Tensor]] = None,
         negative_ip_adapter_image: Optional[PipelineImageInput] = None,
         negative_ip_adapter_image_embeds: Optional[List[torch.Tensor]] = None,
-        negative_prompt_embeds: Optional[torch.FloatTensor] = None,
+        negative_prompt_embeds: Optional[torch.Tensor] = None,
+        prompt_attention_mask: Optional[torch.Tensor] = None,
+        negative_prompt_attention_mask: Optional[torch.Tensor] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
         joint_attention_kwargs: Optional[Dict[str, Any]] = None,
@@ -608,21 +690,21 @@ class ChromaPipeline(
                 their `set_timesteps` method. If not defined, the default behavior when `num_inference_steps` is passed
                 will be used.
             guidance_scale (`float`, *optional*, defaults to 3.5):
-                Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598).
-                `guidance_scale` is defined as `w` of equation 2. of [Imagen
-                Paper](https://arxiv.org/pdf/2205.11487.pdf). Guidance scale is enabled by setting `guidance_scale >
-                1`. Higher guidance scale encourages to generate images that are closely linked to the text `prompt`,
-                usually at the expense of lower image quality.
+                Guidance scale as defined in [Classifier-Free Diffusion
+                Guidance](https://huggingface.co/papers/2207.12598). `guidance_scale` is defined as `w` of equation 2.
+                of [Imagen Paper](https://huggingface.co/papers/2205.11487). Guidance scale is enabled by setting
+                `guidance_scale > 1`. Higher guidance scale encourages to generate images that are closely linked to
+                the text `prompt`, usually at the expense of lower image quality.
             num_images_per_prompt (`int`, *optional*, defaults to 1):
                 The number of images to generate per prompt.
             generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
                 One or a list of [torch generator(s)](https://pytorch.org/docs/stable/generated/torch.Generator.html)
                 to make generation deterministic.
-            latents (`torch.FloatTensor`, *optional*):
+            latents (`torch.Tensor`, *optional*):
                 Pre-generated noisy latents, sampled from a Gaussian distribution, to be used as inputs for image
                 generation. Can be used to tweak the same generation with different prompts. If not provided, a latents
-                tensor will ge generated by sampling using the supplied random `generator`.
-            prompt_embeds (`torch.FloatTensor`, *optional*):
+                tensor will be generated by sampling using the supplied random `generator`.
+            prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
                 provided, text embeddings will be generated from `prompt` input argument.
             ip_adapter_image: (`PipelineImageInput`, *optional*): Optional image input to work with IP Adapters.
@@ -636,10 +718,18 @@ class ChromaPipeline(
                 Pre-generated image embeddings for IP-Adapter. It should be a list of length same as number of
                 IP-adapters. Each element should be a tensor of shape `(batch_size, num_images, emb_dim)`. If not
                 provided, embeddings are computed from the `ip_adapter_image` input argument.
-            negative_prompt_embeds (`torch.FloatTensor`, *optional*):
+            negative_prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated negative text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
                 weighting. If not provided, negative_prompt_embeds will be generated from `negative_prompt` input
                 argument.
+            prompt_attention_mask (torch.Tensor, *optional*):
+                Attention mask for the prompt embeddings. Used to mask out padding tokens in the prompt sequence.
+                Chroma requires a single padding token remain unmasked. Please refer to
+                https://huggingface.co/lodestones/Chroma#tldr-masking-t5-padding-tokens-enhanced-fidelity-and-increased-stability-during-training
+            negative_prompt_attention_mask (torch.Tensor, *optional*):
+                Attention mask for the negative prompt embeddings. Used to mask out padding tokens in the negative
+                prompt sequence. Chroma requires a single padding token remain unmasked. PLease refer to
+                https://huggingface.co/lodestones/Chroma#tldr-masking-t5-padding-tokens-enhanced-fidelity-and-increased-stability-during-training
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generate image. Choose between
                 [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
@@ -678,7 +768,9 @@ class ChromaPipeline(
             width,
             negative_prompt=negative_prompt,
             prompt_embeds=prompt_embeds,
+            prompt_attention_mask=prompt_attention_mask,
             negative_prompt_embeds=negative_prompt_embeds,
+            negative_prompt_attention_mask=negative_prompt_attention_mask,
             callback_on_step_end_tensor_inputs=callback_on_step_end_tensor_inputs,
             max_sequence_length=max_sequence_length,
         )
@@ -704,13 +796,17 @@ class ChromaPipeline(
         (
             prompt_embeds,
             text_ids,
+            prompt_attention_mask,
             negative_prompt_embeds,
             negative_text_ids,
+            negative_prompt_attention_mask,
         ) = self.encode_prompt(
             prompt=prompt,
             negative_prompt=negative_prompt,
             prompt_embeds=prompt_embeds,
             negative_prompt_embeds=negative_prompt_embeds,
+            prompt_attention_mask=prompt_attention_mask,
+            negative_prompt_attention_mask=negative_prompt_attention_mask,
             do_classifier_free_guidance=self.do_classifier_free_guidance,
             device=device,
             num_images_per_prompt=num_images_per_prompt,
@@ -730,6 +826,7 @@ class ChromaPipeline(
             generator,
             latents,
         )
+
         # 5. Prepare timesteps
         sigmas = np.linspace(1.0, 1 / num_inference_steps, num_inference_steps) if sigmas is None else sigmas
         image_seq_len = latents.shape[1]
@@ -740,6 +837,20 @@ class ChromaPipeline(
             self.scheduler.config.get("base_shift", 0.5),
             self.scheduler.config.get("max_shift", 1.15),
         )
+
+        attention_mask = self._prepare_attention_mask(
+            batch_size=latents.shape[0],
+            sequence_length=image_seq_len,
+            dtype=latents.dtype,
+            attention_mask=prompt_attention_mask,
+        )
+        negative_attention_mask = self._prepare_attention_mask(
+            batch_size=latents.shape[0],
+            sequence_length=image_seq_len,
+            dtype=latents.dtype,
+            attention_mask=negative_prompt_attention_mask,
+        )
+
         timesteps, num_inference_steps = retrieve_timesteps(
             self.scheduler,
             num_inference_steps,
@@ -801,6 +912,7 @@ class ChromaPipeline(
                     encoder_hidden_states=prompt_embeds,
                     txt_ids=text_ids,
                     img_ids=latent_image_ids,
+                    attention_mask=attention_mask,
                     joint_attention_kwargs=self.joint_attention_kwargs,
                     return_dict=False,
                 )[0]
@@ -814,6 +926,7 @@ class ChromaPipeline(
                         encoder_hidden_states=negative_prompt_embeds,
                         txt_ids=negative_text_ids,
                         img_ids=latent_image_ids,
+                        attention_mask=negative_attention_mask,
                         joint_attention_kwargs=self.joint_attention_kwargs,
                         return_dict=False,
                     )[0]

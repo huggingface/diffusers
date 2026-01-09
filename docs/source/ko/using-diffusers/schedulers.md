@@ -1,4 +1,4 @@
-<!--Copyright 2024 The HuggingFace Team. All rights reserved.
+<!--Copyright 2025 The HuggingFace Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -318,12 +318,9 @@ images = pipeline(prompt_ids, params, prng_seed, num_inference_steps, jit=True).
 images = pipeline.numpy_to_pil(np.asarray(images.reshape((num_samples,) + images.shape[-3:])))
 ```
 
-<Tip warning={true}>
-
-다음 Flax 스케줄러는 *아직* Flax Stable Diffusion 파이프라인과 호환되지 않습니다.
-
-- `FlaxLMSDiscreteScheduler`
-- `FlaxDDPMScheduler`
-
-</Tip>
+> [!WARNING]
+> 다음 Flax 스케줄러는 *아직* Flax Stable Diffusion 파이프라인과 호환되지 않습니다.
+>
+> - `FlaxLMSDiscreteScheduler`
+> - `FlaxDDPMScheduler`
 

@@ -1,4 +1,4 @@
-<!--Copyright 2024 The HuggingFace Team. All rights reserved.
+<!--Copyright 2025 The HuggingFace Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -207,11 +207,8 @@ image = refiner(
 
 동일한 40 단계에서 base 모델을 실행한다면, 이미지의 디테일(예: 사자의 눈과 코)이 떨어졌을 것입니다:
 
-<Tip>
-
-앙상블 방식은 사용 가능한 모든 스케줄러에서 잘 작동합니다!
-
-</Tip>
+> [!TIP]
+> 앙상블 방식은 사용 가능한 모든 스케줄러에서 잘 작동합니다!
 
 #### 2.) 노이즈가 완전히 제거된 기본 이미지에서 이미지 출력을 정제하기
 
@@ -248,11 +245,8 @@ image = refiner(prompt=prompt, image=image[None, :]).images[0]
 |---|---|
 | ![](https://huggingface.co/datasets/diffusers/docs-images/resolve/main/sd_xl/init_image.png) | ![](https://huggingface.co/datasets/diffusers/docs-images/resolve/main/sd_xl/refined_image.png) |
 
-<Tip>
-
-refiner는 또한 인페인팅 설정에 잘 사용될 수 있습니다. 아래에 보여지듯이 [`StableDiffusionXLInpaintPipeline`] 클래스를 사용해서 만들어보세요.
-
-</Tip>
+> [!TIP]
+> refiner는 또한 인페인팅 설정에 잘 사용될 수 있습니다. 아래에 보여지듯이 [`StableDiffusionXLInpaintPipeline`] 클래스를 사용해서 만들어보세요.
 
 Denoiser 앙상블 설정에서 인페인팅에 refiner를 사용하려면 다음을 수행하면 됩니다:
 

@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2024 HuggingFace Inc.
+# Copyright 2025 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -16,19 +16,16 @@
 import unittest
 
 from diffusers import AutoencoderDC
-from diffusers.utils.testing_utils import (
-    enable_full_determinism,
-    floats_tensor,
-    torch_device,
-)
 
-from ..test_modeling_common import ModelTesterMixin, UNetTesterMixin
+from ...testing_utils import IS_GITHUB_ACTIONS, enable_full_determinism, floats_tensor, torch_device
+from ..test_modeling_common import ModelTesterMixin
+from .testing_utils import AutoencoderTesterMixin
 
 
 enable_full_determinism()
 
 
-class AutoencoderDCTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
+class AutoencoderDCTests(ModelTesterMixin, AutoencoderTesterMixin, unittest.TestCase):
     model_class = AutoencoderDC
     main_input_name = "sample"
     base_precision = 1e-2
@@ -82,6 +79,10 @@ class AutoencoderDCTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
         inputs_dict = self.dummy_input
         return init_dict, inputs_dict
 
-    @unittest.skip("AutoencoderDC does not support `norm_num_groups` because it does not use GroupNorm.")
-    def test_forward_with_norm_groups(self):
-        pass
+    @unittest.skipIf(IS_GITHUB_ACTIONS, reason="Skipping test inside GitHub Actions environment")
+    def test_layerwise_casting_inference(self):
+        super().test_layerwise_casting_inference()
+
+    @unittest.skipIf(IS_GITHUB_ACTIONS, reason="Skipping test inside GitHub Actions environment")
+    def test_layerwise_casting_memory(self):
+        super().test_layerwise_casting_memory()

@@ -1,4 +1,4 @@
-<!--Copyright 2024 Custom Diffusion authors The HuggingFace Team. All rights reserved.
+<!--Copyright 2025 Custom Diffusion authors The HuggingFace Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -34,11 +34,8 @@ pip install -r requirements.txt
 pip install clip-retrieval
 ```
 
-<Tip>
-
-🤗 Accelerate is a library for helping you train on multiple GPUs/TPUs or with mixed-precision. It'll automatically configure your training setup based on your hardware and environment. Take a look at the 🤗 Accelerate [Quick tour](https://huggingface.co/docs/accelerate/quicktour) to learn more.
-
-</Tip>
+> [!TIP]
+> 🤗 Accelerate is a library for helping you train on multiple GPUs/TPUs or with mixed-precision. It'll automatically configure your training setup based on your hardware and environment. Take a look at the 🤗 Accelerate [Quick tour](https://huggingface.co/docs/accelerate/quicktour) to learn more.
 
 Initialize an 🤗 Accelerate environment:
 
@@ -62,11 +59,8 @@ write_basic_config()
 
 Lastly, if you want to train a model on your own dataset, take a look at the [Create a dataset for training](create_dataset) guide to learn how to create a dataset that works with the training script.
 
-<Tip>
-
-The following sections highlight parts of the training script that are important for understanding how to modify it, but it doesn't cover every aspect of the script in detail. If you're interested in learning more, feel free to read through the [script](https://github.com/huggingface/diffusers/blob/main/examples/custom_diffusion/train_custom_diffusion.py) and let us know if you have any questions or concerns.
-
-</Tip>
+> [!TIP]
+> The following sections highlight parts of the training script that are important for understanding how to modify it, but it doesn't cover every aspect of the script in detail. If you're interested in learning more, feel free to read through the [script](https://github.com/huggingface/diffusers/blob/main/examples/custom_diffusion/train_custom_diffusion.py) and let us know if you have any questions or concerns.
 
 ## Script parameters
 
@@ -117,11 +111,8 @@ accelerate launch train_custom_diffusion.py \
 
 ## Training script
 
-<Tip>
-
-A lot of the code in the Custom Diffusion training script is similar to the [DreamBooth](dreambooth#training-script) script. This guide instead focuses on the code that is relevant to Custom Diffusion.
-
-</Tip>
+> [!TIP]
+> A lot of the code in the Custom Diffusion training script is similar to the [DreamBooth](dreambooth#training-script) script. This guide instead focuses on the code that is relevant to Custom Diffusion.
 
 The Custom Diffusion training script has two dataset classes:
 
@@ -224,16 +215,13 @@ Set the environment variable `MODEL_NAME` to a model id on the Hub or a path to 
 
 To monitor training progress with Weights and Biases, add the `--report_to=wandb` parameter to the training command and specify a validation prompt with `--validation_prompt`. This is useful for debugging and saving intermediate results.
 
-<Tip>
-
-If you're training on human faces, the Custom Diffusion team has found the following parameters to work well:
-
-- `--learning_rate=5e-6`
-- `--max_train_steps` can be anywhere between 1000 and 2000
-- `--freeze_model=crossattn`
-- use at least 15-20 images to train with
-
-</Tip>
+> [!TIP]
+> If you're training on human faces, the Custom Diffusion team has found the following parameters to work well:
+>
+> - `--learning_rate=5e-6`
+> - `--max_train_steps` can be anywhere between 1000 and 2000
+> - `--freeze_model=crossattn`
+> - use at least 15-20 images to train with
 
 <hfoptions id="training-inference">
 <hfoption id="single concept">

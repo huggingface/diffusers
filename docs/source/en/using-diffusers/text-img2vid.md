@@ -1,4 +1,4 @@
-<!--Copyright 2024 The HuggingFace Team. All rights reserved.
+<!--Copyright 2025 The HuggingFace Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -98,7 +98,7 @@ pipeline_quant_config = PipelineQuantizationConfig(
     "bnb_4bit_quant_type": "nf4",
     "bnb_4bit_compute_dtype": torch.bfloat16
     },
-  components_to_quantize=["transformer"]
+  components_to_quantize="transformer"
 )
 
 pipeline = HunyuanVideoPipeline.from_pretrained(
@@ -287,7 +287,7 @@ export_to_video(output, "output.mp4", fps=16)
 
 ## Reduce memory usage
 
-Recent video models like [`HunyuanVideoPipeline`] and [`WanPipeline`], which have 10B+ parameters, require a lot of memory and it often exceeds the memory availabe on consumer hardware. Diffusers offers several techniques for reducing the memory requirements of these large models.
+Recent video models like [`HunyuanVideoPipeline`] and [`WanPipeline`], which have 10B+ parameters, require a lot of memory and it often exceeds the memory available on consumer hardware. Diffusers offers several techniques for reducing the memory requirements of these large models.
 
 > [!TIP]
 > Refer to the [Reduce memory usage](../optimization/memory) guide for more details about other memory saving techniques.

@@ -1,4 +1,4 @@
-# Copyright 2024 The HuggingFace Team.
+# Copyright 2025 The HuggingFace Team.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -20,11 +20,9 @@ import torch
 from transformers import Gemma2Config, Gemma2Model, GemmaTokenizer
 
 from diffusers import AutoencoderDC, SanaSprintImg2ImgPipeline, SanaTransformer2DModel, SCMScheduler
-from diffusers.utils.testing_utils import (
-    enable_full_determinism,
-    torch_device,
-)
+from diffusers.utils.torch_utils import randn_tensor
 
+from ...testing_utils import IS_GITHUB_ACTIONS, enable_full_determinism, torch_device
 from ..pipeline_params import (
     IMAGE_TO_IMAGE_IMAGE_PARAMS,
     TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS,
@@ -137,7 +135,7 @@ class SanaSprintImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCase)
             generator = torch.manual_seed(seed)
         else:
             generator = torch.Generator(device=device).manual_seed(seed)
-        image = torch.randn(1, 3, 32, 32, generator=generator)
+        image = randn_tensor((1, 3, 32, 32), generator=generator, device=device)
         inputs = {
             "prompt": "",
             "image": image,
@@ -311,3 +309,7 @@ class SanaSprintImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCase)
     def test_float16_inference(self):
         # Requires higher tolerance as model seems very sensitive to dtype
         super().test_float16_inference(expected_max_diff=0.08)
+
+    @unittest.skipIf(IS_GITHUB_ACTIONS, reason="Skipping test inside GitHub Actions environment")
+    def test_layerwise_casting_inference(self):
+        super().test_layerwise_casting_inference()
