@@ -9,6 +9,7 @@ if is_torch_available():
         HunyuanDiT2DControlNetModel,
         HunyuanDiT2DMultiControlNetModel,
     )
+    from .controlnet_qwenimage import QwenImageControlNetModel, QwenImageMultiControlNetModel
     from .controlnet_sana import SanaControlNetModel
     from .controlnet_sd3 import SD3ControlNetModel, SD3ControlNetOutput, SD3MultiControlNetModel
     from .controlnet_sparsectrl import (
@@ -18,6 +19,7 @@ if is_torch_available():
     )
     from .controlnet_union import ControlNetUnionModel
     from .controlnet_xs import ControlNetXSAdapter, ControlNetXSOutput, UNetControlNetXSModel
+    from .controlnet_z_image import ZImageControlNetModel
     from .multicontrolnet import MultiControlNetModel
     from .multicontrolnet_union import MultiControlNetUnionModel
 

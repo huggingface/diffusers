@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2024 HuggingFace Inc.
+# Copyright 2025 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -20,7 +20,6 @@ import tempfile
 import unittest
 
 import numpy as np
-import pytest
 import safetensors.torch
 import torch
 from parameterized import parameterized
@@ -29,7 +28,8 @@ from transformers import AutoTokenizer, CLIPTextModel, CLIPTokenizer, T5EncoderM
 
 from diffusers import FlowMatchEulerDiscreteScheduler, FluxControlPipeline, FluxPipeline, FluxTransformer2DModel
 from diffusers.utils import load_image, logging
-from diffusers.utils.testing_utils import (
+
+from ..testing_utils import (
     CaptureLogger,
     backend_empty_cache,
     floats_tensor,
@@ -49,15 +49,14 @@ if is_peft_available():
 
 sys.path.append(".")
 
-from utils import PeftLoraLoaderMixinTests, check_if_lora_correctly_set  # noqa: E402
+from .utils import PeftLoraLoaderMixinTests, check_if_lora_correctly_set  # noqa: E402
 
 
 @require_peft_backend
 class FluxLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
     pipeline_class = FluxPipeline
-    scheduler_cls = FlowMatchEulerDiscreteScheduler()
+    scheduler_cls = FlowMatchEulerDiscreteScheduler
     scheduler_kwargs = {}
-    scheduler_classes = [FlowMatchEulerDiscreteScheduler]
     transformer_kwargs = {
         "patch_size": 1,
         "in_channels": 4,
@@ -123,9 +122,6 @@ class FluxLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
         pipe.set_progress_bar_config(disable=None)
         _, _, inputs = self.get_dummy_inputs(with_generator=False)
 
-        output_no_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
-        self.assertTrue(output_no_lora.shape == self.output_shape)
-
         pipe.transformer.add_adapter(denoiser_lora_config)
         self.assertTrue(check_if_lora_correctly_set(pipe.transformer), "Lora not correctly set in transformer")
 
@@ -171,8 +167,7 @@ class FluxLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
         pipe.set_progress_bar_config(disable=None)
         _, _, inputs = self.get_dummy_inputs(with_generator=False)
 
-        output_no_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
-        self.assertTrue(output_no_lora.shape == self.output_shape)
+        output_no_lora = self.get_base_pipe_output()
 
         # Modify the config to have a layer which won't be present in the second LoRA we will load.
         modified_denoiser_lora_config = copy.deepcopy(denoiser_lora_config)
@@ -219,9 +214,7 @@ class FluxLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
         pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
         _, _, inputs = self.get_dummy_inputs(with_generator=False)
-
-        output_no_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
-        self.assertTrue(output_no_lora.shape == self.output_shape)
+        output_no_lora = self.get_base_pipe_output()
 
         # Modify the config to have a layer which won't be present in the first LoRA we will load.
         modified_denoiser_lora_config = copy.deepcopy(denoiser_lora_config)
@@ -282,9 +275,8 @@ class FluxLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
 
 class FluxControlLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
     pipeline_class = FluxControlPipeline
-    scheduler_cls = FlowMatchEulerDiscreteScheduler()
+    scheduler_cls = FlowMatchEulerDiscreteScheduler
     scheduler_kwargs = {}
-    scheduler_classes = [FlowMatchEulerDiscreteScheduler]
     transformer_kwargs = {
         "patch_size": 1,
         "in_channels": 8,
@@ -331,6 +323,7 @@ class FluxControlLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
         noise = floats_tensor((batch_size, num_channels) + sizes)
         input_ids = torch.randint(1, sequence_length, size=(batch_size, sequence_length), generator=generator)
 
+        np.random.seed(0)
         pipeline_inputs = {
             "prompt": "A painting of a squirrel eating a burger",
             "control_image": Image.fromarray(np.random.randint(0, 255, size=(32, 32, 3), dtype="uint8")),
@@ -813,7 +806,6 @@ class FluxControlLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
 @require_torch_accelerator
 @require_peft_backend
 @require_big_accelerator
-@pytest.mark.big_accelerator
 class FluxLoRAIntegrationTests(unittest.TestCase):
     """internal note: The integration slices were obtained on audace.
 
@@ -908,6 +900,13 @@ class FluxLoRAIntegrationTests(unittest.TestCase):
 
         assert max_diff < 1e-3
 
+    def test_flux_kohya_embedders_conversion(self):
+        """Test that embedders load without throwing errors"""
+        self.pipeline.load_lora_weights("rockerBOO/flux-bpo-po-lora")
+        self.pipeline.unload_lora_weights()
+
+        assert True
+
     def test_flux_xlabs(self):
         self.pipeline.load_lora_weights("XLabs-AI/flux-lora-collection", weight_name="disney_lora.safetensors")
         self.pipeline.fuse_lora()
@@ -960,7 +959,6 @@ class FluxLoRAIntegrationTests(unittest.TestCase):
 @require_torch_accelerator
 @require_peft_backend
 @require_big_accelerator
-@pytest.mark.big_accelerator
 class FluxControlLoRAIntegrationTests(unittest.TestCase):
     num_inference_steps = 10
     seed = 0

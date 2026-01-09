@@ -55,7 +55,7 @@ The Accelerate launch command is used to train a model using multiple GPUs and m
 ```
 accelerate launch --mixed_precision "fp16" \
 tutorial_train_ip-adapter.py \
---pretrained_model_name_or_path="runwayml/stable-diffusion-v1-5/" \
+--pretrained_model_name_or_path="stable-diffusion-v1-5/stable-diffusion-v1-5/" \
 --image_encoder_path="{image_encoder_path}" \
 --data_json_file="{data.json}" \
 --data_root_path="{image_path}" \
@@ -73,7 +73,7 @@ tutorial_train_ip-adapter.py \
 ```
 accelerate launch --num_processes 8 --multi_gpu --mixed_precision "fp16" \
   tutorial_train_ip-adapter.py \
-  --pretrained_model_name_or_path="runwayml/stable-diffusion-v1-5/" \
+  --pretrained_model_name_or_path="stable-diffusion-v1-5/stable-diffusion-v1-5/" \
   --image_encoder_path="{image_encoder_path}" \
   --data_json_file="{data.json}" \
   --data_root_path="{image_path}" \

@@ -1,4 +1,4 @@
-<!--Copyright 2024 The HuggingFace Team. All rights reserved.
+<!--Copyright 2025 The HuggingFace Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -206,11 +206,8 @@ Once a model is quantized, you can push the model to the Hub with the [`~ModelMi
 </hfoption>
 </hfoptions>
 
-<Tip warning={true}>
-
-Training with 8-bit and 4-bit weights are only supported for training *extra* parameters.
-
-</Tip>
+> [!WARNING]
+> Training with 8-bit and 4-bit weights are only supported for training *extra* parameters.
 
 Check your memory footprint with the `get_memory_footprint` method:
 
@@ -234,11 +231,8 @@ model_4bit = AutoModel.from_pretrained(
 
 ## 8-bit (LLM.int8() algorithm)
 
-<Tip>
-
-Learn more about the details of 8-bit quantization in this [blog post](https://huggingface.co/blog/hf-bitsandbytes-integration)!
-
-</Tip>
+> [!TIP]
+> Learn more about the details of 8-bit quantization in this [blog post](https://huggingface.co/blog/hf-bitsandbytes-integration)!
 
 This section explores some of the specific features of 8-bit models, such as outlier thresholds and skipping module conversion.
 
@@ -283,11 +277,8 @@ model_8bit = SD3Transformer2DModel.from_pretrained(
 
 ## 4-bit (QLoRA algorithm)
 
-<Tip>
-
-Learn more about its details in this [blog post](https://huggingface.co/blog/4bit-transformers-bitsandbytes).
-
-</Tip>
+> [!TIP]
+> Learn more about its details in this [blog post](https://huggingface.co/blog/4bit-transformers-bitsandbytes).
 
 This section explores some of the specific features of 4-bit models, such as changing the compute data type, using the Normal Float 4 (NF4) data type, and using nested quantization.
 

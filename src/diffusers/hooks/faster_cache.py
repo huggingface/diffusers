@@ -1,4 +1,4 @@
-# Copyright 2024 The HuggingFace Team. All rights reserved.
+# Copyright 2025 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -18,9 +18,10 @@ from typing import Any, Callable, List, Optional, Tuple
 
 import torch
 
-from ..models.attention_processor import Attention, MochiAttention
+from ..models.attention import AttentionModuleMixin
 from ..models.modeling_outputs import Transformer2DModelOutput
 from ..utils import logging
+from ._common import _ATTENTION_CLASSES
 from .hooks import HookRegistry, ModelHook
 
 
@@ -29,7 +30,6 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 _FASTER_CACHE_DENOISER_HOOK = "faster_cache_denoiser"
 _FASTER_CACHE_BLOCK_HOOK = "faster_cache_block"
-_ATTENTION_CLASSES = (Attention, MochiAttention)
 _SPATIAL_ATTENTION_BLOCK_IDENTIFIERS = (
     "^blocks.*attn",
     "^transformer_blocks.*attn",
@@ -54,11 +54,11 @@ class FasterCacheConfig:
     Attributes:
         spatial_attention_block_skip_range (`int`, defaults to `2`):
             Calculate the attention states every `N` iterations. If this is set to `N`, the attention computation will
-            be skipped `N - 1` times (i.e., cached attention states will be re-used) before computing the new attention
+            be skipped `N - 1` times (i.e., cached attention states will be reused) before computing the new attention
             states again.
         temporal_attention_block_skip_range (`int`, *optional*, defaults to `None`):
             Calculate the attention states every `N` iterations. If this is set to `N`, the attention computation will
-            be skipped `N - 1` times (i.e., cached attention states will be re-used) before computing the new attention
+            be skipped `N - 1` times (i.e., cached attention states will be reused) before computing the new attention
             states again.
         spatial_attention_timestep_skip_range (`Tuple[float, float]`, defaults to `(-1, 681)`):
             The timestep range within which the spatial attention computation can be skipped without a significant loss
@@ -90,7 +90,7 @@ class FasterCacheConfig:
             from the conditional branch outputs.
         unconditional_batch_skip_range (`int`, defaults to `5`):
             Process the unconditional branch every `N` iterations. If this is set to `N`, the unconditional branch
-            computation will be skipped `N - 1` times (i.e., cached unconditional branch states will be re-used) before
+            computation will be skipped `N - 1` times (i.e., cached unconditional branch states will be reused) before
             computing the new unconditional branch states again.
         unconditional_batch_timestep_skip_range (`Tuple[float, float]`, defaults to `(-1, 641)`):
             The timestep range within which the unconditional branch computation can be skipped without a significant
@@ -488,9 +488,10 @@ def apply_faster_cache(module: torch.nn.Module, config: FasterCacheConfig) -> No
     Applies [FasterCache](https://huggingface.co/papers/2410.19355) to a given pipeline.
 
     Args:
-        pipeline (`DiffusionPipeline`):
-            The diffusion pipeline to apply FasterCache to.
-        config (`Optional[FasterCacheConfig]`, `optional`, defaults to `None`):
+        module (`torch.nn.Module`):
+            The pytorch module to apply FasterCache to. Typically, this should be a transformer architecture supported
+            in Diffusers, such as `CogVideoXTransformer3DModel`, but external implementations may also work.
+        config (`FasterCacheConfig`):
             The configuration to use for FasterCache.
 
     Example:
@@ -588,7 +589,7 @@ def _apply_faster_cache_on_denoiser(module: torch.nn.Module, config: FasterCache
     registry.register_hook(hook, _FASTER_CACHE_DENOISER_HOOK)
 
 
-def _apply_faster_cache_on_attention_class(name: str, module: Attention, config: FasterCacheConfig) -> None:
+def _apply_faster_cache_on_attention_class(name: str, module: AttentionModuleMixin, config: FasterCacheConfig) -> None:
     is_spatial_self_attention = (
         any(re.search(identifier, name) is not None for identifier in config.spatial_attention_block_identifiers)
         and config.spatial_attention_block_skip_range is not None

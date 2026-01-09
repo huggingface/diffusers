@@ -1,4 +1,4 @@
-<!--Copyright 2024 The HuggingFace Team. All rights reserved.
+<!--Copyright 2025 The HuggingFace Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -108,11 +108,8 @@ pip install -e ".[flax]"
 Python は通常のライブラリパスに加えて、クローンしたフォルダの中を探すようになります。
 例えば、Python パッケージが通常 `~/anaconda3/envs/main/lib/python3.10/site-packages/` にインストールされている場合、Python はクローンした `~/diffusers/` フォルダも同様に参照します。
 
-<Tip warning={true}>
-
-ライブラリを使い続けたい場合は、`diffusers`フォルダを残しておく必要があります。
-
-</Tip>
+> [!WARNING]
+> ライブラリを使い続けたい場合は、`diffusers`フォルダを残しておく必要があります。
 
 これで、以下のコマンドで簡単にクローンを最新版の🤗 Diffusersにアップデートできます：
 

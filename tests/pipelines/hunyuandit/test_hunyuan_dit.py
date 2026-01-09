@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2024 HuggingFace Inc.
+# Copyright 2025 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -22,7 +22,8 @@ import torch
 from transformers import AutoTokenizer, BertModel, T5EncoderModel
 
 from diffusers import AutoencoderKL, DDPMScheduler, HunyuanDiT2DModel, HunyuanDiTPipeline
-from diffusers.utils.testing_utils import (
+
+from ...testing_utils import (
     backend_empty_cache,
     enable_full_determinism,
     numpy_cosine_similarity_distance,
@@ -30,7 +31,6 @@ from diffusers.utils.testing_utils import (
     slow,
     torch_device,
 )
-
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
 from ..test_pipelines_common import (
     PipelineTesterMixin,
@@ -124,14 +124,22 @@ class HunyuanDiTPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         max_diff = np.abs(image_slice.flatten() - expected_slice).max()
         self.assertLessEqual(max_diff, 1e-3)
 
-    @unittest.skip("Not supported.")
+    @unittest.skip("The HunyuanDiT Attention pooling layer does not support sequential CPU offloading.")
     def test_sequential_cpu_offload_forward_pass(self):
         # TODO(YiYi) need to fix later
+        # This is because it instantiates it's attention layer from torch.nn.MultiheadAttention, which calls to
+        # `torch.nn.functional.multi_head_attention_forward` with the weights and bias. Since the hook is never
+        # triggered with a forward pass call, the weights stay on the CPU. There are more examples where we skip
+        # this test because of MHA (example: HunyuanVideo Framepack)
         pass
 
-    @unittest.skip("Not supported.")
+    @unittest.skip("The HunyuanDiT Attention pooling layer does not support sequential CPU offloading.")
     def test_sequential_offload_forward_pass_twice(self):
         # TODO(YiYi) need to fix later
+        # This is because it instantiates it's attention layer from torch.nn.MultiheadAttention, which calls to
+        # `torch.nn.functional.multi_head_attention_forward` with the weights and bias. Since the hook is never
+        # triggered with a forward pass call, the weights stay on the CPU. There are more examples where we skip
+        # this test because of MHA (example: HunyuanVideo Framepack)
         pass
 
     def test_inference_batch_single_identical(self):

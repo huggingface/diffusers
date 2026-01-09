@@ -1,4 +1,4 @@
-# Copyright 2024 The HuggingFace Team. All rights reserved.
+# Copyright 2025 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -22,6 +22,7 @@ from ...utils import BaseOutput
 from ...utils.accelerate_utils import apply_forward_hook
 from ..autoencoders.vae import Decoder, DecoderOutput, Encoder, VectorQuantizer
 from ..modeling_utils import ModelMixin
+from .vae import AutoencoderMixin
 
 
 @dataclass
@@ -37,7 +38,7 @@ class VQEncoderOutput(BaseOutput):
     latents: torch.Tensor
 
 
-class VQModel(ModelMixin, ConfigMixin):
+class VQModel(ModelMixin, AutoencoderMixin, ConfigMixin):
     r"""
     A VQ-VAE model for decoding latent representations.
 

@@ -1,4 +1,4 @@
-<!--Copyright 2024 The HuggingFace Team. All rights reserved.
+<!--Copyright 2025 The HuggingFace Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -10,19 +10,22 @@ an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express o
 specific language governing permissions and limitations under the License.
 -->
 
-# Push files to the Hub
-
 [[open-in-colab]]
 
-🤗 Diffusers provides a [`~diffusers.utils.PushToHubMixin`] for uploading your model, scheduler, or pipeline to the Hub. It is an easy way to store your files on the Hub, and also allows you to share your work with others. Under the hood, the [`~diffusers.utils.PushToHubMixin`]:
+# Sharing pipelines and models
+
+Share your pipeline or models and schedulers on the Hub with the [`~diffusers.utils.PushToHubMixin`] class. This class:
 
 1. creates a repository on the Hub
 2. saves your model, scheduler, or pipeline files so they can be reloaded later
 3. uploads folder containing these files to the Hub
 
-This guide will show you how to use the [`~diffusers.utils.PushToHubMixin`] to upload your files to the Hub.
+This guide will show you how to upload your files to the Hub with the [`~diffusers.utils.PushToHubMixin`] class.
 
-You'll need to log in to your Hub account with your access [token](https://huggingface.co/settings/tokens) first:
+Log in to your Hugging Face account with your access [token](https://huggingface.co/settings/tokens).
+
+<hfoptions id="login">
+<hfoption id="notebook">
 
 ```py
 from huggingface_hub import notebook_login
@@ -30,9 +33,19 @@ from huggingface_hub import notebook_login
 notebook_login()
 ```
 
+</hfoption>
+<hfoption id="hf CLI">
+
+```bash
+hf auth login
+```
+
+</hfoption>
+</hfoptions>
+
 ## Models
 
-To push a model to the Hub, call [`~diffusers.utils.PushToHubMixin.push_to_hub`] and specify the repository id of the model to be stored on the Hub:
+To push a model to the Hub, call [`~diffusers.utils.PushToHubMixin.push_to_hub`] and specify the repository id of the model.
 
 ```py
 from diffusers import ControlNetModel
@@ -48,15 +61,9 @@ controlnet = ControlNetModel(
 controlnet.push_to_hub("my-controlnet-model")
 ```
 
-For models, you can also specify the [*variant*](loading#checkpoint-variants) of the weights to push to the Hub. For example, to push `fp16` weights:
+The [`~diffusers.utils.PushToHubMixin.push_to_hub`] method saves the model's `config.json` file and the weights are automatically saved as safetensors files.
 
-```py
-controlnet.push_to_hub("my-controlnet-model", variant="fp16")
-```
-
-The [`~diffusers.utils.PushToHubMixin.push_to_hub`] function saves the model's `config.json` file and the weights are automatically saved in the `safetensors` format.
-
-Now you can reload the model from your repository on the Hub:
+Load the model again with [`~DiffusionPipeline.from_pretrained`].
 
 ```py
 model = ControlNetModel.from_pretrained("your-namespace/my-controlnet-model")
@@ -64,7 +71,7 @@ model = ControlNetModel.from_pretrained("your-namespace/my-controlnet-model")
 
 ## Scheduler
 
-To push a scheduler to the Hub, call [`~diffusers.utils.PushToHubMixin.push_to_hub`] and specify the repository id of the scheduler to be stored on the Hub:
+To push a scheduler to the Hub, call [`~diffusers.utils.PushToHubMixin.push_to_hub`] and specify the repository id of the scheduler.
 
 ```py
 from diffusers import DDIMScheduler
@@ -81,7 +88,7 @@ scheduler.push_to_hub("my-controlnet-scheduler")
 
 The [`~diffusers.utils.PushToHubMixin.push_to_hub`] function saves the scheduler's `scheduler_config.json` file to the specified repository.
 
-Now you can reload the scheduler from your repository on the Hub:
+Load the scheduler again with [`~SchedulerMixin.from_pretrained`].
 
 ```py
 scheduler = DDIMScheduler.from_pretrained("your-namepsace/my-controlnet-scheduler")
@@ -89,7 +96,7 @@ scheduler = DDIMScheduler.from_pretrained("your-namepsace/my-controlnet-schedule
 
 ## Pipeline
 
-You can also push an entire pipeline with all it's components to the Hub. For example, initialize the components of a [`StableDiffusionPipeline`] with the parameters you want:
+To push a pipeline to the Hub, initialize the pipeline components with your desired parameters.
 
 ```py
 from diffusers import (
@@ -143,7 +150,7 @@ text_encoder = CLIPTextModel(text_encoder_config)
 tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
 ```
 
-Pass all of the components to the [`StableDiffusionPipeline`] and call [`~diffusers.utils.PushToHubMixin.push_to_hub`] to push the pipeline to the Hub:
+Pass all components to the pipeline and call [`~diffusers.utils.PushToHubMixin.push_to_hub`].
 
 ```py
 components = {
@@ -160,7 +167,7 @@ pipeline = StableDiffusionPipeline(**components)
 pipeline.push_to_hub("my-pipeline")
 ```
 
-The [`~diffusers.utils.PushToHubMixin.push_to_hub`] function saves each component to a subfolder in the repository. Now you can reload the pipeline from your repository on the Hub:
+The [`~diffusers.utils.PushToHubMixin.push_to_hub`] method saves each component to a subfolder in the repository. Load the pipeline again with [`~DiffusionPipeline.from_pretrained`].
 
 ```py
 pipeline = StableDiffusionPipeline.from_pretrained("your-namespace/my-pipeline")
@@ -168,10 +175,10 @@ pipeline = StableDiffusionPipeline.from_pretrained("your-namespace/my-pipeline")
 
 ## Privacy
 
-Set `private=True` in the [`~diffusers.utils.PushToHubMixin.push_to_hub`] function to keep your model, scheduler, or pipeline files private:
+Set `private=True` in [`~diffusers.utils.PushToHubMixin.push_to_hub`] to keep a model, scheduler, or pipeline files private.
 
 ```py
 controlnet.push_to_hub("my-controlnet-model-private", private=True)
 ```
 
-Private repositories are only visible to you, and other users won't be able to clone the repository and your repository won't appear in search results. Even if a user has the URL to your private repository, they'll receive a `404 - Sorry, we can't find the page you are looking for`. You must be [logged in](https://huggingface.co/docs/huggingface_hub/quick-start#login) to load a model from a private repository.
+Private repositories are only visible to you. Other users won't be able to clone the repository and it won't appear in search results. Even if a user has the URL to your private repository, they'll receive a `404 - Sorry, we can't find the page you are looking for`. You must be [logged in](https://huggingface.co/docs/huggingface_hub/quick-start#login) to load a model from a private repository.

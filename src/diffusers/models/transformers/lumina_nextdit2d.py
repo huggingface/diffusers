@@ -1,4 +1,4 @@
-# Copyright 2024 Alpha-VLLM Authors and The HuggingFace Team. All rights reserved.
+# Copyright 2025 Alpha-VLLM Authors and The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
@@ -124,7 +124,7 @@ class LuminaNextDiTBlock(nn.Module):
         encoder_mask: torch.Tensor,
         temb: torch.Tensor,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
-    ):
+    ) -> torch.Tensor:
         """
         Perform a forward pass through the LuminaNextDiTBlock.
 
@@ -297,7 +297,7 @@ class LuminaNextDiT2DModel(ModelMixin, ConfigMixin):
         image_rotary_emb: torch.Tensor,
         cross_attention_kwargs: Dict[str, Any] = None,
         return_dict=True,
-    ) -> torch.Tensor:
+    ) -> Union[Tuple[torch.Tensor], Transformer2DModelOutput]:
         """
         Forward pass of LuminaNextDiT.
 

@@ -1,5 +1,6 @@
 from diffusers.utils import is_torch_available
-from diffusers.utils.testing_utils import (
+
+from ..testing_utils import (
     backend_empty_cache,
     backend_max_memory_allocated,
     backend_reset_peak_memory_stats,

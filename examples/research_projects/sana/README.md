@@ -19,7 +19,7 @@ mkdir -p $your_local_path # Create the directory if it doesn't exist
 Download the SANA Sprint teacher model from Hugging Face Hub. The script uses the 1.6B parameter model.
 
 ```bash
-huggingface-cli download Efficient-Large-Model/SANA_Sprint_1.6B_1024px_teacher_diffusers --local-dir $your_local_path/SANA_Sprint_1.6B_1024px_teacher_diffusers
+hf download Efficient-Large-Model/SANA_Sprint_1.6B_1024px_teacher_diffusers --local-dir $your_local_path/SANA_Sprint_1.6B_1024px_teacher_diffusers
 ```
 
 *(Optional: You can also download the 0.6B model by replacing the model name: `Efficient-Large-Model/Sana_Sprint_0.6B_1024px_teacher_diffusers`)*

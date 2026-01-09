@@ -1,4 +1,4 @@
-# Copyright 2024 The HuggingFace Team. All rights reserved.
+# Copyright 2025 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -39,6 +39,8 @@ class DependencyTester(unittest.TestCase):
                         backend = "invisible-watermark"
                     elif backend == "opencv":
                         backend = "opencv-python"
+                    elif backend == "nvidia_modelopt":
+                        backend = "nvidia_modelopt[hf]"
                     assert backend in deps, f"{backend} is not in the deps table!"
 
     def test_pipeline_imports(self):
