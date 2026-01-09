@@ -136,7 +136,7 @@ export_to_video(video, "output.mp4", fps=24)
   - The recommended dtype for the transformer, VAE, and text encoder is `torch.bfloat16`. The VAE and text encoder can also be `torch.float32` or `torch.float16`.
   - For guidance-distilled variants of LTX-Video, set `guidance_scale` to `1.0`. The `guidance_scale` for any other model should be set higher, like `5.0`, for good generation quality.
   - For timestep-aware VAE variants (LTX-Video 0.9.1 and above), set `decode_timestep` to `0.05` and `image_cond_noise_scale` to `0.025`.
-  - For variants that support interpolation between multiple conditioning images and videos (LTX-Video 0.9.5 and above), use similar images and videos for the best results. Divergence from the conditioning inputs may lead to abrupt transitionts in the generated video.
+  - For variants that support interpolation between multiple conditioning images and videos (LTX-Video 0.9.5 and above), use similar images and videos for the best results. Divergence from the conditioning inputs may lead to abrupt transitions in the generated video.
 
 - LTX-Video 0.9.7 includes a spatial latent upscaler and a 13B parameter transformer. During inference, a low resolution video is quickly generated first and then upscaled and refined.
 
@@ -329,7 +329,7 @@ export_to_video(video, "output.mp4", fps=24)
 
   <details>
   <summary>Show example code</summary>
-  
+
   ```python
   import torch
   from diffusers import LTXConditionPipeline, LTXLatentUpsamplePipeline
@@ -473,6 +473,12 @@ export_to_video(video, "output.mp4", fps=24)
   ```
 
   </details>
+
+## LTXI2VLongMultiPromptPipeline
+
+[[autodoc]] LTXI2VLongMultiPromptPipeline
+  - all
+  - __call__
 
 ## LTXPipeline
 
