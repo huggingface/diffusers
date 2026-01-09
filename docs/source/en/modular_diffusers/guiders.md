@@ -159,7 +159,7 @@ Change the [`~ComponentSpec.default_creation_method`] to `from_pretrained` and u
 ```py
 guider_spec = t2i_pipeline.get_component_spec("guider")
 guider_spec.default_creation_method="from_pretrained"
-guider_spec.repo="YiYiXu/modular-loader-t2i-guider"
+guider_spec.pretrained_model_name_or_path="YiYiXu/modular-loader-t2i-guider"
 guider_spec.subfolder="pag_guider"
 pag_guider = guider_spec.load()
 t2i_pipeline.update_components(guider=pag_guider)

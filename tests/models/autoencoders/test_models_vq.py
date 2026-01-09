@@ -19,19 +19,15 @@ import torch
 
 from diffusers import VQModel
 
-from ...testing_utils import (
-    backend_manual_seed,
-    enable_full_determinism,
-    floats_tensor,
-    torch_device,
-)
-from ..test_modeling_common import ModelTesterMixin, UNetTesterMixin
+from ...testing_utils import backend_manual_seed, enable_full_determinism, floats_tensor, torch_device
+from ..test_modeling_common import ModelTesterMixin
+from .testing_utils import AutoencoderTesterMixin
 
 
 enable_full_determinism()
 
 
-class VQModelTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
+class VQModelTests(ModelTesterMixin, AutoencoderTesterMixin, unittest.TestCase):
     model_class = VQModel
     main_input_name = "sample"
 

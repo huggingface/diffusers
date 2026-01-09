@@ -9,7 +9,8 @@ deps = {
     "filelock": "filelock",
     "flax": "flax>=0.4.1",
     "hf-doc-builder": "hf-doc-builder>=0.3.0",
-    "huggingface-hub": "huggingface-hub>=0.34.0",
+    "httpx": "httpx<1.0.0",
+    "huggingface-hub": "huggingface-hub>=0.34.0,<2.0",
     "requests-mock": "requests-mock==1.10.0",
     "importlib_metadata": "importlib_metadata",
     "invisible-watermark": "invisible-watermark>=0.2.0",
@@ -51,4 +52,5 @@ deps = {
     "black": "black",
     "phonemizer": "phonemizer",
     "opencv-python": "opencv-python",
+    "timm": "timm",
 }

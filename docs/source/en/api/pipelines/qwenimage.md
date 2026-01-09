@@ -26,12 +26,10 @@ Qwen-Image comes in the following variants:
 |:----------:|:--------:|
 | Qwen-Image | [`Qwen/Qwen-Image`](https://huggingface.co/Qwen/Qwen-Image) |
 | Qwen-Image-Edit | [`Qwen/Qwen-Image-Edit`](https://huggingface.co/Qwen/Qwen-Image-Edit) |
+| Qwen-Image-Edit Plus | [Qwen/Qwen-Image-Edit-2509](https://huggingface.co/Qwen/Qwen-Image-Edit-2509) |
 
-<Tip>
-
-[Caching](../../optimization/cache) may also speed up inference by storing and reusing intermediate outputs.
-
-</Tip>
+> [!TIP]
+> [Caching](../../optimization/cache) may also speed up inference by storing and reusing intermediate outputs.
 
 ## LoRA for faster inference
 
@@ -90,11 +88,31 @@ image.save("qwen_fewsteps.png")
 
 </details>
 
-<Tip>
+> [!TIP]
+> The `guidance_scale` parameter in the pipeline is there to support future guidance-distilled models when they come up. Note that passing `guidance_scale` to the pipeline is ineffective. To enable classifier-free guidance, please pass `true_cfg_scale` and `negative_prompt` (even an empty negative prompt like " ") should enable classifier-free guidance computations.
 
-The `guidance_scale` parameter in the pipeline is there to support future guidance-distilled models when they come up. Note that passing `guidance_scale` to the pipeline is ineffective. To enable classifier-free guidance, please pass `true_cfg_scale` and `negative_prompt` (even an empty negative prompt like " ") should enable classifier-free guidance computations.
+## Multi-image reference with QwenImageEditPlusPipeline
 
-</Tip>
+With [`QwenImageEditPlusPipeline`], one can provide multiple images as input reference.
+
+```
+import torch
+from PIL import Image
+from diffusers import QwenImageEditPlusPipeline
+from diffusers.utils import load_image
+
+pipe = QwenImageEditPlusPipeline.from_pretrained(
+    "Qwen/Qwen-Image-Edit-2509", torch_dtype=torch.bfloat16
+).to("cuda")
+
+image_1 = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/grumpy.jpg")
+image_2 = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/peng.png")
+image = pipe(
+    image=[image_1, image_2], 
+    prompt='''put the penguin and the cat at a game show called "Qwen Edit Plus Games"''', 
+    num_inference_steps=50
+).images[0]
+```
 
 ## QwenImagePipeline
 
@@ -126,7 +144,15 @@ The `guidance_scale` parameter in the pipeline is there to support future guidan
   - all
   - __call__
 
-## QwenImaggeControlNetPipeline
+## QwenImageControlNetPipeline
+
+[[autodoc]] QwenImageControlNetPipeline
+  - all
+  - __call__
+
+## QwenImageEditPlusPipeline
+
+[[autodoc]] QwenImageEditPlusPipeline
   - all
   - __call__
 
