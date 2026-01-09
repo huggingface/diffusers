@@ -78,6 +78,25 @@ python scripts/convert_cosmos_to_diffusers.py \
     --save_pipeline
 ```
 
+# Cosmos 2.5 Transfer
+
+Download checkpoint
+```bash
+hf download nvidia/Cosmos-Transfer2.5-2B
+```
+
+Convert checkpoint
+```bash
+# pre-trained
+transformer_ckpt_path=~/.cache/huggingface/hub/models--nvidia--Cosmos-Transfer2.5-2B/snapshots/eb5325b77d358944da58a690157dd2b8071bbf85/general/depth/626e6618-bfcd-4d9a-a077-1409e2ce353f_ema_bf16.pt
+
+python scripts/convert_cosmos_to_diffusers.py \
+    --transformer_type Cosmos-2.5-Transfer-General-2B \
+    --transformer_ckpt_path $transformer_ckpt_path \
+    --vae_type wan2.1 \
+    --output_path converted/transfer/2b/626e6618-bfcd-4d9a-a077-1409e2ce353f \
+    --save_pipeline
+```
 """
 
 import argparse
@@ -343,6 +362,25 @@ TRANSFORMER_CONFIGS = {
         "num_attention_heads": 40,
         "attention_head_dim": 128,
         "num_layers": 36,
+        "mlp_ratio": 4.0,
+        "text_embed_dim": 1024,
+        "adaln_lora_dim": 256,
+        "max_size": (128, 240, 240),
+        "patch_size": (1, 2, 2),
+        "rope_scale": (1.0, 3.0, 3.0),
+        "concat_padding_mask": True,
+        # NOTE: source config has pos_emb_learnable: 'True' - but params are missing
+        "extra_pos_embed_type": None,
+        "use_crossattn_projection": True,
+        "crossattn_proj_in_channels": 100352,
+        "encoder_hidden_states_channels": 1024,
+    },
+    "Cosmos-2.5-Transfer-General-2B": {
+        "in_channels": 16 + 1,
+        "out_channels": 16,
+        "num_attention_heads": 16,
+        "attention_head_dim": 128,
+        "num_layers": 28,
         "mlp_ratio": 4.0,
         "text_embed_dim": 1024,
         "adaln_lora_dim": 256,
