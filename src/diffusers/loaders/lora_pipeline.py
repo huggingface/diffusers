@@ -3165,7 +3165,7 @@ class LTX2LoraLoaderMixin(LoraBaseMixin):
             )
 
         # Load the layers corresponding to transformer.
-        logger.info(f"Loading {cls.transformer_name}.")
+        logger.info(f"Loading {prefix}.")
         transformer.load_lora_adapter(
             state_dict,
             network_alphas=None,
