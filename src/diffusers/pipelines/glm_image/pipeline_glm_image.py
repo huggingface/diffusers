@@ -291,8 +291,7 @@ class GlmImagePipeline(DiffusionPipeline):
         messages = [{"role": "user", "content": content}]
         inputs = self.processor.apply_chat_template(
             messages, add_generation_prompt=True, tokenize=True, return_dict=True, return_tensors="pt"
-        )
-
+        ).to(device)
         existing_grid = inputs.get("image_grid_thw")
         inputs["image_grid_thw"] = self._build_image_grid_thw(
             token_h,
@@ -307,8 +306,6 @@ class GlmImagePipeline(DiffusionPipeline):
             token_h, token_w, prev_h, prev_w, is_text_to_image
         )
         large_image_tokens = token_h * token_w
-
-        inputs = inputs.to(device)
         input_length = inputs["input_ids"].shape[-1]
 
         prior_token_image_ids = None
@@ -320,7 +317,6 @@ class GlmImagePipeline(DiffusionPipeline):
             prior_token_image_ids = self.vision_language_encoder.get_image_tokens(
                 prior_token_image_embed, existing_grid
             )
-
         outputs = self.vision_language_encoder.generate(
             **inputs,
             max_new_tokens=max_new_tokens,
