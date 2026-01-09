@@ -17,11 +17,8 @@ The abstract from the paper is:
 
 The original codebase can be found at [openai/shap-e](https://github.com/openai/shap-e).
 
-<Tip>
-
-See the [reuse components across pipelines](../../using-diffusers/loading#reuse-a-pipeline) section to learn how to efficiently load the same components into multiple pipelines.
-
-</Tip>
+> [!TIP]
+> See the [reuse components across pipelines](../../using-diffusers/loading#reuse-a-pipeline) section to learn how to efficiently load the same components into multiple pipelines.
 
 ## ShapEPipeline
 [[autodoc]] ShapEPipeline
