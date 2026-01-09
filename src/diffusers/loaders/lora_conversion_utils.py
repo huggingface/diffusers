@@ -2140,38 +2140,31 @@ def _convert_non_diffusers_ltxv_lora_to_diffusers(state_dict, non_diffusers_pref
     return converted_state_dict
 
 
-def _convert_non_diffusers_ltx2_lora_to_diffusers(state_dict, non_diffusers_prefix="model.diffusion_model"):
-    """
-    Converts a non-diffusers LTX2 LoRA state dict to diffusers format.
-
-    This handles key remapping from the original LTX2 checkpoint format to the diffusers format, applying the same
-    transformations as in convert_ltx2_to_diffusers.py.
-    """
-    if not all(k.startswith(f"{non_diffusers_prefix}.") for k in state_dict):
-        raise ValueError("Invalid LoRA state dict for LTX2.")
-
+def _convert_non_diffusers_ltx2_lora_to_diffusers(state_dict, non_diffusers_prefix="diffusion_model"):
     # Remove the prefix
+    state_dict = {k: v for k, v in state_dict.items() if k.startswith(f"{non_diffusers_prefix}.")}
     converted_state_dict = {k.removeprefix(f"{non_diffusers_prefix}."): v for k, v in state_dict.items()}
 
-    # Apply LTX2 transformer key renaming
-    # Based on LTX_2_0_TRANSFORMER_KEYS_RENAME_DICT from convert_ltx2_to_diffusers.py
-    rename_dict = {
-        "patchify_proj": "proj_in",
-        "audio_patchify_proj": "audio_proj_in",
-        "av_ca_video_scale_shift_adaln_single": "av_cross_attn_video_scale_shift",
-        "av_ca_a2v_gate_adaln_single": "av_cross_attn_video_a2v_gate",
-        "av_ca_audio_scale_shift_adaln_single": "av_cross_attn_audio_scale_shift",
-        "av_ca_v2a_gate_adaln_single": "av_cross_attn_audio_v2a_gate",
-        "scale_shift_table_a2v_ca_video": "video_a2v_cross_attn_scale_shift_table",
-        "scale_shift_table_a2v_ca_audio": "audio_a2v_cross_attn_scale_shift_table",
-        "q_norm": "norm_q",
-        "k_norm": "norm_k",
-    }
+    if non_diffusers_prefix == "diffusion_model":
+        rename_dict = {
+            "patchify_proj": "proj_in",
+            "audio_patchify_proj": "audio_proj_in",
+            "av_ca_video_scale_shift_adaln_single": "av_cross_attn_video_scale_shift",
+            "av_ca_a2v_gate_adaln_single": "av_cross_attn_video_a2v_gate",
+            "av_ca_audio_scale_shift_adaln_single": "av_cross_attn_audio_scale_shift",
+            "av_ca_v2a_gate_adaln_single": "av_cross_attn_audio_v2a_gate",
+            "scale_shift_table_a2v_ca_video": "video_a2v_cross_attn_scale_shift_table",
+            "scale_shift_table_a2v_ca_audio": "audio_a2v_cross_attn_scale_shift_table",
+            "q_norm": "norm_q",
+            "k_norm": "norm_k",
+        }
+    else:
+        rename_dict = {"aggregate_embed": "text_proj_in"}
 
     # Apply renaming
     renamed_state_dict = {}
     for key, value in converted_state_dict.items():
-        new_key = key
+        new_key = key[:]
         for old_pattern, new_pattern in rename_dict.items():
             new_key = new_key.replace(old_pattern, new_pattern)
         renamed_state_dict[new_key] = value
@@ -2189,7 +2182,8 @@ def _convert_non_diffusers_ltx2_lora_to_diffusers(state_dict, non_diffusers_pref
             final_state_dict[key] = value
 
     # Add transformer prefix
-    final_state_dict = {f"transformer.{k}": v for k, v in final_state_dict.items()}
+    prefix = "transformer" if non_diffusers_prefix == "diffusion_model" else "connectors"
+    final_state_dict = {f"{prefix}.{k}": v for k, v in final_state_dict.items()}
 
     return final_state_dict
 

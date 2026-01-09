@@ -75,6 +75,7 @@ logger = logging.get_logger(__name__)
 TEXT_ENCODER_NAME = "text_encoder"
 UNET_NAME = "unet"
 TRANSFORMER_NAME = "transformer"
+LTX2_CONNECTOR_NAME = "connectors"
 
 _MODULE_NAME_TO_ATTRIBUTE_MAP_FLUX = {"x_embedder": "in_channels"}
 
@@ -3017,8 +3018,9 @@ class LTX2LoraLoaderMixin(LoraBaseMixin):
     Load LoRA layers into [`LTX2VideoTransformer3DModel`]. Specific to [`LTX2Pipeline`].
     """
 
-    _lora_loadable_modules = ["transformer"]
+    _lora_loadable_modules = ["transformer", "connectors"]
     transformer_name = TRANSFORMER_NAME
+    connectors_name = LTX2_CONNECTOR_NAME
 
     @classmethod
     @validate_hf_hub_args
@@ -3071,14 +3073,18 @@ class LTX2LoraLoaderMixin(LoraBaseMixin):
             logger.warning(warn_msg)
             state_dict = {k: v for k, v in state_dict.items() if "dora_scale" not in k}
 
-        is_non_diffusers_format = any(k.startswith("model.diffusion_model.") for k in state_dict)
+        is_non_diffusers_format = any(k.startswith("diffusion_model.") for k in state_dict)
+        has_connector = any(k.startswith("text_embedding_projection.") for k in state_dict)
         if is_non_diffusers_format:
-            state_dict = _convert_non_diffusers_ltx2_lora_to_diffusers(state_dict)
-
-        out = (state_dict, metadata) if return_lora_metadata else state_dict
+            final_state_dict = _convert_non_diffusers_ltx2_lora_to_diffusers(state_dict)
+        if has_connector:
+            connectors_state_dict = _convert_non_diffusers_ltx2_lora_to_diffusers(
+                state_dict, "text_embedding_projection"
+            )
+        final_state_dict.update(connectors_state_dict)
+        out = (final_state_dict, metadata) if return_lora_metadata else final_state_dict
         return out
 
-    # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.load_lora_weights
     def load_lora_weights(
         self,
         pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]],
@@ -3110,8 +3116,12 @@ class LTX2LoraLoaderMixin(LoraBaseMixin):
         if not is_correct_format:
             raise ValueError("Invalid LoRA checkpoint.")
 
+        transformer_peft_state_dict = {
+            k: v for k, v in state_dict.items() if k.startswith(f"{self.transformer_name}.")
+        }
+        connectors_peft_state_dict = {k: v for k, v in state_dict.items() if k.startswith(f"{self.connectors_name}.")}
         self.load_lora_into_transformer(
-            state_dict,
+            transformer_peft_state_dict,
             transformer=getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer,
             adapter_name=adapter_name,
             metadata=metadata,
@@ -3119,9 +3129,21 @@ class LTX2LoraLoaderMixin(LoraBaseMixin):
             low_cpu_mem_usage=low_cpu_mem_usage,
             hotswap=hotswap,
         )
+        if connectors_peft_state_dict:
+            self.load_lora_into_transformer(
+                connectors_peft_state_dict,
+                transformer=getattr(self, self.connectors_name)
+                if not hasattr(self, "connectors")
+                else self.connectors,
+                adapter_name=adapter_name,
+                metadata=metadata,
+                _pipeline=self,
+                low_cpu_mem_usage=low_cpu_mem_usage,
+                hotswap=hotswap,
+                prefix=self.connectors_name,
+            )
 
     @classmethod
-    # Copied from diffusers.loaders.lora_pipeline.SD3LoraLoaderMixin.load_lora_into_transformer with SD3Transformer2DModel->LTX2VideoTransformer3DModel
     def load_lora_into_transformer(
         cls,
         state_dict,
@@ -3131,6 +3153,7 @@ class LTX2LoraLoaderMixin(LoraBaseMixin):
         low_cpu_mem_usage=False,
         hotswap: bool = False,
         metadata=None,
+        prefix: str = "transformer",
     ):
         """
         See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_unet`] for more details.
@@ -3150,6 +3173,7 @@ class LTX2LoraLoaderMixin(LoraBaseMixin):
             _pipeline=_pipeline,
             low_cpu_mem_usage=low_cpu_mem_usage,
             hotswap=hotswap,
+            prefix=prefix,
         )
 
     @classmethod
