@@ -483,6 +483,7 @@ class GlmImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Cach
         "GlmImageImageProjector",
     ]
     _skip_layerwise_casting_patterns = ["patch_embed", "norm", "proj_out"]
+    _skip_keys = ["kv_caches"]
 
     @register_to_config
     def __init__(

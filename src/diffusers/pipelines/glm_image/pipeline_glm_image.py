@@ -158,7 +158,7 @@ class GlmImagePipeline(DiffusionPipeline):
     """
 
     _optional_components = []
-    model_cpu_offload_seq = "text_encoder->vision_language_encoder->transformer->vae"
+    model_cpu_offload_seq = "vision_language_encoder->text_encoder->transformer->vae"
     _callback_tensor_inputs = ["latents", "prompt_embeds"]
 
     def __init__(
@@ -332,10 +332,7 @@ class GlmImagePipeline(DiffusionPipeline):
         )
         prior_token_ids = self._upsample_token_ids(prior_token_ids_d32, token_h, token_w)
 
-        pixel_height = token_h * factor
-        pixel_width = token_w * factor
-
-        return prior_token_ids, prior_token_image_ids, pixel_height, pixel_width
+        return prior_token_ids, prior_token_image_ids
 
     def get_glyph_texts(self, prompt):
         prompt = prompt[0] if isinstance(prompt, list) else prompt
@@ -597,19 +594,17 @@ class GlmImagePipeline(DiffusionPipeline):
             batch_size = len(prompt)
         else:
             batch_size = prompt_embeds.shape[0]
-        assert batch_size == 1, "batch_size must be 1"
+        if batch_size != 1:
+            raise ValueError(f"batch_size must be 1 due to AR model limitations, got {batch_size}")
 
         device = self._execution_device
 
-        prior_token_id, prior_token_image_ids, ar_height, ar_width = self.generate_prior_tokens(
+        prior_token_id, prior_token_image_ids = self.generate_prior_tokens(
             prompt=prompt[0] if isinstance(prompt, list) else prompt,
             image=image,
             height=height,
             width=width,
         )
-
-        height = height or ar_height
-        width = width or ar_width
 
         # 3. Encode input prompt
         prompt_embeds, negative_prompt_embeds = self.encode_prompt(
