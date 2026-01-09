@@ -45,7 +45,7 @@ class CosineDPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         sigma_schedule (`str`, defaults to `"exponential"`):
             Sigma schedule to compute the `sigmas`. Must be one of `"exponential"` or `"karras"`. The exponential
             schedule was incorporated in [stabilityai/cosxl](https://huggingface.co/stabilityai/cosxl). The Karras schedule is
-            introduced in the EDM paper (https://huggingface.co/papers/2206.00364).
+            introduced in the [EDM](https://huggingface.co/papers/2206.00364) paper.
         num_train_timesteps (`int`, defaults to `1000`):
             The number of diffusion steps to train the model.
         solver_order (`int`, defaults to `2`):
