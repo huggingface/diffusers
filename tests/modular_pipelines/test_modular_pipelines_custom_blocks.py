@@ -212,7 +212,9 @@ class TestKreaCustomBlocksIntegration:
     repo_id = "krea/krea-realtime-video"
 
     def test_loading_from_hub(self):
-        blocks = ModularPipelineBlocks.from_pretrained(self.repo_id, trust_remote_code=True)
+        blocks = ModularPipelineBlocks.from_pretrained(
+            self.repo_id, trust_remote_code=True, revision="6b5d204f9d14c3c3a59608e49d1da7fad90daf8d"
+        )
         block_names = sorted(blocks.sub_blocks)
 
         assert block_names == sorted(["text_encoder", "before_denoise", "denoise", "decode"])
@@ -229,7 +231,9 @@ class TestKreaCustomBlocksIntegration:
         )
 
     def test_forward(self):
-        blocks = ModularPipelineBlocks.from_pretrained(self.repo_id, trust_remote_code=True)
+        blocks = ModularPipelineBlocks.from_pretrained(
+            self.repo_id, trust_remote_code=True, revision="6b5d204f9d14c3c3a59608e49d1da7fad90daf8d"
+        )
         pipe = WanModularPipeline(blocks, self.repo_id)
         pipe.load_components(
             trust_remote_code=True,
