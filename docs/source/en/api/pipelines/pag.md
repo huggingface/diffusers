@@ -31,11 +31,8 @@ PAG can be used by specifying the `pag_applied_layers` as a parameter when insta
 - Partial identifier as a RegEx: `down_blocks.2`, or `attn1`
 - List of identifiers (can be combo of strings and ReGex): `["blocks.1", "blocks.(14|20)", r"down_blocks\.(2,3)"]`
 
-<Tip warning={true}>
-
-Since RegEx is supported as a way for matching layer identifiers, it is crucial to use it correctly otherwise there might be unexpected behaviour. The recommended way to use PAG is by specifying layers as `blocks.{layer_index}` and `blocks.({layer_index_1|layer_index_2|...})`. Using it in any other way, while doable, may bypass our basic validation checks and give you unexpected results.
-
-</Tip>
+> [!WARNING]
+> Since RegEx is supported as a way for matching layer identifiers, it is crucial to use it correctly otherwise there might be unexpected behaviour. The recommended way to use PAG is by specifying layers as `blocks.{layer_index}` and `blocks.({layer_index_1|layer_index_2|...})`. Using it in any other way, while doable, may bypass our basic validation checks and give you unexpected results.
 
 ## AnimateDiffPAGPipeline
 [[autodoc]] AnimateDiffPAGPipeline

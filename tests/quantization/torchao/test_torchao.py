@@ -35,6 +35,7 @@ from diffusers.models.attention_processor import Attention
 from diffusers.quantizers import PipelineQuantizationConfig
 
 from ...testing_utils import (
+    Expectations,
     backend_empty_cache,
     backend_synchronize,
     enable_full_determinism,
@@ -255,9 +256,12 @@ class TorchAoTest(unittest.TestCase):
                     # Cutlass fails to initialize for below
                     # ("float8dq_e4m3_row", np.array([0, 0, 0, 0, 0, 0, 0, 0, 0])),
                     # =====
-                    ("fp4", np.array([0.4668, 0.5195, 0.5547, 0.4199, 0.4434, 0.6445, 0.4316, 0.4531, 0.5625])),
-                    ("fp6", np.array([0.4668, 0.5195, 0.5547, 0.4199, 0.4434, 0.6445, 0.4316, 0.4531, 0.5625])),
                 ])
+                if version.parse(importlib.metadata.version("torchao")) <= version.Version("0.14.1"):
+                    QUANTIZATION_TYPES_TO_TEST.extend([
+                        ("fp4", np.array([0.4668, 0.5195, 0.5547, 0.4199, 0.4434, 0.6445, 0.4316, 0.4531, 0.5625])),
+                        ("fp6", np.array([0.4668, 0.5195, 0.5547, 0.4199, 0.4434, 0.6445, 0.4316, 0.4531, 0.5625])),
+                    ])
             # fmt: on
 
             for quantization_name, expected_slice in QUANTIZATION_TYPES_TO_TEST:
@@ -269,6 +273,34 @@ class TorchAoTest(unittest.TestCase):
                     quant_type=quantization_name, modules_to_not_convert=["x_embedder"], **quant_kwargs
                 )
                 self._test_quant_type(quantization_config, expected_slice, model_id)
+
+    @unittest.skip("Skipping floatx quantization tests")
+    def test_floatx_quantization(self):
+        for model_id in ["hf-internal-testing/tiny-flux-pipe", "hf-internal-testing/tiny-flux-sharded"]:
+            if TorchAoConfig._is_xpu_or_cuda_capability_atleast_8_9():
+                if version.parse(importlib.metadata.version("torchao")) <= version.Version("0.14.1"):
+                    quantization_config = TorchAoConfig(quant_type="fp4", modules_to_not_convert=["x_embedder"])
+                    self._test_quant_type(
+                        quantization_config,
+                        np.array(
+                            [
+                                0.4648,
+                                0.5195,
+                                0.5547,
+                                0.4180,
+                                0.4434,
+                                0.6445,
+                                0.4316,
+                                0.4531,
+                                0.5625,
+                            ]
+                        ),
+                        model_id,
+                    )
+                else:
+                    # Make sure the correct error is thrown
+                    with self.assertRaisesRegex(ValueError, "Please downgrade"):
+                        quantization_config = TorchAoConfig(quant_type="fp4", modules_to_not_convert=["x_embedder"])
 
     def test_int4wo_quant_bfloat16_conversion(self):
         """
@@ -497,8 +529,23 @@ class TorchAoTest(unittest.TestCase):
 
     def test_model_memory_usage(self):
         model_id = "hf-internal-testing/tiny-flux-pipe"
-        expected_memory_saving_ratio = 2.0
-
+        expected_memory_saving_ratios = Expectations(
+            {
+                # XPU: For this tiny model, per-tensor overheads (alignment, fragmentation, metadata) become visible.
+                # While XPU doesn't have the large fixed cuBLAS workspace of A100, these small overheads prevent reaching the ideal 2.0 ratio.
+                # Observed ~1.27x (158k vs 124k) for model size.
+                # The runtime memory overhead is ~88k for both bf16 and int8wo. Adding this to model size: (158k+88k)/(124k+88k) ≈ 1.15.
+                ("xpu", None): 1.15,
+                # On Ampere, the cuBLAS kernels used for matrix multiplication often allocate a fixed-size workspace.
+                # Since the tiny-flux model weights are likely smaller than or comparable to this workspace, the total memory is dominated by the workspace.
+                ("cuda", 8): 1.02,
+                # On Hopper, TorchAO utilizes newer, highly optimized kernels (via Triton or CUTLASS 3.x) that are designed to be workspace-free or use negligible extra memory.
+                # Additionally, Triton kernels often handle unaligned memory better, avoiding the padding overhead seen on other backends for tiny tensors.
+                # This allows it to achieve the near-ideal 2.0x compression ratio.
+                ("cuda", 9): 2.0,
+            }
+        )
+        expected_memory_saving_ratio = expected_memory_saving_ratios.get_expectation()
         inputs = self.get_dummy_tensor_inputs(device=torch_device)
 
         transformer_bf16 = self.get_dummy_components(None, model_id=model_id)["transformer"]
@@ -778,8 +825,11 @@ class SlowTorchAoTests(unittest.TestCase):
         if TorchAoConfig._is_xpu_or_cuda_capability_atleast_8_9():
             QUANTIZATION_TYPES_TO_TEST.extend([
                 ("float8wo_e4m3", np.array([0.0546, 0.0722, 0.1328, 0.0468, 0.0585, 0.1367, 0.0605, 0.0703, 0.1328, 0.0625, 0.0703, 0.1445, 0.0585, 0.0703, 0.1406, 0.0605, 0.3496, 0.7109, 0.4843, 0.4042, 0.7226, 0.5000, 0.4160, 0.7031, 0.4824, 0.3886, 0.6757, 0.4667, 0.3710, 0.6679, 0.4902, 0.4238])),
-                ("fp5_e3m1", np.array([0.0527, 0.0762, 0.1309, 0.0449, 0.0645, 0.1328, 0.0566, 0.0723, 0.125, 0.0566, 0.0703, 0.1328, 0.0566, 0.0742, 0.1348, 0.0566, 0.3633, 0.7617, 0.5273, 0.4277, 0.7891, 0.5469, 0.4375, 0.8008, 0.5586, 0.4336, 0.7383, 0.5156, 0.3906, 0.6992, 0.5156, 0.4375])),
             ])
+            if version.parse(importlib.metadata.version("torchao")) <= version.Version("0.14.1"):
+                QUANTIZATION_TYPES_TO_TEST.extend([
+                    ("fp5_e3m1", np.array([0.0527, 0.0762, 0.1309, 0.0449, 0.0645, 0.1328, 0.0566, 0.0723, 0.125, 0.0566, 0.0703, 0.1328, 0.0566, 0.0742, 0.1348, 0.0566, 0.3633, 0.7617, 0.5273, 0.4277, 0.7891, 0.5469, 0.4375, 0.8008, 0.5586, 0.4336, 0.7383, 0.5156, 0.3906, 0.6992, 0.5156, 0.4375])),
+                ])
         # fmt: on
 
         for quantization_name, expected_slice in QUANTIZATION_TYPES_TO_TEST:

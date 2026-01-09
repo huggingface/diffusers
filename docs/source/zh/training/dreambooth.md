@@ -44,11 +44,8 @@ pip install -r requirements_flax.txt
 </hfoption>
 </hfoptions>
 
-<Tip>
-
-🤗 Accelerate 是一个库，用于帮助您在多个 GPU/TPU 上或使用混合精度进行训练。它会根据您的硬件和环境自动配置训练设置。查看 🤗 Accelerate [快速入门](https://huggingface.co/docs/accelerate/quicktour) 以了解更多信息。
-
-</Tip>
+> [!TIP]
+> 🤗 Accelerate 是一个库，用于帮助您在多个 GPU/TPU 上或使用混合精度进行训练。它会根据您的硬件和环境自动配置训练设置。查看 🤗 Accelerate [快速入门](https://huggingface.co/docs/accelerate/quicktour) 以了解更多信息。
 
 初始化 🤗 Accelerate 环境：
 
@@ -73,19 +70,13 @@ write_basic_config()
 最后，如果您想在自己的数据集上训练模型，请查看 [创建用于训练的数据集](create_dataset) 指南，了解如何创建与
 训练脚本。
 
-<Tip>
-
-以下部分重点介绍了训练脚本中对于理解如何修改它很重要的部分，但并未详细涵盖脚本的每个方面。如果您有兴趣了解更多，请随时阅读[脚本](https://github.com/huggingface/diffusers/blob/main/examples/dreambooth/train_dreambooth.py)，并告诉我们如果您有任何问题或疑虑。
-
-</Tip>
+> [!TIP]
+> 以下部分重点介绍了训练脚本中对于理解如何修改它很重要的部分，但并未详细涵盖脚本的每个方面。如果您有兴趣了解更多，请随时阅读[脚本](https://github.com/huggingface/diffusers/blob/main/examples/dreambooth/train_dreambooth.py)，并告诉我们如果您有任何问题或疑虑。
 
 ## 脚本参数
 
-<Tip warning={true}>
-
-DreamBooth 对训练超参数非常敏感，容易过拟合。阅读 [使用 🧨 Diffusers 训练 Stable Diffusion 与 Dreambooth](https://huggingface.co/blog/dreambooth) 博客文章，了解针对不同主题的推荐设置，以帮助您选择合适的超参数。
-
-</Tip>
+> [!WARNING]
+> DreamBooth 对训练超参数非常敏感，容易过拟合。阅读 [使用 🧨 Diffusers 训练 Stable Diffusion 与 Dreambooth](https://huggingface.co/blog/dreambooth) 博客文章，了解针对不同主题的推荐设置，以帮助您选择合适的超参数。
 
 训练脚本提供了许多参数来自定义您的训练运行。所有参数及其描述都可以在 [`parse_args()`](https://github.com/huggingface/diffusers/blob/072e00897a7cf4302c347a63ec917b4b8add16d4/examples/dreambooth/train_dreambooth.py#L228) 函数中找到。参数设置了默认值，这些默认值应该开箱即用效果不错，但如果您愿意，也可以在训练命令中设置自己的值。
 
@@ -359,29 +350,26 @@ python train_dreambooth_flax.py \
 
 训练完成后，您可以使用新训练的模型进行推理！
 
-<Tip>
-
-等不及在训练完成前就尝试您的模型进行推理？🤭 请确保安装了最新版本的 🤗 Accelerate。
-
-```py
-from diffusers import DiffusionPipeline, UNet2DConditionModel
-from transformers import CLIPTextModel
-import torch
-
-unet = UNet2DConditionModel.from_pretrained("path/to/model/checkpoint-100/unet")
-
-# 如果您使用了 `--args.train_text_encoder` 进行训练，请确保也加载文本编码器
-text_encoder = CLIPTextModel.from_pretrained("path/to/model/checkpoint-100/checkpoint-100/text_encoder")
-
-pipeline = DiffusionPipeline.from_pretrained(
-    "stable-diffusion-v1-5/stable-diffusion-v1-5", unet=unet, text_encoder=text_encoder, dtype=torch.float16,
-).to("cuda")
-
-image = pipeline("A photo of sks dog in a bucket", num_inference_steps=50, guidance_scale=7.5).images[0]
-image.save("dog-bucket.png")
-```
-
-</Tip>
+> [!TIP]
+> 等不及在训练完成前就尝试您的模型进行推理？🤭 请确保安装了最新版本的 🤗 Accelerate。
+>
+> ```py
+> from diffusers import DiffusionPipeline, UNet2DConditionModel
+> from transformers import CLIPTextModel
+> import torch
+>
+> unet = UNet2DConditionModel.from_pretrained("path/to/model/checkpoint-100/unet")
+>
+> # 如果您使用了 `--args.train_text_encoder` 进行训练，请确保也加载文本编码器
+> text_encoder = CLIPTextModel.from_pretrained("path/to/model/checkpoint-100/checkpoint-100/text_encoder")
+>
+> pipeline = DiffusionPipeline.from_pretrained(
+>     "stable-diffusion-v1-5/stable-diffusion-v1-5", unet=unet, text_encoder=text_encoder, dtype=torch.float16,
+> ).to("cuda")
+>
+> image = pipeline("A photo of sks dog in a bucket", num_inference_steps=50, guidance_scale=7.5).images[0]
+> image.save("dog-bucket.png")
+> ```
 
 <hfoptions id="training-inference">
 <hfoption id="PyTorch">

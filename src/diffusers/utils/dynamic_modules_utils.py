@@ -151,8 +151,8 @@ def check_imports(filename):
             missing_packages.append(imp)
 
     if len(missing_packages) > 0:
-        raise ImportError(
-            "This modeling file requires the following packages that were not found in your environment: "
+        logger.warning(
+            "This modeling file might require the following packages that were not found in your environment: "
             f"{', '.join(missing_packages)}. Run `pip install {' '.join(missing_packages)}`"
         )
 
@@ -254,6 +254,7 @@ def get_cached_module_file(
     token: Optional[Union[bool, str]] = None,
     revision: Optional[str] = None,
     local_files_only: bool = False,
+    local_dir: Optional[str] = None,
 ):
     """
     Prepares Downloads a module from a local folder or a distant repo and returns its path inside the cached
@@ -290,12 +291,8 @@ def get_cached_module_file(
         local_files_only (`bool`, *optional*, defaults to `False`):
             If `True`, will only try to load the tokenizer configuration from local files.
 
-    <Tip>
-
-    You may pass a token in `token` if you are not logged in (`hf auth login`) and want to use private or [gated
-    models](https://huggingface.co/docs/hub/models-gated#gated-models).
-
-    </Tip>
+    > [!TIP] > You may pass a token in `token` if you are not logged in (`hf auth login`) and want to use private or
+    [gated > models](https://huggingface.co/docs/hub/models-gated#gated-models).
 
     Returns:
         `str`: The path to the module inside the cache.
@@ -336,6 +333,7 @@ def get_cached_module_file(
                 force_download=force_download,
                 proxies=proxies,
                 local_files_only=local_files_only,
+                local_dir=local_dir,
             )
             submodule = "git"
             module_file = pretrained_model_name_or_path + ".py"
@@ -359,6 +357,8 @@ def get_cached_module_file(
                 force_download=force_download,
                 proxies=proxies,
                 local_files_only=local_files_only,
+                local_dir=local_dir,
+                revision=revision,
                 token=token,
             )
             submodule = os.path.join("local", "--".join(pretrained_model_name_or_path.split("/")))
@@ -419,6 +419,7 @@ def get_cached_module_file(
                     token=token,
                     revision=revision,
                     local_files_only=local_files_only,
+                    local_dir=local_dir,
                 )
     return os.path.join(full_submodule, module_file)
 
@@ -435,17 +436,13 @@ def get_class_from_dynamic_module(
     token: Optional[Union[bool, str]] = None,
     revision: Optional[str] = None,
     local_files_only: bool = False,
-    **kwargs,
+    local_dir: Optional[str] = None,
 ):
     """
     Extracts a class from a module file, present in the local folder or repository of a model.
 
-    <Tip warning={true}>
-
-    Calling this function will execute the code in the module file found locally or downloaded from the Hub. It should
-    therefore only be called on trusted repos.
-
-    </Tip>
+    > [!WARNING] > Calling this function will execute the code in the module file found locally or downloaded from the
+    Hub. It should > therefore only be called on trusted repos.
 
     Args:
         pretrained_model_name_or_path (`str` or `os.PathLike`):
@@ -480,12 +477,8 @@ def get_class_from_dynamic_module(
         local_files_only (`bool`, *optional*, defaults to `False`):
             If `True`, will only try to load the tokenizer configuration from local files.
 
-    <Tip>
-
-    You may pass a token in `token` if you are not logged in (`hf auth login`) and want to use private or [gated
-    models](https://huggingface.co/docs/hub/models-gated#gated-models).
-
-    </Tip>
+    > [!TIP] > You may pass a token in `token` if you are not logged in (`hf auth login`) and want to use private or
+    [gated > models](https://huggingface.co/docs/hub/models-gated#gated-models).
 
     Returns:
         `type`: The class, dynamically imported from the module.
@@ -508,5 +501,6 @@ def get_class_from_dynamic_module(
         token=token,
         revision=revision,
         local_files_only=local_files_only,
+        local_dir=local_dir,
     )
     return get_class_in_module(class_name, final_module)

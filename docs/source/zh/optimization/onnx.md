@@ -31,11 +31,8 @@ image = pipeline(prompt).images[0]
 pipeline.save_pretrained("./onnx-stable-diffusion-v1-5")
 ```
 
-<Tip warning={true}>
-
-当前批量生成多个提示可能会占用过高内存。在问题修复前，建议采用迭代方式而非批量处理。
-
-</Tip>
+> [!WARNING]
+> 当前批量生成多个提示可能会占用过高内存。在问题修复前，建议采用迭代方式而非批量处理。
 
 如需离线导出 ONNX 格式流水线供后续推理使用，请使用 [`optimum-cli export`](https://huggingface.co/docs/optimum/main/en/exporters/onnx/usage_guides/export_a_model#exporting-a-model-to-onnx-using-the-cli) 命令：
 
