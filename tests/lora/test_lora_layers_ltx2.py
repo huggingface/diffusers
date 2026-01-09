@@ -148,7 +148,7 @@ class LTX2LoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
         "hf-internal-testing/tiny-gemma3",
     )
 
-    text_encoder_target_modules = ["q_proj", "k_proj", "v_proj", "o_proj"]
+    denoiser_target_modules = ["to_q", "to_k", "to_out.0"]
 
     @property
     def output_shape(self):
@@ -286,4 +286,8 @@ class LTX2LoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
 
     @unittest.skip("Text encoder LoRA is not supported in LTX2.")
     def test_simple_inference_with_text_lora_save_load(self):
+        pass
+
+    @unittest.skip("Text encoder LoRA is not supported in LTX2.")
+    def test_simple_inference_save_pretrained_with_text_lora(self):
         pass
